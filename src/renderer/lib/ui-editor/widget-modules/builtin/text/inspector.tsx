@@ -1,5 +1,6 @@
 import {
   useLayoutEffect,
+  type ReactElement,
 } from "react";
 import {
   AlignCenter,
@@ -34,8 +35,19 @@ import {
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
 import { i18nStore, translate } from "@/lib/i18n";
+import {
+  TATE_CHU_YOKO_MAX_LENGTH_LIMIT,
+  isVerticalWritingMode,
+} from "@/lib/ui-editor/widget-modules/shared/text/verticalTypography";
 import { getTextProps } from "./helpers";
-import type { TextAlign, TextVerticalAlign, TextWidgetProps, TextWrapMode } from "./types";
+import type {
+  TextAlign,
+  TextOrientation,
+  TextVerticalAlign,
+  TextWidgetProps,
+  TextWrapMode,
+  TextWritingMode,
+} from "./types";
 
 function textAppearanceRowsForPatch(
   next: TextWidgetProps,
@@ -170,10 +182,69 @@ const TextBlueprintValueField = createBlueprintValueField({
   },
 });
 
+type Translator = ReturnType<typeof i18nStore.getTranslator>["t"];
+
+type AlignOption = { id: string; icon: ReactElement; label: string };
+
+const iconFor = (Icon: typeof AlignLeft) => <Icon className="w-4 h-4" />;
+
+/**
+ * Icons for the inline axis, which turns with the writing mode.
+ *
+ * The stored values never change - `left` is still `text-align: left` - but in a vertical box CSS
+ * resolves that to the top of the column, so the row keeps showing the author where the text will
+ * actually sit rather than what the property is called.
+ */
+function inlineAlignOptions(writingMode: TextWritingMode, t: Translator): AlignOption[] {
+  if (!isVerticalWritingMode(writingMode)) {
+    return [
+      { id: "left", icon: iconFor(AlignLeft), label: t("widgets.typography.alignLeft") },
+      { id: "center", icon: iconFor(AlignCenter), label: t("widgets.typography.alignCenter") },
+      { id: "right", icon: iconFor(AlignRight), label: t("widgets.typography.alignRight") },
+    ];
+  }
+  return [
+    { id: "left", icon: iconFor(AlignVerticalJustifyStart), label: t("widgets.typography.alignTop") },
+    { id: "center", icon: iconFor(AlignVerticalJustifyCenter), label: t("widgets.typography.alignMiddle") },
+    { id: "right", icon: iconFor(AlignVerticalJustifyEnd), label: t("widgets.typography.alignBottom") },
+  ];
+}
+
+/** Icons for the block axis: top to bottom horizontally, and along the columns once vertical. */
+function blockAlignOptions(writingMode: TextWritingMode, t: Translator): AlignOption[] {
+  if (!isVerticalWritingMode(writingMode)) {
+    return [
+      { id: "start", icon: iconFor(AlignVerticalJustifyStart), label: t("widgets.typography.alignTop") },
+      { id: "center", icon: iconFor(AlignVerticalJustifyCenter), label: t("widgets.typography.alignMiddle") },
+      { id: "end", icon: iconFor(AlignVerticalJustifyEnd), label: t("widgets.typography.alignBottom") },
+    ];
+  }
+  const startsRight = writingMode === "vertical-rl";
+  return [
+    {
+      id: "start",
+      icon: iconFor(startsRight ? AlignRight : AlignLeft),
+      label: startsRight ? t("widgets.typography.alignRight") : t("widgets.typography.alignLeft"),
+    },
+    { id: "center", icon: iconFor(AlignCenter), label: t("widgets.typography.alignCenter") },
+    {
+      id: "end",
+      icon: iconFor(startsRight ? AlignLeft : AlignRight),
+      label: startsRight ? t("widgets.typography.alignLeft") : t("widgets.typography.alignRight"),
+    },
+  ];
+}
+
+/** Tate-chu-yoko has nothing to do while the box is horizontal or every glyph is already sideways. */
+function supportsTateChuYoko(props: TextWidgetProps): boolean {
+  return isVerticalWritingMode(props.writingMode) && props.textOrientation !== "sideways";
+}
+
 export function createTextInspector(ctx: InspectorContext) {
   type D = UIInspectorData;
   const { t } = i18nStore.getTranslator();
   const { element, documentService } = ctx;
+  const writingMode = getTextProps(element).writingMode;
 
   const patchProps = (patch: Partial<TextWidgetProps>) => {
     const liveElement = documentService.getDocument().elements[element.id] ?? element;
@@ -380,11 +451,7 @@ export function createTextInspector(ctx: InspectorContext) {
                 mode: "single",
                 label: t("widgets.typography.alignment"),
                 showLabels: false,
-                options: [
-                  { id: "left", icon: <AlignLeft className="w-4 h-4" />, label: t("widgets.typography.alignLeft") },
-                  { id: "center", icon: <AlignCenter className="w-4 h-4" />, label: t("widgets.typography.alignCenter") },
-                  { id: "right", icon: <AlignRight className="w-4 h-4" />, label: t("widgets.typography.alignRight") },
-                ],
+                options: inlineAlignOptions(writingMode, t),
                 getValue: (d: D) => getTextProps(d.element).textAlign,
                 setValue: (_d: D, value: IconButtonSelection) => {
                   if (typeof value !== "string") return;
@@ -397,15 +464,71 @@ export function createTextInspector(ctx: InspectorContext) {
                 mode: "single",
                 label: t("widgets.typography.verticalAlignment"),
                 showLabels: false,
-                options: [
-                  { id: "start", icon: <AlignVerticalJustifyStart className="w-4 h-4" />, label: t("widgets.typography.alignTop") },
-                  { id: "center", icon: <AlignVerticalJustifyCenter className="w-4 h-4" />, label: t("widgets.typography.alignMiddle") },
-                  { id: "end", icon: <AlignVerticalJustifyEnd className="w-4 h-4" />, label: t("widgets.typography.alignBottom") },
-                ],
+                options: blockAlignOptions(writingMode, t),
                 getValue: (d: D) => getTextProps(d.element).textVerticalAlign,
                 setValue: (_d: D, value: IconButtonSelection) => {
                   if (typeof value !== "string") return;
                   patchProps({ textVerticalAlign: value as TextVerticalAlign });
+                },
+              }),
+              defineField<D, any>({
+                id: "text.writingMode",
+                type: "select",
+                label: t("widgets.typography.writingMode"),
+                options: [
+                  { value: "horizontal-tb", label: t("widgets.typography.writingHorizontal") },
+                  { value: "vertical-rl", label: t("widgets.typography.writingVerticalRl") },
+                  { value: "vertical-lr", label: t("widgets.typography.writingVerticalLr") },
+                ],
+                getValue: (d: D) => getTextProps(d.element).writingMode,
+                setValue: (_d: D, v: string | number) => {
+                  patchProps({ writingMode: String(v) as TextWritingMode });
+                },
+              }),
+              defineField<D, any>({
+                id: "text.textOrientation",
+                type: "select",
+                label: t("widgets.typography.glyphOrientation"),
+                // Every vertical-only control reads the live element rather than the schema-time
+                // one: the panel rebuilds this schema on each document revision, so the row appears
+                // the moment the mode dropdown above it changes.
+                hidden: (d: D) => !isVerticalWritingMode(getTextProps(d.element).writingMode),
+                options: [
+                  { value: "mixed", label: t("widgets.typography.orientationMixed") },
+                  { value: "upright", label: t("widgets.typography.orientationUpright") },
+                  { value: "sideways", label: t("widgets.typography.orientationSideways") },
+                ],
+                getValue: (d: D) => getTextProps(d.element).textOrientation,
+                setValue: (_d: D, v: string | number) => {
+                  patchProps({ textOrientation: String(v) as TextOrientation });
+                },
+              }),
+              defineField<D, any>({
+                id: "text.tateChuYoko",
+                type: "checkbox",
+                label: t("widgets.typography.tateChuYoko"),
+                helpText: t("widgets.typography.tateChuYokoHint"),
+                hidden: (d: D) => !supportsTateChuYoko(getTextProps(d.element)),
+                getValue: (d: D) => getTextProps(d.element).tateChuYoko,
+                setValue: (_d: D, value: boolean) => patchProps({ tateChuYoko: value }),
+              }),
+              defineField<D, any>({
+                id: "text.tateChuYokoMaxLength",
+                type: "number",
+                label: t("widgets.typography.tateChuYokoMaxLength"),
+                min: 1,
+                max: TATE_CHU_YOKO_MAX_LENGTH_LIMIT,
+                step: 1,
+                hidden: (d: D) => {
+                  const props = getTextProps(d.element);
+                  return !supportsTateChuYoko(props) || !props.tateChuYoko;
+                },
+                getValue: (d: D) => getTextProps(d.element).tateChuYokoMaxLength,
+                setValue: (_d: D, value: number) => {
+                  if (!Number.isFinite(value)) return;
+                  patchProps({
+                    tateChuYokoMaxLength: Math.min(TATE_CHU_YOKO_MAX_LENGTH_LIMIT, Math.max(1, Math.round(value))),
+                  });
                 },
               }),
             ],

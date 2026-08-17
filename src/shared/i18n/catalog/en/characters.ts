@@ -253,7 +253,7 @@ export const characters = {
         voiceTrackMissing: "Missing bus",
         // Shown only while there is nothing under Voice to pick, i.e. exactly when the select cannot
         // help and the author has to go and make a bus first.
-        voiceTrackEmpty: "Add a bus under Voice in Project → Audio to give this character its own volume control.",
+        voiceTrackEmpty: "Add a bus under Voice in Project ▸ Game to give this character its own volume control.",
         select: "Select",
         thumbnailAlt: "thumbnail",
         color: "Color",

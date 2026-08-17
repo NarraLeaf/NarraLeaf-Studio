@@ -15,6 +15,7 @@ import {
     BLUEPRINT_VALUE_TYPE_ARRAY,
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
+    BLUEPRINT_VALUE_TYPE_RECT,
     isBlueprintElementValueType,
 } from "@shared/types/blueprint/valueTypes";
 import { blueprintNodeRegistry } from "./BlueprintNodeRegistry";
@@ -52,6 +53,15 @@ function areDataValueTypesCompatible(sourceType: string | undefined, targetType:
         return areBlueprintElementValueTypesCompatible(sourceType, targetType);
     }
     if (sourceType === BLUEPRINT_VALUE_TYPE_ARRAY && targetType === "json") {
+        return true;
+    }
+    // Rect widens into `json`, and only Rect does. It is a migration allowance rather than a rule
+    // about structured values: `Get Bounds` and the Rect literal both published `json` until Rect
+    // became a value type of its own, so graphs authored before that feed rectangles straight into
+    // Get JSON Field and must keep working. Vector2D stays narrow - it never was a `json` pin, and
+    // a test above this file pins that down. Narrowing is not the reverse of either: an arbitrary
+    // object is not a rect.
+    if (sourceType === BLUEPRINT_VALUE_TYPE_RECT && targetType === "json") {
         return true;
     }
     if (

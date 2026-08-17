@@ -5,9 +5,10 @@ import path from "path";
 import { Readable } from "stream";
 import { nativeImage } from "electron";
 import { shell } from "electron";
-import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session } from "electron/main";
+import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, screen, session } from "electron/main";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { GameTestEvent } from "@shared/types/gameTest";
+import type { SaveCompatibilityStamp } from "@shared/types/saveCompatibility";
 import {
     GAME_RUNTIME_CLOSE_DECISION_CHANNEL,
     GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL,
@@ -38,13 +39,16 @@ import {
     type BlueprintOpenExternalResult,
 } from "@shared/types/blueprint/externalLink";
 import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetch";
+import type { BlueprintPointerMoveRequest } from "@shared/types/blueprint/pointer";
+import { executeBlueprintPointerMove } from "@shared/utils/blueprintPointerMove";
 import { packNetworkAllowlist, type NetworkAllowlist } from "@shared/types/networkAllowlist";
+import { sniffMediaType } from "./mediaSniff";
 import { createRuntimeResources, type RuntimeResources } from "./runtimeResources";
 import {
     PLUGIN_REACT_MODULE_SOURCES,
     PLUGIN_RUNTIME_API_MODULE_SOURCE,
 } from "@shared/utils/pluginRuntimeApiModule";
-import { resolveRuntimeStaticPath } from "./runtimeProtocol";
+import { resolveModelBundleKey, resolveRuntimeStaticPath } from "./runtimeProtocol";
 import { injectRuntimeCsp, installRuntimeNetworkPolicy } from "./networkPolicy";
 import { dispatchControlFrame, encodeTestEventFrame } from "./testControlProtocol";
 import { GAME_RUNTIME_TEST_SIGNAL_CHANNEL, toGameTestEvent } from "../gameTestSignal";
@@ -257,7 +261,19 @@ void app.whenReady().then(async () => {
     if (startupBlocked) {
         return;
     }
-    resources = await createRuntimeResources(appDir);
+    resources = await createRuntimeResources(appDir, {
+        // Where a player puts a patch. `resourcesPath` rather than `__dirname`
+        // because this module lives inside the archive: its own directory is not
+        // a place anybody can drop a file. One level above the resources folder is
+        // the folder that holds the executable, which is the folder a player has.
+        // Unpackaged runs (preview, a compiled app dir started by hand) have no
+        // such layout, so they take the app dir's parent.
+        gameRootDir: app.isPackaged ? path.dirname(process.resourcesPath) : path.resolve(appDir, ".."),
+        // Searched as well, so a patch can outlive reinstalling the game.
+        userDataDir,
+        // What applied, and what did not, is the only trace a patch leaves.
+        log: logRuntime,
+    });
     const pack = await readPack();
     if (pack.mode === "production" && hasDebuggingSwitch()) {
         // Refuse to run a production game under an attached debugger/CDP.
@@ -818,12 +834,38 @@ const ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
 /** Loose assets above this size stream from disk instead of buffering fully. */
 const ASSET_STREAM_THRESHOLD_BYTES = 8 * 1024 * 1024;
 
+const modelBundleKey = (pack: GameRuntimePackV1, assetId: string) => resolveModelBundleKey(
+    pack,
+    assetId,
+    id => runtimeResources().readModelBundleEntry(pack, id),
+);
+
 async function serveAsset(request: Request, assetId: string): Promise<Response> {
     const pack = await readPack();
-    const contentType = pack.assets.items[assetId]?.mimeType ?? getMimeType(assetId);
+    // A mount request cannot be served as itself - there is no item at `{id}/` holding bytes - so it
+    // is resolved before the ordinary path rather than after it fails.
+    if (assetId.endsWith("/")) {
+        const key = await modelBundleKey(pack, assetId);
+        return key ? serveAssetBytes(request, pack, key) : new Response("Not found", { status: 404 });
+    }
+    try {
+        return await serveAssetBytes(request, pack, assetId);
+    } catch (error) {
+        const key = await modelBundleKey(pack, assetId);
+        if (!key || key === assetId) {
+            throw error;
+        }
+        return serveAssetBytes(request, pack, key);
+    }
+}
+
+async function serveAssetBytes(request: Request, pack: GameRuntimePackV1, assetId: string): Promise<Response> {
+    const declaredType = pack.assets.items[assetId]?.mimeType;
     const rangeHeader = request.headers.get("range");
     const filePath = runtimeResources().getAssetFilePath(pack, assetId);
     if (filePath) {
+        // A loose pack keeps its manifest and its file extensions, so nothing here has to guess.
+        const contentType = declaredType ?? getMimeType(filePath);
         const { size } = await fs.stat(filePath);
         const range = resolveSingleByteRange(rangeHeader, size);
         if (range.kind === "unsatisfiable") {
@@ -838,6 +880,14 @@ async function serveAsset(request: Request, assetId: string): Promise<Response> 
         return assetResponse(await fs.readFile(filePath), contentType);
     }
     const data = await runtimeResources().readAsset(pack, assetId);
+    /*
+     * Sniffed first, and from the bytes we already hold, because a shipped protected pack has no
+     * manifest to declare anything: entries are stored under the asset id alone, with no extension
+     * and no recorded media type. The manifest is consulted only as a fallback, which is also what
+     * keeps preview honest - a preview pack still carries one, and letting it win would mean the
+     * sniffer never ran until a player's copy did.
+     */
+    const contentType = sniffMediaType(data) ?? declaredType ?? getMimeType(assetId);
     const range = resolveSingleByteRange(rangeHeader, data.byteLength);
     if (range.kind === "unsatisfiable") {
         return rangeNotSatisfiable(data.byteLength);
@@ -988,10 +1038,24 @@ function registerRuntimeIpc(): void {
         }
     });
 
-    ipcMain.handle("runtime:save:write", (_event, data: { id: string; savedGame: unknown; capture?: string; metadata?: unknown }) =>
-        saves.write(data.id, data.savedGame, data.capture, data.metadata));
+    ipcMain.handle("runtime:save:write", (_event, data: {
+        id: string;
+        savedGame: unknown;
+        capture?: string;
+        metadata?: unknown;
+        compatibility?: SaveCompatibilityStamp;
+        playtimeSeconds?: number;
+    }) => saves.write(
+        data.id,
+        data.savedGame,
+        data.capture,
+        data.metadata,
+        data.compatibility,
+        data.playtimeSeconds,
+    ));
     ipcMain.handle("runtime:save:read", (_event, id: string) => saves.read(id));
     ipcMain.handle("runtime:save:listIds", () => saves.listIds());
+    ipcMain.handle("runtime:save:listHeaders", () => saves.listHeaders());
     ipcMain.handle("runtime:save:readPreview", (_event, id: string) => saves.readPreview(id));
     ipcMain.handle("runtime:save:delete", (_event, id: string) => saves.delete(id));
 
@@ -1021,6 +1085,16 @@ function registerRuntimeIpc(): void {
             allowlist: packNetworkAllowlist(pack),
             redirects: "check",
         });
+    });
+
+    // The Move Mouse family's request.
+    //
+    // Here because this is the process that can answer it: the renderer knows where the point is in
+    // the page, and only this side knows where the page is on the desktop. The conversion and the
+    // platform call are shared with Dev Mode so the author tests what ships.
+    ipcMain.handle("runtime:pointer:move", (event, request: BlueprintPointerMoveRequest) => {
+        const window = BrowserWindow.fromWebContents(event.sender);
+        return executeBlueprintPointerMove(request, window, { screen });
     });
 
     // The Open Link node's request.

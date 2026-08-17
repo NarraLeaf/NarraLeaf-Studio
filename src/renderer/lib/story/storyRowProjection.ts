@@ -93,6 +93,16 @@ export type StoryRowLookups = {
      * only other thing the payload holds is an id.
      */
     appearanceName?: (characterId: string, refId: string) => string | null;
+    /**
+     * The label a plugin gave the story action behind a `{action:"plugin"}` row, or `null` when the
+     * plugin that owns it is not loaded.
+     *
+     * Same split as the three above, and for a sharper reason: the label lives in a *registration*
+     * rather than in the document, so it exists only while the plugin is installed and enabled. Omit
+     * the lookup - as the Dev Mode timeline does, having no plugin host to ask - and the row names
+     * itself generically rather than printing `pluginId`, which is an identifier and not a name.
+     */
+    pluginActionLabel?: (pluginId: string, actionId: string) => string | null;
     /** The scene the block belongs to — variable, layer and displayable refs resolve against it. */
     scene?: StoryScene;
     /** Every scene in the document: jump targets and cross-scene variable names. */
@@ -223,11 +233,34 @@ function segmentHasValue(segment: StoryTextSegment): boolean {
 
 // --- Names --------------------------------------------------------------------------------------
 
+/**
+ * The scene's own name, or `null` when the id answers to no scene.
+ *
+ * Split from {@link getStorySceneName} because the two callers want opposite things from a miss. A
+ * row wants a readable, localised "unknown scene"; a projection that must not contain a locale
+ * (`lib/story/narralang`) wants to KNOW it missed, so it can report the row instead of writing a
+ * word that would differ between two authors' exports of the same document.
+ */
+export function resolveStorySceneName(scenes: Record<StorySceneId, StoryScene> | undefined, sceneId: string | undefined): string | null {
+    if (!sceneId) {
+        return null;
+    }
+    return scenes?.[sceneId]?.name || null;
+}
+
 export function getStorySceneName(scenes: Record<StorySceneId, StoryScene> | undefined, sceneId: string | undefined): string {
     if (!sceneId) {
         return translate("story.describe.sceneUnassigned");
     }
-    return scenes?.[sceneId]?.name || translate("story.describe.sceneUnknown");
+    return resolveStorySceneName(scenes, sceneId) ?? translate("story.describe.sceneUnknown");
+}
+
+/** The character's own name, or `null` when there is no id or the id answers to nothing. */
+export function resolveStoryCharacterName(lookups: StoryRowLookups, characterId: string | undefined): string | null {
+    if (!characterId) {
+        return null;
+    }
+    return lookups.character(characterId)?.name ?? null;
 }
 
 /** The name a row prints for a character id — including the two "there is no name" cases. */
@@ -362,7 +395,7 @@ export type StoryBlockBadgeId =
     | "narration" | "dialogue" | "choice" | "choiceOption"
     | "background" | "character" | "audio" | "variable" | "wait" | "image"
     | "transform" | "displayable" | "text" | "layer" | "video" | "vfx" | "nvl"
-    | "blueprint" | "camera" | "effect"
+    | "blueprint" | "camera" | "effect" | "plugin"
     | "label" | "goto" | "break" | "cut" | "control" | "jump" | "invalid" | "declaration" | "note";
 
 export type StoryBlockBadge = {
@@ -413,6 +446,10 @@ export function storyBlockBadge(block: StoryBlock): StoryBlockBadge {
         // Its own badge, not "Effect": `/camera darken` dims the whole stage and outlives the scene,
         // while `/vignette` is a mask layer inside it. The row has to say which one it is at a glance.
         if (block.payload.action === "camera") return badge("camera", "story.badge.camera", "camera");
+        // Its own badge, in the same "utils" unit a blueprint call wears: both are rows that hand the
+        // line to something outside the scene's own vocabulary. It needs to be tellable apart at a
+        // glance precisely because it is the one row whose behaviour is not in the document.
+        if (block.payload.action === "plugin") return badge("plugin", "story.badge.plugin", "utils");
         // A screen effect is a property of the scene it happens in (§4.1), so it wears the scene hue;
         // the Sparkles badge is what still tells a `/blink` row apart from a `/bg` row at a glance.
         return badge("effect", "story.badge.effect", "scene");
@@ -475,6 +512,22 @@ export function storyRowBarColor(block: StoryBlock): string | null {
  * to understand, which fails the first principle.
  */
 export function variableRefShortLabel(ref: StoryVariableRef, lookups: StoryVariableNameLookups): string {
+    const name = resolveStoryVariableName(ref, lookups);
+    if (name !== null) {
+        return name;
+    }
+    return ref.scope === "persistent"
+        ? translate("story.describe.persistent")
+        : translate("story.describe.variableFallback");
+}
+
+/**
+ * The variable's declared name, or `null` when nothing declares it.
+ *
+ * Same split, and same reason, as {@link resolveStorySceneName}: this is the resolution, and
+ * {@link variableRefShortLabel} is the resolution plus a localised word for a miss.
+ */
+export function resolveStoryVariableName(ref: StoryVariableRef, lookups: StoryVariableNameLookups): string | null {
     if (ref.scope === "persistent") {
         for (const candidate of Object.values(lookups.scenes ?? {})) {
             for (const block of Object.values(candidate.blocks)) {
@@ -485,8 +538,7 @@ export function variableRefShortLabel(ref: StoryVariableRef, lookups: StoryVaria
         }
         // The registry, which since the declaration migration is where persistent variables actually
         // live - a row printing the word "persistent" at its author is the failure this exists to stop.
-        return lookups.projectVariableName?.("persistent", ref.variableId)
-            ?? translate("story.describe.persistent");
+        return lookups.projectVariableName?.("persistent", ref.variableId) ?? null;
     }
     const inScene = lookups.scene?.blocks[ref.variableId];
     if (inScene?.kind === "declaration") {
@@ -500,8 +552,7 @@ export function variableRefShortLabel(ref: StoryVariableRef, lookups: StoryVaria
     }
     // Same story-rows-then-registry order the command line and the compiler resolve a saved name in,
     // so one variable cannot be two things depending on which surface is asking.
-    return (ref.scope === "saved" ? lookups.projectVariableName?.("saved", ref.variableId) : null)
-        ?? translate("story.describe.variableFallback");
+    return (ref.scope === "saved" ? lookups.projectVariableName?.("saved", ref.variableId) : null) ?? null;
 }
 
 /**
@@ -737,6 +788,10 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
         if (payload.action === "nvl") return translate("story.describe.nvl");
         if (payload.action === "blueprint") return translate("story.describe.blueprint");
         if (payload.action === "camera") return describeCamera(payload, lookups.motionName);
+        if (payload.action === "plugin") {
+            return lookups.pluginActionLabel?.(payload.pluginId, payload.actionId)
+                ?? translate("story.describe.pluginAction");
+        }
         return translate("story.describe.effect", { effect: payload.effect });
     }
     if (block.kind === "control") {

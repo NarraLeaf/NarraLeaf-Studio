@@ -15,6 +15,9 @@
  *    themselves in a sentence would be a wall of prose; the title says what the rule is, the popover
  *    says what it looks for.
  *
+ * The part carries a `SettingsGroup` heading like every other, because the Project sub-page holds a
+ * second part above it; that heading is the whole of its chrome.
+ *
  * This page deliberately does NOT use the shared `SettingShell` card that Settings and Game use. A
  * bordered, filled card per row reads as a grouped setting at the four-to-six rows those pages have;
  * at twenty-six rules plus their options it becomes a wall of boxes, which is what this page looked
@@ -41,6 +44,7 @@ import {
     normalizeLintingConfiguration,
     type LintingConfiguration,
 } from "@/lib/workspace/project/configuration";
+import { SettingsGroup } from "../components/SettingsGroup";
 import { NumberField } from "./NumberField";
 import type { ProjectSectionProps } from "./types";
 
@@ -286,7 +290,8 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
     const runOnBuildFrozen = freeze.writes(saving === "runOnBuild");
     const failBuildOnFrozen = freeze.writes(!linting.runOnBuild || saving === "failBuildOn");
     return (
-        <div className="grid min-w-0">
+        <SettingsGroup title={t("project.group.linting")}>
+            <div className="grid min-w-0">
             <LintRow
                 title={t("lint.settings.runOnBuild")}
                 hint={t("lint.settings.runOnBuildHint")}
@@ -334,6 +339,7 @@ export function ProjectLintingSection({ projectService, uiService, config, onCon
                     {LINT_RULES_BY_CATEGORY[category].map(rule => renderRule(rule))}
                 </div>
             ))}
-        </div>
+            </div>
+        </SettingsGroup>
     );
 }

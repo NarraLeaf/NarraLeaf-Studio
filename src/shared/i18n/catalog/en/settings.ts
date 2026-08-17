@@ -52,7 +52,7 @@ export const settings = {
         },
         workspace: {
             label: "Workspace",
-            description: "Startup behavior, workspace history, and auto-save helpers.",
+            description: "Startup behavior, workspace history, and automatic saving.",
         },
         shortcuts: {
             label: "Shortcuts",
@@ -189,8 +189,7 @@ export const settings = {
             description: "Marks misspellings in the story script. Translations are never checked.",
             /**
              * Shown in place of the description while no dictionary covers the project's own
-             * language. A statement of what is true, not an error - and for Chinese and Japanese a
-             * permanent one, since neither has spelling in the word-list sense.
+             * language. A statement of what is true, not an error.
              */
             noDictionary: "No spelling dictionary is installed for this project's language.",
             options: {
@@ -261,7 +260,7 @@ export const settings = {
         },
         confirmBeforeClose: {
             label: "Confirm before closing a workspace",
-            description: "Ask for confirmation when you close a workspace window.",
+            description: "Ask for confirmation when a workspace window is closed.",
         },
         returnToLauncherOnClose: {
             label: "Return to the home screen when closing a workspace",
@@ -379,17 +378,17 @@ export const settings = {
         // `problems`, which are refusals of a token by a server already reached.
         probe: {
             unreachable: "Nothing answered at that address.",
-            notAServer: "Something answered at that address, and it is not a NarraLeaf Team server.",
+            notAServer: "The server at that address is not a NarraLeaf Team server.",
             untrusted: "The server at that address was not trusted.",
             failed: "That address could not be checked.",
         },
         problems: {
             scheme: "A sign-in address has to start with https:// or ucs-auth://.",
-            token: "That is not a token this server would have issued.",
+            token: "That is not a token this server issued.",
             // Neither names a field any more: both addresses come from the server's own
             // answer, so there is nothing here for a reader to correct.
             address: "This token does not say where to sign in.",
-            server: "This token does not say which server it is for.",
+            server: "This token does not name a server.",
             certificate: "This machine does not trust the certificate presented at that address.",
             unreachable: "Nothing answered at that address.",
             refused: "The server refused this token. It may have expired or been revoked.",
@@ -427,7 +426,7 @@ export const settings = {
                 },
                 spellcheckDictionaries: {
                     label: "Spelling dictionaries",
-                    description: "Word lists downloaded for spellchecking. Your project's own terms are not here.",
+                    description: "Word lists downloaded for spellchecking. The project's own terms are not here.",
                 },
                 psdImports: {
                     label: "PSD import leftovers",
@@ -462,7 +461,7 @@ export const settings = {
         probeFailed: "The check could not be run.",
         rewrites: {
             hint: "Some downloads use an address that comes from a catalogue rather than from the settings above, such as a plugin's package file. A rule here replaces the beginning of those addresses.",
-            empty: "No rewrites. Downloads use the addresses they come with.",
+            empty: "No rewrites. Downloads use their original addresses.",
             add: "Add a rule",
             remove: "Remove this rule",
             enabled: "Use this rule",

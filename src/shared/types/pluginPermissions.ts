@@ -148,6 +148,22 @@ export const PluginRuntimeCapability = {
     Assets: "assets",
     /** `app.game.locale` — read and observe the game language. */
     Locale: "locale",
+    /**
+     * `app.game.story` — register a compile pass that observes each scene and injects engine
+     * actions around its rows.
+     *
+     * The heaviest of the ten to read, and the one whose weight is easiest to miss: nothing here
+     * touches the player's files, and the author still sees only their own document — but a pass
+     * runs over *every* scene of the project, sees who speaks in each, and can put actions around
+     * lines it did not write. That is a plugin editing the story, at the last moment before it
+     * plays, and it is worth a name the author approves at install.
+     *
+     * It is not `state.write` in disguise and does not imply it: a pass builds actions, it does not
+     * run them, and the one piece of runtime state it can touch is a scene-local flag the compiler
+     * creates and owns (`SceneCompileContext.runtimeFlag`), never a story variable the author
+     * declared.
+     */
+    StoryCompile: "story.compile",
 } as const;
 
 export type PluginRuntimeCapability = typeof PluginRuntimeCapability[keyof typeof PluginRuntimeCapability];

@@ -31,6 +31,8 @@
 
 import {
     BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
+    BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO,
+    BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO_ELEMENT,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_IF,
     BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE,
@@ -39,6 +41,7 @@ import {
     BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
     BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS,
     BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
     BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON,
@@ -105,6 +108,7 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.compare.lessThanOrEqual", "blueprint.compare.notEqual", "blueprint.component.getParam",
     "blueprint.container.getClipContent", "blueprint.container.getEnabled",
     "blueprint.container.getVariant", "blueprint.container.getVisible", "blueprint.data.booleanLiteral",
+    "blueprint.data.breakRect", "blueprint.data.breakVector2d",
     "blueprint.data.colorLiteral", "blueprint.data.floatLiteral", "blueprint.data.integerLiteral",
     "blueprint.data.isArray", "blueprint.data.isBoolean", "blueprint.data.isEmptyValue",
     "blueprint.data.isNull", "blueprint.data.isNumber", "blueprint.data.isObject",
@@ -112,20 +116,24 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.data.jsonGet", "blueprint.data.jsonHas", "blueprint.data.jsonLiteral",
     "blueprint.data.jsonMakeArray", "blueprint.data.jsonMakeObject", "blueprint.data.jsonMergeObject",
     "blueprint.data.jsonRemove", "blueprint.data.jsonSet", "blueprint.data.literal",
+    "blueprint.data.makeRect", "blueprint.data.makeVector2d",
     "blueprint.data.notNull", "blueprint.data.nullLiteral", "blueprint.data.numberLiteral",
     "blueprint.data.parseFloat", "blueprint.data.parseInt", "blueprint.data.parseJson",
-    "blueprint.data.rectLiteral", "blueprint.data.stringifyJson", "blueprint.data.stringLiteral",
+    "blueprint.data.rectCenter", "blueprint.data.rectLiteral", "blueprint.data.stringifyJson",
+    "blueprint.data.stringLiteral",
     "blueprint.data.toBoolean", "blueprint.data.toFloat", "blueprint.data.toInteger",
     "blueprint.data.toJson", "blueprint.data.vector2dLiteral", "blueprint.displayable.getBounds",
     "blueprint.displayable.getDisplay", "blueprint.displayable.getOpacity",
     "blueprint.displayable.getPosition", "blueprint.displayable.getProperty",
     "blueprint.displayable.getRotation", "blueprint.displayable.getSize",
+    "blueprint.displayable.getCenter", "blueprint.displayable.getMeasuredRect",
     "blueprint.displayable.getVariant", "blueprint.displayable.getVisible",
     "blueprint.element.button.getEnabled", "blueprint.element.button.getLabel",
     "blueprint.element.button.getVariant", "blueprint.element.button.getVisible",
     "blueprint.element.container.getClipContent", "blueprint.element.container.getEnabled",
     "blueprint.element.container.getVariant", "blueprint.element.container.getVisible",
-    "blueprint.element.displayable.getBounds", "blueprint.element.displayable.getDisplay",
+    "blueprint.element.displayable.getBounds", "blueprint.element.displayable.getCenter",
+    "blueprint.element.displayable.getDisplay", "blueprint.element.displayable.getMeasuredRect",
     "blueprint.element.displayable.getOpacity", "blueprint.element.displayable.getPosition",
     "blueprint.element.displayable.getProperty", "blueprint.element.displayable.getRotation",
     "blueprint.element.displayable.getSize", "blueprint.element.displayable.getVariant",
@@ -153,11 +161,14 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.frameWidget.getTargetPage", "blueprint.game.getAppTag", "blueprint.game.getAutoForward",
     "blueprint.game.getBgmVolume", "blueprint.game.getCharacter", "blueprint.game.getChoiceCount",
     "blueprint.game.getCps", "blueprint.game.getGameSpeed", "blueprint.game.getGlobalVolume",
-    "blueprint.game.getNametag", "blueprint.game.getNotifications", "blueprint.game.getSkip",
+    "blueprint.game.getNametag", "blueprint.game.getNotifications",
+    "blueprint.game.getPlaytime", "blueprint.game.getSkip",
     "blueprint.game.getSkipDelay", "blueprint.game.getSkipInterval", "blueprint.game.getSkipReadText",
     "blueprint.game.getSoundVolume", "blueprint.game.getSpeakerAvatar", "blueprint.game.getSpeakerColor",
     "blueprint.game.getTrackVolume", "blueprint.game.getVoiceEndMode",
-    "blueprint.game.getVoiceFadeDuration", "blueprint.game.getVoiceVolume", "blueprint.game.isGameOverlay",
+    "blueprint.game.getVoiceFadeDuration", "blueprint.game.getVoiceVolume",
+    "blueprint.game.history.canRedo", "blueprint.game.history.canUndo", "blueprint.game.isGameOverlay",
+    "blueprint.game.getTotalPlaytime",
     "blueprint.game.isInGame", "blueprint.game.isNvlMode", "blueprint.game.isOptionPicked",
     "blueprint.game.isSceneVisited", "blueprint.game.isTextRead", "blueprint.game.isTextReadById",
     "blueprint.image.assetLiteral", "blueprint.image.getCropRect", "blueprint.image.getEnabled",
@@ -250,10 +261,12 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.frame.setVisible", "blueprint.frameWidget.setParams", "blueprint.frameWidget.setTargetPage",
     "blueprint.game.autoSave.latest", "blueprint.game.autoSave.list", "blueprint.game.autoSave.write",
     "blueprint.game.choose", "blueprint.game.clearTextRead", "blueprint.game.clearVisited",
-    "blueprint.game.hideDialog", "blueprint.game.history.get", "blueprint.game.history.restore",
+    "blueprint.game.hideDialog", "blueprint.game.history.get", "blueprint.game.history.getFuture",
+    "blueprint.game.history.redoNext", "blueprint.game.history.restore",
     "blueprint.game.history.undoLast", "blueprint.game.next", "blueprint.game.save.delete",
     "blueprint.game.save.getMetadata", "blueprint.game.save.getPreview",
-    "blueprint.game.save.getLine", "blueprint.game.save.getTime", "blueprint.game.save.listIds",
+    "blueprint.game.save.getLine", "blueprint.game.save.getPlaytime",
+    "blueprint.game.save.getTime", "blueprint.game.save.listIds",
     "blueprint.game.save.write", "blueprint.game.setAutoForward", "blueprint.game.setBgmVolume",
     "blueprint.game.setGameSpeed", "blueprint.game.setGlobalVolume", "blueprint.game.setSentenceSpeed",
     "blueprint.game.setSkip", "blueprint.game.setSkipDelay", "blueprint.game.setSkipInterval",
@@ -318,10 +331,10 @@ const EVENT_HEAD_NODE_TYPES: readonly string[] = [
     "blueprint.event.head.windowCloseRequested", "blueprint.fn.head",
 ];
 
-/** Flow ends here: `in` arrives and nothing leaves. Returns, and the four ways to leave a game. */
+/** Flow ends here: `in` arrives and nothing leaves. Returns, and the three ways to leave a game. */
 const TAIL_NODE_TYPES: readonly string[] = [
     "blueprint.data.returnValue", "blueprint.flow.return", "blueprint.fn.return", "blueprint.game.quit",
-    "blueprint.game.save.load", "blueprint.game.startStory", "blueprint.page.go", "blueprint.page.quit",
+    "blueprint.game.startStory", "blueprint.page.go", "blueprint.page.quit",
 ];
 
 /** The three loops. `loop` runs the body, `completed` carries on once it stops. */
@@ -365,6 +378,11 @@ const IRREGULAR_EXEC_PINS: Readonly<Record<string, BlueprintNodeExecPins>> = {
     // `Open Link` leaves by `failed` when the address is not one this build declared, or when the
     // player's machine has nothing to open it with - the two the node lets an author branch on.
     [BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL]: { in: ["in"], out: ["next", "failed"] },
+    // The Move Mouse pair is `Open Link`'s shape for the same reason: the cursor went there or it
+    // did not, and whether the host has no cursor support or the system refused the move is on a
+    // data pin rather than in a third branch nobody could act on differently.
+    [BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO]: { in: ["in"], out: ["next", "failed"] },
+    [BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO_ELEMENT]: { in: ["in"], out: ["next", "failed"] },
     // `Export Progress` is `Open Link`'s shape for the same reason: the write happened or it did
     // not, and the reason is on a data pin rather than in a third branch.
     [BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS]: { in: ["in"], out: ["next", "failed"] },
@@ -373,6 +391,11 @@ const IRREGULAR_EXEC_PINS: Readonly<Record<string, BlueprintNodeExecPins>> = {
     // machine - and it leads to "start a new game", not to an apology. Folding it into `failed`
     // would put an error message in front of every first-time player.
     [BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS]: { in: ["in"], out: ["found", "missing", "failed"] },
+    // `Load Save` leaves by `failed` and by nothing else. A load that lands has replaced the whole
+    // running game, so there is nothing a `next` could run against - the graph that asked for it is
+    // not the game any more. A refusal moved nothing, and the save screen that asked is still
+    // standing, which is the branch a title screen needs.
+    [BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD]: { in: ["in"], out: ["failed"] },
     // `Show Confirm` has no `next` at all: every way out of the question is a branch. `dismissed`
     // is the static one - the player closed it without answering - and each button an author added
     // publishes its own `button_N_pressed` beside it.

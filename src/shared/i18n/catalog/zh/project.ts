@@ -20,7 +20,7 @@ export const project = {
         },
         project: {
             title: "工程",
-            description: "工程检查的规则，以及什么会拦下构建",
+            description: "分发密钥、工程检查的规则，以及什么会拦下构建",
         },
         runtimes: {
             title: "运行时",
@@ -39,17 +39,29 @@ export const project = {
         icons: "图标",
         dependencies: "依赖",
         saving: "存档",
+        olderSaves: "旧存档",
         playerDefaults: "玩家默认值",
         audioTracks: "音频轨道",
         // 「配色」子页的两块内容：作者自己定的颜色，以及跟随它们的槽位。该页其余文案都在 `brand`
         // 命名空间里，与它们命名的那份模型放在一起。
         brandColors: "颜色",
         brandControls: "控件",
+        distribution: "分发密钥",
+        linting: "工程检查",
         security: "安全",
         signing: "签名",
         optimization: "优化",
         crash: "崩溃",
         mobile: "移动端",
+    },
+    distribution: {
+        description: "随工程保存，参与构建的每个人用的是同一把密钥。一个构建只接受用它自己那把密钥做出的补丁。",
+        absent: "尚未创建密钥",
+        rotatedAt: "上次更换于 {date}",
+        createAction: "创建",
+        replaceAction: "更换",
+        replaceConfirm: "要更换分发密钥吗？",
+        replaceConfirmDetail: "已经用当前密钥发布出去的构建，不会接受此后做出的补丁",
     },
     home: {
         untitledProject: "未命名项目",
@@ -80,7 +92,7 @@ export const project = {
     // 发布出去的游戏把属于玩家的东西写在哪里。只陈述，不提供开关：这一部分没有任何设置，也不点名
     // 任何平台，把这些交给谁是作者自己的判断。描述只说这些路径是什么，到此为止。
     userData: {
-        description: "发布后的游戏把玩家的存档与进度存放在这里。目录名取自标识符，所以改应用名称不会挪动它。",
+        description: "发布后的游戏把玩家的存档与进度存放在该目录。修改应用名称不会移动它。",
         copy: "复制位置",
         copied: "位置已复制",
         copyFailed: "无法复制位置",
@@ -162,12 +174,20 @@ export const project = {
     },
     game: {
         autoSaveTitle: "自动保存",
-        autoSaveDescription: "按间隔自动保存进度，崩溃时最多损失一个间隔内的进度",
+        autoSaveDescription: "按间隔自动保存进度。崩溃时最多损失一个间隔内的进度",
         autoSaveIntervalTitle: "保存间隔",
-        autoSaveIntervalDescription: "多久检查一次；剧情没有推进就不会写入",
+        autoSaveIntervalDescription: "保存进度的间隔；剧情没有推进时不写入",
         autoSaveIntervalUnit: "秒",
         autoSaveSlotsTitle: "保留数量",
         autoSaveSlotsDescription: "自动存档在指定数量的槽位间轮转，最旧的先被覆盖，与玩家自己的存档槽相互独立",
+        saveCompatibleTitle: "其他项目版本的存档",
+        saveCompatibleDescription: "故事未变更，仅项目版本不同",
+        saveIncompatibleTitle: "故事变更前的存档",
+        saveIncompatibleDescription: "存档写入之后故事已变更",
+        saveResume: "恢复进度",
+        saveDiscard: "不恢复进度",
+        saveResumeScene: "尝试恢复到场景",
+        saveForce: "强制载入",
     },
     preferences: {
         // 挂在小标题上的一句话，不再是页首的一段话。原先那段里其余的内容，要么行本身就写着，
@@ -199,11 +219,11 @@ export const project = {
         },
         showDialog: {
             title: "显示对话框",
-            description: "关闭后游戏以隐藏对话框的状态启动，与玩家按下隐藏界面时的状态相同",
+            description: "关闭后游戏以隐藏对话框的状态启动",
         },
         skip: {
             title: "允许跳过",
-            description: "关闭后跳过键完全不起作用",
+            description: "关闭后跳过键不起作用",
         },
         skipReadText: {
             title: "跳过已读文本",
@@ -219,7 +239,7 @@ export const project = {
         },
         globalVolume: {
             title: "总音量",
-            description: "游戏播放的一切声音",
+            description: "作用于全部音频",
         },
         bgmVolume: {
             title: "音乐音量",
@@ -235,7 +255,7 @@ export const project = {
         },
         voiceEndMode: {
             title: "语音随句子结束时",
-            description: "台词结束后如何处理该语音；无论选择哪一项，都不会有两条语音同时播放",
+            description: "无论选择哪一项，都不会有两条语音同时播放",
             option: {
                 stop: "立即停止",
                 fade: "淡出",
@@ -293,10 +313,10 @@ export const project = {
     },
     settings: {
         crashPolicyTitle: "游戏停止工作时",
-        crashPolicyDescription: "三种方式都会把错误写入游戏日志",
+        crashPolicyDescription: "三种方式都会将错误写入游戏日志",
         crashPolicy: {
             details: "显示错误内容",
-            log: "只说明已停止",
+            log: "只报告已停止",
             restart: "重新启动游戏",
         },
         networkPolicyTitle: "网络策略",
@@ -306,11 +326,11 @@ export const project = {
             any: "任意地址",
         },
         networkPolicyDetail: {
-            off: "游戏被限制在应用协议内，所有 HTTP 与 HTTPS 请求都会被拒绝",
+            off: "所有 HTTP 与 HTTPS 请求都会被拒绝",
             allowlist: "只有下方白名单中的地址可以被请求，其余请求会被拒绝",
             any: "游戏可以通过 HTTP 或 HTTPS 请求任意地址",
         },
-        networkPolicyWebHint: "Web 导出通过 HTTP 提供，无法执行「不允许联网」；白名单在 Web 导出中通过页面策略执行",
+        networkPolicyWebHint: "Web 导出通过 HTTP 提供，无法执行「不允许联网」；白名单照常执行",
         networkAllowlist: {
             title: "网络请求白名单",
             description: "每行一个地址或主机模式",
@@ -324,18 +344,18 @@ export const project = {
         },
         encryptAssetsTitle: "加密资源",
         encryptAssetsDescription: "在打包及预览构建中加密资源、插件代码与剧本数据，不影响开发模式",
-        encryptAssetsWebHint: "对 Web 导出不适用：Web 构建始终不加密资源",
+        encryptAssetsWebHint: "Web 构建始终不加密资源",
         // 「签名」这一块的一行说明。每个可签名平台都有一行，不管本机能不能构建它：证书往往在用到它的
         // 那次构建之前几天就要备好，这份准备工作正是它落在面板里、而不是构建对话框里的原因。
         signingDescription: "为每个平台指定签名凭据；证书与密码只留在本机，工程里存的只有用哪一份",
         webLosslessImagesTitle: "图像转为 WebP",
         webLosslessImagesDescription: "在体积更小时，将导出的图像重编码为无损 WebP",
-        webLosslessImagesHint: "每次转换都会与原图逐像素比对，解码结果不一致即丢弃；Android 与 iOS 构建使用同一份导出站点，因此该设置对它们同样生效",
+        webLosslessImagesHint: "转换后的图像解码结果与原图完全一致；Android 与 iOS 构建使用同一份导出站点，因此该设置对它们同样生效",
         webPrecompressTitle: "预压缩文本文件",
         webPrecompressDescription: "为站点的脚本、样式与剧本数据额外生成 Brotli 与 Gzip 副本",
-        webPrecompressHint: "只有配置了预压缩支持的服务器会用到这些副本，其余主机一律照常提供原文件",
+        webPrecompressHint: "只有配置了预压缩支持的服务器会用到该副本，其余主机提供原文件",
         webLossyImagesTitle: "重压缩图像",
-        webLossyImagesDescription: "将导出的图像重编码为有损 WebP；体积小得多，但损失的画面细节无法恢复",
+        webLossyImagesDescription: "将导出的图像重编码为有损 WebP；体积明显更小，损失的画面细节无法恢复",
         webLossyQualityTitle: "图像质量",
         webLossyQualityDescription: "重压缩时使用的 WebP 质量，取值 1 到 100",
         webSharedWithMobileHint: "Android 与 iOS 构建使用同一份导出站点，因此该设置对它们同样生效",
@@ -371,10 +391,10 @@ export const project = {
     dependencies: {
         rescan: "重新扫描",
         scanning: "正在扫描项目…",
-        empty: "没有插件依赖，本项目仅使用 Studio 内置功能",
+        empty: "没有插件依赖",
         banner: {
-            blocked: "部分插件在本项目中被禁用：已安装版本不兼容；请更新或重新安装",
-            warnings: "部分依赖项需要处理，某个插件版本过旧或某项软依赖不可用",
+            blocked: "部分插件已被禁用，已安装版本不兼容；请更新或重新安装",
+            warnings: "某个插件版本过旧，或某项可选依赖不可用",
         },
         status: {
             ready: "就绪",

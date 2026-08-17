@@ -129,6 +129,21 @@ export const build = {
         clear: "消去",
         secretFailed: "この端末にその値を保存できなかった",
     },
+        patch: {
+            title: "パッチを書き出す",
+            variantLabel: "バリアント",
+            variantHint: "パッチは、書き出した対象のバリアントのビルドでのみ開く",
+            baselineLabel: "本パッチが更新するビルド",
+            baselinePlaceholder: "空のままにするとゲーム全体を含める",
+            baselineHint: "以前のビルドが出力したデスクトップビルドのフォルダー。そのフォルダーと異なるファイルだけを含める",
+            outputLabel: "保存先",
+            nameLabel: "名前",
+            namePlaceholder: "ゲームのログに表示される",
+            browse: "参照…",
+            exportAction: "書き出す",
+            busy: "ビルドがすでに実行中",
+            noKey: "このプロジェクトには配布キーがない。「プロジェクト」ページで作成し、ゲームをビルドし直す。パッチを受け入れるのは、キーの作成後に生成されたビルドだけ。",
+        },
     signing: {
         empty: "署名できる対象を選ぶ",
         // プロジェクト設定では "linux" の下にあるが、Linux の話ではない。
@@ -266,14 +281,14 @@ export const build = {
         "sidecar-target-missing":
             "{plugin} は {platform} 向けの {sidecar} プログラムを持たないので、それが担っていたものはそのビルドから欠ける",
         "sidecar-crossbuild-exec-bit":
-            "{plugin} の {sidecar} プログラムは、実行できない状態のまま {platform} の成果物に入る。Windows では"
-            + "ファイルに実行属性を付けられない。{targetPlatform} 向けのビルドは {targetPlatform} の端末で行う",
+            "{plugin} の {sidecar} プログラムは、実行できない状態のまま {platform} の成果物に入る。"
+            + "{targetPlatform} 向けのビルドは {targetPlatform} の端末で行う",
         "encryption-key-unavailable": "アセットの保護が有効だが、その鍵を読めなかった",
         "web-unprotected": "Web 書き出しにアセットの保護は効かない。そのファイル群は保護されずに配布される",
         "progress-carry-unsupported":
             "{blueprints} は版と版のあいだで進行状況を引き継ぐが、{platform} のビルドはそれを拒む。"
-            + "ページには書き込める共有ファイルがないので、どちらのノードも失敗の枝に進む",
-        "web-lossy-images": "非可逆の画像再圧縮が有効なので、書き出す画像は品質 {quality} で再エンコードされ、失われた情報は戻らない",
+            + "どちらのノードも失敗の枝に進む",
+        "web-lossy-images": "書き出す画像は品質 {quality} で再エンコードされ、失われた情報は戻らない",
         "mobile-template-missing": "モバイルのシェルテンプレートを使えない：{reason}",
         "mobile-payload-too-large": "このプロジェクトのアセット（{size}）は、モバイルのパッケージに収まる大きさを超えている",
         "version-uncodable": "バージョン {version} は Android のバージョンコードに変換できない。メジャーは 2099 まで、マイナーとパッチは 999 まで",
@@ -282,20 +297,20 @@ export const build = {
         // 各社の警告画面の名前は出さない。「Gatekeeper」も「SmartScreen」も作者の語彙ではなく、
         // 起きることはどちらも同じ。詳しい話は `build` のヘルプトピックにある。
         unsigned: "コード署名していない。プレイヤーが初めて開くとき、セキュリティの警告が出ることがある",
-        "unsigned-android": "手元のデバッグ用の識別情報で署名している。これはサイドロードにしか使えず、これで署名した AAB は Google Play のアップロード鍵として使えない。自分の識別情報で署名するにはリリース用キーストアを選ぶ",
+        "unsigned-android": "手元のデバッグ用の識別情報で署名している。サイドロードには使えるが、これで署名した AAB は Google Play のアップロード鍵として使えない。リリース用キーストアを選んで署名する",
         // 証明書チェーンの注意はここに置く。作者が .p12 を書き出すのはこの文を読んでいる最中で、
         // 末端だけを書き出すと署名の段階でそのまま失敗する。
         "unsigned-ios": "この .ipa は署名されておらず、iOS は署名のないものを一切インストールしない。Apple の署名資格情報を選ぶ。.p12 はキーチェーンアクセスから発行元の証明書チェーンごと書き出す。そうしないと署名に失敗する",
-        "signing-credential-missing": "{platform} の署名資格情報がこの端末にない。鍵の情報がプロジェクトと一緒に運ばれることはない。ここで読み込むか、選択を外して {platform} を署名なしでビルドする",
+        "signing-credential-missing": "{platform} の署名資格情報がこの端末にない。ここで読み込むか、選択を外して {platform} を署名なしでビルドする",
         "signing-credential-expired": "{platform} の署名証明書は今日の時点で有効ではない（有効期間は {notBefore} から {notAfter}）ので、署名は失敗する。発行元で更新し、新しいものを読み込む",
         "signing-credential-expiring": "{platform} の署名証明書は {notAfter} に期限が切れる。それより前に署名したビルドは有効なまま。以降は更新した証明書が要る",
         "signing-secret-unavailable": "{platform} の署名資格情報のパスワードをこの端末では読めない。資格情報を読み込み直して保存し直す",
         "signing-tool-missing": "{platform} のビルドに署名するには {tool} が必要だが、この端末に入っていない。入れて PATH を通してから、このダイアログを開き直す",
-        "signing-host-unsupported": "この端末は {host} で動いており、選んだ資格情報では {platform} 向けに署名できない。その秘密鍵は当該プラットフォームにしかないシステムのサービスの中にある。この対象は {platform} の端末でビルドする",
+        "signing-host-unsupported": "この端末は {host} で動いており、選んだ資格情報では {platform} 向けに署名できない。この対象は {platform} の端末でビルドする",
         "signing-needs-network": "{platform} のビルドへの署名にはネットワーク接続が要る。このビルドのそれ以外はオフラインでも動く",
         "signing-macos-identity-missing": "{identity} という名前の証明書がこの Mac のキーチェーンにない。キーチェーンアクセスで入れるか、ここで別の証明書を選ぶ",
         "signing-macos-identity-unusable": "証明書 {identity} では署名できない。期限が切れている、秘密鍵がない、発行元のチェーンが揃っていない、のいずれか。どれなのかはキーチェーンアクセスで開くと分かる",
-        "signing-macos-not-developer-id": "{identity} は「Developer ID Application」の証明書ではない。この Mac ではビルドが動くが、他人の Mac では Gatekeeper が拒み、Apple の公証も通らない",
+        "signing-macos-not-developer-id": "{identity} は「Developer ID Application」の証明書ではない。この Mac ではビルドが動く。他の Mac では拒否され、公証も通らない",
         "signing-android-not-play": "署名済みの APK はサイドロードや itch.io などのストアで使える。Google Play が受け取るのは AAB だけ。Android の対象で AAB 形式を有効にすると作られる",
         "signing-ios-profile-mismatch": "アプリ ID の {bundleId} はプロビジョニングプロファイルの対象外で、そのプロファイルは {profileAppId} 向けに発行されている。プロジェクトの識別子を変えるか、対象に合うプロファイルを読み込む",
         "cross-build-download": "{platforms} 向けのクロスビルドは、初回だけ Electron をダウンロードする。以降はキャッシュを使う",
@@ -392,6 +407,7 @@ export const build = {
      * その要求がもう要らない場合がある。
      */
     networkNodeDisallowed: "{blueprint} はネットワーク要求を行うが、このプロジェクトはそれを許可していない",
+    pointerNodeUnsupported: "{blueprint} はマウスカーソルを移動するが、{platforms} では動作しない",
     networkSummary: {
         other: "ビルドを中止：動かせないネットワークノードが {count} 件ある。プロジェクト設定で HTTP の許可を有効にするか、そのノードを取り除く",
     },

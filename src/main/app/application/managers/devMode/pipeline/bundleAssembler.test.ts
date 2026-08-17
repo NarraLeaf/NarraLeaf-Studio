@@ -6,6 +6,7 @@ import { encodeProjectConfig } from "@shared/utils/nlproj";
 import { DEFAULT_AUTO_SAVE_CONFIGURATION } from "@shared/types/saves";
 import { DEFAULT_PLAYER_PREFERENCES } from "@shared/types/preference";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
+import { DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION } from "@shared/types/saveCompatibility";
 import { APP_TAG_ID_RELEASE, appTagMechanismKey } from "@shared/types/appTag";
 import type { Blueprint, BlueprintGraphIr, SharedBlueprintAsset } from "@shared/types/blueprint/document";
 import {
@@ -16,6 +17,8 @@ import {
 } from "@shared/types/blueprint/graph";
 import {
     loadAutoSaveConfiguration,
+    loadGameVersion,
+    loadSaveCompatibilityConfiguration,
     loadGameAudio,
     loadGameLocalization,
     loadPlayerPreferences,
@@ -792,5 +795,46 @@ describe("assembling as a variant without packaging", () => {
             context({ appTag: { id: "tag-demo", name: "Demo" } }),
             { tagName: "Demo" },
         )).not.toThrow();
+    });
+});
+
+describe("bundleAssembler save compatibility", () => {
+    const tempDirs: string[] = [];
+
+    afterEach(async () => {
+        await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
+    });
+
+    async function createProject(config: Record<string, unknown>): Promise<string> {
+        const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-savecompat-test-"));
+        tempDirs.push(projectPath);
+        await writeFile(
+            path.join(projectPath, "project.nlproj"),
+            encodeProjectConfig({ name: "Test", identifier: "test.project", metadata: {}, ...config } as never),
+        );
+        return projectPath;
+    }
+
+    // Dense like the autosave config, and for the same reason: every save carries a stamp and every
+    // load compares one, so "never chose" has to arrive as the defaults rather than as a gap.
+    it("gives a project with no policy the defaults, which are the old behaviour", async () => {
+        expect(await loadSaveCompatibilityConfiguration(await createProject({})))
+            .toEqual(DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION);
+    });
+
+    it("bakes the authored policy into the bundle", async () => {
+        const projectPath = await createProject({
+            app: { saveCompatibility: { compatible: "discard", incompatible: "resumeScene" } },
+        });
+        expect(await loadSaveCompatibilityConfiguration(projectPath))
+            .toEqual({ compatible: "discard", incompatible: "resumeScene" });
+    });
+
+    it("reads the author's version verbatim, and blank stays blank", async () => {
+        expect(await loadGameVersion(await createProject({ metadata: { version: " 1.4.0 " } }))).toBe("1.4.0");
+        // Never defaulted to something like 0.0.0: two builds that both carry no version are two
+        // builds of the same version, and inventing one would make them look like two.
+        expect(await loadGameVersion(await createProject({}))).toBe("");
+        expect(await loadGameVersion(path.join(os.tmpdir(), "nls-missing-project"))).toBe("");
     });
 });

@@ -7,11 +7,26 @@ import type {
     BlueprintNetworkFetchRequest,
     BlueprintNetworkFetchResult,
 } from "@shared/types/blueprint/network";
+import type {
+    BlueprintPointerMoveEasing,
+    BlueprintPointerMoveRequest,
+    BlueprintPointerMoveResult,
+} from "@shared/types/blueprint/pointer";
+
+/** How a Move Mouse request travels; shared by both pointer entry points. */
+export type BlueprintPointerMoveOptions = {
+    durationSeconds?: number;
+    easing?: BlueprintPointerMoveEasing;
+};
 import {
     normalizeBlueprintImageAssetValue,
     normalizeBlueprintRGBAColor,
+    blueprintRectCenter,
+    normalizeRectExtent,
     toBlueprintImageAsset,
     type BlueprintElementRef,
+    type BlueprintRect,
+    type BlueprintVector2D,
     type BlueprintImageAsset,
     type BlueprintRGBAColor,
     type BlueprintSoundHandle,
@@ -45,6 +60,7 @@ import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/l
 import { VOICE_LOCALE_STORAGE_KEY, type VoiceLocaleEntry } from "@shared/types/voice";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import { normalizeElementEffectValues, type ElementEffectValues } from "@shared/types/ui-editor/effects";
 import type {
     UIDisplayableBaseTransform,
@@ -57,6 +73,7 @@ import type { ScopeStoreBridge } from "./ScopeStoreBridge";
 import { isAppearanceCapableElementType } from "./appearanceCapableWidgets";
 import { finalDisplayableMotionValue } from "@/lib/ui-editor/runtime/displayableMotion";
 import { getElementSurfaceTopLeftEx } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
+import { measureElementSurfaceRect, surfacePointToClientPoint } from "@/lib/ui-editor/runtime/surfaceMeasurement";
 import { getTextProps } from "@/lib/ui-editor/widget-modules/builtin/text/helpers";
 import { getSliderProps } from "@/lib/ui-editor/widget-modules/builtin/slider/helpers";
 import { getListProps, resolveListItemsBindingArray } from "@/lib/ui-editor/widget-modules/builtin/list/helpers";
@@ -80,7 +97,7 @@ import { normalizeSwitchProps, resolveSwitchRuntimeValue } from "@shared/types/u
 import type { UITextInputRuntimeValue, UITextInputWidgetProps } from "@shared/types/ui-editor/textInput";
 import { normalizeTextInputProps, resolveTextInputRuntimeValue } from "@shared/types/ui-editor/textInput";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
-import type { AutoSaveEntry, SaveRecordLine, SaveRecordTimes } from "@shared/types/saves";
+import type { AutoSaveEntry, SaveRecordLine, SaveRecordPlaytime, SaveRecordTimes } from "@shared/types/saves";
 import type { GameProgressImportOutcome } from "@shared/types/gameProgress";
 import {
     isButtonCursorValue,
@@ -165,8 +182,14 @@ export type BlueprintListProperties = {
 export type BlueprintDisplayableProperties = {
     position: { x: number; y: number };
     offset: { x: number; y: number };
+    /**
+     * The extent the widget covers, never negative. The authored layout may hold a negative width
+     * or height - that is how a widget dragged past its own origin is stored - and `position`
+     * already reports the true top-left, so reporting the raw sign here would have described a
+     * rectangle whose right edge sits left of its left edge.
+     */
     size: { width: number; height: number };
-    bounds: { x: number; y: number; width: number; height: number };
+    bounds: BlueprintRect;
     rotation: number;
     opacity: number;
     display: boolean;
@@ -333,6 +356,17 @@ export type BlueprintHostApiRuntime = {
         scrollListToTop: (elementId: string) => Promise<void>;
         scrollListToBottom: (elementId: string) => Promise<void>;
         getDisplayableProperties: (elementId: string) => BlueprintDisplayableProperties;
+        /**
+         * What the widget currently covers on screen, in the coordinates of the surface it is on,
+         * or `null` when nothing is painted for it.
+         *
+         * Separate from {@link getDisplayableProperties} because the two answer different
+         * questions. That one reads the document - where the author put the widget - and is the
+         * right answer for layout arithmetic. This one measures the DOM, so it accounts for a
+         * motion in flight, an appearance variant that shifted the widget, a text box sized to its
+         * own words, and which row of a list an instance ended up on.
+         */
+        getMeasuredRect: (elementId: string) => BlueprintRect | null;
         setDisplayableProperties: (elementId: string, patch: BlueprintDisplayablePropertiesPatch) => Promise<void>;
         animateDisplayable: (elementId: string, request: BlueprintDisplayableMotionRequest) => Promise<UIDisplayableMotionOverride>;
         stopDisplayableAnimation: (animationId: string) => Promise<void>;
@@ -387,7 +421,8 @@ export type BlueprintHostApiRuntime = {
         isGameOverlay: () => boolean;
         quit: (surfaceId: string) => Promise<void>;
         writeSave: (id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>;
-        loadSave: (id: string) => Promise<void>;
+        /** False when the save was not applied - the player and the author have both been told. */
+        loadSave: (id: string) => Promise<boolean>;
         deleteSave: (id: string) => Promise<void>;
         listSaveIds: () => Promise<string[]>;
         getSaveMetadata: (id: string) => Promise<unknown>;
@@ -395,14 +430,33 @@ export type BlueprintHostApiRuntime = {
         getSaveTimes: (id: string) => Promise<SaveRecordTimes | null>;
         /** Where a slot stopped, or null when there is no such slot. */
         getSaveLine: (id: string) => Promise<SaveRecordLine | null>;
+        /** How long a slot was played, or null when there is no such slot. */
+        getSavePlaytime: (id: string) => Promise<SaveRecordPlaytime | null>;
+        /** The running playthrough's playtime, in seconds. */
+        getPlaytime: () => number;
+        /** Seconds ever spent in this project, across every playthrough. */
+        getTotalPlaytime: () => number;
         getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
         /** Write an autosave into the reserved ring now, regardless of the timer. */
         writeAutoSave: () => Promise<void>;
         /** The reserved autosave ring, newest first. Never overlaps `listSaveIds`. */
         listAutoSaves: () => Promise<AutoSaveEntry[]>;
+        /**
+         * The backlog behind the play head, oldest first.
+         *
+         * From engine 0.26.0 this stops at the head: after the player steps back, the lines they
+         * stepped past are no longer in here, they are in {@link getFuture}. Before anyone steps
+         * back - which is every ordinary playthrough - the two are the whole backlog and nothing.
+         */
         getHistory: () => Promise<BlueprintGameHistoryEntry[]>;
+        /** The lines ahead of the play head, nearest first. Empty until the player steps back. */
+        getFuture: () => Promise<BlueprintGameHistoryEntry[]>;
         /** Jump back to a history entry by id; omit the id to undo the last entry. */
         restoreHistory: (id?: string) => Promise<void>;
+        /** Step the play head forward one line, back over a line the player has already read. */
+        redoHistory: () => Promise<void>;
+        canUndoHistory: () => boolean;
+        canRedoHistory: () => boolean;
         getNametag: () => string | null;
         /**
          * The speaking character's dialog avatar, or null. Already keyed on the differential the
@@ -508,6 +562,38 @@ export type BlueprintHostApiRuntime = {
      */
     network: {
         fetch: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
+    };
+    /**
+     * Moving the player's real cursor, for the Move Mouse family.
+     *
+     * The author names a point in a surface's own coordinates, which is the only frame they have
+     * reason to think in. Turning that into a point in the window happens here, off the same
+     * surface shell every mouse event's payload is divided by, so "the centre of this button"
+     * measured by `widget.getMeasuredRect` and the point the cursor lands on are the same place.
+     *
+     * `surfaceId` is the surface the point belongs to; `null` means the active one. A point on a
+     * surface that is not currently laid out has nowhere to be, and reports `failed` rather than
+     * being guessed at against a different surface's scale.
+     */
+    pointer: {
+        moveTo: (
+            surfaceId: string | null,
+            point: BlueprintVector2D,
+            options?: BlueprintPointerMoveOptions,
+        ) => Promise<BlueprintPointerMoveResult>;
+        /**
+         * The same act aimed at a widget's centre, measured rather than computed from the document.
+         *
+         * A method of its own rather than something a caller assembles out of `getMeasuredRect` and
+         * `moveTo`, because the two halves have to agree about which surface the widget turned out
+         * to be painted on. A component instance renders its contents wherever it was placed, so
+         * the answer is not always the surface the element was authored under, and a caller
+         * stitching the halves together would have to know that to get it right.
+         */
+        moveToElementCenter: (
+            elementId: string,
+            options?: BlueprintPointerMoveOptions,
+        ) => Promise<BlueprintPointerMoveResult>;
     };
     /**
      * Carrying a playthrough between two editions of one title, for the Export/Import Progress
@@ -622,17 +708,25 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onIsGameOverlay?: () => boolean;
     onQuitGame?: (surfaceId: string) => Promise<void> | void;
     onWriteSave?: (id: string, metadata: unknown, screenshot?: boolean) => Promise<void> | void;
-    onLoadSave?: (id: string) => Promise<void> | void;
+    /** Resolves false when the save was not applied. A throw stays a throw: that is a caller mistake. */
+    onLoadSave?: (id: string) => Promise<boolean> | boolean;
     onDeleteSave?: (id: string) => Promise<void> | void;
     onListSaveIds?: () => Promise<string[]> | string[];
     onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
     onGetSaveTimes?: (id: string) => Promise<SaveRecordTimes | null> | SaveRecordTimes | null;
     onGetSaveLine?: (id: string) => Promise<SaveRecordLine | null> | SaveRecordLine | null;
+    onGetSavePlaytime?: (id: string) => Promise<SaveRecordPlaytime | null> | SaveRecordPlaytime | null;
+    onGetPlaytime?: () => number;
+    onGetTotalPlaytime?: () => number;
     onGetSavePreview?: (id: string) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
     onWriteAutoSave?: () => Promise<void> | void;
     onListAutoSaves?: () => Promise<AutoSaveEntry[]> | AutoSaveEntry[];
     onGetHistory?: () => Promise<BlueprintGameHistoryEntry[]> | BlueprintGameHistoryEntry[];
+    onGetFuture?: () => Promise<BlueprintGameHistoryEntry[]> | BlueprintGameHistoryEntry[];
     onRestoreHistory?: (id?: string) => Promise<void> | void;
+    onRedoHistory?: () => Promise<void> | void;
+    onCanUndoHistory?: () => boolean;
+    onCanRedoHistory?: () => boolean;
     onGetNametag?: () => string | null;
     onGetSpeakerAvatar?: () => BlueprintImageAsset | null;
     /** Optional override; without it the speaker colour comes from the mirrored dialog state key. */
@@ -749,6 +843,7 @@ export type CreateBlueprintHostApiRuntimeOptions = {
      * there is no main process to reach and no project network policy to enforce.
      */
     onNetworkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
+    onMovePointer?: (request: BlueprintPointerMoveRequest) => Promise<BlueprintPointerMoveResult>;
     /**
      * Opens one web address in the player's browser, in a process that can check it.
      *
@@ -954,7 +1049,9 @@ function sleepMs(durationMs: number): Promise<void> {
 
 function assertTextElement(document: UIDocument, elementId: string) {
     const el = requireDocumentElement(document, elementId, "text");
-    if (el.type !== "nl.text") {
+    // Text specialisations included: they store the same props, so every text call reads and
+    // writes the same fields on them.
+    if (!isWidgetTypeOf(el.type, "nl.text")) {
         throw new Error(`text: element is not a Text widget: ${el.type}`);
     }
     return el;
@@ -1157,11 +1254,15 @@ function readDisplayableProperties(
     const layout = readPatchedElementLayout(document, runtimePatches, elementId);
     const patch = runtimePatches?.get(elementId);
     const position = readDisplayableSurfaceTopLeft(document, runtimePatches, elementId);
+    // `position` is already the folded top-left (getElementSurfaceTopLeftEx subtracts a negative
+    // extent as it walks the chain), so only the extent still needs its sign taken off. Folding it
+    // again here would move the origin twice.
+    const bounds = normalizeRectExtent(position.x, position.y, Math.abs(layout.width), Math.abs(layout.height));
     return {
         position,
         offset: { x: 0, y: 0 },
-        size: { width: layout.width, height: layout.height },
-        bounds: { x: position.x, y: position.y, width: layout.width, height: layout.height },
+        size: { width: bounds.width, height: bounds.height },
+        bounds,
         rotation: layout.rotation ?? 0,
         opacity: layout.opacity ?? 1,
         display: patch?.display ?? true,
@@ -1457,9 +1558,13 @@ function normalizeBlueprintGameNotifications(value: unknown): BlueprintGameNotif
 }
 
 /**
- * One dialogue/menu backlog entry mirrored from NarraLeaf's `LiveGame.getHistory()`.
- * Flattened so a backlog List widget can bind each field directly, and `id` can be fed
- * back into the Restore From History node (NLR `LiveGame.undo(id)`).
+ * One dialogue/menu backlog entry, mirrored from NarraLeaf's `LiveGame.getHistory()` or
+ * `getFuture()` - an entry is the same entry on either side of the play head, so one item template
+ * binds both lists.
+ *
+ * Flattened so a backlog List widget can bind each field directly, and `id` can be fed back into
+ * the Restore From History node (NLR `LiveGame.restoreToHistory(token)`), which moves the head to
+ * that line in either direction.
  */
 export type BlueprintGameHistoryEntry = {
     /** History token; pass to Restore From History to jump the game back to this point. */
@@ -1562,6 +1667,26 @@ function normalizeSaveRecordTimes(value: unknown): SaveRecordTimes | null {
     return {
         savedAt: toMs(record.savedAt),
         createdAt: toMs(record.createdAt),
+    };
+}
+
+/**
+ * A host's answer for how long one slot was played, or null when it says there is no such slot.
+ *
+ * Same split as {@link normalizeSaveRecordTimes} for "no slot". Within a slot the two failures are
+ * kept apart: an unusable reading (absent, negative, NaN) becomes `recorded: false` rather than a
+ * confident zero, because zero is a claim about the player and false is a claim about the record.
+ */
+function normalizeSaveRecordPlaytime(value: unknown): SaveRecordPlaytime | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+    const record = value as Record<string, unknown>;
+    const seconds = Number(record.seconds);
+    const usable = record.recorded === true && Number.isFinite(seconds) && seconds >= 0;
+    return {
+        seconds: usable ? seconds : 0,
+        recorded: usable,
     };
 }
 
@@ -1885,11 +2010,18 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onGetSaveMetadata,
         onGetSaveTimes,
         onGetSaveLine,
+        onGetSavePlaytime,
+        onGetPlaytime,
+        onGetTotalPlaytime,
         onGetSavePreview,
         onWriteAutoSave,
         onListAutoSaves,
         onGetHistory,
+        onGetFuture,
         onRestoreHistory,
+        onRedoHistory,
+        onCanUndoHistory,
+        onCanRedoHistory,
         onGetNametag,
         onGetSpeakerAvatar,
         onGetSpeakerColor,
@@ -1922,6 +2054,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onGetTrackVolume,
         onSetTrackVolume,
         onNetworkFetch,
+        onMovePointer,
         onOpenExternal,
         onExportProgress,
         onImportProgress,
@@ -2087,6 +2220,35 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             layoutPatch.opacity = opacity;
         }
         return layoutPatch;
+    };
+
+    const movePointerTo = async (
+        surfaceId: string,
+        point: BlueprintVector2D,
+        options?: BlueprintPointerMoveOptions,
+    ): Promise<BlueprintPointerMoveResult> => {
+        if (!onMovePointer) {
+            // No backend = nowhere to send it (editor preview, story preview). Reported rather than
+            // thrown, the same degradation `network.fetch` takes.
+            return {
+                outcome: "unsupported",
+                error: "The cursor cannot be moved here. Run the project in Dev Mode to try it.",
+            };
+        }
+        const client = surfacePointToClientPoint(
+            surfaceId,
+            point,
+            id => document.surfaces.find(surface => surface.id === id)?.designSize ?? null,
+        );
+        if (!client) {
+            return { outcome: "failed", error: "That surface is not on screen, so the point has nowhere to be." };
+        }
+        return onMovePointer({
+            clientX: client.x,
+            clientY: client.y,
+            durationSeconds: options?.durationSeconds,
+            easing: options?.easing,
+        });
     };
 
     return {
@@ -2760,6 +2922,22 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
+            getMeasuredRect: (elementId: string) => {
+                const cap = "widget.getMeasuredRect";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Existence is still checked against the document: a measurement for an id no
+                    // surface holds would be a silent null indistinguishable from "not painted yet",
+                    // and the two want different things from the author.
+                    requireDocumentElement(document, elementId, "measuredRect");
+                    return measureElementSurfaceRect(
+                        elementId,
+                        surfaceId => document.surfaces.find(surface => surface.id === surfaceId)?.designSize ?? null,
+                    )?.rect ?? null;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
             getDisplayableProperties: (elementId: string) => {
                 const cap = "widget.getDisplayableProperties";
                 emitHostCall(emit, cap, "call");
@@ -3232,7 +3410,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (!onLoadSave) {
                         throw new Error("loadSave: game save runtime is not available");
                     }
-                    await onLoadSave(saveId);
+                    // Anything other than an explicit false is a load: a host wired before this
+                    // returned a value at all resolves undefined, and its saves did apply.
+                    return (await onLoadSave(saveId)) !== false;
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -3272,6 +3452,42 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("getSaveMetadata: game save runtime is not available");
                     }
                     return normalizeJsonValue(await onGetSaveMetadata(saveId));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getPlaytime: () => {
+                const cap = "game.getPlaytime";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Zero rather than a throw when no host is counting: a title screen asking how
+                    // long this run has gone before any run exists is a fair question with a real
+                    // answer, and the story preview has no stopwatch at all.
+                    const value = onGetPlaytime ? Number(onGetPlaytime()) : 0;
+                    return Number.isFinite(value) && value > 0 ? value : 0;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getTotalPlaytime: () => {
+                const cap = "game.getTotalPlaytime";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const value = onGetTotalPlaytime ? Number(onGetTotalPlaytime()) : 0;
+                    return Number.isFinite(value) && value > 0 ? value : 0;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getSavePlaytime: async (id: string) => {
+                const cap = "game.getSavePlaytime";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const saveId = normalizeGameSaveId("getSavePlaytime", id);
+                    if (!onGetSavePlaytime) {
+                        throw new Error("getSavePlaytime: game save runtime is not available");
+                    }
+                    return normalizeSaveRecordPlaytime(await onGetSavePlaytime(saveId));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -3351,6 +3567,18 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
+            getFuture: async () => {
+                const cap = "game.getFuture";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onGetFuture) {
+                        throw new Error("getFuture: game runtime is not available");
+                    }
+                    return normalizeBlueprintGameHistory(await onGetFuture());
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
             restoreHistory: async (id?: string) => {
                 const cap = "game.restoreHistory";
                 emitHostCall(emit, cap, "call");
@@ -3360,6 +3588,36 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     }
                     const safeId = String(id ?? "").trim();
                     await onRestoreHistory(safeId ? safeId : undefined);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            redoHistory: async () => {
+                const cap = "game.redoHistory";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onRedoHistory) {
+                        throw new Error("redoHistory: game runtime is not available");
+                    }
+                    await onRedoHistory();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            canUndoHistory: () => {
+                const cap = "game.canUndoHistory";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return onCanUndoHistory ? onCanUndoHistory() === true : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            canRedoHistory: () => {
+                const cap = "game.canRedoHistory";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return onCanRedoHistory ? onCanRedoHistory() === true : false;
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -3766,6 +4024,43 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         };
                     }
                     return await onNetworkFetch(request);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+        },
+        // Shared by both pointer entry points so the surface-to-window conversion, and the answer
+        // given when there is no backend, exist once.
+        pointer: {
+            moveToElementCenter: async (elementId: string, options?: BlueprintPointerMoveOptions) => {
+                const cap = "pointer.moveToElementCenter";
+                emitHostCall(emit, cap, "call");
+                try {
+                    requireDocumentElement(document, elementId, "movePointerToElement");
+                    const measured = measureElementSurfaceRect(
+                        elementId,
+                        surfaceId => document.surfaces.find(surface => surface.id === surfaceId)?.designSize ?? null,
+                    );
+                    if (!measured) {
+                        return {
+                            outcome: "failed" as const,
+                            error: "That widget is not on screen, so it has no centre to move to.",
+                        };
+                    }
+                    return await movePointerTo(measured.surfaceId, blueprintRectCenter(measured.rect), options);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            moveTo: async (
+                surfaceId: string | null,
+                point: BlueprintVector2D,
+                options?: BlueprintPointerMoveOptions,
+            ) => {
+                const cap = "pointer.moveTo";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return await movePointerTo(surfaceId ?? activeSurfaceId, point, options);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

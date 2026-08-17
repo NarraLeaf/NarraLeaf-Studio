@@ -44,6 +44,13 @@ In this order, stopping as soon as there is nothing true left to add:
 
 ## 3a. Register: state it, do not narrate it
 
+> **Professional, not colloquial, not machine-written. State the expectation; do not describe the
+> mechanism.**
+>
+> This is the first test every author-facing string has to pass. The three failure modes below are
+> what breaking it looks like in practice; §3 lists what may never appear at all.
+
+
 Every sentence is a statement of fact about the product. It is not a remark made to the author.
 Three failure modes, all of which have shipped and all of which read as machine-written:
 
@@ -115,6 +122,7 @@ help system:
 | `SettingsGroup helpTopic` / `trailing={<HelpTrigger/>}` | one part of a project sub-page |
 | `ProjectSubPage helpTopic` | a whole sub-page that is one subject end to end |
 | `Modal helpTopic` | `F1` in a dialog, and a `?` beside its close button |
+| `dialogs.show({helpTopic})` | the same, for a dialog opened through the UI service rather than mounted as a component |
 | `data-help-topic` on an editor's root | `F1` anywhere in that editor |
 
 Draw a visible `?` only where the surface decides something the author cannot read off the controls

@@ -1,20 +1,20 @@
+import type { GradientFill } from "./gradientFill";
 import type { ImageFill } from "./imageFill";
+import { isWidgetTypeOf, listWidgetTypesOf } from "./widgetInheritance";
 
 /**
  * Widget types that reuse the `nl.list` item-template machinery: item template child slots,
  * per-item scope isolation, `listItemRefresh`, and runtime list items. The Game UI slot wrappers
  * (`nl.notification.list`, `nl.choice.list`, `nl.nvl.list`) receive their runtime items from the
  * NarraLeaf slot bridge instead of authored content.
+ *
+ * Derived from the widget inheritance table rather than listed again: those wrappers extend
+ * `nl.list` there, and a fourth wrapper added to that table belongs in this list by definition.
  */
-export const UI_LIST_LIKE_WIDGET_TYPES = [
-    "nl.list",
-    "nl.notification.list",
-    "nl.choice.list",
-    "nl.nvl.list",
-] as const;
+export const UI_LIST_LIKE_WIDGET_TYPES: readonly string[] = listWidgetTypesOf("nl.list");
 
 export function isListLikeWidgetType(elementType: string | null | undefined): boolean {
-    return typeof elementType === "string" && (UI_LIST_LIKE_WIDGET_TYPES as readonly string[]).includes(elementType);
+    return isWidgetTypeOf(elementType, "nl.list");
 }
 
 export type UIListChildSlot = "itemTemplate" | "scrollbarTrack" | "scrollbarThumb";
@@ -54,8 +54,10 @@ export type UIListScrollbarSide = "right" | "left" | "bottom" | "top";
 
 export type UIListScrollbarPartStyle = {
     backgroundColor: string;
-    fillType: "color" | "image";
+    fillType: "color" | "image" | "gradient";
     imageFill?: ImageFill | null;
+    /** Sibling of `imageFill`, selected by `fillType: "gradient"`. */
+    gradientFill?: GradientFill | null;
     backgroundImage: string;
     backgroundFit: string;
     fillOpacity: number;

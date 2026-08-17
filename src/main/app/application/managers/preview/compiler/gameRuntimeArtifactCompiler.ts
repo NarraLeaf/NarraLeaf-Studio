@@ -1,7 +1,9 @@
 import crypto from "crypto";
 import type { LocaleCode } from "@shared/i18n";
 import fs from "fs/promises";
+import { createRequire } from "module";
 import path from "path";
+import { unpackAsarPath } from "../../../../../utils/asarPath";
 import { assembleDevModeBundleFromProjectPath } from "../../devMode/pipeline/bundleAssembler";
 import { compileAllBlueprintScriptsForProject } from "../../devMode/compiler/blueprint/compileProjectBlueprintScripts";
 import {
@@ -38,7 +40,9 @@ import {
     type NetworkPluginAllowlistEntry,
 } from "@shared/types/networkAllowlist";
 import {
+    bindRuntimeBinary,
     createSealedBundle,
+    projectVerificationKey,
     runtimeSupportPath,
     RUNTIME_BUNDLE_FILENAME,
     RUNTIME_SUPPORT_FILENAME,
@@ -47,6 +51,7 @@ import {
 import {
     GAME_RUNTIME_BUNDLE_PACK_ENTRY,
     gameRuntimeBundleAssetEntry,
+    gameRuntimeBundleModelEntry,
     gameRuntimeBundleRuntimeEntry,
 } from "@shared/utils/gameRuntimeBundle";
 import { readProjectAppTagDocumentFromDir } from "../../../utils/appTagsFile";
@@ -248,6 +253,24 @@ export type GameRuntimeArtifactCompileInput = {
      */
     productName?: string;
     identifier?: string;
+    /**
+     * The project's distribution key and the identity this build ships under.
+     *
+     * Passing it makes the build's protection material a function of the project
+     * rather than of this run, which is the whole of what lets a patch produced
+     * later be read by the build - and lets the build tell a patch from this
+     * project apart from one anybody could have made. Absent for preview and Dev
+     * Mode: neither is distributed, so neither is ever patched, and leaving them
+     * on per-run material keeps the project's key out of throwaway output.
+     *
+     * `titleId` is the resolved app id, variant folded in, so two editions never
+     * derive the same material. It is the caller's single resolution of identity,
+     * not a second derivation - see how appId/productName/identifier travel.
+     */
+    distribution?: {
+        key: string;
+        titleId: string;
+    };
 };
 
 export type GameRuntimeArtifactCompileResult = {
@@ -321,11 +344,18 @@ export async function compileGameRuntimeArtifact(
     if (userDataDir) {
         await fs.mkdir(userDataDir, { recursive: true });
     }
-    await copyRuntimeFiles(input.runtimeDistDir, appDir, mode, shell);
-    if (input.encryptionKey) {
-        // Protection on: ship the support binary. createSealedBundle binds this
-        // pack's protection material into it when it opens the store (below), so
-        // no key material is handled here or written into any JS.
+    await copyRuntimeFiles(input.runtimeDistDir, appDir, mode, shell, input.sidecarPlatformKey);
+    // The support binary ships for protection, and also for a build that carries a
+    // distribution key without it: a patch is read through that binary, so making
+    // it conditional on protection alone would silently make patches a privilege
+    // of protected builds. Two different questions, and they do not share a switch.
+    const needsSupportBinary = Boolean(input.encryptionKey)
+        || Boolean(input.distribution && shell !== "web");
+    if (needsSupportBinary) {
+        // createSealedBundle binds this pack's protection material into the copy
+        // when it opens the store (below), so no key material is handled here or
+        // written into any JS. An unprotected build has no store to open, so it
+        // binds the copy on its own further down.
         await fs.copyFile(runtimeSupportPath(), path.join(appDir, RUNTIME_SUPPORT_FILENAME));
     }
 
@@ -374,9 +404,19 @@ export async function compileGameRuntimeArtifact(
             message => notices.push(message),
         )
         : null;
-    const bundle = shipped?.bundle ?? assembled;
+    const bundle = shippedBundle(shipped?.bundle ?? assembled, mode);
     if (shipped && shipped.removedAssetCount > 0) {
         notices.push(`${shipped.removedAssetCount} assets are unreachable in this edition and do not ship`);
+    }
+
+    // Bound before anything is written into it. A build with a distribution key
+    // but no store never opens one, so this is the only place its binary is bound
+    // - and an unbound binary reads no patch at all.
+    if (input.distribution && needsSupportBinary && !input.encryptionKey) {
+        await bindRuntimeBinary(path.join(appDir, RUNTIME_SUPPORT_FILENAME), {
+            projectMaterial: input.distribution.key,
+            titleId: input.distribution.titleId,
+        });
     }
 
     // Everything below either writes loose files or streams into the store; on
@@ -387,6 +427,9 @@ export async function compileGameRuntimeArtifact(
             writer: await createSealedBundle(
                 path.join(appDir, RUNTIME_BUNDLE_FILENAME),
                 path.join(appDir, RUNTIME_SUPPORT_FILENAME),
+                input.distribution
+                    ? { projectMaterial: input.distribution.key, titleId: input.distribution.titleId }
+                    : undefined,
             ),
         }
         : { kind: "loose" };
@@ -461,9 +504,7 @@ export async function compileGameRuntimeArtifact(
             },
             entry: input.entry,
             bundle,
-            assets: {
-                items: assetManifest,
-            },
+            assets: shippedAssetManifest(assetManifest, mode, target.kind === "sealed"),
             plugins: packPlugins,
             ...(packPuppetRuntimes.length > 0 ? { puppetRuntimes: packPuppetRuntimes } : {}),
             // Carried on every shell, web included.
@@ -496,6 +537,19 @@ export async function compileGameRuntimeArtifact(
             // the same tag that decides the build's name. Omitted when blank, which is the state
             // every build was in before this field and the one the runtime treats as "show nothing".
             ...(endingSurfaceId ? { endingSurfaceId } : {}),
+            // The public half only, and only when this build was given a key: a
+            // build that carries no way to check a proof must say so by having no
+            // field, rather than by carrying an empty one that reads as "checked".
+            ...(input.distribution
+                ? {
+                    addOns: {
+                        verificationKey: projectVerificationKey(
+                            input.distribution.key,
+                            input.distribution.titleId,
+                        ),
+                    },
+                }
+                : {}),
             // Unconditional and deliberately NOT resolved for `input.appTag`, unlike the two above:
             // this is the one field whose whole job is to be the same in every variant, so that a
             // demo and the full game - which have different app ids, different user-data
@@ -649,6 +703,7 @@ async function copyRuntimeFiles(
     appDir: string,
     mode: "preview" | "production",
     shell: "electron" | "web",
+    sidecarPlatformKey?: string,
 ): Promise<void> {
     await fs.mkdir(appDir, { recursive: true });
     for (const fileName of shell === "web" ? WEB_REQUIRED_RUNTIME_FILES : REQUIRED_RUNTIME_FILES) {
@@ -662,6 +717,126 @@ async function copyRuntimeFiles(
             continue;
         }
         await copyOptionalFile(path.join(runtimeDistDir, fileName), path.join(appDir, fileName));
+    }
+    if (shell !== "web") {
+        await copyKoffiPackage(appDir, sidecarPlatformKey);
+    }
+}
+
+/**
+ * koffi, for the Move Mouse family.
+ *
+ * The packaged game's main process needs an FFI to position the system cursor, and koffi is the one
+ * this application already depends on and already signs. It cannot be bundled - it resolves its own
+ * `.node` by path at run time - so it ships as a directory beside the game's `main.js`, the way
+ * `native.js`/`gate.js` ship for the encryption addon.
+ *
+ * The directory is `koffi/`, deliberately not `node_modules/koffi/`. electron-builder derives the
+ * app's `node_modules` from the staged `package.json`'s dependencies and ships nothing else under
+ * that name - a literal `node_modules` directory in the app source is dropped from the asar and
+ * from the unpacked tree both, with one line in the packager log and no error. `systemCursor.ts`
+ * knows to look here when the bare specifier does not resolve.
+ *
+ * Only the prebuild for the target is copied. The package carries eighteen of them and weighs 24 MB;
+ * a game needs exactly one, and shipping the rest would put an ARM Linux binary inside every Windows
+ * installer. A target with no prebuild copies nothing and the game degrades to "this host cannot
+ * move the cursor", which is honest and is what the build console already warned about.
+ */
+const KOFFI_PACKAGE_FILES = ["package.json", "index.js", "indirect.js"] as const;
+/** Kept in step with `SHIPPED_KOFFI_DIRECTORY` in `@shared/utils/systemCursor`. */
+const SHIPPED_KOFFI_DIR_NAME = "koffi";
+
+/**
+ * Which koffi prebuild directories a build target needs.
+ *
+ * Two vocabularies meet here and they only look alike. A build target is
+ * `<GameBuildDesktopPlatform>-<GameBuildArch>` - `windows-x64`, `macos-arm64` - while koffi names
+ * its directories after Node's `process.platform`: `win32_x64`, `darwin_arm64`. Substituting the
+ * separator produced `windows_x64`, which is not a directory koffi ships, so the copy found nothing
+ * and returned quietly: every packaged game shipped without the addon and reported the cursor as
+ * unmovable, on all three platforms, with nothing anywhere saying why. Hence a table and a test
+ * rather than string surgery.
+ *
+ * A macOS universal build needs both slices, which is why this answers a list.
+ */
+const KOFFI_PLATFORM_DIRECTORIES: Readonly<Record<string, string>> = {
+    windows: "win32",
+    macos: "darwin",
+    linux: "linux",
+};
+
+export function koffiPrebuildDirectories(platformKey: string | undefined): string[] {
+    if (!platformKey) {
+        // No build target named: a Dev Mode compile aimed at this host, where koffi's vocabulary is
+        // the one `process` already speaks.
+        return [`${process.platform}_${process.arch}`];
+    }
+    const separator = platformKey.lastIndexOf("-");
+    if (separator <= 0) {
+        return [];
+    }
+    const directory = KOFFI_PLATFORM_DIRECTORIES[platformKey.slice(0, separator)];
+    const arch = platformKey.slice(separator + 1);
+    if (!directory || !arch) {
+        return [];
+    }
+    return arch === "universal"
+        ? [`${directory}_x64`, `${directory}_arm64`]
+        : [`${directory}_${arch}`];
+}
+
+/**
+ * koffi, for the Move Mouse family.
+ *
+ * The packaged game's main process needs an FFI to position the system cursor, and koffi is the one
+ * this application already depends on and already signs. It cannot be bundled - it resolves its own
+ * `.node` by path at run time - so it ships as a package directory beside the game's `main.js`,
+ * the way `native.js`/`gate.js` ship for the encryption addon.
+ *
+ * Only the prebuilds for the target are copied. The package carries eighteen of them and weighs
+ * 24 MB; a game needs one (two for a universal macOS build), and shipping the rest would put an ARM
+ * Linux binary inside every Windows installer.
+ *
+ * A target koffi has no prebuild for is not an error - the game degrades to "this host cannot move
+ * the cursor", which the build console already warned about for non-desktop targets. It does say so
+ * on the compile log, because the previous version of this said nothing and that is how it shipped
+ * broken.
+ */
+async function copyKoffiPackage(appDir: string, platformKey: string | undefined): Promise<void> {
+    const directories = koffiPrebuildDirectories(platformKey);
+    if (directories.length === 0) {
+        console.warn(`[Compile] no koffi prebuild is known for "${platformKey}"; the game cannot move the cursor`);
+        return;
+    }
+    let packageRoot: string;
+    try {
+        packageRoot = path.dirname(unpackAsarPath(createRequire(__filename).resolve("koffi/package.json")));
+    } catch (error) {
+        // Studio's own install is missing it. The game simply reports the cursor as unmovable.
+        console.warn("[Compile] koffi is not resolvable from this installation", error);
+        return;
+    }
+    const targetRoot = path.join(appDir, SHIPPED_KOFFI_DIR_NAME);
+    const copied: string[] = [];
+    for (const directory of directories) {
+        const prebuild = path.join(packageRoot, "build", "koffi", directory, "koffi.node");
+        try {
+            await fs.access(prebuild);
+        } catch {
+            continue;
+        }
+        await fs.mkdir(path.join(targetRoot, "build", "koffi", directory), { recursive: true });
+        await fs.copyFile(prebuild, path.join(targetRoot, "build", "koffi", directory, "koffi.node"));
+        copied.push(directory);
+    }
+    if (copied.length === 0) {
+        console.warn(
+            `[Compile] koffi ships no prebuild for ${directories.join(", ")}; the game cannot move the cursor`,
+        );
+        return;
+    }
+    for (const fileName of KOFFI_PACKAGE_FILES) {
+        await copyOptionalFile(path.join(packageRoot, fileName), path.join(targetRoot, fileName));
     }
 }
 
@@ -808,6 +983,82 @@ export function planShippedCharacters(
         },
         characterIds,
     };
+}
+
+/**
+ * Drop the bundle's author-facing asset name table from a shipped game.
+ *
+ * `storyLibrary.assetNames` exists so the Dev Mode debug panel can print `Set background
+ * outside_s.jpg` instead of a uuid. Nothing in a player's copy reads it, and it is a straight
+ * `assetId → filename` map over every asset a story row can name - which is exactly the table
+ * {@link shippedAssetManifest} takes away, arriving by a different door.
+ */
+function shippedBundle(bundle: DevModeBundle, mode: "preview" | "production"): DevModeBundle {
+    if (mode !== "production" || !bundle.storyLibrary) {
+        return bundle;
+    }
+    return { ...bundle, storyLibrary: { ...bundle.storyLibrary, assetNames: {} } };
+}
+
+/**
+ * Narrow the compiler's asset manifest to what the artifact is allowed to say about its own
+ * contents.
+ *
+ * The compiler needs a full manifest while it works - it copies by it, audits by it, and reports
+ * counts from it - but almost none of that belongs in a shipped game. A player's copy answers
+ * "what is in here" to anyone holding it, and the answer is the one thing asset protection cannot
+ * take back later: bytes can be sealed, a list of what those bytes are cannot be unlearned.
+ *
+ * So a production artifact ships the least its own runtime can work from:
+ * - **protected**: nothing at all. Store entry names are `assets/{id}`, derived at read time from
+ *   an id the caller already has, so the runtime never needed the table and its absence costs
+ *   nothing. Dumping the store now yields unnamed blobs and no way to tell a UI arrow from an
+ *   ending CG without opening every one.
+ * - **unprotected**: only what the files on disk already give away. The bytes are loose under
+ *   `assets/` under those very names, so the id, its kind and its extension are readable with a
+ *   directory listing and withholding them protects nothing. The rest - the authoring name, the
+ *   path it was imported from, the content hash - has no counterpart on disk, and is dropped.
+ *
+ * Preview and test artifacts keep everything: they never leave the machine that made them, and the
+ * dev-mode surfaces read this to name what they report.
+ */
+function shippedAssetManifest(
+    manifest: Record<string, GameRuntimeAssetManifestEntry>,
+    mode: "preview" | "production",
+    sealed: boolean,
+): GameRuntimePackV1["assets"] {
+    // Which ids are bundles survives the strip; what their entry files are called does not. The
+    // renderer has to pick a URL shape synchronously and membership is the least that answers that,
+    // while the path it used to carry now lives in the payload under a derived key.
+    const modelBundles = Object.entries(manifest)
+        .filter(([, entry]) => entry.bundleEntry)
+        .map(([key]) => key);
+    const withModelBundles = (items: Record<string, GameRuntimeAssetManifestEntry>) => ({
+        items,
+        ...(modelBundles.length > 0 ? { modelBundles } : {}),
+    });
+
+    if (mode !== "production") {
+        return withModelBundles(manifest);
+    }
+    if (sealed) {
+        return withModelBundles({});
+    }
+    const items: Record<string, GameRuntimeAssetManifestEntry> = {};
+    for (const [key, entry] of Object.entries(manifest)) {
+        items[key] = {
+            id: entry.id,
+            relativePath: entry.relativePath,
+            ...(entry.type ? { type: entry.type } : {}),
+            ...(entry.ext ? { ext: entry.ext } : {}),
+            ...(entry.mimeType ? { mimeType: entry.mimeType } : {}),
+            // Kept on an unprotected pack only, where it is how the runtime and the web shell find
+            // a bundle's entry: those builds keep their manifest, and their files are loose on disk
+            // under these very names, so withholding it would hide nothing from anyone.
+            ...(entry.bundleEntry ? { bundleEntry: entry.bundleEntry } : {}),
+        };
+    }
+    return withModelBundles(items);
 }
 
 /** Every asset id the project's library declares, across all shards. */
@@ -996,6 +1247,17 @@ async function copyAssetBundle(input: {
         ...makeEntry(normalized.id, entryRelativePath, entry),
         bundleEntry: entry,
     };
+
+    // In a protected pack the manifest does not ship, so the entry path is written into the payload
+    // instead, at the address the runtime derives from the id alone. That is what lets a shipped
+    // game mount this model while stating nowhere what its entry file is called - the file name of
+    // a character's model is usually the character's name.
+    if (input.target.kind === "sealed") {
+        await input.target.writer.add(
+            gameRuntimeBundleModelEntry(normalized.id),
+            Buffer.from(JSON.stringify({ e: entry }), "utf-8"),
+        );
+    }
 
     return manifest;
 }

@@ -15,12 +15,24 @@
  * 2. **Keep a snapshot for anything the first layer does not model.** The live game is serialized
  *    immediately before the swap, and put back from that snapshot if `deserialize` throws anyway.
  *
- * The story hash never decides whether a load happens. A save written from another build of the
- * story that still resolves is a save that loads; the hash only picks the sentence the player is
- * shown, and raises a note to the author when a load came from a different build.
+ * The engine's own story hash still never decides whether a load happens. It picks the sentence the
+ * player is shown and raises a note to the author, and that is all it has ever done here.
+ *
+ * What *can* stop a load is the author's own policy, decided from the stamp Studio writes into every
+ * record: the save protocol, the story this build ships, and the author's version. That decision is
+ * taken from the record header, before the first of the two layers above, and from the very same
+ * bytes a save screen's listing decided from - so a slot that was offered is a slot that loads, and
+ * one that was hidden is not quietly accepted here. See `@shared/types/saveCompatibility`.
  */
 import type { SavedGame } from "narraleaf-react";
 import type { TranslationKey } from "@shared/i18n";
+import {
+    planSaveResume,
+    readSaveCompatibilityStamp,
+    type SaveCompatibility,
+    type SaveCompatibilityConfiguration,
+    type SaveCompatibilityStamp,
+} from "@shared/types/saveCompatibility";
 import { translate } from "@/lib/i18n";
 
 /** How the story stamped into the save compares with the story now running. */
@@ -39,6 +51,14 @@ export type SaveLoadRefusalReason =
     | "missing"
     /** What is stored is not a saved game. */
     | "malformed"
+    /** A record shape this build cannot read at all. Not the author's policy - see the type. */
+    | "unsupported"
+    /** The author's save-compatibility policy does not offer saves from this build. */
+    | "policy"
+    /** The policy asks for a relaunch and the save says nowhere to relaunch to. */
+    | "unanchored"
+    /** The relaunch itself would not start. */
+    | "relaunch"
     /** The save names scenes, elements or actions the running story does not have. */
     | "unresolved"
     /** The engine refused it for something this module does not model. */
@@ -72,12 +92,23 @@ export type RunningGameState =
      */
     | "lost";
 
+/**
+ * How much of the save the player actually got back.
+ *
+ * `save` is a load. The other two are the `Return to where it stopped` policy taking effect: the
+ * story is started again at the position the save names, carrying the saved-scope values across but
+ * not the stage, the stacks or the backlog. They are told apart because the difference is visible
+ * to the player - one puts them on the line they left, the other at the top of the scene.
+ */
+export type SaveApplied = "save" | "row" | "scene";
+
 export type SaveLoadOutcome =
-    | { status: "loaded"; origin: SaveStoryOrigin }
+    | { status: "loaded"; applied: SaveApplied; origin: SaveStoryOrigin; compatibility: SaveCompatibility }
     | {
           status: "refused";
           reason: SaveLoadRefusalReason;
           origin: SaveStoryOrigin;
+          compatibility: SaveCompatibility;
           /** One line for the author. Not what the player is shown. */
           detail: string;
           /** Ids the save names that the running story does not have. Empty for other reasons. */
@@ -116,14 +147,68 @@ export type SaveLoadGameSeam = {
      * repair the stage; it stops one failure from silently becoming a permanent one.
      */
     releaseLoadLock?: () => void;
+    /**
+     * Start the story again where the save was, instead of loading the save.
+     *
+     * Only ever called for the `Return to where it stopped` policy. It is the host's operation
+     * rather than the engine's: putting a player back at a row is a story launch, which needs the
+     * compiler, the bundle and the surface stack - none of which this module has or should have.
+     * Omitted by a host that cannot start a story, which turns the policy into a refusal rather
+     * than into a silent nothing.
+     *
+     * It reports where the player actually landed, because that is another thing only the host can
+     * know - and one it must not be left to infer from a throw. A launch handed a row the story no
+     * longer has does NOT fail: the playback walk treats a dangling row as "play the scene from the
+     * top" and says nothing, so a caller watching for an exception would report a row-precise
+     * return that never happened.
+     */
+    relaunch?: (target: SaveRelaunchTarget) => Promise<SaveRelaunchLanding>;
+};
+
+/**
+ * Where a relaunch put the player.
+ *
+ * The three answers are the whole of `Return to where it stopped`: the row if the story still has
+ * it, the top of its scene if only the scene survived, and nothing at all if the scene is gone too.
+ */
+export type SaveRelaunchLanding =
+    /** On the row the save stopped on. */
+    | "row"
+    /** At the top of the scene the save was in; the row itself is no longer in the story. */
+    | "scene"
+    /** Nowhere - this build has no such scene. Nothing was started and nothing was touched. */
+    | "nowhere";
+
+/** Where a relaunch should put the player, and what to carry there. */
+export type SaveRelaunchTarget = {
+    /** Blank when the save's position named no story; the host resolves one from the scene. */
+    storyId: string;
+    sceneId: string;
+    /** The row the save stopped on, or null when its position named only a scene. */
+    blockId: string | null;
+    /** The save being honoured, so the host can carry its saved-scope values across. */
+    savedGame: SavedGame;
 };
 
 export type LoadSaveOptions = {
     /** The slot being loaded, for the author-facing line. */
     id: string;
-    /** Reads the stored record. A throw here is a refusal, not a crash. */
-    readRecord: () => Promise<{ savedGame: unknown } | null>;
+    /**
+     * Reads the stored record. A throw here is a refusal, not a crash.
+     *
+     * The header travels with it because the decision that comes first is made from the header
+     * alone - and is made from the very same bytes a listing decided from, which is what keeps a
+     * slot a save screen offers a slot that loads.
+     */
+    readRecord: () => Promise<{
+        savedGame: unknown;
+        metadata?: { compatibility?: SaveCompatibilityStamp };
+    } | null>;
     game: SaveLoadGameSeam;
+    /** What this build is, for comparing against the save's own stamp. Null disables the comparison. */
+    currentStamp: SaveCompatibilityStamp | null;
+    /** The author's policy for saves from another build. */
+    compatibilityConfig: SaveCompatibilityConfiguration;
     /** Shows one line inside the running game. */
     notifyPlayer: (message: string) => void;
     /** Reports to whoever is watching the run. */
@@ -387,6 +472,113 @@ export function readSaveLastLine(savedGame: unknown): string | null {
 }
 
 /**
+ * Where a save stopped, in the terms a story launch takes.
+ *
+ * `storyId` is blank when only a scene could be recovered; the host fills it in from the library.
+ */
+export type SavePosition = {
+    storyId: string;
+    sceneId: string;
+    blockId: string | null;
+};
+
+/**
+ * The Studio ids buried in one compiled anchor.
+ *
+ * Both anchor shapes carry them in fixed leading positions - `studio:<story>:<scene>:<block>:…` for
+ * an action and `nl:scene:<scene>` for a scene element - which is the same reading `saveAnchors.ts`
+ * does on the build side. Nothing else can be read out of an anchor: the trailing fields are the
+ * compiler's own counters.
+ */
+function parseActionAnchor(anchor: unknown): SavePosition | null {
+    if (typeof anchor !== "string") {
+        return null;
+    }
+    const parts = anchor.split(":");
+    if (parts[0] !== "studio" || parts.length < 4 || !parts[1] || !parts[2]) {
+        return null;
+    }
+    return { storyId: parts[1], sceneId: parts[2], blockId: parts[3] || null };
+}
+
+function parseSceneAnchor(anchor: unknown): SavePosition | null {
+    if (typeof anchor !== "string") {
+        return null;
+    }
+    const parts = anchor.split(":");
+    // Exactly three: `nl:scene:<id>` is the scene, `nl:scene:<id>:layer:background` is a part of it.
+    if (parts[0] !== "nl" || parts[1] !== "scene" || parts.length !== 3 || !parts[2]) {
+        return null;
+    }
+    return { storyId: "", sceneId: parts[2], blockId: null };
+}
+
+/** The first action anchor a serialized stack names, walking nested stacks. Top-first. */
+function findStackActionAnchor(stack: unknown): string | null {
+    if (!isRecord(stack) || !Array.isArray(stack.items)) {
+        return null;
+    }
+    for (const item of stack.items) {
+        if (!isRecord(item)) {
+            continue;
+        }
+        if (typeof item.action === "string" && item.action) {
+            return item.action;
+        }
+        if (Array.isArray(item.stacks)) {
+            for (const nested of item.stacks) {
+                const found = findStackActionAnchor(nested);
+                if (found) {
+                    return found;
+                }
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * Where the save was, from the three things that know it, best first.
+ *
+ * The backlog is asked first because its last entry is the line the player last saw, which is the
+ * one place a person would say they were - and it survives on saves the execution stack cannot be
+ * read out of. The stack is next, and the posed scene last: it names only a scene, which is enough
+ * to put somebody back at the top of a chapter and not enough to put them on a row.
+ */
+export function readSavePosition(savedGame: unknown): SavePosition | null {
+    if (!isRecord(savedGame) || !isRecord(savedGame.game)) {
+        return null;
+    }
+    const game = savedGame.game as Record<string, unknown>;
+    const history = game.history;
+    if (Array.isArray(history)) {
+        for (let index = history.length - 1; index >= 0; index--) {
+            const entry = history[index];
+            const position = isRecord(entry) ? parseActionAnchor(entry.actionId) : null;
+            if (position) {
+                return position;
+            }
+        }
+    }
+    const fromStack = parseActionAnchor(findStackActionAnchor(game.stackModel));
+    if (fromStack) {
+        return fromStack;
+    }
+    const stage = game.stage;
+    const scenes = isRecord(stage) && Array.isArray(stage.scenes) ? stage.scenes : [];
+    // Last rather than first: scenes are posed in the order they were entered, so the one on top is
+    // the one the player is looking at.
+    for (let index = scenes.length - 1; index >= 0; index--) {
+        const scene = scenes[index];
+        const position = isRecord(scene) ? parseSceneAnchor(scene.sceneId) : null;
+        if (position) {
+            return position;
+        }
+    }
+    return null;
+}
+
+/**
  * How loudly each ending is reported, decided once here.
  *
  * `restored` shares the warning level with `unchanged` rather than taking the error one: the load
@@ -434,6 +626,10 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
         }
     };
 
+    // Filled in as soon as the record is in hand; a refusal raised before that reports the state it
+    // could not compare, which is exactly "unknown".
+    let compatibility: SaveCompatibility = "unknown";
+
     const refuse = (
         reason: SaveLoadRefusalReason,
         detail: string,
@@ -444,6 +640,7 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
             status: "refused",
             reason,
             origin: extra?.origin ?? "unknown",
+            compatibility,
             detail,
             unresolvedIds: extra?.unresolvedIds ?? [],
             game: runningGame,
@@ -457,7 +654,7 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
         return outcome;
     };
 
-    let record: { savedGame: unknown } | null;
+    let record: Awaited<ReturnType<typeof readRecord>>;
     try {
         record = await readRecord();
     } catch (error) {
@@ -482,6 +679,56 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
         liveStoryHash = null;
     }
     const origin = compareSaveStory(savedGame, liveStoryHash);
+
+    // The author's policy, before anything is touched and from the same header the listing read.
+    const resume = planSaveResume(
+        readSaveCompatibilityStamp(record.metadata?.compatibility),
+        options.currentStamp,
+        options.compatibilityConfig,
+    );
+    compatibility = resume.compatibility;
+    if (resume.plan.action === "discard") {
+        return refuse(
+            resume.plan.reason === "protocol" ? "unsupported" : "policy",
+            translate(resume.plan.reason === "protocol"
+                ? "game.saveLoad.detail.unsupported"
+                : "game.saveLoad.detail.policy"),
+            { origin },
+        );
+    }
+    if (resume.plan.action === "relaunch") {
+        const position = readSavePosition(savedGame);
+        if (!position || !game.relaunch) {
+            return refuse("unanchored", translate("game.saveLoad.detail.unanchored"), { origin });
+        }
+        // The row is always asked for. Whether it is still there is the host's to answer, and it
+        // answers by saying where it landed rather than by throwing - see `relaunch`.
+        let landing: SaveRelaunchLanding;
+        try {
+            landing = await game.relaunch({
+                storyId: position.storyId,
+                sceneId: position.sceneId,
+                blockId: position.blockId,
+                savedGame,
+            });
+        } catch (error) {
+            // A relaunch that threw got far enough to recompile and remount, so whatever is on
+            // stage is neither the save nor what was running. Said plainly rather than reported as
+            // an untouched game. "Nowhere to go" is not this: it comes back as a landing.
+            return refuse("relaunch", translate("game.saveLoad.detail.relaunch", { error: errorText(error) }), {
+                origin,
+                game: "lost",
+            });
+        }
+        if (landing === "nowhere") {
+            return refuse("unanchored", translate("game.saveLoad.detail.sceneGone"), { origin });
+        }
+        report("warning", translate(
+            landing === "row" ? "game.saveLoad.relaunchedRow" : "game.saveLoad.relaunchedScene",
+            { id },
+        ));
+        return { status: "loaded", applied: landing, origin, compatibility };
+    }
 
     // The whole pre-check, resolution included, sits inside one guard. It is an optimisation over
     // the snapshot, not a step of the load: a table that answers oddly must cost the pre-check and
@@ -545,5 +792,5 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
     if (origin === "otherStory") {
         report("warning", translate("game.saveLoad.otherStory", { id }));
     }
-    return { status: "loaded", origin };
+    return { status: "loaded", applied: "save", origin, compatibility };
 }

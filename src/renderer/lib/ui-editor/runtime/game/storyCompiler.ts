@@ -4,6 +4,7 @@ import {
     Condition,
     Control,
     Darkness,
+    Exposure,
     DevTools,
     Dissolve,
     FadeIn,
@@ -141,6 +142,14 @@ import {
     type CompileStoryActionScriptInput,
     type StoryActionFnCatalog,
 } from "./storyActionBlueprint";
+import {
+    getStoryCompilePasses,
+    type CompileBlockView,
+    type EngineAction,
+    type RuntimeFlag,
+    type SceneCompileContext as PluginSceneCompileContext,
+    type StageImage,
+} from "./storyCompilePass";
 import {
     createStoryVisitedPersistent,
     isStoryVisited,
@@ -448,8 +457,13 @@ type DevToolsWithStaticId = typeof DevTools & {
  * Feature-detected for the same reason the action-id twin is: an engine without it still produces a
  * playable game, and refusing to compile against one would make the two repositories lock-step.
  */
-function setStableElementId(element: unknown, staticId: string): void {
+function setStableElementId(sink: string[], element: unknown, staticId: string): void {
     (DevTools as DevToolsWithStaticId).setElementStaticId?.(element as NlrElement, staticId);
+    // Recorded at the one place that stamps, so nothing can name an element without the record
+    // seeing it. A second list built from the document would be a second copy of this naming rule,
+    // and the failure it would hide - an element the compiler names and the record does not - is
+    // silent by nature.
+    sink.push(staticId);
 }
 
 /** Whether the engine in use keeps the names above. */
@@ -489,6 +503,16 @@ export type CompiledNlrStory = {
     storyId: string;
     sceneId: string;
     actionIdBindings: NlrActionIdBinding[];
+    /**
+     * Every stable element id this compile stamped.
+     *
+     * Alongside the action ids because a save anchors on both, and the two fail in opposite ways: a
+     * missing action id is refused at load, while a missing element id is not noticed at all - the
+     * pre-resolution only asks whether an id exists, so the state that pointed at it is quietly
+     * applied to nothing. Anything comparing two builds has to see both or it reports half the
+     * damage.
+     */
+    elementIdBindings: string[];
     /**
      * Swap the dub language of this compile, in place, while the game is running. Returns false for a
      * language this compile has no take table for (and for a story compiled without voice).
@@ -681,7 +705,17 @@ type SceneCompileContext = {
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
     actionIdBindings: NlrActionIdBinding[];
+    elementIdBindings: string[];
     nextActionIndex: (blockId: string) => number;
+    /**
+     * What a plugin compile pass attached around each row, keyed by block id.
+     *
+     * Set once per scene, before its rows compile, and **only on the game-compile path**. The stage
+     * preview leaves it undefined, which is what keeps a preview snapshot free of injected actions:
+     * a preview is asking "what does the stage look like at this row", and an answer that included a
+     * plugin's darkens would show the author a stage the row does not describe.
+     */
+    pluginInjections?: Map<string, { before: NlrStatement[]; after: NlrStatement[] }>;
 };
 
 type CompileInput = {
@@ -770,6 +804,7 @@ export function createEmptyCompiledNlrStory(): CompiledNlrStory {
         characters: new Map(),
         avatarAssetIdByUrl: new Map(),
         actionIdBindings: [],
+        elementIdBindings: [],
         savedNamespaceName: "",
         visitedNamespaceName: "",
         sceneLocalNamespaceNames: {},
@@ -797,6 +832,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         );
     }
     const actionIdBindings: NlrActionIdBinding[] = [];
+    const elementIdBindings: string[] = [];
     const sceneElements: Record<string, CompiledSceneElements> = {};
     const characters = new Map<string, Character>();
     const avatarAssetIdByUrl = new Map<string, string>();
@@ -828,6 +864,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const audioTracks = input.audioTracks ?? BUILTIN_AUDIO_TRACKS;
     const sceneBackgroundMusic = new Map<string, { sound: Sound; trackId: string }>();
     const scenesBuild = await createNlrScenes({
+        elementIdBindings,
         document: input.document,
         resolveAssetUrl,
         assetUrlCache,
@@ -914,8 +951,15 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             assetUrlCache,
             diagnostics,
             actionIdBindings,
+            elementIdBindings,
             nextActionIndex,
         };
+        // Let the registered plugin compile passes read this scene and say what they attach around
+        // each row. Before the seeds and before any row compiles, because `compileBlock` reads the
+        // result. This call is what makes it the game-compile path: the two preview compilers below
+        // never make it, so `ctx.pluginInjections` stays unset there and their snapshots stay free of
+        // anything a plugin injected.
+        runStoryCompilePasses(ctx);
         // Seed declared scene-local defaults at the head of the scene's statement list. They must be
         // statements (not build-time sets): `Scene.local.init` resets the namespace on every scene
         // entry, so the seeds have to re-run each time the scene starts.
@@ -948,6 +992,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             nlrStory,
             allScenes,
             actionIdBindings,
+            elementIdBindings,
             diagnostics,
             characters,
             characterSummaries,
@@ -992,6 +1037,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         storyId: input.document.id,
         sceneId: entryScene.id,
         actionIdBindings,
+        elementIdBindings,
         savedNamespaceName: DevTools.getNamespaceName(savedPersistent),
         visitedNamespaceName: DevTools.getNamespaceName(visitedPersistent),
         sceneLocalNamespaceNames,
@@ -1017,6 +1063,7 @@ async function buildLaunchEntryScene(params: {
     nlrStory: Story;
     allScenes: Record<string, Scene>;
     actionIdBindings: NlrActionIdBinding[];
+    elementIdBindings: string[];
     diagnostics: NlrStoryCompileDiagnostic[];
     characters: Map<string, Character>;
     characterSummaries: Map<string, DevModeCharacterSummary>;
@@ -1115,6 +1162,7 @@ async function buildLaunchEntryScene(params: {
         assetUrlCache,
         diagnostics,
         actionIdBindings: params.actionIdBindings,
+        elementIdBindings: params.elementIdBindings,
         nextActionIndex: params.nextActionIndex,
     };
 
@@ -1248,6 +1296,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
     const snapshot = input.snapshot;
     const diagnostics: NlrStoryCompileDiagnostic[] = snapshot.diagnostics.map(entry => ({ ...entry }));
     const actionIdBindings: NlrActionIdBinding[] = [];
+    const elementIdBindings: string[] = [];
     const characterSummaries = new Map((input.characters ?? []).map(character => [character.id, character]));
     const animations = new Map(Object.entries(input.animations ?? {}));
     const assetUrlCache = new Map<string, string | null>();
@@ -1341,6 +1390,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         assetUrlCache,
         diagnostics,
         actionIdBindings,
+        elementIdBindings,
         nextActionIndex,
     };
 
@@ -1490,6 +1540,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         storyId: input.document.id,
         sceneId: scene.id,
         actionIdBindings,
+        elementIdBindings,
         savedNamespaceName: DevTools.getNamespaceName(savedPersistent),
         visitedNamespaceName: DevTools.getNamespaceName(visitedPersistent),
         sceneLocalNamespaceNames: { [scene.id]: DevTools.getNamespaceName(previewScene.local) },
@@ -1596,6 +1647,8 @@ async function createNlrScenes(input: {
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
+    /** Where the ids stamped on each scene's own elements are recorded. */
+    elementIdBindings: string[];
     /** Every voice language's unit id → clip URL map. Voice ids are global, so one table serves every scene. */
     voiceUrlsByLocale?: Record<string, Record<string, string>>;
     /** Which language the scenes open on. */
@@ -1735,7 +1788,7 @@ async function createNlrScenes(input: {
             runtimeName,
             Object.keys(config).length > 0 ? config : undefined,
         );
-        setStableSceneElementIds(built, scene.id);
+        setStableSceneElementIds(input.elementIdBindings, built, scene.id);
         scenes[scene.id] = built;
         // The scene's OWN table, which is a copy of the one just handed in - see the note above.
         const live = (built as unknown as { config?: { voices?: unknown } }).config?.voices;
@@ -1887,7 +1940,212 @@ async function compileBlockList(ctx: SceneCompileContext, blockIds: readonly str
     return statements;
 }
 
+/** A runtime flag whose predicate the compiler reads back internally to build a guard. */
+type InternalRuntimeFlag = RuntimeFlag & { __read(scriptCtx: ScriptCtx): boolean };
+
+/**
+ * Run every registered plugin compile pass over one scene and record what they inject.
+ *
+ * Called once per scene on the game-compile path, before the scene's rows compile. It flattens the
+ * scene into the execution-ordered views a pass reads, builds the character roster, and hands each
+ * pass a context whose methods turn its requests into engine actions. The `inject` calls land in
+ * `ctx.pluginInjections`, which {@link compileBlock} splices around each row.
+ *
+ * With no pass registered it returns immediately and leaves `pluginInjections` unset - so a project
+ * with no such plugin pays one array-length check per scene, and nothing else.
+ */
+function runStoryCompilePasses(ctx: SceneCompileContext): void {
+    const passes = getStoryCompilePasses();
+    if (passes.length === 0) {
+        return;
+    }
+
+    // The roster is the stage object names the scene mentions, plus the characterId -> stage name
+    // inversion a dialogue row needs: a line carries only `characterId`, while `getImage` and every
+    // character row key on the stage object name, and the two have to line up or a pass would darken
+    // a name nothing on stage answers to.
+    const rosterSet = new Set<string>();
+    const stageNameByCharacterId = new Map<string, string>();
+    for (const block of Object.values(ctx.scene.blocks)) {
+        if (block.disabled || block.kind !== "action" || block.payload.action !== "character") {
+            continue;
+        }
+        const stageName = normalizeObjectName(getCharacterStageObjectName(block.payload));
+        rosterSet.add(stageName);
+        if (block.payload.characterId && !stageNameByCharacterId.has(block.payload.characterId)) {
+            stageNameByCharacterId.set(block.payload.characterId, stageName);
+        }
+    }
+
+    const speakerOf = (characterId: string | undefined): string | null => {
+        if (!characterId) {
+            return null;
+        }
+        return stageNameByCharacterId.get(characterId) ?? normalizeObjectName(characterId);
+    };
+
+    const classify = (block: StoryBlock): CompileBlockView => {
+        if (block.kind === "nodeAction") {
+            if (block.payload.action === "dialogue") {
+                return { kind: "dialogue", id: block.id, speaker: speakerOf(block.payload.characterId) };
+            }
+            if (block.payload.action === "narration") {
+                return { kind: "dialogue", id: block.id, speaker: null };
+            }
+            // A choice and its options are where the scene stops being a straight line, which is
+            // exactly what a boundary means here.
+            if (block.payload.action === "choice" || block.payload.action === "choiceOption") {
+                return { kind: "boundary", id: block.id };
+            }
+            return { kind: "other", id: block.id };
+        }
+        if (block.kind === "action") {
+            if (block.payload.action === "plugin") {
+                return {
+                    kind: "pluginAction",
+                    id: block.id,
+                    pluginId: block.payload.pluginId,
+                    actionId: block.payload.actionId,
+                    params: block.payload.params,
+                };
+            }
+            return { kind: "other", id: block.id };
+        }
+        if (block.kind === "control" || block.kind === "jump") {
+            return { kind: "boundary", id: block.id };
+        }
+        // A note, a declaration, an invalid draft: rows that say nothing about who speaks.
+        return { kind: "other", id: block.id };
+    };
+
+    const views: CompileBlockView[] = [];
+    const walk = (blockIds: readonly string[]): void => {
+        for (const blockId of blockIds) {
+            const block = ctx.scene.blocks[blockId];
+            // Disabled rows are skipped with their subtree, exactly as `compileBlock` skips them: a
+            // pass must see the order that will actually run, not the one on screen.
+            if (!block || block.disabled) {
+                continue;
+            }
+            views.push(classify(block));
+            if (block.childrenIds.length > 0) {
+                walk(block.childrenIds);
+            }
+        }
+    };
+    walk(ctx.scene.rootBlockIds);
+
+    const injections = new Map<string, { before: NlrStatement[]; after: NlrStatement[] }>();
+    const flags = new Map<string, InternalRuntimeFlag>();
+    const namespaceName = DevTools.getNamespaceName(ctx.nlrScene.local);
+
+    const makeFlag = (name: string): InternalRuntimeFlag => {
+        const existing = flags.get(name);
+        if (existing) {
+            return existing;
+        }
+        const flag: InternalRuntimeFlag = {
+            write: (value: boolean) => Script.execute((scriptCtx: ScriptCtx) => {
+                const ns = scriptCtx.storable.getNamespace(namespaceName);
+                const had = ns.has(name);
+                const previous = ns.get(name);
+                ns.set(name, value as never);
+                // The cleaner is the whole reason this is a Script and not a plain set. Returning one
+                // is what puts the write in the action history; without it a rewind past this row
+                // leaves the flag at its new value and every guard after it takes the wrong branch -
+                // a save that plays differently the second time, with nothing on screen to explain it.
+                return () => { ns.set(name, (had ? previous : undefined) as never); };
+            }) as unknown as EngineAction,
+            __read: (scriptCtx: ScriptCtx) => Boolean(scriptCtx.storable.getNamespace(namespaceName).get(name)),
+        };
+        flags.set(name, flag);
+        return flag;
+    };
+
+    const context: PluginSceneCompileContext = {
+        blocks: views,
+        roster: () => [...rosterSet],
+        resolveCharacterImage: (objectName: string): StageImage | null => {
+            const name = normalizeObjectName(objectName);
+            if (!rosterSet.has(name)) {
+                return null;
+            }
+            const image = getImage(ctx, name, { autoFit: true });
+            return {
+                darken: (darkness, durationMs, easing) => image.darken(
+                    Math.min(1, Math.max(0, darkness)),
+                    Math.max(0, durationMs),
+                    easing as never,
+                ) as unknown as EngineAction,
+            };
+        },
+        // `allAsync`, never `doAsync` - see the note in storyCompilePass.ts. This is the single place
+        // that decision is made, which is the point of the method existing at all.
+        parallel: (actions: EngineAction[]) => Control.allAsync(actions as never) as unknown as EngineAction,
+        guarded: (flag: RuntimeFlag, actions: EngineAction[]) => Condition.If(
+            (scriptCtx: ScriptCtx) => (flag as InternalRuntimeFlag).__read(scriptCtx),
+            actions as never,
+        ) as unknown as EngineAction,
+        runtimeFlag: (name: string) => makeFlag(name),
+        inject: (blockId: string, injection) => {
+            if (!ctx.scene.blocks[blockId]) {
+                // Silently ignoring it would make a pass's own bug look like the feature not working.
+                diagnostic(ctx, "warning", undefined, `Compile pass injected into a row that is not in this scene: ${blockId}`);
+                return;
+            }
+            const entry = injections.get(blockId) ?? { before: [], after: [] };
+            if (injection.before) {
+                entry.before.push(...(injection.before as unknown as NlrStatement[]));
+            }
+            if (injection.after) {
+                entry.after.push(...(injection.after as unknown as NlrStatement[]));
+            }
+            injections.set(blockId, entry);
+        },
+    };
+
+    for (const pass of passes) {
+        try {
+            pass.scene(context);
+        } catch (error) {
+            // One pass throwing must not take the compile down with it: the author's story is not at
+            // fault, and a scene that compiles without a plugin's contribution is a far better
+            // outcome than a project that cannot be built until the plugin is fixed.
+            diagnostic(
+                ctx,
+                "warning",
+                undefined,
+                `Compile pass "${pass.id}" failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+    }
+
+    ctx.pluginInjections = injections;
+}
+
+/**
+ * One row, with anything a plugin compile pass attached around it.
+ *
+ * The injection wraps the row's *whole* compiled output, children included. For the rows a pass
+ * actually addresses - a line of dialogue, a marker - that is the same thing either way, since they
+ * have no children; for a container it is the reading that matches what a pass asked for, which is
+ * "before this happens" and "after this has happened".
+ *
+ * `pluginInjections` is undefined on the preview path and whenever no pass is registered, so the
+ * common case costs one property read.
+ */
 async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<NlrStatement[]> {
+    const own = await compileBlockCore(ctx, blockId);
+    const injection = ctx.pluginInjections?.get(blockId);
+    if (!injection || (injection.before.length === 0 && injection.after.length === 0)) {
+        return own;
+    }
+    // A row that compiled to nothing still gets its injection: a marker block IS that case, and it is
+    // the one carrying the pass's own before/after.
+    return [...injection.before, ...own, ...injection.after];
+}
+
+async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Promise<NlrStatement[]> {
     const block = ctx.scene.blocks[blockId];
     if (!block) {
         diagnostic(ctx, "warning", undefined, `Missing block: ${blockId}`);
@@ -2425,6 +2683,15 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
         return script ? [recordStatement(ctx, script, block)] : [];
     }
 
+    if (payload.action === "plugin") {
+        // A marker emits nothing by itself. Its owner's compile pass has already read it out of the
+        // scene prescan and attached whatever it wants around this block; `withPluginInjections`
+        // splices that in for every block, so there is nothing to do here and nothing to warn about.
+        // A marker whose plugin is absent therefore compiles to exactly nothing - the scene still
+        // plays, minus the behaviour, and `ProjectDependencyService` is what says so out loud.
+        return [];
+    }
+
     if (payload.action === "wait") {
         const chain = payload.mode === "click"
             ? Control.waitForClick()
@@ -2530,7 +2797,7 @@ function compileCameraAction(
         case "darken":
             return [recordStatement(ctx, camera.darken(Math.min(1, Math.max(0, finiteOr(payload.darkness, 0))), duration, easing), block)];
         case "reset":
-            return [recordStatement(ctx, camera.reset(duration, easing), block)];
+            return [recordStatement(ctx, camera.resetCamera(duration, easing), block)];
         case "motion": {
             // A whole keyframed shot rather than one settled pose. `Camera` is a `Displayable`, so it
             // takes the same `Transform` a sprite does, built by the same function `/transform` uses -
@@ -2765,7 +3032,7 @@ async function getPuppetElement(
         ...(appearance.defaultState?.expression ? { expression: appearance.defaultState.expression } : {}),
         ...(appearance.defaultState?.skin ? { skin: appearance.defaultState.skin } : {}),
     });
-    setStableElementId(puppet, `nl:puppet:${ctx.scene.id}:${key}`);
+    setStableElementId(ctx.elementIdBindings, puppet, `nl:puppet:${ctx.scene.id}:${key}`);
     ctx.puppets.set(key, puppet);
     return puppet;
 }
@@ -3203,7 +3470,7 @@ async function getVfx(
         // since the engine does not persist a runtime `setPlaybackRate`.
         ...(payload.rate !== undefined ? { playbackRate: Math.max(0, finiteOr(payload.rate, 1)) } : {}),
     });
-    setStableElementId(vfx, `nl:vfx:${ctx.scene.id}:${name}`);
+    setStableElementId(ctx.elementIdBindings, vfx, `nl:vfx:${ctx.scene.id}:${name}`);
     ctx.vfx.set(name, vfx);
     return vfx;
 }
@@ -3471,7 +3738,7 @@ function getCharacter(ctx: SceneCompileContext, characterId: string | undefined,
             return cached;
         }
         const created = new Character(tempName);
-        setStableElementId(created, `nl:character:${key}`);
+        setStableElementId(ctx.elementIdBindings, created, `nl:character:${key}`);
         ctx.characters.set(key, created);
         return created;
     }
@@ -3488,7 +3755,7 @@ function getCharacter(ctx: SceneCompileContext, characterId: string | undefined,
     const summary = ctx.characterSummaries.get(normalizedId);
     const displayName = summary?.name?.trim() || UNKNOWN_CHARACTER_NAME;
     const character = new Character(displayName, characterNametagConfig(summary));
-    setStableElementId(character, `nl:character:${normalizedId}`);
+    setStableElementId(ctx.elementIdBindings, character, `nl:character:${normalizedId}`);
     ctx.characters.set(normalizedId, character);
     return character;
 }
@@ -3548,7 +3815,7 @@ function getImage(ctx: SceneCompileContext, objectName: string, options?: { laye
         // Initial transform-state pose baked into the constructor config (survives reset()).
         ...(options?.initialProps ?? {}),
     } as any);
-    setStableElementId(image, `nl:image:${ctx.scene.id}:${name}`);
+    setStableElementId(ctx.elementIdBindings, image, `nl:image:${ctx.scene.id}:${name}`);
     ctx.images.set(name, image);
     return image;
 }
@@ -3568,7 +3835,7 @@ function getText(ctx: SceneCompileContext, objectName: string, options: { text?:
         layer: options.layer,
         ...(options.initialProps ?? {}),
     } as any);
-    setStableElementId(text, `nl:text:${ctx.scene.id}:${name}`);
+    setStableElementId(ctx.elementIdBindings, text, `nl:text:${ctx.scene.id}:${name}`);
     ctx.texts.set(name, text);
     return text;
 }
@@ -3580,7 +3847,7 @@ function getLayer(ctx: SceneCompileContext, objectName: string, zIndex = 0, init
         return existing;
     }
     const layer = new Layer(name, { zIndex, ...(initialProps ?? {}) } as any);
-    setStableElementId(layer, `nl:layer:${ctx.scene.id}:${name}`);
+    setStableElementId(ctx.elementIdBindings, layer, `nl:layer:${ctx.scene.id}:${name}`);
     ((ctx.nlrScene as unknown as { config: { layers: Layer[] } }).config.layers).push(layer);
     ctx.layers.set(name, layer);
     return layer;
@@ -3625,7 +3892,7 @@ async function getVideo(ctx: SceneCompileContext, objectName: string, assetId: s
         return null;
     }
     const video = new Video({ src: url, muted: muted ?? false });
-    setStableElementId(video, `nl:video:${ctx.scene.id}:${name}`);
+    setStableElementId(ctx.elementIdBindings, video, `nl:video:${ctx.scene.id}:${name}`);
     ctx.videos.set(name, video);
     return video;
 }
@@ -4004,6 +4271,21 @@ function createTransition(transition: StoryTransitionRef | undefined, ctx: Scene
                 color: stringProp(props, "color", "#000"),
                 hold: numberProp(props, "hold", 30) / 100,
                 ...throughColorPattern(props),
+            });
+        case "exposure":
+            // Stops, not a multiplier: the gain is `2 ** ev`, so a linear-looking slider stays
+            // perceptually even. Capped at 12 EV (a gain of 4096) because past the point where
+            // every channel has clipped the extra stops buy nothing but a longer white hold.
+            //
+            // `lift` is clamped for the same reason `darkness` is: it lands inside a CSS
+            // `brightness()`, and one out-of-range value makes the browser drop the whole filter
+            // declaration - the transition would go silently inert rather than saturate.
+            return new Exposure({
+                duration,
+                easing,
+                ev: Math.min(12, Math.max(0, numberProp(props, "ev", 4.6))),
+                lift: Math.min(1, Math.max(0, numberProp(props, "lift", 0.04))),
+                hold: Math.min(1, Math.max(0, numberProp(props, "hold", 0) / 100)),
             });
         case "darkness":
             // The incoming image is swapped in at `from` darkness and lifted to `to` - so the default
@@ -4725,11 +5007,17 @@ function stableActionId(storyId: string, sceneId: string, blockId: string, textI
  * the engine constructs them - so left alone they would keep positional names while everything
  * around them stopped moving, and a save would still put a layer's pose onto a background.
  */
-function setStableSceneElementIds(scene: Scene, sceneId: string): void {
-    setStableElementId(scene, `nl:scene:${sceneId}`);
-    setStableElementId(scene.backgroundLayer, `nl:scene:${sceneId}:layer:background`);
-    setStableElementId(scene.displayableLayer, `nl:scene:${sceneId}:layer:displayable`);
-    setStableElementId(scene.background, `nl:scene:${sceneId}:background`);
+function setStableSceneElementIds(sink: string[], scene: Scene, sceneId: string): void {
+    setStableElementId(sink, scene, `nl:scene:${sceneId}`);
+    setStableElementId(sink, scene.backgroundLayer, `nl:scene:${sceneId}:layer:background`);
+    setStableElementId(sink, scene.displayableLayer, `nl:scene:${sceneId}:layer:displayable`);
+    setStableElementId(sink, scene.background, `nl:scene:${sceneId}:background`);
+    // The narrator is the engine's own `Character(null)`, shared by every narration line in every
+    // scene, and nothing here constructs it - so like the three above it would keep a positional
+    // name. It began carrying state in engine 0.26.0, when `Character` started serialising its
+    // name, and a positional name is only harmless while an element reaches no save. Naming a
+    // singleton repeatedly is the same write each time.
+    setStableElementId(sink, Narrator, "nl:character:narrator");
 }
 
 function setStableActionId(action: NlrAction, staticId: string): void {

@@ -5,6 +5,7 @@ import type { PersistentVariableRuntimeTable, SavedVariableRuntimeTable } from "
 import type { GameLocalizationBundle } from "./localization";
 import type { PlayerPreferences } from "./preference";
 import type { AutoSaveConfiguration } from "./saves";
+import type { SaveCompatibilityConfiguration } from "./saveCompatibility";
 import type { SaveSchemaRuntimeTable } from "./saveSchema";
 import type { GameVoiceBundle } from "./voice";
 import type { GameAudioBundle } from "./audio";
@@ -321,6 +322,28 @@ export type DevModeBundle = {
      * which the game app reads as "the defaults" (autosaving is on by default).
      */
     autoSave?: AutoSaveConfiguration;
+    /**
+     * What a save from another build of this game is allowed to do, baked from `.nlproj`
+     * `app.saveCompatibility`. Absent on bundles that predate the feature, which every consumer
+     * reads as the defaults.
+     */
+    saveCompatibility?: SaveCompatibilityConfiguration;
+    /**
+     * The author's own version for this build, copied from `.nlproj` `metadata.version`.
+     *
+     * Stamped into every save this build writes and compared against the stamp on every save it is
+     * asked to load. Studio never interprets it - `1.4.0` and `winter-build` are equally valid, and
+     * both are compared for equality and nothing else. Blank when the project carries no version.
+     */
+    gameVersion?: string;
+    /**
+     * A fingerprint of the story documents this build ships, taken at assembly.
+     *
+     * The engine hashes the story it is running and stamps that into saves, and that hash cannot
+     * answer the question a title screen asks: it has no story mounted. This one travels with the
+     * bundle for exactly that reason. See `@shared/utils/storyContentHash`.
+     */
+    storyHash?: string;
     /**
      * What the player's settings start at, baked from `.nlproj` `app.preferences`.
      *

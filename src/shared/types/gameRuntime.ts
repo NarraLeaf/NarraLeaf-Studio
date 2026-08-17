@@ -1,8 +1,10 @@
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
+import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "./blueprint/pointer";
 import type { NetworkAccessPolicy, NetworkPluginAllowlistEntry } from "./networkAllowlist";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { DevModeBundle } from "./devMode";
-import type { DevModeSaveRecord } from "./devModeSave";
+import type { DevModeSaveHeader, DevModeSaveRecord } from "./devModeSave";
+import type { SaveCompatibilityStamp } from "./saveCompatibility";
 import type {
     GameProgressExportRequest,
     GameProgressExportResult,
@@ -61,11 +63,19 @@ export type PreviewStatus =
  */
 export type GameRuntimeAssetSource = "local" | "remote";
 
+/**
+ * What the pack records about one asset.
+ *
+ * Every field except `relativePath` describes the asset rather than locating it, and a shipped game
+ * is compiled without them: see {@link GameRuntimePackV1.assets}. Code that reads one must therefore
+ * treat it as a hint that may be absent, never as the answer to "what is this file" - the runtime
+ * learns that from the bytes it just read.
+ */
 export type GameRuntimeAssetManifestEntry = {
     id: string;
-    type: string;
-    name: string;
-    source: GameRuntimeAssetSource;
+    type?: string;
+    name?: string;
+    source?: GameRuntimeAssetSource;
     relativePath: string;
     originalRelativePath?: string;
     hash?: string;
@@ -200,8 +210,39 @@ export type GameRuntimePackV1 = {
     };
     entry: GameRuntimeLaunchEntry;
     bundle: DevModeBundle;
+    /**
+     * What the pack says about its assets - which is as close to nothing as each build can manage.
+     *
+     * A protected build ships `items` **empty**. Its store names every asset entry after the asset
+     * id alone, so the bytes are reachable by derivation from an id the caller already holds, and
+     * there is no list to read: an attacker who has replaced the main process still cannot ask the
+     * pack what the game contains. An unprotected build keeps `items`, because nothing is being
+     * protected there and its loose files carry their own names anyway - but even then a
+     * distribution build carries only what locating the bytes needs, never `name`,
+     * `originalRelativePath` or `hash`.
+     *
+     * Preview and test packs keep the manifest whole so the dev-mode surfaces can name what they
+     * report. The runtime never resolves bytes through it either way - a protected store always
+     * derives - so the two cannot drift into "works in preview, broken when shipped".
+     */
     assets: {
         items: Record<string, GameRuntimeAssetManifestEntry>;
+        /**
+         * The ids that name a model bundle rather than a single file. Ids only - no paths, no
+         * names, nothing about what is inside one.
+         *
+         * The renderer needs this because a model mounts from a different URL shape than an ordinary
+         * asset (`.../asset/{id}/`, with the trailing slash, so the engine's `resolveSibling` lands
+         * inside the bundle instead of beside it), and the seam that builds it is synchronous - it
+         * cannot go and ask. Membership is the least that answers "which shape", and an id already
+         * occurs in the story payload that has to ship, so this discloses nothing new.
+         *
+         * The entry file's *path* used to be here too, which meant a shipped game named every
+         * character's model file. It lives in the payload now, at an address derived from the id
+         * (see `gameRuntimeBundleModelEntry`), so it can only be fetched by someone who already
+         * knows which model they want.
+         */
+        modelBundles?: string[];
     };
     /** Runtime entries of the plugins packaged with this game. */
     plugins: GameRuntimePackPluginEntry[];
@@ -237,6 +278,20 @@ export type GameRuntimePackV1 = {
      * is. There is deliberately no default page - a screen nobody authored is worse than no screen.
      */
     endingSurfaceId?: string;
+    /**
+     * What this build needs in order to accept a patch.
+     *
+     * `verificationKey` is the public half of the project's distribution key. It
+     * verifies and cannot produce, so it ships in the clear; a patch that carries
+     * a proof is read only when that proof checks out against it.
+     *
+     * Absent on every build made without a distribution key, and on packs produced
+     * before this field existed. Both mean the same thing: this build reads no
+     * patch that claims to come from anywhere, because it has no way to tell.
+     */
+    addOns?: {
+        verificationKey: string;
+    };
     /**
      * The one string every edition of this title shares, naming the file progress is carried in.
      *
@@ -389,14 +444,27 @@ export type GameRuntimeNetworkConfig = {
 };
 
 export type GameRuntimeSaveBridge = {
-    write(id: string, savedGame: unknown, capture?: string, metadata?: unknown): Promise<void>;
+    write(
+        id: string,
+        savedGame: unknown,
+        capture?: string,
+        metadata?: unknown,
+        /** What produced the save; omitted leaves the record unstamped. */
+        compatibility?: SaveCompatibilityStamp,
+        /** Seconds of play behind the save; omitted leaves the record without a reading. */
+        playtimeSeconds?: number,
+    ): Promise<void>;
     read(id: string): Promise<GameRuntimeSaveRecord | null>;
     listIds(): Promise<string[]>;
+    /** Every slot's header, without any slot's game or capture. See `GameAppSaveStore.listHeaders`. */
+    listHeaders(): Promise<GameRuntimeSaveHeader[]>;
     readPreview(id: string): Promise<string | null>;
     delete(id: string): Promise<{ deleted: boolean }>;
 };
 
 export type GameRuntimeSaveRecord = DevModeSaveRecord;
+
+export type GameRuntimeSaveHeader = DevModeSaveHeader;
 
 /** Unsolicited news about one sidecar, pushed on {@link GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL}. */
 export type GameRuntimeSidecarMessage =
@@ -470,6 +538,18 @@ export type GameRuntimePersistenceBridge = {
 
 export type GameRuntimeNetworkBridge = {
     fetch(request: BlueprintNetworkFetchRequest): Promise<BlueprintNetworkFetchResult>;
+};
+
+/**
+ * Moving the player's real cursor, for the Move Mouse family.
+ *
+ * Desktop only, and honestly so: the web export answers `unsupported` rather than emulating the
+ * act, because a page cannot move the pointer and a drawn stand-in would be a different feature
+ * wearing this one's name. Non-desktop builds are warned about at build time, so an author learns
+ * it from the console rather than from a player.
+ */
+export type GameRuntimePointerBridge = {
+    move(request: BlueprintPointerMoveRequest): Promise<BlueprintPointerMoveResult>;
 };
 
 export type GameRuntimeExternalLinkBridge = {
@@ -580,6 +660,8 @@ export type GameRuntimePreloadBridge = {
      * only an address the pack declares is opened, and the check is made where the act happens.
      */
     externalLink: GameRuntimeExternalLinkBridge;
+    /** The Move Mouse family's request. Present on every shell; the web one always declines. */
+    pointer: GameRuntimePointerBridge;
     /**
      * One Export/Import Progress node request.
      *

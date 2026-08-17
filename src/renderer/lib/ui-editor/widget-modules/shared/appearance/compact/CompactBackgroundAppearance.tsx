@@ -13,10 +13,12 @@ import type {
     AppearanceVariant,
 } from "@shared/types/ui-editor/appearance";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
+import { DEFAULT_GRADIENT_FILL, normalizeGradientFill } from "@shared/types/ui-editor/gradientFill";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
-import { Droplets, Eye, EyeOff } from "lucide-react";
+import { Droplets, Eye, EyeOff, Settings2 } from "lucide-react";
 import { FILL_TYPE_OPTIONS, controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
+import { GradientFillEditor } from "../GradientFillEditor";
 import { formatPercentDisplay, readFiniteNumber } from "./appearanceCompactHelpers";
 import {
     getRowValueForModuleEdit,
@@ -64,6 +66,31 @@ function backgroundColorPickerValue(raw: AppearanceRowValue | undefined): ColorV
     return { hex: parsed.hex, alpha: 1, ...(parsed.link ? { link: parsed.link } : {}) };
 }
 
+/**
+ * The `backgroundColor` motion control, shown but off, while the fill is a gradient.
+ *
+ * Motion interpolates one colour into another, and a gradient is not a colour - two gradients may
+ * differ in kind and in stop count, with no defined path between them. Leaving the live control in
+ * place would let an author configure a duration and an easing that could never run; removing it
+ * would answer their next question ("where did that go?") with nothing at all. So it stays, greyed,
+ * and says why on hover - and the two keys that *do* still move a gradient, `fillOpacity` and
+ * `fillVisible`, keep their own live controls beside it.
+ */
+function GradientMotionUnavailableButton() {
+    const { t } = useTranslation();
+    return (
+        <button
+            type="button"
+            disabled
+            aria-label={t("widgetAppearance.gradient.motionUnavailableAria")}
+            data-tip={t("widgetAppearance.gradient.motionUnavailable")}
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-md border-0 bg-transparent p-0 text-fg-subtle disabled:cursor-not-allowed disabled:opacity-50"
+        >
+            <Settings2 className="w-4 h-4" strokeWidth={1.75} />
+        </button>
+    );
+}
+
 function patchManyBackground(
     variant: AppearanceVariant,
     moduleKeys: readonly string[],
@@ -101,7 +128,12 @@ export function CompactBackgroundAppearance({
     };
 
     const fillTypeRaw = String(getBg("fillType") ?? "color");
-    const fillType: RectangleLikeProps["fillType"] = fillTypeRaw === "image" ? "image" : "color";
+    // A deliberate safety net, widened rather than removed: a row can hold whatever the document on
+    // disk holds, and `"color"` is the reading that always paints something. Add the next fill kind
+    // here as well as to `FILL_TYPE_OPTIONS`, or the option will select a value this collapses away.
+    const fillType: RectangleLikeProps["fillType"] =
+        fillTypeRaw === "image" ? "image" : fillTypeRaw === "gradient" ? "gradient" : "color";
+    const storedGradient = normalizeGradientFill(getBg("gradientFill"));
 
     const imageFillFieldDef: ImageFillFieldDefinition<UIInspectorData> = {
         type: "imageFill",
@@ -150,6 +182,19 @@ export function CompactBackgroundAppearance({
                 fullWidth
                 onChange={next => {
                     const s = String(next) as RectangleLikeProps["fillType"];
+                    if (s === "gradient" && !storedGradient) {
+                        // Seeded in the same commit as the type, exactly as picking an image writes
+                        // `fillType` and `imageFill` together: a gradient row with no gradient in it
+                        // would paint nothing, and the seed is two brand slots, so the author's first
+                        // sight of it is their own project's colours.
+                        commitVariant(
+                            patchManyBackground(variant, moduleKeys, editMode, [
+                                { key: "fillType", value: s },
+                                { key: "gradientFill", value: DEFAULT_GRADIENT_FILL },
+                            ])
+                        );
+                        return;
+                    }
                     patchBg("fillType", s);
                 }}
             />
@@ -186,6 +231,69 @@ export function CompactBackgroundAppearance({
                             <NumericDraftEnhancedInput
                                 committedDisplay={formatPercentDisplay(readFiniteNumber(getBg("fillOpacity"), 1))}
                                 draftResetKey={`${draftResetKey}-bg-fill-op`}
+                                onFiniteNumber={value => {
+                                    const clamped = Math.min(100, Math.max(0, value));
+                                    patchBg("fillOpacity", clamped / 100);
+                                }}
+                                inputMode="decimal"
+                                unit="%"
+                                min={0}
+                                max={100}
+                                precision={null}
+                                leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
+                                className="w-full min-w-0"
+                            />
+                            {motionVisible ? (
+                                <AppearanceFieldMotionButton
+                                    variant={variant}
+                                    setFieldTransition={setFieldTransition}
+                                    groupKey="fillOpacity"
+                                    draftResetKey={draftResetKey}
+                                />
+                            ) : null}
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                        <button
+                            type="button"
+                            onClick={() => patchBg("fillVisible", !Boolean(getBg("fillVisible") ?? true))}
+                            aria-pressed={Boolean(getBg("fillVisible") ?? true)}
+                            aria-label={t("widgetAppearance.background.toggleVisibilityAria")}
+                            className={controlButtonClass(Boolean(getBg("fillVisible") ?? true))}
+                        >
+                            {Boolean(getBg("fillVisible") ?? true) ? (
+                                <Eye className="w-4 h-4" />
+                            ) : (
+                                <EyeOff className="w-4 h-4" />
+                            )}
+                        </button>
+                        {motionVisible ? (
+                            <AppearanceFieldMotionButton
+                                variant={variant}
+                                setFieldTransition={setFieldTransition}
+                                groupKey="fillVisible"
+                                draftResetKey={draftResetKey}
+                            />
+                        ) : null}
+                    </div>
+                </div>
+            )}
+
+            {fillType === "gradient" && (
+                <div className="flex flex-wrap gap-2 items-center min-w-0 mt-2">
+                    <div className="flex items-center gap-1 shrink-0">
+                        <GradientFillEditor
+                            value={storedGradient ?? DEFAULT_GRADIENT_FILL}
+                            draftResetKey={`${draftResetKey}-bg-gradient`}
+                            onChange={next => patchBg("gradientFill", next)}
+                        />
+                        {motionVisible ? <GradientMotionUnavailableButton /> : null}
+                    </div>
+                    <div className="flex-1 min-w-[6rem]">
+                        <div className="flex items-center gap-1 min-w-0">
+                            <NumericDraftEnhancedInput
+                                committedDisplay={formatPercentDisplay(readFiniteNumber(getBg("fillOpacity"), 1))}
+                                draftResetKey={`${draftResetKey}-bg-grad-op`}
                                 onFiniteNumber={value => {
                                     const clamped = Math.min(100, Math.max(0, value));
                                     patchBg("fillOpacity", clamped / 100);

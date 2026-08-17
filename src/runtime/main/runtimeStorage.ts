@@ -1,7 +1,8 @@
 import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
-import type { DevModeSaveRecord } from "@shared/types/devModeSave";
+import { devModeSaveHeaderOf, type DevModeSaveHeader, type DevModeSaveRecord } from "@shared/types/devModeSave";
+import type { SaveCompatibilityStamp } from "@shared/types/saveCompatibility";
 import {
     buildRuntimeSaveRecord,
     normalizeRuntimeJsonValue,
@@ -44,7 +45,14 @@ export class RuntimeSaveStore {
 
     constructor(private readonly userDataDir: string) {}
 
-    public write(id: string, savedGame: unknown, capture?: string, metadata?: unknown): Promise<void> {
+    public write(
+        id: string,
+        savedGame: unknown,
+        capture?: string,
+        metadata?: unknown,
+        compatibility?: SaveCompatibilityStamp,
+        playtimeSeconds?: number,
+    ): Promise<void> {
         return this.track((async () => {
             const normalizedId = normalizeRuntimeSaveId(id);
             const previous = await this.loadRecord(normalizedId);
@@ -53,6 +61,8 @@ export class RuntimeSaveStore {
                 savedGame,
                 capture,
                 metadata,
+                compatibility,
+                playtimeSeconds,
                 previous,
                 now: new Date().toISOString(),
             });
@@ -110,6 +120,22 @@ export class RuntimeSaveStore {
             }
         }
         return [...ids];
+    }
+
+    /**
+     * Every slot's header. Built on {@link listIds} rather than beside it: the records it walks are
+     * already in memory afterwards, so this costs one map over what that call loaded.
+     */
+    public async listHeaders(): Promise<DevModeSaveHeader[]> {
+        const ids = await this.listIds();
+        const headers: DevModeSaveHeader[] = [];
+        for (const id of ids) {
+            const record = await this.loadRecord(id);
+            if (record) {
+                headers.push(devModeSaveHeaderOf(record));
+            }
+        }
+        return headers;
     }
 
     public async readPreview(id: string): Promise<string | null> {

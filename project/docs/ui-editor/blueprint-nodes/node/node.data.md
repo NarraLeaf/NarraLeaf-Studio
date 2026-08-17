@@ -12,7 +12,21 @@ Data 节点用于创建基础常量值，并在严格类型连接规则下提供
 - `blueprint.data.nullLiteral` - 输出 `json`
 - `blueprint.data.colorLiteral` - 输出 `RGBAColor`，节点卡片上使用颜色选择器编辑，并以 8 位 RGBA hex 显示
 - `blueprint.data.vector2dLiteral` - 输出 `Vector2D`，值为固定 `{ x: number, y: number }` schema，JSON Raw 编辑也会校验字段和类型
-- `blueprint.data.rectLiteral` - 输出 `json`，值为固定 `{ x: number, y: number, width: number, height: number }` schema，JSON Raw 编辑也会校验字段和类型
+- `blueprint.data.rectLiteral` - 输出 `Rect`，值为固定 `{ x: number, y: number, width: number, height: number }` schema，JSON Raw 编辑也会校验字段和类型
+
+## Geometry
+
+两种结构化几何值的拆装。在它们之前，`Vector2D` 和 `Rect` 只能整个搬运：目录里没有任何节点能把它们拆开，于是 `Get Position` 读不出来、`Get Bounds` 只能退回 `json` 再用 Get JSON Field 去挖。拆开一个位置是作者的日常动作，所以它是节点而不是一条要背下来的技巧。
+
+- `blueprint.data.makeVector2d` - `x` / `y` 两个 float 输入，输出 `Vector2D`
+- `blueprint.data.breakVector2d` - `Vector2D` 输入，输出 `x` / `y`
+- `blueprint.data.makeRect` - `x` / `y` / `width` / `height` 四个 float 输入，输出 `Rect`
+- `blueprint.data.breakRect` - `Rect` 输入，输出 `x` / `y` / `width` / `height`
+- `blueprint.data.rectCenter` - `Rect` 输入，输出 `Center`（`Vector2D`），到四条边等距的点
+
+`Rect` 是独立引脚类型（不再是裸 `json`）。构造与归一时**负尺寸会折叠进原点**：`Make Rect(40, 60, -30, -40)` 与 `Make Rect(10, 20, 30, 40)` 描述同一块区域，于是任何一个 `Rect` 的右边界都是 `x + width`，消费方不必先问它拿到的是哪个角。
+
+`Rect` 输出可以连接到 `json` 输入（`Vector2D` 不可以）。这是一条迁移许可而不是关于结构化值的通则：`Get Bounds` 和 Rect 常量在 `Rect` 成为独立类型之前发布的就是 `json`，那之前写的图会把矩形直接喂给 Get JSON Field，必须继续可用。反方向不成立——任意对象不是矩形。
 
 ## Collection
 

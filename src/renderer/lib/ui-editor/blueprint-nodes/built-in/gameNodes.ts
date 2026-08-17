@@ -35,6 +35,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PLAYTIME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_TOTAL_PLAYTIME,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
@@ -85,6 +88,7 @@ import {
 
 const execIn: BlueprintNodePinDef = { id: "in", kind: "input", semantic: "exec", label: "In" };
 const execNext: BlueprintNodePinDef = { id: "next", kind: "output", semantic: "exec", label: "Next" };
+const execFailed: BlueprintNodePinDef = { id: "failed", kind: "output", semantic: "exec", label: "Failed" };
 const saveIdIn: BlueprintNodePinDef = {
     id: "id",
     kind: "input",
@@ -944,6 +948,101 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     {
+        /**
+         * How long the running playthrough has been played - the reading a save written now would
+         * record.
+         *
+         * Pure and binding-callable, because it reads a counter this process already holds. Note
+         * what that does and does not buy: a binding re-evaluates when something re-renders, never
+         * on a clock, so a save screen reading this as it opens is right, while a clock on screen
+         * that has to tick needs something driving the re-render - a `Delay` loop on the surface
+         * does it, and costs only the surfaces that asked for one.
+         *
+         * The stopwatch runs only while a playthrough is going and the window is on screen; it is
+         * carried across a load, so this is the time behind the player's progress rather than the
+         * time since they pressed Continue.
+         */
+        type: BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME,
+        displayName: "Get Playtime",
+        category: "Game",
+        keywords: [
+            "game", "playtime", "play", "time", "duration", "elapsed", "played", "session",
+            "hours", "clock", "timer",
+        ],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "playtimeSeconds",
+                kind: "output",
+                semantic: "data",
+                valueType: "float",
+                label: "Seconds",
+            },
+            {
+                id: "playtimeMilliseconds",
+                kind: "output",
+                semantic: "data",
+                valueType: "float",
+                label: "Milliseconds",
+            },
+        ],
+        execute(ctx) {
+            const seconds = requireHostApi(ctx).game.getPlaytime();
+            return {
+                outputValues: {
+                    playtimeSeconds: seconds,
+                    playtimeMilliseconds: seconds * 1000,
+                },
+            };
+        },
+    },
+    {
+        /**
+         * Seconds ever spent in this project, across every playthrough.
+         *
+         * Deliberately not in any save file: it lives in project persistence, so loading an old
+         * save does not un-play the hours that led to it, and starting a new game does not reset
+         * it. It is the number a title screen shows; `Get Playtime` is the one a save slot shows.
+         */
+        type: BLUEPRINT_NODE_TYPE_GAME_GET_TOTAL_PLAYTIME,
+        displayName: "Get Total Playtime",
+        category: "Game",
+        keywords: [
+            "game", "playtime", "total", "all", "lifetime", "cumulative", "play", "time",
+            "duration", "played", "hours",
+        ],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "totalPlaytimeSeconds",
+                kind: "output",
+                semantic: "data",
+                valueType: "float",
+                label: "Seconds",
+            },
+            {
+                id: "totalPlaytimeMilliseconds",
+                kind: "output",
+                semantic: "data",
+                valueType: "float",
+                label: "Milliseconds",
+            },
+        ],
+        execute(ctx) {
+            const seconds = requireHostApi(ctx).game.getTotalPlaytime();
+            return {
+                outputValues: {
+                    totalPlaytimeSeconds: seconds,
+                    totalPlaytimeMilliseconds: seconds * 1000,
+                },
+            };
+        },
+    },
+    {
         type: BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
         displayName: "Is Game Overlay",
         category: "Game",
@@ -1350,17 +1449,33 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     {
+        /**
+         * Put a save back on the stage, or say that it did not happen.
+         *
+         * `Failed` and no `Next`, which is not an oversight in either direction. There is nothing
+         * for a `Next` to run: a load that lands replaces the whole running game, and a row wired
+         * after it would execute against a game that is no longer the one the author wired it into.
+         * A refusal is the opposite - nothing moved, the graph is still standing in the save screen
+         * it was called from, and that is exactly where a title screen wants to put its "this save
+         * could not be opened" line.
+         *
+         * The reasons that end here are all of them: a slot that is gone, a record that will not
+         * read, a story that no longer has what the save names, and the author's own Older saves
+         * policy declining a save from an earlier build. The player has already been shown a line
+         * and the author already has one in the log, so this branch is for what the *title screen*
+         * does next, not for reporting.
+         */
         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
         displayName: "Load Save",
         category: "Game",
-        keywords: ["game", "save", "load", "read", "slot", "storage"],
+        keywords: ["game", "save", "load", "read", "slot", "storage", "failed"],
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
-        pins: [execIn, saveIdIn],
+        pins: [execIn, saveIdIn, execFailed],
         async execute(ctx) {
-            await requireHostApi(ctx).game.loadSave(resolveSaveId(ctx));
-            return { nextPort: undefined };
+            const loaded = await requireHostApi(ctx).game.loadSave(resolveSaveId(ctx));
+            return { nextPort: loaded ? undefined : "failed" };
         },
     },
     {
@@ -1382,6 +1497,9 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         displayName: "List Saves",
         category: "Game",
         keywords: ["game", "save", "list", "ids", "slots", "storage"],
+        // Slots the project's Older saves policy would refuse are not in here. The listing and the
+        // load read the same header and reach the same decision, so every id this hands out is an
+        // id `Load Save` will accept - a save screen never draws a button that cannot work.
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
@@ -1502,6 +1620,80 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
                     savedAt: times?.savedAt ?? 0,
                     createdAt: times?.createdAt ?? 0,
                     exists: Boolean(times),
+                },
+            };
+        },
+    },
+    {
+        /**
+         * How long the playthrough behind one slot was played.
+         *
+         * Its own node rather than two more pins on `Get Save Time`: that node answers *when*, and
+         * a save screen searching for a playtime - in either language the editor speaks - would not
+         * find it under a title that says time. It reads the same store the same way, exactly as
+         * `Get Save Line` does.
+         *
+         * Both units are published because both are wanted and neither is free to derive in a
+         * graph: seconds is what the record stores and what arithmetic wants, milliseconds is what
+         * every Time node takes, so `Format Duration` can be wired straight in with no Multiply
+         * node between.
+         */
+        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PLAYTIME,
+        displayName: "Get Save Playtime",
+        category: "Game",
+        keywords: [
+            "game", "save", "playtime", "play", "time", "duration", "elapsed", "played",
+            "hours", "slot", "length",
+        ],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            saveIdIn,
+            {
+                id: "playtimeSeconds",
+                kind: "output",
+                semantic: "data",
+                valueType: "float",
+                label: "Seconds",
+            },
+            {
+                id: "playtimeMilliseconds",
+                kind: "output",
+                semantic: "data",
+                valueType: "float",
+                label: "Milliseconds",
+            },
+            {
+                id: "recorded",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Recorded",
+            },
+            {
+                id: "exists",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Exists",
+            },
+        ],
+        async execute(ctx) {
+            const playtime = await requireHostApi(ctx).game.getSavePlaytime(resolveSaveId(ctx));
+            return {
+                nextPort: "next",
+                outputValues: {
+                    playtimeSeconds: playtime?.seconds ?? 0,
+                    playtimeMilliseconds: (playtime?.seconds ?? 0) * 1000,
+                    // Two different absences, and a save screen wants to draw them differently:
+                    // `Exists` false is no such slot, `Recorded` false is a real slot from before
+                    // playtime was tracked. Reporting either as zero seconds would be a claim
+                    // about the player rather than about the record.
+                    recorded: playtime?.recorded === true,
+                    exists: Boolean(playtime),
                 },
             };
         },

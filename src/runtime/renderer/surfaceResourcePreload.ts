@@ -18,7 +18,7 @@ export type RuntimeSurfacePreloadResult = {
 
 type CollectContext = {
     document: UIDocument;
-    manifestIds: Set<string>;
+    manifestIds: Set<string> | null;
     assetIds: Set<string>;
     visitedSurfaces: Set<string>;
     visitedElements: Set<string>;
@@ -27,7 +27,15 @@ type CollectContext = {
 
 function addAssetId(ctx: CollectContext, value: unknown): void {
     const assetId = typeof value === "string" ? value.trim() : "";
-    if (!assetId || !ctx.manifestIds.has(assetId)) {
+    if (!assetId) {
+        return;
+    }
+    // A null set means the pack ships no manifest to check against (a protected build), so the
+    // property name is the only evidence that a string is an asset id - which is what it was here
+    // anyway: this walk is keyed on exact property names, and the manifest check only ever caught
+    // references to assets that had been removed. Those now fail their own fetch instead, which
+    // costs one 404 and reports through the same failure list.
+    if (ctx.manifestIds && !ctx.manifestIds.has(assetId)) {
         return;
     }
     ctx.assetIds.add(assetId);
@@ -120,7 +128,7 @@ function collectSurfaceAssetIds(ctx: CollectContext, surfaceId: string): void {
 export function collectRuntimeSurfaceAssetIds(pack: GameRuntimePackV1, surface: UISurface): string[] {
     const ctx: CollectContext = {
         document: pack.bundle.ui.uidoc,
-        manifestIds: new Set(Object.keys(pack.assets.items)),
+        manifestIds: packManifestIds(pack),
         assetIds: new Set(),
         visitedSurfaces: new Set(),
         visitedElements: new Set(),
@@ -137,7 +145,7 @@ export function collectRuntimePackAssetIds(pack: GameRuntimePackV1, firstSurface
     const firstSurfaceAssetIds = collectRuntimeSurfaceAssetIds(pack, firstSurface);
     const ctx: CollectContext = {
         document: pack.bundle.ui.uidoc,
-        manifestIds: new Set(Object.keys(pack.assets.items)),
+        manifestIds: packManifestIds(pack),
         assetIds: new Set(),
         visitedSurfaces: new Set(),
         visitedElements: new Set(),
@@ -159,23 +167,77 @@ export function collectRuntimePackAssetIds(pack: GameRuntimePackV1, firstSurface
     };
 }
 
-function isFontAsset(entry: GameRuntimeAssetManifestEntry | undefined): boolean {
+/**
+ * The manifest ids this pack can be checked against, or null when it ships none.
+ *
+ * A protected build carries an empty `items` on purpose - see `GameRuntimePackV1.assets` - and a
+ * project with no assets at all reaches the same place, which is why "empty" and "absent" answer
+ * the same here: in both cases there is nothing to validate against and nothing lost by not trying.
+ */
+function packManifestIds(pack: GameRuntimePackV1): Set<string> | null {
+    const ids = Object.keys(pack.assets.items);
+    return ids.length > 0 ? new Set(ids) : null;
+}
+
+/** How an asset has to be warmed. The four are warmed by four different browser primitives. */
+type PreloadKind = "font" | "audio" | "video" | "image";
+
+function kindFromMediaType(mediaType: string | null | undefined): PreloadKind | null {
+    const mime = mediaType?.toLowerCase().split(";")[0].trim() ?? "";
+    if (mime.startsWith("font/") || mime === "application/font-woff" || mime === "application/x-font-ttf") {
+        return "font";
+    }
+    if (mime.startsWith("audio/")) {
+        return "audio";
+    }
+    if (mime.startsWith("video/")) {
+        return "video";
+    }
+    if (mime.startsWith("image/")) {
+        return "image";
+    }
+    return null;
+}
+
+function kindFromEntry(entry: GameRuntimeAssetManifestEntry | undefined): PreloadKind | null {
     const type = entry?.type?.toLowerCase() ?? "";
-    const mime = entry?.mimeType?.toLowerCase() ?? "";
     const ext = entry?.ext?.toLowerCase() ?? "";
-    return type.includes("font") || mime.startsWith("font/") || [".ttf", ".otf", ".woff", ".woff2"].includes(ext);
+    if (type.includes("font") || [".ttf", ".otf", ".woff", ".woff2"].includes(ext)) {
+        return "font";
+    }
+    if (type.includes("audio")) {
+        return "audio";
+    }
+    if (type.includes("video")) {
+        return "video";
+    }
+    return kindFromMediaType(entry?.mimeType);
 }
 
-function isAudioAsset(entry: GameRuntimeAssetManifestEntry | undefined): boolean {
-    const type = entry?.type?.toLowerCase() ?? "";
-    const mime = entry?.mimeType?.toLowerCase() ?? "";
-    return type.includes("audio") || mime.startsWith("audio/");
-}
-
-function isVideoAsset(entry: GameRuntimeAssetManifestEntry | undefined): boolean {
-    const type = entry?.type?.toLowerCase() ?? "";
-    const mime = entry?.mimeType?.toLowerCase() ?? "";
-    return type.includes("video") || mime.startsWith("video/");
+/**
+ * Ask the shell what an asset is by requesting one byte of it.
+ *
+ * A shipped protected pack says nothing about its assets, so the only thing that knows a font from
+ * a video is the protocol handler, which sniffs the bytes it serves. A one-byte range request gets
+ * that answer back in a `Content-Type` for the cost of a round trip - and not a wasted one: the
+ * handler reads the entry whole and caches it, so the real request that follows is served from
+ * memory rather than decrypted twice.
+ *
+ * Null on any failure. The caller falls back to warming it as an image, which is what an
+ * unrecognised asset got before any of this existed.
+ */
+async function probePreloadKind(url: string): Promise<PreloadKind | null> {
+    try {
+        const response = await fetch(url, { headers: { Range: "bytes=0-0" } });
+        if (!response.ok && response.status !== 206) {
+            return null;
+        }
+        // The body is unused, but leaving it unread keeps the stream open on some engines.
+        await response.arrayBuffer().catch(() => undefined);
+        return kindFromMediaType(response.headers.get("content-type"));
+    } catch {
+        return null;
+    }
 }
 
 function fontFamilyForAssetId(assetId: string): string {
@@ -240,16 +302,13 @@ async function preloadAsset(input: {
     assetUrl: (assetId: string) => string;
 }): Promise<void> {
     const url = input.assetUrl(input.assetId);
-    if (isFontAsset(input.entry)) {
+    const kind = kindFromEntry(input.entry) ?? await probePreloadKind(url) ?? "image";
+    if (kind === "font") {
         await preloadFont(input.assetId, url);
         return;
     }
-    if (isAudioAsset(input.entry)) {
-        await preloadMedia(url, "audio");
-        return;
-    }
-    if (isVideoAsset(input.entry)) {
-        await preloadMedia(url, "video");
+    if (kind === "audio" || kind === "video") {
+        await preloadMedia(url, kind);
         return;
     }
     await preloadImage(url);

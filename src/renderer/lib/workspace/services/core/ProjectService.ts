@@ -14,6 +14,7 @@ import {
     NetworkConfiguration,
     PlayerPreferences,
     ProjectAppConfiguration,
+    SaveCompatibilityConfiguration,
     SecurityConfiguration,
     SigningConfiguration,
     VoiceConfiguration,
@@ -26,16 +27,20 @@ import {
     normalizeMobileConfiguration,
     normalizeNetworkConfiguration,
     normalizePlayerPreferences,
+    normalizeSaveCompatibilityConfiguration,
     normalizeSecurityConfiguration,
     normalizeSigningConfiguration,
     normalizeVoiceConfiguration,
     normalizeWebOptimizationConfiguration,
+    normalizeDistributionConfiguration,
+    type DistributionConfiguration,
 } from "../../project/configuration";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IProjectService, Services, WorkspaceContext } from "../services";
 import { FileSystemService } from "./FileSystem";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
+import { getInterface } from "@/lib/app/bridge";
 
 /**
  * What the author may hand Studio as an icon. One list for every slot, not one
@@ -353,6 +358,44 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
     }
 
     /**
+     * Mint a distribution key for this project, replacing any it already has.
+     *
+     * The value is produced by the host process and written here verbatim; this
+     * method is the only path by which it enters the manifest, and nothing ever
+     * reads it back out for display. `rotatedAt` is stamped alongside because a
+     * date is the only part of the answer an author can act on - it tells them
+     * which of their shipped builds still match.
+     *
+     * Replacing is destructive in a way that is invisible at the moment it
+     * happens: builds shipped under the previous key will not accept an add-on
+     * produced after this call. The confirmation for that lives with the button,
+     * where the author is, rather than here.
+     */
+    public async rotateDistributionKey(): Promise<ProjectConfig> {
+        const result = await getInterface().distribution.createKey();
+        if (!result.success) {
+            throw new RendererError(result.error ?? "Could not create a distribution key");
+        }
+        const distribution: DistributionConfiguration = {
+            key: result.data.key,
+            rotatedAt: new Date().toISOString(),
+        };
+        return this.updateProjectConfig(config => {
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                distribution,
+            };
+            return { ...config, app };
+        });
+    }
+
+    /** The project's distribution key, or null when it has never been minted. */
+    public getDistributionConfiguration(): DistributionConfiguration | null {
+        return normalizeDistributionConfiguration(this.getProjectConfig().app?.distribution);
+    }
+
+    /**
      * Update the mobile shell settings. Read by the mobile repack, which writes
      * them into the shell config the packaged game reads at startup.
      */
@@ -398,6 +441,40 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 autoSave,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read the effective save-compatibility policy, falling back to the defaults for projects that
+     * predate `app.saveCompatibility`. Saves those projects have already written carry no stamp and
+     * are unaffected either way; the defaults decide what happens to the ones written from here on.
+     */
+    public getSaveCompatibilityConfiguration(): SaveCompatibilityConfiguration {
+        return normalizeSaveCompatibilityConfiguration(this.getProjectConfig().app?.saveCompatibility);
+    }
+
+    /**
+     * Merge a partial patch into the save-compatibility policy. Written by the project Game
+     * settings page and baked into the bundle, where both halves read it: the listing a save
+     * screen shows and the load a player asks for.
+     */
+    public async updateSaveCompatibilityConfiguration(
+        patch: Partial<SaveCompatibilityConfiguration>,
+    ): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const saveCompatibility = normalizeSaveCompatibilityConfiguration({
+                ...normalizeSaveCompatibilityConfiguration(config.app?.saveCompatibility),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                saveCompatibility,
             };
             return {
                 ...config,

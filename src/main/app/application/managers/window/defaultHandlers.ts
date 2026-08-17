@@ -31,6 +31,7 @@ import {
     VcsGetRemoteHandler, VcsSetRemoteHandler, VcsGetSyncStateHandler, VcsPushHandler, VcsSyncHandler, VcsCloneHandler,
     VcsGetServerSessionHandler, VcsSignInHandler, VcsSignOutHandler, VcsTrustAuthorityHandler,
     VcsProbeServerHandler, VcsListServersHandler, VcsAddServerHandler, VcsForgetServerHandler,
+    VcsListServerProjectsHandler, VcsCreateServerProjectHandler,
     VcsGetMergeStateHandler, VcsGetMergeDocumentHandler, VcsResolveConflictsHandler, VcsCompleteMergeHandler, VcsUnresolveConflictsHandler,
     VcsRestartConflictsHandler, VcsAbortMergeHandler,
 } from "./handlers/vcsAction";
@@ -65,6 +66,7 @@ import {
 } from "./handlers/devModeAction";
 import {
     DevModeSaveDeleteHandler,
+    DevModeSaveListHeadersHandler,
     DevModeSaveListIdsHandler,
     DevModeSaveReadHandler,
     DevModeSaveReadPreviewHandler,
@@ -84,6 +86,9 @@ import {
     GameBuildGetStatusHandler,
     GameBuildPreflightHandler,
     GameBuildSelectOutputDirHandler,
+    GameBuildExportPatchHandler,
+    GameBuildSelectPatchFileHandler,
+    GameBuildSelectPatchBaselineHandler,
     GameBuildStartHandler,
 } from "./handlers/gameBuildAction";
 import {
@@ -96,6 +101,7 @@ import {
     SigningMacIdentitiesHandler,
     SigningRemoveHandler,
 } from "./handlers/signingAction";
+import { DistributionCreateKeyHandler } from "./handlers/distributionAction";
 import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./handlers/pluginPermissionAction";
 import { ServerTrustPromptHandler } from "./handlers/serverTrustAction";
 import {
@@ -132,6 +138,7 @@ import {
     BlueprintPersistenceSetValueHandler,
 } from "./handlers/blueprintPersistenceAction";
 import { BlueprintNetworkFetchHandler } from "./handlers/blueprintNetworkAction";
+import { BlueprintPointerMoveHandler } from "./handlers/blueprintPointerAction";
 import {
     BlueprintExternalLinkOpenForPluginHandler,
     BlueprintExternalLinkOpenHandler,
@@ -251,6 +258,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new DevModeSaveWriteHandler(),
         new DevModeSaveReadHandler(),
         new DevModeSaveListIdsHandler(),
+        new DevModeSaveListHeadersHandler(),
         new DevModeSaveReadPreviewHandler(),
         new DevModeSaveDeleteHandler(),
 
@@ -268,12 +276,16 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new GameBuildCancelHandler(),
         new GameBuildGetStatusHandler(),
         new GameBuildSelectOutputDirHandler(),
+        new GameBuildExportPatchHandler(),
+        new GameBuildSelectPatchFileHandler(),
+        new GameBuildSelectPatchBaselineHandler(),
         new GameBuildPreflightHandler(),
 
         // Code-signing credential vault (machine-level; no handler returns a secret)
         new SigningListHandler(),
         new SigningImportHandler(),
         new SigningRemoveHandler(),
+        new DistributionCreateKeyHandler(),
         new SigningInspectHandler(),
         new SigningKeystoreAliasesHandler(),
         new SigningMacIdentitiesHandler(),
@@ -290,6 +302,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
 
         // Blueprint network handler (the Fetch node)
         new BlueprintNetworkFetchHandler(),
+        new BlueprintPointerMoveHandler(),
 
         // Blueprint external link handler (the Open Link node)
         new BlueprintExternalLinkOpenHandler(),
@@ -394,6 +407,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new VcsSignInHandler(),
         new VcsProbeServerHandler(),
         new VcsListServersHandler(),
+        new VcsListServerProjectsHandler(),
+        new VcsCreateServerProjectHandler(),
         new VcsAddServerHandler(),
         new VcsForgetServerHandler(),
         new VcsSignOutHandler(),

@@ -9,7 +9,7 @@ import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
-import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot } from "./gameBuild";
+import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "./gameBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
 import type {
@@ -18,7 +18,9 @@ import type {
     GameProgressImportResult,
 } from "./gameProgress";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
-import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
+import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "./blueprint/pointer";
+import type { DevModeSaveHeader, DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
+import type { SaveCompatibilityStamp } from "./saveCompatibility";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type { PluginPermissionGrantPayload, PluginPermissionGrantResult, PluginPermissionPromptResult } from "./pluginPermissions";
 import type {
@@ -85,7 +87,7 @@ import type {
     VcsRestoreResult,
     VcsPushResult,
     VcsServerProbe,
-    VcsServerSession,
+    VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession,
     VcsRevisionDiffResult,
     VcsStatus,
     VcsSyncResult,
@@ -229,6 +231,7 @@ export enum IPCEventType {
     devModeSaveWrite = "devMode.save.write",
     devModeSaveRead = "devMode.save.read",
     devModeSaveListIds = "devMode.save.listIds",
+    devModeSaveListHeaders = "devMode.save.listHeaders",
     devModeSaveReadPreview = "devMode.save.readPreview",
     devModeSaveDelete = "devMode.save.delete",
     devModeFullscreenGet = "devMode.fullscreen.get",
@@ -250,6 +253,9 @@ export enum IPCEventType {
     gameBuildGetStatus = "gameBuild.getStatus",
     gameBuildSelectOutputDir = "gameBuild.selectOutputDir",
     gameBuildPreflight = "gameBuild.preflight",
+    gameBuildExportPatch = "gameBuild.exportPatch",
+    gameBuildSelectPatchFile = "gameBuild.selectPatchFile",
+    gameBuildSelectPatchBaseline = "gameBuild.selectPatchBaseline",
 
     signingList = "signing.list",
     signingImport = "signing.import",
@@ -257,6 +263,8 @@ export enum IPCEventType {
     signingInspect = "signing.inspect",
     signingKeystoreAliases = "signing.keystoreAliases",
     signingMacIdentities = "signing.macIdentities",
+
+    distributionCreateKey = "distribution.createKey",
 
     pluginBuildSecretSet = "pluginBuildSecret.set",
     pluginBuildSecretAvailable = "pluginBuildSecret.available",
@@ -266,6 +274,7 @@ export enum IPCEventType {
     blueprintPersistenceSetValue = "blueprintPersistence.setValue",
     blueprintPersistenceRemoveValue = "blueprintPersistence.removeValue",
     blueprintNetworkFetch = "blueprintNetwork.fetch",
+    blueprintPointerMove = "blueprintPointer.move",
     blueprintExternalLinkOpen = "blueprintExternalLink.open",
     blueprintExternalLinkOpenForPlugin = "blueprintExternalLink.openForPlugin",
     blueprintProgressWrite = "blueprintProgress.write",
@@ -347,6 +356,8 @@ export enum IPCEventType {
     vcsListServers = "vcs.listServers",
     vcsAddServer = "vcs.addServer",
     vcsForgetServer = "vcs.forgetServer",
+    vcsListServerProjects = "vcs.listServerProjects",
+    vcsCreateServerProject = "vcs.createServerProject",
     vcsTrustAuthority = "vcs.trustAuthority",
     vcsPush = "vcs.push",
     vcsSync = "vcs.sync",
@@ -1315,6 +1326,32 @@ export type IPCVcsEvents = {
         response: { servers: VcsServerSession[] };
     };
     /**
+     * What one server holds, asked of that server.
+     *
+     * **Goes to the network**, and answers with the list or with a coded reason it
+     * has none. The token it is asked with never crosses this boundary in either
+     * direction: the main process sealed it when the server was added.
+     */
+    [IPCEventType.vcsListServerProjects]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string },
+        response: VcsServerProjectsOutcome;
+    };
+    /**
+     * Ask a server to make a project, and get back the one it made.
+     *
+     * The server records it and creates the repository together. Studio never asks
+     * `loreserver` for a repository itself — one made that way is one the server has
+     * no row for, and nobody can open it.
+     */
+    [IPCEventType.vcsCreateServerProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; name: string; description?: string },
+        response: VcsServerProjectOutcome;
+    };
+    /**
      * Sign in to a server named by the token rather than by a project.
      *
      * The token carries the address of the endpoint that issued it and of the server it is
@@ -2144,6 +2181,10 @@ export type IPCDevModeEvents = {
             savedGame: unknown;
             capture?: string;
             metadata?: unknown;
+            /** What produced the save. Absent leaves the record unstamped. */
+            compatibility?: SaveCompatibilityStamp;
+            /** Seconds of play behind the save. Absent leaves the record without a reading. */
+            playtimeSeconds?: number;
         };
         response: void;
     };
@@ -2166,6 +2207,16 @@ export type IPCDevModeEvents = {
         };
         response: {
             ids: string[];
+        };
+    };
+    [IPCEventType.devModeSaveListHeaders]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: DevModeSaveProjectRef;
+        };
+        response: {
+            headers: DevModeSaveHeader[];
         };
     };
     [IPCEventType.devModeSaveReadPreview]: {
@@ -2304,6 +2355,50 @@ export type IPCGameBuildEvents = {
             path: string | null;
         };
     };
+    /**
+     * Produce a patch for a build of this project. Shares the build's session and
+     * console: it compiles the same project into the same staging directory, so
+     * the two cannot run at once and an author watching either watches the same
+     * lines.
+     */
+    [IPCEventType.gameBuildExportPatch]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            entry: GameRuntimeLaunchEntry;
+            request: GamePatchExportRequest;
+        };
+        response: {
+            state: GameBuildStateSnapshot;
+        };
+    };
+    /**
+     * The build a patch is measured against. A file dialog, not a folder one: what an
+     * author has after a build is `resources/app.asar`, and a folder picker cannot
+     * reach inside a package to it.
+     */
+    [IPCEventType.gameBuildSelectPatchBaseline]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            defaultPath?: string;
+        };
+        response: {
+            path: string | null;
+        };
+    };
+    /** Where to write a patch. Answers null when the author closes the dialog. */
+    [IPCEventType.gameBuildSelectPatchFile]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            defaultPath?: string;
+        };
+        response: {
+            path: string | null;
+        };
+    };
     [IPCEventType.gameBuildPreflight]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -2360,6 +2455,22 @@ export type IPCSigningEvents = {
         response: {
             /** False when the id was already gone. */
             removed: boolean;
+        };
+    };
+    /**
+     * Mint a distribution key for a project that has none, or replace the one it
+     * has. Minting happens here rather than in the renderer because the value is
+     * produced by the protection component, which only the host process loads.
+     *
+     * The result is written straight into the project manifest by the caller and
+     * is never shown: what the author sees is the date it was last replaced.
+     */
+    [IPCEventType.distributionCreateKey]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>,
+        response: {
+            key: string;
         };
     };
     /**
@@ -2519,6 +2630,27 @@ export type IPCBlueprintPersistenceEvents = {
         },
         response: {
             result: BlueprintNetworkFetchResult;
+        };
+    };
+    /**
+     * One Move Mouse node request, performed by the main process on the Dev Mode window's behalf.
+     *
+     * Here rather than in the renderer because the renderer cannot do it: positioning the system
+     * cursor is a platform call, and the conversion from a point in the page to a point on the
+     * desktop needs the window's own bounds and the display's scale factor. The renderer sends the
+     * point in the page and nothing else.
+     *
+     * Always a success envelope, like the Fetch channel above: a host that cannot move the cursor
+     * is a result the node branches on, not a Studio malfunction to raise a toast about.
+     */
+    [IPCEventType.blueprintPointerMove]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            request: BlueprintPointerMoveRequest;
+        };
+        response: {
+            result: BlueprintPointerMoveResult;
         };
     };
     /**

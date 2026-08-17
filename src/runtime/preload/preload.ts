@@ -203,10 +203,18 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
     crashPolicy,
     logPath: readGameRuntimeLogPathArg(process.argv),
     save: {
-        write: (id, savedGame, capture, metadata) =>
-            ipcRenderer.invoke("runtime:save:write", { id, savedGame, capture, metadata }) as Promise<void>,
+        write: (id, savedGame, capture, metadata, compatibility, playtimeSeconds) =>
+            ipcRenderer.invoke("runtime:save:write", {
+                id,
+                savedGame,
+                capture,
+                metadata,
+                compatibility,
+                playtimeSeconds,
+            }) as Promise<void>,
         read: id => ipcRenderer.invoke("runtime:save:read", id),
         listIds: () => ipcRenderer.invoke("runtime:save:listIds"),
+        listHeaders: () => ipcRenderer.invoke("runtime:save:listHeaders"),
         readPreview: id => ipcRenderer.invoke("runtime:save:readPreview", id),
         delete: id => ipcRenderer.invoke("runtime:save:delete", id),
     },
@@ -225,6 +233,11 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
         open: request => ipcRenderer.invoke("runtime:external:open", request),
         openForPlugin: (pluginId, request) =>
             ipcRenderer.invoke("runtime:external:openForPlugin", pluginId, request),
+    },
+    // Forwarded because only the main process knows where the window is on the desktop and what the
+    // display's scale factor is. This side sends a point in the page and nothing else.
+    pointer: {
+        move: request => ipcRenderer.invoke("runtime:pointer:move", request),
     },
     // Forwarded for the reason the addresses above are: the process that owns the filesystem is the
     // one that decides which file this is, from the pack's own key. Nothing on this side names it.

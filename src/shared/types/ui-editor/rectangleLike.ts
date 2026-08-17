@@ -1,3 +1,4 @@
+import type { GradientFill } from "@shared/types/ui-editor/gradientFill";
 import type { ImageFill, ImageFillCropPlacement, ImageFillMode } from "@shared/types/ui-editor/imageFill";
 import type { ElementEffectValues } from "@shared/types/ui-editor/effects";
 
@@ -18,7 +19,12 @@ export type RectangleLikeProps = {
     imageFill?: ImageFill | null;
     imageFlipX?: boolean;
     imageFlipY?: boolean;
-    fillType: "color" | "image";
+    /**
+     * Sibling of `imageFill`, selected by `fillType: "gradient"`. Never reaches a colour consumer -
+     * see the file comment on `gradientFill.ts` for why a gradient is a fill and not a colour.
+     */
+    gradientFill?: GradientFill | null;
+    fillType: "color" | "image" | "gradient";
     fillVisible: boolean;
     fillOpacity: number;
     strokeVisible: boolean;

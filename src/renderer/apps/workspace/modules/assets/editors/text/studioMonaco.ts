@@ -232,6 +232,13 @@ export function defineStudioMonacoTheme(): void {
             { token: "number", foreground: warning.slice(1) },
             { token: "attribute.name", foreground: accent.slice(1) },
             { token: "tag", foreground: accent.slice(1) },
+            // The two the story editor's NarraLang view adds. A Monaco theme is global - there is one
+            // of them for the whole window - so a second surface's tokens have to be named here
+            // rather than in a theme of its own, which would repaint every open text tab when it
+            // loaded. Both are structure the eye should be able to skip: the prepositions a modifier
+            // hangs off, and the punctuation that opens a block or splits a speaker from their line.
+            { token: "type", foreground: muted.slice(1) },
+            { token: "delimiter", foreground: subtle.slice(1) },
         ],
         colors: {
             // Transparent on purpose - the host element paints the surface. See `transparent`.

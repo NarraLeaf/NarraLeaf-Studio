@@ -418,6 +418,18 @@ export function GameRuntimeApp() {
     }, [bridge]);
 
     /**
+     * The Move Mouse family's request. Backed by every shell, and answered differently by each: the
+     * desktop preload forwards it to the main process, the web bridge declines because a page
+     * cannot position the pointer. Declining is a result the node branches on, not an error.
+     */
+    const movePointer = useCallback<NonNullable<GameAppHost["movePointer"]>>(async request => {
+        if (!bridge) {
+            return { outcome: "unsupported", error: "Runtime bridge unavailable" };
+        }
+        return bridge.pointer.move(request);
+    }, [bridge]);
+
+    /**
      * The Open Link node's request. Handed to the shell, which decides it: the desktop bridge
      * forwards it to the main process, the web bridge checks it in the page. Neither reads anything
      * this side supplied except the address.
@@ -471,11 +483,11 @@ export function GameRuntimeApp() {
     );
 
     const saveStore = useMemo<GameAppSaveStore>(() => ({
-        write: async (id, savedGame, capture, metadata) => {
+        write: async (id, savedGame, capture, metadata, compatibility, playtimeSeconds) => {
             if (!bridge) {
                 throw new Error("Save Game: runtime bridge is not available");
             }
-            await bridge.save.write(id, savedGame, capture, metadata);
+            await bridge.save.write(id, savedGame, capture, metadata, compatibility, playtimeSeconds);
         },
         read: async id => {
             if (!bridge) {
@@ -501,6 +513,12 @@ export function GameRuntimeApp() {
                 return [];
             }
             return bridge.save.listIds();
+        },
+        listHeaders: async () => {
+            if (!bridge) {
+                return [];
+            }
+            return bridge.save.listHeaders();
         },
     }), [bridge]);
 
@@ -568,6 +586,7 @@ export function GameRuntimeApp() {
             subscribeCloseRequested,
             listPuppetBackendModules,
             networkFetch,
+            movePointer,
             openExternal,
             exportProgress,
             importProgress,
@@ -575,6 +594,7 @@ export function GameRuntimeApp() {
     }, [
         entrySurfaceId,
         networkFetch,
+        movePointer,
         openExternal,
         exportProgress,
         importProgress,

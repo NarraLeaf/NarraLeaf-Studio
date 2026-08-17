@@ -1073,7 +1073,8 @@ interface IStoryService extends IService {
     updateAnimationAsset(animationId: StoryAnimationAssetId, updater: (asset: StoryAnimationAsset) => StoryAnimationAsset): StoryAnimationAsset;
     deleteAnimationAsset(animationId: StoryAnimationAssetId): Promise<boolean>;
     onAnimationsChanged(handler: (index: StoryAnimationIndex) => void): () => void;
-    registerPluginAction(registration: StoryPluginActionRegistration): () => void;
+    registerPluginAction(registration: StoryPluginActionRegistration, ownerPluginId?: string): () => void;
+    getContributingPluginIds(): string[];
     unregisterPluginAction(actionId: string): boolean;
     getPluginAction(actionId: string): StoryPluginActionRegistration | undefined;
     listPluginActions(): StoryPluginActionRegistration[];

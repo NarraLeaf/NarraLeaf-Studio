@@ -51,7 +51,7 @@ export const story = {
             roundtrip: "Round-trip",
             roundtripDetail: "Carries the scene's data, so the file can be imported back.",
             review: "Review",
-            reviewDetail: "Prose only, clean to read and to diff. Cannot be imported.",
+            reviewDetail: "Prose only. Cannot be imported.",
         },
         exported: "Exported to {path}",
         importTitle: "Import Script",
@@ -97,8 +97,92 @@ export const story = {
             shapeMismatchText: "A text line was rewritten as an action line; the text was kept and the edit dropped.",
             duplicateAnchor: "A line was copied; the copies were given new identities.",
             unknownRun: "A formatting marker names formatting this script does not carry.",
-            unplaceableLine: "A new line has nowhere to go here.",
+            unplaceableLine: "A new line cannot be placed here.",
             speakerUnresolved: "This line binds no character, so the original speaker name was kept. Its text still changed.",
+        },
+    },
+    // The NarraLang export: the story as a script, for reading and comparing. One-way, so a row the
+    // script cannot say is reported rather than refused and the file is written either way. `reason`
+    // is keyed by the printer's own codes (see `narralangPrinter`), so a new code fails the parity
+    // test rather than reaching an author as a raw identifier.
+    narralang: {
+        exportScene: "Export as NarraLang…",
+        exportStory: "Export Story as NarraLang…",
+        sceneMissing: "This scene is no longer in the story.",
+        reportTitle: "Rows without a script form",
+        reportSummary: {
+            one: "{count} row has no script form. The file does not carry it in full.",
+            other: "{count} rows have no script form. The file does not carry them in full.",
+        },
+        unresolvedRefNamed: "This row points at {what} that no longer exists.",
+        detail: {
+            asset: "an asset",
+            character: "a character",
+            appearance: "an appearance",
+            motion: "a motion",
+            scene: "a scene",
+            variable: "a variable",
+            variant: "a build variant",
+            camera: "a camera position",
+            // Read back as well as printed: a script that names a stage object nothing created is a
+            // parse failure, and these are the two nouns that failure comes back with.
+            displayable: "something on stage",
+            layer: "a layer",
+        },
+        reason: {
+            blueprintAction: "A blueprint runs this row, and a blueprint has no script form.",
+            blueprintCondition: "A blueprint decides this condition.",
+            blueprintInterpolation: "A blueprint computes a value inside this text.",
+            inlineEvent: "The text carries an event that fires while it is being typed out.",
+            invalidRow: "This row's command could not be read, so it is written as it stands.",
+            customTransform: "This movement is set frame by frame, or carries properties the script does not name.",
+            customTransition: "This transition carries properties the script does not name.",
+            effectProps: "This effect carries properties the script does not name.",
+            unresolvedRef: "This row points at something that no longer exists.",
+            unknownPayload: "This row is of a kind the script does not cover.",
+        },
+        // Why a line of a script could not be read back into the scene. Keyed by the parser's own
+        // codes and fenced by `narralangIo.test.ts` the same way `reason` is, so a new code fails a
+        // test rather than reaching an author as a raw identifier. Separate from `reason` because
+        // they answer different questions - that one is "why can this row not be written down", this
+        // one is "why can this line not be read".
+        parse: {
+            unknownStatement: "This line starts with a keyword and does not read as that statement.",
+            unknownName: "This line names something the project does not have.",
+            unknownNameNamed: "This line names {what} the project does not have.",
+            ambiguousName: "Several things have this name, so it cannot be told which was meant.",
+            ambiguousNameNamed: "Several things have this name, so it cannot be told which {what} was meant.",
+            ambiguousStatement: "Several statements fit this line and cannot be told apart.",
+            badWord: "This statement does not accept this word here.",
+            missingValue: "This statement is missing a required value.",
+            conflictingValues: "This line sets the same thing twice, in two different ways.",
+            badIndent: "This line is indented by part of a level, or skips one.",
+            danglingBranch: "This branch has no condition above it.",
+            badTag: "This line carries a formatting tag that is unknown, or left open.",
+            badExpression: "This expression does not resolve.",
+        },
+        // The scene read and written as a script inside the editor. Editable for a scene the script
+        // can say in full; read-only for good for one it cannot - which is the whole job of `gate`:
+        // an author who is told "not yet" plans differently from one told "not ever".
+        view: {
+            open: "Read as a script",
+            close: "Back to rows",
+            readOnly: "This scene has rows with no script form, so it cannot be written here.",
+            gate: {
+                one: "{count} row has no script form, so this scene will not become editable here.",
+                other: "{count} rows have no script form, so this scene will not become editable here.",
+            },
+            // The one thing the marked lines cannot say for themselves: that nothing has been
+            // written. Stated, not instructed - the marks already say which lines and why.
+            unread: {
+                one: "{count} line cannot be read. The scene is unchanged.",
+                other: "{count} lines cannot be read. The scene is unchanged.",
+            },
+            // The header was read and not obeyed. A script cannot rename a scene: the name is what
+            // the outline and every jump address it by, and a rename arriving as a side effect of
+            // typing would have no undo the author could find. Saying nothing would be worse - they
+            // would believe it had worked.
+            renameElsewhere: "The scene name was not changed. Rename the scene in the outline.",
         },
     },
     // Pasting a wall of prose into a scene. The wizard asks one question — who is speaking — and
@@ -207,7 +291,7 @@ export const story = {
             noDecisions: "No decisions",
             // A path can stop in a scene that is not an ending, and calling that an ending is a lie.
             stopsHere: "stops here",
-            stopsHereTitle: "A path stops here but this is not an ending: it looped back to a visited scene, or an option has nothing written after it",
+            stopsHereTitle: "A path stops here without being an ending. It returned to a visited scene, or an option has nothing written after it",
             diagnostics: {
                 unreachableEndings: {
                     one: "{count} ending no route reaches",
@@ -286,7 +370,7 @@ export const story = {
     },
     targetField: {
         label: "Target",
-        notOnStageTitle: "Not created earlier in this scene, pick an existing displayable",
+        notOnStageTitle: "Not created earlier in this scene. Pick an existing displayable",
         placeholder: "Select displayable…",
         search: "Search stage displayables",
         noMatch: "No match.",
@@ -300,7 +384,7 @@ export const story = {
     layerField: {
         label: "Layer",
         defaultName: "Displayable layer",
-        notOnStageTitle: "No layer with this name is declared earlier in this scene, pick an existing layer",
+        notOnStageTitle: "No layer with this name is declared earlier in this scene. Pick an existing layer",
         hint: "Layer",
         createNew: "Create new layer",
     },
@@ -478,6 +562,7 @@ export const story = {
         dots: "dots",
         black: "black",
         darkness: "darkness",
+        exposure: "exposure",
         none: "none",
         // The transform presets `t=` reaches on a show/hide that the transition words did not name.
         scale: "scale",
@@ -596,10 +681,10 @@ export const story = {
             characterOrName: "Character, or any name",
             characterForm: "One of that character's expressions",
             puppet: {
-                motion: "A motion its runtime knows (blank rests it)",
-                expression: "An expression its runtime knows (blank clears it)",
-                skin: "A skin its runtime knows (blank restores the default)",
-                param: "A numeric parameter of its model, by id",
+                motion: "A motion provided by the runtime (blank returns it to rest)",
+                expression: "An expression provided by the runtime (blank clears it)",
+                skin: "A skin provided by the runtime (blank restores the default)",
+                param: "A numeric parameter of the model, by id",
             },
             scene: "Scene",
             audioTrack: "Audio track",
@@ -839,7 +924,7 @@ export const story = {
      */
     command: {
         background: { label: "Background", detail: "Set the scene background image or color" },
-        jump: { label: "Jump", detail: "Go to another scene, unloading this one. Unlike /goto" },
+        jump: { label: "Jump", detail: "Go to another scene, unloading this one" },
         wait: { label: "Wait", detail: "Pause for seconds, or for a click" },
         nvl: { label: "NVL", detail: "Toggle the stacked dialogue panel" },
         show: { label: "Show", detail: "Show a character or a stage object" },
@@ -876,7 +961,7 @@ export const story = {
         reset: { label: "Reset", detail: "Restore a variable to its default" },
         declareLocal: { label: "Local variable", detail: "Declare a scene variable" },
         if: { label: "If", detail: "Branch on a condition" },
-        menu: { label: "Menu", detail: "Let the player choose" },
+        menu: { label: "Menu", detail: "Present a set of options to the player" },
         repeat: { label: "Repeat", detail: "Run the enclosed actions a set number of times. For a condition instead, use /until" },
         // The detail carries the one thing the token cannot: `until` says when to STOP, so the group
         // runs while the condition is false. Named as a stop condition because that is what it is.
@@ -937,6 +1022,7 @@ export const story = {
         vfx: "Ambience",
         nvl: "NVL",
         blueprint: "Blueprint",
+        plugin: "Plugin",
         effect: "Effect",
         camera: "Camera",
         control: "Control",
@@ -993,6 +1079,10 @@ export const story = {
         vfx: "{operation} ambience {name}",
         nvl: "NVL block",
         blueprint: "Blueprint",
+        // A plugin marker row whose plugin is not loaded, so there is no registration to read a
+        // label out of. Deliberately generic: the only other thing the row holds is the plugin id,
+        // and an id is not a name.
+        pluginAction: "Plugin action",
         effect: "{effect} screen effect",
         cameraOp: {
             pan: "Pan",

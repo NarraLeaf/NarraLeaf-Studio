@@ -1,6 +1,7 @@
 import type { AppearanceModel, ButtonCursorValue } from "@shared/types/ui-editor/appearance";
 import type { ElementEffectValues } from "@shared/types/ui-editor/effects";
 import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
+import type { GradientFill } from "@shared/types/ui-editor/gradientFill";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import type { TextAlign, TextVerticalAlign, TextWrapMode } from "../text/types";
 
@@ -22,10 +23,12 @@ export type ButtonWidgetProps = {
 
     backgroundColor: string;
     /** Flat fill baseline; appearance overlays may override per variant / state. */
-    fillType: "color" | "image";
+    fillType: "color" | "image" | "gradient";
     fillOpacity: number;
     fillVisible: boolean;
     imageFill?: ImageFill | null;
+    /** Sibling of `imageFill`, selected by `fillType: "gradient"`. */
+    gradientFill?: GradientFill | null;
     backgroundImage: string;
     backgroundFit: string;
     borderRadius: number;
@@ -69,6 +72,7 @@ export const defaultButtonWidgetProps: ButtonWidgetProps = {
     fillOpacity: 1,
     fillVisible: true,
     imageFill: undefined,
+    gradientFill: undefined,
     backgroundImage: "",
     backgroundFit: "cover",
     borderRadius: 8,

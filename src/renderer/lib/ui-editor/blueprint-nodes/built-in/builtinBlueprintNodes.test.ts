@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AutoSaveEntry, SaveRecordLine, SaveRecordTimes } from "@shared/types/saves";
+import type { AutoSaveEntry, SaveRecordLine, SaveRecordPlaytime, SaveRecordTimes } from "@shared/types/saves";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
@@ -129,6 +129,10 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET,
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE,
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_UNDO_LAST,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET_FUTURE,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_REDO_NEXT,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_UNDO,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_REDO,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_NEXT,
     BLUEPRINT_NODE_TYPE_GAME_QUIT,
@@ -329,6 +333,12 @@ const OFFLINE_NETWORK_HOST: BlueprintHostApiRuntime["network"] = {
     fetch: async () => ({ outcome: "networkError", status: 0, body: null, error: "offline" }),
 };
 
+/** No host in these tests owns a window, so no cursor can be moved from one. */
+const NO_POINTER_HOST: BlueprintHostApiRuntime["pointer"] = {
+    moveTo: async () => ({ outcome: "unsupported", error: "no window" }),
+    moveToElementCenter: async () => ({ outcome: "unsupported", error: "no window" }),
+};
+
 /** No host in these tests owns a filesystem, so neither progress node can do anything here. */
 const NO_PROGRESS_HOST: BlueprintHostApiRuntime["progress"] = {
     export: async () => ({ outcome: "failed", error: "no progress store" }),
@@ -397,17 +407,24 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     isGameOverlay: () => false,
                     quit: async () => undefined,
                     writeSave: async () => undefined,
-                    loadSave: async () => undefined,
+                    loadSave: async () => true,
                     deleteSave: async () => undefined,
                     listSaveIds: async () => [],
                     getSaveMetadata: async () => ({}),
                     getSaveTimes: async () => null,
                     getSaveLine: async () => null,
+                    getSavePlaytime: async () => null,
+                    getPlaytime: () => 0,
+                    getTotalPlaytime: () => 0,
                     getSavePreview: async () => null,
                     writeAutoSave: async () => undefined,
                     listAutoSaves: async () => [],
                     getHistory: async () => [],
+                    getFuture: async () => [],
                     restoreHistory: async () => undefined,
+                    redoHistory: async () => undefined,
+                    canUndoHistory: () => false,
+                    canRedoHistory: () => false,
                     getNametag: () => null,
                     getSpeakerAvatar: () => null,
                     getSpeakerColor: () => ({ r: 255, g: 255, b: 255, a: 1 }),
@@ -433,6 +450,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                 },
                 sound: SILENT_SOUND_HOST,
                 network: OFFLINE_NETWORK_HOST,
+                pointer: NO_POINTER_HOST,
                 progress: NO_PROGRESS_HOST,
                 devtools: {
                     log: () => undefined,
@@ -546,17 +564,24 @@ function createPageNavigationHostAdapter(
                     isGameOverlay: () => false,
                     quit: async () => undefined,
                     writeSave: async () => undefined,
-                    loadSave: async () => undefined,
+                    loadSave: async () => true,
                     deleteSave: async () => undefined,
                     listSaveIds: async () => [],
                     getSaveMetadata: async () => ({}),
                     getSaveTimes: async () => null,
                     getSaveLine: async () => null,
+                    getSavePlaytime: async () => null,
+                    getPlaytime: () => 0,
+                    getTotalPlaytime: () => 0,
                     getSavePreview: async () => null,
                     writeAutoSave: async () => undefined,
                     listAutoSaves: async () => [],
                     getHistory: async () => [],
+                    getFuture: async () => [],
                     restoreHistory: async () => undefined,
+                    redoHistory: async () => undefined,
+                    canUndoHistory: () => false,
+                    canRedoHistory: () => false,
                     getNametag: () => null,
                     getSpeakerAvatar: () => null,
                     getSpeakerColor: () => ({ r: 255, g: 255, b: 255, a: 1 }),
@@ -582,6 +607,7 @@ function createPageNavigationHostAdapter(
                 },
                 sound: SILENT_SOUND_HOST,
                 network: OFFLINE_NETWORK_HOST,
+                pointer: NO_POINTER_HOST,
                 progress: NO_PROGRESS_HOST,
                 devtools: {
                     log: () => undefined,
@@ -596,14 +622,23 @@ function createGameSaveHostAdapter(options: {
     writtenMetadata?: unknown[];
     writtenScreenshots?: boolean[];
     loadedIds?: string[];
+    /** False makes every load a refusal, which is what `Load Save` routes to its `Failed` pin. */
+    loadSucceeds?: boolean;
     deletedIds?: string[];
     listedIds?: string[];
     metadata?: unknown;
     previews?: Record<string, unknown>;
     saveTimes?: SaveRecordTimes | null;
     saveLine?: SaveRecordLine | null;
+    savePlaytime?: SaveRecordPlaytime | null;
+    playtimeSeconds?: number;
+    totalPlaytimeSeconds?: number;
     history?: Array<Record<string, unknown>>;
+    future?: Array<Record<string, unknown>>;
     restoredIds?: Array<string | undefined>;
+    redoCount?: number[];
+    canUndo?: boolean;
+    canRedo?: boolean;
     autoSaveWrites?: boolean[];
     autoSaves?: AutoSaveEntry[];
     nametag?: string | null;
@@ -688,6 +723,7 @@ function createGameSaveHostAdapter(options: {
                     },
                     loadSave: async (id: string) => {
                         options.loadedIds?.push(id);
+                        return options.loadSucceeds !== false;
                     },
                     deleteSave: async (id: string) => {
                         options.deletedIds?.push(id);
@@ -696,15 +732,24 @@ function createGameSaveHostAdapter(options: {
                     getSaveMetadata: async () => options.metadata ?? {},
                     getSaveTimes: async () => options.saveTimes ?? null,
                     getSaveLine: async () => options.saveLine ?? null,
+                    getSavePlaytime: async () => options.savePlaytime ?? null,
+                    getPlaytime: () => options.playtimeSeconds ?? 0,
+                    getTotalPlaytime: () => options.totalPlaytimeSeconds ?? 0,
                     getSavePreview: async (id: string) => options.previews?.[id] as any ?? null,
                     writeAutoSave: async () => {
                         options.autoSaveWrites?.push(true);
                     },
                     listAutoSaves: async () => options.autoSaves ?? [],
                     getHistory: async () => (options.history ?? []) as any,
+                    getFuture: async () => (options.future ?? []) as any,
                     restoreHistory: async (id?: string) => {
                         options.restoredIds?.push(id);
                     },
+                    redoHistory: async () => {
+                        options.redoCount?.push(1);
+                    },
+                    canUndoHistory: () => options.canUndo === true,
+                    canRedoHistory: () => options.canRedo === true,
                     getNametag: () => options.nametag ?? null,
                     getSpeakerAvatar: () => options.speakerAvatar ?? null,
                     getSpeakerColor: () =>
@@ -750,6 +795,7 @@ function createGameSaveHostAdapter(options: {
                 },
                 sound: SILENT_SOUND_HOST,
                 network: OFFLINE_NETWORK_HOST,
+                pointer: NO_POINTER_HOST,
                 progress: NO_PROGRESS_HOST,
                 devtools: {
                     log: () => undefined,
@@ -2721,6 +2767,114 @@ describe("built-in blueprint nodes", () => {
         })).rejects.toThrow(/entry id is required/);
     });
 
+    it("reads the lines ahead of the play head and steps forward into them", async () => {
+        registerCoreBlueprintNodes();
+
+        // Get Future History is the other side of the play head: the same entry shape as Get
+        // History, so one item template binds both lists, and empty until the player steps back.
+        const futureEntries = [
+            { id: "t3", type: "say", text: "Ahead", character: "Alice", voice: null, selected: null, isPending: false },
+        ];
+        const localsFromFuture: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "getFuture",
+                entries: { main: { start: { nodeId: "future", port: "in" } } },
+                nodes: {
+                    future: { id: "future", type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET_FUTURE, params: {} },
+                    captureEntries: {
+                        id: "captureEntries",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "entries" },
+                    },
+                    captureCount: {
+                        id: "captureCount",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "count" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "future", port: "next" }, to: { nodeId: "captureEntries", port: "in" } },
+                    { from: { nodeId: "future", port: "entries" }, to: { nodeId: "captureEntries", port: "value" } },
+                    { from: { nodeId: "captureEntries", port: "next" }, to: { nodeId: "captureCount", port: "in" } },
+                    { from: { nodeId: "future", port: "count" }, to: { nodeId: "captureCount", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "future", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ future: futureEntries }),
+            blueprintLocals: localsFromFuture,
+        });
+        expect(localsFromFuture.entries).toEqual(futureEntries);
+        expect(localsFromFuture.count).toBe(1);
+
+        // Redo Next History Entry takes no id - it moves the head one line, the way Undo Last does
+        // in the other direction - and continues to `next`.
+        const redoCount: number[] = [];
+        const localsAfterRedo: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "redoNext",
+                entries: { main: { start: { nodeId: "redo", port: "in" } } },
+                nodes: {
+                    redo: { id: "redo", type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_REDO_NEXT, params: {} },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "afterRedo" },
+                    },
+                    literal: {
+                        id: "literal",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                        params: { value: "continued" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "redo", port: "next" }, to: { nodeId: "after", port: "in" } },
+                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "redo", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ redoCount }),
+            blueprintLocals: localsAfterRedo,
+        });
+        expect(redoCount).toEqual([1]);
+        expect(localsAfterRedo.afterRedo).toBe("continued");
+
+        // Can Undo / Can Redo History are the pure pair a backlog's two buttons disable themselves
+        // on, so they answer without an exec pin and without a host round trip.
+        const localsFromCan: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "canMove",
+                entries: { main: { start: { nodeId: "captureUndo", port: "in" } } },
+                nodes: {
+                    canUndo: { id: "canUndo", type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_UNDO, params: {} },
+                    canRedo: { id: "canRedo", type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_REDO, params: {} },
+                    captureUndo: {
+                        id: "captureUndo",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "undoable" },
+                    },
+                    captureRedo: {
+                        id: "captureRedo",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "redoable" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "canUndo", port: "canUndo" }, to: { nodeId: "captureUndo", port: "value" } },
+                    { from: { nodeId: "captureUndo", port: "next" }, to: { nodeId: "captureRedo", port: "in" } },
+                    { from: { nodeId: "canRedo", port: "canRedo" }, to: { nodeId: "captureRedo", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "captureUndo", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ canUndo: true, canRedo: false }),
+            blueprintLocals: localsFromCan,
+        });
+        expect(localsFromCan.undoable).toBe(true);
+        expect(localsFromCan.redoable).toBe(false);
+    });
+
     it("uses class.md palette categories for the new node groups", () => {
         registerCoreBlueprintNodes();
 
@@ -2923,9 +3077,12 @@ describe("built-in blueprint nodes", () => {
                 valueType: item.valueType,
             });
         }
+        // `Failed` and no `Next`: a load that lands has replaced the running game, so there is
+        // nothing left for a `next` to run, while a refusal leaves the save screen standing.
         expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD)?.pins.map(pin => pin.id)).toEqual([
             "in",
             "id",
+            "failed",
         ]);
         const saveGameNode = gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE);
         expect(saveGameNode?.displayName).toBe("Save Game");

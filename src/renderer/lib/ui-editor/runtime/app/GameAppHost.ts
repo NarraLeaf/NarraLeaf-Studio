@@ -1,3 +1,4 @@
+import type { SaveCompatibilityStamp } from "@shared/types/saveCompatibility";
 import type { ReactNode } from "react";
 import type { LiveGame } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
@@ -9,6 +10,7 @@ import type {
     GameProgressImportResult,
 } from "@shared/types/gameProgress";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
+import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintPersistentStoreAdapter } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
@@ -66,16 +68,52 @@ export type GameAppSaveRecord = {
         /** ISO timestamps written by the store; absent on records it could not stamp. */
         createdAt?: string;
         updatedAt?: string;
+        /** What produced the save; absent on records written before the stamp existed. */
+        compatibility?: SaveCompatibilityStamp;
+        /** Seconds of play behind the save; absent on records written before playtime was tracked. */
+        playtimeSeconds?: number;
     };
 };
 
 /** Host-side raw save storage. Game-level logic (serialize, capture, reveal) stays in GameApp. */
 export type GameAppSaveStore = {
-    write(id: string, savedGame: unknown, capture: string | undefined, metadata: unknown): Promise<void>;
+    write(
+        id: string,
+        savedGame: unknown,
+        capture: string | undefined,
+        metadata: unknown,
+        /** What produced the save; omitted leaves the record unstamped. See `saveCompatibility`. */
+        compatibility?: SaveCompatibilityStamp,
+        /**
+         * Seconds of play behind the save; omitted leaves the record without a reading.
+         *
+         * A shell that drops this still type-checks - a trailing optional parameter always does -
+         * so `savePlaytimeForwarding.test` reads the shells as text instead.
+         */
+        playtimeSeconds?: number,
+    ): Promise<void>;
     read(id: string): Promise<GameAppSaveRecord | null>;
     readPreview(id: string): Promise<string | null | undefined>;
     remove(id: string): Promise<void>;
     listIds(): Promise<string[]>;
+    /**
+     * Every slot's header, in one go.
+     *
+     * Separate from {@link listIds} because deciding what a save screen may offer needs more than
+     * an id and much less than a record: reading each slot through {@link read} would carry a whole
+     * serialized playthrough and a base64 screenshot per slot across a process boundary, every time
+     * a menu opens, to look at three fields.
+     */
+    listHeaders(): Promise<GameAppSaveHeader[]>;
+};
+
+/** One slot as a listing sees it. */
+export type GameAppSaveHeader = {
+    id: string;
+    /** Absent on records written before the stamp existed. */
+    compatibility?: SaveCompatibilityStamp;
+    /** Seconds of play behind the save; absent on records written before playtime was tracked. */
+    playtimeSeconds?: number;
 };
 
 /** What the boot preload should do once the NLR environment can mount. */
@@ -186,6 +224,19 @@ export type GameAppHost = {
      * no running game to play through.
      */
     networkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
+    /**
+     * Put the player's real cursor at a point in this window, for the Move Mouse family.
+     *
+     * The point is in CSS pixels from the top-left of the web contents, which is as far as the
+     * renderer can usefully speak: where that lands on the desktop depends on where the window is
+     * and how the display is scaled, and neither is knowable from a page. Every desktop shell hands
+     * it to its main process for that reason, and the web export declines - a page cannot position
+     * the pointer, and drawing a stand-in would be a different feature wearing this one's name.
+     *
+     * Omitted by hosts with nowhere to send it (the workspace story preview). The node then reports
+     * `unsupported`, the same degradation {@link networkFetch} takes.
+     */
+    movePointer?: (request: BlueprintPointerMoveRequest) => Promise<BlueprintPointerMoveResult>;
     /**
      * Open one web address in the player's browser, for the Open Link node.
      *

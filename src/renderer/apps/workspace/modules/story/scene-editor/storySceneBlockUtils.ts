@@ -1,4 +1,5 @@
-import { Aperture, Bookmark, Clock, CornerUpLeft, Eye, FileText, GitBranch, Image, Layers, LogOut, MessageSquare, Move, Music, Puzzle, Route, SeparatorHorizontal, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
+import { Aperture, Blocks,
+    Bookmark, Clock, CornerUpLeft, Eye, FileText, GitBranch, Image, Layers, LogOut, MessageSquare, Move, Music, Puzzle, Route, SeparatorHorizontal, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
 import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
 import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment } from "@shared/types/story";
 import { storyVariableRefKey } from "@shared/types/story";
@@ -543,6 +544,7 @@ const BADGE_ICONS: Record<StoryBlockBadgeId, typeof FileText> = {
     vfx: Wind,
     nvl: FileText,
     blueprint: Puzzle,
+    plugin: Blocks,
     camera: Aperture,
     effect: Sparkles,
     label: Bookmark,

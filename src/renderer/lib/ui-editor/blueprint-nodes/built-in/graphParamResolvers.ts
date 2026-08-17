@@ -60,6 +60,8 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_CENTER,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_MEASURED_RECT,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_DISPLAY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_OPACITY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION,
@@ -89,6 +91,8 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_WRAP_MODE,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_CENTER,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_MEASURED_RECT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION,
@@ -108,6 +112,8 @@ import {
     BLUEPRINT_NODE_TYPE_LAYER_SHOW,
     BLUEPRINT_NODE_TYPE_LAYER_WAIT,
     BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
+    BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO,
+    BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO_ELEMENT,
     BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS,
     BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS,
     BLUEPRINT_NODE_TYPE_SOUND_IS_PLAYING,
@@ -138,7 +144,10 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LATEST,
     BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_LIST,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_REDO,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_UNDO,
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET_FUTURE,
     BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
@@ -149,6 +158,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ_BY_ID,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PLAYTIME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_TOTAL_PLAYTIME,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
@@ -161,6 +173,11 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
     BLUEPRINT_NODE_TYPE_LITERAL_NULL,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
+    BLUEPRINT_NODE_TYPE_DATA_BREAK_RECT,
+    BLUEPRINT_NODE_TYPE_DATA_BREAK_VECTOR2D,
+    BLUEPRINT_NODE_TYPE_DATA_MAKE_RECT,
+    BLUEPRINT_NODE_TYPE_DATA_MAKE_VECTOR2D,
+    BLUEPRINT_NODE_TYPE_DATA_RECT_CENTER,
     BLUEPRINT_NODE_TYPE_LITERAL_RECT,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D,
@@ -306,7 +323,10 @@ import {
     type BlueprintElementRef,
     normalizeBlueprintImageAssetValue,
     normalizeBlueprintRGBAColor,
+    normalizeBlueprintRect,
     normalizeBlueprintVector2D,
+    normalizeRectExtent,
+    blueprintRectCenter,
 } from "@shared/types/blueprint/valueTypes";
 import { blueprintCharacterColorOrDefault } from "@shared/types/blueprint/characterInfo";
 import { RELEASE_APP_TAG } from "@shared/types/appTag";
@@ -435,6 +455,12 @@ function toFiniteNumber(v: unknown): number {
         }
     }
     return NaN;
+}
+
+/** A coordinate that could not be read is 0, the same reading every other geometry pin takes. */
+function toFiniteNumberOrZero(v: unknown): number {
+    const n = toFiniteNumber(v);
+    return Number.isNaN(n) ? 0 : n;
 }
 
 function toInteger(v: unknown, fallback = 0): number {
@@ -1502,6 +1528,26 @@ function resolveGameNodeOutput(
             runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getSpeakerColor(),
         );
     }
+    // Keyed by node type as well as port, because the two playtime readers publish the same shape:
+    // matching on the port alone would give whichever ran first to both.
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME) {
+        const seconds = runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getPlaytime() ?? 0;
+        if (portId === "playtimeSeconds") {
+            return seconds;
+        }
+        if (portId === "playtimeMilliseconds") {
+            return seconds * 1000;
+        }
+    }
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_GET_TOTAL_PLAYTIME) {
+        const seconds = runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getTotalPlaytime() ?? 0;
+        if (portId === "totalPlaytimeSeconds") {
+            return seconds;
+        }
+        if (portId === "totalPlaytimeMilliseconds") {
+            return seconds * 1000;
+        }
+    }
     if (portId === "isInGame") {
         return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isInGame() === true;
     }
@@ -1513,6 +1559,12 @@ function resolveGameNodeOutput(
     }
     if (portId === "count") {
         return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getChoiceCount() ?? 0;
+    }
+    if (portId === "canUndo") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.canUndoHistory() === true;
+    }
+    if (portId === "canRedo") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.canRedoHistory() === true;
     }
     if (portId === "isNvlMode") {
         return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isNvlMode() === true;
@@ -1884,6 +1936,17 @@ function resolveElementDisplayableNodeOutput(
         trackElementDependency(runtime, ref, "layout.height");
         return props.bounds;
     }
+    // No `trackElementDependency` on the measured pair. The dependency index exists to re-evaluate a
+    // binding when a document field changes, and a measurement does not read one: it changes when the
+    // browser lays out, which no document write announces. Registering a field here would claim a
+    // relationship that is not there and would still not make the value refresh on its own.
+    if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_MEASURED_RECT && portId === "rect") {
+        return api.widget.getMeasuredRect(ref.elementId);
+    }
+    if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_CENTER && portId === "center") {
+        const measured = api.widget.getMeasuredRect(ref.elementId);
+        return measured ? blueprintRectCenter(measured) : null;
+    }
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_ROTATION && portId === "rotation") {
         return read("layout.rotation", props.rotation);
     }
@@ -1951,6 +2014,8 @@ function resolveSelfDisplayableNodeOutput(
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION ||
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE ||
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS ||
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_MEASURED_RECT ||
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_CENTER ||
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_ROTATION ||
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY ||
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE ||
@@ -1979,6 +2044,13 @@ function resolveSelfDisplayableNodeOutput(
     }
     if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS && portId === "bounds") {
         return props.bounds;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_MEASURED_RECT && portId === "rect") {
+        return api.widget.getMeasuredRect(elementId);
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_CENTER && portId === "center") {
+        const measured = api.widget.getMeasuredRect(elementId);
+        return measured ? blueprintRectCenter(measured) : null;
     }
     if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_ROTATION && portId === "rotation") {
         return props.rotation;
@@ -2580,6 +2652,43 @@ function resolveDataNodeOutput(
         const value = resolveInput(graph, nodeId, "value", params, blueprintLocals, depth, runtime);
         return Array.isArray(value) ? value.length : 0;
     }
+    // The geometry make/break family, placed above the `result` guard because these are the only
+    // Data nodes that publish on named pins: a Break has four of them, and a Make answers on
+    // `value` so it reads the same way the literals do.
+    if (type === BLUEPRINT_NODE_TYPE_DATA_MAKE_VECTOR2D && portId === "value") {
+        return {
+            x: toFiniteNumberOrZero(resolveInput(graph, nodeId, "x", params, blueprintLocals, depth, runtime)),
+            y: toFiniteNumberOrZero(resolveInput(graph, nodeId, "y", params, blueprintLocals, depth, runtime)),
+        };
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DATA_BREAK_VECTOR2D && (portId === "x" || portId === "y")) {
+        const vector = normalizeBlueprintVector2D(
+            resolveInput(graph, nodeId, "value", params, blueprintLocals, depth, runtime),
+        );
+        return portId === "x" ? vector.x : vector.y;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DATA_MAKE_RECT && portId === "value") {
+        return normalizeRectExtent(
+            toFiniteNumberOrZero(resolveInput(graph, nodeId, "x", params, blueprintLocals, depth, runtime)),
+            toFiniteNumberOrZero(resolveInput(graph, nodeId, "y", params, blueprintLocals, depth, runtime)),
+            toFiniteNumberOrZero(resolveInput(graph, nodeId, "width", params, blueprintLocals, depth, runtime)),
+            toFiniteNumberOrZero(resolveInput(graph, nodeId, "height", params, blueprintLocals, depth, runtime)),
+        );
+    }
+    if (
+        type === BLUEPRINT_NODE_TYPE_DATA_BREAK_RECT &&
+        (portId === "x" || portId === "y" || portId === "width" || portId === "height")
+    ) {
+        const rect = normalizeBlueprintRect(
+            resolveInput(graph, nodeId, "value", params, blueprintLocals, depth, runtime),
+        );
+        return rect[portId];
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DATA_RECT_CENTER && portId === "center") {
+        return blueprintRectCenter(
+            normalizeBlueprintRect(resolveInput(graph, nodeId, "value", params, blueprintLocals, depth, runtime)),
+        );
+    }
     if (portId !== "result") {
         return undefined;
     }
@@ -2817,7 +2926,7 @@ function resolveSelfOutput(
             return normalizeBlueprintVector2D(selfNode.params?.value);
         }
         if (selfNode.type === BLUEPRINT_NODE_TYPE_LITERAL_RECT) {
-            return toJsonSafeValue(selfNode.params?.value ?? { x: 0, y: 0, width: 0, height: 0 });
+            return normalizeBlueprintRect(selfNode.params?.value);
         }
         if (selfNode.type === BLUEPRINT_NODE_TYPE_LITERAL_JSON) {
             return selfNode.params?.value ?? null;
@@ -2847,6 +2956,7 @@ function resolveSelfOutput(
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA ||
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW ||
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET_FUTURE ||
             selfNode.type === BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN ||
             // Sound transport: Play Sound publishes `handle`, Is Sound Playing
             // publishes `isPlaying`.
@@ -2898,6 +3008,17 @@ function resolveSelfOutput(
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
+    // Get Save Playtime, separate for the same reason as Get Save Time: `exists` is shared with it,
+    // and joining either list would hand one node's outputs to the other.
+    if (
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PLAYTIME &&
+        (portId === "playtimeSeconds"
+            || portId === "playtimeMilliseconds"
+            || portId === "recorded"
+            || portId === "exists")
+    ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
     // The project's declared save fields, published by Get Save Metadata onto one pin each. Matched
     // by prefix rather than by name because the names are the author's: the set changes whenever a
     // field is declared, and a fixed list here would go stale the moment one is.
@@ -2918,6 +3039,15 @@ function resolveSelfOutput(
     // Play Sound hands its handle to the transport nodes that follow, so the handle has to survive
     // the hop through the node output store the same way an animation token does.
     if (selfNode.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY && portId === "handle") {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // The Move Mouse pair publishes why it failed, on the same `error` pin and kept out of the
+    // cross-product list for the same reason Open Link is.
+    if (
+        (selfNode.type === BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_POINTER_MOVE_TO_ELEMENT) &&
+        portId === "error"
+    ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
     // Open Link publishes why it failed. Kept out of the cross-product list for the reason the
@@ -3084,9 +3214,13 @@ function resolveSelfOutput(
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_TOTAL_PLAYTIME ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_UNDO ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_CAN_REDO ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ ||
         GAME_PREFERENCE_OUTPUT_KEYS[selfNode.type]
     ) {
@@ -3312,7 +3446,7 @@ export function resolveDataPinValue(
     } else if (src.type === BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D && edge.from.port === "value") {
         value = normalizeBlueprintVector2D(src.params?.value);
     } else if (src.type === BLUEPRINT_NODE_TYPE_LITERAL_RECT && edge.from.port === "value") {
-        value = toJsonSafeValue(src.params?.value ?? { x: 0, y: 0, width: 0, height: 0 });
+        value = normalizeBlueprintRect(src.params?.value);
     } else if (src.type === BLUEPRINT_NODE_TYPE_LITERAL_JSON && edge.from.port === "value") {
         value = src.params?.value ?? null;
     } else if (isElementBindingOutput(src.type, edge.from.port)) {
