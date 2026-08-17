@@ -115,6 +115,7 @@ help system:
 | `SettingsGroup helpTopic` / `trailing={<HelpTrigger/>}` | one part of a project sub-page |
 | `ProjectSubPage helpTopic` | a whole sub-page that is one subject end to end |
 | `Modal helpTopic` | `F1` in a dialog, and a `?` beside its close button |
+| `dialogs.show({helpTopic})` | the same, for a dialog opened through the UI service rather than mounted as a component |
 | `data-help-topic` on an editor's root | `F1` anywhere in that editor |
 
 Draw a visible `?` only where the surface decides something the author cannot read off the controls

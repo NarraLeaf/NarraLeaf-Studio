@@ -4,6 +4,7 @@ import { useWorkspace } from "../../context";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
+import { HelpTrigger, requestContextHelp } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 
 /**
@@ -58,6 +59,7 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
                 role="dialog"
                 aria-modal="true"
                 className="relative bg-surface-overlay border border-edge rounded-lg shadow-2xl max-h-[90vh] overflow-hidden animate-scale-in"
+                data-help-topic={dialog.helpTopic}
                 style={{
                     width: dialog.width ?? 500,
                     height: dialog.height,
@@ -67,6 +69,15 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
                         event.preventDefault();
                         event.stopPropagation();
                         onClose();
+                        return;
+                    }
+                    // Answered here rather than by the global `F1` binding: `KeybindingService`
+                    // drops every global key while a dialog is open, so a dialog that carries a
+                    // topic would have a `?` the mouse can reach and no key that reaches it.
+                    if (event.key === "F1" && dialog.helpTopic) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        requestContextHelp();
                         return;
                     }
                     if (event.key !== "Enter") {
@@ -82,8 +93,11 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
                 }}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-edge">
-                    <h2 className="text-lg font-semibold text-fg">{dialog.title}</h2>
+                <div className="group/help flex items-center justify-between gap-1 px-6 py-4 border-b border-edge">
+                    {/* `flex-1` so the `?` and the close button stay together on the right instead
+                        of being spread apart, matching the header `Modal` draws. */}
+                    <h2 className="min-w-0 flex-1 text-lg font-semibold text-fg">{dialog.title}</h2>
+                    {dialog.helpTopic && <HelpTrigger topic={dialog.helpTopic} />}
                     {dialog.closable && (
                         <button
                             onClick={onClose}

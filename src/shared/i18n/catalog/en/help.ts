@@ -419,6 +419,11 @@ export const help = {
                 "A test runs the game and reports whether a condition held: that an ending can be reached, that "
                 + "nothing failed on the way.\n"
                 + "\n"
+                + "- The list holds Studio's own tests and the tests plugins add. A windowed test opens a game "
+                + "window, a headless one runs without one.\n"
+                + "- A test that cannot start now stays in the list, greyed, with the reason beside it.\n"
+                + "- Starting a test closes the picker. Its lines appear in the console, and the report opens "
+                + "when the run finishes.\n"
                 + "- A test reports passed, failed or skipped. Cancelled and errored mean the run did not finish, "
                 + "not that the game is wrong.\n"
                 + "- The report keeps the last run's findings until the test runs again.",
@@ -528,6 +533,24 @@ export const help = {
                 + "- An unsigned build runs, but the first launch shows a security prompt on Windows and macOS.\n"
                 + "- Icons come from the project's icon page. A platform whose icon has not been generated builds "
                 + "with the NarraLeaf icon.",
+        },
+        patches: {
+            title: "Patches",
+            body:
+                "A patch carries later changes to a game a player already has: the story, the pages, the "
+                + "translations, the voice lines and the assets. Application files and the engine version stay "
+                + "as the installed build has them, and a patch does not replace them.\n"
+                + "\n"
+                + "- A patch opens only in builds of the variant it was made for, and only in builds made after "
+                + "the project was given a distribution key.\n"
+                + "- Naming the build the patch is for carries only what differs from it. Leaving that field "
+                + "empty carries the whole game.\n"
+                + "- The export writes a folder named patch. The player puts that folder in the game's own "
+                + "folder, and deleting it returns the game to the installed build.\n"
+                + "- The checks that run before a build run before an export as well, and both report into the "
+                + "build console.\n"
+                + "- Naming the earlier build also reports which saves made against it stop loading once this "
+                + "patch is installed. That report is a warning and does not stop the export.",
         },
         // `main` is the release variant's name, and it is the same word in every language: a story
         // expression compares it as a string inside the shipped game, where no catalog is reached.
