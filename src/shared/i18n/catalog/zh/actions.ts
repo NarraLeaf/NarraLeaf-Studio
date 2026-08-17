@@ -22,7 +22,8 @@ export const actions = {
         menu: "运行与构建",
         // 正式构建：折进下拉框，给版本控制控件腾出位置。
         productionBuild: "正式构建…",
-            exportPatch: "导出补丁",
+        // 和「正式构建」并列，因为它们是同一类事：产出一个文件而不是把什么跑起来。
+        exportPatch: "导出补丁…",
         runAs: "运行为",
     },
     file: {

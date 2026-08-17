@@ -127,3 +127,35 @@ export class GameBuildSelectPatchFileHandler extends IPCHandler<IPCEventType.gam
         });
     }
 }
+
+/**
+ * Pick the build a patch is measured against.
+ *
+ * A file dialog rather than a folder one, because what an author has after a build
+ * is a package - `resources/app.asar` - and no folder picker can reach inside one.
+ * An unpacked app directory still works when it is typed or pasted into the field;
+ * this is about what browsing can find.
+ */
+export class GameBuildSelectPatchBaselineHandler extends IPCHandler<IPCEventType.gameBuildSelectPatchBaseline> {
+    readonly name = IPCEventType.gameBuildSelectPatchBaseline;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { defaultPath }: IPCEvents[IPCEventType.gameBuildSelectPatchBaseline]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.gameBuildSelectPatchBaseline]["response"]>> {
+        return this.tryUse(async () => {
+            const result = await dialog.showOpenDialog(window.win, {
+                title: "Select the build this patch is for",
+                buttonLabel: "Select",
+                properties: ["openFile"],
+                filters: [{ name: "Packaged game", extensions: ["asar"] }],
+                ...(defaultPath ? { defaultPath } : {}),
+            });
+            if (result.canceled || result.filePaths.length === 0) {
+                return { path: null };
+            }
+            return { path: result.filePaths[0] };
+        });
+    }
+}
