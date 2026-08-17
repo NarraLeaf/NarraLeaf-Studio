@@ -31,11 +31,10 @@ export type UsePlaytimeOptions = {
     /**
      * Write a value into project persistence, durably.
      *
-     * Durably is the whole requirement, and the scope bridge offers two setters that differ only in
-     * that: `persistenceSet` updates an in-memory map and notifies subscribers, `persistenceSetAsync`
-     * also hands the value to the store. A total written through the first reads back correctly for
+     * Durably is the whole requirement: a total that lives only in memory reads back correctly for
      * the life of the window and is gone the moment it closes, which is indistinguishable from
-     * working right up until the player relaunches. It shipped that way once.
+     * working right up until the player relaunches. It shipped that way once, back when the scope
+     * bridge had a second setter that did not reach the store; it has one setter now.
      */
     persistenceSet: (key: string, value: unknown) => void;
     /** Tick spacing; tests shorten it. */

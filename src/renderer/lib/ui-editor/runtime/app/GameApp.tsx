@@ -331,7 +331,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                     : [];
                 const matched = matchSystemLocale(localization.locales, candidates);
                 if (!cancelled && matched && matched !== localization.sourceLocale) {
-                    core.scopeBridge.persistenceSet(LOCALE_STORAGE_KEY, matched);
+                    // Session-only: re-derived from `navigator` on every boot, so storing it
+                    // would pin a guess and stop the game following an OS language change. An
+                    // explicit choice goes through the Set Language node, which does store.
+                    core.scopeBridge.persistenceSetSessionOnly(LOCALE_STORAGE_KEY, matched);
                 }
             } catch {
                 // Non-fatal: the game falls back to the source language.
@@ -523,13 +526,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         // lands before it resolves to nothing, and the total simply starts this session from zero;
         // a write that early has nothing to write, because nothing has been played yet.
         persistenceGetAsync: async key => core?.scopeBridge.persistenceGetAsync(key),
-        // `persistenceSetAsync`, never `persistenceSet`: the latter updates the bridge's in-memory
-        // map and notifies subscribers without ever reaching the store, so a total written through
-        // it survives exactly as long as the window does. Awaiting it here would make the caller
-        // async for no gain - the clock has already counted the seconds, and a failed write only
-        // means the next flush carries them.
+        // Not awaited: the value is readable the moment this returns, the clock has already
+        // counted the seconds, and a failed disk write only means the next flush carries them.
         persistenceSet: (key, value) => {
-            void core?.scopeBridge.persistenceSetAsync(key, value);
+            void core?.scopeBridge.persistenceSet(key, value);
         },
     });
     const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
@@ -1079,7 +1079,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (!core) {
             throw new Error("Clear Text Read: runtime is not ready");
         }
-        await core.scopeBridge.persistenceSetAsync(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
+        await core.scopeBridge.persistenceSet(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
         core.scopeBridge.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, false);
     }, [core]);
 
@@ -1341,11 +1341,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 progressVariableDefs().persistent,
                 imported.persistentVariables,
                 (storageKey, value) => {
-                    // Both halves of the write, as the story compiler's own persistence bridge does
-                    // it: the in-memory map so the very next read sees it, and the host store so it
-                    // survives the session.
-                    core.scopeBridge.persistenceSet(storageKey, value);
-                    void core.scopeBridge.persistenceSetAsync(storageKey, value);
+                    void core.scopeBridge.persistenceSet(storageKey, value);
                 },
             );
         }
@@ -2256,14 +2252,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             persistence: core
                 ? {
                       get: key => core.scopeBridge.persistenceGet(key),
-                      // Both halves of the write: the in-memory map so the very next story read
-                      // sees it, and the host store so it survives the session. Without the second
-                      // half a story-written persistent variable was invisible to every blueprint,
-                      // because `Get Persistent` reads through the adapter rather than the map.
-                      set: (key, value) => {
-                          core.scopeBridge.persistenceSet(key, value);
-                          return core.scopeBridge.persistenceSetAsync(key, value);
-                      },
+                      set: (key, value) => core.scopeBridge.persistenceSet(key, value),
                   }
                 : undefined,
             localization: bundle.localization && core
@@ -2425,7 +2414,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             preference: (game as { preference?: PreferenceStoreLike }).preference,
             defaults: bundle.preferences,
             read: key => core.scopeBridge.persistenceGetAsync(key),
-            write: (key, value) => core.scopeBridge.persistenceSetAsync(key, value),
+            write: (key, value) => core.scopeBridge.persistenceSet(key, value),
             log: (level, message) => host.log(level, message),
         });
         // The player's own volumes, restored on top of the author's declaration and written back on
@@ -2436,7 +2425,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         audioBusPersistenceRef.current = await attachAudioBusPersistence({
             mixer: (game as { audioBuses?: Parameters<typeof attachAudioBusPersistence>[0]["mixer"] }).audioBuses,
             read: key => core.scopeBridge.persistenceGetAsync(key),
-            write: (key, value) => core.scopeBridge.persistenceSetAsync(key, value),
+            write: (key, value) => core.scopeBridge.persistenceSet(key, value),
             onVolumeChange: () => preferenceListenersRef.current.forEach(listener => listener()),
             log: (level, message) => host.log(level, message),
         });
@@ -3716,17 +3705,12 @@ export function GameApp(props: GameAppProps): ReactNode {
                     textReadTrackerRef.current = createTextReadTracker({
                         ...createNlrDialogReadHooks(dialogGameState),
                         persistenceGetAsync: key => core.scopeBridge.persistenceGetAsync(key),
-                        // Both halves of the write, as the story compiler's persistence bridge
-                        // does it: the in-memory map so the next read in this session sees it, and
-                        // the host store so it survives the session. The read set is *only* useful
-                        // across sessions - within one the tracker answers from its own Set - so
-                        // the second half is the entire point of persisting it at all. Without it
-                        // the record was written, read back correctly all session, and gone on
-                        // relaunch: skip-read-text skipped nothing and every "has the player heard
-                        // this line" answered no, on every playthrough after the first.
+                        // The read set is only useful across sessions - within one the tracker
+                        // answers from its own Set - so reaching the store is the entire point of
+                        // persisting it. It once did not, and skip-read-text skipped nothing on
+                        // every playthrough after the first.
                         persistenceSet: (key, value) => {
-                            core.scopeBridge.persistenceSet(key, value);
-                            void core.scopeBridge.persistenceSetAsync(key, value);
+                            void core.scopeBridge.persistenceSet(key, value);
                         },
                         setMirror: value => core.scopeBridge.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, value),
                         resolveReadKey: createReadKeyResolver(nlrSession?.compiled.actionIdBindings ?? []),
