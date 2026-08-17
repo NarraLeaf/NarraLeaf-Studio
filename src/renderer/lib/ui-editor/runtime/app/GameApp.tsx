@@ -523,7 +523,14 @@ export function GameApp(props: GameAppProps): ReactNode {
         // lands before it resolves to nothing, and the total simply starts this session from zero;
         // a write that early has nothing to write, because nothing has been played yet.
         persistenceGetAsync: async key => core?.scopeBridge.persistenceGetAsync(key),
-        persistenceSet: (key, value) => core?.scopeBridge.persistenceSet(key, value),
+        // `persistenceSetAsync`, never `persistenceSet`: the latter updates the bridge's in-memory
+        // map and notifies subscribers without ever reaching the store, so a total written through
+        // it survives exactly as long as the window does. Awaiting it here would make the caller
+        // async for no gain - the clock has already counted the seconds, and a failed write only
+        // means the next flush carries them.
+        persistenceSet: (key, value) => {
+            void core?.scopeBridge.persistenceSetAsync(key, value);
+        },
     });
     const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
     const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
