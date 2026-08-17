@@ -4,6 +4,7 @@ import { FocusManager } from "./FocusManager";
 import { FocusArea } from "./types";
 import { Dialog, DialogButton, QuickPickItem, QuickPickOptions, InputBoxOptions } from "./types";
 import { translate } from "@/lib/i18n";
+import type { HelpTopicId } from "@/lib/help";
 
 /**
  * Dialog Service
@@ -144,6 +145,8 @@ export class DialogService {
         width?: string | number;
         height?: string | number;
         onClose?: () => void;
+        /** Draws a `?` beside the close button and answers `F1` inside the dialog. */
+        helpTopic?: HelpTopicId;
     }): string {
         return this.createDialog(options);
     }
@@ -287,9 +290,13 @@ export class DialogService {
         width?: string | number;
         height?: string | number;
         onClose?: () => void;
+        helpTopic?: HelpTopicId;
     }): string {
         const id = `dialog-${this.nextId++}`;
-        
+
+        // Field by field rather than by spread, so a caller cannot put arbitrary keys into the
+        // store. Anything added to `Dialog` has to be carried here as well, or it reaches the
+        // dialog typed and disappears without a word.
         const dialog: Dialog = {
             id,
             title: options.title,
@@ -300,6 +307,7 @@ export class DialogService {
             width: options.width,
             height: options.height,
             onClose: options.onClose,
+            helpTopic: options.helpTopic,
         };
 
         this.store.openDialog(dialog);
