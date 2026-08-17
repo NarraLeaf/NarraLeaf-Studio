@@ -57,7 +57,7 @@ export const project = {
         mobile: "Mobile",
     },
     distribution: {
-        description: "Kept with the project, so everyone who builds it builds under the same key. A build accepts only patches made under the key it was built with.",
+        description: "Kept with the project and shared by everyone who builds it. A build accepts only patches made under the key it was built with.",
         absent: "No key yet.",
         rotatedAt: "Last replaced {date}.",
         createAction: "Create",
@@ -89,7 +89,7 @@ export const project = {
         // line goes into the binary's file properties, this goes into a file players can open.
         copyrightTextLabel: "Copyright Notice",
         copyrightTextPlaceholder: "Fonts, music and assets used, and who they belong to…",
-        copyrightTextHelper: "Shipped beside the game as COPYRIGHT.txt. Left empty, no file is shipped.",
+        copyrightTextHelper: "Shipped beside the game as COPYRIGHT.txt. No file is shipped when this is empty.",
         descriptionPlaceholder: "Describe your project…",
         required: "Required",
     },
@@ -97,8 +97,8 @@ export const project = {
     // part is a setting, and it names no storefront, because which of them to hand this to is the
     // author's decision. The description says what the paths are, and stops there.
     userData: {
-        description: "Where a shipped game keeps the player's saves and progress. The folder is named "
-            + "after the identifier, so renaming the application leaves it where it is.",
+        description: "Where a shipped game keeps the player's saves and progress. Renaming the "
+            + "application does not move it.",
         copy: "Copy locations",
         copied: "Locations copied.",
         copyFailed: "Could not copy the locations.",
@@ -190,9 +190,9 @@ export const project = {
     },
     game: {
         autoSaveTitle: "Automatic saving",
-        autoSaveDescription: "Save the playthrough on a timer, so a crash loses at most one interval.",
+        autoSaveDescription: "Saves the playthrough on a timer. A crash loses at most one interval.",
         autoSaveIntervalTitle: "Save every",
-        autoSaveIntervalDescription: "How often to check. Nothing is written unless the story advanced.",
+        autoSaveIntervalDescription: "How often the playthrough is saved. Nothing is written unless the story advanced.",
         autoSaveIntervalUnit: "s",
         autoSaveSlotsTitle: "Autosaves kept",
         autoSaveSlotsDescription: "Autosaves rotate through this many slots, oldest first. They are separate from the player's own save slots.",
@@ -237,15 +237,15 @@ export const project = {
         },
         autoForward: {
             title: "Auto forward",
-            description: "Move on by itself once a line has finished displaying.",
+            description: "Advances once a line has finished displaying.",
         },
         showDialog: {
             title: "Show the dialogue box",
-            description: "When off, the game starts with the dialogue box hidden, in the state the player's hide-UI toggle produces.",
+            description: "When off, the game starts with the dialogue box hidden.",
         },
         skip: {
             title: "Allow skipping",
-            description: "Off disables the skip key outright.",
+            description: "When off, the skip key does nothing.",
         },
         skipReadText: {
             title: "Skip read text only",
@@ -261,7 +261,7 @@ export const project = {
         },
         globalVolume: {
             title: "Master volume",
-            description: "Everything the game plays.",
+            description: "Applies to all audio.",
         },
         bgmVolume: {
             title: "Music volume",
@@ -277,11 +277,11 @@ export const project = {
         },
         voiceEndMode: {
             title: "When a voiced line ends",
-            description: "What happens to the clip when its line ends. Two voice clips never play at once, whichever option is selected.",
+            description: "Two voice clips never play at once, whichever option is selected.",
             option: {
                 stop: "Stop the clip",
                 fade: "Fade the clip out",
-                none: "Let it play on",
+                none: "Continue playing",
             },
         },
         voiceFadeDuration: {
@@ -346,10 +346,10 @@ export const project = {
         // What the shipped game does when it stops working. The choice is who the build is for:
         // the author testing it, a player holding it, or a machine running it unattended.
         crashPolicyTitle: "When the game stops working",
-        crashPolicyDescription: "The failure is written to the game's log under all three.",
+        crashPolicyDescription: "The failure is written to the game's log in all three cases.",
         crashPolicy: {
             details: "Show the error",
-            log: "Say only that it stopped",
+            log: "Report only that it stopped",
             restart: "Restart the game",
         },
         networkPolicyTitle: "Network policy",
@@ -359,11 +359,11 @@ export const project = {
             any: "Any address",
         },
         networkPolicyDetail: {
-            off: "The game is confined to the app protocol. Every HTTP and HTTPS request is refused.",
+            off: "Every HTTP and HTTPS request is refused.",
             allowlist: "Only addresses on the allowlist below can be requested. Every other request is refused.",
             any: "The game can request any address over HTTP or HTTPS.",
         },
-        networkPolicyWebHint: "The Web export is served over HTTP and cannot enforce the off position. It does enforce the allowlist, through the page policy.",
+        networkPolicyWebHint: "The Web export is served over HTTP and cannot enforce No network access. The allowlist is enforced.",
         networkAllowlist: {
             title: "Network request allowlist",
             description: "One address or host pattern per row.",
@@ -377,19 +377,19 @@ export const project = {
         },
         encryptAssetsTitle: "Encrypt assets",
         encryptAssetsDescription: "Encrypt assets, plugin code and the story bundle in packaged and previewed builds. Does not affect Dev Mode.",
-        encryptAssetsWebHint: "Not applicable to the Web export: Web builds always ship without asset protection.",
+        encryptAssetsWebHint: "Web builds always ship without asset protection.",
         // The whole Signing group in one line. Every signable platform gets a row, whether or not this
         // machine can build it: a certificate is obtained days before the build that uses it, and
         // preparing one is why this sits in the panel rather than in the build dialog.
         signingDescription: "Which credential signs each platform. Certificates and passwords stay on this machine; the project stores only which one to use.",
         webLosslessImagesTitle: "Convert images to WebP",
         webLosslessImagesDescription: "Re-encode exported images as lossless WebP where that is smaller.",
-        webLosslessImagesHint: "Each conversion is compared with the original pixel by pixel and discarded unless it decodes identically. Android and iOS builds serve the same exported site, so this applies to them too.",
+        webLosslessImagesHint: "Converted images decode identically to the originals. Android and iOS builds serve the same exported site, so this applies to them too.",
         webPrecompressTitle: "Precompress text files",
         webPrecompressDescription: "Write Brotli and Gzip copies of the site's scripts, styles and story data.",
-        webPrecompressHint: "Only a server set up to serve precompressed files uses them. Every other host serves the originals and ignores these.",
+        webPrecompressHint: "Only a server set up to serve precompressed files uses them. Every other host serves the originals.",
         webLossyImagesTitle: "Recompress images",
-        webLossyImagesDescription: "Re-encode exported images as lossy WebP. Much smaller, and the lost detail cannot be recovered.",
+        webLossyImagesDescription: "Re-encode exported images as lossy WebP. The files are much smaller, and the lost detail cannot be recovered.",
         webLossyQualityTitle: "Image quality",
         webLossyQualityDescription: "WebP quality used when recompressing, from 1 to 100.",
         webSharedWithMobileHint: "Android and iOS builds serve the same exported site, so this applies to them too.",
@@ -431,10 +431,10 @@ export const project = {
     dependencies: {
         rescan: "Rescan",
         scanning: "Scanning project…",
-        empty: "No plugin dependencies. This project uses only built-in Studio features.",
+        empty: "No plugin dependencies.",
         banner: {
-            blocked: "Some plugins are disabled here: their installed version is incompatible. Update or reinstall them.",
-            warnings: "Some dependencies need attention. A plugin is outdated or a soft dependency is unavailable.",
+            blocked: "Some plugins are disabled. Their installed version is incompatible. Update or reinstall them.",
+            warnings: "A plugin is outdated, or an optional dependency is unavailable.",
         },
         status: {
             ready: "Ready",

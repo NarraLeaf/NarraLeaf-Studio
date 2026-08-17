@@ -325,7 +325,7 @@ export type DevModeBundle = {
     /**
      * What a save from another build of this game is allowed to do, baked from `.nlproj`
      * `app.saveCompatibility`. Absent on bundles that predate the feature, which every consumer
-     * reads as the defaults - and the defaults are what a build did before the setting existed.
+     * reads as the defaults.
      */
     saveCompatibility?: SaveCompatibilityConfiguration;
     /**

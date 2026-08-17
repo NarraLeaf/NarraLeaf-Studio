@@ -278,12 +278,12 @@ export const storyInspector = {
         clearClip: "Removes the current clip-path.",
         filter: "Applies a CSS filter (e.g. blur(4px) grayscale(1)).",
         clearFilter: "Removes the current filter.",
-        backdrop: "Frosts what shows through via CSS backdrop-filter (e.g. blur(8px)).",
+        backdrop: "Frosts what shows through. Takes a filter value, such as blur(8px).",
         blend: "Blends with what is behind via mix-blend-mode.",
         darken: "Fades a darkness overlay 0..1 (image / character targets only).",
         circleReveal: "Circular reveal via an animated mask.",
         circleClose: "Circular close via an animated mask.",
-        wipe: "Hard-edged directional reveal via an animated clip-path (no feather).",
+        wipe: "Hard-edged directional reveal, with no feather.",
     },
 
     textOperation: {

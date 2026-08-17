@@ -44,6 +44,13 @@ In this order, stopping as soon as there is nothing true left to add:
 
 ## 3a. Register: state it, do not narrate it
 
+> **Professional, not colloquial, not machine-written. State the expectation; do not describe the
+> mechanism.**
+>
+> This is the first test every author-facing string has to pass. The three failure modes below are
+> what breaking it looks like in practice; §3 lists what may never appear at all.
+
+
 Every sentence is a statement of fact about the product. It is not a remark made to the author.
 Three failure modes, all of which have shipped and all of which read as machine-written:
 

@@ -367,7 +367,8 @@ export type ProjectAppConfiguration = {
     autoSave?: AutoSaveConfiguration;
     /**
      * What a save written by another build of this game may do; absent until configured (see the
-     * defaults, which are what every build did before the policy existed).
+     * defaults, which differ per half - a same-story save resumes, a different-story one puts the
+     * player back where it stopped).
      */
     saveCompatibility?: SaveCompatibilityConfiguration;
     /**
