@@ -586,6 +586,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.gameBuildExportPatch, { projectPath, entry, request }) as Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>,
         selectPatchFile: (defaultPath?: string) =>
             ipcClient.invoke(IPCEventType.gameBuildSelectPatchFile, { defaultPath }) as Promise<RequestStatus<{ path: string | null }>>,
+        selectPatchBaseline: (defaultPath?: string) =>
+            ipcClient.invoke(IPCEventType.gameBuildSelectPatchBaseline, { defaultPath }) as Promise<RequestStatus<{ path: string | null }>>,
     },
 
     /**
