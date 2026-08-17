@@ -562,6 +562,7 @@ export const story = {
         dots: "dots",
         black: "black",
         darkness: "darkness",
+        exposure: "exposure",
         none: "none",
         // The transform presets `t=` reaches on a show/hide that the transition words did not name.
         scale: "scale",

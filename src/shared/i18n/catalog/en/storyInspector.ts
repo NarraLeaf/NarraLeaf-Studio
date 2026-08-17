@@ -131,6 +131,9 @@ export const storyInspector = {
         slide: "Push",
         throughColor: "Through color",
         darkness: "Darkness",
+        exposure: "Exposure",
+        exposureEv: "Exposure (EV)",
+        exposureLift: "Shadow lift 0-1",
         startX: "Start X",
         startY: "Start Y",
         blurPx: "Blur px",
@@ -155,6 +158,7 @@ export const storyInspector = {
         slide: "The new image slides in from one edge as the old one slides out.",
         darkness: "Swaps images at the starting darkness, then animates to the ending one. 1 → 0 emerges out of black, 0 → 1 dims into it.",
         throughColor: "Covers the frame with a color, holds, then uncovers on the new image. Use it for fade to black or white, iris to black, and flash (hold 0).",
+        exposure: "Burns the frame out to white, highlights first and shadows last, then settles back down onto the new one; at lift 0 black never whitens.",
     },
 
     wipeDirection: {

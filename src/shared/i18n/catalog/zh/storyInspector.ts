@@ -120,6 +120,9 @@ export const storyInspector = {
         slide: "推移",
         throughColor: "过色",
         darkness: "压暗",
+        exposure: "曝光",
+        exposureEv: "曝光量（EV）",
+        exposureLift: "暗部提亮 0-1",
         startX: "起始 X",
         startY: "起始 Y",
         blurPx: "模糊（像素）",
@@ -143,6 +146,7 @@ export const storyInspector = {
         slide: "新图片从一侧滑入，同时旧图片向外滑出",
         darkness: "在起始暗度上换图，再把亮度动到结束暗度；1 → 0 是从黑场中浮现，0 → 1 是渐暗至黑",
         throughColor: "用纯色盖住画面，停留片刻再显露新图片；淡入黑／白、光圈至黑场、闪白（停留 0）都用它",
+        exposure: "画面按曝光烧到白，高光先到、暗部最后，再从白里落回新画面；暗部提亮为 0 时黑色不会变白",
     },
     wipeDirection: {
         left: "左",
