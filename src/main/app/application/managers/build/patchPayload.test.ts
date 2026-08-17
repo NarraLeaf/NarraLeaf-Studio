@@ -198,10 +198,18 @@ describe("finding a build's payload", () => {
         await fs.rm(root, { recursive: true, force: true }).catch(() => undefined);
     });
 
+    /**
+     * A payload at `relative`, as the resolver meets one.
+     *
+     * An archive is written as a directory holding the descriptor, which is what
+     * an archive looks like from inside Electron: it is mounted, and the only
+     * thing that answers about it is a path that reaches inside. A plain file
+     * named `app.asar` would be a fixture no real run ever sees.
+     */
     async function place(relative: string): Promise<string> {
         const full = path.join(root, relative);
-        await fs.mkdir(path.dirname(full), { recursive: true });
-        await fs.writeFile(full, "payload");
+        await fs.mkdir(full, { recursive: true });
+        await fs.writeFile(path.join(full, "pack.json"), '{"schemaVersion":2}');
         return full;
     }
 
@@ -216,7 +224,8 @@ describe("finding a build's payload", () => {
      * answers to either spelling on a case-insensitive disk.
      */
     const reaches = async (answer: string, expected: string) => {
-        expect((await fs.readFile(answer)).toString()).toBe((await fs.readFile(expected)).toString());
+        expect((await fs.readFile(path.join(answer, "pack.json"))).toString())
+            .toBe((await fs.readFile(path.join(expected, "pack.json"))).toString());
     };
 
     it("takes a macOS output folder without being told the product's name", async () => {
@@ -231,7 +240,7 @@ describe("finding a build's payload", () => {
     });
 
     it("takes a compiled app directory", async () => {
-        await place("staging/app/pack.json");
+        await place("staging/app");
         expect(await resolvePayloadLocation(path.join(root, "staging", "app"))).toBe(path.join(root, "staging", "app"));
     });
 
