@@ -255,6 +255,7 @@ export enum IPCEventType {
     gameBuildPreflight = "gameBuild.preflight",
     gameBuildExportPatch = "gameBuild.exportPatch",
     gameBuildSelectPatchFile = "gameBuild.selectPatchFile",
+    gameBuildSelectPatchBaseline = "gameBuild.selectPatchBaseline",
 
     signingList = "signing.list",
     signingImport = "signing.import",
@@ -2368,6 +2369,21 @@ export type IPCGameBuildEvents = {
         };
         response: {
             state: GameBuildStateSnapshot;
+        };
+    };
+    /**
+     * The build a patch is measured against. A file dialog, not a folder one: what an
+     * author has after a build is `resources/app.asar`, and a folder picker cannot
+     * reach inside a package to it.
+     */
+    [IPCEventType.gameBuildSelectPatchBaseline]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            defaultPath?: string;
+        };
+        response: {
+            path: string | null;
         };
     };
     /** Where to write a patch. Answers null when the author closes the dialog. */

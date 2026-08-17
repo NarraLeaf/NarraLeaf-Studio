@@ -860,6 +860,8 @@ export interface RendererPreloadedInterface {
         ): Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>;
         /** Where to write a patch; null when the author closes the dialog. */
         selectPatchFile(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
+        /** The build a patch is measured against - a package file, not a folder. */
+        selectPatchBaseline(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
     };
 
     /**
