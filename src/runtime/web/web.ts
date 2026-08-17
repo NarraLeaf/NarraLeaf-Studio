@@ -56,6 +56,22 @@ function encodeRelativePath(relativePath: string): string {
 
 function assetUrl(assetId: string): string {
     const id = String(assetId ?? "");
+    /*
+     * A model bundle mounts from `{id}/` on the desktop shell, where the main process reads the
+     * entry path out of the payload and serves it. A static host cannot do that - there is no
+     * process to ask, and `{id}/` is a directory rather than a file - so the web shell expands the
+     * mount to the entry file itself, which its manifest still carries.
+     *
+     * Nothing is given away by that: a web export is unprotected by construction. Its files sit on
+     * the host under these very names, so the entry path is readable with a directory listing
+     * whatever this function returns.
+     */
+    if (id.endsWith("/")) {
+        const bundle = loadedPack?.assets.items[id.slice(0, -1)];
+        if (bundle) {
+            return `./${encodeRelativePath(bundle.relativePath)}?v=${encodeURIComponent(assetVersion())}`;
+        }
+    }
     const entry = loadedPack?.assets.items[id];
     if (!entry) {
         // readPack() resolves before the renderer asks for any asset, so this

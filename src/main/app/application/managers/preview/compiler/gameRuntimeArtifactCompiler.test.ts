@@ -844,6 +844,76 @@ describe("game runtime artifact compiler", () => {
         }
     });
 
+    /*
+     * A model bundle is the one asset kind a pack still has to say anything about, so it is the one
+     * place the strip could quietly leak a name - and the name it would leak is the file a
+     * character's model is stored under, which is usually the character's.
+     *
+     * Both shapes are built in one artifact on purpose: a bundle whose entry is at its root, and one
+     * whose entry is in a subdirectory. They take different paths through the runtime and only the
+     * second exercises the fallback that lets the mount URL carry no file name.
+     */
+    it("ships model bundles by id, with their entry paths in the payload rather than the pack", async () => {
+        const FLAT_MODEL = "3c1d0a70-0000-4000-8000-00000000000a";
+        const NESTED_MODEL = "3c1d0a70-0000-4000-8000-00000000000b";
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await fs.writeFile(path.join(runtimeDistDir, "main.js"), "// runtime main\n", "utf-8");
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await writeModelBundle(projectPath, FLAT_MODEL, "Hiyori.model3.json", {
+            "Hiyori.model3.json": '{"FileReferences":{"Textures":["textures/body.png"]}}',
+            "textures/body.png": "flat texture bytes",
+        });
+        await writeModelBundle(projectPath, NESTED_MODEL, "runtime/Aoi.model3.json", {
+            "runtime/Aoi.model3.json": '{"FileReferences":{"Textures":["textures/body.png"]}}',
+            "runtime/textures/body.png": "nested texture bytes",
+        });
+
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+        });
+
+        const reader = await openSealedBundle(
+            path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
+            path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+        );
+        try {
+            const pack = JSON.parse((await reader.read("pack")).toString("utf-8"));
+
+            // Ids, and only ids.
+            expect(pack.assets.items).toEqual({});
+            expect(pack.assets.modelBundles.slice().sort()).toEqual([FLAT_MODEL, NESTED_MODEL].sort());
+            const declared = JSON.stringify(pack.assets);
+            expect(declared).not.toContain("Hiyori");
+            expect(declared).not.toContain("Aoi");
+            expect(declared).not.toContain("model3.json");
+
+            // The entry path is in the payload, at the address derived from the id - reachable by a
+            // caller that already knows which model it wants, and by no other.
+            const flatEntry = JSON.parse((await reader.read(`assets/${FLAT_MODEL}/`)).toString("utf-8"));
+            const nestedEntry = JSON.parse((await reader.read(`assets/${NESTED_MODEL}/`)).toString("utf-8"));
+            expect(flatEntry.e).toBe("Hiyori.model3.json");
+            expect(nestedEntry.e).toBe("runtime/Aoi.model3.json");
+
+            // And the bundle's files are where the request shapes expect to find them.
+            expect((await reader.read(`assets/${FLAT_MODEL}/textures/body.png`)).toString())
+                .toBe("flat texture bytes");
+            expect((await reader.read(`assets/${NESTED_MODEL}/runtime/textures/body.png`)).toString())
+                .toBe("nested texture bytes");
+        } finally {
+            await reader.close();
+        }
+    });
+
     it("names the player's directory after the app id the build resolved", async () => {
         const projectPath = path.join(tempDir, "project");
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
@@ -1374,6 +1444,36 @@ async function writeAsset(projectPath: string, assetId: string, content: string)
     const dir = path.join(projectPath, "assets", "content", a, b);
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(path.join(dir, rest), content, "utf-8");
+}
+
+/**
+ * A model bundle asset: a directory of files under the storage id, plus the metadata shard that
+ * declares it and names its entry file. Appends to the shard so several can live in one project.
+ */
+async function writeModelBundle(
+    projectPath: string,
+    assetId: string,
+    modelEntry: string,
+    files: Record<string, string>,
+): Promise<void> {
+    const [a, b, rest] = splitAssetStorageId(assetId);
+    const bundleDir = path.join(projectPath, "assets", "content", a, b, rest);
+    for (const [relative, content] of Object.entries(files)) {
+        const target = path.join(bundleDir, ...relative.split("/"));
+        await fs.mkdir(path.dirname(target), { recursive: true });
+        await fs.writeFile(target, content, "utf-8");
+    }
+    const shard = path.join(projectPath, "assets", "assets.metadata.model.json");
+    const existing = await fs.readFile(shard, "utf-8").then(JSON.parse).catch(() => ({}));
+    await fs.writeFile(shard, JSON.stringify({
+        ...existing,
+        [assetId]: {
+            id: assetId,
+            name: modelEntry.split("/").pop(),
+            source: "local",
+            extras: { modelEntry },
+        },
+    }), "utf-8");
 }
 
 async function writeProjectIcon(projectPath: string, content: string): Promise<void> {

@@ -48,7 +48,7 @@ import {
     PLUGIN_REACT_MODULE_SOURCES,
     PLUGIN_RUNTIME_API_MODULE_SOURCE,
 } from "@shared/utils/pluginRuntimeApiModule";
-import { resolveRuntimeStaticPath } from "./runtimeProtocol";
+import { resolveModelBundleKey, resolveRuntimeStaticPath } from "./runtimeProtocol";
 import { injectRuntimeCsp, installRuntimeNetworkPolicy } from "./networkPolicy";
 import { dispatchControlFrame, encodeTestEventFrame } from "./testControlProtocol";
 import { GAME_RUNTIME_TEST_SIGNAL_CHANNEL, toGameTestEvent } from "../gameTestSignal";
@@ -834,8 +834,32 @@ const ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
 /** Loose assets above this size stream from disk instead of buffering fully. */
 const ASSET_STREAM_THRESHOLD_BYTES = 8 * 1024 * 1024;
 
+const modelBundleKey = (pack: GameRuntimePackV1, assetId: string) => resolveModelBundleKey(
+    pack,
+    assetId,
+    id => runtimeResources().readModelBundleEntry(pack, id),
+);
+
 async function serveAsset(request: Request, assetId: string): Promise<Response> {
     const pack = await readPack();
+    // A mount request cannot be served as itself - there is no item at `{id}/` holding bytes - so it
+    // is resolved before the ordinary path rather than after it fails.
+    if (assetId.endsWith("/")) {
+        const key = await modelBundleKey(pack, assetId);
+        return key ? serveAssetBytes(request, pack, key) : new Response("Not found", { status: 404 });
+    }
+    try {
+        return await serveAssetBytes(request, pack, assetId);
+    } catch (error) {
+        const key = await modelBundleKey(pack, assetId);
+        if (!key || key === assetId) {
+            throw error;
+        }
+        return serveAssetBytes(request, pack, key);
+    }
+}
+
+async function serveAssetBytes(request: Request, pack: GameRuntimePackV1, assetId: string): Promise<Response> {
     const declaredType = pack.assets.items[assetId]?.mimeType;
     const rangeHeader = request.headers.get("range");
     const filePath = runtimeResources().getAssetFilePath(pack, assetId);
