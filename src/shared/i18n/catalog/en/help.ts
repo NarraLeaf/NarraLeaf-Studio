@@ -537,36 +537,38 @@ export const help = {
         olderSaves: {
             title: "Older saves",
             body:
-                "Which of the player's saves this build still opens, and what opening one gives them.\n"
+                "A player's save falls into one of three cases. The settings on this page decide two of "
+                + "them.\n"
                 + "\n"
-                + "- A save written by this build is restored in full. Neither setting applies to it.\n"
-                + "- A save written by another version of the same story follows the first setting.\n"
-                + "- A save written before the story was edited follows the second setting.\n"
+                + "- Written by this build: restored in full. Neither setting applies.\n"
+                + "- Same story, another project version: decided by the first setting.\n"
+                + "- Written before the story changed: decided by the second setting.\n"
                 + "\n"
-                + "A save that is not restored is not listed either. It does not reach the player's save "
-                + "screen, so no slot is offered that cannot be opened.",
+                + "A save that is not restored is absent from the save list. The player is never offered a "
+                + "slot that cannot be read.",
         },
         saveSameStory: {
-            title: "Same story, another version",
+            title: "Saves from another project version",
             body:
-                "What a save from another version of this same story gives the player. The story has not "
-                + "been edited, so the line it was saved on is still in it.\n"
+                "The story is unchanged, and the line the save records is still in it.\n"
                 + "\n"
-                + "- Restore progress: the playthrough continues from that line.\n"
-                + "- Do not restore progress: the slot is not listed, and opening it reports a failure.",
+                + "- Restore progress: play continues from that line.\n"
+                + "- Do not restore progress: the slot is absent from the save list, and a load request "
+                + "fails.",
         },
         saveStoryChanged: {
-            title: "The story has changed",
+            title: "Saves from before a story change",
             body:
-                "What a save written before the story was edited gives the player. The line it was saved "
-                + "on may no longer be in the story.\n"
+                "The story was edited after the save was written. The line the save records may no longer "
+                + "be present.\n"
                 + "\n"
-                + "- Restore progress anyway: the playthrough continues from that line, and reports a "
-                + "failure when the story no longer holds what the save names.\n"
-                + "- Return to where it stopped: the playthrough starts again on that line, at the top of "
-                + "its scene when the line is gone, or reports a failure when the scene is gone as well. "
-                + "Variables and visited scenes carry over. The stage and the backlog do not.\n"
-                + "- Do not restore progress: the slot is not listed, and opening it reports a failure.",
+                + "- Restore progress anyway: play continues from that line, and fails when the story "
+                + "lacks what the save requires.\n"
+                + "- Return to where it stopped: play starts again on that line, at the start of its scene "
+                + "when the line is absent, and fails when the scene is absent as well. Variables and "
+                + "visited scenes are kept. The stage and the backlog are not.\n"
+                + "- Do not restore progress: the slot is absent from the save list, and a load request "
+                + "fails.",
         },
         patches: {
             title: "Patches",
