@@ -203,10 +203,11 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
     crashPolicy,
     logPath: readGameRuntimeLogPathArg(process.argv),
     save: {
-        write: (id, savedGame, capture, metadata) =>
-            ipcRenderer.invoke("runtime:save:write", { id, savedGame, capture, metadata }) as Promise<void>,
+        write: (id, savedGame, capture, metadata, compatibility) =>
+            ipcRenderer.invoke("runtime:save:write", { id, savedGame, capture, metadata, compatibility }) as Promise<void>,
         read: id => ipcRenderer.invoke("runtime:save:read", id),
         listIds: () => ipcRenderer.invoke("runtime:save:listIds"),
+        listHeaders: () => ipcRenderer.invoke("runtime:save:listHeaders"),
         readPreview: id => ipcRenderer.invoke("runtime:save:readPreview", id),
         delete: id => ipcRenderer.invoke("runtime:save:delete", id),
     },

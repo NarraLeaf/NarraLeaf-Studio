@@ -32,6 +32,9 @@ import type { PlayerPreferences } from "@shared/types/preference";
 import { normalizePlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
 import { normalizeAutoSaveConfiguration } from "@shared/types/saves";
+import type { SaveCompatibilityConfiguration } from "@shared/types/saveCompatibility";
+import { normalizeSaveCompatibilityConfiguration } from "@shared/types/saveCompatibility";
+import { computeStoryContentHash } from "@shared/utils/storyContentHash";
 import type { GameVoiceBundle } from "@shared/types/voice";
 import { normalizeVoiceConfiguration, normalizeVoiceDocument } from "@shared/types/voice";
 import type { AudioClipRegion, GameAudioBundle } from "@shared/types/audio";
@@ -124,6 +127,8 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const voice = restrictVoice(await loadGameVoice(context.projectPath), shippedTextIds, context.onNotice);
     const audio = await loadGameAudio(context.projectPath);
     const autoSave = await loadAutoSaveConfiguration(context.projectPath);
+    const saveCompatibility = await loadSaveCompatibilityConfiguration(context.projectPath);
+    const gameVersion = await loadGameVersion(context.projectPath);
     const preferences = await loadPlayerPreferences(context.projectPath);
     const brand = await loadProjectBrand(context.projectPath);
     const saveSchema = await loadSaveSchemaTable(context.projectPath);
@@ -145,6 +150,11 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         voice,
         audio,
         autoSave,
+        saveCompatibility,
+        gameVersion,
+        // Taken off the library this build actually ships, after the variant fold and any scene
+        // drop, so two editions that carry different chapters do not claim the same story.
+        storyHash: computeStoryContentHash(storyLibrary?.documents),
         preferences,
         brand,
         compiled: context.compiled,
@@ -843,6 +853,34 @@ export async function loadAutoSaveConfiguration(projectPath: string): Promise<Au
     const config = await readProjectConfigRecord(projectPath);
     const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
     return normalizeAutoSaveConfiguration(app?.autoSave);
+}
+
+/**
+ * Load the save-compatibility policy from `.nlproj` `app.saveCompatibility`. Dense like the
+ * autosave config: every save this build writes carries a stamp and every load compares one, so
+ * "the author never chose" has to arrive as the defaults rather than as a gap. Exported for tests.
+ */
+export async function loadSaveCompatibilityConfiguration(
+    projectPath: string,
+): Promise<SaveCompatibilityConfiguration> {
+    const config = await readProjectConfigRecord(projectPath);
+    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+    return normalizeSaveCompatibilityConfiguration(app?.saveCompatibility);
+}
+
+/**
+ * The author's own version for this build, from `.nlproj` `metadata.version`.
+ *
+ * Read verbatim - never parsed, never defaulted to something like `0.0.0`. A project with no
+ * version has no version, and inventing one would make two builds that both left it blank look
+ * like two versions of the same game to every save either of them writes. Exported for tests.
+ */
+export async function loadGameVersion(projectPath: string): Promise<string> {
+    const config = await readProjectConfigRecord(projectPath);
+    const metadata = config?.metadata && typeof config.metadata === "object"
+        ? config.metadata as Record<string, unknown>
+        : undefined;
+    return typeof metadata?.version === "string" ? metadata.version.trim() : "";
 }
 
 /**

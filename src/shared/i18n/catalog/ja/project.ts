@@ -41,6 +41,7 @@ export const project = {
         icons: "アイコン",
         dependencies: "依存関係",
         saving: "セーブ",
+        olderSaves: "以前のセーブ",
         playerDefaults: "プレイヤーの初期値",
         audioTracks: "オーディオトラック",
         // ブランドのサブページの 2 つの部分。作者が決める色と、それに従うスロット。
@@ -185,6 +186,14 @@ export const project = {
         autoSaveIntervalUnit: "秒",
         autoSaveSlotsTitle: "残す自動セーブの数",
         autoSaveSlotsDescription: "自動セーブはこの数のスロットを古いものから順に使い回す。プレイヤー自身のセーブスロットとは別",
+        saveCompatibleTitle: "同じストーリー、別のバージョン",
+        saveCompatibleDescription: "同じストーリーを持つ別のバージョンが書いたセーブ",
+        saveIncompatibleTitle: "ストーリーが変わっている",
+        saveIncompatibleDescription: "セーブが指すストーリーが編集される前に書かれたセーブ",
+        saveResume: "進行状況を復元する",
+        saveDiscard: "復元しない",
+        saveResumeScene: "止まった場面まで復元する",
+        saveForce: "それでも復元する",
     },
     // 「プレイヤーの初期値」の群。各設定がどの値から始まるか。どれもプレイ中にプレイヤーが
     // 変えられ、変えた内容は保たれる。だから文言は「初期値」に徹し、設定画面が守らない約束はしない。

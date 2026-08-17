@@ -3,7 +3,8 @@ import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "./
 import type { NetworkAccessPolicy, NetworkPluginAllowlistEntry } from "./networkAllowlist";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { DevModeBundle } from "./devMode";
-import type { DevModeSaveRecord } from "./devModeSave";
+import type { DevModeSaveHeader, DevModeSaveRecord } from "./devModeSave";
+import type { SaveCompatibilityStamp } from "./saveCompatibility";
 import type {
     GameProgressExportRequest,
     GameProgressExportResult,
@@ -404,14 +405,25 @@ export type GameRuntimeNetworkConfig = {
 };
 
 export type GameRuntimeSaveBridge = {
-    write(id: string, savedGame: unknown, capture?: string, metadata?: unknown): Promise<void>;
+    write(
+        id: string,
+        savedGame: unknown,
+        capture?: string,
+        metadata?: unknown,
+        /** What produced the save; omitted leaves the record unstamped. */
+        compatibility?: SaveCompatibilityStamp,
+    ): Promise<void>;
     read(id: string): Promise<GameRuntimeSaveRecord | null>;
     listIds(): Promise<string[]>;
+    /** Every slot's header, without any slot's game or capture. See `GameAppSaveStore.listHeaders`. */
+    listHeaders(): Promise<GameRuntimeSaveHeader[]>;
     readPreview(id: string): Promise<string | null>;
     delete(id: string): Promise<{ deleted: boolean }>;
 };
 
 export type GameRuntimeSaveRecord = DevModeSaveRecord;
+
+export type GameRuntimeSaveHeader = DevModeSaveHeader;
 
 /** Unsolicited news about one sidecar, pushed on {@link GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL}. */
 export type GameRuntimeSidecarMessage =

@@ -14,6 +14,7 @@ import {
     NetworkConfiguration,
     PlayerPreferences,
     ProjectAppConfiguration,
+    SaveCompatibilityConfiguration,
     SecurityConfiguration,
     SigningConfiguration,
     VoiceConfiguration,
@@ -26,6 +27,7 @@ import {
     normalizeMobileConfiguration,
     normalizeNetworkConfiguration,
     normalizePlayerPreferences,
+    normalizeSaveCompatibilityConfiguration,
     normalizeSecurityConfiguration,
     normalizeSigningConfiguration,
     normalizeVoiceConfiguration,
@@ -439,6 +441,40 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 autoSave,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read the effective save-compatibility policy, falling back to the defaults for projects that
+     * predate `app.saveCompatibility` - and those defaults are what every build did before the
+     * policy existed.
+     */
+    public getSaveCompatibilityConfiguration(): SaveCompatibilityConfiguration {
+        return normalizeSaveCompatibilityConfiguration(this.getProjectConfig().app?.saveCompatibility);
+    }
+
+    /**
+     * Merge a partial patch into the save-compatibility policy. Written by the project Game
+     * settings page and baked into the bundle, where both halves read it: the listing a save
+     * screen shows and the load a player asks for.
+     */
+    public async updateSaveCompatibilityConfiguration(
+        patch: Partial<SaveCompatibilityConfiguration>,
+    ): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const saveCompatibility = normalizeSaveCompatibilityConfiguration({
+                ...normalizeSaveCompatibilityConfiguration(config.app?.saveCompatibility),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                saveCompatibility,
             };
             return {
                 ...config,

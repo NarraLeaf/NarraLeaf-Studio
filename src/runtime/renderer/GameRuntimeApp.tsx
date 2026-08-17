@@ -483,11 +483,11 @@ export function GameRuntimeApp() {
     );
 
     const saveStore = useMemo<GameAppSaveStore>(() => ({
-        write: async (id, savedGame, capture, metadata) => {
+        write: async (id, savedGame, capture, metadata, compatibility) => {
             if (!bridge) {
                 throw new Error("Save Game: runtime bridge is not available");
             }
-            await bridge.save.write(id, savedGame, capture, metadata);
+            await bridge.save.write(id, savedGame, capture, metadata, compatibility);
         },
         read: async id => {
             if (!bridge) {
@@ -513,6 +513,12 @@ export function GameRuntimeApp() {
                 return [];
             }
             return bridge.save.listIds();
+        },
+        listHeaders: async () => {
+            if (!bridge) {
+                return [];
+            }
+            return bridge.save.listHeaders();
         },
     }), [bridge]);
 

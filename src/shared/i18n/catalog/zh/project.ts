@@ -39,6 +39,7 @@ export const project = {
         icons: "图标",
         dependencies: "依赖",
         saving: "存档",
+        olderSaves: "旧存档",
         playerDefaults: "玩家默认值",
         audioTracks: "音频轨道",
         // 「配色」子页的两块内容：作者自己定的颜色，以及跟随它们的槽位。该页其余文案都在 `brand`
@@ -179,6 +180,14 @@ export const project = {
         autoSaveIntervalUnit: "秒",
         autoSaveSlotsTitle: "保留数量",
         autoSaveSlotsDescription: "自动存档在指定数量的槽位间轮转，最旧的先被覆盖，与玩家自己的存档槽相互独立",
+        saveCompatibleTitle: "同一故事，项目版本不同",
+        saveCompatibleDescription: "由讲同一个故事的另一个项目版本写下的存档",
+        saveIncompatibleTitle: "故事已改动",
+        saveIncompatibleDescription: "在存档指向的故事被改动之前写下的存档",
+        saveResume: "恢复进度",
+        saveDiscard: "不恢复进度",
+        saveResumeScene: "尝试恢复到场景",
+        saveForce: "强制载入",
     },
     preferences: {
         // 挂在小标题上的一句话，不再是页首的一段话。原先那段里其余的内容，要么行本身就写着，
