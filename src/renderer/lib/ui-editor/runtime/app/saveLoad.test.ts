@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { SavedGame } from "narraleaf-react";
+import {
+    DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION,
+    SAVE_PROTOCOL_VERSION,
+    type SaveCompatibilityConfiguration,
+} from "@shared/types/saveCompatibility";
 import { translate } from "@/lib/i18n";
 import {
     collectUnresolvedSaveReferences,
+    readSavePosition,
     compareSaveStory,
     readSaveLastLine,
     isSavedGameShape,
@@ -176,15 +182,22 @@ function createHarness(options: HarnessOptions) {
 
 function loadWith(
     harness: ReturnType<typeof createHarness>,
-    record: { savedGame: unknown } | null,
+    record: Parameters<typeof loadSaveIntoGame>[0]["readRecord"] extends () => Promise<infer T> ? T : never,
     id = "slot-1",
+    policy?: Partial<Parameters<typeof loadSaveIntoGame>[0]>,
 ) {
     return loadSaveIntoGame({
         id,
         readRecord: async () => record,
         game: harness.game,
+        // The comparison is off unless a case turns it on: these cases are about what a load does
+        // to a running game, and a stamp neither side carries is exactly how every save written
+        // before the stamp existed arrives.
+        currentStamp: null,
+        compatibilityConfig: { ...DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION },
         notifyPlayer: harness.notifyPlayer,
         report: harness.report,
+        ...policy,
     });
 }
 
@@ -197,7 +210,7 @@ describe("loadSaveIntoGame", () => {
 
         const outcome = await loadWith(harness, { savedGame: saved });
 
-        expect(outcome).toEqual({ status: "loaded", origin: "sameStory" });
+        expect(outcome).toEqual({ status: "loaded", applied: "save", origin: "sameStory", compatibility: "unknown" });
         expect(harness.head()).toEqual({
             sceneId: "scene-a",
             line: 9,
@@ -313,6 +326,8 @@ describe("loadSaveIntoGame", () => {
                 throw new Error("save file is locked");
             },
             game: harness.game,
+            currentStamp: null,
+            compatibilityConfig: { ...DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION },
             notifyPlayer: harness.notifyPlayer,
             report: harness.report,
         });
@@ -331,7 +346,7 @@ describe("loadSaveIntoGame", () => {
 
         const outcome = await loadWith(harness, { savedGame: saved }, "slot-7");
 
-        expect(outcome).toEqual({ status: "loaded", origin: "otherStory" });
+        expect(outcome).toEqual({ status: "loaded", applied: "save", origin: "otherStory", compatibility: "unknown" });
         expect(harness.head().line).toBe(12);
         expect(harness.notifications).toEqual([]);
         expect(harness.reports).toEqual([
@@ -345,7 +360,7 @@ describe("loadSaveIntoGame", () => {
 
         const outcome = await loadWith(harness, { savedGame: saved });
 
-        expect(outcome).toEqual({ status: "loaded", origin: "sameStory" });
+        expect(outcome).toEqual({ status: "loaded", applied: "save", origin: "sameStory", compatibility: "unknown" });
         expect(harness.reports).toEqual([]);
     });
 
@@ -560,5 +575,141 @@ describe("readSaveLastLine", () => {
         const quoted = readSaveLastLine(makeSave(PLAYING, { lastSentence: "x".repeat(200) }));
         expect(quoted).toHaveLength(61);
         expect(quoted?.endsWith("…")).toBe(true);
+    });
+});
+
+describe("readSavePosition", () => {
+    it("reads the story, scene and row out of the backlog's newest anchor", () => {
+        const saved = makeSave(PLAYING, { actionId: "studio:story-1:scene-a:block-9:text-2:4" });
+        expect(readSavePosition(saved)).toEqual({ storyId: "story-1", sceneId: "scene-a", blockId: "block-9" });
+    });
+
+    it("falls back to the execution stack, then to the posed scene", () => {
+        const anchored = makeSave(PLAYING, { actionId: "studio:story-1:scene-a:block-9:text-2:4" });
+        // A save written before the backlog carried anchors: the stack still names the row.
+        delete (anchored.game as unknown as Record<string, unknown>).history;
+        expect(readSavePosition(anchored)?.blockId).toBe("block-9");
+
+        // Neither anchor resolves; the scene on stage is all that is left, and it names no story.
+        const posed = makeSave({ ...PLAYING, sceneId: "nl:scene:scene-c" }, { actionId: "a-1" });
+        delete (posed.game as unknown as Record<string, unknown>).history;
+        expect(readSavePosition(posed)).toEqual({ storyId: "", sceneId: "scene-c", blockId: null });
+    });
+
+    it("is null when nothing in the save says where it was", () => {
+        const nowhere = makeSave({ ...PLAYING, sceneId: "scene-a" }, { actionId: "a-1" });
+        delete (nowhere.game as unknown as Record<string, unknown>).history;
+        expect(readSavePosition(nowhere)).toBeNull();
+        expect(readSavePosition({})).toBeNull();
+    });
+
+    it("does not mistake a part of a scene for the scene", () => {
+        const layer = makeSave({ ...PLAYING, sceneId: "nl:scene:scene-c:layer:background" }, { actionId: "a-1" });
+        delete (layer.game as unknown as Record<string, unknown>).history;
+        expect(readSavePosition(layer)).toBeNull();
+    });
+});
+
+describe("the older-saves policy", () => {
+    const CURRENT = { protocol: SAVE_PROTOCOL_VERSION, storyHash: "story-now", gameVersion: "2.0.0" };
+    const olderVersion = { ...CURRENT, gameVersion: "1.0.0" };
+    const otherStory = { ...CURRENT, storyHash: "story-then", gameVersion: "1.0.0" };
+
+    function withPolicy(
+        harness: ReturnType<typeof createHarness>,
+        compatibility: typeof CURRENT | undefined,
+        config: SaveCompatibilityConfiguration,
+        extra?: Partial<Parameters<typeof loadSaveIntoGame>[0]>,
+    ) {
+        return loadSaveIntoGame({
+            id: "slot-1",
+            readRecord: async () => ({
+                savedGame: makeSave(PLAYING, { actionId: "studio:story-1:scene-a:block-9:text-2:4" }),
+                metadata: compatibility ? { compatibility } : {},
+            }),
+            game: harness.game,
+            currentStamp: CURRENT,
+            compatibilityConfig: config,
+            notifyPlayer: harness.notifyPlayer,
+            report: harness.report,
+            ...extra,
+        });
+    }
+
+    it("refuses a slot the policy would not offer, without entering the live game", async () => {
+        const harness = createHarness({ head: PLAYING });
+
+        const outcome = await withPolicy(harness, olderVersion, { compatible: "discard", incompatible: "force" });
+
+        expect(outcome).toMatchObject({ status: "refused", reason: "policy", compatibility: "compatible" });
+        expect(harness.calls).toEqual({ snapshot: 0, apply: 0, restore: 0, releaseLoadLock: 0 });
+        expect(harness.head()).toEqual(PLAYING);
+    });
+
+    it("refuses a record shape it cannot read whatever the policy says", async () => {
+        const harness = createHarness({ head: PLAYING });
+
+        const outcome = await withPolicy(
+            harness,
+            { ...CURRENT, protocol: SAVE_PROTOCOL_VERSION + 1 },
+            { compatible: "resume", incompatible: "force" },
+        );
+
+        expect(outcome).toMatchObject({ status: "refused", reason: "unsupported", compatibility: "unsupported" });
+        expect(harness.calls.apply).toBe(0);
+    });
+
+    it("relaunches instead of loading, at the scene, when the story has changed", async () => {
+        const harness = createHarness({ head: PLAYING });
+        const targets: unknown[] = [];
+
+        const outcome = await withPolicy(harness, otherStory, { compatible: "resume", incompatible: "resumeScene" }, {
+            game: {
+                ...harness.game,
+                relaunch: async target => {
+                    targets.push({ storyId: target.storyId, sceneId: target.sceneId, blockId: target.blockId });
+                },
+            },
+        });
+
+        expect(outcome).toMatchObject({ status: "loaded", applied: "scene", compatibility: "incompatible" });
+        // The row is dropped on purpose: this build never compiled the block the save names.
+        expect(targets).toEqual([{ storyId: "story-1", sceneId: "scene-a", blockId: null }]);
+        expect(harness.calls.apply).toBe(0);
+    });
+
+    it("refuses rather than relaunching when the host cannot start a story", async () => {
+        const harness = createHarness({ head: PLAYING });
+
+        const outcome = await withPolicy(harness, otherStory, { compatible: "resume", incompatible: "resumeScene" });
+
+        expect(outcome).toMatchObject({ status: "refused", reason: "unanchored" });
+        expect(harness.head()).toEqual(PLAYING);
+    });
+
+    it("says the run is gone when a relaunch throws part-way", async () => {
+        const harness = createHarness({ head: PLAYING });
+
+        const outcome = await withPolicy(harness, otherStory, { compatible: "resume", incompatible: "resumeScene" }, {
+            game: {
+                ...harness.game,
+                relaunch: async () => {
+                    throw new Error("scene-a is not in this build");
+                },
+            },
+        });
+
+        expect(outcome).toMatchObject({ status: "refused", reason: "relaunch", game: "lost" });
+    });
+
+    it("loads an unstamped save under any policy, which is every save written before the stamp", async () => {
+        const harness = createHarness({
+            head: PLAYING,
+            knownActions: ["studio:story-1:scene-a:block-9:text-2:4"],
+        });
+
+        const outcome = await withPolicy(harness, undefined, { compatible: "discard", incompatible: "discard" });
+
+        expect(outcome).toMatchObject({ status: "loaded", applied: "save", compatibility: "unknown" });
     });
 });

@@ -66,6 +66,7 @@ import {
 } from "./handlers/devModeAction";
 import {
     DevModeSaveDeleteHandler,
+    DevModeSaveListHeadersHandler,
     DevModeSaveListIdsHandler,
     DevModeSaveReadHandler,
     DevModeSaveReadPreviewHandler,
@@ -257,6 +258,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new DevModeSaveWriteHandler(),
         new DevModeSaveReadHandler(),
         new DevModeSaveListIdsHandler(),
+        new DevModeSaveListHeadersHandler(),
         new DevModeSaveReadPreviewHandler(),
         new DevModeSaveDeleteHandler(),
 

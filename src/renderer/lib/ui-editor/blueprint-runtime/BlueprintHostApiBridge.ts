@@ -421,7 +421,8 @@ export type BlueprintHostApiRuntime = {
         isGameOverlay: () => boolean;
         quit: (surfaceId: string) => Promise<void>;
         writeSave: (id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>;
-        loadSave: (id: string) => Promise<void>;
+        /** False when the save was not applied - the player and the author have both been told. */
+        loadSave: (id: string) => Promise<boolean>;
         deleteSave: (id: string) => Promise<void>;
         listSaveIds: () => Promise<string[]>;
         getSaveMetadata: (id: string) => Promise<unknown>;
@@ -701,7 +702,8 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onIsGameOverlay?: () => boolean;
     onQuitGame?: (surfaceId: string) => Promise<void> | void;
     onWriteSave?: (id: string, metadata: unknown, screenshot?: boolean) => Promise<void> | void;
-    onLoadSave?: (id: string) => Promise<void> | void;
+    /** Resolves false when the save was not applied. A throw stays a throw: that is a caller mistake. */
+    onLoadSave?: (id: string) => Promise<boolean> | boolean;
     onDeleteSave?: (id: string) => Promise<void> | void;
     onListSaveIds?: () => Promise<string[]> | string[];
     onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
@@ -3376,7 +3378,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (!onLoadSave) {
                         throw new Error("loadSave: game save runtime is not available");
                     }
-                    await onLoadSave(saveId);
+                    // Anything other than an explicit false is a load: a host wired before this
+                    // returned a value at all resolves undefined, and its saves did apply.
+                    return (await onLoadSave(saveId)) !== false;
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

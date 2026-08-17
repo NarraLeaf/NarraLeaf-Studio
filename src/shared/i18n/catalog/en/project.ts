@@ -40,6 +40,7 @@ export const project = {
         icons: "Icons",
         dependencies: "Dependencies",
         saving: "Saving",
+        olderSaves: "Older saves",
         playerDefaults: "Player defaults",
         audioTracks: "Audio tracks",
         // The two parts of the Brand sub-page. The colors an author decides, and the slots that
@@ -195,6 +196,17 @@ export const project = {
         autoSaveIntervalUnit: "s",
         autoSaveSlotsTitle: "Autosaves kept",
         autoSaveSlotsDescription: "Autosaves rotate through this many slots, oldest first. They are separate from the player's own save slots.",
+        // The two policies for a save written by another build. Worded around what the player gets,
+        // not around the comparison behind it: an author choosing here is deciding what happens to
+        // somebody's playthrough. A slot that is not restored is also not listed.
+        saveCompatibleTitle: "Same story, another version",
+        saveCompatibleDescription: "A save written by a version that told the same story.",
+        saveIncompatibleTitle: "The story has changed",
+        saveIncompatibleDescription: "A save written before the story it points into was edited.",
+        saveResume: "Restore progress",
+        saveDiscard: "Do not restore progress",
+        saveResumeScene: "Return to where it stopped",
+        saveForce: "Restore progress anyway",
     },
     // The Player defaults group: the value each player setting starts at. Every one of these is
     // still the player's to change while they play, and what they change is kept, so the wording

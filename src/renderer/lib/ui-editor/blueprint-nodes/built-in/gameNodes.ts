@@ -85,6 +85,7 @@ import {
 
 const execIn: BlueprintNodePinDef = { id: "in", kind: "input", semantic: "exec", label: "In" };
 const execNext: BlueprintNodePinDef = { id: "next", kind: "output", semantic: "exec", label: "Next" };
+const execFailed: BlueprintNodePinDef = { id: "failed", kind: "output", semantic: "exec", label: "Failed" };
 const saveIdIn: BlueprintNodePinDef = {
     id: "id",
     kind: "input",
@@ -1350,17 +1351,33 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     {
+        /**
+         * Put a save back on the stage, or say that it did not happen.
+         *
+         * `Failed` and no `Next`, which is not an oversight in either direction. There is nothing
+         * for a `Next` to run: a load that lands replaces the whole running game, and a row wired
+         * after it would execute against a game that is no longer the one the author wired it into.
+         * A refusal is the opposite - nothing moved, the graph is still standing in the save screen
+         * it was called from, and that is exactly where a title screen wants to put its "this save
+         * could not be opened" line.
+         *
+         * The reasons that end here are all of them: a slot that is gone, a record that will not
+         * read, a story that no longer has what the save names, and the author's own Older saves
+         * policy declining a save from an earlier build. The player has already been shown a line
+         * and the author already has one in the log, so this branch is for what the *title screen*
+         * does next, not for reporting.
+         */
         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
         displayName: "Load Save",
         category: "Game",
-        keywords: ["game", "save", "load", "read", "slot", "storage"],
+        keywords: ["game", "save", "load", "read", "slot", "storage", "failed"],
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
-        pins: [execIn, saveIdIn],
+        pins: [execIn, saveIdIn, execFailed],
         async execute(ctx) {
-            await requireHostApi(ctx).game.loadSave(resolveSaveId(ctx));
-            return { nextPort: undefined };
+            const loaded = await requireHostApi(ctx).game.loadSave(resolveSaveId(ctx));
+            return { nextPort: loaded ? undefined : "failed" };
         },
     },
     {
@@ -1382,6 +1399,9 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         displayName: "List Saves",
         category: "Game",
         keywords: ["game", "save", "list", "ids", "slots", "storage"],
+        // Slots the project's Older saves policy would refuse are not in here. The listing and the
+        // load read the same header and reach the same decision, so every id this hands out is an
+        // id `Load Save` will accept - a save screen never draws a button that cannot work.
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,

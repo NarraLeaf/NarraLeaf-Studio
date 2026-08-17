@@ -153,7 +153,7 @@ function createHostApi(options?: {
     onQuitApplication?: () => Promise<void> | void;
     onWidgetPatch?: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
     onWriteSave?: (id: string, metadata: unknown, screenshot?: boolean) => Promise<void> | void;
-    onLoadSave?: (id: string) => Promise<void> | void;
+    onLoadSave?: (id: string) => Promise<boolean> | boolean;
     onDeleteSave?: (id: string) => Promise<void> | void;
     onListSaveIds?: () => Promise<string[]> | string[];
     onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
@@ -421,6 +421,7 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
             },
             onLoadSave: id => {
                 loadedIds.push(id);
+                return true;
             },
             onDeleteSave: id => {
                 deletedIds.push(id);

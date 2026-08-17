@@ -2,6 +2,10 @@ import {
     DEV_MODE_SAVE_TYPE_NORMAL,
     type DevModeSaveRecord,
 } from "@shared/types/devModeSave";
+import {
+    readSaveCompatibilityStamp,
+    type SaveCompatibilityStamp,
+} from "@shared/types/saveCompatibility";
 
 /**
  * Persisted shape of one game save. Shared by every runtime shell: the desktop
@@ -35,6 +39,7 @@ export function parseRuntimeSaveRecord(value: unknown): DevModeSaveRecord | null
     if (record.metadata.type !== DEV_MODE_SAVE_TYPE_NORMAL) {
         return null;
     }
+    const compatibility = readSaveCompatibilityStamp(record.metadata.compatibility);
     return {
         metadata: {
             id: normalizeRuntimeSaveId(record.metadata.id),
@@ -42,6 +47,10 @@ export function parseRuntimeSaveRecord(value: unknown): DevModeSaveRecord | null
             createdAt: typeof record.metadata.createdAt === "string" ? record.metadata.createdAt : "",
             updatedAt: typeof record.metadata.updatedAt === "string" ? record.metadata.updatedAt : "",
             ...(typeof record.metadata.capture === "string" && record.metadata.capture ? { capture: record.metadata.capture } : {}),
+            // Read rather than trusted: the record is untrusted input, and a half-written stamp has
+            // to arrive as no stamp so it classifies as "cannot be compared" rather than as a
+            // comparison against invented values.
+            ...(compatibility ? { compatibility } : {}),
             user: normalizeRuntimeJsonValue(record.metadata.user),
         },
         savedGame: record.savedGame,
@@ -54,6 +63,11 @@ export function buildRuntimeSaveRecord(input: {
     savedGame: unknown;
     capture?: string;
     metadata?: unknown;
+    /**
+     * What produced this save. Absent leaves the record unstamped, which is what a shell with no
+     * bundle to read one from writes and what every record written before the stamp existed holds.
+     */
+    compatibility?: SaveCompatibilityStamp;
     previous: DevModeSaveRecord | null;
     now: string;
 }): RuntimeSaveFileRecord {
@@ -65,6 +79,10 @@ export function buildRuntimeSaveRecord(input: {
             createdAt: input.previous?.metadata.createdAt ?? input.now,
             updatedAt: input.now,
             ...(typeof input.capture === "string" && input.capture ? { capture: input.capture } : {}),
+            // Taken fresh on every write, never carried over from `previous`: overwriting a slot
+            // replaces the playthrough in it, so the stamp has to describe the build that wrote
+            // what is there now.
+            ...(input.compatibility ? { compatibility: input.compatibility } : {}),
             user: normalizeRuntimeJsonValue(input.metadata),
         },
         savedGame: normalizeRuntimeJsonValue(input.savedGame),

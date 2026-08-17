@@ -41,6 +41,7 @@ import {
     BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
     BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS,
     BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
     BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON,
@@ -327,10 +328,10 @@ const EVENT_HEAD_NODE_TYPES: readonly string[] = [
     "blueprint.event.head.windowCloseRequested", "blueprint.fn.head",
 ];
 
-/** Flow ends here: `in` arrives and nothing leaves. Returns, and the four ways to leave a game. */
+/** Flow ends here: `in` arrives and nothing leaves. Returns, and the three ways to leave a game. */
 const TAIL_NODE_TYPES: readonly string[] = [
     "blueprint.data.returnValue", "blueprint.flow.return", "blueprint.fn.return", "blueprint.game.quit",
-    "blueprint.game.save.load", "blueprint.game.startStory", "blueprint.page.go", "blueprint.page.quit",
+    "blueprint.game.startStory", "blueprint.page.go", "blueprint.page.quit",
 ];
 
 /** The three loops. `loop` runs the body, `completed` carries on once it stops. */
@@ -387,6 +388,11 @@ const IRREGULAR_EXEC_PINS: Readonly<Record<string, BlueprintNodeExecPins>> = {
     // machine - and it leads to "start a new game", not to an apology. Folding it into `failed`
     // would put an error message in front of every first-time player.
     [BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS]: { in: ["in"], out: ["found", "missing", "failed"] },
+    // `Load Save` leaves by `failed` and by nothing else. A load that lands has replaced the whole
+    // running game, so there is nothing a `next` could run against - the graph that asked for it is
+    // not the game any more. A refusal moved nothing, and the save screen that asked is still
+    // standing, which is the branch a title screen needs.
+    [BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD]: { in: ["in"], out: ["failed"] },
     // `Show Confirm` has no `next` at all: every way out of the question is a branch. `dismissed`
     // is the static one - the player closed it without answering - and each button an author added
     // publishes its own `button_N_pressed` beside it.

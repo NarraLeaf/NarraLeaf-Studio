@@ -4,10 +4,13 @@ import path from "path";
 import { UserDataNamespace } from "@shared/types/constants";
 import {
     DEV_MODE_SAVE_TYPE_NORMAL,
+    devModeSaveHeaderOf,
+    type DevModeSaveHeader,
     type DevModeSaveMetadata,
     type DevModeSaveProjectRef,
     type DevModeSaveRecord,
 } from "@shared/types/devModeSave";
+import { readSaveCompatibilityStamp } from "@shared/types/saveCompatibility";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { AppWindow } from "../appWindow";
@@ -103,6 +106,7 @@ function readRecordShape(value: unknown): DevModeSaveFileRecord | null {
     if (typeof metadata.createdAt !== "string" || typeof metadata.updatedAt !== "string") {
         return null;
     }
+    const compatibility = readSaveCompatibilityStamp(metadata.compatibility);
     return {
         version: 1,
         metadata: {
@@ -111,6 +115,9 @@ function readRecordShape(value: unknown): DevModeSaveFileRecord | null {
             createdAt: metadata.createdAt,
             updatedAt: metadata.updatedAt,
             ...(typeof metadata.capture === "string" && metadata.capture ? { capture: metadata.capture } : {}),
+            // Read, never trusted: a stamp that is half there has to arrive as no stamp, so it
+            // classifies as "cannot be compared" instead of as a comparison against blanks.
+            ...(compatibility ? { compatibility } : {}),
             user: normalizeUserMetadata(metadata.user),
         },
         savedGame: record.savedGame,
@@ -149,6 +156,7 @@ export class DevModeSaveWriteHandler extends IPCHandler<IPCEventType.devModeSave
             const filePath = saveFilePath(window, data.projectRef, id);
             const previous = await readSaveRecord(filePath);
             const now = new Date().toISOString();
+            const compatibility = readSaveCompatibilityStamp(data.compatibility);
             const record: DevModeSaveFileRecord = {
                 version: 1,
                 metadata: {
@@ -157,6 +165,9 @@ export class DevModeSaveWriteHandler extends IPCHandler<IPCEventType.devModeSave
                     createdAt: previous?.metadata.createdAt ?? now,
                     updatedAt: now,
                     ...(typeof data.capture === "string" && data.capture ? { capture: data.capture } : {}),
+                    // Taken fresh on every write: overwriting a slot replaces the playthrough in
+                    // it, so the stamp has to describe the build that wrote what is there now.
+                    ...(compatibility ? { compatibility } : {}),
                     user: normalizeUserMetadata(data.metadata),
                 },
                 savedGame: data.savedGame,
@@ -209,6 +220,45 @@ export class DevModeSaveListIdsHandler extends IPCHandler<IPCEventType.devModeSa
                 }
             }
             return { ids };
+        });
+    }
+}
+
+/**
+ * Every slot's header, without any slot's game.
+ *
+ * The same directory walk `listIds` does - the record has to be parsed either way to learn its id -
+ * carrying three more fields back instead of one. What it deliberately does not carry is the
+ * serialized playthrough and the base64 capture, which is the whole reason a save screen can ask
+ * this on every open.
+ */
+export class DevModeSaveListHeadersHandler extends IPCHandler<IPCEventType.devModeSaveListHeaders> {
+    readonly name = IPCEventType.devModeSaveListHeaders;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.devModeSaveListHeaders]["data"],
+    ): Promise<RequestStatus<{ headers: DevModeSaveHeader[] }>> {
+        return this.tryUse(async () => {
+            const dir = saveDirectory(window, data.projectRef);
+            let names: string[];
+            try {
+                names = await fs.readdir(dir);
+            } catch (error) {
+                if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+                    return { headers: [] };
+                }
+                throw error;
+            }
+            const headers: DevModeSaveHeader[] = [];
+            for (const name of names.filter(isSaveFile)) {
+                const record = await readSaveRecord(path.join(dir, name));
+                if (record?.metadata.type === DEV_MODE_SAVE_TYPE_NORMAL) {
+                    headers.push(devModeSaveHeaderOf(record));
+                }
+            }
+            return { headers };
         });
     }
 }

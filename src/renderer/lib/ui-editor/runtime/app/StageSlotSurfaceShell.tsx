@@ -63,7 +63,8 @@ export type GameUiSlotHostOptions = {
     setFullscreen?: (fullscreen: boolean) => Promise<void>;
     startStoryInGame: (request: DevModeStartStoryRequest) => Promise<void>;
     writeSaveInGame: (id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>;
-    loadSaveInGame: (id: string) => Promise<void>;
+    /** Resolves false when the save was not applied; `Load Save` routes that to its `Failed` pin. */
+    loadSaveInGame: (id: string) => Promise<boolean>;
     deleteSaveInGame: (id: string) => Promise<void>;
     listSaveIds: () => Promise<string[]>;
     getSaveMetadata: (id: string) => Promise<unknown>;

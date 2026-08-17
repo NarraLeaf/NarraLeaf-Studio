@@ -8,6 +8,7 @@
  */
 
 import { ProjectGameSection } from "../sections/ProjectGameSection";
+import { ProjectSaveCompatibilitySection } from "../sections/ProjectSaveCompatibilitySection";
 import { ProjectPreferencesSection } from "../sections/ProjectPreferencesSection";
 import { ProjectAudioSection } from "../sections/ProjectAudioSection";
 import type { ProjectSectionProps } from "../sections/types";
@@ -16,6 +17,7 @@ export function ProjectGamePage(props: ProjectSectionProps) {
     return (
         <div className="grid gap-3 [&>*]:min-w-0">
             <ProjectGameSection {...props} />
+            <ProjectSaveCompatibilitySection {...props} />
             <ProjectPreferencesSection {...props} />
             <ProjectAudioSection {...props} />
         </div>
