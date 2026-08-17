@@ -344,7 +344,7 @@ export const assets = {
             manifestUnreadable: "{path} could not be read.",
             atlasMissing: "No atlas beside the skeleton; {path} was expected.",
             atlasEmpty: "{path} names no image.",
-            nestedModel: "Holds another model, {path}, which this folder would bring along.",
+            nestedModel: "Holds another model, {path}, which would be copied with it.",
         },
         /** How a missing file is named. Lower-case: these are read mid-sentence. */
         role: {

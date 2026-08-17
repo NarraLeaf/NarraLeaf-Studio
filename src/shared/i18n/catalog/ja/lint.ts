@@ -81,7 +81,7 @@ export const lint = {
         },
         storyLabelDuplicate: {
             title: "ラベルの重複",
-            description: "同じラベルの宣言が 2 つあり、先に書いたほうが勝つ",
+            description: "同じラベルの宣言が 2 つあり、到達するのは先に書いたほうだけ",
             message: "{label} は上ですでに宣言されているので、こちらには決して来ない",
         },
         storyLabelUnused: {
@@ -305,7 +305,7 @@ export const lint = {
         blocked: "問題 {count} 件のためビルドを中止した",
         // パネル → ページ → 項目まで書く。この関門は既定で有効なので、このパネルを開いたことのない
         // 作者はその設定の存在を知らない。「検査の設定で」とだけ書くと探し回ることになる。
-        blockedHint: "これは「プロジェクト → 検査 → ビルド前に検査」で変えられる",
+        blockedHint: "これは「プロジェクト ▸ プロジェクト ▸ ビルド前に検査」で変えられる",
         skipped: "プロジェクトの検査を省いた",
     },
     settings: {

@@ -501,7 +501,7 @@ export const documentDiff = {
             one: "{count} file still needs a side",
             other: "{count} files still need a side",
         },
-        notSaved: "Nothing is written to your files until the merge is finished.",
+        notSaved: "Nothing is written to the project files until the merge is finished.",
         abandon: "Abandon",
         abandonConfirm: "Abandon this merge?",
         abandonConfirmDetail:
@@ -537,7 +537,7 @@ export const documentDiff = {
             /** Back to tier one, and each of these says which wall was hit. */
             blocked: {
                 title: "This file has to be kept whole from one side.",
-                noSpec: "Studio does not know this file's format, so it cannot merge parts of it.",
+                noSpec: "Studio does not recognise this file's format, so it cannot merge parts of it.",
                 noMerge3: "Studio can read this format but cannot merge two versions of it change by change.",
                 readOnly: "Studio can merge this format but cannot write the result back, so the whole file has to come from one side.",
                 tooLarge: "This file is too large to merge change by change.",
