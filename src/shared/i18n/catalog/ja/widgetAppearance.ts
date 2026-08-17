@@ -5,12 +5,12 @@ export const widgetAppearance = {
         invalidModel:
             "この要素には有効な外観データがない。パレットから新しく作る",
     },
-    variant: {
-        nameLabel: "バリアント名",
-        untitled: "無題のバリアント",
-        addTitle: "バリアントを追加（現在のものを複製）",
-        setDefaultTitle: "既定のバリアントにする",
-        deleteTitle: "バリアントを削除",
+    state: {
+        label: "状態",
+        untitled: "無題の状態",
+        addTitle: "状態を追加（現在のものを複製）",
+        setDefaultTitle: "既定の状態にする",
+        deleteTitle: "状態を削除",
     },
     motion: {
         animatedFields: "動かす項目",

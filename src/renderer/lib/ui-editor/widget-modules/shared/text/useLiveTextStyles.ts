@@ -2,7 +2,8 @@ import type { CSSProperties } from "react";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
-import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
+import { variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
+import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import { resolveTextVisualProps } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import { useWidgetRuntimeElementState } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { composeTextEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
@@ -53,14 +54,14 @@ export function useLiveTextStyles({
     useAppearanceInspectorPreview,
 }: Pick<WidgetRendererProps, "element" | "useAppearanceInspectorPreview">): LiveTextStyles {
     const flatProps = getTextProps(element);
-    const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
+    const enteredState = useEnteredElementState(element.id, useAppearanceInspectorPreview === true);
     const runtimeState = useWidgetRuntimeElementState(element.id);
     const listScopedVariantId =
         typeof (element.extra as UIListElementExtra | undefined)?.runtimeVariantOverrideId === "string"
             ? (element.extra as UIListElementExtra).runtimeVariantOverrideId
             : null;
     const p = resolveTextVisualProps(element, flatProps.appearance ?? undefined, {
-        variantOverrideId: listScopedVariantId ?? runtimeState.variantOverrideId ?? inspectorVariantId ?? null,
+        variantOverrideId: variantOverrideIdFor(enteredState, listScopedVariantId, runtimeState.variantOverrideId),
         signals: runtimeState.signals,
     });
     const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);

@@ -4,12 +4,12 @@ export const widgetAppearance = {
         invalidModel:
             "This element has no valid appearance data. Create a new one from the palette.",
     },
-    variant: {
-        nameLabel: "Variant name",
-        untitled: "Untitled variant",
-        addTitle: "Add variant (duplicate current)",
-        setDefaultTitle: "Set as default variant",
-        deleteTitle: "Delete variant",
+    state: {
+        label: "State",
+        untitled: "Untitled state",
+        addTitle: "Add state (duplicate current)",
+        setDefaultTitle: "Set as default state",
+        deleteTitle: "Delete state",
     },
     motion: {
         animatedFields: "Animated fields",
