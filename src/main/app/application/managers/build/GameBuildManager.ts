@@ -189,21 +189,57 @@ export function resolveElectronDistDirForApp(
 export { deriveGameAppId };
 
 /**
- * Fixed hardening fuse set for shipped games; not user-configurable.
+ * Whether this build ships a sidecar that runs as JavaScript rather than as its own executable.
  *
- * `hasSigningIdentity` gates asar integrity validation. That fuse hard-quits
- * the app on any post-package mutation of app.asar - real tamper-evidence when
- * a trusted signature seals the embedded hash, but on an ad-hoc/unsigned build
- * it is downside-only: an attacker just recomputes the hash and re-signs
- * ad-hoc, while ordinary players get a silent hard-crash if antivirus, disk
- * corruption or an updater ever touches the archive. It also does not cover
- * the asset payload, which ships outside the asar with its own protection. So
- * it stays off until real code signing is configured, at which point it earns
- * its keep. (Linux has no asar-integrity support regardless.)
+ * Such a sidecar is started by running the game's own Electron binary as a Node interpreter, which
+ * is a thing `ELECTRON_RUN_AS_NODE` asks for and the `runAsNode` fuse can refuse - so the fuse and
+ * the feature cannot both be absolute. Asked of the compiled pack rather than of the project,
+ * because the pack is what actually shipped: a plugin declaring a sidecar for another platform
+ * contributes nothing to this artifact and must not cost it a fuse.
  */
-export function gameFusesForPlatform(platform: GameBuildDesktopPlatform, hasSigningIdentity: boolean): GameBuildWorkerFuses {
+export function packShipsNodeSidecar(pack: GameRuntimePackV1 | null | undefined): boolean {
+    return (pack?.plugins ?? []).some(plugin =>
+        (plugin.sidecars ?? []).some(sidecar => sidecar.kind === "node"));
+}
+
+/**
+ * Hardening fuse set for shipped games; not user-configurable. Two of the fuses answer to what the
+ * build actually is rather than being fixed, and both parameters exist for that reason.
+ *
+ * `hasSigningIdentity` gates asar integrity validation. That fuse hard-quits the app on any
+ * post-package mutation of app.asar - real tamper-evidence when a trusted signature seals the
+ * embedded hash, but on an ad-hoc/unsigned build it is downside-only: an attacker just recomputes
+ * the hash and re-signs ad-hoc, while ordinary players get a silent hard-crash if antivirus, disk
+ * corruption or an updater ever touches the archive. It also does not cover the asset payload,
+ * which ships outside the asar with its own protection. So it stays off until real code signing is
+ * configured, at which point it earns its keep. (Linux has no asar-integrity support regardless.)
+ *
+ * `shipsNodeSidecar` gates `runAsNode`; see the comment on that field.
+ */
+export function gameFusesForPlatform(
+    platform: GameBuildDesktopPlatform,
+    hasSigningIdentity: boolean,
+    shipsNodeSidecar = false,
+): GameBuildWorkerFuses {
     return {
-        runAsNode: false,
+        /*
+         * Off unless something in this build needs it on.
+         *
+         * `ELECTRON_RUN_AS_NODE` is how a `kind: "node"` plugin sidecar starts: the runtime spawns
+         * the game's own binary with that variable set and the sidecar's .js as its argument. With
+         * the fuse off, the variable is ignored and that spawn silently launches a second copy of
+         * the game instead of a Node process - and only in a packaged build, since preview is not
+         * fused, so the failure appears after shipping and nowhere before it.
+         *
+         * The alternative, Electron's `utilityProcess`, is not one here: the sidecar wire protocol
+         * is NDJSON over stdin/stdout with EOF as the shutdown signal, a utility process has no
+         * stdin, and executable sidecars speak the same protocol and cannot move with it.
+         *
+         * So the fuse follows the build. A game that ships no node sidecar - nearly all of them -
+         * is unchanged and keeps the variable refused. One that does has already had its author
+         * accept that plugin's sidecar permission, and relaxes exactly this one fuse to honour it.
+         */
+        runAsNode: shipsNodeSidecar,
         // Left off deliberately: a game stores no Chromium cookies (saves and
         // persistence are its own JSON stores), and enabling OS cookie
         // encryption makes the first launch prompt for keychain/secret-store
@@ -1474,7 +1510,11 @@ export class GameBuildManager {
                 platform: target.platform,
                 formats: target.formats,
                 arch: normalizeGameBuildArch(target.platform, target.arch),
-                fuses: gameFusesForPlatform(target.platform, hasSigningIdentityForPlatform(target.platform, signing)),
+                fuses: gameFusesForPlatform(
+                    target.platform,
+                    hasSigningIdentityForPlatform(target.platform, signing),
+                    packShipsNodeSidecar(desktopArtifact?.pack),
+                ),
                 ...(target.platform === hostPlatform
                     ? { electronDist: resolveElectronDistDirForApp(this.app) }
                     : {}),

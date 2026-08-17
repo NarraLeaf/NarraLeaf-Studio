@@ -14,6 +14,7 @@ import {
 } from "@narraleaf/encryption";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
+import { openSealedBundle } from "@narraleaf/encryption/runtime";
 import { BoundedBufferCache, createRuntimeResources } from "./runtimeResources";
 
 describe("BoundedBufferCache", () => {
@@ -51,13 +52,12 @@ describe("BoundedBufferCache", () => {
 });
 
 /**
- * Patch layering, against real sealed files rather than a stand-in.
+ * Reading a protected payload, against a real sealed store rather than a stand-in.
  *
- * The trust rules here are the whole point of the feature and every one of them
- * fails silently if it is wrong: a build that quietly accepted an unproven pack
- * would run a stranger's blueprint scripts and look exactly like one that did
- * not. So these open genuine patches produced by the real writer, including the
- * ones a hostile file would be.
+ * Everything here is about what a shipped game can and cannot be asked. The store
+ * is opened the way a player's copy opens it - through the bound binary, with no
+ * key passed - because that is precisely what an attacker who has replaced the
+ * main process also has.
  */
 describe("protected runtime resources", () => {
     let root: string;
@@ -105,6 +105,35 @@ describe("protected runtime resources", () => {
         }
     });
 
+    /*
+     * A guard on the installed package, not on this repo's code.
+     *
+     * The store files asset entries under a one-way fold of their name, so a shipped game cannot be
+     * asked what it contains. That property lives in `@narraleaf/encryption`, which Studio consumes
+     * as a published dependency - meaning an install that resolves an older version puts the plain
+     * names back and nothing here would otherwise notice. The failure would be silent, invisible in
+     * every feature test, and a straight regression of the thing the design exists for. So it is
+     * asserted from the side that owns node_modules.
+     */
+    it("gets a store whose table does not disclose the asset ids it holds", async () => {
+        const assetId = "b3f1c0de-0000-4000-8000-000000000001";
+        const appDir = await makeSealedApp(assetId, "sealed image bytes");
+        const reader = await openSealedBundle(
+            path.join(appDir, RUNTIME_SUPPORT_FILENAME),
+            path.join(appDir, RUNTIME_BUNDLE_FILENAME),
+        );
+        try {
+            const listed = reader.names();
+            expect(listed).toContain("pack");
+            expect(listed).not.toContain(`assets/${assetId}`);
+            expect(listed.some(name => name.includes(assetId))).toBe(false);
+            // Still reachable by the id itself - opacity must not have cost resolution.
+            expect((await reader.read(`assets/${assetId}`)).toString()).toBe("sealed image bytes");
+        } finally {
+            await reader.close();
+        }
+    });
+
     it("refuses an id it was never given, rather than answering something", async () => {
         const appDir = await makeSealedApp("b3f1c0de-0000-4000-8000-000000000001", "sealed image bytes");
         const emptyPack = { assets: { items: {} } } as unknown as GameRuntimePackV1;
@@ -118,6 +147,15 @@ describe("protected runtime resources", () => {
     });
 });
 
+/**
+ * Patch layering, against real sealed files rather than a stand-in.
+ *
+ * The trust rules here are the whole point of the feature and every one of them
+ * fails silently if it is wrong: a build that quietly accepted an unproven pack
+ * would run a stranger's blueprint scripts and look exactly like one that did
+ * not. So these open genuine patches produced by the real writer, including the
+ * ones a hostile file would be.
+ */
 describe("patched runtime resources", () => {
     const TITLE = "com.example.patched";
     let root: string;

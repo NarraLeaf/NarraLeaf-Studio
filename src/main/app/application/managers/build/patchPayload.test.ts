@@ -100,7 +100,20 @@ describe("patch payload", () => {
 
         const payload = await openPayload(appDir);
         try {
-            expect(payload.names).toEqual(["assets/asset-1", "pack", "plugins/acme.sample/runtime.js"]);
+            // A sealed payload does not list its asset entries by name - that is the
+            // whole point of the store's item table - so what a differ gets back for
+            // one is an opaque token. It still gets every entry, and the tokens are
+            // stable across builds of a title, which is all that diffing needs.
+            expect(payload.names).toHaveLength(3);
+            expect(payload.names).toContain("pack");
+            expect(payload.names).toContain("plugins/acme.sample/runtime.js");
+            expect(payload.names).not.toContain("assets/asset-1");
+            const token = payload.names.find(name => name !== "pack" && !name.startsWith("plugins/"))!;
+            expect(token).not.toContain("asset-1");
+
+            // Readable both ways: by the token a differ holds, and by the real name a
+            // caller that knows the asset id can build.
+            expect((await payload.read(token)).toString()).toBe("one");
             expect((await payload.read("assets/asset-1")).toString()).toBe("one");
         } finally {
             await payload.close();
