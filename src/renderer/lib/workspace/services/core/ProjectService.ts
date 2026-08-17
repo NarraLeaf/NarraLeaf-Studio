@@ -451,8 +451,8 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
 
     /**
      * Read the effective save-compatibility policy, falling back to the defaults for projects that
-     * predate `app.saveCompatibility` - and those defaults are what every build did before the
-     * policy existed.
+     * predate `app.saveCompatibility`. Saves those projects have already written carry no stamp and
+     * are unaffected either way; the defaults decide what happens to the ones written from here on.
      */
     public getSaveCompatibilityConfiguration(): SaveCompatibilityConfiguration {
         return normalizeSaveCompatibilityConfiguration(this.getProjectConfig().app?.saveCompatibility);
