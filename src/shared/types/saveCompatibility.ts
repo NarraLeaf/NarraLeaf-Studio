@@ -85,17 +85,22 @@ export type SaveCompatibilityConfiguration = {
 };
 
 /**
- * Both defaults reproduce, exactly, what a build did before this setting existed: every save is
- * offered and every save is attempted, and a position that no longer resolves is caught where it
- * always was - by the pre-check in `saveLoad.ts`, which refuses without spending the run.
+ * A save from the same story is resumed; a save from a different story puts the player back where
+ * it stopped instead.
  *
- * Deliberately not the safer-sounding pair. Turning a policy on by default would change what
- * already-shipped titles do to saves players already have, on nothing more than an update to
- * Studio.
+ * The two halves are answering two different questions, so they do not take the same default. Same
+ * story is not a risk at all - the prose the save points into is byte-for-byte what it was - and
+ * refusing it by default would take a playthrough away for a version number. A different story is
+ * the case where the position may no longer mean what it meant, and where loading it anyway is the
+ * choice an author should make on purpose rather than inherit.
+ *
+ * This costs nothing to a save that has already been written: those carry no stamp, cannot be
+ * compared, and load exactly as they always did. It changes what happens to saves a build writes
+ * from here on.
  */
 export const DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION: SaveCompatibilityConfiguration = {
     compatible: "resume",
-    incompatible: "force",
+    incompatible: "resumeScene",
 };
 
 const COMPATIBLE_POLICIES: readonly SaveCompatiblePolicy[] = ["resume", "discard"];
