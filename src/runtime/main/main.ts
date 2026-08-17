@@ -8,6 +8,7 @@ import { shell } from "electron";
 import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, screen, session } from "electron/main";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { GameTestEvent } from "@shared/types/gameTest";
+import type { SaveCompatibilityStamp } from "@shared/types/saveCompatibility";
 import {
     GAME_RUNTIME_CLOSE_DECISION_CHANNEL,
     GAME_RUNTIME_CLOSE_REQUESTED_CHANNEL,
@@ -996,10 +997,16 @@ function registerRuntimeIpc(): void {
         }
     });
 
-    ipcMain.handle("runtime:save:write", (_event, data: { id: string; savedGame: unknown; capture?: string; metadata?: unknown }) =>
-        saves.write(data.id, data.savedGame, data.capture, data.metadata));
+    ipcMain.handle("runtime:save:write", (_event, data: {
+        id: string;
+        savedGame: unknown;
+        capture?: string;
+        metadata?: unknown;
+        compatibility?: SaveCompatibilityStamp;
+    }) => saves.write(data.id, data.savedGame, data.capture, data.metadata, data.compatibility));
     ipcMain.handle("runtime:save:read", (_event, id: string) => saves.read(id));
     ipcMain.handle("runtime:save:listIds", () => saves.listIds());
+    ipcMain.handle("runtime:save:listHeaders", () => saves.listHeaders());
     ipcMain.handle("runtime:save:readPreview", (_event, id: string) => saves.readPreview(id));
     ipcMain.handle("runtime:save:delete", (_event, id: string) => saves.delete(id));
 

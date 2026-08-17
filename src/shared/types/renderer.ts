@@ -32,7 +32,8 @@ import type {
 } from "./signing";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { ServerTrustPromptProps } from "./serverTrust";
-import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
+import type { DevModeSaveHeader, DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
+import type { SaveCompatibilityStamp } from "./saveCompatibility";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type {
     PluginPermissionDecision,
@@ -501,12 +502,14 @@ export interface RendererPreloadedInterface {
                 savedGame: unknown,
                 capture?: string,
                 metadata?: unknown,
+                compatibility?: SaveCompatibilityStamp,
             ): Promise<RequestStatus<void>>;
             read(
                 projectRef: DevModeSaveProjectRef,
                 id: string,
             ): Promise<RequestStatus<{ record: DevModeSaveRecord | null }>>;
             listIds(projectRef: DevModeSaveProjectRef): Promise<RequestStatus<{ ids: string[] }>>;
+            listHeaders(projectRef: DevModeSaveProjectRef): Promise<RequestStatus<{ headers: DevModeSaveHeader[] }>>;
             readPreview(projectRef: DevModeSaveProjectRef, id: string): Promise<RequestStatus<{ capture: string | null }>>;
             delete(projectRef: DevModeSaveProjectRef, id: string): Promise<RequestStatus<{ deleted: boolean }>>;
         };

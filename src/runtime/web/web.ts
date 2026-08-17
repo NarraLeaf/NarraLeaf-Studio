@@ -141,10 +141,11 @@ const bridge: GameRuntimePreloadBridge = {
     // crash screen could send anyone to.
     logPath: null,
     save: {
-        write: async (id, savedGame, capture, metadata) =>
-            (await getStorage()).writeSave(id, savedGame, capture, metadata),
+        write: async (id, savedGame, capture, metadata, compatibility) =>
+            (await getStorage()).writeSave(id, savedGame, capture, metadata, compatibility),
         read: async id => (await getStorage()).readSave(id),
         listIds: async () => (await getStorage()).listSaveIds(),
+        listHeaders: async () => (await getStorage()).listSaveHeaders(),
         readPreview: async id => (await getStorage()).readSavePreview(id),
         delete: async id => (await getStorage()).deleteSave(id),
     },

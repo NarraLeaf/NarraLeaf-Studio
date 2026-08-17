@@ -469,7 +469,9 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { id: "" },
-            output: null,
+            // True when the save was applied. A refusal is an answer rather than a throw: the node
+            // has a `Failed` pin, and the player and the author have already been told.
+            output: false,
         },
         deleteSave: {
             capabilityId: "game.deleteSave",

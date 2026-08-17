@@ -7,7 +7,13 @@ import {
     type ReactNode,
 } from "react";
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
-import { Sound, type LiveGame, type Scene } from "narraleaf-react";
+import { Sound, type LiveGame, type SavedGame, type Scene } from "narraleaf-react";
+import {
+    buildSaveCompatibilityStamp,
+    normalizeSaveCompatibilityConfiguration,
+    planSaveResume,
+    readSaveCompatibilityStamp,
+} from "@shared/types/saveCompatibility";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import {
     LOCALE_STORAGE_KEY,
@@ -526,6 +532,14 @@ export function GameApp(props: GameAppProps): ReactNode {
      * after `newGame()`. Persistent values do not wait: they live outside the engine and survive.
      */
     const pendingImportedProgressRef = useRef<GameProgressDocumentV1 | null>(null);
+    /**
+     * A save whose saved-scope values are being carried into a story that is being started again.
+     *
+     * The `Return to where it stopped` policy relaunches instead of loading, and a relaunch is a
+     * `Start Game`: it calls `newGame()`, which clears every namespace. The values wait here for
+     * the same reason an imported progress document does, and are applied at the same moment.
+     */
+    const pendingCarriedSaveRef = useRef<SavedGame | null>(null);
     /**
      * The story row the engine was last executing, or undefined when nothing was.
      *
@@ -1171,6 +1185,48 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
     }, [progressVariableDefs]);
 
+    /**
+     * Put a save's saved-scope values into the story that has just been started again.
+     *
+     * The whole namespace rather than the project's declared variables: a story's own `/save` rows
+     * declare saved variables too, and a player relaunched into their chapter with half their flags
+     * would be in a state no playthrough could have produced. Read straight off the serialized
+     * store, which is where a load would have read it from as well.
+     */
+    const applyCarriedSaveState = useCallback((savedGame: SavedGame): void => {
+        const liveGame = nlrLiveGameRef.current;
+        const compiled = nlrCompiledRef.current;
+        if (!liveGame || !compiled) {
+            return;
+        }
+        const store = (savedGame as unknown as { game?: { store?: Record<string, unknown> } }).game?.store;
+        if (!store || typeof store !== "object") {
+            return;
+        }
+        const storable = liveGame.getStorable();
+        const savedNamespaceName = compiled.savedNamespaceName;
+        const savedValues = savedNamespaceName ? store[savedNamespaceName] : undefined;
+        if (savedNamespaceName && savedValues && typeof savedValues === "object" && storable.hasNamespace(savedNamespaceName)) {
+            const namespace = storable.getNamespace(savedNamespaceName);
+            for (const [key, value] of Object.entries(savedValues as Record<string, unknown>)) {
+                namespace.set(key, value as never);
+            }
+        }
+        const visitedNamespaceName = compiled.visitedNamespaceName;
+        const visitedValues = visitedNamespaceName ? store[visitedNamespaceName] : undefined;
+        const visited = visitedValues && typeof visitedValues === "object"
+            ? (visitedValues as Record<string, unknown>)[STORY_VISITED_SCENES_KEY]
+            : undefined;
+        if (visitedNamespaceName && Array.isArray(visited) && storable.hasNamespace(visitedNamespaceName)) {
+            const merged = mergeVisitedSceneIds(
+                readStoryVisitedIds(storable, visitedNamespaceName, STORY_VISITED_SCENES_KEY),
+                visited.filter((id): id is string => typeof id === "string"),
+            );
+            // A new array, never a push - see `applyImportedSavedProgress`.
+            storable.getNamespace(visitedNamespaceName).set(STORY_VISITED_SCENES_KEY, merged);
+        }
+    }, []);
+
     const exportProgressInGame = useCallback(async (): Promise<{ outcome: "written" | "failed"; error: string }> => {
         if (!host.exportProgress) {
             return {
@@ -1606,6 +1662,24 @@ export function GameApp(props: GameAppProps): ReactNode {
         });
     }, [endingSurfaceId, host, quitGame]);
 
+    /**
+     * What this build stamps into the saves it writes, and compares the saves it is asked to load
+     * against. One value for both halves: a stamp written by one rule and read by another would
+     * make a build disagree with its own saves.
+     *
+     * Null when the bundle carries no story hash - a bundle assembled before hashes existed - which
+     * turns every comparison into "cannot be compared" and leaves loading exactly as it was.
+     */
+    const saveStamp = useMemo(
+        () => (bundle.storyHash
+            ? buildSaveCompatibilityStamp({ storyHash: bundle.storyHash, gameVersion: bundle.gameVersion })
+            : null),
+        [bundle.gameVersion, bundle.storyHash],
+    );
+    const saveCompatibilityConfig = useMemo(
+        () => normalizeSaveCompatibilityConfiguration(bundle.saveCompatibility),
+        [bundle.saveCompatibility],
+    );
     const writeSave = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
         const liveGame = requireActiveLiveGame("Save Game");
         let capture: string | undefined;
@@ -1621,11 +1695,31 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
             }
         }
-        await host.saveStore.write(id, liveGame.serialize(), capture, metadata);
+        await host.saveStore.write(id, liveGame.serialize(), capture, metadata, saveStamp ?? undefined);
         // Host-side, after the write landed: every shell reports it the same way,
         // and a failed write never announces a save that does not exist.
         pluginHost?.emitSaveWritten(id);
-    }, [host.saveStore, pluginHost, reportSaveCaptureFailure, requireActiveLiveGame]);
+    }, [host.saveStore, pluginHost, reportSaveCaptureFailure, requireActiveLiveGame, saveStamp]);
+
+    /**
+     * Which story document in this build holds a scene.
+     *
+     * Only reached when a save's position named a scene and no story - the shapes that carry a
+     * story id are preferred, and this is the last of the three. Ambiguity is not possible in
+     * practice (a scene id belongs to one document) and is resolved by document order if it ever is.
+     */
+    const storyIdOfScene = useCallback((sceneId: string): string => {
+        const documents = bundle.storyLibrary?.documents;
+        if (!documents || !sceneId) {
+            return "";
+        }
+        for (const [storyId, document] of Object.entries(documents)) {
+            if (document?.scenes?.[sceneId]) {
+                return storyId;
+            }
+        }
+        return "";
+    }, [bundle.storyLibrary]);
 
     /**
      * Load a save, or leave the run that is going exactly where it is.
@@ -1641,6 +1735,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         const outcome = await loadSaveIntoGame({
             id,
             readRecord: () => host.saveStore.read(id),
+            currentStamp: saveStamp,
+            compatibilityConfig: saveCompatibilityConfig,
             game: {
                 // `constructMaps` is the engine's own lookup table for a load and caches on the
                 // live game, so checking against it is checking against exactly what `deserialize`
@@ -1681,6 +1777,37 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // count, which is why one balanced load afterwards cannot clear it and every later
                 // load in the session would sit there locked.
                 releaseLoadLock: () => liveGame.getGameState()?.rollLock.unlock(),
+                /**
+                 * The `Return to where it stopped` policy: a story launch, not a load.
+                 *
+                 * `forceReinit` is passed because the fast path in `startStoryInGame` skips the
+                 * recompile when the mounted story already matches the request - which is exactly
+                 * the case here, and exactly the case where reusing the mounted session would drop
+                 * the row the player is being put back on.
+                 */
+                relaunch: async target => {
+                    const start = startStoryInGameRef.current;
+                    if (!start) {
+                        throw new Error("the story cannot be started here");
+                    }
+                    const storyId = target.storyId || storyIdOfScene(target.sceneId);
+                    if (!storyId) {
+                        throw new Error(`no story in this build holds the scene "${target.sceneId}"`);
+                    }
+                    // Queued rather than written: the launch calls `newGame()`, which clears every
+                    // namespace, so values written now would be the ones it wipes.
+                    pendingCarriedSaveRef.current = target.savedGame;
+                    try {
+                        await start({
+                            storyId,
+                            sceneId: target.sceneId,
+                            ...(target.blockId ? { startBlockId: target.blockId } : {}),
+                        }, { forceReinit: true });
+                    } catch (error) {
+                        pendingCarriedSaveRef.current = null;
+                        throw error;
+                    }
+                },
             },
             // The engine's notification channel, which draws through the project's Notifications
             // surface when it has one and the engine's own component when it does not.
@@ -1699,12 +1826,27 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (outcome.status !== "loaded") {
             return outcome;
         }
+        // A relaunch has already entered and revealed its own session (that is what `Start Game`
+        // does); the live game this closure captured is the one it replaced. Waiting on it here
+        // would wait on a session nobody is driving any more.
+        if (outcome.applied !== "save") {
+            return outcome;
+        }
         gameEnteredRef.current = true;
         await liveGame.waitForRouterExit().promise;
         setGameStageVisible(true);
         hideCurrentStudioPagesForGame();
         return outcome;
-    }, [hideCurrentStudioPagesForGame, host.log, host.reportIssue, host.saveStore, requireActiveLiveGame]);
+    }, [
+        hideCurrentStudioPagesForGame,
+        host.log,
+        host.reportIssue,
+        host.saveStore,
+        requireActiveLiveGame,
+        saveCompatibilityConfig,
+        saveStamp,
+        storyIdOfScene,
+    ]);
 
     /**
      * The same load for the surfaces declared as `Promise<void>`: the blueprint host API and the
@@ -1720,6 +1862,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (outcome.status === "refused") {
             throw new Error(`Load Save: "${id}" was not applied. ${outcome.detail}`);
         }
+    }, [loadSave]);
+
+    /**
+     * The same load for a graph, which hears a refusal as a branch rather than as an error.
+     *
+     * `Load Save` carries a `Failed` pin, and a refusal is the ordinary end of asking for an old
+     * save: the player has been told, the author has been told, and the run is where it was. A
+     * throw here would put a red error in front of an author whose title screen is already handling
+     * the case. Anything that is a caller mistake - no game runtime - still throws, from `loadSave`.
+     */
+    const loadSaveForGraph = useCallback(async (id: string): Promise<boolean> => {
+        return (await loadSave(id)).status === "loaded";
     }, [loadSave]);
 
     const deleteSave = useCallback(async (id: string) => {
@@ -1746,9 +1900,18 @@ export function GameApp(props: GameAppProps): ReactNode {
     // (The plugin `saves.listIds` surface is deliberately left raw - it is
     // documented as direct store access, not the authoring view.)
     const listSaveIds = useCallback(async (): Promise<string[]> => {
-        const ids = await host.saveStore.listIds();
-        return ids.filter(id => !isAutoSaveId(id));
-    }, [host.saveStore]);
+        const headers = await host.saveStore.listHeaders();
+        return headers
+            .filter(header => !isAutoSaveId(header.id))
+            // The same decision the load itself makes, from the same header bytes: a slot this
+            // project would refuse is a slot a save screen must not draw a Load button on.
+            .filter(header => planSaveResume(
+                readSaveCompatibilityStamp(header.compatibility),
+                saveStamp,
+                saveCompatibilityConfig,
+            ).plan.action !== "discard")
+            .map(header => header.id);
+    }, [host.saveStore, saveCompatibilityConfig, saveStamp]);
 
     /**
      * The save slots, published for host debug overlays.
@@ -1783,6 +1946,17 @@ export function GameApp(props: GameAppProps): ReactNode {
             if (!record) {
                 return null;
             }
+            // The same policy `List Saves` applies, for the same reason: a "continue" button on an
+            // autosave this project would refuse is a button that cannot work. Autosaves carry the
+            // same stamp - they are ordinary records under reserved ids.
+            const resume = planSaveResume(
+                readSaveCompatibilityStamp(record.metadata.compatibility),
+                saveStamp,
+                saveCompatibilityConfig,
+            );
+            if (resume.plan.action === "discard") {
+                return null;
+            }
             const updatedAt = Date.parse(record.metadata.updatedAt ?? "");
             const createdAt = Date.parse(record.metadata.createdAt ?? "");
             return {
@@ -1795,7 +1969,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         }));
         return entries.filter((entry): entry is AutoSaveEntry => entry !== null)
             .sort((a, b) => b.timestamp - a.timestamp);
-    }, [host.saveStore]);
+    }, [host.saveStore, saveCompatibilityConfig, saveStamp]);
 
     const autoSave = useAutoSave({
         config: autoSaveConfig,
@@ -2065,7 +2239,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 startStoryInGameRef.current?.(request) ??
                 Promise.reject(new Error("Start Game: runtime is not ready")),
             writeSaveInGame: (id, metadata, screenshot) => writeSave(id, metadata, screenshot),
-            loadSaveInGame: loadSaveAction,
+            loadSaveInGame: loadSaveForGraph,
             deleteSaveInGame: id => deleteSave(id),
             listSaveIds,
             getSaveMetadata,
@@ -2305,12 +2479,17 @@ export function GameApp(props: GameAppProps): ReactNode {
             pendingImportedProgressRef.current = null;
             applyImportedSavedProgress(importedProgress);
         }
+        const carriedSave = pendingCarriedSaveRef.current;
+        if (carriedSave) {
+            pendingCarriedSaveRef.current = null;
+            applyCarriedSaveState(carriedSave);
+        }
         // `onFirstSceneReady` already ends on a painted frame (see waitForStageVisualReadyWithTimeout),
         // so there is nothing left to wait for here: an extra frame only delays the UI's exit.
         await sceneReady;
         setGameStageVisible(true);
         hideCurrentStudioPagesForGame();
-    }, [applyImportedSavedProgress, hideCurrentStudioPagesForGame]);
+    }, [applyCarriedSaveState, applyImportedSavedProgress, hideCurrentStudioPagesForGame]);
 
     const startStoryInGame = useCallback(async (
         request: DevModeStartStoryRequest,
@@ -2392,7 +2571,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onIsGameOverlay: () => entry.presentation === "gameOverlay",
             onQuitGame: quitGame,
             onWriteSave: writeSave,
-            onLoadSave: loadSaveAction,
+            onLoadSave: loadSaveForGraph,
             onDeleteSave: deleteSave,
             onListSaveIds: listSaveIds,
             onGetSaveMetadata: getSaveMetadata,
@@ -2744,7 +2923,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                         input.parentHostAdapter.blueprintRuntime?.hostApi?.game.isGameOverlay() === true,
                     onQuitGame: quitGame,
                     onWriteSave: writeSave,
-                    onLoadSave: loadSaveAction,
+                    onLoadSave: loadSaveForGraph,
                     onDeleteSave: deleteSave,
                     onListSaveIds: listSaveIds,
                     onGetSaveMetadata: getSaveMetadata,

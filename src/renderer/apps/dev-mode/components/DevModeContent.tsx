@@ -1045,9 +1045,9 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [projectPath]);
 
     const saveStore = useMemo<GameAppSaveStore>(() => ({
-        write: async (id, savedGame, capture, metadata) => {
+        write: async (id, savedGame, capture, metadata, compatibility) => {
             const ref = requireProjectRef("Save Game");
-            const result = await getInterface().devMode.save.write(ref, id, savedGame, capture, metadata);
+            const result = await getInterface().devMode.save.write(ref, id, savedGame, capture, metadata, compatibility);
             if (!result.success) {
                 throw new Error(result.error ?? `Save Game failed: ${id}`);
             }
@@ -1082,6 +1082,14 @@ export function DevModeContent(props: DevModeContentProps) {
                 throw new Error(result.error ?? "List Saves failed");
             }
             return result.data.ids;
+        },
+        listHeaders: async () => {
+            const ref = requireProjectRef("List Saves");
+            const result = await getInterface().devMode.save.listHeaders(ref);
+            if (!result.success) {
+                throw new Error(result.error ?? "List Saves failed");
+            }
+            return result.data.headers;
         },
     }), [requireProjectRef]);
 

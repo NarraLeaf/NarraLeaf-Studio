@@ -19,7 +19,8 @@ import type {
 } from "./gameProgress";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "./blueprint/network";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "./blueprint/pointer";
-import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
+import type { DevModeSaveHeader, DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
+import type { SaveCompatibilityStamp } from "./saveCompatibility";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type { PluginPermissionGrantPayload, PluginPermissionGrantResult, PluginPermissionPromptResult } from "./pluginPermissions";
 import type {
@@ -230,6 +231,7 @@ export enum IPCEventType {
     devModeSaveWrite = "devMode.save.write",
     devModeSaveRead = "devMode.save.read",
     devModeSaveListIds = "devMode.save.listIds",
+    devModeSaveListHeaders = "devMode.save.listHeaders",
     devModeSaveReadPreview = "devMode.save.readPreview",
     devModeSaveDelete = "devMode.save.delete",
     devModeFullscreenGet = "devMode.fullscreen.get",
@@ -2178,6 +2180,8 @@ export type IPCDevModeEvents = {
             savedGame: unknown;
             capture?: string;
             metadata?: unknown;
+            /** What produced the save. Absent leaves the record unstamped. */
+            compatibility?: SaveCompatibilityStamp;
         };
         response: void;
     };
@@ -2200,6 +2204,16 @@ export type IPCDevModeEvents = {
         };
         response: {
             ids: string[];
+        };
+    };
+    [IPCEventType.devModeSaveListHeaders]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: DevModeSaveProjectRef;
+        };
+        response: {
+            headers: DevModeSaveHeader[];
         };
     };
     [IPCEventType.devModeSaveReadPreview]: {
