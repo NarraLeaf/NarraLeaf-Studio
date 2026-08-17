@@ -18,7 +18,7 @@ export const workspace = {
             setSource: "Set as source language",
             removeLanguage: "Remove language",
             removeConfirm: "Remove {name}?",
-            removeConfirmDetail: "Translations stay on disk and come back if the language is added again.",
+            removeConfirmDetail: "Translations stay on disk and are restored if the language is added again.",
             openTable: "Open translation table",
             progress: "{completed}/{total} translated",
             staleCount: "{count} to review",
@@ -115,7 +115,7 @@ export const workspace = {
             confirm: "Confirm",
             removeLanguage: "Remove voice language",
             removeConfirm: "Remove {name}?",
-            removeConfirmDetail: "Voice assignments stay on disk and come back if the language is added again.",
+            removeConfirmDetail: "Voice assignments stay on disk and are restored if the language is added again.",
             openTable: "Open voice table",
             progress: "{covered}/{total} voiced",
             staleCount: "{count} outdated",
@@ -249,8 +249,8 @@ export const workspace = {
             message: "This project did not load correctly",
             // Two wordings rather than "file(s)". The count is the first thing read and a bracketed
             // plural in a data-loss warning reads as a placeholder nobody finished.
-            detailOne: "A file could not be read, so part of the project is missing from this window. Common causes: an interrupted save, a sync or backup tool writing at the same time, a plugin. Editing now can write this incomplete state over the files that are still intact.",
-            detailMany: "{count} files could not be read, so part of the project is missing from this window. Common causes: an interrupted save, a sync or backup tool writing at the same time, a plugin. Editing now can write this incomplete state over the files that are still intact.",
+            detailOne: "A file could not be read, so part of the project is missing from this window. Editing now can write this incomplete state over the files that are still intact.",
+            detailMany: "{count} files could not be read, so part of the project is missing from this window. Editing now can write this incomplete state over the files that are still intact.",
             enter: "Open in recovery mode",
         },
         // Each key names what the workspace was doing, not what went wrong: the error itself is
@@ -481,7 +481,7 @@ export const workspace = {
         save: {
             failedTitle: "Couldn't save {file}",
             failedDetailTransient: "Still retrying in the background. {error}",
-            failedDetailPermanent: "Retrying will not help until this is fixed. {error}",
+            failedDetailPermanent: "Retrying fails until this is fixed. {error}",
             retry: "Retry now",
             consoleFailed: "write failed ({code}, attempt {attempt}): {path} · {error}",
             consoleRecovered: "write succeeded: {path}",
@@ -553,7 +553,7 @@ export const workspace = {
             // Named for the mode it leaves, not the place it lands: see docs/help-system.md §4.
             leave: "Stop Viewing History",
             loadingTitle: "Reading the previous revision…",
-            loadingDetail: "The first read of a revision may fetch it from the remote.",
+            loadingDetail: "The first read may fetch it from the server.",
             shownTitle: "Showing revision {revision}",
             shownDetail: "The editors are read-only. The files on disk are not modified.",
             noneTitle: "There is no earlier revision",
@@ -852,7 +852,7 @@ export const workspace = {
                  * rather than whatever was typed into a preference on this machine.
                  */
                 signIn: {
-                    required: "This server requires you to sign in before a project can be pointed at it.",
+                    required: "This server requires sign-in before a project can be connected to it.",
                     // A quiet line, not a button: most servers ask nobody who they are, and
                     // this is a control they can ignore rather than one they must answer.
                     open: "Sign in to this server",
@@ -868,7 +868,7 @@ export const workspace = {
                     tokenPlaceholder: "Paste the token you were given",
                     // Where a token comes from, in one line, because there is nowhere else to
                     // learn it: nothing in Studio can issue one.
-                    hint: "Whoever runs this server issues the token and hands it to you.",
+                    hint: "The token is issued by whoever runs this server.",
                     /**
                      * Trusting the authority a server's certificate is issued from.
                      *
@@ -884,15 +884,15 @@ export const workspace = {
                     trust: {
                         open: "Trust this server on this computer",
                         title: "Trust this server?",
-                        vouched: "The token you pasted names this authority, and this is the authority answering at that address.",
-                        compare: "Check this fingerprint against the one whoever runs the server gives you, over something other than this connection.",
+                        vouched: "The pasted token names this authority, and this authority is answering at that address.",
+                        compare: "Check this fingerprint against the one provided by whoever runs the server, over a different channel.",
                         authorityLabel: "Issued by",
                         fingerprintLabel: "Fingerprint",
                         // The cost of being wrong, in one sentence, without softening it. The
                         // account rather than the computer is not a detail: it is what bounds
                         // the damage, and it is the reason the per-user store is used.
-                        meaning: "Anything holding this authority's key can then issue a certificate for any address, and this account will believe it. Only this account on this computer is affected.",
-                        manual: "This system has no per-account trust store, so Studio cannot do it. Run this, then sign in again:",
+                        meaning: "Anything holding this authority's key can then issue a certificate for any address, and this account will accept it. Only this account on this computer is affected.",
+                        manual: "This system has no per-account trust store. Run this, then sign in again:",
                         copy: "Copy the command",
                         confirm: "Trust it",
                         cancel: "Cancel",
@@ -907,10 +907,10 @@ export const workspace = {
                      * asks them for knowledge they have no way to have.
                      */
                     reach: {
-                        ready: "This server and this copy of Studio can work together.",
+                        ready: "This server is compatible with this copy of Studio.",
                         // Signed in, and the server will not hand over this project. A different
                         // failure from a refused token, and the remedy is a different person's.
-                        notPermitted: "Signed in, but this account has not been given this project. Ask whoever runs the server for access.",
+                        notPermitted: "Signed in, but this account does not have access to this project. Ask whoever runs the server for access.",
                         // The sign-in address answered and the server itself did not, which is
                         // two ports and usually two firewall rules.
                         dataPortSilent: "Signed in, but the server itself did not answer.",
@@ -930,11 +930,11 @@ export const workspace = {
                         // Answered only after a token has been read and found to name no
                         // endpoint, which is what reveals the address field. Most tokens name
                         // one and nobody sees this.
-                        address: "This token does not say where to sign in, so the address is needed too.",
+                        address: "This token carries no sign-in address. Enter the address as well.",
                         // The token named no authority, so there is a comparison left to make
                         // and it is a person's. Shown above the offer, not instead of it.
                         certificate:
-                            "This computer has not been told to trust the authority this server signs with. "
+                            "This computer does not trust the authority this server signs with. "
                             + "Its fingerprint is {fingerprint}.",
                         // The token named one authority and a different one answered. Not a
                         // step that was missed: this is what standing in the way looks like,
