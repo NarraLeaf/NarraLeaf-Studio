@@ -3242,7 +3242,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             set: async (key: string, value: unknown) => {
                 emitHostCall(emit, "persistence.set", "call");
                 try {
-                    await scope.persistenceSetAsync(key, toBlueprintVisibleValue(value));
+                    await scope.persistenceSet(key, toBlueprintVisibleValue(value));
                     emit({ type: "state.write", scope: "persistence", key });
                 } finally {
                     emitHostCall(emit, "persistence.set", "return");
@@ -3267,7 +3267,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             setLocale: async (code: string) => {
                 emitHostCall(emit, "localization.setLocale", "call");
                 try {
-                    await scope.persistenceSetAsync(LOCALE_STORAGE_KEY, code);
+                    await scope.persistenceSet(LOCALE_STORAGE_KEY, code);
                     emit({ type: "state.write", scope: "persistence", key: LOCALE_STORAGE_KEY });
                 } finally {
                     emitHostCall(emit, "localization.setLocale", "return");
@@ -3295,7 +3295,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     // A plain persistence write, exactly like the text language. GameApp watches this
                     // key and re-points the running compile's take table, so the next line is in the
                     // new dub without a recompile.
-                    await scope.persistenceSetAsync(VOICE_LOCALE_STORAGE_KEY, code);
+                    await scope.persistenceSet(VOICE_LOCALE_STORAGE_KEY, code);
                     emit({ type: "state.write", scope: "persistence", key: VOICE_LOCALE_STORAGE_KEY });
                 } finally {
                     emitHostCall(emit, "voice.setLocale", "return");
@@ -3741,7 +3741,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     }
                     // No tracker installed (e.g. story preview): wipe the record
                     // directly and drop the mirrored flag.
-                    await scope.persistenceSetAsync(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
+                    await scope.persistenceSet(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
                     scope.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, false);
                 } finally {
                     emitHostCall(emit, cap, "return");

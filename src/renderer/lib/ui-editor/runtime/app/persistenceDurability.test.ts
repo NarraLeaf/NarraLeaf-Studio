@@ -1,23 +1,24 @@
 /**
- * The scope bridge has two setters one word apart, and only one of them reaches the store.
+ * A persistent value has to reach the store, and the API is now shaped so that it does.
  *
- * `persistenceSet` updates an in-memory map and notifies subscribers. `persistenceSetAsync` does
- * that *and* hands the value to the host store. A value written through the first reads back
- * perfectly for the life of the window and is gone the moment it closes — so nothing asserted
- * within a session can tell the two apart, and neither can the type checker.
+ * The scope bridge used to expose two setters one word apart — `persistenceSet` wrote an in-memory
+ * map, `persistenceSetAsync` also wrote the store — and the memory-only one was the easier of the
+ * two to reach for: synchronous, no promise to handle, and correct in every assertion made inside
+ * the session that wrote it. The same confusion shipped three separate times:
  *
- * That has now shipped three separate times:
- *
- *  - story-written persistent variables, invisible to every blueprint (fixed at the story
- *    compiler's persistence bridge, whose comment is the reason this pattern has a name here);
+ *  - story-written persistent variables, which no blueprint could see;
  *  - the playtime total, which never survived a relaunch;
  *  - the read-text record, which meant skip-read-text skipped nothing and every "has the player
  *    heard this line" answered no, on every playthrough after the first.
  *
- * Each was found by hand, twice by driving the real app. So this enumerates every call site
- * instead: a bare `persistenceSet` has to be paired with the durable write, or be named below with
- * a reason it is deliberately session-only. The allowlist is checked for staleness too, because an
- * exemption nobody revalidates is how the fourth one gets in.
+ * Each needed a person to find, twice by driving the real app, because no test written inside one
+ * session can tell a durable write from a session-only one.
+ *
+ * So the shape changed rather than the call sites: there is one setter, it updates the map
+ * synchronously and then writes through, and the session-only case has a name nobody reaches for by
+ * accident. This file holds the shape in place. It is deliberately about the *API*, not about
+ * individual writes — an allowlist of call sites was the previous design, and its first draft
+ * excused the very defect it was written for.
  */
 
 import fs from "fs/promises";
@@ -25,124 +26,95 @@ import path from "path";
 import { describe, expect, it } from "vitest";
 
 const RENDERER_SRC = path.resolve(__dirname, "../../../..");
+const BRIDGE = "lib/ui-editor/blueprint-runtime/ScopeStoreBridge.ts";
 
-/** Files that call the bridge's setters. Kept explicit: a glob would quietly stop covering a new one. */
-const CALLERS = [
-    "apps/dev-mode/components/StoryRuntimeDebugPanel.tsx",
-    "apps/workspace/modules/story/scene-editor/preview/useStoryPreviewGameUi.ts",
-    "lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge.ts",
-    "lib/ui-editor/runtime/app/GameApp.tsx",
-    "lib/ui-editor/runtime/plugins/runtimePluginStoryState.ts",
-];
-
-/**
- * Writes that are session-only on purpose, keyed `file::firstArgument`.
- *
- * Both halves of the key earn their place. Without the file, a generic argument name excuses every
- * site that happens to use it — the first draft keyed on the argument alone, `key` was on the list
- * for the story preview, and it silently excused the read-text write this whole file exists for.
- * Without the argument, a file inherits one excuse for every write it ever grows.
- */
-const SESSION_ONLY: Readonly<Record<string, string>> = {
-    "lib/ui-editor/runtime/app/GameApp.tsx::LOCALE_STORAGE_KEY":
-        "the system-locale match, re-derived from navigator on every boot; an explicit choice goes "
-        + "through the Set Language node, which writes durably",
-    "apps/dev-mode/components/StoryRuntimeDebugPanel.tsx::variable.storageKey":
-        "the Story Runtime debug panel poking a value into a running game, which is an instrument "
-        + "rather than an edit the project should keep",
-    "apps/workspace/modules/story/scene-editor/preview/useStoryPreviewGameUi.ts::key":
-        "the in-editor story preview, which has no host store behind it at all",
-    "lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge.ts::key":
-        "the `state.set` persistence branch, which no caller reaches: every caller passes surface "
-        + "or global, and the durable path is `persistence.set` right below it",
-    "lib/ui-editor/runtime/plugins/runtimePluginStoryState.ts::def.storageKey":
-        "REPORTED, NOT EXCUSED: a plugin writing a persistent story variable. Same shape as the "
-        + "story-compiler bug already fixed, but nothing in the repo exercises it, so it is listed "
-        + "here to be decided rather than changed blind",
-    "lib/ui-editor/runtime/app/GameApp.tsx::refKey.slice(\"persistent:\".length)":
-        "REPORTED, NOT EXCUSED: Scene Snapshot launch overrides. Writing them durably would leak a "
-        + "preview launch into the author's real store, so the fix is a decision, not a rename",
-};
-
-/**
- * Every bare `persistenceSet` **on the bridge itself**, with the text that follows it.
- *
- * The receiver matters: a hook that takes a `persistenceSet` callback as an option calls it by that
- * name too, and whether *that* one is durable is decided where the option is wired, not where it is
- * invoked. Matching on the method name alone flags the abstraction boundary instead of the defect.
- */
-function bareWrites(source: string): Array<{ arg: string; tail: string }> {
-    const out: Array<{ arg: string; tail: string }> = [];
-    const pattern = /(?:scopeBridge|scope|persistence)\??\.persistenceSet\((?!Async)/g;
-    for (let match = pattern.exec(source); match; match = pattern.exec(source)) {
-        const from = match.index + match[0].length;
-        const argument = source.slice(from, source.indexOf(",", from)).trim();
-        // Enough to see a paired durable write in the same statement or the next one, and not so
-        // much that an unrelated call further down the file launders this one.
-        out.push({ arg: argument, tail: source.slice(match.index, match.index + 260) });
+/** Every renderer source file, so a new caller cannot appear somewhere this test does not look. */
+async function rendererSources(): Promise<Array<{ file: string; source: string }>> {
+    const out: Array<{ file: string; source: string }> = [];
+    async function walk(dir: string): Promise<void> {
+        for (const entry of await fs.readdir(path.join(RENDERER_SRC, dir), { withFileTypes: true })) {
+            const rel = path.posix.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                if (entry.name === "dist" || entry.name === "node_modules") {
+                    continue;
+                }
+                await walk(rel);
+            } else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) {
+                out.push({ file: rel, source: await fs.readFile(path.join(RENDERER_SRC, rel), "utf-8") });
+            }
+        }
     }
+    await walk(".");
     return out;
 }
 
 describe("persistence durability", () => {
-    it("pairs every in-memory write with the durable one, or names why not", async () => {
-        const unpaired: string[] = [];
-        for (const file of CALLERS) {
-            const source = await fs.readFile(path.join(RENDERER_SRC, file), "utf-8");
-            for (const write of bareWrites(source)) {
-                if (write.tail.includes("persistenceSetAsync")) {
-                    continue;
-                }
-                if (SESSION_ONLY[`${file}::${write.arg}`]) {
-                    continue;
-                }
-                unpaired.push(`${file}: persistenceSet(${write.arg}) never reaches the store`);
+    it("has exactly one way to write a persistent value, and it reaches the store", async () => {
+        const bridge = await fs.readFile(path.join(RENDERER_SRC, BRIDGE), "utf-8");
+        // The second setter is gone. Reintroducing one under any name that reads as an alternative
+        // to the real thing is how this defect comes back.
+        expect(
+            bridge.includes("persistenceSetAsync"),
+            "persistenceSetAsync is back; the two-setter split is exactly what shipped three defects",
+        ).toBe(false);
+        expect(bridge).toContain("public persistenceSet(key: string, value: unknown): Promise<void>");
+        expect(bridge).toContain("public persistenceSetSessionOnly(key: string, value: unknown): void");
+    });
+
+    it("updates the map before it awaits anything, so no caller needs to write twice", async () => {
+        const bridge = await fs.readFile(path.join(RENDERER_SRC, BRIDGE), "utf-8");
+        const body = bridge.slice(
+            bridge.indexOf("public persistenceSet(key: string"),
+            bridge.indexOf("public persistenceSetSessionOnly"),
+        );
+        const local = body.indexOf("applyPersistenceLocally");
+        const through = body.indexOf("writePersistenceThrough");
+        expect(local, "persistenceSet no longer updates the map").toBeGreaterThan(-1);
+        expect(through, "persistenceSet no longer writes through").toBeGreaterThan(-1);
+        // Order is the load-bearing part: it is why the paired double-write is unnecessary, and the
+        // paired double-write is what every one of these call sites used to be.
+        expect(local, "the map must be updated before the store write is started").toBeLessThan(through);
+    });
+
+    it("keeps every session-only write justified at the call site", async () => {
+        const unexplained: string[] = [];
+        for (const { file, source } of await rendererSources()) {
+            if (file === BRIDGE) {
+                continue;
             }
+            const lines = source.split(/\r?\n/);
+            lines.forEach((line, index) => {
+                if (!line.includes("persistenceSetSessionOnly(")) {
+                    return;
+                }
+                // The three lines above it have to say why this value is not worth keeping.
+                const reason = lines.slice(Math.max(0, index - 3), index).join(" ");
+                if (!reason.includes("//")) {
+                    unexplained.push(`${file}:${index + 1}`);
+                }
+            });
         }
         expect(
-            unpaired,
-            `these writes are lost when the window closes:\n${unpaired.join("\n")}`,
+            unexplained,
+            `a session-only write needs a comment saying why the value is re-derived rather than kept:\n${unexplained.join("\n")}`,
         ).toEqual([]);
     });
 
     it("is non-vacuous: it can see the writes it is checking", async () => {
-        const seen: string[] = [];
-        for (const file of CALLERS) {
-            const source = await fs.readFile(path.join(RENDERER_SRC, file), "utf-8");
-            seen.push(...bareWrites(source).map(write => write.arg));
-        }
-        // If the bridge is ever renamed, this drops to zero and the test above passes vacuously.
-        expect(seen.length, "no persistenceSet calls found — has the bridge been renamed?")
-            .toBeGreaterThan(4);
-    });
-
-    it("keeps the session-only list honest", async () => {
-        const live = new Set<string>();
-        for (const file of CALLERS) {
-            const source = await fs.readFile(path.join(RENDERER_SRC, file), "utf-8");
-            for (const write of bareWrites(source)) {
-                live.add(`${file}::${write.arg}`);
+        let durable = 0;
+        let sessionOnly = 0;
+        for (const { file, source } of await rendererSources()) {
+            if (file === BRIDGE) {
+                continue;
             }
+            durable += source.split(/scopeBridge\??\.persistenceSet\(|scope\.persistenceSet\(|persistence\.persistenceSet\(/).length - 1;
+            sessionOnly += source.split("persistenceSetSessionOnly(").length - 1;
         }
-        const stale = Object.keys(SESSION_ONLY).filter(argument => !live.has(argument));
-        expect(stale, `these entries no longer name a write:\n${stale.join("\n")}`).toEqual([]);
-    });
-
-    it("keeps the read-text record durable, which is the only reason it is persisted", async () => {
-        // Named on its own because within a session the tracker answers from its own Set: a
-        // session-only write here is indistinguishable from working until the player relaunches,
-        // which is exactly how it shipped.
-        const source = await fs.readFile(
-            path.join(RENDERER_SRC, "lib/ui-editor/runtime/app/GameApp.tsx"),
-            "utf-8",
-        );
-        const wiring = source.slice(source.indexOf("createTextReadTracker({"));
-        const tracker = wiring.slice(0, wiring.indexOf("});") + 3);
-        expect(tracker, "the text-read tracker is not wired where this test expects")
-            .toContain("persistenceGetAsync");
-        expect(
-            tracker.includes("persistenceSetAsync"),
-            "the read-text record must be written durably; it is useless within a single session",
-        ).toBe(true);
+        // If the bridge is renamed and these drop to zero, the checks above would pass on a
+        // codebase that no longer persists anything at all.
+        expect(durable, "no durable persistence writes found - has the bridge been renamed?")
+            .toBeGreaterThan(4);
+        expect(sessionOnly, "no session-only writes found - has the escape hatch been renamed?")
+            .toBeGreaterThan(0);
     });
 });
