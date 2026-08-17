@@ -793,6 +793,57 @@ describe("game runtime artifact compiler", () => {
         });
     });
 
+    /*
+     * The point of the whole opaque-read design, asserted end to end: a shipped protected build must
+     * be unable to answer "what is in here", while still being able to answer "give me this id".
+     *
+     * Asserted against the bytes inside the store rather than against the returned pack, because the
+     * returned object is the compiler's own and the artifact is what a player receives.
+     */
+    it("ships a protected production build with no asset manifest and no asset names", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await fs.writeFile(path.join(runtimeDistDir, "main.js"), "// runtime main\n", "utf-8");
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            encryptionKey: derivePackEncryptionKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+        });
+
+        const reader = await openSealedBundle(
+            path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
+            path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+        );
+        try {
+            const pack = JSON.parse((await reader.read("pack")).toString("utf-8"));
+
+            // Nothing to enumerate: no ids, and so no names, paths, hashes or media types either.
+            expect(pack.assets.items).toEqual({});
+            expect(pack.bundle.storyLibrary?.assetNames ?? {}).toEqual({});
+
+            // And the bytes are still reachable, by deriving the entry name from the id alone -
+            // which is the trade the empty manifest is paying for.
+            expect((await reader.read(`assets/${ASSET_ID}`)).toString("utf-8")).toBe("local image bytes");
+
+            // The strongest form of the claim: the id does not occur anywhere in the pack's own
+            // descriptor as an asset the game declares. It may still appear as a story reference,
+            // which is the residual the design accepts - the story has to name what it shows.
+            const declared = JSON.stringify(pack.assets);
+            expect(declared).not.toContain(ASSET_ID);
+        } finally {
+            await reader.close();
+        }
+    });
+
     it("names the player's directory after the app id the build resolved", async () => {
         const projectPath = path.join(tempDir, "project");
         const runtimeDistDir = path.join(tempDir, "runtime-dist");

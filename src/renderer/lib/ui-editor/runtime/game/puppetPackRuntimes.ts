@@ -74,7 +74,13 @@ export function findPackPuppetBackendSource(
  * `.../asset/{id}/{entry}` makes them resolve to `{id}/{rel}`, which is exactly the key the packer wrote
  * for each file.
  *
- * Null when the asset is not in the pack — a model that was removed after the widget referenced it.
+ * Read from `assets.bundleEntries` rather than from the manifest, because the manifest is not there
+ * to read in a shipped protected game — that table is the one thing about its assets a pack still
+ * states, and it states it for model bundles alone.
+ *
+ * Null when the id names no model bundle: either it is an ordinary asset, or it is a model that was
+ * removed after the widget referenced it. Both callers answer null by falling back to the plain
+ * asset URL, so the two cases stay indistinguishable here on purpose.
  */
 export function resolvePackModelBundleUrl(
     bridge: GameRuntimePreloadBridge | null,
@@ -84,9 +90,9 @@ export function resolvePackModelBundleUrl(
     if (!bridge) {
         return null;
     }
-    const item = pack?.assets.items[assetId];
-    if (!item) {
+    const bundleEntry = pack?.assets.bundleEntries?.[assetId];
+    if (!bundleEntry) {
         return null;
     }
-    return bridge.assetUrl(item.bundleEntry ? `${assetId}/${item.bundleEntry}` : assetId);
+    return bridge.assetUrl(`${assetId}/${bundleEntry}`);
 }

@@ -403,7 +403,7 @@ export async function compileGameRuntimeArtifact(
             message => notices.push(message),
         )
         : null;
-    const bundle = shipped?.bundle ?? assembled;
+    const bundle = shippedBundle(shipped?.bundle ?? assembled, mode);
     if (shipped && shipped.removedAssetCount > 0) {
         notices.push(`${shipped.removedAssetCount} assets are unreachable in this edition and do not ship`);
     }
@@ -503,9 +503,7 @@ export async function compileGameRuntimeArtifact(
             },
             entry: input.entry,
             bundle,
-            assets: {
-                items: assetManifest,
-            },
+            assets: shippedAssetManifest(assetManifest, mode, target.kind === "sealed"),
             plugins: packPlugins,
             ...(packPuppetRuntimes.length > 0 ? { puppetRuntimes: packPuppetRuntimes } : {}),
             // Carried on every shell, web included.
@@ -984,6 +982,81 @@ export function planShippedCharacters(
         },
         characterIds,
     };
+}
+
+/**
+ * Drop the bundle's author-facing asset name table from a shipped game.
+ *
+ * `storyLibrary.assetNames` exists so the Dev Mode debug panel can print `Set background
+ * outside_s.jpg` instead of a uuid. Nothing in a player's copy reads it, and it is a straight
+ * `assetId → filename` map over every asset a story row can name - which is exactly the table
+ * {@link shippedAssetManifest} takes away, arriving by a different door.
+ */
+function shippedBundle(bundle: DevModeBundle, mode: "preview" | "production"): DevModeBundle {
+    if (mode !== "production" || !bundle.storyLibrary) {
+        return bundle;
+    }
+    return { ...bundle, storyLibrary: { ...bundle.storyLibrary, assetNames: {} } };
+}
+
+/**
+ * Narrow the compiler's asset manifest to what the artifact is allowed to say about its own
+ * contents.
+ *
+ * The compiler needs a full manifest while it works - it copies by it, audits by it, and reports
+ * counts from it - but almost none of that belongs in a shipped game. A player's copy answers
+ * "what is in here" to anyone holding it, and the answer is the one thing asset protection cannot
+ * take back later: bytes can be sealed, a list of what those bytes are cannot be unlearned.
+ *
+ * So a production artifact ships the least its own runtime can work from:
+ * - **protected**: nothing at all. Store entry names are `assets/{id}`, derived at read time from
+ *   an id the caller already has, so the runtime never needed the table and its absence costs
+ *   nothing. Dumping the store now yields unnamed blobs and no way to tell a UI arrow from an
+ *   ending CG without opening every one.
+ * - **unprotected**: only what the files on disk already give away. The bytes are loose under
+ *   `assets/` under those very names, so the id, its kind and its extension are readable with a
+ *   directory listing and withholding them protects nothing. The rest - the authoring name, the
+ *   path it was imported from, the content hash - has no counterpart on disk, and is dropped.
+ *
+ * Preview and test artifacts keep everything: they never leave the machine that made them, and the
+ * dev-mode surfaces read this to name what they report.
+ */
+function shippedAssetManifest(
+    manifest: Record<string, GameRuntimeAssetManifestEntry>,
+    mode: "preview" | "production",
+    sealed: boolean,
+): GameRuntimePackV1["assets"] {
+    // Lifted out of the entries rather than left on them: this one survives the strip (the engine
+    // mounts a model from a URL built out of it), and hiding it inside a table that is otherwise
+    // emptied would read as an oversight the next time someone audits what ships.
+    const bundleEntries: Record<string, string> = {};
+    for (const [key, entry] of Object.entries(manifest)) {
+        if (entry.bundleEntry) {
+            bundleEntries[key] = entry.bundleEntry;
+        }
+    }
+    const withBundleEntries = (items: Record<string, GameRuntimeAssetManifestEntry>) => ({
+        items,
+        ...(Object.keys(bundleEntries).length > 0 ? { bundleEntries } : {}),
+    });
+
+    if (mode !== "production") {
+        return withBundleEntries(manifest);
+    }
+    if (sealed) {
+        return withBundleEntries({});
+    }
+    const items: Record<string, GameRuntimeAssetManifestEntry> = {};
+    for (const [key, entry] of Object.entries(manifest)) {
+        items[key] = {
+            id: entry.id,
+            relativePath: entry.relativePath,
+            ...(entry.type ? { type: entry.type } : {}),
+            ...(entry.ext ? { ext: entry.ext } : {}),
+            ...(entry.mimeType ? { mimeType: entry.mimeType } : {}),
+        };
+    }
+    return withBundleEntries(items);
 }
 
 /** Every asset id the project's library declares, across all shards. */

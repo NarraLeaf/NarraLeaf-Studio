@@ -14,7 +14,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { openSealedBundle, RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME } from "@narraleaf/encryption/runtime";
-import { GAME_RUNTIME_BUNDLE_PACK_ENTRY } from "@shared/utils/gameRuntimeBundle";
+import { GAME_RUNTIME_BUNDLE_PACK_ENTRY, gameRuntimeBundleAssetEntry } from "@shared/utils/gameRuntimeBundle";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { auditShippedContent, type ShippedArtifactReader, type ShippedContentAuditResult } from "./shippedContentAudit";
 import { collectSaveAnchors, diffSaveAnchors, type SaveAnchorDiff } from "./saveAnchors";
@@ -48,8 +48,9 @@ async function openArtifact(appDir: string): Promise<{
             pack,
             reader: {
                 // A sealed entry has to be read to be proven: the store answers no other question
-                // about it, and "the manifest says so" is the claim under test.
+                // about it, and "the entry is where the id says" is the claim under test.
                 entryExists: async relativePath => (await sealed.read(relativePath)).byteLength > 0,
+                resolveEntryName: assetId => gameRuntimeBundleAssetEntry(assetId),
             },
             close: () => sealed.close(),
         };
@@ -59,7 +60,10 @@ async function openArtifact(appDir: string): Promise<{
         pack,
         // A loose entry is proven by being there with bytes in it. The file is not read through:
         // its presence at the manifest's own path is the thing the manifest is claiming.
-        reader: { entryExists: relativePath => fileHasContent(path.join(appDir, relativePath)) },
+        reader: {
+            entryExists: relativePath => fileHasContent(path.join(appDir, relativePath)),
+            resolveEntryName: assetId => pack.assets.items[assetId]?.relativePath ?? null,
+        },
         close: async () => {},
     };
 }

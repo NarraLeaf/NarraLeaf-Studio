@@ -11,7 +11,11 @@ import {
     type SealedLayerReader,
 } from "@narraleaf/encryption/runtime";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
-import { GAME_RUNTIME_BUNDLE_PACK_ENTRY, gameRuntimeBundleRuntimeEntry } from "@shared/utils/gameRuntimeBundle";
+import {
+    GAME_RUNTIME_BUNDLE_PACK_ENTRY,
+    gameRuntimeBundleAssetEntry,
+    gameRuntimeBundleRuntimeEntry,
+} from "@shared/utils/gameRuntimeBundle";
 import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
 import { resolveRuntimeAssetPath } from "./runtimeProtocol";
 
@@ -40,6 +44,14 @@ export interface RuntimeResources {
     readPack(): Promise<Buffer>;
     /** Raw bytes of a project asset by manifest id. Throws when the id is unknown. */
     readAsset(pack: GameRuntimePackV1, assetId: string): Promise<Buffer>;
+    /**
+     * Where this backend keeps the asset's bytes, as the name a patch would have to carry to
+     * override it, or null when the backend cannot say without reading.
+     *
+     * A patch layer resolves by entry name, so it has to ask the backend underneath rather than
+     * assume one - a protected store derives the name from the id, while a loose pack looks it up.
+     */
+    resolveEntryName(pack: GameRuntimePackV1, assetId: string): string | null;
     /**
      * Absolute path of an asset that lives as a loose file the caller can read
      * or stream from disk directly, or null when the asset bytes must go
@@ -145,6 +157,11 @@ class LooseRuntimeResources implements RuntimeResources {
         return resolveRuntimeAssetPath(this.appDir, pack, assetId);
     }
 
+    resolveEntryName(pack: GameRuntimePackV1, assetId: string): string | null {
+        // A loose pack keeps its manifest - the file name carries the extension the id does not.
+        return pack.assets.items[assetId]?.relativePath ?? null;
+    }
+
     async readRuntimeFile(_pathname: string): Promise<Buffer | null> {
         // Loose packs serve every runtime file directly from disk.
         return null;
@@ -166,19 +183,36 @@ class SealedRuntimeResources implements RuntimeResources {
         return this.reader.read(GAME_RUNTIME_BUNDLE_PACK_ENTRY);
     }
 
-    readAsset(pack: GameRuntimePackV1, assetId: string): Promise<Buffer> {
-        const item = pack.assets.items[assetId];
-        if (!item) {
-            throw new Error(`Runtime asset not found: ${assetId}`);
+    /**
+     * Read an asset by deriving its entry name from the id, never by looking it up.
+     *
+     * This is the whole reason a shipped protected pack can carry an empty manifest: the compiler
+     * writes every asset under `assets/{id}` and this recomputes that name, so possession of an id
+     * is the only thing that reaches bytes. There is deliberately no path from "I have the store" to
+     * "tell me what is in it" - a caller who cannot name an asset cannot ask for it.
+     *
+     * Preview packs still ship a manifest, and this ignores it on purpose: resolution taking the
+     * same route in both modes is what keeps a protected build from working in preview and failing
+     * once shipped.
+     */
+    // `async` so a rejected id comes back as a rejected promise rather than a synchronous throw:
+    // the contract is a promise, and a caller that only guards the await would otherwise miss it.
+    async readAsset(_pack: GameRuntimePackV1, assetId: string): Promise<Buffer> {
+        const id = String(assetId ?? "").trim();
+        if (!id) {
+            throw new Error("Asset id is required");
         }
-        // The manifest records the store entry name for each asset, so the id is
-        // never turned into a path and the entry name carries no extension.
-        return this.readEntry(item.relativePath);
+        return this.readEntry(gameRuntimeBundleAssetEntry(id));
     }
 
     getAssetFilePath(_pack: GameRuntimePackV1, _assetId: string): string | null {
         // Store entries are not addressable as loose files.
         return null;
+    }
+
+    resolveEntryName(_pack: GameRuntimePackV1, assetId: string): string | null {
+        const id = String(assetId ?? "").trim();
+        return id ? gameRuntimeBundleAssetEntry(id) : null;
     }
 
     async readRuntimeFile(pathname: string): Promise<Buffer | null> {
@@ -316,26 +350,30 @@ class PatchedRuntimeResources implements RuntimeResources {
     }
 
     async readAsset(pack: GameRuntimePackV1, assetId: string): Promise<Buffer> {
-        const item = pack.assets.items[assetId];
         // An unknown id is the base's answer to give: the message it throws names
         // the id, and duplicating that here would be a second wording of it.
-        if (item) {
-            const found = this.resolve(item.relativePath, false);
+        const name = this.base.resolveEntryName(pack, assetId);
+        if (name) {
+            const found = this.resolve(name, false);
             if (found) {
-                return this.read(found, item.relativePath);
+                return this.read(found, name);
             }
         }
         return this.base.readAsset(pack, assetId);
     }
 
     getAssetFilePath(pack: GameRuntimePackV1, assetId: string): string | null {
-        const item = pack.assets.items[assetId];
+        const name = this.base.resolveEntryName(pack, assetId);
         // A patched asset has no file to stream from, even on a build whose own
         // assets are loose - so the caller has to come back through readAsset.
-        if (item && this.resolve(item.relativePath, false)) {
+        if (name && this.resolve(name, false)) {
             return null;
         }
         return this.base.getAssetFilePath(pack, assetId);
+    }
+
+    resolveEntryName(pack: GameRuntimePackV1, assetId: string): string | null {
+        return this.base.resolveEntryName(pack, assetId);
     }
 
     async readRuntimeFile(pathname: string): Promise<Buffer | null> {

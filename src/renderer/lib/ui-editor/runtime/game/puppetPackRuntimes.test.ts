@@ -22,11 +22,12 @@ function fakePack(patch: Partial<GameRuntimePackV1> = {}): GameRuntimePackV1 {
         puppetRuntimes: [
             { name: "renderer-a", entryRelativePath: "puppet/renderer-a/index.js", files: ["core.wasm"] },
         ],
+        // A shipped protected pack states nothing about its assets except this: the entry file of
+        // each model bundle, which the mount URL is built out of. `items` is empty here for the same
+        // reason it is empty there - so the seam is tested against what a player actually gets.
         assets: {
-            items: {
-                "model-alice": { bundleEntry: "alice/alice.model.json" },
-                "plain-image": {},
-            },
+            items: {},
+            bundleEntries: { "model-alice": "alice/alice.model.json" },
         },
         ...patch,
     } as unknown as GameRuntimePackV1;
@@ -66,9 +67,10 @@ describe("puppetPackRuntimes", () => {
             .toBe("nlgame://asset/model-alice/alice/alice.model.json");
     });
 
-    it("falls back to the bare id for an asset that declares no bundle entry", () => {
-        expect(resolvePackModelBundleUrl(fakeBridge(), fakePack(), "plain-image"))
-            .toBe("nlgame://asset/plain-image");
+    it("answers null for an asset that is not a model bundle", () => {
+        // Null rather than the bare id: both callers fall back to the plain asset URL themselves, so
+        // the result is unchanged, and the answer no longer depends on a manifest that does not ship.
+        expect(resolvePackModelBundleUrl(fakeBridge(), fakePack(), "plain-image")).toBeNull();
     });
 
     it("answers null for an asset the pack does not carry, and with no bridge", () => {
