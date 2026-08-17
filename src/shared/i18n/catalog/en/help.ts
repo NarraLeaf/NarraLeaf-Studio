@@ -419,14 +419,14 @@ export const help = {
                 "A test runs the game and reports whether a condition held: that an ending can be reached, that "
                 + "nothing failed on the way.\n"
                 + "\n"
-                + "- The list holds Studio's own tests and the tests plugins add. A windowed test opens a game "
-                + "window, a headless one runs without one.\n"
-                + "- A test that cannot start now stays in the list, greyed, with the reason beside it.\n"
-                + "- Starting a test closes the picker. Its lines appear in the console, and the report opens "
-                + "when the run finishes.\n"
+                + "- The list contains Studio's own tests and the tests added by plugins. A windowed test opens "
+                + "a game window, a headless test runs without one.\n"
+                + "- A test that cannot start remains in the list, disabled, with the reason beside it.\n"
+                + "- Starting a test closes this dialog. The output appears in the console, and the report "
+                + "opens when the run finishes.\n"
                 + "- A test reports passed, failed or skipped. Cancelled and errored mean the run did not finish, "
                 + "not that the game is wrong.\n"
-                + "- The report keeps the last run's findings until the test runs again.",
+                + "- The report retains the findings of the last run until the test runs again.",
         },
         recovery: {
             title: "Recovery mode",
@@ -537,20 +537,20 @@ export const help = {
         patches: {
             title: "Patches",
             body:
-                "A patch carries later changes to a game a player already has: the story, the pages, the "
-                + "translations, the voice lines and the assets. Application files and the engine version stay "
-                + "as the installed build has them, and a patch does not replace them.\n"
+                "A patch delivers later changes to an installed game: the story, the pages, the translations, "
+                + "the voice lines and the assets. Application files and the engine version remain as the "
+                + "installed build produced them.\n"
                 + "\n"
-                + "- A patch opens only in builds of the variant it was made for, and only in builds made after "
-                + "the project was given a distribution key.\n"
-                + "- Naming the build the patch is for carries only what differs from it. Leaving that field "
-                + "empty carries the whole game.\n"
-                + "- The export writes a folder named patch. The player puts that folder in the game's own "
-                + "folder, and deleting it returns the game to the installed build.\n"
-                + "- The checks that run before a build run before an export as well, and both report into the "
-                + "build console.\n"
-                + "- Naming the earlier build also reports which saves made against it stop loading once this "
-                + "patch is installed. That report is a warning and does not stop the export.",
+                + "- A patch opens only in builds of the variant it was exported for, and only in builds "
+                + "produced after the project has a distribution key.\n"
+                + "- Naming an earlier build limits the patch to the files that differ from it. An empty "
+                + "field includes the whole game.\n"
+                + "- The export produces a folder named patch. Placing that folder in the game's folder "
+                + "installs the patch, and deleting it restores the installed build.\n"
+                + "- The checks that precede a build also precede an export, and both report in the build "
+                + "console.\n"
+                + "- When an earlier build is named, the export also reports which saves made against it "
+                + "will no longer load. That report is a warning and does not stop the export.",
         },
         // `main` is the release variant's name, and it is the same word in every language: a story
         // expression compares it as a string inside the shipped game, where no catalog is reached.
