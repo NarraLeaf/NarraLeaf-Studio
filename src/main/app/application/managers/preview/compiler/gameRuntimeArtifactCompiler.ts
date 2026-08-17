@@ -51,6 +51,7 @@ import {
 import {
     GAME_RUNTIME_BUNDLE_PACK_ENTRY,
     gameRuntimeBundleAssetEntry,
+    gameRuntimeBundleModelEntry,
     gameRuntimeBundleRuntimeEntry,
 } from "@shared/utils/gameRuntimeBundle";
 import { readProjectAppTagDocumentFromDir } from "../../../utils/appTagsFile";
@@ -1026,25 +1027,22 @@ function shippedAssetManifest(
     mode: "preview" | "production",
     sealed: boolean,
 ): GameRuntimePackV1["assets"] {
-    // Lifted out of the entries rather than left on them: this one survives the strip (the engine
-    // mounts a model from a URL built out of it), and hiding it inside a table that is otherwise
-    // emptied would read as an oversight the next time someone audits what ships.
-    const bundleEntries: Record<string, string> = {};
-    for (const [key, entry] of Object.entries(manifest)) {
-        if (entry.bundleEntry) {
-            bundleEntries[key] = entry.bundleEntry;
-        }
-    }
-    const withBundleEntries = (items: Record<string, GameRuntimeAssetManifestEntry>) => ({
+    // Which ids are bundles survives the strip; what their entry files are called does not. The
+    // renderer has to pick a URL shape synchronously and membership is the least that answers that,
+    // while the path it used to carry now lives in the payload under a derived key.
+    const modelBundles = Object.entries(manifest)
+        .filter(([, entry]) => entry.bundleEntry)
+        .map(([key]) => key);
+    const withModelBundles = (items: Record<string, GameRuntimeAssetManifestEntry>) => ({
         items,
-        ...(Object.keys(bundleEntries).length > 0 ? { bundleEntries } : {}),
+        ...(modelBundles.length > 0 ? { modelBundles } : {}),
     });
 
     if (mode !== "production") {
-        return withBundleEntries(manifest);
+        return withModelBundles(manifest);
     }
     if (sealed) {
-        return withBundleEntries({});
+        return withModelBundles({});
     }
     const items: Record<string, GameRuntimeAssetManifestEntry> = {};
     for (const [key, entry] of Object.entries(manifest)) {
@@ -1054,9 +1052,13 @@ function shippedAssetManifest(
             ...(entry.type ? { type: entry.type } : {}),
             ...(entry.ext ? { ext: entry.ext } : {}),
             ...(entry.mimeType ? { mimeType: entry.mimeType } : {}),
+            // Kept on an unprotected pack only, where it is how the runtime and the web shell find
+            // a bundle's entry: those builds keep their manifest, and their files are loose on disk
+            // under these very names, so withholding it would hide nothing from anyone.
+            ...(entry.bundleEntry ? { bundleEntry: entry.bundleEntry } : {}),
         };
     }
-    return withBundleEntries(items);
+    return withModelBundles(items);
 }
 
 /** Every asset id the project's library declares, across all shards. */
@@ -1245,6 +1247,17 @@ async function copyAssetBundle(input: {
         ...makeEntry(normalized.id, entryRelativePath, entry),
         bundleEntry: entry,
     };
+
+    // In a protected pack the manifest does not ship, so the entry path is written into the payload
+    // instead, at the address the runtime derives from the id alone. That is what lets a shipped
+    // game mount this model while stating nowhere what its entry file is called - the file name of
+    // a character's model is usually the character's name.
+    if (input.target.kind === "sealed") {
+        await input.target.writer.add(
+            gameRuntimeBundleModelEntry(normalized.id),
+            Buffer.from(JSON.stringify({ e: entry }), "utf-8"),
+        );
+    }
 
     return manifest;
 }

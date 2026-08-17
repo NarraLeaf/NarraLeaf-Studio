@@ -22,12 +22,12 @@ function fakePack(patch: Partial<GameRuntimePackV1> = {}): GameRuntimePackV1 {
         puppetRuntimes: [
             { name: "renderer-a", entryRelativePath: "puppet/renderer-a/index.js", files: ["core.wasm"] },
         ],
-        // A shipped protected pack states nothing about its assets except this: the entry file of
-        // each model bundle, which the mount URL is built out of. `items` is empty here for the same
-        // reason it is empty there - so the seam is tested against what a player actually gets.
+        // A shipped protected pack states nothing about its assets except which ids are bundles -
+        // no paths, no names. `items` is empty here for the same reason it is empty there, so the
+        // seam is tested against what a player actually gets.
         assets: {
             items: {},
-            bundleEntries: { "model-alice": "alice/alice.model.json" },
+            modelBundles: ["model-alice"],
         },
         ...patch,
     } as unknown as GameRuntimePackV1;
@@ -60,11 +60,15 @@ describe("puppetPackRuntimes", () => {
         await expect(source.resolveFile("/etc/passwd")).rejects.toThrow(/escapes/);
     });
 
-    it("points a model bundle at its entry file, not at its asset id", () => {
-        // `resolveSibling` does URL arithmetic against this, so `.../asset/{id}` would make every
-        // texture the manifest names resolve to a sibling of the id instead of into the bundle.
-        expect(resolvePackModelBundleUrl(fakeBridge(), fakePack(), "model-alice"))
-            .toBe("nlgame://asset/model-alice/alice/alice.model.json");
+    it("points a model bundle at its own directory, and names no file inside it", () => {
+        const url = resolvePackModelBundleUrl(fakeBridge(), fakePack(), "model-alice");
+        // The trailing slash is the whole mechanism: `resolveSibling` does URL arithmetic against
+        // this, and `.../asset/{id}` without it would make every texture the model names resolve to
+        // a sibling of the id instead of into the bundle.
+        expect(url).toBe("nlgame://asset/model-alice/");
+        expect(new URL("textures/body.png", url!).href).toBe("nlgame://asset/model-alice/textures/body.png");
+        // And nothing about what is inside the bundle leaked into the URL to get there.
+        expect(url).not.toContain("model.json");
     });
 
     it("answers null for an asset that is not a model bundle", () => {

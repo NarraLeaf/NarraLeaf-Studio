@@ -14,6 +14,7 @@ import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import {
     GAME_RUNTIME_BUNDLE_PACK_ENTRY,
     gameRuntimeBundleAssetEntry,
+    gameRuntimeBundleModelEntry,
     gameRuntimeBundleRuntimeEntry,
 } from "@shared/utils/gameRuntimeBundle";
 import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
@@ -52,6 +53,14 @@ export interface RuntimeResources {
      * assume one - a protected store derives the name from the id, while a loose pack looks it up.
      */
     resolveEntryName(pack: GameRuntimePackV1, assetId: string): string | null;
+    /**
+     * Where a model bundle's entry file sits inside it, or null when the id names no bundle.
+     *
+     * Per id and on demand, never as a table: a caller that cannot name a model cannot learn what
+     * its entry is called. A protected pack keeps this in the payload under a key derived from the
+     * id; an unprotected one keeps its manifest and reads it from there.
+     */
+    readModelBundleEntry(pack: GameRuntimePackV1, assetId: string): Promise<string | null>;
     /**
      * Absolute path of an asset that lives as a loose file the caller can read
      * or stream from disk directly, or null when the asset bytes must go
@@ -162,6 +171,10 @@ class LooseRuntimeResources implements RuntimeResources {
         return pack.assets.items[assetId]?.relativePath ?? null;
     }
 
+    async readModelBundleEntry(pack: GameRuntimePackV1, assetId: string): Promise<string | null> {
+        return pack.assets.items[assetId]?.bundleEntry ?? null;
+    }
+
     async readRuntimeFile(_pathname: string): Promise<Buffer | null> {
         // Loose packs serve every runtime file directly from disk.
         return null;
@@ -213,6 +226,22 @@ class SealedRuntimeResources implements RuntimeResources {
     resolveEntryName(_pack: GameRuntimePackV1, assetId: string): string | null {
         const id = String(assetId ?? "").trim();
         return id ? gameRuntimeBundleAssetEntry(id) : null;
+    }
+
+    async readModelBundleEntry(_pack: GameRuntimePackV1, assetId: string): Promise<string | null> {
+        const id = String(assetId ?? "").trim();
+        if (!id) {
+            return null;
+        }
+        try {
+            const raw = await this.readEntry(gameRuntimeBundleModelEntry(id));
+            const entry = (JSON.parse(raw.toString("utf-8")) as { e?: unknown }).e;
+            return typeof entry === "string" && entry ? entry : null;
+        } catch {
+            // An id that names no bundle has no such item, which is an answer rather than a fault -
+            // every ordinary asset reaches here on the first request that ends in a slash.
+            return null;
+        }
     }
 
     async readRuntimeFile(pathname: string): Promise<Buffer | null> {
@@ -374,6 +403,27 @@ class PatchedRuntimeResources implements RuntimeResources {
 
     resolveEntryName(pack: GameRuntimePackV1, assetId: string): string | null {
         return this.base.resolveEntryName(pack, assetId);
+    }
+
+    async readModelBundleEntry(pack: GameRuntimePackV1, assetId: string): Promise<string | null> {
+        // A patch that moves a bundle's entry file has to be able to say so, and it says it the same
+        // way it says anything else: by carrying that entry name. Only a protected base keeps this
+        // in the payload, so a loose one still answers from its manifest below.
+        const name = this.base.resolveEntryName(pack, `${assetId}/`);
+        const found = name ? this.resolve(name, false) : null;
+        if (found) {
+            try {
+                const raw = await this.read(found, name!);
+                const entry = (JSON.parse(raw.toString("utf-8")) as { e?: unknown }).e;
+                if (typeof entry === "string" && entry) {
+                    return entry;
+                }
+            } catch {
+                // Fall through to the base: a patch that carries an unreadable entry record should
+                // leave the installed bundle working rather than take it down with it.
+            }
+        }
+        return this.base.readModelBundleEntry(pack, assetId);
     }
 
     async readRuntimeFile(pathname: string): Promise<Buffer | null> {

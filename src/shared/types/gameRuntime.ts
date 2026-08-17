@@ -228,16 +228,21 @@ export type GameRuntimePackV1 = {
     assets: {
         items: Record<string, GameRuntimeAssetManifestEntry>;
         /**
-         * Model bundles only: asset id to the bundle-relative path of its entry file.
+         * The ids that name a model bundle rather than a single file. Ids only - no paths, no
+         * names, nothing about what is inside one.
          *
-         * This survives the strip above because it is not a description of the asset, it is part of
-         * the URL the engine has to be handed. `PuppetMountContext.resolveSibling(rel)` resolves a
-         * model manifest's relative references against whatever URL the model was mounted from, and
-         * the renderer's `resolveModelBundleUrl` seam is synchronous, so the entry path has to be in
-         * renderer memory before the engine asks. Only ids of model bundles appear here; no other
-         * asset kind is named.
+         * The renderer needs this because a model mounts from a different URL shape than an ordinary
+         * asset (`.../asset/{id}/`, with the trailing slash, so the engine's `resolveSibling` lands
+         * inside the bundle instead of beside it), and the seam that builds it is synchronous - it
+         * cannot go and ask. Membership is the least that answers "which shape", and an id already
+         * occurs in the story payload that has to ship, so this discloses nothing new.
+         *
+         * The entry file's *path* used to be here too, which meant a shipped game named every
+         * character's model file. It lives in the payload now, at an address derived from the id
+         * (see `gameRuntimeBundleModelEntry`), so it can only be fetched by someone who already
+         * knows which model they want.
          */
-        bundleEntries?: Record<string, string>;
+        modelBundles?: string[];
     };
     /** Runtime entries of the plugins packaged with this game. */
     plugins: GameRuntimePackPluginEntry[];

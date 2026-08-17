@@ -74,9 +74,11 @@ export function findPackPuppetBackendSource(
  * `.../asset/{id}/{entry}` makes them resolve to `{id}/{rel}`, which is exactly the key the packer wrote
  * for each file.
  *
- * Read from `assets.bundleEntries` rather than from the manifest, because the manifest is not there
- * to read in a shipped protected game — that table is the one thing about its assets a pack still
- * states, and it states it for model bundles alone.
+ * The URL is the bundle's own directory — `.../asset/{id}/`, with the trailing slash — not the entry
+ * file inside it. Both forms make `resolveSibling` land on `{id}/{rel}`; the difference is that this
+ * one does not have to know what the entry is called, so a shipped game no longer states the file
+ * name of every character's model. The shell answers the mount request by reading the path from the
+ * payload, keyed by the id the caller already had.
  *
  * Null when the id names no model bundle: either it is an ordinary asset, or it is a model that was
  * removed after the widget referenced it. Both callers answer null by falling back to the plain
@@ -87,12 +89,8 @@ export function resolvePackModelBundleUrl(
     pack: GameRuntimePackV1 | null,
     assetId: string,
 ): string | null {
-    if (!bridge) {
+    if (!bridge || !assetId) {
         return null;
     }
-    const bundleEntry = pack?.assets.bundleEntries?.[assetId];
-    if (!bundleEntry) {
-        return null;
-    }
-    return bridge.assetUrl(`${assetId}/${bundleEntry}`);
+    return pack?.assets.modelBundles?.includes(assetId) ? bridge.assetUrl(`${assetId}/`) : null;
 }
