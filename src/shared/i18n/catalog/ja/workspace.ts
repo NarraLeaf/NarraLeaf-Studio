@@ -544,16 +544,16 @@ export const workspace = {
         },
         // 実際のエディタで履歴を見る。バージョンのレールができるまでの道。
         revisionView: {
-            showPrevious: "前のリビジョンを表示（読み取り専用）",
+            showPrevious: "前のバージョンを表示（読み取り専用）",
             // 着く場所ではなく、出るモードで名付ける。docs/help-system.md §4 を参照。
             leave: "履歴の閲覧をやめる",
-            loadingTitle: "前のリビジョンを読んでいる…",
+            loadingTitle: "前のバージョンを読んでいる…",
             loadingDetail: "初回の読み込みではサーバーから取得することがある",
-            shownTitle: "リビジョン {revision} を表示している",
+            shownTitle: "バージョン {revision} を表示している",
             shownDetail: "エディタは読み取り専用。ディスク上のファイルは変わらない",
-            noneTitle: "これより前のリビジョンはない",
-            noneDetail: "このプロジェクトにはリビジョンが 1 つしかない",
-            failedTitle: "そのリビジョンを表示できなかった",
+            noneTitle: "これより前のバージョンはない",
+            noneDetail: "このプロジェクトにはバージョンが 1 つしかない",
+            failedTitle: "そのバージョンを表示できなかった",
         },
         // バージョン管理の各画面。左端のレール、プロジェクト切り替えのメニューの中のバージョンの節、
         // そしてステータスバーのセル。3 つとも *バージョン* を名指しし、変更の件数は決して言わない。

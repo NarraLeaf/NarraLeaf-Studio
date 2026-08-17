@@ -549,16 +549,16 @@ export const workspace = {
         // a picker on purpose: choosing a revision needs a list, the list is the rail, and a milestone
         // whose behaviour cannot be reached by a person cannot be accepted.
         revisionView: {
-            showPrevious: "Show the Previous Revision (Read-Only)",
+            showPrevious: "Show the Previous Version (Read-Only)",
             // Named for the mode it leaves, not the place it lands: see docs/help-system.md §4.
             leave: "Stop Viewing History",
-            loadingTitle: "Reading the previous revision…",
+            loadingTitle: "Reading the previous version…",
             loadingDetail: "The first read may fetch it from the server.",
-            shownTitle: "Showing revision {revision}",
+            shownTitle: "Showing version {revision}",
             shownDetail: "The editors are read-only. The files on disk are not modified.",
-            noneTitle: "There is no earlier revision",
-            noneDetail: "This project has only one revision.",
-            failedTitle: "Could not show that revision",
+            noneTitle: "There is no earlier version",
+            noneDetail: "This project has only one version.",
+            failedTitle: "Could not show that version",
         },
         // The version control surfaces: the rail down the far left, the version section inside the
         // project switcher's menu, and the status-bar cell. All three name a VERSION and never a change
