@@ -532,6 +532,7 @@ export const blueprint = {
         entryId: "Entry Id",
         event: "Event",
         exists: "Exists",
+        recorded: "Recorded",
         false: "False",
         field: "Field",
         float: "Float",
@@ -1211,5 +1212,8 @@ export const blueprint = {
         getTimeZone: "Get Time Zone",
         getSaveTime: "Get Save Time",
         getSaveLine: "Get Save Line",
+        getSavePlaytime: "Get Save Playtime",
+        getPlaytime: "Get Playtime",
+        getTotalPlaytime: "Get Total Playtime",
     },
 } as const;

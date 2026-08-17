@@ -12,7 +12,7 @@ import {
 import type { DevModeBundle, DevModeStartStoryRequest } from "@shared/types/devMode";
 import type { UIStageSlotId, UIStageSurface } from "@shared/types/ui-editor/document";
 import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
-import type { AutoSaveEntry, SaveRecordLine, SaveRecordTimes } from "@shared/types/saves";
+import type { AutoSaveEntry, SaveRecordLine, SaveRecordPlaytime, SaveRecordTimes } from "@shared/types/saves";
 import type { GameProgressImportOutcome } from "@shared/types/gameProgress";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
@@ -70,7 +70,12 @@ export type GameUiSlotHostOptions = {
     getSaveMetadata: (id: string) => Promise<unknown>;
     getSaveTimes: (id: string) => Promise<SaveRecordTimes | null>;
     getSaveLine: (id: string) => Promise<SaveRecordLine | null>;
+    getSavePlaytime: (id: string) => Promise<SaveRecordPlaytime | null>;
     getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
+    /** The running playthrough's playtime, in seconds. */
+    getPlaytime: () => number;
+    /** Seconds ever spent in this project, across every playthrough. */
+    getTotalPlaytime: () => number;
     writeAutoSaveInGame: () => Promise<void>;
     listAutoSaves: () => Promise<AutoSaveEntry[]>;
     getHistoryInGame: () => BlueprintGameHistoryEntry[];
@@ -223,6 +228,9 @@ export function useStageSlotSurfaceRuntime(input: {
             onGetSaveMetadata: options.getSaveMetadata,
             onGetSaveTimes: options.getSaveTimes,
             onGetSaveLine: options.getSaveLine,
+            onGetSavePlaytime: options.getSavePlaytime,
+            onGetPlaytime: options.getPlaytime,
+            onGetTotalPlaytime: options.getTotalPlaytime,
             onGetSavePreview: options.getSavePreview,
             onWriteAutoSave: options.writeAutoSaveInGame,
             onListAutoSaves: options.listAutoSaves,

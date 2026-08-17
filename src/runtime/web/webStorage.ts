@@ -31,6 +31,7 @@ export class WebGameStorage {
         capture?: string,
         metadata?: unknown,
         compatibility?: SaveCompatibilityStamp,
+        playtimeSeconds?: number,
     ): Promise<void> {
         const normalizedId = normalizeRuntimeSaveId(id);
         const previous = await this.readSave(normalizedId);
@@ -40,6 +41,7 @@ export class WebGameStorage {
             capture,
             metadata,
             compatibility,
+            playtimeSeconds,
             previous,
             now: new Date().toISOString(),
         });

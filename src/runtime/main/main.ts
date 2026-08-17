@@ -1044,7 +1044,15 @@ function registerRuntimeIpc(): void {
         capture?: string;
         metadata?: unknown;
         compatibility?: SaveCompatibilityStamp;
-    }) => saves.write(data.id, data.savedGame, data.capture, data.metadata, data.compatibility));
+        playtimeSeconds?: number;
+    }) => saves.write(
+        data.id,
+        data.savedGame,
+        data.capture,
+        data.metadata,
+        data.compatibility,
+        data.playtimeSeconds,
+    ));
     ipcMain.handle("runtime:save:read", (_event, id: string) => saves.read(id));
     ipcMain.handle("runtime:save:listIds", () => saves.listIds());
     ipcMain.handle("runtime:save:listHeaders", () => saves.listHeaders());

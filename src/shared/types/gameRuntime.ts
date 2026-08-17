@@ -451,6 +451,8 @@ export type GameRuntimeSaveBridge = {
         metadata?: unknown,
         /** What produced the save; omitted leaves the record unstamped. */
         compatibility?: SaveCompatibilityStamp,
+        /** Seconds of play behind the save; omitted leaves the record without a reading. */
+        playtimeSeconds?: number,
     ): Promise<void>;
     read(id: string): Promise<GameRuntimeSaveRecord | null>;
     listIds(): Promise<string[]>;

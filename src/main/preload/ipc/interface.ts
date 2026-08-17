@@ -387,6 +387,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
                 capture?: string,
                 metadata?: unknown,
                 compatibility?: SaveCompatibilityStamp,
+                playtimeSeconds?: number,
             ) =>
                 ipcClient.invoke(IPCEventType.devModeSaveWrite, {
                     projectRef,
@@ -395,6 +396,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
                     capture,
                     metadata,
                     compatibility,
+                    playtimeSeconds,
                 }) as Promise<RequestStatus<void>>,
             read: (projectRef: DevModeSaveProjectRef, id: string) =>
                 ipcClient.invoke(IPCEventType.devModeSaveRead, { projectRef, id }) as Promise<RequestStatus<{ record: DevModeSaveRecord | null }>>,

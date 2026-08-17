@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AutoSaveEntry, SaveRecordLine, SaveRecordTimes } from "@shared/types/saves";
+import type { AutoSaveEntry, SaveRecordLine, SaveRecordPlaytime, SaveRecordTimes } from "@shared/types/saves";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
@@ -413,6 +413,9 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getSaveMetadata: async () => ({}),
                     getSaveTimes: async () => null,
                     getSaveLine: async () => null,
+                    getSavePlaytime: async () => null,
+                    getPlaytime: () => 0,
+                    getTotalPlaytime: () => 0,
                     getSavePreview: async () => null,
                     writeAutoSave: async () => undefined,
                     listAutoSaves: async () => [],
@@ -567,6 +570,9 @@ function createPageNavigationHostAdapter(
                     getSaveMetadata: async () => ({}),
                     getSaveTimes: async () => null,
                     getSaveLine: async () => null,
+                    getSavePlaytime: async () => null,
+                    getPlaytime: () => 0,
+                    getTotalPlaytime: () => 0,
                     getSavePreview: async () => null,
                     writeAutoSave: async () => undefined,
                     listAutoSaves: async () => [],
@@ -624,6 +630,9 @@ function createGameSaveHostAdapter(options: {
     previews?: Record<string, unknown>;
     saveTimes?: SaveRecordTimes | null;
     saveLine?: SaveRecordLine | null;
+    savePlaytime?: SaveRecordPlaytime | null;
+    playtimeSeconds?: number;
+    totalPlaytimeSeconds?: number;
     history?: Array<Record<string, unknown>>;
     future?: Array<Record<string, unknown>>;
     restoredIds?: Array<string | undefined>;
@@ -723,6 +732,9 @@ function createGameSaveHostAdapter(options: {
                     getSaveMetadata: async () => options.metadata ?? {},
                     getSaveTimes: async () => options.saveTimes ?? null,
                     getSaveLine: async () => options.saveLine ?? null,
+                    getSavePlaytime: async () => options.savePlaytime ?? null,
+                    getPlaytime: () => options.playtimeSeconds ?? 0,
+                    getTotalPlaytime: () => options.totalPlaytimeSeconds ?? 0,
                     getSavePreview: async (id: string) => options.previews?.[id] as any ?? null,
                     writeAutoSave: async () => {
                         options.autoSaveWrites?.push(true);

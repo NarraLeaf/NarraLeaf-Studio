@@ -11,6 +11,7 @@ import {
     type DevModeSaveRecord,
 } from "@shared/types/devModeSave";
 import { readSaveCompatibilityStamp } from "@shared/types/saveCompatibility";
+import { readSavePlaytimeSeconds } from "@shared/utils/runtimeSaveRecord";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { AppWindow } from "../appWindow";
@@ -107,6 +108,7 @@ function readRecordShape(value: unknown): DevModeSaveFileRecord | null {
         return null;
     }
     const compatibility = readSaveCompatibilityStamp(metadata.compatibility);
+    const playtimeSeconds = readSavePlaytimeSeconds(metadata.playtimeSeconds);
     return {
         version: 1,
         metadata: {
@@ -118,6 +120,7 @@ function readRecordShape(value: unknown): DevModeSaveFileRecord | null {
             // Read, never trusted: a stamp that is half there has to arrive as no stamp, so it
             // classifies as "cannot be compared" instead of as a comparison against blanks.
             ...(compatibility ? { compatibility } : {}),
+            ...(playtimeSeconds !== undefined ? { playtimeSeconds } : {}),
             user: normalizeUserMetadata(metadata.user),
         },
         savedGame: record.savedGame,
@@ -157,6 +160,7 @@ export class DevModeSaveWriteHandler extends IPCHandler<IPCEventType.devModeSave
             const previous = await readSaveRecord(filePath);
             const now = new Date().toISOString();
             const compatibility = readSaveCompatibilityStamp(data.compatibility);
+            const playtimeSeconds = readSavePlaytimeSeconds(data.playtimeSeconds);
             const record: DevModeSaveFileRecord = {
                 version: 1,
                 metadata: {
@@ -168,6 +172,9 @@ export class DevModeSaveWriteHandler extends IPCHandler<IPCEventType.devModeSave
                     // Taken fresh on every write: overwriting a slot replaces the playthrough in
                     // it, so the stamp has to describe the build that wrote what is there now.
                     ...(compatibility ? { compatibility } : {}),
+                    // Fresh on every write for the same reason as the stamp: the reading describes
+                    // the playthrough now in the slot, not the one it replaced.
+                    ...(playtimeSeconds !== undefined ? { playtimeSeconds } : {}),
                     user: normalizeUserMetadata(data.metadata),
                 },
                 savedGame: data.savedGame,

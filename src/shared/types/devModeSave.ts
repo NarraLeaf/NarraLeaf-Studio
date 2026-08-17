@@ -24,6 +24,15 @@ export type DevModeSaveMetadata = {
      * `@shared/types/saveCompatibility`.
      */
     compatibility?: SaveCompatibilityStamp;
+    /**
+     * Seconds of play behind this save.
+     *
+     * In the header rather than inside `savedGame` for the same reason the stamp is: a save screen
+     * shows a time against every slot, and reading it out of a serialized game would mean opening
+     * one playthrough per slot to look at one number. Absent on records written before playtime was
+     * tracked, which a screen reads as "not recorded" rather than as zero.
+     */
+    playtimeSeconds?: number;
 };
 
 export type DevModeSaveRecord = {
@@ -44,6 +53,8 @@ export type DevModeSaveHeader = {
     updatedAt: string;
     /** Absent on records written before the stamp existed. */
     compatibility?: SaveCompatibilityStamp;
+    /** Absent on records written before playtime was tracked. */
+    playtimeSeconds?: number;
 };
 
 /** The header of a record already in hand. */
@@ -53,6 +64,9 @@ export function devModeSaveHeaderOf(record: DevModeSaveRecord): DevModeSaveHeade
         createdAt: record.metadata.createdAt,
         updatedAt: record.metadata.updatedAt,
         ...(record.metadata.compatibility ? { compatibility: record.metadata.compatibility } : {}),
+        ...(typeof record.metadata.playtimeSeconds === "number"
+            ? { playtimeSeconds: record.metadata.playtimeSeconds }
+            : {}),
     };
 }
 
