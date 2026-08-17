@@ -89,7 +89,7 @@ export const test = {
     builtin: {
         projectDiagnostics: {
             title: "Project diagnostics",
-            description: "Every project lint rule, run as one check",
+            description: "All project check rules, run as one test",
             summary: {
                 passed: "No problems found",
                 failed: "{errors} errors, {warnings} warnings",
