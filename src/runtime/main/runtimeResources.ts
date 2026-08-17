@@ -12,6 +12,7 @@ import {
 } from "@narraleaf/encryption/runtime";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { GAME_RUNTIME_BUNDLE_PACK_ENTRY, gameRuntimeBundleRuntimeEntry } from "@shared/utils/gameRuntimeBundle";
+import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
 import { resolveRuntimeAssetPath } from "./runtimeProtocol";
 
 // Runtime files served from the store are limited to the author-supplied code
@@ -217,19 +218,15 @@ class SealedRuntimeResources implements RuntimeResources {
     }
 }
 
-/**
- * Directory a build looks in for patches, under the app dir and under the
- * player's data directory. Both, because the two answer different questions: a
- * patch shipped with the installer is the author's, and one the player put there
- * is the player's. Neither is written by the game.
- */
-export const PATCH_DIRECTORY_NAME = "patches";
-
 export interface RuntimeResourcesOptions {
     /**
-     * The player's data directory, whose `patches/` is the one a player can add
-     * to. Omitted by callers that have none, in which case only the app dir is
-     * searched.
+     * The game's own folder - the one holding the executable - whose `patch/` is
+     * where a player puts a patch. Omitted by callers that have none.
+     */
+    gameRootDir?: string;
+    /**
+     * The player's data directory, whose `patch/` is searched as well so a patch
+     * survives reinstalling the game. Omitted by callers that have none.
      */
     userDataDir?: string;
     /** Where discovery notes go. Silent when omitted. */
@@ -409,9 +406,9 @@ async function listPatchFiles(directory: string): Promise<string[]> {
 /**
  * Open every patch this build can see, lowest priority first.
  *
- * The app dir's patches come before the player's, so a file the player added wins
- * over one the installer placed. That is the order the player expects and the one
- * that makes a patch removable: theirs is the layer they can delete.
+ * A patch beside the executable comes before one in the player's data directory,
+ * so the one that survives a reinstall wins. Both are the player's to remove,
+ * which is what makes a patch undoable at all.
  *
  * A patch that will not open is skipped with a line in the log, never fatal. The
  * usual causes are a file for another game, a file for another edition, and a
@@ -423,7 +420,13 @@ async function openPatches(
     verificationKey: string | undefined,
     options: RuntimeResourcesOptions,
 ): Promise<OpenPatch[]> {
-    const roots = [path.join(appDir, PATCH_DIRECTORY_NAME)];
+    // The game's own folder first, the player's data directory second, so a patch
+    // a player keeps across reinstalls wins over one that shipped beside the
+    // executable. Both are theirs to add to; neither is written by the game.
+    const roots: string[] = [];
+    if (options.gameRootDir) {
+        roots.push(path.join(options.gameRootDir, PATCH_DIRECTORY_NAME));
+    }
     if (options.userDataDir) {
         roots.push(path.join(options.userDataDir, PATCH_DIRECTORY_NAME));
     }

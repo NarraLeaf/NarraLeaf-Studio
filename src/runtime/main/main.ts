@@ -260,10 +260,16 @@ void app.whenReady().then(async () => {
         return;
     }
     resources = await createRuntimeResources(appDir, {
-        // Both patch directories: the one the installer wrote and the one the
-        // player can add to. `logRuntime` because what applied, and what did not,
-        // is the only trace a patch leaves.
+        // Where a player puts a patch. `resourcesPath` rather than `__dirname`
+        // because this module lives inside the archive: its own directory is not
+        // a place anybody can drop a file. One level above the resources folder is
+        // the folder that holds the executable, which is the folder a player has.
+        // Unpackaged runs (preview, a compiled app dir started by hand) have no
+        // such layout, so they take the app dir's parent.
+        gameRootDir: app.isPackaged ? path.dirname(process.resourcesPath) : path.resolve(appDir, ".."),
+        // Searched as well, so a patch can outlive reinstalling the game.
         userDataDir,
+        // What applied, and what did not, is the only trace a patch leaves.
         log: logRuntime,
     });
     const pack = await readPack();

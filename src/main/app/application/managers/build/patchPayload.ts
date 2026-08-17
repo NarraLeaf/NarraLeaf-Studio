@@ -69,7 +69,67 @@ async function listEntryNames(appDir: string, root: string): Promise<string[]> {
  * because the manifest is what a reader addresses an asset by, and a file the
  * manifest does not name is not reachable in the shipped game either.
  */
-export async function openPayload(appDir: string): Promise<PayloadReader> {
+/**
+ * Find a build's payload from whatever the author pointed at.
+ *
+ * What an author has after a build is the output folder the packager wrote, and
+ * the payload is buried in it differently on every platform: beside the
+ * executable on Windows and Linux, three levels inside a bundle on macOS. Asking
+ * them to know that, and to browse into a package to reach a file called
+ * `app.asar`, is asking them to know how the packager works.
+ *
+ * So every shape resolves here: the output folder, the application bundle, the
+ * archive itself, or a compiled app directory. A path that is none of those says
+ * what was looked for rather than failing as a missing file.
+ */
+export async function resolvePayloadLocation(target: string): Promise<string> {
+    if (target.toLowerCase().endsWith(".asar")) {
+        return target;
+    }
+    const candidates = [
+        // A desktop output folder, and equally an application bundle's Contents.
+        path.join(target, "resources", "app.asar"),
+        // The bundle itself, if that is what got picked.
+        path.join(target, "Contents", "resources", "app.asar"),
+        path.join(target, "Contents", "Resources", "app.asar"),
+    ];
+    for (const candidate of candidates) {
+        if (await fileHasContent(candidate)) {
+            return candidate;
+        }
+    }
+    // A compiled app directory, which is what an unprotected build stages and
+    // what the payload reader speaks natively.
+    for (const marker of ["pack.json", RUNTIME_BUNDLE_FILENAME]) {
+        if (await fileHasContent(path.join(target, marker))) {
+            return target;
+        }
+    }
+    // A macOS output folder holds the bundle rather than the payload, and its
+    // name is the product's, which this has no way to know.
+    try {
+        for (const entry of await fs.readdir(target)) {
+            if (!entry.toLowerCase().endsWith(".app")) {
+                continue;
+            }
+            for (const inside of ["resources", "Resources"]) {
+                const candidate = path.join(target, entry, "Contents", inside, "app.asar");
+                if (await fileHasContent(candidate)) {
+                    return candidate;
+                }
+            }
+        }
+    } catch {
+        // Not a directory, or unreadable. The message below covers both.
+    }
+    throw new Error(
+        `${target} does not look like a build of this game: expected an output folder holding `
+        + "resources/app.asar, an application bundle, or a compiled app directory.",
+    );
+}
+
+export async function openPayload(target: string): Promise<PayloadReader> {
+    const appDir = await resolvePayloadLocation(target);
     const bundlePath = path.join(appDir, RUNTIME_BUNDLE_FILENAME);
     if (await fileHasContent(bundlePath)) {
         const sealed = await openSealedBundle(path.join(appDir, RUNTIME_SUPPORT_FILENAME), bundlePath);

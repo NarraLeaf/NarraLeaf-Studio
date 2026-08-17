@@ -133,7 +133,7 @@ export const build = {
             variantHint: "补丁只能在它所针对的那个变体的构建里打开",
             baselineLabel: "这个补丁针对的构建",
             baselinePlaceholder: "留空则整份游戏都装进补丁",
-            baselineHint: "那次构建的 app.asar，在它的 resources 目录下。只有与它不同的部分会被装进补丁",
+            baselineHint: "打包器写出的那个桌面构建目录。只有与它不同的部分会被装进补丁",
             outputLabel: "保存为",
             nameLabel: "名称",
             namePlaceholder: "显示在游戏日志里",

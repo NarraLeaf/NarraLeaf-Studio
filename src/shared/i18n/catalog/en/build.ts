@@ -138,7 +138,7 @@ export const build = {
             variantHint: "A patch opens only in builds of the variant it was made for.",
             baselineLabel: "Build this patch is for",
             baselinePlaceholder: "Leave empty to carry the whole game",
-            baselineHint: "That build's app.asar, under its resources folder. Only what differs from it is carried.",
+            baselineHint: "The desktop build folder the packager wrote. Only what differs from it is carried.",
             outputLabel: "Save as",
             nameLabel: "Name",
             namePlaceholder: "Shown in the game's log",
