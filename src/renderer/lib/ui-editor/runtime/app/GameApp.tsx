@@ -3716,7 +3716,18 @@ export function GameApp(props: GameAppProps): ReactNode {
                     textReadTrackerRef.current = createTextReadTracker({
                         ...createNlrDialogReadHooks(dialogGameState),
                         persistenceGetAsync: key => core.scopeBridge.persistenceGetAsync(key),
-                        persistenceSet: (key, value) => core.scopeBridge.persistenceSet(key, value),
+                        // Both halves of the write, as the story compiler's persistence bridge
+                        // does it: the in-memory map so the next read in this session sees it, and
+                        // the host store so it survives the session. The read set is *only* useful
+                        // across sessions - within one the tracker answers from its own Set - so
+                        // the second half is the entire point of persisting it at all. Without it
+                        // the record was written, read back correctly all session, and gone on
+                        // relaunch: skip-read-text skipped nothing and every "has the player heard
+                        // this line" answered no, on every playthrough after the first.
+                        persistenceSet: (key, value) => {
+                            core.scopeBridge.persistenceSet(key, value);
+                            void core.scopeBridge.persistenceSetAsync(key, value);
+                        },
                         setMirror: value => core.scopeBridge.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, value),
                         resolveReadKey: createReadKeyResolver(nlrSession?.compiled.actionIdBindings ?? []),
                     });
