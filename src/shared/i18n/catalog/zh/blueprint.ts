@@ -531,6 +531,7 @@ export const blueprint = {
         entryId: "条目 Id",
         event: "事件",
         exists: "存在",
+        recorded: "已记录",
         false: "假",
         field: "字段",
         float: "浮点数",
@@ -1210,5 +1211,8 @@ export const blueprint = {
         getTimeZone: "获取时区",
         getSaveTime: "获取存档时间",
         getSaveLine: "获取存档语句",
+        getSavePlaytime: "获取存档游玩时长",
+        getPlaytime: "获取游玩时长",
+        getTotalPlaytime: "获取累计游玩时长",
     },
 } satisfies LocaleNamespace<"blueprint">;

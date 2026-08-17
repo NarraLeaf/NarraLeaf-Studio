@@ -2183,6 +2183,8 @@ export type IPCDevModeEvents = {
             metadata?: unknown;
             /** What produced the save. Absent leaves the record unstamped. */
             compatibility?: SaveCompatibilityStamp;
+            /** Seconds of play behind the save. Absent leaves the record without a reading. */
+            playtimeSeconds?: number;
         };
         response: void;
     };

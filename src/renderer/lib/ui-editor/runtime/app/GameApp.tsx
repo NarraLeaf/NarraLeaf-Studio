@@ -32,6 +32,7 @@ import {
     parseAutoSaveSlotIndex,
     type AutoSaveEntry,
     type SaveRecordLine,
+    type SaveRecordPlaytime,
     type SaveRecordTimes,
 } from "@shared/types/saves";
 import {
@@ -175,6 +176,8 @@ import type {
     GameAppStoryRuntimeBridge,
 } from "./GameAppHost";
 import { useAutoSave } from "./useAutoSave";
+import { usePlaytime } from "./usePlaytime";
+import { readSavePlaytimeSeconds } from "@shared/utils/runtimeSaveRecord";
 
 // Outer safety net: if the environment never comes up at all, start the surface system anyway
 // rather than sit on the loading step forever. Generous on purpose — it has to sit *outside*
@@ -494,6 +497,34 @@ export function GameApp(props: GameAppProps): ReactNode {
         liveGame: nlrLiveGameRef,
         stageVisible: gameStageVisibleRef,
     }), []);
+    /**
+     * A playthrough is running and can be serialized.
+     *
+     * One definition, asked by both the autosave scheduler and the playtime clock. They are the two
+     * things in this file that run off a timer and must agree on when a game is being played; a
+     * second copy of these four conditions would be a second answer to drift from the first.
+     *
+     * Refs rather than state, so the answer is the one true at the moment a tick asks it.
+     */
+    const isPlaythroughRunning = useCallback(() => Boolean(
+        gameEnteredRef.current
+        && nlrSession?.id
+        && nlrLiveGameSessionIdRef.current === nlrSession.id
+        && nlrLiveGameRef.current,
+    ), [nlrSession?.id]);
+    /**
+     * The stopwatch behind `Get Playtime`, the reading written onto every save, and the title's
+     * running total. Mounted here rather than beside the autosave scheduler because `writeSave`
+     * below reads it, and a save has to record the time at the moment it is written.
+     */
+    const playtime = usePlaytime({
+        isPlaying: isPlaythroughRunning,
+        // Optional-chained because the runtime core is null until the bundle mounts. A read that
+        // lands before it resolves to nothing, and the total simply starts this session from zero;
+        // a write that early has nothing to write, because nothing has been played yet.
+        persistenceGetAsync: async key => core?.scopeBridge.persistenceGetAsync(key),
+        persistenceSet: (key, value) => core?.scopeBridge.persistenceSet(key, value),
+    });
     const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
     const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
     const nlrPreferenceTokenRef = useRef<{ cancel(): void } | null>(null);
@@ -1703,11 +1734,25 @@ export function GameApp(props: GameAppProps): ReactNode {
                 }
             }
         }
-        await host.saveStore.write(id, liveGame.serialize(), capture, metadata, saveStamp ?? undefined);
+        await host.saveStore.write(
+            id,
+            liveGame.serialize(),
+            capture,
+            metadata,
+            saveStamp ?? undefined,
+            playtime.getRunSeconds(),
+        );
         // Host-side, after the write landed: every shell reports it the same way,
         // and a failed write never announces a save that does not exist.
         pluginHost?.emitSaveWritten(id);
-    }, [host.saveStore, pluginHost, reportSaveCaptureFailure, requireActiveLiveGame, saveStamp]);
+    }, [
+        host.saveStore,
+        playtime,
+        pluginHost,
+        reportSaveCaptureFailure,
+        requireActiveLiveGame,
+        saveStamp,
+    ]);
 
     /**
      * The scene a save's position names, as this build ships it.
@@ -1748,9 +1793,17 @@ export function GameApp(props: GameAppProps): ReactNode {
      */
     const loadSave = useCallback(async (id: string): Promise<SaveLoadOutcome> => {
         const liveGame = requireActiveLiveGame("Load Save");
+        // Captured on the way past rather than re-read afterwards: a save record carries a whole
+        // serialized playthrough, and reading one twice to look at one number would double the
+        // cost of every load.
+        let storedPlaytimeSeconds: number | undefined;
         const outcome = await loadSaveIntoGame({
             id,
-            readRecord: () => host.saveStore.read(id),
+            readRecord: async () => {
+                const record = await host.saveStore.read(id);
+                storedPlaytimeSeconds = readSavePlaytimeSeconds(record?.metadata.playtimeSeconds);
+                return record;
+            },
             currentStamp: saveStamp,
             compatibilityConfig: saveCompatibilityConfig,
             game: {
@@ -1856,6 +1909,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         if (outcome.applied !== "save") {
             return outcome;
         }
+        // Only here: a load that was refused or rolled back leaves the player on the run they were
+        // already having, and that run's stopwatch has to keep its own reading. A record with no
+        // reading (written before playtime was tracked) starts the inherited run from zero, which
+        // is the only honest answer when nobody was counting.
+        playtime.seedRun(storedPlaytimeSeconds ?? 0);
         gameEnteredRef.current = true;
         await liveGame.waitForRouterExit().promise;
         setGameStageVisible(true);
@@ -1999,12 +2057,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         config: autoSaveConfig,
         // The same gate `writeSave` itself enforces, so a true here always means
         // the write can actually serialize something.
-        isPlaying: () => Boolean(
-            gameEnteredRef.current
-            && nlrSession?.id
-            && nlrLiveGameSessionIdRef.current === nlrSession.id
-            && nlrLiveGameRef.current,
-        ),
+        isPlaying: isPlaythroughRunning,
         // Screenshots on: the point of an autosave ring is a screen that lists
         // it, and a list of thumbnail-less rows is a worse feature. The cost is
         // bounded by the scheduler's play-head gate - an idle game captures
@@ -2061,6 +2114,24 @@ export function GameApp(props: GameAppProps): ReactNode {
      * an object at all, still answers as a slot that exists with nothing to quote; refusing to
      * report the slot would take a row off the player's save screen over a missing caption.
      */
+    /**
+     * How long the playthrough behind one slot was played.
+     *
+     * Its own read, like `Get Save Time` and `Get Save Line` before it. A record written before
+     * playtime was tracked answers `recorded: false` rather than zero seconds: a save screen has to
+     * be able to leave that row blank instead of stating the player finished in no time at all.
+     */
+    const getSavePlaytime = useCallback(async (id: string): Promise<SaveRecordPlaytime | null> => {
+        const record = await host.saveStore.read(id);
+        if (!record) {
+            return null;
+        }
+        const seconds = readSavePlaytimeSeconds(record.metadata.playtimeSeconds);
+        return seconds === undefined
+            ? { seconds: 0, recorded: false }
+            : { seconds, recorded: true };
+    }, [host.saveStore]);
+
     const getSaveLine = useCallback(async (id: string): Promise<SaveRecordLine | null> => {
         const record = await host.saveStore.read(id);
         if (!record) {
@@ -2269,7 +2340,10 @@ export function GameApp(props: GameAppProps): ReactNode {
             getSaveMetadata,
             getSaveTimes,
             getSaveLine,
+            getSavePlaytime,
             getSavePreview,
+            getPlaytime: playtime.getRunSeconds,
+            getTotalPlaytime: playtime.getTotalSeconds,
             writeAutoSaveInGame: autoSave.writeNow,
             listAutoSaves,
             getHistoryInGame,
@@ -2438,6 +2512,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getSaveMetadata,
         getSaveTimes,
         getSaveLine,
+        getSavePlaytime,
         getSavePreview,
         autoSave.writeNow,
         listAutoSaves,
@@ -2494,6 +2569,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             pendingGameStartsRef.current.set(sessionId, { resolve, reject });
         });
         liveGame.newGame();
+        // A fresh playthrough starts the stopwatch from nothing. A load overwrites this moments
+        // later with the reading it inherited; nothing else in the file resets it.
+        playtime.seedRun(0);
         gameEnteredRef.current = true;
         // A document imported before this point has been waiting for exactly this moment:
         // `newGame()` clears every namespace and rebuilds it from its defaults, so anything written
@@ -2601,6 +2679,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             onGetSaveMetadata: getSaveMetadata,
             onGetSaveTimes: getSaveTimes,
             onGetSaveLine: getSaveLine,
+            onGetSavePlaytime: getSavePlaytime,
+            onGetPlaytime: playtime.getRunSeconds,
+            onGetTotalPlaytime: playtime.getTotalSeconds,
             onGetSavePreview: getSavePreview,
             onWriteAutoSave: autoSave.writeNow,
             onListAutoSaves: listAutoSaves,
@@ -2706,6 +2787,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getSaveMetadata,
         getSaveTimes,
         getSaveLine,
+        getSavePlaytime,
         getSavePreview,
         autoSave.writeNow,
         listAutoSaves,
@@ -2954,6 +3036,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onGetSaveMetadata: getSaveMetadata,
                     onGetSaveTimes: getSaveTimes,
                     onGetSaveLine: getSaveLine,
+                    onGetSavePlaytime: getSavePlaytime,
+                    onGetPlaytime: playtime.getRunSeconds,
+                    onGetTotalPlaytime: playtime.getTotalSeconds,
                     onGetSavePreview: getSavePreview,
                     onWriteAutoSave: autoSave.writeNow,
                     onListAutoSaves: listAutoSaves,
@@ -3090,6 +3175,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getSaveMetadata,
         getSaveTimes,
         getSaveLine,
+        getSavePlaytime,
         getSavePreview,
         autoSave.writeNow,
         listAutoSaves,

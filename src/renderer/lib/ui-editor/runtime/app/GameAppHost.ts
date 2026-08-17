@@ -70,6 +70,8 @@ export type GameAppSaveRecord = {
         updatedAt?: string;
         /** What produced the save; absent on records written before the stamp existed. */
         compatibility?: SaveCompatibilityStamp;
+        /** Seconds of play behind the save; absent on records written before playtime was tracked. */
+        playtimeSeconds?: number;
     };
 };
 
@@ -82,6 +84,13 @@ export type GameAppSaveStore = {
         metadata: unknown,
         /** What produced the save; omitted leaves the record unstamped. See `saveCompatibility`. */
         compatibility?: SaveCompatibilityStamp,
+        /**
+         * Seconds of play behind the save; omitted leaves the record without a reading.
+         *
+         * A shell that drops this still type-checks - a trailing optional parameter always does -
+         * so `savePlaytimeForwarding.test` reads the shells as text instead.
+         */
+        playtimeSeconds?: number,
     ): Promise<void>;
     read(id: string): Promise<GameAppSaveRecord | null>;
     readPreview(id: string): Promise<string | null | undefined>;
@@ -103,6 +112,8 @@ export type GameAppSaveHeader = {
     id: string;
     /** Absent on records written before the stamp existed. */
     compatibility?: SaveCompatibilityStamp;
+    /** Seconds of play behind the save; absent on records written before playtime was tracked. */
+    playtimeSeconds?: number;
 };
 
 /** What the boot preload should do once the NLR environment can mount. */

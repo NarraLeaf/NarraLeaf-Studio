@@ -137,6 +137,25 @@ export type SaveRecordTimes = {
 };
 
 /**
+ * How long the playthrough behind one save slot has been played, as `Get Save Playtime` publishes
+ * it.
+ *
+ * Its own reader rather than a field on {@link SaveRecordTimes}, matching how `Get Save Line` is
+ * also its own: one node answers one question about a slot, and a reading of "how long" does not
+ * belong under a type that means "when".
+ *
+ * `null` from a reader means no such slot. `recorded: false` means a real slot written before
+ * playtime was tracked - the distinction matters, because a screen that showed those as `0:00`
+ * would be claiming the player never played rather than that nobody was counting.
+ */
+export type SaveRecordPlaytime = {
+    /** Seconds of play behind the slot; 0 when nothing was recorded. */
+    seconds: number;
+    /** False when the slot carries no reading at all. */
+    recorded: boolean;
+};
+
+/**
  * Where one save slot stopped, as `Get Save Line` publishes it.
  *
  * The engine writes both fields into `SavedGameMetaData` on every serialize, so they describe the
