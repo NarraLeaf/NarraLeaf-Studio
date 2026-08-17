@@ -13,6 +13,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
+import { HelpTrigger } from "@/lib/help";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { Select, type SelectOption } from "@/lib/components/elements";
 import {
@@ -71,10 +72,18 @@ export function ProjectSaveCompatibilitySection({
     ], [t]);
 
     return (
-        <SettingsGroup title={t("project.group.olderSaves")}>
+        // The one visible `?` on the page. A save from an earlier build is in one of three states
+        // and only two of them are settings, which is the part no arrangement of these rows can
+        // state; the rows themselves carry a control each and take the attribute without a glyph.
+        <SettingsGroup
+            title={t("project.group.olderSaves")}
+            helpTopic="olderSaves"
+            trailing={<HelpTrigger topic="olderSaves" />}
+        >
             <SettingStack
                 title={t("project.game.saveCompatibleTitle")}
                 description={t("project.game.saveCompatibleDescription")}
+                helpTopic="saveSameStory"
                 tooltip={freeze.writes()["data-tip"]}
             >
                 <Select
@@ -94,6 +103,7 @@ export function ProjectSaveCompatibilitySection({
             <SettingStack
                 title={t("project.game.saveIncompatibleTitle")}
                 description={t("project.game.saveIncompatibleDescription")}
+                helpTopic="saveStoryChanged"
                 tooltip={freeze.writes()["data-tip"]}
             >
                 <Select
