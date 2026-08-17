@@ -99,6 +99,7 @@ import { formatBytes } from "@shared/utils/formatBytes";
 import { GAME_RUNTIME_BUNDLE_PACK_ENTRY } from "@shared/utils/gameRuntimeBundle";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { readDistributionKey } from "@shared/utils/distributionKey";
+import { PATCH_DIRECTORY_NAME, resolvePatchDeliveryPath } from "@shared/utils/patchDelivery";
 import { digestPayload, openPayload, patchCarriesEntry } from "./patchPayload";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { getMainLocale, getMainTranslator } from "../../i18n";
@@ -960,22 +961,31 @@ export class GameBuildManager {
         this.ensureNotCancelled(session);
 
         session.snapshot = { ...session.snapshot, status: "packaging" };
-        const summary = await this.sealPatch(session, artifact.appDir, request, distribution);
+        // Always inside a `patch` folder: that folder is what the author zips and
+        // what the player extracts, so a patch written loose beside it would be a
+        // patch nobody can deliver.
+        const outputFile = resolvePatchDeliveryPath(request.outputFile, path.join, path.dirname, path.basename);
+        const summary = await this.sealPatch(session, artifact.appDir, request, outputFile, distribution);
         this.ensureNotCancelled(session);
 
-        const outputDir = path.dirname(request.outputFile);
+        const outputDir = path.dirname(outputFile);
         session.snapshot = {
             status: "done",
             startedAt: session.snapshot.startedAt,
             finishedAt: Date.now(),
             platforms: [],
-            artifacts: [request.outputFile],
+            artifacts: [outputFile],
             outputDir,
         };
         this.emit(session, {
             level: "success",
             source: "Build",
-            message: `patch written: ${path.basename(request.outputFile)} (${summary})`,
+            message: `patch written: ${PATCH_DIRECTORY_NAME}/${path.basename(outputFile)} (${summary})`,
+        });
+        this.emit(session, {
+            level: "info",
+            source: "Build",
+            message: `deliver it by zipping the ${PATCH_DIRECTORY_NAME} folder; a player extracts it into the game's own folder`,
         });
         if (request.openWhenDone !== false) {
             this.revealOutput(outputDir);
@@ -1066,6 +1076,7 @@ export class GameBuildManager {
         session: BuildSession,
         appDir: string,
         request: GamePatchExportRequest,
+        outputFile: string,
         distribution: { key: string; titleId: string },
     ): Promise<string> {
         const payload = await openPayload(appDir);
@@ -1096,8 +1107,8 @@ export class GameBuildManager {
         }
 
         try {
-            await fs.mkdir(path.dirname(request.outputFile), { recursive: true });
-            const writer = await createSealedLayer(request.outputFile, {
+            await fs.mkdir(path.dirname(outputFile), { recursive: true });
+            const writer = await createSealedLayer(outputFile, {
                 projectMaterial: distribution.key,
                 titleId: distribution.titleId,
             });

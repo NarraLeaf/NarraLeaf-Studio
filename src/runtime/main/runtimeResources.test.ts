@@ -11,7 +11,8 @@ import {
     RUNTIME_SUPPORT_FILENAME,
 } from "@narraleaf/encryption";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
-import { BoundedBufferCache, createRuntimeResources, PATCH_DIRECTORY_NAME } from "./runtimeResources";
+import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
+import { BoundedBufferCache, createRuntimeResources } from "./runtimeResources";
 
 describe("BoundedBufferCache", () => {
     it("evicts the least recently used entries once over budget", () => {
@@ -75,9 +76,11 @@ describe("patched runtime resources", () => {
      */
     async function makeApp(material: string, assetBytes: string): Promise<{
         appDir: string;
+        /** The folder that holds the game, which is where a player drops a patch. */
+        gameRootDir: string;
         pack: GameRuntimePackV1;
     }> {
-        const appDir = path.join(root, "app");
+        const appDir = path.join(root, "game", "app");
         await fs.mkdir(path.join(appDir, "assets"), { recursive: true });
         await fs.copyFile(runtimeSupportPath(), path.join(appDir, RUNTIME_SUPPORT_FILENAME));
         await bindRuntimeBinary(path.join(appDir, RUNTIME_SUPPORT_FILENAME), {
@@ -92,7 +95,7 @@ describe("patched runtime resources", () => {
         } as unknown as GameRuntimePackV1;
         await fs.writeFile(path.join(appDir, "pack.json"), JSON.stringify(pack));
         await fs.writeFile(path.join(appDir, "assets", "one"), assetBytes);
-        return { appDir, pack };
+        return { appDir, gameRootDir: path.join(root, "game"), pack };
     }
 
     async function writePatch(
@@ -117,8 +120,8 @@ describe("patched runtime resources", () => {
 
     it("leaves a build with no patches exactly as it was", async () => {
         const material = createProjectMaterial();
-        const { appDir, pack } = await makeApp(material, "original");
-        const resources = await createRuntimeResources(appDir);
+        const { appDir, gameRootDir, pack } = await makeApp(material, "original");
+        const resources = await createRuntimeResources(appDir, { gameRootDir });
         try {
             expect((await readPackOf(resources)).marker).toBe("base");
             expect((await resources.readAsset(pack, "asset-1")).toString()).toBe("original");
@@ -131,13 +134,13 @@ describe("patched runtime resources", () => {
 
     it("takes the pack and the assets from a proven patch", async () => {
         const material = createProjectMaterial();
-        const { appDir, pack } = await makeApp(material, "original");
-        await writePatch(path.join(appDir, PATCH_DIRECTORY_NAME, "ep2.patch.dat"), { projectMaterial: material }, {
+        const { appDir, gameRootDir, pack } = await makeApp(material, "original");
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "ep2.patch.dat"), { projectMaterial: material }, {
             pack: JSON.stringify({ ...pack, marker: "patched" }),
             "assets/one": "replaced",
         });
 
-        const resources = await createRuntimeResources(appDir);
+        const resources = await createRuntimeResources(appDir, { gameRootDir });
         try {
             expect((await readPackOf(resources)).marker).toBe("patched");
             expect((await resources.readAsset(pack, "asset-1")).toString()).toBe("replaced");
@@ -150,9 +153,9 @@ describe("patched runtime resources", () => {
 
     it("lets an unproven patch replace an asset but not the pack or runtime code", async () => {
         const material = createProjectMaterial();
-        const { appDir, pack } = await makeApp(material, "original");
+        const { appDir, gameRootDir, pack } = await makeApp(material, "original");
         await writePatch(
-            path.join(appDir, PATCH_DIRECTORY_NAME, "mod.patch.dat"),
+            path.join(gameRootDir, PATCH_DIRECTORY_NAME, "mod.patch.dat"),
             { projectMaterial: material, proven: false },
             {
                 pack: JSON.stringify({ ...pack, marker: "hostile" }),
@@ -161,7 +164,7 @@ describe("patched runtime resources", () => {
             },
         );
 
-        const resources = await createRuntimeResources(appDir);
+        const resources = await createRuntimeResources(appDir, { gameRootDir });
         try {
             expect((await readPackOf(resources)).marker).toBe("base");
             expect((await resources.readAsset(pack, "asset-1")).toString()).toBe("reskinned");
@@ -173,15 +176,16 @@ describe("patched runtime resources", () => {
 
     it("ignores a patch made for another project", async () => {
         const material = createProjectMaterial();
-        const { appDir, pack } = await makeApp(material, "original");
+        const { appDir, gameRootDir, pack } = await makeApp(material, "original");
         await writePatch(
-            path.join(appDir, PATCH_DIRECTORY_NAME, "foreign.patch.dat"),
+            path.join(gameRootDir, PATCH_DIRECTORY_NAME, "foreign.patch.dat"),
             { projectMaterial: createProjectMaterial() },
             { "assets/one": "stranger" },
         );
 
         const warnings: string[] = [];
         const resources = await createRuntimeResources(appDir, {
+            gameRootDir,
             log: (level, message) => { if (level === "warning") { warnings.push(message); } },
         });
         try {
@@ -192,18 +196,18 @@ describe("patched runtime resources", () => {
         }
     });
 
-    it("applies the player's patches over the ones shipped with the build", async () => {
+    it("lets a patch kept across reinstalls win over one beside the game", async () => {
         const material = createProjectMaterial();
-        const { appDir, pack } = await makeApp(material, "original");
+        const { appDir, gameRootDir, pack } = await makeApp(material, "original");
         const userDataDir = path.join(root, "userData");
-        await writePatch(path.join(appDir, PATCH_DIRECTORY_NAME, "shipped.patch.dat"), { projectMaterial: material }, {
-            "assets/one": "shipped",
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "beside.patch.dat"), { projectMaterial: material }, {
+            "assets/one": "beside",
         });
         await writePatch(path.join(userDataDir, PATCH_DIRECTORY_NAME, "player.patch.dat"), { projectMaterial: material }, {
             "assets/one": "player",
         });
 
-        const resources = await createRuntimeResources(appDir, { userDataDir });
+        const resources = await createRuntimeResources(appDir, { gameRootDir, userDataDir });
         try {
             expect((await resources.readAsset(pack, "asset-1")).toString()).toBe("player");
         } finally {
@@ -213,20 +217,21 @@ describe("patched runtime resources", () => {
 
     it("orders patches by what they declare before where they were found", async () => {
         const material = createProjectMaterial();
-        const { appDir, pack } = await makeApp(material, "original");
+        const { appDir, gameRootDir, pack } = await makeApp(material, "original");
         // Alphabetically "a" is found first, so only the declared order can put
         // "b" underneath it.
-        await writePatch(path.join(appDir, PATCH_DIRECTORY_NAME, "a.patch.dat"), { projectMaterial: material }, {
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "a.patch.dat"), { projectMaterial: material }, {
             layer: JSON.stringify({ name: "later", order: 20 }),
             "assets/one": "later",
         });
-        await writePatch(path.join(appDir, PATCH_DIRECTORY_NAME, "b.patch.dat"), { projectMaterial: material }, {
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "b.patch.dat"), { projectMaterial: material }, {
             layer: JSON.stringify({ name: "earlier", order: 10 }),
             "assets/one": "earlier",
         });
 
         const applied: string[] = [];
         const resources = await createRuntimeResources(appDir, {
+            gameRootDir,
             log: (level, message) => { if (level === "info") { applied.push(message); } },
         });
         try {
@@ -240,8 +245,8 @@ describe("patched runtime resources", () => {
 
     it("says so when patch files are present but the build cannot read them", async () => {
         const material = createProjectMaterial();
-        const { appDir, pack } = await makeApp(material, "original");
-        await writePatch(path.join(appDir, PATCH_DIRECTORY_NAME, "orphan.patch.dat"), { projectMaterial: material }, {
+        const { appDir, gameRootDir, pack } = await makeApp(material, "original");
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "orphan.patch.dat"), { projectMaterial: material }, {
             "assets/one": "unreadable",
         });
         // A build made before the project had a key carries no support binary.
@@ -249,6 +254,7 @@ describe("patched runtime resources", () => {
 
         const warnings: string[] = [];
         const resources = await createRuntimeResources(appDir, {
+            gameRootDir,
             log: (level, message) => { if (level === "warning") { warnings.push(message); } },
         });
         try {
