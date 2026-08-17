@@ -199,10 +199,12 @@ export const project = {
         // The two policies for a save written by another build. Worded around what the player gets,
         // not around the comparison behind it: an author choosing here is deciding what happens to
         // somebody's playthrough. A slot that is not restored is also not listed.
-        saveCompatibleTitle: "Same story, another version",
-        saveCompatibleDescription: "A save written by a version that told the same story.",
-        saveIncompatibleTitle: "The story has changed",
-        saveIncompatibleDescription: "A save written before the story it points into was edited.",
+        // Each row is named for the case it answers for, as a noun phrase. The condition itself is
+        // the description's job, and it is one clause.
+        saveCompatibleTitle: "Saves from another project version",
+        saveCompatibleDescription: "The story is unchanged and only the project version differs.",
+        saveIncompatibleTitle: "Saves from before a story change",
+        saveIncompatibleDescription: "The story was edited after the save was written.",
         saveResume: "Restore progress",
         saveDiscard: "Do not restore progress",
         saveResumeScene: "Return to where it stopped",
