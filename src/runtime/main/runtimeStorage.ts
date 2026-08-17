@@ -51,6 +51,7 @@ export class RuntimeSaveStore {
         capture?: string,
         metadata?: unknown,
         compatibility?: SaveCompatibilityStamp,
+        playtimeSeconds?: number,
     ): Promise<void> {
         return this.track((async () => {
             const normalizedId = normalizeRuntimeSaveId(id);
@@ -61,6 +62,7 @@ export class RuntimeSaveStore {
                 capture,
                 metadata,
                 compatibility,
+                playtimeSeconds,
                 previous,
                 now: new Date().toISOString(),
             });

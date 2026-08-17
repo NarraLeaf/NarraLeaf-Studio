@@ -1045,9 +1045,17 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [projectPath]);
 
     const saveStore = useMemo<GameAppSaveStore>(() => ({
-        write: async (id, savedGame, capture, metadata, compatibility) => {
+        write: async (id, savedGame, capture, metadata, compatibility, playtimeSeconds) => {
             const ref = requireProjectRef("Save Game");
-            const result = await getInterface().devMode.save.write(ref, id, savedGame, capture, metadata, compatibility);
+            const result = await getInterface().devMode.save.write(
+                ref,
+                id,
+                savedGame,
+                capture,
+                metadata,
+                compatibility,
+                playtimeSeconds,
+            );
             if (!result.success) {
                 throw new Error(result.error ?? `Save Game failed: ${id}`);
             }

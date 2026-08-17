@@ -158,6 +158,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ_BY_ID,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PLAYTIME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_TOTAL_PLAYTIME,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
@@ -1524,6 +1527,26 @@ function resolveGameNodeOutput(
         return normalizeBlueprintRGBAColor(
             runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getSpeakerColor(),
         );
+    }
+    // Keyed by node type as well as port, because the two playtime readers publish the same shape:
+    // matching on the port alone would give whichever ran first to both.
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME) {
+        const seconds = runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getPlaytime() ?? 0;
+        if (portId === "playtimeSeconds") {
+            return seconds;
+        }
+        if (portId === "playtimeMilliseconds") {
+            return seconds * 1000;
+        }
+    }
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_GET_TOTAL_PLAYTIME) {
+        const seconds = runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getTotalPlaytime() ?? 0;
+        if (portId === "totalPlaytimeSeconds") {
+            return seconds;
+        }
+        if (portId === "totalPlaytimeMilliseconds") {
+            return seconds * 1000;
+        }
     }
     if (portId === "isInGame") {
         return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isInGame() === true;
@@ -2985,6 +3008,17 @@ function resolveSelfOutput(
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
+    // Get Save Playtime, separate for the same reason as Get Save Time: `exists` is shared with it,
+    // and joining either list would hand one node's outputs to the other.
+    if (
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PLAYTIME &&
+        (portId === "playtimeSeconds"
+            || portId === "playtimeMilliseconds"
+            || portId === "recorded"
+            || portId === "exists")
+    ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
     // The project's declared save fields, published by Get Save Metadata onto one pin each. Matched
     // by prefix rather than by name because the names are the author's: the set changes whenever a
     // field is declared, and a fixed list here would go stale the moment one is.
@@ -3180,6 +3214,8 @@ function resolveSelfOutput(
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_TOTAL_PLAYTIME ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE ||
