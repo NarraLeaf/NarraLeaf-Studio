@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+    AppearanceFieldTransition,
     AppearanceModel,
     AppearancePropertyGroup,
     AppearanceValueRow,
@@ -18,6 +19,7 @@ import {
 import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "./SystemInteractionState";
 import {
     resolveButtonVisualProps,
+    resolveContainerAppearanceTransitions,
     resolveContainerRectangleLike,
     resolveImageAppearanceTransitions,
     resolveImageRectangleLike,
@@ -392,5 +394,65 @@ describe("fill opacity is a fill alpha for every fill but an image", () => {
         expect(
             resolveImageAppearanceTransitions(appearance, ctx, { fillType: "image" })?.fillOpacity
         ).toBeUndefined();
+    });
+});
+
+describe("field transitions across variants", () => {
+    const TWEEN = { type: "tween", durationMs: 200, delayMs: 0, easing: "easeOut" } as const;
+    const SPRING = { type: "spring", delayMs: 0, stiffness: 300, damping: 20, mass: 1 } as const;
+
+    function twoVariantModel(
+        defaultTransition: AppearanceFieldTransition | undefined,
+        onTransition: AppearanceFieldTransition | undefined
+    ): AppearanceModel {
+        const base = createInitialContainerAppearance(defaultContainerWidgetProps);
+        const withTransition = (variant: AppearanceModel["variants"][number], transition: AppearanceFieldTransition | undefined) => ({
+            ...variant,
+            propertyGroups: variant.propertyGroups.map(group =>
+                group.key === "transformOffsetX" ? { ...group, transition } : group
+            ),
+        });
+        const first = base.variants[0]!;
+        return {
+            ...base,
+            variants: [
+                withTransition(first, defaultTransition),
+                { ...withTransition(first, onTransition), id: "on", name: "On" },
+            ],
+        };
+    }
+
+    const ctx = { variantOverrideId: "on", signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS };
+
+    it("falls back to the default variant so both directions move alike", () => {
+        const model = twoVariantModel(TWEEN, undefined);
+
+        expect(resolveContainerAppearanceTransitions(model, ctx).transformOffsetX).toEqual(TWEEN);
+        expect(
+            resolveContainerAppearanceTransitions(model, { signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS })
+                .transformOffsetX
+        ).toEqual(TWEEN);
+    });
+
+    it("prefers the transition on the variant showing now", () => {
+        const model = twoVariantModel(TWEEN, SPRING);
+
+        expect(resolveContainerAppearanceTransitions(model, ctx).transformOffsetX).toEqual(SPRING);
+    });
+
+    it("moves back the way it came when only the state it flips to carries one", () => {
+        const model = twoVariantModel(undefined, TWEEN);
+
+        expect(resolveContainerAppearanceTransitions(model, ctx).transformOffsetX).toEqual(TWEEN);
+        expect(
+            resolveContainerAppearanceTransitions(model, { signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS })
+                .transformOffsetX
+        ).toEqual(TWEEN);
+    });
+
+    it("leaves a field with no transition anywhere instant", () => {
+        const model = twoVariantModel(undefined, undefined);
+
+        expect(resolveContainerAppearanceTransitions(model, ctx).transformOffsetX).toBeUndefined();
     });
 });

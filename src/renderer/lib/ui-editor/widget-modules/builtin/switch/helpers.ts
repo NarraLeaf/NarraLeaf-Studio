@@ -115,6 +115,19 @@ function withGroupTransition(group: AppearancePropertyGroup): AppearanceProperty
 }
 
 /**
+ * The same transition on both variants, which is the shape the inspector writes: a transition belongs
+ * to the field, not to one of the states it moves between. On the `on` variant alone it would take
+ * the thumb one way and let it snap back.
+ */
+function withAnimatedKeyTransition(variant: AppearanceVariant, animatedKey: ContainerAppearancePropertyKey): AppearanceVariant {
+    return {
+        ...variant,
+        propertyGroups: variant.propertyGroups.map(group =>
+            group.key === animatedKey ? withGroupTransition(group) : group),
+    };
+}
+
+/**
  * Off look plus the fixed `on` variant the renderer flips to.
  *
  * The `on` variant is built by seeding a second full appearance model from the on-state flat props
@@ -131,11 +144,14 @@ export function createSwitchPartProps(kind: UISwitchChildSlot, travel: number): 
     const onVariant: AppearanceVariant = {
         id: UI_SWITCH_ON_VARIANT_ID,
         name: translate("widgets.defaults.switch.onVariant"),
-        propertyGroups: onGroups.map(group => (group.key === animatedKey ? withGroupTransition(group) : group)),
+        propertyGroups: onGroups,
     };
     const model: AppearanceModel = {
         ...appearance,
-        variants: [...appearance.variants, onVariant],
+        variants: [
+            ...appearance.variants.map(variant => withAnimatedKeyTransition(variant, animatedKey)),
+            withAnimatedKeyTransition(onVariant, animatedKey),
+        ],
     };
     return {
         ...props,
