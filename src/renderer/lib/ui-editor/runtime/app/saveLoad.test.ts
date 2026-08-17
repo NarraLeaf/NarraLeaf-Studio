@@ -659,23 +659,43 @@ describe("the older-saves policy", () => {
         expect(harness.calls.apply).toBe(0);
     });
 
-    it("relaunches instead of loading, at the scene, when the story has changed", async () => {
-        const harness = createHarness({ head: PLAYING });
+    it("always asks for the row, and reports whichever landing the host managed", async () => {
         const targets: unknown[] = [];
+        const relaunchWith = (landing: "row" | "scene" | "nowhere") => async (
+            target: { storyId: string; sceneId: string; blockId: string | null },
+        ) => {
+            targets.push({ storyId: target.storyId, sceneId: target.sceneId, blockId: target.blockId });
+            return landing;
+        };
 
-        const outcome = await withPolicy(harness, otherStory, { compatible: "resume", incompatible: "resumeScene" }, {
-            game: {
-                ...harness.game,
-                relaunch: async target => {
-                    targets.push({ storyId: target.storyId, sceneId: target.sceneId, blockId: target.blockId });
-                },
-            },
+        // The row the save names is always handed over. Whether it survived is the host's answer,
+        // because a launch given a row that is gone plays the scene and reports nothing.
+        const rowHarness = createHarness({ head: PLAYING });
+        const onRow = await withPolicy(rowHarness, otherStory, {
+            compatible: "resume",
+            incompatible: "resumeScene",
+        }, { game: { ...rowHarness.game, relaunch: relaunchWith("row") } });
+        expect(onRow).toMatchObject({ status: "loaded", applied: "row", compatibility: "incompatible" });
+        expect(targets).toEqual([{ storyId: "story-1", sceneId: "scene-a", blockId: "block-9" }]);
+
+        const sceneHarness = createHarness({ head: PLAYING });
+        const onScene = await withPolicy(sceneHarness, otherStory, {
+            compatible: "resume",
+            incompatible: "resumeScene",
+        }, { game: { ...sceneHarness.game, relaunch: relaunchWith("scene") } });
+        expect(onScene).toMatchObject({ status: "loaded", applied: "scene" });
+    });
+
+    it("refuses, with the run untouched, when the scene is gone too", async () => {
+        const local = createHarness({ head: PLAYING });
+
+        const outcome = await withPolicy(local, otherStory, { compatible: "resume", incompatible: "resumeScene" }, {
+            game: { ...local.game, relaunch: async () => "nowhere" as const },
         });
 
-        expect(outcome).toMatchObject({ status: "loaded", applied: "scene", compatibility: "incompatible" });
-        // The row is dropped on purpose: this build never compiled the block the save names.
-        expect(targets).toEqual([{ storyId: "story-1", sceneId: "scene-a", blockId: null }]);
-        expect(harness.calls.apply).toBe(0);
+        expect(outcome).toMatchObject({ status: "refused", reason: "unanchored", game: "unchanged" });
+        expect(local.head()).toEqual(PLAYING);
+        expect(local.calls.apply).toBe(0);
     });
 
     it("refuses rather than relaunching when the host cannot start a story", async () => {

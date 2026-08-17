@@ -87,17 +87,19 @@ describe("planSaveResume", () => {
         expect(planSaveResume(stamp({ gameVersion: "0.9.0" }), stamp(), policy).plan)
             .toEqual({ action: "discard", reason: "policy" });
         expect(planSaveResume(stamp({ storyHash: "story-b" }), stamp(), policy).plan)
-            .toEqual({ action: "relaunch", precision: "scene" });
+            .toEqual({ action: "relaunch" });
         expect(planSaveResume(stamp({ storyHash: "story-b" }), stamp(), {
             compatible: "resume",
             incompatible: "force",
         }).plan).toEqual({ action: "resume" });
     });
 
-    it("keeps a same-story relaunch row-precise", () => {
-        // Not reachable from the built-in classification - a same-story save never lands in the
-        // incompatible branch - but the option has to be defined however it is reached.
-        expect(planSaveResume(stamp(), stamp(), policy, ).plan).toEqual({ action: "resume" });
+    it("says nothing about how precisely a relaunch can land", () => {
+        // That is a question about whether the row is still in the story, which nothing here can
+        // see. The host answers it at the moment of the relaunch; see `SaveRelaunchLanding`.
+        expect(planSaveResume(stamp({ storyHash: "story-b" }), stamp(), policy).plan)
+            .toEqual({ action: "relaunch" });
+        // A same-story save never reaches the incompatible half whatever it is set to.
         expect(planSaveResume(stamp({ gameVersion: "2.0.0" }), stamp(), {
             compatible: "resume",
             incompatible: "resumeScene",

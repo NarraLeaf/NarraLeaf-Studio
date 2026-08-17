@@ -15,7 +15,8 @@ export const game = {
         otherStory: "Load Save: \"{id}\" was written from a different version of the story.",
         // The Older saves policy taking effect rather than a failure, so it is stated as what
         // happened: the slot was honoured, in the only way the policy allows it to be.
-        relaunched: "Load Save: \"{id}\" was written by another build, so the story was started again where it stopped.",
+        relaunchedRow: "Load Save: \"{id}\" was written by another build, so the story was started again on the line it stopped on.",
+        relaunchedScene: "Load Save: \"{id}\" was written by another build and the line it stopped on is gone, so the story was started again at the top of that scene.",
         detail: {
             unreadable: "The save could not be read. {error}",
             missing: "No save is stored under that id.",
@@ -23,6 +24,7 @@ export const game = {
             unsupported: "This save was written in a format this build cannot read.",
             policy: "Older saves from another build are not restored in this project.",
             unanchored: "This save does not say where it stopped, so the story cannot be started again there.",
+            sceneGone: "The scene this save stopped in is not in this build, so there is nowhere to start it again.",
             relaunch: "The story could not be started again where the save stopped. {error}",
             unresolvedScene: "The scene this save was in is not in the running story.",
             unresolvedElement: "The running story does not have everything this save puts on stage.",
