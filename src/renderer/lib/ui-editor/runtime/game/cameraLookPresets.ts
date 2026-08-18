@@ -347,6 +347,17 @@ export function resolveStoryCameraLook(presetId: string | undefined, intensity: 
  * editor's stage snapshot asks only for the resting grade — a preview is a still frame, and a
  * snapshot that tried to show the sway would be showing a moment the author cannot point at.
  */
+/**
+ * Whether this grade moves — and therefore whether the row's duration means anything.
+ *
+ * A still grade lands in one frame (see the compiler's `look` arm), so its timing fields are hidden
+ * and nothing seeds them: a control that is present but never read is exactly what an author wastes
+ * an afternoon on. A sway is the one grade that spends time, and for it the duration is the tempo.
+ */
+export function storyCameraLookSways(presetId: string | undefined): boolean {
+    return Boolean(getStoryCameraLookPreset(presetId)?.oscillate);
+}
+
 export function resolveStoryCameraLookOscillation(
     presetId: string | undefined,
     intensity: number | undefined,

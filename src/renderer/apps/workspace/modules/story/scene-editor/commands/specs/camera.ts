@@ -93,8 +93,9 @@ function cameraOperand(
             return {
                 lookPreset: preset.id,
                 lookIntensity: strength ?? preset.defaultIntensity,
-                durationMs: preset.defaultDurationMs,
-                easing: preset.defaultEasing,
+                ...(preset.oscillate
+                    ? { durationMs: preset.defaultDurationMs, easing: preset.defaultEasing }
+                    : {}),
             };
         }
         case "motion":
@@ -137,6 +138,11 @@ export const camera = defineStoryCommand({
         // `strength=` also keeps `/camera look moonlight` readable as the common case, with the dial
         // as something an author adds when the nominal grade is too much.
         strength: { aliases: ["intensity"], hint: "cameraLookStrength", type: { kind: "number", min: 0, max: 2 } },
+        // Read by pan / zoom / rotate / darken / reset. `look` and `motion` both ignore it and say so
+        // where it matters: a grade lands in one frame (a tweened filter walks the picture through
+        // colours nobody chose - see the compiler's `look` arm), and a shot's timing is in its
+        // keyframes. The key stays on the command because it is the shape every camera row shares;
+        // the inspector is where each operation shows only what it can honour.
         d: secondsParam(),
     },
     build(args, ctx): StoryBlock {

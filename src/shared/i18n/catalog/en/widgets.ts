@@ -143,7 +143,6 @@ export const widgets = {
         track: "Track",
         thumb: "Thumb",
         repairParts: "Repair parts",
-        recomputeTravel: "Recompute travel",
     },
     textInput: {
         title: "Text Input",
@@ -360,7 +359,7 @@ export const widgets = {
         nvlList: { name: "NVL List", speaker: "Speaker" },
         root: { name: "Root" },
         slider: { name: "Slider", track: "Slider Track", handle: "Slider Handle" },
-        switch: { name: "Switch", track: "Switch Track", thumb: "Switch Thumb", onVariant: "On" },
+        switch: { name: "Switch", track: "Switch Track", thumb: "Switch Thumb", onVariant: "On", offVariant: "Off" },
         text: { name: "Text", text: "Text" },
         textInput: { name: "Text Input" },
         video: { name: "Video" },

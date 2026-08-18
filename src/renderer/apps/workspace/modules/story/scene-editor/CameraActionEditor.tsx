@@ -15,6 +15,7 @@ import {
     getStoryCameraLookPreset,
     resolveStoryCameraLook,
     STORY_CAMERA_LOOK_DEFAULT_PRESET_ID,
+    storyCameraLookSways,
     STORY_CAMERA_LOOK_MAX_INTENSITY,
     STORY_CAMERA_LOOK_MIN_INTENSITY,
     STORY_CAMERA_LOOK_PRESETS,
@@ -280,19 +281,27 @@ export function CameraActionEditor(props: {
                                 </FieldGrid>
                             </div>
                         ) : null}
-                        <FieldGrid cols={2}>
-                            <SecondsField
-                                label={t("storyInspector.field.duration")}
-                                value={payload.durationMs}
-                                onChange={durationMs => onChange({ ...payload, durationMs: durationMs === undefined ? undefined : Math.max(0, durationMs) })}
-                            />
-                            <SelectField
-                                label={t("storyInspector.field.easing")}
-                                options={easingOptions(t)}
-                                value={payload.easing ?? ""}
-                                onChange={easing => onChange({ ...payload, easing: String(easing) || undefined })}
-                            />
-                        </FieldGrid>
+                        {/* A grade lands in one frame, so it has no timing to offer — see the
+                            compiler's `look` arm for why interpolating one is not an option. The
+                            fields are hidden rather than disabled: a control that is present but
+                            never does anything is the thing an author wastes time on. */}
+                        {operation === "look" && !storyCameraLookSways(payload.lookPreset) ? (
+                            <p className="text-2xs text-fg-subtle">{t("storyInspector.camera.lookSnaps")}</p>
+                        ) : (
+                            <FieldGrid cols={2}>
+                                <SecondsField
+                                    label={t("storyInspector.field.duration")}
+                                    value={payload.durationMs}
+                                    onChange={durationMs => onChange({ ...payload, durationMs: durationMs === undefined ? undefined : Math.max(0, durationMs) })}
+                                />
+                                <SelectField
+                                    label={t("storyInspector.field.easing")}
+                                    options={easingOptions(t)}
+                                    value={payload.easing ?? ""}
+                                    onChange={easing => onChange({ ...payload, easing: String(easing) || undefined })}
+                                />
+                            </FieldGrid>
+                        )}
                     </>
                 )}
             </div>
@@ -448,7 +457,10 @@ function withLookPreset(payload: CameraActionPayload, nextId: string | undefined
         ...payload,
         lookPreset: nextId,
         lookIntensity: payload.lookIntensity ?? 1,
-        ...(next && untouched
+        // Only a grade that MOVES gets its tempo seeded. A still grade lands in one frame and the
+        // compile reads no duration for it, so writing one onto the row would put a number in the
+        // document that nothing downstream honours.
+        ...(next?.oscillate && untouched
             ? { durationMs: next.defaultDurationMs, easing: next.defaultEasing }
             : {}),
     };
