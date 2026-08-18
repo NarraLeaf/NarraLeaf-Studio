@@ -12,6 +12,7 @@ import {
     createInitialButtonAppearance,
     createInitialImageAppearanceFromProps,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
+import { LOCALE_STORAGE_KEY } from "@shared/types/localization";
 import { ScopeStoreBridge } from "./ScopeStoreBridge";
 import {
     createDevModeBlueprintHostApi,
@@ -1671,5 +1672,66 @@ describe("createDevModeBlueprintHostApi element volume", () => {
 
         expect(hostApi.sound.getTrackVolume("alice")).toBe(1);
         await expect(hostApi.sound.setTrackVolume("alice", 0.5)).resolves.toBeUndefined();
+    });
+});
+
+describe("createDevModeBlueprintHostApi language", () => {
+    const localizationConfig = {
+        sourceLocale: "en",
+        locales: [{ code: "en" }, { code: "ja" }],
+    } as unknown as CreateBlueprintHostApiRuntimeOptions["localizationConfig"];
+
+    function createLanguageHostApi(onLocaleChanged?: (code: string) => Promise<void> | void) {
+        const scope = new ScopeStoreBridge();
+        const hostApi = createDevModeBlueprintHostApi({
+            document: createDocument(),
+            scope,
+            activeSurfaceId: "page",
+            emit: () => undefined,
+            onOpenSurface: () => undefined,
+            onPageBack: () => undefined,
+            onWidgetPatch: () => undefined,
+            widgetRuntimeStore: new WidgetRuntimeStateStore(),
+            localizationConfig,
+            onLocaleChanged,
+        });
+        return { hostApi, scope };
+    }
+
+    it("stores the language before telling the host about it", async () => {
+        // The order the restart depends on: the host may end the process from inside this call, and
+        // the boot that replaces it reads the stored language to know what to come back in.
+        const seen: Array<string | undefined> = [];
+        const { hostApi, scope } = createLanguageHostApi(code => {
+            seen.push(code);
+            seen.push(scope.persistenceGet(LOCALE_STORAGE_KEY) as string | undefined);
+        });
+
+        await hostApi.localization.setLocale("ja");
+
+        expect(seen).toEqual(["ja", "ja"]);
+        expect(await hostApi.localization.getLocale()).toBe("ja");
+    });
+
+    it("waits for the host before the node moves on", async () => {
+        // Set Language must not return while the host is still writing the save it is about to
+        // restart out of - the next node would run in a game that is already going away.
+        let settled = false;
+        const { hostApi } = createLanguageHostApi(async () => {
+            await Promise.resolve();
+            settled = true;
+        });
+
+        await hostApi.localization.setLocale("ja");
+
+        expect(settled).toBe(true);
+    });
+
+    it("still changes the language on a host that wants no say in it", async () => {
+        // The editor preview, and every host that has no game a language could be inconsistent with.
+        const { hostApi } = createLanguageHostApi();
+
+        await expect(hostApi.localization.setLocale("ja")).resolves.toBeUndefined();
+        expect(await hostApi.localization.getLocale()).toBe("ja");
     });
 });

@@ -128,9 +128,10 @@ describe("compiles /fx backdrop and blend", () => {
  * neutral without walking the picture through colours nobody chose. Measured over the moonlight
  * grade on a real sprite, the browser's own interpolation goes blue → cyan → green → olive, because
  * the angle unwinds 185 degrees while `grayscale` simultaneously lets the source's hues back in.
- * These two pin the fix so a later "make the grade fade nicely" change has to face the reason.
+ * This pins the fix so a later "make the grade fade nicely" change has to face the reason.
+ * Ending a grade is the engine's problem and is fixed there (narraleaf-react 0.28.1).
  */
-describe("compiles a camera grade as a cut on the way in", () => {
+describe("compiles a camera grade as a cut", () => {
     function cameraDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[]): StoryDocument {
         return {
             schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
@@ -161,30 +162,4 @@ describe("compiles a camera grade as a cut on the way in", () => {
         expect(sequence?.options).toEqual(expect.objectContaining({ duration: 0 }));
     });
 
-    // NOT a behaviour test: the emitted zero-duration clear does not actually stop the sweep at
-    // runtime (see the compiler's `reset` arm). This only pins that the clear is still emitted, so
-    // whoever fixes it engine-side can see what the compiler already sends.
-    it("emits a zero-duration filter clear ahead of the pose on reset", async () => {
-        const document = cameraDocument({
-            grade: {
-                id: "grade", kind: "action", parentId: null, childrenIds: [],
-                payload: { action: "camera", operation: "look", lookPreset: "moonlight", lookIntensity: 1 },
-            },
-            back: {
-                id: "back", kind: "action", parentId: null, childrenIds: [],
-                payload: { action: "camera", operation: "reset", durationMs: 600 },
-            },
-        }, ["grade", "back"]);
-
-        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
-        expect(compiled.diagnostics).toEqual([]);
-
-        // Two statements come off the reset row: the filter drop, then the pose. Only the first is a
-        // transform we can read a duration from; the point is that it is zero, so no hue unwinds.
-        const actions = compiled.actionIdBindings
-            .filter(binding => binding.blockId === "back")
-            .flatMap(binding => collectActionTree(binding.action, compiled.story));
-        const durations = transformsOf(actions).flatMap(t => (t.sequences ?? []).map(s => s.options?.duration));
-        expect(durations).toContain(0);
-    });
 });

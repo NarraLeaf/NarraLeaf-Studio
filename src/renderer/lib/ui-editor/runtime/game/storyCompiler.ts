@@ -129,7 +129,7 @@ import {
 // The look library sits beside the command spec and the inspector that pick from it; the compile is
 // its third reader rather than its owner, which is the same relation `storyReplace` already has with
 // the scene editor's find/replace model.
-import { resolveStoryCameraLook } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
+import { resolveStoryCameraLook, resolveStoryCameraLookOscillation } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import type { StageSnapshotDisplayable, StageSnapshotEffects, StoryStageSnapshot } from "./storyStageSnapshot";
 import { collectSavedVariableView, savedVariableDefsFromView } from "./storyStageSnapshot";
 import {
@@ -2869,7 +2869,7 @@ function compileCameraAction(
                     : "Camera look has no grade chosen.");
                 return [];
             }
-            // **A grade snaps; it does not tween, and the row's duration is deliberately unused.**
+            // **A still grade snaps; it does not tween, and the row's duration is unused for one.**
             //
             // A filter chain carrying `hue-rotate` cannot be linearly interpolated to (or from)
             // neutral without walking through colours nobody asked for. Going from
@@ -2879,33 +2879,53 @@ function compileCameraAction(
             // face. Measured on a real sprite over the moonlight grade — blue at t=1, cyan by 0.8,
             // green through 0.6–0.4, olive at 0.2.
             //
-            // There is no interpolation that fixes this, because the honest operation is a
-            // cross-fade between two graded renderings and a CSS filter cannot express one. So the
-            // grade lands in a single frame, which is also how the medium actually uses it: a
-            // flashback cuts in behind a flash or a transition, it does not morph.
+            // There is no interpolation that fixes this in general, because the honest operation is
+            // a cross-fade between two graded renderings and a CSS filter cannot express one, and
+            // because the compiler cannot know which grade the stage is already wearing. So the
+            // grade lands in a single frame, which is also how the medium uses it: a flashback cuts
+            // in behind a flash or a transition, it does not morph.
+            //
+            // A SWAY is the one exception, and it is exempt by construction rather than by
+            // judgement: every keyframe in it names the same filter functions in the same order as
+            // the grade it settles onto, holds the flatten terms fixed, and moves the hue only a few
+            // degrees either side of neutral. Nothing crosses the wheel, so there is no midpoint to
+            // land wrong on — measured over `hangover`, the trace stays inside its own recipe with
+            // only the angle and the blur moving.
+            const oscillation = handWritten
+                ? null
+                : resolveStoryCameraLookOscillation(payload.lookPreset, payload.lookIntensity, duration);
+            if (oscillation && oscillation.steps.length > 0) {
+                const sequences = oscillation.steps.map(step => ({
+                    props: { filter: step },
+                    options: { duration: oscillation.stepMs, ease: easing ?? "easeInOut" },
+                }));
+                // `repeat` covers the whole sequence list, so the sway ends on its last step rather
+                // than at neutral - the settle onto the resting grade is a second statement, and it
+                // is what leaves the stage in the state a still grade would have left it in.
+                const sway = new Transform(sequences as any, { repeat: oscillation.cycles } as any);
+                return [
+                    recordStatement(ctx, camera.transform(sway), block),
+                    recordStatement(ctx, camera.filter(resolved, { duration: oscillation.settleMs, ease: "easeOut" }), block),
+                ];
+            }
             return [recordStatement(ctx, camera.filter(resolved, { duration: 0 }), block)];
         }
         case "reset":
-            // ⚠ CLEARING A GRADE STILL SWEEPS, and this zero-duration clear does NOT stop it —
-            // measured in Dev Mode over the moonlight grade, the hue still unwinds 185° over the
-            // reset's own duration. Do not read the line below as a fix; it is left in because it is
-            // harmless and because the next person needs to know it was tried.
+            // Ending a grade used to walk the picture through the colour wheel — blue, cyan, green,
+            // olive on the way out of the moonlight look — because `resetCamera` packed
+            // `filter: "none"` into the same transform as the pose and eased the two together.
             //
-            // `Camera.resetCamera` packs `filter: "none"` into the SAME transform as the pose, so the
-            // filter is eased along with the pan and zoom. Dropping it first in its own statement
-            // does not survive: both land in one tick, so the renderer sees a single style diff from
-            // the grade to neutral and animates the whole of it. Building the pose transform by hand
-            // WITHOUT a `filter` prop was tried too and changes nothing, which points at the merged
-            // TransformState rather than at what this file emits.
+            // **That is fixed in the engine, not here** (narraleaf-react 0.28.1: `resetCamera` now
+            // drops the filter in a zero-duration sequence and eases only the pose). Studio tried to
+            // paper over it from this side twice — a zero-duration `clearFilter` emitted first, and a
+            // hand-built pose transform carrying no `filter` prop — and neither worked, because both
+            // statements land in one tick and the renderer sees a single style diff either way. The
+            // attempts are gone; this note is what is left of them, so nobody re-tries either.
             //
-            // The fix therefore belongs in the engine — either a `clearFilter` that truly commits
-            // before the next transform reads the element, or a `resetCamera` that leaves the filter
-            // out of the eased set. Until then a grade is best ended by cutting the scene or hiding
-            // the change behind a `/blink`.
-            return [
-                recordStatement(ctx, camera.clearFilter({ duration: 0 }), block),
-                recordStatement(ctx, camera.resetCamera(duration, easing), block),
-            ];
+            // `package.json` still allows `^0.28.0`, so a tree resolved to plain 0.28.0 will show the
+            // sweep again. That is a dependency floor to raise at the next engine release, not
+            // something to work around here.
+            return [recordStatement(ctx, camera.resetCamera(duration, easing), block)];
         case "motion": {
             // A whole keyframed shot rather than one settled pose. `Camera` is a `Displayable`, so it
             // takes the same `Transform` a sprite does, built by the same function `/transform` uses -

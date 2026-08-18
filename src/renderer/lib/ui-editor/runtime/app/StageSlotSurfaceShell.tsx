@@ -137,6 +137,13 @@ export type GameUiSlotHostOptions = {
     audioTracks?: readonly ProjectAudioTrack[];
     /** Preference stream so a mid-playback volume-slider drag reaches host-owned media elements. */
     subscribeGamePreferences?: (listener: () => void) => () => void;
+    /**
+     * What the host does about a language change beyond storing it - restart the run and resume it,
+     * or nothing at all when no playthrough is going. Carried here because a language picker is a
+     * quick-menu control as often as it is a settings page, and a slot surface's Set Language sees
+     * only the host API this shell builds.
+     */
+    localeChangedInGame?: (code: string) => Promise<void> | void;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -274,6 +281,7 @@ export function useStageSlotSurfaceRuntime(input: {
             onSetTrackVolume: options.soundTransport?.setTrackVolume,
             audioTracks: options.audioTracks,
             onSubscribeGamePreferences: options.subscribeGamePreferences,
+            onLocaleChanged: options.localeChangedInGame,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
