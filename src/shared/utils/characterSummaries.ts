@@ -196,6 +196,7 @@ export function mapCharacterStoreEntriesToSummaries(entries: readonly unknown[])
             defaultAvatarAssetId?: unknown;
             color?: unknown;
             voiceTrackId?: unknown;
+            stageFrameSurfaceId?: unknown;
         };
         const id = trimmed(raw.id);
         if (!id) {
@@ -205,6 +206,9 @@ export function mapCharacterStoreEntriesToSummaries(entries: readonly unknown[])
         // Dropped when empty rather than forwarded as "": absent is what the compiler reads as "the
         // seeded voice bus", and an empty string would be a reference to a track nobody can name.
         const voiceTrackId = trimmed(raw.voiceTrackId);
+        // Same rule as the track above: dropped when empty, because absent is what the compiler reads
+        // as "this character enters as an ordinary sprite".
+        const stageFrameSurfaceId = trimmed(raw.stageFrameSurfaceId);
         // Trimmed, not parsed. Whether a colour is *usable* is a per-surface question — Studio chrome
         // applies a readability band to it, the runtime nametag does not — and a mapper that
         // pre-judged it would take that decision away from both.
@@ -219,6 +223,7 @@ export function mapCharacterStoreEntriesToSummaries(entries: readonly unknown[])
             ...(defaultAvatarAssetId ? { defaultAvatarAssetId } : {}),
             ...(color ? { color } : {}),
             ...(voiceTrackId ? { voiceTrackId } : {}),
+            ...(stageFrameSurfaceId ? { stageFrameSurfaceId } : {}),
         }];
     });
 }

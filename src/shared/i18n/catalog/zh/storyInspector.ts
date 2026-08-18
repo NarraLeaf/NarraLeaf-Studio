@@ -393,6 +393,7 @@ export const storyInspector = {
     character: {
         objectName: "后续称呼为",
         frame: "框",
+        frameDefault: "跟随角色",
         frameNone: "不用框",
         displayName: "显示为",
         chooseHint: "先选择一个角色，再选择其外观",

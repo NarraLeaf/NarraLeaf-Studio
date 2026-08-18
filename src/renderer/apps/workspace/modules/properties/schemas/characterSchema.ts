@@ -9,6 +9,7 @@ import type { Translator } from "@shared/i18n";
 import { CharacterAvatarField } from "../fields/CharacterAvatarField";
 import { CharacterColorField } from "../fields/CharacterColorField";
 import { CharacterVoiceTrackField } from "../fields/CharacterVoiceTrackField";
+import { CharacterStageFrameField } from "../fields/CharacterStageFrameField";
 
 /** Translator function, threaded into schema builders since they run outside React. */
 type TranslateFn = Translator["t"];
@@ -124,6 +125,15 @@ export const characterPropertySchema = (t: TranslateFn) =>
             label: t("characters.properties.voiceTrack"),
             component: CharacterVoiceTrackField,
             order: 70,
+        },
+        {
+            // Beside the voice bus and for the same reason: how this character is presented on stage
+            // is a fact about the character, not about how it is drawn.
+            id: "stageFrame",
+            type: "custom",
+            label: t("characters.properties.stageFrame"),
+            component: CharacterStageFrameField,
+            order: 80,
         },
     ],
     showSavingIndicator: false,

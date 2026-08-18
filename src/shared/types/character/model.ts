@@ -82,6 +82,20 @@ export interface CharacterEditorProfile extends CharacterBaseProfile {
      */
     defaultAvatarAssetId?: string | null;
     /**
+     * The frame this character enters through when a story row does not name one.
+     *
+     * A `UISurfaceId` of an element-mounted Game UI surface. On the profile rather than the
+     * appearance for the reason {@link defaultAvatarAssetId} is: it survives a kind switch, which
+     * discards everything the two kinds do not share — and a frame is about presentation, which is
+     * the one thing that does not change when a character is redrawn from poses to layers.
+     *
+     * A dangling id — the author deleted the frame — resolves to no frame rather than to an error,
+     * which is a character who enters as an ordinary sprite. That is the same bargain
+     * {@link voiceTrackId} strikes, and for the same reason: the alternative is a story that stops
+     * compiling because of a deletion in another document.
+     */
+    stageFrameSurfaceId?: string | null;
+    /**
      * The audio bus this character's dialogue voice plays on — a project audio track id.
      *
      * Absent (the ordinary case) means the seeded `voice` bus, which is where every voice line has

@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import type { UICharacterCrop, UICharacterWidgetProps } from "@shared/types/ui-editor/character";
+import { useEffect, useMemo, useState } from "react";
+import type { UICharacterWidgetProps } from "@shared/types/ui-editor/character";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
 import { useOptionalWorkspace } from "@/apps/workspace/context";
@@ -9,6 +9,9 @@ import { Services } from "@/lib/workspace/services/services";
 import { Select } from "@/lib/components/elements/Select";
 import type { InspectorContext, UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { i18nStore, useTranslation } from "@/lib/i18n";
+import { PortraitCropBox } from "@/apps/workspace/modules/characters/editors/components/PortraitCropBox";
+import { useCharacterPreviewSrcs } from "@/lib/workspace/hooks/useCharacterPreviewSrcs";
+import { cropLayoutStyle } from "@shared/types/ui-editor/character";
 import { getUICharacterWidgetProps, patchCharacterProps } from "./helpers";
 
 /** Always read through the live document: a schema closure can outlive the props it captured. */
@@ -59,12 +62,95 @@ function CharacterField({ data }: CustomFieldProps<UIInspectorData>) {
     );
 }
 
-const CROP_EDGES: { key: keyof UICharacterCrop; label: "cropX" | "cropY" | "cropW" | "cropH" }[] = [
-    { key: "x", label: "cropX" },
-    { key: "y", label: "cropY" },
-    { key: "w", label: "cropW" },
-    { key: "h", label: "cropH" },
-];
+
+/**
+ * Drag the window over the character instead of typing four numbers.
+ *
+ * The box is locked to the *widget's* own shape rather than to a square, because the crop is shown
+ * through `object-fit`: a crop of a different shape than the box it lands in is simply cropped a
+ * second time, and the author would be framing something other than what they see. Square is still
+ * what the dialog avatar's crop box uses, and this is the same component saying so explicitly.
+ *
+ * Which character is drawn underneath is the widget's own `characterId` when it names one, and
+ * otherwise the first character in the project — a frame worn by the whole cast still has to be
+ * framed against somebody, and any of them will do for placing a head.
+ */
+function CharacterCropField({ data }: CustomFieldProps<UIInspectorData>) {
+    const { t } = useTranslation();
+    const element = liveElement(data);
+    const widget = liveProps(data);
+    const workspace = useOptionalWorkspace();
+    const previewId = useMemo(() => {
+        if (widget.characterId) {
+            return widget.characterId;
+        }
+        const service = workspace?.isInitialized
+            ? workspace.context?.services.get<CharacterService>(Services.Character) ?? null
+            : null;
+        return service?.listCharacter()[0]?.profile.getId() ?? null;
+    }, [widget.characterId, workspace]);
+    const preview = useCharacterPreviewSrcs(previewId);
+    const src = preview.srcs.find((entry): entry is string => typeof entry === "string") ?? null;
+    const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
+
+    useEffect(() => {
+        if (!src || typeof window === "undefined") {
+            setNatural(null);
+            return;
+        }
+        let cancelled = false;
+        const image = new window.Image();
+        image.onload = () => {
+            if (!cancelled) {
+                setNatural({ width: image.naturalWidth, height: image.naturalHeight });
+            }
+        };
+        image.src = src;
+        return () => { cancelled = true; };
+    }, [src]);
+
+    const box = { width: element.layout.width, height: element.layout.height };
+    const aspect = box.height > 0 ? box.width / box.height : 1;
+
+    if (!src) {
+        return <span className="text-xs text-fg-subtle">{t("widgets.character.cropNoPreview")}</span>;
+    }
+
+    return (
+        <div className="flex flex-col gap-2">
+            <div className="relative h-48 w-full overflow-hidden rounded-md border border-edge bg-surface-sunken">
+                <img
+                    src={src}
+                    alt=""
+                    draggable={false}
+                    className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+                />
+                <PortraitCropBox
+                    natural={natural}
+                    value={widget.crop}
+                    aspect={aspect}
+                    title={t("widgets.character.crop")}
+                    onCommit={crop => patch(data, { crop })}
+                />
+            </div>
+            {/* What the frame will actually show, at the size the frame is. */}
+            <div
+                className="relative overflow-hidden rounded-md border border-edge bg-surface-sunken"
+                style={{ width: 96, height: 96 / (aspect || 1) }}
+            >
+                <div style={{ position: "absolute", ...cropLayoutStyle({
+                    crop: widget.crop,
+                    fit: widget.fit,
+                    box: { width: 96, height: 96 / (aspect || 1) },
+                    picture: natural,
+                }) }}>
+                    <img src={src} alt="" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill" }} />
+                </div>
+            </div>
+        </div>
+    );
+}
+
 
 export function createCharacterInspector(ctx: InspectorContext) {
     type D = UIInspectorData;
@@ -98,17 +184,11 @@ export function createCharacterInspector(ctx: InspectorContext) {
                         type: "section",
                         title: t("widgets.character.sectionFraming"),
                         fields: [
-                            ...CROP_EDGES.map(edge => defineField<D, any>({
-                                id: `character.crop.${edge.key}`,
-                                type: "number",
-                                label: t(`widgets.character.${edge.label}`),
-                                min: 0,
-                                max: 1,
-                                step: 0.01,
-                                getValue: (d: D) => liveProps(d).crop[edge.key],
-                                setValue: (d: D, value: number) =>
-                                    patch(d, { crop: { ...liveProps(d).crop, [edge.key]: value } }),
-                            })),
+                            defineField<D, any>({
+                                id: "character.crop",
+                                type: "custom",
+                                component: CharacterCropField,
+                            }),
                             defineField<D, any>({
                                 id: "character.fit",
                                 type: "select",

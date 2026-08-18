@@ -450,6 +450,7 @@ export const storyInspector = {
         // for what the author does with it; "stage name" was the engine's word for the object.
         objectName: "Refer to as",
         frame: "Frame",
+        frameDefault: "Character default",
         frameNone: "No frame",
         // Named for what the player reads, not for the field it writes: this is the speaker label from
         // this row on, which is what makes "？？？" become a name.

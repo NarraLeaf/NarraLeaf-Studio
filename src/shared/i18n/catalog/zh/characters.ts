@@ -224,6 +224,10 @@ export const characters = {
         // 该角色语音所在的总线。只提供语音总线及其之下的总线——引擎不接受挂在别处的语音片段
         voiceTrack: "语音总线",
         voiceTrackMissing: "总线已不存在",
+        stageFrame: "舞台框",
+        stageFrameNone: "不用框",
+        stageFrameEmpty: "框在 UI → 舞台头像里画",
+        stageFrameMissing: "框已不存在",
         // 仅当语音总线下还没有任何可选项时出现，也就是选择框帮不上忙、必须先去建一条总线的那一刻
         voiceTrackEmpty: "在「项目 ▸ 游戏」的语音下新建一条总线，即可为该角色单独控制音量",
         select: "选择",

@@ -3024,7 +3024,7 @@ async function compileCharacterStageAction(
     // The frame this stage name wears, if it wears one. Recorded on the row that first names it,
     // because every later row addresses the stage name and carries nothing — and because the
     // element's presentation is fixed when it is created, exactly as its source model is.
-    const frameSurfaceId = resolveStageFrame(ctx, name, payload.frameSurfaceId);
+    const frameSurfaceId = resolveStageFrame(ctx, name, payload.frameSurfaceId, payload.characterId);
     const frameOptions = frameSurfaceId
         ? {
               backend: {
@@ -3145,7 +3145,7 @@ async function compileCharacterPuppetAction(
     // by a widget inside it, so the frame *is* the element the row addresses. Everything below —
     // the three state channels, the parameters, enter/move/exit — reads the same either way,
     // because both are the same `Puppet` to the engine.
-    const frameSurfaceId = resolveStageFrame(ctx, name, payload.frameSurfaceId);
+    const frameSurfaceId = resolveStageFrame(ctx, name, payload.frameSurfaceId, payload.characterId);
     const puppet = frameSurfaceId
         ? getStageSurfaceElement(ctx, name, { surfaceId: frameSurfaceId, characterId: payload.characterId })
         : await getPuppetElement(ctx, name, appearance, block.id);
@@ -3201,13 +3201,42 @@ async function compileCharacterPuppetAction(
  * the element is on stage. So the row that first puts a character on stage decides, and every later
  * row that addresses the same stage name inherits it rather than re-stating it.
  */
-function resolveStageFrame(ctx: SceneCompileContext, objectName: string, requested: string | undefined): string | null {
+function resolveStageFrame(
+    ctx: SceneCompileContext,
+    objectName: string,
+    requested: string | undefined | null,
+    characterId: string | undefined,
+): string | null {
     const key = normalizeObjectName(objectName);
-    if (requested) {
-        ctx.stageFrames.set(key, requested);
-        return requested;
+    const remembered = ctx.stageFrames.get(key);
+    if (remembered !== undefined) {
+        return remembered || null;
     }
-    return ctx.stageFrames.get(key) ?? null;
+    // Three states, and the difference between two of them is the whole reason the field is
+    // nullable: a row that names a frame uses it, a row that names `null` enters as a bare sprite
+    // *despite* the character's default, and a row that says nothing takes the default. Only the
+    // first row for a stage name is asked — see the note above.
+    const resolved = requested === null
+        ? null
+        : requested
+            ? requested
+            : characterDefaultFrame(ctx, characterId);
+    ctx.stageFrames.set(key, resolved ?? "");
+    return resolved;
+}
+
+/** The frame a character carries, or null — including when the frame it names has been deleted. */
+function characterDefaultFrame(ctx: SceneCompileContext, characterId: string | undefined): string | null {
+    if (!characterId) {
+        return null;
+    }
+    const surfaceId = ctx.characterSummaries.get(characterId)?.stageFrameSurfaceId;
+    if (!surfaceId) {
+        return null;
+    }
+    // A dangling id is a frame the author deleted. Entering as an ordinary sprite is the honest
+    // answer: the alternative is a story that stops compiling because another document changed.
+    return ctx.stageFrameSizes[surfaceId] ? surfaceId : null;
 }
 
 /**

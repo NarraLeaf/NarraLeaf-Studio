@@ -251,6 +251,10 @@ export const characters = {
         // エンジンはそれ以外の場所でボイスのクリップを受け付けない。
         voiceTrack: "ボイスのバス",
         voiceTrackMissing: "バスが見つからない",
+        stageFrame: "ステージ枠",
+        stageFrameNone: "枠なし",
+        stageFrameEmpty: "枠は UI → ステージアバターで作ります",
+        stageFrameMissing: "枠が見つかりません",
         // ボイスの下に選べるものが何も無いときだけ出す。つまり、セレクトでは解決できず、
         // 先にバスを作りに行くしかない場面。
         voiceTrackEmpty: "このキャラクター専用の音量を持たせるには、「プロジェクト ▸ ゲーム」でボイスの下にバスを追加する",

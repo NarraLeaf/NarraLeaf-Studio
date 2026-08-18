@@ -191,6 +191,26 @@ export class CharacterProfile {
         this.notifyChange();
     }
 
+    /**
+     * The frame this character enters through when a story row names none.
+     *
+     * `null` is "no frame" — an ordinary sprite, which is what every character did before frames
+     * existed. A row can still override in either direction; see the story payload's
+     * `frameSurfaceId`, where the third state lives.
+     */
+    public getStageFrameSurfaceId(): string | null {
+        return this.profile.stageFrameSurfaceId ?? null;
+    }
+
+    public setStageFrameSurfaceId(surfaceId: string | null): void {
+        const next = surfaceId?.trim() || null;
+        if ((this.profile.stageFrameSurfaceId ?? null) === next) {
+            return;
+        }
+        this.profile.stageFrameSurfaceId = next;
+        this.notifyChange();
+    }
+
     public getNicknames(): string[] {
         return this.profile.nicknames;
     }
@@ -230,6 +250,9 @@ export class CharacterProfile {
                 ? {}
                 : { defaultAvatarAssetId: this.profile.defaultAvatarAssetId }),
             ...(this.profile.voiceTrackId === undefined ? {} : { voiceTrackId: this.profile.voiceTrackId }),
+            ...(this.profile.stageFrameSurfaceId === undefined
+                ? {}
+                : { stageFrameSurfaceId: this.profile.stageFrameSurfaceId }),
             appearance: this.appearance.toJSON(),
         };
     }

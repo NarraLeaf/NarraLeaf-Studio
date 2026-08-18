@@ -559,10 +559,15 @@ export type StoryActionPayload =
            * than a silent swap. Showing the same character both ways at once is done the way two of
            * anything is done on this stage — with two {@link objectName}s.
            *
+           * Three states, and the third is why this is nullable rather than optional-only: a surface
+           * id shows the character through that frame, **`null`** shows it as a bare sprite even
+           * though its profile carries a default, and absent takes the profile's answer. A character
+           * that is always a bust except in one scene is exactly the case the middle state is for.
+           *
            * Additive: no document written before this carries it, so no schema bump — the same rule
            * `puppetName` and `params` were added under.
            */
-          frameSurfaceId?: string;
+          frameSurfaceId?: string | null;
           /** `setName` — the label shown from this row on. Empty is legal: some reveals hide the name again. */
           displayName?: string;
           transition?: StoryTransitionRef;

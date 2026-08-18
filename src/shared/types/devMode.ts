@@ -139,6 +139,12 @@ export type DevModeCharacterSummary = {
      */
     voiceTrackId?: string;
     /**
+     * The frame this character enters through when a row names none — an element-mounted Game UI
+     * surface id. Carried unresolved, like the voice track: whether the frame still exists is the
+     * compiler's question, and a deleted one means "no frame" rather than a broken story.
+     */
+    stageFrameSurfaceId?: string;
+    /**
      * The author's accent colour for this character, verbatim from the profile (a hex string, e.g.
      * `#40A8C4`) and absent when none is set. Two very different surfaces read it, so it is carried
      * unfiltered and each side decides for itself:

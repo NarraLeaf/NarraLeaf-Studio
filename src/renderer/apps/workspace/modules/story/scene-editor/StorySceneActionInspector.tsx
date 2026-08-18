@@ -1851,7 +1851,10 @@ function CharacterActionEditor(props: {
             : null;
         const surfaces = documentService?.getDocument().surfaces ?? [];
         return [
-            { value: "", label: t("storyInspector.character.frameNone") },
+            // Three values, because the character carries a default and a row has to be able to go
+            // either way against it: inherit it, refuse it, or name another one.
+            { value: FRAME_INHERIT, label: t("storyInspector.character.frameDefault") },
+            { value: FRAME_NONE, label: t("storyInspector.character.frameNone") },
             ...surfaces
                 .filter((surface): surface is UIStageSurface =>
                     surface.kind === "stageSurface" && isElementMount(surface.mount))
@@ -1990,16 +1993,23 @@ function CharacterActionEditor(props: {
                     onChange={objectName => onChange({ ...payload, objectName })}
                 />
             </FieldGrid>
-            {payload.operation === "enter" && frameOptions.length > 1 ? (
+            {payload.operation === "enter" && frameOptions.length > 2 ? (
                 // Only on `enter`: which frame a character wears is the stage element's own identity,
                 // fixed when it is created, so a later row cannot change it and must not offer to.
                 <FieldGrid cols={2}>
                     <SelectField
                         label={t("storyInspector.character.frame")}
                         options={frameOptions}
-                        value={payload.frameSurfaceId ?? ""}
-                        onChange={frameSurfaceId =>
-                            onChange({ ...payload, frameSurfaceId: frameSurfaceId ? String(frameSurfaceId) : undefined })}
+                        value={payload.frameSurfaceId === null
+                            ? FRAME_NONE
+                            : payload.frameSurfaceId ?? FRAME_INHERIT}
+                        onChange={value => {
+                            const next = String(value);
+                            onChange({
+                                ...payload,
+                                frameSurfaceId: next === FRAME_INHERIT ? undefined : next === FRAME_NONE ? null : next,
+                            });
+                        }}
                     />
                 </FieldGrid>
             ) : null}
@@ -2059,6 +2069,15 @@ function CharacterActionEditor(props: {
         </div>
     );
 }
+
+/**
+ * The two non-id values the frame select can hold.
+ *
+ * A select's value is a string, and the payload's three states are `undefined` / `null` / an id — so
+ * two of them need a spelling here. Prefixed so they cannot collide with a surface id.
+ */
+const FRAME_INHERIT = "@inherit";
+const FRAME_NONE = "@none";
 
 function getCharacterById(characters: Character[], characterId: string | undefined): Character | null {
     if (!characterId) {
