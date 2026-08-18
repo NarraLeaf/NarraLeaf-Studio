@@ -2915,16 +2915,17 @@ function compileCameraAction(
             // olive on the way out of the moonlight look — because `resetCamera` packed
             // `filter: "none"` into the same transform as the pose and eased the two together.
             //
-            // **That is fixed in the engine, not here** (narraleaf-react 0.28.1: `resetCamera` now
+            // **That is fixed in the engine, not here** (narraleaf-react 0.29.0: `resetCamera` now
             // drops the filter in a zero-duration sequence and eases only the pose). Studio tried to
             // paper over it from this side twice — a zero-duration `clearFilter` emitted first, and a
             // hand-built pose transform carrying no `filter` prop — and neither worked, because both
             // statements land in one tick and the renderer sees a single style diff either way. The
             // attempts are gone; this note is what is left of them, so nobody re-tries either.
             //
-            // `package.json` still allows `^0.28.0`, so a tree resolved to plain 0.28.0 will show the
-            // sweep again. That is a dependency floor to raise at the next engine release, not
-            // something to work around here.
+            // ⚠ `package.json` pins `^0.28.0`, and for a `0.x` version that caret means
+            // `>=0.28.0 <0.29.0` — so it will NEVER resolve to the release carrying this fix. The
+            // pin has to be raised to `^0.29.0` when the engine goes out, or a fresh install quietly
+            // gets the sweep back. Not something to work around here; the fix is the pin.
             return [recordStatement(ctx, camera.resetCamera(duration, easing), block)];
         case "motion": {
             // A whole keyframed shot rather than one settled pose. `Camera` is a `Displayable`, so it
