@@ -31,6 +31,7 @@ export const uiEditor = {
     },
     panel: {
         interfaceType: "インターフェースの種類",
+        featureSurfaces: "機能インターフェース",
         createPage: "ページを作成",
         createGameUi: "ゲーム UI を作成",
         createStageAvatar: "ステージアバターを作成",

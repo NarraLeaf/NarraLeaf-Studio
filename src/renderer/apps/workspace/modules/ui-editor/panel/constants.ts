@@ -1,4 +1,4 @@
-import type { UIStageSlotId, UIStageSurfaceMount, UISurfaceKind } from "@shared/types/ui-editor/document";
+import type { UIStageSlotId, UIStageSurfaceMount, UISurfaceKind, UISurfaceOwnerKind } from "@shared/types/ui-editor/document";
 import { DEFAULT_UI_STAGE_SLOT_ID, UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
 import { translate } from "@/lib/i18n";
 import { getStageSlotLabel, type TranslateFn } from "@/lib/ui-editor/stageSlotLabel";
@@ -27,6 +27,39 @@ export function surfaceKindOptionView(option: SurfaceKindOption): SurfacePanelVi
     return option.view ?? (option.kind as SurfacePanelView);
 }
 
+/**
+ * The surfaces a *feature* owns, rather than ones the author files under a type.
+ *
+ * These are deliberately not peers of Page and Game UI in the filter row. Page and Game UI are what
+ * an interface *is*; an avatar frame is a Game UI surface that a particular feature makes and reads,
+ * and a mouse cursor will be another. Ranked beside the two, each new one would shave a little more
+ * width off a row that answers a different question — so they live behind one button that opens onto
+ * them, and the row stays two entries wide however many features grow surfaces of their own.
+ */
+export type SurfaceOwnerOption = {
+    view: SurfacePanelView;
+    owner: UISurfaceOwnerKind;
+    kind: UISurfaceKind;
+    host: "app" | "player";
+    label: string;
+    description: string;
+};
+
+export const SURFACE_OWNER_OPTIONS: SurfaceOwnerOption[] = [
+    {
+        view: "stageAvatar",
+        owner: "stageAvatar",
+        kind: "stageSurface",
+        host: "player",
+        get label() {
+            return translate("uiEditor.surfaceOwner.stageAvatar");
+        },
+        get description() {
+            return translate("uiEditor.surfaceOwnerDescription.stageAvatar");
+        },
+    },
+];
+
 // Labels/descriptions use getters so they resolve at render time in the active locale.
 export const SURFACE_KIND_OPTIONS: SurfaceKindOption[] = [
     {
@@ -46,22 +79,6 @@ export const SURFACE_KIND_OPTIONS: SurfaceKindOption[] = [
         },
         get description() {
             return translate("uiEditor.surfaceKind.gameUiDescription");
-        },
-        host: "player",
-    },
-    {
-        // Not a `UISurfaceKind` of its own: an avatar frame is a Game UI surface, and what sets it
-        // apart is where it mounts. It gets its own tab because it is a different *kind of thing to
-        // the author* — the five slots are singletons the game fills, while these are made on demand
-        // by a feature, named, and referred to from a story row. One list, grouped by the feature
-        // that owns them, is what keeps them from becoming scattered per-feature registries.
-        kind: "stageSurface",
-        view: "stageAvatar",
-        get label() {
-            return translate("uiEditor.surfaceOwner.stageAvatar");
-        },
-        get description() {
-            return translate("uiEditor.surfaceOwnerDescription.stageAvatar");
         },
         host: "player",
     },

@@ -29,6 +29,7 @@ export const uiEditor = {
     },
     panel: {
         interfaceType: "界面类型",
+        featureSurfaces: "功能界面",
         createPage: "新建页面",
         createGameUi: "新建游戏 UI",
         createStageAvatar: "新建舞台头像",

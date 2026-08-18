@@ -51,7 +51,7 @@ import {
     CreateSurfaceDialogContent,
     CreateSurfaceDialogValue,
 } from "./panel/dialogs/CreateSurfaceDialogContent";
-import { DEFAULT_STAGE_SLOT_ID, GAME_UI_SLOT_IDS, SURFACE_KIND_OPTIONS, surfaceKindOptionView, type SurfacePanelView } from "./panel/constants";
+import { DEFAULT_STAGE_SLOT_ID, GAME_UI_SLOT_IDS, SURFACE_KIND_OPTIONS, SURFACE_OWNER_OPTIONS, surfaceKindOptionView, type SurfacePanelView } from "./panel/constants";
 import { getStageSlotLabel } from "@/lib/ui-editor/stageSlotLabel";
 import type { EditorLayout, EditorTabDefinition } from "../../registry/types";
 import { getEditorSurfaceAreaBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
@@ -185,8 +185,11 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             return view === "stageAvatar" ? isElementMount(surface.mount) : !isElementMount(surface.mount);
         });
     }, [surfaces, view]);
+    // Both lists answer the same question — "what is being created here" — and are kept apart only
+    // so the filter row can rank two of them and hide the rest behind a button. See `constants.ts`.
     const currentKindOption = useMemo(
-        () => SURFACE_KIND_OPTIONS.find(option => surfaceKindOptionView(option) === view),
+        () => SURFACE_KIND_OPTIONS.find(option => surfaceKindOptionView(option) === view)
+            ?? SURFACE_OWNER_OPTIONS.find(option => option.view === view),
         [view],
     );
     const kind: UISurfaceKind = currentKindOption?.kind ?? "appSurface";

@@ -32,6 +32,7 @@ export const uiEditor = {
     },
     panel: {
         interfaceType: "Interface Type",
+        featureSurfaces: "Feature interfaces",
         createPage: "Create Page",
         createGameUi: "Create Game UI",
         createStageAvatar: "Create Stage Avatar",
