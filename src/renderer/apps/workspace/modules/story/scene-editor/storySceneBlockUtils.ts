@@ -1,3 +1,4 @@
+import { placementWordFor } from "./commands/transitions";
 import { Aperture, Blocks,
     Bookmark, Clock, CornerUpLeft, Eye, FileText, GitBranch, Image, Layers, LogOut, MessageSquare, Move, Music, Puzzle, Route, SeparatorHorizontal, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
 import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
@@ -55,7 +56,7 @@ export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, C
         }
         if (block.kind === "action" && block.payload.action === "character" && block.payload.characterId) {
             const characterId = block.payload.characterId;
-            const position = placementOf(block.payload.transform?.preset);
+            const position = placementOf(placementWordFor(block.payload.transform?.to?.position) ?? undefined);
             if (block.payload.operation === "exit") {
                 current.delete(characterId);
             } else if (block.payload.operation === "enter") {
@@ -572,17 +573,15 @@ const BADGE_ICONS: Record<StoryBlockBadgeId, typeof FileText> = {
  * while a plate only has to point at the command that could have written the line:
  *
  *  - `blueprint` has no verb of its own to print, but `/blueprint` is unambiguously its command;
- *  - a `displayable` operation outside show/hide/transform (mask, clip, blend …) is inspector-reached
- *    and has no typed word, yet every one of them arrives through `/fx`.
+ *  - a `displayable` row always has a word since M2: v18 folded the twelve appearance operations into
+ *    `transform` + a prop bag, and the prop vocabulary gave every channel in that bag a spelling, so
+ *    there is no inspector-only displayable operation left to fall back for.
  */
 function rowCommandId(block: StoryBlock): string | null {
     switch (block.kind) {
         case "action":
             if (block.payload.action === "blueprint") {
                 return "blueprint";
-            }
-            if (block.payload.action === "displayable") {
-                return storyVerbCommandId(block.payload) ?? "fx";
             }
             return storyVerbCommandId(block.payload);
         case "nodeAction":

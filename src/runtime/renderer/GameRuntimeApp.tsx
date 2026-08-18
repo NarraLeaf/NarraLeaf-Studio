@@ -526,6 +526,15 @@ export function GameRuntimeApp() {
         await bridge?.close();
     }, [bridge]);
 
+    /**
+     * Relaunch the game process. The shell's own restart, not the story's: it is asked for when
+     * something the running build cannot revise has changed under it (see `localeRestart`), and
+     * everything the player is meant to keep across it has already been written to disk.
+     */
+    const restartApplication = useCallback(async (): Promise<void> => {
+        await bridge?.restart();
+    }, [bridge]);
+
     const getFullscreen = useCallback(async (): Promise<boolean> => {
         return (await bridge?.getFullscreen()) === true;
     }, [bridge]);
@@ -580,6 +589,7 @@ export function GameRuntimeApp() {
             resolveStoryAssetUrl,
             saveStore,
             quitApplication,
+            restartApplication,
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
@@ -605,6 +615,7 @@ export function GameRuntimeApp() {
         pack,
         persistenceAdapter,
         quitApplication,
+        restartApplication,
         resolveStoryAssetUrl,
         runtimeReady,
         setFullscreen,

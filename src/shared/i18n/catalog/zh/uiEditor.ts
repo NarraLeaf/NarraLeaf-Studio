@@ -123,6 +123,7 @@ export const uiEditor = {
         addToComponentLibrary: "添加到组件库",
         addToGroup: "添加到分组",
         ungroup: "取消编组",
+        addState: "添加状态",
         arrange: {
             label: "排列",
             bringToFront: "置于顶层",

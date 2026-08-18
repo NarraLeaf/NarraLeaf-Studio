@@ -19,6 +19,7 @@ function createRefs() {
         liveGameSessionId: { current: null as string | null },
         liveGame: { current: null as LiveGameStub | null },
         stageVisible: { current: false },
+        gameEntered: { current: false },
     };
 }
 
@@ -30,6 +31,11 @@ function mount(refs: ReturnType<typeof createRefs>, sessionId: string): LiveGame
     refs.liveGameSessionId.current = sessionId;
     refs.stageVisible.current = true;
     return liveGame;
+}
+
+/** What `enterMountedGame` does afterwards, which a boot preload never does. */
+function enter(refs: ReturnType<typeof createRefs>): void {
+    refs.gameEntered.current = true;
 }
 
 describe("createSessionGate", () => {
@@ -86,6 +92,48 @@ describe("createSessionGate", () => {
         expect(gate.isInGame()).toBe(false);
         // The live game is still reachable, though — that is a different question.
         expect(gate.requireLiveGame("Get Auto Forward").id).toBe("session-1");
+    });
+
+    it("answers that a playthrough is running for a session mounted after it was built", () => {
+        // The same defect as the first case, in the question that decides whether changing the
+        // language mid-game costs a restart. A copy built before the mount used to answer no, so a
+        // language picker in a quick menu switched under a running story and never restarted it.
+        const refs = createRefs();
+        const gate = createSessionGate<LiveGameStub>(refs);
+
+        expect(gate.isPlaythroughRunning()).toBe(false);
+
+        mount(refs, "session-1");
+        // Mounted and on screen, but the boot preload never entered a game: there is nothing to
+        // serialize, and changing the language here is free.
+        expect(gate.isPlaythroughRunning()).toBe(false);
+
+        enter(refs);
+        expect(gate.isPlaythroughRunning()).toBe(true);
+    });
+
+    it("says no playthrough is running while a relaunch is between sessions", () => {
+        const refs = createRefs();
+        const gate = createSessionGate<LiveGameStub>(refs);
+        mount(refs, "session-1");
+        enter(refs);
+
+        // The new session is named before its game reports ready; what is in `liveGame` belongs to
+        // the one being torn down, and serializing it would save the wrong run.
+        refs.sessionId.current = "session-2";
+        expect(gate.isPlaythroughRunning()).toBe(false);
+    });
+
+    it("separates having a live game from playing one, for a caller waiting on an environment", () => {
+        // What the language-restart resume asks while it waits: a boot preload mounts a live game
+        // it never enters, and that is exactly the state a parked run has to be loaded into.
+        const refs = createRefs();
+        const gate = createSessionGate<LiveGameStub>(refs);
+
+        expect(gate.hasLiveGame()).toBe(false);
+        mount(refs, "session-1");
+        expect(gate.hasLiveGame()).toBe(true);
+        expect(gate.isPlaythroughRunning()).toBe(false);
     });
 
     it("names the operation in the failure, because an author reads it in the issues panel", () => {

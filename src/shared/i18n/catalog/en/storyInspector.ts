@@ -61,6 +61,12 @@ export const storyInspector = {
         kind: "Kind",
         effect: "Effect",
         character: "Character",
+        // A blink's two halves, named for what each one does. Empty means "follow the whole move".
+        // Only a blink has them: the engine drives a vignette's fade in and out from one duration.
+        closeIn: "Close (s)",
+        openOut: "Open (s)",
+        vignetteInner: "Clear center %",
+        vignetteOuter: "Dark edge %",
         layer: "Layer",
         muted: "Muted",
     },
@@ -95,9 +101,11 @@ export const storyInspector = {
         rotate: "Rotate",
         opacity: "Opacity",
         darken: "Darken",
+        flip: "Flip",
         circleReveal: "Circle reveal",
         circleClose: "Circle close",
         slideReveal: "Slide reveal",
+        custom: "Custom",
     },
 
     easing: {
@@ -236,17 +244,20 @@ export const storyInspector = {
         rotate: "Rotate",
         // "stage", not "screen": this is the camera's brightness, not `/vignette`'s in-scene mask.
         darken: "Darken stage",
+        // "Grade", the word the craft uses, so the picker teaches the vocabulary rather than only the token.
+        look: "Color grade",
         motion: "Camera motion",
         reset: "Reset camera",
     },
 
-    // The picker labels: short enough that six fit side by side. The full names above stay as each
+    // The picker labels: short enough that they fit side by side. The full names above stay as each
     // button's tooltip, so `Darken stage` still gets to say *stage* where it matters.
     cameraOperationShort: {
         zoom: "Zoom",
         pan: "Pan",
         rotate: "Rotate",
         darken: "Darken",
+        look: "Grade",
         motion: "Motion",
         reset: "Reset",
     },
@@ -257,6 +268,27 @@ export const storyInspector = {
         darkness: "Stage darkness (0-1)",
         xalign: "X align (0-1)",
         yalign: "Y align (0-1)",
+        look: "Look",
+        lookSnaps: "A look lands in a single frame. Fading one would walk the picture through colours nobody chose, so there is no duration to set — cut into it behind a blink or a transition.",
+        lookIntensity: "Intensity (1 = nominal)",
+        lookFilter: "Custom CSS filter",
+    },
+
+    // The looks themselves. Named for the moment they are for, not for what they do to the pixels:
+    // an author reaches for these while writing a flashback, not while thinking about saturation.
+    cameraLook: {
+        memory: "Memory",
+        monologue: "Inner monologue",
+        mono: "Monochrome",
+        moonlight: "Moonlight",
+        faint: "Losing consciousness",
+        hangover: "Hangover",
+    },
+
+    cameraLookHint: {
+        channel: "A look replaces stage darkness rather than adding to it — the engine gives both the same filter, so the later row wins. Each look carries its own brightness. Reset camera clears it.",
+        monologue: "Desaturates and dims the whole stage. For darkened edges, add a vignette.",
+        hangover: "The stage sways twice before the look settles. The row waits for the sway, and the duration sets its tempo.",
     },
 
     displayableOperation: {

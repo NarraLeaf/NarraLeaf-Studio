@@ -42,6 +42,7 @@ export const project = {
         dependencies: "依存関係",
         saving: "セーブ",
         olderSaves: "以前のセーブ",
+        language: "言語",
         playerDefaults: "プレイヤーの初期値",
         audioTracks: "オーディオトラック",
         // ブランドのサブページの 2 つの部分。作者が決める色と、それに従うスロット。
@@ -194,6 +195,11 @@ export const project = {
         saveDiscard: "復元しない",
         saveResumeScene: "止まった場面まで復元する",
         saveForce: "それでも復元する",
+        languageInGameTitle: "ゲーム中の言語切り替え",
+        languageInGameDescription: "タイトル画面での切り替えは、どの設定でもすぐに反映される",
+        languageResume: "再起動して元の位置に戻す",
+        languageRestart: "再起動する。進行中のプレイは残さない",
+        languageNextLaunch: "次回の起動時に反映する",
     },
     // 「プレイヤーの初期値」の群。各設定がどの値から始まるか。どれもプレイ中にプレイヤーが
     // 変えられ、変えた内容は保たれる。だから文言は「初期値」に徹し、設定画面が守らない約束はしない。

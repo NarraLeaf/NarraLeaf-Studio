@@ -167,6 +167,11 @@
       "status": "reviewed",
       "target": "保存"
     },
+    "key:menu.scenes": {
+      "sourceHash": "fnv1a:8c5a5640",
+      "status": "translated",
+      "target": "场景"
+    },
     "key:menu.settings": {
       "sourceHash": "fnv1a:4b058728",
       "status": "reviewed",

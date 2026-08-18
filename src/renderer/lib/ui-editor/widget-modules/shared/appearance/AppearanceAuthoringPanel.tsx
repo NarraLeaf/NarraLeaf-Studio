@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Star, Trash2 } from "lucide-react";
+import { useEditorEnteredState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import { useTranslation } from "@/lib/i18n";
-import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type {
     AppearanceFieldTransition,
     AppearanceModel,
@@ -10,17 +9,7 @@ import type {
     AppearanceVariant,
 } from "@shared/types/ui-editor/appearance";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
-import { Select } from "@/lib/components/elements/Select";
-import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
-import {
-    addVariant,
-    newVariantId,
-    removeVariant,
-    renameVariant,
-    replaceVariant,
-    setDefaultVariantId,
-    setGroupTransitionOnAllVariants,
-} from "./appearancePatch";
+import { replaceVariant, setGroupTransitionOnAllVariants } from "./appearancePatch";
 import { isUsableAppearanceModel } from "./initialAppearanceModel";
 import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import { CompactContainerAppearance } from "./compact/CompactContainerAppearance";
@@ -125,14 +114,6 @@ export type AppearanceAuthoringPanelProps = {
     readOnly?: boolean;
 };
 
-function cloneVariantShallow(source: AppearanceVariant, id: string, name: string): AppearanceVariant {
-    return {
-        id,
-        name,
-        propertyGroups: JSON.parse(JSON.stringify(source.propertyGroups)) as AppearancePropertyGroup[],
-    };
-}
-
 export function AppearanceAuthoringPanel({
     kind,
     appearance,
@@ -143,16 +124,15 @@ export function AppearanceAuthoringPanel({
 }: AppearanceAuthoringPanelProps) {
     const { t } = useTranslation();
     const elementId = inspectorData.element.id;
-    const [selectedVariantId, setSelectedVariantId] = useState<string>(() => {
-        if (!isUsableAppearanceModel(appearance)) {
-            return "";
-        }
-        const cached = UIEditorStateService.getInstance().getAppearanceInspectorVariant(elementId);
-        if (cached && appearance.variants.some(v => v.id === cached)) {
-            return cached;
-        }
-        return appearance.defaultVariantId;
-    });
+    const entered = useEditorEnteredState();
+    // Which state this panel edits is not its own decision: the state bar above it enters one, the
+    // canvas draws that one, and these modules edit that one. Keeping a second selection here is how
+    // an author ends up editing a state they cannot see.
+    const selectedVariantId = isUsableAppearanceModel(appearance)
+        ? entered?.elementId === elementId
+            ? entered.variantId ?? appearance.defaultVariantId
+            : appearance.defaultVariantId
+        : "";
 
     const [containerModuleModes, setContainerModuleModes] = useState(DEFAULT_CONTAINER_MODULE_MODES);
     const [buttonModuleModes, setButtonModuleModes] = useState(DEFAULT_BUTTON_MODULE_MODES);
@@ -190,32 +170,6 @@ export function AppearanceAuthoringPanel({
         setButtonModuleModes(DEFAULT_BUTTON_MODULE_MODES);
         setTextModuleModes(DEFAULT_TEXT_MODULE_MODES);
     }, [draftResetKey, selectedVariantId]);
-
-    useEffect(() => {
-        if (!isUsableAppearanceModel(appearance)) {
-            return;
-        }
-        setSelectedVariantId(prev => {
-            if (appearance.variants.some(v => v.id === prev)) {
-                return prev;
-            }
-            const cached = UIEditorStateService.getInstance().getAppearanceInspectorVariant(elementId);
-            if (cached && appearance.variants.some(v => v.id === cached)) {
-                return cached;
-            }
-            return appearance.defaultVariantId;
-        });
-    }, [appearance, elementId]);
-
-    useEffect(() => {
-        if (!isUsableAppearanceModel(appearance) || !selectedVariantId) {
-            return;
-        }
-        if (!appearance.variants.some(v => v.id === selectedVariantId)) {
-            return;
-        }
-        UIEditorStateService.getInstance().setAppearanceInspectorVariant(elementId, selectedVariantId);
-    }, [appearance, selectedVariantId, elementId]);
 
     const model = appearance;
     const selectedVariant = useMemo(() => {
@@ -297,118 +251,10 @@ export function AppearanceAuthoringPanel({
         );
     }
 
-    const variantOptions = model.variants.map(v => ({
-        value: v.id,
-        label: v.name || t("widgetAppearance.variant.untitled"),
-    }));
-
-    const handleAddVariant = () => {
-        const base = selectedVariant ?? model.variants[0];
-        if (!base) {
-            return;
-        }
-        const id = newVariantId();
-        // English on purpose - see DEFAULT_APPEARANCE_VARIANT_NAME. The name is written to the
-        // document, so translating it would ship one author's UI language to every other author.
-        const nextName = `Variant ${model.variants.length + 1}`;
-        const variant = cloneVariantShallow(base, id, nextName);
-        onReplace(addVariant(model, variant));
-        setSelectedVariantId(id);
-        setContainerModuleModes(DEFAULT_CONTAINER_MODULE_MODES);
-        setButtonModuleModes(DEFAULT_BUTTON_MODULE_MODES);
-        setTextModuleModes(DEFAULT_TEXT_MODULE_MODES);
-    };
-
-    const handleRemoveVariant = () => {
-        if (!selectedVariant || model.variants.length <= 1) {
-            return;
-        }
-        const removedId = selectedVariant.id;
-        const nextModel = removeVariant(model, removedId);
-        onReplace(nextModel);
-        setSelectedVariantId(nextModel.defaultVariantId);
-        setContainerModuleModes(DEFAULT_CONTAINER_MODULE_MODES);
-        setButtonModuleModes(DEFAULT_BUTTON_MODULE_MODES);
-        setTextModuleModes(DEFAULT_TEXT_MODULE_MODES);
-    };
-
-    const handleSetDefault = () => {
-        if (!selectedVariant) {
-            return;
-        }
-        onReplace(setDefaultVariantId(model, selectedVariant.id));
-    };
-
-    const handleRenameVariant = (raw: string) => {
-        if (!selectedVariant) {
-            return;
-        }
-        onReplace(renameVariant(model, selectedVariant.id, raw));
-    };
-
     // Named rather than returned directly so the provider can wrap it without re-indenting the whole
     // panel; nothing else about the tree changes.
     const body = (
         <div className="space-y-3 min-w-0">
-            <div className="flex flex-wrap gap-2 items-center min-w-0">
-                <div className="flex-1 min-w-[8rem]">
-                    <Select
-                        value={selectedVariant?.id ?? ""}
-                        options={variantOptions}
-                        fullWidth
-                        // Which variant this panel SHOWS, and nothing else - the three buttons beside
-                        // it are the ones that add, default and delete. Marked inspect-only so a
-                        // frozen workspace can read what an element looks like when hovered or
-                        // pressed, instead of being stuck on whichever variant happened to be
-                        // selected.
-                        inspectOnly
-                        onChange={v => {
-                            const id = String(v);
-                            setSelectedVariantId(id);
-                            setContainerModuleModes(DEFAULT_CONTAINER_MODULE_MODES);
-                            setButtonModuleModes(DEFAULT_BUTTON_MODULE_MODES);
-                            setTextModuleModes(DEFAULT_TEXT_MODULE_MODES);
-                        }}
-                    />
-                </div>
-                <button
-                    type="button"
-                    data-tip={t("widgetAppearance.variant.addTitle")} aria-label={t("widgetAppearance.variant.addTitle")}
-                    onClick={handleAddVariant}
-                    className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:bg-fill"
-                >
-                    <Plus className="w-4 h-4" />
-                </button>
-                <button
-                    type="button"
-                    data-tip={t("widgetAppearance.variant.setDefaultTitle")} aria-label={t("widgetAppearance.variant.setDefaultTitle")}
-                    onClick={handleSetDefault}
-                    disabled={!selectedVariant || model.defaultVariantId === selectedVariant.id}
-                    className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:bg-fill disabled:opacity-40"
-                >
-                    <Star className="w-4 h-4" />
-                </button>
-                <button
-                    type="button"
-                    data-tip={t("widgetAppearance.variant.deleteTitle")} aria-label={t("widgetAppearance.variant.deleteTitle")}
-                    onClick={handleRemoveVariant}
-                    disabled={model.variants.length <= 1}
-                    className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-edge bg-fill-subtle text-danger hover:bg-danger/10 disabled:opacity-40"
-                >
-                    <Trash2 className="w-4 h-4" />
-                </button>
-            </div>
-
-            <div className="min-w-0">
-                <label className="text-2xs tracking-wide text-fg-subtle block mb-1">{t("widgetAppearance.variant.nameLabel")}</label>
-                <EnhancedInput
-                    key={selectedVariant?.id}
-                    value={selectedVariant?.name ?? ""}
-                    onChange={handleRenameVariant}
-                    className="text-xs"
-                />
-            </div>
-
             {selectedVariant && (
                 <>
                     {kind === "button" ? (

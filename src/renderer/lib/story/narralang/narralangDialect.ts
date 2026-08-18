@@ -406,12 +406,34 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
         cameraZoom: { keyword: "camera zoom", slots: [{ slot: "zoom", value: "number" }, ...TIMING] },
         cameraRotate: { keyword: "camera rotate", slots: [{ slot: "rotation", value: "number" }, ...TIMING] },
         cameraDarken: { keyword: "camera darken", slots: [{ slot: "darkness", value: "number" }, ...TIMING] },
+        // The grade name rides bare after the verb, the way `camera pan`'s placement does - the verb
+        // has already said the row is about colour, so a preposition would only be noise. `filter`
+        // is a quoted string because it is CSS, not a name, and must never re-read as one.
+        cameraLook: {
+            keyword: "camera look",
+            slots: [
+                { slot: "look", value: "name" },
+                { slot: "strength", lead: "strength", value: "number" },
+                { slot: "filter", lead: "filter", value: "string" },
+                ...TIMING,
+            ],
+        },
         cameraReset: { keyword: "camera reset", slots: TIMING },
         cameraMotion: { keyword: "camera motion", slots: [{ slot: "motion", value: "name" }] },
+        // `over` is the whole move on both effects; `in` and `out` split it, and sit on `blink` alone
+        // because `VignetteOptions` has one duration driving both of its halves.
+        //
+        // `opacity` stays on `blink` even though the engine's `BlinkOptions` has none and the compile
+        // therefore ignores it. Nothing writes it any more - the inspector stopped offering a control
+        // that could not do anything - but a document authored before that does carry it, and a
+        // grammar without the slot would drop it on the way through the script view. Silently losing
+        // an author's value is worse than printing one the engine will not read.
         screenBlink: {
             keyword: "blink",
             slots: [
                 { slot: "duration", lead: "over", value: "seconds" },
+                { slot: "fadeIn", lead: "in", value: "seconds" },
+                { slot: "fadeOut", lead: "out", value: "seconds" },
                 { slot: "hold", lead: "hold", value: "seconds" },
                 { slot: "color", lead: "color", value: "color" },
                 { slot: "opacity", lead: "opacity", value: "number" },
@@ -422,6 +444,8 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
             keyword: "vignette",
             slots: [
                 { slot: "duration", lead: "over", value: "seconds" },
+                { slot: "inner", lead: "inner", value: "number" },
+                { slot: "outer", lead: "outer", value: "number" },
                 { slot: "hold", lead: "hold", value: "seconds" },
                 { slot: "color", lead: "color", value: "color" },
                 { slot: "opacity", lead: "opacity", value: "number" },

@@ -2,7 +2,7 @@ import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { EventEmitter } from "../ui/EventEmitter";
 import { Service } from "../Service";
-import { IUIEditorStateService, InteractionOverride, Services, UIEditorStateEvents, WorkspaceContext } from "../services";
+import { IUIEditorStateService, InteractionOverride, Services, UIEditorEnteredState, UIEditorStateEvents, WorkspaceContext } from "../services";
 import { GlobalSettingsService } from "../GlobalSettingsService";
 import { UIDocumentService } from "./UIDocumentService";
 import { UIService } from "../core/UIService";
@@ -35,9 +35,6 @@ const PREVIEW_ASPECT_KEY = "uiEditor.preview.aspect";
 
 /** Persisted: safe-area preview frame device preset id for the surface canvas (null = off). Pure view state. */
 const PREVIEW_SAFE_AREA_KEY = "uiEditor.preview.safeArea";
-
-/** Editing-area cache: inspector appearance variant picker per widget element (global settings, not UIDocument). */
-const APPEARANCE_INSPECTOR_VARIANT_CACHE_KEY = "uiEditor.editingArea.appearanceInspectorVariantByElementId";
 
 /** Editing-area cache: compact border "sides" row expanded (per element). */
 const APPEARANCE_BORDER_SIDES_EXPANDED_CACHE_KEY = "uiEditor.editingArea.appearanceBorderSidesExpandedByElementId";
@@ -73,7 +70,7 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     private readonly viewportFitBySurfaceId = new Map<string, SurfaceViewportFit>();
     private interactionOverride: InteractionOverride | null = null;
     private selectionUnsubscribe?: () => void;
-    private readonly appearanceInspectorVariantByElementId = new Map<string, string>();
+    private enteredState: UIEditorEnteredState | null = null;
     /** Only stores `true` keys; missing id => collapsed. */
     private readonly appearanceBorderSidesExpandedByElementId = new Set<string>();
     private appearanceInspectorUiCachePersistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -108,20 +105,12 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
                 this.selection = selection;
                 this.events.emit("selectionChanged", selection);
                 this.ensureInteractionOverrideValid(selection);
+                this.ensureEnteredStateValid(selection);
             });
 
         const stored = this.settingsService.getSync<ViewportTransform>(VIEWPORT_SETTINGS_KEY);
         if (stored) {
             this.viewport = stored;
-        }
-
-        const variantCache = this.settingsService.getSync<Record<string, string>>(APPEARANCE_INSPECTOR_VARIANT_CACHE_KEY);
-        if (variantCache && typeof variantCache === "object") {
-            for (const [elementId, variantId] of Object.entries(variantCache)) {
-                if (typeof elementId === "string" && elementId && typeof variantId === "string" && variantId) {
-                    this.appearanceInspectorVariantByElementId.set(elementId, variantId);
-                }
-            }
         }
 
         const expandedCache = this.settingsService.getSync<Record<string, boolean>>(
@@ -339,18 +328,17 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         return document?.surfaces.find(surface => surface.id === surfaceId);
     }
 
-    public getAppearanceInspectorVariant(elementId: string): string | null {
-        return this.appearanceInspectorVariantByElementId.get(elementId) ?? null;
+    public getEnteredState(): UIEditorEnteredState | null {
+        return this.enteredState;
     }
 
-    public setAppearanceInspectorVariant(elementId: string, variantId: string): void {
-        const prev = this.appearanceInspectorVariantByElementId.get(elementId);
-        if (prev === variantId) {
+    public setEnteredState(next: UIEditorEnteredState | null): void {
+        const prev = this.enteredState;
+        if (prev?.elementId === next?.elementId && prev?.variantId === next?.variantId) {
             return;
         }
-        this.appearanceInspectorVariantByElementId.set(elementId, variantId);
-        this.events.emit("appearanceInspectorVariantChanged", { elementId });
-        this.scheduleAppearanceInspectorUiCachePersistence();
+        this.enteredState = next;
+        this.events.emit("enteredStateChanged", next);
     }
 
     public getAppearanceBorderSidesExpanded(elementId: string): boolean {
@@ -553,11 +541,6 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         if (!this.settingsService) {
             return;
         }
-        const variantRecord = Object.fromEntries(this.appearanceInspectorVariantByElementId);
-        void this.settingsService.set(APPEARANCE_INSPECTOR_VARIANT_CACHE_KEY, variantRecord).catch(err => {
-            console.warn("[UIEditorStateService] failed to persist appearance inspector variant cache", err);
-        });
-
         const expandedRecord: Record<string, boolean> = {};
         for (const id of this.appearanceBorderSidesExpandedByElementId) {
             expandedRecord[id] = true;
@@ -575,10 +558,7 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         if (!this.settingsService) {
             return;
         }
-        if (
-            this.appearanceInspectorVariantByElementId.size > 0 ||
-            this.appearanceBorderSidesExpandedByElementId.size > 0
-        ) {
+        if (this.appearanceBorderSidesExpandedByElementId.size > 0) {
             this.persistAppearanceInspectorUiCachesNow();
         }
     }
@@ -635,6 +615,41 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
                 (v, i) => v.value === b.horizontal[i].value && v.kind === b.horizontal[i].kind,
             )
         );
+    }
+
+    /**
+     * Drops the entered state once the author selects something outside it.
+     *
+     * Selecting a part of what you are editing is the flow itself - entering a switch's on state and
+     * then clicking its thumb to drag it - so descendants keep it alive. Anything else does not:
+     * a state left entered on an element nobody is looking at is a canvas drawing something the
+     * document does not say.
+     */
+    private ensureEnteredStateValid(selection: SelectionState): void {
+        const entered = this.enteredState;
+        if (!entered) {
+            return;
+        }
+        if (selection.type !== "element" || !selection.data) {
+            this.setEnteredState(null);
+            return;
+        }
+        const elements = this.documentService?.getDocument().elements;
+        const isInsideEntered = selection.data.elementIds.some((id: string) => {
+            let current: string | null | undefined = id;
+            const seen = new Set<string>();
+            while (current && !seen.has(current)) {
+                if (current === entered.elementId) {
+                    return true;
+                }
+                seen.add(current);
+                current = elements?.[current]?.parentId ?? null;
+            }
+            return false;
+        });
+        if (!isInsideEntered) {
+            this.setEnteredState(null);
+        }
     }
 
     private ensureInteractionOverrideValid(selection: SelectionState): void {

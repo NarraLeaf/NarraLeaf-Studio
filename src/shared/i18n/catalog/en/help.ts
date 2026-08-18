@@ -326,7 +326,10 @@ export const help = {
                 + "- A translation goes out of date when the original text changes after it was translated.\n"
                 + "- A language can be exported as CSV, XLIFF, PO or JSON, translated elsewhere, and imported "
                 + "back. The import reports how many lines it applied and how many it could not match.\n"
-                + "- Export and import are in the language row's menu.",
+                + "- Export and import are in the language row's menu.\n"
+                + "- A player who changes language during a game gets the game restarted, and comes back "
+                + "to the line they were on. Project settings offer two other answers: restart without "
+                + "keeping the playthrough, or apply the next time the game is started.",
         },
         brand: {
             title: "Brand colors",

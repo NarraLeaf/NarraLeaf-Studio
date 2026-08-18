@@ -55,6 +55,7 @@ import { GAME_RUNTIME_TEST_SIGNAL_CHANNEL, toGameTestEvent } from "../gameTestSi
 import {
     RuntimePersistenceStore,
     RuntimeSaveStore,
+    sweepAbandonedTempFiles,
 } from "./runtimeStorage";
 import { collectPackSidecars, SidecarHost } from "./sidecarHost";
 import { resolveRuntimeUserDataDir } from "./userDataDir";
@@ -76,23 +77,39 @@ const appDir = __dirname;
  * authoritative for everything decided after the pack is open; a stripped or
  * tampered manifest only ever downgrades to the stricter checks below.
  */
-function readShellManifest(): { mode: "preview" | "production"; userDataDirName: string | null } {
+function readShellManifest(): {
+    mode: "preview" | "production";
+    userDataDirName: string | null;
+    debuggable: boolean;
+} {
     try {
         const manifest = JSON.parse(fsSync.readFileSync(path.join(appDir, "package.json"), "utf-8")) as {
-            narraleaf?: { mode?: unknown; userDataDir?: unknown };
+            narraleaf?: { mode?: unknown; userDataDir?: unknown; debuggable?: unknown };
         };
         const userDataDir = manifest.narraleaf?.userDataDir;
         return {
             mode: manifest.narraleaf?.mode === "production" ? "production" : "preview",
             userDataDirName: typeof userDataDir === "string" && userDataDir.trim() ? userDataDir.trim() : null,
+            debuggable: manifest.narraleaf?.debuggable === true,
         };
     } catch {
-        return { mode: "preview", userDataDirName: null };
+        return { mode: "preview", userDataDirName: null, debuggable: false };
     }
 }
 
 const shellManifest = readShellManifest();
 const shellMode = shellManifest.mode;
+
+/**
+ * This build was made to be inspected, so the guards below stand aside for the launch switches
+ * they otherwise refuse.
+ *
+ * Only Studio's experimental `debuggable-build` condition writes it, and it changes nothing on its
+ * own: the switch still has to be on the command line for anything to be listening. The pack
+ * carries the same marker and stays authoritative - a manifest that claims this while the pack does
+ * not is refused by the second gate, which is the one that runs from inside the archive.
+ */
+const shellDebuggable = shellManifest.debuggable;
 
 /**
  * A test asked for this game to run with no way out to the network.
@@ -252,7 +269,7 @@ if (testNetworkBlocked) {
 // debugger/CDP: before app-ready, before any window or session exists. The
 // post-pack-read check below stays as the authoritative (tamper-resistant on
 // asar-integrity platforms) second gate.
-const startupBlocked = shellMode === "production" && hasDebuggingSwitch();
+const startupBlocked = shellMode === "production" && !shellDebuggable && hasDebuggingSwitch();
 if (startupBlocked) {
     app.quit();
 }
@@ -275,10 +292,13 @@ void app.whenReady().then(async () => {
         log: logRuntime,
     });
     const pack = await readPack();
-    if (pack.mode === "production" && hasDebuggingSwitch()) {
+    if (pack.mode === "production" && pack.debuggable !== true && hasDebuggingSwitch()) {
         // Refuse to run a production game under an attached debugger/CDP.
         app.quit();
         return;
+    }
+    if (pack.debuggable === true) {
+        console.log("[GameRuntime] This build accepts debugging switches (built under an experimental condition).");
     }
     const allowHttp = pack.network?.allowHttp === true;
     const networkAllowlist = packNetworkAllowlist(pack);
@@ -507,7 +527,12 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     // Production disables DevTools outright: with devTools:false Electron ignores
     // any openDevTools call and the menu/keyboard toggles become no-ops, so there
     // is no in-app path to the inspector (the startup switch guard covers CDP).
-    const devToolsEnabled = pack.mode !== "production";
+    //
+    // A debuggable build is the one exception, and only for a launch that actually asked: with no
+    // switch on the command line it starts exactly as a production build does, which is what keeps
+    // it usable for testing what players get.
+    const devToolsEnabled = pack.mode !== "production"
+        || (pack.debuggable === true && hasDebuggingSwitch());
     const win = new BrowserWindow({
         title: pack.project.name,
         width: size.width,
@@ -1005,12 +1030,34 @@ function registerRuntimeIpc(): void {
     const persistence = new RuntimePersistenceStore(userDataDir);
     saveStore = saves;
     persistenceStore = persistence;
+    // Housekeeping, once, on the way up: a store write that was interrupted between its temp file
+    // and the rename leaves the temp behind for good. Not awaited and never fatal - nothing here
+    // is worth delaying a boot for, let alone failing one.
+    void Promise.all([
+        sweepAbandonedTempFiles(userDataDir),
+        sweepAbandonedTempFiles(path.join(userDataDir, "saves")),
+    ]).catch(() => undefined);
 
     ipcMain.handle("runtime:read-pack", () => readPack());
     ipcMain.handle("runtime:close", () => {
         // The Quit Application node's graceful terminate. Mark the quit before it reaches the
         // window so the close guard stands aside and the blueprint close event does not fire again.
         isQuitting = true;
+        app.quit();
+    });
+    ipcMain.handle("runtime:restart", () => {
+        // Quit and come back, for a game that cannot be corrected in place - a language changed
+        // mid-playthrough (see the renderer's `localeRestart`). The run has already been written
+        // into a save and the resume marked in persistence by the time this arrives; both are
+        // drained by the `before-quit` flush below, which is why this path must go through `quit`
+        // and not `exit`.
+        //
+        // `relaunch` only schedules the new instance - it does not end this one - so the quit that
+        // follows is what actually performs the restart. Same arguments and working directory as
+        // this run, which is what carries the asset version, the crash policy and the log path
+        // into the instance that replaces it.
+        isQuitting = true;
+        app.relaunch();
         app.quit();
     });
     ipcMain.on(GAME_RUNTIME_CLOSE_DECISION_CHANNEL, (_event, payload: { requestId?: number; allow?: boolean }) => {

@@ -124,6 +124,7 @@ export const uiEditor = {
         addToComponentLibrary: "Add to Component Library",
         addToGroup: "Add to group",
         ungroup: "Ungroup",
+        addState: "Add state",
         arrange: {
             label: "Arrange",
             bringToFront: "Bring to front",

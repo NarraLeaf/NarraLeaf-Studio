@@ -791,6 +791,18 @@ export type CreateBlueprintHostApiRuntimeOptions = {
      * no running game (the editor preview) leave it unset and the subscription is a no-op.
      */
     onSubscribeGamePreferences?: (listener: () => void) => () => void;
+    /**
+     * The player picked a language. Storing it is part of what the host does with that.
+     *
+     * A language change is only a setting when nothing is running: mid-playthrough it invalidates
+     * the rendered text, the backlog, the sentence being typed, the voice playing under it and the
+     * preloaded scene. What a project does about that is the project's decision - restart and come
+     * back, restart and start over, or keep the choice for the next launch - and the last of those
+     * means the language must NOT reach this session's store, which is why the write comes here
+     * with everything else. A host with no game to be inconsistent with leaves it unset and the
+     * bridge stores the language itself.
+     */
+    onLocaleChanged?: (code: string) => Promise<void> | void;
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
     onPageBack: () => void | Promise<void>;
@@ -2060,6 +2072,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onImportProgress,
         audioTracks,
         onSubscribeGamePreferences,
+        onLocaleChanged,
         emit,
         onOpenSurface,
         onPageBack,
@@ -3242,7 +3255,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             set: async (key: string, value: unknown) => {
                 emitHostCall(emit, "persistence.set", "call");
                 try {
-                    await scope.persistenceSetAsync(key, toBlueprintVisibleValue(value));
+                    await scope.persistenceSet(key, toBlueprintVisibleValue(value));
                     emit({ type: "state.write", scope: "persistence", key });
                 } finally {
                     emitHostCall(emit, "persistence.set", "return");
@@ -3267,7 +3280,18 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             setLocale: async (code: string) => {
                 emitHostCall(emit, "localization.setLocale", "call");
                 try {
-                    await scope.persistenceSetAsync(LOCALE_STORAGE_KEY, code);
+                    // The host owns the write, because one of the answers a project can give is
+                    // "not yet": a language kept for the next launch must not touch the key this
+                    // session reads, and a write already made cannot be taken back without the
+                    // player watching it happen. A host with no game to be inconsistent with (the
+                    // editor preview) leaves the option unset and gets the plain write.
+                    if (onLocaleChanged) {
+                        await onLocaleChanged(code);
+                    } else {
+                        await scope.persistenceSet(LOCALE_STORAGE_KEY, code);
+                    }
+                    // Marks the node as having run, which is what a graph author is watching for.
+                    // Which key it landed in is the host's business and its own store event.
                     emit({ type: "state.write", scope: "persistence", key: LOCALE_STORAGE_KEY });
                 } finally {
                     emitHostCall(emit, "localization.setLocale", "return");
@@ -3295,7 +3319,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     // A plain persistence write, exactly like the text language. GameApp watches this
                     // key and re-points the running compile's take table, so the next line is in the
                     // new dub without a recompile.
-                    await scope.persistenceSetAsync(VOICE_LOCALE_STORAGE_KEY, code);
+                    await scope.persistenceSet(VOICE_LOCALE_STORAGE_KEY, code);
                     emit({ type: "state.write", scope: "persistence", key: VOICE_LOCALE_STORAGE_KEY });
                 } finally {
                     emitHostCall(emit, "voice.setLocale", "return");
@@ -3741,7 +3765,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     }
                     // No tracker installed (e.g. story preview): wipe the record
                     // directly and drop the mirrored flag.
-                    await scope.persistenceSetAsync(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
+                    await scope.persistenceSet(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
                     scope.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, false);
                 } finally {
                     emitHostCall(emit, cap, "return");
