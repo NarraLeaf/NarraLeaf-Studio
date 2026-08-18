@@ -83,6 +83,9 @@ import {
     usePuppetDescription,
 } from "@/lib/workspace/hooks/usePuppetDescription";
 import { puppetChoiceOptions } from "@/lib/workspace/services/puppet/puppetDescriptionModel";
+import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import type { UIStageSurface } from "@shared/types/ui-editor/document";
+import { isElementMount } from "@shared/types/ui-editor/stageSlots";
 import { CameraActionEditor } from "./CameraActionEditor";
 import {
     Disclosure,
@@ -1766,6 +1769,28 @@ function CharacterActionEditor(props: {
         })),
     ];
     const selectedCharacter = getCharacterById(props.characters, payload.characterId);
+    const workspace = useWorkspace();
+
+    /**
+     * The avatar frames this project has, for the row that puts a character on stage inside one.
+     *
+     * Read from the UI document rather than from a list of its own: a frame *is* a Game UI surface,
+     * and the panel that makes them is the one place they are created. A project with none shows no
+     * control at all — the option list is then just "no frame" and a select with one entry is noise.
+     */
+    const frameOptions: SelectOption[] = useMemo(() => {
+        const documentService = workspace.context && workspace.isInitialized
+            ? workspace.context.services.get<UIDocumentService>(Services.UIDocument)
+            : null;
+        const surfaces = documentService?.getDocument().surfaces ?? [];
+        return [
+            { value: "", label: t("storyInspector.character.frameNone") },
+            ...surfaces
+                .filter((surface): surface is UIStageSurface =>
+                    surface.kind === "stageSurface" && isElementMount(surface.mount))
+                .map(surface => ({ value: surface.id, label: surface.name })),
+        ];
+    }, [workspace.context, workspace.isInitialized, t]);
 
     const updateCharacter = useCallback((characterIdValue: string | number) => {
         const characterId = String(characterIdValue) || undefined;
@@ -1898,6 +1923,19 @@ function CharacterActionEditor(props: {
                     onChange={objectName => onChange({ ...payload, objectName })}
                 />
             </FieldGrid>
+            {payload.operation === "enter" && frameOptions.length > 1 ? (
+                // Only on `enter`: which frame a character wears is the stage element's own identity,
+                // fixed when it is created, so a later row cannot change it and must not offer to.
+                <FieldGrid cols={2}>
+                    <SelectField
+                        label={t("storyInspector.character.frame")}
+                        options={frameOptions}
+                        value={payload.frameSurfaceId ?? ""}
+                        onChange={frameSurfaceId =>
+                            onChange({ ...payload, frameSurfaceId: frameSurfaceId ? String(frameSurfaceId) : undefined })}
+                    />
+                </FieldGrid>
+            ) : null}
             {selectedCharacter && isPuppetAppearanceKind(selectedCharacter.profile.appearance.getKind()) ? (
                 // The three runtime-drawn kinds answer "which look" with a name only the model knows - so
                 // the project-side picker has nothing to show, and the model is asked instead.

@@ -417,6 +417,8 @@ export const storyInspector = {
         // The handle later rows use to reach this character — `/move Nattou`, `/hide Nattou`. Named
         // for what the author does with it; "stage name" was the engine's word for the object.
         objectName: "Refer to as",
+        frame: "Frame",
+        frameNone: "No frame",
         // Named for what the player reads, not for the field it writes: this is the speaker label from
         // this row on, which is what makes "？？？" become a name.
         displayName: "Speaks as",
