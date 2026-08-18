@@ -17,13 +17,15 @@
  *
  * The restart is skipped when there is nothing to keep coherent - the title screen, a settings page
  * reached before a playthrough started - and that is the common case: most players pick a language
- * before they start playing, and for them this module does nothing at all.
+ * before they start playing, and for them this module does nothing at all. It is also skipped when
+ * the project asked for it to be (`InGameLanguageChange`), which is the author saying they would
+ * rather have the running scene keep its language than have the game restart under their player.
  *
  * React-free so the decision and the handoff can be driven and asserted directly; `GameApp` supplies
  * the seams. Comments in English per project convention.
  */
 
-import { LOCALE_RESTART_RESUME_KEY } from "@shared/types/localization";
+import { LOCALE_RESTART_RESUME_KEY, type InGameLanguageChange } from "@shared/types/localization";
 import { LOCALE_RESTART_SAVE_ID } from "@shared/types/saves";
 
 export type LocaleRestartLogLevel = "info" | "warning" | "error";
@@ -32,6 +34,12 @@ export type LocaleRestartLogLevel = "info" | "warning" | "error";
 export type LocaleChangeOutcome =
     /** Nothing was running that a language could be inconsistent with. The new language is live. */
     | "switched"
+    /**
+     * A run was going and this project asked for it to be left alone. The player gets the new
+     * language in the interface now and in the story when a new scene starts. The author's call,
+     * not a degradation - see `InGameLanguageChange`.
+     */
+    | "nextScene"
     /** The run was parked and the shell was asked to restart. Nothing after this is guaranteed to run. */
     | "restarting"
     /**
@@ -46,6 +54,8 @@ export type LocaleChangeOutcome =
 export type LocaleChangeSeam = {
     /** Whether a playthrough is running and can be serialized. */
     isPlaythroughRunning: () => boolean;
+    /** What this project asked for when the language changes mid-playthrough. */
+    inGame: InGameLanguageChange;
     /** Write the running game into the given save id. Rejects if it cannot be written. */
     writeSave: (id: string) => Promise<void>;
     /** Durable persistence write; `undefined` clears the key. Resolves once it has landed. */
@@ -69,6 +79,11 @@ export type LocaleChangeSeam = {
 export async function applyLocaleChange(seam: LocaleChangeSeam): Promise<LocaleChangeOutcome> {
     if (!seam.isPlaythroughRunning()) {
         return "switched";
+    }
+    if (seam.inGame === "nextScene") {
+        // Nothing to say and nothing to do: this is the project's own answer to the question, and
+        // reporting it would be telling the author about a setting they went and set.
+        return "nextScene";
     }
     if (!seam.restartApplication) {
         seam.report(
