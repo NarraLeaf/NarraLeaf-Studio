@@ -97,7 +97,7 @@ import {
     SelectField,
     Section,
     TextField,
-    easingOptions,
+    EasingField,
     type TFunc,
 } from "./inspectorFieldKit";
 
@@ -1188,11 +1188,10 @@ function ActionPayloadFields(props: {
                 {isVignette ? (
                     <NumberField label={t("storyInspector.field.vignetteOuter")} value={payload.outer} onChange={outer => props.onChange({ ...payload, outer })} />
                 ) : null}
-                <SelectField
-                    label={t("storyInspector.field.easing")}
-                    options={easingOptions(t)}
-                    value={payload.easing ?? ""}
-                    onChange={easing => props.onChange({ ...payload, easing: String(easing) || undefined })}
+                <EasingField
+                    t={t}
+                    value={payload.easing}
+                    onChange={easing => props.onChange({ ...payload, easing })}
                 />
             </div>
         );
@@ -1532,11 +1531,10 @@ function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload:
                     />
                 ) : null}
                 {fades ? (
-                    <SelectField
-                        label={t("storyInspector.field.easing")}
-                        options={easingOptions(t)}
-                        value={payload.easing ?? ""}
-                        onChange={easing => props.onChange({ ...payload, easing: String(easing) || undefined })}
+                    <EasingField
+                        t={t}
+                        value={payload.easing}
+                        onChange={easing => props.onChange({ ...payload, easing })}
                     />
                 ) : null}
             </FieldGrid>
@@ -2248,11 +2246,10 @@ function DisplayableEffectEditor(props: {
         <Section title={t("storyInspector.section.effect")}>
             <FieldGrid cols={3}>
                 <SecondsField label={t("storyInspector.field.duration")} value={ref?.durationMs} onChange={durationMs => patch({ ...ref, mode: "props", durationMs })} />
-                <SelectField
-                    label={t("storyInspector.field.easing")}
-                    options={easingOptions(t)}
-                    value={ref?.easing ?? ""}
-                    onChange={easing => patch({ ...ref, mode: "props", easing: String(easing) || undefined })}
+                <EasingField
+                    t={t}
+                    value={ref?.easing}
+                    onChange={easing => patch({ ...ref, mode: "props", easing })}
                 />
                 {op === "mask" ? (
                     <AssetField label={t("storyInspector.displayableEffect.maskImage")} assetType={AssetType.Image} assetId={ref?.to?.maskAssetId ?? undefined} onChange={maskAssetId => setProp({ maskAssetId: maskAssetId ?? "" })} />
@@ -2426,11 +2423,10 @@ function TransformPresetEditor(props: {
                             value={value.durationMs}
                             onChange={durationMs => props.onChange({ ...value, durationMs })}
                         />
-                        <SelectField
-                            label={t("storyInspector.field.easing")}
-                            options={easingOptions(t)}
-                            value={value.easing ?? ""}
-                            onChange={easing => props.onChange({ ...value, easing: String(easing) || undefined })}
+                        <EasingField
+                            t={t}
+                            value={value.easing}
+                            onChange={easing => props.onChange({ ...value, easing })}
                         />
                     </FieldGrid>
                     <FieldGrid cols={3}>
@@ -2488,11 +2484,10 @@ function TransitionEditor(props: {
                 {kind === "none" ? null : (
                     <>
                         <SecondsField label={t("storyInspector.field.duration")} value={value.durationMs} onChange={durationMs => setBase({ durationMs })} />
-                        <SelectField
-                            label={t("storyInspector.field.easing")}
-                            options={easingOptions(t)}
-                            value={value.easing ?? ""}
-                            onChange={easing => setBase({ easing: String(easing) || undefined })}
+                        <EasingField
+                            t={t}
+                            value={value.easing}
+                            onChange={easing => setBase({ easing })}
                         />
                     </>
                 )}

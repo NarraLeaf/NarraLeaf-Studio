@@ -10,6 +10,7 @@ import {
 } from "@shared/utils/storyExpressionParser";
 import {
     allowsFreeValue,
+    enumFreeformValue,
     freeTargetKind,
     paramTypes,
     type StoryCommandParam,
@@ -363,7 +364,13 @@ function resolveAgainstType(
             // stays faithful to what was typed, the payload gets what it can store. A translated
             // spelling normalizes on exactly the same step, so `t=淡变` banks `fade` and the
             // project file never carries a locale.
-            return option ? { value: { kind: "enum", value: option.value } } : null;
+            if (option) {
+                return { value: { kind: "enum", value: option.value } };
+            }
+            // A shape the word list cannot hold - a drawn easing curve - banked in the spelling the
+            // slot canonicalizes it to, for the same reason an alias is.
+            const freeform = enumFreeformValue(type, value);
+            return freeform === null ? null : { value: { kind: "enum", value: freeform } };
         }
         case "keyword":
             return value.trim().toLowerCase() === type.value.toLowerCase()

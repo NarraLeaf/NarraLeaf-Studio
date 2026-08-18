@@ -8,8 +8,9 @@ import type {
 import { neutralStoryTransformProps, STORY_FILTER_FUNCTION_ORDER } from "@shared/story/transformProps";
 import { legacyPresetPosition } from "@shared/story/transformLegacy";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
+import { formatStoryBezierEasing, isStoryBezierEasing, storyBezierPoints } from "@shared/utils/storyEasing";
 import { STORY_CAMERA_LOOK_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
-import type { StoryCommandEnumOption, StoryCommandParamType } from "../storyCommandGrammar";
+import type { StoryCommandEnumFreeform, StoryCommandEnumOption, StoryCommandParamType } from "../storyCommandGrammar";
 import type { StoryCommandValue } from "../storyCommandValues";
 import {
     asColor,
@@ -117,6 +118,25 @@ const EASINGS: readonly StoryCommandEnumOption[] = [
     "backIn", "backOut", "backInOut", "anticipate",
 ].map(value => ({ value }));
 
+/**
+ * The twelfth easing, which is not a word: the curve the inspector's card draws.
+ *
+ * `ease=` stays an enum, so a misspelt word is still an error rather than silently stored, and the
+ * menu still offers the eleven by name. This is what keeps the line able to SAY what the card can
+ * draw - without it, a row carrying a drawn curve printed a value the line refused to take back, and
+ * retyping the row dropped the curve.
+ *
+ * Normalized on the way in, so a curve pasted from a browser's own spelling
+ * (`cubic-bezier(.42, 0, .58, 1)`) banks exactly as the card writes it and prints as one token.
+ */
+const CUSTOM_EASING_CURVE: StoryCommandEnumFreeform = {
+    accepts: raw => isStoryBezierEasing(raw),
+    normalize: raw => {
+        const points = storyBezierPoints(raw);
+        return points ? formatStoryBezierEasing(points) : raw;
+    },
+};
+
 /** The camera look library, as `look=`'s word list. Derived, so the line and the inspector cannot disagree. */
 const LOOK_OPTIONS: readonly StoryCommandEnumOption[] = [
     ...STORY_CAMERA_LOOK_PRESETS.map(preset => ({ value: preset.id })),
@@ -197,7 +217,7 @@ export const TRANSFORM_PROP_PARAMS = {
  */
 export const TRANSFORM_TIMING_PARAMS = {
     d: secondsParam(),
-    ease: { aliases: ["easing"], hint: "easing", type: { kind: "enum", options: EASINGS } },
+    ease: { aliases: ["easing"], hint: "easing", type: { kind: "enum", options: EASINGS, freeform: CUSTOM_EASING_CURVE } },
     delay: { hint: "delay", type: SECONDS_TYPE },
     repeat: { hint: "repeat", type: { kind: "number", min: 0, integer: true } },
     repeatDelay: { hint: "repeatDelay", type: SECONDS_TYPE },

@@ -424,6 +424,20 @@ describe("projectStoryCommandLine", () => {
         expect(edited("/screen vignette opacity=0.45", "0.45", "0.9")).toBe("/screen vignette d=0.3s hold=0.6s color=#000000 opacity=0.9");
     });
 
+    it("prints a drawn easing curve, and opens the curve editor on it", () => {
+        // A curve is stored in the same field a word is, so the row prints it as the same token —
+        // and the token's control says the slot takes a curve, which is what puts the card in the
+        // popover instead of a word list the value is not in.
+        const block = build("/transform hero zoom=1.2 ease=cubic-bezier(0.4,0,0.2,1)");
+        const line = projectStoryCommandLine(block, LOOKUPS)!;
+        expect(line.source).toContain("ease=cubic-bezier(0.4,0,0.2,1)");
+        const edit = line.edits.find(entry => entry.value === "cubic-bezier(0.4,0,0.2,1)")!;
+        expect(edit.control.kind === "enum" && edit.control.curve).toBe(true);
+        // And it retypes: the row's value is a line the parser takes back unchanged.
+        expect(projectStoryCommandLine({ ...block, payload: edit.apply("easeOut") } as StoryBlock, LOOKUPS)!.source)
+            .toContain("ease=easeOut");
+    });
+
     it("offers exactly the options the grammar declares, and no writer where nothing can be edited", () => {
         const controls = (source: string) => projectStoryCommandLine(build(source), LOOKUPS)!.edits.map(edit => edit.control);
         const transition = controls("/hide Alice out=fade")[1];

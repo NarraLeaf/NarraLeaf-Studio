@@ -109,6 +109,7 @@ export const storyInspector = {
         backOut: "回弹缓出",
         backInOut: "回弹缓入缓出",
         anticipate: "预备",
+        custom: "自定义曲线",
     },
     transition: {
         dissolve: "溶解",
