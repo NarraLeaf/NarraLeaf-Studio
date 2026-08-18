@@ -67,8 +67,6 @@ export const storyInspector = {
         muted: "消音",
         closeIn: "閉じる（秒）",
         openOut: "開く（秒）",
-        fadeIn: "フェードイン（秒）",
-        fadeOut: "フェードアウト（秒）",
         vignetteInner: "透明な中心 %",
         vignetteOuter: "暗い縁 %",
     },
@@ -353,9 +351,6 @@ export const storyInspector = {
         vignette: "ビネット",
     },
 
-    screenEffectHint: {
-        vignetteSymmetric: "ビネットのフェードアウトはフェードインと同じ長さになるため、ここの指定は無視される。",
-    },
     waitMode: {
         duration: "時間",
         click: "クリック",

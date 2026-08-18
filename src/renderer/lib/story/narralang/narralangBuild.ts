@@ -813,6 +813,8 @@ function buildDraft(
                     action: "screenEffect" as const,
                     effect: verb === "screenBlink" ? ("blink" as const) : ("vignette" as const),
                     durationMs: msOf(slots, "duration"),
+                    // Only `blink` has these slots to fill; on a vignette they are absent from the
+                    // grammar and `prune` drops the undefined pair.
                     inMs: msOf(slots, "fadeIn"),
                     outMs: msOf(slots, "fadeOut"),
                     holdMs: msOf(slots, "hold"),

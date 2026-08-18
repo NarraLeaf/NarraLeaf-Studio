@@ -61,12 +61,10 @@ export const storyInspector = {
         kind: "Kind",
         effect: "Effect",
         character: "Character",
-        // The two halves of a screen effect, named for what each one does on the effect that owns it —
-        // a blink shuts and opens, a vignette fades in and out. Empty means "follow the whole move".
+        // A blink's two halves, named for what each one does. Empty means "follow the whole move".
+        // Only a blink has them: the engine drives a vignette's fade in and out from one duration.
         closeIn: "Close (s)",
         openOut: "Open (s)",
-        fadeIn: "Fade in (s)",
-        fadeOut: "Fade out (s)",
         vignetteInner: "Clear center %",
         vignetteOuter: "Dark edge %",
         layer: "Layer",
@@ -354,12 +352,6 @@ export const storyInspector = {
     screenEffectOption: {
         blink: "Blink",
         vignette: "Vignette",
-    },
-
-    screenEffectHint: {
-        // The engine drives a vignette's fade in and its fade out from one duration, so the row is
-        // told here rather than at compile time, where the author would only see it as a warning.
-        vignetteSymmetric: "A vignette fades out over the same time it fades in, so this is ignored.",
     },
 
     waitMode: {

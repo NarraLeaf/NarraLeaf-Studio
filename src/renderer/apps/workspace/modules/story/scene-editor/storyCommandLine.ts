@@ -1061,15 +1061,18 @@ function actionSentence(
                     : positional("seconds", "click")],
             };
         case "screenEffect":
-            // `in` and `out` print only when the row actually overrode a half - `arg` drops an empty
-            // value, so the common symmetric line stays `/blink d=0.2 hold=0.1` and does not grow two
-            // tokens that say the same thing `d` already said.
+            // A committed row may only show a line the author could have typed, so the halves ride
+            // only on the effect whose spec names them. They also print only when a half was actually
+            // overridden - `arg` drops an empty value - so the common symmetric line stays
+            // `/blink d=0.2 hold=0.1` rather than growing two tokens `d` already said.
             return {
                 commandId,
                 args: [
                     arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) }),
-                    arg("in", seconds(payload.inMs), { apply: next => ({ ...payload, inMs: msOf(next) }) }),
-                    arg("out", seconds(payload.outMs), { apply: next => ({ ...payload, outMs: msOf(next) }) }),
+                    ...(payload.effect === "blink" ? [
+                        arg("in", seconds(payload.inMs), { apply: next => ({ ...payload, inMs: msOf(next) }) }),
+                        arg("out", seconds(payload.outMs), { apply: next => ({ ...payload, outMs: msOf(next) }) }),
+                    ] : []),
                     arg("hold", seconds(payload.holdMs), { apply: next => ({ ...payload, holdMs: msOf(next) }) }),
                     arg("color", payload.color, { apply: next => ({ ...payload, color: next }) }),
                     arg("opacity", numberValue(payload.opacity), { apply: next => ({ ...payload, opacity: Number(next) }) }),
