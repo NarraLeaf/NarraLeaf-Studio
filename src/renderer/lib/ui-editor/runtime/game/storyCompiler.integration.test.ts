@@ -229,7 +229,7 @@ describe("compileStudioStoryToNlr", () => {
                     action: "character",
                     operation: "enter",
                     characterId: "char-alice",
-                    transform: { preset: "center", durationMs: 300, props: { zoom: 0.5, xoffset: 24, yoffset: -12 } },
+                    transform: { mode: "props", to: { position: { xalign: 0.5, yalign: 0.5, xoffset: 24, yoffset: -12 }, zoom: 0.5 }, durationMs: 300 },
                 },
             },
         };
@@ -614,7 +614,7 @@ describe("compileStudioStoryToNlr", () => {
                     operation: "transform",
                     objectName: "",
                     target: { kind: "default", layer: "background" },
-                    transform: { mode: "preset", preset: "zoom", durationMs: 300, props: { zoom: 1.4 } },
+                    transform: { mode: "props", to: { zoom: 1.4 }, durationMs: 300 },
                 },
             },
         };
@@ -645,7 +645,7 @@ describe("compileStudioStoryToNlr", () => {
                     action: "displayable",
                     operation: "transform",
                     target: { builtin: "background", kind: "image", name: "Scene background" },
-                    transform: { mode: "preset", preset: "zoom", durationMs: 300, props: { zoom: 1.25 } },
+                    transform: { mode: "props", to: { zoom: 1.25 }, durationMs: 300 },
                 },
             },
             fgLayer: {
@@ -658,7 +658,7 @@ describe("compileStudioStoryToNlr", () => {
                     action: "displayable",
                     operation: "transform",
                     target: { builtin: "displayableLayer", kind: "layer", name: "Displayable layer" },
-                    transform: { mode: "preset", preset: "opacity", durationMs: 200, props: { opacity: 0.5 } },
+                    transform: { mode: "props", to: { opacity: 0.5 }, durationMs: 200 },
                 },
             },
         };
@@ -694,10 +694,9 @@ describe("compileStudioStoryToNlr", () => {
                 childrenIds: [],
                 payload: {
                     action: "displayable",
-                    operation: "circleReveal",
+                    operation: "transform",
                     target: { name: "hero", kind: "image" },
-                    durationMs: 600,
-                    effectProps: { from: 0, to: 150 },
+                    transform: { mode: "props", clipReveal: { kind: "circleReveal", fromRadius: 0, toRadius: 150 }, durationMs: 600 },
                 },
             },
             darken: {
@@ -707,10 +706,9 @@ describe("compileStudioStoryToNlr", () => {
                 childrenIds: [],
                 payload: {
                     action: "displayable",
-                    operation: "darken",
+                    operation: "transform",
                     target: { name: "hero", kind: "image" },
-                    darkness: 0.6,
-                    durationMs: 200,
+                    transform: { mode: "props", to: { filter: { brightness: 0.4 } }, durationMs: 200 },
                 },
             },
             wipe: {
@@ -720,9 +718,9 @@ describe("compileStudioStoryToNlr", () => {
                 childrenIds: [],
                 payload: {
                     action: "displayable",
-                    operation: "wipe",
+                    operation: "transform",
                     target: { name: "hero", kind: "image" },
-                    effectProps: { direction: "right", reverse: true },
+                    transform: { mode: "props", clipReveal: { kind: "wipe", direction: "right", reverse: true } },
                 },
             },
         };
@@ -754,7 +752,7 @@ describe("compileStudioStoryToNlr", () => {
                 kind: "action",
                 parentId: null,
                 childrenIds: [],
-                payload: { action: "displayable", operation: "mask", target: { name: "hero", kind: "image" } },
+                payload: { action: "displayable", operation: "transform", target: { name: "hero", kind: "image" }, transform: { mode: "props", to: { maskAssetId: "" } } },
             },
         };
 
@@ -1895,7 +1893,7 @@ describe("compileStudioStoryToNlr localization", () => {
                     operation: "enter",
                     characterId: "char-alice",
                     assetId: "asset-alice",
-                    transform: { preset: "center", durationMs: 300 },
+                    transform: { mode: "props", to: { position: { xalign: 0.5, yalign: 0.5 } }, durationMs: 300 },
                 },
             },
             darken: {
@@ -1905,10 +1903,9 @@ describe("compileStudioStoryToNlr localization", () => {
                 childrenIds: [],
                 payload: {
                     action: "displayable",
-                    operation: "darken",
+                    operation: "transform",
                     target: { name: "Character", kind: "character", sourceBlockId: "enter" },
-                    darkness: 0.6,
-                    durationMs: 400,
+                    transform: { mode: "props", to: { filter: { brightness: 0.4 } }, durationMs: 400 },
                 },
             },
         };

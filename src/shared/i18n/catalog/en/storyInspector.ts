@@ -105,6 +105,7 @@ export const storyInspector = {
         circleReveal: "Circle reveal",
         circleClose: "Circle close",
         slideReveal: "Slide reveal",
+        custom: "Custom",
     },
 
     easing: {

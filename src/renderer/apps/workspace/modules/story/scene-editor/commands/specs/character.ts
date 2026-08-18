@@ -20,7 +20,7 @@ import {
     type StoryCommandValidateContext,
 } from "../spec";
 import { vfxOperationBlock, withPlacementTransform, withRevealTransform } from "../payloadHelpers";
-import { supportedTransitionWords, transformPresetFor, transitionOptions } from "../transitions";
+import { supportedTransitionWords, transformEffectFor, transitionOptions } from "../transitions";
 
 /**
  * The generic verbs and the character commands: `/show`, `/hide`, `/move`, `/face`, `/motion`,
@@ -88,7 +88,7 @@ function validateTransitionForTarget(
     // `buildShowHide`), so it is judged against the same table rather than against the portrait-swap
     // transitions it no longer writes.
     if (target.type === "character") {
-        if (transformPresetFor(context, word) === undefined) {
+        if (transformEffectFor(context, word) === undefined) {
             return [{ code: "unsupportedOption", span, value: word, allowed: supportedTransitionWords(context) }];
         }
         return [];
@@ -96,7 +96,7 @@ function validateTransitionForTarget(
     // Video and vfx are not Displayables, so the reveal/conceal preset table does not describe them
     // at all - there is no legal word to name, and reporting against a table they do not use would be
     // reporting the wrong thing.
-    if (target.objectKind !== "video" && target.objectKind !== "vfx" && transformPresetFor(context, word) === undefined) {
+    if (target.objectKind !== "video" && target.objectKind !== "vfx" && transformEffectFor(context, word) === undefined) {
         return [{ code: "unsupportedOption", span, value: word, allowed: supportedTransitionWords(context) }];
     }
     return [];

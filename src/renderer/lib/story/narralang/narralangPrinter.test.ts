@@ -64,7 +64,7 @@ describe("printNarralangScene", () => {
             { id: "b1", kind: "action", payload: { action: "setBackground", assetId: "asset-bg", transition: { kind: "dissolve", durationMs: 500 } } },
             { id: "b2", kind: "action", payload: { action: "audio", operation: "setBgm", assetId: "asset-bgm", volume: 0.7, fadeMs: 1500, loop: true } },
             { id: "b3", kind: "nodeAction", payload: { action: "narration", text: text("夕阳把走廊染成橘色。", "narration") } },
-            { id: "b4", kind: "action", payload: { action: "character", operation: "enter", characterId: "char-alice", pose: "pose-smile", transform: { preset: "left", durationMs: 300 } } },
+            { id: "b4", kind: "action", payload: { action: "character", operation: "enter", characterId: "char-alice", pose: "pose-smile", transform: { to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 300 } } },
             { id: "b5", kind: "nodeAction", payload: { action: "dialogue", characterId: "char-alice", text: text("你也留到这么晚啊。", "dialogue") } },
             { id: "b6", kind: "declaration", payload: { scope: "scene", name: "trust", valueType: "number", defaultValue: 0, storageKey: "b6" } },
             {
@@ -86,7 +86,7 @@ describe("printNarralangScene", () => {
             { id: "b13", kind: "action", payload: { action: "camera", operation: "zoom", zoom: 1.4, durationMs: 1200 } },
             { id: "b14", kind: "jump", payload: { targetSceneId: "scene-2" } },
             { id: "b15", kind: "note", payload: { text: text("这里以后要补一段回忆闪回", "note") } },
-            { id: "b16", kind: "action", payload: { action: "character", operation: "exit", characterId: "char-alice", transform: { preset: "fadeOut", durationMs: 300 } } },
+            { id: "b16", kind: "action", payload: { action: "character", operation: "exit", characterId: "char-alice", transform: { to: { opacity: 0 }, durationMs: 300 } } },
         ] as never);
 
         const result = printNarralangScene(fixture, {

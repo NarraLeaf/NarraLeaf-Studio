@@ -56,17 +56,18 @@ function transformsOf(actions: any[]): { sequences?: { props?: Record<string, un
 }
 
 describe("compiles /fx backdrop and blend", () => {
-    it("carries the backdrop-filter through and floors a negative duration to 0", async () => {
+    it("carries the backdrop-filter through, in one frame", async () => {
         const document = imageDocument(
             {
-                // A negative duration is the clamp probe: `effectVisualOptions` floors it to 0, the same
-                // `Math.max(0, ...)` every effect option shares - no effect gets to run time backwards.
+                // A negative duration used to be the clamp probe here. Since v18 it cannot be: a
+                // backdrop-filter is a DISCRETE channel, so the emitter gives it its own zero-duration
+                // statement whatever the row asked for. The clamp still exists and is exercised by the
+                // rows that do tween (see `floors a negative duration` below).
                 frost: effectBlock("frost", {
                     action: "displayable",
-                    operation: "backdrop",
+                    operation: "transform",
                     target: { name: "hero", kind: "image" },
-                    backdropFilter: "blur(8px)",
-                    durationMs: -100,
+                    transform: { mode: "props", to: { backdropFilter: "blur(8px)" }, durationMs: -100 },
                 }),
             },
             ["frost"],
@@ -83,15 +84,18 @@ describe("compiles /fx backdrop and blend", () => {
         expect(sequence?.options).toEqual(expect.objectContaining({ duration: 0 }));
     });
 
-    it("carries a curated blend mode through", async () => {
+    it("carries a curated blend mode through, in one frame", async () => {
         const document = imageDocument(
             {
+                // The row may still say `d=0.2`; a blend mode has no midpoint between `screen` and
+                // `multiply`, so the emitter cuts it and the duration is deliberately unused. The
+                // previous model passed the 200 straight to `blend()`, which animated nothing and said
+                // it was animating for a fifth of a second.
                 blend: effectBlock("blend", {
                     action: "displayable",
-                    operation: "blend",
+                    operation: "transform",
                     target: { name: "hero", kind: "image" },
-                    mixBlendMode: "screen",
-                    durationMs: 200,
+                    transform: { mode: "props", to: { mixBlendMode: "screen" }, durationMs: 200 },
                 }),
             },
             ["blend"],
@@ -105,19 +109,127 @@ describe("compiles /fx backdrop and blend", () => {
             .flatMap(binding => collectActionTree(binding.action, compiled.story));
         const sequence = transformsOf(actions)[0]?.sequences?.[0];
         expect(sequence?.props).toEqual(expect.objectContaining({ mixBlendMode: "screen" }));
-        expect(sequence?.options).toEqual(expect.objectContaining({ duration: 200 }));
+        expect(sequence?.options).toEqual(expect.objectContaining({ duration: 0 }));
     });
 
-    it("warns and emits nothing when a backdrop op has no filter string", async () => {
+    it("floors a negative duration to 0 on the half that does tween", async () => {
         const document = imageDocument(
-            { empty: effectBlock("empty", { action: "displayable", operation: "backdrop", target: { name: "hero", kind: "image" } }) },
+            {
+                dim: effectBlock("dim", {
+                    action: "displayable",
+                    operation: "transform",
+                    target: { name: "hero", kind: "image" },
+                    transform: { mode: "props", to: { opacity: 0.4 }, durationMs: -100 },
+                }),
+            },
+            ["dim"],
+        );
+
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        expect(compiled.diagnostics).toEqual([]);
+        const actions = compiled.actionIdBindings
+            .filter(binding => binding.blockId === "dim")
+            .flatMap(binding => collectActionTree(binding.action, compiled.story));
+        const sequence = transformsOf(actions)[0]?.sequences?.[0];
+        expect(sequence?.props).toEqual(expect.objectContaining({ opacity: 0.4 }));
+        expect(sequence?.options).toEqual(expect.objectContaining({ duration: 0 }));
+    });
+
+    it("emits nothing when the row states no prop at all", async () => {
+        // The v17 shape of this test asserted a "Backdrop effect has no CSS backdrop-filter" warning,
+        // because the operation promised a channel the payload had not filled in. A bag cannot make that
+        // promise: an absent prop means "leave this as it stands", which is a complete instruction, so
+        // the row compiles to nothing rather than to a complaint.
+        const document = imageDocument(
+            { empty: effectBlock("empty", { action: "displayable", operation: "transform", target: { name: "hero", kind: "image" } }) },
             ["empty"],
         );
 
         const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
-        expect(compiled.diagnostics).toEqual([
-            { level: "warning", blockId: "empty", message: "Backdrop effect has no CSS backdrop-filter." },
-        ]);
+        expect(compiled.diagnostics).toEqual([]);
+        const actions = compiled.actionIdBindings
+            .filter(binding => binding.blockId === "empty")
+            .flatMap(binding => collectActionTree(binding.action, compiled.story));
+        expect(transformsOf(actions)).toEqual([]);
+    });
+});
+
+describe("one row, two statements: the cut lands before the tween", () => {
+    it("drops the discrete half in its own zero-duration statement and eases the rest", async () => {
+        // The shape `1e626400` arrived at for the camera, now the general rule. A row that both grades
+        // and pushes in cannot be one transform: the grade has no midpoint worth rendering and the
+        // zoom has nothing but midpoints, so they are separated rather than averaged into a duration
+        // that is wrong for one of them.
+        const document = imageDocument(
+            {
+                shot: effectBlock("shot", {
+                    action: "displayable",
+                    operation: "transform",
+                    target: { name: "hero", kind: "image" },
+                    transform: { mode: "props", to: { zoom: 1.4, filterRaw: "sepia(1) hue-rotate(120deg)" }, durationMs: 800 },
+                }),
+            },
+            ["shot"],
+        );
+
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        expect(compiled.diagnostics).toEqual([]);
+
+        const actions = compiled.actionIdBindings
+            .filter(binding => binding.blockId === "shot")
+            .flatMap(binding => collectActionTree(binding.action, compiled.story));
+        const transforms = transformsOf(actions);
+        expect(transforms).toHaveLength(2);
+        expect(transforms[0]?.sequences?.[0]?.props).toEqual(expect.objectContaining({ filter: "sepia(1) hue-rotate(120deg)" }));
+        expect(transforms[0]?.sequences?.[0]?.options).toEqual(expect.objectContaining({ duration: 0 }));
+        expect(transforms[1]?.sequences?.[0]?.props).toEqual(expect.objectContaining({ zoom: 1.4 }));
+        expect(transforms[1]?.sequences?.[0]?.options).toEqual(expect.objectContaining({ duration: 800 }));
+    });
+
+    it("eases a filter the row can name every function of, when no hue angle moves", async () => {
+        // Deliberately finer than "a filter always cuts": dimming the character who is not speaking is
+        // `brightness` 1 -> 0.6, nothing walks the colour wheel, and fading it is what was asked for.
+        const document = imageDocument(
+            {
+                dim: effectBlock("dim", {
+                    action: "displayable",
+                    operation: "transform",
+                    target: { name: "hero", kind: "image" },
+                    transform: { mode: "props", to: { filter: { brightness: 0.6 } }, durationMs: 200 },
+                }),
+            },
+            ["dim"],
+        );
+
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        const actions = compiled.actionIdBindings
+            .filter(binding => binding.blockId === "dim")
+            .flatMap(binding => collectActionTree(binding.action, compiled.story));
+        const transforms = transformsOf(actions);
+        expect(transforms).toHaveLength(1);
+        expect(transforms[0]?.sequences?.[0]?.props).toEqual(expect.objectContaining({ filter: "brightness(0.6)" }));
+        expect(transforms[0]?.sequences?.[0]?.options).toEqual(expect.objectContaining({ duration: 200 }));
+    });
+
+    it("passes the delay and the repeat the engine has always taken and Studio never sent", async () => {
+        const document = imageDocument(
+            {
+                pulse: effectBlock("pulse", {
+                    action: "displayable",
+                    operation: "transform",
+                    target: { name: "hero", kind: "image" },
+                    transform: { mode: "props", to: { opacity: 0.2 }, durationMs: 300, delayMs: 150, repeat: 3, repeatDelayMs: 50 },
+                }),
+            },
+            ["pulse"],
+        );
+
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        const actions = compiled.actionIdBindings
+            .filter(binding => binding.blockId === "pulse")
+            .flatMap(binding => collectActionTree(binding.action, compiled.story));
+        const transform = transformsOf(actions)[0];
+        expect(transform?.sequences?.[0]?.options).toEqual(expect.objectContaining({ duration: 300, delay: 150 }));
     });
 });
 

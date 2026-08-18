@@ -197,7 +197,10 @@ export const transform = defineStoryCommand({
         }
         const durationMs = asDurationMs(args.d);
         if (durationMs !== undefined) {
-            payload.durationMs = durationMs;
+            // One timing home since v18: the transform ref carries it, whether the row is a pose or an
+            // appearance change. The payload used to hold a second `durationMs` for effects, and the
+            // command line had to comment on which of the two a `d=` was writing.
+            payload.transform = { ...(payload.transform ?? {}), durationMs };
         }
         return { ...block, payload };
     },
