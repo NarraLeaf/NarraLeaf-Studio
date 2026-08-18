@@ -129,7 +129,7 @@ import {
 // The look library sits beside the command spec and the inspector that pick from it; the compile is
 // its third reader rather than its owner, which is the same relation `storyReplace` already has with
 // the scene editor's find/replace model.
-import { resolveStoryCameraLook } from "@/apps/workspace/modules/story/scene-editor/cameraLookPresets";
+import { resolveStoryCameraLook, resolveStoryCameraLookOscillation } from "@/apps/workspace/modules/story/scene-editor/cameraLookPresets";
 import type { StageSnapshotDisplayable, StageSnapshotEffects, StoryStageSnapshot } from "./storyStageSnapshot";
 import { collectSavedVariableView, savedVariableDefsFromView } from "./storyStageSnapshot";
 import {
@@ -2870,6 +2870,28 @@ function compileCameraAction(
                 return [];
             }
             const options = easing ? { duration, ease: easing } : { duration };
+
+            // A moving grade (`hangover`) is keyframes, not one filter, so it compiles to the same
+            // `camera.transform()` a Story Motion shot uses. A hand-written filter suppresses it: the
+            // author typed the exact string they want on the channel, and swaying it would be Studio
+            // animating a value it was told to leave alone.
+            const oscillation = handWritten
+                ? null
+                : resolveStoryCameraLookOscillation(payload.lookPreset, payload.lookIntensity, duration);
+            if (oscillation && oscillation.steps.length > 0) {
+                const sequences = oscillation.steps.map(step => ({
+                    props: { filter: step },
+                    options: { duration: oscillation.stepMs, ease: easing ?? "easeInOut" },
+                }));
+                // `repeat` covers the whole sequence list, so the sway ends on its last step rather
+                // than at neutral - the settle back to the resting grade is a second statement, and
+                // it is what leaves the stage in the state the still presets would have left it in.
+                const sway = new Transform(sequences as any, { repeat: oscillation.cycles } as any);
+                return [
+                    recordStatement(ctx, camera.transform(sway), block),
+                    recordStatement(ctx, camera.filter(resolved, { duration: oscillation.settleMs, ease: "easeOut" }), block),
+                ];
+            }
             return [recordStatement(ctx, camera.filter(resolved, options), block)];
         }
         case "reset":
