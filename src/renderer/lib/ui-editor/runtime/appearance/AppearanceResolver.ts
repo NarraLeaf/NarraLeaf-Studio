@@ -3,6 +3,7 @@ import type {
     AppearanceFieldTransition,
     AppearanceModel,
     AppearanceValueRow,
+    AppearanceVariant,
     ButtonAppearancePropertyKey,
     ContainerAppearancePropertyKey,
     TextAppearancePropertyKey,
@@ -119,6 +120,17 @@ function resolveActiveVariant(appearance: AppearanceModel, variantOverrideId?: s
     return appearance.variants[0] ?? null;
 }
 
+/**
+ * The field transitions in force for the variant showing now.
+ *
+ * A transition says how a field moves, not which state it moves into, so the inspector writes one to
+ * every variant at once (`setGroupTransitionOnAllVariants`). A variant carrying none is therefore a
+ * document no inspector wrote - a widget that seeded a transition on the state it flips *to* and left
+ * the resting state bare - and reading it literally animates the way there and snaps the way back.
+ * Any other variant declaring one for the same field fills that gap, default variant first, so both
+ * directions move alike. A transition on the variant showing now still wins, which is what keeps
+ * per-variant timing available to anyone who sets one on each.
+ */
 function collectActiveVariantTransitions<K extends string>(
     appearance: AppearanceModel | null | undefined,
     ctx: AppearanceResolveContext,
@@ -132,11 +144,21 @@ function collectActiveVariantTransitions<K extends string>(
         return {};
     }
     const out: Partial<Record<K, AppearanceFieldTransition>> = {};
-    for (const group of variant.propertyGroups) {
-        if (!group.transition || !isEligibleKey(group.key)) {
-            continue;
+    const collectInto = (source: AppearanceVariant) => {
+        for (const group of source.propertyGroups) {
+            if (!group.transition || !isEligibleKey(group.key) || out[group.key] !== undefined) {
+                continue;
+            }
+            out[group.key] = group.transition;
         }
-        out[group.key] = group.transition;
+    };
+    collectInto(variant);
+    const defaultVariant = appearance.variants.find(v => v.id === appearance.defaultVariantId);
+    if (defaultVariant) {
+        collectInto(defaultVariant);
+    }
+    for (const other of appearance.variants) {
+        collectInto(other);
     }
     return out;
 }

@@ -1,7 +1,8 @@
-import type { StoryActionPayload, StoryBlock, StoryTransformRef, StoryTransitionRef } from "@shared/types/story";
+import type { StoryActionPayload, StoryBlock, StoryDisplayableTargetRef, StoryTransformRef, StoryTransitionRef } from "@shared/types/story";
+import { DISPLAYABLE_BUILTIN_META } from "@shared/types/story";
 import type { StoryCommandContext, StoryCommandStageObjectKind, StoryCommandValue } from "../storyCommandValues";
-import { asDurationMs, asEnum } from "./spec";
-import { transformPresetFor, transitionKindFor } from "./transitions";
+import { asDurationMs, asEnum, asTarget } from "./spec";
+import { applyPlacementToTransform, applyTransitionWordToTransform, transitionKindFor } from "./transitions";
 
 /**
  * Shared "modifier args → payload fragment" writers.
@@ -36,22 +37,22 @@ export function withTransitionRef(
     };
 }
 
-/** Fold `at=` / `d=` into a transform - placement presets, for character and create commands. */
+/** Fold `at=` / `d=` into a transform - the three placements, for character and create commands. */
 export function withPlacementTransform(
     current: StoryTransformRef | undefined,
     at: StoryCommandValue | undefined,
     d: StoryCommandValue | undefined,
 ): StoryTransformRef | undefined {
-    const preset = asEnum(at) as StoryTransformRef["preset"] | undefined;
+    const placement = asEnum(at);
     const durationMs = asDurationMs(d);
-    if (preset === undefined && durationMs === undefined) {
+    if (placement === undefined && durationMs === undefined) {
         return current;
     }
-    return {
-        ...(current ?? {}),
-        ...(preset !== undefined ? { preset } : {}),
-        ...(durationMs !== undefined ? { durationMs } : {}),
-    };
+    const placed = placement === undefined ? current : applyPlacementToTransform(current, placement);
+    if (durationMs === undefined) {
+        return placed;
+    }
+    return { ...(placed ?? {}), durationMs };
 }
 
 /**
@@ -131,14 +132,50 @@ export function withRevealTransform(
     d: StoryCommandValue | undefined,
 ): StoryTransformRef | undefined {
     const word = asEnum(t);
-    const preset = word === undefined ? undefined : transformPresetFor(context, word);
     const durationMs = asDurationMs(d);
-    if (preset === undefined && durationMs === undefined) {
+    if (word === undefined && durationMs === undefined) {
         return current;
     }
-    return {
-        ...(current ?? {}),
-        ...(preset !== undefined ? { preset } : {}),
-        ...(durationMs !== undefined ? { durationMs } : {}),
-    };
+    const posed = word === undefined ? current : applyTransitionWordToTransform(current, context, word);
+    if (durationMs === undefined) {
+        return posed;
+    }
+    return { ...(posed ?? {}), durationMs };
+}
+
+/**
+ * The displayable target ref a generic-effect block addresses — the resolved line target reduced to
+ * the name-plus-kind pair a `displayable` payload stores, which the inspector's binding resolves back.
+ *
+ * Shared because more than one command builds that payload from a target param, and the mapping is a
+ * rule rather than a formality: which kinds are Displayables at all is stated here once.
+ *
+ * (`specs/effects.ts` still carries a private twin of this, from before there was a second caller.
+ * Collapsing it onto this one is a one-line follow-up, left out here only to keep this change off a
+ * file another branch is editing.)
+ */
+export function displayableTargetRef(target: ReturnType<typeof asTarget>): StoryDisplayableTargetRef | undefined {
+    if (!target) {
+        return undefined;
+    }
+    if (target.type === "reserved") {
+        // The camera is not one of these: it has a payload arm of its own (`story.camera` is
+        // addressed distinctly by the engine), so a caller that resolved it never reaches here.
+        if (target.name === "camera") {
+            return undefined;
+        }
+        const meta = DISPLAYABLE_BUILTIN_META[target.name];
+        // `builtin` is the source of truth for these; `name`/`kind` ride along as the display
+        // fallbacks `resolveDisplayableTargetRef` documents, so a ref stays readable on its own.
+        return { builtin: target.name, kind: meta.kind, name: meta.label };
+    }
+    if (target.type === "character") {
+        return { kind: "character", name: target.name };
+    }
+    // Audio, video and vfx are not Displayables and no caller's `accepts` list offers them; this arm
+    // exists to keep the function total, not because a line can reach it.
+    if (target.objectKind === "audio" || target.objectKind === "video" || target.objectKind === "vfx") {
+        return { name: target.name };
+    }
+    return { kind: target.objectKind, name: target.name };
 }

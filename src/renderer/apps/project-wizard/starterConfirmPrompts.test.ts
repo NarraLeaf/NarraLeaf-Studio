@@ -1,10 +1,10 @@
 /**
  * Every place the starter template asks before it takes something away.
  *
- * There are sixteen of them and they are the same three shapes repeated, which is exactly the
+ * There are thirty-one of them and they are a handful of shapes repeated, which is exactly the
  * condition under which a per-page assertion stops being worth anything: one slot quietly wired
  * straight through reads, on its own page, like a page nobody got round to. So this sweeps all
- * sixteen from one list and fails on the count as well as the wiring.
+ * thirty-one from one list and fails on the count as well as the wiring.
  *
  * What each one has to prove is not "a Show Confirm exists in this graph" - these graphs hold fifty
  * nodes and a stray one would satisfy that - but that the click reaches the confirm through the
@@ -21,12 +21,17 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONTAINS,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
     BLUEPRINT_NODE_TYPE_FLOW_IF,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
+    BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
+    BLUEPRINT_NODE_TYPE_PAGE_QUIT,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_PAGE_GO,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
@@ -143,7 +148,7 @@ const LOAD_SLOTS: readonly string[] = [
 ];
 
 describe("the questions the starter template asks before it takes something away", () => {
-    it("asks them in sixteen places and nowhere else", () => {
+    it("asks them in thirty-one places and nowhere else", () => {
         const asking = blueprints.flatMap(blueprint =>
             Object.values(blueprint.program.graphs.events).flatMap(event =>
                 Object.values(event.graph.nodes)
@@ -151,9 +156,9 @@ describe("the questions the starter template asks before it takes something away
                     .map(node => `${blueprint.owner.elementId ?? blueprint.id}:${node.id}`),
             ),
         );
-        // Counted rather than sampled: the three suites below each know which sixteen they mean, and
-        // this is what says nobody added a seventeenth prompt outside them.
-        expect(asking).toHaveLength(16);
+        // Counted rather than sampled: the suites below each know which of these they mean, and
+        // this is what says nobody added a thirty-second prompt outside them.
+        expect(asking).toHaveLength(31);
     });
 
     it.each(TITLE_BUTTONS)(
@@ -220,4 +225,75 @@ describe("the questions the starter template asks before it takes something away
             expect(leadsTo(confirm.id, "button_1_pressed", load.id)).toBe(true);
         },
     );
+
+    // A right click deletes the slot under the cursor, and it is the one act here that nothing can
+    // put back - the save screen can rewrite a slot, but a deleted one is gone. It was also the only
+    // one of the sixteen shapes that asked nothing at all, which is why the sweep covers both pages
+    // at once: the two graphs are the same graph, and a page that lost the question would read like
+    // a page nobody got round to.
+    it.each(
+        [...SAVE_SLOTS.map((elementId, index) => ({ page: "Save", slot: index + 1, elementId })),
+         ...LOAD_SLOTS.map((elementId, index) => ({ page: "Load", slot: index + 1, elementId }))],
+    )(
+        "asks before deleting $page slot $slot, and only when that slot holds one",
+        ({ slot, elementId }) => {
+            const { step, source, leadsTo, only } = graphFor(elementId);
+            const rightClick = only(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK);
+
+            // Same gate as the overwrite: an empty slot has nothing to lose, so it is deleted -
+            // which deletes nothing - without a word.
+            const listIds = step(rightClick.id, "then", BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS);
+            const branch = step(listIds.id, "next", BLUEPRINT_NODE_TYPE_FLOW_IF);
+            const contains = source(branch.id, "condition", BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONTAINS);
+            expect(source(contains.id, "item", BLUEPRINT_NODE_TYPE_LITERAL_STRING).params?.value).toBe(String(slot));
+
+            const confirm = step(branch.id, "true", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
+            assertPrompt(confirm, "Delete this save? It cannot be brought back.", "Delete");
+
+            // Unlike the other shapes there is no false branch to the act: a slot with nothing in it
+            // is left alone rather than deleted quietly.
+            const remaining = Object.values(graphFor(elementId).nodes).filter(
+                node => node.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE,
+            );
+            expect(remaining).toHaveLength(1);
+            expect(leadsTo(confirm.id, "button_1_pressed", remaining[0].id)).toBe(true);
+        },
+    );
+
+    it("asks before going back to a line in the log, because everything after it is undone", () => {
+        const { step, leadsTo, only } = graphFor("5aab5352-98e9-4d9e-af03-1938fa5b5032");
+        const itemClick = only(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
+        const confirm = step(itemClick.id, "then", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
+        assertPrompt(confirm, "Go back to this line? Everything after it is undone.", "Go back");
+
+        // Unconditional on purpose: every row in the log is behind the play head, so there is always
+        // something after it to lose.
+        const restore = Object.values(graphFor("5aab5352-98e9-4d9e-af03-1938fa5b5032").nodes).filter(
+            node => node.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE,
+        );
+        expect(restore).toHaveLength(1);
+        expect(leadsTo(confirm.id, "button_1_pressed", restore[0].id)).toBe(true);
+    });
+
+    it("asks before quitting, because the window closing is not something a click can take back", () => {
+        const { step, leadsTo, only } = graphFor("281a47c0-277d-4ffb-83b9-8bee6a984480");
+        const click = only(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
+        const confirm = step(click.id, "then", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
+        assertPrompt(confirm, "Quit the game?", "Quit");
+        const quit = only(BLUEPRINT_NODE_TYPE_PAGE_QUIT);
+        expect(leadsTo(confirm.id, "button_1_pressed", quit.id)).toBe(true);
+    });
+
+    it("asks before loading an auto save over a running game, and not from the title", () => {
+        const { step, source, leadsTo, only } = graphFor("3d379905-7bf0-4070-b528-d2098ce9034e");
+        const itemClick = only(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
+        const branch = step(itemClick.id, "then", BLUEPRINT_NODE_TYPE_FLOW_IF);
+        source(branch.id, "condition", BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME);
+
+        const confirm = step(branch.id, "true", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
+        assertPrompt(confirm, "Load this auto save? The game you are in is left behind.", "Load");
+
+        const load = step(branch.id, "false", BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD);
+        expect(leadsTo(confirm.id, "button_1_pressed", load.id)).toBe(true);
+    });
 });

@@ -68,7 +68,7 @@ describe("getCommandLineReason", () => {
         expect(reasonFor("/bg nothere")).toBe(en.reason.unknownAsset);
         expect(reasonFor("/bg twin")).toBe(en.reason.ambiguousName);
         expect(reasonFor("/show Zoe")).toBe(en.reason.unknownTarget);
-        expect(reasonFor("/move Zoe at=left")).toBe(en.reason.unknownCharacter);
+        expect(reasonFor("/face Zoe smile")).toBe(en.reason.unknownCharacter);
         expect(reasonFor("/show Alice frown")).toBe(en.reason.unknownForm);
         expect(reasonFor("/set nothere 1")).toBe(en.reason.unknownVariable);
     });

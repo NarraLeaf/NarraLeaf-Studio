@@ -38,6 +38,7 @@ import { useRegistry } from "../../registry";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
 import { RecoveryBanner } from "../../recovery/RecoveryBanner";
+import { ExperimentalNotice } from "../../experimental/ExperimentalNotice";
 import { RECOVERY_PANEL_ID } from "../../modules/recovery";
 import { Services } from "@/lib/workspace/services/services";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
@@ -789,6 +790,8 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             />
 
             <RecoveryBanner />
+
+            <ExperimentalNotice />
 
             {/* Main Content */}
             <div className="flex-1 flex overflow-hidden">

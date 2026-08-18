@@ -34,7 +34,8 @@ import {
 import { beginInlineTextEdit, resolveInlineTextEditHost } from "@/lib/ui-editor/interaction/inlineTextEdit";
 import { consumeSuppressNextCanvasWidgetDoubleClick } from "@/lib/ui-editor/interaction/containerDrillSelection";
 import { getSingleSelectedElementId } from "@/lib/ui-editor/interaction/surfaceInlineTextEditActivation";
-import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
+import { variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
+import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
 import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
@@ -175,7 +176,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
         setDraftLabel(nextDraft);
     }, [element, isEditing]);
 
-    const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
+    const enteredState = useEnteredElementState(element.id, useAppearanceInspectorPreview === true);
     const p = getButtonProps(element);
     const interactionDisabled = Boolean(p.interactionDisabled);
     const runtimeState = useWidgetRuntimeElementState(element.id, interactionDisabled);
@@ -184,7 +185,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
             ? (element.extra as UIListElementExtra).runtimeVariantOverrideId
             : null;
     const resolveCtx = {
-        variantOverrideId: listScopedVariantId ?? runtimeState.variantOverrideId ?? inspectorVariantId ?? null,
+        variantOverrideId: variantOverrideIdFor(enteredState, listScopedVariantId, runtimeState.variantOverrideId),
         signals: runtimeState.signals,
     };
     const v = resolveButtonVisualProps(element, p.appearance ?? undefined, resolveCtx);

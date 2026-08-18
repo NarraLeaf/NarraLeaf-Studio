@@ -19,6 +19,90 @@ export type LocaleCode = string;
  */
 export const LOCALE_STORAGE_KEY = "nls.locale";
 
+/**
+ * Persistent-storage key holding the save a language change has to come back to.
+ *
+ * Changing the language while a playthrough is running restarts the game (see `localeRestart.ts`),
+ * and a restart has to be handed the run it interrupted somehow. The handoff is a persisted key
+ * rather than a process argument or a window field because it has to survive the very thing that
+ * makes the restart necessary: the process ending. Its value is the reserved save id the run was
+ * written into, so a reader that finds it knows both that a resume is owed and where it is.
+ *
+ * Absent in every ordinary boot. Same charset rule as {@link LOCALE_STORAGE_KEY}.
+ */
+export const LOCALE_RESTART_RESUME_KEY = "nls.localeRestart";
+
+/**
+ * Persistent-storage key holding a language the player picked for next time.
+ *
+ * Written only under `nextLaunch` (see {@link InGameLanguageChange}), and read by the next boot,
+ * which moves it into {@link LOCALE_STORAGE_KEY} and clears it. Its own key rather than an early
+ * write to the live one, because the whole point of that answer is that this session does not
+ * change: anything reading the live key mid-session would see the new language immediately, which
+ * is exactly what the player asked not to happen.
+ */
+export const LOCALE_PENDING_KEY = "nls.localePending";
+
+/**
+ * Persistent-storage key marking a restart the player is not meant to come back from.
+ *
+ * Written by the `restart` answer (see {@link InGameLanguageChange}) and read by the launch that
+ * follows. A packaged game needs no such note - it ends and starts again on its title screen - but
+ * Dev Mode restarts by reloading its session, and a reload deliberately puts the author back into
+ * the story they were testing. Without this the same setting would end a playthrough in the shipped
+ * game and quietly keep it in the editor, which is the one thing a preview may not do.
+ */
+export const LOCALE_RESTART_FRESH_KEY = "nls.localeRestartFresh";
+
+/**
+ * What a shipped game does when the player changes language while a playthrough is running.
+ *
+ * The question exists because a language reaches further than the lines still to be spoken. Text is
+ * translated when it renders, so the very next line is already in the new language while the line on
+ * screen, the backlog behind it, the voice playing under it and the sentences inside every save
+ * written so far are all in the old one. There is no way to re-translate what a player has already
+ * read, so the only outcomes that leave the game saying one thing are: start it again, or do not
+ * change it yet.
+ *
+ *  - `resume`: the run is written down, the game restarts, and the player comes back to the line
+ *    they were on with everything in the new language. The default, and the only one that changes
+ *    the language without costing the player their place.
+ *  - `restart`: the game restarts and does not come back to the run. What the player gets is the
+ *    game as it launches - the title screen, and whatever their own saves hold. For a title where
+ *    a language change is a deliberate fresh start rather than a setting adjusted in passing.
+ *  - `nextLaunch`: nothing about this session changes, interface text included. The choice is kept
+ *    and the game is in the new language the next time it is started. For a title that would rather
+ *    ask nothing of the player now than take the run away from them.
+ *
+ * On a title screen the language changes immediately whichever of the three is set: there is no run
+ * to be inconsistent with, and deferring a change nobody is in the middle of would only be
+ * confusing.
+ */
+export type InGameLanguageChange = "resume" | "restart" | "nextLaunch";
+
+export type LanguageChangeConfiguration = {
+    /** Only asked mid-playthrough. See {@link InGameLanguageChange}. */
+    inGame: InGameLanguageChange;
+};
+
+export const DEFAULT_LANGUAGE_CHANGE_CONFIGURATION: LanguageChangeConfiguration = {
+    inGame: "resume",
+};
+
+/** Every answer, in the order a settings screen offers them: most of the run kept, to least. */
+export const IN_GAME_LANGUAGE_CHANGES: readonly InGameLanguageChange[] = ["resume", "restart", "nextLaunch"];
+
+export function normalizeLanguageChangeConfiguration(value: unknown): LanguageChangeConfiguration {
+    if (!value || typeof value !== "object") {
+        return { ...DEFAULT_LANGUAGE_CHANGE_CONFIGURATION };
+    }
+    const inGame = (value as Record<string, unknown>).inGame;
+    return {
+        inGame: IN_GAME_LANGUAGE_CHANGES.find(candidate => candidate === inGame)
+            ?? DEFAULT_LANGUAGE_CHANGE_CONFIGURATION.inGame,
+    };
+}
+
 /** Locale codes double as translation-file names; keep them to a conservative alphabet. */
 const LOCALE_CODE_PATTERN = /^[A-Za-z0-9-]{1,35}$/;
 

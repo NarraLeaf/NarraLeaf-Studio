@@ -52,9 +52,11 @@ import {
     storyCameraPanPlacement,
     type StoryRowLookups,
 } from "@/lib/story/storyRowProjection";
+import { composeStoryFilter, isEmptyStoryTransformProps } from "@shared/story/transformProps";
 import {
+    placementWordFor,
     transitionWordFor,
-    transitionWordForPreset,
+    transitionWordForTransform,
 } from "@/apps/workspace/modules/story/scene-editor/commands/transitions";
 
 import type {
@@ -248,16 +250,19 @@ function transformSlots(
     if (!ref) {
         return {};
     }
-    if (ref.mode === "animation" || ref.preset === "custom" || (ref.props && Object.keys(ref.props).length > 0)) {
+    if (ref.mode === "animation") {
         ctx.report(blockId, "customTransform");
         return {};
     }
     const slots: NarralangSlots = {};
-    if (ref.preset === "left" || ref.preset === "center" || ref.preset === "right") {
-        slots.placement = asWord(ref.preset);
-    } else if (ref.preset && ref.preset !== "none") {
-        const word = transitionWordForPreset(context, ref.preset);
+    const placement = placementWordFor(ref.to?.position);
+    if (placement) {
+        slots.placement = asWord(placement);
+    } else if (!isEmptyStoryTransformProps(ref.to) || ref.clipReveal) {
+        const word = transitionWordForTransform(context, ref);
         if (!word) {
+            // A bag no word names - two channels at once, a hand-typed align, a raw filter. The dialect
+            // has one slot for "how", so it says the line cannot be printed rather than printing half.
             ctx.report(blockId, "customTransform");
         } else {
             slots.transformTransition = { kind: "timedWord", word, ms: ref.durationMs };
@@ -924,74 +929,77 @@ function displayableShape(
     payload: Extract<StoryActionPayload, { action: "displayable" }>,
 ): NarralangShape {
     const subject = displayableValue(ctx, payload);
-    const timing = timingSlots(payload.durationMs, payload.easing);
-    if (payload.effectProps && Object.keys(payload.effectProps).length > 0) {
-        ctx.report(block.id, "effectProps");
+    if (payload.operation === "show" || payload.operation === "hide") {
+        return {
+            form: "statement",
+            verb: payload.operation === "show" ? "displayableShow" : "displayableHide",
+            slots: {
+                subject,
+                ...transformSlots(ctx, block.id, payload.transform, payload.operation === "show" ? "reveal" : "conceal"),
+            },
+        };
     }
-    switch (payload.operation) {
-        case "show":
-        case "hide":
-            return {
-                form: "statement",
-                verb: payload.operation === "show" ? "displayableShow" : "displayableHide",
-                slots: {
-                    subject,
-                    ...transformSlots(ctx, block.id, payload.transform, payload.operation === "show" ? "reveal" : "conceal"),
-                },
-            };
-        case "transform":
-            return {
-                form: "statement",
-                verb: "displayableTransform",
-                slots: { subject, ...transformSlots(ctx, block.id, payload.transform, "reveal") },
-            };
-        case "mask":
-            return {
-                form: "statement",
-                verb: "displayableMask",
-                slots: { subject, mask: assetName(ctx, block.id, payload.maskAssetId), ...timing },
-            };
-        case "clip":
-            return {
-                form: "statement",
-                verb: "displayableClip",
-                slots: { subject, clipPath: asString(payload.clipPath ?? ""), ...timing },
-            };
-        case "filter":
-            return {
-                form: "statement",
-                verb: "displayableFilter",
-                slots: { subject, filter: asString(payload.filter ?? ""), ...timing },
-            };
-        case "backdrop":
-            return {
-                form: "statement",
-                verb: "displayableBackdrop",
-                slots: { subject, filter: asString(payload.backdropFilter ?? ""), ...timing },
-            };
-        case "blend":
-            return {
-                form: "statement",
-                verb: "displayableBlend",
-                slots: { subject, blend: asWord(payload.mixBlendMode ?? "normal"), ...timing },
-            };
-        case "darken":
-            return {
-                form: "statement",
-                verb: "displayableDarken",
-                slots: { subject, darkness: asNumber(payload.darkness ?? 0), ...timing },
-            };
-        case "clearMask":
-        case "clearClip":
-        case "clearFilter":
-        case "circleReveal":
-        case "circleClose":
-        case "wipe":
-            return { form: "statement", verb: DISPLAYABLE_VERBS[payload.operation], slots: { subject, ...timing } };
-        default:
-            ctx.report(block.id, "unknownPayload");
-            return { form: "silent" };
+    // One operation, twelve words. The verb is chosen by WHICH channel the bag states, which is the
+    // same classification the command line's `t=` reader does - the dialect did not change, only what
+    // it reads back from.
+    const effect = displayableEffectShape(ctx, block, payload, subject);
+    return effect ?? {
+        form: "statement",
+        verb: "displayableTransform",
+        slots: { subject, ...transformSlots(ctx, block.id, payload.transform, "reveal") },
+    };
+}
+
+function displayableEffectShape(
+    ctx: NarralangExtractContext,
+    block: StoryBlock,
+    payload: Extract<StoryActionPayload, { action: "displayable" }>,
+    subject: NarralangSlots["subject"],
+): NarralangShape | null {
+    const ref = payload.transform;
+    const timing = timingSlots(ref?.durationMs, ref?.easing);
+    const reveal = ref?.clipReveal;
+    if (reveal) {
+        return { form: "statement", verb: DISPLAYABLE_VERBS[reveal.kind], slots: { subject, ...timing } };
     }
+    const to = ref?.to;
+    if (!to) {
+        return null;
+    }
+    if (to.maskAssetId !== undefined) {
+        return to.maskAssetId === null
+            ? { form: "statement", verb: "displayableClearMask", slots: { subject, ...timing } }
+            : { form: "statement", verb: "displayableMask", slots: { subject, mask: assetName(ctx, block.id, to.maskAssetId), ...timing } };
+    }
+    if (to.clipPath !== undefined) {
+        return to.clipPath === null
+            ? { form: "statement", verb: "displayableClearClip", slots: { subject, ...timing } }
+            : { form: "statement", verb: "displayableClip", slots: { subject, clipPath: asString(to.clipPath), ...timing } };
+    }
+    if (to.backdropFilter !== undefined) {
+        return { form: "statement", verb: "displayableBackdrop", slots: { subject, filter: asString(to.backdropFilter ?? "none"), ...timing } };
+    }
+    if (to.mixBlendMode !== undefined) {
+        return { form: "statement", verb: "displayableBlend", slots: { subject, blend: asWord((to.mixBlendMode ?? "normal") as NarralangWord), ...timing } };
+    }
+    if (to.filterRaw !== undefined) {
+        return to.filterRaw === null
+            ? { form: "statement", verb: "displayableClearFilter", slots: { subject, ...timing } }
+            : { form: "statement", verb: "displayableFilter", slots: { subject, filter: asString(to.filterRaw), ...timing } };
+    }
+    if (to.filter !== undefined) {
+        if (to.filter === null) {
+            return { form: "statement", verb: "displayableClearFilter", slots: { subject, ...timing } };
+        }
+        // A lone `brightness` IS a darken - `Displayable.darken(d)` is `filter("brightness(1 - d)")` -
+        // so the dialect's own word for it wins over the generic filter one.
+        const keys = Object.keys(to.filter);
+        if (keys.length === 1 && keys[0] === "brightness") {
+            return { form: "statement", verb: "displayableDarken", slots: { subject, darkness: asNumber(1 - (to.filter.brightness ?? 1)), ...timing } };
+        }
+        return { form: "statement", verb: "displayableFilter", slots: { subject, filter: asString(composeStoryFilter(to.filter)), ...timing } };
+    }
+    return null;
 }
 
 function cameraShape(
@@ -1023,6 +1031,27 @@ function cameraShape(
                 verb: "cameraDarken",
                 slots: { darkness: asNumber(payload.darkness ?? 0), ...timing },
             };
+        case "look": {
+            // A hand-written filter is printed as itself and the preset name goes with it when there
+            // is one: the compile prefers the filter, so a script that showed only the grade name
+            // would read as a different row than the one that plays.
+            const preset = payload.lookPreset;
+            const custom = payload.filter?.trim();
+            if (!preset && !custom) {
+                // Nothing chosen yet - the row compiles to nothing, so the script says the same.
+                return { form: "statement", verb: "cameraLook", slots: timing };
+            }
+            return {
+                form: "statement",
+                verb: "cameraLook",
+                slots: {
+                    ...(preset ? { look: asName(preset) } : {}),
+                    ...(payload.lookIntensity === undefined ? {} : { strength: asNumber(payload.lookIntensity) }),
+                    ...(custom ? { filter: asString(custom) } : {}),
+                    ...timing,
+                },
+            };
+        }
         case "reset":
             return { form: "statement", verb: "cameraReset", slots: timing };
         case "motion": {
@@ -1095,14 +1124,24 @@ function actionShape(ctx: NarralangExtractContext, block: StoryBlock, payload: S
                 slots: transformSlots(ctx, block.id, payload.transition, "nvl"),
             };
         case "screenEffect":
+            // Each effect's grammar names a different subset, so each is extracted against its own -
+            // printing a slot the verb does not have produces a line the matcher then refuses.
             return {
                 form: "statement",
                 verb: payload.effect === "blink" ? "screenBlink" : "screenVignette",
                 slots: {
                     duration: optSeconds(payload.durationMs),
+                    ...(payload.effect === "blink" ? {
+                        fadeIn: optSeconds(payload.inMs),
+                        fadeOut: optSeconds(payload.outMs),
+                    } : {}),
                     hold: optSeconds(payload.holdMs),
                     color: payload.color === undefined ? undefined : asColor(payload.color),
                     opacity: optNumber(payload.opacity),
+                    ...(payload.effect === "vignette" ? {
+                        inner: optNumber(payload.inner),
+                        outer: optNumber(payload.outer),
+                    } : {}),
                     easing: payload.easing === undefined ? undefined : asName(payload.easing),
                 },
             };

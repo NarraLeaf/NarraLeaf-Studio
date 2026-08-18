@@ -51,6 +51,7 @@ export const motion = {
         emphasis: "强调",
         idle: "待机",
         reaction: "反应",
+        grade: "调色",
         camera: "镜头",
     },
 
@@ -79,6 +80,9 @@ export const motion = {
         dizzy: "眩晕",
         lookAround: "左右张望",
         fallOver: "倒下",
+        faintOut: "昏迷",
+        hangover: "宿醉",
+        flashback: "回忆涌入",
         cameraShake: "震动",
         cameraImpact: "冲击",
         cameraPushIn: "推近",

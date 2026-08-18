@@ -1,6 +1,6 @@
 import { ToggleLeft } from "lucide-react";
 import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
-import { defaultSwitchWidgetProps, type UISwitchChildSlot } from "@shared/types/ui-editor/switch";
+import { defaultSwitchWidgetProps, UI_SWITCH_ON_VARIANT_ID, type UISwitchChildSlot } from "@shared/types/ui-editor/switch";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { translate } from "@/lib/i18n";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
@@ -50,6 +50,13 @@ export const SwitchWidgetModule: UIWidgetModule = {
         },
         props: { ...defaultSwitchWidgetProps },
     }),
+
+    // Its two states are the widget's own: `checked` is a property of the switch, while what on and
+    // off look like belongs to the parts. Entering one here broadcasts to both of them.
+    listEditorStates: () => [
+        { id: null, name: translate("widgets.defaults.switch.offVariant") },
+        { id: UI_SWITCH_ON_VARIANT_ID, name: translate("widgets.defaults.switch.onVariant") },
+    ],
 
     createDefaultChildElements: ({ element, generateId }) => {
         const trackId = generateId();

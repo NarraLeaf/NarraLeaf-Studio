@@ -1,3 +1,6 @@
+import { composeStoryFilter, parseStoryFilter } from "@shared/story/transformProps";
+import { expandLegacyTransformPreset } from "@shared/story/transformLegacy";
+import { placementWordFor } from "./commands/transitions";
 import type {
     StoryActionPayload,
     StoryBlock,
@@ -11,8 +14,8 @@ import type {
     StoryScene,
     StorySceneId,
     StoryTransitionRef,
+    StoryTransformProps,
     StoryTransformRef,
-    StoryTransformPreset,
     StoryTextSegment,
     StoryVariableRef,
     StoryVariableScope,
@@ -93,6 +96,7 @@ import {
     SegToggle,
     SelectField,
     Section,
+    TextField,
     easingOptions,
     type TFunc,
 } from "./inspectorFieldKit";
@@ -252,7 +256,36 @@ function VariableValueField(props: {
     return <TextField label={label} value={String(props.value ?? "")} onChange={value => props.onChange(value)} />;
 }
 
-const transformPresetOptions = (t: TFunc): SelectOption[] => [
+/**
+ * The looks this dropdown no longer OFFERS, and the words a row that is one reads by.
+ *
+ * Three of them are the clip-path reveals: generators rather than settled poses, which is why every
+ * path needing a transform's props up front still cannot fold one (`presetNotFoldable`) and why the
+ * working way to ask for one is the `/fx` word of the same name, which the effect editor above offers.
+ * They live on the ref as {@link StoryClipReveal} now rather than as presets, but they read back here
+ * under the names an author knows them by.
+ *
+ * `custom` is the fourth, and it is new: since v18 a row may state two channels at once (scale AND
+ * rotate), which the single-preset model could not express and no name on this list covers. Showing
+ * the word is how the field admits that rather than rendering an empty trigger over a row that does
+ * something real.
+ */
+const RETIRED_TRANSFORM_PRESETS: Readonly<Record<string, string>> = {
+    circleReveal: "storyInspector.transformPreset.circleReveal",
+    circleClose: "storyInspector.transformPreset.circleClose",
+    wipe: "storyInspector.transformPreset.slideReveal",
+    custom: "storyInspector.transformPreset.custom",
+};
+
+/**
+ * The looks a transform can be SET to, in the dropdown that sets one.
+ *
+ * `current` is a parameter because of the four above: a row that already is one gets it back on the
+ * list, so the field shows what the block actually says instead of the empty trigger an unlisted value
+ * renders as. Dropping a value from a picker must not make the documents it came from unreadable -
+ * only unwritable.
+ */
+const transformPresetOptions = (t: TFunc, current?: string): SelectOption[] => [
     { value: "none", label: t("common.none") },
     { value: "left", label: t("storyInspector.transformPreset.left") },
     { value: "center", label: t("storyInspector.transformPreset.center") },
@@ -268,9 +301,10 @@ const transformPresetOptions = (t: TFunc): SelectOption[] => [
     { value: "rotate", label: t("storyInspector.transformPreset.rotate") },
     { value: "opacity", label: t("storyInspector.transformPreset.opacity") },
     { value: "darken", label: t("storyInspector.transformPreset.darken") },
-    { value: "circleReveal", label: t("storyInspector.transformPreset.circleReveal") },
-    { value: "circleClose", label: t("storyInspector.transformPreset.circleClose") },
-    { value: "wipe", label: t("storyInspector.transformPreset.slideReveal") },
+    { value: "flip", label: t("storyInspector.transformPreset.flip") },
+    ...(current && current in RETIRED_TRANSFORM_PRESETS
+        ? [{ value: current, label: t(RETIRED_TRANSFORM_PRESETS[current] as TranslationKey) }]
+        : []),
 ];
 
 const transitionOptions = (t: TFunc): SelectOption[] => [
@@ -365,10 +399,6 @@ const displayableOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "circleClose", label: t("storyInspector.displayableOperation.circleClose") },
     { value: "wipe", label: t("storyInspector.displayableOperation.wipe") },
 ];
-
-const DISPLAYABLE_EFFECT_OPERATIONS = new Set([
-    "mask", "clearMask", "clip", "clearClip", "filter", "clearFilter", "backdrop", "blend", "darken", "circleReveal", "circleClose", "wipe",
-]);
 
 const displayableEffectHints = (t: TFunc): Record<string, string> => ({
     mask: t("storyInspector.displayableEffectHint.mask"),
@@ -924,7 +954,10 @@ function ActionPayloadFields(props: {
         );
     }
     if (payload.action === "displayable") {
-        const isEffect = DISPLAYABLE_EFFECT_OPERATIONS.has(payload.operation);
+        // Twelve of the fifteen words this dropdown offers are no longer operations - they are which
+        // channel of the transform's bag the row fills in. The picker keeps them (they are how an
+        // author names the thing) and reads and writes them through the bag.
+        const effectKind = payload.operation === "transform" ? displayableEffectKindOf(payload.transform) : null;
         const resolvedTarget = resolveDisplayableTargetRef(props.document.scenes[props.sceneId], payload.target);
         return (
             <div className="grid grid-cols-1 gap-3">
@@ -932,8 +965,10 @@ function ActionPayloadFields(props: {
                     <SelectField
                         label={t("storyInspector.field.operation")}
                         options={displayableOperationOptions(t)}
-                        value={payload.operation}
-                        onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "displayable" }>["operation"] })}
+                        value={effectKind ?? payload.operation}
+                        onChange={operation => props.onChange(operation === "show" || operation === "hide" || operation === "transform"
+                            ? { ...payload, operation }
+                            : { ...payload, operation: "transform", transform: withDisplayableEffectKind(payload.transform, operation as DisplayableEffectKind) })}
                     />
                     <DisplayableTargetField
                         document={props.document}
@@ -943,7 +978,7 @@ function ActionPayloadFields(props: {
                         onChange={target => props.onChange({ ...payload, target })}
                     />
                 </FieldGrid>
-                {isEffect ? (
+                {effectKind ? (
                     <DisplayableEffectEditor payload={payload} onChange={props.onChange} />
                 ) : (
                     <TransformPresetEditor
@@ -1109,6 +1144,12 @@ function ActionPayloadFields(props: {
         );
     }
     if (payload.action === "screenEffect") {
+        // The two effects agree on what `duration` and `hold` mean and differ in what else they own,
+        // so a field belonging to only one of them is drawn only for it. The engine's `BlinkOptions`
+        // has no opacity, so that row on a blink read as an edit and changed nothing; the radii are
+        // the vignette's gradient and mean nothing to a pair of shutters; and `VignetteOptions` has
+        // one duration for both its halves, so only a blink can be told to shut fast and open slow.
+        const isVignette = payload.effect === "vignette";
         return (
             <div className="nl-field-grid">
                 <SelectField
@@ -1118,9 +1159,35 @@ function ActionPayloadFields(props: {
                     onChange={effect => props.onChange({ ...payload, effect: effect as Extract<StoryActionPayload, { action: "screenEffect" }>["effect"] })}
                 />
                 <SecondsField label={t("storyInspector.field.duration")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
+                {/* Blink only, because only a blink has two halves the engine will drive separately.
+                    Empty means "follow the whole move", which is why neither is seeded from
+                    `duration` when the author opens the row - a filled box would claim an override
+                    nobody asked for, and there would be no way back to following it. */}
+                {isVignette ? null : (
+                    <SecondsField
+                        label={t("storyInspector.field.closeIn")}
+                        value={payload.inMs}
+                        onChange={inMs => props.onChange({ ...payload, inMs })}
+                    />
+                )}
+                {isVignette ? null : (
+                    <SecondsField
+                        label={t("storyInspector.field.openOut")}
+                        value={payload.outMs}
+                        onChange={outMs => props.onChange({ ...payload, outMs })}
+                    />
+                )}
                 <SecondsField label={t("storyInspector.field.hold")} value={payload.holdMs} onChange={holdMs => props.onChange({ ...payload, holdMs })} />
                 <ColorTextField label={t("storyInspector.field.color")} value={payload.color ?? "#000000"} onChange={color => props.onChange({ ...payload, color })} />
-                <NumberField label={t("storyInspector.field.opacity")} value={payload.opacity} onChange={opacity => props.onChange({ ...payload, opacity })} />
+                {isVignette ? (
+                    <NumberField label={t("storyInspector.field.opacity")} value={payload.opacity} onChange={opacity => props.onChange({ ...payload, opacity })} />
+                ) : null}
+                {isVignette ? (
+                    <NumberField label={t("storyInspector.field.vignetteInner")} value={payload.inner} onChange={inner => props.onChange({ ...payload, inner })} />
+                ) : null}
+                {isVignette ? (
+                    <NumberField label={t("storyInspector.field.vignetteOuter")} value={payload.outer} onChange={outer => props.onChange({ ...payload, outer })} />
+                ) : null}
                 <SelectField
                     label={t("storyInspector.field.easing")}
                     options={easingOptions(t)}
@@ -1962,36 +2029,82 @@ function getCharacterById(characters: Character[], characterId: string | undefin
     return characters.find(character => character.profile.getId() === characterId) ?? null;
 }
 
+/**
+ * The scalar channels of the bag, flattened to the `key=value` list this panel has always edited.
+ *
+ * The position's four axes are spelled out rather than nested, because that is how an author names
+ * them (`xoffset=40`), and `brightness` stands in for the filter's dim - the one filter term a
+ * transform row has ever set through this field.
+ */
+function transformParamsView(to: StoryTransformProps | undefined): Record<string, number> {
+    const view: Record<string, number> = {};
+    const assign = (key: string, value: number | undefined) => {
+        if (value !== undefined) {
+            view[key] = value;
+        }
+    };
+    assign("zoom", to?.zoom);
+    assign("scaleX", to?.scaleX);
+    assign("scaleY", to?.scaleY);
+    assign("rotation", to?.rotation);
+    assign("opacity", to?.opacity);
+    assign("xalign", to?.position?.xalign);
+    assign("yalign", to?.position?.yalign);
+    assign("xoffset", to?.position?.xoffset);
+    assign("yoffset", to?.position?.yoffset);
+    assign("brightness", to?.filter?.brightness);
+    return view;
+}
+
+const POSITION_AXES = new Set(["xalign", "yalign", "xoffset", "yoffset"]);
+
+/** The inverse: a flat `key=value` view folded back onto the bag. */
+function applyTransformParams(to: StoryTransformProps | undefined, params: Record<string, unknown> | undefined): StoryTransformProps {
+    const next: StoryTransformProps = { ...(to ?? {}) };
+    const position: NonNullable<StoryTransformProps["position"]> = { ...(to?.position ?? {}) };
+    for (const key of ["zoom", "scaleX", "scaleY", "rotation", "opacity"] as const) {
+        delete next[key];
+    }
+    for (const axis of POSITION_AXES) {
+        delete (position as Record<string, unknown>)[axis];
+    }
+    for (const [key, raw] of Object.entries(params ?? {})) {
+        const value = typeof raw === "number" ? raw : Number(raw);
+        if (!Number.isFinite(value)) {
+            continue;
+        }
+        if (POSITION_AXES.has(key)) {
+            (position as Record<string, number>)[key] = value;
+        } else if (key === "brightness") {
+            next.filter = { ...(next.filter ?? {}), brightness: value };
+        } else {
+            (next as Record<string, unknown>)[key] = value;
+        }
+    }
+    if (Object.keys(position).length > 0) {
+        next.position = position;
+    } else {
+        delete next.position;
+    }
+    return next;
+}
+
 function getTransformNumberProp(transform: StoryTransformRef | undefined, key: string): number | undefined {
-    const value = transform?.props?.[key];
-    if (typeof value === "number") {
-        return value;
-    }
-    if (typeof value === "string") {
-        const numeric = Number(value);
-        return Number.isFinite(numeric) ? numeric : undefined;
-    }
-    return undefined;
+    return transformParamsView(transform?.to)[key];
 }
 
 function setTransformNumberProp(
     transform: StoryTransformRef | undefined,
     key: string,
     value: number | undefined,
-    fallback: Pick<StoryTransformRef, "preset" | "durationMs">,
 ): StoryTransformRef {
-    const nextProps = { ...(transform?.props ?? {}) };
+    const params = transformParamsView(transform?.to);
     if (value === undefined) {
-        delete nextProps[key];
+        delete params[key];
     } else {
-        nextProps[key] = value;
+        params[key] = value;
     }
-    return {
-        mode: "preset",
-        ...fallback,
-        ...transform,
-        props: Object.keys(nextProps).length > 0 ? nextProps : undefined,
-    };
+    return { ...transform, mode: "props", to: applyTransformParams(transform?.to, params) };
 }
 
 export function AssetField(props: {
@@ -2062,41 +2175,107 @@ export function AssetField(props: {
 
 type DisplayableActionPayload = Extract<StoryActionPayload, { action: "displayable" }>;
 
+/**
+ * Which appearance channel a `transform` row is filling in, named the way the operation dropdown
+ * always named it.
+ *
+ * The fifteen operations are three now, so the "operation" an author picks on the right is a view over
+ * the bag rather than a stored field: the row is a mask row because it carries a `maskAssetId`. Same
+ * words, same fields, same hints - what changed is where the answer comes from.
+ */
+type DisplayableEffectKind =
+    | "mask" | "clearMask" | "clip" | "clearClip" | "filter" | "clearFilter"
+    | "backdrop" | "blend" | "darken" | "circleReveal" | "circleClose" | "wipe";
+
+function displayableEffectKindOf(transform: StoryTransformRef | undefined): DisplayableEffectKind | null {
+    if (transform?.clipReveal) {
+        return transform.clipReveal.kind;
+    }
+    const to = transform?.to;
+    if (!to) {
+        return null;
+    }
+    if (to.maskAssetId !== undefined) return to.maskAssetId === null ? "clearMask" : "mask";
+    if (to.clipPath !== undefined) return to.clipPath === null ? "clearClip" : "clip";
+    if (to.backdropFilter !== undefined) return "backdrop";
+    if (to.mixBlendMode !== undefined) return "blend";
+    if (to.filterRaw !== undefined) return to.filterRaw === null ? "clearFilter" : "filter";
+    if (to.filter !== undefined) {
+        if (to.filter === null) return "clearFilter";
+        const keys = Object.keys(to.filter);
+        return keys.length === 1 && keys[0] === "brightness" ? "darken" : "filter";
+    }
+    return null;
+}
+
+/** Seed the bag for a freshly picked channel, clearing whichever one the row held before. */
+function withDisplayableEffectKind(transform: StoryTransformRef | undefined, kind: DisplayableEffectKind): StoryTransformRef {
+    const to: StoryTransformProps = { ...(transform?.to ?? {}) };
+    for (const key of ["maskAssetId", "maskSize", "maskPosition", "maskRepeat", "maskMode", "clipPath", "backdropFilter", "mixBlendMode", "filter", "filterRaw"] as const) {
+        delete to[key];
+    }
+    const next: StoryTransformRef = { ...transform, mode: "props", to };
+    delete next.clipReveal;
+    switch (kind) {
+        case "mask": to.maskAssetId = ""; break;
+        case "clearMask": to.maskAssetId = null; break;
+        case "clip": to.clipPath = ""; break;
+        case "clearClip": to.clipPath = null; break;
+        case "filter": to.filterRaw = ""; break;
+        case "clearFilter": to.filter = null; break;
+        case "backdrop": to.backdropFilter = ""; break;
+        case "blend": to.mixBlendMode = "normal"; break;
+        case "darken": to.filter = { brightness: 0.5 }; break;
+        default: next.clipReveal = { kind }; break;
+    }
+    return next;
+}
+
 function DisplayableEffectEditor(props: {
     payload: DisplayableActionPayload;
     onChange: (payload: StoryBlock["payload"]) => void;
 }) {
     const { t } = useTranslation();
     const payload = props.payload;
-    const op = payload.operation;
-    const setEffectParam = (patch: Record<string, StoryLiteralValue | undefined>) =>
-        props.onChange({ ...payload, effectProps: mergeParams(payload.effectProps, patch) });
+    const ref = payload.transform;
+    const op = displayableEffectKindOf(ref);
+    const patch = (next: StoryTransformRef) => props.onChange({ ...payload, operation: "transform", transform: next });
+    const setProp = (patchProps: Partial<StoryTransformProps>) =>
+        patch({ ...ref, mode: "props", to: { ...(ref?.to ?? {}), ...patchProps } });
+    const setReveal = (patchReveal: Partial<NonNullable<StoryTransformRef["clipReveal"]>>) =>
+        ref?.clipReveal ? patch({ ...ref, clipReveal: { ...ref.clipReveal, ...patchReveal } }) : undefined;
     return (
         <Section title={t("storyInspector.section.effect")}>
             <FieldGrid cols={3}>
-                <SecondsField label={t("storyInspector.field.duration")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
+                <SecondsField label={t("storyInspector.field.duration")} value={ref?.durationMs} onChange={durationMs => patch({ ...ref, mode: "props", durationMs })} />
                 <SelectField
                     label={t("storyInspector.field.easing")}
                     options={easingOptions(t)}
-                    value={payload.easing ?? ""}
-                    onChange={easing => props.onChange({ ...payload, easing: String(easing) || undefined })}
+                    value={ref?.easing ?? ""}
+                    onChange={easing => patch({ ...ref, mode: "props", easing: String(easing) || undefined })}
                 />
                 {op === "mask" ? (
-                    <AssetField label={t("storyInspector.displayableEffect.maskImage")} assetType={AssetType.Image} assetId={payload.maskAssetId} onChange={maskAssetId => props.onChange({ ...payload, maskAssetId })} />
+                    <AssetField label={t("storyInspector.displayableEffect.maskImage")} assetType={AssetType.Image} assetId={ref?.to?.maskAssetId ?? undefined} onChange={maskAssetId => setProp({ maskAssetId: maskAssetId ?? "" })} />
                 ) : null}
                 {op === "clip" ? (
-                    <TextField label={t("storyInspector.displayableEffect.clipPath")} value={payload.clipPath ?? ""} onChange={clipPath => props.onChange({ ...payload, clipPath: clipPath || undefined })} />
+                    <TextField label={t("storyInspector.displayableEffect.clipPath")} value={ref?.to?.clipPath ?? ""} onChange={clipPath => setProp({ clipPath })} />
                 ) : null}
                 {op === "filter" ? (
-                    <TextField label={t("storyInspector.displayableEffect.cssFilter")} value={payload.filter ?? ""} onChange={filter => props.onChange({ ...payload, filter: filter || undefined })} />
+                    // The raw escape hatch, edited as the string it is. A chain typed here that reads
+                    // back as a canonical one is stored structurally instead - see `parseStoryFilter`.
+                    <TextField
+                        label={t("storyInspector.displayableEffect.cssFilter")}
+                        value={ref?.to?.filterRaw ?? composeStoryFilterText(ref?.to?.filter)}
+                        onChange={css => setProp({ filterRaw: undefined, filter: undefined, ...parseStoryFilter(css) })}
+                    />
                 ) : null}
                 {op === "backdrop" ? (
                     // Sibling of the CSS-filter field: a raw backdrop-filter string (`blur(8px)` for
                     // frosted glass), edited exactly as `filter` is - the hint below carries the example.
                     <TextField
                         label={t("storyInspector.displayableEffect.backdropFilter")}
-                        value={payload.backdropFilter ?? ""}
-                        onChange={backdropFilter => props.onChange({ ...payload, backdropFilter: backdropFilter || undefined })}
+                        value={ref?.to?.backdropFilter ?? ""}
+                        onChange={backdropFilter => setProp({ backdropFilter })}
                     />
                 ) : null}
                 {op === "blend" ? (
@@ -2104,18 +2283,24 @@ function DisplayableEffectEditor(props: {
                     <SelectField
                         label={t("storyInspector.displayableEffect.blendMode")}
                         options={vfxBlendOptions(t)}
-                        value={payload.mixBlendMode ?? "normal"}
-                        onChange={mixBlendMode => props.onChange({ ...payload, mixBlendMode: mixBlendMode as StoryVfxBlendMode })}
+                        value={ref?.to?.mixBlendMode ?? "normal"}
+                        onChange={mixBlendMode => setProp({ mixBlendMode: mixBlendMode as StoryVfxBlendMode })}
                     />
                 ) : null}
                 {op === "darken" ? (
-                    <NumberField label={t("storyInspector.displayableEffect.darkness")} value={payload.darkness} onChange={darkness => props.onChange({ ...payload, darkness })} />
+                    // `Displayable.darken(d)` IS `filter("brightness(1 - d)")`, so the dial edits the
+                    // brightness term rather than a field of its own.
+                    <NumberField
+                        label={t("storyInspector.displayableEffect.darkness")}
+                        value={ref?.to?.filter ? 1 - (ref.to.filter.brightness ?? 1) : undefined}
+                        onChange={darkness => setProp({ filter: { brightness: 1 - (darkness ?? 0) } })}
+                    />
                 ) : null}
                 {op === "circleReveal" || op === "circleClose" ? (
                     <>
-                        <TextField label={t("storyInspector.field.center")} value={paramString(payload.effectProps, "center", "50% 50%")} onChange={center => setEffectParam({ center: center || undefined })} />
-                        <NumberField label={t("storyInspector.field.fromRadius")} value={paramNumber(payload.effectProps, "from")} onChange={from => setEffectParam({ from })} />
-                        <NumberField label={t("storyInspector.field.toRadius")} value={paramNumber(payload.effectProps, "to")} onChange={to => setEffectParam({ to })} />
+                        <TextField label={t("storyInspector.field.center")} value={ref?.clipReveal?.center ?? "50% 50%"} onChange={center => setReveal({ center: center || undefined })} />
+                        <NumberField label={t("storyInspector.field.fromRadius")} value={ref?.clipReveal?.fromRadius} onChange={fromRadius => setReveal({ fromRadius })} />
+                        <NumberField label={t("storyInspector.field.toRadius")} value={ref?.clipReveal?.toRadius} onChange={toRadius => setReveal({ toRadius })} />
                     </>
                 ) : null}
                 {op === "wipe" ? (
@@ -2123,16 +2308,64 @@ function DisplayableEffectEditor(props: {
                         <SelectField
                             label={t("storyInspector.field.direction")}
                             options={wipeDirectionOptions(t)}
-                            value={paramString(payload.effectProps, "direction", "left")}
-                            onChange={direction => setEffectParam({ direction: String(direction) })}
+                            value={ref?.clipReveal?.direction ?? "left"}
+                            onChange={direction => setReveal({ direction: String(direction) as NonNullable<StoryTransformRef["clipReveal"]>["direction"] })}
                         />
-                        <CheckboxField label={t("storyInspector.field.reverse")} checked={paramBool(payload.effectProps, "reverse")} onChange={reverse => setEffectParam({ reverse: reverse || undefined })} />
+                        <CheckboxField label={t("storyInspector.field.reverse")} checked={ref?.clipReveal?.reverse ?? false} onChange={reverse => setReveal({ reverse: reverse || undefined })} />
                     </>
                 ) : null}
             </FieldGrid>
-            <div className="mt-1.5 text-2xs text-fg-subtle">{displayableEffectHints(t)[op] ?? ""}</div>
+            <div className="mt-1.5 text-2xs text-fg-subtle">{op ? displayableEffectHints(t)[op] ?? "" : ""}</div>
         </Section>
     );
+}
+
+function composeStoryFilterText(filter: StoryTransformProps["filter"]): string {
+    return filter ? composeStoryFilter(filter) : "";
+}
+
+/**
+ * The dropdown's word for whatever the bag currently states.
+ *
+ * The presets are gone from storage, but not from the picker: they are still how an author names a
+ * look, and the twenty names map onto the bag one way (v18's migration) and back the other way here.
+ * A bag no name fits - two channels at once, which the old model could not even express - reads as
+ * `custom`, which is honest: the row does something the list has no single word for.
+ */
+function transformPresetOf(ref: StoryTransformRef | undefined): string {
+    if (ref?.clipReveal) {
+        return ref.clipReveal.kind;
+    }
+    const to = ref?.to;
+    if (!to) {
+        return "none";
+    }
+    const stated = Object.entries(to).filter(([, value]) => value !== undefined).map(([key]) => key);
+    if (stated.length === 0) {
+        return "none";
+    }
+    if (stated.length === 1 && stated[0] === "position") {
+        return placementWordFor(to.position) ?? "custom";
+    }
+    if (stated.length === 1 && stated[0] === "zoom") return "zoom";
+    if (stated.length === 1 && stated[0] === "rotation") return "rotate";
+    if (stated.length === 1 && stated[0] === "opacity") return to.opacity === 1 ? "fadeIn" : to.opacity === 0 ? "fadeOut" : "opacity";
+    if (stated.length === 1 && stated[0] === "scaleX") return "flip";
+    if (stated.length === 2 && stated.includes("scaleX") && stated.includes("scaleY")) return "scale";
+    if (stated.length === 1 && stated[0] === "filter" && to.filter && Object.keys(to.filter).join() === "brightness") return "darken";
+    return "custom";
+}
+
+/** The inverse, through the same expansion table the v17 documents were migrated with. */
+function withTransformPreset(ref: StoryTransformRef | undefined, preset: string): StoryTransformRef {
+    const { to, clipReveal } = expandLegacyTransformPreset(preset, transformParamsView(ref?.to));
+    const next: StoryTransformRef = { ...ref, mode: "props", to };
+    if (clipReveal) {
+        next.clipReveal = clipReveal;
+    } else {
+        delete next.clipReveal;
+    }
+    return next;
 }
 
 function TransformPresetEditor(props: {
@@ -2146,9 +2379,9 @@ function TransformPresetEditor(props: {
     onChange: (value: StoryTransformRef | undefined) => void;
 }) {
     const { t } = useTranslation();
-    const value = props.value ?? { preset: "none" as StoryTransformPreset };
+    const value: StoryTransformRef = props.value ?? { mode: "props" };
     const mode: "preset" | "animation" = value.mode === "animation" ? "animation" : "preset";
-    const propsText = formatPropsText(value.props);
+    const propsText = formatPropsText(transformParamsView(value.to));
     const actionContext = {
         storyId: props.storyId,
         sceneId: props.sceneId,
@@ -2166,8 +2399,8 @@ function TransformPresetEditor(props: {
                         { value: "animation", label: t("storyInspector.transform.motionMode") },
                     ]}
                     onChange={next => props.onChange(next === "animation"
-                        ? { ...value, mode: "animation", preset: undefined }
-                        : { ...value, mode: "preset", animationId: undefined, preset: value.preset ?? "none" })}
+                        ? { ...value, mode: "animation" }
+                        : { ...value, mode: undefined, animationId: undefined })}
                 />
             }
         >
@@ -2184,9 +2417,9 @@ function TransformPresetEditor(props: {
                     <FieldGrid cols={3}>
                         <SelectField
                             label={t("storyInspector.transform.preset")}
-                            options={transformPresetOptions(t)}
-                            value={value.preset ?? "none"}
-                            onChange={preset => props.onChange({ ...value, mode: "preset", preset: preset as StoryTransformPreset })}
+                            options={transformPresetOptions(t, transformPresetOf(value))}
+                            value={transformPresetOf(value)}
+                            onChange={preset => props.onChange(withTransformPreset(value, String(preset)))}
                         />
                         <SecondsField
                             label={t("storyInspector.field.duration")}
@@ -2204,24 +2437,24 @@ function TransformPresetEditor(props: {
                         <NumberField
                             label={t("storyInspector.transform.zoom")}
                             value={getTransformNumberProp(value, "zoom")}
-                            onChange={zoom => props.onChange(setTransformNumberProp(value, "zoom", zoom, { preset: value.preset ?? "none" }))}
+                            onChange={zoom => props.onChange(setTransformNumberProp(value, "zoom", zoom))}
                         />
                         <NumberField
                             label={t("storyInspector.transform.xOffset")}
                             value={getTransformNumberProp(value, "xoffset")}
-                            onChange={xoffset => props.onChange(setTransformNumberProp(value, "xoffset", xoffset, { preset: value.preset ?? "none" }))}
+                            onChange={xoffset => props.onChange(setTransformNumberProp(value, "xoffset", xoffset))}
                         />
                         <NumberField
                             label={t("storyInspector.transform.yOffset")}
                             value={getTransformNumberProp(value, "yoffset")}
-                            onChange={yoffset => props.onChange(setTransformNumberProp(value, "yoffset", yoffset, { preset: value.preset ?? "none" }))}
+                            onChange={yoffset => props.onChange(setTransformNumberProp(value, "yoffset", yoffset))}
                         />
                     </FieldGrid>
                     <Disclosure title={t("storyInspector.advancedParams")}>
                         <TextField
                             label={t("storyInspector.transform.params")}
                             value={propsText}
-                            onChange={nextProps => props.onChange({ ...value, props: parsePropsText(nextProps) })}
+                            onChange={nextProps => props.onChange({ ...value, mode: "props", to: applyTransformParams(value.to, parsePropsText(nextProps)) })}
                         />
                     </Disclosure>
                 </div>
@@ -2951,36 +3184,6 @@ function TextIdReadout(props: { text: StoryTextSegment }) {
                     </button>
                 </div>
             )}
-        </div>
-    );
-}
-
-function TextField(props: {
-    label: string;
-    value: string;
-    onChange: (value: string) => void;
-    options?: SelectOption[];
-    /** Shown when `value` is empty — used for a derived default, which is not authored content. */
-    placeholder?: string;
-}) {
-    if (props.options) {
-        return (
-            <SelectField
-                label={props.label}
-                options={props.options}
-                value={props.value}
-                onChange={value => props.onChange(String(value))}
-            />
-        );
-    }
-    return (
-        <div>
-            <label className={FIELD_LABEL_CLASS}>{props.label}</label>
-            <EnhancedInput
-                value={props.value}
-                placeholder={props.placeholder}
-                onChange={props.onChange}
-            />
         </div>
     );
 }

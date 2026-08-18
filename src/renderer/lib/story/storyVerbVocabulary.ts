@@ -37,7 +37,9 @@ type CommandId = string;
 const CHARACTER: Record<OperationOf<"character">, CommandId> = {
     enter: "show",
     exit: "hide",
-    move: "move",
+    // A move is a POSITION, which is one prop of the one bag - so the row it reads back as is the row
+    // that writes one. `/move` is retired (M2); its payload arm is not, and it keeps compiling.
+    move: "transform",
     expression: "face",
     setName: "rename",
     setMotion: "motion",
@@ -103,24 +105,29 @@ const AUDIO: Record<Exclude<OperationOf<"audio">, "muteSound">, CommandId> = {
 };
 
 /**
- * Only the operations a command actually owns. The rest of this union — mask, clip, filter, backdrop,
- * blend and friends — is reached through the inspector after `/fx` or `/transform` drops the block, so
- * there is no verb the author typed and nothing here to say.
+ * All three, and there is no fourth. v18 folded `mask`, `clip`, `filter`, `backdrop`, `blend` and
+ * their `clear*` twins into `transform` + a prop bag, so every displayable row an author can make is
+ * one of these - and M2 gave every one of those props a spelling, so there is no longer an operation
+ * reachable only from the inspector with no line to read back as.
  */
-const DISPLAYABLE: Partial<Record<OperationOf<"displayable">, CommandId>> = {
+const DISPLAYABLE: Record<OperationOf<"displayable">, CommandId> = {
     show: "show",
     hide: "hide",
     transform: "transform",
 };
 
 /**
- * One token per effect, not one `/effect` verb with the name as an argument: the two are different
- * gestures with different knobs (a blink holds, a vignette has an opacity), and the vocabulary names
- * the idea rather than the type.
+ * One token for both, with the effect as its first positional (`/screen blink`).
+ *
+ * They were two tokens, on the reasoning that a blink and a vignette are different gestures with
+ * different knobs. They are - but so are `pan` and `zoom`, which the camera always kept in one token,
+ * and the knobs differing is what a param subset is for. What the two share is everything a TOKEN
+ * answers for: one payload arm, one effect layer, one in-and-out-with-a-hold shape, and no subject of
+ * their own anywhere else in the language.
  */
 const SCREEN_EFFECT: Record<Extract<StoryActionPayload, { action: "screenEffect" }>["effect"], CommandId> = {
-    blink: "blink",
-    vignette: "vignette",
+    blink: "screen",
+    vignette: "screen",
 };
 
 /** The command id whose label names this payload's verb, or `null` when no command owns it. */
@@ -132,7 +139,10 @@ export function storyVerbCommandId(payload: StoryActionPayload): CommandId | nul
         case "layer": return LAYER[payload.operation] ?? null;
         case "video": return VIDEO[payload.operation] ?? null;
         case "vfx": return VFX[payload.operation] ?? null;
-        case "displayable": return DISPLAYABLE[payload.operation] ?? null;
+        case "displayable":
+            // No `/mirror` split any more: a mirror is `flip=on`, which is a PROP of the row this
+            // command already writes, so both spellings are one verb and the row prints the prop.
+            return DISPLAYABLE[payload.operation] ?? null;
         case "audio":
             // One payload, two verbs: `/mute` and `/unmute` both store `muteSound` and differ only by
             // the flag. Naming both "Mute" would misread half of them, so the flag decides.
@@ -143,7 +153,10 @@ export function storyVerbCommandId(payload: StoryActionPayload): CommandId | nul
         case "setBackground": return "background";
         case "wait": return "wait";
         case "nvl": return "nvl";
-        case "camera": return "camera";
+        // The camera is a reserved TARGET now, not a verb: `/transform camera zoom=2`. Its payload arm
+        // stays its own (the engine addresses `story.camera` distinctly), and this is where the two
+        // facts meet - one payload, the word an author would type for it.
+        case "camera": return payload.operation === "reset" ? "reset" : "transform";
         case "setVariable": return "set";
         default: return null;
     }

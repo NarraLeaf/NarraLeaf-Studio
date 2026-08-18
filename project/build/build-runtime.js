@@ -50,8 +50,8 @@ function runtimeAliasPlugin() {
             shim('i18n.ts'),
         ],
         [
-            '@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant',
-            shim('useEditorAppearanceInspectorVariant.ts'),
+            '@/lib/ui-editor/hooks/useEnteredElementState',
+            shim('useEnteredElementState.ts'),
         ],
         [
             '@/lib/workspace/hooks/useAssetObjectUrl',

@@ -61,7 +61,8 @@ export const LEGACY_FAVORITE_TO_SPEC_ID: Readonly<
 
     characterEnter: "show",
     characterExit: "hide",
-    characterMove: "move",
+    // M2: a move is a position, which is a prop of the one bag - `/transform <who> pos=`.
+    characterMove: "transform",
     characterExpression: "face",
 
     imageCreate: "image",
@@ -82,9 +83,11 @@ export const LEGACY_FAVORITE_TO_SPEC_ID: Readonly<
     displayableShow: "show",
     displayableHide: "hide",
     displayableTransform: "transform",
-    displayableEffect: "fx",
-    screenBlink: "blink",
-    screenVignette: "vignette",
+    // M2: an "effect" was one prop of the one bag, and the two screen gestures are one token with the
+    // gesture as its first positional.
+    displayableEffect: "transform",
+    screenBlink: "screen",
+    screenVignette: "screen",
 
     bgm: "bgm",
     sound: "sound",

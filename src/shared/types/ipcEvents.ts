@@ -115,6 +115,7 @@ export enum IPCEventType {
     appWindowFullscreenChanged = "app.window.fullscreenChanged",
     appWindowProps = "app.window.props",
     appInfo = "app.info",
+    appClaimExperimentalNotice = "app.claimExperimentalNotice",
     appWindowReady = "app.window.ready",
     appLaunchSettings = "app.settings.launchWindow",
     appCountWorkspaceWindows = "app.countWorkspaceWindows",
@@ -571,6 +572,20 @@ export type IPCEvents = {
         consumer: IPCType.Host,
         data: {},
         response: AppInfo;
+    };
+    /**
+     * Ask whether this window is the one that shows the experimental warning, and take the answer
+     * with it.
+     *
+     * A claim rather than a query: the warning belongs to the launch, not to the window, and in
+     * development a workspace window reloads on every rebuild. The main process holds the latch, so
+     * the second caller - a reloaded window, or a second project - is told no.
+     */
+    [IPCEventType.appClaimExperimentalNotice]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: { show: boolean };
     };
     [IPCEventType.appWindowReady]: {
         type: IPCMessageType.message,
@@ -2972,7 +2987,10 @@ export type IPCUITemplateEvents = {
             templateId: string;
             projectPath: string;
         },
-        response: { filesCopied: number };
+        // `locales` are the language codes the template shipped a translation file for; the
+        // creator registers them, because the registry lives in the `.nlproj` it is about to write
+        // and a template never carries one.
+        response: { filesCopied: number; locales: string[] };
     };
 };
 

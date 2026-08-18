@@ -40,6 +40,7 @@ export const project = {
         dependencies: "依赖",
         saving: "存档",
         olderSaves: "旧存档",
+        language: "语言",
         playerDefaults: "玩家默认值",
         audioTracks: "音频轨道",
         // 「配色」子页的两块内容：作者自己定的颜色，以及跟随它们的槽位。该页其余文案都在 `brand`
@@ -188,6 +189,11 @@ export const project = {
         saveDiscard: "不恢复进度",
         saveResumeScene: "尝试恢复到场景",
         saveForce: "强制载入",
+        languageInGameTitle: "游戏进行中切换语言",
+        languageInGameDescription: "在标题画面切换时，三种设置都立即生效",
+        languageResume: "重启应用并回到原处",
+        languageRestart: "重启应用，不保留当前进度",
+        languageNextLaunch: "下次启动时应用",
     },
     preferences: {
         // 挂在小标题上的一句话，不再是页首的一段话。原先那段里其余的内容，要么行本身就写着，

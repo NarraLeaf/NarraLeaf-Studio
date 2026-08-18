@@ -12,6 +12,7 @@ import {
     createInitialButtonAppearance,
     createInitialImageAppearanceFromProps,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
+import { LOCALE_STORAGE_KEY } from "@shared/types/localization";
 import { ScopeStoreBridge } from "./ScopeStoreBridge";
 import {
     createDevModeBlueprintHostApi,
@@ -1671,5 +1672,68 @@ describe("createDevModeBlueprintHostApi element volume", () => {
 
         expect(hostApi.sound.getTrackVolume("alice")).toBe(1);
         await expect(hostApi.sound.setTrackVolume("alice", 0.5)).resolves.toBeUndefined();
+    });
+});
+
+describe("createDevModeBlueprintHostApi language", () => {
+    const localizationConfig = {
+        sourceLocale: "en",
+        locales: [{ code: "en" }, { code: "ja" }],
+    } as unknown as CreateBlueprintHostApiRuntimeOptions["localizationConfig"];
+
+    function createLanguageHostApi(onLocaleChanged?: (code: string) => Promise<void> | void) {
+        const scope = new ScopeStoreBridge();
+        const hostApi = createDevModeBlueprintHostApi({
+            document: createDocument(),
+            scope,
+            activeSurfaceId: "page",
+            emit: () => undefined,
+            onOpenSurface: () => undefined,
+            onPageBack: () => undefined,
+            onWidgetPatch: () => undefined,
+            widgetRuntimeStore: new WidgetRuntimeStateStore(),
+            localizationConfig,
+            onLocaleChanged,
+        });
+        return { hostApi, scope };
+    }
+
+    it("hands the whole change to the host, store included", async () => {
+        // The host owns the write because one of the answers a project can give is "not this
+        // session": a language kept for the next launch must not reach the key this session reads.
+        // So the bridge must not have written one before the host is asked.
+        const seen: Array<string | undefined> = [];
+        const { hostApi, scope } = createLanguageHostApi(code => {
+            seen.push(code);
+            seen.push(scope.persistenceGet(LOCALE_STORAGE_KEY) as string | undefined);
+        });
+
+        await hostApi.localization.setLocale("ja");
+
+        expect(seen).toEqual(["ja", undefined]);
+        // And the bridge does not write one afterwards either - the host is the only writer.
+        expect(scope.persistenceGet(LOCALE_STORAGE_KEY)).toBeUndefined();
+    });
+
+    it("waits for the host before the node moves on", async () => {
+        // Set Language must not return while the host is still writing the save it is about to
+        // restart out of - the next node would run in a game that is already going away.
+        let settled = false;
+        const { hostApi } = createLanguageHostApi(async () => {
+            await Promise.resolve();
+            settled = true;
+        });
+
+        await hostApi.localization.setLocale("ja");
+
+        expect(settled).toBe(true);
+    });
+
+    it("stores the language itself on a host that wants no say in it", async () => {
+        // The editor preview, and every host that has no game a language could be inconsistent with.
+        const { hostApi } = createLanguageHostApi();
+
+        await expect(hostApi.localization.setLocale("ja")).resolves.toBeUndefined();
+        expect(await hostApi.localization.getLocale()).toBe("ja");
     });
 });

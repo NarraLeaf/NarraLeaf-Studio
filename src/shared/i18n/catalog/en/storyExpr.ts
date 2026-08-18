@@ -70,7 +70,11 @@ export const storyExpr = {
         duplicateVariable: "\"{value}\" already exists. Choose another name, or use /set to change its value.",
         reservedVariableName: "\"{value}\" is the build variant in an expression. Choose another name.",
         unknownTarget: "Nothing on stage is named \"{value}\".",
+        // The name was right and the verb is wrong: a video and an ambience overlay are engine
+        // Actionables with no transform pipeline, so no spelling makes a transform reach one.
+        unsupportedTarget: "\"{value}\" is a {kind}, which has no transform. Use show, hide, play or rate.",
         unsupportedOption: "\"{value}\" does not apply here. Allowed values: {allowed}.",
+        unsupportedParam: "{key}= does not apply to this {kind}.",
         missingCore: "/{token} still needs its {slot}.",
     },
 };

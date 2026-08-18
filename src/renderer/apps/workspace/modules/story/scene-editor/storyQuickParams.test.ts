@@ -47,13 +47,13 @@ describe("getQuickParams", () => {
         // beside the row that had just been given 20.
         const enter = getQuickParams(action({
             action: "character", operation: "enter", characterId: "c1",
-            transform: { preset: "center", durationMs: 20000 },
+            transform: { to: { position: { xalign: 0.5, yalign: 0.5 } }, durationMs: 20000 },
             transition: { kind: "fadeIn" },
         }));
         expect(enter[0]).toMatchObject({ id: "d", value: { kind: "duration", ms: 20000 } });
-        expect(enter[0].apply({ kind: "duration", ms: 400 })).toMatchObject({ transform: { preset: "center", durationMs: 400 } });
+        expect(enter[0].apply({ kind: "duration", ms: 400 })).toMatchObject({ transform: { to: { position: { xalign: 0.5, yalign: 0.5 } }, durationMs: 400 } });
 
-        const exit = getQuickParams(action({ action: "character", operation: "exit", characterId: "c1", transform: { preset: "fadeOut", durationMs: 250 } }));
+        const exit = getQuickParams(action({ action: "character", operation: "exit", characterId: "c1", transform: { to: { opacity: 0 }, durationMs: 250 } }));
         expect(exit[0].value).toMatchObject({ kind: "duration", ms: 250 });
     });
 
@@ -64,7 +64,7 @@ describe("getQuickParams", () => {
         expect(getQuickParams(action({ action: "character", operation: "enter", characterId: "c1" }))).toEqual([]);
         // `move` and `expression` carry no token at all: neither is declared with `quickParams`.
         expect(getQuickParams(action({ action: "character", operation: "expression", characterId: "c1", transition: { kind: "fadeIn", durationMs: 200 } }))).toEqual([]);
-        expect(getQuickParams(action({ action: "character", operation: "move", characterId: "c1", transform: { preset: "left", durationMs: 300 } }))).toEqual([]);
+        expect(getQuickParams(action({ action: "character", operation: "move", characterId: "c1", transform: { to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 300 } }))).toEqual([]);
     });
 });
 

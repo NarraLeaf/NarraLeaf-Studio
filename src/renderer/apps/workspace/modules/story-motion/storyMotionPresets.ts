@@ -30,7 +30,7 @@ import type {
  * read-only asset — three new mechanisms for one shorthand.
  */
 
-export type StoryMotionPresetCategory = "entrance" | "exit" | "emphasis" | "idle" | "reaction" | "camera";
+export type StoryMotionPresetCategory = "entrance" | "exit" | "emphasis" | "idle" | "reaction" | "grade" | "camera";
 
 /**
  * What a preset is authored against. Split rather than an explicit per-preset kind list because the
@@ -73,6 +73,9 @@ export type StoryMotionPresetId =
     | "dizzy"
     | "lookAround"
     | "fallOver"
+    | "faintOut"
+    | "hangover"
+    | "flashback"
     | "cameraShake"
     | "cameraImpact"
     | "cameraPushIn"
@@ -371,7 +374,27 @@ export const STORY_MOTION_PRESETS: readonly StoryMotionPreset[] = [
         category: "reaction",
         scope: "displayable",
         build: () => timeline([
-            track("rotation", [key(0, -3), key(220, 3, "easeInOut"), key(540, 0, "easeOut")]),
+            // Re-authored: this used to be a lone rotation track sweeping -3° → 3° → 0, which is
+            // `sway`'s shape at four times the speed and reads as a wobble, not as looking anywhere.
+            // A glance aside is a SHIFT of the head with a small counter-tilt, and the thing that
+            // separates it from `headShake` is the HOLD: the eyes stop somewhere and stay for a beat
+            // before coming back. Two of them, left then right, because that is what the name says.
+            track("position", [
+                key(0, offset({ x: 0 })),
+                key(180, offset({ x: -24 }), "easeOut"),
+                key(420, offset({ x: -24 }), "linear"),
+                key(680, offset({ x: 22 }), "easeInOut"),
+                key(920, offset({ x: 22 }), "linear"),
+                key(1160, offset({ x: 0 }), "easeInOut"),
+            ]),
+            track("rotation", [
+                key(0, 0),
+                key(180, 2.2, "easeOut"),
+                key(420, 2.2, "linear"),
+                key(680, -1.9, "easeInOut"),
+                key(920, -1.9, "linear"),
+                key(1160, 0, "easeInOut"),
+            ]),
         ]),
     },
     {
@@ -382,6 +405,97 @@ export const STORY_MOTION_PRESETS: readonly StoryMotionPreset[] = [
             track("rotation", [key(0, 0), key(620, 82, "circIn")]),
             track("position", [key(0, offset({ y: 0 })), key(620, offset({ y: -40 }), "circIn")]),
             track("opacity", [key(0, 1), key(620, 0.85, "easeIn")]),
+        ]),
+    },
+
+    // ── Grade (colour that changes over time) ───────────────────────────────────────────────────
+    //
+    // The only presets that drive the `filter` track, which the timeline has always supported and no
+    // preset used — so authors never found it. A grade that just SITS there is a static look and
+    // belongs on the camera; these are the ones whose whole point is the change over time.
+    //
+    // **Each one also moves a numeric channel, and that is not decoration.** Two mechanisms only
+    // understand numbers: `storyMotionSignatureTimeMs` picks a card's still frame by measuring how far
+    // a pose sits from neutral, and it can measure position/zoom/scale/rotation/opacity and nothing
+    // else — a filter-only preset scores zero at every frame, parks on frame 0, and shows a gallery
+    // tile identical to the two beside it. The companion channel is chosen to say the same thing the
+    // grade says (a faint sinks, a hangover tilts, a memory rushes in), so the card lands on the frame
+    // where the grade is deepest and reads as itself.
+    //
+    // **The hover preview steps where the engine ramps.** `interpolateValue` cannot interpolate two
+    // CSS strings, so it holds the earlier keyframe until the later one is reached; the runtime
+    // (framer-motion, through NLR) interpolates the filter properly. The keyframes below are spaced
+    // closely enough that the stepped preview still reads as a progression rather than as one cut.
+    {
+        id: "faintOut",
+        category: "grade",
+        scope: "displayable",
+        build: () => timeline([
+            track("filter", [
+                key(0, "blur(0px) brightness(1)", "linear"),
+                key(500, "blur(1.6px) brightness(0.82)", "easeIn"),
+                key(1000, "blur(4.5px) brightness(0.56)", "easeIn"),
+                key(1500, "blur(9px) brightness(0.3)", "easeIn"),
+            ]),
+            // The slump. Positive y is up (NLR's origin is bottom-left), so consciousness going is a
+            // small negative drift — enough to read as weight, not enough to leave the frame.
+            track("position", [
+                key(0, offset({ y: 0 })),
+                key(1500, offset({ y: -22 }), "easeIn"),
+            ]),
+        ]),
+    },
+    {
+        id: "hangover",
+        category: "grade",
+        scope: "displayable",
+        // Finite, like every other repeating preset (rule 2): the row awaits the transform.
+        config: { repeat: 3 },
+        build: () => timeline([
+            track("filter", [
+                key(0, "blur(0px) hue-rotate(0deg)", "easeInOut"),
+                key(700, "blur(2.4px) hue-rotate(-9deg)", "easeInOut"),
+                key(1400, "blur(1.4px) hue-rotate(7deg)", "easeInOut"),
+                key(2000, "blur(0px) hue-rotate(0deg)", "easeInOut"),
+            ]),
+            // The room going with it. Small: a hangover is the world refusing to hold still, not a
+            // dutch tilt, and this rides three times over.
+            track("rotation", [
+                key(0, 0),
+                key(700, 1.7, "easeInOut"),
+                key(1400, -1.4, "easeInOut"),
+                key(2000, 0, "easeInOut"),
+            ]),
+        ]),
+    },
+    {
+        id: "flashback",
+        category: "grade",
+        scope: "displayable",
+        build: () => timeline([
+            // Surges and settles inside half a second: a memory arriving is a jolt, and a slow
+            // desaturation would read as the scene changing rather than as something remembered.
+            //
+            // **The peak is bounded by legibility on a PALE sprite, not by taste.** Tried on real art
+            // first: `saturate(0.12) brightness(1.55)` blew a pale-skinned portrait to a white blob -
+            // the face gone, two faint eye outlines left - and since the peak is also the frame the
+            // gallery parks the card on, the tile was a white rectangle. Pale skin is the worst case
+            // and the common one in this medium, so it is the case these numbers are set against.
+            // Anyone tempted to push the brightness later is trading the face for the flash.
+            //
+            // No blur here, either: `faintOut` owns blur as its signature, and a blurred flashback
+            // makes the two cards hard to tell apart in the gallery. (It does look evocative.)
+            track("filter", [
+                key(0, "saturate(1) brightness(1)", "easeOut"),
+                key(150, "saturate(0.25) brightness(1.22)", "easeOut"),
+                key(340, "saturate(0.6) brightness(1.1)", "easeInOut"),
+                key(560, "saturate(1) brightness(1)", "easeInOut"),
+            ]),
+            track("zoom", [
+                key(0, 1),
+                key(150, 1.07, "easeOut"),
+                key(560, 1, "easeInOut"),
+            ]),
         ]),
     },
 
@@ -489,6 +603,7 @@ export const STORY_MOTION_PRESET_CATEGORIES: readonly StoryMotionPresetCategory[
     "emphasis",
     "idle",
     "reaction",
+    "grade",
     "camera",
 ];
 

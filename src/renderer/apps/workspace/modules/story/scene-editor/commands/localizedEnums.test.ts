@@ -68,10 +68,10 @@ describe("matchEnumOptionLocalized", () => {
     });
 
     it("keeps two values that share a Chinese word reachable, because the table is per option set", () => {
-        // `darken` (a camera operation) and `darkness` (a transition) are both 压暗. They never share
-        // an option set, and a single global table would have made whichever came second unreachable.
+        // `darken` (a blend mode) and `darkness` (a transition) are both 压暗. They never share an
+        // option set, and a single global table would have made whichever came second unreachable.
         i18nStore.setLocale("zh");
-        expect(matchEnumOptionLocalized(enumType("camera", "op"), "压暗")?.value).toBe("darken");
+        expect(matchEnumOptionLocalized(enumType("transform", "blend"), "压暗")?.value).toBe("darken");
         expect(matchEnumOptionLocalized(enumType("bg", "t"), "压暗")?.value).toBe("darkness");
     });
 });

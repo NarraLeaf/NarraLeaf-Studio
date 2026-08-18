@@ -93,7 +93,7 @@ describe("extractStoryAssetReferences", () => {
                 b1: actionBlock("b1", { action: "setBackground", assetId: "bg-1" }),
                 b2: actionBlock("b2", { action: "character", operation: "enter", assetId: "char-1" }),
                 b3: actionBlock("b3", { action: "audio", operation: "setBgm", assetId: "bgm-1" }),
-                b4: actionBlock("b4", { action: "displayable", operation: "mask", target: {}, maskAssetId: "mask-1" }),
+                b4: actionBlock("b4", { action: "displayable", operation: "transform", target: {}, transform: { to: { maskAssetId: "mask-1" } } }),
                 b5: {
                     id: "b5",
                     kind: "nodeAction",

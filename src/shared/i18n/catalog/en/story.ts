@@ -510,13 +510,20 @@ export const story = {
         displayName: "Display Name",
         seekTime: "Seconds",
         // Camera
-        cameraOperation: "Pan / Zoom / Rotate / Darken / Motion / Reset",
-        cameraAmount: "Amount or Position",
+        cameraLookStrength: "Look Strength",
+        // The two halves a blink can override; absent, each follows the whole move.
+        effectIn: "In Seconds",
+        effectOut: "Out Seconds",
+        vignetteInner: "Clear Center %",
+        vignetteOuter: "Dark Edge %",
         // Modifiers
         duration: "Seconds",
         transition: "Transition",
         reveal: "Reveal",
         placement: "Position",
+        // Spelled as the two words rather than as a name for the slot, the way `cameraOperation` is:
+        // a two-value positional teaches itself faster than a label an author has to guess at.
+        mirrorState: "On / Off",
         waitFor: "Seconds or click",
         // Slots whose payload key already reads as its own name, so they carry no explicit `hint`
         // and fall back to it. Listed here so the coverage test can see them.
@@ -531,6 +538,38 @@ export const story = {
         opacity: "Opacity",
         size: "Font Size",
         z: "Z-Index",
+        // The prop vocabulary (`commands/transformVocabulary.ts`) — one key per channel of the bag.
+        zoom: "Zoom",
+        scale: "Scale",
+        scaleX: "Scale X",
+        scaleY: "Scale Y",
+        rotation: "Degrees",
+        // The filter sugar. Named after what the author is doing, not after the CSS function, which
+        // keeps its full name in the document where nothing is typing it.
+        filterBlur: "Blur px",
+        filterBrightness: "Brightness",
+        filterContrast: "Contrast",
+        filterGrayscale: "Grayscale",
+        filterSaturate: "Saturation",
+        filterSepia: "Sepia",
+        filterHue: "Hue Degrees",
+        filterInvert: "Invert",
+        filterCss: "CSS Filter",
+        cameraLook: "Look",
+        maskImage: "Mask Image",
+        clipPath: "Clip Path",
+        backdropFilter: "Backdrop Filter",
+        blendMode: "Blend Mode",
+        storyMotion: "Story Motion",
+        // Timing.
+        easing: "Easing",
+        delay: "Delay Seconds",
+        repeat: "Repeat Times",
+        repeatDelay: "Repeat Gap",
+        fromProps: "Start Props",
+        // Direction, which is what `/show` and `/hide` each say instead of the old "transition".
+        conceal: "Conceal",
+        screenEffect: "Blink / Vignette",
     },
 
     /**
@@ -567,6 +606,10 @@ export const story = {
         // The transform presets `t=` reaches on a show/hide that the transition words did not name.
         scale: "scale",
         opacity: "opacity",
+        // Which way `/mirror` leaves a sprite facing. Absolute, never a change: a compiled transform
+        // cannot read the scale it would have to invert.
+        on: "on",
+        off: "off",
         // Placement (`at=`) and the camera's positional amount.
         left: "left",
         center: "center",
@@ -576,13 +619,55 @@ export const story = {
         zoom: "zoom",
         rotate: "rotate",
         darken: "darken",
+        look: "look",
         motion: "motion",
         reset: "reset",
+        // The grades `/camera look` names. Registered here as well as in the inspector because this
+        // namespace is what the command LINE prints and accepts: without them a row reads back in its
+        // canonical English id on every locale, which is what `darken` beside it does not do.
+        memory: "memory",
+        monologue: "monologue",
+        mono: "mono",
+        moonlight: "moonlight",
+        faint: "faint",
+        hangover: "hangover",
         // Variable types.
         boolean: "boolean",
         number: "number",
         string: "string",
         json: "json",
+        // CSS `mix-blend-mode`, spelled as CSS spells it: a blend mode is a property of the
+        // MATERIAL an author prepared elsewhere, so the word here has to be the word in that tool.
+        normal: "normal",
+        multiply: "multiply",
+        screen: "screen",
+        overlay: "overlay",
+        lighten: "lighten",
+        "color-dodge": "color-dodge",
+        "color-burn": "color-burn",
+        "hard-light": "hard-light",
+        "soft-light": "soft-light",
+        difference: "difference",
+        exclusion: "exclusion",
+        hue: "hue",
+        saturation: "saturation",
+        color: "color",
+        luminosity: "luminosity",
+        // Easing curves (`ease=`), the same eleven the property inspector offers.
+        linear: "linear",
+        easeIn: "easeIn",
+        easeOut: "easeOut",
+        easeInOut: "easeInOut",
+        circIn: "circIn",
+        circOut: "circOut",
+        circInOut: "circInOut",
+        backIn: "backIn",
+        backOut: "backOut",
+        backInOut: "backInOut",
+        anticipate: "anticipate",
+        // The two screen-wide gestures, as `/screen`'s first positional.
+        blink: "blink",
+        vignette: "vignette",
     },
 
     /**
@@ -929,7 +1014,6 @@ export const story = {
         nvl: { label: "NVL", detail: "Toggle the stacked dialogue panel" },
         show: { label: "Show", detail: "Show a character or a stage object" },
         hide: { label: "Hide", detail: "Hide a character or a stage object" },
-        move: { label: "Move", detail: "Move a character to a position" },
         face: { label: "Face", detail: "Change a character's expression" },
         motion: { label: "Motion", detail: "Set the motion a runtime-drawn character plays" },
         param: { label: "Parameter", detail: "Set one numeric parameter of a runtime-drawn character's model" },
@@ -958,7 +1042,7 @@ export const story = {
         inc: { label: "Increase", detail: "Add to a number variable" },
         dec: { label: "Decrease", detail: "Subtract from a number variable" },
         toggle: { label: "Toggle", detail: "Flip a true/false variable" },
-        reset: { label: "Reset", detail: "Restore a variable to its default" },
+        reset: { label: "Reset", detail: "Put something back the way it was: a variable to its default, or a stage object to its neutral look" },
         declareLocal: { label: "Local variable", detail: "Declare a scene variable" },
         if: { label: "If", detail: "Branch on a condition" },
         menu: { label: "Menu", detail: "Present a set of options to the player" },
@@ -979,13 +1063,16 @@ export const story = {
         // line belongs to one build and to no other.
         cut: { label: "Cut point", detail: "End one build variant's story at this line. Other builds do not have this line" },
         blueprint: { label: "Blueprint", detail: "Run a Story Action Blueprint" },
-        blink: { label: "Blink", detail: "Screen blink effect" },
-        vignette: { label: "Vignette", detail: "Screen vignette effect" },
         // The detail line is where "kept across scenes" belongs — every command has one, and it is the
         // first thing an author reads about the camera in the slash menu and the command reference.
-        camera: { label: "Camera", detail: "Pan, zoom, rotate or darken the stage camera. Kept across scenes" },
-        fx: { label: "Effect", detail: "Apply an effect to an object" },
-        transform: { label: "Transform", detail: "Move, scale or rotate an object" },
+        // The one writing verb: every channel of the prop bag, on every subject, including the
+        // camera (which is a reserved target name, not a command of its own).
+        transform: { label: "Transform", detail: "Move, scale, rotate, mask, filter or fade anything on stage \u2014 or the camera" },
+        screen: { label: "Screen", detail: "A screen-wide gesture: blink or vignette" },
+        // The detail says "mirror", not "flip", because the word the command is named after is the
+        // one thing it cannot explain: an author who is unsure what /flip does needs the other word.
+        // The token is `mirror` because `flip` is a live alias of `/toggle`; the label follows the
+        // token, since the word an author types and the word they read have to be the same one.
         note: { label: "Note", detail: "A Studio-only note" },
     },
     containerHeader: {
@@ -1089,9 +1176,12 @@ export const story = {
             zoom: "Zoom",
             rotate: "Rotate",
             darken: "Darken stage",
+            look: "Grade",
             motion: "Motion",
             reset: "Reset camera",
         },
+        // A hand-written filter has no name to print, and its CSS is not a thing to show in a row.
+        cameraLookCustom: "custom",
         condition: "Condition",
         branch: "{branch} branch",
         label: "Label {name}",

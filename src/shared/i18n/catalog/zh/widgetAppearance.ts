@@ -4,12 +4,12 @@ export const widgetAppearance = {
     panel: {
         invalidModel: "此元素没有有效的外观数据，请从素材面板新建一个",
     },
-    variant: {
-        nameLabel: "变体名称",
-        untitled: "未命名变体",
-        addTitle: "添加变体（复制当前）",
-        setDefaultTitle: "设为默认变体",
-        deleteTitle: "删除变体",
+    state: {
+        label: "状态",
+        untitled: "未命名状态",
+        addTitle: "添加状态（复制当前）",
+        setDefaultTitle: "设为默认状态",
+        deleteTitle: "删除状态",
     },
     motion: {
         animatedFields: "动画字段",

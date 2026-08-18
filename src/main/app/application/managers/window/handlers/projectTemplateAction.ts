@@ -32,7 +32,7 @@ export class ProjectTemplateScaffoldHandler extends IPCHandler<IPCEventType.proj
     public async handle(
         window: AppWindow,
         data: IPCEvents[IPCEventType.projectTemplateScaffold]["data"],
-    ): Promise<RequestStatus<{ filesCopied: number }>> {
+    ): Promise<RequestStatus<{ filesCopied: number; locales: string[] }>> {
         return this.tryUse(() => scaffoldProjectFromTemplate(
             window.app.resolveResource(PROJECT_TEMPLATES_DIR),
             data.templateId,

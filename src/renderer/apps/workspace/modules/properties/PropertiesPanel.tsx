@@ -53,6 +53,9 @@ import {
     createComponentDocumentServiceAdapter,
     parseComponentEditorSurfaceId,
 } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
+import { commitLayoutPatches } from "@/lib/ui-editor/interaction/enteredStateLayoutCommit";
+import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
+import { ElementStateBar } from "@/lib/ui-editor/widget-modules/shared/appearance/ElementStateBar";
 import { ElementAnimationField } from "@/lib/ui-editor/widget-modules/shared/page-animation/ElementAnimationField";
 import { ComponentParamsEditor, LinkedComponentParamsField } from "./ComponentParamsEditor";
 import { StoryMotionKeyframeProperties } from "../story-motion/StoryMotionKeyframeProperties";
@@ -123,7 +126,14 @@ function createLayoutInspectorSchema(
                 [axis]: surfaceValue - parentTopLeft[axis] - Math.min(0, size),
             };
         });
-        documentService.updateElementLayouts(patches);
+        // Same routing as a drag: typing a position while a state is entered says where the element
+        // sits in that state.
+        commitLayoutPatches(
+            documentService,
+            UIEditorStateService.getInstance().getEnteredState(),
+            patches,
+            surfaceId ?? null,
+        );
     };
 
     const createDefaultSizeField = (): FieldDefinition<UIInspectorData> => {
@@ -492,6 +502,21 @@ function createElementAnimationField(element: UIElement, t: TranslateFn): FieldD
     });
 }
 
+/**
+ * The state picker every element with more than one look gets, above everything else in the panel.
+ *
+ * Ordered before the layout fields because it is not a property of the element: it decides which
+ * state the fields below are editing, and which one the canvas is drawing.
+ */
+function createElementStateField(element: UIElement): FieldDefinition<UIInspectorData> {
+    return defineField<UIInspectorData, any>({
+        id: `element.state:${element.id}`,
+        type: "custom",
+        order: -1,
+        component: ElementStateBar,
+    });
+}
+
 function mergeInspectorWithLayoutSchema(
     layoutSchema: PropertyEditorSchema<UIInspectorData>,
     inspectorSchema: PropertyEditorSchema<UIInspectorData>,
@@ -499,6 +524,7 @@ function mergeInspectorWithLayoutSchema(
     t: TranslateFn,
 ): PropertyEditorSchema<UIInspectorData> {
     const layoutFields = layoutSchema.fields ?? [];
+    const stateField = createElementStateField(element);
     const animationField = createElementAnimationField(element, t);
     const baseTitle = inspectorSchema.title ?? element.name ?? t("properties.layout.uiElement");
     const baseId = `ui-element:${element.id}`;
@@ -510,7 +536,7 @@ function mergeInspectorWithLayoutSchema(
             if (targetTabId && tab.id === targetTabId) {
                 return {
                     ...tab,
-                    fields: [...layoutFields, ...tab.fields, animationField],
+                    fields: [stateField, ...layoutFields, ...tab.fields, animationField],
                 };
             }
             return tab;
@@ -530,7 +556,7 @@ function mergeInspectorWithLayoutSchema(
     return createPropertyEditorSchema<UIInspectorData>({
         id: baseId,
         title: baseTitle,
-        fields: [...layoutFields, ...(inspectorSchema.fields ?? []), animationField],
+        fields: [stateField, ...layoutFields, ...(inspectorSchema.fields ?? []), animationField],
         onFieldChange: inspectorSchema.onFieldChange,
         showSavingIndicator: inspectorSchema.showSavingIndicator,
     });

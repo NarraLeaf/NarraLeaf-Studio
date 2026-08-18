@@ -49,6 +49,30 @@ export type StoryCommandStageObjectKind = "image" | "text" | "layer" | "video" |
 /** What a generic verb's target may be: a character, or a stage object of some kind. */
 export type StoryCommandTargetKind = "character" | StoryCommandStageObjectKind;
 
+/**
+ * The stage singletons a target slot may name by a RESERVED WORD rather than by a name on stage.
+ *
+ * All three are Displayables the engine addresses without a creator block - `story.camera`, and the
+ * two layers every `Scene` ships with - so there is nothing in the scene for a name lookup to find
+ * and nothing an author could rename. A word is the only handle they can have, which is why they are
+ * reserved here rather than seeded into `stageObjects`: a name in that list is one the author chose,
+ * and one of these can never be.
+ *
+ * `background` (the scene's background image) rides along for the same reason the two layers do - it
+ * is the third entry in `StoryDisplayableBuiltin`, it is a Displayable, and the property inspector's
+ * target field has always offered all three. Leaving it out would have made the command line reach a
+ * strict subset of what the inspector reaches, which is the split this milestone exists to close.
+ */
+export type StoryReservedTargetName = "camera" | "background" | "backgroundLayer" | "displayableLayer";
+
+/** Every reserved word, in the order a candidate list offers them. */
+export const STORY_RESERVED_TARGETS: readonly StoryReservedTargetName[] = [
+    "camera",
+    "background",
+    "backgroundLayer",
+    "displayableLayer",
+];
+
 /** The object names on stage, per kind - the candidate source for target params. */
 export type StoryCommandStageObjects = Readonly<Record<StoryCommandStageObjectKind, readonly string[]>>;
 
@@ -201,6 +225,11 @@ export function puppetChannelNames(
 /** The resolved subject of a generic verb - what `/show poster` dispatches its block type on. */
 export type StoryCommandTargetValue =
     | { type: "character"; characterId: string; name: string }
+    /**
+     * A stage singleton named by its reserved word. Carries no `known` flag: a reserved word either
+     * IS one of the four or was never resolved as one, so there is no free-name case to record.
+     */
+    | { type: "reserved"; name: StoryReservedTargetName }
     | {
           type: "stageObject";
           objectKind: StoryCommandStageObjectKind;
@@ -279,10 +308,31 @@ export type StoryCommandResolutionIssue =
     | { code: "notPuppetCharacter"; span: StoryCommandSpan; value: string }
     /** A generic verb's subject matching neither a character nor anything on stage. */
     | { code: "unknownTarget"; span: StoryCommandSpan; value: string }
+    /**
+     * The name resolved, and to the wrong KIND of thing: `/transform petals` on an ambience overlay.
+     *
+     * Its own code rather than `unknownTarget`, because the two send an author to opposite places.
+     * "I cannot find it" says check the spelling; this says the spelling was right and the verb is
+     * wrong - a `Vfx` and a `Video` are engine `Actionable`s with no transform pipeline at all, so
+     * no amount of retyping makes a transform reach one. The slot RESOLVES these kinds precisely so
+     * it can say that, which is why they sit in `refuses` rather than being left out of `accepts`.
+     */
+    | { code: "unsupportedTarget"; span: StoryCommandSpan; value: string; kind: StoryCommandTargetKind }
     /** Two things share this name, so the line does not say which one. */
     | { code: "ambiguousName"; span: StoryCommandSpan; value: string }
     /** Two args a one-op-per-block command cannot honour together. */
     | { code: "conflictingParams"; span: StoryCommandSpan; keys: readonly string[] }
+    /**
+     * A key the command declares, filled against a target that has no such channel: `opacity=` on the
+     * camera, `color=` on an image.
+     *
+     * The key is offered by the command because the command reaches several kinds of subject and the
+     * grammar cannot see which one a line resolved to - the same shape `/show t=` has, where the union
+     * of every context's words parses and the spec rejects the ones this target cannot honour. Naming
+     * the kind is what makes the report actionable: the author does not have to guess whether the key
+     * is wrong or the target is.
+     */
+    | { code: "unsupportedParam"; span: StoryCommandSpan; key: string; kind: string }
     /**
      * `/repeat 3 until="hp <= 0"` - a count AND a stop condition. Its own code rather than
      * `conflictingParams` because the fix is the opposite one: those two args split into two lines,
