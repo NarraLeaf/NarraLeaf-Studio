@@ -1,4 +1,4 @@
-import { Eye, EyeOff, MessageSquare, MoveHorizontal, PersonStanding, Shirt, SlidersHorizontal, Smile, Tag } from "lucide-react";
+import { Eye, EyeOff, MessageSquare, PersonStanding, Shirt, SlidersHorizontal, Smile, Tag } from "lucide-react";
 import type { StoryBlock } from "@shared/types/story";
 import { createBlockForCommand, type ActionCommandId } from "../../storyActionCommands";
 import type { StoryCommandResolutionIssue, StoryCommandTargetValue, StoryCommandValue } from "../../storyCommandValues";
@@ -23,8 +23,13 @@ import { vfxOperationBlock, withPlacementTransform, withRevealTransform } from "
 import { supportedTransitionWords, transformEffectFor, transitionOptions } from "../transitions";
 
 /**
- * The generic verbs and the character commands: `/show`, `/hide`, `/move`, `/face`, `/motion`,
- * `/skin`, `/param`, `/say`.
+ * The generic verbs and the character commands: `/show`, `/hide`, `/face`, `/motion`, `/skin`,
+ * `/param`, `/say`.
+ *
+ * `/move` is gone (M2). It was "object type × operation" wearing a friendly word: a move is a
+ * POSITION, which is one prop of the one bag every displayable interpolates, and a token that reached
+ * only characters and only that one prop is exactly what `/transform Alice pos=left` says with
+ * nothing special about it. Its token is burned in `registry.ts` for the usual reason.
  *
  * `/show` and `/hide` are the generic-verb rule in action: one verb, any subject. The target resolves to a
  * character or a stage object and the build dispatches on what it found - the author never memorizes
@@ -66,20 +71,21 @@ import { supportedTransitionWords, transformEffectFor, transitionOptions } from 
 const SHOW_HIDE_ACCEPTS = ["character", "image", "text", "video", "layer", "vfx"] as const;
 
 /**
- * Reject a transition word the resolved target's context cannot express - `/show Alice t=zoom` parses
- * (the union offers zoom for stage objects) but a character entrance has no zoom.
+ * Reject a reveal/conceal word the resolved target's context cannot express - `/show Alice in=zoom`
+ * parses (the union offers zoom for stage objects) but a character entrance has no zoom.
  */
 function validateTransitionForTarget(
     direction: "show" | "hide",
-    args: { readonly target?: StoryCommandValue; readonly t?: StoryCommandValue },
+    args: { readonly target?: StoryCommandValue; readonly in?: StoryCommandValue; readonly out?: StoryCommandValue },
     ctx: StoryCommandValidateContext,
 ): StoryCommandResolutionIssue[] {
-    const word = asEnum(args.t);
+    const key = direction === "show" ? "in" : "out";
+    const word = asEnum(direction === "show" ? args.in : args.out);
     const target = asTarget(args.target);
     if (word === undefined || target === undefined) {
         return [];
     }
-    const span = ctx.spanOf("t");
+    const span = ctx.spanOf(key);
     if (!span) {
         return [];
     }
@@ -87,7 +93,7 @@ function validateTransitionForTarget(
     // A character now animates through the same reveal/conceal presets a stage object does (see
     // `buildShowHide`), so it is judged against the same table rather than against the portrait-swap
     // transitions it no longer writes.
-    if (target.type === "character") {
+    if (target.type === "character" || target.type === "reserved") {
         if (transformEffectFor(context, word) === undefined) {
             return [{ code: "unsupportedOption", span, value: word, allowed: supportedTransitionWords(context) }];
         }
@@ -157,13 +163,16 @@ function buildShowHide<P extends StoryCommandParamsShape>(
     args: ResolvedArgsOf<P> & {
         readonly target?: StoryCommandValue;
         readonly form?: StoryCommandValue;
-        readonly at?: StoryCommandValue;
-        readonly t?: StoryCommandValue;
+        readonly pos?: StoryCommandValue;
+        readonly in?: StoryCommandValue;
+        readonly out?: StoryCommandValue;
         readonly d?: StoryCommandValue;
     },
     ctx: StoryCommandBuildContext,
 ): StoryBlock {
     const target = asTarget(args.target);
+    // One slot per direction, so a build reads whichever its verb owns; the other is never declared.
+    const word = direction === "show" ? args.in : args.out;
 
     // A character, or nothing yet: the default block is the character one - the most common subject.
     if (!target || target.type === "character") {
@@ -189,12 +198,20 @@ function buildShowHide<P extends StoryCommandParamsShape>(
         // Placement wins when both are given, the rule `/image` already follows: a transform holds one
         // preset, and `at=` is the more specific instruction.
         const placed = direction === "show"
-            ? withPlacementTransform(payload.transform, args.at, args.d)
+            ? withPlacementTransform(payload.transform, args.pos, args.d)
             : withPlacementTransform(payload.transform, undefined, args.d);
-        const transform = direction === "show" && args.at
+        const transform = direction === "show" && args.pos
             ? placed
-            : withRevealTransform(placed, direction === "show" ? "reveal" : "conceal", args.t, args.d);
+            : withRevealTransform(placed, direction === "show" ? "reveal" : "conceal", word, args.d);
         return { ...block, payload: { ...payload, ...(transform ? { transform } : {}) } };
+    }
+
+    // A reserved word names a stage singleton with no payload of its own here: the two built-in
+    // layers and the scene background are Displayables, so they ride the displayable arm, and the
+    // camera is not a `/show` subject at all (it has nothing to reveal). Both are unreachable from
+    // this verb's `accepts`, so this arm keeps the function total rather than serving a line.
+    if (target.type === "reserved") {
+        return createBlockForCommand(direction === "show" ? "displayableShow" : "displayableHide", ctx.generateId);
     }
 
     // An ambience overlay fades rather than shows: its own payload, and `d=` is the fade the action
@@ -209,14 +226,14 @@ function buildShowHide<P extends StoryCommandParamsShape>(
         return block;
     }
     if (block.payload.action === "image" || block.payload.action === "text") {
-        const transform = withRevealTransform(block.payload.transform, direction === "show" ? "reveal" : "conceal", args.t, args.d);
+        const transform = withRevealTransform(block.payload.transform, direction === "show" ? "reveal" : "conceal", word, args.d);
         return { ...block, payload: { ...block.payload, objectName: target.name, ...(transform ? { transform } : {}) } };
     }
     if (block.payload.action === "video") {
         return { ...block, payload: { ...block.payload, objectName: target.name } };
     }
     if (block.payload.action === "displayable") {
-        const transform = withRevealTransform(block.payload.transform, direction === "show" ? "reveal" : "conceal", args.t, args.d);
+        const transform = withRevealTransform(block.payload.transform, direction === "show" ? "reveal" : "conceal", word, args.d);
         return {
             ...block,
             payload: { ...block.payload, target: { kind: "layer", name: target.name }, ...(transform ? { transform } : {}) },
@@ -231,15 +248,21 @@ export const show = defineStoryCommand({
     aliases: ["enter"],
     category: "character",
     icon: Eye,
-    examples: ["/show Alice", "/show Alice smile at=left", "/show hero t=fade d=0.3"],
+    examples: ["/show Alice", "/show Alice smile pos=left", "/show hero in=fade d=0.3"],
     // Inline quick-edit: how long the entrance takes - the duration this line writes onto the
     // show transform, which is what drives a character's entrance (the placement `at=` stays a word).
     quickParams: ["d"],
     params: {
         target: targetParam(SHOW_HIDE_ACCEPTS, { core: true }),
         form: { hint: "form", type: { kind: "characterForm", dependsOn: "target" }, positional: true },
-        at: placementParam(),
-        t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("reveal") } },
+        pos: placementParam(),
+        // `in=`, not `t=`. What this slot writes is a TRANSFORM preset - a bag of props the entrance
+        // interpolates - and it always was: the engine ignores a character's `StoryTransitionRef` on
+        // the way in, and a stage object has none at all. Calling it "transition" made it look like
+        // the `t=` on `/bg` and `/face`, which really do name an engine transition, so the one word
+        // covered two different things and the row could not say which. The direction is in the name
+        // because the direction is what the verb already decided.
+        in: { aliases: ["reveal"], hint: "reveal", type: { kind: "enum", options: transitionOptions("reveal") } },
         d: secondsParam(),
     },
     build: (args, ctx) => buildShowHide("show", args, ctx),
@@ -255,41 +278,17 @@ export const hide = defineStoryCommand({
     aliases: ["exit"],
     category: "character",
     icon: EyeOff,
-    examples: ["/hide Alice", "/hide hero t=fade d=0.3"],
+    examples: ["/hide Alice", "/hide hero out=fade d=0.3"],
     // Inline quick-edit: how long the exit takes - the same transform duration `hide()` reads.
     quickParams: ["d"],
     params: {
         target: targetParam(SHOW_HIDE_ACCEPTS, { core: true }),
-        t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("conceal") } },
+        // The conceal half of `/show in=` - see there for why this is not `t=`.
+        out: { aliases: ["conceal"], hint: "conceal", type: { kind: "enum", options: transitionOptions("conceal") } },
         d: secondsParam(),
     },
     build: (args, ctx) => buildShowHide("hide", args, ctx),
     validate: (args, ctx) => validateTransitionForTarget("hide", args, ctx),
-});
-
-export const move = defineStoryCommand({
-    id: "move",
-    token: "move",
-    category: "character",
-    icon: MoveHorizontal,
-    examples: ["/move Alice at=center", "/move Alice at=left d=0.4"],
-    params: {
-        character: { hint: "character", type: { kind: "character" }, positional: true, core: true },
-        at: { ...placementParam(), core: true },
-        d: secondsParam(),
-    },
-    build(args, ctx) {
-        const block = createBlockForCommand("characterMove", ctx.generateId);
-        if (block.kind !== "action" || block.payload.action !== "character") {
-            return block;
-        }
-        const payload = { ...block.payload };
-        if (args.character?.kind === "character") {
-            payload.characterId = args.character.characterId;
-        }
-        const transform = withPlacementTransform(payload.transform, args.at, args.d);
-        return { ...block, payload: { ...payload, ...(transform ? { transform } : {}) } };
-    },
 });
 
 export const face = defineStoryCommand({
@@ -530,4 +529,4 @@ export const say = defineStoryCommand({
     },
 });
 
-export const CHARACTER_COMMANDS = [show, hide, move, face, motion, skin, param, rename, say];
+export const CHARACTER_COMMANDS = [show, hide, face, motion, skin, param, rename, say];

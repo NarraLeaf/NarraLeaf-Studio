@@ -24,12 +24,14 @@ export const image = defineStoryCommand({
     aliases: ["img"],
     category: "image",
     icon: Image,
-    examples: ["/image night", "/image night name=sky at=center", "/image forest_day name=backdrop t=fade d=0.4"],
+    examples: ["/image night", "/image night name=sky pos=center", "/image forest_day name=backdrop in=fade d=0.4"],
     params: {
         image: { aliases: ["src"], hint: "imageAsset", type: { kind: "asset", assetType: "image" }, positional: true, core: true },
         name: { hint: "objectName", type: { kind: "text" } },
-        at: placementParam(),
-        t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("reveal") } },
+        pos: placementParam(),
+        // `in=`, the same rename `/show` carries: what this writes is the create's entrance TRANSFORM,
+        // not a `StoryTransitionRef`. An image has no transition field at all.
+        in: { aliases: ["reveal"], hint: "reveal", type: { kind: "enum", options: transitionOptions("reveal") } },
         d: secondsParam(),
     },
     deriveArgs: deriveObjectName("image", "image", "image"),
@@ -48,9 +50,9 @@ export const image = defineStoryCommand({
         }
         // Placement wins when both are given - a create is placed; its entrance rides `t=` only when
         // no placement pins the preset (the transform holds one preset).
-        const transform = args.at
-            ? withPlacementTransform(payload.transform, args.at, args.d)
-            : withRevealTransform(payload.transform, "reveal", args.t, args.d);
+        const transform = args.pos
+            ? withPlacementTransform(payload.transform, args.pos, args.d)
+            : withRevealTransform(payload.transform, "reveal", args.in, args.d);
         return { ...block, payload: { ...payload, ...(transform ? { transform } : {}) } };
     },
 });
@@ -61,11 +63,11 @@ export const text = defineStoryCommand({
     aliases: ["txt"],
     category: "text",
     icon: Type,
-    examples: ["/text Welcome home", "/text name=title at=center Chapter One"],
+    examples: ["/text Welcome home", "/text name=title pos=center Chapter One"],
     params: {
         // `name=` must be typed before the greedy content - the one ordering rule greedy imposes.
         name: { hint: "objectName", type: { kind: "text" } },
-        at: placementParam(),
+        pos: placementParam(),
         content: { hint: "content", type: { kind: "text" }, positional: true, greedy: true, core: true },
     },
     deriveArgs: deriveObjectName("text", null, "text"),
@@ -82,7 +84,7 @@ export const text = defineStoryCommand({
         if (args.content?.kind === "text") {
             payload.text = args.content.value;
         }
-        const transform = withPlacementTransform(payload.transform, args.at, undefined);
+        const transform = withPlacementTransform(payload.transform, args.pos, undefined);
         return { ...block, payload: { ...payload, ...(transform ? { transform } : {}) } };
     },
 });

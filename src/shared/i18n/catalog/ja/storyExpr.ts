@@ -68,7 +68,9 @@ export const storyExpr = {
         duplicateVariable: "\"{value}\" はすでにある。別の名前にするか、/set で値を変える",
         reservedVariableName: "\"{value}\" は式の中でビルドバリアントを指す。別の名前にする",
         unknownTarget: "\"{value}\" という名前のものは舞台に出ていない",
+        unsupportedTarget: "\"{value}\" は {kind} で、トランスフォームを持たない。show / hide / play / rate を使う",
         unsupportedOption: "\"{value}\" はここでは使えない。使える値は {allowed}",
+        unsupportedParam: "{key}= はこの {kind} には効かない",
         missingCore: "/{token} にはまだ{slot}が要る",
     },
 } satisfies LocaleNamespace<"storyExpr">;

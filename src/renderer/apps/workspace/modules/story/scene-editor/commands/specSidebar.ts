@@ -26,6 +26,14 @@ import { availableSpecCommands, specPaletteCommands } from "./specPalette";
  * entries the moment those specs accept `layer`, with nothing layer-specific written anywhere.
  */
 
+/** Which subject each reserved target word browses under. */
+const RESERVED_GROUPS: Partial<Record<string, StoryCommandGroupId>> = {
+    camera: "camera",
+    background: "image",
+    backgroundLayer: "layer",
+    displayableLayer: "layer",
+};
+
 export type StoryCommandSidebarGroup = {
     group: StoryCommandGroup;
     commands: readonly PaletteActionCommand[];
@@ -62,7 +70,10 @@ export function specTargetKinds(spec: AnyStoryCommandSpec): readonly string[] {
         const types = Array.isArray(param.type) ? param.type : [param.type];
         for (const type of types) {
             if (type.kind === "target") {
-                for (const accepted of type.accepts) {
+                // `accepts` and `reserved`, never `refuses`: a kind resolved only in order to be
+                // refused is not a subject this command acts on, and filing it under one would put
+                // `/transform` in the 视频 menu next to the verbs that actually work there.
+                for (const accepted of [...type.accepts, ...(type.reserved ?? [])]) {
                     if (!kinds.includes(accepted)) {
                         kinds.push(accepted);
                     }
@@ -81,12 +92,28 @@ export function specGroupIds(spec: AnyStoryCommandSpec): readonly StoryCommandGr
     }
     const groups: StoryCommandGroupId[] = [];
     for (const kind of kinds) {
-        const group = subjectGroupId(kind as Parameters<typeof subjectGroupId>[0]);
+        // A reserved word names a stage singleton rather than a kind - there is nothing in
+        // `stageObjects` for it to be a kind of - but it is still a subject an author browses by, so
+        // it files under the group its singleton belongs to. Without this, `/transform` and `/reset`
+        // would reach the camera on the line and be invisible in the menu that teaches the line.
+        const group = RESERVED_GROUPS[kind] ?? subjectGroupId(kind as Parameters<typeof subjectGroupId>[0]);
         if (!groups.includes(group)) {
             groups.push(group);
         }
     }
+    // A verb whose subject is a VARIABLE has no target kind at all (the slot is a `variable` type), so
+    // its own category is what files it - `/reset` reaches both worlds and belongs in both menus.
+    if (specHasVariableParam(spec) && !groups.includes(spec.category)) {
+        groups.push(spec.category);
+    }
     return groups;
+}
+
+function specHasVariableParam(spec: AnyStoryCommandSpec): boolean {
+    return Object.values(spec.params).some(param => {
+        const types = Array.isArray(param.type) ? param.type : [param.type];
+        return types.some(type => type.kind === "variable");
+    });
 }
 
 /**
