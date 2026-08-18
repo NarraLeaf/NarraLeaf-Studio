@@ -131,9 +131,9 @@ describe("projectStoryCommandLine", () => {
     it("writes the line the author typed, spelled out in full", () => {
         // The abbreviations an author may TYPE are not what the row reads back: the key is written in
         // whatever spelling the command language offers, and the seconds are the seconds.
-        expect(project("/hide Alice t=fade d=1")).toBe("/hide Alice t=fade d=1s");
+        expect(project("/hide Alice out=fade d=1")).toBe("/hide Alice out=fade d=1s");
         expect(project("/bg forest_day t=fade d=0.5")).toBe("/bg forest_day t=fade d=0.5s");
-        expect(project("/show Alice at=left d=0.3")).toBe("/show Alice at=left d=0.3s");
+        expect(project("/show Alice pos=left d=0.3")).toBe("/show Alice pos=left d=0.3s");
         expect(project("/wait 1.5")).toBe("/wait 1.5s");
         expect(project("/wait click")).toBe("/wait click");
     });
@@ -145,11 +145,11 @@ describe("projectStoryCommandLine", () => {
         // `转场=淡出` is the block's own transform preset — the field the engine plays and the field
         // the inspector's 变换 → 预设 edits, spelled with the inspector's own word so the two surfaces
         // read alike. `/hide`'s default block carries a fade-out.
-        expect(project("/hide Alice d=1")).toBe("/隐藏 Alice 转场=淡出 持续时间=1秒");
+        expect(project("/hide Alice d=1")).toBe("/隐藏 Alice 退场=淡出 持续时间=1秒");
         // Both spellings reach the same option: the word the row now shows, and the vocabulary's own
         // word an author may already have typed.
-        expect(build("/隐藏 Alice 转场=淡出").payload).toEqual(build("/hide Alice t=fade").payload);
-        expect(build("/隐藏 Alice 转场=淡变").payload).toEqual(build("/hide Alice t=fade").payload);
+        expect(build("/隐藏 Alice 退场=淡出").payload).toEqual(build("/hide Alice out=fade").payload);
+        expect(build("/隐藏 Alice 退场=淡变").payload).toEqual(build("/hide Alice out=fade").payload);
         // And the unit it prints is one the parser takes back — `持续时间=1秒` builds the same block
         // `d=1` did, which is the whole reason the unit is a vocabulary entry rather than a suffix
         // glued on at render time.
@@ -157,7 +157,7 @@ describe("projectStoryCommandLine", () => {
         // A whole-screen fade IS a crossfade, and the inspector's transition dropdown calls it 溶解 —
         // so the row does too. The unified word `淡变` still parses; it is just not what is shown.
         expect(project("/bg forest_day t=fade")).toBe("/背景 forest_day 转场=溶解");
-        expect(project("/camera zoom 2 d=0.4")).toBe("/镜头 缩放 2 持续时间=0.4秒");
+        expect(project("/transform camera zoom=2 d=0.4")).toBe("/变换 camera 缩放=2 持续时间=0.4秒");
     });
 
     it("keeps the canonical trigger — swapping in the author's is the view's job", () => {
@@ -175,21 +175,21 @@ describe("projectStoryCommandLine", () => {
         // `/face Alice smile` stores `pose: "t1"`. The row has to say `smile` — the word the author
         // typed — and an id must never reach it.
         expect(project("/face Alice smile")).toBe("/face Alice smile");
-        expect(project("/show Alice smile")).toBe("/show Alice smile at=center d=0.3s");
+        expect(project("/show Alice smile")).toBe("/show Alice smile pos=center d=0.3s");
         expect(projectStoryCommandLine(build("/face Alice smile"), { ...LOOKUPS, appearanceName: () => null })?.source).toBe("/face Alice");
     });
 
     it("never prints an id", () => {
         // A character row stores a characterId and a background row an assetId; both resolve to names,
         // and an unresolvable one falls back to a phrase rather than leaking the id.
-        expect(project("/show Alice")).toBe("/show Alice at=center d=0.3s");
+        expect(project("/show Alice")).toBe("/show Alice pos=center d=0.3s");
         expect(project("/bg night")).toBe("/bg night");
         const orphan = projectStoryCommandLine(build("/bg night"), { ...LOOKUPS, assetName: () => null });
         expect(orphan?.source).not.toContain("i2");
     });
 
     it("marks the editable values by where they sit", () => {
-        const line = projectStoryCommandLine(build("/hide Alice t=fade d=1"), LOOKUPS);
+        const line = projectStoryCommandLine(build("/hide Alice out=fade d=1"), LOOKUPS);
         expect(line).not.toBeNull();
         const at = (edit: { span: { start: number; end: number } }) => line!.source.slice(edit.span.start, edit.span.end);
         // The subject is one of them: which character this hides is as much a choice as how.
@@ -199,10 +199,10 @@ describe("projectStoryCommandLine", () => {
 
     it("marks the character's face onto the name, and onto nothing else", () => {
         const faces = (source: string) => projectStoryCommandLine(build(source), LOOKUPS)!.ornaments;
-        const line = projectStoryCommandLine(build("/show Alice smile at=left d=0.3"), LOOKUPS)!;
+        const line = projectStoryCommandLine(build("/show Alice smile pos=left d=0.3"), LOOKUPS)!;
         expect(line.ornaments).toEqual([{ at: line.source.indexOf("Alice"), kind: "character", id: "c1" }]);
         // Every character command, whichever slot it names its subject in (`target` vs `character`).
-        expect(faces("/move Alice at=right").map(mark => mark.id)).toEqual(["c1"]);
+        expect(faces("/transform Alice pos=right").map(mark => mark.id)).toEqual(["c1"]);
         expect(faces("/face Alice smile").map(mark => mark.id)).toEqual(["c1"]);
         // And nowhere else: a scene, an asset or a variable is not somebody.
         expect(faces("/bg night")).toEqual([]);
@@ -214,7 +214,7 @@ describe("projectStoryCommandLine", () => {
         // row goes on reading correctly without one. So the join is asserted directly, in the command
         // language too — a localized verb moves every offset on the line.
         i18nStore.setLocale("zh");
-        const line = projectStoryCommandLine(build("/show Alice at=left"), LOOKUPS)!;
+        const line = projectStoryCommandLine(build("/show Alice pos=left"), LOOKUPS)!;
         const parts = storyCommandLineParts(line.source, line.edits);
         const starts = parts.map(part => part.pieces[0]?.start);
         expect(line.source).toContain("显示");
@@ -247,10 +247,10 @@ describe("projectStoryCommandLine", () => {
         const line = projectStoryCommandLine(build("/hide Alice d=1"), LOOKUPS)!;
         const text = (hide: boolean) =>
             storyCommandLineParts(line.source, line.edits, hide).flatMap(part => part.pieces).map(piece => piece.text).join("");
-        expect(text(false)).toBe("/hide Alice t=fade d=1s");
+        expect(text(false)).toBe("/hide Alice out=fade d=1s");
         // The keys go; the spaces between the tokens, the unit and every value stay.
         expect(text(true)).toBe("/hide Alice fade 1s");
-        expect(line.source).toBe("/hide Alice t=fade d=1s");
+        expect(line.source).toBe("/hide Alice out=fade d=1s");
     });
 
     it("keeps every value clickable with the keys hidden", () => {
@@ -399,13 +399,13 @@ describe("projectStoryCommandLine", () => {
             return projectStoryCommandLine({ ...block, payload: edit.apply(next) } as StoryBlock, LOOKUPS)!.source;
         };
         // Enums: the word chosen is the word the row reads back.
-        expect(edited("/hide Alice t=fade d=1", "fade", "circle")).toBe("/hide Alice t=circle d=1s");
-        expect(edited("/show Alice at=left", "left", "right")).toBe("/show Alice at=right d=0.3s");
+        expect(edited("/hide Alice out=fade d=1", "fade", "circle")).toBe("/hide Alice out=circle d=1s");
+        expect(edited("/show Alice pos=left", "left", "right")).toBe("/show Alice pos=right d=0.3s");
         expect(edited("/bg forest_day t=fade", "fade", "blinds")).toBe("/bg forest_day t=blinds");
         // Numbers, in the seconds the line is written in — 2 seconds, not 2 milliseconds.
-        expect(edited("/hide Alice d=1", "1", "2.5")).toBe("/hide Alice t=fade d=2.5s");
+        expect(edited("/hide Alice d=1", "1", "2.5")).toBe("/hide Alice out=fade d=2.5s");
         expect(edited("/wait 1", "1", "3")).toBe("/wait 3s");
-        expect(edited("/camera zoom 2", "2", "1.5")).toBe("/camera zoom 1.5 d=0.6s");
+        expect(edited("/transform camera zoom=2", "2", "1.5")).toBe("/transform camera zoom=1.5 d=0.6s");
         // Flags and the rest of the vocabulary.
         expect(edited("/bgm theme loop", "true", "false")).toBe("/bgm theme loop=false");
         expect(edited("/bgm theme vol=0.6", "0.6", "0.2")).toBe("/bgm theme vol=0.2");
@@ -413,7 +413,7 @@ describe("projectStoryCommandLine", () => {
         // A closed list the grammar cannot hold: this character's own looks, written back by id.
         expect(edited("/face Alice smile", "t1", "t2")).toBe("/face Alice angry");
         // The SUBJECT too: which character, which asset, which object on stage.
-        expect(edited("/hide Alice", "c1", "c2")).toBe("/hide Doll t=fade d=0.25s");
+        expect(edited("/hide Alice", "c1", "c2")).toBe("/hide Doll out=fade d=0.25s");
         expect(edited("/bg forest_day", "i1", "i2")).toBe("/bg night");
         expect(edited("/vol music 0.5", "music", "bgm")).toBe("/vol bgm 0.5 fade=0.25s");
         expect(edited("/goto intro", "intro", "after refusal")).toBe("/goto 'after refusal'");
@@ -421,13 +421,13 @@ describe("projectStoryCommandLine", () => {
         expect(edited("/face Alice smile", "c1", "c2")).toBe("/face Doll");
         // A vignette's own defaults fill the three values before its opacity, so this one is asked
         // for by a number none of them share.
-        expect(edited("/vignette opacity=0.45", "0.45", "0.9")).toBe("/vignette d=0.3s hold=0.6s color=#000000 opacity=0.9");
+        expect(edited("/screen vignette opacity=0.45", "0.45", "0.9")).toBe("/screen vignette d=0.3s hold=0.6s color=#000000 opacity=0.9");
     });
 
     it("offers exactly the options the grammar declares, and no writer where nothing can be edited", () => {
         const controls = (source: string) => projectStoryCommandLine(build(source), LOOKUPS)!.edits.map(edit => edit.control);
-        const transition = controls("/hide Alice t=fade")[1];
-        // Not a hand-written list: `/hide`'s own `t=` option set, which is why a spec growing a word
+        const transition = controls("/hide Alice out=fade")[1];
+        // Not a hand-written list: `/hide`'s own `out=` option set, which is why a spec growing a word
         // grows this menu on the same day.
         expect(transition.kind === "enum" && transition.options.map(option => option.value)).toContain("circle");
         // The name a create row DEFINES is what later rows address, so it is never offered — only its
@@ -455,12 +455,12 @@ describe("projectStoryCommandLine", () => {
             "/bg forest_day",
             "/bg forest_day t=fade d=0.5",
             "/show Alice",
-            "/show Alice at=center d=0.4",
-            "/hide Alice t=fade d=1",
-            "/move Alice at=left d=0.4",
+            "/show Alice pos=center d=0.4",
+            "/hide Alice out=fade d=1",
+            "/transform Alice pos=left d=0.4",
             "/face Doll smile",
             "/face Alice smile",
-            "/show Alice smile at=left",
+            "/show Alice smile pos=left",
             "/motion Doll run",
             "/skin Doll winter",
             "/param Doll ParamAngleX 12",
@@ -475,9 +475,9 @@ describe("projectStoryCommandLine", () => {
             "/mute music",
             "/unmute music",
             "/seek clip 12",
-            "/image night name=sky at=center",
-            "/image night name=sky t=fade d=0.4",
-            "/text name=title at=center Chapter One",
+            "/image night name=sky pos=center",
+            "/image night name=sky in=fade d=0.4",
+            "/text name=title pos=center Chapter One",
             "/swap hero night",
             "/swap title A new title",
             "/font title 24",
@@ -486,14 +486,15 @@ describe("projectStoryCommandLine", () => {
             "/play clip",
             "/layer overlay z=10",
             "/vfx intro name=petals opacity=0.5 d=0.8",
-            "/camera zoom 2",
-            "/camera pan left",
-            "/camera rotate 15 d=0.5",
-            "/camera darken 0.4",
-            "/camera reset",
-            "/blink d=0.2 hold=0.1",
-            "/vignette d=0.5 opacity=0.6",
-            "/nvl t=fade d=0.4",
+            "/transform camera zoom=2",
+            "/transform camera pan=left",
+            "/transform camera rot=15 d=0.5",
+            "/transform camera bright=0.6",
+            "/transform camera look=moonlight",
+            "/reset camera",
+            "/screen blink d=0.2 hold=0.1",
+            "/screen vignette d=0.5 opacity=0.6",
+            "/nvl in=fade d=0.4",
             "/wait 1.5",
             "/wait click",
             "/set gold 100",
@@ -502,8 +503,17 @@ describe("projectStoryCommandLine", () => {
             "/label after refusal",
             "/cut Demo",
             "/transform hero d=0.5",
+            "/transform hero pos=left zoom=1.4 rot=8 opacity=0.6",
+            "/transform hero blur=4 gray=1 sat=1.6",
+            "/transform hero flip=on",
+            "/transform hero blend=screen backdrop=blur(4px)",
+            "/transform hero d=0.4 ease=easeInOut delay=0.2 repeat=2 repeatDelay=0.1",
+            "/transform hero opacity=1 from='opacity=0 zoom=1.2'",
+            "/transform backgroundLayer opacity=0.4",
+            "/reset hero",
+            "/reset hero d=0.5",
             "/hide petals d=0.5",
-            "/show title t=fade d=0.2",
+            "/show title in=fade d=0.2",
             // The declarations: every type, with and without a default, and the shapes that have to
             // survive the tokenizer — a spaced description, a bracketed json default, a string default
             // that reads as something else.
@@ -525,9 +535,9 @@ describe("projectStoryCommandLine", () => {
     it("round-trips in Chinese too — the localized line is a line the parser takes", () => {
         i18nStore.setLocale("zh");
         for (const source of [
-            "/hide Alice t=fade d=1",
+            "/hide Alice out=fade d=1",
             "/bg forest_day t=fade d=0.5",
-            "/camera pan left",
+            "/transform camera pan=left",
             "/bgm theme vol=0.6 loop",
             "/local hp 100 desc='生命值 上限'",
             "/local inv \"[1, 2]\" type=json",

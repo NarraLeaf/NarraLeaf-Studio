@@ -1,4 +1,9 @@
-import type { StoryCommandStageObjectKind, StoryCommandTargetKind, StoryPuppetChannel } from "./storyCommandValues";
+import type {
+    StoryCommandStageObjectKind,
+    StoryCommandTargetKind,
+    StoryPuppetChannel,
+    StoryReservedTargetName,
+} from "./storyCommandValues";
 
 /**
  * The grammar vocabulary of the story editor's slash command line: what a param IS, independent of
@@ -146,6 +151,26 @@ export type StoryCommandParamType =
            * sound command that also reaches video, not a coin flip between the two.
            */
           fallbackKind?: StoryCommandStageObjectKind;
+          /**
+           * Stage singletons this slot also answers to by their reserved word (`camera`).
+           *
+           * Tried BEFORE any name on stage, and the words are the engine's own, so nothing an author
+           * can create could shadow one. A slot that names none of them behaves exactly as it did.
+           */
+          reserved?: readonly StoryReservedTargetName[];
+          /**
+           * Kinds this slot resolves in order to REFUSE them, with a reason.
+           *
+           * Not "`accepts` minus something": a kind left out of `accepts` is simply not looked up, so
+           * `/transform petals` would report "no such target" for an overlay sitting in plain sight
+           * on the stage. Listing it here resolves the name, finds the Vfx, and reports
+           * `unsupportedTarget` naming what it found - the difference between "check your spelling"
+           * and "this verb cannot reach that".
+           *
+           * Read only by resolution. The browse menu and the candidate list stay on `accepts`, so a
+           * refused kind never files the command under its subject and is never offered.
+           */
+          refuses?: readonly StoryCommandTargetKind[];
       }
     /**
      * The new content of a `/swap` - typed by what the *target* resolved to: an image target takes an
@@ -255,8 +280,11 @@ export type StoryCommandDef = {
 /** Named-param lookup by name or alias. Positional params are addressable by name too (`/bg image=forest` is legal). */
 export function findParam(def: StoryCommandDef, key: string): StoryCommandParam | null {
     const normalized = key.trim().toLowerCase();
-    return def.params.find(param => param.name === normalized)
-        ?? def.params.find(param => (param.aliases ?? []).includes(normalized))
+    // Both sides are folded. A param name is an author-facing WORD as well as a record key, and the
+    // prop vocabulary has two that read wrong in lower case (`scaleX`, `repeatDelay`) — folding only
+    // the typed side made those two unreachable by the very spelling the row prints for them.
+    return def.params.find(param => param.name.toLowerCase() === normalized)
+        ?? def.params.find(param => (param.aliases ?? []).some(alias => alias.toLowerCase() === normalized))
         ?? null;
 }
 
