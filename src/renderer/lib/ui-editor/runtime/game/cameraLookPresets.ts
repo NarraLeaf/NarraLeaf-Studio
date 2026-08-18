@@ -50,6 +50,28 @@
  * arriving at one shared speed would need the author to retype `d=` to get the thing the preset is
  * named after.
  *
+ * ## Getting there is a separate problem from being there
+ *
+ * A filter animation eases every term at once, so the route into a grade is the straight line between
+ * two parameter sets. For every recipe here that carries no angle that line is safe — `saturate` 1 to
+ * 0.35 is a desaturation the whole way, `blur` 0 to 5px is a defocus the whole way — so those grades
+ * tween, and `faint`'s slow slide is the effect rather than decoration.
+ *
+ * **`moonlight` cannot be animated at all, and the reason is not the one it looks like.** Its resting
+ * grade is a flattened source rotated 185°, and getting there means walking the angle. The first
+ * theory was that the damage came from `grayscale` still being partway up while the angle swept, so
+ * the route was split in two — flatten fully at 0°, then rotate. Measured in Dev Mode, that route is
+ * ALSO green: at `grayscale(1) sepia(1) hue-rotate(38deg)`, with the flatten already at full, the
+ * stage is unmistakably green. Sepia sits near 30° on the wheel and moonlight near 215°, and every
+ * path between them — in either direction — crosses hues nobody chose. Ordering cannot help, because
+ * the wheel is what it is.
+ *
+ * So an angled grade CUTS. What an author means by "fade the grade in" is a cross-dissolve between
+ * two rendered images, and a CSS filter animates parameters instead; the two only coincide when the
+ * parameter path happens to be perceptually monotonic, which is exactly the no-angle case.
+ * {@link storyCameraLookTweens} is that test, asked of the recipe rather than hard-coded per preset,
+ * so a new grade that grows an angle stops tweening without anyone remembering to say so.
+ *
  * ## The one grade that moves
  *
  * `hangover` does not settle — it sways, through {@link StoryCameraLookPreset.oscillate}, and so
@@ -138,6 +160,7 @@ export type StoryCameraLookPreset = {
      */
     oscillate?: (intensity: number, stepMs: number) => StoryCameraLookOscillation | null;
 };
+
 
 /** What the intensity control and the compiler both accept. Above 2 the grades stop being looks. */
 export const STORY_CAMERA_LOOK_MIN_INTENSITY = 0;
@@ -354,6 +377,27 @@ export function resolveStoryCameraLook(presetId: string | undefined, intensity: 
  * and nothing seeds them: a control that is present but never read is exactly what an author wastes
  * an afternoon on. A sway is the one grade that spends time, and for it the duration is the tempo.
  */
+/**
+ * Whether this grade may be eased on, or has to land in one frame.
+ *
+ * Read off the recipe rather than declared per preset: a grade tweens exactly when its resting chain
+ * turns no hue, because that is the one thing whose straight-line path crosses colours the author did
+ * not choose (see the header — a fully flattened sepia rotated 38° is green, and there is no ordering
+ * that avoids it). Deriving it means a new recipe that grows an angle stops tweening on its own,
+ * instead of tweening wrongly until somebody notices.
+ *
+ * A hand-written chain is not asked at all — the caller cuts it, because the author's own string
+ * makes no claim about its own route.
+ */
+export function storyCameraLookTweens(presetId: string | undefined, intensity: number | undefined): boolean {
+    const resolved = resolveStoryCameraLook(presetId, intensity);
+    if (!resolved || resolved === NO_LOOK) {
+        return false;
+    }
+    const angle = /hue-rotate\((-?[\d.]+)deg\)/.exec(resolved);
+    return !angle || Number(angle[1]) === 0;
+}
+
 export function storyCameraLookSways(presetId: string | undefined): boolean {
     return Boolean(getStoryCameraLookPreset(presetId)?.oscillate);
 }
