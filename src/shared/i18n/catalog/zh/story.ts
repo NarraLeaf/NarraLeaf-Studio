@@ -509,8 +509,16 @@ export const story = {
         zoom: "缩放",
         rotate: "旋转",
         darken: "压暗",
+        look: "色调",
         motion: "运镜",
         reset: "复位",
+        // `/camera look` 的色调名。命令行既按这些词显示、也接受它们输入。
+        memory: "回忆",
+        monologue: "心理独白",
+        mono: "单色",
+        moonlight: "月光",
+        faint: "意识模糊",
+        hangover: "宿醉",
         // 变量类型
         boolean: "布尔",
         number: "数字",

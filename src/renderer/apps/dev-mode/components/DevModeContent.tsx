@@ -1112,6 +1112,28 @@ export function DevModeContent(props: DevModeContentProps) {
         }
     }, [projectPath]);
 
+    /**
+     * Start the game over in this window, for the cases a running build cannot correct itself -
+     * today, the player changing the language mid-playthrough (see `localeRestart`).
+     *
+     * A session reload rather than a process relaunch, because the process here is Studio: a shipped
+     * game restarting means its own window going down and coming back, and the equivalent of that
+     * for an author is this window's game restarting, not their editor closing. It is the very same
+     * reload a file save triggers - the project is recompiled and the environment remounted from
+     * boot - so the author sees what a player would see, from the same code path they already rely
+     * on. Stopping and relaunching instead cannot work from here: the stop takes this window with
+     * it, and nothing would be left to ask for the launch.
+     */
+    const restartApplication = useCallback(async (): Promise<void> => {
+        if (!projectPath) {
+            throw new Error("Restart failed: no project");
+        }
+        const result = await getInterface().devMode.reload(projectPath);
+        if (!result.success) {
+            throw new Error(result.error ?? "Restart failed");
+        }
+    }, [projectPath]);
+
     const getFullscreen = useCallback(async (): Promise<boolean> => {
         const result = await getInterface().devMode.getFullscreen();
         if (!result.success) {
@@ -1318,6 +1340,7 @@ export function DevModeContent(props: DevModeContentProps) {
             saveStore,
             listPuppetBackendModules,
             quitApplication,
+            restartApplication,
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
@@ -1341,6 +1364,7 @@ export function DevModeContent(props: DevModeContentProps) {
         onDebugEvent,
         persistenceAdapter,
         quitApplication,
+        restartApplication,
         listPuppetBackendModules,
         reportIssue,
         resolveStoryAssetUrl,
