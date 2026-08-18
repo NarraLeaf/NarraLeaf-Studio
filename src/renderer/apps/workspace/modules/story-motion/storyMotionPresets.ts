@@ -475,10 +475,20 @@ export const STORY_MOTION_PRESETS: readonly StoryMotionPreset[] = [
         build: () => timeline([
             // Surges and settles inside half a second: a memory arriving is a jolt, and a slow
             // desaturation would read as the scene changing rather than as something remembered.
+            //
+            // **The peak is bounded by legibility on a PALE sprite, not by taste.** Tried on real art
+            // first: `saturate(0.12) brightness(1.55)` blew a pale-skinned portrait to a white blob -
+            // the face gone, two faint eye outlines left - and since the peak is also the frame the
+            // gallery parks the card on, the tile was a white rectangle. Pale skin is the worst case
+            // and the common one in this medium, so it is the case these numbers are set against.
+            // Anyone tempted to push the brightness later is trading the face for the flash.
+            //
+            // No blur here, either: `faintOut` owns blur as its signature, and a blurred flashback
+            // makes the two cards hard to tell apart in the gallery. (It does look evocative.)
             track("filter", [
                 key(0, "saturate(1) brightness(1)", "easeOut"),
-                key(150, "saturate(0.12) brightness(1.55)", "easeOut"),
-                key(340, "saturate(0.6) brightness(1.2)", "easeInOut"),
+                key(150, "saturate(0.25) brightness(1.22)", "easeOut"),
+                key(340, "saturate(0.6) brightness(1.1)", "easeInOut"),
                 key(560, "saturate(1) brightness(1)", "easeInOut"),
             ]),
             track("zoom", [
