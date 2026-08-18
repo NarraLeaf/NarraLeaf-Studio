@@ -588,6 +588,8 @@ export type StagePreviewCompileInput = {
     blueprintDocument?: BlueprintDocument;
     /** M-VAR: persistent variable registry table, baked into the bundle; replaces the old blueprint-doc field. */
     persistentVariables?: PersistentVariableRuntimeTable;
+    /** Design size of every element-mounted Game UI surface; see {@link CompileInput.stageFrameSizes}. */
+    stageFrameSizes?: Record<string, { width: number; height: number }>;
     /** M-VAR: saved variable registry table; see {@link CompileInput.savedVariables}. */
     savedVariables?: SavedVariableRuntimeTable;
     persistence?: StoryPersistenceBridge;
@@ -701,6 +703,8 @@ type SceneCompileContext = {
     puppets: Map<string, Puppet>;
     /** Stage names whose element is an author-drawn frame rather than a sprite. */
     stageSurfaces: Map<string, Puppet>;
+    /** Design size of every element-mounted surface, so a frame's box is the size it was drawn at. */
+    stageFrameSizes: Record<string, { width: number; height: number }>;
     layers: Map<string, Layer>;
     videos: Map<string, Video>;
     vfx: Map<string, Vfx>;
@@ -741,6 +745,15 @@ type CompileInput = {
      * compiles exactly as it did before the registry grew a saved scope.
      */
     savedVariables?: SavedVariableRuntimeTable;
+    /**
+     * Design size of every element-mounted Game UI surface, keyed by surface id.
+     *
+     * A frame's box is the size the author drew it at. The compiler cannot read the UI document
+     * itself — it compiles a story — so the host, which holds both, hands over the one thing a story
+     * row needs from the other document. A surface missing from this table falls back to the engine's
+     * own default, the stage size, which is visibly wrong rather than silently invisible.
+     */
+    stageFrameSizes?: Record<string, { width: number; height: number }>;
     /** App-level persistent bridge (shared with UI blueprints); from the Dev Mode scope-store bridge. */
     persistence?: StoryPersistenceBridge;
     /** Game localization (bundle payload + current-locale getter); see {@link StoryLocalizationRuntime}. */
@@ -943,6 +956,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             texts: new Map(),
             puppets: new Map(),
             stageSurfaces: new Map(),
+            stageFrameSizes: input.stageFrameSizes ?? {},
             layers: new Map(),
             videos: new Map(),
             vfx: new Map(),
@@ -1157,6 +1171,7 @@ async function buildLaunchEntryScene(params: {
         texts: new Map(),
         puppets: new Map(),
         stageSurfaces: new Map(),
+        stageFrameSizes: input.stageFrameSizes ?? {},
         layers: new Map(),
         videos: new Map(),
         vfx: new Map(),
@@ -1386,6 +1401,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         texts: new Map(),
         puppets: new Map(),
         stageSurfaces: new Map(),
+        stageFrameSizes: input.stageFrameSizes ?? {},
         layers: new Map(),
         videos: new Map(),
         vfx: new Map(),
@@ -2857,7 +2873,6 @@ async function compileCharacterStageAction(
         ? getStageSurfaceElement(ctx, name, {
               surfaceId: payload.frameSurfaceId,
               characterId: payload.characterId,
-              size: null,
           })
         : ctx.stageSurfaces.get(normalizeObjectName(name)) ?? null;
     if (framed && payload.operation === "exit") {
@@ -3041,7 +3056,7 @@ async function compileCharacterPuppetAction(
 function getStageSurfaceElement(
     ctx: SceneCompileContext,
     objectName: string,
-    input: { surfaceId: string; characterId?: string; size: { width: number; height: number } | null },
+    input: { surfaceId: string; characterId?: string },
 ): Puppet {
     const key = normalizeObjectName(objectName);
     const existing = ctx.puppets.get(key);
@@ -3051,8 +3066,9 @@ function getStageSurfaceElement(
     const puppet = new Puppet({
         backend: STAGE_SURFACE_BACKEND_NAME,
         src: stageSurfaceSrc(input.surfaceId),
-        // null is the engine's own default and means the stage size.
-        size: input.size,
+        // The size the author drew the frame at. Null is the engine's own default, the stage size,
+        // which is what a frame the host could not size falls back to.
+        size: ctx.stageFrameSizes[input.surfaceId] ?? null,
         options: {
             objectName: key,
             ...(input.characterId ? { characterId: input.characterId } : {}),

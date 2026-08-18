@@ -117,6 +117,7 @@ import {
 } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { createPuppetStageHandle, loadPuppetBackends } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
 import { createStageSurfaceBackend } from "@/lib/ui-editor/runtime/game/stageSurfaceBackend";
+import { collectStageFrameSizes } from "@/lib/ui-editor/runtime/game/stageFrameSizes";
 import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story";
 import { resolveStagePreloadTarget } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
@@ -2276,6 +2277,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             // the feature actually has to work. Both runtimes reach the compiler through this call.
             audioClips: bundle.audio?.clips,
             audioTracks: bundle.audio?.tracks,
+            // A frame's box is the size its surface was drawn at. The compiler holds the story and
+            // this host holds both documents, so the sizes are handed over rather than looked up.
+            stageFrameSizes: collectStageFrameSizes(bundle.ui.uidoc),
         };
         const compiled = await compileStudioStoryToNlr(compileInput);
         if (compiled.diagnostics.length > 0) {
