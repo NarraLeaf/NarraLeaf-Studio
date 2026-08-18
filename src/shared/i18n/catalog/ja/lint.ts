@@ -44,6 +44,16 @@ export const lint = {
             // 出どころの設定ページを開かなくても、この所見だけで手を打てるようにする。
             message: "{asset} は {size} で、ビルドが運ぶべき {limit} を超えている",
         },
+        assetsGroupIncomplete: {
+            title: "未完成のアセットセット",
+            description: "宣言したバリアントのいずれかが、ちょうど 1 つのファイルに解決しないセット",
+            // バリアントは構成するタグの形で示す。そのタグをファイルに書くことが対処だから。
+            // 解決するはずのファイル名は書かない。そのファイルはまだ存在しない。
+            message: "{set} の {variant} に対応するファイルがない",
+            messageAmbiguous: "{set} の {variant} に {count} 個のファイルが対応している",
+            messageResidency: "{set} の {axis} は実行時に解決されるが、ビルド時に解決される {outerAxis} の内側にある",
+            messageDeclaration: "{set} は解決できるバリアントを宣言していない",
+        },
         portabilityAssetName: {
             title: "安全でないファイル名",
             description: "一部のファイルシステムが受け付けない文字や名前",

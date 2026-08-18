@@ -6,7 +6,7 @@ import { useRegistry } from "../../registry";
 import { PanelComponentProps } from "../types";
 import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
-import { ContextMenu } from "@/lib/components/elements/ContextMenu";
+import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { useAssetsContextMenu } from "./hooks/useAssetsContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { SearchBox } from "./components/SearchBox";
@@ -18,6 +18,7 @@ import { MediaConvertAssetDialog } from "./components/MediaConvertAssetDialog";
 import { useMediaAssetSupport } from "./state/useMediaAssetSupport";
 
 import { useAssetData } from "./state/useAssetData";
+import { useAssetSets, type ResolvedAssetSet } from "./state/useAssetSets";
 import { useMultiSelection } from "./state/useMultiSelection";
 import { useAssetSearch } from "./state/useAssetSearch";
 import { useAssetFilters, filtersNeedLibrarySnapshot } from "./state/useAssetFilters";
@@ -37,6 +38,9 @@ import { MagicTagTemplate } from "@/lib/workspace/services/core/MagicTagManager"
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { AssetsListView } from "./views/AssetsListView";
 import { AssetsIconView } from "./views/AssetsIconView";
+import { assetSelectionKey } from "./state/assetActionTargets";
+import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
+import { freezeContextMenuRows } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspaceAssetDragOptional } from "@/apps/workspace/dnd/WorkspaceAssetDragProvider";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useTranslation } from "@/lib/i18n";
@@ -329,6 +333,105 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         focusedItemId, onActionComplete, setClipboard, setActionLoading, expandGroup, importQueue
     });
 
+
+    // --- Asset sets -------------------------------------------------------------------------
+    // Sets are read here rather than in `useAssetData` because they are not library rows: they are a
+    // declaration measured against the library, and the measurement wants the library this panel is
+    // already holding.
+    const { byCategory: assetSets, findSet, createFromAssets, suggestNameFor } = useAssetSets({ context, isInitialized, assets });
+    const {
+        menuState: setMenuState,
+        showMenu: showSetMenu,
+        hideMenu: hideSetMenu,
+    } = useContextMenu();
+    const [setMenuTarget, setSetMenuTarget] = useState<ResolvedAssetSet | null>(null);
+
+    const handleAssetSetSelect = useCallback((entry: ResolvedAssetSet) => {
+        if (!context) return;
+        // The set itself goes into the selection, not a copy of its measurement: the inspector reads
+        // the service for what to draw, so a stale snapshot in the selection would be a second answer
+        // to "what are this set's axes" that only updates when the row is clicked again.
+        context.services.get<UIService>(Services.UI).getStore()
+            .setSelection({ type: "assetSet", data: entry.set });
+    }, [context]);
+
+    const showAssetSetContextMenu = useCallback((event: React.MouseEvent, entry: ResolvedAssetSet) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setSetMenuTarget(entry);
+        showSetMenu(event);
+    }, [showSetMenu]);
+
+    const closeAssetSetContextMenu = useCallback(() => {
+        setSetMenuTarget(null);
+        hideSetMenu();
+    }, [hideSetMenu]);
+
+    /**
+     * The rows a new set would be made of: the marked assets, or the focused one when nothing is
+     * marked. The same resolution the other asset actions make, so "New Set" acts on what the author
+     * can see is chosen.
+     */
+    const selectedAssetsForSet = useMemo(() => {
+        const keys = selectedItems.size > 0
+            ? selectedItems
+            : new Set(focusedItemId && focusedItemId.startsWith("asset:") ? [focusedItemId] : []);
+        const all = ASSET_CATEGORY_ORDER.flatMap(category => assets[category]);
+        return all.filter(asset => keys.has(assetSelectionKey(asset.id, false)));
+    }, [assets, selectedItems, focusedItemId]);
+
+    // Two rules, both read here so the menu row and the action cannot disagree about whether it is
+    // offered. One type only, because a set resolves within a type and a mixed selection has no
+    // answer; and at least two rows, because the axes are the tag categories the chosen files
+    // *disagree* on - one file agrees with itself about everything and would declare no axes at all.
+    const canCreateAssetSet = selectedAssetsForSet.length >= 2
+        && selectedAssetsForSet.every(asset => asset.type === selectedAssetsForSet[0].type);
+
+    const handleCreateAssetSet = useCallback(async () => {
+        if (!inputDialog || !canCreateAssetSet) return;
+        const name = await inputDialog.show({
+            title: t("assets.sets.create.title"),
+            initialValue: suggestNameFor(selectedAssetsForSet),
+            validation: value => (value.trim() ? null : t("assets.sets.create.nameRequired")),
+        });
+        if (!name) return;
+        const created = createFromAssets(selectedAssetsForSet, name);
+        if (!created) {
+            context?.services.get<UIService>(Services.UI)
+                .showNotification(t("assets.sets.create.failed"), "error");
+        }
+    }, [inputDialog, canCreateAssetSet, selectedAssetsForSet, suggestNameFor, createFromAssets, context, t]);
+
+    const assetSetContextMenu: ContextMenuDef = useMemo(() => {
+        if (!setMenuTarget) {
+            return [];
+        }
+        const service = context?.services.get<AssetSetService>(Services.AssetSets) ?? null;
+        return freezeContextMenuRows([
+            {
+                id: "rename-set",
+                label: t("common.rename"),
+                onClick: async () => {
+                    closeAssetSetContextMenu();
+                    const name = await inputDialog?.showRenameDialog(setMenuTarget.set.name, t("assets.sets.itemType"));
+                    if (name) {
+                        service?.renameSet(setMenuTarget.set.id, name);
+                    }
+                },
+            },
+            {
+                id: "delete-set",
+                label: t("common.delete"),
+                onClick: () => {
+                    // No confirmation: a set holds no files, deleting one strands nothing, and it is
+                    // one undo step on the project stack like every other edit to it.
+                    service?.deleteSet(setMenuTarget.set.id);
+                    closeAssetSetContextMenu();
+                },
+            },
+        ], freeze.frozen, new Set<string>(), freeze.reason);
+    }, [setMenuTarget, context, t, inputDialog, closeAssetSetContextMenu, freeze]);
+
     const handleRetryFailedImports = useCallback(() => {
         const run = importState.run;
         if (!run || importState.failures.length === 0) return;
@@ -469,6 +572,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         handleConvertMedia: () => handleConvertMedia(),
         canConvertMedia,
         handleCreateGroup, handleCreateTextFile, handleImportToGroup, handleCreateMagicTags: handleMagicTagsClick,
+        handleCreateAssetSet, canCreateAssetSet,
         notify: notifyFromMenu,
     });
 
@@ -587,9 +691,10 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         : categoryOpenItems;
 
     const contextValue = {
-        assets, groups, filteredAssets, filteredGroups, matchedGroupIds, selectedItems, focusedItemId,
+        assets, groups, assetSets, filteredAssets, filteredGroups, matchedGroupIds, selectedItems, focusedItemId,
         draggedItem, dropTargetId, clipboard, isMultiSelectMode, expandedGroups,
         handleItemSelect, handleAssetClick, handleGroupFocus, showContextMenu,
+        handleAssetSetSelect, showAssetSetContextMenu,
         handleDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup,
         setExpandedGroups,
         isFocused: (id: string) => focusedItemId === id,
@@ -770,6 +875,10 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                 </div>
                 
                 <ContextMenu items={contextMenu} position={menuState.position} visible={menuState.visible} onClose={closeContextMenu} />
+                {/* A second menu rather than a fourth branch in the asset menu: a set shares none of
+                    that menu's rows (it holds no bytes to copy, export or replace), and only one of
+                    the two can be open at a time. */}
+                <ContextMenu items={assetSetContextMenu} position={setMenuState.position} visible={setMenuState.visible} onClose={closeAssetSetContextMenu} />
                 <ModelImportWizard
                     visible={modelImportRequest !== null}
                     onClose={cancelModelImport}

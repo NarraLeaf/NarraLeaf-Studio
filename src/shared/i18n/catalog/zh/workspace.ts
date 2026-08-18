@@ -487,6 +487,7 @@ export const workspace = {
                 variables: "变量注册表",
                 audioTracks: "音频轨道",
                 appTags: "变体",
+                assetSets: "资产集",
                 brand: "配色方案",
                 dictionary: "工程词典",
                 saveSchema: "存档字段",

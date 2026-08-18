@@ -60,6 +60,16 @@ export interface UseAssetsContextMenuParams {
     handleCreateTextFile: (groupId?: string) => Promise<void>;
     handleImportToGroup: (category: AssetCategory, groupId?: string) => Promise<void>;
     handleCreateMagicTags?: () => Promise<void>;
+    /**
+     * Declares a set out of the rows the menu will act on.
+     *
+     * Offered on an asset row rather than on the category header, because a set is made *of* files:
+     * the tags on the chosen rows are the whole declaration, so there is nothing to make one from
+     * until some rows are chosen.
+     */
+    handleCreateAssetSet?: () => Promise<void>;
+    /** False for a selection spanning two asset types, which a set has no answer for. */
+    canCreateAssetSet?: boolean;
     /** How the developer section reports a copied identifier. `UIService.showNotification`. */
     notify?: (message: string, type: "success" | "error") => void;
 }
@@ -85,6 +95,8 @@ export function useAssetsContextMenu({
     handleCreateTextFile,
     handleImportToGroup,
     handleCreateMagicTags,
+    handleCreateAssetSet,
+    canCreateAssetSet,
     notify,
 }: UseAssetsContextMenuParams) {
     const { t, tn } = useTranslation();
@@ -175,6 +187,19 @@ export function useAssetsContextMenu({
                     label: t("assets.magicTag.title"),
                     onClick: async () => {
                         await handleCreateMagicTags();
+                        closeContextMenu();
+                    },
+                });
+            }
+
+            // Directly under Magic Tags, which is what produces the tags a set is declared in terms
+            // of: tag the files, then say which of those categories are axes.
+            if (hasAssets && handleCreateAssetSet && canCreateAssetSet) {
+                items.push({
+                    id: "new-asset-set",
+                    label: t("assets.sets.menu.create"),
+                    onClick: async () => {
+                        await handleCreateAssetSet();
                         closeContextMenu();
                     },
                 });
@@ -332,7 +357,7 @@ export function useAssetsContextMenu({
         );
 
         return freezeContextMenuRows(withDeveloperRows, freeze.frozen, FREEZE_READ_ONLY_ASSET_MENU_IDS, freeze.reason);
-    }, [canConvertMedia, clipboard, closeContextMenu, contextMenuTarget, freeze, handleCopy, handleConvertMedia, handleCut, handleDelete, handleExport, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateGroup, handleCreateTextFile, isMultiSelectMode, notify, selectedItems, t, tn]);
+    }, [canConvertMedia, canCreateAssetSet, clipboard, closeContextMenu, contextMenuTarget, freeze, handleCopy, handleConvertMedia, handleCut, handleDelete, handleExport, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateAssetSet, handleCreateGroup, handleCreateMagicTags, handleCreateTextFile, isMultiSelectMode, notify, selectedItems, t, tn]);
 
     return {
         menuState,

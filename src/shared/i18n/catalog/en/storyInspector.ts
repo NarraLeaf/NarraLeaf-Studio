@@ -291,6 +291,29 @@ export const storyInspector = {
         hangover: "The stage sways twice before the look settles. The row waits for the sway, and the duration sets its tempo.",
     },
 
+    /**
+     * The transform channel list - the words that are not already a command param.
+     *
+     * Every channel names itself with `story.paramHint.*`, so only what the line has no word for
+     * lands here: the clip-path generators, the restore entry's frame, and the list's own controls.
+     */
+    transformChannel: {
+        reveal: "Reveal",
+        restore: "Restore {channel}",
+        restored: "Restored",
+        add: "Add",
+        remove: "Remove",
+        xAlign: "X",
+        yAlign: "Y",
+    },
+    transformChannelGroup: {
+        geometry: "Position and scale",
+        filter: "Filter",
+        look: "Look",
+        composite: "Compositing",
+        text: "Text",
+        timing: "Timing",
+    },
     displayableOperation: {
         transform: "Transform",
         mask: "Mask",

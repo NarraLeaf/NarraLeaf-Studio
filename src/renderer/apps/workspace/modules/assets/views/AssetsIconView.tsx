@@ -8,6 +8,7 @@ import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { AssetThumbnail } from "../components/AssetThumbnail";
 import { AssetSupportBadge } from "../components/AssetSupportBadge";
+import { AssetSetIconTile } from "../components/AssetSetRow";
 
 interface AssetsIconViewProps {
     dropTargetId: string | null;
@@ -86,6 +87,9 @@ export function AssetsIconView({
         setAssetsIconToolbarCenter,
         isNarrowed,
         matchedGroupIds,
+        assetSets,
+        handleAssetSetSelect,
+        showAssetSetContextMenu,
     } = useAssetsPanelContext();
     const groupStack = useMemo(() => {
         const groupById = new Map<string, AssetGroup>();
@@ -197,7 +201,11 @@ export function AssetsIconView({
                     const scopedAssets = isNarrowed
                         ? categoryAssets
                         : assetsInSubtree(filteredAssets[category], filteredGroups[category], activeGroup?.group.id ?? null);
-                    const hasItems = categoryGroups.length > 0 || categoryAssets.length > 0;
+                    // Only at the top of a section, never inside a folder: a set is filed under the
+                    // section its type belongs to and is not in any folder, so walking into one must
+                    // not keep drawing it as if it were part of that folder's contents.
+                    const categorySets = activeGroup && !isNarrowed ? [] : assetSets[category];
+                    const hasItems = categoryGroups.length > 0 || categoryAssets.length > 0 || categorySets.length > 0;
 
                     return (
                         <section
@@ -278,6 +286,15 @@ export function AssetsIconView({
                                     className="mt-3 grid gap-3"
                                     style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${iconSize}px, 1fr))` }}
                                 >
+                                    {categorySets.map((entry) => (
+                                        <AssetSetIconTile
+                                            key={entry.set.id}
+                                            entry={entry}
+                                            selected={false}
+                                            onSelect={() => handleAssetSetSelect(entry)}
+                                            onContextMenu={(event) => showAssetSetContextMenu(event, entry)}
+                                        />
+                                    ))}
                                     {categoryGroups.map((group) => {
                                         const childGroups = filteredGroups[category].filter((g) => g.parentGroupId === group.id);
                                         const childAssets = filteredAssets[category].filter((a) => a.groupId === group.id);
