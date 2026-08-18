@@ -1,7 +1,13 @@
 import { createContext, useContext, type ReactNode } from "react";
 
-/** The state an element is being shown in. `variantId` is null for the state it rests in. */
-export type EnteredElementState = { variantId: string | null };
+/**
+ * The state an element is being shown in. `variantId` is null for the state it rests in.
+ *
+ * `own` marks the element the author entered it on, which is the one that says so on the canvas. It
+ * is deliberately absent from what gets broadcast: everything below is *in* the state, but only one
+ * element is where it was entered.
+ */
+export type EnteredElementState = { variantId: string | null; own?: boolean };
 
 const EnteredStateContext = createContext<EnteredElementState | null>(null);
 

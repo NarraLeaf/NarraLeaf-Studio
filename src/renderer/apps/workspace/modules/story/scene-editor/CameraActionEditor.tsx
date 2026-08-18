@@ -277,19 +277,27 @@ export function CameraActionEditor(props: {
                                 </FieldGrid>
                             </div>
                         ) : null}
-                        <FieldGrid cols={2}>
-                            <SecondsField
-                                label={t("storyInspector.field.duration")}
-                                value={payload.durationMs}
-                                onChange={durationMs => onChange({ ...payload, durationMs: durationMs === undefined ? undefined : Math.max(0, durationMs) })}
-                            />
-                            <SelectField
-                                label={t("storyInspector.field.easing")}
-                                options={easingOptions(t)}
-                                value={payload.easing ?? ""}
-                                onChange={easing => onChange({ ...payload, easing: String(easing) || undefined })}
-                            />
-                        </FieldGrid>
+                        {/* A grade lands in one frame, so it has no timing to offer — see the
+                            compiler's `look` arm for why interpolating one is not an option. The
+                            fields are hidden rather than disabled: a control that is present but
+                            never does anything is the thing an author wastes time on. */}
+                        {operation === "look" ? (
+                            <p className="text-2xs text-fg-subtle">{t("storyInspector.camera.lookSnaps")}</p>
+                        ) : (
+                            <FieldGrid cols={2}>
+                                <SecondsField
+                                    label={t("storyInspector.field.duration")}
+                                    value={payload.durationMs}
+                                    onChange={durationMs => onChange({ ...payload, durationMs: durationMs === undefined ? undefined : Math.max(0, durationMs) })}
+                                />
+                                <SelectField
+                                    label={t("storyInspector.field.easing")}
+                                    options={easingOptions(t)}
+                                    value={payload.easing ?? ""}
+                                    onChange={easing => onChange({ ...payload, easing: String(easing) || undefined })}
+                                />
+                            </FieldGrid>
+                        )}
                     </>
                 )}
             </div>

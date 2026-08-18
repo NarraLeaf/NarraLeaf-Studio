@@ -158,38 +158,3 @@ export function createSwitchPartProps(kind: UISwitchChildSlot, travel: number): 
         appearance: model,
     };
 }
-
-/**
- * Rewrites the thumb's `on` travel in place. Returns `null` when the element carries no usable
- * `on` variant, so the caller can leave the document untouched instead of inventing one.
- */
-export function setSwitchOnVariantTravel(appearance: unknown, travel: number): AppearanceModel | null {
-    const model = appearance as AppearanceModel | null | undefined;
-    if (!model || !Array.isArray(model.variants)) {
-        return null;
-    }
-    const onVariant = model.variants.find(variant => variant.id === UI_SWITCH_ON_VARIANT_ID);
-    if (!onVariant) {
-        return null;
-    }
-    let changed = false;
-    const variants = model.variants.map(variant => {
-        if (variant.id !== UI_SWITCH_ON_VARIANT_ID) {
-            return variant;
-        }
-        return {
-            ...variant,
-            propertyGroups: variant.propertyGroups.map(group => {
-                if (group.key !== "transformOffsetX") {
-                    return group;
-                }
-                changed = true;
-                const rows = group.rows.length > 0
-                    ? group.rows.map((row, index) => (index === 0 ? { ...row, value: travel } : row))
-                    : [{ conditions: null, value: travel }];
-                return { key: group.key, rows, transition: group.transition } as AppearancePropertyGroup;
-            }),
-        };
-    });
-    return changed ? { ...model, variants } : null;
-}

@@ -32,6 +32,8 @@ import { createGestureDeadzone, type GestureDeadzone } from "./gestureDeadzone";
 import { applyLockedAspectToResizePreview } from "@/lib/ui-editor/layout/aspectRatioLock";
 import { isUIElementFlowLayoutChild, type UILayout } from "@shared/types/ui-editor/document";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
+import { commitLayoutPatches, splitLayoutPatchesForEnteredState } from "./enteredStateLayoutCommit";
 import {
     collectSnapGuideLines,
     splitSnapLinesToAxes,
@@ -273,6 +275,14 @@ export function useMoveableHandlers({
 
     const finalizeDrag = useCallback(() => {
         const patches: Record<string, Partial<UILayout>> = {};
+        // Which elements the move is about to be written on as geometry, decided before the DOM is
+        // settled below: one whose move became a state's offset keeps the position it started from,
+        // because nothing will re-render it back from an inline `left` the document does not back.
+        const enteredState = UIEditorStateService.getInstance().getEnteredState();
+        const settlesAsGeometry = (elementId: string, next: Partial<UILayout>) =>
+            splitLayoutPatchesForEnteredState(documentService.getDocument(), enteredState, {
+                [elementId]: next,
+            }).layoutPatches[elementId] !== undefined;
         selectedTargets.forEach(target => {
             const elementId = target.dataset.uiElementId;
             if (!elementId) {
@@ -291,10 +301,16 @@ export function useMoveableHandlers({
             }
             const nextX = initialLayout.x + translateX;
             const nextY = initialLayout.y + translateY;
-            patches[elementId] = {
-                x: nextX,
-                y: nextY,
-            };
+            const patch = { x: nextX, y: nextY };
+            patches[elementId] = patch;
+            if (!settlesAsGeometry(elementId, patch)) {
+                target.style.left = `${initialLayout.x}px`;
+                target.style.top = `${initialLayout.y}px`;
+                applyFinalTransform(target, initialLayout.rotation);
+                layoutCache.current.delete(elementId);
+                dragDeltaCache.current.delete(elementId);
+                return;
+            }
             // Keep the DOM at its final absolute position before React applies
             // the updated layout, so the controller does not flash back for a frame.
             target.style.left = `${nextX}px`;
@@ -305,14 +321,21 @@ export function useMoveableHandlers({
         });
         if (Object.keys(patches).length > 0) {
             startTransition(() => {
-                documentService.updateElementLayouts(patches);
+                // A move made while a state is entered belongs to that state, not to the geometry the
+                // element keeps in every state.
+                commitLayoutPatches(
+                    documentService,
+                    UIEditorStateService.getInstance().getEnteredState(),
+                    patches,
+                    smartSnap?.surfaceId ?? null,
+                );
             });
         }
         clearPerformanceHints();
         clearSmartSnapGuides();
         scheduleMoveableRectUpdate();
         endTransform();
-    }, [clearPerformanceHints, clearSmartSnapGuides, documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform]);
+    }, [clearPerformanceHints, clearSmartSnapGuides, documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform, smartSnap]);
 
     const finalizeResize = useCallback(() => {
         const patches: Record<string, Partial<UILayout>> = {};

@@ -267,6 +267,7 @@ export const storyInspector = {
         xalign: "X の基準（0-1）",
         yalign: "Y の基準（0-1）",
         look: "ルック",
+        lookSnaps: "ルックは一フレームで切り替わります。補間すると誰も選んでいない色を経由するため、時間の設定はありません。まばたきやトランジションの裏で切り替えてください。",
         lookIntensity: "強さ（1 が標準）",
         lookFilter: "カスタム CSS フィルター",
     },
