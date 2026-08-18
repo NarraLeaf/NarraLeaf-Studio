@@ -25,6 +25,7 @@ function changeSeam(overrides: Partial<LocaleChangeSeam> = {}): {
     const reports: Array<{ level: string; message: string }> = [];
     const seam: LocaleChangeSeam = {
         isPlaythroughRunning: () => true,
+        inGame: "restart",
         writeSave: async id => {
             trace.push(`write:${id}`);
         },
@@ -93,6 +94,18 @@ describe("applyLocaleChange", () => {
         // The save exists but nothing would ever read it, so the restart would land on the title
         // screen with the run stranded.
         expect(trace).toEqual([`write:${LOCALE_RESTART_SAVE_ID}`]);
+    });
+
+    it("leaves the run alone when the project asked it to", async () => {
+        // The author's own answer, and the behaviour every build had before the restart existed:
+        // the interface is in the new language and the scene being played is not, until a new one
+        // starts. Nothing is reported, because nothing went wrong.
+        const { seam, trace, reports } = changeSeam({ inGame: "nextScene" });
+
+        await expect(applyLocaleChange(seam)).resolves.toBe("nextScene");
+
+        expect(trace).toEqual([]);
+        expect(reports).toEqual([]);
     });
 
     it("says so when the host cannot restart at all", async () => {

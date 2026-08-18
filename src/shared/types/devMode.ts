@@ -2,7 +2,7 @@ import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
 import type { BrandColor } from "./brand";
 import type { PersistentVariableRuntimeTable, SavedVariableRuntimeTable } from "./variables/registry";
-import type { GameLocalizationBundle } from "./localization";
+import type { GameLocalizationBundle, LanguageChangeConfiguration } from "./localization";
 import type { PlayerPreferences } from "./preference";
 import type { AutoSaveConfiguration } from "./saves";
 import type { SaveCompatibilityConfiguration } from "./saveCompatibility";
@@ -334,6 +334,12 @@ export type DevModeBundle = {
      * reads as the defaults.
      */
     saveCompatibility?: SaveCompatibilityConfiguration;
+    /**
+     * What a language change does to a running playthrough, baked from `.nlproj`
+     * `app.languageChange`. Absent on bundles that predate the setting, which the game app reads as
+     * the default - restart and come back - because that is what those builds already did.
+     */
+    languageChange?: LanguageChangeConfiguration;
     /**
      * The author's own version for this build, copied from `.nlproj` `metadata.version`.
      *

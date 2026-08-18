@@ -1,5 +1,5 @@
 import { Plus, Star, Trash2 } from "lucide-react";
-import type { AppearanceModel, AppearanceVariant } from "@shared/types/ui-editor/appearance";
+import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { useTranslation } from "@/lib/i18n";
 import { Select } from "@/lib/components/elements/Select";
@@ -9,13 +9,8 @@ import type { CustomFieldProps } from "@/apps/workspace/modules/properties/frame
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { useEditorEnteredState } from "@/lib/ui-editor/hooks/useEnteredElementState";
-import {
-    addVariant,
-    newVariantId,
-    removeVariant,
-    renameVariant,
-    setDefaultVariantId,
-} from "./appearancePatch";
+import { removeVariant, renameVariant, setDefaultVariantId } from "./appearancePatch";
+import { addElementState } from "./elementStates";
 import { isUsableAppearanceModel } from "./initialAppearanceModel";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 
@@ -29,14 +24,6 @@ function liveElement(data: UIInspectorData): UIElement {
 function appearanceOf(element: UIElement): AppearanceModel | null {
     const model = (element.props as { appearance?: AppearanceModel | null } | undefined)?.appearance;
     return isUsableAppearanceModel(model) ? model : null;
-}
-
-function cloneVariant(source: AppearanceVariant, id: string, name: string): AppearanceVariant {
-    return {
-        id,
-        name,
-        propertyGroups: JSON.parse(JSON.stringify(source.propertyGroups)) as AppearanceVariant["propertyGroups"],
-    };
 }
 
 /**
@@ -74,12 +61,15 @@ export function ElementStateBar(props: CustomFieldProps<UIInspectorData>) {
         );
     }
     const model = appearanceOf(element);
-    if (!model) {
+    const enteredHere = entered?.elementId === element.id;
+    // A single state is not a choice, and this bar sits at the top of every element's panel: it stays
+    // out until there is something to pick between. `Add state` lives in the element's context menu,
+    // which is where an element with one state gets its second.
+    if (!model || (model.variants.length <= 1 && !enteredHere)) {
         return null;
     }
 
-    const selectedId =
-        entered?.elementId === element.id ? entered.variantId ?? model.defaultVariantId : model.defaultVariantId;
+    const selectedId = enteredHere ? entered.variantId ?? model.defaultVariantId : model.defaultVariantId;
     const selected = model.variants.find(variant => variant.id === selectedId) ?? model.variants[0] ?? null;
     const replace = (next: AppearanceModel) => {
         props.data.documentService.updateElementProps(element.id, { appearance: next });
@@ -92,15 +82,7 @@ export function ElementStateBar(props: CustomFieldProps<UIInspectorData>) {
     };
 
     const handleAdd = () => {
-        const base = selected ?? model.variants[0];
-        if (!base) {
-            return;
-        }
-        const id = newVariantId();
-        // English on purpose - the name is written to the document, so translating it would ship one
-        // author's UI language to every other author.
-        replace(addVariant(model, cloneVariant(base, id, `State ${model.variants.length + 1}`)));
-        enter(id);
+        addElementState(props.data.documentService, element.id, selected?.id ?? null);
     };
 
     const handleRemove = () => {
