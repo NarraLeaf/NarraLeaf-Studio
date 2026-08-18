@@ -2869,11 +2869,31 @@ function compileCameraAction(
                     : "Camera look has no grade chosen.");
                 return [];
             }
-            const options = easing ? { duration, ease: easing } : { duration };
-            return [recordStatement(ctx, camera.filter(resolved, options), block)];
+            // **A grade snaps; it does not tween, and the row's duration is deliberately unused.**
+            //
+            // A filter chain carrying `hue-rotate` cannot be linearly interpolated to (or from)
+            // neutral without walking through colours nobody asked for. Going from
+            // `grayscale(1) sepia(1) hue-rotate(185deg) …` back to neutral, the browser eases every
+            // term at once: the angle sweeps 185 degrees of the colour wheel while `grayscale`
+            // simultaneously lets the source's own hues back in, so the midpoint is a bright green
+            // face. Measured on a real sprite over the moonlight grade — blue at t=1, cyan by 0.8,
+            // green through 0.6–0.4, olive at 0.2.
+            //
+            // There is no interpolation that fixes this, because the honest operation is a
+            // cross-fade between two graded renderings and a CSS filter cannot express one. So the
+            // grade lands in a single frame, which is also how the medium actually uses it: a
+            // flashback cuts in behind a flash or a transition, it does not morph.
+            return [recordStatement(ctx, camera.filter(resolved, { duration: 0 }), block)];
         }
         case "reset":
-            return [recordStatement(ctx, camera.resetCamera(duration, easing), block)];
+            // Clearing the grade is the same problem in reverse, and `resetCamera` eases the whole
+            // pose — filter included — over one duration. So the filter is dropped in its own
+            // zero-duration statement first, leaving `resetCamera` to animate the pan/zoom/rotation
+            // the way an author expects a reset to move.
+            return [
+                recordStatement(ctx, camera.clearFilter({ duration: 0 }), block),
+                recordStatement(ctx, camera.resetCamera(duration, easing), block),
+            ];
         case "motion": {
             // A whole keyframed shot rather than one settled pose. `Camera` is a `Displayable`, so it
             // takes the same `Transform` a sprite does, built by the same function `/transform` uses -

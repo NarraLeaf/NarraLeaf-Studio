@@ -238,6 +238,7 @@ export const storyInspector = {
         xalign: "X 对齐（0-1）",
         yalign: "Y 对齐（0-1）",
         look: "色调",
+        lookSnaps: "影调一帧到位。补间会让画面走过一串没人挑过的颜色，所以没有时长可设——想要过渡就在前面放一次眨眼或转场。",
         lookIntensity: "强度（1 为标准）",
         lookFilter: "自定义 CSS 滤镜",
     },
