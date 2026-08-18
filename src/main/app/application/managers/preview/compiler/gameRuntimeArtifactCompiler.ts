@@ -223,6 +223,14 @@ export type GameRuntimeArtifactCompileInput = {
      */
     mode?: "preview" | "production";
     /**
+     * Ship this artifact as one that accepts a remote-debugging switch at launch.
+     *
+     * The experimental `debuggable-build` condition, and nothing else, sets it. It is written into
+     * both the pack and the loose app manifest because the runtime checks the two at different
+     * moments - the manifest before Chromium starts, the pack once it is open.
+     */
+    debuggable?: boolean;
+    /**
      * Target shell. "electron" (default) emits the desktop runtime app dir;
      * "web" emits a static site: the shared renderer bundle plus the browser
      * bridge (web.js), a generated relative-URL index.html and the plugin-api
@@ -491,6 +499,7 @@ export async function compileGameRuntimeArtifact(
             schemaVersion: GAME_RUNTIME_PACK_SCHEMA_VERSION,
             generatedAt: new Date().toISOString(),
             mode,
+            ...(input.debuggable ? { debuggable: true } : {}),
             runtimeVersion: input.runtimeVersion,
             project: {
                 name: input.productName?.trim()
@@ -580,7 +589,11 @@ export async function compileGameRuntimeArtifact(
         } else {
             await fs.writeFile(
                 path.join(appDir, "package.json"),
-                JSON.stringify(buildAppManifest(mode, input.runtimeVersion, pack, projectConfig, input.appId), null, 2),
+                JSON.stringify(
+                    buildAppManifest(mode, input.runtimeVersion, pack, projectConfig, input.appId),
+                    null,
+                    2,
+                ),
                 "utf-8",
             );
         }
@@ -627,7 +640,9 @@ function buildAppManifest(
     const base = {
         private: true,
         main: "main.js",
-        narraleaf: { mode },
+        // `debuggable` travels beside the mode because the runtime reads both before app-ready,
+        // where the pack is not open yet. Taken from the pack so the two cannot disagree.
+        narraleaf: { mode, ...(pack.debuggable ? { debuggable: true } : {}) },
     };
     if (mode === "preview") {
         // Preview keeps its userData beside the compiled app, so there is no

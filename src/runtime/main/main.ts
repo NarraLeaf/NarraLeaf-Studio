@@ -77,23 +77,39 @@ const appDir = __dirname;
  * authoritative for everything decided after the pack is open; a stripped or
  * tampered manifest only ever downgrades to the stricter checks below.
  */
-function readShellManifest(): { mode: "preview" | "production"; userDataDirName: string | null } {
+function readShellManifest(): {
+    mode: "preview" | "production";
+    userDataDirName: string | null;
+    debuggable: boolean;
+} {
     try {
         const manifest = JSON.parse(fsSync.readFileSync(path.join(appDir, "package.json"), "utf-8")) as {
-            narraleaf?: { mode?: unknown; userDataDir?: unknown };
+            narraleaf?: { mode?: unknown; userDataDir?: unknown; debuggable?: unknown };
         };
         const userDataDir = manifest.narraleaf?.userDataDir;
         return {
             mode: manifest.narraleaf?.mode === "production" ? "production" : "preview",
             userDataDirName: typeof userDataDir === "string" && userDataDir.trim() ? userDataDir.trim() : null,
+            debuggable: manifest.narraleaf?.debuggable === true,
         };
     } catch {
-        return { mode: "preview", userDataDirName: null };
+        return { mode: "preview", userDataDirName: null, debuggable: false };
     }
 }
 
 const shellManifest = readShellManifest();
 const shellMode = shellManifest.mode;
+
+/**
+ * This build was made to be inspected, so the guards below stand aside for the launch switches
+ * they otherwise refuse.
+ *
+ * Only Studio's experimental `debuggable-build` condition writes it, and it changes nothing on its
+ * own: the switch still has to be on the command line for anything to be listening. The pack
+ * carries the same marker and stays authoritative - a manifest that claims this while the pack does
+ * not is refused by the second gate, which is the one that runs from inside the archive.
+ */
+const shellDebuggable = shellManifest.debuggable;
 
 /**
  * A test asked for this game to run with no way out to the network.
@@ -253,7 +269,7 @@ if (testNetworkBlocked) {
 // debugger/CDP: before app-ready, before any window or session exists. The
 // post-pack-read check below stays as the authoritative (tamper-resistant on
 // asar-integrity platforms) second gate.
-const startupBlocked = shellMode === "production" && hasDebuggingSwitch();
+const startupBlocked = shellMode === "production" && !shellDebuggable && hasDebuggingSwitch();
 if (startupBlocked) {
     app.quit();
 }
@@ -276,10 +292,13 @@ void app.whenReady().then(async () => {
         log: logRuntime,
     });
     const pack = await readPack();
-    if (pack.mode === "production" && hasDebuggingSwitch()) {
+    if (pack.mode === "production" && pack.debuggable !== true && hasDebuggingSwitch()) {
         // Refuse to run a production game under an attached debugger/CDP.
         app.quit();
         return;
+    }
+    if (pack.debuggable === true) {
+        console.log("[GameRuntime] This build accepts debugging switches (built under an experimental condition).");
     }
     const allowHttp = pack.network?.allowHttp === true;
     const networkAllowlist = packNetworkAllowlist(pack);
@@ -508,7 +527,12 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     // Production disables DevTools outright: with devTools:false Electron ignores
     // any openDevTools call and the menu/keyboard toggles become no-ops, so there
     // is no in-app path to the inspector (the startup switch guard covers CDP).
-    const devToolsEnabled = pack.mode !== "production";
+    //
+    // A debuggable build is the one exception, and only for a launch that actually asked: with no
+    // switch on the command line it starts exactly as a production build does, which is what keeps
+    // it usable for testing what players get.
+    const devToolsEnabled = pack.mode !== "production"
+        || (pack.debuggable === true && hasDebuggingSwitch());
     const win = new BrowserWindow({
         title: pack.project.name,
         width: size.width,

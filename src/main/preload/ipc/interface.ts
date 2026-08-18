@@ -152,6 +152,7 @@ const privilegedBootstrapBridge: RendererPrivilegedBootstrapInterface = {
 export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     getPlatform: () => ipcClient.invoke(IPCEventType.getPlatform, {}),
     getAppInfo: () => ipcClient.invoke(IPCEventType.appInfo, {}),
+    claimExperimentalNotice: () => ipcClient.invoke(IPCEventType.appClaimExperimentalNotice, {}),
     getWindowProps: <T extends WindowAppType>(): Promise<RequestStatus<WindowProps[T]>> => ipcClient.invoke(IPCEventType.appWindowProps, {}) as Promise<RequestStatus<WindowProps[T]>>,
     terminate: async (err?: string) => ipcClient.send(IPCEventType.appTerminate, { err: err ?? null }),
     reportError: (report: RendererErrorReport) => ipcClient.send(IPCEventType.appReportRendererError, report),

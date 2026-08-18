@@ -200,6 +200,14 @@ export type GameRuntimePackV1 = {
     schemaVersion: typeof GAME_RUNTIME_PACK_SCHEMA_VERSION;
     generatedAt: string;
     mode: "preview" | "production";
+    /**
+     * This build accepts a remote-debugging switch at launch.
+     *
+     * Absent - which is every build an author can make - means a production pack refuses to start
+     * under one. Set only by the experimental `debuggable-build` condition, and read by the runtime
+     * alongside the same marker in the loose app manifest.
+     */
+    debuggable?: boolean;
     runtimeVersion: string;
     project: {
         name: string;
