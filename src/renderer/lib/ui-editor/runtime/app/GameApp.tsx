@@ -20,9 +20,11 @@ import {
 } from "@shared/types/saveCompatibility";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import {
+    LOCALE_RESTART_RESUME_KEY,
     LOCALE_STORAGE_KEY,
     characterTranslationUnitId,
     matchSystemLocale,
+    normalizeLanguageChangeConfiguration,
     resolveLocalizedUnitText,
 } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY } from "@shared/types/voice";
@@ -204,6 +206,8 @@ const LOCALE_RESUME_POLL_MS = 200;
  * gap between a mount publishing its live game and whatever started that mount entering the game.
  */
 const LOCALE_RESUME_SETTLE_MS = 1000;
+/** The longest the surfaces are held back for a resume. A cover that never lifts is its own bug. */
+const LOCALE_RESUME_COVER_MAX_MS = 10_000;
 // How long a mount waits for the first scene to be fetched and decoded. Long enough that a real
 // project's opening scene always finishes: a longer loading step is the cheaper cost, since the
 // alternative is the player paying for it on a button they just pressed. Bounded only so a broken
@@ -509,6 +513,15 @@ export function GameApp(props: GameAppProps): ReactNode {
     const cleanupBundleIdRef = useRef<string | null>(null);
     /** The runtime core whose language-restart resume has already been attempted. */
     const localeResumeAttemptedRef = useRef<unknown>(null);
+    /**
+     * Whether this launch owes the player a run and has not put it back yet.
+     *
+     * It holds the surface stack back while that is true. The screen the player left is not the
+     * screen they are coming back to, and painting the title for the second and a half a load takes
+     * would be showing them a place they never went. What they get instead is what a boot already
+     * looks like before its first surface - the shell's own background - and then their line.
+     */
+    const [localeResumePending, setLocaleResumePending] = useState(false);
     const activeStoryRequestRef = useRef<DevModeStartStoryRequest | null>(null);
     const activeStoryRevisionRef = useRef<number | null>(null);
     const pendingGameStartsRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
@@ -1742,6 +1755,15 @@ export function GameApp(props: GameAppProps): ReactNode {
         () => normalizeSaveCompatibilityConfiguration(bundle.saveCompatibility),
         [bundle.saveCompatibility],
     );
+    /**
+     * What this project asked for when the player changes language mid-playthrough. Read from the
+     * bundle like every other policy the shipped game obeys, so a build behaves the same in Dev
+     * Mode, in a preview and in the packaged game.
+     */
+    const languageChange = useMemo(
+        () => normalizeLanguageChangeConfiguration(bundle.languageChange),
+        [bundle.languageChange],
+    );
     const writeSave = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
         const liveGame = requireActiveLiveGame("Save Game");
         let capture: string | undefined;
@@ -2028,6 +2050,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     const handleLocaleChanged = useCallback(async (): Promise<void> => {
         await applyLocaleChange({
             isPlaythroughRunning,
+            inGame: languageChange.inGame,
             writeSave: id => writeSave(id),
             persistenceSet: async (key, value) => {
                 await core?.scopeBridge.persistenceSet(key, value);
@@ -2035,7 +2058,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             restartApplication: host.restartApplication,
             report: reportLocaleRestart,
         });
-    }, [core, host.restartApplication, isPlaythroughRunning, reportLocaleRestart, writeSave]);
+    }, [core, host.restartApplication, isPlaythroughRunning, languageChange, reportLocaleRestart, writeSave]);
 
     /**
      * Put the player back into the run a language change restarted the game out of.
@@ -2055,6 +2078,30 @@ export function GameApp(props: GameAppProps): ReactNode {
             return;
         }
         const scope = core.scopeBridge;
+        /**
+         * Is anything owed? Asked before anything is waited for, and only to decide what the player
+         * looks at while the answer is acted on.
+         *
+         * A boot that owes a resume is going to put the stage up in a moment, so the surfaces that
+         * would otherwise paint first - the title screen the player just left - are held back until
+         * it does. Peeking costs one store read on every launch and saves every resumed launch a
+         * flash of a screen the player did not ask to see. The marker is read again, and cleared,
+         * by the resume itself; this read decides nothing but the cover.
+         */
+        let owed = false;
+        try {
+            owed = typeof await scope.persistenceGetAsync(LOCALE_RESTART_RESUME_KEY) === "string";
+        } catch {
+            owed = false;
+        }
+        if (!owed) {
+            return;
+        }
+        setLocaleResumePending(true);
+        // The cover is capped for the reason every cover is: a screen that never lifts is worse
+        // than the one it was hiding. If the resume is still going by then the player gets the
+        // title screen and the load lands under it, which is the behaviour without a cover at all.
+        const coverCap = window.setTimeout(() => setLocaleResumePending(false), LOCALE_RESUME_COVER_MAX_MS);
         const deadline = Date.now() + LOCALE_RESUME_SESSION_WAIT_MS;
         const settle = (ms = LOCALE_RESUME_POLL_MS) => new Promise(resolve => { window.setTimeout(resolve, ms); });
         /**
@@ -2072,14 +2119,20 @@ export function GameApp(props: GameAppProps): ReactNode {
         const environmentIsMine = () => Boolean(hasLiveGame() && nlrSessionIdRef.current?.startsWith(sessionPrefix));
         // Before the marker is even read: a launch that never produces a game must leave it for the
         // next one rather than consume it into nothing.
+        const uncover = () => {
+            window.clearTimeout(coverCap);
+            setLocaleResumePending(false);
+        };
         while (!environmentIsMine()) {
             if (Date.now() > deadline) {
+                uncover();
                 return;
             }
             await settle();
         }
         await settle(LOCALE_RESUME_SETTLE_MS);
         if (!environmentIsMine()) {
+            uncover();
             return;
         }
         /**
@@ -2119,10 +2172,12 @@ export function GameApp(props: GameAppProps): ReactNode {
                 report: reportLocaleRestart,
             });
         } catch (error) {
-            // Contained here rather than raised: both callers are a boot, and a boot that reports
+            // Contained here rather than raised: the caller is a boot, and a boot that reports
             // itself as failed takes the whole stage down with it. Nothing that can go wrong in a
             // resume is worse than the title screen the player gets by falling through it.
             reportLocaleRestart("error", `The playthrough could not be resumed after the language change: ${normalizeError(error)}`);
+        } finally {
+            uncover();
         }
     }, [
         bundle.bundleId,
@@ -3116,15 +3171,19 @@ export function GameApp(props: GameAppProps): ReactNode {
      * that owes nothing - which is all of them but the one immediately after a language change.
      */
     useEffect(() => {
-        if (!host.ready || !core || !nlrPreloadDone) {
+        if (!host.ready || !core) {
             return;
         }
         if (localeResumeAttemptedRef.current === core) {
             return;
         }
         localeResumeAttemptedRef.current = core;
+        // Deliberately not waiting for the boot preload to finish: it takes seconds, and the answer
+        // to "is a run owed" has to be in hand before the first surface paints or the player sees
+        // the title screen they are about to be taken off. The resume itself waits for the
+        // environment; only the question is asked early.
         void resumeLocaleRestart();
-    }, [core, host.ready, nlrPreloadDone, resumeLocaleRestart]);
+    }, [core, host.ready, resumeLocaleRestart]);
 
     const visibleSurfaceEntries = bundle.ui.uidoc.surfaces.length > 0
         ? visibleEntries
@@ -3166,7 +3225,12 @@ export function GameApp(props: GameAppProps): ReactNode {
      * was never coming, and a mutually exclusive group stayed occupied by something invisible. The
      * stack settles those waits itself once it knows which of its layers have no frame to lose.
      */
-    const renderedLayerKeys = new Set(nlrPreloadDone ? visibleLayers.map(item => item.layer.key) : []);
+    /**
+     * Whether the surface stack may draw. Everything the boot preload gates, plus the moment a
+     * language restart is putting a playthrough back: see `localeResumePending`.
+     */
+    const surfacesReady = nlrPreloadDone && !localeResumePending;
+    const renderedLayerKeys = new Set(surfacesReady ? visibleLayers.map(item => item.layer.key) : []);
     const unrenderedLayerKeys = layers
         .filter(layer => !renderedLayerKeys.has(layer.key))
         .map(layer => layer.key);
@@ -4049,7 +4113,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                         mode={surfacePresenceMode}
                         onExitComplete={handleSurfaceExitComplete}
                     >
-                        {nlrPreloadDone
+                        {surfacesReady
                             ? visibleSurfaceEntries.map(({ entry, surface }, layerIndex) => (
                                 <AppSurfaceLayerWithAdapter
                                     key={entry.key}
@@ -4095,7 +4159,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                         mode="sync"
                         onExitComplete={handleLayerExitComplete}
                     >
-                        {nlrPreloadDone
+                        {surfacesReady
                             ? visibleLayers.map(({ layer, surface }, index) => (
                                 <AppSurfaceLayerWithAdapter
                                     key={layer.key}

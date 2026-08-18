@@ -8,6 +8,7 @@ import {
     AutoSaveConfiguration,
     BuildConfiguration,
     CrashConfiguration,
+    LanguageChangeConfig as LanguageChangeConfiguration,
     LintingConfiguration,
     LocalizationConfiguration,
     MobileConfiguration,
@@ -22,6 +23,7 @@ import {
     normalizeAutoSaveConfiguration,
     normalizeBuildConfiguration,
     normalizeCrashConfiguration,
+    normalizeLanguageChangeConfiguration,
     normalizeLintingConfiguration,
     normalizeLocalizationConfiguration,
     normalizeMobileConfiguration,
@@ -475,6 +477,36 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 saveCompatibility,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /** What a language change does to a running playthrough; the default for projects without one. */
+    public getLanguageChangeConfiguration(): LanguageChangeConfiguration {
+        return normalizeLanguageChangeConfiguration(this.getProjectConfig().app?.languageChange);
+    }
+
+    /**
+     * Merge a partial patch into the language-change policy. Written by the project Game settings
+     * page and baked into the bundle, where the game app reads it at the moment a `Set Language`
+     * node runs with a playthrough in progress.
+     */
+    public async updateLanguageChangeConfiguration(
+        patch: Partial<LanguageChangeConfiguration>,
+    ): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const languageChange = normalizeLanguageChangeConfiguration({
+                ...normalizeLanguageChangeConfiguration(config.app?.languageChange),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                languageChange,
             };
             return {
                 ...config,

@@ -23,6 +23,7 @@ import type { LocalizationConfiguration } from "@shared/types/localization";
 import type { PlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
 import type { SaveCompatibilityConfiguration } from "@shared/types/saveCompatibility";
+import type { LanguageChangeConfiguration } from "@shared/types/localization";
 import type { SigningPlatform } from "@shared/types/signing";
 import type { VoiceConfiguration } from "@shared/types/voice";
 import type { WebOptimizationConfiguration } from "@shared/types/webOptimization";
@@ -73,6 +74,14 @@ export type {
     SaveCompatiblePolicy,
     SaveIncompatiblePolicy,
 } from "@shared/types/saveCompatibility";
+export {
+    DEFAULT_LANGUAGE_CHANGE_CONFIGURATION,
+    normalizeLanguageChangeConfiguration,
+} from "@shared/types/localization";
+export type {
+    InGameLanguageChange,
+    LanguageChangeConfiguration as LanguageChangeConfig,
+} from "@shared/types/localization";
 export {
     DEFAULT_PLAYER_PREFERENCES,
     PLAYER_PREFERENCE_GROUPS,
@@ -371,6 +380,11 @@ export type ProjectAppConfiguration = {
      * player back where it stopped).
      */
     saveCompatibility?: SaveCompatibilityConfiguration;
+    /**
+     * What a language change does to a running playthrough; absent until configured (see the
+     * default, which restarts the game and puts the player back where they were).
+     */
+    languageChange?: LanguageChangeConfiguration;
     /**
      * What the player's settings start at (see @shared/types/preference); absent until configured.
      *

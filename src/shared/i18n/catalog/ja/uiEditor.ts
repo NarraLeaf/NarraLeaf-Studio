@@ -124,6 +124,7 @@ export const uiEditor = {
         addToComponentLibrary: "コンポーネントライブラリに追加",
         addToGroup: "グループに追加",
         ungroup: "グループを解除",
+        addState: "状態を追加",
         arrange: {
             label: "重なり",
             bringToFront: "最前面へ",
