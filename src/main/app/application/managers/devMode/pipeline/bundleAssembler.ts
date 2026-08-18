@@ -56,6 +56,11 @@ import {
     restrictLocalizationToTextIds,
     restrictVoiceToTextIds,
 } from "@shared/build/variantPayload";
+import {
+    materializeStoryAssetSets,
+    type AssetSetMaterializationProblem,
+} from "@shared/build/assetSetMaterialization";
+import { normalizeProjectAssetSets, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
 import { applyAppTagToStoryDocument, type SceneReachability } from "@shared/story/appTagFold";
 import { blueprintGraphCarriers, scanStoryEntryPoints } from "@shared/story/storyReachability";
 import {
@@ -125,6 +130,10 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         shippedTextIds,
         context.onNotice,
     );
+    // After `localization`, because filling a set is a question about the project's languages and
+    // their declared fallbacks; before everything else, because what it rewrites is the story the
+    // rest of this bundle describes.
+    const resolvedStoryLibrary = await materializeAssetSets(context, storyLibrary, localization);
     const voice = restrictVoice(await loadGameVoice(context.projectPath), shippedTextIds, context.onNotice);
     const audio = await loadGameAudio(context.projectPath);
     const autoSave = await loadAutoSaveConfiguration(context.projectPath);
@@ -147,7 +156,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
             savedVariables: variableTables.saved,
             saveSchema,
         },
-        storyLibrary,
+        storyLibrary: resolvedStoryLibrary,
         localization,
         voice,
         audio,
@@ -157,7 +166,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         gameVersion,
         // Taken off the library this build actually ships, after the variant fold and any scene
         // drop, so two editions that carry different chapters do not claim the same story.
-        storyHash: computeStoryContentHash(storyLibrary?.documents),
+        storyHash: computeStoryContentHash(resolvedStoryLibrary?.documents),
         preferences,
         brand,
         compiled: context.compiled,
@@ -563,6 +572,117 @@ async function loadStoryLibrary(
         animations: await loadStoryAnimations(projectPath),
         assetNames: await loadAssetNames(projectPath),
     };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Asset sets                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Resolve every asset set a story names, and refuse to package a story that still names one.
+ *
+ * A set names its members by tag; a shipped game has no tags. This is where the question becomes an
+ * answer - see `@shared/build/assetSetMaterialization` for why the answer is written into each row
+ * rather than into a table the pack would have to carry.
+ *
+ * Only a build refuses, the same rule the blueprint fold above follows: Dev Mode packages nothing,
+ * so an unfinished set there is a line in the console and a stage the author can still walk through.
+ * A build that let it past would produce the one failure this whole path exists to prevent - a
+ * package that installs cleanly and shows one language nothing at all.
+ */
+async function materializeAssetSets(
+    context: DevModeBundleLoadContext,
+    storyLibrary: DevModeStoryLibrary | undefined,
+    localization: GameLocalizationBundle | undefined,
+): Promise<DevModeStoryLibrary | undefined> {
+    if (!storyLibrary || Object.keys(storyLibrary.documents ?? {}).length === 0) {
+        return storyLibrary;
+    }
+    const sets = await loadAssetSets(context.projectPath);
+    if (sets.length === 0) {
+        return storyLibrary;
+    }
+    const result = materializeStoryAssetSets({
+        documents: storyLibrary.documents,
+        sets,
+        candidates: await loadAssetSetCandidates(context.projectPath),
+        localization,
+    });
+    for (const problem of result.problems) {
+        const sentence = describeAssetSetProblem(problem, storyLibrary);
+        if (context.packaging) {
+            throw new Error(sentence);
+        }
+        context.onNotice?.(sentence);
+    }
+    return { ...storyLibrary, documents: result.documents };
+}
+
+/**
+ * What the author is told, naming the scene rather than the block id.
+ *
+ * A build failure has to be actionable from the sentence alone: which set, which language, and
+ * where it is used. The set's *members* are never named - a set is resolved by tag, so the file to
+ * import does not exist yet and there is no name to print.
+ */
+function describeAssetSetProblem(
+    problem: AssetSetMaterializationProblem,
+    storyLibrary: DevModeStoryLibrary,
+): string {
+    const scene = storyLibrary.documents[problem.storyId]?.scenes?.[problem.sceneId];
+    const where = scene?.name ? `"${scene.name}"` : problem.sceneId;
+    if (problem.kind === "ambiguous") {
+        return `Asset set "${problem.setName}", used in ${where}, has more than one asset for ${problem.locale}.`;
+    }
+    if (problem.kind === "unsupported") {
+        const reason = problem.reason === "buildAxis"
+            ? "resolves its axis when the game is built, which this build cannot collapse yet"
+            : problem.reason === "multipleAxes"
+                ? "has more than one axis, which this build cannot resolve yet"
+                : "declares no axis to resolve";
+        return `Asset set "${problem.setName}", used in ${where}, ${reason}.`;
+    }
+    const language = problem.locale || "the project's language";
+    return `Asset set "${problem.setName}", used in ${where}, has no asset for ${language}.`;
+}
+
+/** The sets the project declares. Absent or unreadable is "no sets", which changes nothing. */
+async function loadAssetSets(projectPath: string): Promise<AssetSet[]> {
+    let raw: unknown;
+    try {
+        raw = await readOptionalJsonFile<unknown>(path.join(projectPath, "editor", "asset-sets.json"));
+    } catch {
+        return [];
+    }
+    return raw ? normalizeProjectAssetSets(raw).sets : [];
+}
+
+/**
+ * The library as tag resolution sees it: id, type and the author's tags.
+ *
+ * Read from the same shards {@link loadAssetNames} reads, and for the opposite reason - that one
+ * wants the name a row prints, this one wants the tags that decide which row means which file.
+ */
+async function loadAssetSetCandidates(projectPath: string): Promise<AssetSetCandidate[]> {
+    const candidates: AssetSetCandidate[] = [];
+    for (const type of NAMED_ASSET_TYPES) {
+        const shardPath = path.join(projectPath, "assets", `assets.metadata.${type}.json`);
+        let record: Record<string, unknown> | undefined;
+        try {
+            record = await readOptionalJsonFile<Record<string, unknown>>(shardPath);
+        } catch {
+            continue;
+        }
+        if (!record || typeof record !== "object") {
+            continue;
+        }
+        for (const [assetId, raw] of Object.entries(record)) {
+            const entry = raw && typeof raw === "object" ? raw as { tags?: unknown } : undefined;
+            const tags = Array.isArray(entry?.tags) ? entry.tags.filter((tag): tag is string => typeof tag === "string") : [];
+            candidates.push({ id: assetId, type, tags });
+        }
+    }
+    return candidates;
 }
 
 /** The media types a story row can name; a font or a blueprint never appears in a row's sentence. */

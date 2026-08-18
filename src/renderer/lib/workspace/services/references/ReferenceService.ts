@@ -7,12 +7,16 @@ import { LocalBlueprintService } from "../ui-editor/LocalBlueprintService";
 import { BlueprintNodeCatalogService } from "../ui-editor/BlueprintNodeCatalogService";
 import { VoiceService } from "../voice/VoiceService";
 import { CharacterService } from "../core/CharacterService";
+import { AssetsService } from "../core/AssetsService";
+import { AssetSetService } from "../assets/AssetSetService";
+import { resolveAssetSetContents, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
 import {
     buildReferenceIndex,
     extractBlueprintAssetReferences,
     extractCharacterAssetReferences,
     extractStoryAnimationAssetReferences,
     extractStoryAssetReferences,
+    type AssetSetExpander,
     extractUIDocumentAssetReferences,
     extractVoiceAssetReferences,
     type AssetReference,
@@ -222,6 +226,46 @@ export class ReferenceService extends Service<ReferenceService> {
      * Replace one slice's gaps. Always called on a rebuild, with an empty list when the slice read
      * cleanly, so a gap can never outlive the problem that produced it.
      */
+    /**
+     * How a story reference to an asset set is read: as a reference to every asset it can resolve to.
+     *
+     * Built per scan rather than held, because it reads two things that change under it - the sets
+     * the project declares and the tags on the library - and a stale copy would report an asset as
+     * unused the moment its tag was corrected.
+     */
+    private assetSetExpander(): AssetSetExpander | undefined {
+        let sets: AssetSet[];
+        try {
+            sets = this.getContext().services.get<AssetSetService>(Services.AssetSets).listSets();
+        } catch {
+            return undefined;
+        }
+        if (sets.length === 0) {
+            return undefined;
+        }
+        const setsById = new Map(sets.map(set => [set.id, set]));
+        const assetsService = this.getContext().services.get<AssetsService>(Services.Assets);
+        const candidates: AssetSetCandidate[] = [];
+        for (const bucket of Object.values(assetsService.getAssets())) {
+            for (const asset of Object.values(bucket ?? {})) {
+                candidates.push({ id: asset.id, type: asset.type, tags: asset.tags });
+            }
+        }
+        return assetId => {
+            const set = setsById.get(assetId);
+            if (!set) {
+                return null;
+            }
+            const members = new Set<string>();
+            for (const cell of resolveAssetSetContents(set, candidates).cells) {
+                for (const memberId of cell.assetIds) {
+                    members.add(memberId);
+                }
+            }
+            return [...members];
+        };
+    }
+
     private setSliceGaps(key: string, gaps: readonly ReferenceIndexGap[]): void {
         if (gaps.length === 0) {
             this.sliceGaps.delete(key);
@@ -280,7 +324,7 @@ export class ReferenceService extends Service<ReferenceService> {
             storyService.listStories().map(async entry => {
                 try {
                     const document = await storyService.loadStory(entry.id);
-                    this.storyReferences.set(entry.id, extractStoryAssetReferences(document, entry.name));
+                    this.storyReferences.set(entry.id, extractStoryAssetReferences(document, entry.name, this.assetSetExpander()));
                     this.setSliceGaps(`story:${entry.id}`, []);
                 } catch (error) {
                     console.warn(`[ReferenceService] Failed to scan story ${entry.id}:`, error);
@@ -407,7 +451,7 @@ export class ReferenceService extends Service<ReferenceService> {
         try {
             const document = storyService.getStoryDocument(storyId);
             const name = storyService.listStories().find(entry => entry.id === storyId)?.name ?? storyId;
-            this.storyReferences.set(storyId, extractStoryAssetReferences(document, name));
+            this.storyReferences.set(storyId, extractStoryAssetReferences(document, name, this.assetSetExpander()));
             this.setSliceGaps(`story:${storyId}`, []);
         } catch (error) {
             this.storyReferences.delete(storyId);
@@ -448,7 +492,7 @@ export class ReferenceService extends Service<ReferenceService> {
         for (const entry of entries) {
             try {
                 const document = await storyService.loadStory(entry.id);
-                this.storyReferences.set(entry.id, extractStoryAssetReferences(document, entry.name));
+                this.storyReferences.set(entry.id, extractStoryAssetReferences(document, entry.name, this.assetSetExpander()));
                 this.setSliceGaps(`story:${entry.id}`, []);
             } catch (error) {
                 console.warn(`[ReferenceService] Failed to scan story ${entry.id}:`, error);

@@ -3,6 +3,9 @@ import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { Services, WorkspaceContext } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
+import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
+import { resolveAssetSetMember, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
 import { Asset, AssetSource } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
@@ -55,7 +58,13 @@ function characterAvatarProjectPath(assetId: string): string | null {
 export function createWorkspaceAssetUrlResolver(context: WorkspaceContext): WorkspaceAssetUrlResolver {
     const assetsService = context.services.get<AssetsService>(Services.Assets);
 
-    return async (assetId: string, assetType?: string): Promise<WorkspaceAssetUrlResult> => {
+    return async (rawAssetId: string, assetType?: string): Promise<WorkspaceAssetUrlResult> => {
+        // A set is resolved here rather than left to the compiler, because the compiler only sees a
+        // materialised map and nothing materialises one in the editor: assembly writes them, and the
+        // scene preview compiles the document the author is editing. Resolving live keeps the
+        // preview honest - the row shows a picture rather than a missing-asset diagnostic - and it
+        // reads the same tags the build will read, so what the author sees is what will ship.
+        const assetId = resolveEditorAssetSet(context, rawAssetId) ?? rawAssetId;
         const avatarPath = characterAvatarProjectPath(assetId);
         if (avatarPath) {
             const request = await appPrivilegedFacade.fs.requestReadRaw(context.project.resolve(avatarPath));
@@ -88,6 +97,48 @@ export function createWorkspaceAssetUrlResolver(context: WorkspaceContext): Work
         recordAssetUrlToken(request.data.data, asset.id);
         return { success: true, url: `${AppProtocol}://${AppHost.Fs}/${request.data.data}` };
     };
+}
+
+/**
+ * The member an asset set resolves to for the language the editor is previewing in.
+ *
+ * The project's source language, which is the one an author writes and previews in; a preview of
+ * another language is a build concern, and guessing at one here would show the author a picture
+ * their own row does not name. Answers null for every ordinary asset id, which is the common case
+ * and costs one map lookup.
+ */
+function resolveEditorAssetSet(context: WorkspaceContext, assetId: string): string | null {
+    let set: AssetSet | undefined;
+    try {
+        set = context.services.get<AssetSetService>(Services.AssetSets).getSet(assetId);
+    } catch {
+        return null;
+    }
+    if (!set || set.axes.length !== 1) {
+        return null;
+    }
+    const assetsService = context.services.get<AssetsService>(Services.Assets);
+    const candidates: AssetSetCandidate[] = [];
+    for (const bucket of Object.values(assetsService.getAssets())) {
+        for (const asset of Object.values(bucket ?? {})) {
+            candidates.push({ id: asset.id, type: asset.type, tags: asset.tags });
+        }
+    }
+    let sourceLocale: string | undefined;
+    try {
+        sourceLocale = context.services.get<LocalizationService>(Services.Localization).getConfiguration().sourceLocale;
+    } catch {
+        sourceLocale = undefined;
+    }
+    const axis = set.axes[0];
+    const chain = [sourceLocale, ...axis.values].filter((value): value is string => Boolean(value));
+    for (const value of chain) {
+        const member = resolveAssetSetMember(set, { [axis.key]: value }, candidates);
+        if (member) {
+            return member;
+        }
+    }
+    return null;
 }
 
 /**
