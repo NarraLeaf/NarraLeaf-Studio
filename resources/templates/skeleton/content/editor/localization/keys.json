@@ -12,6 +12,9 @@
     "menu.save": {
       "sourceText": "Save"
     },
+    "menu.scenes": {
+      "sourceText": "Scenes"
+    },
     "menu.settings": {
       "sourceText": "Settings"
     },
