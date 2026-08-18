@@ -55,6 +55,7 @@ import { GAME_RUNTIME_TEST_SIGNAL_CHANNEL, toGameTestEvent } from "../gameTestSi
 import {
     RuntimePersistenceStore,
     RuntimeSaveStore,
+    sweepAbandonedTempFiles,
 } from "./runtimeStorage";
 import { collectPackSidecars, SidecarHost } from "./sidecarHost";
 import { resolveRuntimeUserDataDir } from "./userDataDir";
@@ -1005,12 +1006,34 @@ function registerRuntimeIpc(): void {
     const persistence = new RuntimePersistenceStore(userDataDir);
     saveStore = saves;
     persistenceStore = persistence;
+    // Housekeeping, once, on the way up: a store write that was interrupted between its temp file
+    // and the rename leaves the temp behind for good. Not awaited and never fatal - nothing here
+    // is worth delaying a boot for, let alone failing one.
+    void Promise.all([
+        sweepAbandonedTempFiles(userDataDir),
+        sweepAbandonedTempFiles(path.join(userDataDir, "saves")),
+    ]).catch(() => undefined);
 
     ipcMain.handle("runtime:read-pack", () => readPack());
     ipcMain.handle("runtime:close", () => {
         // The Quit Application node's graceful terminate. Mark the quit before it reaches the
         // window so the close guard stands aside and the blueprint close event does not fire again.
         isQuitting = true;
+        app.quit();
+    });
+    ipcMain.handle("runtime:restart", () => {
+        // Quit and come back, for a game that cannot be corrected in place - a language changed
+        // mid-playthrough (see the renderer's `localeRestart`). The run has already been written
+        // into a save and the resume marked in persistence by the time this arrives; both are
+        // drained by the `before-quit` flush below, which is why this path must go through `quit`
+        // and not `exit`.
+        //
+        // `relaunch` only schedules the new instance - it does not end this one - so the quit that
+        // follows is what actually performs the restart. Same arguments and working directory as
+        // this run, which is what carries the asset version, the crash policy and the log path
+        // into the instance that replaces it.
+        isQuitting = true;
+        app.relaunch();
         app.quit();
     });
     ipcMain.on(GAME_RUNTIME_CLOSE_DECISION_CHANNEL, (_event, payload: { requestId?: number; allow?: boolean }) => {

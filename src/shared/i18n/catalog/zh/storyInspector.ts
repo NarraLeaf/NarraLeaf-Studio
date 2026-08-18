@@ -94,6 +94,7 @@ export const storyInspector = {
         circleReveal: "圆形展开",
         circleClose: "圆形收拢",
         slideReveal: "滑动揭示",
+        custom: "自定义",
     },
     easing: {
         default: "默认",
@@ -238,6 +239,7 @@ export const storyInspector = {
         xalign: "X 对齐（0-1）",
         yalign: "Y 对齐（0-1）",
         look: "色调",
+        lookSnaps: "影调一帧到位。补间会让画面走过一串没人挑过的颜色，所以没有时长可设——想要过渡就在前面放一次眨眼或转场。",
         lookIntensity: "强度（1 为标准）",
         lookFilter: "自定义 CSS 滤镜",
     },
@@ -248,11 +250,13 @@ export const storyInspector = {
         mono: "单色",
         moonlight: "月光",
         faint: "意识模糊",
+        hangover: "宿醉",
     },
 
     cameraLookHint: {
         channel: "色调会顶掉舞台压暗，而不是叠加——引擎里两者是同一个滤镜通道，后执行的那一行说了算。每个色调都自带亮度。复位镜头会清除它。",
         monologue: "只降低整个舞台的饱和度与亮度。要压暗四周，请另加一行暗角。",
+        hangover: "画面会先摇晃两次，再落到最终色调。这一行会等摇晃结束，时长决定摇晃的快慢。",
     },
 
     displayableOperation: {

@@ -229,3 +229,24 @@ describe("stage slot surface progress carry", () => {
         await expect(hostApi.progress.export()).resolves.toMatchObject({ outcome: "failed" });
     });
 });
+
+describe("stage slot surface language carry", () => {
+    afterEach(cleanup);
+
+    it("passes the language hook through to the slot's host API", () => {
+        // A language picker belongs to a quick menu as often as to a settings page, and a quick
+        // menu is a Game UI slot surface. Without this the same control would restart the game from
+        // one surface and silently leave a running playthrough half-translated from the other.
+        const localeChangedInGame = vi.fn(async () => undefined);
+
+        const options = renderShell({ localeChangedInGame });
+
+        expect(options.onLocaleChanged).toBe(localeChangedInGame);
+    });
+
+    it("still changes the language on a host that backs no restart", () => {
+        const options = renderShell({});
+
+        expect(options.onLocaleChanged).toBeUndefined();
+    });
+});

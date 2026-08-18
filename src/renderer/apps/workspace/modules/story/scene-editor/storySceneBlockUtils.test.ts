@@ -388,7 +388,7 @@ describe("buildDialogueAppearances", () => {
 
     it("tracks the placement: an enter sets it and names its own block as the source", () => {
         const blocks = [
-            characterAction("e", { action: "character", operation: "enter", characterId: "c1", transform: { preset: "left" } }),
+            characterAction("e", { action: "character", operation: "enter", characterId: "c1", transform: { to: { position: { xalign: 0.25, yalign: 0.5 } } } }),
             dialogue("d1", { characterId: "c1" }),
         ];
         expect(buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).get("d1"))
@@ -397,9 +397,9 @@ describe("buildDialogueAppearances", () => {
 
     it("a move relocates the placement and becomes the new source, keeping the form", () => {
         const blocks = [
-            characterAction("e", { action: "character", operation: "enter", characterId: "c1", pose: "casual", transform: { preset: "left" } }),
+            characterAction("e", { action: "character", operation: "enter", characterId: "c1", pose: "casual", transform: { to: { position: { xalign: 0.25, yalign: 0.5 } } } }),
             dialogue("d1", { characterId: "c1" }),
-            characterAction("m", { action: "character", operation: "move", characterId: "c1", transform: { preset: "right" } }),
+            characterAction("m", { action: "character", operation: "move", characterId: "c1", transform: { to: { position: { xalign: 0.75, yalign: 0.5 } } } }),
             dialogue("d2", { characterId: "c1" }),
         ];
         const map = buildDialogueAppearances(scene(blocks, blocks.map(b => b.id)));
@@ -409,7 +409,7 @@ describe("buildDialogueAppearances", () => {
 
     it("an expression keeps the placement and its source untouched", () => {
         const blocks = [
-            characterAction("e", { action: "character", operation: "enter", characterId: "c1", transform: { preset: "right" } }),
+            characterAction("e", { action: "character", operation: "enter", characterId: "c1", transform: { to: { position: { xalign: 0.75, yalign: 0.5 } } } }),
             characterAction("f", { action: "character", operation: "expression", characterId: "c1", tags: { axis: "angry" } }),
             dialogue("d1", { characterId: "c1" }),
         ];
@@ -429,7 +429,7 @@ describe("buildDialogueAppearances", () => {
         // The group-header dropdown authors this /move for a speaker with no /show; the scan must read it
         // back so a second pick rewrites it rather than stacking a duplicate — but must not mark it shown.
         const blocks = [
-            characterAction("m", { action: "character", operation: "move", characterId: "c1", transform: { preset: "left" } }),
+            characterAction("m", { action: "character", operation: "move", characterId: "c1", transform: { to: { position: { xalign: 0.25, yalign: 0.5 } } } }),
             dialogue("d1", { characterId: "c1" }),
         ];
         const appearance = buildDialogueAppearances(scene(blocks, blocks.map(b => b.id))).get("d1");
@@ -439,7 +439,7 @@ describe("buildDialogueAppearances", () => {
 
     it("leaves the accumulated placement untouched for a move that carries no placement preset", () => {
         const blocks = [
-            characterAction("e", { action: "character", operation: "enter", characterId: "c1", transform: { preset: "left" } }),
+            characterAction("e", { action: "character", operation: "enter", characterId: "c1", transform: { to: { position: { xalign: 0.25, yalign: 0.5 } } } }),
             characterAction("m", { action: "character", operation: "move", characterId: "c1", transform: { durationMs: 300 } }),
             dialogue("d1", { characterId: "c1" }),
         ];

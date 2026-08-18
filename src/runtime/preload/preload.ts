@@ -181,6 +181,7 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
         ipcRenderer.send(GAME_RUNTIME_TEST_SIGNAL_CHANNEL, signal);
     },
     close: () => ipcRenderer.invoke("runtime:close") as Promise<void>,
+    restart: () => ipcRenderer.invoke("runtime:restart") as Promise<void>,
     getFullscreen: () => ipcRenderer.invoke("runtime:fullscreen:get") as Promise<boolean>,
     setFullscreen: (fullscreen: boolean) =>
         ipcRenderer.invoke("runtime:fullscreen:set", fullscreen) as Promise<void>,
