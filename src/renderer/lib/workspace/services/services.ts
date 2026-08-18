@@ -225,6 +225,8 @@ enum Services {
     AudioTracks = "audioTracks",
     /** The build variants the project ships as, and what each one says differently from the project */
     AppTags = "appTags",
+    /** The asset sets the project declares: library entries standing for a family of files, by axis */
+    AssetSets = "assetSets",
     /** The project's own palette: the colours every `nlbrand:` link in the project resolves through */
     Brand = "brand",
     /** The words the project spells on purpose, and the session's spellchecker they are pushed into */

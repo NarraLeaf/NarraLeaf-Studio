@@ -2,6 +2,7 @@ import { AssetCategory } from '@/lib/workspace/services/assets/assetTypes';
 import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
 import type { MediaAssetSupportRecord } from '@/lib/workspace/services/media/mediaAssetSupport';
 import { createContext, useContext } from 'react';
+import type { ResolvedAssetSet } from './state/useAssetSets';
 import { ClipboardState } from './state/useClipboard';
 import { DraggedItemState } from './state/useDragAndDrop';
 
@@ -18,6 +19,15 @@ interface AssetsPanelContextType {
      */
     assets: Record<AssetCategory, Asset[]>;
     groups: Record<AssetCategory, AssetGroup[]>;
+    /**
+     * The project's asset sets, already measured against the library above, filed under the section
+     * each one's type belongs to.
+     *
+     * Not filtered by the search box. A set is not a file and does not match on a file name; what it
+     * would match on is the tags it declares, and a set silently disappearing while an author narrows
+     * the library is how the row they were about to fix stops being findable.
+     */
+    assetSets: Record<AssetCategory, ResolvedAssetSet[]>;
     filteredAssets: Record<AssetCategory, Asset[]>;
     filteredGroups: Record<AssetCategory, AssetGroup[]>;
     /**
@@ -40,6 +50,9 @@ interface AssetsPanelContextType {
     handleItemSelect: (itemId: string, isGroup: boolean, event: React.MouseEvent) => void;
     handleAssetClick: (asset: Asset, isMultiSelectMode: boolean) => void;
     handleGroupFocus: (groupId: string) => void;
+    /** Puts a set in the properties panel, which is where its axes are edited. */
+    handleAssetSetSelect: (entry: ResolvedAssetSet) => void;
+    showAssetSetContextMenu: (event: React.MouseEvent, entry: ResolvedAssetSet) => void;
     showContextMenu: (e: React.MouseEvent, category: AssetCategory, item: Asset | AssetGroup | null, isGroup: boolean) => void;
     handleDragStart?: (e: React.DragEvent, category: AssetCategory, item: Asset | AssetGroup, isGroup: boolean) => void;
     handleDragEnd?: () => void;

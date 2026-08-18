@@ -354,6 +354,56 @@ export const assets = {
         /** 途中で打ち切らず断る。中途半端な一覧は、あるファイルを「無い」と報告してしまう。 */
         tooManyFiles: "そのフォルダには {count} 個のファイルがあり、多すぎて調べられない。モデルが入っているフォルダを選ぶ",
     },
+    /**
+     * アセットセット：軸で索引される一群のファイルを表す、ライブラリ上の 1 つの項目。
+     *
+     * 「グループ」ではなく「セット」と呼ぶ。このパネルのグループはすでにフォルダーを指すため。
+     * ここの語は作者がこれに対して行うこと（軸の宣言、どのバリアントが解決するかの確認）を言い、
+     * ビルドがどう読むかは言わない。
+     */
+    sets: {
+        itemType: "セット",
+        variantCount: {
+            one: "バリアント {count} 件",
+            other: "バリアント {count} 件",
+        },
+        variantsResolved: "バリアント {total} 件中 {resolved} 件",
+        unfinished: "バリアント未宣言",
+        menu: {
+            create: "選択したファイルからセットを作成",
+        },
+        create: {
+            title: "アセットセットの新規作成",
+            nameRequired: "名前を入力",
+            failed: "1 つのセットが持つのは 1 種類のアセット。同じ種類のファイルを選択。",
+        },
+        inspector: {
+            axes: "軸",
+            filter: "メンバー共通のタグ",
+            addAxis: "軸を追加",
+            removeAxis: "軸を削除",
+            moveOut: "外側へ",
+            moveIn: "内側へ",
+            axisKey: "タグ分類",
+            axisValues: "値",
+            residency: {
+                label: "解決の時点",
+                build: "ビルド時",
+                runtime: "実行時",
+            },
+            residencyBlocked: "ビルド時に解決する軸は、実行時に解決する軸の内側に置けない。",
+            variants: "バリアント",
+            variantMissing: "ファイルなし",
+            variantAmbiguous: "ファイル {count} 件",
+            noVariants: "軸を宣言するとバリアントが解決される。",
+        },
+        history: {
+            edit: "アセットセットの編集",
+            add: "セット {name} を追加",
+            rename: "セット {name} の名前を変更",
+            delete: "セット {name} を削除",
+        },
+    },
     menu: {
         newGroup: "新規グループ",
         newSubGroup: "新規サブグループ",

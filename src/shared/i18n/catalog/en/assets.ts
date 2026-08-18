@@ -366,6 +366,67 @@ export const assets = {
         /** Refused rather than truncated: a partial listing would report present files as missing. */
         tooManyFiles: "That folder holds {count} files, too many to check. Select the folder the models are in.",
     },
+    /**
+     * Asset sets: one library entry standing for a family of files indexed by axes.
+     *
+     * Called a "set" and never a "group", because a group in this panel is already a folder. The
+     * words here name what an author does with one - declare its axes, see which variants resolve -
+     * and never how the build reads it.
+     */
+    sets: {
+        /** What a set's row calls itself in a rename dialog. */
+        itemType: "set",
+        /** Every variant resolves. The only sentence a finished set shows. */
+        variantCount: {
+            one: "{count} variant",
+            other: "{count} variants",
+        },
+        /** Some do not. The two numbers are the whole message; no word for "incomplete" is needed. */
+        variantsResolved: "{resolved} of {total} variants",
+        /** The set does not describe any variants yet, so there is nothing to count. */
+        unfinished: "No variants declared",
+        menu: {
+            create: "New Set from Selection",
+        },
+        create: {
+            title: "New asset set",
+            nameRequired: "Enter a name",
+            /** Reached only by a selection spanning two asset types. */
+            failed: "A set holds one kind of asset. Select files of one kind.",
+        },
+        /** The inspector. Each axis is one tag category, and the order is the nesting. */
+        inspector: {
+            axes: "Axes",
+            /** The tags every member carries, which is what keeps a set from meaning the whole library. */
+            filter: "Members carry",
+            addAxis: "Add axis",
+            removeAxis: "Remove axis",
+            moveOut: "Move out",
+            moveIn: "Move in",
+            axisKey: "Tag category",
+            axisValues: "Values",
+            residency: {
+                label: "Resolved",
+                build: "When built",
+                runtime: "While running",
+            },
+            /** Why a move or a residency change was refused. States the rule, not the reasoning. */
+            residencyBlocked: "An axis resolved when built cannot sit inside one resolved while running.",
+            variants: "Variants",
+            /** One cell of the matrix with nothing in it. */
+            variantMissing: "No file",
+            /** One cell more than one file answers to. */
+            variantAmbiguous: "{count} files",
+            /** Shown instead of the matrix while the declaration cannot produce one. */
+            noVariants: "Declare an axis to resolve variants.",
+        },
+        history: {
+            edit: "Edit asset sets",
+            add: "Add set {name}",
+            rename: "Rename set {name}",
+            delete: "Delete set {name}",
+        },
+    },
     menu: {
         newGroup: "New Group",
         newSubGroup: "New Sub-Group",

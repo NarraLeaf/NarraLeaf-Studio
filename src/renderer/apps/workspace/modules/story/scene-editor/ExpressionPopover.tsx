@@ -6,7 +6,7 @@ import type { Character } from "@/lib/workspace/services/character/Character";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { useTranslation } from "@/lib/i18n";
 import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
-import { AssetField } from "./StorySceneActionInspector";
+import { AssetField } from "./AssetField";
 
 /**
  * Inline reveal-time event config popover, mirroring the Pause / Interpolation popovers. The
