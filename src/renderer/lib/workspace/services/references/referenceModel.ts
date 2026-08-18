@@ -246,7 +246,36 @@ export function buildReferenceIndex(references: readonly AssetReference[]): Map<
  * Superset of `StoryService.collectDocumentAssetLocks` — that walker omits `image.assetId` and
  * `video.assetId`, so an image or video used only from a story block currently reports as unused.
  */
-export function extractStoryAssetReferences(document: StoryDocument, storyName: string): AssetReference[] {
+/**
+ * Expands an asset set id to the assets it can resolve to, or null for an ordinary asset.
+ *
+ * Supplied by `ReferenceService`, which has the project's sets and its library; the model stays a
+ * pure function of a document and this.
+ */
+export type AssetSetExpander = (assetId: string) => readonly string[] | null;
+
+/**
+ * What a reference to `assetId` actually uses.
+ *
+ * A set id names no bytes of its own - it resolves to one of its members, and *which* one depends on
+ * the language the game runs in, so all of them are used. Answering with the members is what keeps
+ * two rules honest at once: the set id is not a dangling reference (it names assets that exist), and
+ * the members are not unused (a row reaches every one of them).
+ *
+ * A set that resolves to nothing contributes no reference rather than its own id. The row is broken
+ * either way, and `assets/group-incomplete` says so in words an author can act on - where a dangling
+ * asset id would send them looking for a file that was never supposed to exist.
+ */
+function expandReferencedAsset(assetId: string, expand?: AssetSetExpander): readonly string[] {
+    const members = expand?.(assetId);
+    return members ? members : [assetId];
+}
+
+export function extractStoryAssetReferences(
+    document: StoryDocument,
+    storyName: string,
+    expandAssetSet?: AssetSetExpander,
+): AssetReference[] {
     const references: AssetReference[] = [];
 
     for (const scene of listScenesInDocumentOrder(document)) {
@@ -257,22 +286,29 @@ export function extractStoryAssetReferences(document: StoryDocument, storyName: 
             if (!isLibraryAssetId(assetId)) {
                 return;
             }
-            references.push({
-                id: `story:${document.id}:${scene.id}:${blockId}:${field}`,
-                assetId: assetId.trim(),
-                kind: "story",
-                label: sceneName,
-                detail,
-                field,
-                target: {
-                    kind: "storyBlock",
-                    storyId: document.id,
-                    sceneId: scene.id,
-                    blockId,
-                    storyName,
-                    sceneName,
-                },
-            });
+            const trimmed = assetId.trim();
+            for (const memberId of expandReferencedAsset(trimmed, expandAssetSet)) {
+                references.push({
+                    // The member is in the key: one row naming a set uses several assets, and a
+                    // single key would leave every language after the first invisible to the index.
+                    id: memberId === trimmed
+                        ? `story:${document.id}:${scene.id}:${blockId}:${field}`
+                        : `story:${document.id}:${scene.id}:${blockId}:${field}:${memberId}`,
+                    assetId: memberId,
+                    kind: "story",
+                    label: sceneName,
+                    detail,
+                    field,
+                    target: {
+                        kind: "storyBlock",
+                        storyId: document.id,
+                        sceneId: scene.id,
+                        blockId,
+                        storyName,
+                        sceneName,
+                    },
+                });
+            }
         };
 
         if (isLibraryAssetId(scene.defaultBackgroundAssetId)) {

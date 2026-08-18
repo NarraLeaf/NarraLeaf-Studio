@@ -398,7 +398,58 @@ export type StoryBlockBase<TKind extends StoryBlockKind, TPayload> = {
      * it keeps its payload (unlike `note`). Absent means enabled; the three states are disjoint.
      */
     disabled?: boolean;
+    /**
+     * What each asset set this row names resolves to, per locale.
+     *
+     * **Never authored and never on disk under `editor/`.** It is written while a package is being
+     * assembled (`materializeStoryAssetSets`) and exists only in the bundle a game runs from, which
+     * is why editing a row cannot produce one and why version control never sees it.
+     *
+     * It sits on the row rather than in a project-wide table for two reasons, both in that module's
+     * own note: a table would enumerate every localized asset the project has, which is the one
+     * thing a protected pack refuses to disclose; and a map inside the row is inside the bytes the
+     * trimmer scans, so every locale's member is carried by the rule that is already there.
+     *
+     * Keyed by the set id the payload still names - the payload keeps the set id, so a row whose map
+     * is missing fails loudly at a resolver rather than quietly fetching one language's picture.
+     */
+    assetVariants?: StoryAssetVariants;
 };
+
+/**
+ * A materialised asset set reference: set id, then locale, then the asset that locale resolves to.
+ *
+ * Total over the project's locales by construction - see `materializeStoryAssetSets` - so reading it
+ * is a lookup and not a search.
+ */
+export type StoryAssetVariants = Record<string, Record<string, string>>;
+
+/**
+ * The asset a row's set reference resolves to for `locale`, or null when the row does not name a
+ * set at all.
+ *
+ * The one function every consumer goes through: the compiler on its way to a URL, and the shipped
+ * content check on its way to the bytes. Falling back to the source locale is defence rather than
+ * policy - materialization already filled every locale, so reaching that line means the pack and the
+ * project it was built from disagree, and one language's stage is a better answer than none.
+ */
+export function resolveStoryAssetVariant(
+    variants: StoryAssetVariants | undefined,
+    assetId: string,
+    locale: string | undefined,
+    sourceLocale?: string,
+): string | null {
+    const map = variants?.[assetId];
+    if (!map) {
+        return null;
+    }
+    const direct = locale ? map[locale] : undefined;
+    if (direct) {
+        return direct;
+    }
+    const source = sourceLocale ? map[sourceLocale] : undefined;
+    return source ?? null;
+}
 
 export type StoryNodeActionBlock = StoryBlockBase<"nodeAction", StoryNodeActionPayload>;
 export type StoryActionBlock = StoryBlockBase<"action", StoryActionPayload>;

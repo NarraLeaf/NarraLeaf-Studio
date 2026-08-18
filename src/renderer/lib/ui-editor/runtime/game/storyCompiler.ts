@@ -114,6 +114,7 @@ import {
     resolveAudioTrackPlayback,
 } from "@shared/types/audioTrack";
 import { parseTranslatedText } from "@shared/utils/localizationText";
+import { resolveStoryAssetVariant, type StoryAssetVariants } from "@shared/types/story";
 import {
     composeStoryFilter,
     isEmptyStoryTransformProps,
@@ -280,6 +281,14 @@ type SceneLocalizationResolver = {
     hasTranslation: (textId: string) => boolean;
     /** Translated text for the current locale, or null to render the source-language prompt. */
     resolve: (textId: string) => string | null;
+    /**
+     * The asset a materialised set reference resolves to for the current locale.
+     *
+     * Lives beside {@link resolve} because it answers the same question about the same moment: a
+     * line's words and the picture behind it are in one language, and two places reading the locale
+     * separately is how they come to disagree.
+     */
+    variant: (variants: StoryAssetVariants | undefined, assetId: string) => string | null;
 };
 
 function createSceneLocalizationResolver(input: StoryLocalizationRuntime): SceneLocalizationResolver {
@@ -287,10 +296,16 @@ function createSceneLocalizationResolver(input: StoryLocalizationRuntime): Scene
     for (const locale of input.locales) {
         chains.set(locale.code, resolveLocaleChain(input, locale.code));
     }
+    // Hosts hand this in through a cast (`as Parameters<typeof compileStudioStoryToNlr>[0]`), so a
+    // bundle payload with no `getLocale` on it reaches here typed as if it had one. Reading the
+    // source locale in that case keeps a compile walking instead of throwing halfway down a story.
+    const activeLocale = () => (typeof input.getLocale === "function" ? input.getLocale() : input.sourceLocale);
     return {
         hasTranslation: textId => Object.values(input.tables).some(table => Boolean(table[textId])),
+        variant: (variants, assetId) =>
+            resolveStoryAssetVariant(variants, assetId, activeLocale(), input.sourceLocale),
         resolve: textId => {
-            const locale = input.getLocale();
+            const locale = activeLocale();
             const chain = chains.get(locale) ?? resolveLocaleChain(input, locale);
             for (const code of chain) {
                 const target = input.tables[code]?.[textId];
@@ -5122,9 +5137,47 @@ async function bindOffstageDefaultAvatars(params: {
     }
 }
 
+/**
+ * The asset a row means, following a materialised set reference when the row carries one.
+ *
+ * The single point where a set stops being a set. Everything downstream - the URL, the cache entry,
+ * the preload registration - sees an ordinary asset id, which is why nothing else in this compiler
+ * had to learn what a set is.
+ *
+ * **Resolution happens here, before the URL, and therefore before the preload sweep that runs on
+ * the URLs this compile produced.** Deferring it to the moment the action runs would leave the
+ * preloader warming either nothing or the wrong language's file, and the player would watch a frame
+ * of blank stage while the right one loaded.
+ */
+function resolveSetReference(ctx: SceneCompileContext, assetId: string, blockId: string): string {
+    const variants = ctx.scene.blocks?.[blockId]?.assetVariants;
+    const map = variants?.[assetId];
+    if (!map) {
+        return assetId;
+    }
+    const resolved = ctx.localization?.variant(variants, assetId);
+    if (resolved) {
+        return resolved;
+    }
+    // A materialised story reached a compile with no localization to resolve it against - a host
+    // wiring fault, not an authoring one, because assembly only writes these maps for a project that
+    // has languages. Any member draws the scene; the diagnostic is what keeps it from being silent.
+    const [fallback] = Object.values(map);
+    if (fallback) {
+        pushDiagnostic(
+            ctx.diagnostics,
+            "warning",
+            blockId,
+            `Asset set ${assetId} was resolved without a language; the stage may show the wrong one.`,
+        );
+        return fallback;
+    }
+    return assetId;
+}
+
 async function resolveAsset(ctx: SceneCompileContext, assetId: string, assetType: StoryAssetKind, blockId: string): Promise<string | null> {
     return resolveAssetUrlCached({
-        assetId,
+        assetId: resolveSetReference(ctx, assetId, blockId),
         assetType,
         blockId,
         resolveAssetUrl: ctx.resolveAssetUrl,
