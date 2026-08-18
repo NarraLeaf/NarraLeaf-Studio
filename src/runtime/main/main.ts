@@ -1013,6 +1013,21 @@ function registerRuntimeIpc(): void {
         isQuitting = true;
         app.quit();
     });
+    ipcMain.handle("runtime:restart", () => {
+        // Quit and come back, for a game that cannot be corrected in place - a language changed
+        // mid-playthrough (see the renderer's `localeRestart`). The run has already been written
+        // into a save and the resume marked in persistence by the time this arrives; both are
+        // drained by the `before-quit` flush below, which is why this path must go through `quit`
+        // and not `exit`.
+        //
+        // `relaunch` only schedules the new instance - it does not end this one - so the quit that
+        // follows is what actually performs the restart. Same arguments and working directory as
+        // this run, which is what carries the asset version, the crash policy and the log path
+        // into the instance that replaces it.
+        isQuitting = true;
+        app.relaunch();
+        app.quit();
+    });
     ipcMain.on(GAME_RUNTIME_CLOSE_DECISION_CHANNEL, (_event, payload: { requestId?: number; allow?: boolean }) => {
         const requestId = payload?.requestId;
         if (typeof requestId !== "number") {

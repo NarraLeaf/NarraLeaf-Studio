@@ -599,6 +599,19 @@ export type GameRuntimePreloadBridge = {
     pluginEntryUrl(entryRelativePath: string): string;
     log(level: "info" | "warning" | "error", message: string): void;
     close(): Promise<void>;
+    /**
+     * End this shell and bring it straight back at boot.
+     *
+     * Asked for when the game cannot be corrected in place - today, a language changed while a
+     * playthrough was running, which invalidates the text already drawn, the backlog holding it,
+     * the voice under it and the assets held for the scene. The run is parked in a save first and
+     * loaded back by the boot that follows; see the renderer's `localeRestart`.
+     *
+     * Every shell can do this honestly, which is why it sits beside {@link close} rather than
+     * behind {@link capabilities}: the desktop shell relaunches its process, and the web export
+     * reloads its page, which for a shell that IS a page is the same act.
+     */
+    restart(): Promise<void>;
     getFullscreen(): Promise<boolean>;
     setFullscreen(fullscreen: boolean): Promise<void>;
     /** Subscribe to window fullscreen transitions. Returns an unsubscribe function. */
