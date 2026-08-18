@@ -37,7 +37,7 @@ export function useEnteredElementState(elementId: string, enabled: boolean): Ent
     // Memoised because this value is broadcast: a fresh object every render would re-render every
     // element under this one on every render of this one.
     const own = useMemo(
-        () => (ownVariantId === undefined ? null : { variantId: ownVariantId }),
+        () => (ownVariantId === undefined ? null : { variantId: ownVariantId, own: true }),
         [ownVariantId],
     );
 
