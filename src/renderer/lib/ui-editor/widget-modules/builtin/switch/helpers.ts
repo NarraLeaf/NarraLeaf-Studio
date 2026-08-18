@@ -35,7 +35,7 @@ export type SwitchPartGeometry = {
     trackW: number;
     trackH: number;
     thumbSize: number;
-    /** Distance the thumb travels between off and on, i.e. the `on` variant's `transformOffsetX`. */
+    /** Distance the thumb travels between off and on, i.e. the switch's `on` state motion. */
     travel: number;
 };
 
@@ -92,18 +92,17 @@ function switchPartFlatProps(kind: UISwitchChildSlot): ContainerWidgetProps {
     };
 }
 
-/**
- * The one animatable key each part's `on` variant differs by: the track changes colour, the thumb
- * slides. Both are in `CONTAINER_ANIMATABLE_KEYS`, which is what buys the transition for free.
- */
-function switchOnVariantKey(kind: UISwitchChildSlot): ContainerAppearancePropertyKey {
-    return kind === "track" ? "backgroundColor" : "transformOffsetX";
+/** The one animatable key the track's `on` variant differs by; the thumb differs by nothing. */
+function switchOnVariantKey(kind: UISwitchChildSlot): ContainerAppearancePropertyKey | null {
+    return kind === "track" ? "backgroundColor" : null;
 }
 
-function switchOnVariantProps(kind: UISwitchChildSlot, base: ContainerWidgetProps, travel: number): ContainerWidgetProps {
-    return kind === "track"
-        ? { ...base, backgroundColor: SWITCH_TRACK_ON_COLOR }
-        : { ...base, transformOffsetX: travel };
+/**
+ * What a part looks like while the switch is on. Looks only: the thumb does not move here, it is moved
+ * by the switch's state motion, so nothing writes a position into a variant.
+ */
+function switchOnVariantProps(kind: UISwitchChildSlot, base: ContainerWidgetProps): ContainerWidgetProps {
+    return kind === "track" ? { ...base, backgroundColor: SWITCH_TRACK_ON_COLOR } : base;
 }
 
 function withGroupTransition(group: AppearancePropertyGroup): AppearancePropertyGroup {
@@ -135,23 +134,22 @@ function withAnimatedKeyTransition(variant: AppearanceVariant, animatedKey: Cont
  * whole baseline, so a variant missing keys would resolve to holes, and
  * `ensureContainerAppearanceHasAllKeys` only ever fills missing *keys*, never a missing *variant*.
  */
-export function createSwitchPartProps(kind: UISwitchChildSlot, travel: number): Record<string, unknown> {
+export function createSwitchPartProps(kind: UISwitchChildSlot): Record<string, unknown> {
     const props = switchPartFlatProps(kind);
     const appearance = createInitialContainerAppearance(props);
     const animatedKey = switchOnVariantKey(kind);
-    const onGroups = createInitialContainerAppearance(switchOnVariantProps(kind, props, travel)).variants[0]
+    const onGroups = createInitialContainerAppearance(switchOnVariantProps(kind, props)).variants[0]
         ?.propertyGroups ?? [];
     const onVariant: AppearanceVariant = {
         id: UI_SWITCH_ON_VARIANT_ID,
         name: translate("widgets.defaults.switch.onVariant"),
         propertyGroups: onGroups,
     };
+    const withTransition = (variant: AppearanceVariant) =>
+        animatedKey ? withAnimatedKeyTransition(variant, animatedKey) : variant;
     const model: AppearanceModel = {
         ...appearance,
-        variants: [
-            ...appearance.variants.map(variant => withAnimatedKeyTransition(variant, animatedKey)),
-            withAnimatedKeyTransition(onVariant, animatedKey),
-        ],
+        variants: [...appearance.variants.map(withTransition), withTransition(onVariant)],
     };
     return {
         ...props,

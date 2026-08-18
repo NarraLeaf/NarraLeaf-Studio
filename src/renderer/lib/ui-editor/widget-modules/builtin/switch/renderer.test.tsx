@@ -197,9 +197,11 @@ describe("SwitchRenderer", () => {
         const { renderCalls, root } = mountSwitch(document);
 
         expect(root.getAttribute("data-ui-switch-checked")).toBe("false");
-        expect(lastCall(renderCalls)?.elementOverrides).toBeUndefined();
         expect(variantOf(lastCall(renderCalls), "track")).toBeUndefined();
         expect(variantOf(lastCall(renderCalls), "thumb")).toBeUndefined();
+        // Overrides are still handed down while off: that is where the way back comes from, an offset
+        // of zero on the same timing the way out used.
+        expect(lastCall(renderCalls)?.elementOverrides?.thumb?.layout).toEqual(document.elements.thumb!.layout);
     });
 
     it("toggles on release of a press that never moved, and dispatches changed then turnedOn", async () => {

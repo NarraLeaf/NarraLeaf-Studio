@@ -22,6 +22,7 @@ import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
 import { useSurfacePassive } from "@/lib/ui-editor/runtime/surface/SurfacePassiveContext";
 import { isTextEntryTarget } from "./app/isTextEntryTarget";
 import { EnteredStateProvider, variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
+import type { UIStateMotionOffset } from "@shared/types/ui-editor/stateMotion";
 import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
 import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
 
@@ -196,9 +197,16 @@ export function EditorNodeWrapper({
     // inside it draws at zero. The editor selects, measures and snaps to *this* node, so an offset
     // living on a layer inside it leaves the selection frame and the handles behind at the position
     // the element rests in - visibly detached from the element the author is dragging.
-    const resolvedEnteredOffsets = enteredState
-        ? resolveAppearanceTransformOffsets(appearance, appearanceResolveCtx)
-        : ZERO_APPEARANCE_OFFSETS;
+    // What the parent widget hands down for the state it is in. It outranks the appearance path
+    // because it *is* the state's motion; the appearance offsets are the older shape, still read for
+    // documents written before state motions existed.
+    const handedMotionOffset = (element.extra as { stateMotionOffset?: UIStateMotionOffset } | undefined)
+        ?.stateMotionOffset;
+    const resolvedEnteredOffsets = handedMotionOffset
+        ? { x: handedMotionOffset.x, y: handedMotionOffset.y }
+        : enteredState
+          ? resolveAppearanceTransformOffsets(appearance, appearanceResolveCtx)
+          : ZERO_APPEARANCE_OFFSETS;
     const enteredOffsetsInFlow = !isRoot && layoutMode === "flow";
     const enteredOffsets = useMemo(
         () => (enteredOffsetsInFlow ? resolvedEnteredOffsets : ZERO_APPEARANCE_OFFSETS),
@@ -217,6 +225,13 @@ export function EditorNodeWrapper({
     // every render, and a new identity would restart the animation mid-flight.
     const enteredOffsetTransitionRef = useRef<Record<string, unknown> | null>(null);
     enteredOffsetTransitionRef.current = (() => {
+        if (handedMotionOffset) {
+            return {
+                type: "tween",
+                duration: Math.max(0, handedMotionOffset.durationMs) / 1000,
+                ease: handedMotionOffset.easing,
+            };
+        }
         if (!enteredState) {
             return null;
         }
