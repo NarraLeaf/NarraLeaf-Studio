@@ -3,8 +3,11 @@
  * Behavior contract for the shared surface lifecycle boundary, carried over
  * from the (now unified) Dev Mode / game-runtime characterization tests:
  * one-frame deferred surfaceInit with a StrictMode-safe cancelled guard,
- * closeScope + surfaceUnmount on unmount, and core-gating (the host passes
- * core=null until the surface renderer reports subscriptions ready).
+ * closeScope + surfaceUnmount on unmount, and ready-gating (the host holds
+ * `ready` false until the surface renderer reports subscriptions ready).
+ *
+ * The scope is not gated the same way: it opens as the boundary mounts, so that a surface
+ * entered a second time can be dispatched into before it is ready.
  */
 import { StrictMode, type ReactNode } from "react";
 import { render, cleanup } from "@testing-library/react";
@@ -50,6 +53,7 @@ function mountBoundary(input: {
     strict?: boolean;
     lifecycleRef?: { current: SurfaceLifecycleOrchestrator };
     core?: ReturnType<typeof createRecordingCore> | null;
+    ready?: boolean;
 }) {
     const core = input.core === undefined ? createRecordingCore(input.log) : input.core;
     const lifecycleRef = input.lifecycleRef ?? { current: new SurfaceLifecycleOrchestrator() };
@@ -57,6 +61,7 @@ function mountBoundary(input: {
     const element = (
         <SurfaceLifecycleBoundary
             core={core}
+            ready={input.ready ?? true}
             blueprintDocument={blueprintDocument}
             persistentVariables={{}}
             surface={makeTestSurface("surface-a")}
@@ -83,16 +88,39 @@ afterEach(() => {
 });
 
 describe("SurfaceLifecycleBoundary dispatch order", () => {
-    it("defers openScope + surfaceInit by one animation frame", async () => {
+    it("opens the scope on mount and defers surfaceInit by one animation frame", async () => {
         mountBoundary({ log: hoisted.log });
-        expect(hoisted.log).toEqual([]);
+        expect(hoisted.log).toEqual(["openScope:scope-1"]);
         await act(async () => {
             await flushAnimationFrame();
         });
         expect(hoisted.log).toEqual([
             "openScope:scope-1",
+            "openScope:scope-1",
             "dispatch:surfaceInit:scope-1",
         ]);
+    });
+
+    /**
+     * The defect this encodes: a scope stays closed from the moment the previous generation
+     * unmounted, and `ready` can be false for several frames after the replacement mounts. Every
+     * dispatch in that window - each widget's own `init`, and any flush that arrives with it - is
+     * aborted with nothing said. In a Game UI dialogue slot that window is a scene jump, and what
+     * it left on screen was the previous speaker's avatar.
+     */
+    it("re-opens the scope on mount even before the surface is ready", async () => {
+        const lifecycleRef = { current: new SurfaceLifecycleOrchestrator() };
+        const core = createRecordingCore(hoisted.log);
+        const first = mountBoundary({ log: hoisted.log, lifecycleRef, core });
+        await act(async () => {
+            await flushAnimationFrame();
+        });
+        first.unmount();
+        expect(core.executionManager.isScopeClosed("scope-1")).toBe(true);
+        hoisted.log.length = 0;
+        mountBoundary({ log: hoisted.log, lifecycleRef, core, ready: false });
+        expect(core.executionManager.isScopeClosed("scope-1")).toBe(false);
+        expect(hoisted.log).toEqual(["openScope:scope-1"]);
     });
 
     it("dispatches closeScope + surfaceUnmount on unmount", async () => {
@@ -122,6 +150,7 @@ describe("SurfaceLifecycleBoundary dispatch order", () => {
         });
         expect(hoisted.log).toEqual([
             "openScope:scope-1",
+            "openScope:scope-1",
             "dispatch:surfaceInit:scope-1",
         ]);
     });
@@ -137,6 +166,7 @@ describe("SurfaceLifecycleBoundary dispatch order", () => {
         rerender(
             <SurfaceLifecycleBoundary
                 core={core}
+                ready
                 blueprintDocument={blueprintDocument}
             persistentVariables={{}}
                 surface={makeTestSurface("surface-a")}
@@ -153,6 +183,7 @@ describe("SurfaceLifecycleBoundary dispatch order", () => {
         });
         expect(hoisted.log).toEqual([
             "openScope:scope-1",
+            "openScope:scope-1",
             "dispatch:surfaceInit:scope-1",
         ]);
     });
@@ -163,8 +194,10 @@ describe("SurfaceLifecycleBoundary dispatch order", () => {
             await flushAnimationFrame();
         });
         expect(hoisted.log).toEqual([
+            "openScope:scope-1",
             "closeScope:scope-1:Surface unmounted",
             "dispatch:surfaceUnmount:scope-1",
+            "openScope:scope-1",
             "openScope:scope-1",
             "dispatch:surfaceInit:scope-1",
         ]);

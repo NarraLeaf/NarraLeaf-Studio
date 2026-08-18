@@ -19,6 +19,19 @@ export type LocaleCode = string;
  */
 export const LOCALE_STORAGE_KEY = "nls.locale";
 
+/**
+ * Persistent-storage key holding the save a language change has to come back to.
+ *
+ * Changing the language while a playthrough is running restarts the game (see `localeRestart.ts`),
+ * and a restart has to be handed the run it interrupted somehow. The handoff is a persisted key
+ * rather than a process argument or a window field because it has to survive the very thing that
+ * makes the restart necessary: the process ending. Its value is the reserved save id the run was
+ * written into, so a reader that finds it knows both that a resume is owed and where it is.
+ *
+ * Absent in every ordinary boot. Same charset rule as {@link LOCALE_STORAGE_KEY}.
+ */
+export const LOCALE_RESTART_RESUME_KEY = "nls.localeRestart";
+
 /** Locale codes double as translation-file names; keep them to a conservative alphabet. */
 const LOCALE_CODE_PATTERN = /^[A-Za-z0-9-]{1,35}$/;
 

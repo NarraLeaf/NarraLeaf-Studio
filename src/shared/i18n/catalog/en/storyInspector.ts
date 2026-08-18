@@ -282,11 +282,13 @@ export const storyInspector = {
         mono: "Monochrome",
         moonlight: "Moonlight",
         faint: "Losing consciousness",
+        hangover: "Hangover",
     },
 
     cameraLookHint: {
         channel: "A look replaces stage darkness rather than adding to it — the engine gives both the same filter, so the later row wins. Each look carries its own brightness. Reset camera clears it.",
         monologue: "Desaturates and dims the whole stage. For darkened edges, add a vignette.",
+        hangover: "The stage sways twice before the look settles. The row waits for the sway, and the duration sets its tempo.",
     },
 
     displayableOperation: {
