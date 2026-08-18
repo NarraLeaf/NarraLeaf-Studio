@@ -471,13 +471,20 @@ export const story = {
         displayName: "表示名",
         seekTime: "秒",
         // カメラ
-        cameraOperation: "パン / ズーム / 回転 / 暗く / モーション / リセット",
-        cameraAmount: "量または位置",
+        cameraOperation: "パン / ズーム / 回転 / 暗く / ルック / モーション / リセット",
+        cameraAmount: "量・位置・ルック",
+        cameraLookStrength: "ルックの強さ",
+        effectIn: "イン秒数",
+        effectOut: "アウト秒数",
+        vignetteInner: "透明な中心 %",
+        vignetteOuter: "暗い縁 %",
         // 修飾
         duration: "秒",
         transition: "トランジション",
         reveal: "現し方",
         placement: "位置",
+        // cameraOperation と同じく、スロットの名前ではなく 2 つの語をそのまま並べる。
+        mirrorState: "オン / オフ",
         waitFor: "秒またはクリック",
         // 値のキーがそのまま名前として読めるスロット。明示的な `hint` を持たず、ここに落ちてくる。
         fade: "フェード秒",
@@ -524,6 +531,10 @@ export const story = {
         // 表示と非表示で `t=` が届く、トランジションの語では名指しできない変形のプリセット。
         scale: "拡大縮小",
         opacity: "不透明度",
+        // `/mirror` がオブジェクトをどちら向きにするか。「裏返す」ではなく状態そのもの。
+        // コンパイル済みの変形は静的で、今の拡大率を読めないため。
+        on: "オン",
+        off: "オフ",
         // 位置（`at=`）とカメラの位置を表す値
         left: "左",
         center: "中央",
@@ -533,8 +544,16 @@ export const story = {
         zoom: "ズーム",
         rotate: "回転",
         darken: "暗く",
+        look: "ルック",
         motion: "モーション",
         reset: "リセット",
+        // `/camera look` のルック名。コマンドラインはこれらの語で表示し、入力としても受け付ける。
+        memory: "回想",
+        monologue: "心の声",
+        mono: "モノクロ",
+        moonlight: "月明かり",
+        faint: "意識が遠のく",
+        hangover: "二日酔い",
         // 変数の型
         boolean: "真偽値",
         number: "数値",
@@ -934,6 +953,7 @@ export const story = {
         camera: { label: "カメラ", detail: "ステージカメラをパン、ズーム、回転、または暗くする。姿勢はシーンをまたいで残る" },
         fx: { label: "エフェクト", detail: "オブジェクトにエフェクトを掛ける" },
         transform: { label: "変形", detail: "オブジェクトを移動、拡大縮小、回転する" },
+        mirror: { label: "反転", detail: "オブジェクトを左右反転する。off と書けば元に戻る" },
         note: { label: "メモ", detail: "Studio にだけ見えるメモ" },
     },
     containerHeader: {
@@ -1034,9 +1054,11 @@ export const story = {
             zoom: "ズーム",
             rotate: "回転",
             darken: "ステージを暗く",
+            look: "グレード",
             motion: "モーション",
             reset: "カメラをリセット",
         },
+        cameraLookCustom: "カスタム",
         condition: "条件",
         branch: "{branch} の枝",
         label: "ラベル {name}",

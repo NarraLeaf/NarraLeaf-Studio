@@ -4,7 +4,7 @@ import { BUILTIN_AUDIO_TRACKS, resolveAudioTrack } from "@shared/types/audioTrac
 import { getQuickParams } from "@/lib/story/storyQuickParamsModel";
 import { canCommit, parseCommandLine } from "../../storyCommandParser";
 import { resolveCommandLine, type StoryCommandContext } from "../../storyCommandResolution";
-import { getCommandSpec, listCommandSpecs } from "../registry";
+import { getCommandDef, getCommandSpec, listCommandSpecs } from "../registry";
 import { opensInspectorAfterCommit } from "../spec";
 import { declarationFromArgs } from "./variables";
 
@@ -814,6 +814,32 @@ describe("logic and effects", () => {
         expect(build("/transform Alice d=0.4")).toMatchObject({
             payload: { action: "displayable", operation: "transform", target: { kind: "character", name: "Alice" }, durationMs: 400 },
         });
+    });
+
+    it("/mirror states which way a sprite faces, absolutely — it is never a toggle", () => {
+        // The compiler emits a STATIC transform, so a line meaning "the other way from whatever it is
+        // now" could not be built. Both states are therefore spelled out, and saying either twice is
+        // a no-op rather than an undo.
+        expect(build("/mirror hero")).toMatchObject({
+            payload: {
+                action: "displayable",
+                operation: "transform",
+                target: { kind: "image", name: "hero" },
+                transform: { mode: "preset", preset: "flip", props: { scaleX: -1 } },
+            },
+        });
+        expect(build("/mirror hero off")).toMatchObject({ payload: { transform: { preset: "flip", props: { scaleX: 1 } } } });
+        // `d=` rides the transform, not the effect timing: a mirror is a scale, and the show/hide
+        // path reads a transform's own duration.
+        expect(build("/mirror Alice d=0.3")).toMatchObject({
+            payload: { target: { kind: "character", name: "Alice" }, transform: { preset: "flip", durationMs: 300 } },
+        });
+    });
+
+    it("leaves `flip` to /toggle, whose alias it already was", () => {
+        // A token is what a stored line RE-PARSES as. `/flip met` was written against the boolean verb
+        // long before a sprite could be mirrored, and it has to keep meaning that.
+        expect(getCommandDef("flip")?.commandId).toBe("toggle");
     });
 });
 

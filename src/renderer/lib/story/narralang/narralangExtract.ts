@@ -1023,6 +1023,27 @@ function cameraShape(
                 verb: "cameraDarken",
                 slots: { darkness: asNumber(payload.darkness ?? 0), ...timing },
             };
+        case "look": {
+            // A hand-written filter is printed as itself and the preset name goes with it when there
+            // is one: the compile prefers the filter, so a script that showed only the grade name
+            // would read as a different row than the one that plays.
+            const preset = payload.lookPreset;
+            const custom = payload.filter?.trim();
+            if (!preset && !custom) {
+                // Nothing chosen yet - the row compiles to nothing, so the script says the same.
+                return { form: "statement", verb: "cameraLook", slots: timing };
+            }
+            return {
+                form: "statement",
+                verb: "cameraLook",
+                slots: {
+                    ...(preset ? { look: asName(preset) } : {}),
+                    ...(payload.lookIntensity === undefined ? {} : { strength: asNumber(payload.lookIntensity) }),
+                    ...(custom ? { filter: asString(custom) } : {}),
+                    ...timing,
+                },
+            };
+        }
         case "reset":
             return { form: "statement", verb: "cameraReset", slots: timing };
         case "motion": {
@@ -1095,14 +1116,24 @@ function actionShape(ctx: NarralangExtractContext, block: StoryBlock, payload: S
                 slots: transformSlots(ctx, block.id, payload.transition, "nvl"),
             };
         case "screenEffect":
+            // Each effect's grammar names a different subset, so each is extracted against its own -
+            // printing a slot the verb does not have produces a line the matcher then refuses.
             return {
                 form: "statement",
                 verb: payload.effect === "blink" ? "screenBlink" : "screenVignette",
                 slots: {
                     duration: optSeconds(payload.durationMs),
+                    ...(payload.effect === "blink" ? {
+                        fadeIn: optSeconds(payload.inMs),
+                        fadeOut: optSeconds(payload.outMs),
+                    } : {}),
                     hold: optSeconds(payload.holdMs),
                     color: payload.color === undefined ? undefined : asColor(payload.color),
                     opacity: optNumber(payload.opacity),
+                    ...(payload.effect === "vignette" ? {
+                        inner: optNumber(payload.inner),
+                        outer: optNumber(payload.outer),
+                    } : {}),
                     easing: payload.easing === undefined ? undefined : asName(payload.easing),
                 },
             };

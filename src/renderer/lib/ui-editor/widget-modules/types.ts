@@ -234,6 +234,17 @@ export interface UIWidgetModule {
     createDefaultChildElements?(context: DefaultChildElementContext): DefaultChildElementResult;
 
     /**
+     * The states this widget can be shown in, when they belong to the widget rather than to an
+     * appearance model.
+     *
+     * A switch is on or off whatever its parts look like, and it carries no appearance of its own, so
+     * there are no variants for the state bar to list. Declaring them here puts the bar on the widget
+     * itself; entering one broadcasts that variant id to the subtree, which is where the parts that
+     * do carry variants pick it up. `id: null` is the state the widget rests in.
+     */
+    listEditorStates?(element: UIElement): { id: string | null; name: string }[];
+
+    /**
      * Renders the element on the editor canvas.
      */
     render(props: WidgetRendererProps): ReactElement | null;

@@ -1,17 +1,26 @@
 import { useCallback, useMemo, useRef } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { Moon, Move, RotateCw, Spline, Undo2, ZoomIn } from "lucide-react";
+import { Moon, Move, Palette, RotateCw, Spline, Undo2, ZoomIn } from "lucide-react";
 import type { StoryActionPayload, StoryBlock, StorySceneId, StoryTransformRef } from "@shared/types/story";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
 import { Services } from "@/lib/workspace/services/services";
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
-import { Slider } from "@/lib/components/elements";
+import { Slider, type SelectOption } from "@/lib/components/elements";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "@/apps/workspace/context";
 import { MotionField } from "../../story-motion";
 import { resolveStoryMotionStageSize } from "../../story-motion/StoryMotionEditorTab";
-import { FIELD_LABEL_CLASS, FieldGrid, SecondsField, SelectField, Section, easingOptions } from "./inspectorFieldKit";
+import {
+    getStoryCameraLookPreset,
+    resolveStoryCameraLook,
+    STORY_CAMERA_LOOK_DEFAULT_PRESET_ID,
+    storyCameraLookSways,
+    STORY_CAMERA_LOOK_MAX_INTENSITY,
+    STORY_CAMERA_LOOK_MIN_INTENSITY,
+    STORY_CAMERA_LOOK_PRESETS,
+} from "@/lib/ui-editor/runtime/game/cameraLookPresets";
+import { FIELD_LABEL_CLASS, FieldGrid, SecondsField, SelectField, Section, TextField, easingOptions } from "./inspectorFieldKit";
 
 type CameraActionPayload = Extract<StoryActionPayload, { action: "camera" }>;
 type CameraOperation = CameraActionPayload["operation"];
@@ -30,11 +39,16 @@ const OPERATION_ICONS: Record<CameraOperation, typeof ZoomIn> = {
     pan: Move,
     rotate: RotateCw,
     darken: Moon,
+    look: Palette,
     motion: Spline,
     reset: Undo2,
 };
 
-const OPERATION_ORDER: readonly CameraOperation[] = ["zoom", "pan", "rotate", "darken", "motion", "reset"];
+// `look` sits directly after `darken` because the two write the SAME channel and an author choosing
+// between them should find them side by side rather than discover the collision at runtime.
+const OPERATION_ORDER: readonly CameraOperation[] = ["zoom", "pan", "rotate", "darken", "look", "motion", "reset"];
+
+const LOOK_INTENSITY_RANGE = { min: STORY_CAMERA_LOOK_MIN_INTENSITY, max: STORY_CAMERA_LOOK_MAX_INTENSITY, step: 0.05 };
 
 /** The three placements the command line offers, resolved through the one table that owns the mapping. */
 const PAN_PLACEMENTS = ["left", "center", "right"] as const;
@@ -80,11 +94,19 @@ export function CameraActionEditor(props: {
 
     const setOperation = useCallback((next: CameraOperation) => {
         // Switching into `motion` seeds the ref in animation mode so the field opens on the motion
-        // picker; the other channels are left alone, since the compile only reads the active one and
-        // an author toggling between knobs should not lose the number they just set.
-        onChange(next === "motion" && !payload.motion
-            ? { ...payload, operation: next, motion: { mode: "animation" } }
-            : { ...payload, operation: next });
+        // picker; `look` seeds a grade for the same reason - both are channels whose empty state
+        // compiles to nothing, so landing on them with no value would be a row that does not play.
+        // The other channels are left alone, since the compile only reads the active one and an
+        // author toggling between knobs should not lose the number they just set.
+        if (next === "motion" && !payload.motion) {
+            onChange({ ...payload, operation: next, motion: { mode: "animation" } });
+            return;
+        }
+        if (next === "look" && !payload.lookPreset && !payload.filter) {
+            onChange({ ...withLookPreset(payload, STORY_CAMERA_LOOK_DEFAULT_PRESET_ID), operation: next });
+            return;
+        }
+        onChange({ ...payload, operation: next });
     }, [onChange, payload]);
 
     const setPan = useCallback((next: { xalign?: number; yalign?: number }) => {
@@ -101,7 +123,7 @@ export function CameraActionEditor(props: {
     return (
         <Section title={t("storyInspector.section.camera")}>
             <div className="grid grid-cols-1 gap-2">
-                {/* Six knobs of one instrument, all visible at once. The short label is what fits; the
+                {/* Every knob of one instrument, all visible at once. The short label is what fits; the
                     full name (which is where `Darken stage` says *stage*) is the tooltip, and the
                     viewfinder below says the same thing in a picture. */}
                 <div className="grid grid-cols-3 gap-1">
@@ -175,6 +197,49 @@ export function CameraActionEditor(props: {
                                 onChange={darkness => onChange({ ...payload, darkness: clampAlign(darkness) })}
                             />
                         ) : null}
+                        {operation === "look" ? (
+                            <div className="grid grid-cols-1 gap-2">
+                                <FieldGrid cols={2}>
+                                    <SelectField
+                                        label={t("storyInspector.camera.look")}
+                                        options={lookPresetOptions(t)}
+                                        value={payload.lookPreset ?? ""}
+                                        onChange={next => onChange(withLookPreset(payload, String(next) || undefined))}
+                                    />
+                                    <SliderRow
+                                        label={t("storyInspector.camera.lookIntensity")}
+                                        range={LOOK_INTENSITY_RANGE}
+                                        value={payload.lookIntensity ?? 1}
+                                        neutral={1}
+                                        onChange={lookIntensity => onChange({ ...payload, lookIntensity: clampIntensity(lookIntensity) })}
+                                    />
+                                </FieldGrid>
+                                {/* The escape hatch, and it says so by showing the grade it would
+                                    replace as its placeholder: an author who only wanted to nudge one
+                                    term can copy the resolved string rather than write CSS from
+                                    nothing, and one who types here can see they have taken over. */}
+                                <TextField
+                                    label={t("storyInspector.camera.lookFilter")}
+                                    value={payload.filter ?? ""}
+                                    placeholder={resolveStoryCameraLook(payload.lookPreset, payload.lookIntensity) ?? ""}
+                                    onChange={next => onChange({ ...payload, filter: next.trim() ? next : undefined })}
+                                />
+                                {/* Not decoration: the two operations are one channel in the engine,
+                                    so a scene that sets both plays whichever came second and loses
+                                    the other outright. Said here because there is nowhere else an
+                                    author would find it out before shipping. */}
+                                <p className="text-2xs text-fg-subtle">{t("storyInspector.cameraLookHint.channel")}</p>
+                                {payload.lookPreset === "monologue" ? (
+                                    <p className="text-2xs text-fg-subtle">{t("storyInspector.cameraLookHint.monologue")}</p>
+                                ) : null}
+                                {/* The one grade that does not settle immediately, so it is the one
+                                    whose row costs time. An author choosing it from a list of still
+                                    looks has no other way to know that. */}
+                                {payload.lookPreset === "hangover" ? (
+                                    <p className="text-2xs text-fg-subtle">{t("storyInspector.cameraLookHint.hangover")}</p>
+                                ) : null}
+                            </div>
+                        ) : null}
                         {operation === "pan" ? (
                             <div className="grid grid-cols-1 gap-2">
                                 <div className="flex gap-1">
@@ -216,19 +281,27 @@ export function CameraActionEditor(props: {
                                 </FieldGrid>
                             </div>
                         ) : null}
-                        <FieldGrid cols={2}>
-                            <SecondsField
-                                label={t("storyInspector.field.duration")}
-                                value={payload.durationMs}
-                                onChange={durationMs => onChange({ ...payload, durationMs: durationMs === undefined ? undefined : Math.max(0, durationMs) })}
-                            />
-                            <SelectField
-                                label={t("storyInspector.field.easing")}
-                                options={easingOptions(t)}
-                                value={payload.easing ?? ""}
-                                onChange={easing => onChange({ ...payload, easing: String(easing) || undefined })}
-                            />
-                        </FieldGrid>
+                        {/* A grade lands in one frame, so it has no timing to offer — see the
+                            compiler's `look` arm for why interpolating one is not an option. The
+                            fields are hidden rather than disabled: a control that is present but
+                            never does anything is the thing an author wastes time on. */}
+                        {operation === "look" && !storyCameraLookSways(payload.lookPreset) ? (
+                            <p className="text-2xs text-fg-subtle">{t("storyInspector.camera.lookSnaps")}</p>
+                        ) : (
+                            <FieldGrid cols={2}>
+                                <SecondsField
+                                    label={t("storyInspector.field.duration")}
+                                    value={payload.durationMs}
+                                    onChange={durationMs => onChange({ ...payload, durationMs: durationMs === undefined ? undefined : Math.max(0, durationMs) })}
+                                />
+                                <SelectField
+                                    label={t("storyInspector.field.easing")}
+                                    options={easingOptions(t)}
+                                    value={payload.easing ?? ""}
+                                    onChange={easing => onChange({ ...payload, easing: String(easing) || undefined })}
+                                />
+                            </FieldGrid>
+                        )}
                     </>
                 )}
             </div>
@@ -264,6 +337,12 @@ function CameraViewfinder(props: {
     const zoom = operation === "zoom" ? Math.max(MIN_CAMERA_ZOOM, payload.zoom ?? 1) : 1;
     const rotation = operation === "rotate" ? payload.rotation ?? 0 : 0;
     const darkness = operation === "darken" ? clampAlign(payload.darkness ?? 0) : 0;
+    // The grade, drawn on the same rect the runtime grades — which also makes the viewfinder the
+    // check on a hand-written filter: CSS the browser cannot parse is dropped whole, so a bad
+    // declaration shows here as a stage that did not change, exactly as it would in the game.
+    const look = operation === "look"
+        ? payload.filter?.trim() || resolveStoryCameraLook(payload.lookPreset, payload.lookIntensity) || undefined
+        : undefined;
     const xalign = operation === "pan" ? clampAlign(payload.position?.xalign ?? 0.5) : 0.5;
     const yalign = operation === "pan" ? clampAlign(payload.position?.yalign ?? 0.5) : 0.5;
 
@@ -307,7 +386,7 @@ function CameraViewfinder(props: {
                     left: `${xalign * 100}%`,
                     bottom: `${yalign * 100}%`,
                     transform: `translate(-50%, 50%) rotate(${rotation}deg) scale(${zoom})`,
-                    filter: darkness > 0 ? `brightness(${1 - darkness})` : undefined,
+                    filter: look ?? (darkness > 0 ? `brightness(${1 - darkness})` : undefined),
                 }}
             >
                 <div className="absolute bottom-[8%] left-1/2 h-[38%] w-[12%] -translate-x-1/2 rounded-t-full bg-white/25" />
@@ -359,6 +438,44 @@ function SliderRow(props: {
             </div>
         </div>
     );
+}
+
+/** The grade library as a picker. Every preset is named, never its id — the id is stored, not shown. */
+/**
+ * Move a row onto a look, carrying the grade's own tempo with it.
+ *
+ * The timing follows the preset only while the author has not set one of their own: a duration still
+ * sitting on the previous preset's default was never a choice, and leaving it behind is how `mono`
+ * ends up crawling at `faint`'s two seconds. A number the author typed is theirs and is left alone —
+ * so this reads the OLD preset to decide, not the new one.
+ */
+function withLookPreset(payload: CameraActionPayload, nextId: string | undefined): CameraActionPayload {
+    const next = nextId ? getStoryCameraLookPreset(nextId) : undefined;
+    const previous = getStoryCameraLookPreset(payload.lookPreset);
+    const untouched = payload.durationMs === undefined || payload.durationMs === previous?.defaultDurationMs;
+    return {
+        ...payload,
+        lookPreset: nextId,
+        lookIntensity: payload.lookIntensity ?? 1,
+        // Only a grade that MOVES gets its tempo seeded. A still grade lands in one frame and the
+        // compile reads no duration for it, so writing one onto the row would put a number in the
+        // document that nothing downstream honours.
+        ...(next?.oscillate && untouched
+            ? { durationMs: next.defaultDurationMs, easing: next.defaultEasing }
+            : {}),
+    };
+}
+
+function lookPresetOptions(t: ReturnType<typeof useTranslation>["t"]): SelectOption[] {
+    return STORY_CAMERA_LOOK_PRESETS.map(preset => ({
+        value: preset.id,
+        label: t(`storyInspector.cameraLook.${preset.id}`),
+    }));
+}
+
+/** Mirrors the library's own range, so the inspector cannot store a grade the compile then rewrites. */
+function clampIntensity(value: number): number {
+    return Math.min(STORY_CAMERA_LOOK_MAX_INTENSITY, Math.max(STORY_CAMERA_LOOK_MIN_INTENSITY, value));
 }
 
 /** An align is a 0–1 fraction of the stage; outside that the camera is aimed off the world. */

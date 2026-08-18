@@ -127,6 +127,7 @@ export type NarralangVerb =
     | "cameraZoom"
     | "cameraRotate"
     | "cameraDarken"
+    | "cameraLook"
     | "cameraReset"
     | "cameraMotion"
     | "screenBlink"
@@ -225,7 +226,14 @@ export type NarralangSlot =
     | "filter"
     | "darkness"
     | "zoom"
-    | "rotation";
+    | "rotation"
+    // Camera look, and the vignette's falloff. `look` is a `name` rather than a word: the grade
+    // library grows, and a closed vocabulary here would mean every new preset needing an entry in
+    // NarraLang's word union before an author could write it down.
+    | "look"
+    | "strength"
+    | "inner"
+    | "outer";
 
 // --- Words ----------------------------------------------------------------------------------------
 

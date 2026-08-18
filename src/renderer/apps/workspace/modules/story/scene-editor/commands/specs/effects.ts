@@ -13,13 +13,48 @@ import { asColor, asDurationMs, asNumber, asTarget, defineStoryCommand, SECONDS_
  * acts on stage objects and reaches every subject its `accepts` lists.
  */
 
+/**
+ * The timing grammar the screen effects share: `d` is the whole in-and-out move, `hold` the pause at
+ * full. One meaning per word across both, which is the part that has to be uniform.
+ *
+ * What is NOT uniform is which words each effect offers - `in` / `out` sit on `/blink` alone, below.
+ * An effect offers the subset it can honour, the same way `SUPPORTED` in `commands/transitions.ts`
+ * gives each context its own word list rather than one list plus a table of exceptions. A key that
+ * parses and is then always reported is worse than a key that was never offered: it costs an author
+ * the time to find out it leads nowhere, and the report is the only place they can find out.
+ */
+const SCREEN_EFFECT_TIMING = {
+    d: secondsParam(),
+    hold: { hint: "hold", type: SECONDS_TYPE },
+} as const;
+
+/**
+ * `/blink` only: the two halves of the move, each overriding its own end of `d`.
+ *
+ * Being ABSENT is what means "derive from `d`", which is why neither carries a default - writing them
+ * at build time would make an author who wanted the halves equal indistinguishable from one who never
+ * split them, with no way back to following `d`.
+ *
+ * `/vignette` has no counterpart because the ENGINE has none: `VignetteOptions` carries a single
+ * `duration` that drives its fade in and its fade out together. The split is absent here rather than
+ * unimplemented, and it is NLR that would have to grow the pair first.
+ */
+const BLINK_HALVES = {
+    in: { hint: "effectIn", type: SECONDS_TYPE },
+    out: { hint: "effectOut", type: SECONDS_TYPE },
+} as const;
+
 function screenEffectBuild(commandId: "screenBlink" | "screenVignette") {
     return (
         args: {
             readonly d?: StoryCommandValue;
+            readonly in?: StoryCommandValue;
+            readonly out?: StoryCommandValue;
             readonly hold?: StoryCommandValue;
             readonly color?: StoryCommandValue;
             readonly opacity?: StoryCommandValue;
+            readonly inner?: StoryCommandValue;
+            readonly outer?: StoryCommandValue;
         },
         ctx: { generateId: () => string },
     ) => {
@@ -31,6 +66,14 @@ function screenEffectBuild(commandId: "screenBlink" | "screenVignette") {
         const durationMs = asDurationMs(args.d);
         if (durationMs !== undefined) {
             payload.durationMs = durationMs;
+        }
+        const inMs = asDurationMs(args.in);
+        if (inMs !== undefined) {
+            payload.inMs = inMs;
+        }
+        const outMs = asDurationMs(args.out);
+        if (outMs !== undefined) {
+            payload.outMs = outMs;
         }
         const holdMs = asDurationMs(args.hold);
         if (holdMs !== undefined) {
@@ -44,6 +87,14 @@ function screenEffectBuild(commandId: "screenBlink" | "screenVignette") {
         if (opacity !== undefined) {
             payload.opacity = opacity;
         }
+        const inner = asNumber(args.inner);
+        if (inner !== undefined) {
+            payload.inner = inner;
+        }
+        const outer = asNumber(args.outer);
+        if (outer !== undefined) {
+            payload.outer = outer;
+        }
         return { ...block, payload };
     };
 }
@@ -53,10 +104,10 @@ export const blink = defineStoryCommand({
     token: "blink",
     category: "scene",
     icon: Zap,
-    examples: ["/blink", "/blink d=0.2 hold=0.1"],
+    examples: ["/blink", "/blink d=0.2 hold=0.1", "/blink in=0.08 hold=0.4 out=0.9"],
     params: {
-        d: secondsParam(),
-        hold: { hint: "hold", type: SECONDS_TYPE },
+        ...SCREEN_EFFECT_TIMING,
+        ...BLINK_HALVES,
         color: { hint: "color", type: { kind: "color" } },
     },
     build: screenEffectBuild("screenBlink"),
@@ -68,12 +119,17 @@ export const vignette = defineStoryCommand({
     aliases: ["vig"],
     category: "scene",
     icon: Focus,
-    examples: ["/vignette", "/vignette d=0.5 opacity=0.6"],
+    examples: ["/vignette", "/vignette d=0.5 opacity=0.6", "/vignette inner=30 outer=70"],
     params: {
-        d: secondsParam(),
-        hold: { hint: "hold", type: SECONDS_TYPE },
+        ...SCREEN_EFFECT_TIMING,
         color: { hint: "color", type: { kind: "color" } },
         opacity: { hint: "opacity", type: { kind: "number", min: 0, max: 1 } },
+        // The falloff, and `/vignette` only: a blink has no radius, it has two shutters. Percentages
+        // of the frame rather than the engine's free-form CSS length, so the mask stays
+        // resolution-independent and the pair can be ordered (`inner` above `outer` is a gradient the
+        // browser drops whole) without parsing units.
+        inner: { hint: "vignetteInner", type: { kind: "number", min: 0, max: 100 } },
+        outer: { hint: "vignetteOuter", type: { kind: "number", min: 0, max: 100 } },
     },
     build: screenEffectBuild("screenVignette"),
 });

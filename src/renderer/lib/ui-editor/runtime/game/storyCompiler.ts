@@ -126,6 +126,10 @@ import {
     timelineToNlrTransformSequences,
     toNlrTransformSequence,
 } from "./storyTransformProps";
+// The look library sits beside the command spec and the inspector that pick from it; the compile is
+// its third reader rather than its owner, which is the same relation `storyReplace` already has with
+// the scene editor's find/replace model.
+import { resolveStoryCameraLook, resolveStoryCameraLookOscillation } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import type { StageSnapshotDisplayable, StageSnapshotEffects, StoryStageSnapshot } from "./storyStageSnapshot";
 import { collectSavedVariableView, savedVariableDefsFromView } from "./storyStageSnapshot";
 import {
@@ -2763,19 +2767,7 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
     }
 
     if (payload.action === "screenEffect") {
-        const options = {
-            duration: payload.durationMs,
-            closeDuration: payload.durationMs,
-            openDuration: payload.durationMs,
-            hold: payload.holdMs,
-            color: payload.color,
-            opacity: payload.opacity,
-            easing: payload.easing,
-        };
-        const chain = payload.effect === "blink"
-            ? blink(ctx.nlrScene, options as any)
-            : vignette(ctx.nlrScene, options as any);
-        return [recordStatement(ctx, chain, block)];
+        return compileScreenEffectAction(ctx, block, payload);
     }
 
     if (payload.action === "camera") {
@@ -2787,6 +2779,70 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
 
 /** Lower bound on camera zoom: 0 or a negative scale is not a shot, it is a broken transform. */
 const MIN_CAMERA_ZOOM = 0.05;
+
+/**
+ * The engine's own `VignetteOptions` defaults, restated so a row that sets only one radius still
+ * orders the pair against the value the other half will actually take.
+ */
+const DEFAULT_VIGNETTE_INNER = 44;
+const DEFAULT_VIGNETTE_OUTER = 78;
+
+/**
+ * `/blink` and `/vignette` - the two screen-wide gestures, sharing one parameter grammar.
+ *
+ * `durationMs` is the whole in-and-out move; `inMs` / `outMs` override one half each and fall back to
+ * it. `blink` honours the split outright, because the engine splits it too (`closeDuration` /
+ * `openDuration`) - which Studio used to collapse by filling both from the one number, making "slam
+ * the eyes shut, open them slowly" inexpressible rather than unsupported.
+ *
+ * `vignette` has no halves to split, and does not offer them: the engine's helper drives its fade in
+ * AND its fade out from a single `duration`, so `/vignette` names no `in` / `out` and there is
+ * nothing here to report. Rebuilding the effect from `effectLayer` plus a hand-written mask WOULD
+ * express it, and is deliberately not done: the gradient geometry, the layer's identity and the mask
+ * teardown are the engine's business, and a copy living in this file would go stale the first time
+ * the engine tunes its vignette - invisibly, since the effect would keep rendering, just no longer
+ * like every other build's. The split has to arrive in `VignetteOptions` first.
+ */
+function compileScreenEffectAction(
+    ctx: SceneCompileContext,
+    block: StoryBlock,
+    payload: Extract<StoryActionPayload, { action: "screenEffect" }>,
+): NlrStatement[] {
+    // A negative duration is not a fast move, it is a value the engine hands to a tween that never
+    // finishes - and the row is awaited, so the scene would stop there. `undefined` is passed through
+    // rather than floored to 0, so an unset field still lands on the engine's own default.
+    const seconds = (value: number | undefined): number | undefined =>
+        value === undefined ? undefined : Math.max(0, finiteOr(value, 0));
+    /** A blink half: its own override, or the whole move it was never split off from. */
+    const half = (value: number | undefined): number | undefined => seconds(value ?? payload.durationMs);
+    const hold = seconds(payload.holdMs);
+
+    if (payload.effect === "blink") {
+        const chain = blink(ctx.nlrScene, {
+            closeDuration: half(payload.inMs),
+            openDuration: half(payload.outMs),
+            hold,
+            color: payload.color,
+            easing: payload.easing,
+        } as any);
+        return [recordStatement(ctx, chain, block)];
+    }
+
+    // `inner` above `outer` is not a wider vignette - it is a `radial-gradient` whose stops run
+    // backwards, which the browser drops whole, taking the mask and therefore the entire effect with
+    // it. Ordering them here is the same discipline the camera's clamps follow.
+    const inner = Math.min(100, Math.max(0, finiteOr(payload.inner, DEFAULT_VIGNETTE_INNER)));
+    const outer = Math.min(100, Math.max(inner, finiteOr(payload.outer, DEFAULT_VIGNETTE_OUTER)));
+    const chain = vignette(ctx.nlrScene, {
+        duration: seconds(payload.durationMs),
+        hold,
+        color: payload.color,
+        opacity: payload.opacity,
+        easing: payload.easing,
+        ...(payload.inner === undefined && payload.outer === undefined ? {} : { inner: `${inner}%`, outer: `${outer}%` }),
+    } as any);
+    return [recordStatement(ctx, chain, block)];
+}
 
 /** A finite number, or the neutral fallback - a NaN reaching a Transform prop silently kills the whole animation. */
 function finiteOr(value: number | undefined, fallback: number): number {
@@ -2825,7 +2881,80 @@ function compileCameraAction(
             return [recordStatement(ctx, camera.rotate(finiteOr(payload.rotation, 0), duration, easing), block)];
         case "darken":
             return [recordStatement(ctx, camera.darken(Math.min(1, Math.max(0, finiteOr(payload.darkness, 0))), duration, easing), block)];
+        case "look": {
+            // A colour grade over the whole stage, through `Displayable.filter` - the SAME channel
+            // `darken` writes above, since `darken(d)` is `filter("brightness(1 - d)")` in the engine.
+            // The two never compose: this row replaces whatever the last one put there, which is why
+            // every preset folds its own brightness in rather than expecting a `/camera darken` beside
+            // it.
+            //
+            // A hand-written filter wins over the preset - it is the escape hatch, and a resolved
+            // preset quietly overriding what the author typed would make the field a decoration.
+            const handWritten = payload.filter?.trim();
+            const resolved = handWritten || resolveStoryCameraLook(payload.lookPreset, payload.lookIntensity);
+            if (!resolved) {
+                diagnostic(ctx, "warning", block.id, payload.lookPreset
+                    ? `Camera look "${payload.lookPreset}" is not a known grade.`
+                    : "Camera look has no grade chosen.");
+                return [];
+            }
+            // **A still grade snaps; it does not tween, and the row's duration is unused for one.**
+            //
+            // A filter chain carrying `hue-rotate` cannot be linearly interpolated to (or from)
+            // neutral without walking through colours nobody asked for. Going from
+            // `grayscale(1) sepia(1) hue-rotate(185deg) …` back to neutral, the browser eases every
+            // term at once: the angle sweeps 185 degrees of the colour wheel while `grayscale`
+            // simultaneously lets the source's own hues back in, so the midpoint is a bright green
+            // face. Measured on a real sprite over the moonlight grade — blue at t=1, cyan by 0.8,
+            // green through 0.6–0.4, olive at 0.2.
+            //
+            // There is no interpolation that fixes this in general, because the honest operation is
+            // a cross-fade between two graded renderings and a CSS filter cannot express one, and
+            // because the compiler cannot know which grade the stage is already wearing. So the
+            // grade lands in a single frame, which is also how the medium uses it: a flashback cuts
+            // in behind a flash or a transition, it does not morph.
+            //
+            // A SWAY is the one exception, and it is exempt by construction rather than by
+            // judgement: every keyframe in it names the same filter functions in the same order as
+            // the grade it settles onto, holds the flatten terms fixed, and moves the hue only a few
+            // degrees either side of neutral. Nothing crosses the wheel, so there is no midpoint to
+            // land wrong on — measured over `hangover`, the trace stays inside its own recipe with
+            // only the angle and the blur moving.
+            const oscillation = handWritten
+                ? null
+                : resolveStoryCameraLookOscillation(payload.lookPreset, payload.lookIntensity, duration);
+            if (oscillation && oscillation.steps.length > 0) {
+                const sequences = oscillation.steps.map(step => ({
+                    props: { filter: step },
+                    options: { duration: oscillation.stepMs, ease: easing ?? "easeInOut" },
+                }));
+                // `repeat` covers the whole sequence list, so the sway ends on its last step rather
+                // than at neutral - the settle onto the resting grade is a second statement, and it
+                // is what leaves the stage in the state a still grade would have left it in.
+                const sway = new Transform(sequences as any, { repeat: oscillation.cycles } as any);
+                return [
+                    recordStatement(ctx, camera.transform(sway), block),
+                    recordStatement(ctx, camera.filter(resolved, { duration: oscillation.settleMs, ease: "easeOut" }), block),
+                ];
+            }
+            return [recordStatement(ctx, camera.filter(resolved, { duration: 0 }), block)];
+        }
         case "reset":
+            // Ending a grade used to walk the picture through the colour wheel — blue, cyan, green,
+            // olive on the way out of the moonlight look — because `resetCamera` packed
+            // `filter: "none"` into the same transform as the pose and eased the two together.
+            //
+            // **That is fixed in the engine, not here** (narraleaf-react 0.29.0: `resetCamera` now
+            // drops the filter in a zero-duration sequence and eases only the pose). Studio tried to
+            // paper over it from this side twice — a zero-duration `clearFilter` emitted first, and a
+            // hand-built pose transform carrying no `filter` prop — and neither worked, because both
+            // statements land in one tick and the renderer sees a single style diff either way. The
+            // attempts are gone; this note is what is left of them, so nobody re-tries either.
+            //
+            // ⚠ `package.json` pins `^0.28.0`, and for a `0.x` version that caret means
+            // `>=0.28.0 <0.29.0` — so it will NEVER resolve to the release carrying this fix. The
+            // pin has to be raised to `^0.29.0` when the engine goes out, or a fresh install quietly
+            // gets the sweep back. Not something to work around here; the fix is the pin.
             return [recordStatement(ctx, camera.resetCamera(duration, easing), block)];
         case "motion": {
             // A whole keyframed shot rather than one settled pose. `Camera` is a `Displayable`, so it
@@ -4272,6 +4401,10 @@ function applyTransformPreset(target: any, transform: StoryTransformRef | undefi
         const scale = numberProp(props, "scale", 1);
         return target.scaleXY(numberProp(props, "scaleX", scale), numberProp(props, "scaleY", scale), duration, easing);
     }
+    // `scaleX` and not `scaleXY`: a flip is horizontal, and restating a vertical scale the row was
+    // never asked about would reset one an earlier row had set. See `getInlineTransformProps`, which
+    // folds the same preset for the paths that need settled props instead of a chained action.
+    if (preset === "flip") return target.scaleX(numberProp(props, "scaleX", -1), duration, easing);
     if (preset === "rotate") return target.rotate(numberProp(props, "rotation", numberProp(props, "degrees", 0)), duration, easing);
     if (preset === "opacity") return target.opacity(numberProp(props, "opacity", 1), duration, easing);
     if (preset === "darken") {

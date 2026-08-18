@@ -149,6 +149,40 @@ describe("host capability forwarding", () => {
             .toEqual([]);
     });
 
+    it("hands the options GameApp owns to every bridge it builds, and to the slot shell", async () => {
+        // Options wired from `GameApp`'s own state rather than from a host field. The check above
+        // cannot see them - it pairs `onFoo` with `host.foo` - and they break in exactly the same
+        // silent way: a language picker in a settings page would restart the game while the same
+        // picker in a quick menu changed the language under a running playthrough and left it
+        // showing two.
+        const { appSource } = await readAll();
+        const shellSource = await fs.readFile(path.join(HERE, "StageSlotSurfaceShell.tsx"), "utf-8");
+        const blocks = occurrences(appSource, "onNetworkFetch: host.networkFetch");
+
+        expect(occurrences(appSource, "onLocaleChanged: handleLocaleChanged")).toBe(blocks);
+        // The third bridge in the runtime, built per Game UI slot surface, wired from the option
+        // `GameApp` passes it.
+        expect(shellSource).toContain("onLocaleChanged: options.localeChangedInGame");
+        expect(appSource).toContain("localeChangedInGame: handleLocaleChanged");
+    });
+
+    it("has both game shells able to restart themselves", async () => {
+        // `restartApplication` is a host capability that no bridge option names - `GameApp` decides
+        // when to reach for it - so the shell check above does not cover it. A shell that omits it
+        // reports "this host cannot restart" for every language change made mid-playthrough.
+        const { hostSource } = await readAll();
+        expect(hostFieldsFrom(hostSource).has("restartApplication")).toBe(true);
+
+        const missing: string[] = [];
+        for (const [shellName, file] of Object.entries(GAME_SHELL_FILES)) {
+            const source = await fs.readFile(file, "utf-8");
+            if (!source.includes("const restartApplication") && !source.includes("restartApplication:")) {
+                missing.push(`${shellName} cannot restart itself`);
+            }
+        }
+        expect(missing, `these shells cannot restart: ${missing.join(", ")}`).toEqual([]);
+    });
+
     it("keeps the wired-elsewhere allowlist honest", async () => {
         // An exemption that outlives the thing it excused is worse than no exemption: it silently
         // widens to whatever later takes the name.

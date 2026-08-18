@@ -3,6 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
 import type { Translator } from "@shared/i18n";
 import { Select, type SelectOption } from "@/lib/components/elements";
+import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 
 /**
@@ -123,6 +124,43 @@ export function NumberField(props: { label: string; value: number | undefined; o
                 onEmpty={() => props.onChange(undefined)}
                 type="text"
                 inputMode="decimal"
+            />
+        </div>
+    );
+}
+
+/**
+ * A free-typed string, or a pick when `options` is given.
+ *
+ * Moved here from `StorySceneActionInspector` when the camera editor grew a raw-CSS escape hatch: it
+ * was the third file that needed a plain text row, and the kit exists precisely so the second one
+ * does not draw its own.
+ */
+export function TextField(props: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    options?: SelectOption[];
+    /** Shown when `value` is empty — used for a derived default, which is not authored content. */
+    placeholder?: string;
+}) {
+    if (props.options) {
+        return (
+            <SelectField
+                label={props.label}
+                options={props.options}
+                value={props.value}
+                onChange={value => props.onChange(String(value))}
+            />
+        );
+    }
+    return (
+        <div>
+            <label className={FIELD_LABEL_CLASS}>{props.label}</label>
+            <EnhancedInput
+                value={props.value}
+                placeholder={props.placeholder}
+                onChange={props.onChange}
             />
         </div>
     );

@@ -28,6 +28,7 @@ import {
 } from "@/lib/story/storyRowProjection";
 import { storyVerbCommandId } from "@/lib/story/storyVerbVocabulary";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
+import { getStoryCameraLookPreset } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { ACTION_TRIGGER } from "./commandTrigger";
 import { localizedEnumValue } from "./commands/localizedEnums";
 import { localizedParamKey } from "./commands/localizedParams";
@@ -906,6 +907,10 @@ function cameraSentence(
             case "zoom": return numberValue(payload.zoom);
             case "rotate": return numberValue(payload.rotation);
             case "darken": return numberValue(payload.darkness);
+            // The grade's own word, which is exactly what was typed. A hand-written filter has no
+            // word — it is CSS, not a name — so that row shows the operation alone and keeps its
+            // filter in the inspector rather than pasting a declaration into the line.
+            case "look": return payload.lookPreset;
             // A bound Story Motion is a binding, not a word — the line names the operation and the
             // motion's name rides the inspector, exactly as `/camera motion` is typed.
             case "motion":
@@ -920,6 +925,15 @@ function cameraSentence(
             case "zoom": return { ...payload, zoom: Number(next) };
             case "rotate": return { ...payload, rotation: Number(next) };
             case "darken": return { ...payload, darkness: Number(next) };
+            case "look": {
+                // Swapping the grade keeps the dial the author set: `strength` means the same thing
+                // in every preset (0 none, 1 nominal), so re-seeding it would throw away a choice
+                // the new grade can honour.
+                const preset = getStoryCameraLookPreset(next);
+                return preset
+                    ? { ...payload, lookPreset: preset.id, lookIntensity: payload.lookIntensity ?? preset.defaultIntensity }
+                    : payload;
+            }
             case "motion":
             case "reset": return payload;
         }
@@ -930,7 +944,7 @@ function cameraSentence(
         commandId,
         args: [
             positional("op", payload.operation, { enum: true }),
-            positional("amount", amount(), { enum: payload.operation === "pan", apply: applyAmount }),
+            positional("amount", amount(), { enum: payload.operation === "pan" || payload.operation === "look", apply: applyAmount }),
             payload.operation === "motion"
                 ? null
                 : arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) }),
@@ -945,9 +959,25 @@ function displayableSentence(
 ): Sentence | null {
     const label = resolveDisplayableTargetRef(lookups.scene, payload.target).label || undefined;
     if (payload.operation === "transform") {
+        // A mirrored row reads its own word (`storyVerbCommandId`), so it prints its own second slot:
+        // the state, off the sign of the scale it wrote. Never a toggle - the stored transform is
+        // static, so the row states which way the sprite ends up facing, exactly as the line does.
+        const state = payload.transform?.preset === "flip"
+            ? positional("state", Number(payload.transform.props?.scaleX ?? -1) < 0 ? "on" : "off", { enum: true })
+            : null;
         return {
             commandId,
-            args: [positional("target", label), arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) })],
+            args: [
+                positional("target", label),
+                state,
+                // A mirror animates on its TRANSFORM's duration (it is a scale, not an effect); every
+                // other transform row keeps reading the effect timing it always did.
+                arg("d", seconds(state ? payload.transform?.durationMs : payload.durationMs), {
+                    apply: next => (state
+                        ? patchTransform(payload, { durationMs: msOf(next) })
+                        : { ...payload, durationMs: msOf(next) }),
+                }),
+            ],
         };
     }
     const direction = payload.operation === "show" ? "reveal" : "conceal";
@@ -1047,13 +1077,23 @@ function actionSentence(
                     : positional("seconds", "click")],
             };
         case "screenEffect":
+            // A committed row may only show a line the author could have typed, so the halves ride
+            // only on the effect whose spec names them. They also print only when a half was actually
+            // overridden - `arg` drops an empty value - so the common symmetric line stays
+            // `/blink d=0.2 hold=0.1` rather than growing two tokens `d` already said.
             return {
                 commandId,
                 args: [
                     arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) }),
+                    ...(payload.effect === "blink" ? [
+                        arg("in", seconds(payload.inMs), { apply: next => ({ ...payload, inMs: msOf(next) }) }),
+                        arg("out", seconds(payload.outMs), { apply: next => ({ ...payload, outMs: msOf(next) }) }),
+                    ] : []),
                     arg("hold", seconds(payload.holdMs), { apply: next => ({ ...payload, holdMs: msOf(next) }) }),
                     arg("color", payload.color, { apply: next => ({ ...payload, color: next }) }),
                     arg("opacity", numberValue(payload.opacity), { apply: next => ({ ...payload, opacity: Number(next) }) }),
+                    arg("inner", numberValue(payload.inner), { apply: next => ({ ...payload, inner: Number(next) }) }),
+                    arg("outer", numberValue(payload.outer), { apply: next => ({ ...payload, outer: Number(next) }) }),
                 ],
             };
         case "nvl":

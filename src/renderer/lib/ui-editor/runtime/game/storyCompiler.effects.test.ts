@@ -120,3 +120,46 @@ describe("compiles /fx backdrop and blend", () => {
         ]);
     });
 });
+
+/**
+ * A camera grade lands in one frame, and clearing one does too.
+ *
+ * This is not a style preference: a filter chain carrying `hue-rotate` cannot be eased to or from
+ * neutral without walking the picture through colours nobody chose. Measured over the moonlight
+ * grade on a real sprite, the browser's own interpolation goes blue → cyan → green → olive, because
+ * the angle unwinds 185 degrees while `grayscale` simultaneously lets the source's hues back in.
+ * This pins the fix so a later "make the grade fade nicely" change has to face the reason.
+ * Ending a grade is the engine's problem and is fixed there (narraleaf-react 0.29.0).
+ */
+describe("compiles a camera grade as a cut", () => {
+    function cameraDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[]): StoryDocument {
+        return {
+            schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+            id: "story-1",
+            name: "Story",
+            chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1"] }],
+            scenes: { "scene-1": { id: "scene-1", name: "Scene 1", runtimeName: "Scene 1", rootBlockIds, blocks } },
+        };
+    }
+
+    it("ignores the row's duration and applies the grade over 0ms", async () => {
+        const document = cameraDocument({
+            grade: {
+                id: "grade", kind: "action", parentId: null, childrenIds: [],
+                // A duration an author might reasonably have typed. It must not reach the filter.
+                payload: { action: "camera", operation: "look", lookPreset: "moonlight", lookIntensity: 1, durationMs: 900 },
+            },
+        }, ["grade"]);
+
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        expect(compiled.diagnostics).toEqual([]);
+
+        const actions = compiled.actionIdBindings
+            .filter(binding => binding.blockId === "grade")
+            .flatMap(binding => collectActionTree(binding.action, compiled.story));
+        const sequence = transformsOf(actions)[0]?.sequences?.[0];
+        expect(String(sequence?.props?.filter)).toContain("hue-rotate");
+        expect(sequence?.options).toEqual(expect.objectContaining({ duration: 0 }));
+    });
+
+});

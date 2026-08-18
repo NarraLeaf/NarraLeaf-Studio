@@ -144,7 +144,6 @@ export const widgets = {
         track: "轨道",
         thumb: "滑钮",
         repairParts: "修复部件",
-        recomputeTravel: "按当前尺寸重算行程",
     },
     textInput: {
         title: "文本输入框",
@@ -411,6 +410,7 @@ export const widgets = {
             track: "开关轨道",
             thumb: "开关滑钮",
             onVariant: "开启",
+            offVariant: "关闭",
         },
         text: {
             name: "文本",

@@ -342,7 +342,8 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
             onEnterComplete={handleEnterComplete}
         >
             <SurfaceLifecycleBoundary
-                core={surfaceBlueprintLifecycleReady ? core : null}
+                core={core}
+                ready={surfaceBlueprintLifecycleReady}
                 blueprintDocument={blueprintDocument}
                 persistentVariables={persistentVariables}
                 surface={surface}

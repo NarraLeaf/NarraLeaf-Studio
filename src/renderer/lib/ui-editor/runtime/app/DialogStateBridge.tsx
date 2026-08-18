@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 import { useAvatar, useDialog } from "narraleaf-react";
 import {
     BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
@@ -23,6 +23,16 @@ import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBluep
  * own url→assetId inverse turns it back. A URL that inverse does not know resolves to no avatar
  * rather than to a guess.
  *
+ * **A layout effect, not a passive one.** Widgets dispatch their own `init` from a layout effect
+ * (`BlueprintWidgetInitLifecycle`), and a passive effect runs after every layout effect in the
+ * commit - so on any remount of the dialog (a scene jump remounts it) the avatar widget asked
+ * `Get Speaker Avatar` before this bridge had mirrored the line that was mounting, and answered
+ * with the *previous* speaker. The corrective flush that follows cannot rescue it either: it is
+ * dropped on the mounting commit, because `hostAdapterRef` belongs to the parent surface shell and
+ * a child's effect runs before the parent has filled it in. The visible defect was the previous
+ * speaker's face sitting on the first line of every new scene - narration included - until the
+ * line finished typing.
+ *
  * The accent colour is a Studio-side field the engine knows nothing about, so it is derived here
  * rather than reported: the host stages *who* is speaking (a character id, not the nametag - see
  * `BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY`) and mirrors the character table, and this bridge
@@ -40,7 +50,7 @@ export function DialogStateBridge(props: {
     const avatar = useAvatar();
     const avatarSrc = avatar.visible ? avatar.src : null;
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!core) {
             return;
         }

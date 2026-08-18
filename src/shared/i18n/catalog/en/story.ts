@@ -510,13 +510,22 @@ export const story = {
         displayName: "Display Name",
         seekTime: "Seconds",
         // Camera
-        cameraOperation: "Pan / Zoom / Rotate / Darken / Motion / Reset",
-        cameraAmount: "Amount or Position",
+        cameraOperation: "Pan / Zoom / Rotate / Darken / Look / Motion / Reset",
+        cameraAmount: "Amount, Position or Look",
+        cameraLookStrength: "Look Strength",
+        // The two halves a blink can override; absent, each follows the whole move.
+        effectIn: "In Seconds",
+        effectOut: "Out Seconds",
+        vignetteInner: "Clear Center %",
+        vignetteOuter: "Dark Edge %",
         // Modifiers
         duration: "Seconds",
         transition: "Transition",
         reveal: "Reveal",
         placement: "Position",
+        // Spelled as the two words rather than as a name for the slot, the way `cameraOperation` is:
+        // a two-value positional teaches itself faster than a label an author has to guess at.
+        mirrorState: "On / Off",
         waitFor: "Seconds or click",
         // Slots whose payload key already reads as its own name, so they carry no explicit `hint`
         // and fall back to it. Listed here so the coverage test can see them.
@@ -567,6 +576,10 @@ export const story = {
         // The transform presets `t=` reaches on a show/hide that the transition words did not name.
         scale: "scale",
         opacity: "opacity",
+        // Which way `/mirror` leaves a sprite facing. Absolute, never a change: a compiled transform
+        // cannot read the scale it would have to invert.
+        on: "on",
+        off: "off",
         // Placement (`at=`) and the camera's positional amount.
         left: "left",
         center: "center",
@@ -576,8 +589,18 @@ export const story = {
         zoom: "zoom",
         rotate: "rotate",
         darken: "darken",
+        look: "look",
         motion: "motion",
         reset: "reset",
+        // The grades `/camera look` names. Registered here as well as in the inspector because this
+        // namespace is what the command LINE prints and accepts: without them a row reads back in its
+        // canonical English id on every locale, which is what `darken` beside it does not do.
+        memory: "memory",
+        monologue: "monologue",
+        mono: "mono",
+        moonlight: "moonlight",
+        faint: "faint",
+        hangover: "hangover",
         // Variable types.
         boolean: "boolean",
         number: "number",
@@ -986,6 +1009,11 @@ export const story = {
         camera: { label: "Camera", detail: "Pan, zoom, rotate or darken the stage camera. Kept across scenes" },
         fx: { label: "Effect", detail: "Apply an effect to an object" },
         transform: { label: "Transform", detail: "Move, scale or rotate an object" },
+        // The detail says "mirror", not "flip", because the word the command is named after is the
+        // one thing it cannot explain: an author who is unsure what /flip does needs the other word.
+        // The token is `mirror` because `flip` is a live alias of `/toggle`; the label follows the
+        // token, since the word an author types and the word they read have to be the same one.
+        mirror: { label: "Mirror", detail: "Flip an object horizontally. Say off to face it back" },
         note: { label: "Note", detail: "A Studio-only note" },
     },
     containerHeader: {
@@ -1089,9 +1117,12 @@ export const story = {
             zoom: "Zoom",
             rotate: "Rotate",
             darken: "Darken stage",
+            look: "Grade",
             motion: "Motion",
             reset: "Reset camera",
         },
+        // A hand-written filter has no name to print, and its CSS is not a thing to show in a row.
+        cameraLookCustom: "custom",
         condition: "Condition",
         branch: "{branch} branch",
         label: "Label {name}",

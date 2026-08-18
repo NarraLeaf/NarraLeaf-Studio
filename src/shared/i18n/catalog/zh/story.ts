@@ -435,14 +435,21 @@ export const story = {
         appTag: "变体",
         displayName: "显示名",
         seekTime: "秒数",
-        cameraOperation: "平移 / 缩放 / 旋转 / 压暗 / 运镜 / 复位",
-        cameraAmount: "数值或位置",
+        cameraOperation: "平移 / 缩放 / 旋转 / 压暗 / 色调 / 运镜 / 复位",
+        cameraAmount: "数值、位置或色调",
+        cameraLookStrength: "色调强度",
+        effectIn: "渐入秒数",
+        effectOut: "渐出秒数",
+        vignetteInner: "透明中心 %",
+        vignetteOuter: "全暗边缘 %",
         // 这个词会同时出现在三处：候选菜单的左栏、行内提示 `<持续时间>`、以及作者可以直接敲的键
         // （`持续时间=1` 与 `d=1` 等价）。所以它必须是一个不含空格、在同一条指令里不重名的词。
         duration: "持续时间",
         transition: "转场",
         reveal: "显隐动画",
         placement: "位置",
+        // 和 cameraOperation 一样，直接把两个词写出来：只有两个取值的位置参数，列出来比起一个名字更省事。
+        mirrorState: "开 / 关",
         waitFor: "秒数或 click",
         fade: "淡入淡出秒数",
         loop: "循环",
@@ -490,6 +497,9 @@ export const story = {
         // 用同一批词，作者在哪边选都读作同一件事。
         scale: "比例",
         opacity: "不透明度",
+        // `/mirror` 让对象朝向哪一边。这是绝对状态而非"翻一下"：编译出来的变换是静态的，读不到当前的缩放。
+        on: "开",
+        off: "关",
         // 位置（`at=`）与镜头的位置型数值
         left: "左",
         center: "居中",
@@ -499,8 +509,16 @@ export const story = {
         zoom: "缩放",
         rotate: "旋转",
         darken: "压暗",
+        look: "色调",
         motion: "运镜",
         reset: "复位",
+        // `/camera look` 的色调名。命令行既按这些词显示、也接受它们输入。
+        memory: "回忆",
+        monologue: "心理独白",
+        mono: "单色",
+        moonlight: "月光",
+        faint: "意识模糊",
+        hangover: "宿醉",
         // 变量类型
         boolean: "布尔",
         number: "数字",
@@ -878,6 +896,7 @@ export const story = {
         camera: { label: "镜头", detail: "平移、推拉、旋转或压暗舞台镜头，姿态跨场景保留" },
         fx: { label: "特效", detail: "为对象应用特效" },
         transform: { label: "变换", detail: "移动、缩放或旋转对象" },
+        mirror: { label: "镜像", detail: "把对象左右翻转。写 off 可以翻回来" },
         note: { label: "备注", detail: "仅 Studio 可见的备注" },
     },
     containerHeader: {
@@ -977,9 +996,11 @@ export const story = {
             zoom: "缩放",
             rotate: "旋转",
             darken: "压暗",
+            look: "色调",
             motion: "运镜",
             reset: "复位",
         },
+        cameraLookCustom: "自定义",
         condition: "条件",
         branch: "{branch} 分支",
         label: "标签 {name}",

@@ -23,6 +23,7 @@ import {
 import { formatStorySecondsLabel, storyMsToSeconds } from "@shared/utils/storyTime";
 import { translate, translateCommand } from "@/lib/i18n";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
+import { getStoryCameraLookPreset } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { getQuickParams, quickParamText, type QuickParam } from "./storyQuickParamsModel";
 import { storyVerbLabelKey } from "./storyVerbVocabulary";
 // Two pure tables that happen to live under the story editor: the command taxonomy (the colour unit)
@@ -685,6 +686,18 @@ function describeCamera(
     }
     if (payload.operation === "darken") {
         return `${operation} ${Math.round(Math.min(1, Math.max(0, payload.darkness ?? 0)) * 100)}%`;
+    }
+    if (payload.operation === "look") {
+        // The GRADE is the content of this row, so it is named rather than the operation repeated -
+        // several looks in one scene would otherwise all read "Colour grade". A hand-written filter
+        // has no name to print and no id worth showing an author, so it says only that it is custom.
+        const preset = getStoryCameraLookPreset(payload.lookPreset);
+        if (!preset) {
+            return payload.filter?.trim()
+                ? `${operation} ${translate("story.describe.cameraLookCustom")}`
+                : operation;
+        }
+        return `${operation} ${translate(`storyInspector.cameraLook.${preset.id}` as TranslationKey)}`;
     }
     if (payload.operation === "pan") {
         const xalign = payload.position?.xalign ?? 0.5;

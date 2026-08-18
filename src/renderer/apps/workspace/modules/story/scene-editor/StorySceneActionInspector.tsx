@@ -96,6 +96,7 @@ import {
     SegToggle,
     SelectField,
     Section,
+    TextField,
     easingOptions,
     type TFunc,
 } from "./inspectorFieldKit";
@@ -255,7 +256,31 @@ function VariableValueField(props: {
     return <TextField label={label} value={String(props.value ?? "")} onChange={value => props.onChange(value)} />;
 }
 
-const transformPresetOptions = (t: TFunc): SelectOption[] => [
+/**
+ * The three presets this dropdown no longer OFFERS, and the words a row that still holds one reads by.
+ *
+ * They are clip-path reveals, not settled poses: the paths that need a transform's props up front - a
+ * character's entrance, and the editor's own stage snapshot - cannot fold them and say so
+ * (`presetNotFoldable`), and the working way to ask for one is the `/fx` operation of the same name,
+ * which the effect editor above offers. They stay in `StoryTransformPreset`, in the compiler and in
+ * the `t=` vocabulary, because documents written while they were on the list still carry them and
+ * must keep compiling exactly as they did.
+ */
+const RETIRED_TRANSFORM_PRESETS: Readonly<Record<string, string>> = {
+    circleReveal: "storyInspector.transformPreset.circleReveal",
+    circleClose: "storyInspector.transformPreset.circleClose",
+    wipe: "storyInspector.transformPreset.slideReveal",
+};
+
+/**
+ * The presets a transform can actually BE, in the dropdown that sets one.
+ *
+ * `current` is a parameter because of the three above: a row that already holds one gets it back on
+ * the list, so the field shows what the block actually says instead of the empty trigger an unlisted
+ * value renders as. Dropping a value from a picker must not make the documents it came from
+ * unreadable - only unwritable.
+ */
+const transformPresetOptions = (t: TFunc, current?: string): SelectOption[] => [
     { value: "none", label: t("common.none") },
     { value: "left", label: t("storyInspector.transformPreset.left") },
     { value: "center", label: t("storyInspector.transformPreset.center") },
@@ -271,9 +296,10 @@ const transformPresetOptions = (t: TFunc): SelectOption[] => [
     { value: "rotate", label: t("storyInspector.transformPreset.rotate") },
     { value: "opacity", label: t("storyInspector.transformPreset.opacity") },
     { value: "darken", label: t("storyInspector.transformPreset.darken") },
-    { value: "circleReveal", label: t("storyInspector.transformPreset.circleReveal") },
-    { value: "circleClose", label: t("storyInspector.transformPreset.circleClose") },
-    { value: "wipe", label: t("storyInspector.transformPreset.slideReveal") },
+    { value: "flip", label: t("storyInspector.transformPreset.flip") },
+    ...(current && current in RETIRED_TRANSFORM_PRESETS
+        ? [{ value: current, label: t(RETIRED_TRANSFORM_PRESETS[current] as TranslationKey) }]
+        : []),
 ];
 
 const transitionOptions = (t: TFunc): SelectOption[] => [
@@ -1112,6 +1138,12 @@ function ActionPayloadFields(props: {
         );
     }
     if (payload.action === "screenEffect") {
+        // The two effects agree on what `duration` and `hold` mean and differ in what else they own,
+        // so a field belonging to only one of them is drawn only for it. The engine's `BlinkOptions`
+        // has no opacity, so that row on a blink read as an edit and changed nothing; the radii are
+        // the vignette's gradient and mean nothing to a pair of shutters; and `VignetteOptions` has
+        // one duration for both its halves, so only a blink can be told to shut fast and open slow.
+        const isVignette = payload.effect === "vignette";
         return (
             <div className="nl-field-grid">
                 <SelectField
@@ -1121,9 +1153,35 @@ function ActionPayloadFields(props: {
                     onChange={effect => props.onChange({ ...payload, effect: effect as Extract<StoryActionPayload, { action: "screenEffect" }>["effect"] })}
                 />
                 <SecondsField label={t("storyInspector.field.duration")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
+                {/* Blink only, because only a blink has two halves the engine will drive separately.
+                    Empty means "follow the whole move", which is why neither is seeded from
+                    `duration` when the author opens the row - a filled box would claim an override
+                    nobody asked for, and there would be no way back to following it. */}
+                {isVignette ? null : (
+                    <SecondsField
+                        label={t("storyInspector.field.closeIn")}
+                        value={payload.inMs}
+                        onChange={inMs => props.onChange({ ...payload, inMs })}
+                    />
+                )}
+                {isVignette ? null : (
+                    <SecondsField
+                        label={t("storyInspector.field.openOut")}
+                        value={payload.outMs}
+                        onChange={outMs => props.onChange({ ...payload, outMs })}
+                    />
+                )}
                 <SecondsField label={t("storyInspector.field.hold")} value={payload.holdMs} onChange={holdMs => props.onChange({ ...payload, holdMs })} />
                 <ColorTextField label={t("storyInspector.field.color")} value={payload.color ?? "#000000"} onChange={color => props.onChange({ ...payload, color })} />
-                <NumberField label={t("storyInspector.field.opacity")} value={payload.opacity} onChange={opacity => props.onChange({ ...payload, opacity })} />
+                {isVignette ? (
+                    <NumberField label={t("storyInspector.field.opacity")} value={payload.opacity} onChange={opacity => props.onChange({ ...payload, opacity })} />
+                ) : null}
+                {isVignette ? (
+                    <NumberField label={t("storyInspector.field.vignetteInner")} value={payload.inner} onChange={inner => props.onChange({ ...payload, inner })} />
+                ) : null}
+                {isVignette ? (
+                    <NumberField label={t("storyInspector.field.vignetteOuter")} value={payload.outer} onChange={outer => props.onChange({ ...payload, outer })} />
+                ) : null}
                 <SelectField
                     label={t("storyInspector.field.easing")}
                     options={easingOptions(t)}
@@ -2222,7 +2280,7 @@ function TransformPresetEditor(props: {
                     <FieldGrid cols={3}>
                         <SelectField
                             label={t("storyInspector.transform.preset")}
-                            options={transformPresetOptions(t)}
+                            options={transformPresetOptions(t, value.preset)}
                             value={value.preset ?? "none"}
                             onChange={preset => props.onChange({ ...value, mode: "preset", preset: preset as StoryTransformPreset })}
                         />
@@ -2989,36 +3047,6 @@ function TextIdReadout(props: { text: StoryTextSegment }) {
                     </button>
                 </div>
             )}
-        </div>
-    );
-}
-
-function TextField(props: {
-    label: string;
-    value: string;
-    onChange: (value: string) => void;
-    options?: SelectOption[];
-    /** Shown when `value` is empty — used for a derived default, which is not authored content. */
-    placeholder?: string;
-}) {
-    if (props.options) {
-        return (
-            <SelectField
-                label={props.label}
-                options={props.options}
-                value={props.value}
-                onChange={value => props.onChange(String(value))}
-            />
-        );
-    }
-    return (
-        <div>
-            <label className={FIELD_LABEL_CLASS}>{props.label}</label>
-            <EnhancedInput
-                value={props.value}
-                placeholder={props.placeholder}
-                onChange={props.onChange}
-            />
         </div>
     );
 }
