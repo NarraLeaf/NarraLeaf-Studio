@@ -121,6 +121,12 @@ const bridge: GameRuntimePreloadBridge = {
         window.close();
         console.info("[GameRuntime] Quit requested; close the tab to exit the game.");
     },
+    restart: async () => {
+        // The whole point of a restart is that nothing survives it, and a reload is exactly that
+        // for a page: scripts, module state and every decoded asset go, while the stores this
+        // shell keeps its saves and persistence in (see `webStorage`) are the browser's and stay.
+        window.location.reload();
+    },
     getFullscreen: async () => document.fullscreenElement != null,
     setFullscreen: async (fullscreen: boolean) => {
         // Browsers gate requestFullscreen behind a user gesture; a rejected

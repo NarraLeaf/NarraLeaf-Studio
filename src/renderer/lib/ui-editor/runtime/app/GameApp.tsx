@@ -28,6 +28,7 @@ import {
 import { VOICE_LOCALE_STORAGE_KEY } from "@shared/types/voice";
 import {
     isAutoSaveId,
+    isReservedSaveId,
     normalizeAutoSaveConfiguration,
     parseAutoSaveSlotIndex,
     type AutoSaveEntry,
@@ -146,6 +147,7 @@ import { createSoundTransport } from "./soundTransport";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
 import { attachPlayerPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
 import { loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
+import { applyLocaleChange, resumeAfterLocaleRestart } from "./localeRestart";
 import { createSkipRunController } from "./skipRunController";
 import { createSessionGate } from "./sessionGate";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
@@ -170,6 +172,7 @@ import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, Sur
 import type {
     GameAppFrameContext,
     GameAppHost,
+    GameAppLogLevel,
     GameAppOverlayContext,
     GameAppSaveBridge,
     GameAppSaveRecord,
@@ -1965,6 +1968,70 @@ export function GameApp(props: GameAppProps): ReactNode {
         await host.saveStore.remove(id);
     }, [host.saveStore]);
 
+    /**
+     * Report a language-restart step to both channels a host has, on one call.
+     *
+     * Everything this reports is a failure the author has to be able to see, and Dev Mode's issues
+     * panel only shows what comes through `reportIssue`. `session` is the honest origin: none of it
+     * happens while a story row is running - the player is in a menu - so there is no row to blame.
+     */
+    const reportLocaleRestart = useCallback((level: GameAppLogLevel, message: string) => {
+        host.log(level, `[${host.id}] ${message}`);
+        if (level !== "info") {
+            host.reportIssue?.({ level, message, origin: "session" });
+        }
+    }, [host]);
+
+    /**
+     * The player picked a language. Everything that makes that more than a stored string.
+     *
+     * See `localeRestart` for why a running playthrough is restarted rather than told: the language
+     * is already inside the rendered text, the backlog, the sentence being typed, the voice under
+     * it and the assets held for the scene, and none of those can be rewritten in place. Nothing
+     * happens at all on a title screen or a settings page opened before a run started, which is
+     * where most players change it.
+     */
+    const handleLocaleChanged = useCallback(async (): Promise<void> => {
+        await applyLocaleChange({
+            isPlaythroughRunning,
+            writeSave: id => writeSave(id),
+            persistenceSet: async (key, value) => {
+                await core?.scopeBridge.persistenceSet(key, value);
+            },
+            restartApplication: host.restartApplication,
+            report: reportLocaleRestart,
+        });
+    }, [core, host.restartApplication, isPlaythroughRunning, reportLocaleRestart, writeSave]);
+
+    /**
+     * Put the player back into the run a language change restarted the game out of.
+     *
+     * Called once per mounted environment - after the boot preload, and again after a Dev Mode hot
+     * reload remounts one - because those are the two moments a session exists to load into and the
+     * one it has just started from nothing. It is a no-op in every boot that owes nothing, which is
+     * all of them but the one immediately after a language change.
+     */
+    const resumeLocaleRestart = useCallback(async (): Promise<void> => {
+        if (!core) {
+            return;
+        }
+        const scope = core.scopeBridge;
+        try {
+            await resumeAfterLocaleRestart({
+                persistenceGetAsync: key => scope.persistenceGetAsync(key),
+                persistenceSet: (key, value) => scope.persistenceSet(key, value),
+                loadSave: loadSaveForGraph,
+                deleteSave,
+                report: reportLocaleRestart,
+            });
+        } catch (error) {
+            // Contained here rather than raised: both callers are a boot, and a boot that reports
+            // itself as failed takes the whole stage down with it. Nothing that can go wrong in a
+            // resume is worse than the title screen the player gets by falling through it.
+            reportLocaleRestart("error", `The playthrough could not be resumed after the language change: ${normalizeError(error)}`);
+        }
+    }, [core, deleteSave, loadSaveForGraph, reportLocaleRestart]);
+
     // `saves.write` for runtime plugins: the very same paths the Save Game /
     // Load Save nodes take, so a plugin save is indistinguishable from an
     // authored one. Screenshots are left off — the plugin API takes no capture
@@ -1982,12 +2049,14 @@ export function GameApp(props: GameAppProps): ReactNode {
     // Player slots only. Autosaves live in the same store under reserved ids and
     // are listed by List Auto Saves instead, so an authored Save/Load screen
     // built on this never has to filter Studio's bookkeeping out of its grid.
+    // The same goes for the run parked by a language restart, which is nobody's
+    // slot and is gone again by the time the player reaches a save screen.
     // (The plugin `saves.listIds` surface is deliberately left raw - it is
     // documented as direct store access, not the authoring view.)
     const listSaveIds = useCallback(async (): Promise<string[]> => {
         const headers = await host.saveStore.listHeaders();
         return headers
-            .filter(header => !isAutoSaveId(header.id))
+            .filter(header => !isReservedSaveId(header.id))
             // The same decision the load itself makes, from the same header bytes: a slot this
             // project would refuse is a slot a save screen must not draw a Load button on.
             .filter(header => planSaveResume(
@@ -2374,6 +2443,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             soundTransport,
             audioTracks: bundle.audio?.tracks,
             subscribeGamePreferences,
+            // A language picker is exactly the kind of thing an author builds into a dialogue-box
+            // quick menu, and a slot surface's Set Language reaches this and nothing else.
+            localeChangedInGame: handleLocaleChanged,
             setWidgetPatchesByScope,
             widgetPatchesByScopeRef,
             widgetRuntimeStore,
@@ -2510,6 +2582,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getSaveLine,
         getSavePlaytime,
         getSavePreview,
+        handleLocaleChanged,
         autoSave.writeNow,
         listAutoSaves,
         hideDialogInGame,
@@ -2722,6 +2795,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onImportProgress: importProgressInGame,
             audioTracks: bundle.audio?.tracks,
             onSubscribeGamePreferences: subscribeGamePreferences,
+            onLocaleChanged: handleLocaleChanged,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
@@ -2785,6 +2859,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getSaveLine,
         getSavePlaytime,
         getSavePreview,
+        handleLocaleChanged,
         autoSave.writeNow,
         listAutoSaves,
         hideDialogInGame,
@@ -2896,6 +2971,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         void (async () => {
             try {
                 await runBootRef.current?.();
+                // After the environment is up and before the surfaces start, because this is a
+                // load into the session the boot just made: on the one boot that follows a
+                // language change it puts the player back where they were, and on every other
+                // boot it reads one persisted key and returns.
+                await resumeLocaleRestart();
             } catch (err) {
                 if (cancelled) {
                     // nothing to report; the effect was torn down
@@ -3079,6 +3159,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onImportProgress: importProgressInGame,
                     audioTracks: bundle.audio?.tracks,
                     onSubscribeGamePreferences: subscribeGamePreferences,
+                    onLocaleChanged: handleLocaleChanged,
                     onWidgetPatch: (elementId, patch) => {
                         applyWidgetRuntimePatch({
                             setWidgetPatchesByScope,
@@ -3173,6 +3254,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getSaveLine,
         getSavePlaytime,
         getSavePreview,
+        handleLocaleChanged,
         autoSave.writeNow,
         listAutoSaves,
         hideDialogInGame,
@@ -3239,6 +3321,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                 } else {
                     await startEmptyNlrEnvironment();
                 }
+                // The boot effect does not re-run for a revision bump, so this is the only place a
+                // Dev Mode restart can be resumed from - and a restart is what Dev Mode does when
+                // the language changes mid-run. Ordinary reloads owe nothing and it returns at once.
+                await resumeLocaleRestart();
             } catch (err) {
                 if (err instanceof NlrSessionSupersededError) {
                     // Another revision landed while this restart was in flight and has taken the
@@ -3251,7 +3337,15 @@ export function GameApp(props: GameAppProps): ReactNode {
                 reportFailure(err, { prefix: `[${host.id}] NLR hot reload restart failed: ` });
             }
         })();
-    }, [bundle.revision, compileStoryRequest, enterMountedGame, host, mountNlrSession, startEmptyNlrEnvironment]);
+    }, [
+        bundle.revision,
+        compileStoryRequest,
+        enterMountedGame,
+        host,
+        mountNlrSession,
+        resumeLocaleRestart,
+        startEmptyNlrEnvironment,
+    ]);
 
     useEffect(() => {
         const nextBundleId = bundle.bundleId;
