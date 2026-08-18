@@ -136,6 +136,18 @@ export type GameUiSlotHostOptions = {
     audioTracks?: readonly ProjectAudioTrack[];
     /** Preference stream so a mid-playback volume-slider drag reaches host-owned media elements. */
     subscribeGamePreferences?: (listener: () => void) => () => void;
+    /**
+     * The player changed the language from inside the game. A slot surface is exactly where that
+     * happens — a language picker built into a dialogue-box quick menu — and `GameApp` owns what it
+     * costs (writing a save, restarting, returning to the playthrough), so the slot bridge only
+     * forwards the request rather than deciding anything.
+     *
+     * Optional for the same reason `getFullscreen` is: what it does is restart the application and
+     * come back to the save it just wrote, and the story preview has no application to restart. That
+     * host leaves it unset, and a `Set Language` node on a slot surface there reaches nothing —
+     * which is the truth about the capability, not a gap to fill with a partial imitation.
+     */
+    localeChangedInGame?: () => Promise<void>;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -273,6 +285,7 @@ export function useStageSlotSurfaceRuntime(input: {
             onSetTrackVolume: options.soundTransport?.setTrackVolume,
             audioTracks: options.audioTracks,
             onSubscribeGamePreferences: options.subscribeGamePreferences,
+            onLocaleChanged: options.localeChangedInGame,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
