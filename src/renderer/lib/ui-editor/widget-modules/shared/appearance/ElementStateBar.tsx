@@ -39,6 +39,7 @@ export function ElementStateBar(props: CustomFieldProps<UIInspectorData>) {
     const entered = useEditorEnteredState();
     const element = liveElement(props.data);
     const stateService = UIEditorStateService.getInstance();
+    const surfaceId = props.data.surfaceId ?? "";
     // A widget's own states outrank an appearance model's variants: they are what the widget does,
     // and the variants are only how its parts look while it does it.
     const declared = widgetModuleRegistry.get(element.type)?.listEditorStates?.(element) ?? null;
@@ -54,7 +55,11 @@ export function ElementStateBar(props: CustomFieldProps<UIInspectorData>) {
                     inspectOnly
                     onChange={value => {
                         const next = String(value);
-                        stateService.setEnteredState({ elementId: element.id, variantId: next === "" ? null : next });
+                        stateService.setEnteredState({
+                            surfaceId,
+                            elementId: element.id,
+                            variantId: next === "" ? null : next,
+                        });
                     }}
                 />
             </div>
@@ -76,13 +81,14 @@ export function ElementStateBar(props: CustomFieldProps<UIInspectorData>) {
     };
     const enter = (variantId: string) => {
         stateService.setEnteredState({
+            surfaceId,
             elementId: element.id,
             variantId: variantId === model.defaultVariantId ? null : variantId,
         });
     };
 
     const handleAdd = () => {
-        addElementState(props.data.documentService, element.id, selected?.id ?? null);
+        addElementState(props.data.documentService, surfaceId, element.id, selected?.id ?? null);
     };
 
     const handleRemove = () => {
@@ -91,7 +97,7 @@ export function ElementStateBar(props: CustomFieldProps<UIInspectorData>) {
         }
         const next = removeVariant(model, selected.id);
         replace(next);
-        stateService.setEnteredState({ elementId: element.id, variantId: null });
+        stateService.setEnteredState({ surfaceId, elementId: element.id, variantId: null });
     };
 
     return (

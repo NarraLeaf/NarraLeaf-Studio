@@ -199,6 +199,7 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
                     actions.hideMenu();
                     addElementState(
                         documentService,
+                        input.surfaceId,
                         stateElement.id,
                         UIEditorStateService.getInstance().getEnteredState()?.variantId ?? null,
                     );
