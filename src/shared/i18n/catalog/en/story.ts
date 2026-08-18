@@ -513,7 +513,7 @@ export const story = {
         cameraOperation: "Pan / Zoom / Rotate / Darken / Look / Motion / Reset",
         cameraAmount: "Amount, Position or Look",
         cameraLookStrength: "Look Strength",
-        // The two halves a screen effect can override; absent, each follows the whole move.
+        // The two halves a blink can override; absent, each follows the whole move.
         effectIn: "In Seconds",
         effectOut: "Out Seconds",
         vignetteInner: "Clear Center %",

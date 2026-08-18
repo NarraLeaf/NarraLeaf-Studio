@@ -2766,13 +2766,13 @@ const DEFAULT_VIGNETTE_OUTER = 78;
  * `openDuration`) - which Studio used to collapse by filling both from the one number, making "slam
  * the eyes shut, open them slowly" inexpressible rather than unsupported.
  *
- * `vignette` cannot: the engine's helper drives its fade in AND its fade out from a single
- * `duration`, so the out half is not a knob that exists to turn. Rather than play a different move
- * than the row asked for in silence, an asymmetric vignette is reported. Rebuilding the effect here
- * from `effectLayer` plus a hand-written mask WOULD express it, and is deliberately not done: the
- * gradient geometry, the layer's identity and the mask teardown are the engine's business, and a copy
- * living in this file would go stale the first time the engine tunes its vignette - invisibly, since
- * the effect would keep rendering, just no longer like every other build's.
+ * `vignette` has no halves to split, and does not offer them: the engine's helper drives its fade in
+ * AND its fade out from a single `duration`, so `/vignette` names no `in` / `out` and there is
+ * nothing here to report. Rebuilding the effect from `effectLayer` plus a hand-written mask WOULD
+ * express it, and is deliberately not done: the gradient geometry, the layer's identity and the mask
+ * teardown are the engine's business, and a copy living in this file would go stale the first time
+ * the engine tunes its vignette - invisibly, since the effect would keep rendering, just no longer
+ * like every other build's. The split has to arrive in `VignetteOptions` first.
  */
 function compileScreenEffectAction(
     ctx: SceneCompileContext,
@@ -2780,19 +2780,18 @@ function compileScreenEffectAction(
     payload: Extract<StoryActionPayload, { action: "screenEffect" }>,
 ): NlrStatement[] {
     // A negative duration is not a fast move, it is a value the engine hands to a tween that never
-    // finishes - and the row is awaited, so the scene would stop there.
-    const half = (value: number | undefined): number | undefined => {
-        const resolved = value ?? payload.durationMs;
-        return resolved === undefined ? undefined : Math.max(0, finiteOr(resolved, 0));
-    };
-    const inDuration = half(payload.inMs);
-    const outDuration = half(payload.outMs);
-    const hold = payload.holdMs === undefined ? undefined : Math.max(0, finiteOr(payload.holdMs, 0));
+    // finishes - and the row is awaited, so the scene would stop there. `undefined` is passed through
+    // rather than floored to 0, so an unset field still lands on the engine's own default.
+    const seconds = (value: number | undefined): number | undefined =>
+        value === undefined ? undefined : Math.max(0, finiteOr(value, 0));
+    /** A blink half: its own override, or the whole move it was never split off from. */
+    const half = (value: number | undefined): number | undefined => seconds(value ?? payload.durationMs);
+    const hold = seconds(payload.holdMs);
 
     if (payload.effect === "blink") {
         const chain = blink(ctx.nlrScene, {
-            closeDuration: inDuration,
-            openDuration: outDuration,
+            closeDuration: half(payload.inMs),
+            openDuration: half(payload.outMs),
             hold,
             color: payload.color,
             easing: payload.easing,
@@ -2800,16 +2799,13 @@ function compileScreenEffectAction(
         return [recordStatement(ctx, chain, block)];
     }
 
-    if (payload.outMs !== undefined && outDuration !== inDuration) {
-        diagnostic(ctx, "warning", block.id, "A vignette fades out over the same time it fades in; its separate out duration is ignored.");
-    }
     // `inner` above `outer` is not a wider vignette - it is a `radial-gradient` whose stops run
     // backwards, which the browser drops whole, taking the mask and therefore the entire effect with
     // it. Ordering them here is the same discipline the camera's clamps follow.
     const inner = Math.min(100, Math.max(0, finiteOr(payload.inner, DEFAULT_VIGNETTE_INNER)));
     const outer = Math.min(100, Math.max(inner, finiteOr(payload.outer, DEFAULT_VIGNETTE_OUTER)));
     const chain = vignette(ctx.nlrScene, {
-        duration: inDuration,
+        duration: seconds(payload.durationMs),
         hold,
         color: payload.color,
         opacity: payload.opacity,

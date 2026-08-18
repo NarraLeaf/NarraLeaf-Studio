@@ -420,8 +420,8 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
         },
         cameraReset: { keyword: "camera reset", slots: TIMING },
         cameraMotion: { keyword: "camera motion", slots: [{ slot: "motion", value: "name" }] },
-        // `in` and `out` are the one grammar both screen effects share: `over` is the whole move, and
-        // each half overrides its own end of it.
+        // `over` is the whole move on both effects; `in` and `out` split it, and sit on `blink` alone
+        // because `VignetteOptions` has one duration driving both of its halves.
         //
         // `opacity` stays on `blink` even though the engine's `BlinkOptions` has none and the compile
         // therefore ignores it. Nothing writes it any more - the inspector stopped offering a control
@@ -444,8 +444,6 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
             keyword: "vignette",
             slots: [
                 { slot: "duration", lead: "over", value: "seconds" },
-                { slot: "fadeIn", lead: "in", value: "seconds" },
-                { slot: "fadeOut", lead: "out", value: "seconds" },
                 { slot: "inner", lead: "inner", value: "number" },
                 { slot: "outer", lead: "outer", value: "number" },
                 { slot: "hold", lead: "hold", value: "seconds" },

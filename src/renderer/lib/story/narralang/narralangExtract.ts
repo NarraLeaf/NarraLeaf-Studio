@@ -1116,15 +1116,17 @@ function actionShape(ctx: NarralangExtractContext, block: StoryBlock, payload: S
                 slots: transformSlots(ctx, block.id, payload.transition, "nvl"),
             };
         case "screenEffect":
-            // `inner` and `outer` are vignette-only in the grammar, so they are extracted only for it -
-            // printing them on a blink would produce a line the matcher then refuses.
+            // Each effect's grammar names a different subset, so each is extracted against its own -
+            // printing a slot the verb does not have produces a line the matcher then refuses.
             return {
                 form: "statement",
                 verb: payload.effect === "blink" ? "screenBlink" : "screenVignette",
                 slots: {
                     duration: optSeconds(payload.durationMs),
-                    fadeIn: optSeconds(payload.inMs),
-                    fadeOut: optSeconds(payload.outMs),
+                    ...(payload.effect === "blink" ? {
+                        fadeIn: optSeconds(payload.inMs),
+                        fadeOut: optSeconds(payload.outMs),
+                    } : {}),
                     hold: optSeconds(payload.holdMs),
                     color: payload.color === undefined ? undefined : asColor(payload.color),
                     opacity: optNumber(payload.opacity),

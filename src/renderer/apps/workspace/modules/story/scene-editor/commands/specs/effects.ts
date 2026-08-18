@@ -14,22 +14,34 @@ import { asColor, asDurationMs, asNumber, asTarget, defineStoryCommand, SECONDS_
  */
 
 /**
- * The one timing grammar both screen effects speak.
+ * The timing grammar the screen effects share: `d` is the whole in-and-out move, `hold` the pause at
+ * full. One meaning per word across both, which is the part that has to be uniform.
  *
- * `d` is the whole in-and-out move and stays the default a simple row needs. `in` and `out` override
- * one half each, and being ABSENT is what means "derive from `d`" - which is why neither carries a
- * default here. Writing `in` and `out` at build time from `d` would have made the two halves
- * indistinguishable from an author who really wanted them equal, and there would then be no way back
- * to "follow `d`" once the row had been through the inspector.
- *
- * Shared by `/blink` (in = the eyes closing, out = them opening) and `/vignette` (in = the edges
- * darkening, out = them clearing) so that one thing an author learns once reads the same on both.
+ * What is NOT uniform is which words each effect offers - `in` / `out` sit on `/blink` alone, below.
+ * An effect offers the subset it can honour, the same way `SUPPORTED` in `commands/transitions.ts`
+ * gives each context its own word list rather than one list plus a table of exceptions. A key that
+ * parses and is then always reported is worse than a key that was never offered: it costs an author
+ * the time to find out it leads nowhere, and the report is the only place they can find out.
  */
 const SCREEN_EFFECT_TIMING = {
     d: secondsParam(),
+    hold: { hint: "hold", type: SECONDS_TYPE },
+} as const;
+
+/**
+ * `/blink` only: the two halves of the move, each overriding its own end of `d`.
+ *
+ * Being ABSENT is what means "derive from `d`", which is why neither carries a default - writing them
+ * at build time would make an author who wanted the halves equal indistinguishable from one who never
+ * split them, with no way back to following `d`.
+ *
+ * `/vignette` has no counterpart because the ENGINE has none: `VignetteOptions` carries a single
+ * `duration` that drives its fade in and its fade out together. The split is absent here rather than
+ * unimplemented, and it is NLR that would have to grow the pair first.
+ */
+const BLINK_HALVES = {
     in: { hint: "effectIn", type: SECONDS_TYPE },
     out: { hint: "effectOut", type: SECONDS_TYPE },
-    hold: { hint: "hold", type: SECONDS_TYPE },
 } as const;
 
 function screenEffectBuild(commandId: "screenBlink" | "screenVignette") {
@@ -95,6 +107,7 @@ export const blink = defineStoryCommand({
     examples: ["/blink", "/blink d=0.2 hold=0.1", "/blink in=0.08 hold=0.4 out=0.9"],
     params: {
         ...SCREEN_EFFECT_TIMING,
+        ...BLINK_HALVES,
         color: { hint: "color", type: { kind: "color" } },
     },
     build: screenEffectBuild("screenBlink"),

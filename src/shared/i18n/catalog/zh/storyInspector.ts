@@ -59,8 +59,6 @@ export const storyInspector = {
         muted: "静音",
         closeIn: "闭眼（秒）",
         openOut: "睁眼（秒）",
-        fadeIn: "渐入（秒）",
-        fadeOut: "渐出（秒）",
         vignetteInner: "透明中心 %",
         vignetteOuter: "全暗边缘 %",
     },
@@ -317,9 +315,7 @@ export const storyInspector = {
         vignette: "暗角",
     },
 
-    screenEffectHint: {
-        vignetteSymmetric: "暗角的渐出与渐入用同一段时长，这里填的会被忽略。",
-    },    waitMode: {
+    waitMode: {
         duration: "时长",
         click: "点击",
     },
