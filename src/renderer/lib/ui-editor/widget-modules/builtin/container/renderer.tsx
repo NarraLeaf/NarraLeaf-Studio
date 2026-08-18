@@ -312,8 +312,10 @@ export function ContainerRenderer(props: WidgetRendererProps) {
     // Host stays overflow: visible so chrome box-shadow / filter are not clipped; when clipContent is on, only the
     // children layer clips (same bounds as the host).
     if (p.layoutKind === "free") {
-        const offsetX = finiteOr(rectangleLike.transformOffsetX, 0);
-        const offsetY = finiteOr(rectangleLike.transformOffsetY, 0);
+        // Zero while a state is entered: the wrapper is carrying the offsets so that the node the
+        // editor selects and measures is the node the element is drawn at.
+        const offsetX = enteredState ? 0 : finiteOr(rectangleLike.transformOffsetX, 0);
+        const offsetY = enteredState ? 0 : finiteOr(rectangleLike.transformOffsetY, 0);
         const resolvedScale = finiteOr(rectangleLike.transformScale, 1);
         const scale = resolvedScale > 0 ? resolvedScale : 1;
         const rotation = finiteOr(rectangleLike.transformRotation, 0);

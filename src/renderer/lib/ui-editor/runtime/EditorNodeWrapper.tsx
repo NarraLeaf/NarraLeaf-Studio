@@ -22,12 +22,16 @@ import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
 import { useSurfacePassive } from "@/lib/ui-editor/runtime/surface/SurfacePassiveContext";
 import { isTextEntryTarget } from "./app/isTextEntryTarget";
 import { EnteredStateProvider, variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
+
+/** Shared so an element with no offsets keeps one object identity and never re-poses on it. */
+const ZERO_APPEARANCE_OFFSETS = { x: 0, y: 0 };
 import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import {
     type AppearanceResolveContext,
     resolveButtonCursor,
     resolveButtonVisualProps,
     resolveAppearanceDisplayableOpacity,
+    resolveAppearanceTransformOffsets,
     resolveImageDisplayableOpacityKeys,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
@@ -185,6 +189,13 @@ export function EditorNodeWrapper({
         const canDispatchClick = Boolean(interactive && blueprintRuntime && !interactionDisabled);
         return resolveButtonCursor(visual.cursor, interactionDisabled, canDispatchClick);
     })();
+    // While a state is entered, this node carries the offsets the element is drawn at, and the widget
+    // inside it draws at zero. The editor selects, measures and snaps to *this* node, so an offset
+    // living on a layer inside it leaves the selection frame and the handles behind at the position
+    // the element rests in - visibly detached from the element the author is dragging.
+    const enteredOffsets = enteredState
+        ? resolveAppearanceTransformOffsets(appearance, appearanceResolveCtx)
+        : ZERO_APPEARANCE_OFFSETS;
     const layoutOpacity = layout.opacity ?? 1;
     const effectiveOpacity = hasRuntimeOpacityOverride ? layoutOpacity : appearanceOpacity ?? layoutOpacity;
     const baseRotation = layout.rotation ?? 0;
@@ -195,13 +206,13 @@ export function EditorNodeWrapper({
     // untouched (and everything after they clear) resolves back to this pose.
     const basePose = useMemo(
         () => ({
-            x: displayableBaseTransform.offsetX,
-            y: displayableBaseTransform.offsetY,
+            x: displayableBaseTransform.offsetX + enteredOffsets.x,
+            y: displayableBaseTransform.offsetY + enteredOffsets.y,
             scale: displayableBaseTransform.scale,
             rotate: baseRotation,
             opacity: effectiveOpacity,
         }),
-        [baseRotation, displayableBaseTransform, effectiveOpacity],
+        [baseRotation, displayableBaseTransform, effectiveOpacity, enteredOffsets.x, enteredOffsets.y],
     );
 
     useEffect(() => {
@@ -528,7 +539,9 @@ export function EditorNodeWrapper({
         motionPoseLatchRef.current ||
         Boolean(displayableMotion) ||
         displayableBaseTransform !== DEFAULT_DISPLAYABLE_BASE_TRANSFORM ||
-        baseRotation !== 0;
+        baseRotation !== 0 ||
+        enteredOffsets.x !== 0 ||
+        enteredOffsets.y !== 0;
     motionPoseLatchRef.current = hasMotionPose;
     const motionStyle: MotionStyle = hasMotionPose
         ? {
