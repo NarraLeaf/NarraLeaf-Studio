@@ -34,6 +34,7 @@ export const uiEditor = {
         interfaceType: "Interface Type",
         createPage: "Create Page",
         createGameUi: "Create Game UI",
+        createStageAvatar: "Create Stage Avatar",
         globalSubtitle: "Global",
         blueprintType: "Blueprint",
         openGlobalBlueprint: "Open global blueprint",
@@ -53,6 +54,7 @@ export const uiEditor = {
     naming: {
         page: "Page {index}",
         gameUi: "{slot} UI",
+        stageAvatar: "Avatar Frame {index}",
         component: "Component {index}",
     },
     createDialog: {

@@ -33,6 +33,7 @@ export const uiEditor = {
         interfaceType: "インターフェースの種類",
         createPage: "ページを作成",
         createGameUi: "ゲーム UI を作成",
+        createStageAvatar: "ステージアバターを作成",
         globalSubtitle: "グローバル",
         blueprintType: "ブループリント",
         openGlobalBlueprint: "グローバルブループリントを開く",
@@ -52,6 +53,7 @@ export const uiEditor = {
     naming: {
         page: "ページ {index}",
         gameUi: "{slot} UI",
+        stageAvatar: "アバター枠 {index}",
         component: "コンポーネント {index}",
     },
     createDialog: {

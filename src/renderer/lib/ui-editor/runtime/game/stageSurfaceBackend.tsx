@@ -10,6 +10,8 @@ import type {
     PuppetState,
 } from "narraleaf-react";
 import type { UIDocument, UIStageSurface } from "@shared/types/ui-editor/document";
+import type { DevModeBundle } from "@shared/types/devMode";
+import type { SurfacePuppetRequest } from "@/lib/ui-editor/runtime/game/surfacePuppetSession";
 import {
     parseStageSurfaceSrc,
     readStageSurfaceMountOptions,
@@ -39,6 +41,30 @@ export { STAGE_SURFACE_BACKEND_NAME };
  * it is — it finds renderers the author supplied and never names one. This module names none
  * either: what it mounts is Studio's own React.
  */
+/**
+ * The model a framed puppet character wears, from the compiled bundle's character table.
+ *
+ * The frame resolves it once, on mount, and hands it down. A widget cannot: the table is the story
+ * library's, not the surface document's, and it is the only place a character's runtime, model
+ * bundle and options are written down together.
+ */
+function framedPuppetModel(bundle: DevModeBundle, characterId: string | undefined): SurfacePuppetRequest | null {
+    if (!characterId) {
+        return null;
+    }
+    const summary = bundle.storyLibrary?.characters?.find(character => character.id === characterId);
+    const appearance = summary?.appearance;
+    if (!appearance || appearance.kind !== "puppet" || !appearance.backend) {
+        return null;
+    }
+    return {
+        assetId: appearance.assetId,
+        backend: appearance.backend,
+        entry: appearance.entry,
+        options: appearance.options,
+    };
+}
+
 type SurfaceHostInput = {
     uidoc: UIDocument;
     slotHostOptions: GameUiSlotHostOptions;
@@ -177,16 +203,17 @@ export function createStageSurfacePuppetBackend(input: SurfaceHostInput): Puppet
         name: STAGE_SURFACE_BACKEND_NAME,
         mount(container: HTMLElement, ctx): PuppetInstance {
             const options = readStageSurfaceMountOptions(ctx.options);
+            const model = framedPuppetModel(input.slotHostOptions.bundle, options.characterId);
             const handle = mountSurface(input, container, {
                 surfaceId: options.surfaceId ?? parseStageSurfaceSrc(ctx.src),
                 objectName: options.objectName,
                 characterId: options.characterId,
                 size: ctx.size,
-                initial: { kind: "puppet", state: null },
+                initial: { kind: "puppet", state: null, model },
             });
             return {
                 ready: () => Promise.resolve(),
-                apply: (state: PuppetState) => handle.setState({ kind: "puppet", state }),
+                apply: (state: PuppetState) => handle.setState({ kind: "puppet", state, model }),
                 command: () => undefined,
                 resize: (size: PuppetSize) => handle.resize(size),
                 dispose: () => handle.dispose(),

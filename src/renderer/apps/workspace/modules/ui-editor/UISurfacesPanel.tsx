@@ -51,12 +51,12 @@ import {
     CreateSurfaceDialogContent,
     CreateSurfaceDialogValue,
 } from "./panel/dialogs/CreateSurfaceDialogContent";
-import { DEFAULT_STAGE_SLOT_ID, GAME_UI_SLOT_IDS, SURFACE_KIND_OPTIONS } from "./panel/constants";
+import { DEFAULT_STAGE_SLOT_ID, GAME_UI_SLOT_IDS, SURFACE_KIND_OPTIONS, surfaceKindOptionView, type SurfacePanelView } from "./panel/constants";
 import { getStageSlotLabel } from "@/lib/ui-editor/stageSlotLabel";
 import type { EditorLayout, EditorTabDefinition } from "../../registry/types";
 import { getEditorSurfaceAreaBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPaletteRevision";
-import { stageMountSlotId } from "@shared/types/ui-editor/stageSlots";
+import { isElementMount, stageMountSlotId } from "@shared/types/ui-editor/stageSlots";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const BLUEPRINT_ENTRY_TAB_PREFIX = "blueprint-entry:";
@@ -123,7 +123,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const { editorLayout, openEditorTab, closeEditorTabs } = useRegistry();
     const openBlueprintTarget = useOpenBlueprintTarget();
     const [surfaces, setSurfaces] = useState<UISurface[]>([]);
-    const [kind, setKind] = useState<UISurfaceKind>("appSurface");
+    const [view, setView] = useState<SurfacePanelView>("appSurface");
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
     const [hasEnsuredAppSurface, setHasEnsuredAppSurface] = useState(false);
@@ -172,9 +172,24 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     }, [documentService]);
 
     const filteredSurfaces = useMemo(() => {
-        return surfaces.filter(surface => surface.kind === kind);
-    }, [surfaces, kind]);
-    const currentKindOption = useMemo(() => SURFACE_KIND_OPTIONS.find(option => option.kind === kind), [kind]);
+        // The two Game UI views split by where a surface mounts: the five singleton slots in one, the
+        // frames a feature makes on demand in the other. Splitting here rather than by a third stored
+        // kind is what keeps an avatar frame an ordinary Game UI surface everywhere else.
+        return surfaces.filter(surface => {
+            if (view === "appSurface") {
+                return surface.kind === "appSurface";
+            }
+            if (surface.kind !== "stageSurface") {
+                return false;
+            }
+            return view === "stageAvatar" ? isElementMount(surface.mount) : !isElementMount(surface.mount);
+        });
+    }, [surfaces, view]);
+    const currentKindOption = useMemo(
+        () => SURFACE_KIND_OPTIONS.find(option => surfaceKindOptionView(option) === view),
+        [view],
+    );
+    const kind: UISurfaceKind = currentKindOption?.kind ?? "appSurface";
     const occupiedStageSlotIds = useMemo(() => {
         return new Set(
             surfaces
@@ -434,7 +449,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                     name: suggestedName,
                     designSize: defaultDesignSize,
                     slotId: defaultStageSlotId,
-                    valid: kind === "appSurface" || !occupiedStageSlotIds.has(defaultStageSlotId),
+                    valid: kind === "appSurface" || view === "stageAvatar" || !occupiedStageSlotIds.has(defaultStageSlotId),
                 };
 
                 const safeResolve = (value: CreateSurfaceDialogValue | null) => {
@@ -472,7 +487,9 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 };
 
                 dialogId = uiService.dialogs.show({
-                    title: kind === "appSurface" ? t("uiEditor.panel.createPage") : t("uiEditor.panel.createGameUi"),
+                    title: view === "stageAvatar"
+                        ? t("uiEditor.panel.createStageAvatar")
+                        : kind === "appSurface" ? t("uiEditor.panel.createPage") : t("uiEditor.panel.createGameUi"),
                     content: (
                         <CreateSurfaceDialogContent
                             kind={kind}
@@ -517,22 +534,28 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             return;
         }
         const suggestedName =
-            kind === "appSurface"
-                ? t("uiEditor.naming.page", { index: filteredSurfaces.length + 1 })
-                : t("uiEditor.naming.gameUi", { slot: getStageSlotLabel(defaultStageSlotId, t) });
+            view === "stageAvatar"
+                ? t("uiEditor.naming.stageAvatar", { index: filteredSurfaces.length + 1 })
+                : kind === "appSurface"
+                    ? t("uiEditor.naming.page", { index: filteredSurfaces.length + 1 })
+                    : t("uiEditor.naming.gameUi", { slot: getStageSlotLabel(defaultStageSlotId, t) });
         const selection = await promptCreateSurface(suggestedName);
         if (!selection) {
             return;
         }
         let stageMount: UIStageSurfaceMount | undefined;
-        if (kind === "stageSurface") {
+        if (view === "stageAvatar") {
+            stageMount = { kind: "element", owner: "stageAvatar" };
+        } else if (kind === "stageSurface") {
             stageMount = { kind: "slot", slotId: selection.slotId ?? DEFAULT_STAGE_SLOT_ID };
         }
         const surface = documentService.createSurface({
             kind,
             name: selection.name,
             host: currentKindOption.host,
-            designSize: kind === "appSurface" ? selection.designSize : undefined,
+            // A frame is drawn at the size it will occupy on stage, so it is sized like a page and
+            // unlike a slot — a slot is always the whole stage and has nothing to ask about.
+            designSize: view === "stageAvatar" || kind === "appSurface" ? selection.designSize : undefined,
             stageMount,
         });
         void documentService.save(documentService.getDocument()).catch(err => {
@@ -553,7 +576,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     ]);
 
     const globalBlueprintCard = useMemo<SurfaceListGlobalBlueprintCard | undefined>(() => {
-        if (kind !== "appSurface") {
+        if (view !== "appSurface") {
             return undefined;
         }
         return {
@@ -573,12 +596,18 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         // and the button floating raised on it — no color seam between sections.
         <div className="h-full flex flex-col bg-surface-sunken">
             <SurfaceFilters
-                kind={kind}
-                onKindChange={setKind}
+                view={view}
+                onViewChange={setView}
             />
             <SurfaceActions
                 onCreate={handleCreateSurface}
-                createLabel={kind === "appSurface" ? t("uiEditor.panel.createPage") : t("uiEditor.panel.createGameUi")}
+                createLabel={
+                    view === "stageAvatar"
+                        ? t("uiEditor.panel.createStageAvatar")
+                        : kind === "appSurface"
+                            ? t("uiEditor.panel.createPage")
+                            : t("uiEditor.panel.createGameUi")
+                }
                 createDisabled={!documentService || !currentKindOption}
                 onOpenTemplateStore={() => setTemplateStoreOpen(true)}
                 templateLabel={t("uiEditor.templateStore.open")}

@@ -1,4 +1,5 @@
 import { useMemo, useState, type CSSProperties } from "react";
+import type { PuppetState } from "narraleaf-react";
 import {
     cropLayoutStyle,
     getUICharacterWidgetProps,
@@ -8,6 +9,28 @@ import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
 import { useFramedCharacter } from "@/lib/ui-editor/runtime/app/FramedCharacterContext";
 import { useCharacterPreviewSrcs } from "@/lib/workspace/hooks/useCharacterPreviewSrcs";
+import { useSurfacePuppetSession } from "@/lib/workspace/hooks/useSurfacePuppetSession";
+import { useSurfacePuppetContextLease } from "@/lib/ui-editor/runtime/game/surfacePuppetContextBudget";
+
+/**
+ * What a model is mounted into: the same window the pictures use, so a puppet character is framed by
+ * the same crop and clipped by the same chrome as one Studio draws.
+ */
+const MODEL_STYLE: CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    borderRadius: "inherit",
+    pointerEvents: "none",
+};
+
+/** A puppet state with nothing requested — what a model wears before the engine has applied one. */
+const RESTING_PUPPET_STATE: PuppetState = {
+    motion: null,
+    expression: null,
+    skin: null,
+    params: {},
+    slots: {},
+};
 
 /**
  * The window the crop opens onto the picture. Absolute inside the chrome, so radius, border, fill
@@ -64,12 +87,28 @@ export function CharacterRenderer(props: WidgetRendererProps) {
     const previewId = framed.state ? null : widget.characterId ?? framed.characterId ?? null;
     const preview = useCharacterPreviewSrcs(previewId);
 
+    // A puppet character's model, mounted by the author's own runtime. The request is null for every
+    // other case, which is the mount machine's own "this widget is not asking" — no module load and
+    // no WebGL context. The lease is this instance's, never the element's: one element can be
+    // rendered twice (a canvas and a panel preview) and an element-keyed claim revokes the survivor's.
+    const [modelBox, setModelBox] = useState<HTMLDivElement | null>(null);
+    const model = framed.state?.kind === "puppet" ? framed.state.model : null;
+    const puppetState = framed.state?.kind === "puppet" ? framed.state.state ?? RESTING_PUPPET_STATE : RESTING_PUPPET_STATE;
+    const lease = useSurfacePuppetContextLease(model !== null && props.element.layout.visible !== false);
+    useSurfacePuppetSession({
+        host: modelBox,
+        enabled: lease.granted,
+        request: model,
+        state: puppetState,
+        size: { width: props.element.layout.width, height: props.element.layout.height },
+    });
+
     const { srcs, colour } = useMemo(() => {
         if (framed.state?.kind === "image") {
             return { srcs: framed.state.content.srcs, colour: framed.state.content.colour };
         }
-        // A puppet-drawn character is mounted by `nl.puppet`, not here: what the engine hands over
-        // for one is named state, not pictures, and the model belongs to the author's runtime.
+        // A puppet-drawn character has no pictures to stack: what the engine hands over for one is
+        // named state, and the model above draws it.
         if (framed.state?.kind === "puppet") {
             return { srcs: [] as (string | null)[], colour: null };
         }
@@ -91,6 +130,7 @@ export function CharacterRenderer(props: WidgetRendererProps) {
 
     return (
         <RectangleChromeRenderer {...props}>
+            {model ? <div ref={setModelBox} style={MODEL_STYLE} data-widget-character-model="" /> : null}
             <div style={WINDOW_STYLE} data-widget-character="">
                 <div style={innerStyle}>
                     {colour ? <div style={{ ...LAYER_STYLE, background: colour }} /> : null}

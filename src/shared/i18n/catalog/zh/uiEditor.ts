@@ -31,6 +31,7 @@ export const uiEditor = {
         interfaceType: "界面类型",
         createPage: "新建页面",
         createGameUi: "新建游戏 UI",
+        createStageAvatar: "新建舞台头像",
         globalSubtitle: "全局",
         blueprintType: "蓝图",
         openGlobalBlueprint: "打开全局蓝图",
@@ -50,6 +51,7 @@ export const uiEditor = {
     naming: {
         page: "页面 {index}",
         gameUi: "{slot} UI",
+        stageAvatar: "头像框 {index}",
         component: "组件 {index}",
     },
     createDialog: {

@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
 import type { ImageBackendContent, PuppetState } from "narraleaf-react";
+import type { SurfacePuppetRequest } from "@/lib/ui-editor/runtime/game/surfacePuppetSession";
 
 /**
  * What the engine says the framed character looks like right now.
@@ -15,7 +16,24 @@ import type { ImageBackendContent, PuppetState } from "narraleaf-react";
  */
 export type FramedCharacterState =
     | { kind: "image"; content: ImageBackendContent }
-    | { kind: "puppet"; state: PuppetState | null };
+    | {
+          kind: "puppet";
+          /**
+           * The engine's own state for this character, applied whole. `null` before the first apply
+           * — the model then wears the pose its own configuration gave it.
+           */
+          state: PuppetState | null;
+          /**
+           * Which model to mount, and by whose runtime.
+           *
+           * Resolved by the frame's backend rather than by the widget, because the answer is in the
+           * compiled bundle's character table and a widget has no way to reach it. It is the one
+           * thing about a puppet character the engine does *not* hand over: the engine holds an
+           * opaque `src` it never reads, while what a host has to mount is the project's model
+           * bundle, its runtime, and its options.
+           */
+          model: SurfacePuppetRequest | null;
+      };
 
 export type FramedCharacter = {
     /** Whose frame this is, when the story named a character. */
