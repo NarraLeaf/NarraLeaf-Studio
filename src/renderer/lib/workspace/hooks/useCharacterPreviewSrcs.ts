@@ -25,8 +25,14 @@ export function useCharacterPreviewSrcs(characterId: string | null): { srcs: (st
     const characterService = workspace?.isInitialized
         ? workspace.context?.services.get<CharacterService>(Services.Character) ?? null
         : null;
+    // `null` is "any of them will do", not "draw nothing": a frame worn by the whole cast names no
+    // character, and an author laying one out still has to see somebody in it. The first character
+    // in the project is the stand-in, and it is the same choice the crop box makes — one rule, so
+    // the canvas and the inspector cannot frame against two different faces.
     const character = useMemo(
-        () => (characterId ? characterService?.getCharacter(characterId) ?? null : null),
+        () => (characterId
+            ? characterService?.getCharacter(characterId) ?? null
+            : characterService?.listCharacter()[0] ?? null),
         [characterService, characterId],
     );
     // The character's own defaults: the default pose for `preset`, each axis's default tag for

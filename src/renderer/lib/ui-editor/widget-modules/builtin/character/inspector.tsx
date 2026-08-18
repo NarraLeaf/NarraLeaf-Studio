@@ -79,17 +79,9 @@ function CharacterCropField({ data }: CustomFieldProps<UIInspectorData>) {
     const { t } = useTranslation();
     const element = liveElement(data);
     const widget = liveProps(data);
-    const workspace = useOptionalWorkspace();
-    const previewId = useMemo(() => {
-        if (widget.characterId) {
-            return widget.characterId;
-        }
-        const service = workspace?.isInitialized
-            ? workspace.context?.services.get<CharacterService>(Services.Character) ?? null
-            : null;
-        return service?.listCharacter()[0]?.profile.getId() ?? null;
-    }, [widget.characterId, workspace]);
-    const preview = useCharacterPreviewSrcs(previewId);
+    // Null asks the hook for its stand-in, which is the same one the canvas draws — see the note
+    // there. Two fallbacks would let the two panes frame against different faces.
+    const preview = useCharacterPreviewSrcs(widget.characterId);
     const src = preview.srcs.find((entry): entry is string => typeof entry === "string") ?? null;
     const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
 
