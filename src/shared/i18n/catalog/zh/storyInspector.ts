@@ -259,6 +259,23 @@ export const storyInspector = {
         hangover: "画面会先摇晃两次，再落到最终色调。这一行会等摇晃结束，时长决定摇晃的快慢。",
     },
 
+    transformChannel: {
+        reveal: "揭示",
+        restore: "还原{channel}",
+        restored: "已还原",
+        add: "添加",
+        remove: "移除",
+        xAlign: "X",
+        yAlign: "Y",
+    },
+    transformChannelGroup: {
+        geometry: "位置与缩放",
+        filter: "滤镜",
+        look: "色调",
+        composite: "合成",
+        text: "文字",
+        timing: "时序",
+    },
     displayableOperation: {
         transform: "变换",
         mask: "遮罩",

@@ -288,6 +288,23 @@ export const storyInspector = {
         hangover: "画面が二度揺れてからルックが落ち着く。行は揺れが終わるまで待ち、長さが揺れの速さを決める。",
     },
 
+    transformChannel: {
+        reveal: "リビール",
+        restore: "{channel}を戻す",
+        restored: "戻す",
+        add: "追加",
+        remove: "削除",
+        xAlign: "X",
+        yAlign: "Y",
+    },
+    transformChannelGroup: {
+        geometry: "位置とスケール",
+        filter: "フィルター",
+        look: "ルック",
+        composite: "合成",
+        text: "テキスト",
+        timing: "タイミング",
+    },
     displayableOperation: {
         transform: "変形",
         mask: "マスク",
