@@ -6,6 +6,7 @@ import {
     type GameUiSlotHostOptions,
 } from "./StageSlotSurfaceShell";
 import { stageElementRuntimeScopeId } from "./stageSlots";
+import { FramedCharacterProvider, type FramedCharacterState } from "./FramedCharacterContext";
 
 /**
  * A Game UI surface drawn inside a stage element's box.
@@ -33,12 +34,20 @@ export function EmbeddedStageSurface(props: {
     surface: UIStageSurface;
     /** The stage object this instance belongs to; scopes its runtime state. */
     objectName: string;
+    /** Whose frame this is, when the story named a character. */
+    characterId?: string;
+    /** What the engine says that character looks like right now. */
+    character?: FramedCharacterState | null;
     size: { width: number; height: number };
 }) {
-    const { options, surface, objectName, size } = props;
+    const { options, surface, objectName, characterId, character, size } = props;
     const runtimeScopeIdOverride = useMemo(
         () => stageElementRuntimeScopeId(options.sessionId, objectName, surface.id),
         [options.sessionId, objectName, surface.id],
+    );
+    const framed = useMemo(
+        () => ({ characterId, state: character ?? null }),
+        [characterId, character],
     );
     const runtime = useStageSlotSurfaceRuntime({
         options,
@@ -66,12 +75,14 @@ export function EmbeddedStageSurface(props: {
                     transform: `translate(-50%, -50%) scale(${scale})`,
                 }}
             >
-                <StageSlotSurfaceBody
-                    options={options}
-                    surface={surface}
-                    runtime={runtime}
-                    passive
-                />
+                <FramedCharacterProvider value={framed}>
+                    <StageSlotSurfaceBody
+                        options={options}
+                        surface={surface}
+                        runtime={runtime}
+                        passive
+                    />
+                </FramedCharacterProvider>
             </div>
         </div>
     );

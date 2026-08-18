@@ -31,6 +31,15 @@ export function parseStageSurfaceSrc(src: string | undefined | null): string | n
  * surface's runtime state — two frames on stage at once must not share it.
  */
 export type StageSurfaceMountOptions = {
+    /**
+     * Which surface to draw.
+     *
+     * Carried in the options rather than in `src` because the two elements that wear a frame answer
+     * "what is this element" differently: a puppet's `src` is free for the frame, while an image's
+     * is already the picture the engine resolved. One place both can name it keeps the backend from
+     * having to know which kind mounted it.
+     */
+    surfaceId?: string;
     objectName?: string;
     /** Whose frame this is, for the widgets inside that draw a character. */
     characterId?: string;
@@ -39,6 +48,7 @@ export type StageSurfaceMountOptions = {
 export function readStageSurfaceMountOptions(options: unknown): StageSurfaceMountOptions {
     const raw = (options ?? {}) as Record<string, unknown>;
     return {
+        surfaceId: typeof raw.surfaceId === "string" ? raw.surfaceId : undefined,
         objectName: typeof raw.objectName === "string" ? raw.objectName : undefined,
         characterId: typeof raw.characterId === "string" ? raw.characterId : undefined,
     };

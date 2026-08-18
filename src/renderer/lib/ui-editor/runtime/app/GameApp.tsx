@@ -116,7 +116,7 @@ import {
     savedVariableDefsFromView,
 } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { createPuppetStageHandle, loadPuppetBackends } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
-import { createStageSurfaceBackend } from "@/lib/ui-editor/runtime/game/stageSurfaceBackend";
+import { createStageSurfaceImageBackend, createStageSurfacePuppetBackend } from "@/lib/ui-editor/runtime/game/stageSurfaceBackend";
 import { collectStageFrameSizes } from "@/lib/ui-editor/runtime/game/stageFrameSizes";
 import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story";
 import { resolveStagePreloadTarget } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
@@ -2448,13 +2448,17 @@ export function GameApp(props: GameAppProps): ReactNode {
                 host.log("warning", `Puppet backends could not be discovered: ${normalizeError(error)}`);
             }
         }
-        // SPIKE (2026-08-17): Studio's own backend, drawing a Game UI surface inside a stage
-        // element's box. Registered after the author's so a project can still shadow the name.
-        game.registerPuppetBackend(createStageSurfaceBackend({
+        // Studio's own half of both host seams: a Game UI surface drawn inside a stage element's
+        // box. Registered on both because which one carries a frame depends on who is framed — an
+        // image for a character Studio draws, a puppet for one an author's runtime draws. After the
+        // author's puppet backends, so a project can still shadow the name.
+        const stageSurfaceHost = {
             uidoc: bundle.ui.uidoc,
             slotHostOptions,
             log: host.log,
-        }));
+        };
+        game.registerPuppetBackend(createStageSurfacePuppetBackend(stageSurfaceHost));
+        game.registerImageBackend(createStageSurfaceImageBackend(stageSurfaceHost));
         const environmentReady = new Promise<void>((resolve, reject) => {
             pendingEnvReadyRef.current.set(sessionId, { resolve, reject });
         });

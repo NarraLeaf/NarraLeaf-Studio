@@ -701,8 +701,10 @@ type SceneCompileContext = {
     texts: Map<string, Text>;
     /** Puppet-kind characters. A separate map because a `Puppet` is not an `Image` and shares no API with one. */
     puppets: Map<string, Puppet>;
-    /** Stage names whose element is an author-drawn frame rather than a sprite. */
+    /** Frames for puppet characters, keyed by stage name. */
     stageSurfaces: Map<string, Puppet>;
+    /** Which frame each stage name wears, so later rows inherit what the first one named. */
+    stageFrames: Map<string, string>;
     /** Design size of every element-mounted surface, so a frame's box is the size it was drawn at. */
     stageFrameSizes: Record<string, { width: number; height: number }>;
     layers: Map<string, Layer>;
@@ -956,6 +958,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             texts: new Map(),
             puppets: new Map(),
             stageSurfaces: new Map(),
+            stageFrames: new Map(),
             stageFrameSizes: input.stageFrameSizes ?? {},
             layers: new Map(),
             videos: new Map(),
@@ -1171,6 +1174,7 @@ async function buildLaunchEntryScene(params: {
         texts: new Map(),
         puppets: new Map(),
         stageSurfaces: new Map(),
+        stageFrames: new Map(),
         stageFrameSizes: input.stageFrameSizes ?? {},
         layers: new Map(),
         videos: new Map(),
@@ -1401,6 +1405,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         texts: new Map(),
         puppets: new Map(),
         stageSurfaces: new Map(),
+        stageFrames: new Map(),
         stageFrameSizes: input.stageFrameSizes ?? {},
         layers: new Map(),
         videos: new Map(),
@@ -2865,26 +2870,23 @@ async function compileCharacterStageAction(
         return compileCharacterPuppetAction(ctx, block, payload, name, characterAppearance);
     }
 
-    // A character shown through a frame: the stage element is the author's surface, and the
-    // character's own Image stays behind it as the state holder — unshown, but posed, because that
-    // is what `/face` writes to and what the widgets inside the frame read. Later rows carry no
-    // `frameSurfaceId`, so the stage name is what remembers.
-    const framed = payload.frameSurfaceId
-        ? getStageSurfaceElement(ctx, name, {
-              surfaceId: payload.frameSurfaceId,
-              characterId: payload.characterId,
-          })
-        : ctx.stageSurfaces.get(normalizeObjectName(name)) ?? null;
-    if (framed && payload.operation === "exit") {
-        const chain = compileDisplayableOperation(framed, "hide", payload.transform ?? { preset: "fadeOut", durationMs: 250 }, ctx, block.id);
-        if (chain) statements.push(recordStatement(ctx, chain, block));
-        return statements;
-    }
-    if (framed && payload.operation === "move") {
-        const chain = compileDisplayableOperation(framed, "transform", payload.transform, ctx, block.id);
-        if (chain) statements.push(recordStatement(ctx, chain, block));
-        return statements;
-    }
+    // The frame this stage name wears, if it wears one. Recorded on the row that first names it,
+    // because every later row addresses the stage name and carries nothing — and because the
+    // element's presentation is fixed when it is created, exactly as its source model is.
+    const frameSurfaceId = resolveStageFrame(ctx, name, payload.frameSurfaceId);
+    const frameOptions = frameSurfaceId
+        ? {
+              backend: {
+                  name: STAGE_SURFACE_BACKEND_NAME,
+                  size: ctx.stageFrameSizes[frameSurfaceId] ?? null,
+                  options: {
+                      surfaceId: frameSurfaceId,
+                      objectName: normalizeObjectName(name),
+                      ...(payload.characterId ? { characterId: payload.characterId } : {}),
+                  },
+              } as const,
+          }
+        : {};
 
     // Runtime state on a character Studio draws itself: there is no backend to ask, and the row was
     // authored against the wrong character rather than being a no-op worth swallowing.
@@ -2895,7 +2897,7 @@ async function compileCharacterStageAction(
     }
 
     if (payload.operation === "exit") {
-        const image = getImage(ctx, name, { autoFit: true });
+        const image = getImage(ctx, name, { autoFit: true, ...frameOptions });
         await bindCharacterPortrait(ctx, payload.characterId, image);
         const chain = compileDisplayableOperation(image, "hide", payload.transform ?? { preset: "fadeOut", durationMs: 250 }, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
@@ -2903,7 +2905,7 @@ async function compileCharacterStageAction(
     }
 
     if (payload.operation === "move") {
-        const image = getImage(ctx, name, { autoFit: true });
+        const image = getImage(ctx, name, { autoFit: true, ...frameOptions });
         await bindCharacterPortrait(ctx, payload.characterId, image);
         const chain = compileDisplayableOperation(image, "transform", payload.transform, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
@@ -2917,19 +2919,15 @@ async function compileCharacterStageAction(
     const layeredSrc = payload.assetId ? null : await resolveCharacterLayeredSrc(ctx, payload.characterId, block.id);
     if (layeredSrc) {
         const appearance = ctx.characterSummaries.get(payload.characterId!)?.appearance;
-        const image = getImage(ctx, name, { autoFit: true, src: layeredSrc as never });
+        const image = getImage(ctx, name, { autoFit: true, src: layeredSrc as never, ...frameOptions });
         await bindCharacterPortrait(ctx, payload.characterId, image);
         const selection = payload.operation === "enter"
             ? resolveTagSelection(appearance, payload.tags)
             : payload.tags ?? {};
         const tags = Object.values(selection);
         if (payload.operation === "enter") {
-            // Framed: the sprite is posed but never shown — what enters is the frame.
-            const chain = framed
-                ? image.char(tags as never)
-                : image.char(tags as never).show(createShowTransform(payload.transform, ctx, block.id) as any);
+            const chain = image.char(tags as never).show(createShowTransform(payload.transform, ctx, block.id) as any);
             statements.push(recordStatement(ctx, chain, block));
-            pushFrameShow(ctx, statements, framed, payload, block);
             return statements;
         }
         if (tags.length === 0) {
@@ -2949,17 +2947,14 @@ async function compileCharacterStageAction(
         return statements;
     }
 
-    const image = getImage(ctx, name, { autoFit: true, src });
+    const image = getImage(ctx, name, { autoFit: true, src, ...frameOptions });
     await bindCharacterPortrait(ctx, payload.characterId, image);
     if (payload.operation === "enter") {
         // An entering character has no prior image to transition from, so `enter` never uses a
         // transition - its entrance is driven entirely by the show transform. (A transition only
         // applies to `expression`, which swaps a visible character's source.)
-        const chain = framed
-            ? image.char(src as any)
-            : image.char(src as any).show(createShowTransform(payload.transform, ctx, block.id) as any);
+        const chain = image.char(src as any).show(createShowTransform(payload.transform, ctx, block.id) as any);
         statements.push(recordStatement(ctx, chain, block));
-        pushFrameShow(ctx, statements, framed, payload, block);
         return statements;
     }
 
@@ -2995,7 +2990,14 @@ async function compileCharacterPuppetAction(
     name: string,
     appearance: Extract<DevModeCharacterSummary["appearance"], { kind: "puppet" }>,
 ): Promise<NlrStatement[]> {
-    const puppet = await getPuppetElement(ctx, name, appearance, block.id);
+    // A framed puppet character: the stage element is the author's surface and the model is drawn
+    // by a widget inside it, so the frame *is* the element the row addresses. Everything below —
+    // the three state channels, the parameters, enter/move/exit — reads the same either way,
+    // because both are the same `Puppet` to the engine.
+    const frameSurfaceId = resolveStageFrame(ctx, name, payload.frameSurfaceId);
+    const puppet = frameSurfaceId
+        ? getStageSurfaceElement(ctx, name, { surfaceId: frameSurfaceId, characterId: payload.characterId })
+        : await getPuppetElement(ctx, name, appearance, block.id);
     if (!puppet) {
         return [];
     }
@@ -3041,17 +3043,29 @@ async function compileCharacterPuppetAction(
  * reach a backend as a resource descriptor pointing at nothing.
  */
 /**
+ * The frame a stage name wears, remembered across the rows that follow.
+ *
+ * A frame is fixed when the element is created — an `Image` cannot change its backend, and a
+ * `Puppet` cannot change its `src`, both for the same reason: the host's instance lives as long as
+ * the element is on stage. So the row that first puts a character on stage decides, and every later
+ * row that addresses the same stage name inherits it rather than re-stating it.
+ */
+function resolveStageFrame(ctx: SceneCompileContext, objectName: string, requested: string | undefined): string | null {
+    const key = normalizeObjectName(objectName);
+    if (requested) {
+        ctx.stageFrames.set(key, requested);
+        return requested;
+    }
+    return ctx.stageFrames.get(key) ?? null;
+}
+
+/**
  * The scene's element-mounted **surface** for a stage name, created on first use.
  *
- * A frame is a `Puppet` whose backend is Studio's own (`nl.surface`), so everything a story already
- * does to a stage object reaches it unchanged — placement, movement, layers, show/hide transitions
- * and, above all, a saved game, because the element is an engine element. Nothing about the surface
- * is serialised: a load rebuilds the element from the compiled story and the backend re-mounts the
- * surface from the document, which is why a frame must be able to paint itself from the game's own
- * state rather than from anything it accumulated while it was up.
- *
- * Memoised per stage name for the reason a puppet is: `src` cannot change under a live backend
- * instance, so which frame a stage object wears is decided by the row that first put it there.
+ * This is the frame for a character whose model an author's own runtime draws: the frame is the
+ * puppet (Studio's `nl.surface` backend paints the author's surface into it) and the model is drawn
+ * by a widget inside that surface. A character Studio draws itself needs none of this — its own
+ * `Image` wears the backend directly, so it stays one element.
  */
 function getStageSurfaceElement(
     ctx: SceneCompileContext,
@@ -3059,7 +3073,7 @@ function getStageSurfaceElement(
     input: { surfaceId: string; characterId?: string },
 ): Puppet {
     const key = normalizeObjectName(objectName);
-    const existing = ctx.puppets.get(key);
+    const existing = ctx.stageSurfaces.get(key);
     if (existing) {
         return existing;
     }
@@ -3070,6 +3084,7 @@ function getStageSurfaceElement(
         // which is what a frame the host could not size falls back to.
         size: ctx.stageFrameSizes[input.surfaceId] ?? null,
         options: {
+            surfaceId: input.surfaceId,
             objectName: key,
             ...(input.characterId ? { characterId: input.characterId } : {}),
         },
@@ -3077,23 +3092,6 @@ function getStageSurfaceElement(
     setStableElementId(ctx.elementIdBindings, puppet, `nl:surface:${ctx.scene.id}:${key}`);
     ctx.stageSurfaces.set(key, puppet);
     return puppet;
-}
-
-/** The frame's own entrance, emitted after the sprite behind it has been posed. */
-function pushFrameShow(
-    ctx: SceneCompileContext,
-    statements: NlrStatement[],
-    framed: Puppet | null,
-    payload: Extract<StoryActionPayload, { action: "character" }>,
-    block: StoryBlock,
-): void {
-    if (!framed) {
-        return;
-    }
-    const chain = compileDisplayableOperation(framed, "show", payload.transform, ctx, block.id);
-    if (chain) {
-        statements.push(recordStatement(ctx, chain, block));
-    }
 }
 
 async function getPuppetElement(
@@ -3906,7 +3904,14 @@ function characterNametagConfig(summary: DevModeCharacterSummary | undefined): {
  * character's stack has to reach the constructor because an Image's src shape is fixed there. What
  * a later row changes is the tags, never the src.
  */
-function getImage(ctx: SceneCompileContext, objectName: string, options?: { layer?: Layer; autoFit?: boolean; src?: string | { layers: unknown[]; defaults: string[] }; initialProps?: Record<string, unknown> }): Image {
+function getImage(ctx: SceneCompileContext, objectName: string, options?: {
+    layer?: Layer;
+    autoFit?: boolean;
+    src?: string | { layers: unknown[]; defaults: string[] };
+    initialProps?: Record<string, unknown>;
+    /** Present this image with a host backend instead of letting the engine paint it. */
+    backend?: { name: string; size: { width: number; height: number } | null; options?: Record<string, unknown> };
+}): Image {
     const name = normalizeObjectName(objectName);
     const existing = ctx.images.get(name);
     if (existing) {
@@ -3918,8 +3923,16 @@ function getImage(ctx: SceneCompileContext, objectName: string, options?: { laye
     const image = new Image({
         name,
         src: options?.src ?? EMPTY_IMAGE_SRC,
-        autoFit: options?.autoFit ?? false,
+        // A host-drawn image has an explicit box and no picture of its own to fit to the stage.
+        autoFit: options?.backend ? false : options?.autoFit ?? false,
         layer: options?.layer,
+        ...(options?.backend
+            ? {
+                  backend: options.backend.name,
+                  size: options.backend.size,
+                  options: options.backend.options,
+              }
+            : {}),
         // Initial transform-state pose baked into the constructor config (survives reset()).
         ...(options?.initialProps ?? {}),
     } as any);
