@@ -1,7 +1,7 @@
 import { Aperture } from "lucide-react";
 import type { StoryActionPayload, StoryBlock } from "@shared/types/story";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
-import { getStoryCameraLookPreset, STORY_CAMERA_LOOK_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
+import { getStoryCameraLookPreset, STORY_CAMERA_LOOK_PRESETS, storyCameraLookTweens } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { asDurationMs, asEnum, asNumber, defineStoryCommand, PLACEMENT_OPTIONS, secondsParam } from "../spec";
 
 /**
@@ -93,7 +93,9 @@ function cameraOperand(
             return {
                 lookPreset: preset.id,
                 lookIntensity: strength ?? preset.defaultIntensity,
-                ...(preset.oscillate
+                // A grade that eases on, or sways, spends this. One that cuts is given none, so the
+                // row never carries a number the compile will not read.
+                ...(preset.oscillate || storyCameraLookTweens(preset.id, strength ?? preset.defaultIntensity)
                     ? { durationMs: preset.defaultDurationMs, easing: preset.defaultEasing }
                     : {}),
             };
