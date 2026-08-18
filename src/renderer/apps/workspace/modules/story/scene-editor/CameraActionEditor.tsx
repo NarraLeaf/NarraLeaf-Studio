@@ -18,7 +18,7 @@ import {
     STORY_CAMERA_LOOK_MAX_INTENSITY,
     STORY_CAMERA_LOOK_MIN_INTENSITY,
     STORY_CAMERA_LOOK_PRESETS,
-} from "./cameraLookPresets";
+} from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { FIELD_LABEL_CLASS, FieldGrid, SecondsField, SelectField, Section, TextField, easingOptions } from "./inspectorFieldKit";
 
 type CameraActionPayload = Extract<StoryActionPayload, { action: "camera" }>;

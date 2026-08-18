@@ -719,7 +719,7 @@ export type StoryActionPayload =
           /** `darken` — 0 (normal) to 1 (black). Clamped at compile time; the engine does not clamp. */
           darkness?: number;
           /**
-           * `look` — a colour grade over the whole stage, from the library in `cameraLookPresets.ts`.
+           * `look` — a colour grade over the whole stage, from the library in `lib/ui-editor/runtime/game/cameraLookPresets.ts`.
            *
            * **The same single channel `darken` writes.** `Camera.darken(d)` IS `filter("brightness(1 - d)")`
            * in the engine, so a look and a darken never compose: whichever row runs last wins outright

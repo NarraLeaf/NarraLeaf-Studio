@@ -28,7 +28,7 @@ import {
 } from "@/lib/story/storyRowProjection";
 import { storyVerbCommandId } from "@/lib/story/storyVerbVocabulary";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
-import { getStoryCameraLookPreset } from "./cameraLookPresets";
+import { getStoryCameraLookPreset } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { ACTION_TRIGGER } from "./commandTrigger";
 import { localizedEnumValue } from "./commands/localizedEnums";
 import { localizedParamKey } from "./commands/localizedParams";
