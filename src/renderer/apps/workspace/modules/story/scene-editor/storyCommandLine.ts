@@ -101,7 +101,16 @@ import type { StoryCommandContext, StoryCommandSpan } from "./storyCommandValues
  */
 export type StoryCommandLineControl =
     | { kind: "number"; min?: number; max?: number; integer?: boolean; unit: string; presets?: readonly number[] }
-    | { kind: "enum"; options: readonly StoryCommandEnumOption[] }
+    | {
+          kind: "enum";
+          options: readonly StoryCommandEnumOption[];
+          /**
+           * This slot also takes a drawn easing curve, so the popover offers the card as well as the
+           * words. Set from the grammar (`freeform` on the enum type), never per command - a slot
+           * that takes a curve on the line is the same slot that takes one in the inspector.
+           */
+          curve?: true;
+      }
     | { kind: "boolean" }
     | { kind: "color" }
     /** A closed list the grammar cannot hold — scenes, and anything else named per project. */
@@ -347,7 +356,7 @@ function controlFor(param: StoryCommandParam | null, entry: Arg): StoryCommandLi
     }
     for (const type of paramTypes(param)) {
         if (type.kind === "enum") {
-            return { kind: "enum", options: type.options };
+            return { kind: "enum", options: type.options, ...(type.freeform ? { curve: true as const } : {}) };
         }
         if (type.kind === "number") {
             return {

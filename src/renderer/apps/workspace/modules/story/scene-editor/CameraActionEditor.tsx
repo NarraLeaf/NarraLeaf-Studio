@@ -21,7 +21,7 @@ import {
     STORY_CAMERA_LOOK_MIN_INTENSITY,
     STORY_CAMERA_LOOK_PRESETS,
 } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
-import { FIELD_LABEL_CLASS, FieldGrid, SecondsField, SelectField, Section, TextField, easingOptions } from "./inspectorFieldKit";
+import { EasingField, FIELD_LABEL_CLASS, FieldGrid, SecondsField, SelectField, Section, TextField } from "./inspectorFieldKit";
 
 type CameraActionPayload = Extract<StoryActionPayload, { action: "camera" }>;
 type CameraOperation = CameraActionPayload["operation"];
@@ -298,11 +298,10 @@ export function CameraActionEditor(props: {
                                     value={payload.durationMs}
                                     onChange={durationMs => onChange({ ...payload, durationMs: durationMs === undefined ? undefined : Math.max(0, durationMs) })}
                                 />
-                                <SelectField
-                                    label={t("storyInspector.field.easing")}
-                                    options={easingOptions(t)}
-                                    value={payload.easing ?? ""}
-                                    onChange={easing => onChange({ ...payload, easing: String(easing) || undefined })}
+                                <EasingField
+                                    t={t}
+                                    value={payload.easing}
+                                    onChange={easing => onChange({ ...payload, easing })}
                                 />
                             </FieldGrid>
                         )}

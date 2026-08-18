@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { neutralStoryTransformProps } from "@shared/story/transformProps";
-import { paramTypes } from "../storyCommandGrammar";
+import { enumFreeformValue, paramTypes } from "../storyCommandGrammar";
 import { getCommandDef } from "./registry";
 import {
     FILTER_SUGAR_KEYS,
@@ -8,6 +8,7 @@ import {
     parseFromProps,
     parsePositionValue,
     patchTransformProp,
+    patchTransformTiming,
     RESET_CHANNEL_KEYS,
     resetPropsFromArgs,
     transformPropArgs,
@@ -28,13 +29,26 @@ const INSPECTOR_EASINGS = [
 ];
 
 describe("the prop vocabulary", () => {
-    it("offers exactly the easings the property inspector does", () => {
+    it("offers exactly the easings the property inspector does, curve included", () => {
         // Two surfaces, one setting. An easing an author can pick on the right and cannot type on the
         // left is a row that prints a value the line will not take back — the split this milestone
         // exists to close, in miniature.
         const ease = getCommandDef("transform")!.params.find(param => param.name === "ease")!;
         const type = paramTypes(ease).find(candidate => candidate.kind === "enum");
         expect(type?.kind === "enum" && type.options.map(option => option.value)).toEqual(INSPECTOR_EASINGS);
+        // The inspector's twelfth option is a curve rather than a word, so the slot states it as the
+        // one further shape it takes — and still refuses anything that is neither.
+        expect(type?.kind === "enum" && enumFreeformValue(type, "cubic-bezier(0.4, 0, 0.2, 1)")).toBe("cubic-bezier(0.4,0,0.2,1)");
+        expect(type?.kind === "enum" && enumFreeformValue(type, "swoosh")).toBeNull();
+    });
+
+    it("prints a drawn curve as one token, and takes it back", () => {
+        // The row's `ease=` value has to survive being read back off the line: spaces would need
+        // quoting, and a quoted curve is a row nobody would type.
+        expect(transformTimingArgs({ easing: "cubic-bezier(0.4,0,0.2,1)" }))
+            .toEqual([{ key: "ease", value: "cubic-bezier(0.4,0,0.2,1)", enum: true }]);
+        expect(patchTransformTiming({ durationMs: 400 }, "ease", "cubic-bezier(0.4,0,0.2,1)"))
+            .toEqual({ durationMs: 400, easing: "cubic-bezier(0.4,0,0.2,1)" });
     });
 
     it("composes several filter names into the one structured record, and reads them back", () => {

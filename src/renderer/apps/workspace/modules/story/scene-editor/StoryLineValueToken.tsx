@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { StoryBlock } from "@shared/types/story";
+import { isStoryBezierEasing, STORY_DEFAULT_BEZIER_EASING } from "@shared/utils/storyEasing";
 import { useCommandTranslation } from "@/lib/i18n";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
+import { EasingCurveEditor } from "@/apps/workspace/components/ui/EasingCurveEditor";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { normalizeHex } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { localizedEnumValue } from "./commands/localizedEnums";
@@ -64,9 +66,11 @@ function ValuePopover(props: {
     onApply: (payload: StoryBlock["payload"]) => void;
     onClose: () => void;
 }) {
-    // Subscribed to, not called: the option words below resolve through the imperative
-    // `localizedEnumValue`, a snapshot with no way to tell React it went stale.
-    useCommandTranslation();
+    // Subscribed to, not called for the words below, which resolve through the imperative
+    // `localizedEnumValue` - a snapshot with no way to tell React it went stale. The one string this
+    // file names itself (the curve option) goes through the same translator, since it is offered
+    // beside those words rather than beneath them.
+    const { t: ct } = useCommandTranslation();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const { edit } = props;
     const control = edit.control;
@@ -111,15 +115,32 @@ function ValuePopover(props: {
         >
             {control.kind === "number" ? <NumberControl control={control} value={edit.value} onCommit={apply} onPick={pick} /> : null}
             {control.kind === "enum" ? (
-                <div className="max-h-56 overflow-y-auto">
-                    {control.options.map(option => (
-                        <OptionRow
-                            key={option.value}
-                            label={localizedEnumValue({ kind: "enum", options: control.options }, option)}
-                            selected={option.value === edit.value}
-                            onClick={() => pick(option.value)}
-                        />
-                    ))}
+                <div className="grid gap-2">
+                    {/*
+                      * A slot that takes a drawn curve edits it here rather than sending the author to
+                      * the inspector for the one value the word list cannot say. `apply`, not `pick`:
+                      * the popover stays open through the drag, which is the gesture itself.
+                      */}
+                    {control.curve && isStoryBezierEasing(edit.value) ? (
+                        <EasingCurveEditor easing={edit.value} onChange={apply} />
+                    ) : null}
+                    <div className="max-h-56 overflow-y-auto">
+                        {control.options.map(option => (
+                            <OptionRow
+                                key={option.value}
+                                label={localizedEnumValue({ kind: "enum", options: control.options }, option)}
+                                selected={option.value === edit.value}
+                                onClick={() => pick(option.value)}
+                            />
+                        ))}
+                        {control.curve ? (
+                            <OptionRow
+                                label={ct("storyInspector.easing.custom")}
+                                selected={isStoryBezierEasing(edit.value)}
+                                onClick={() => apply(isStoryBezierEasing(edit.value) ? edit.value : STORY_DEFAULT_BEZIER_EASING)}
+                            />
+                        ) : null}
+                    </div>
                 </div>
             ) : null}
             {control.kind === "choice" ? (

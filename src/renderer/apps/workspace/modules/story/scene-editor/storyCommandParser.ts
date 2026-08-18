@@ -1,5 +1,6 @@
 import {
     isFlagParam,
+    enumFreeformValue,
     paramTypes,
     positionalParams,
     type StoryCommandDef,
@@ -172,7 +173,10 @@ function acceptsType(type: StoryCommandParamType, value: string): boolean {
             // Localized: a value is the last word of the sentence, and `t=淡变` was failing as a word
             // no option matched rather than as anything the author could act on. English first by
             // construction of the table, so `t=fade` parses identically in every command language.
-            return matchEnumOptionLocalized(type, value) !== null;
+            //
+            // A slot may also declare a shape beyond its words (an easing curve); a slot that does
+            // not is unaffected, since `enumFreeformValue` answers null for it.
+            return matchEnumOptionLocalized(type, value) !== null || enumFreeformValue(type, value) !== null;
         case "keyword":
             return value.trim().toLowerCase() === type.value.toLowerCase();
         case "number": {
