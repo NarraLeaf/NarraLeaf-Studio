@@ -199,11 +199,18 @@ export function EditorNodeWrapper({
     const resolvedEnteredOffsets = enteredState
         ? resolveAppearanceTransformOffsets(appearance, appearanceResolveCtx)
         : ZERO_APPEARANCE_OFFSETS;
+    const enteredOffsetsInFlow = !isRoot && layoutMode === "flow";
     const enteredOffsets = useMemo(
-        () => resolvedEnteredOffsets,
+        () => (enteredOffsetsInFlow ? resolvedEnteredOffsets : ZERO_APPEARANCE_OFFSETS),
         // By value: a fresh object every render would restart the animation below on every render.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [resolvedEnteredOffsets.x, resolvedEnteredOffsets.y],
+        [enteredOffsetsInFlow, resolvedEnteredOffsets.x, resolvedEnteredOffsets.y],
+    );
+    /** Carried by placement; a flow child has none of its own, so it keeps the transform channel. */
+    const placedEnteredOffsets = useMemo(
+        () => (enteredOffsetsInFlow ? ZERO_APPEARANCE_OFFSETS : resolvedEnteredOffsets),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [enteredOffsetsInFlow, resolvedEnteredOffsets.x, resolvedEnteredOffsets.y],
     );
     // How that offset moves is the author's own setting on the field, the same one the running game
     // uses. Held in a ref rather than a dependency because resolving it allocates a context object
@@ -516,6 +523,32 @@ export function EditorNodeWrapper({
         [dispatchWidgetEvent, isDirectElementEvent, widgetRuntimeStore],
     );
 
+    /** Where this node is placed, state offset included. Its own channel, so a gesture cannot take it. */
+    const placedLeft = enteredOffsetsInFlow ? 0 : layout.x + Math.min(0, layout.width) + placedEnteredOffsets.x;
+    const placedTop = enteredOffsetsInFlow ? 0 : layout.y + Math.min(0, layout.height) + placedEnteredOffsets.y;
+    // Placement moves through motion values so entering a state still plays the field's own
+    // transition here, the same one the running game uses.
+    const leftValue = useMotionValue(placedLeft);
+    const topValue = useMotionValue(placedTop);
+    const lastPlacedOffsetsRef = useRef(placedEnteredOffsets);
+    useEffect(() => {
+        const previous = lastPlacedOffsetsRef.current;
+        const enteredMoved = previous.x !== placedEnteredOffsets.x || previous.y !== placedEnteredOffsets.y;
+        lastPlacedOffsetsRef.current = placedEnteredOffsets;
+        const transition = enteredOffsetTransitionRef.current;
+        if (!enteredMoved || !transition) {
+            leftValue.set(placedLeft);
+            topValue.set(placedTop);
+            return undefined;
+        }
+        const runLeft = animate(leftValue, placedLeft, transition);
+        const runTop = animate(topValue, placedTop, transition);
+        return () => {
+            runLeft.stop();
+            runTop.stop();
+        };
+    }, [leftValue, placedEnteredOffsets, placedLeft, placedTop, topValue]);
+
     const containerStyle = useMemo<CSSProperties>(() => {
         const { x, y, width, height } = layout;
         const normalizedWidth = Math.abs(width);
@@ -525,8 +558,12 @@ export function EditorNodeWrapper({
         const isFlow = !isRoot && layoutMode === "flow";
         const style: CSSProperties = {
             position: isRoot ? "relative" : isFlow ? "relative" : "absolute",
-            left: isFlow ? 0 : x + offsetX,
-            top: isFlow ? 0 : y + offsetY,
+            // The state's offset rides here rather than on the transform: a drag previews itself by
+            // writing `style.transform` on this very node, so a pose sharing that channel is wiped
+            // for the length of the gesture and snaps back when React re-renders. Placement is a
+            // channel the gesture never touches.
+            left: isFlow ? 0 : x + offsetX + placedEnteredOffsets.x,
+            top: isFlow ? 0 : y + offsetY + placedEnteredOffsets.y,
             width: normalizedWidth,
             height: normalizedHeight,
             opacity: motionControlsOpacity ? undefined : effectiveOpacity,
@@ -550,7 +587,18 @@ export function EditorNodeWrapper({
             style.cursor = wrapperCursor;
         }
         return style;
-    }, [effectiveOpacity, layout, isRoot, layoutMode, motionControlsOpacity, styleOverrides, surfacePassive, wrapperCursor]);
+    }, [
+        effectiveOpacity,
+        layout,
+        isRoot,
+        layoutMode,
+        motionControlsOpacity,
+        placedEnteredOffsets.x,
+        placedEnteredOffsets.y,
+        styleOverrides,
+        surfacePassive,
+        wrapperCursor,
+    ]);
 
     // The pose's own motion values, so entering a state can *move* the element instead of teleporting
     // it: an author flipping between states is previewing the animation the player will see, and a
@@ -597,12 +645,14 @@ export function EditorNodeWrapper({
     const motionStyle: MotionStyle = hasMotionPose
         ? {
               ...containerStyle,
+              left: leftValue,
+              top: topValue,
               x: poseX,
               y: poseY,
               scale: basePose.scale,
               rotate: basePose.rotate,
           }
-        : containerStyle;
+        : { ...containerStyle, left: leftValue, top: topValue };
 
     const motionAnimate = useMemo(() => {
         if (!displayableMotion) {

@@ -77,6 +77,7 @@ export const documentDiff = {
     count: {
         /** The author's own variants. The release tag is always there and is not counted. */
         appTags: "Build variants",
+        assetSets: "Asset sets",
         assets: "Assets",
         audioTracks: "Audio tracks",
         /** The author's own colors. The seeded palette is always there and is not counted. */

@@ -4,8 +4,9 @@ import React, { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
-import { AssetsPanelContext, type AssetsIconViewToolbarCenter } from "../AssetsPanelContext";
+import { AssetsPanelContext, type AssetsIconViewToolbarCenter } from "../AssetsPanelContext";
 import { createEmptyAssetCategoryRecord } from "../state/assetCategoryRecord";
+import type { ResolvedAssetSet } from "../state/useAssetSets";
 import { AssetsIconView } from "./AssetsIconView";
 
 // The real one reads the workspace freeze service through a provider this test has no business
@@ -58,6 +59,9 @@ function Harness({ onRender }: { onRender?: () => void }) {
         handleAssetClick: () => undefined,
         handleGroupFocus: () => undefined,
         showContextMenu: () => undefined,
+        assetSets: createEmptyAssetCategoryRecord<ResolvedAssetSet>(),
+        handleAssetSetSelect: () => undefined,
+        showAssetSetContextMenu: () => undefined,
         handleImportToGroup: () => undefined,
         isFocused: () => false,
         isNarrowed: false,

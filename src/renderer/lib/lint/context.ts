@@ -7,6 +7,7 @@ import type { VoiceDocument } from "@shared/types/voice";
 import type { GameBuildPlatform } from "@shared/types/gameBuild";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { MergedPersistentNameCollision } from "@shared/variables/mergedPersistentView";
+import type { AssetSet } from "@shared/types/assetSet";
 import type { AssetType } from "../workspace/services/assets/assetTypes";
 import type { AssetReference, ReferenceIndexResult } from "../workspace/services/references/referenceModel";
 import type { LintingConfiguration, NetworkConfiguration } from "../workspace/project/configuration";
@@ -40,6 +41,14 @@ export type LintAssetEntry = {
     ext?: string;
     hash?: string;
     meta: unknown;
+    /**
+     * The author's tags, verbatim.
+     *
+     * Here because an asset set names its members by tag rather than by id, so "does this set
+     * resolve" is a question about this field and nothing else. Every other rule reads the
+     * library for what a file *is*; this is the one place it is read for what a file *means*.
+     */
+    tags: readonly string[];
 };
 
 export type LintCharacterEntry = { id: string; name: string; assetIds: readonly string[] };
@@ -111,6 +120,14 @@ export type LintContext = {
     blueprintDocument: BlueprintDocument | null;
     uiDocument: UIDocument | null;
     assets: readonly LintAssetEntry[];
+    /**
+     * The sets the project declares.
+     *
+     * Empty in a project that has declared none, which is an ordinary state and not an unread
+     * one - unlike {@link assetIndex}, nothing here can partially fail: the document either
+     * loaded or the service is holding an empty list and has already reported why.
+     */
+    assetSets: readonly AssetSet[];
     referencedAssetIds: ReadonlySet<string>;
     assetReferences: ReadonlyMap<string, readonly AssetReference[]>;
     /**

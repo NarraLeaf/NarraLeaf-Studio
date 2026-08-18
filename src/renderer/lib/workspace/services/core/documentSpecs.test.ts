@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     appTagsSpec,
+    assetSetsSpec,
     assetsMetadataSpec,
     audioTracksSpec,
     brandSpec,
@@ -33,6 +34,7 @@ describe("document specs agree with ProjectNameConvention", () => {
         expect(variableRegistrySpec.pathFor()).toBe(of(ProjectNameConvention.EditorVariableRegistry));
         expect(audioTracksSpec.pathFor()).toBe(of(ProjectNameConvention.EditorAudioTracks));
         expect(appTagsSpec.pathFor()).toBe(of(ProjectNameConvention.EditorAppTags));
+        expect(assetSetsSpec.pathFor()).toBe(of(ProjectNameConvention.EditorAssetSets));
         expect(brandSpec.pathFor()).toBe(of(ProjectNameConvention.EditorBrand));
         expect(dictionarySpec.pathFor()).toBe(of(ProjectNameConvention.EditorDictionary));
         expect(voiceDocumentSpec.pathFor({ locale: "ja" })).toBe(of(ProjectNameConvention.EditorVoiceDocument("ja")));

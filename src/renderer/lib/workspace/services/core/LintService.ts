@@ -24,6 +24,7 @@ import { Service } from "../Service";
 import { Services, type ILintService, type WorkspaceContext } from "../services";
 import { EventEmitter } from "../ui/EventEmitter";
 import { AppTagService } from "../appTag/AppTagService";
+import { AssetSetService } from "../assets/AssetSetService";
 import { AssetsService } from "./AssetsService";
 import { CharacterService } from "./CharacterService";
 import { ConsoleService } from "./ConsoleService";
@@ -181,6 +182,9 @@ export class LintService extends Service<LintService> implements ILintService {
             blueprintDocument: safely(() => uiGraphService.getDocument().blueprintDocument, null),
             uiDocument: safely(() => uiDocumentService.getDocument(), null),
             assets,
+            // Read off the service rather than derived from the library: a set is a declaration
+            // about the library, and deriving one from the other is what the rule is checking.
+            assetSets: safely(() => services.get<AssetSetService>(Services.AssetSets).listSets(), []),
             referencedAssetIds,
             assetReferences: referenceService.getReferencesForAll([...referencedAssetIds]),
             // Read here rather than inside the rule: the two sets above and this answer have to
@@ -329,6 +333,7 @@ export class LintService extends Service<LintService> implements ILintService {
                     ext: asset.ext,
                     hash: asset.hash,
                     meta: asset.meta,
+                    tags: asset.tags,
                 });
             }
         }

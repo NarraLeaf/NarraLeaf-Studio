@@ -65,7 +65,8 @@ export const documentDiff = {
      * 空の行よりはるかにましだから。
      */
     count: {
-        appTags: "ビルドバリアント",
+        appTags: "ビルドバリアント",
+        assetSets: "アセットセット",
         assets: "アセット",
         audioTracks: "オーディオトラック",
         brandColors: "ブランドの色",
