@@ -2886,10 +2886,22 @@ function compileCameraAction(
             return [recordStatement(ctx, camera.filter(resolved, { duration: 0 }), block)];
         }
         case "reset":
-            // Clearing the grade is the same problem in reverse, and `resetCamera` eases the whole
-            // pose — filter included — over one duration. So the filter is dropped in its own
-            // zero-duration statement first, leaving `resetCamera` to animate the pan/zoom/rotation
-            // the way an author expects a reset to move.
+            // ⚠ CLEARING A GRADE STILL SWEEPS, and this zero-duration clear does NOT stop it —
+            // measured in Dev Mode over the moonlight grade, the hue still unwinds 185° over the
+            // reset's own duration. Do not read the line below as a fix; it is left in because it is
+            // harmless and because the next person needs to know it was tried.
+            //
+            // `Camera.resetCamera` packs `filter: "none"` into the SAME transform as the pose, so the
+            // filter is eased along with the pan and zoom. Dropping it first in its own statement
+            // does not survive: both land in one tick, so the renderer sees a single style diff from
+            // the grade to neutral and animates the whole of it. Building the pose transform by hand
+            // WITHOUT a `filter` prop was tried too and changes nothing, which points at the merged
+            // TransformState rather than at what this file emits.
+            //
+            // The fix therefore belongs in the engine — either a `clearFilter` that truly commits
+            // before the next transform reads the element, or a `resetCamera` that leaves the filter
+            // out of the eased set. Until then a grade is best ended by cutting the scene or hiding
+            // the change behind a `/blink`.
             return [
                 recordStatement(ctx, camera.clearFilter({ duration: 0 }), block),
                 recordStatement(ctx, camera.resetCamera(duration, easing), block),

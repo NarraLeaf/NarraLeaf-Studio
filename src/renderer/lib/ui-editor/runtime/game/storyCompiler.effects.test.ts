@@ -130,7 +130,7 @@ describe("compiles /fx backdrop and blend", () => {
  * the angle unwinds 185 degrees while `grayscale` simultaneously lets the source's hues back in.
  * These two pin the fix so a later "make the grade fade nicely" change has to face the reason.
  */
-describe("compiles a camera grade as a cut", () => {
+describe("compiles a camera grade as a cut on the way in", () => {
     function cameraDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[]): StoryDocument {
         return {
             schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
@@ -161,7 +161,10 @@ describe("compiles a camera grade as a cut", () => {
         expect(sequence?.options).toEqual(expect.objectContaining({ duration: 0 }));
     });
 
-    it("clears the grade instantly on reset while the pose still animates", async () => {
+    // NOT a behaviour test: the emitted zero-duration clear does not actually stop the sweep at
+    // runtime (see the compiler's `reset` arm). This only pins that the clear is still emitted, so
+    // whoever fixes it engine-side can see what the compiler already sends.
+    it("emits a zero-duration filter clear ahead of the pose on reset", async () => {
         const document = cameraDocument({
             grade: {
                 id: "grade", kind: "action", parentId: null, childrenIds: [],
