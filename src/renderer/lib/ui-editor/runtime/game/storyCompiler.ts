@@ -129,7 +129,7 @@ import {
 // The look library sits beside the command spec and the inspector that pick from it; the compile is
 // its third reader rather than its owner, which is the same relation `storyReplace` already has with
 // the scene editor's find/replace model.
-import { resolveStoryCameraLook, resolveStoryCameraLookOscillation } from "@/apps/workspace/modules/story/scene-editor/cameraLookPresets";
+import { resolveStoryCameraLook, resolveStoryCameraLookOscillation } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import type { StageSnapshotDisplayable, StageSnapshotEffects, StoryStageSnapshot } from "./storyStageSnapshot";
 import { collectSavedVariableView, savedVariableDefsFromView } from "./storyStageSnapshot";
 import {
