@@ -825,6 +825,15 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
                 semantic: "data",
                 valueType: BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
                 label: "Avatar",
+                /**
+                 * The speaking character's face, addressed as `character-avatar:{character}:{tags}`
+                 * - a composite the host synthesizes from the live portrait, which `isLibraryAssetId`
+                 * rejects because no library row answers to it. Wiring this into an image pin hides
+                 * no reference, so the reverse-lookup index must not report the pin it feeds as an
+                 * asset it could not identify. Studio's own default dialogue box wires exactly this
+                 * pair, so without the declaration every project has the gap from its first open.
+                 */
+                assetRef: { kind: "image", origin: "published" },
             },
         ],
         execute(ctx) {
@@ -889,6 +898,8 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
                 semantic: "data",
                 valueType: BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
                 label: "Avatar",
+                /** The same host-composed face `Get Speaker Avatar` publishes; see the note there. */
+                assetRef: { kind: "image", origin: "published" },
             },
             // The visible half of "this character was deleted". Without it a dangling reference is
             // indistinguishable from a character whose name is blank and whose colour is unset -
