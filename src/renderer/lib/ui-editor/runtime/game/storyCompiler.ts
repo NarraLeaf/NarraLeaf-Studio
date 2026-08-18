@@ -129,7 +129,7 @@ import {
 // The look library sits beside the command spec and the inspector that pick from it; the compile is
 // its third reader rather than its owner, which is the same relation `storyReplace` already has with
 // the scene editor's find/replace model.
-import { resolveStoryCameraLook } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
+import { resolveStoryCameraLook, resolveStoryCameraLookOscillation } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import type { StageSnapshotDisplayable, StageSnapshotEffects, StoryStageSnapshot } from "./storyStageSnapshot";
 import { collectSavedVariableView, savedVariableDefsFromView } from "./storyStageSnapshot";
 import {
@@ -2869,7 +2869,7 @@ function compileCameraAction(
                     : "Camera look has no grade chosen.");
                 return [];
             }
-            // **A grade snaps; it does not tween, and the row's duration is deliberately unused.**
+            // **A still grade snaps; it does not tween, and the row's duration is unused for one.**
             //
             // A filter chain carrying `hue-rotate` cannot be linearly interpolated to (or from)
             // neutral without walking through colours nobody asked for. Going from
@@ -2879,10 +2879,35 @@ function compileCameraAction(
             // face. Measured on a real sprite over the moonlight grade — blue at t=1, cyan by 0.8,
             // green through 0.6–0.4, olive at 0.2.
             //
-            // There is no interpolation that fixes this, because the honest operation is a
-            // cross-fade between two graded renderings and a CSS filter cannot express one. So the
-            // grade lands in a single frame, which is also how the medium actually uses it: a
-            // flashback cuts in behind a flash or a transition, it does not morph.
+            // There is no interpolation that fixes this in general, because the honest operation is
+            // a cross-fade between two graded renderings and a CSS filter cannot express one, and
+            // because the compiler cannot know which grade the stage is already wearing. So the
+            // grade lands in a single frame, which is also how the medium uses it: a flashback cuts
+            // in behind a flash or a transition, it does not morph.
+            //
+            // A SWAY is the one exception, and it is exempt by construction rather than by
+            // judgement: every keyframe in it names the same filter functions in the same order as
+            // the grade it settles onto, holds the flatten terms fixed, and moves the hue only a few
+            // degrees either side of neutral. Nothing crosses the wheel, so there is no midpoint to
+            // land wrong on — measured over `hangover`, the trace stays inside its own recipe with
+            // only the angle and the blur moving.
+            const oscillation = handWritten
+                ? null
+                : resolveStoryCameraLookOscillation(payload.lookPreset, payload.lookIntensity, duration);
+            if (oscillation && oscillation.steps.length > 0) {
+                const sequences = oscillation.steps.map(step => ({
+                    props: { filter: step },
+                    options: { duration: oscillation.stepMs, ease: easing ?? "easeInOut" },
+                }));
+                // `repeat` covers the whole sequence list, so the sway ends on its last step rather
+                // than at neutral - the settle onto the resting grade is a second statement, and it
+                // is what leaves the stage in the state a still grade would have left it in.
+                const sway = new Transform(sequences as any, { repeat: oscillation.cycles } as any);
+                return [
+                    recordStatement(ctx, camera.transform(sway), block),
+                    recordStatement(ctx, camera.filter(resolved, { duration: oscillation.settleMs, ease: "easeOut" }), block),
+                ];
+            }
             return [recordStatement(ctx, camera.filter(resolved, { duration: 0 }), block)];
         }
         case "reset":

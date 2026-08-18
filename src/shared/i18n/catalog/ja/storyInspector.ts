@@ -278,11 +278,13 @@ export const storyInspector = {
         mono: "モノクロ",
         moonlight: "月明かり",
         faint: "意識が遠のく",
+        hangover: "二日酔い",
     },
 
     cameraLookHint: {
         channel: "ルックはステージの暗さに重ねるのではなく置き換える。エンジンでは同じフィルターなので、後の行が勝つ。各ルックは自前の明るさを含む。カメラをリセットすると消える。",
         monologue: "ステージ全体の彩度と明るさを下げるだけ。周辺を暗くするにはビネットを別の行で足す。",
+        hangover: "画面が二度揺れてからルックが落ち着く。行は揺れが終わるまで待ち、長さが揺れの速さを決める。",
     },
 
     displayableOperation: {

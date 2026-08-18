@@ -544,8 +544,16 @@ export const story = {
         zoom: "ズーム",
         rotate: "回転",
         darken: "暗く",
+        look: "ルック",
         motion: "モーション",
         reset: "リセット",
+        // `/camera look` のルック名。コマンドラインはこれらの語で表示し、入力としても受け付ける。
+        memory: "回想",
+        monologue: "心の声",
+        mono: "モノクロ",
+        moonlight: "月明かり",
+        faint: "意識が遠のく",
+        hangover: "二日酔い",
         // 変数の型
         boolean: "真偽値",
         number: "数値",

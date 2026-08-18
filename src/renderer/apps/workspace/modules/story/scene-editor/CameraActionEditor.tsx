@@ -12,8 +12,10 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { MotionField } from "../../story-motion";
 import { resolveStoryMotionStageSize } from "../../story-motion/StoryMotionEditorTab";
 import {
+    getStoryCameraLookPreset,
     resolveStoryCameraLook,
     STORY_CAMERA_LOOK_DEFAULT_PRESET_ID,
+    storyCameraLookSways,
     STORY_CAMERA_LOOK_MAX_INTENSITY,
     STORY_CAMERA_LOOK_MIN_INTENSITY,
     STORY_CAMERA_LOOK_PRESETS,
@@ -101,7 +103,7 @@ export function CameraActionEditor(props: {
             return;
         }
         if (next === "look" && !payload.lookPreset && !payload.filter) {
-            onChange({ ...payload, operation: next, lookPreset: STORY_CAMERA_LOOK_DEFAULT_PRESET_ID, lookIntensity: 1 });
+            onChange({ ...withLookPreset(payload, STORY_CAMERA_LOOK_DEFAULT_PRESET_ID), operation: next });
             return;
         }
         onChange({ ...payload, operation: next });
@@ -202,11 +204,7 @@ export function CameraActionEditor(props: {
                                         label={t("storyInspector.camera.look")}
                                         options={lookPresetOptions(t)}
                                         value={payload.lookPreset ?? ""}
-                                        onChange={next => onChange({
-                                            ...payload,
-                                            lookPreset: String(next) || undefined,
-                                            lookIntensity: payload.lookIntensity ?? 1,
-                                        })}
+                                        onChange={next => onChange(withLookPreset(payload, String(next) || undefined))}
                                     />
                                     <SliderRow
                                         label={t("storyInspector.camera.lookIntensity")}
@@ -233,6 +231,12 @@ export function CameraActionEditor(props: {
                                 <p className="text-2xs text-fg-subtle">{t("storyInspector.cameraLookHint.channel")}</p>
                                 {payload.lookPreset === "monologue" ? (
                                     <p className="text-2xs text-fg-subtle">{t("storyInspector.cameraLookHint.monologue")}</p>
+                                ) : null}
+                                {/* The one grade that does not settle immediately, so it is the one
+                                    whose row costs time. An author choosing it from a list of still
+                                    looks has no other way to know that. */}
+                                {payload.lookPreset === "hangover" ? (
+                                    <p className="text-2xs text-fg-subtle">{t("storyInspector.cameraLookHint.hangover")}</p>
                                 ) : null}
                             </div>
                         ) : null}
@@ -281,7 +285,7 @@ export function CameraActionEditor(props: {
                             compiler's `look` arm for why interpolating one is not an option. The
                             fields are hidden rather than disabled: a control that is present but
                             never does anything is the thing an author wastes time on. */}
-                        {operation === "look" ? (
+                        {operation === "look" && !storyCameraLookSways(payload.lookPreset) ? (
                             <p className="text-2xs text-fg-subtle">{t("storyInspector.camera.lookSnaps")}</p>
                         ) : (
                             <FieldGrid cols={2}>
@@ -437,6 +441,31 @@ function SliderRow(props: {
 }
 
 /** The grade library as a picker. Every preset is named, never its id — the id is stored, not shown. */
+/**
+ * Move a row onto a look, carrying the grade's own tempo with it.
+ *
+ * The timing follows the preset only while the author has not set one of their own: a duration still
+ * sitting on the previous preset's default was never a choice, and leaving it behind is how `mono`
+ * ends up crawling at `faint`'s two seconds. A number the author typed is theirs and is left alone —
+ * so this reads the OLD preset to decide, not the new one.
+ */
+function withLookPreset(payload: CameraActionPayload, nextId: string | undefined): CameraActionPayload {
+    const next = nextId ? getStoryCameraLookPreset(nextId) : undefined;
+    const previous = getStoryCameraLookPreset(payload.lookPreset);
+    const untouched = payload.durationMs === undefined || payload.durationMs === previous?.defaultDurationMs;
+    return {
+        ...payload,
+        lookPreset: nextId,
+        lookIntensity: payload.lookIntensity ?? 1,
+        // Only a grade that MOVES gets its tempo seeded. A still grade lands in one frame and the
+        // compile reads no duration for it, so writing one onto the row would put a number in the
+        // document that nothing downstream honours.
+        ...(next?.oscillate && untouched
+            ? { durationMs: next.defaultDurationMs, easing: next.defaultEasing }
+            : {}),
+    };
+}
+
 function lookPresetOptions(t: ReturnType<typeof useTranslation>["t"]): SelectOption[] {
     return STORY_CAMERA_LOOK_PRESETS.map(preset => ({
         value: preset.id,
