@@ -1,7 +1,7 @@
 import { Move3d, RotateCcw } from "lucide-react";
 import type { StoryActionPayload, StoryBlock, StoryTransformProps, StoryTransformRef } from "@shared/types/story";
 import { composeStoryFilter, pruneStoryTransformProps } from "@shared/story/transformProps";
-import { resolveStoryCameraLook } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
+import { resolveStoryCameraLook, storyCameraLookTweens } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { createBlockForCommand } from "../../storyActionCommands";
 import type { StoryCommandResolutionIssue, StoryCommandTargetValue, StoryCommandValue } from "../../storyCommandValues";
 import { STORY_RESERVED_TARGETS } from "../../storyCommandValues";
@@ -174,7 +174,26 @@ function cameraBlock(args: TransformArgs, generateId: () => string): StoryBlock 
     if (look) {
         // The grade keeps its NAME here, not just its CSS: `lookPreset` is what lets the inspector
         // re-open the row on the grade the author chose instead of on a wall of resolved filter terms.
-        return payload({ operation: "look", ...look });
+        //
+        // A grade that CUTS is not given a duration, even the house default. `storyCameraLookTweens`
+        // answers false for any recipe that turns a hue, and the compile does not read a duration for
+        // one of those — sepia sits near 30 degrees on the wheel and moonlight near 215, so every path
+        // between them crosses the hues in between and no ordering avoids the green midpoint. Seeding
+        // a number the compile will not read would put a duration field on the row that changes
+        // nothing, which is worse than an absent one: the author would tune it and see no difference.
+        const tweens = storyCameraLookTweens(look.lookPreset, look.lookIntensity);
+        return {
+            id: generateId(),
+            parentId: null,
+            childrenIds: [],
+            kind: "action",
+            payload: {
+                action: "camera",
+                operation: "look",
+                ...look,
+                ...(tweens ? timing : {}),
+            } as Extract<StoryActionPayload, { action: "camera" }>,
+        };
     }
     if (props.filterRaw !== undefined || props.filter !== undefined) {
         return payload({

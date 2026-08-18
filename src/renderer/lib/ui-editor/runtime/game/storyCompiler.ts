@@ -137,7 +137,7 @@ import {
 // The look library sits beside the command spec and the inspector that pick from it; the compile is
 // its third reader rather than its owner, which is the same relation `storyReplace` already has with
 // the scene editor's find/replace model.
-import { resolveStoryCameraLook, resolveStoryCameraLookOscillation } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
+import { resolveStoryCameraLook, resolveStoryCameraLookOscillation, storyCameraLookTweens } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import type { StageSnapshotDisplayable, StageSnapshotEffects, StoryStageSnapshot } from "./storyStageSnapshot";
 import { collectSavedVariableView, savedVariableDefsFromView } from "./storyStageSnapshot";
 import {
@@ -2883,39 +2883,35 @@ async function compileCameraAction(
                     : "Camera look has no grade chosen.");
                 return [];
             }
-            // **A still grade snaps; it does not tween, and the row's duration is unused for one.**
+            // **Getting to a grade is a separate problem from being on one, and only one grade has
+            // an unsafe route.**
             //
-            // A filter chain carrying `hue-rotate` cannot be linearly interpolated to (or from)
-            // neutral without walking through colours nobody asked for. Going from
-            // `grayscale(1) sepia(1) hue-rotate(185deg) …` back to neutral, the browser eases every
-            // term at once: the angle sweeps 185 degrees of the colour wheel while `grayscale`
-            // simultaneously lets the source's own hues back in, so the midpoint is a bright green
-            // face. Measured on a real sprite over the moonlight grade — blue at t=1, cyan by 0.8,
-            // green through 0.6–0.4, olive at 0.2.
+            // A filter animation eases every term of the chain at once, so the default route into a
+            // grade is the straight line between two parameter sets. For `moonlight` that line is
+            // the bare-hue-rotate trap reached from the other side: `grayscale` ramps up WHILE the
+            // angle sweeps 185 degrees, so the midpoint keeps most of the source's own hues and drags
+            // them half a turn. Measured frame by frame on that grade - blue at full, cyan by 0.8,
+            // green through 0.6-0.4, olive at 0.2. A green face.
             //
-            // There is no interpolation that fixes this in general, because the honest operation is
-            // a cross-fade between two graded renderings and a CSS filter cannot express one, and
-            // because the compiler cannot know which grade the stage is already wearing. So the
-            // grade lands in a single frame, which is also how the medium uses it: a flashback cuts
-            // in behind a flash or a transition, it does not morph.
+            // The answer is to stop letting the straight line BE the route. A preset that needs it
+            // authors its legs (`path`), and they are walked as keyframes: `moonlight` flattens first
+            // with the angle pinned at 0, then rotates a source that is already one known colour.
+            // Every other recipe has no angle to protect, so its straight line is safe and it tweens.
             //
-            // A SWAY is the one exception, and it is exempt by construction rather than by
-            // judgement: every keyframe in it names the same filter functions in the same order as
-            // the grade it settles onto, holds the flatten terms fixed, and moves the hue only a few
-            // degrees either side of neutral. Nothing crosses the wheel, so there is no midpoint to
-            // land wrong on — measured over `hangover`, the trace stays inside its own recipe with
-            // only the angle and the blur moving.
-            //
-            // A still grade reaches the stage as `filterRaw` rather than as a structured record, and that is not
-            // a shortcut. The look library's recipes are ORDERED pipelines and the record is not
-            // ordered: `memory` runs saturate before sepia while `faint` runs blur before saturate, so
-            // no single canonical order reproduces both, and re-emitting either through one would
-            // change what the grade looks like. A raw chain is discrete by definition, so the emitter
-            // cuts it — which is the behaviour measured above, arrived at by the model rather than by
-            // a special case.
-            const oscillation = handWritten
-                ? null
-                : resolveStoryCameraLookOscillation(payload.lookPreset, payload.lookIntensity, duration);
+            // Calling `camera.filter` with a duration deliberately steps around the transform emitter,
+            // which treats a raw chain as discrete. That is the right default for a chain it knows
+            // nothing about - and this library is the one caller that DOES know, because it wrote the
+            // recipe and can say whether its own route is safe. A hand-written filter gets no such
+            // claim and still cuts.
+            if (handWritten) {
+                return emit({ filterRaw: resolved });
+            }
+
+            // A SWAY is exempt by construction rather than by judgement: every keyframe names the
+            // same filter functions in the same order as the grade it settles onto, holds the flatten
+            // terms fixed, and moves the hue only a few degrees either side of neutral. Nothing
+            // crosses the wheel, so there is no midpoint to land wrong on.
+            const oscillation = resolveStoryCameraLookOscillation(payload.lookPreset, payload.lookIntensity, duration);
             if (oscillation && oscillation.steps.length > 0) {
                 const sequences = oscillation.steps.map(step => ({
                     props: { filter: step },
@@ -2929,6 +2925,16 @@ async function compileCameraAction(
                     recordStatement(ctx, camera.transform(sway), block),
                     recordStatement(ctx, camera.filter(resolved, { duration: oscillation.settleMs, ease: "easeOut" }), block),
                 ];
+            }
+
+            // Otherwise the recipe itself decides. A chain that turns no hue eases cleanly, because
+            // every term of it moves monotonically toward the target - that is `faint`'s slow slide,
+            // and it is the effect rather than decoration. A chain that DOES turn a hue cuts, because
+            // the wheel between where it starts and where it lands is full of colours nobody chose
+            // and no ordering of the terms avoids them: an authored route that flattened first and
+            // rotated second was measured in Dev Mode and is green at the midpoint too.
+            if (duration > 0 && storyCameraLookTweens(payload.lookPreset, payload.lookIntensity)) {
+                return [recordStatement(ctx, camera.filter(resolved, easing ? { duration, ease: easing as any } : { duration }), block)];
             }
             return emit({ filterRaw: resolved });
         }

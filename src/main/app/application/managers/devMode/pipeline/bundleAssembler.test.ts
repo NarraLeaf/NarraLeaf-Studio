@@ -4,6 +4,7 @@ import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import { encodeProjectConfig } from "@shared/utils/nlproj";
 import { DEFAULT_AUTO_SAVE_CONFIGURATION } from "@shared/types/saves";
+import { DEFAULT_LANGUAGE_CHANGE_CONFIGURATION } from "@shared/types/localization";
 import { DEFAULT_PLAYER_PREFERENCES } from "@shared/types/preference";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import { DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION } from "@shared/types/saveCompatibility";
@@ -17,6 +18,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import {
     loadAutoSaveConfiguration,
+    loadLanguageChangeConfiguration,
     loadGameVersion,
     loadSaveCompatibilityConfiguration,
     loadGameAudio,
@@ -158,6 +160,50 @@ describe("bundleAssembler auto save", () => {
     it("falls back to the defaults when the project cannot be read", async () => {
         expect(await loadAutoSaveConfiguration(path.join(os.tmpdir(), "nls-missing-project")))
             .toEqual(DEFAULT_AUTO_SAVE_CONFIGURATION);
+    });
+});
+
+/**
+ * What a language change does to a running playthrough. Dense for the same reason autosave is: a
+ * build that never opened the setting still has to behave one way rather than none, and the way it
+ * behaves has to be the one every build had before the setting existed.
+ */
+describe("bundleAssembler language change configuration", () => {
+    const tempDirs: string[] = [];
+
+    afterEach(async () => {
+        await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
+    });
+
+    async function createProject(languageChange: unknown): Promise<string> {
+        const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-language-change-"));
+        tempDirs.push(projectPath);
+        const encoded = encodeProjectConfig({
+            name: "Test",
+            identifier: "test.project",
+            metadata: {},
+            ...(languageChange ? { app: { languageChange } } : {}),
+        } as never);
+        await writeFile(path.join(projectPath, "project.nlproj"), encoded);
+        return projectPath;
+    }
+
+    it("gives a project that never set one the restart it was built against", async () => {
+        const projectPath = await createProject(undefined);
+        expect(await loadLanguageChangeConfiguration(projectPath))
+            .toEqual(DEFAULT_LANGUAGE_CHANGE_CONFIGURATION);
+    });
+
+    it("bakes the author's answer into the bundle", async () => {
+        const projectPath = await createProject({ inGame: "nextScene" });
+        expect(await loadLanguageChangeConfiguration(projectPath)).toEqual({ inGame: "nextScene" });
+    });
+
+    it("reads anything it does not recognise as the default", async () => {
+        // A hand-edited `.nlproj`, or one written by a build that had a third answer.
+        const projectPath = await createProject({ inGame: "whenever" });
+        expect(await loadLanguageChangeConfiguration(projectPath))
+            .toEqual(DEFAULT_LANGUAGE_CHANGE_CONFIGURATION);
     });
 });
 
