@@ -142,6 +142,14 @@ function resolveTarget(
     const needle = value.trim().toLowerCase();
     const matches: StoryCommandTargetValue[] = [];
 
+    // The reserved words go first, and unconditionally. They name stage singletons the engine
+    // addresses without a creator block, so nothing in `stageObjects` can ever spell one and there is
+    // no ambiguity to weigh - a slot that offers `camera` means the camera by that word, always.
+    const reserved = (type.reserved ?? []).find(name => name.toLowerCase() === needle);
+    if (reserved) {
+        return { value: { kind: "target", target: { type: "reserved", name: reserved } } };
+    }
+
     if (type.accepts.includes("character")) {
         const found = context.characters.filter(entry => entry.name.trim().toLowerCase() === needle);
         if (found.length > 1) {
@@ -173,6 +181,17 @@ function resolveTarget(
     }
     if (matches.length === 1) {
         return { value: { kind: "target", target: matches[0] } };
+    }
+
+    // A kind the slot resolves only so it can refuse it. Checked AFTER the accepted kinds, so a name
+    // two worlds share still lands on the world this verb can act on rather than on the complaint.
+    for (const kind of type.refuses ?? []) {
+        const named = kind === "character"
+            ? context.characters.some(entry => entry.name.trim().toLowerCase() === needle)
+            : (context.stageObjects[kind] ?? []).some(name => name.trim().toLowerCase() === needle);
+        if (named) {
+            return { issue: { code: "unsupportedTarget", span, value, kind } };
+        }
     }
 
     // Nothing on stage answers. A free-typed name can stand only where its kind is knowable anyway

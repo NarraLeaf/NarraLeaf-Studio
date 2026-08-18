@@ -161,6 +161,10 @@ function resolutionReason(issue: StoryCommandResolutionIssue): StoryCommandReaso
         case "ambiguousName":
         case "notPuppetCharacter":
             return { key: reasonKey(issue.code), params: { value: issue.value } };
+        case "unsupportedParam":
+            return { key: reasonKey(issue.code), params: { key: issue.key, kind: issue.kind } };
+        case "unsupportedTarget":
+            return { key: reasonKey(issue.code), params: { value: issue.value, kind: issue.kind } };
         case "unsupportedOption":
             return { key: reasonKey(issue.code), params: { value: issue.value, allowed: issue.allowed.join(", ") } };
         case "conflictingParams":
