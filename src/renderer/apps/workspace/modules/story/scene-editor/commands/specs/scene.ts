@@ -102,9 +102,11 @@ export const nvl = defineStoryCommand({
     token: "nvl",
     category: "scene",
     icon: ScrollText,
-    examples: ["/nvl", "/nvl t=fade d=0.4"],
+    examples: ["/nvl", "/nvl in=fade d=0.4"],
     params: {
-        t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("nvl") } },
+        // `in=`, as on `/show` and `/image`: the NVL panel's `transition` field is a transform ref, not
+        // a `StoryTransitionRef`, and the panel only ever comes IN.
+        in: { aliases: ["reveal"], hint: "reveal", type: { kind: "enum", options: transitionOptions("nvl") } },
         d: secondsParam(),
     },
     build(args, ctx) {
@@ -113,7 +115,7 @@ export const nvl = defineStoryCommand({
             return block;
         }
         // NVL's `transition` field is a transform ref (preset-based) - see the payload's note.
-        const transition = withRevealTransform(block.payload.transition, "nvl", args.t, args.d);
+        const transition = withRevealTransform(block.payload.transition, "nvl", args.in, args.d);
         return transition ? { ...block, payload: { ...block.payload, transition } } : block;
     },
 });
