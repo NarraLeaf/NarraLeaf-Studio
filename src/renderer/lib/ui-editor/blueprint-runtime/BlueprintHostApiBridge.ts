@@ -791,6 +791,16 @@ export type CreateBlueprintHostApiRuntimeOptions = {
      * no running game (the editor preview) leave it unset and the subscription is a no-op.
      */
     onSubscribeGamePreferences?: (listener: () => void) => () => void;
+    /**
+     * The player picked a language, and it has been stored.
+     *
+     * Everything beyond storing it belongs to the host, because a language change is only a setting
+     * when nothing is running: mid-playthrough it invalidates the rendered text, the backlog, the
+     * sentence being typed, the voice playing under it and the preloaded scene, and the only way
+     * back to a coherent game is to restart it and resume. `GameApp` decides which of those two
+     * this is; a host with no game to be inconsistent with leaves it unset.
+     */
+    onLocaleChanged?: (code: string) => Promise<void> | void;
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
     onPageBack: () => void | Promise<void>;
@@ -2060,6 +2070,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onImportProgress,
         audioTracks,
         onSubscribeGamePreferences,
+        onLocaleChanged,
         emit,
         onOpenSurface,
         onPageBack,
@@ -3269,6 +3280,10 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 try {
                     await scope.persistenceSet(LOCALE_STORAGE_KEY, code);
                     emit({ type: "state.write", scope: "persistence", key: LOCALE_STORAGE_KEY });
+                    // Awaited, and after the write: the host may restart the game from here, and
+                    // the boot that follows has to find the language the player just picked. A
+                    // host that only has a language to change returns immediately.
+                    await onLocaleChanged?.(code);
                 } finally {
                     emitHostCall(emit, "localization.setLocale", "return");
                 }

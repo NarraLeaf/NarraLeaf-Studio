@@ -86,7 +86,17 @@ function cameraOperand(
             if (!preset) {
                 return strength === undefined ? {} : { lookIntensity: strength };
             }
-            return { lookPreset: preset.id, lookIntensity: strength ?? preset.defaultIntensity };
+            // The grade brings its own tempo. `build` puts the author's `d=` back over the top when
+            // they typed one, so this fills an empty slot rather than overriding a choice - and
+            // without it every look would arrive at the generic 600ms, which is a cut for `faint` and
+            // a crawl for `mono`.
+            return {
+                lookPreset: preset.id,
+                lookIntensity: strength ?? preset.defaultIntensity,
+                ...(preset.oscillate
+                    ? { durationMs: preset.defaultDurationMs, easing: preset.defaultEasing }
+                    : {}),
+            };
         }
         case "motion":
             // The knob here is a Story Motion asset, which is a binding rather than a word - so the
@@ -128,16 +138,25 @@ export const camera = defineStoryCommand({
         // `strength=` also keeps `/camera look moonlight` readable as the common case, with the dial
         // as something an author adds when the nominal grade is too much.
         strength: { aliases: ["intensity"], hint: "cameraLookStrength", type: { kind: "number", min: 0, max: 2 } },
+        // Read by pan / zoom / rotate / darken / reset. `look` and `motion` both ignore it and say so
+        // where it matters: a grade lands in one frame (a tweened filter walks the picture through
+        // colours nobody chose - see the compiler's `look` arm), and a shot's timing is in its
+        // keyframes. The key stays on the command because it is the shape every camera row shares;
+        // the inspector is where each operation shows only what it can honour.
         d: secondsParam(),
     },
     build(args, ctx): StoryBlock {
         const operationValue = asEnum(args.op);
         const operation: CameraOperation = isCameraOperation(operationValue) ? operationValue : "zoom";
+        const operand = cameraOperand(operation, asNumber(args.amount), asEnum(args.amount), asNumber(args.strength));
+        // `durationMs` is settled AFTER the operand is spread, not before: `look` carries its preset's
+        // own tempo, and a spread that landed on top of an explicit `d=` would make the author's
+        // number the one thing on the line that does nothing.
         const payload: Extract<StoryActionPayload, { action: "camera" }> = {
             action: "camera",
             operation,
-            durationMs: asDurationMs(args.d) ?? CAMERA_DEFAULT_DURATION_MS,
-            ...cameraOperand(operation, asNumber(args.amount), asEnum(args.amount), asNumber(args.strength)),
+            ...operand,
+            durationMs: asDurationMs(args.d) ?? operand.durationMs ?? CAMERA_DEFAULT_DURATION_MS,
         };
         return { id: ctx.generateId(), parentId: null, childrenIds: [], kind: "action", payload };
     },

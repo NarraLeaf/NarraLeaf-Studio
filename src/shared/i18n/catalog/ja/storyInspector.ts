@@ -105,6 +105,7 @@ export const storyInspector = {
         circleReveal: "円で開く",
         circleClose: "円で閉じる",
         slideReveal: "スライドで開く",
+        custom: "カスタム",
     },
 
     easing: {
@@ -267,6 +268,7 @@ export const storyInspector = {
         xalign: "X の基準（0-1）",
         yalign: "Y の基準（0-1）",
         look: "ルック",
+        lookSnaps: "ルックは一フレームで切り替わります。補間すると誰も選んでいない色を経由するため、時間の設定はありません。まばたきやトランジションの裏で切り替えてください。",
         lookIntensity: "強さ（1 が標準）",
         lookFilter: "カスタム CSS フィルター",
     },
@@ -277,11 +279,13 @@ export const storyInspector = {
         mono: "モノクロ",
         moonlight: "月明かり",
         faint: "意識が遠のく",
+        hangover: "二日酔い",
     },
 
     cameraLookHint: {
         channel: "ルックはステージの暗さに重ねるのではなく置き換える。エンジンでは同じフィルターなので、後の行が勝つ。各ルックは自前の明るさを含む。カメラをリセットすると消える。",
         monologue: "ステージ全体の彩度と明るさを下げるだけ。周辺を暗くするにはビネットを別の行で足す。",
+        hangover: "画面が二度揺れてからルックが落ち着く。行は揺れが終わるまで待ち、長さが揺れの速さを決める。",
     },
 
     displayableOperation: {

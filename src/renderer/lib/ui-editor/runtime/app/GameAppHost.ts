@@ -201,6 +201,26 @@ export type GameAppHost = {
      */
     listPuppetBackendModules?: () => Promise<PuppetBackendModuleSource[]>;
     quitApplication: () => Promise<void>;
+    /**
+     * Start this shell over: end it and bring it back, from the top.
+     *
+     * Asked for exactly one reason today - the player changed the language while a playthrough was
+     * running, which invalidates far more than the strings still to be shown (see `localeRestart`).
+     * Nothing about it is language-specific: it is "this build cannot fix itself in place, put it
+     * back to boot".
+     *
+     * What "restart" means is the shell's business and the shells differ honestly. The packaged
+     * desktop game relaunches its process. The web export reloads the page, which is the same act
+     * for a shell that IS a page. Dev Mode reloads its session, which recompiles the project and
+     * restarts the environment in that window - the author gets what a player would get without
+     * Studio itself going down around them.
+     *
+     * Omitted by hosts with nothing to restart (the workspace story preview). A language change
+     * mid-run then applies without one, which leaves the session showing two languages until it
+     * ends - reported at the point it happens, because a host that quietly did nothing would look
+     * exactly like one where the restart failed.
+     */
+    restartApplication?: () => Promise<void>;
     /** Application window fullscreen. Hosts without a real window (story preview) omit these. */
     getFullscreen?: () => Promise<boolean>;
     setFullscreen?: (fullscreen: boolean) => Promise<void>;

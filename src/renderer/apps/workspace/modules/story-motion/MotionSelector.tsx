@@ -459,7 +459,7 @@ export function MotionField(props: {
     }, [animationId, storyService]);
 
     const bind = useCallback((assetId: string) => {
-        props.onChange({ ...(props.value ?? {}), mode: "animation", animationId: assetId, preset: undefined });
+        props.onChange({ ...(props.value ?? {}), mode: "animation", animationId: assetId });
         setSelectorOpen(false);
     }, [props]);
 

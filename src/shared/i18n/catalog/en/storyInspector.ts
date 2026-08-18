@@ -105,6 +105,7 @@ export const storyInspector = {
         circleReveal: "Circle reveal",
         circleClose: "Circle close",
         slideReveal: "Slide reveal",
+        custom: "Custom",
     },
 
     easing: {
@@ -268,6 +269,7 @@ export const storyInspector = {
         xalign: "X align (0-1)",
         yalign: "Y align (0-1)",
         look: "Look",
+        lookSnaps: "A look lands in a single frame. Fading one would walk the picture through colours nobody chose, so there is no duration to set — cut into it behind a blink or a transition.",
         lookIntensity: "Intensity (1 = nominal)",
         lookFilter: "Custom CSS filter",
     },
@@ -280,11 +282,13 @@ export const storyInspector = {
         mono: "Monochrome",
         moonlight: "Moonlight",
         faint: "Losing consciousness",
+        hangover: "Hangover",
     },
 
     cameraLookHint: {
         channel: "A look replaces stage darkness rather than adding to it — the engine gives both the same filter, so the later row wins. Each look carries its own brightness. Reset camera clears it.",
         monologue: "Desaturates and dims the whole stage. For darkened edges, add a vignette.",
+        hangover: "The stage sways twice before the look settles. The row waits for the sway, and the duration sets its tempo.",
     },
 
     displayableOperation: {

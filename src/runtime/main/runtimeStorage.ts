@@ -375,6 +375,50 @@ export class RuntimePersistenceStore {
 }
 
 /**
+ * Delete temp files abandoned by a process that did not live long enough to rename one.
+ *
+ * {@link atomicWriteJson} writes a sibling and renames it, so a write interrupted between those two
+ * steps leaves the sibling behind for good - nothing ever looks at it again, and nothing removes it.
+ * It used to take a crash to produce one. It no longer does: a language change now writes and then
+ * ends the process on purpose (see the renderer's `localeRestart`), and a late write from the
+ * window that is going away is caught mid-rename, so a player who changes language twice has two.
+ *
+ * Age is the test, and it has to be, because a second copy of the same game may be running right
+ * now and writing one of these. Its own temp file is milliseconds old; anything older than
+ * {@link ABANDONED_TEMP_FILE_AGE_MS} belongs to a process that is not coming back. Failures are
+ * swallowed by design - this is housekeeping, and a game that would not start because it could not
+ * tidy up would be a worse outcome than the litter.
+ */
+export const ABANDONED_TEMP_FILE_AGE_MS = 5 * 60_000;
+
+export async function sweepAbandonedTempFiles(
+    directory: string,
+    now: number = Date.now(),
+): Promise<string[]> {
+    let entries: string[];
+    try {
+        entries = await fs.readdir(directory);
+    } catch {
+        return [];
+    }
+    const removed: string[] = [];
+    await Promise.all(entries.filter(name => name.endsWith(".tmp")).map(async name => {
+        const full = path.join(directory, name);
+        try {
+            const stats = await fs.stat(full);
+            if (now - stats.mtimeMs < ABANDONED_TEMP_FILE_AGE_MS) {
+                return;
+            }
+            await fs.unlink(full);
+            removed.push(name);
+        } catch {
+            // Gone already, or held by something with an opinion about it. Either way, not ours.
+        }
+    }));
+    return removed;
+}
+
+/**
  * Write JSON where a half-written file would be worse than an old one.
  *
  * `rename` is a parameter because the refusal below is what the fallback exists for and no

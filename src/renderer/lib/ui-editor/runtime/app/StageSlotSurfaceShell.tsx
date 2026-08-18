@@ -1,6 +1,5 @@
 import {
     useCallback,
-    useEffect,
     useMemo,
     useRef,
     useState,
@@ -137,6 +136,18 @@ export type GameUiSlotHostOptions = {
     audioTracks?: readonly ProjectAudioTrack[];
     /** Preference stream so a mid-playback volume-slider drag reaches host-owned media elements. */
     subscribeGamePreferences?: (listener: () => void) => () => void;
+    /**
+     * The player changed the language from inside the game. A slot surface is exactly where that
+     * happens — a language picker built into a dialogue-box quick menu — and `GameApp` owns what it
+     * costs (writing a save, restarting, returning to the playthrough), so the slot bridge only
+     * forwards the request rather than deciding anything.
+     *
+     * Optional for the same reason `getFullscreen` is: what it does is restart the application and
+     * come back to the save it just wrote, and the story preview has no application to restart. That
+     * host leaves it unset, and a `Set Language` node on a slot surface there reaches nothing —
+     * which is the truth about the capability, not a gap to fill with a partial imitation.
+     */
+    localeChangedInGame?: () => Promise<void>;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -274,6 +285,7 @@ export function useStageSlotSurfaceRuntime(input: {
             onSetTrackVolume: options.soundTransport?.setTrackVolume,
             audioTracks: options.audioTracks,
             onSubscribeGamePreferences: options.subscribeGamePreferences,
+            onLocaleChanged: options.localeChangedInGame,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
@@ -325,9 +337,13 @@ export function useStageSlotSurfaceRuntime(input: {
         };
     }, [core, bundle, hostApi, runtimeScopeId, slotId, surface]);
 
-    useEffect(() => {
-        hostAdapterRef.current = hostAdapter;
-    }, [hostAdapter]);
+    // Assigned while rendering rather than from an effect: the ref is read by children (the dialog
+    // slot's state bridge flushes through it), and a child's effect runs before this component's
+    // does. Filled in from an effect, the very first flush after a mount found `null` and was
+    // dropped without a word - which is how a scene jump used to leave the previous speaker's
+    // avatar on the line that replaced it. Mirroring a memoized value is idempotent, so a repeated
+    // render writes the same adapter.
+    hostAdapterRef.current = hostAdapter;
 
     const flushElementIds = useMemo(
         () => collectSurfaceFlushElementIds({
@@ -421,7 +437,8 @@ export function StageSlotSurfaceBody(props: {
 
     return (
         <SurfaceLifecycleBoundary
-            core={subscriptionsReady ? core : null}
+            core={core}
+            ready={subscriptionsReady}
             blueprintDocument={bundle.ui.localBlueprints}
             persistentVariables={bundle.ui.persistentVariables}
             surface={surface}
