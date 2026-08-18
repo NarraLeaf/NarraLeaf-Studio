@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronLeft, CornerDownLeft, LayoutGrid, Plus, Star } from "lucide-react";
+import { ArrowLeft, CornerDownLeft, LayoutGrid, Plus, Star } from "lucide-react";
 import type { PanelComponentProps } from "../../types";
+import { Button, PanelHeader, SectionCard } from "@/lib/components/elements";
+// Not on the barrel (it lists the rest of the Phase 2 set); the other call sites reach in too.
+import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
+import { cn } from "@/lib/utils/cn";
 import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
 import { useWorkspace } from "@/apps/workspace/context";
@@ -219,6 +223,32 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
         ? pluginCommands.find(command => command.id === openCommandId) ?? null
         : null;
 
+    /**
+     * What the sub-page's header says, read here rather than inside each detail body.
+     *
+     * A spec page and a plugin page carried their own title block before, which put a second header
+     * under the back bar - two stacked bands saying one thing. One header, the shape every other
+     * Studio sub-page uses, needs the subject at this level.
+     */
+    const openLabel = openCommand?.label ?? openPlugin?.label ?? "";
+    const openGroup = getCommandGroup((openCommand?.group ?? openPlugin?.group ?? "utils") as StoryCommandGroupId);
+    // The command's own glyph, like the row that opened this page; the group only tints it.
+    const OpenIcon = (openCommand ? getCommandSpec(openCommand.id)?.icon : openPlugin?.icon) ?? openGroup.icon;
+
+    /**
+     * The sub-page takes focus when it opens, which is what makes Escape work and what keeps it from
+     * firing for anyone else.
+     *
+     * Not `useEscapeToClose`: that listens on the document, and a writer pressing Escape to leave
+     * text-edit in the scene beside this would lose the command they were reading. A `keydown` on the
+     * layer only reaches a layer that holds focus. `tabIndex={-1}` is the half that makes that hold -
+     * clicking a signature or an example inside the page is a click on nothing focusable, and focus
+     * would otherwise fall to the body and take Escape with it.
+     */
+    const focusSubPage = useCallback((node: HTMLDivElement | null) => {
+        node?.focus({ preventScroll: true });
+    }, []);
+
     return (
         <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface">
             <div className="border-b border-edge bg-surface px-3 py-3">
@@ -311,36 +341,51 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                 {openCommandId && (openCommand || openPlugin) ? (
                     <motion.div
                         key={openCommandId}
+                        ref={focusSubPage}
+                        tabIndex={-1}
+                        onKeyDown={event => {
+                            if (event.key === "Escape") {
+                                event.stopPropagation();
+                                setOpenCommandId(null);
+                            }
+                        }}
                         // `.nl-opaque-surface`, not `bg-surface`: this slides over the list, which
                         // stays mounted underneath, so its fill has to survive the wallpaper rule
                         // that clears every base surface (see styles.css).
-                        className="absolute inset-0 z-10 flex flex-col nl-opaque-surface shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
+                        className="absolute inset-0 z-10 flex flex-col outline-none nl-opaque-surface shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
                         initial={{ x: "100%" }}
                         animate={{ x: 0 }}
                         exit={{ x: "100%" }}
                         transition={{ type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
                     >
-                        <div className="flex shrink-0 items-center gap-1 border-b border-edge px-2 py-2">
-                            <button
-                                type="button"
-                                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                        {/* The back header every Studio sub-page wears: one row, arrow then subject. */}
+                        <PanelHeader size="md" className="px-2">
+                            <ToolbarButton
+                                size="sm"
                                 onClick={() => setOpenCommandId(null)}
+                                data-tip={t("story.manual.back")}
+                                aria-label={t("story.manual.back")}
                             >
-                                <ChevronLeft className="h-3.5 w-3.5" />
-                                <span>{t("story.manual.back")}</span>
-                            </button>
-                            <button
-                                type="button"
-                                className={[
-                                    "ml-auto grid h-7 w-7 place-items-center rounded-md transition-colors",
-                                    starredIds.has(openCommandId) ? "text-warning" : "text-fg-subtle hover:text-warning",
-                                ].join(" ")}
-                                data-tip={starredIds.has(openCommandId) ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")} aria-label={starredIds.has(openCommandId) ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")}
+                                <ArrowLeft className="h-4 w-4" />
+                            </ToolbarButton>
+                            <OpenIcon className="h-4 w-4 shrink-0" style={{ color: openGroup.iconColor }} />
+                            <div className="min-w-0 flex-1">
+                                <div className="truncate text-sm font-medium text-fg">{openLabel}</div>
+                                <div className="truncate text-2xs text-fg-subtle">
+                                    {ct(commandCategoryLabelKey(openGroup.id))}
+                                </div>
+                            </div>
+                            <ToolbarButton
+                                size="sm"
+                                active={starredIds.has(openCommandId)}
+                                className={starredIds.has(openCommandId) ? "text-warning" : undefined}
+                                data-tip={starredIds.has(openCommandId) ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")}
+                                aria-label={starredIds.has(openCommandId) ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")}
                                 onClick={() => toggleStarred(openCommandId)}
                             >
                                 <Star className="h-3.5 w-3.5" fill={starredIds.has(openCommandId) ? "currentColor" : "none"} />
-                            </button>
-                        </div>
+                            </ToolbarButton>
+                        </PanelHeader>
                         <div className="nl-no-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
                             {openCommand ? (
                                 <CommandDetail
@@ -438,7 +483,14 @@ function ActionCreatorRow(props: {
     );
 }
 
-/** A command's page: what it is, what it takes, and lines that work. */
+/**
+ * A command's page: what it is, what it takes, and lines that work.
+ *
+ * Its subject line lives in the sub-page header, not here - this is the body under it. The blocks
+ * are `SectionCard`s rather than a bordered box per parameter and per example: eight of those down
+ * a 318px panel is eight frames drawn around one list, which is the shape the panel was called out
+ * for. One frame, hairlines inside.
+ */
 function CommandDetail(props: {
     entry: StoryCommandManualEntry;
     filedUnder: readonly StoryCommandGroupId[];
@@ -447,77 +499,55 @@ function CommandDetail(props: {
     const { t } = useTranslation();
     const { t: ct } = useCommandTranslation();
     const { entry } = props;
-    const group = getCommandGroup(entry.group);
-    // The command's own glyph, like the row that opened this page; the group only tints it.
-    const Icon = getCommandSpec(entry.id)?.icon ?? group.icon;
     // Only the subjects this command's own section does not already say.
     const alsoFiledUnder = props.filedUnder.filter(id => id !== entry.group);
 
     return (
-        <div className="flex flex-col gap-4 px-3 py-3">
-            <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle">
-                        <Icon className="h-4 w-4" style={{ color: group.iconColor }} />
-                    </span>
-                    <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-fg">{entry.label}</div>
-                        <div className="truncate text-2xs text-fg-subtle">{ct(commandCategoryLabelKey(entry.group))}</div>
-                    </div>
-                </div>
-                <code className="block break-words rounded-md border border-edge bg-surface-sunken px-2.5 py-2 font-mono text-sm text-fg">
-                    {entry.signature}
-                </code>
-                <p className="text-xs leading-relaxed text-fg-muted">{entry.detail}</p>
-                {entry.aliases.length > 0 ? (
-                    <p className="text-2xs text-fg-subtle">
-                        {t("story.manual.aliases")}
-                        {": "}
-                        <span className="font-mono">{entry.aliases.join("  ")}</span>
-                    </p>
-                ) : null}
-                {alsoFiledUnder.length > 0 ? (
-                    <p className="text-2xs text-fg-subtle">
-                        {t("story.manual.appliesTo")}
-                        {": "}
-                        {alsoFiledUnder.map(id => ct(commandCategoryLabelKey(id))).join(" · ")}
-                    </p>
-                ) : null}
-            </div>
+        <div className="flex flex-col gap-3 px-3 py-3">
+            <code className="block break-words rounded-md border border-edge bg-surface-sunken px-2.5 py-2 font-mono text-sm text-fg">
+                {entry.signature}
+            </code>
+            <p className="text-xs leading-relaxed text-fg-muted">{entry.detail}</p>
+            {entry.aliases.length > 0 ? (
+                <p className="text-2xs text-fg-subtle">
+                    {t("story.manual.aliases")}
+                    {": "}
+                    <span className="font-mono">{entry.aliases.join("  ")}</span>
+                </p>
+            ) : null}
+            {alsoFiledUnder.length > 0 ? (
+                <p className="text-2xs text-fg-subtle">
+                    {t("story.manual.appliesTo")}
+                    {": "}
+                    {alsoFiledUnder.map(id => ct(commandCategoryLabelKey(id))).join(" · ")}
+                </p>
+            ) : null}
 
-            <button
-                type="button"
-                className="flex items-center justify-center gap-1.5 rounded-md border border-primary/45 bg-primary/15 px-3 py-2 text-xs text-fg transition-colors hover:bg-primary/25"
-                onClick={props.onInsert}
-            >
-                <CornerDownLeft className="h-3.5 w-3.5 text-primary" />
+            <Button variant="secondary" size="sm" fullWidth className="text-xs" onClick={props.onInsert}>
+                <CornerDownLeft className="h-3.5 w-3.5" />
                 <span>{t("story.manual.insert")}</span>
-            </button>
+            </Button>
 
-            <section className="flex flex-col gap-1.5">
-                <h3 className="text-2xs font-medium tracking-wide text-fg-subtle">{t("story.manual.parameters")}</h3>
+            <SectionCard title={t("story.manual.parameters")} bodyClassName="p-0">
                 {entry.params.length === 0 ? (
-                    <p className="text-xs text-fg-subtle">{t("story.manual.noParameters")}</p>
+                    <p className="px-2.5 py-2 text-xs text-fg-subtle">{t("story.manual.noParameters")}</p>
                 ) : (
-                    <ul className="flex flex-col gap-1.5">
+                    <ul className="divide-y divide-edge-subtle">
                         {entry.params.map(param => <ParamRow key={param.name} param={param} />)}
                     </ul>
                 )}
-            </section>
+            </SectionCard>
 
             {entry.examples.length > 0 ? (
-                <section className="flex flex-col gap-1.5">
-                    <h3 className="text-2xs font-medium tracking-wide text-fg-subtle">{t("story.manual.examples")}</h3>
-                    <ul className="flex flex-col gap-1">
+                <SectionCard title={t("story.manual.examples")} bodyClassName="p-0">
+                    <ul className="divide-y divide-edge-subtle">
                         {entry.examples.map(example => (
-                            <li key={example}>
-                                <code className="block break-words rounded-md border border-edge-subtle bg-surface-sunken px-2 py-1.5 font-mono text-2xs text-fg-muted">
-                                    {example}
-                                </code>
+                            <li key={example} className="break-words px-2.5 py-1.5 font-mono text-2xs text-fg-muted">
+                                {example}
                             </li>
                         ))}
                     </ul>
-                </section>
+                </SectionCard>
             ) : null}
         </div>
     );
@@ -526,11 +556,11 @@ function CommandDetail(props: {
 function ParamRow({ param }: { param: StoryCommandManualParam }) {
     const { t } = useTranslation();
     return (
-        <li className="rounded-md border border-edge-subtle bg-fill-subtle px-2.5 py-2">
+        <li className="px-2.5 py-2">
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                 <code className="font-mono text-xs text-fg">{param.slot}</code>
                 <span className="text-2xs text-fg-muted">{param.hint}</span>
-                <span className={["ml-auto shrink-0 text-2xs", param.required ? "text-warning" : "text-fg-subtle"].join(" ")}>
+                <span className={cn("ml-auto shrink-0 text-2xs", param.required ? "text-warning" : "text-fg-subtle")}>
                     {param.required ? t("story.manual.required") : t("story.manual.optional")}
                 </span>
             </div>
@@ -550,25 +580,13 @@ function ParamRow({ param }: { param: StoryCommandManualParam }) {
 /** A plugin action has no spec, so its page is what its registration provided, plus the insert. */
 function PluginDetail({ command, onInsert }: { command: PaletteActionCommand; onInsert: () => void }) {
     const { t } = useTranslation();
-    const group = getCommandGroup(command.group);
-    const Icon = command.icon;
     return (
         <div className="flex flex-col gap-3 px-3 py-3">
-            <div className="flex items-center gap-2">
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-edge bg-fill-subtle">
-                    <Icon className="h-4 w-4" style={{ color: group.iconColor }} />
-                </span>
-                <div className="min-w-0 text-sm font-medium text-fg">{command.label}</div>
-            </div>
             <p className="text-xs leading-relaxed text-fg-muted">{command.detail}</p>
-            <button
-                type="button"
-                className="flex items-center justify-center gap-1.5 rounded-md border border-primary/45 bg-primary/15 px-3 py-2 text-xs text-fg transition-colors hover:bg-primary/25"
-                onClick={onInsert}
-            >
-                <CornerDownLeft className="h-3.5 w-3.5 text-primary" />
+            <Button variant="secondary" size="sm" fullWidth className="text-xs" onClick={onInsert}>
+                <CornerDownLeft className="h-3.5 w-3.5" />
                 <span>{t("story.manual.insert")}</span>
-            </button>
+            </Button>
         </div>
     );
 }
