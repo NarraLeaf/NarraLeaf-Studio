@@ -6,6 +6,7 @@ import {
     getStoryCameraLookPreset,
     resolveStoryCameraLook,
     resolveStoryCameraLookOscillation,
+    storyCameraLookTweens,
     storyCameraLookSways,
     STORY_CAMERA_LOOK_DEFAULT_PRESET_ID,
     STORY_CAMERA_LOOK_MAX_INTENSITY,
@@ -96,10 +97,29 @@ describe("cameraLookPresets", () => {
         }
     });
 
-    it("gives every preset its own tempo, and only a moving one spends it", () => {
-        // A still grade lands in one frame, so its tempo is carried but never read; the sway is the
-        // one grade the duration reaches. `storyCameraLookSways` is what every surface asks, so the
-        // library and the UI cannot disagree about which grades own a timing field.
+    it("eases a grade only when its own chain turns no hue", () => {
+        // The rule the compiler asks about every grade, checked here against the recipes rather than
+        // against a hand-kept list. A chain with no angle interpolates monotonically toward its
+        // target and is safe to ease; one with an angle has to cross the wheel to get there, and
+        // every path across it - in either direction, flattened first or not - passes through hues
+        // nobody chose. That was measured: an authored flatten-then-rotate route is green at its
+        // midpoint too, at `grayscale(1) sepia(1) hue-rotate(38deg)`.
+        for (const preset of STORY_CAMERA_LOOK_PRESETS) {
+            const angle = /hue-rotate\((-?[\d.]+)deg\)/.exec(preset.build(1));
+            const turns = Boolean(angle && Number(angle[1]) !== 0);
+            expect(storyCameraLookTweens(preset.id, 1), preset.id).toBe(!turns);
+        }
+        expect(STORY_CAMERA_LOOK_PRESETS.filter(p => !storyCameraLookTweens(p.id, 1)).map(p => p.id))
+            .toEqual(["moonlight"]);
+        // Nothing to ease onto, and nothing this library named.
+        expect(storyCameraLookTweens("memory", 0)).toBe(false);
+        expect(storyCameraLookTweens("sunset", 1)).toBe(false);
+        expect(storyCameraLookTweens(undefined, 1)).toBe(false);
+    });
+    it("gives every preset its own tempo, and names the one that sways", () => {
+        // Every grade spends its duration - on its route in, on its sway, or on the plain tween - so
+        // every one carries a tempo. `storyCameraLookSways` is what every surface asks about the
+        // moving one, so the library and the UI cannot disagree about which grade that is.
         for (const preset of STORY_CAMERA_LOOK_PRESETS) {
             expect(storyCameraLookSways(preset.id), preset.id).toBe(Boolean(preset.oscillate));
             expect(preset.defaultDurationMs, preset.id).toBeGreaterThan(0);

@@ -35,6 +35,12 @@ export type StoryCandidateMark =
     | { kind: "character"; characterId?: string }
     /** The author's own text offered back — a temp speaker, an object made elsewhere. Backs nothing, so it can picture nothing. */
     | { kind: "freeName" }
+    /**
+     * A stage singleton named by its reserved word — the camera, the scene background, a built-in
+     * layer. Pictures nothing on purpose: there is no asset and no creator row behind it, and the
+     * glyph is the whole point of the mark (it is what says "this is not something you made").
+     */
+    | { kind: "reservedTarget" }
     /** A named look of one character: a pose id (preset) or a tag id on `axisId` (layered). */
     | { kind: "appearance"; characterId?: string; refId?: string; axisId?: string }
     | { kind: "puppetChannel"; channel: StoryPuppetChannel }
@@ -166,6 +172,14 @@ function targetCandidates(
     context: StoryCommandContext,
 ): StoryCommandCandidate[] {
     const candidates: StoryCommandCandidate[] = [];
+    // The reserved words lead, the way `bgm` leads the audio list: they are the stage singletons an
+    // author cannot discover by looking at what they have created, so a slot that answers to them has
+    // to say so the moment the slot opens.
+    candidates.push(...refCandidates(
+        (type.reserved ?? []).map(name => ({ id: name, name })),
+        query,
+        () => ({ kind: "reservedTarget" }),
+    ));
     if (type.accepts.includes("character")) {
         candidates.push(...refCandidates(context.characters, query, entry => ({ kind: "character", characterId: entry.id })));
     }

@@ -24,6 +24,7 @@ import {
     LOCALE_STORAGE_KEY,
     characterTranslationUnitId,
     matchSystemLocale,
+    normalizeLanguageChangeConfiguration,
     resolveLocalizedUnitText,
 } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY } from "@shared/types/voice";
@@ -148,7 +149,12 @@ import { createSoundTransport } from "./soundTransport";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
 import { attachPlayerPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
 import { loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
-import { applyLocaleChange, resumeAfterLocaleRestart } from "./localeRestart";
+import {
+    applyLocaleChange,
+    consumeFreshRestart,
+    promotePendingLocale,
+    resumeAfterLocaleRestart,
+} from "./localeRestart";
 import { createSkipRunController } from "./skipRunController";
 import { createSessionGate } from "./sessionGate";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
@@ -345,6 +351,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         let cancelled = false;
         void (async () => {
             try {
+                // Before the stored language is read, and in this effect rather than its own so the
+                // order is not a matter of which effect React runs first: a player who deferred a
+                // change last session is owed it now, and everything below - and every line the
+                // game is about to render - has to see the language they chose, not the one they
+                // were in when they chose it.
+                await promotePendingLocale({
+                    persistenceGetAsync: key => core.scopeBridge.persistenceGetAsync(key),
+                    persistenceSet: (key, value) => core.scopeBridge.persistenceSet(key, value),
+                });
+                if (cancelled) {
+                    return;
+                }
                 const stored = await core.scopeBridge.persistenceGetAsync(LOCALE_STORAGE_KEY);
                 if (cancelled || (typeof stored === "string" && localization.locales.some(locale => locale.code === stored))) {
                     return;
@@ -1754,6 +1772,15 @@ export function GameApp(props: GameAppProps): ReactNode {
         () => normalizeSaveCompatibilityConfiguration(bundle.saveCompatibility),
         [bundle.saveCompatibility],
     );
+    /**
+     * What this project asked for when the player changes language mid-playthrough. Read from the
+     * bundle like every other policy the shipped game obeys, so a build behaves the same in Dev
+     * Mode, in a preview and in the packaged game.
+     */
+    const languageChange = useMemo(
+        () => normalizeLanguageChangeConfiguration(bundle.languageChange),
+        [bundle.languageChange],
+    );
     const writeSave = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
         const liveGame = requireActiveLiveGame("Save Game");
         let capture: string | undefined;
@@ -2037,17 +2064,18 @@ export function GameApp(props: GameAppProps): ReactNode {
      * happens at all on a title screen or a settings page opened before a run started, which is
      * where most players change it.
      */
-    const handleLocaleChanged = useCallback(async (): Promise<void> => {
+    const handleLocaleChanged = useCallback(async (code: string): Promise<void> => {
         await applyLocaleChange({
             isPlaythroughRunning,
+            inGame: languageChange.inGame,
             writeSave: id => writeSave(id),
             persistenceSet: async (key, value) => {
                 await core?.scopeBridge.persistenceSet(key, value);
             },
             restartApplication: host.restartApplication,
             report: reportLocaleRestart,
-        });
-    }, [core, host.restartApplication, isPlaythroughRunning, reportLocaleRestart, writeSave]);
+        }, code);
+    }, [core, host.restartApplication, isPlaythroughRunning, languageChange, reportLocaleRestart, writeSave]);
 
     /**
      * Put the player back into the run a language change restarted the game out of.
@@ -2077,6 +2105,64 @@ export function GameApp(props: GameAppProps): ReactNode {
          * flash of a screen the player did not ask to see. The marker is read again, and cleared,
          * by the resume itself; this read decides nothing but the cover.
          */
+        const pendingSeam = {
+            persistenceGetAsync: (key: string) => scope.persistenceGetAsync(key),
+            persistenceSet: (key: string, value: unknown) => scope.persistenceSet(key, value),
+        };
+        const deadline = Date.now() + LOCALE_RESUME_SESSION_WAIT_MS;
+        const settle = (ms = LOCALE_RESUME_POLL_MS) => new Promise(resolve => { window.setTimeout(resolve, ms); });
+        /**
+         * The environment this launch is meant to act on, ready and standing still.
+         *
+         * Two conditions, both learned from a real run. The session has to belong to THIS bundle
+         * revision: the refs still describe the previous one until a reload's mount replaces them,
+         * and a load into the session being torn down is thrown away by the mount that follows -
+         * the player lands at the top of the scene with their parked run already deleted. And the
+         * environment has to have stopped moving: a mount publishes its live game a moment before
+         * whatever started it enters the game, and entering calls `newGame()`, which wipes exactly
+         * what the load just put back.
+         *
+         * Answers false when neither happens in time. A launch that never produces a game must
+         * leave what it was owed for the next one rather than consume it into nothing.
+         */
+        const sessionPrefix = `${bundle.bundleId}:${bundle.revision}:`;
+        const environmentIsMine = () => Boolean(hasLiveGame() && nlrSessionIdRef.current?.startsWith(sessionPrefix));
+        const waitForOwnEnvironment = async (): Promise<boolean> => {
+            while (!environmentIsMine()) {
+                if (Date.now() > deadline) {
+                    return false;
+                }
+                await settle();
+            }
+            await settle(LOCALE_RESUME_SETTLE_MS);
+            return environmentIsMine();
+        };
+        /**
+         * A restart the player is not meant to come back from, which only this host has to act on.
+         *
+         * A packaged game ends and starts again on its title screen, so by the time this runs there
+         * is nothing to leave. Dev Mode restarts by reloading its session, and a reload deliberately
+         * puts the author back into the story they were testing - so without this the same setting
+         * would end a playthrough in the shipped game and quietly keep it in the editor. Waited for
+         * the same way the resume is, because the run this has to end is still coming up.
+         */
+        if (await consumeFreshRestart(pendingSeam)) {
+            setLocaleResumePending(true);
+            try {
+                // The surface this launch starts on, which is where a player who restarted with
+                // nothing kept belongs. A host that names none has no page to leave to, and the
+                // run simply stays - the same degradation the ending page takes.
+                const entrySurfaceId = host.entrySurfaceId?.trim();
+                if (entrySurfaceId && await waitForOwnEnvironment() && isPlaythroughRunning()) {
+                    await quitGame(entrySurfaceId);
+                }
+            } catch (error) {
+                reportLocaleRestart("error", `The game could not be returned to its start after the language change: ${normalizeError(error)}`);
+            } finally {
+                setLocaleResumePending(false);
+            }
+            return;
+        }
         let owed = false;
         try {
             owed = typeof await scope.persistenceGetAsync(LOCALE_RESTART_RESUME_KEY) === "string";
@@ -2091,36 +2177,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         // than the one it was hiding. If the resume is still going by then the player gets the
         // title screen and the load lands under it, which is the behaviour without a cover at all.
         const coverCap = window.setTimeout(() => setLocaleResumePending(false), LOCALE_RESUME_COVER_MAX_MS);
-        const deadline = Date.now() + LOCALE_RESUME_SESSION_WAIT_MS;
-        const settle = (ms = LOCALE_RESUME_POLL_MS) => new Promise(resolve => { window.setTimeout(resolve, ms); });
-        /**
-         * The environment this launch is meant to resume into, ready and standing still.
-         *
-         * Two conditions, both learned from a real run. The session has to belong to THIS bundle
-         * revision: the refs still describe the previous one until a reload's mount replaces them,
-         * and a load into the session being torn down is thrown away by the mount that follows -
-         * the player lands at the top of the scene with their parked run already deleted. And the
-         * environment has to have stopped moving: a mount publishes its live game a moment before
-         * whatever started it enters the game, and entering calls `newGame()`, which wipes exactly
-         * what the load just put back.
-         */
-        const sessionPrefix = `${bundle.bundleId}:${bundle.revision}:`;
-        const environmentIsMine = () => Boolean(hasLiveGame() && nlrSessionIdRef.current?.startsWith(sessionPrefix));
-        // Before the marker is even read: a launch that never produces a game must leave it for the
-        // next one rather than consume it into nothing.
         const uncover = () => {
             window.clearTimeout(coverCap);
             setLocaleResumePending(false);
         };
-        while (!environmentIsMine()) {
-            if (Date.now() > deadline) {
-                uncover();
-                return;
-            }
-            await settle();
-        }
-        await settle(LOCALE_RESUME_SETTLE_MS);
-        if (!environmentIsMine()) {
+        if (!await waitForOwnEnvironment()) {
             uncover();
             return;
         }
@@ -2174,7 +2235,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         core,
         deleteSave,
         hasLiveGame,
+        host.entrySurfaceId,
+        isPlaythroughRunning,
         loadSaveForGraph,
+        quitGame,
         reportLocaleRestart,
     ]);
 

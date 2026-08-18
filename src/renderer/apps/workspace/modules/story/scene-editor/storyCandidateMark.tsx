@@ -205,6 +205,11 @@ function markGlyph(mark: StoryCandidateMark): typeof Hash {
             return UserRound;
         case "freeName":
             return UserRoundPlus;
+        // A stage singleton: the camera, the background, a built-in layer. One glyph for all four -
+        // what they have in common (nobody made them, and they are always there) is the whole fact
+        // the mark has to carry.
+        case "reservedTarget":
+            return Aperture;
         case "appearance":
             return Smile;
         case "puppetChannel":

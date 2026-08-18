@@ -1,4 +1,4 @@
-import { Equal, Minus, Plus, RotateCcw, ToggleRight, Variable } from "lucide-react";
+import { Equal, Minus, Plus, ToggleRight, Variable } from "lucide-react";
 import type { StoryActionPayload, StoryBlock, StoryDeclarationPayload, StoryExpr, StoryExpression, StoryLiteralValue, StoryVariableValueType } from "@shared/types/story";
 import { inferStoryExpressionType, storyExprTypeFits } from "@shared/utils/storyExpressionEval";
 import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
@@ -196,27 +196,29 @@ export const toggle = defineStoryCommand({
     },
 });
 
-export const reset = defineStoryCommand({
-    id: "reset",
-    token: "reset",
-    category: "data",
-    icon: RotateCcw,
-    examples: ["/reset gold"],
-    params: { variable: VARIABLE },
-    build(args, ctx) {
-        const { block, base, payload } = setVariableBase(ctx.generateId, args.variable);
-        if (!base || !payload || args.variable?.kind !== "variable") {
-            return block;
-        }
-        // Resetting assigns the declared default, snapshotted here rather than resolved at runtime:
-        // NLR has no "restore to default" action, and a row that silently changed meaning when someone
-        // edited the declaration would be worse than one that says what it assigns.
-        return {
-            ...base,
-            payload: { ...payload, value: args.variable.defaultValue ?? defaultForType(args.variable.valueType), expression: undefined },
-        };
-    },
-});
+/**
+ * The variable half of `/reset`, which lives in `specs/transform.ts` now.
+ *
+ * The two resets merged in M2, and they merged because they were one sentence: "put this back the way
+ * it was declared / the way it was drawn". A variable and a displayable are two subjects of one verb,
+ * which is the generic-verb rule `/show` has followed since B3 - the target says what is being reset,
+ * and the token never does. The build stays here, beside the four other writers that share
+ * `setVariableBase`, so the variable payload has one home.
+ *
+ * Resetting assigns the declared default, snapshotted at commit rather than resolved at runtime: NLR
+ * has no "restore to default" action, and a row that silently changed meaning when someone edited the
+ * declaration would be worse than one that says what it assigns.
+ */
+export function resetVariableBlock(generateId: () => string, variable: StoryCommandValue | undefined): StoryBlock {
+    const { block, base, payload } = setVariableBase(generateId, variable);
+    if (!base || !payload || variable?.kind !== "variable") {
+        return block;
+    }
+    return {
+        ...base,
+        payload: { ...payload, value: variable.defaultValue ?? defaultForType(variable.valueType), expression: undefined },
+    };
+}
 
 /** The zero value of a type - what a variable declared without an explicit default holds. */
 export function defaultForType(valueType: StoryVariableValueType): StoryLiteralValue {
@@ -431,4 +433,4 @@ export const declareLocal = defineStoryCommand({
  * scene exported to a script file still holds `/save gold 10 type=number` lines that the importer
  * re-parses verbatim, so a future `/save` meaning anything else would silently reinterpret them.
  */
-export const VARIABLE_COMMANDS = [set, inc, dec, toggle, reset, declareLocal];
+export const VARIABLE_COMMANDS = [set, inc, dec, toggle, declareLocal];

@@ -328,7 +328,8 @@ export const help = {
                 + "back. The import reports how many lines it applied and how many it could not match.\n"
                 + "- Export and import are in the language row's menu.\n"
                 + "- A player who changes language during a game gets the game restarted, and comes back "
-                + "to the line they were on.",
+                + "to the line they were on. Project settings offer two other answers: restart without "
+                + "keeping the playthrough, or apply the next time the game is started.",
         },
         brand: {
             title: "Brand colors",

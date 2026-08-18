@@ -122,6 +122,7 @@ describe("androidLacksPlayPackage", () => {
 describe("GameBuildManager.start fail-fast guards", () => {
     const makeManager = () => new GameBuildManager({
         logger: { error: () => undefined },
+        hasExperimentalCondition: () => false,
     } as unknown as ConstructorParameters<typeof GameBuildManager>[0]);
     const entry = {} as GameRuntimeLaunchEntry;
 
@@ -144,6 +145,7 @@ describe("GameBuildManager.start fail-fast guards", () => {
 describe("GameBuildManager.start while the workspace is frozen", () => {
     const makeManager = () => new GameBuildManager({
         logger: { error: () => undefined },
+        hasExperimentalCondition: () => false,
     } as unknown as ConstructorParameters<typeof GameBuildManager>[0]);
     const entry = {} as GameRuntimeLaunchEntry;
     const projectPath = path.join("/nonexistent", "frozen-project");
@@ -220,6 +222,27 @@ describe("gameFusesForPlatform", () => {
         expect(gameFusesForPlatform("windows", true).enableEmbeddedAsarIntegrityValidation).toBe(true);
         expect(gameFusesForPlatform("macos", true).enableEmbeddedAsarIntegrityValidation).toBe(true);
         expect(gameFusesForPlatform("linux", true).enableEmbeddedAsarIntegrityValidation).toBe(false);
+    });
+
+    /*
+     * The experimental debuggable-build condition. Asar integrity hard-quits the app on any
+     * post-package mutation of the archive, which is exactly what an artifact made to be inspected
+     * cannot carry - and it is the one fuse the condition is allowed to move.
+     */
+    it("drops asar integrity for a debuggable build, signed or not", () => {
+        expect(gameFusesForPlatform("windows", true, false, true).enableEmbeddedAsarIntegrityValidation).toBe(false);
+        expect(gameFusesForPlatform("macos", true, false, true).enableEmbeddedAsarIntegrityValidation).toBe(false);
+    });
+
+    it("keeps every other fuse where it was for a debuggable build", () => {
+        for (const platform of ["windows", "macos", "linux"] as const) {
+            const debuggable = gameFusesForPlatform(platform, true, false, true);
+            expect(debuggable.runAsNode).toBe(false);
+            expect(debuggable.enableNodeOptionsEnvironmentVariable).toBe(false);
+            expect(debuggable.enableNodeCliInspectArguments).toBe(false);
+            expect(debuggable.onlyLoadAppFromAsar).toBe(true);
+            expect(debuggable.grantFileProtocolExtraPrivileges).toBe(false);
+        }
     });
 
     it("only re-signs on macOS", () => {
