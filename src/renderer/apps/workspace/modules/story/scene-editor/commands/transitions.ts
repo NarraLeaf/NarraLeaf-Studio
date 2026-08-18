@@ -1,4 +1,5 @@
-import type { StoryTransformRef, StoryTransitionRef } from "@shared/types/story";
+import type { StoryClipReveal, StoryTransformProps, StoryTransformRef, StoryTransitionRef } from "@shared/types/story";
+import { legacyPresetPosition } from "@shared/story/transformLegacy";
 import type { StoryCommandEnumOption } from "../storyCommandGrammar";
 
 /**
@@ -35,11 +36,10 @@ export type StoryTransitionWord =
     | "darkness"
     | "exposure"
     | "zoom"
-    // The transform presets the inspector offers that no word reached. They are the same field a
-    // `t=` writes (`StoryTransformRef.preset`), so a look an author could pick on the right had no
-    // spelling on the left — and a row showing it could not be typed back. One word each, named
-    // after the preset, since there is nothing to unify: unlike `fade`, they read the same in both
-    // directions.
+    // The channels the inspector offers that no word reached. They write the same transform a `t=`
+    // does, so a look an author could pick on the right had no spelling on the left — and a row
+    // showing it could not be typed back. One word each, named after the channel, since there is
+    // nothing to unify: unlike `fade`, they read the same in both directions.
     | "scale"
     | "rotate"
     | "opacity"
@@ -106,13 +106,21 @@ function inspectorLabelKey(context: StoryTransitionContext, word: StoryTransitio
         const kind = transitionKindFor(context, word);
         return kind ? `storyInspector.transition.${kind}` : null;
     }
-    const preset = transformPresetFor(context, word);
-    if (!preset) {
-        return null;
+    // Spelled out rather than derived from what the word writes: since v18 a word writes a bag of
+    // props, and several words write the same channel (`fade` and `opacity` both set an opacity), so
+    // there is nothing to derive a distinct label from. The catalogue keys are unchanged - the
+    // inspector still calls a wipe "slide reveal" - because the labels are what an author reads and
+    // nothing about them moved.
+    //
+    // The two direction-sensitive words keep saying which way they go: a `/hide`'s `fade` reads 淡出,
+    // not 淡入. That was free while the stored value was `fadeOut`; now the context has to say it.
+    if (word === "fade") {
+        return context === "conceal" ? "storyInspector.transformPreset.fadeOut" : "storyInspector.transformPreset.fadeIn";
     }
-    // The inspector calls this preset "slide reveal"; the vocabulary calls the word `wipe`. One
-    // catalog entry, spelled under the inspector's own name for it.
-    return `storyInspector.transformPreset.${preset === "wipe" ? "slideReveal" : preset}`;
+    if (word === "circle") {
+        return context === "conceal" ? "storyInspector.transformPreset.circleClose" : "storyInspector.transformPreset.circleReveal";
+    }
+    return TRANSFORM_WORD_LABELS[word] ?? null;
 }
 
 /** The enum options a `t=` param offers in a given context - unified words, canonical-first. */
@@ -171,39 +179,148 @@ const CHARACTER_KINDS: Partial<Record<StoryTransitionWord, StoryTransitionRef["k
     fade: "fadeIn",
 };
 
-const REVEAL_PRESETS: Partial<Record<StoryTransitionWord, NonNullable<StoryTransformRef["preset"]>>> = {
-    fade: "fadeIn",
-    "slide-left": "slideLeft",
-    "slide-right": "slideRight",
-    "slide-up": "slideUp",
-    "slide-down": "slideDown",
-    zoom: "zoom",
-    scale: "scale",
-    rotate: "rotate",
-    opacity: "opacity",
-    darken: "darken",
-    circle: "circleReveal",
-    wipe: "wipe",
-    none: "none",
+/**
+ * What a `t=` word writes on a stage object, as PROPS.
+ *
+ * There is no preset enum any more, so a word no longer names a look the compiler has to translate -
+ * it names the channel and the value the bag will carry. Which is what these words always were: the
+ * five that had no unified spelling (`scale`, `rotate`, `opacity`, `darken`, `zoom`) are exactly the
+ * channels a preset gave a name to, and the slides are positions.
+ *
+ * The values are the DEFAULTS a bare word means. A row that already states one keeps it - see
+ * {@link applyTransitionWordToTransform} - so typing `t=zoom` on a row zoomed to 1.5 does not reset it.
+ */
+export type StoryTransformWordEffect = {
+    to?: StoryTransformProps;
+    clipReveal?: StoryClipReveal;
+    /**
+     * Whether the word names a CHANNEL rather than a value, in which case the number the row already
+     * carries survives being re-typed.
+     *
+     * `t=zoom` on a row zoomed to 1.5 means "keep zooming, that way" and must not reset it to 1 - which
+     * is what the old model got for free by storing the preset name beside a loose props bag. `t=fade`
+     * is the opposite: on a `/hide` it means opacity 0 outright, and preserving the 1 a `/show` had put
+     * there would produce a conceal that reveals. Placements name values too, for the same reason.
+     */
+    preserve?: boolean;
 };
 
-const CONCEAL_PRESETS: Partial<Record<StoryTransitionWord, NonNullable<StoryTransformRef["preset"]>>> = {
-    ...REVEAL_PRESETS,
-    fade: "fadeOut",
-    circle: "circleClose",
+function slide(word: string): StoryTransformProps {
+    return { position: legacyPresetPosition(word, {}) };
+}
+
+const REVEAL_EFFECTS: Partial<Record<StoryTransitionWord, StoryTransformWordEffect>> = {
+    fade: { to: { opacity: 1 } },
+    "slide-left": { to: slide("slideLeft") },
+    "slide-right": { to: slide("slideRight") },
+    "slide-up": { to: slide("slideUp") },
+    "slide-down": { to: slide("slideDown") },
+    zoom: { to: { zoom: 1 }, preserve: true },
+    scale: { to: { scaleX: 1, scaleY: 1 }, preserve: true },
+    rotate: { to: { rotation: 0 }, preserve: true },
+    opacity: { to: { opacity: 1 }, preserve: true },
+    darken: { to: { filter: { brightness: 0.5 } }, preserve: true },
+    circle: { clipReveal: { kind: "circleReveal" } },
+    wipe: { clipReveal: { kind: "wipe" } },
+    none: {},
 };
+
+const CONCEAL_EFFECTS: Partial<Record<StoryTransitionWord, StoryTransformWordEffect>> = {
+    ...REVEAL_EFFECTS,
+    fade: { to: { opacity: 0 } },
+    circle: { clipReveal: { kind: "circleClose" } },
+};
+
+/** The inspector's own word for each transform word - unchanged catalogue keys. */
+const TRANSFORM_WORD_LABELS: Partial<Record<StoryTransitionWord, string>> = {
+    fade: "storyInspector.transformPreset.fadeIn",
+    "slide-left": "storyInspector.transformPreset.slideLeft",
+    "slide-right": "storyInspector.transformPreset.slideRight",
+    "slide-up": "storyInspector.transformPreset.slideUp",
+    "slide-down": "storyInspector.transformPreset.slideDown",
+    zoom: "storyInspector.transformPreset.zoom",
+    scale: "storyInspector.transformPreset.scale",
+    rotate: "storyInspector.transformPreset.rotate",
+    opacity: "storyInspector.transformPreset.opacity",
+    darken: "storyInspector.transformPreset.darken",
+    circle: "storyInspector.transformPreset.circleReveal",
+    wipe: "storyInspector.transformPreset.slideReveal",
+};
+
+/**
+ * The channels the `t=` / `at=` vocabulary owns.
+ *
+ * A word REPLACES the row's look rather than adding to it, which is what the single-preset field did
+ * for free and now has to be spelled: writing `t=rotate` over a row that said `t=zoom` must leave the
+ * zoom behind, or the row would say two things and the line would print only one of them.
+ */
+const VOCABULARY_KEYS = ["position", "zoom", "scaleX", "scaleY", "rotation", "opacity", "filter"] as const;
 
 /** The `StoryTransitionRef.kind` a unified word means in a whole-screen or character context. */
 export function transitionKindFor(context: "scene" | "character", word: string): StoryTransitionRef["kind"] | undefined {
     return (context === "scene" ? SCENE_KINDS : CHARACTER_KINDS)[word as StoryTransitionWord];
 }
 
-/** The transform preset a unified word means on a stage object's show/hide (or the NVL panel). */
-export function transformPresetFor(context: "reveal" | "conceal" | "nvl", word: string): StoryTransformRef["preset"] | undefined {
+/** The props a unified word writes on a stage object's show/hide (or the NVL panel). */
+export function transformEffectFor(context: "reveal" | "conceal" | "nvl", word: string): StoryTransformWordEffect | undefined {
     if (context === "nvl") {
-        return word === "fade" ? "fadeIn" : word === "none" ? "none" : undefined;
+        return word === "fade" ? { to: { opacity: 1 } } : word === "none" ? {} : undefined;
     }
-    return (context === "reveal" ? REVEAL_PRESETS : CONCEAL_PRESETS)[word as StoryTransitionWord];
+    return (context === "reveal" ? REVEAL_EFFECTS : CONCEAL_EFFECTS)[word as StoryTransitionWord];
+}
+
+/**
+ * Fold a `t=` word into a transform ref.
+ *
+ * A word states the WHOLE look, so everything else the vocabulary owns is dropped - a leftover from the
+ * previous word would be a setting no line could print. Whether the row's existing number survives is
+ * the word's own business; see `preserve`.
+ */
+export function applyTransitionWordToTransform(
+    current: StoryTransformRef | undefined,
+    context: "reveal" | "conceal" | "nvl",
+    word: string,
+): StoryTransformRef | undefined {
+    const effect = transformEffectFor(context, word);
+    if (!effect) {
+        return current;
+    }
+    return withTransformChannels(current, effect);
+}
+
+/** The same fold for `at=`, whose vocabulary is the three placements. */
+export function applyPlacementToTransform(
+    current: StoryTransformRef | undefined,
+    placement: string,
+): StoryTransformRef | undefined {
+    const position = legacyPresetPosition(placement, {});
+    return position ? withTransformChannels(current, { to: { position } }) : current;
+}
+
+function withTransformChannels(
+    current: StoryTransformRef | undefined,
+    effect: StoryTransformWordEffect,
+): StoryTransformRef {
+    const previous = current?.to ?? {};
+    const to: StoryTransformProps = { ...previous };
+    for (const key of VOCABULARY_KEYS) {
+        delete to[key];
+    }
+    for (const [key, value] of Object.entries(effect.to ?? {})) {
+        const kept = effect.preserve ? previous[key as keyof StoryTransformProps] : undefined;
+        (to as Record<string, unknown>)[key] = kept ?? value;
+    }
+    // `mode` is left absent rather than written as `"props"`: it is the default, and a field every
+    // document would carry on every transform is a diff line that says nothing.
+    const next: StoryTransformRef = { ...(current ?? {}), to };
+    delete next.mode;
+    delete next.animationId;
+    if (effect.clipReveal) {
+        next.clipReveal = { ...effect.clipReveal, ...(current?.clipReveal?.kind === effect.clipReveal.kind ? current.clipReveal : {}) };
+    } else {
+        delete next.clipReveal;
+    }
+    return next;
 }
 
 /**
@@ -232,7 +349,70 @@ export function transitionWordFor(context: "scene" | "character", kind: StoryTra
     return wordFor(context, kind, word => transitionKindFor(context, word));
 }
 
-/** The unified word behind a stored transform preset, or `null` when no word names it. */
-export function transitionWordForPreset(context: "reveal" | "conceal" | "nvl", preset: StoryTransformRef["preset"] | undefined): StoryTransitionWord | null {
-    return wordFor(context, preset, word => transformPresetFor(context, word));
+/**
+ * The unified word behind a stored transform, or `null` when no word names it.
+ *
+ * Classified by WHICH channel the bag states, not by the values in it: `t=zoom` and a zoom of 1.5 are
+ * the same word, and the word names the channel. Which also means two words that write one channel
+ * collapse onto whichever the context prefers - a stored opacity reads back as `fade`, never as
+ * `opacity`, since `fade` is what an author types for it.
+ *
+ * A placement is deliberately NOT named here, the way it was not before: `left` / `center` / `right`
+ * are the `at=` slot's, and a bag carrying one of those three positions belongs to that reader.
+ */
+export function transitionWordForTransform(
+    context: "reveal" | "conceal" | "nvl",
+    transform: StoryTransformRef | undefined,
+): StoryTransitionWord | null {
+    if (!transform || transform.mode === "animation") {
+        return null;
+    }
+    if (transform.clipReveal) {
+        return supports(context, transform.clipReveal.kind === "wipe" ? "wipe" : "circle");
+    }
+    const to = transform.to;
+    if (!to) {
+        return null;
+    }
+    if (to.position !== undefined) {
+        return placementWordFor(to.position) ? null : supports(context, slideWordFor(to.position));
+    }
+    if (to.zoom !== undefined) return supports(context, "zoom");
+    if (to.scaleX !== undefined || to.scaleY !== undefined) return supports(context, "scale");
+    if (to.rotation !== undefined) return supports(context, "rotate");
+    if (to.filter && to.filter.brightness !== undefined) return supports(context, "darken");
+    if (to.opacity !== undefined) return supports(context, "fade");
+    return null;
+}
+
+function supports(context: StoryTransitionContext, word: StoryTransitionWord | null): StoryTransitionWord | null {
+    return word && SUPPORTED[context].includes(word) ? word : null;
+}
+
+/**
+ * The `at=` word a stored position spells, or `null` when it is not one of the three.
+ *
+ * The three placements are the only positions the vocabulary names, so anything else - an offset, a
+ * hand-typed align - has no word and prints nothing rather than being rounded to the nearest one.
+ */
+export function placementWordFor(position: StoryTransformProps["position"]): "left" | "center" | "right" | null {
+    if (!position || position.xoffset !== undefined || position.yoffset !== undefined || position.yalign !== 0.5) {
+        return null;
+    }
+    for (const word of ["left", "center", "right"] as const) {
+        if (legacyPresetPosition(word, {})?.xalign === position.xalign) {
+            return word;
+        }
+    }
+    return null;
+}
+
+function slideWordFor(position: StoryTransformProps["position"]): StoryTransitionWord | null {
+    for (const word of ["slide-left", "slide-right", "slide-up", "slide-down"] as const) {
+        const target = REVEAL_EFFECTS[word]?.to?.position;
+        if (target && target.xalign === position?.xalign && target.yalign === position?.yalign) {
+            return word;
+        }
+    }
+    return null;
 }

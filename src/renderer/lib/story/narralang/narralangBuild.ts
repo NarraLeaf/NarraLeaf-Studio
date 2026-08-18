@@ -46,6 +46,7 @@ import type {
     StoryNotePayload,
     StoryRichRun,
     StoryTextSegment,
+    StoryTransformProps,
     StoryTransformRef,
     StoryTransitionRef,
     StoryVariableRef,
@@ -54,7 +55,8 @@ import type {
 import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
 
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
-import { transformPresetFor, transitionKindFor } from "@/apps/workspace/modules/story/scene-editor/commands/transitions";
+import { parseStoryFilter } from "@shared/story/transformProps";
+import { applyPlacementToTransform, applyTransitionWordToTransform, transitionKindFor } from "@/apps/workspace/modules/story/scene-editor/commands/transitions";
 import { getStoryCameraLookPreset } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 
 import type {
@@ -273,7 +275,7 @@ function transformOf(slots: NarralangSlots, context: "reveal" | "conceal" | "nvl
         if (!PLACEMENTS.has(placement)) {
             return fail("badWord", placement);
         }
-        return prune({ preset: placement as "left" | "center" | "right", durationMs, easing });
+        return prune({ ...applyPlacementToTransform(undefined, placement), durationMs, easing });
     }
     if (preset !== undefined) {
         if (preset.kind !== "timedWord") {
@@ -283,11 +285,11 @@ function transformOf(slots: NarralangSlots, context: "reveal" | "conceal" | "nvl
         if (durationMs !== undefined) {
             return fail("conflictingValues", "transform");
         }
-        const resolved = transformPresetFor(context, preset.word);
+        const resolved = applyTransitionWordToTransform(undefined, context, preset.word);
         if (!resolved) {
             return fail("badWord", preset.word);
         }
-        return prune({ preset: resolved, durationMs: preset.ms, easing });
+        return prune({ ...resolved, durationMs: preset.ms, easing });
     }
     if (durationMs === undefined && easing === undefined) {
         return undefined;
@@ -1415,6 +1417,9 @@ function displayableDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots
             const operation = verb === "displayableShow" ? "show" : verb === "displayableHide" ? "hide" : "transform";
             return { kind: "action", payload: prune({ ...base, operation, transform }) };
         }
+        // The twelve effect verbs are one operation now, and the verb only says which channel of the
+        // bag the line filled in. The dialect is unchanged - `mask`, `clip`, `filter` and the rest are
+        // still the words an author types - but what they build is `transform` plus a prop.
         case "displayableMask": {
             const assetName = nameOf(slots, "mask");
             if (assetName === undefined) {
@@ -1424,63 +1429,60 @@ function displayableDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots
             if (isFail(asset)) {
                 return asset;
             }
-            return {
-                kind: "action",
-                payload: prune({ ...base, operation: "mask" as const, maskAssetId: asset.value, ...timing }),
-            };
+            return effectDraft(base, { maskAssetId: asset.value }, timing);
         }
         case "displayableClip":
-            return {
-                kind: "action",
-                payload: prune({ ...base, operation: "clip" as const, clipPath: stringOf(slots, "clipPath") ?? "", ...timing }),
-            };
+            return effectDraft(base, { clipPath: stringOf(slots, "clipPath") ?? "" }, timing);
         case "displayableFilter":
-            return {
-                kind: "action",
-                payload: prune({ ...base, operation: "filter" as const, filter: stringOf(slots, "filter") ?? "", ...timing }),
-            };
+            return effectDraft(base, parseStoryFilter(stringOf(slots, "filter") ?? ""), timing);
         case "displayableBackdrop":
-            return {
-                kind: "action",
-                payload: prune({
-                    ...base,
-                    operation: "backdrop" as const,
-                    backdropFilter: stringOf(slots, "filter") ?? "",
-                    ...timing,
-                }),
-            };
+            return effectDraft(base, { backdropFilter: stringOf(slots, "filter") ?? "" }, timing);
         case "displayableBlend": {
             const blend = wordOf(slots, "blend");
             if (blend === undefined || !BLEND_MODES.has(blend)) {
                 return fail("badWord", "blend");
             }
-            return {
-                kind: "action",
-                payload: prune({ ...base, operation: "blend" as const, mixBlendMode: blend as StoryVfxBlendMode, ...timing }),
-            };
+            return effectDraft(base, { mixBlendMode: blend }, timing);
         }
         case "displayableDarken": {
             const darkness = numberOf(slots, "darkness");
             if (darkness === undefined) {
                 return fail("missingValue", "darkness");
             }
-            return { kind: "action", payload: prune({ ...base, operation: "darken" as const, darkness, ...timing }) };
+            return effectDraft(base, { filter: { brightness: 1 - Math.min(1, Math.max(0, darkness)) } }, timing);
         }
-        default: {
-            const operation = verb === "displayableClearMask"
-                ? "clearMask"
-                : verb === "displayableClearClip"
-                    ? "clearClip"
-                    : verb === "displayableClearFilter"
-                        ? "clearFilter"
-                        : verb === "displayableReveal"
-                            ? "circleReveal"
-                            : verb === "displayableClose"
-                                ? "circleClose"
-                                : "wipe";
-            return { kind: "action", payload: prune({ ...base, operation, ...timing }) };
-        }
+        case "displayableClearMask":
+            return effectDraft(base, { maskAssetId: null }, timing);
+        case "displayableClearClip":
+            return effectDraft(base, { clipPath: null }, timing);
+        case "displayableClearFilter":
+            return effectDraft(base, { filter: null }, timing);
+        case "displayableReveal":
+            return clipRevealDraft(base, "circleReveal", timing);
+        case "displayableClose":
+            return clipRevealDraft(base, "circleClose", timing);
+        case "displayableWipe":
+            return clipRevealDraft(base, "wipe", timing);
+        default:
+            return fail("badWord", "displayable");
     }
+}
+
+/** One `transform` row carrying one appearance prop - what every effect verb builds now. */
+function effectDraft(
+    base: { action: "displayable"; target: StoryDisplayableTargetRef },
+    to: StoryTransformProps,
+    timing: { durationMs?: number; easing?: string },
+): NarralangBlockDraft {
+    return { kind: "action", payload: { ...base, operation: "transform", transform: prune({ to, ...timing }) } };
+}
+
+function clipRevealDraft(
+    base: { action: "displayable"; target: StoryDisplayableTargetRef },
+    kind: NonNullable<StoryTransformRef["clipReveal"]>["kind"],
+    timing: { durationMs?: number; easing?: string },
+): NarralangBlockDraft {
+    return { kind: "action", payload: { ...base, operation: "transform", transform: prune({ clipReveal: { kind }, ...timing }) } };
 }
 
 function cameraDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: NarralangSlots): NarralangBlockDraft | Fail {

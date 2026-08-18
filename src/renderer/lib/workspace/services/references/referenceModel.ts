@@ -327,7 +327,7 @@ export function extractStoryAssetReferences(document: StoryDocument, storyName: 
                     pushBlockReference(block.id, "video.assetId", payload.assetId);
                     break;
                 case "displayable":
-                    pushBlockReference(block.id, "displayable.maskAssetId", payload.maskAssetId);
+                    pushBlockReference(block.id, "displayable.maskAssetId", payload.transform?.to?.maskAssetId ?? undefined);
                     break;
                 default:
                     break;

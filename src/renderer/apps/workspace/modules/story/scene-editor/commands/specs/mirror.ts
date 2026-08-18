@@ -68,13 +68,11 @@ export const mirror = defineStoryCommand({
             payload.target = ref;
         }
         const durationMs = asDurationMs(args.d);
-        // The whole transform is replaced, not patched: the seeded block carries a placement preset
-        // (`center`) and a transform holds exactly one preset, so leaving it there would mean the row
-        // moved the sprite as well as mirrored it.
+        // The whole bag is replaced, not patched: the seeded block carries a placement, and a row that
+        // mirrored AND moved the sprite is not what `/mirror` says. `scaleY` is deliberately absent -
+        // a mirror is horizontal, and restating a vertical scale would reset one an earlier row set.
         payload.transform = {
-            mode: "preset",
-            preset: "flip",
-            props: { scaleX: asEnum(args.state) === "off" ? 1 : -1 },
+            to: { scaleX: asEnum(args.state) === "off" ? 1 : -1 },
             ...(durationMs !== undefined ? { durationMs } : {}),
         };
         return { ...block, payload };

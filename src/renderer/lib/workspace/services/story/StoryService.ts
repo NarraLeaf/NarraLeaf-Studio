@@ -1687,7 +1687,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 } else if (payload.action === "audio") {
                     addAssetLock(scene.id, block.id, "audio.assetId", payload.assetId);
                 } else if (payload.action === "displayable") {
-                    addAssetLock(scene.id, block.id, "displayable.maskAssetId", payload.maskAssetId);
+                    addAssetLock(scene.id, block.id, "displayable.maskAssetId", payload.transform?.to?.maskAssetId ?? undefined);
                 }
             }
         }
