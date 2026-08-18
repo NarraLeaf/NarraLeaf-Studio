@@ -55,6 +55,7 @@ import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
 
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
 import { transformPresetFor, transitionKindFor } from "@/apps/workspace/modules/story/scene-editor/commands/transitions";
+import { getStoryCameraLookPreset } from "@/apps/workspace/modules/story/scene-editor/cameraLookPresets";
 
 import type {
     NarralangSlot,
@@ -800,6 +801,7 @@ function buildDraft(
         case "cameraZoom":
         case "cameraRotate":
         case "cameraDarken":
+        case "cameraLook":
         case "cameraReset":
         case "cameraMotion":
             return cameraDraft(ctx, verb, slots);
@@ -811,9 +813,13 @@ function buildDraft(
                     action: "screenEffect" as const,
                     effect: verb === "screenBlink" ? ("blink" as const) : ("vignette" as const),
                     durationMs: msOf(slots, "duration"),
+                    inMs: msOf(slots, "fadeIn"),
+                    outMs: msOf(slots, "fadeOut"),
                     holdMs: msOf(slots, "hold"),
                     color: colorOf(slots, "color"),
                     opacity: numberOf(slots, "opacity"),
+                    inner: numberOf(slots, "inner"),
+                    outer: numberOf(slots, "outer"),
                     easing: nameOf(slots, "easing"),
                 }),
             };
@@ -1519,6 +1525,27 @@ function cameraDraft(ctx: NarralangBuildContext, verb: NarralangVerb, slots: Nar
             return {
                 kind: "action",
                 payload: prune({ action: "camera" as const, operation: "darken" as const, darkness, ...timing }),
+            };
+        }
+        case "cameraLook": {
+            // A grade the library does not know is a `badWord` rather than a name stored as typed:
+            // an unknown id compiles to a diagnostic and plays nothing, so accepting it here would
+            // move a real failure from where the author is typing to where they are testing.
+            const look = nameOf(slots, "look");
+            const filter = stringOf(slots, "filter");
+            if (look !== undefined && !getStoryCameraLookPreset(look)) {
+                return fail("badWord", look);
+            }
+            return {
+                kind: "action",
+                payload: prune({
+                    action: "camera" as const,
+                    operation: "look" as const,
+                    lookPreset: look,
+                    lookIntensity: numberOf(slots, "strength"),
+                    filter,
+                    ...timing,
+                }),
             };
         }
         case "cameraReset":

@@ -709,7 +709,7 @@ export type StoryActionPayload =
            * Additive: no document written before this carries it, so no schema bump.
            */
           action: "camera";
-          operation: "pan" | "zoom" | "rotate" | "darken" | "reset" | "motion";
+          operation: "pan" | "zoom" | "rotate" | "darken" | "look" | "reset" | "motion";
           /** `pan` — where the view centres. The command line fills the three placements; the inspector, any align. */
           position?: StoryAlignPositionValue;
           /** `zoom` — 1 is neutral. Clamped away from 0/negative at compile time. */
@@ -718,6 +718,32 @@ export type StoryActionPayload =
           rotation?: number;
           /** `darken` — 0 (normal) to 1 (black). Clamped at compile time; the engine does not clamp. */
           darkness?: number;
+          /**
+           * `look` — a colour grade over the whole stage, from the library in `cameraLookPresets.ts`.
+           *
+           * **The same single channel `darken` writes.** `Camera.darken(d)` IS `filter("brightness(1 - d)")`
+           * in the engine, so a look and a darken never compose: whichever row runs last wins outright
+           * and the earlier one leaves no trace. That is why every preset folds its own brightness in
+           * and why the two operations are alternatives rather than layers — a scene that sets both is
+           * not "graded and dimmed", it is whichever came second. `reset` clears the channel, so this
+           * arm needs no clear operation of its own.
+           *
+           * Three fields rather than one resolved string, because the string is the *output*: keeping
+           * the preset and the dial is what lets the inspector re-open the row on the grade the author
+           * chose instead of on a wall of CSS it would have to parse back.
+           *
+           * Additive, exactly as `motion` and the `vfx` arm were: a document written before this
+           * carries none of them, so no schema bump.
+           */
+          lookPreset?: string;
+          /** `look` — 0 is no grade, 1 the preset's nominal strength. Clamped to 0–2 at compile time. */
+          lookIntensity?: number;
+          /**
+           * `look` — the CSS filter actually applied. Written by hand it OVERRIDES `lookPreset`
+           * entirely, which is the escape hatch for a grade the library does not name; left empty the
+           * compile resolves the preset and the intensity instead.
+           */
+          filter?: string;
           /**
            * `motion` — a Story Motion driving the camera, i.e. a whole keyframed shot (a handheld
            * shake, a slow push-in) instead of one settled pose. The engine's `Camera` is a
@@ -770,12 +796,48 @@ export type StoryActionPayload =
           transition?: StoryTransformRef;
       }
     | {
+          /**
+           * A screen-wide gesture drawn on the scene's own effect layer: the eyes closing, the frame
+           * darkening at its edges. Both are one in-and-out move with a pause at full, which is why
+           * they share one parameter grammar rather than each naming its halves differently.
+           *
+           * `durationMs` is the WHOLE move and stays the only field a simple row needs; `inMs` and
+           * `outMs` override one half each, and absent means "derive from `durationMs`". Splitting
+           * them is the difference between a blink and "slam the eyes shut, then open them slowly" —
+           * the engine has always had `closeDuration` / `openDuration`, and Studio used to fill both
+           * from the one number, so the asymmetric blink was inexpressible rather than unsupported.
+           *
+           * Additive: a document written before this carries neither half, and `durationMs` alone
+           * still means exactly what it meant. No schema bump.
+           */
           action: "screenEffect";
           effect: "blink" | "vignette";
           durationMs?: number;
+          /** The move in: the eyes closing (`blink`), the edges darkening (`vignette`). */
+          inMs?: number;
+          /**
+           * The move out: the eyes opening, the edges clearing.
+           *
+           * Honoured in full by `blink`. The engine's `vignette` helper drives both of its halves from
+           * one `duration`, so a vignette whose `outMs` differs from its in-duration is reported at
+           * compile time rather than silently played symmetric — see `compileScreenEffectAction`.
+           */
+          outMs?: number;
           holdMs?: number;
           color?: string;
           opacity?: number;
+          /**
+           * `vignette` — where the mask starts and finishes fading, as a percentage of the frame.
+           * Stored as numbers and printed into the engine's length strings at compile time: the
+           * gradient stops are the one thing here that must stay resolution-independent, and a number
+           * the inspector can put on a slider cannot be typed as `44px` by accident.
+           *
+           * `inner` is the clear centre and `outer` the fully-dark edge, so `inner` above `outer` is
+           * not a wide vignette, it is a `radial-gradient` the browser drops entirely. Ordered at
+           * compile time.
+           */
+          inner?: number;
+          outer?: number;
           easing?: string;
       }
     | {
