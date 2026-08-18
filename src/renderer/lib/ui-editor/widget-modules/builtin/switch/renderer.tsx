@@ -14,12 +14,18 @@ import {
     UI_SWITCH_ON_VARIANT_ID,
     type UISwitchChildSlot,
 } from "@shared/types/ui-editor/switch";
+import {
+    getStateMotions,
+    resolveStateMotionOffset,
+    type UIStateMotion,
+} from "@shared/types/ui-editor/stateMotion";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import {
     useWidgetRuntimeElementKey,
     useWidgetRuntimeSnapshot,
     useWidgetRuntimeStateStore,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import { getSwitchProps } from "./helpers";
 
 /**
@@ -74,13 +80,27 @@ function rectRatioX(rect: DOMRect, clientX: number): number {
     return (clientX - rect.left) / Math.max(1, rect.width);
 }
 
-/** Flips one part to its `on` appearance variant. Geometry is deliberately left untouched. */
-function withOnVariant(element: UIElement): UIElement {
+/**
+ * Hands a part what the switch says about the state it is in: which variant to look like, and how far
+ * to move. Geometry is deliberately left untouched - where the part sits is the part's own business,
+ * and the offset is a layer the switch adds while it is on.
+ */
+function withSwitchState(
+    element: UIElement,
+    checked: boolean,
+    motions: UIStateMotion[],
+): UIElement {
+    const stateMotionOffset = resolveStateMotionOffset(
+        motions,
+        checked ? UI_SWITCH_ON_VARIANT_ID : null,
+        element.id,
+    );
     return {
         ...element,
         extra: {
             ...(element.extra ?? {}),
-            runtimeVariantOverrideId: UI_SWITCH_ON_VARIANT_ID,
+            ...(checked ? { runtimeVariantOverrideId: UI_SWITCH_ON_VARIANT_ID } : {}),
+            ...(stateMotionOffset ? { stateMotionOffset } : {}),
         },
     };
 }
@@ -97,7 +117,10 @@ function withOnVariant(element: UIElement): UIElement {
  * being dragged by an inline transform this renderer would have to compute.
  */
 export function SwitchRenderer(props: WidgetRendererProps) {
-    const { element, document, hostAdapter, renderChildren } = props;
+    const { element, document, hostAdapter, renderChildren, useAppearanceInspectorPreview } = props;
+    // In the editor the author's entered state is what the switch shows, so flipping the state bar
+    // previews the toggle - including its motion - without touching the authored `checked`.
+    const enteredState = useEnteredElementState(element.id, useAppearanceInspectorPreview === true);
     const rootRef = useRef<HTMLDivElement | null>(null);
     const flushFrameRef = useRef<number | null>(null);
     // A toggle whose graph is still running swallows further toggles rather than queueing them:
@@ -129,7 +152,9 @@ export function SwitchRenderer(props: WidgetRendererProps) {
     }, [checked]);
     // What the parts are drawn as. Mid-drag this previews the release rather than the committed
     // state, which is why nothing writes to the runtime store until the pointer comes up.
-    const displayChecked = pendingChecked ?? checked;
+    const displayChecked = enteredState
+        ? enteredState.variantId === UI_SWITCH_ON_VARIANT_ID
+        : pendingChecked ?? checked;
 
     const trackElement = useMemo(() => findSwitchPart(element, document, "track"), [document, element]);
     const thumbElement = useMemo(() => findSwitchPart(element, document, "thumb"), [document, element]);
@@ -323,13 +348,14 @@ export function SwitchRenderer(props: WidgetRendererProps) {
 
     const canRenderParts = Boolean(renderChildren);
     const childrenIds = [trackElement?.id, thumbElement?.id].filter((id): id is string => Boolean(id));
-    const elementOverrides = displayChecked
-        ? Object.fromEntries(
-              [trackElement, thumbElement]
-                  .filter((part): part is UIElement => Boolean(part))
-                  .map(part => [part.id, withOnVariant(part)]),
-          )
-        : undefined;
+    const stateMotions = getStateMotions(element.props);
+    // Built for both states, not just on: turning off is a move back, and the part only knows to make
+    // it because the switch hands it the same motion with a zero offset.
+    const elementOverrides = Object.fromEntries(
+        [trackElement, thumbElement]
+            .filter((part): part is UIElement => Boolean(part))
+            .map(part => [part.id, withSwitchState(part, displayChecked, stateMotions)]),
+    );
 
     const hostStyle: CSSProperties = {
         position: "relative",
