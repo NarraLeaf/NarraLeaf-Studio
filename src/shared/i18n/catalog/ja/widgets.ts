@@ -145,7 +145,6 @@ export const widgets = {
         track: "溝",
         thumb: "つまみ",
         repairParts: "部品を修復",
-        recomputeTravel: "移動量を計算し直す",
     },
     textInput: {
         title: "テキスト入力",
@@ -362,7 +361,7 @@ export const widgets = {
         nvlList: { name: "NVL リスト", speaker: "話者" },
         root: { name: "ルート" },
         slider: { name: "スライダー", track: "スライダーの溝", handle: "スライダーのつまみ" },
-        switch: { name: "スイッチ", track: "スイッチの溝", thumb: "スイッチのつまみ", onVariant: "オン" },
+        switch: { name: "スイッチ", track: "スイッチの溝", thumb: "スイッチのつまみ", onVariant: "オン", offVariant: "オフ" },
         text: { name: "テキスト", text: "テキスト" },
         textInput: { name: "テキスト入力" },
         video: { name: "動画" },
