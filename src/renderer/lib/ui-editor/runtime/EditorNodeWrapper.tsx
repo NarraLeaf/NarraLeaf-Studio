@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, FocusEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
-import { motion, useAnimationControls, type MotionStyle, type TargetAndTransition } from "motion/react";
+import { animate, motion, useAnimationControls, useMotionValue, type MotionStyle, type TargetAndTransition } from "motion/react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import {
@@ -22,6 +22,8 @@ import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
 import { useSurfacePassive } from "@/lib/ui-editor/runtime/surface/SurfacePassiveContext";
 import { isTextEntryTarget } from "./app/isTextEntryTarget";
 import { EnteredStateProvider, variantOverrideIdFor } from "@/lib/ui-editor/hooks/enteredStateContext";
+import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
+import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
 
 /** Shared so an element with no offsets keeps one object identity and never re-poses on it. */
 const ZERO_APPEARANCE_OFFSETS = { x: 0, y: 0 };
@@ -32,6 +34,7 @@ import {
     resolveButtonVisualProps,
     resolveAppearanceDisplayableOpacity,
     resolveAppearanceTransformOffsets,
+    resolveContainerAppearanceTransitions,
     resolveImageDisplayableOpacityKeys,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
@@ -193,9 +196,29 @@ export function EditorNodeWrapper({
     // inside it draws at zero. The editor selects, measures and snaps to *this* node, so an offset
     // living on a layer inside it leaves the selection frame and the handles behind at the position
     // the element rests in - visibly detached from the element the author is dragging.
-    const enteredOffsets = enteredState
+    const resolvedEnteredOffsets = enteredState
         ? resolveAppearanceTransformOffsets(appearance, appearanceResolveCtx)
         : ZERO_APPEARANCE_OFFSETS;
+    const enteredOffsets = useMemo(
+        () => resolvedEnteredOffsets,
+        // By value: a fresh object every render would restart the animation below on every render.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [resolvedEnteredOffsets.x, resolvedEnteredOffsets.y],
+    );
+    // How that offset moves is the author's own setting on the field, the same one the running game
+    // uses. Held in a ref rather than a dependency because resolving it allocates a context object
+    // every render, and a new identity would restart the animation mid-flight.
+    const enteredOffsetTransitionRef = useRef<Record<string, unknown> | null>(null);
+    enteredOffsetTransitionRef.current = (() => {
+        if (!enteredState) {
+            return null;
+        }
+        const transition = firstTransitionForKeys(
+            resolveContainerAppearanceTransitions(appearance, appearanceResolveCtx),
+            ["transformOffsetX", "transformOffsetY"],
+        );
+        return transition ? toRuntimeMotionTransition(transition) : null;
+    })();
     const layoutOpacity = layout.opacity ?? 1;
     const effectiveOpacity = hasRuntimeOpacityOverride ? layoutOpacity : appearanceOpacity ?? layoutOpacity;
     const baseRotation = layout.rotation ?? 0;
@@ -529,6 +552,34 @@ export function EditorNodeWrapper({
         return style;
     }, [effectiveOpacity, layout, isRoot, layoutMode, motionControlsOpacity, styleOverrides, surfacePassive, wrapperCursor]);
 
+    // The pose's own motion values, so entering a state can *move* the element instead of teleporting
+    // it: an author flipping between states is previewing the animation the player will see, and a
+    // plain style number would be written straight to the DOM. A blueprint animation owns the channel
+    // while it runs, so this stands aside for it.
+    const poseX = useMotionValue(displayableBaseTransform.offsetX + enteredOffsets.x);
+    const poseY = useMotionValue(displayableBaseTransform.offsetY + enteredOffsets.y);
+    const lastEnteredOffsetsRef = useRef(enteredOffsets);
+    useEffect(() => {
+        const previous = lastEnteredOffsetsRef.current;
+        const enteredMoved = previous.x !== enteredOffsets.x || previous.y !== enteredOffsets.y;
+        lastEnteredOffsetsRef.current = enteredOffsets;
+        if (displayableMotion) {
+            return undefined;
+        }
+        const transition = enteredOffsetTransitionRef.current;
+        if (!enteredMoved || !transition) {
+            poseX.set(basePose.x);
+            poseY.set(basePose.y);
+            return undefined;
+        }
+        const runX = animate(poseX, basePose.x, transition);
+        const runY = animate(poseY, basePose.y, transition);
+        return () => {
+            runX.stop();
+            runY.stop();
+        };
+    }, [basePose.x, basePose.y, displayableMotion, enteredOffsets, poseX, poseY]);
+
     // Once an element carries a pose (authored rotation, persistent offsets/scale, or any motion)
     // its transform must be owned by motion-managed style values: a raw `style.transform` string
     // is discarded the moment motion renders its own transform, which silently dropped static
@@ -546,8 +597,8 @@ export function EditorNodeWrapper({
     const motionStyle: MotionStyle = hasMotionPose
         ? {
               ...containerStyle,
-              x: basePose.x,
-              y: basePose.y,
+              x: poseX,
+              y: poseY,
               scale: basePose.scale,
               rotate: basePose.rotate,
           }
