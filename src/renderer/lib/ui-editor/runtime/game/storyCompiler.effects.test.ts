@@ -129,7 +129,7 @@ describe("compiles /fx backdrop and blend", () => {
  * grade on a real sprite, the browser's own interpolation goes blue → cyan → green → olive, because
  * the angle unwinds 185 degrees while `grayscale` simultaneously lets the source's hues back in.
  * This pins the fix so a later "make the grade fade nicely" change has to face the reason.
- * Ending a grade is the engine's problem and is fixed there (narraleaf-react 0.28.1).
+ * Ending a grade is the engine's problem and is fixed there (narraleaf-react 0.29.0).
  */
 describe("compiles a camera grade as a cut", () => {
     function cameraDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[]): StoryDocument {
