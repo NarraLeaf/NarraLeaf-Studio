@@ -17,6 +17,7 @@ import {
     setDefaultVariantId,
 } from "./appearancePatch";
 import { isUsableAppearanceModel } from "./initialAppearanceModel";
+import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 
 const ICON_BUTTON_CLASS =
     "grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:bg-fill disabled:opacity-40";
@@ -50,12 +51,33 @@ export function ElementStateBar(props: CustomFieldProps<UIInspectorData>) {
     const { t } = useTranslation();
     const entered = useEditorEnteredState();
     const element = liveElement(props.data);
+    const stateService = UIEditorStateService.getInstance();
+    // A widget's own states outrank an appearance model's variants: they are what the widget does,
+    // and the variants are only how its parts look while it does it.
+    const declared = widgetModuleRegistry.get(element.type)?.listEditorStates?.(element) ?? null;
+    if (declared && declared.length > 1) {
+        const current = entered?.elementId === element.id ? entered.variantId : null;
+        return (
+            <div className="space-y-2 min-w-0">
+                <FieldLabel>{t("widgetAppearance.state.label")}</FieldLabel>
+                <Select
+                    value={current ?? ""}
+                    options={declared.map(state => ({ value: state.id ?? "", label: state.name }))}
+                    fullWidth
+                    inspectOnly
+                    onChange={value => {
+                        const next = String(value);
+                        stateService.setEnteredState({ elementId: element.id, variantId: next === "" ? null : next });
+                    }}
+                />
+            </div>
+        );
+    }
     const model = appearanceOf(element);
     if (!model) {
         return null;
     }
 
-    const stateService = UIEditorStateService.getInstance();
     const selectedId =
         entered?.elementId === element.id ? entered.variantId ?? model.defaultVariantId : model.defaultVariantId;
     const selected = model.variants.find(variant => variant.id === selectedId) ?? model.variants[0] ?? null;

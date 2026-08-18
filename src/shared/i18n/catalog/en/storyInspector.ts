@@ -268,6 +268,7 @@ export const storyInspector = {
         xalign: "X align (0-1)",
         yalign: "Y align (0-1)",
         look: "Look",
+        lookSnaps: "A look lands in a single frame. Fading one would walk the picture through colours nobody chose, so there is no duration to set — cut into it behind a blink or a transition.",
         lookIntensity: "Intensity (1 = nominal)",
         lookFilter: "Custom CSS filter",
     },

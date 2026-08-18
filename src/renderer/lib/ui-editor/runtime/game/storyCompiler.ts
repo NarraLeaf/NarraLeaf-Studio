@@ -2869,12 +2869,28 @@ function compileCameraAction(
                     : "Camera look has no grade chosen.");
                 return [];
             }
-            const options = easing ? { duration, ease: easing } : { duration };
-
-            // A moving grade (`hangover`) is keyframes, not one filter, so it compiles to the same
-            // `camera.transform()` a Story Motion shot uses. A hand-written filter suppresses it: the
-            // author typed the exact string they want on the channel, and swaying it would be Studio
-            // animating a value it was told to leave alone.
+            // **A still grade snaps; it does not tween, and the row's duration is unused for one.**
+            //
+            // A filter chain carrying `hue-rotate` cannot be linearly interpolated to (or from)
+            // neutral without walking through colours nobody asked for. Going from
+            // `grayscale(1) sepia(1) hue-rotate(185deg) …` back to neutral, the browser eases every
+            // term at once: the angle sweeps 185 degrees of the colour wheel while `grayscale`
+            // simultaneously lets the source's own hues back in, so the midpoint is a bright green
+            // face. Measured on a real sprite over the moonlight grade — blue at t=1, cyan by 0.8,
+            // green through 0.6–0.4, olive at 0.2.
+            //
+            // There is no interpolation that fixes this in general, because the honest operation is
+            // a cross-fade between two graded renderings and a CSS filter cannot express one, and
+            // because the compiler cannot know which grade the stage is already wearing. So the
+            // grade lands in a single frame, which is also how the medium uses it: a flashback cuts
+            // in behind a flash or a transition, it does not morph.
+            //
+            // A SWAY is the one exception, and it is exempt by construction rather than by
+            // judgement: every keyframe in it names the same filter functions in the same order as
+            // the grade it settles onto, holds the flatten terms fixed, and moves the hue only a few
+            // degrees either side of neutral. Nothing crosses the wheel, so there is no midpoint to
+            // land wrong on — measured over `hangover`, the trace stays inside its own recipe with
+            // only the angle and the blur moving.
             const oscillation = handWritten
                 ? null
                 : resolveStoryCameraLookOscillation(payload.lookPreset, payload.lookIntensity, duration);
@@ -2884,18 +2900,37 @@ function compileCameraAction(
                     options: { duration: oscillation.stepMs, ease: easing ?? "easeInOut" },
                 }));
                 // `repeat` covers the whole sequence list, so the sway ends on its last step rather
-                // than at neutral - the settle back to the resting grade is a second statement, and
-                // it is what leaves the stage in the state the still presets would have left it in.
+                // than at neutral - the settle onto the resting grade is a second statement, and it
+                // is what leaves the stage in the state a still grade would have left it in.
                 const sway = new Transform(sequences as any, { repeat: oscillation.cycles } as any);
                 return [
                     recordStatement(ctx, camera.transform(sway), block),
                     recordStatement(ctx, camera.filter(resolved, { duration: oscillation.settleMs, ease: "easeOut" }), block),
                 ];
             }
-            return [recordStatement(ctx, camera.filter(resolved, options), block)];
+            return [recordStatement(ctx, camera.filter(resolved, { duration: 0 }), block)];
         }
         case "reset":
-            return [recordStatement(ctx, camera.resetCamera(duration, easing), block)];
+            // ⚠ CLEARING A GRADE STILL SWEEPS, and this zero-duration clear does NOT stop it —
+            // measured in Dev Mode over the moonlight grade, the hue still unwinds 185° over the
+            // reset's own duration. Do not read the line below as a fix; it is left in because it is
+            // harmless and because the next person needs to know it was tried.
+            //
+            // `Camera.resetCamera` packs `filter: "none"` into the SAME transform as the pose, so the
+            // filter is eased along with the pan and zoom. Dropping it first in its own statement
+            // does not survive: both land in one tick, so the renderer sees a single style diff from
+            // the grade to neutral and animates the whole of it. Building the pose transform by hand
+            // WITHOUT a `filter` prop was tried too and changes nothing, which points at the merged
+            // TransformState rather than at what this file emits.
+            //
+            // The fix therefore belongs in the engine — either a `clearFilter` that truly commits
+            // before the next transform reads the element, or a `resetCamera` that leaves the filter
+            // out of the eased set. Until then a grade is best ended by cutting the scene or hiding
+            // the change behind a `/blink`.
+            return [
+                recordStatement(ctx, camera.clearFilter({ duration: 0 }), block),
+                recordStatement(ctx, camera.resetCamera(duration, easing), block),
+            ];
         case "motion": {
             // A whole keyframed shot rather than one settled pose. `Camera` is a `Displayable`, so it
             // takes the same `Transform` a sprite does, built by the same function `/transform` uses -

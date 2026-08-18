@@ -17,7 +17,6 @@ import {
     getSwitchProps,
     patchSwitchProps,
     resolveSwitchPartGeometry,
-    setSwitchOnVariantTravel,
 } from "./helpers";
 
 /** Always read through the live document: a schema closure can outlive the props it captured. */
@@ -190,35 +189,7 @@ function SwitchPartsField(props: CustomFieldProps<UIInspectorData>) {
         });
     };
 
-    // Travel is a stored number, so widening the switch leaves it behind on purpose (a short travel
-    // can be deliberate). This is the manual catch-up, not an automatic one.
-    const recomputeTravel = () => {
-        runInHistory(() => {
-            const latest = documentService.getDocument().elements[element.id] ?? live;
-            const thumbId = getSwitchProps(latest).thumbElementId;
-            const thumb = thumbId ? documentService.getDocument().elements[thumbId] : undefined;
-            if (!thumb) {
-                return;
-            }
-            const next = setSwitchOnVariantTravel(
-                thumb.props?.appearance,
-                resolveSwitchPartGeometry(latest.layout).travel,
-            );
-            if (!next) {
-                return;
-            }
-            documentService.updateElementProps(thumb.id, { appearance: next });
-        });
-    };
-
     const partsComplete = trackExists && thumbExists;
-    // An author may delete the `on` variant, and then there is no travel to recompute. Offering a
-    // button that would quietly do nothing is worse than offering a disabled one.
-    const thumbElement = current.thumbElementId ? document.elements[current.thumbElementId] : undefined;
-    const travelIsEditable = Boolean(
-        thumbElement && setSwitchOnVariantTravel(thumbElement.props?.appearance, 0),
-    );
-
     return (
         <CompactModuleCard title={t("widgets.switch.parts")}>
             <div className="grid grid-cols-2 gap-2">
@@ -241,17 +212,19 @@ function SwitchPartsField(props: CustomFieldProps<UIInspectorData>) {
                     {t("widgets.switch.thumb")}
                 </Button>
             </div>
-            <Button
-                type="button"
-                variant="secondary"
-                size="md"
-                fullWidth
-                className="text-xs"
-                disabled={props.readOnly || (partsComplete && !travelIsEditable)}
-                onClick={partsComplete ? recomputeTravel : repairParts}
-            >
-                {partsComplete ? t("widgets.switch.recomputeTravel") : t("widgets.switch.repairParts")}
-            </Button>
+            {partsComplete ? null : (
+                <Button
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    fullWidth
+                    className="text-xs"
+                    disabled={props.readOnly}
+                    onClick={repairParts}
+                >
+                    {t("widgets.switch.repairParts")}
+                </Button>
+            )}
         </CompactModuleCard>
     );
 }

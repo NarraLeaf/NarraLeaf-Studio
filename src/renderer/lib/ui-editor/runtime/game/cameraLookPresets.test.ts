@@ -6,6 +6,7 @@ import {
     getStoryCameraLookPreset,
     resolveStoryCameraLook,
     resolveStoryCameraLookOscillation,
+    storyCameraLookSways,
     STORY_CAMERA_LOOK_DEFAULT_PRESET_ID,
     STORY_CAMERA_LOOK_MAX_INTENSITY,
     STORY_CAMERA_LOOK_PRESETS,
@@ -95,10 +96,12 @@ describe("cameraLookPresets", () => {
         }
     });
 
-    it("gives every preset its own arrival time and easing", () => {
-        // Without these a look arrives at one generic speed, which is a cut for `faint` and a crawl
-        // for `mono` - the grade would be right and the moment wrong.
+    it("gives every preset its own tempo, and only a moving one spends it", () => {
+        // A still grade lands in one frame, so its tempo is carried but never read; the sway is the
+        // one grade the duration reaches. `storyCameraLookSways` is what every surface asks, so the
+        // library and the UI cannot disagree about which grades own a timing field.
         for (const preset of STORY_CAMERA_LOOK_PRESETS) {
+            expect(storyCameraLookSways(preset.id), preset.id).toBe(Boolean(preset.oscillate));
             expect(preset.defaultDurationMs, preset.id).toBeGreaterThan(0);
             expect(Number.isFinite(preset.defaultDurationMs), preset.id).toBe(true);
             expect(preset.defaultEasing, preset.id).toBeTruthy();
@@ -107,6 +110,8 @@ describe("cameraLookPresets", () => {
         // half of each preset that is not colour.
         expect(getStoryCameraLookPreset("mono")!.defaultDurationMs)
             .toBeLessThan(getStoryCameraLookPreset("faint")!.defaultDurationMs);
+        expect(STORY_CAMERA_LOOK_PRESETS.filter(p => storyCameraLookSways(p.id)).map(p => p.id))
+            .toEqual(["hangover"]);
     });
 
     it("sways only where a sway is declared, and always finitely", () => {
