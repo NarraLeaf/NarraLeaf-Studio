@@ -22,6 +22,7 @@ export const UI_DISPLAYABLE_WIDGET_TYPES = [
     "nl.nvl.list",
     "nl.nvl.texts",
     "nl.image",
+    "nl.character",
     "nl.button",
     "nl.textInput",
     "nl.switch",

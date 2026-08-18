@@ -265,6 +265,24 @@ export const widgets = {
      * The widget's stored type is `nl.puppet` and names no renderer; every string an author reads
      * says "Spine2D / Live2D Model" instead, because "Puppet" tells nobody what it is for.
      */
+    character: {
+        title: "Character",
+        sectionSource: "Character",
+        sectionFraming: "Framing",
+        whose: "Character",
+        whoseFramed: "Whoever this frame shows",
+        whoseHint: "Leave unset so one frame can be worn by the whole cast.",
+        crop: "Crop",
+        cropX: "X",
+        cropY: "Y",
+        cropW: "Width",
+        cropH: "Height",
+        fit: "Fit",
+        fitCover: "Cover",
+        fitContain: "Contain",
+        flipX: "Mirror",
+        puppetNotice: "A character drawn by your own runtime is mounted with a Model widget, not this one.",
+    },
     puppet: {
         title: "Model",
         sectionModel: "Model",
@@ -348,6 +366,7 @@ export const widgets = {
      * baked value reflects the editor language when the element is inserted.
      */
     defaults: {
+        character: { name: "Character" },
         button: { name: "Button", label: "Button" },
         choiceList: { name: "Choice List", choiceA: "Choice A", choiceB: "Choice B", choiceC: "Choice C" },
         container: { name: "Container" },

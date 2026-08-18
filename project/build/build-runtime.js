@@ -66,6 +66,10 @@ function runtimeAliasPlugin() {
             shim('useSurfacePuppetSession.ts'),
         ],
         [
+            '@/lib/workspace/hooks/useCharacterPreviewSrcs',
+            shim('useCharacterPreviewSrcs.ts'),
+        ],
+        [
             '@/apps/workspace/modules/properties/framework/utils/colorUtils',
             shim('colorUtils.ts'),
         ],

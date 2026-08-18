@@ -33,7 +33,14 @@ export function isUISurfaceOwnerKind(value: unknown): value is UISurfaceOwnerKin
  * slot, and answering `onStage` for it would put an avatar frame into the on-stage overlay.
  */
 export function stageMountSlotId(mount: UIStageSurfaceMount | undefined): UIStageSlotId | null {
-    return mount && mount.kind === "slot" ? mount.slotId : null;
+    if (!mount || isElementMount(mount)) {
+        return null;
+    }
+    // Anything that is not explicitly an element mount is read as a slot, including a stored mount
+    // written before the union existed and before `kind` was always present. The alternative — a
+    // strict `kind === "slot"` — turns such a document into a Game UI whose slot nothing can find,
+    // which is a blank dialogue box rather than an error anyone can act on.
+    return normalizeUIStageSlotId((mount as { slotId?: unknown }).slotId);
 }
 
 export function isElementMount(mount: UIStageSurfaceMount | undefined): mount is Extract<UIStageSurfaceMount, { kind: "element" }> {

@@ -10,6 +10,14 @@ export type InsertPaletteConfigEntry = {
     readonly placement?: InsertPalettePlacement;
     readonly surfaceKinds?: readonly UISurfaceKind[];
     readonly stageSlots?: readonly UIStageSlotId[];
+    /**
+     * Restrict to one kind of Game UI mount.
+     *
+     * Separate from {@link stageSlots} because an element-mounted surface has no slot to name — it is
+     * placed by a story row, not fixed to one of the five. A widget that only means something inside
+     * a stage element (the character a frame is showing) says `"element"` here.
+     */
+    readonly stageMount?: "slot" | "element";
 };
 
 export type InsertPaletteEntry = {
@@ -30,6 +38,7 @@ export const DEFAULT_INSERT_PALETTE_CONFIG = [
     { type: "nl.nvl.list", surfaceKinds: ["stageSurface"], stageSlots: ["nvl"] },
     { type: "nl.nvl.texts", surfaceKinds: ["stageSurface"], stageSlots: ["nvl"] },
     { type: "nl.image" },
+    { type: "nl.character", surfaceKinds: ["stageSurface"], stageMount: "element" },
     { type: "nl.button" },
     { type: "nl.textInput", placement: "overflow" },
     { type: "nl.switch", placement: "overflow" },
@@ -46,6 +55,12 @@ function surfaceKindForFilter(surface: InsertPaletteSurfaceFilter): UISurfaceKin
     return typeof surface === "string" ? surface : surface?.kind;
 }
 
+function stageMountForFilter(surface: InsertPaletteSurfaceFilter): "slot" | "element" | undefined {
+    return typeof surface === "string" || !surface || surface.kind !== "stageSurface"
+        ? undefined
+        : surface.mount.kind;
+}
+
 function stageSlotForFilter(surface: InsertPaletteSurfaceFilter): UIStageSlotId | undefined {
     return typeof surface === "string" || !surface || surface.kind !== "stageSurface"
         ? undefined
@@ -59,9 +74,11 @@ export function resolveInsertPaletteEntries(
 ): InsertPaletteEntry[] {
     const surfaceKind = surfaceKindForFilter(surface);
     const stageSlot = stageSlotForFilter(surface);
+    const stageMount = stageMountForFilter(surface);
     return config
         .filter(entry => !surfaceKind || !entry.surfaceKinds || entry.surfaceKinds.includes(surfaceKind))
         .filter(entry => !entry.stageSlots || (surfaceKind === "stageSurface" && stageSlot != null && entry.stageSlots.includes(stageSlot)))
+        .filter(entry => !entry.stageMount || (surfaceKind === "stageSurface" && stageMount === entry.stageMount))
         .map(entry => {
             const mod = resolveModule(entry.type);
             if (!mod) {

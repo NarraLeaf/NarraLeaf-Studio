@@ -262,6 +262,24 @@ export const widgets = {
         previewPause: "暂停预览",
         previewRestart: "回到首帧",
     },
+    character: {
+        title: "角色",
+        sectionSource: "角色",
+        sectionFraming: "取景",
+        whose: "角色",
+        whoseFramed: "这个框展示的角色",
+        whoseHint: "留空，一个框就能给全体角色用",
+        crop: "裁剪",
+        cropX: "X",
+        cropY: "Y",
+        cropW: "宽",
+        cropH: "高",
+        fit: "填充",
+        fitCover: "覆盖",
+        fitContain: "包含",
+        flipX: "镜像",
+        puppetNotice: "由你自己的渲染器绘制的角色用模型控件挂载，不走这个控件",
+    },
     puppet: {
         title: "模型",
         sectionModel: "模型",
@@ -340,6 +358,7 @@ export const widgets = {
         nameText: "{name} 文本",
     },
     defaults: {
+        character: { name: "角色" },
         button: {
             name: "按钮",
             label: "按钮",

@@ -267,6 +267,24 @@ export const widgets = {
      * ウィジェットに保存される型は `nl.puppet` で、どの描画側の名前でもない。作者が読む文字列は
      * すべて「Spine2D / Live2D モデル」と言う。「パペット」では何のためのものか誰にも伝わらない。
      */
+    character: {
+        title: "キャラクター",
+        sectionSource: "キャラクター",
+        sectionFraming: "トリミング",
+        whose: "キャラクター",
+        whoseFramed: "この枠が映すキャラクター",
+        whoseHint: "未設定にすると、ひとつの枠を全員で使えます",
+        crop: "トリミング",
+        cropX: "X",
+        cropY: "Y",
+        cropW: "幅",
+        cropH: "高さ",
+        fit: "フィット",
+        fitCover: "カバー",
+        fitContain: "コンテイン",
+        flipX: "左右反転",
+        puppetNotice: "自前のランタイムが描くキャラクターはモデル控件でマウントします",
+    },
     puppet: {
         title: "モデル",
         sectionModel: "モデル",
@@ -350,6 +368,7 @@ export const widgets = {
      * エディタの言語がそのまま焼き込まれる。
      */
     defaults: {
+        character: { name: "キャラクター" },
         button: { name: "ボタン", label: "ボタン" },
         choiceList: { name: "選択肢リスト", choiceA: "選択肢 A", choiceB: "選択肢 B", choiceC: "選択肢 C" },
         container: { name: "コンテナ" },
