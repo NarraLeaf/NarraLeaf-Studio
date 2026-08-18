@@ -12,6 +12,12 @@ const NO_STARTUP_PROJECT = {
     error: null,
 } as const;
 
+const NO_EXPERIMENTAL = {
+    requested: false,
+    conditions: [],
+    unknownConditionFlags: [],
+} as const;
+
 describe("parseMainCommandLine", () => {
     it("keeps CDP disabled by default", () => {
         expect(parseMainCommandLine(["electron", "dist/main/index.js"])).toEqual({
@@ -26,6 +32,7 @@ describe("parseMainCommandLine", () => {
                 error: null,
             },
             devReload: DEFAULT_DEV_RELOAD,
+            experimental: NO_EXPERIMENTAL,
         });
     });
 
@@ -42,6 +49,7 @@ describe("parseMainCommandLine", () => {
                 error: null,
             },
             devReload: DEFAULT_DEV_RELOAD,
+            experimental: NO_EXPERIMENTAL,
         });
     });
 
@@ -191,6 +199,55 @@ describe("parseMainCommandLine", () => {
         ]);
 
         expect(options.project.selector).toBe("second");
+    });
+
+    it("reads the experimental flag and its condition flags", () => {
+        const options = parseMainCommandLine([
+            "electron", "dist/main/index.js", "--dev", "--experimental", "--x-debuggable-build",
+        ]);
+
+        expect(options.experimental).toEqual({
+            requested: true,
+            conditions: ["debuggable-build"],
+            unknownConditionFlags: [],
+        });
+    });
+
+    it("parses condition flags without --experimental, which decides nothing on its own", () => {
+        // The mode is what honours them (BaseApp.getExperimentalState); parsing only reports what
+        // was on the command line.
+        const options = parseMainCommandLine(["electron", "dist/main/index.js", "--x-debuggable-build"]);
+
+        expect(options.experimental.requested).toBe(false);
+        expect(options.experimental.conditions).toEqual(["debuggable-build"]);
+    });
+
+    it("collects condition flags that name nothing instead of dropping them", () => {
+        const options = parseMainCommandLine([
+            "electron", "dist/main/index.js", "--experimental", "--x-no-such-condition",
+        ]);
+
+        expect(options.experimental.conditions).toEqual([]);
+        expect(options.experimental.unknownConditionFlags).toEqual(["--x-no-such-condition"]);
+    });
+
+    it("does not repeat a condition given twice", () => {
+        const options = parseMainCommandLine([
+            "electron", "dist/main/index.js", "--experimental", "--x-debuggable-build", "--x-debuggable-build",
+        ]);
+
+        expect(options.experimental.conditions).toEqual(["debuggable-build"]);
+    });
+
+    it("does not let the experimental flags disturb the ones parsed around them", () => {
+        const options = parseMainCommandLine([
+            "electron", "dist/main/index.js", "--dev", "--experimental", "--x-debuggable-build",
+            "--project", "demo3", "--cdp", "--cdp-port", "9333",
+        ]);
+
+        expect(options.project.selector).toBe("demo3");
+        expect(options.cdp.port).toBe(9333);
+        expect(options.cdp.error).toBeNull();
     });
 
     it("allows development mode only for unpackaged --dev launches", () => {

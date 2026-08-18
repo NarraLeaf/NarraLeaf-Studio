@@ -3,7 +3,7 @@ import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents"
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { Platform } from "@shared/types/os";
-import { WindowControlAbility } from "@shared/types/window";
+import { WindowAppType, WindowControlAbility } from "@shared/types/window";
 import { app as electronApp, dialog, shell } from "electron";
 import type { Dirent } from "fs";
 import { promises as fs } from "fs";
@@ -47,6 +47,25 @@ export class AppInfoHandler extends IPCHandler<IPCEventType.appInfo> {
 
     public handle(window: AppWindow) {
         return this.success(window.app.getAppInfo());
+    }
+}
+
+/**
+ * Hand the experimental warning to the first workspace window that asks for it.
+ *
+ * Workspace only: the warning names what the mode does to a project, and the launcher and the
+ * settings window are neither the place for it nor the surface an author is looking at when they
+ * start working.
+ */
+export class AppClaimExperimentalNoticeHandler extends IPCHandler<IPCEventType.appClaimExperimentalNotice> {
+    readonly name = IPCEventType.appClaimExperimentalNotice;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow) {
+        if (window.getWindowType() !== WindowAppType.Workspace) {
+            return this.success({ show: false });
+        }
+        return this.success({ show: window.app.claimExperimentalNotice() });
     }
 }
 

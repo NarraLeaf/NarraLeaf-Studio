@@ -1,3 +1,11 @@
+import {
+    EXPERIMENTAL_CONDITION_FLAG_PREFIX,
+    EXPERIMENTAL_CONDITION_IDS,
+    EXPERIMENTAL_FLAG,
+    isExperimentalConditionId,
+    type ExperimentalConditionId,
+} from "@shared/types/experimental";
+
 export const DEFAULT_CDP_PORT = 9222;
 
 /**
@@ -28,6 +36,18 @@ export interface StartupProjectCommandLineOptions {
      */
     selector: string | null;
     error: string | null;
+}
+
+export interface ExperimentalCommandLineOptions {
+    /**
+     * `--experimental` was given. Whether it is honoured is a second question - a packaged Studio
+     * never enters the mode. See `BaseApp.getExperimentalState`.
+     */
+    requested: boolean;
+    /** Conditions named by `--x-<id>` flags, in registry order and without duplicates. */
+    conditions: ExperimentalConditionId[];
+    /** `--x-` flags that name no registered condition, so the launch can report them. */
+    unknownConditionFlags: string[];
 }
 
 export interface MainCommandLineOptions {
@@ -65,6 +85,13 @@ export interface MainCommandLineOptions {
     project: StartupProjectCommandLineOptions;
     cdp: CdpCommandLineOptions;
     devReload: DevReloadCommandLineOptions;
+    /**
+     * Development launch that unlocks test conditions which are not part of the product.
+     *
+     * Parsed unconditionally and refused later for a packaged build, the same way `--cdp` is. See
+     * `@shared/types/experimental` for what the flags are and why there are two levels of them.
+     */
+    experimental: ExperimentalCommandLineOptions;
 }
 
 export function isMainDevMode(options: MainCommandLineOptions, isPackaged: boolean): boolean {
@@ -107,6 +134,8 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
     let devReloadError: string | null = null;
     let projectSelector: string | null = null;
     let projectError: string | null = null;
+    const experimentalConditions = new Set<ExperimentalConditionId>();
+    const unknownConditionFlags = new Set<string>();
 
     for (let i = 0; i < argv.length; i += 1) {
         const arg = argv[i];
@@ -137,6 +166,20 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
 
             projectSelector = value;
             projectError = null;
+            continue;
+        }
+
+        if (arg === EXPERIMENTAL_FLAG) {
+            continue;
+        }
+
+        if (arg.startsWith(EXPERIMENTAL_CONDITION_FLAG_PREFIX)) {
+            const id = arg.slice(EXPERIMENTAL_CONDITION_FLAG_PREFIX.length);
+            if (isExperimentalConditionId(id)) {
+                experimentalConditions.add(id);
+            } else {
+                unknownConditionFlags.add(arg);
+            }
             continue;
         }
 
@@ -225,6 +268,13 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
             port: devReloadPort,
             portSource: devReloadPortSource,
             error: devReloadError,
+        },
+        experimental: {
+            requested: argv.includes(EXPERIMENTAL_FLAG),
+            // Registry order rather than the order they were typed, so two launches with the same
+            // conditions produce the same list wherever it is printed.
+            conditions: EXPERIMENTAL_CONDITION_IDS.filter(id => experimentalConditions.has(id)),
+            unknownConditionFlags: [...unknownConditionFlags],
         },
     };
 }
