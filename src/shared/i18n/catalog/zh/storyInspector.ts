@@ -57,6 +57,12 @@ export const storyInspector = {
         character: "角色",
         layer: "图层",
         muted: "静音",
+        closeIn: "闭眼（秒）",
+        openOut: "睁眼（秒）",
+        fadeIn: "渐入（秒）",
+        fadeOut: "渐出（秒）",
+        vignetteInner: "透明中心 %",
+        vignetteOuter: "全暗边缘 %",
     },
     motionTarget: {
         image: "图片",
@@ -211,6 +217,7 @@ export const storyInspector = {
         pan: "平移",
         rotate: "旋转",
         darken: "压暗舞台",
+        look: "色调",
         motion: "运镜动作",
         reset: "复位镜头",
     },
@@ -220,6 +227,7 @@ export const storyInspector = {
         pan: "平移",
         rotate: "旋转",
         darken: "压暗",
+        look: "色调",
         motion: "运镜",
         reset: "复位",
     },
@@ -230,6 +238,22 @@ export const storyInspector = {
         darkness: "舞台压暗（0-1）",
         xalign: "X 对齐（0-1）",
         yalign: "Y 对齐（0-1）",
+        look: "色调",
+        lookIntensity: "强度（1 为标准）",
+        lookFilter: "自定义 CSS 滤镜",
+    },
+
+    cameraLook: {
+        memory: "回忆",
+        monologue: "心理独白",
+        mono: "单色",
+        moonlight: "月光",
+        faint: "意识模糊",
+    },
+
+    cameraLookHint: {
+        channel: "色调会顶掉舞台压暗，而不是叠加——引擎里两者是同一个滤镜通道，后执行的那一行说了算。每个色调都自带亮度。复位镜头会清除它。",
+        monologue: "只降低整个舞台的饱和度与亮度。要压暗四周，请另加一行暗角。",
     },
 
     displayableOperation: {
@@ -292,7 +316,10 @@ export const storyInspector = {
         blink: "闪烁",
         vignette: "暗角",
     },
-    waitMode: {
+
+    screenEffectHint: {
+        vignetteSymmetric: "暗角的渐出与渐入用同一段时长，这里填的会被忽略。",
+    },    waitMode: {
         duration: "时长",
         click: "点击",
     },

@@ -93,6 +93,7 @@ import {
     SegToggle,
     SelectField,
     Section,
+    TextField,
     easingOptions,
     type TFunc,
 } from "./inspectorFieldKit";
@@ -1109,6 +1110,11 @@ function ActionPayloadFields(props: {
         );
     }
     if (payload.action === "screenEffect") {
+        // The two effects share one timing grammar and differ in what else they own, so a field that
+        // belongs to only one of them is drawn only for it. The engine's `BlinkOptions` has no
+        // opacity, so that row on a blink read as an edit and changed nothing; the two radii are
+        // the vignette's gradient and mean nothing to a pair of shutters.
+        const isVignette = payload.effect === "vignette";
         return (
             <div className="nl-field-grid">
                 <SelectField
@@ -1118,15 +1124,39 @@ function ActionPayloadFields(props: {
                     onChange={effect => props.onChange({ ...payload, effect: effect as Extract<StoryActionPayload, { action: "screenEffect" }>["effect"] })}
                 />
                 <SecondsField label={t("storyInspector.field.duration")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
+                {/* Empty means "follow the whole move", which is why neither half is seeded from
+                    `duration` when the author opens the row - a filled box would claim an override
+                    nobody asked for, and there would be no way back to following it. */}
+                <SecondsField
+                    label={isVignette ? t("storyInspector.field.fadeIn") : t("storyInspector.field.closeIn")}
+                    value={payload.inMs}
+                    onChange={inMs => props.onChange({ ...payload, inMs })}
+                />
+                <SecondsField
+                    label={isVignette ? t("storyInspector.field.fadeOut") : t("storyInspector.field.openOut")}
+                    value={payload.outMs}
+                    onChange={outMs => props.onChange({ ...payload, outMs })}
+                />
                 <SecondsField label={t("storyInspector.field.hold")} value={payload.holdMs} onChange={holdMs => props.onChange({ ...payload, holdMs })} />
                 <ColorTextField label={t("storyInspector.field.color")} value={payload.color ?? "#000000"} onChange={color => props.onChange({ ...payload, color })} />
-                <NumberField label={t("storyInspector.field.opacity")} value={payload.opacity} onChange={opacity => props.onChange({ ...payload, opacity })} />
+                {isVignette ? (
+                    <NumberField label={t("storyInspector.field.opacity")} value={payload.opacity} onChange={opacity => props.onChange({ ...payload, opacity })} />
+                ) : null}
+                {isVignette ? (
+                    <NumberField label={t("storyInspector.field.vignetteInner")} value={payload.inner} onChange={inner => props.onChange({ ...payload, inner })} />
+                ) : null}
+                {isVignette ? (
+                    <NumberField label={t("storyInspector.field.vignetteOuter")} value={payload.outer} onChange={outer => props.onChange({ ...payload, outer })} />
+                ) : null}
                 <SelectField
                     label={t("storyInspector.field.easing")}
                     options={easingOptions(t)}
                     value={payload.easing ?? ""}
                     onChange={easing => props.onChange({ ...payload, easing: String(easing) || undefined })}
                 />
+                {isVignette && payload.outMs !== undefined && payload.outMs !== (payload.inMs ?? payload.durationMs) ? (
+                    <p className="col-span-full text-2xs text-fg-subtle">{t("storyInspector.screenEffectHint.vignetteSymmetric")}</p>
+                ) : null}
             </div>
         );
     }
@@ -2951,36 +2981,6 @@ function TextIdReadout(props: { text: StoryTextSegment }) {
                     </button>
                 </div>
             )}
-        </div>
-    );
-}
-
-function TextField(props: {
-    label: string;
-    value: string;
-    onChange: (value: string) => void;
-    options?: SelectOption[];
-    /** Shown when `value` is empty — used for a derived default, which is not authored content. */
-    placeholder?: string;
-}) {
-    if (props.options) {
-        return (
-            <SelectField
-                label={props.label}
-                options={props.options}
-                value={props.value}
-                onChange={value => props.onChange(String(value))}
-            />
-        );
-    }
-    return (
-        <div>
-            <label className={FIELD_LABEL_CLASS}>{props.label}</label>
-            <EnhancedInput
-                value={props.value}
-                placeholder={props.placeholder}
-                onChange={props.onChange}
-            />
         </div>
     );
 }

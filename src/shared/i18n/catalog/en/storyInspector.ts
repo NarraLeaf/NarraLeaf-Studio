@@ -61,6 +61,14 @@ export const storyInspector = {
         kind: "Kind",
         effect: "Effect",
         character: "Character",
+        // The two halves of a screen effect, named for what each one does on the effect that owns it —
+        // a blink shuts and opens, a vignette fades in and out. Empty means "follow the whole move".
+        closeIn: "Close (s)",
+        openOut: "Open (s)",
+        fadeIn: "Fade in (s)",
+        fadeOut: "Fade out (s)",
+        vignetteInner: "Clear center %",
+        vignetteOuter: "Dark edge %",
         layer: "Layer",
         muted: "Muted",
     },
@@ -236,17 +244,20 @@ export const storyInspector = {
         rotate: "Rotate",
         // "stage", not "screen": this is the camera's brightness, not `/vignette`'s in-scene mask.
         darken: "Darken stage",
+        // "Grade", the word the craft uses, so the picker teaches the vocabulary rather than only the token.
+        look: "Color grade",
         motion: "Camera motion",
         reset: "Reset camera",
     },
 
-    // The picker labels: short enough that six fit side by side. The full names above stay as each
+    // The picker labels: short enough that they fit side by side. The full names above stay as each
     // button's tooltip, so `Darken stage` still gets to say *stage* where it matters.
     cameraOperationShort: {
         zoom: "Zoom",
         pan: "Pan",
         rotate: "Rotate",
         darken: "Darken",
+        look: "Grade",
         motion: "Motion",
         reset: "Reset",
     },
@@ -257,6 +268,24 @@ export const storyInspector = {
         darkness: "Stage darkness (0-1)",
         xalign: "X align (0-1)",
         yalign: "Y align (0-1)",
+        look: "Look",
+        lookIntensity: "Intensity (1 = nominal)",
+        lookFilter: "Custom CSS filter",
+    },
+
+    // The looks themselves. Named for the moment they are for, not for what they do to the pixels:
+    // an author reaches for these while writing a flashback, not while thinking about saturation.
+    cameraLook: {
+        memory: "Memory",
+        monologue: "Inner monologue",
+        mono: "Monochrome",
+        moonlight: "Moonlight",
+        faint: "Losing consciousness",
+    },
+
+    cameraLookHint: {
+        channel: "A look replaces stage darkness rather than adding to it — the engine gives both the same filter, so the later row wins. Each look carries its own brightness. Reset camera clears it.",
+        monologue: "Desaturates and dims the whole stage. For darkened edges, add a vignette.",
     },
 
     displayableOperation: {
@@ -325,6 +354,12 @@ export const storyInspector = {
     screenEffectOption: {
         blink: "Blink",
         vignette: "Vignette",
+    },
+
+    screenEffectHint: {
+        // The engine drives a vignette's fade in and its fade out from one duration, so the row is
+        // told here rather than at compile time, where the author would only see it as a warning.
+        vignetteSymmetric: "A vignette fades out over the same time it fades in, so this is ignored.",
     },
 
     waitMode: {

@@ -126,6 +126,10 @@ import {
     timelineToNlrTransformSequences,
     toNlrTransformSequence,
 } from "./storyTransformProps";
+// The look library sits beside the command spec and the inspector that pick from it; the compile is
+// its third reader rather than its owner, which is the same relation `storyReplace` already has with
+// the scene editor's find/replace model.
+import { resolveStoryCameraLook } from "@/apps/workspace/modules/story/scene-editor/cameraLookPresets";
 import type { StageSnapshotDisplayable, StageSnapshotEffects, StoryStageSnapshot } from "./storyStageSnapshot";
 import { collectSavedVariableView, savedVariableDefsFromView } from "./storyStageSnapshot";
 import {
@@ -2734,19 +2738,7 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
     }
 
     if (payload.action === "screenEffect") {
-        const options = {
-            duration: payload.durationMs,
-            closeDuration: payload.durationMs,
-            openDuration: payload.durationMs,
-            hold: payload.holdMs,
-            color: payload.color,
-            opacity: payload.opacity,
-            easing: payload.easing,
-        };
-        const chain = payload.effect === "blink"
-            ? blink(ctx.nlrScene, options as any)
-            : vignette(ctx.nlrScene, options as any);
-        return [recordStatement(ctx, chain, block)];
+        return compileScreenEffectAction(ctx, block, payload);
     }
 
     if (payload.action === "camera") {
@@ -2758,6 +2750,74 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
 
 /** Lower bound on camera zoom: 0 or a negative scale is not a shot, it is a broken transform. */
 const MIN_CAMERA_ZOOM = 0.05;
+
+/**
+ * The engine's own `VignetteOptions` defaults, restated so a row that sets only one radius still
+ * orders the pair against the value the other half will actually take.
+ */
+const DEFAULT_VIGNETTE_INNER = 44;
+const DEFAULT_VIGNETTE_OUTER = 78;
+
+/**
+ * `/blink` and `/vignette` - the two screen-wide gestures, sharing one parameter grammar.
+ *
+ * `durationMs` is the whole in-and-out move; `inMs` / `outMs` override one half each and fall back to
+ * it. `blink` honours the split outright, because the engine splits it too (`closeDuration` /
+ * `openDuration`) - which Studio used to collapse by filling both from the one number, making "slam
+ * the eyes shut, open them slowly" inexpressible rather than unsupported.
+ *
+ * `vignette` cannot: the engine's helper drives its fade in AND its fade out from a single
+ * `duration`, so the out half is not a knob that exists to turn. Rather than play a different move
+ * than the row asked for in silence, an asymmetric vignette is reported. Rebuilding the effect here
+ * from `effectLayer` plus a hand-written mask WOULD express it, and is deliberately not done: the
+ * gradient geometry, the layer's identity and the mask teardown are the engine's business, and a copy
+ * living in this file would go stale the first time the engine tunes its vignette - invisibly, since
+ * the effect would keep rendering, just no longer like every other build's.
+ */
+function compileScreenEffectAction(
+    ctx: SceneCompileContext,
+    block: StoryBlock,
+    payload: Extract<StoryActionPayload, { action: "screenEffect" }>,
+): NlrStatement[] {
+    // A negative duration is not a fast move, it is a value the engine hands to a tween that never
+    // finishes - and the row is awaited, so the scene would stop there.
+    const half = (value: number | undefined): number | undefined => {
+        const resolved = value ?? payload.durationMs;
+        return resolved === undefined ? undefined : Math.max(0, finiteOr(resolved, 0));
+    };
+    const inDuration = half(payload.inMs);
+    const outDuration = half(payload.outMs);
+    const hold = payload.holdMs === undefined ? undefined : Math.max(0, finiteOr(payload.holdMs, 0));
+
+    if (payload.effect === "blink") {
+        const chain = blink(ctx.nlrScene, {
+            closeDuration: inDuration,
+            openDuration: outDuration,
+            hold,
+            color: payload.color,
+            easing: payload.easing,
+        } as any);
+        return [recordStatement(ctx, chain, block)];
+    }
+
+    if (payload.outMs !== undefined && outDuration !== inDuration) {
+        diagnostic(ctx, "warning", block.id, "A vignette fades out over the same time it fades in; its separate out duration is ignored.");
+    }
+    // `inner` above `outer` is not a wider vignette - it is a `radial-gradient` whose stops run
+    // backwards, which the browser drops whole, taking the mask and therefore the entire effect with
+    // it. Ordering them here is the same discipline the camera's clamps follow.
+    const inner = Math.min(100, Math.max(0, finiteOr(payload.inner, DEFAULT_VIGNETTE_INNER)));
+    const outer = Math.min(100, Math.max(inner, finiteOr(payload.outer, DEFAULT_VIGNETTE_OUTER)));
+    const chain = vignette(ctx.nlrScene, {
+        duration: inDuration,
+        hold,
+        color: payload.color,
+        opacity: payload.opacity,
+        easing: payload.easing,
+        ...(payload.inner === undefined && payload.outer === undefined ? {} : { inner: `${inner}%`, outer: `${outer}%` }),
+    } as any);
+    return [recordStatement(ctx, chain, block)];
+}
 
 /** A finite number, or the neutral fallback - a NaN reaching a Transform prop silently kills the whole animation. */
 function finiteOr(value: number | undefined, fallback: number): number {
@@ -2796,6 +2856,26 @@ function compileCameraAction(
             return [recordStatement(ctx, camera.rotate(finiteOr(payload.rotation, 0), duration, easing), block)];
         case "darken":
             return [recordStatement(ctx, camera.darken(Math.min(1, Math.max(0, finiteOr(payload.darkness, 0))), duration, easing), block)];
+        case "look": {
+            // A colour grade over the whole stage, through `Displayable.filter` - the SAME channel
+            // `darken` writes above, since `darken(d)` is `filter("brightness(1 - d)")` in the engine.
+            // The two never compose: this row replaces whatever the last one put there, which is why
+            // every preset folds its own brightness in rather than expecting a `/camera darken` beside
+            // it.
+            //
+            // A hand-written filter wins over the preset - it is the escape hatch, and a resolved
+            // preset quietly overriding what the author typed would make the field a decoration.
+            const handWritten = payload.filter?.trim();
+            const resolved = handWritten || resolveStoryCameraLook(payload.lookPreset, payload.lookIntensity);
+            if (!resolved) {
+                diagnostic(ctx, "warning", block.id, payload.lookPreset
+                    ? `Camera look "${payload.lookPreset}" is not a known grade.`
+                    : "Camera look has no grade chosen.");
+                return [];
+            }
+            const options = easing ? { duration, ease: easing } : { duration };
+            return [recordStatement(ctx, camera.filter(resolved, options), block)];
+        }
         case "reset":
             return [recordStatement(ctx, camera.resetCamera(duration, easing), block)];
         case "motion": {

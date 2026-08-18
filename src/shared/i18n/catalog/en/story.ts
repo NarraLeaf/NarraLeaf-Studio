@@ -510,8 +510,14 @@ export const story = {
         displayName: "Display Name",
         seekTime: "Seconds",
         // Camera
-        cameraOperation: "Pan / Zoom / Rotate / Darken / Motion / Reset",
-        cameraAmount: "Amount or Position",
+        cameraOperation: "Pan / Zoom / Rotate / Darken / Look / Motion / Reset",
+        cameraAmount: "Amount, Position or Look",
+        cameraLookStrength: "Look Strength",
+        // The two halves a screen effect can override; absent, each follows the whole move.
+        effectIn: "In Seconds",
+        effectOut: "Out Seconds",
+        vignetteInner: "Clear Center %",
+        vignetteOuter: "Dark Edge %",
         // Modifiers
         duration: "Seconds",
         transition: "Transition",
@@ -1089,9 +1095,12 @@ export const story = {
             zoom: "Zoom",
             rotate: "Rotate",
             darken: "Darken stage",
+            look: "Grade",
             motion: "Motion",
             reset: "Reset camera",
         },
+        // A hand-written filter has no name to print, and its CSS is not a thing to show in a row.
+        cameraLookCustom: "custom",
         condition: "Condition",
         branch: "{branch} branch",
         label: "Label {name}",
