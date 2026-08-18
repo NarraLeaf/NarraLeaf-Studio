@@ -173,9 +173,11 @@ describe("resumeAfterLocaleRestart", () => {
         await expect(resumeAfterLocaleRestart(seam)).resolves.toBe("failed");
 
         // Not deleted: it is the only copy of a run the player did not choose to end, and the load
-        // path has already reported why it would not take it.
+        // path has already reported why it would not take it. What is said here is only that the
+        // record is still there, which nothing else would tell anyone.
         expect(trace).not.toContain(`delete:${LOCALE_RESTART_SAVE_ID}`);
-        expect(reports).toEqual([]);
+        expect(reports.map(entry => entry.level)).toEqual(["info", "warning"]);
+        expect(reports[1]?.message).toContain("still stored");
     });
 
     it("still counts as resumed when the parked save cannot be deleted", async () => {

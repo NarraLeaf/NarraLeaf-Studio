@@ -187,6 +187,23 @@ import { readSavePlaytimeSeconds } from "@shared/utils/runtimeSaveRecord";
 // STAGE_WARMUP_TIMEOUT_MS, because cutting a warm-up short is the one failure that shows up as
 // in-game stutter, and boot latency is explicitly not what this trades against.
 const NLR_BOOT_PRELOAD_TIMEOUT_MS = 45_000;
+/**
+ * How long a load waits for the page the player was on to finish leaving. Generous next to any
+ * authored page transition and short next to a player wondering whether the game is stuck.
+ */
+const SAVE_LOAD_ROUTER_EXIT_TIMEOUT_MS = 3000;
+/**
+ * How long the resume after a language restart waits for an environment to come up, and how often
+ * it looks. Long enough to cover a cold boot that has a scene to fetch and decode; bounded so a
+ * boot that never produces one leaves the parked run for the next one instead of waiting forever.
+ */
+const LOCALE_RESUME_SESSION_WAIT_MS = 30_000;
+const LOCALE_RESUME_POLL_MS = 200;
+/**
+ * How long the environment has to stand still before the parked run is loaded into it. Covers the
+ * gap between a mount publishing its live game and whatever started that mount entering the game.
+ */
+const LOCALE_RESUME_SETTLE_MS = 1000;
 // How long a mount waits for the first scene to be fetched and decoded. Long enough that a real
 // project's opening scene always finishes: a longer loading step is the cheaper cost, since the
 // alternative is the player paying for it on a button they just pressed. Bounded only so a broken
@@ -490,6 +507,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         ((request: DevModeStartStoryRequest, options?: { forceReinit?: boolean }) => Promise<void>) | null
     >(null);
     const cleanupBundleIdRef = useRef<string | null>(null);
+    /** The runtime core whose language-restart resume has already been attempted. */
+    const localeResumeAttemptedRef = useRef<unknown>(null);
     const activeStoryRequestRef = useRef<DevModeStartStoryRequest | null>(null);
     const activeStoryRevisionRef = useRef<number | null>(null);
     const pendingGameStartsRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
@@ -497,27 +516,25 @@ export function GameApp(props: GameAppProps): ReactNode {
     const nlrLiveGameSessionIdRef = useRef<string | null>(null);
     // Built once and never rebuilt, because a Game UI slot surface holds whichever copy it was given
     // when its session was mounted. Both members read the refs above at call time.
-    const { isInGame, requireLiveGame: requireActiveLiveGame } = useMemo(() => createSessionGate<LiveGame>({
+    /**
+     * The session gate. `isPlaythroughRunning` lives inside it rather than beside its three callers
+     * here for the reason the gate exists at all: a Game UI slot surface keeps the callbacks it was
+     * built with, and this one used to read the session *state*, which a slot's copy sees as null
+     * for that game's whole life. MEASURED: changing the language from the quick menu changed it
+     * under a running playthrough and never restarted, while the same control on a page did.
+     */
+    const {
+        isInGame,
+        requireLiveGame: requireActiveLiveGame,
+        isPlaythroughRunning,
+        hasLiveGame,
+    } = useMemo(() => createSessionGate<LiveGame>({
         sessionId: nlrSessionIdRef,
         liveGameSessionId: nlrLiveGameSessionIdRef,
         liveGame: nlrLiveGameRef,
         stageVisible: gameStageVisibleRef,
+        gameEntered: gameEnteredRef,
     }), []);
-    /**
-     * A playthrough is running and can be serialized.
-     *
-     * One definition, asked by both the autosave scheduler and the playtime clock. They are the two
-     * things in this file that run off a timer and must agree on when a game is being played; a
-     * second copy of these four conditions would be a second answer to drift from the first.
-     *
-     * Refs rather than state, so the answer is the one true at the moment a tick asks it.
-     */
-    const isPlaythroughRunning = useCallback(() => Boolean(
-        gameEnteredRef.current
-        && nlrSession?.id
-        && nlrLiveGameSessionIdRef.current === nlrSession.id
-        && nlrLiveGameRef.current,
-    ), [nlrSession?.id]);
     /**
      * The stopwatch behind `Get Playtime`, the reading written onto every save, and the title's
      * running total. Mounted here rather than beside the autosave scheduler because `writeSave`
@@ -1799,6 +1816,7 @@ export function GameApp(props: GameAppProps): ReactNode {
      */
     const loadSave = useCallback(async (id: string): Promise<SaveLoadOutcome> => {
         const liveGame = requireActiveLiveGame("Load Save");
+
         // Captured on the way past rather than re-read afterwards: a save record carries a whole
         // serialized playthrough, and reading one twice to look at one number would double the
         // cost of every load.
@@ -1921,7 +1939,23 @@ export function GameApp(props: GameAppProps): ReactNode {
         // is the only honest answer when nobody was counting.
         playtime.seedRun(storedPlaytimeSeconds ?? 0);
         gameEnteredRef.current = true;
-        await liveGame.waitForRouterExit().promise;
+        /**
+         * Let the page the player was on finish leaving before the stage is revealed - but never
+         * wait on one that is not there.
+         *
+         * The wait is for the NEXT exit-complete event, which the load's own `router.clear()`
+         * produces only when a page was open. Every load the product shipped with came from one (a
+         * save screen, a title screen), so the event always arrived. A load taken with the stage
+         * already on screen and nothing over it produces no exit at all, and an unbounded wait then
+         * never returns: the save IS applied and the player is back where they were, while
+         * everything after this line - the reveal, and whatever the caller meant to do next - simply
+         * never happens. MEASURED: resuming after a language restart left the parked save on disk
+         * for exactly this reason, on a run that had otherwise gone perfectly.
+         *
+         * A deadline rather than a check for an open page, because the failure is the same shape
+         * whatever caused it: an exit that does not arrive must not strand the caller.
+         */
+        await withDeadline(liveGame.waitForRouterExit().promise, SAVE_LOAD_ROUTER_EXIT_TIMEOUT_MS);
         setGameStageVisible(true);
         hideCurrentStudioPagesForGame();
         return outcome;
@@ -2006,21 +2040,81 @@ export function GameApp(props: GameAppProps): ReactNode {
     /**
      * Put the player back into the run a language change restarted the game out of.
      *
-     * Called once per mounted environment - after the boot preload, and again after a Dev Mode hot
-     * reload remounts one - because those are the two moments a session exists to load into and the
-     * one it has just started from nothing. It is a no-op in every boot that owes nothing, which is
-     * all of them but the one immediately after a language change.
+     * Waits for a live game before it reads anything, and that wait is the point. The two paths that
+     * bring an environment up - the boot preload and a Dev Mode reload - both finish asynchronously
+     * and both have branches that end early (a superseded mount, a story that would not compile), so
+     * hanging the resume off the end of either meant it silently did not happen. MEASURED: two runs
+     * of the same acceptance, one resumed and one came back to the title screen with the run still
+     * parked. It waits for the fact it needs instead, and gives up rather than blocking anything.
+     *
+     * The marker is only read once a game exists to load into, so a boot that never gets one leaves
+     * it for the next boot rather than consuming it into nothing.
      */
     const resumeLocaleRestart = useCallback(async (): Promise<void> => {
         if (!core) {
             return;
         }
         const scope = core.scopeBridge;
+        const deadline = Date.now() + LOCALE_RESUME_SESSION_WAIT_MS;
+        const settle = (ms = LOCALE_RESUME_POLL_MS) => new Promise(resolve => { window.setTimeout(resolve, ms); });
+        /**
+         * The environment this launch is meant to resume into, ready and standing still.
+         *
+         * Two conditions, both learned from a real run. The session has to belong to THIS bundle
+         * revision: the refs still describe the previous one until a reload's mount replaces them,
+         * and a load into the session being torn down is thrown away by the mount that follows -
+         * the player lands at the top of the scene with their parked run already deleted. And the
+         * environment has to have stopped moving: a mount publishes its live game a moment before
+         * whatever started it enters the game, and entering calls `newGame()`, which wipes exactly
+         * what the load just put back.
+         */
+        const sessionPrefix = `${bundle.bundleId}:${bundle.revision}:`;
+        const environmentIsMine = () => Boolean(hasLiveGame() && nlrSessionIdRef.current?.startsWith(sessionPrefix));
+        // Before the marker is even read: a launch that never produces a game must leave it for the
+        // next one rather than consume it into nothing.
+        while (!environmentIsMine()) {
+            if (Date.now() > deadline) {
+                return;
+            }
+            await settle();
+        }
+        await settle(LOCALE_RESUME_SETTLE_MS);
+        if (!environmentIsMine()) {
+            return;
+        }
+        /**
+         * The load, retried while the environment is still settling.
+         *
+         * A game existing when the marker is read does not mean one exists a tick later: the
+         * environment that is up may be the one being replaced, and a mount nulls the live game
+         * before it publishes the new one. MEASURED: the resume read the marker, reached the load,
+         * and was told "game runtime is not available" - by a session that came up two seconds
+         * later. The gate is asked again after a failure to tell that apart from a load that failed
+         * with a game right there in front of it, which is not something waiting can fix.
+         */
+        const loadParkedSave = async (id: string): Promise<boolean> => {
+            for (;;) {
+                try {
+                    return await loadSaveForGraph(id);
+                } catch (error) {
+                    if (hasLiveGame() || Date.now() > deadline) {
+                        throw error;
+                    }
+                }
+                await settle();
+                while (!hasLiveGame()) {
+                    if (Date.now() > deadline) {
+                        throw new Error("no game runtime came up to resume into");
+                    }
+                    await settle();
+                }
+            }
+        };
         try {
             await resumeAfterLocaleRestart({
                 persistenceGetAsync: key => scope.persistenceGetAsync(key),
                 persistenceSet: (key, value) => scope.persistenceSet(key, value),
-                loadSave: loadSaveForGraph,
+                loadSave: loadParkedSave,
                 deleteSave,
                 report: reportLocaleRestart,
             });
@@ -2030,7 +2124,15 @@ export function GameApp(props: GameAppProps): ReactNode {
             // resume is worse than the title screen the player gets by falling through it.
             reportLocaleRestart("error", `The playthrough could not be resumed after the language change: ${normalizeError(error)}`);
         }
-    }, [core, deleteSave, loadSaveForGraph, reportLocaleRestart]);
+    }, [
+        bundle.bundleId,
+        bundle.revision,
+        core,
+        deleteSave,
+        hasLiveGame,
+        loadSaveForGraph,
+        reportLocaleRestart,
+    ]);
 
     // `saves.write` for runtime plugins: the very same paths the Save Game /
     // Load Save nodes take, so a plugin save is indistinguishable from an
@@ -2971,11 +3073,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         void (async () => {
             try {
                 await runBootRef.current?.();
-                // After the environment is up and before the surfaces start, because this is a
-                // load into the session the boot just made: on the one boot that follows a
-                // language change it puts the player back where they were, and on every other
-                // boot it reads one persisted key and returns.
-                await resumeLocaleRestart();
             } catch (err) {
                 if (cancelled) {
                     // nothing to report; the effect was torn down
@@ -2999,6 +3096,35 @@ export function GameApp(props: GameAppProps): ReactNode {
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [bootReady, bundle.bundleId]);
+
+    /**
+     * The one place a language restart is resumed from.
+     *
+     * Keyed on the runtime core rather than hung off the boot or the reload that produced one. Two
+     * reasons, both measured on a real run:
+     *
+     *  - Both of those paths are asynchronous and both have branches that end early (a superseded
+     *    mount, a story that would not compile), so a resume that lives inside one of them is
+     *    skipped exactly when it is needed.
+     *  - The core is what owns the persistence store, and a reload builds a NEW one while the old
+     *    one's adapter is detached and its values cleared. Keying on the bundle instead fired this
+     *    on the render *before* the new core arrived, read the store through the dead one, and
+     *    concluded that nothing was parked - while the marker sat on disk and the player's run sat
+     *    in a save nobody would ever read again.
+     *
+     * One attempt per environment, waiting for the environment itself, and a no-op in every launch
+     * that owes nothing - which is all of them but the one immediately after a language change.
+     */
+    useEffect(() => {
+        if (!host.ready || !core || !nlrPreloadDone) {
+            return;
+        }
+        if (localeResumeAttemptedRef.current === core) {
+            return;
+        }
+        localeResumeAttemptedRef.current = core;
+        void resumeLocaleRestart();
+    }, [core, host.ready, nlrPreloadDone, resumeLocaleRestart]);
 
     const visibleSurfaceEntries = bundle.ui.uidoc.surfaces.length > 0
         ? visibleEntries
@@ -3321,10 +3447,6 @@ export function GameApp(props: GameAppProps): ReactNode {
                 } else {
                     await startEmptyNlrEnvironment();
                 }
-                // The boot effect does not re-run for a revision bump, so this is the only place a
-                // Dev Mode restart can be resumed from - and a restart is what Dev Mode does when
-                // the language changes mid-run. Ordinary reloads owe nothing and it returns at once.
-                await resumeLocaleRestart();
             } catch (err) {
                 if (err instanceof NlrSessionSupersededError) {
                     // Another revision landed while this restart was in flight and has taken the
@@ -3337,15 +3459,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 reportFailure(err, { prefix: `[${host.id}] NLR hot reload restart failed: ` });
             }
         })();
-    }, [
-        bundle.revision,
-        compileStoryRequest,
-        enterMountedGame,
-        host,
-        mountNlrSession,
-        resumeLocaleRestart,
-        startEmptyNlrEnvironment,
-    ]);
+    }, [bundle.revision, compileStoryRequest, enterMountedGame, host, mountNlrSession, startEmptyNlrEnvironment]);
 
     useEffect(() => {
         const nextBundleId = bundle.bundleId;

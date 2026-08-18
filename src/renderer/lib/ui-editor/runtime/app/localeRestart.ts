@@ -94,6 +94,9 @@ export async function applyLocaleChange(seam: LocaleChangeSeam): Promise<LocaleC
         );
         return "failed";
     }
+    // Said out loud, at info: this is the one moment a player's game ends and comes back on its
+    // own, and an author watching a log has to be able to tell it from a crash.
+    seam.report("info", "The playthrough was parked for the language change; restarting.");
     await seam.restartApplication();
     return "restarting";
 }
@@ -143,6 +146,7 @@ export async function resumeAfterLocaleRestart(seam: LocaleResumeSeam): Promise<
         return "none";
     }
     await seam.persistenceSet(LOCALE_RESTART_RESUME_KEY, undefined);
+    seam.report("info", "A language change parked a playthrough; restoring it.");
     let loaded = false;
     try {
         loaded = await seam.loadSave(marker);
@@ -153,10 +157,12 @@ export async function resumeAfterLocaleRestart(seam: LocaleResumeSeam): Promise<
         return "failed";
     }
     if (!loaded) {
+        seam.report("warning", "The playthrough parked by the language change was not accepted; it is still stored.");
         // `loadSave` has already told the player and the author what it refused and why; saying it
         // twice in different words would just be a second opinion on the same record.
         return "failed";
     }
+    seam.report("info", "The playthrough parked by the language change was restored.");
     try {
         await seam.deleteSave(marker);
     } catch {
