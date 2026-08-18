@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { ChevronLeft, CornerDownLeft, LayoutGrid, Plus, Star } from "lucide-react";
 import type { PanelComponentProps } from "../../types";
 import { useCommandTranslation, useTranslation } from "@/lib/i18n";
@@ -218,47 +219,8 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
         ? pluginCommands.find(command => command.id === openCommandId) ?? null
         : null;
 
-    if (openCommandId && (openCommand || openPlugin)) {
-        return (
-            <div className="flex h-full min-h-0 flex-col bg-surface">
-                <div className="flex shrink-0 items-center gap-1 border-b border-edge px-2 py-2">
-                    <button
-                        type="button"
-                        className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-fg-muted transition-colors hover:bg-fill hover:text-fg"
-                        onClick={() => setOpenCommandId(null)}
-                    >
-                        <ChevronLeft className="h-3.5 w-3.5" />
-                        <span>{t("story.manual.back")}</span>
-                    </button>
-                    <button
-                        type="button"
-                        className={[
-                            "ml-auto grid h-7 w-7 place-items-center rounded-md transition-colors",
-                            starredIds.has(openCommandId) ? "text-warning" : "text-fg-subtle hover:text-warning",
-                        ].join(" ")}
-                        data-tip={starredIds.has(openCommandId) ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")} aria-label={starredIds.has(openCommandId) ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")}
-                        onClick={() => toggleStarred(openCommandId)}
-                    >
-                        <Star className="h-3.5 w-3.5" fill={starredIds.has(openCommandId) ? "currentColor" : "none"} />
-                    </button>
-                </div>
-                <div className="nl-no-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-                    {openCommand ? (
-                        <CommandDetail
-                            entry={openCommand}
-                            filedUnder={filedUnderById.get(openCommand.id) ?? []}
-                            onInsert={() => createAction(openCommand.id)}
-                        />
-                    ) : openPlugin ? (
-                        <PluginDetail command={openPlugin} onInsert={() => createAction(openPlugin.id)} />
-                    ) : null}
-                </div>
-            </div>
-        );
-    }
-
     return (
-        <div className="flex h-full min-h-0 flex-col bg-surface">
+        <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface">
             <div className="border-b border-edge bg-surface px-3 py-3">
                 <SearchBox
                     value={query}
@@ -341,6 +303,58 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
                     );
                 })}
             </div>
+
+            {/* Reading a command is a sub-page over the list, the way the project panel opens one
+                of its sections: the list stays mounted underneath, so backing out lands on the row
+                you left rather than at the top of the catalogue. */}
+            <AnimatePresence>
+                {openCommandId && (openCommand || openPlugin) ? (
+                    <motion.div
+                        key={openCommandId}
+                        // `.nl-opaque-surface`, not `bg-surface`: this slides over the list, which
+                        // stays mounted underneath, so its fill has to survive the wallpaper rule
+                        // that clears every base surface (see styles.css).
+                        className="absolute inset-0 z-10 flex flex-col nl-opaque-surface shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
+                        initial={{ x: "100%" }}
+                        animate={{ x: 0 }}
+                        exit={{ x: "100%" }}
+                        transition={{ type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                        <div className="flex shrink-0 items-center gap-1 border-b border-edge px-2 py-2">
+                            <button
+                                type="button"
+                                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+                                onClick={() => setOpenCommandId(null)}
+                            >
+                                <ChevronLeft className="h-3.5 w-3.5" />
+                                <span>{t("story.manual.back")}</span>
+                            </button>
+                            <button
+                                type="button"
+                                className={[
+                                    "ml-auto grid h-7 w-7 place-items-center rounded-md transition-colors",
+                                    starredIds.has(openCommandId) ? "text-warning" : "text-fg-subtle hover:text-warning",
+                                ].join(" ")}
+                                data-tip={starredIds.has(openCommandId) ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")} aria-label={starredIds.has(openCommandId) ? t("story.actionCreator.removeStarred") : t("story.actionCreator.addStarred")}
+                                onClick={() => toggleStarred(openCommandId)}
+                            >
+                                <Star className="h-3.5 w-3.5" fill={starredIds.has(openCommandId) ? "currentColor" : "none"} />
+                            </button>
+                        </div>
+                        <div className="nl-no-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+                            {openCommand ? (
+                                <CommandDetail
+                                    entry={openCommand}
+                                    filedUnder={filedUnderById.get(openCommand.id) ?? []}
+                                    onInsert={() => createAction(openCommand.id)}
+                                />
+                            ) : openPlugin ? (
+                                <PluginDetail command={openPlugin} onInsert={() => createAction(openPlugin.id)} />
+                            ) : null}
+                        </div>
+                    </motion.div>
+                ) : null}
+            </AnimatePresence>
         </div>
     );
 }
