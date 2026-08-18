@@ -111,22 +111,42 @@ export function getUICharacterWidgetProps(element: { props?: unknown }): UIChara
 }
 
 /**
- * The CSS box that turns a normalised crop into a window.
+ * Where the picture sits inside the box, given the crop.
  *
- * Percentages only, so nothing has to be measured and nothing waits for a picture to load: the inner
- * box is the picture scaled so the crop fills the element, offset so the crop's corner lands on the
- * element's. `object-fit` then decides aspect inside that box, exactly as it would with no crop.
+ * Three sizes decide it and all three are known without guessing: the box the author drew
+ * (`UILayout`), the picture's own pixel size (read once when it loads), and the crop. The result is
+ * the picture's own rectangle — same aspect as the picture, never distorted — positioned so that the
+ * crop's centre lands on the box's centre.
+ *
+ * `fit` is what happens when the crop and the box disagree about shape: `cover` scales until the
+ * crop covers the box and lets the excess fall outside it, `contain` scales until the whole crop is
+ * inside and leaves the rest of the box empty. That is `object-fit`'s meaning, applied to the *crop*
+ * rather than to the whole picture — which is the only reading that makes a crop worth authoring.
  */
-export function cropWindowStyle(crop: UICharacterCrop): {
-    width: string;
-    height: string;
-    left: string;
-    top: string;
-} {
+export function cropLayoutStyle(input: {
+    crop: UICharacterCrop;
+    fit: UICharacterFit;
+    box: { width: number; height: number };
+    picture: { width: number; height: number } | null;
+}): { width: string; height: string; left: string; top: string } {
+    const { crop, fit, box } = input;
+    // Before the picture has loaded there is nothing to be proportional to. Filling the box is the
+    // least surprising placeholder: it is what an uncropped, unfitted picture would do, and it is
+    // replaced on the next frame.
+    if (!input.picture || input.picture.width <= 0 || input.picture.height <= 0) {
+        return { width: "100%", height: "100%", left: "0px", top: "0px" };
+    }
+    const cropWidth = crop.w * input.picture.width;
+    const cropHeight = crop.h * input.picture.height;
+    const scaleX = box.width / cropWidth;
+    const scaleY = box.height / cropHeight;
+    const scale = fit === "cover" ? Math.max(scaleX, scaleY) : Math.min(scaleX, scaleY);
+    const width = input.picture.width * scale;
+    const height = input.picture.height * scale;
     return {
-        width: `${100 / crop.w}%`,
-        height: `${100 / crop.h}%`,
-        left: `${(-crop.x * 100) / crop.w}%`,
-        top: `${(-crop.y * 100) / crop.h}%`,
+        width: `${width}px`,
+        height: `${height}px`,
+        left: `${box.width / 2 - (crop.x + crop.w / 2) * width}px`,
+        top: `${box.height / 2 - (crop.y + crop.h / 2) * height}px`,
     };
 }

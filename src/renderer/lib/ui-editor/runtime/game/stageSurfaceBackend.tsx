@@ -45,6 +45,24 @@ type SurfaceHostInput = {
     log?: (level: "info" | "warning" | "error", message: string) => void;
 };
 
+/**
+ * One React root per host element, shared by every mount that claims the same container.
+ *
+ * Two engine behaviours meet here and neither can be argued with. The engine mounts a backend from
+ * inside its own React commit, so `dispose` cannot unmount synchronously — unmounting a root from
+ * inside a commit warns and can be dropped outright. And under StrictMode it mounts, disposes and
+ * mounts again in one pass, so the deferred unmount from the first dispose is still queued when the
+ * second mount arrives.
+ *
+ * Creating a second root then warns (`createRoot() on a container that has already been passed to
+ * createRoot()`) and draws twice; reusing the root but unmounting on the first dispose is worse —
+ * the queued unmount tears down the root the *second* mount is using and the box goes silently
+ * empty, which is exactly the failure this counter was written for. So the root is shared and
+ * counted: it goes away when the last claim on it does.
+ */
+type ContainerRoot = { root: Root; claims: number };
+const rootsByContainer = new WeakMap<HTMLElement, ContainerRoot>();
+
 type SurfaceMountHandle = {
     setState: (state: FramedCharacterState) => void;
     resize: (size: { width: number; height: number }) => void;
@@ -66,7 +84,14 @@ function mountSurface(
         (item): item is UIStageSurface =>
             item.id === mount.surfaceId && item.kind === "stageSurface" && item.mount.kind === "element",
     );
-    let root: Root | null = createRoot(container);
+    let entry = rootsByContainer.get(container);
+    if (!entry) {
+        entry = { root: createRoot(container), claims: 0 };
+        rootsByContainer.set(container, entry);
+    }
+    entry.claims += 1;
+    const claimed = entry;
+    let released = false;
     let size = mount.size;
     let state = mount.initial;
 
@@ -78,10 +103,10 @@ function mountSurface(
     }
 
     const draw = () => {
-        if (!root || !surface) {
+        if (released || !surface) {
             return;
         }
-        root.render(
+        claimed.root.render(
             <EmbeddedStageSurface
                 options={input.slotHostOptions}
                 surface={surface}
@@ -104,12 +129,22 @@ function mountSurface(
             draw();
         },
         dispose: () => {
-            const disposing = root;
-            root = null;
-            // Deferred: the engine calls `dispose` inside the React commit that is removing this
-            // backend's own host element, and unmounting a root from inside a commit warns and can
-            // drop the unmount entirely.
-            queueMicrotask(() => disposing?.unmount());
+            if (released) {
+                return;
+            }
+            released = true;
+            claimed.claims -= 1;
+            // Deferred for the reason given on `rootsByContainer`, and re-checked when it runs: a
+            // remount that arrived in between holds a claim of its own, and the root is its.
+            queueMicrotask(() => {
+                if (claimed.claims > 0) {
+                    return;
+                }
+                if (rootsByContainer.get(container) === claimed) {
+                    rootsByContainer.delete(container);
+                }
+                claimed.root.unmount();
+            });
         },
     };
 }

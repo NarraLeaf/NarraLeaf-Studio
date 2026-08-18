@@ -1,6 +1,6 @@
-import { useMemo, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import {
-    cropWindowStyle,
+    cropLayoutStyle,
     getUICharacterWidgetProps,
 } from "@shared/types/ui-editor/character";
 import { useTranslation } from "@/lib/i18n";
@@ -23,18 +23,21 @@ const WINDOW_STYLE: CSSProperties = {
     pointerEvents: "none",
 };
 
-/** One layer of the stack, filling the cropped window. */
-function layerStyle(fit: "cover" | "contain", flipX: boolean): CSSProperties {
-    return {
-        position: "absolute",
-        inset: 0,
-        width: "100%",
-        height: "100%",
-        objectFit: fit,
-        objectPosition: "center",
-        transform: flipX ? "scaleX(-1)" : undefined,
-    };
-}
+/**
+ * One layer of the stack.
+ *
+ * The layers share the box `cropLayoutStyle` computed, and that box already has the picture's own
+ * aspect — so each layer fills it exactly and no per-layer fitting is left to do. That is also what
+ * keeps a layered character aligned: every layer of one is the same canvas, so one box places all of
+ * them.
+ */
+const LAYER_STYLE: CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
+    objectFit: "fill",
+};
 
 /**
  * Draws whichever character the frame around it is showing.
@@ -73,27 +76,40 @@ export function CharacterRenderer(props: WidgetRendererProps) {
         return { srcs: preview.srcs, colour: null };
     }, [framed.state, preview.srcs]);
 
-    const windowStyle = useMemo(
-        () => ({ ...WINDOW_STYLE }),
-        [],
-    );
-    const innerStyle = useMemo<CSSProperties>(
-        () => ({ position: "absolute", ...cropWindowStyle(widget.crop) }),
-        [widget.crop.x, widget.crop.y, widget.crop.w, widget.crop.h],
-    );
+    // The picture's own pixel size, read once when the first layer loads. A layered character's
+    // layers are one canvas, so the first to arrive answers for all of them.
+    const [picture, setPicture] = useState<{ width: number; height: number } | null>(null);
+    const box = {
+        width: props.element.layout.width,
+        height: props.element.layout.height,
+    };
+    const innerStyle = useMemo<CSSProperties>(() => ({
+        position: "absolute",
+        transform: widget.flipX ? "scaleX(-1)" : undefined,
+        ...cropLayoutStyle({ crop: widget.crop, fit: widget.fit, box, picture }),
+    }), [widget.crop.x, widget.crop.y, widget.crop.w, widget.crop.h, widget.fit, widget.flipX, box.width, box.height, picture]);
 
     return (
         <RectangleChromeRenderer {...props}>
-            <div style={windowStyle} data-widget-character="">
+            <div style={WINDOW_STYLE} data-widget-character="">
                 <div style={innerStyle}>
-                    {colour ? <div style={{ ...layerStyle(widget.fit, false), background: colour }} /> : null}
+                    {colour ? <div style={{ ...LAYER_STYLE, background: colour }} /> : null}
                     {srcs.map((src, index) => src === null ? null : (
                         <img
                             key={`layer-${index}`}
                             src={src}
                             alt={t("widgets.defaults.character.name")}
                             draggable={false}
-                            style={layerStyle(widget.fit, widget.flipX)}
+                            style={LAYER_STYLE}
+                            onLoad={index === 0
+                                ? event => {
+                                    const img = event.currentTarget;
+                                    setPicture(current =>
+                                        current && current.width === img.naturalWidth && current.height === img.naturalHeight
+                                            ? current
+                                            : { width: img.naturalWidth, height: img.naturalHeight });
+                                }
+                                : undefined}
                         />
                     ))}
                 </div>

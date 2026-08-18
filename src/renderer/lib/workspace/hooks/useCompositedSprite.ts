@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useWorkspace } from "@/apps/workspace/context";
+import { useOptionalWorkspace } from "@/apps/workspace/context";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { Character } from "@/lib/workspace/services/character/Character";
@@ -52,7 +52,12 @@ export function useCompositedSprite(
     selection: SpriteSelection,
     maxSize?: number,
 ): { url: string | null; loading: boolean } {
-    const { context, isInitialized } = useWorkspace();
+    // Optional, not required: this hook is reached from widget renderers that also draw in the Dev
+    // Mode window, where there is no provider and "no workspace" is an ordinary answer. Throwing
+    // there took the whole surface subtree down with it.
+    const workspace = useOptionalWorkspace();
+    const context = workspace?.context ?? null;
+    const isInitialized = workspace?.isInitialized ?? false;
     const assetsService = context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null;
     const [url, setUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
