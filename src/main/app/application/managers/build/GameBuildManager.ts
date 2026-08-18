@@ -215,11 +215,18 @@ export function packShipsNodeSidecar(pack: GameRuntimePackV1 | null | undefined)
  * configured, at which point it earns its keep. (Linux has no asar-integrity support regardless.)
  *
  * `shipsNodeSidecar` gates `runAsNode`; see the comment on that field.
+ *
+ * `debuggable` is the experimental `debuggable-build` condition and answers over the top of the
+ * signing question: an artifact meant to be inspected cannot carry a fuse that hard-quits it the
+ * moment a debugger rewrites anything in the archive. It reaches here only from an unpackaged
+ * Studio launched with the mode's flags (BaseApp.getExperimentalState), so no build an author makes
+ * can be one.
  */
 export function gameFusesForPlatform(
     platform: GameBuildDesktopPlatform,
     hasSigningIdentity: boolean,
     shipsNodeSidecar = false,
+    debuggable = false,
 ): GameBuildWorkerFuses {
     return {
         /*
@@ -247,7 +254,7 @@ export function gameFusesForPlatform(
         enableCookieEncryption: false,
         enableNodeOptionsEnvironmentVariable: false,
         enableNodeCliInspectArguments: false,
-        enableEmbeddedAsarIntegrityValidation: hasSigningIdentity && platform !== "linux",
+        enableEmbeddedAsarIntegrityValidation: !debuggable && hasSigningIdentity && platform !== "linux",
         onlyLoadAppFromAsar: true,
         grantFileProtocolExtraPrivileges: false,
         resetAdHocDarwinSignature: platform === "macos",
@@ -923,6 +930,7 @@ export class GameBuildManager {
     ): Promise<void> {
         const projectPath = session.projectPath;
         this.emit(session, { level: "info", source: "Build", message: "patch export started" });
+        const debuggable = this.reportDebuggableBuild(session);
 
         const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
         const appTag = await this.resolveBuildVariant(session, projectPath, request);
@@ -965,6 +973,9 @@ export class GameBuildManager {
             outputRoot: path.join(projectPath, ".nlstudio", "build", "patch"),
             runtimePlugins: pluginSelection.selected,
             mode: "production",
+            // Matches the build it patches: a patch that turned the marker off would put a pack
+            // into a debuggable install that refuses the switch the install was made for.
+            ...(debuggable ? { debuggable: true } : {}),
             appTag: { id: appTag.id, name: appTag.name },
             declaredScenes,
             // The payload a player receives, so it plans a scene drop and refuses a
@@ -1232,6 +1243,7 @@ export class GameBuildManager {
     private async run(session: BuildSession, entry: GameRuntimeLaunchEntry, request: GameBuildRequest): Promise<void> {
         const projectPath = session.projectPath;
         this.emit(session, { level: "info", source: "Build", message: "production build started" });
+        const debuggable = this.reportDebuggableBuild(session);
 
         await this.checkpointBeforeBuild(session);
 
@@ -1368,6 +1380,7 @@ export class GameBuildManager {
                 outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
                 runtimePlugins: pluginSelection.selected,
                 mode: "production",
+                ...(debuggable ? { debuggable: true } : {}),
                 // What the story documents in this pack are folded against. Both compiles below get
                 // it: the desktop pack and the web/mobile one are the same game under one variant.
                 appTag: { id: appTag.id, name: appTag.name },
@@ -1514,6 +1527,7 @@ export class GameBuildManager {
                     target.platform,
                     hasSigningIdentityForPlatform(target.platform, signing),
                     packShipsNodeSidecar(desktopArtifact?.pack),
+                    debuggable,
                 ),
                 ...(target.platform === hostPlatform
                     ? { electronDist: resolveElectronDistDirForApp(this.app) }
@@ -2648,6 +2662,26 @@ export class GameBuildManager {
      * A failure here is never the author's mistake to fix in the story - it is a package that would
      * play until the moment the missing thing was needed - so it stops the build rather than warning.
      */
+    /**
+     * Whether this build ships as a debuggable artifact, said out loud in the build console.
+     *
+     * The console is the one place an artifact's origin is still visible after the fact, and the
+     * difference this makes to the output - no asar integrity, a runtime that will attach - is not
+     * one anybody can see by looking at the file.
+     */
+    private reportDebuggableBuild(session: BuildSession): boolean {
+        if (!this.app.hasExperimentalCondition("debuggable-build")) {
+            return false;
+        }
+        this.emit(session, {
+            level: "warning",
+            source: "Build",
+            message: "experimental condition debuggable-build: this artifact ships without asar "
+                + "integrity validation and starts under a remote-debugging switch. Do not distribute it.",
+        });
+        return true;
+    }
+
     private reportShippedContentAudit(session: BuildSession, report: ShippedContentAuditReport | null): void {
         if (!report) {
             return;

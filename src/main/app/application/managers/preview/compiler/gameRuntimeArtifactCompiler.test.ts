@@ -791,6 +791,43 @@ describe("game runtime artifact compiler", () => {
             // which a rename would move. See shared/utils/userDataLocation.ts.
             narraleaf: { mode: "production", userDataDir: "fixture.project" },
         });
+        // Absent, not false: every build an author can make refuses a debugging switch, and the
+        // runtime reads the marker's presence.
+        expect(packOnDisk.debuggable).toBeUndefined();
+        expect(manifest.narraleaf.debuggable).toBeUndefined();
+    });
+
+    /*
+     * The experimental debuggable-build condition. The marker has to reach both the pack and the
+     * loose manifest: the runtime checks the manifest before Chromium starts and the pack once it
+     * is open, and a build carrying only one of them is refused by the gate that reads the other.
+     */
+    it("marks a debuggable build in both the pack and the app manifest", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: {
+                kind: "surface",
+                surfaceId: "surface-main",
+            },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            debuggable: true,
+        });
+
+        expect(result.pack.debuggable).toBe(true);
+        const packOnDisk = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(packOnDisk.debuggable).toBe(true);
+        const manifest = JSON.parse(await fs.readFile(path.join(result.appDir, "package.json"), "utf-8"));
+        expect(manifest.narraleaf).toMatchObject({ mode: "production", debuggable: true });
     });
 
     /*
