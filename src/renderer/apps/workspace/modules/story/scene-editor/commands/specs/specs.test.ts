@@ -116,8 +116,10 @@ describe("scene commands", () => {
 
 describe("generic verbs", () => {
     it("/show dispatches on the target: a character enters", () => {
-        // `at=` wins the preset when both are given — a transform holds one, and a placement is the
-        // more specific instruction. The rule `/image` already followed.
+        // `at=` wins when both are given. Since v18 the two no longer fight over one field - a
+        // placement is a position and a fade is an opacity - but the rule stands: the placement is the
+        // more specific instruction, and `withPlacementTransform` clears the channels the vocabulary
+        // owns, so the row states one look and the line prints the word that produced it.
         expect(build("/show Alice smile at=left t=fade d=0.3")).toMatchObject({
             kind: "action",
             payload: {
@@ -125,7 +127,7 @@ describe("generic verbs", () => {
                 operation: "enter",
                 characterId: "c1",
                 pose: "t1",
-                transform: { preset: "left", durationMs: 300 },
+                transform: { to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 300 },
             },
         });
     });
@@ -135,23 +137,23 @@ describe("generic verbs", () => {
         // `hide(transform)`, so a transition ref written here would be a setting nothing reads — and
         // the inspector, which edits the transform, would show a different answer than the row.
         expect(build("/show Alice t=fade")).toMatchObject({
-            payload: { action: "character", operation: "enter", transform: { preset: "fadeIn" } },
+            payload: { action: "character", operation: "enter", transform: { to: { opacity: 1 } } },
         });
         expect(build("/hide Alice t=fade")).toMatchObject({
-            payload: { action: "character", operation: "exit", transform: { preset: "fadeOut" } },
+            payload: { action: "character", operation: "exit", transform: { to: { opacity: 0 } } },
         });
         expect(build("/hide Alice t=fade").payload).not.toHaveProperty("transition.kind", "fadeIn");
     });
 
-    it("/show dispatches on the target: an image reveals through its transform preset", () => {
+    it("/show dispatches on the target: an image reveals through its transform props", () => {
         expect(build("/show hero t=fade d=0.2")).toMatchObject({
-            payload: { action: "image", operation: "show", objectName: "hero", transform: { preset: "fadeIn", durationMs: 200 } },
+            payload: { action: "image", operation: "show", objectName: "hero", transform: { to: { opacity: 1 }, durationMs: 200 } },
         });
     });
 
     it("/hide is direction-aware: the same word fades OUT", () => {
         expect(build("/hide hero t=fade")).toMatchObject({
-            payload: { action: "image", operation: "hide", objectName: "hero", transform: { preset: "fadeOut" } },
+            payload: { action: "image", operation: "hide", objectName: "hero", transform: { to: { opacity: 0 } } },
         });
         expect(build("/hide Alice")).toMatchObject({ payload: { action: "character", operation: "exit" } });
     });
@@ -315,7 +317,7 @@ describe("puppet state channels", () => {
 describe("media objects", () => {
     it("/image auto-names from the asset filename", () => {
         expect(build("/image forest_day at=left")).toMatchObject({
-            payload: { action: "image", operation: "create", objectName: "forest_day", assetId: "i1", transform: { preset: "left" } },
+            payload: { action: "image", operation: "create", objectName: "forest_day", assetId: "i1", transform: { to: { position: { xalign: 0.25, yalign: 0.5 } } } },
         });
     });
 
@@ -812,7 +814,7 @@ describe("logic and effects", () => {
         expect(getCommandSpec("fx")?.inspectorAfterCommit).toBe(true);
         expect(build("/fx hero")).toMatchObject({ payload: { action: "displayable", target: { kind: "image", name: "hero" } } });
         expect(build("/transform Alice d=0.4")).toMatchObject({
-            payload: { action: "displayable", operation: "transform", target: { kind: "character", name: "Alice" }, durationMs: 400 },
+            payload: { action: "displayable", operation: "transform", target: { kind: "character", name: "Alice" }, transform: { durationMs: 400 } },
         });
     });
 
@@ -825,14 +827,14 @@ describe("logic and effects", () => {
                 action: "displayable",
                 operation: "transform",
                 target: { kind: "image", name: "hero" },
-                transform: { mode: "preset", preset: "flip", props: { scaleX: -1 } },
+                transform: { to: { scaleX: -1 } },
             },
         });
-        expect(build("/mirror hero off")).toMatchObject({ payload: { transform: { preset: "flip", props: { scaleX: 1 } } } });
+        expect(build("/mirror hero off")).toMatchObject({ payload: { transform: { to: { scaleX: 1 } } } });
         // `d=` rides the transform, not the effect timing: a mirror is a scale, and the show/hide
         // path reads a transform's own duration.
         expect(build("/mirror Alice d=0.3")).toMatchObject({
-            payload: { target: { kind: "character", name: "Alice" }, transform: { preset: "flip", durationMs: 300 } },
+            payload: { target: { kind: "character", name: "Alice" }, transform: { to: { scaleX: -1 }, durationMs: 300 } },
         });
     });
 

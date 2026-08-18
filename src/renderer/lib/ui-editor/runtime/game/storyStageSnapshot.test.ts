@@ -67,7 +67,7 @@ describe("computeStoryStageSnapshot", () => {
                 action: "character",
                 operation: "enter",
                 characterId: "char-alice",
-                transform: { preset: "center", durationMs: 300, props: { zoom: 0.5, xoffset: 24 } },
+                transform: { mode: "props", to: { position: { xalign: 0.5, yalign: 0.5, xoffset: 24 }, zoom: 0.5 }, durationMs: 300 },
             }),
             "target-1": say("target-1"),
             exit: block("exit", "action", { action: "character", operation: "exit", characterId: "char-alice" }),
@@ -185,12 +185,12 @@ describe("computeStoryStageSnapshot", () => {
 
     it("merges successive transforms with position-aware semantics", () => {
         const document = baseDocument({
-            show: block("show", "action", { action: "image", operation: "show", objectName: "hero", transform: { preset: "left", durationMs: 200 } }),
+            show: block("show", "action", { action: "image", operation: "show", objectName: "hero", transform: { mode: "props", to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 200 } }),
             move: block("move", "action", {
                 action: "displayable",
                 operation: "transform",
                 target: { name: "hero", kind: "image" },
-                transform: { preset: "custom", durationMs: 200, props: { yalign: 0.8 } },
+                transform: { mode: "props", to: { position: { xalign: 0.5, yalign: 0.8 } }, durationMs: 200 },
             }),
             target: say("target"),
         }, ["show", "move", "target"]);
@@ -324,9 +324,9 @@ describe("computeStoryStageSnapshot", () => {
     it("tracks residual effects and their clears", () => {
         const document = baseDocument({
             show: block("show", "action", { action: "image", operation: "show", objectName: "hero" }),
-            darken: block("darken", "action", { action: "displayable", operation: "darken", target: { name: "hero", kind: "image" }, darkness: 0.6 }),
-            clip: block("clip", "action", { action: "displayable", operation: "clip", target: { name: "hero", kind: "image" }, clipPath: "inset(10% 0)" }),
-            reveal: block("reveal", "action", { action: "displayable", operation: "circleReveal", target: { name: "hero", kind: "image" } }),
+            darken: block("darken", "action", { action: "displayable", operation: "transform", target: { name: "hero", kind: "image" }, transform: { mode: "props", to: { filter: { brightness: 0.4 } } } }),
+            clip: block("clip", "action", { action: "displayable", operation: "transform", target: { name: "hero", kind: "image" }, transform: { mode: "props", to: { clipPath: "inset(10% 0)" } } }),
+            reveal: block("reveal", "action", { action: "displayable", operation: "transform", target: { name: "hero", kind: "image" }, transform: { mode: "props", clipReveal: { kind: "circleReveal" } } }),
             target: say("target"),
         }, ["show", "darken", "clip", "reveal", "target"]);
         const result = snapshot(document, "target");
@@ -342,7 +342,7 @@ describe("computeStoryStageSnapshot", () => {
                 action: "displayable",
                 operation: "transform",
                 target: { builtin: "background", kind: "image", name: "Scene background" },
-                transform: { preset: "zoom", durationMs: 300, props: { zoom: 1.25 } },
+                transform: { mode: "props", to: { zoom: 1.25 }, durationMs: 300 },
             }),
             target: say("target"),
         }, ["zoom", "target"]);
@@ -359,7 +359,7 @@ describe("computeStoryStageSnapshot", () => {
                 operation: "transform",
                 objectName: "fg",
                 target: { kind: "custom", sourceBlockId: "layer" },
-                transform: { preset: "custom", durationMs: 100, props: { yoffset: -20 } },
+                transform: { mode: "props", to: { position: { xalign: 0.5, yalign: 0.5, yoffset: -20 } }, durationMs: 100 },
             }),
             nvl: block("nvl", "action", { action: "nvl" }, null, ["target"]),
             target: say("target", "nvl"),
@@ -396,13 +396,13 @@ describe("computeStoryStageSnapshot", () => {
                 operation: "enter",
                 characterId: "char-alice",
                 assetId: "asset-alice",
-                transform: { preset: "center" },
+                transform: { mode: "props", to: { position: { xalign: 0.5, yalign: 0.5 } } },
             }),
             darken: block("darken", "action", {
                 action: "displayable",
-                operation: "darken",
+                operation: "transform",
                 target: { name: "Character", kind: "character", sourceBlockId: "enter" },
-                darkness: 0.6,
+                transform: { mode: "props", to: { filter: { brightness: 0.4 } } },
             }),
             target: say("target"),
         }, ["enter", "darken", "target"]);
@@ -419,12 +419,12 @@ describe("computeStoryStageSnapshot", () => {
         // Same divergence, non-character: an empty `objectName` keys on the compiler's "object"
         // fallback, not the display word "Image".
         const document = baseDocument({
-            create: block("create", "action", { action: "image", operation: "create", objectName: "", assetId: "asset-x", transform: { preset: "center" } }),
+            create: block("create", "action", { action: "image", operation: "create", objectName: "", assetId: "asset-x", transform: { mode: "props", to: { position: { xalign: 0.5, yalign: 0.5 } } } }),
             filter: block("filter", "action", {
                 action: "displayable",
-                operation: "filter",
+                operation: "transform",
                 target: { name: "Image", kind: "image", sourceBlockId: "create" },
-                filter: "blur(4px)",
+                transform: { mode: "props", to: { filter: { blur: 4 } } },
             }),
             target: say("target"),
         }, ["create", "filter", "target"]);

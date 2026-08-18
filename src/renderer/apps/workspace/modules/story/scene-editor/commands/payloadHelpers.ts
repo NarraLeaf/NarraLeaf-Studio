@@ -1,7 +1,7 @@
 import type { StoryActionPayload, StoryBlock, StoryDisplayableTargetRef, StoryTransformRef, StoryTransitionRef } from "@shared/types/story";
 import type { StoryCommandContext, StoryCommandStageObjectKind, StoryCommandValue } from "../storyCommandValues";
 import { asDurationMs, asEnum, asTarget } from "./spec";
-import { transformPresetFor, transitionKindFor } from "./transitions";
+import { applyPlacementToTransform, applyTransitionWordToTransform, transitionKindFor } from "./transitions";
 
 /**
  * Shared "modifier args → payload fragment" writers.
@@ -36,22 +36,22 @@ export function withTransitionRef(
     };
 }
 
-/** Fold `at=` / `d=` into a transform - placement presets, for character and create commands. */
+/** Fold `at=` / `d=` into a transform - the three placements, for character and create commands. */
 export function withPlacementTransform(
     current: StoryTransformRef | undefined,
     at: StoryCommandValue | undefined,
     d: StoryCommandValue | undefined,
 ): StoryTransformRef | undefined {
-    const preset = asEnum(at) as StoryTransformRef["preset"] | undefined;
+    const placement = asEnum(at);
     const durationMs = asDurationMs(d);
-    if (preset === undefined && durationMs === undefined) {
+    if (placement === undefined && durationMs === undefined) {
         return current;
     }
-    return {
-        ...(current ?? {}),
-        ...(preset !== undefined ? { preset } : {}),
-        ...(durationMs !== undefined ? { durationMs } : {}),
-    };
+    const placed = placement === undefined ? current : applyPlacementToTransform(current, placement);
+    if (durationMs === undefined) {
+        return placed;
+    }
+    return { ...(placed ?? {}), durationMs };
 }
 
 /**
@@ -131,16 +131,15 @@ export function withRevealTransform(
     d: StoryCommandValue | undefined,
 ): StoryTransformRef | undefined {
     const word = asEnum(t);
-    const preset = word === undefined ? undefined : transformPresetFor(context, word);
     const durationMs = asDurationMs(d);
-    if (preset === undefined && durationMs === undefined) {
+    if (word === undefined && durationMs === undefined) {
         return current;
     }
-    return {
-        ...(current ?? {}),
-        ...(preset !== undefined ? { preset } : {}),
-        ...(durationMs !== undefined ? { durationMs } : {}),
-    };
+    const posed = word === undefined ? current : applyTransitionWordToTransform(current, context, word);
+    if (durationMs === undefined) {
+        return posed;
+    }
+    return { ...(posed ?? {}), durationMs };
 }
 
 /**

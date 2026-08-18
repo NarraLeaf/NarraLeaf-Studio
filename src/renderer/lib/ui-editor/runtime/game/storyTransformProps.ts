@@ -7,10 +7,13 @@ import type {
     StoryAnimationTrack,
     StoryAnimationTrackProperty,
     StoryLiteralValue,
+    StoryTransformProps,
     StoryTransformSequenceProps,
     StoryTransformRef,
 } from "@shared/types/story";
 import { parseStoryEasing } from "@shared/utils/storyEasing";
+import { storyTransformPropsToNlr } from "@shared/story/transformProps";
+import { legacyPresetPosition } from "@shared/story/transformLegacy";
 import { translate } from "@/lib/i18n";
 
 /**
@@ -27,96 +30,47 @@ export type StoryAlignPosition = {
 
 export type VisibilityTransformMode = "show" | "hide" | "none";
 
+/**
+ * Where a placement word puts the target - `left` is a quarter in, `center` the middle.
+ *
+ * Kept under its old name because it is not about presets and never was: several surfaces ask the
+ * inverse question (which word lands on this xalign) and this is the forward definition they invert.
+ */
 export function getPresetPosition(preset: string, props: Record<string, StoryLiteralValue>): StoryAlignPosition | null {
-    const xalign = optionalNumberProp(props, "xalign") ?? optionalNumberProp(props, "x");
-    const yalign = optionalNumberProp(props, "yalign") ?? optionalNumberProp(props, "y") ?? 0.5;
-    const xoffset = optionalNumberProp(props, "xoffset") ?? optionalNumberProp(props, "xOffset");
-    const yoffset = optionalNumberProp(props, "yoffset") ?? optionalNumberProp(props, "yOffset");
-    const withOffsets = (position: { xalign: number; yalign: number }): StoryAlignPosition => ({
-        ...position,
-        ...(xoffset !== undefined ? { xoffset } : {}),
-        ...(yoffset !== undefined ? { yoffset } : {}),
-    });
-
-    if (preset === "left" || preset === "center" || preset === "right" || preset === "custom") {
-        const targetX = preset === "left" ? 0.25 : preset === "right" ? 0.75 : preset === "center" ? 0.5 : xalign ?? 0.5;
-        return withOffsets({ xalign: targetX, yalign });
-    }
-    if (preset === "slideLeft") return withOffsets({ xalign: xalign ?? 0.25, yalign });
-    if (preset === "slideRight") return withOffsets({ xalign: xalign ?? 0.75, yalign });
-    if (preset === "slideUp") return withOffsets({ xalign: xalign ?? 0.5, yalign: yalign ?? 0.7 });
-    if (preset === "slideDown") return withOffsets({ xalign: xalign ?? 0.5, yalign: yalign ?? 0.3 });
-    return null;
+    const position = legacyPresetPosition(preset, props as Record<string, unknown>);
+    return position && position.xalign !== undefined && position.yalign !== undefined
+        ? position as StoryAlignPosition
+        : null;
 }
 
 /**
- * The instantly-applicable props a preset transform expresses (position/zoom/scale/rotation/
- * opacity/darken-filter). Mirrors what a character "enter" folds into its show transform.
+ * The props a transform ref applies immediately - what the stage looks like the moment it settles.
+ *
+ * Since v18 this is the bag itself, translated to the engine's spelling. It used to be a switch over
+ * 20 preset names deciding which four fields each one was allowed to write, which is the fragmentation
+ * this milestone removed: the answer was always "the bag", and the presets were a hand-picked slice of
+ * it that could not, for instance, scale and rotate in one row.
+ *
+ * A mask is the one prop that cannot be folded, because a mask asset must be resolved to a URL and
+ * registered for preload before it means anything - the caller with an asset resolver handles it.
  */
 export function getInlineTransformProps(
     transform: StoryTransformRef | undefined,
     onDiagnostic?: (message: string) => void,
 ): Record<string, unknown> {
-    if (!transform) {
+    if (!transform || transform.mode === "animation") {
         return {};
     }
-    if (transform.mode === "animation") {
-        return {};
+    if (transform.clipReveal) {
+        // A clip-path GENERATOR, not a value: there is no prop that holds "a circle opening", so a path
+        // that needs settled props up front - a character's entrance, the editor's stage snapshot -
+        // still cannot fold one. It is now an explicit field rather than a preset that silently folded
+        // to nothing, but the answer it gets is the same one.
+        onDiagnostic?.(translate("story.preview.diagnostics.presetNotFoldable", { preset: transform.clipReveal.kind }));
     }
-    const preset = transform.preset ?? "none";
-    if (preset === "none" || preset === "fadeIn" || preset === "fadeOut") {
-        return {};
-    }
-
-    const props = transform.props ?? {};
-    const inlineProps: Record<string, unknown> = {};
-    const position = getPresetPosition(preset, props);
-    if (position) {
-        inlineProps.position = position;
-    }
-
-    const explicitZoom = optionalNumberProp(props, "zoom");
-    if (explicitZoom !== undefined) {
-        inlineProps.zoom = explicitZoom;
-    }
-    if (preset === "zoom") {
-        inlineProps.zoom = explicitZoom ?? 1;
-        return inlineProps;
-    }
-    if (preset === "scale") {
-        const scale = numberProp(props, "scale", 1);
-        inlineProps.scaleX = numberProp(props, "scaleX", scale);
-        inlineProps.scaleY = numberProp(props, "scaleY", scale);
-        return inlineProps;
-    }
-    if (preset === "flip") {
-        // The mirror is a NEGATIVE scale, so it folds onto the very field the `scale` preset writes:
-        // NLR maps the pair onto `scale(zoom*scaleX, zoom*scaleY)` and `Displayable.scale` documents
-        // "use negative value to invert the scale". Giving `flip` a channel of its own would mean two
-        // fields both claiming the horizontal scale, and the last one applied would silently win.
-        //
-        // `scaleY` is deliberately untouched. A flip here is horizontal by definition, and writing a
-        // `scaleY: 1` beside it would RESET a vertical scale an earlier row had set — an absent axis
-        // reads as "leave it as it stands" the whole way down `Partial<TransformProps>`.
-        inlineProps.scaleX = numberProp(props, "scaleX", -1);
-        return inlineProps;
-    }
-    if (preset === "rotate") {
-        inlineProps.rotation = numberProp(props, "rotation", numberProp(props, "degrees", 0));
-        return inlineProps;
-    }
-    if (preset === "opacity") {
-        inlineProps.opacity = numberProp(props, "opacity", 1);
-        return inlineProps;
-    }
-    if (preset === "darken") {
-        inlineProps.filter = `brightness(${1 - numberProp(props, "darkness", 0.5)})`;
-        return inlineProps;
-    }
-    if (preset === "circleReveal" || preset === "circleClose" || preset === "wipe") {
-        onDiagnostic?.(translate("story.preview.diagnostics.presetNotFoldable", { preset }));
-    }
-    return inlineProps;
+    const props = { ...(transform.to ?? {}) };
+    delete props.maskAssetId;
+    return storyTransformPropsToNlr(props);
 }
 
 export function timelineToNlrTransformSequences(timeline: StoryAnimationTimeline): { props: Record<string, unknown>; options: Record<string, unknown> }[] {

@@ -1,3 +1,4 @@
+import { placementWordFor } from "./commands/transitions";
 import { Aperture, Blocks,
     Bookmark, Clock, CornerUpLeft, Eye, FileText, GitBranch, Image, Layers, LogOut, MessageSquare, Move, Music, Puzzle, Route, SeparatorHorizontal, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
 import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
@@ -55,7 +56,7 @@ export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, C
         }
         if (block.kind === "action" && block.payload.action === "character" && block.payload.characterId) {
             const characterId = block.payload.characterId;
-            const position = placementOf(block.payload.transform?.preset);
+            const position = placementOf(placementWordFor(block.payload.transform?.to?.position) ?? undefined);
             if (block.payload.operation === "exit") {
                 current.delete(characterId);
             } else if (block.payload.operation === "enter") {

@@ -3,7 +3,6 @@ import type {
     StoryBlock,
     StoryDeclarationPayload,
     StoryLiteralValue,
-    StoryTransformPreset,
     StoryTransformRef,
     StoryTransitionRef,
     StoryVariableValueType,
@@ -28,6 +27,7 @@ import {
 } from "@/lib/story/storyRowProjection";
 import { storyVerbCommandId } from "@/lib/story/storyVerbVocabulary";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
+import { isMirrorTransform } from "@shared/story/transformProps";
 import { getStoryCameraLookPreset } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { ACTION_TRIGGER } from "./commandTrigger";
 import { localizedEnumValue } from "./commands/localizedEnums";
@@ -36,10 +36,12 @@ import { localizedUnit } from "./commands/localizedUnits";
 import { getDefById, localizedCommandToken, retiredCommandToken } from "./commands/registry";
 import { DECLARATION_COMMANDS } from "./commands/specs/variables";
 import {
-    transformPresetFor,
+    applyPlacementToTransform,
+    applyTransitionWordToTransform,
+    placementWordFor,
     transitionKindFor,
     transitionWordFor,
-    transitionWordForPreset,
+    transitionWordForTransform,
 } from "./commands/transitions";
 import {
     findParam,
@@ -406,6 +408,11 @@ function patchTransform<P extends { transform?: StoryTransformRef }>(payload: P,
     return { ...payload, transform: { ...(payload.transform ?? {}), ...patch } };
 }
 
+/** Replace the whole ref, for the writers that state a look rather than one field of one. */
+function patchTransformRef<P extends { transform?: StoryTransformRef }>(payload: P, next: StoryTransformRef | undefined): P {
+    return { ...payload, transform: next };
+}
+
 function patchTransition<P extends { transition?: StoryTransitionRef }>(payload: P, patch: Partial<StoryTransitionRef>): P {
     // A duration with no kind still means "animate", so an edit implies the house default rather than
     // writing a ref with no kind — the same rule `withTransitionRef` follows on the way in.
@@ -483,21 +490,20 @@ function pickStageObject(
     };
 }
 
-/** The three words `at=` spells. Everything else in the preset union is a reveal/conceal animation. */
-const PLACEMENTS: ReadonlySet<StoryTransformPreset> = new Set<StoryTransformPreset>(["left", "center", "right"]);
-
+/** The `at=` word a row's position spells, or nothing when it is not one of the three placements. */
 function placementOf(transform: StoryTransformRef | undefined): string | undefined {
-    const preset = transform?.preset;
-    return preset && PLACEMENTS.has(preset) ? preset : undefined;
+    return placementWordFor(transform?.to?.position) ?? undefined;
 }
 
-/** A stage object's `t=` — the reveal/conceal preset, but never a placement (that slot is `at=`). */
+/**
+ * A stage object's `t=` — the reveal/conceal word, but never a placement (that slot is `at=`).
+ *
+ * Reads the CHANNEL the bag states rather than a stored preset name, which is the whole point of v18:
+ * the row says what it does to the sprite and the word is derived from that, so a value set through
+ * the inspector reads back as the line an author would have typed for it.
+ */
 function revealWord(transform: StoryTransformRef | undefined, direction: "reveal" | "conceal" | "nvl"): string | undefined {
-    const preset = transform?.preset;
-    if (!preset || PLACEMENTS.has(preset)) {
-        return undefined;
-    }
-    return transitionWordForPreset(direction, preset) ?? preset;
+    return transitionWordForTransform(direction, transform) ?? undefined;
 }
 
 /** A whole-screen or character `t=` — the stored kind, named by the word an author would type. */
@@ -610,7 +616,7 @@ function characterSentence(
     });
     const placement = arg("at", placementOf(payload.transform), {
         enum: true,
-        apply: next => patchTransform(payload, { preset: next as StoryTransformPreset }),
+        apply: next => patchTransformRef(payload, applyPlacementToTransform(payload.transform, next)),
     });
     // `t=` is the TRANSFORM's preset, the one the engine animates a character's entrance and exit
     // with and the one the inspector's own 变换 → 预设 edits. The `transition` ref beside it is only
@@ -618,7 +624,7 @@ function characterSentence(
     // nothing would play — and disagreeing with the inspector about the very same question.
     const reveal = (direction: "reveal" | "conceal") => arg("t", revealWord(payload.transform, direction), {
         enum: true,
-        apply: next => patchTransform(payload, { preset: transformPresetFor(direction, next) }),
+        apply: next => patchTransformRef(payload, applyTransitionWordToTransform(payload.transform, direction, next)),
     });
     switch (payload.operation) {
         case "enter":
@@ -737,14 +743,14 @@ function imageSentence(
     // prints whichever one the stored preset spells and never both.
     const placement = arg("at", placementOf(payload.transform), {
         enum: true,
-        apply: next => patchTransform(payload, { preset: next as StoryTransformPreset }),
+        apply: next => patchTransformRef(payload, applyPlacementToTransform(payload.transform, next)),
     });
     const duration = arg("d", seconds(payload.transform?.durationMs), {
         apply: next => patchTransform(payload, { durationMs: msOf(next) }),
     });
     const reveal = (direction: "reveal" | "conceal") => arg("t", revealWord(payload.transform, direction), {
         enum: true,
-        apply: next => patchTransform(payload, { preset: transformPresetFor(direction, next) }),
+        apply: next => patchTransformRef(payload, applyTransitionWordToTransform(payload.transform, direction, next)),
     });
     const swapAsset = pickAsset(payload, lookups, "image", next => ({ ...payload, assetId: next, color: undefined })) ?? {};
     const object = pickStageObject(lookups, "image", name, next => ({ ...payload, objectName: next })) ?? {};
@@ -781,7 +787,7 @@ function textSentence(
                     arg("name", name),
                     arg("at", placementOf(payload.transform), {
                         enum: true,
-                        apply: next => patchTransform(payload, { preset: next as StoryTransformPreset }),
+                        apply: next => patchTransformRef(payload, applyPlacementToTransform(payload.transform, next)),
                     }),
                     positional("content", payload.text),
                 ],
@@ -807,7 +813,7 @@ function textSentence(
                     positional("target", name, object),
                     arg("t", revealWord(payload.transform, direction), {
                         enum: true,
-                        apply: next => patchTransform(payload, { preset: transformPresetFor(direction, next) }),
+                        apply: next => patchTransformRef(payload, applyTransitionWordToTransform(payload.transform, direction, next)),
                     }),
                     arg("d", seconds(payload.transform?.durationMs), { apply: next => patchTransform(payload, { durationMs: msOf(next) }) }),
                 ],
@@ -962,8 +968,8 @@ function displayableSentence(
         // A mirrored row reads its own word (`storyVerbCommandId`), so it prints its own second slot:
         // the state, off the sign of the scale it wrote. Never a toggle - the stored transform is
         // static, so the row states which way the sprite ends up facing, exactly as the line does.
-        const state = payload.transform?.preset === "flip"
-            ? positional("state", Number(payload.transform.props?.scaleX ?? -1) < 0 ? "on" : "off", { enum: true })
+        const state = isMirrorTransform(payload.transform)
+            ? positional("state", Number(payload.transform?.to?.scaleX ?? -1) < 0 ? "on" : "off", { enum: true })
             : null;
         return {
             commandId,
@@ -972,10 +978,11 @@ function displayableSentence(
                 state,
                 // A mirror animates on its TRANSFORM's duration (it is a scale, not an effect); every
                 // other transform row keeps reading the effect timing it always did.
-                arg("d", seconds(state ? payload.transform?.durationMs : payload.durationMs), {
-                    apply: next => (state
-                        ? patchTransform(payload, { durationMs: msOf(next) })
-                        : { ...payload, durationMs: msOf(next) }),
+                // One timing home since v18: whether the row mirrors, moves or masks, the duration is
+                // the transform's. The payload's own `durationMs` is gone, and with it the question of
+                // which of two fields a `d=` on this row was writing.
+                arg("d", seconds(payload.transform?.durationMs), {
+                    apply: next => patchTransform(payload, { durationMs: msOf(next) }),
                 }),
             ],
         };
@@ -987,11 +994,9 @@ function displayableSentence(
             positional("target", label),
             arg("t", revealWord(payload.transform, direction), {
                 enum: true,
-                apply: next => patchTransform(payload, { preset: transformPresetFor(direction, next) }),
+                apply: next => patchTransformRef(payload, applyTransitionWordToTransform(payload.transform, direction, next)),
             }),
-            // The transform's own duration is what a show/hide animates on; `durationMs` is the effect
-            // timing the inspector sets, and is only read here when there is no transform to read.
-            arg("d", seconds(payload.transform?.durationMs ?? payload.durationMs), {
+            arg("d", seconds(payload.transform?.durationMs), {
                 apply: next => patchTransform(payload, { durationMs: msOf(next) }),
             }),
         ],
@@ -1104,7 +1109,7 @@ function actionSentence(
                 args: [
                     arg("t", revealWord(payload.transition, "nvl"), {
                         enum: true,
-                        apply: next => ({ ...payload, transition: { ...payload.transition, preset: transformPresetFor("nvl", next) } }),
+                        apply: next => ({ ...payload, transition: applyTransitionWordToTransform(payload.transition, "nvl", next) }),
                     }),
                     arg("d", seconds(payload.transition?.durationMs), {
                         apply: next => ({ ...payload, transition: { ...payload.transition, durationMs: msOf(next) } }),

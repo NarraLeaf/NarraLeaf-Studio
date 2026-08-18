@@ -1,3 +1,4 @@
+import { applyPlacementToTransform } from "./commands/transitions";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent } from "react";
 import type {
     StoryBlock,
@@ -2062,14 +2063,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             // Rewrite the enter/move in place; updateBlockPayloadFor no-ops when the placement is unchanged.
             updateBlockPayloadFor(source.id, {
                 ...source.payload,
-                transform: { ...(source.payload.transform ?? {}), preset: position },
+                transform: applyPlacementToTransform(source.payload.transform, position) ?? source.payload.transform,
             });
             return;
         }
         const move = createBlockForCommand("characterMove", () => uuidService.generate());
         if (move.kind === "action" && move.payload.action === "character") {
             move.payload.characterId = characterId;
-            move.payload.transform = { ...(move.payload.transform ?? {}), preset: position };
+            move.payload.transform = applyPlacementToTransform(move.payload.transform, position);
         }
         insertBlock(move, null, false, { target: { parentId: head.parentId, beforeBlockId: head.id } });
     }, [insertBlock, scene, sceneId, storyId, storyService, updateBlockPayloadFor, uuidService]);
