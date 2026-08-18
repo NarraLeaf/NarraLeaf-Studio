@@ -573,17 +573,15 @@ const BADGE_ICONS: Record<StoryBlockBadgeId, typeof FileText> = {
  * while a plate only has to point at the command that could have written the line:
  *
  *  - `blueprint` has no verb of its own to print, but `/blueprint` is unambiguously its command;
- *  - a `displayable` operation outside show/hide/transform (mask, clip, blend …) is inspector-reached
- *    and has no typed word, yet every one of them arrives through `/fx`.
+ *  - a `displayable` row always has a word since M2: v18 folded the twelve appearance operations into
+ *    `transform` + a prop bag, and the prop vocabulary gave every channel in that bag a spelling, so
+ *    there is no inspector-only displayable operation left to fall back for.
  */
 function rowCommandId(block: StoryBlock): string | null {
     switch (block.kind) {
         case "action":
             if (block.payload.action === "blueprint") {
                 return "blueprint";
-            }
-            if (block.payload.action === "displayable") {
-                return storyVerbCommandId(block.payload) ?? "fx";
             }
             return storyVerbCommandId(block.payload);
         case "nodeAction":

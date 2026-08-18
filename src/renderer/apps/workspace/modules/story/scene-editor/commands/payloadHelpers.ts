@@ -1,4 +1,5 @@
 import type { StoryActionPayload, StoryBlock, StoryDisplayableTargetRef, StoryTransformRef, StoryTransitionRef } from "@shared/types/story";
+import { DISPLAYABLE_BUILTIN_META } from "@shared/types/story";
 import type { StoryCommandContext, StoryCommandStageObjectKind, StoryCommandValue } from "../storyCommandValues";
 import { asDurationMs, asEnum, asTarget } from "./spec";
 import { applyPlacementToTransform, applyTransitionWordToTransform, transitionKindFor } from "./transitions";
@@ -156,6 +157,17 @@ export function withRevealTransform(
 export function displayableTargetRef(target: ReturnType<typeof asTarget>): StoryDisplayableTargetRef | undefined {
     if (!target) {
         return undefined;
+    }
+    if (target.type === "reserved") {
+        // The camera is not one of these: it has a payload arm of its own (`story.camera` is
+        // addressed distinctly by the engine), so a caller that resolved it never reaches here.
+        if (target.name === "camera") {
+            return undefined;
+        }
+        const meta = DISPLAYABLE_BUILTIN_META[target.name];
+        // `builtin` is the source of truth for these; `name`/`kind` ride along as the display
+        // fallbacks `resolveDisplayableTargetRef` documents, so a ref stays readable on its own.
+        return { builtin: target.name, kind: meta.kind, name: meta.label };
     }
     if (target.type === "character") {
         return { kind: "character", name: target.name };

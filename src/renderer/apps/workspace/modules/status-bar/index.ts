@@ -17,7 +17,12 @@ import {
     TextSelectionEntry,
 } from "./textDocumentEntries";
 
-export { StatusEntry, StatusBarEntryIdContext, StatusBarRunningContext } from "./StatusEntry";
+export {
+    StatusEntry,
+    StatusBarEntryIdContext,
+    StatusBarExperimentalContext,
+    StatusBarRunningContext,
+} from "./StatusEntry";
 export { useActiveRunMode } from "./useActiveRunMode";
 
 /**

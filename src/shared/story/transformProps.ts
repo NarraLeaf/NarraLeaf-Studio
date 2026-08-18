@@ -391,3 +391,64 @@ function assign(target: Record<string, unknown>, key: string, value: unknown): v
         target[key] = value;
     }
 }
+
+/**
+ * The bag that puts a displayable back the way it was drawn - what `/reset <target>` with no props
+ * writes.
+ *
+ * Stated as a value rather than as an empty bag, because "leave it" and "put it back" are the two
+ * different instructions this type exists to keep apart: an empty bag says nothing and would compile
+ * to nothing at all. Every continuous channel gets its neutral number and every discrete one gets
+ * `null`, which is exactly what the engine's `clearMask` / `clearClip` / `clearFilter` did before v18
+ * folded them into the bag.
+ *
+ * `fontColor` is deliberately absent. It is the one channel with no neutral: a text's colour is
+ * whatever its create row gave it, the engine has no "unset colour", and writing white here would be
+ * a reset that recolours every text an author had made amber. A colour is changed by naming the next
+ * one.
+ *
+ * `position` is centre, which IS the stage neutral - `getPresetPosition("center")` is what a create
+ * row seeds, so a reset lands where an untouched sprite would have stood.
+ */
+export function neutralStoryTransformProps(): StoryTransformProps {
+    return {
+        position: { xalign: 0.5, yalign: 0.5 },
+        zoom: 1,
+        scaleX: 1,
+        scaleY: 1,
+        rotation: 0,
+        opacity: 1,
+        maskAssetId: null,
+        maskSize: null,
+        maskPosition: null,
+        maskRepeat: null,
+        maskMode: null,
+        clipPath: null,
+        backdropFilter: null,
+        mixBlendMode: null,
+        // The structured channel alone: `filter` and `filterRaw` are two writers of ONE CSS channel
+        // and a bag carrying both is a `filterBoth` conflict, so a reset states the one that owns it.
+        // `composeStoryFilter(null)` is `"none"`, which is what clearing the channel means.
+        filter: null,
+    };
+}
+
+/**
+ * Whether this bag is exactly the neutral one - i.e. whether the row that carries it is a `/reset`.
+ *
+ * Deep equality against {@link neutralStoryTransformProps} rather than "every value is at its
+ * neutral", and the difference matters: a row that only says `opacity: 1` is a fade-in, not a reset,
+ * and printing it as one would tell the author it undoes things it never touches. A reset writes the
+ * whole bag at once, so the whole bag is what identifies it.
+ */
+export function isNeutralStoryTransformProps(props: StoryTransformProps | undefined): boolean {
+    if (!props) {
+        return false;
+    }
+    const neutral = neutralStoryTransformProps() as Record<string, unknown>;
+    const stated = Object.entries(props).filter(([, value]) => value !== undefined);
+    if (stated.length !== Object.keys(neutral).length) {
+        return false;
+    }
+    return stated.every(([key, value]) => JSON.stringify(value) === JSON.stringify(neutral[key]));
+}

@@ -22,8 +22,9 @@ import {
     seedRegistryEntriesFromBlueprintPersistent,
 } from "@shared/variables/variableRegistryModel";
 import type { DevModeBundle, DevModeCharacterSummary, DevModeStoryLibrary } from "@shared/types/devMode";
-import type { GameLocalizationBundle } from "@shared/types/localization";
+import type { GameLocalizationBundle, LanguageChangeConfiguration } from "@shared/types/localization";
 import {
+    normalizeLanguageChangeConfiguration,
     normalizeLocalizationConfiguration,
     normalizeLocalizationDocument,
     normalizeLocalizationKeysDocument,
@@ -127,6 +128,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const voice = restrictVoice(await loadGameVoice(context.projectPath), shippedTextIds, context.onNotice);
     const audio = await loadGameAudio(context.projectPath);
     const autoSave = await loadAutoSaveConfiguration(context.projectPath);
+    const languageChange = await loadLanguageChangeConfiguration(context.projectPath);
     const saveCompatibility = await loadSaveCompatibilityConfiguration(context.projectPath);
     const gameVersion = await loadGameVersion(context.projectPath);
     const preferences = await loadPlayerPreferences(context.projectPath);
@@ -150,6 +152,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         voice,
         audio,
         autoSave,
+        languageChange,
         saveCompatibility,
         gameVersion,
         // Taken off the library this build actually ships, after the variant fold and any scene
@@ -853,6 +856,19 @@ export async function loadAutoSaveConfiguration(projectPath: string): Promise<Au
     const config = await readProjectConfigRecord(projectPath);
     const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
     return normalizeAutoSaveConfiguration(app?.autoSave);
+}
+
+/**
+ * Load what a language change does mid-playthrough from `.nlproj` `app.languageChange`. Dense like
+ * the autosave config, and for the same reason: every build has an answer to this whether or not
+ * the author ever opened the setting. Exported for tests.
+ */
+export async function loadLanguageChangeConfiguration(
+    projectPath: string,
+): Promise<LanguageChangeConfiguration> {
+    const config = await readProjectConfigRecord(projectPath);
+    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+    return normalizeLanguageChangeConfiguration(app?.languageChange);
 }
 
 /**

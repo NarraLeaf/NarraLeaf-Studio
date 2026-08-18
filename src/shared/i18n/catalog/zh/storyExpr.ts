@@ -50,7 +50,9 @@ export const storyExpr = {
         duplicateVariable: "「{value}」已存在；请改用其他名称，或用 /set 修改它的值",
         reservedVariableName: "「{value}」在表达式里表示变体，请改用其他名称",
         unknownTarget: "舞台上没有名为「{value}」的对象",
+        unsupportedTarget: "「{value}」是 {kind}，它没有变换通道。请用 show / hide / play / rate",
         unsupportedOption: "「{value}」不适用于此处，可用：{allowed}",
+        unsupportedParam: "{key}= 不适用于{kind}",
         missingCore: "/{token} 还缺少{slot}",
     },
 } satisfies LocaleNamespace<"storyExpr">;

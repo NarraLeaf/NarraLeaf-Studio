@@ -792,13 +792,15 @@ export type CreateBlueprintHostApiRuntimeOptions = {
      */
     onSubscribeGamePreferences?: (listener: () => void) => () => void;
     /**
-     * The player picked a language, and it has been stored.
+     * The player picked a language. Storing it is part of what the host does with that.
      *
-     * Everything beyond storing it belongs to the host, because a language change is only a setting
-     * when nothing is running: mid-playthrough it invalidates the rendered text, the backlog, the
-     * sentence being typed, the voice playing under it and the preloaded scene, and the only way
-     * back to a coherent game is to restart it and resume. `GameApp` decides which of those two
-     * this is; a host with no game to be inconsistent with leaves it unset.
+     * A language change is only a setting when nothing is running: mid-playthrough it invalidates
+     * the rendered text, the backlog, the sentence being typed, the voice playing under it and the
+     * preloaded scene. What a project does about that is the project's decision - restart and come
+     * back, restart and start over, or keep the choice for the next launch - and the last of those
+     * means the language must NOT reach this session's store, which is why the write comes here
+     * with everything else. A host with no game to be inconsistent with leaves it unset and the
+     * bridge stores the language itself.
      */
     onLocaleChanged?: (code: string) => Promise<void> | void;
     emit: (event: BlueprintDebugEvent) => void;
@@ -3278,12 +3280,19 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             setLocale: async (code: string) => {
                 emitHostCall(emit, "localization.setLocale", "call");
                 try {
-                    await scope.persistenceSet(LOCALE_STORAGE_KEY, code);
+                    // The host owns the write, because one of the answers a project can give is
+                    // "not yet": a language kept for the next launch must not touch the key this
+                    // session reads, and a write already made cannot be taken back without the
+                    // player watching it happen. A host with no game to be inconsistent with (the
+                    // editor preview) leaves the option unset and gets the plain write.
+                    if (onLocaleChanged) {
+                        await onLocaleChanged(code);
+                    } else {
+                        await scope.persistenceSet(LOCALE_STORAGE_KEY, code);
+                    }
+                    // Marks the node as having run, which is what a graph author is watching for.
+                    // Which key it landed in is the host's business and its own store event.
                     emit({ type: "state.write", scope: "persistence", key: LOCALE_STORAGE_KEY });
-                    // Awaited, and after the write: the host may restart the game from here, and
-                    // the boot that follows has to find the language the player just picked. A
-                    // host that only has a language to change returns immediately.
-                    await onLocaleChanged?.(code);
                 } finally {
                     emitHostCall(emit, "localization.setLocale", "return");
                 }

@@ -120,6 +120,11 @@ export interface RendererPreloadedInterface {
     // Basic Information
     getPlatform(): Promise<RequestStatus<PlatformInfo>>;
     getAppInfo(): Promise<RequestStatus<AppInfo>>;
+    /**
+     * Claim the once-per-launch experimental warning. Answers true to the first workspace window
+     * that asks and false to everything after it.
+     */
+    claimExperimentalNotice(): Promise<RequestStatus<{ show: boolean }>>;
     getWindowProps<T extends WindowAppType>(): Promise<RequestStatus<WindowProps[T]>>;
     terminate(err?: string): Promise<void>;
     /**
