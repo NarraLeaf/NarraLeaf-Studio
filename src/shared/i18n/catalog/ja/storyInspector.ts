@@ -105,6 +105,7 @@ export const storyInspector = {
         circleReveal: "円で開く",
         circleClose: "円で閉じる",
         slideReveal: "スライドで開く",
+        custom: "カスタム",
     },
 
     easing: {

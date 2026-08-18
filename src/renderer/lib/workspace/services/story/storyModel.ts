@@ -42,6 +42,7 @@ import {
     StoryVariableValueType,
 } from "@shared/types/story";
 import { assertValidStoryEntityId, assertValidStoryId, isValidStoryEntityId, isValidStoryId } from "@shared/utils/storyId";
+import { expandLegacyDisplayableEffect, migrateLegacyTransformRef } from "@shared/story/transformLegacy";
 import { legacyPoseId } from "../character/migrateAppearance";
 import type { StoryExpressionScope } from "@shared/utils/storyExpressionParser";
 import { createStoryExpressionScope, parseStoryExpression } from "@shared/utils/storyExpressionParser";
@@ -343,6 +344,9 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     if (version < 13) {
         migrated = migrateStoryDocumentV12toV13(migrated);
     }
+    if (version < 18) {
+        migrated = migrateStoryDocumentV17toV18(migrated);
+    }
     // v4 (the `invalid` block kind and dialogue's `speakerName`), v7 (the block-level `disabled`
     // flag), v8 (the `event` rich-text run), v11 (a withdrawn marker block - see the version
     // history in document.ts), v14 (the expression language's `array`/`index` nodes), v15 (its
@@ -354,8 +358,8 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     // is where it first appeared, and it carries the identical shape - so the stamp is a complete
     // migration for that case too. v9 (M-VAR, the persistent `StoryVariableRef` rename),
     // v10 (the character appearance rework - `formName`/`variants` become `pose`/`tags`), v12
-    // (the explicit order of chapter-less scenes) and v13 (the `code` block kind's removal) are NOT
-    // additive, so each has a real step.
+    // (the explicit order of chapter-less scenes), v13 (the `code` block kind's removal) and v18 (the
+    // two closed transform enums becoming one prop bag) are NOT additive, so each has a real step.
     //
     // The stamp is unconditional, and has to be. Each migrator above ends by writing
     // STORY_DOCUMENT_SCHEMA_VERSION rather than the version it actually produces, so the ladder only
@@ -364,6 +368,68 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     // v2 tests kept passing because V2toV3 stamps whatever the constant currently says. Landing the
     // stamp here means the next additive bump cannot reopen that hole.
     return { ...migrated, schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION };
+}
+
+/**
+ * v17→v18: the two closed enums become the one prop bag.
+ *
+ * Every `StoryTransformPreset` expands into the props it always stood for, and every `displayable`
+ * effect operation into the prop it set. Both tables live in `@shared/story/transformLegacy` because
+ * the compiler's own tests build documents at the old shape and the runtime bundle cannot import from
+ * here; this step is the walk, not the arithmetic.
+ *
+ * It is written as a whole-tree walk rather than a per-payload switch for the same reason
+ * `migrateCharacterFormsToPose` was: a transform ref hangs off eight different payloads (`image`,
+ * `text`, `layer`, `character`, `displayable`, the NVL panel's `transition`, the camera's `motion`) and
+ * a switch that missed one would leave a preset behind that nothing can read any more. The walk is
+ * idempotent: a ref already carrying `to` is returned untouched.
+ */
+function migrateStoryDocumentV17toV18(document: StoryDocument): StoryDocument {
+    const scenes: Record<StorySceneId, StoryScene> = {};
+    for (const [sceneId, scene] of Object.entries(document.scenes ?? {})) {
+        const blocks: Record<StoryBlockId, StoryBlock> = {};
+        for (const [blockId, block] of Object.entries(scene.blocks ?? {})) {
+            blocks[blockId] = migrateTransformBlock(block);
+        }
+        scenes[sceneId] = { ...scene, blocks };
+    }
+    return { ...document, scenes };
+}
+
+/** The legacy `displayable` payload's twelve effect operations, as they survive only on disk. */
+const LEGACY_EFFECT_OPERATIONS = new Set([
+    "mask", "clearMask", "clip", "clearClip", "filter", "clearFilter",
+    "backdrop", "blend", "darken", "circleReveal", "circleClose", "wipe",
+]);
+
+function migrateTransformBlock(block: StoryBlock): StoryBlock {
+    if (block.kind !== "action") {
+        return block;
+    }
+    const payload = block.payload as Record<string, unknown>;
+    let next = payload;
+    if (payload.action === "displayable" && LEGACY_EFFECT_OPERATIONS.has(String(payload.operation))) {
+        const { to, clipReveal } = expandLegacyDisplayableEffect(String(payload.operation), payload);
+        const transform = {
+            mode: "props" as const,
+            ...(Object.keys(to).length > 0 ? { to } : {}),
+            ...(clipReveal ? { clipReveal } : {}),
+            ...(typeof payload.durationMs === "number" ? { durationMs: payload.durationMs } : {}),
+            ...(typeof payload.easing === "string" ? { easing: payload.easing } : {}),
+        };
+        next = { ...payload, operation: "transform", transform };
+        for (const dropped of ["maskAssetId", "clipPath", "filter", "backdropFilter", "mixBlendMode", "darkness", "effectProps", "durationMs", "easing"]) {
+            delete (next as Record<string, unknown>)[dropped];
+        }
+    }
+    // The `transform` / `transition` / `motion` refs, wherever they hang.
+    const migrated = { ...next };
+    for (const key of ["transform", "transition", "motion"]) {
+        if (migrated[key] && typeof migrated[key] === "object") {
+            migrated[key] = migrateLegacyTransformRef(migrated[key]);
+        }
+    }
+    return { ...block, payload: migrated } as StoryBlock;
 }
 
 /**

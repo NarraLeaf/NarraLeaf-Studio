@@ -92,7 +92,6 @@ export function StoryMotionPicker(props: {
             ...(props.value ?? {}),
             mode: "animation",
             animationId: assetId,
-            preset: undefined,
         });
         setPickerOpen(false);
     }, [props]);
@@ -115,7 +114,6 @@ export function StoryMotionPicker(props: {
             ...(props.value ?? {}),
             mode: "animation",
             animationId: asset.id,
-            preset: undefined,
         });
         setPickerOpen(false);
     }, [presetId, props, storyService, t]);
@@ -161,7 +159,7 @@ export function StoryMotionPicker(props: {
                     <button
                         className={ICON_BUTTON_CLASS}
                         type="button"
-                        onClick={() => props.onChange({ mode: "preset", preset: "none" })}
+                        onClick={() => props.onChange({ mode: "props", to: {} })}
                         data-tip={t("motion.clearMotion")} aria-label={t("motion.clearMotion")}
                     >
                         <X className="h-4 w-4" />

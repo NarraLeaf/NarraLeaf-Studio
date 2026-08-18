@@ -94,6 +94,7 @@ export const storyInspector = {
         circleReveal: "圆形展开",
         circleClose: "圆形收拢",
         slideReveal: "滑动揭示",
+        custom: "自定义",
     },
     easing: {
         default: "默认",

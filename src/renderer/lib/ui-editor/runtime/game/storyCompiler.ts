@@ -71,6 +71,7 @@ import type {
     StoryTextSegment,
     StoryTransitionRef,
     StoryTransformSequenceProps,
+    StoryTransformProps,
     StoryTransformRef,
     StoryVariableRef,
 } from "@shared/types/story";
@@ -113,6 +114,13 @@ import {
     resolveAudioTrackPlayback,
 } from "@shared/types/audioTrack";
 import { parseTranslatedText } from "@shared/utils/localizationText";
+import {
+    composeStoryFilter,
+    isEmptyStoryTransformProps,
+    splitStoryTransformChange,
+    storyTransformPropsConflicts,
+    storyTransformPropsToNlr,
+} from "@shared/story/transformProps";
 import {
     boolProp,
     characterStageName,
@@ -2743,10 +2751,7 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
             diagnostic(ctx, "warning", block.id, `Displayable target not found: ${label}`);
             return [];
         }
-        if (isDisplayableEffectOperation(payload.operation)) {
-            return compileDisplayableEffect(ctx, block, payload, target);
-        }
-        const chain = compileDisplayableOperation(target, payload.operation as "show" | "hide" | "transform", payload.transform, ctx, block.id);
+        const chain = await compileDisplayableOperation(target, payload.operation, payload.transform, ctx, block.id);
         return chain ? [recordStatement(ctx, chain, block)] : [];
     }
 
@@ -2771,7 +2776,7 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
     }
 
     if (payload.action === "camera") {
-        return compileCameraAction(ctx, block, payload);
+        return await compileCameraAction(ctx, block, payload);
     }
 
     return [];
@@ -2857,36 +2862,45 @@ function finiteOr(value: number | undefined, fallback: number): number {
  * change at all (the 0.16.1 defect that made this rule). The same reasoning covers zoom, where 0 or a
  * negative value is not a shot the author meant.
  */
-function compileCameraAction(
+async function compileCameraAction(
     ctx: SceneCompileContext,
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "camera" }>,
-): NlrStatement[] {
+): Promise<NlrStatement[]> {
     const camera = ctx.nlrStory.camera;
     const duration = Math.max(0, finiteOr(payload.durationMs, 0));
-    const easing = payload.easing as any;
+    const easing = payload.easing;
+    // The camera's six poses are the same bag a sprite's are - `Camera` is a `Displayable` - so they
+    // are built as props and handed to the ONE emitter, which decides per prop what may be eased.
+    const ref = (to: StoryTransformProps): StoryTransformRef => ({ mode: "props", to, durationMs: duration, easing });
+    const emit = async (to: StoryTransformProps): Promise<NlrStatement[]> => {
+        const chain = await emitTransformProps(camera, ref(to), ctx, block.id);
+        return chain === camera ? [] : [recordStatement(ctx, chain, block)];
+    };
     switch (payload.operation) {
-        case "pan": {
-            const position = getPresetPosition("custom", {
-                xalign: payload.position?.xalign ?? 0.5,
-                yalign: payload.position?.yalign ?? 0.5,
-                ...(payload.position?.xoffset !== undefined ? { xoffset: payload.position.xoffset } : {}),
-                ...(payload.position?.yoffset !== undefined ? { yoffset: payload.position.yoffset } : {}),
+        case "pan":
+            return emit({
+                position: {
+                    xalign: payload.position?.xalign ?? 0.5,
+                    yalign: payload.position?.yalign ?? 0.5,
+                    ...(payload.position?.xoffset !== undefined ? { xoffset: payload.position.xoffset } : {}),
+                    ...(payload.position?.yoffset !== undefined ? { yoffset: payload.position.yoffset } : {}),
+                },
             });
-            return [recordStatement(ctx, camera.pan(position as any, duration, easing), block)];
-        }
         case "zoom":
-            return [recordStatement(ctx, camera.zoom(Math.max(MIN_CAMERA_ZOOM, finiteOr(payload.zoom, 1)), duration, easing), block)];
+            return emit({ zoom: Math.max(MIN_CAMERA_ZOOM, finiteOr(payload.zoom, 1)) });
         case "rotate":
-            return [recordStatement(ctx, camera.rotate(finiteOr(payload.rotation, 0), duration, easing), block)];
+            return emit({ rotation: finiteOr(payload.rotation, 0) });
         case "darken":
-            return [recordStatement(ctx, camera.darken(Math.min(1, Math.max(0, finiteOr(payload.darkness, 0))), duration, easing), block)];
+            // `Camera.darken(d)` IS `filter("brightness(1 - d)")` in the engine, so the bag says so
+            // directly. It carries no `hue-rotate`, so the emitter eases it - dimming the stage over
+            // the row's duration is exactly what an author asks a darken for.
+            return emit({ filter: { brightness: 1 - Math.min(1, Math.max(0, finiteOr(payload.darkness, 0))) } });
         case "look": {
             // A colour grade over the whole stage, through `Displayable.filter` - the SAME channel
-            // `darken` writes above, since `darken(d)` is `filter("brightness(1 - d)")` in the engine.
-            // The two never compose: this row replaces whatever the last one put there, which is why
-            // every preset folds its own brightness in rather than expecting a `/camera darken` beside
-            // it.
+            // `darken` writes above. The two never compose: this row replaces whatever the last one put
+            // there, which is why every preset folds its own brightness in rather than expecting a
+            // `/camera darken` beside it.
             //
             // A hand-written filter wins over the preset - it is the escape hatch, and a resolved
             // preset quietly overriding what the author typed would make the field a decoration.
@@ -2920,6 +2934,14 @@ function compileCameraAction(
             // degrees either side of neutral. Nothing crosses the wheel, so there is no midpoint to
             // land wrong on — measured over `hangover`, the trace stays inside its own recipe with
             // only the angle and the blur moving.
+            //
+            // A still grade reaches the stage as `filterRaw` rather than as a structured record, and that is not
+            // a shortcut. The look library's recipes are ORDERED pipelines and the record is not
+            // ordered: `memory` runs saturate before sepia while `faint` runs blur before saturate, so
+            // no single canonical order reproduces both, and re-emitting either through one would
+            // change what the grade looks like. A raw chain is discrete by definition, so the emitter
+            // cuts it — which is the behaviour measured above, arrived at by the model rather than by
+            // a special case.
             const oscillation = handWritten
                 ? null
                 : resolveStoryCameraLookOscillation(payload.lookPreset, payload.lookIntensity, duration);
@@ -2937,7 +2959,7 @@ function compileCameraAction(
                     recordStatement(ctx, camera.filter(resolved, { duration: oscillation.settleMs, ease: "easeOut" }), block),
                 ];
             }
-            return [recordStatement(ctx, camera.filter(resolved, { duration: 0 }), block)];
+            return emit({ filterRaw: resolved });
         }
         case "reset":
             // Ending a grade used to walk the picture through the colour wheel — blue, cyan, green,
@@ -2955,7 +2977,7 @@ function compileCameraAction(
             // `>=0.28.0 <0.29.0` — so it will NEVER resolve to the release carrying this fix. The
             // pin has to be raised to `^0.29.0` when the engine goes out, or a fresh install quietly
             // gets the sweep back. Not something to work around here; the fix is the pin.
-            return [recordStatement(ctx, camera.resetCamera(duration, easing), block)];
+            return [recordStatement(ctx, camera.resetCamera(duration, easing as any), block)];
         case "motion": {
             // A whole keyframed shot rather than one settled pose. `Camera` is a `Displayable`, so it
             // takes the same `Transform` a sprite does, built by the same function `/transform` uses -
@@ -3028,7 +3050,7 @@ async function compileCharacterStageAction(
     if (payload.operation === "exit") {
         const image = getImage(ctx, name, { autoFit: true, ...frameOptions });
         await bindCharacterPortrait(ctx, payload.characterId, image);
-        const chain = compileDisplayableOperation(image, "hide", payload.transform ?? { preset: "fadeOut", durationMs: 250 }, ctx, block.id);
+        const chain = await compileDisplayableOperation(image, "hide", payload.transform ?? { to: { opacity: 0 }, durationMs: 250 }, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
         return statements;
     }
@@ -3036,7 +3058,7 @@ async function compileCharacterStageAction(
     if (payload.operation === "move") {
         const image = getImage(ctx, name, { autoFit: true, ...frameOptions });
         await bindCharacterPortrait(ctx, payload.characterId, image);
-        const chain = compileDisplayableOperation(image, "transform", payload.transform, ctx, block.id);
+        const chain = await compileDisplayableOperation(image, "transform", payload.transform, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
         return statements;
     }
@@ -3158,7 +3180,7 @@ async function compileCharacterPuppetAction(
     const transform = payload.operation === "exit"
         ? payload.transform ?? { preset: "fadeOut" as const, durationMs: 250 }
         : payload.transform;
-    const chain = compileDisplayableOperation(puppet, operation, transform, ctx, block.id);
+    const chain = await compileDisplayableOperation(puppet, operation, transform, ctx, block.id);
     return chain ? [recordStatement(ctx, chain, block)] : [];
 }
 
@@ -3546,18 +3568,18 @@ async function compileImageAction(
 
     if (payload.operation === "show" || payload.operation === "hide" || payload.operation === "create") {
         const operation = payload.operation === "hide" ? "hide" : "show";
-        const chain = compileDisplayableOperation(image, operation, payload.transform, ctx, block.id);
+        const chain = await compileDisplayableOperation(image, operation, payload.transform, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
     }
 
     return statements;
 }
 
-function compileTextAction(
+async function compileTextAction(
     ctx: SceneCompileContext,
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "text" }>,
-): NlrStatement[] {
+): Promise<NlrStatement[]> {
     const text = getText(ctx, payload.objectName, {
         text: payload.text,
         fontSize: payload.fontSize,
@@ -3576,18 +3598,18 @@ function compileTextAction(
         statements.push(recordStatement(ctx, text.setFontColor((payload.fontColor ?? "#ffffff") as any, payload.transform?.durationMs ?? 0, payload.transform?.easing as any), block));
     }
     if (payload.operation === "show" || payload.operation === "hide" || payload.operation === "create") {
-        const chain = compileDisplayableOperation(text, payload.operation === "hide" ? "hide" : "show", payload.transform, ctx, block.id);
+        const chain = await compileDisplayableOperation(text, payload.operation === "hide" ? "hide" : "show", payload.transform, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
     }
 
     return statements;
 }
 
-function compileLayerAction(
+async function compileLayerAction(
     ctx: SceneCompileContext,
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "layer" }>,
-): NlrStatement[] {
+): Promise<NlrStatement[]> {
     // `create` names a new custom layer; every other op resolves an existing layer - a built-in
     // (background / displayable) or a custom one - via the target ref (falling back to the default
     // displayable layer), so a transform can now target the background instead of only named layers.
@@ -3600,7 +3622,7 @@ function compileLayerAction(
     }
     if (payload.operation === "show" || payload.operation === "hide" || payload.operation === "transform") {
         const operation = payload.operation === "show" || payload.operation === "hide" ? payload.operation : "transform";
-        const chain = compileDisplayableOperation(layer, operation, payload.transform, ctx, block.id);
+        const chain = await compileDisplayableOperation(layer, operation, payload.transform, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
     }
     return statements;
@@ -3953,7 +3975,7 @@ async function compileNvl(ctx: SceneCompileContext, block: Extract<StoryBlock, {
         return [];
     }
     const children = await compileBlockList(ctx, block.childrenIds);
-    const chain = ctx.nlrScene.nvl(transformOptions(block.payload.transition) as any, children as any);
+    const chain = ctx.nlrScene.nvl(transformOptions(timingOf(block.payload.transition)) as any, children as any);
     return [recordStatement(ctx, chain, block)];
 }
 
@@ -4231,126 +4253,204 @@ function getDisplayable(ctx: SceneCompileContext, name: string, kind?: string): 
     return null;
 }
 
-const DISPLAYABLE_EFFECT_OPS = new Set([
-    "mask", "clearMask", "clip", "clearClip", "filter", "clearFilter", "backdrop", "blend", "darken", "circleReveal", "circleClose", "wipe",
-]);
-
-function isDisplayableEffectOperation(operation: string): boolean {
-    return DISPLAYABLE_EFFECT_OPS.has(operation);
-}
-
 type DisplayablePayload = Extract<StoryActionPayload, { action: "displayable" }>;
 
-function effectVisualOptions(payload: DisplayablePayload): Record<string, unknown> {
-    const options: Record<string, unknown> = {};
-    if (payload.durationMs !== undefined) {
-        options.duration = Math.max(0, payload.durationMs);
-    }
-    if (payload.easing) {
-        options.ease = payload.easing;
-    }
-    return options;
-}
+/**
+ * The timing vocabulary, whole. `CommonTransformProps` is duration / ease / delay / at and
+ * `TransformConfig` adds repeat / repeatDelay; Studio passed the first two and nothing else for
+ * years, though the engine has always taken all of them.
+ */
+type TransformTiming = {
+    durationMs?: number;
+    easing?: string;
+    delayMs?: number;
+    repeat?: number;
+    repeatDelayMs?: number;
+};
 
-function circleEffectOptions(payload: DisplayablePayload, base: Record<string, unknown>): Record<string, unknown> {
-    const props = payload.effectProps ?? {};
-    const options: Record<string, unknown> = { ...base };
-    const center = stringProp(props, "center", "");
-    if (center) {
-        options.center = center;
-    }
-    if (typeof props.from === "number") {
-        options.from = props.from;
-    }
-    if (typeof props.to === "number") {
-        options.to = props.to;
-    }
-    return options;
-}
-
-function wipeEffectOptions(payload: DisplayablePayload, base: Record<string, unknown>): Record<string, unknown> {
-    const props = payload.effectProps ?? {};
+function timingOf(ref: StoryTransformRef | undefined): TransformTiming {
     return {
-        ...base,
-        direction: stringProp(props, "direction", "left"),
-        reverse: boolProp(props, "reverse", false),
+        durationMs: ref?.durationMs,
+        easing: ref?.easing,
+        delayMs: ref?.delayMs,
+        repeat: ref?.repeat,
+        repeatDelayMs: ref?.repeatDelayMs,
     };
 }
 
-async function compileDisplayableEffect(
-    ctx: SceneCompileContext,
-    block: StoryBlock,
-    payload: DisplayablePayload,
-    target: any,
-): Promise<NlrStatement[]> {
-    const options = effectVisualOptions(payload);
-    const record = (chain: NlrStatement | null | undefined): NlrStatement[] => chain ? [recordStatement(ctx, chain, block)] : [];
-    switch (payload.operation) {
-        case "mask": {
-            if (!payload.maskAssetId) {
-                diagnostic(ctx, "warning", block.id, "Mask effect has no image asset.");
-                return [];
-            }
-            const src = await resolveAsset(ctx, payload.maskAssetId, "image", block.id);
-            return src ? record(target.mask(src, options)) : [];
-        }
-        case "clearMask":
-            return record(target.clearMask(options));
-        case "clip": {
-            if (!payload.clipPath) {
-                diagnostic(ctx, "warning", block.id, "Clip effect has no clip-path.");
-                return [];
-            }
-            return record(target.clip(payload.clipPath, options));
-        }
-        case "clearClip":
-            return record(target.clearClip(options));
-        case "filter": {
-            if (!payload.filter) {
-                diagnostic(ctx, "warning", block.id, "Filter effect has no CSS filter.");
-                return [];
-            }
-            return record(target.filter(payload.filter, options));
-        }
-        case "clearFilter":
-            return record(target.clearFilter(options));
-        case "backdrop": {
-            if (!payload.backdropFilter) {
-                diagnostic(ctx, "warning", block.id, "Backdrop effect has no CSS backdrop-filter.");
-                return [];
-            }
-            return record(target.backdrop(payload.backdropFilter, options));
-        }
-        case "blend":
-            // The full CSS type is what the engine takes; only the six curated modes ever reach here
-            // (the inspector offers no others), so "normal" is the safe reset when a payload has none.
-            return record(target.blend(payload.mixBlendMode ?? "normal", options));
-        case "darken": {
-            if (typeof target.darken !== "function") {
-                diagnostic(ctx, "warning", block.id, "Darken applies to image / character targets only.");
-                return [];
-            }
-            const darkness = Math.min(1, Math.max(0, payload.darkness ?? 0));
-            return record(target.darken(darkness, payload.durationMs, payload.easing as any));
-        }
-        case "circleReveal":
-            return record(target.circleReveal(circleEffectOptions(payload, options)));
-        case "circleClose":
-            return record(target.circleClose(circleEffectOptions(payload, options)));
-        case "wipe":
-            return record(target.wipe(wipeEffectOptions(payload, options)));
-        default:
-            return [];
+/** The engine's `Partial<CommonTransformProps>` - what every chained call and every Transform takes. */
+function transformOptions(timing: TransformTiming | undefined): Record<string, unknown> {
+    const options: Record<string, unknown> = { duration: Math.max(0, timing?.durationMs ?? 0) };
+    if (timing?.easing) {
+        options.ease = timing.easing;
     }
+    if (timing?.delayMs !== undefined) {
+        options.delay = Math.max(0, timing.delayMs);
+    }
+    return options;
 }
 
-function compileDisplayableOperation(
+/** A Transform over one prop bag, carrying repeat only when a row asked for it. */
+function buildTransform(props: Record<string, unknown>, timing: TransformTiming | undefined): Transform {
+    const options = transformOptions(timing);
+    if (timing?.repeat === undefined && timing?.repeatDelayMs === undefined) {
+        return new Transform(props as any, options as any);
+    }
+    return new Transform([{ props, options }] as any, {
+        repeat: timing.repeat,
+        repeatDelay: timing.repeatDelayMs,
+    } as any);
+}
+
+/**
+ * **The one emitter.** Every settled pose in the whole story model comes through here: a `/show`, a
+ * `/move`, a `/fx`, a camera pan, a camera grade.
+ *
+ * Two statements at most, and which is which is not a preference. {@link splitStoryTransformChange}
+ * decides per prop whether the change may be eased, and the half that may not lands FIRST in its own
+ * zero-duration statement, leaving the eased half to animate on the row's own timing. That is the
+ * shape `1e626400` arrived at for the camera, generalised: a grade snaps and the pan still moves.
+ *
+ * A mask is emitted through `Displayable.mask` rather than as a `maskImage` prop, because that call
+ * also registers the source for preload - writing the URL straight into a Transform would leave the
+ * first frame unmasked.
+ */
+async function emitTransformProps(
+    chain: any,
+    ref: StoryTransformRef | undefined,
+    ctx: SceneCompileContext,
+    blockId: string,
+): Promise<any> {
+    if (!ref) {
+        return chain;
+    }
+    for (const conflict of storyTransformPropsConflicts(ref.to)) {
+        if (conflict === "filterBoth") {
+            diagnostic(ctx, "warning", blockId, "A transform sets both a structured filter and a raw one; only one can reach the stage.");
+        }
+    }
+    const timing = timingOf(ref);
+    const { cut, tween } = splitStoryTransformChange(ref.from, ref.to);
+    let next = chain;
+    if (!isEmptyStoryTransformProps(cut)) {
+        next = await emitCutProps(next, cut, ctx, blockId);
+    }
+    if (!isEmptyStoryTransformProps(tween)) {
+        next = next.transform(buildTransform(storyTransformPropsToNlr(tween), timing));
+    }
+    if (ref.clipReveal) {
+        next = emitClipReveal(next, ref.clipReveal, timing, ctx, blockId);
+    }
+    return next;
+}
+
+/** The half that lands in one frame, through the engine's own effect entries where it has them. */
+async function emitCutProps(
+    chain: any,
+    cut: StoryTransformProps,
+    ctx: SceneCompileContext,
+    blockId: string,
+): Promise<any> {
+    const instant = { duration: 0 };
+    let next = chain;
+    if (cut.maskAssetId !== undefined) {
+        if (cut.maskAssetId === null) {
+            next = next.clearMask(instant);
+        } else if (!cut.maskAssetId.trim()) {
+            // A mask channel with no image is not "clear the mask" - `null` says that. It is a row the
+            // author opened and did not finish, and silently doing nothing would look like a mask that
+            // failed to load.
+            diagnostic(ctx, "warning", blockId, "Mask effect has no image asset.");
+        } else {
+            const src = await resolveAsset(ctx, cut.maskAssetId, "image", blockId);
+            if (src) {
+                next = next.mask(src, {
+                    ...instant,
+                    ...(cut.maskSize != null ? { maskSize: cut.maskSize } : {}),
+                    ...(cut.maskPosition != null ? { maskPosition: cut.maskPosition } : {}),
+                    ...(cut.maskRepeat != null ? { maskRepeat: cut.maskRepeat } : {}),
+                    ...(cut.maskMode != null ? { maskMode: cut.maskMode } : {}),
+                });
+            }
+        }
+    }
+    if (cut.clipPath !== undefined) {
+        next = cut.clipPath === null ? next.clearClip(instant) : next.clip(cut.clipPath, instant);
+    }
+    if (cut.filterRaw !== undefined) {
+        next = cut.filterRaw === null ? next.clearFilter(instant) : next.filter(cut.filterRaw, instant);
+    } else if (cut.filter !== undefined) {
+        next = cut.filter === null ? next.clearFilter(instant) : next.filter(composeStoryFilter(cut.filter), instant);
+    }
+    if (cut.backdropFilter !== undefined) {
+        next = next.backdrop(cut.backdropFilter ?? "none", instant);
+    }
+    if (cut.mixBlendMode !== undefined) {
+        next = next.blend(cut.mixBlendMode ?? "normal", instant);
+    }
+    // What is left has no dedicated entry - the three mask settings when no mask image came with them,
+    // and a text colour - so it goes through a Transform that simply does not animate.
+    const rest = storyTransformPropsToNlr({
+        ...(cut.maskAssetId === undefined ? {
+            maskSize: cut.maskSize,
+            maskPosition: cut.maskPosition,
+            maskRepeat: cut.maskRepeat,
+            maskMode: cut.maskMode,
+        } : {}),
+        fontColor: cut.fontColor,
+    });
+    if (Object.keys(rest).length > 0) {
+        next = next.transform(buildTransform(rest, undefined));
+    }
+    return next;
+}
+
+/**
+ * The three clip-path generators, which are verbs and not values.
+ *
+ * They synthesize a new `clip-path` every frame from an interpolated radius or edge, so there is no
+ * prop that holds one - which is exactly why they were never foldable as transform presets and why
+ * they did not follow the other twelve operations into the bag.
+ */
+function emitClipReveal(
+    chain: any,
+    reveal: NonNullable<StoryTransformRef["clipReveal"]>,
+    timing: TransformTiming,
+    ctx: SceneCompileContext,
+    blockId: string,
+): any {
+    const base = transformOptions(timing);
+    if (reveal.kind === "wipe") {
+        if (typeof chain.wipe !== "function") {
+            diagnostic(ctx, "warning", blockId, "Wipe applies to displayable targets only.");
+            return chain;
+        }
+        return chain.wipe({
+            ...base,
+            direction: reveal.direction ?? "left",
+            reverse: reveal.reverse ?? false,
+        });
+    }
+    const call = reveal.kind === "circleReveal" ? chain.circleReveal : chain.circleClose;
+    if (typeof call !== "function") {
+        diagnostic(ctx, "warning", blockId, "Circle reveal applies to displayable targets only.");
+        return chain;
+    }
+    return call.call(chain, {
+        ...base,
+        ...(reveal.center ? { center: reveal.center } : {}),
+        ...(reveal.fromRadius !== undefined ? { from: reveal.fromRadius } : {}),
+        ...(reveal.toRadius !== undefined ? { to: reveal.toRadius } : {}),
+    });
+}
+
+async function compileDisplayableOperation(
     target: any,
     operation: "show" | "hide" | "transform",
     transform: StoryTransformRef | undefined,
     ctx: SceneCompileContext,
     blockId: string,
-): NlrStatement | null {
+): Promise<NlrStatement | null> {
     if (transform?.mode === "animation") {
         const animationTransform = createAnimationTransform(transform, ctx, blockId, operation === "transform" ? "none" : operation);
         if (operation === "show") {
@@ -4361,69 +4461,46 @@ function compileDisplayableOperation(
         }
         return animationTransform ? target.transform(animationTransform) : null;
     }
+    const timing = timingOf(transform);
     if (operation === "show") {
-        if (transform?.preset && !["none", "fadeIn"].includes(transform.preset)) {
-            const visible = target.show({ duration: 0, ease: transform.easing });
-            return applyTransformPreset(visible, transform, ctx, blockId) ?? visible;
+        // The engine's own `show(options)` IS the fade, so a row that asks for nothing but full opacity
+        // uses it. Anything else has to arrive visible first and then move, or the pose would play
+        // against an element the fade is still bringing up.
+        if (isOpacityOnly(transform, 1)) {
+            return target.show(transformOptions(timing));
         }
-        return target.show(transformOptions(transform));
+        const visible = target.show({ duration: 0, ...(transform?.easing ? { ease: transform.easing } : {}) });
+        return await emitTransformProps(visible, transform, ctx, blockId);
     }
     if (operation === "hide") {
-        if (transform?.preset && !["none", "fadeOut"].includes(transform.preset)) {
-            const chain = applyTransformPreset(target, transform, ctx, blockId);
-            return (chain ?? target).hide({ duration: 0, ease: transform.easing });
+        if (isOpacityOnly(transform, 0)) {
+            return target.hide(transformOptions(timing));
         }
-        return target.hide(transformOptions(transform));
+        const posed = await emitTransformProps(target, transform, ctx, blockId);
+        return (posed ?? target).hide({ duration: 0, ...(transform?.easing ? { ease: transform.easing } : {}) });
     }
-    return applyTransformPreset(target, transform, ctx, blockId);
+    const chain = await emitTransformProps(target, transform, ctx, blockId);
+    return chain === target ? null : chain;
 }
 
-function applyTransformPreset(target: any, transform: StoryTransformRef | undefined, ctx: SceneCompileContext, blockId: string): NlrStatement | null {
-    if (!transform || transform.mode === "animation") {
-        return null;
+/**
+ * True when the bag says nothing but "end up at this opacity", which is what `show()` and `hide()`
+ * already do. A bag carrying an opacity the verb does not imply (a half-visible ghost) is NOT this
+ * case: it has to be animated after the element is up, or the value would be overwritten.
+ */
+function isOpacityOnly(transform: StoryTransformRef | undefined, opacity: number): boolean {
+    if (transform?.clipReveal) {
+        return false;
     }
-    const preset = transform.preset ?? "none";
-    if (preset === "none") {
-        return null;
+    const to = transform?.to;
+    if (!to) {
+        return true;
     }
-    const duration = transform.durationMs ?? 0;
-    const easing = transform.easing as any;
-    const props = transform.props ?? {};
-    const position = getPresetPosition(preset, props);
-
-    if (position) {
-        return target.pos(position, duration, easing);
+    const keys = Object.entries(to).filter(([, value]) => value !== undefined).map(([key]) => key);
+    if (keys.length === 0) {
+        return true;
     }
-    if (preset === "fadeIn") return target.show({ duration, ease: easing });
-    if (preset === "fadeOut") return target.hide({ duration, ease: easing });
-    if (preset === "zoom") return target.zoom(numberProp(props, "zoom", 1), duration, easing);
-    if (preset === "scale") {
-        const scale = numberProp(props, "scale", 1);
-        return target.scaleXY(numberProp(props, "scaleX", scale), numberProp(props, "scaleY", scale), duration, easing);
-    }
-    // `scaleX` and not `scaleXY`: a flip is horizontal, and restating a vertical scale the row was
-    // never asked about would reset one an earlier row had set. See `getInlineTransformProps`, which
-    // folds the same preset for the paths that need settled props instead of a chained action.
-    if (preset === "flip") return target.scaleX(numberProp(props, "scaleX", -1), duration, easing);
-    if (preset === "rotate") return target.rotate(numberProp(props, "rotation", numberProp(props, "degrees", 0)), duration, easing);
-    if (preset === "opacity") return target.opacity(numberProp(props, "opacity", 1), duration, easing);
-    if (preset === "darken") {
-        if (typeof target.darken === "function") {
-            return target.darken(numberProp(props, "darkness", 0.5), duration, easing);
-        }
-        diagnostic(ctx, "warning", blockId, "Darken transform only works on Image targets.");
-        return null;
-    }
-    if (preset === "circleReveal" && typeof target.circleReveal === "function") {
-        return target.circleReveal({ duration, ease: easing, center: stringProp(props, "center", "50% 50%") });
-    }
-    if (preset === "circleClose" && typeof target.circleClose === "function") {
-        return target.circleClose({ duration, ease: easing, center: stringProp(props, "center", "50% 50%") });
-    }
-    if (preset === "wipe" && typeof target.wipe === "function") {
-        return target.wipe({ duration, ease: easing, direction: stringProp(props, "direction", "left") as any, reverse: boolProp(props, "reverse", false) });
-    }
-    return null;
+    return keys.length === 1 && keys[0] === "opacity" && to.opacity === opacity;
 }
 
 function createShowTransform(transform: StoryTransformRef | undefined, ctx: SceneCompileContext, blockId: string): Transform {
@@ -4431,10 +4508,16 @@ function createShowTransform(transform: StoryTransformRef | undefined, ctx: Scen
         return createAnimationTransform(transform, ctx, blockId, "show")
             ?? new Transform({ opacity: 1 } as any, transformOptions(undefined) as any);
     }
-    return new Transform({
+    // A character's entrance folds its whole pose into the show, so the cut/tween split does not apply:
+    // there is no previous state to cut away from. A mask asset cannot be resolved from here (this is
+    // sync, and the entrance is one statement by construction), so a bag carrying one says so.
+    if (transform?.to?.maskAssetId) {
+        diagnostic(ctx, "warning", blockId, "A mask cannot be applied by an entrance; use a separate transform row.");
+    }
+    return buildTransform({
         opacity: 1,
         ...getInlineTransformProps(transform, ctx, blockId),
-    } as any, transformOptions(transform) as any);
+    }, timingOf(transform));
 }
 
 function getInlineTransformProps(transform: StoryTransformRef | undefined, ctx: SceneCompileContext, blockId: string): Record<string, unknown> {
@@ -4470,13 +4553,6 @@ function createAnimationTransform(
         repeat: asset.config?.repeat,
         repeatDelay: asset.config?.repeatDelayMs,
     } as any);
-}
-
-function transformOptions(transform: StoryTransformRef | undefined): { duration: number; ease?: string } {
-    return {
-        duration: Math.max(0, transform?.durationMs ?? 0),
-        ease: transform?.easing,
-    };
 }
 
 function createTransition(transition: StoryTransitionRef | undefined, ctx: SceneCompileContext, blockId: string): unknown | undefined {

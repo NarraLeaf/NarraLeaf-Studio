@@ -118,7 +118,25 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // fallback, and emits an effect with an `undefined` name: the marker vanishes and every darken its
 // pass would have injected vanishes with it, in a scene that otherwise compiles and plays. Refusing
 // the document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 17 as const;
+// v18 removes the two closed enums that stood between an author and the one thing the engine can
+// animate. `StoryTransformPreset` (20 values) and the `displayable` payload's `operation` (15) both
+// described a bag of props NarraLeaf-React already has one name for - `ImageTransformProps` - and
+// both described only a hand-picked slice of it: a row could be `scale` or `rotate` but never both,
+// could `darken` or `filter` but never dim and blur together, and could not reach `maskSize`,
+// `delay` or `repeat` at all, though the engine has always taken them.
+// Every preset becomes its prop expansion (`left` is a position, `darken` is a `brightness`, `flip` is
+// a negative `scaleX`), and every effect operation becomes the prop it set (`mask` a `maskAssetId`,
+// `clearFilter` a `filter: null`). The three clip-path presets - `circleReveal`, `circleClose`,
+// `wipe` - are the exception, and deliberately not forced into the bag: they synthesize a new
+// clip-path per frame rather than setting one, so they stay named generators under
+// `StoryTransformRef.clipReveal`. They never worked as presets anyway; every path needing settled
+// props reported `presetNotFoldable` and folded nothing.
+// The migration is total and mechanical - all 20 presets and all 12 collapsed operations have a
+// determinate expansion, none needs judgement - and it is the reason the bump is not optional in
+// EITHER direction. A v17 Studio meeting `operation: "transform"` with a `to.filter` record would
+// compile a transform with a prop it cannot read and drop the grade; a v18 Studio meeting
+// `operation: "mask"` has no branch for it at all. Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 18 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -627,49 +645,26 @@ export type StoryActionPayload =
           transform?: StoryTransformRef;
       }
     | {
+          /**
+           * Everything you can do to a thing on the stage that is not creating it.
+           *
+           * Three verbs, where there were fifteen. `mask` / `clip` / `filter` / `backdrop` / `blend` /
+           * `darken` and their four `clear*` twins were never operations - they were single props of
+           * the one bag the engine interpolates, each with a verb of its own and its own payload field,
+           * which is why no row could ever dim AND blur, and why the inspector needed a different form
+           * per verb to edit one shape. v18 folds all twelve into `transform` + {@link StoryTransformProps}.
+           *
+           * `circleReveal` / `circleClose` / `wipe` are gone from here too, but not into the bag: they
+           * are clip-path GENERATORS, and they live on the transform ref as {@link StoryClipReveal}.
+           *
+           * Timing moved with them. It lives on the transform ref now - one home for one question -
+           * rather than on the payload for effects and on the ref for shows, which is the split the
+           * command line had to comment on because `/fx blur d=` and `/show d=` wrote different fields.
+           */
           action: "displayable";
-          operation:
-              | "show"
-              | "hide"
-              | "transform"
-              | "mask"
-              | "clearMask"
-              | "clip"
-              | "clearClip"
-              | "filter"
-              | "clearFilter"
-              | "backdrop"
-              | "blend"
-              | "darken"
-              | "circleReveal"
-              | "circleClose"
-              | "wipe";
+          operation: "show" | "hide" | "transform";
           target: StoryDisplayableTargetRef;
           transform?: StoryTransformRef;
-          /** Image mask source (image asset) for the `mask` operation. */
-          maskAssetId?: string;
-          /** CSS clip-path for the `clip` operation. */
-          clipPath?: string;
-          /** CSS filter for the `filter` operation. */
-          filter?: string;
-          /**
-           * CSS backdrop-filter for the `backdrop` operation - the frosted-glass knob, a sibling of
-           * `filter` (its raw CSS twin), e.g. `blur(8px)`. Additive: no document before this carries it.
-           */
-          backdropFilter?: string;
-          /**
-           * mix-blend-mode for the `blend` operation. NLR's `blend()` takes the full CSS type, but only
-           * the six modes its `Vfx` overlay exposes are offered (`StoryVfxBlendMode`) - the same curated
-           * set, not the CSS catalogue. Additive.
-           */
-          mixBlendMode?: StoryVfxBlendMode;
-          /** Darkness 0..1 for the `darken` operation (image/character targets only). */
-          darkness?: number;
-          /** Shared effect timing. */
-          durationMs?: number;
-          easing?: string;
-          /** Effect-specific params, e.g. circle center/from/to or wipe direction/reverse. */
-          effectProps?: Record<string, StoryLiteralValue>;
       }
     | {
           action: "text";
@@ -1156,45 +1151,155 @@ export type StoryConditionRef =
           expression: StoryExpression;
       };
 
-export type StoryTransformPreset =
-    | "none"
-    | "left"
-    | "center"
-    | "right"
-    | "custom"
-    | "fadeIn"
-    | "fadeOut"
-    | "slideLeft"
-    | "slideRight"
-    | "slideUp"
-    | "slideDown"
-    | "zoom"
-    | "scale"
-    | "rotate"
-    /**
-     * Mirror the target horizontally — the sprite that faces both ways from one drawing.
-     *
-     * A sibling of `scale` rather than a channel of its own, because that is what it is in the
-     * engine: `Displayable.scale` documents "use negative value to invert the scale" and NLR maps
-     * the pair onto `scale(zoom*scaleX, zoom*scaleY)`, so a mirror IS `scaleX: -1`. Both presets
-     * therefore write the same field, and a transform holds one preset, so a row cannot ask to be
-     * mirrored and scaled by two different numbers at once.
-     *
-     * Additive: no document written before this carries it, so no schema bump.
-     */
-    | "flip"
+/**
+ * The CSS filter functions Studio stores STRUCTURALLY, one number each.
+ *
+ * The set is not a taste: it is exactly the CSS `<filter-function>`s whose argument is a single
+ * scalar. `drop-shadow()` takes an offset/blur/spread/colour tuple and `url()` names a document
+ * fragment, so neither can be one number, neither can be interpolated key-by-key by
+ * {@link splitStoryTransformChange}, and both belong in `filterRaw` instead.
+ *
+ * Spelling: `hueRotate` here, `hue-rotate(…)` in the emitted CSS. Identifiers are camelCase the whole
+ * way down this file; the hyphen belongs to the stylesheet, not to the document.
+ */
+export type StoryFilterFunction =
+    | "grayscale"
+    | "sepia"
+    | "hueRotate"
+    | "invert"
+    | "saturate"
+    | "contrast"
+    | "brightness"
     | "opacity"
-    | "darken"
-    | "circleReveal"
-    | "circleClose"
-    | "wipe";
+    | "blur";
 
+/** A structured filter chain: a value per function, emitted in one fixed order. */
+export type StoryFilterProps = Partial<Record<StoryFilterFunction, number>>;
+
+/**
+ * **The bag.** One animation concept, one shape.
+ *
+ * NarraLeaf-React has exactly one animation primitive: interpolate a bag of props over a duration
+ * (`TransformDefinitions.ImageTransformProps = CommonDisplayableConfig & VisualEffectTransformProps`,
+ * with `TextTransformProps` adding `fontColor`). This type is that bag with Studio-side value types -
+ * an asset id where the engine takes a resolved URL, a structured record where CSS takes a string.
+ *
+ * `undefined` means "leave this channel as it stands", exactly as it does in the engine's
+ * `Partial<TransformProps>`. `null` - legal only on the discrete appearance channels - means "put this
+ * channel back to neutral", which is what the engine's `clearMask` / `clearClip` / `clearFilter` do.
+ * The two are genuinely different instructions and a single `undefined` could not spell both.
+ *
+ * ## Why `filter` is a record and not a string
+ *
+ * Two reasons, and the second is the load-bearing one.
+ *
+ * 1. **A string cannot be read back.** `"brightness(0.6) blur(2px)"` is the *output* of a dim and a
+ *    defocus; nothing in it says which control produced which term, so a value an author set through
+ *    one surface becomes unreachable from every other. The row could be shown but not edited, and a
+ *    command line could print it but never parse it back.
+ * 2. **It makes interpolability decidable.** Whether a filter change may be tweened depends on which
+ *    functions move and by how much, and `1e626400` measured what happens when that question is not
+ *    asked: easing the `moonlight` grade on or off walks the picture blue → cyan → green → olive,
+ *    because `hue-rotate` unwinds 185 degrees of the wheel while `grayscale` simultaneously lets the
+ *    source's own hues back in. The midpoint is a green face. A record lets
+ *    {@link splitStoryTransformChange} see the angle and cut instead; a string can only be diffed as
+ *    text, which answers the wrong question.
+ *
+ * `filterRaw` is the escape hatch for what the record cannot hold - `drop-shadow()`, a chain whose
+ * ORDER matters (the camera look library's recipes are ordered pipelines, and the record has no
+ * order), or anything Studio has not spelled out. It is mutually exclusive with `filter`: carrying
+ * both is a conflict, the way `/font` refuses a size and a colour in one row, because two writers of
+ * one CSS channel means whichever the emitter happens to read last wins silently.
+ */
+export type StoryTransformProps = {
+    // --- Geometry: `CommonDisplayableConfig`. Numeric, continuous, always interpolable. ---
+    position?: StoryAlignPositionValue;
+    zoom?: number;
+    /** Negative mirrors. NLR maps the pair onto `scale(zoom*scaleX, zoom*scaleY)`. */
+    scaleX?: number;
+    scaleY?: number;
+    /** Degrees. */
+    rotation?: number;
+    opacity?: number;
+
+    // --- Appearance: `VisualEffectTransformProps`. Discrete unless stated otherwise. ---
+    /**
+     * The mask image, as an ASSET ID rather than the `url(...)` the engine takes. The compiler resolves
+     * it through `Displayable.mask`, which also registers the source for preload - writing
+     * `maskImage` into a raw Transform would skip that and the first frame would show no mask.
+     */
+    maskAssetId?: string | null;
+    maskSize?: string | null;
+    maskPosition?: string | null;
+    maskRepeat?: string | null;
+    maskMode?: string | null;
+    clipPath?: string | null;
+    backdropFilter?: string | null;
+    mixBlendMode?: string | null;
+
+    // --- Text only: `TextTransformProps`. ---
+    fontColor?: string;
+
+    // --- Filter: structured, or raw. Never both. ---
+    filter?: StoryFilterProps | null;
+    filterRaw?: string | null;
+};
+
+/**
+ * The three clip-path animations that are NOT props, kept as named generators.
+ *
+ * `Displayable.circleReveal` / `circleClose` / `wipe` do not SET a clip-path, they synthesize a new
+ * one every frame from an interpolated radius or edge. The bag can hold one `clipPath` string, which
+ * is a state; a generator is not a state, and the two are not the same kind of thing. They were
+ * `StoryTransformPreset` values until now and never worked there - every path that needs a
+ * transform's props up front reported `presetNotFoldable` and folded nothing - which is the same fact
+ * from the other side.
+ *
+ * So they stay verbs. On `displayable` they keep their own `operation`; on a transform ref they live
+ * here, beside the bag rather than inside it.
+ */
+export type StoryClipReveal = {
+    kind: "circleReveal" | "circleClose" | "wipe";
+    /** `circleReveal` / `circleClose` - the centre, as a CSS position (`"50% 50%"`). */
+    center?: string;
+    /** `circleReveal` / `circleClose` - start and end radii. */
+    fromRadius?: number;
+    toRadius?: number;
+    /** `wipe` - which edge it travels from. */
+    direction?: "left" | "right" | "top" | "bottom";
+    reverse?: boolean;
+};
+
+/**
+ * What a row asks the stage to animate, and over how long.
+ *
+ * Two modes and no third. `props` states a destination bag (and optionally a start one) with one
+ * timing; `animation` names a Story Motion, a whole keyframed shot whose timing lives in its own
+ * keyframes. There is no longer a closed list of named looks between the author and the bag: v18
+ * expanded every `StoryTransformPreset` into the props it always stood for.
+ *
+ * `delayMs`, `repeat`, `repeatDelayMs` and `from` are new in v18 and were never a gap in the engine -
+ * `CommonTransformProps.delay` and `TransformConfig.repeat/repeatDelay` have always been there and
+ * Studio simply never passed them.
+ */
 export type StoryTransformRef = {
-    mode?: "preset" | "animation";
-    preset?: StoryTransformPreset;
+    /** Absent means `"props"`. Only a Story Motion has to say which it is. */
+    mode?: "props" | "animation";
+    /** Where the target ends up. */
+    to?: StoryTransformProps;
+    /**
+     * Where it starts, when the author says so rather than letting it start from wherever it stands.
+     * Also what makes a filter change decidable: {@link splitStoryTransformChange} can only compare
+     * two known endpoints, and an absent `from` is read as the neutral bag.
+     */
+    from?: StoryTransformProps;
     durationMs?: number;
     easing?: string;
-    props?: Record<string, StoryLiteralValue>;
+    delayMs?: number;
+    repeat?: number;
+    repeatDelayMs?: number;
+    /** A clip-path generator - see {@link StoryClipReveal}. Runs on this ref's own timing. */
+    clipReveal?: StoryClipReveal;
     animationId?: StoryAnimationAssetId;
 };
 

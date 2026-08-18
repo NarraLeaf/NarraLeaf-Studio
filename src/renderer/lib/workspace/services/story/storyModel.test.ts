@@ -453,11 +453,9 @@ describe("storyModel", () => {
             childrenIds: [],
             payload: {
                 action: "displayable",
-                operation: "wipe",
+                operation: "transform",
                 target: { name: "hero", kind: "image" },
-                durationMs: 500,
-                easing: "easeOut",
-                effectProps: { direction: "right", reverse: true },
+                transform: { mode: "props", clipReveal: { kind: "wipe", direction: "right", reverse: true }, durationMs: 500, easing: "easeOut" },
             },
         }, { parentId: null });
 
@@ -465,9 +463,8 @@ describe("storyModel", () => {
         const normalizedScene = normalized.scenes[document.entrySceneId!];
 
         expect((normalizedScene.blocks.say.payload as any).pauseAfter).toBe(400);
-        expect((normalizedScene.blocks.fx.payload as any).operation).toBe("wipe");
-        expect((normalizedScene.blocks.fx.payload as any).effectProps).toEqual({ direction: "right", reverse: true });
-        expect((normalizedScene.blocks.fx.payload as any).durationMs).toBe(500);
+        expect((normalizedScene.blocks.fx.payload as any).transform.clipReveal).toEqual({ kind: "wipe", direction: "right", reverse: true });
+        expect((normalizedScene.blocks.fx.payload as any).transform.durationMs).toBe(500);
     });
 
     it("keeps a scene's audio track through normalization, even one no track list has", () => {
@@ -772,9 +769,109 @@ describe("story document migration ladder", () => {
     // The regression that shipped: bumping the constant without adding a step left v3 documents
     // falling through migrateStoryDocumentToLatest untouched, so every existing project threw
     // "migration is not implemented" and its story panel would not open.
-    it.each([[1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12]])("brings a v%i document to the current schema", version => {
+    it.each([[1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [17]])("brings a v%i document to the current schema", version => {
         expect(normalizeStoryDocument(docAtVersion(version), "2026-07-16T00:00:00.000Z").schemaVersion)
             .toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    });
+
+    /**
+     * v17→v18: the two closed enums become the one prop bag.
+     *
+     * One case per SHAPE rather than one per value - the twenty presets and the twelve operations are
+     * pinned value by value in `@shared/story/transformProps.test.ts`, and what these add is that the
+     * walk reaches them: a transform ref hangs off eight different payloads, and a step that missed one
+     * would leave a preset behind that nothing can read any more.
+     */
+    describe("v17→v18 transform props", () => {
+        function v17With(blocks: Record<string, unknown>): StoryDocument {
+            const document = docAtVersion(17);
+            const sceneId = document.entrySceneId!;
+            const scene = document.scenes[sceneId];
+            return {
+                ...document,
+                scenes: {
+                    [sceneId]: {
+                        ...scene,
+                        rootBlockIds: Object.keys(blocks),
+                        blocks: Object.fromEntries(Object.entries(blocks).map(([id, payload]) => [id, {
+                            id,
+                            kind: "action",
+                            parentId: null,
+                            childrenIds: [],
+                            payload,
+                        }])),
+                    },
+                },
+            } as StoryDocument;
+        }
+
+        const payloadOf = (document: StoryDocument, blockId: string) =>
+            Object.values(document.scenes)[0].blocks[blockId].payload as Record<string, any>;
+
+        it("expands a placement preset on a character row", () => {
+            const migrated = migrateStoryDocumentToLatest(v17With({
+                enter: { action: "character", operation: "enter", characterId: "c1", transform: { mode: "preset", preset: "left", durationMs: 300 } },
+            }));
+            expect(payloadOf(migrated, "enter").transform).toEqual({ mode: "props", to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 300 });
+        });
+
+        it("expands a preset that carried loose props, on an image row", () => {
+            const migrated = migrateStoryDocumentToLatest(v17With({
+                grow: { action: "image", operation: "show", objectName: "hero", transform: { preset: "scale", props: { scale: 1.4 }, easing: "easeInOut" } },
+            }));
+            expect(payloadOf(migrated, "grow").transform).toEqual({ mode: "props", to: { scaleX: 1.4, scaleY: 1.4 }, easing: "easeInOut" });
+        });
+
+        it("turns a displayable effect operation into `transform` plus the prop it set", () => {
+            const migrated = migrateStoryDocumentToLatest(v17With({
+                mask: { action: "displayable", operation: "mask", target: { name: "hero" }, maskAssetId: "asset-1", durationMs: 400 },
+                dim: { action: "displayable", operation: "darken", target: { name: "hero" }, darkness: 0.6 },
+                clear: { action: "displayable", operation: "clearFilter", target: { name: "hero" } },
+                blur: { action: "displayable", operation: "filter", target: { name: "hero" }, filter: "blur(4px)" },
+                chain: { action: "displayable", operation: "filter", target: { name: "hero" }, filter: "blur(5px) brightness(0.75)" },
+            }));
+            expect(payloadOf(migrated, "mask")).toMatchObject({
+                operation: "transform",
+                transform: { mode: "props", to: { maskAssetId: "asset-1" }, durationMs: 400 },
+            });
+            // The payload's own effect fields go with the operation: one home for the answer.
+            expect(payloadOf(migrated, "mask").maskAssetId).toBeUndefined();
+            expect(payloadOf(migrated, "mask").durationMs).toBeUndefined();
+            expect(payloadOf(migrated, "dim").transform.to).toEqual({ filter: { brightness: 0.4 } });
+            expect(payloadOf(migrated, "clear").transform.to).toEqual({ filter: null });
+            // Structured where the string permits it, raw where the ORDER carries meaning the record
+            // cannot hold.
+            expect(payloadOf(migrated, "blur").transform.to).toEqual({ filter: { blur: 4 } });
+            expect(payloadOf(migrated, "chain").transform.to).toEqual({ filterRaw: "blur(5px) brightness(0.75)" });
+        });
+
+        it("keeps the three clip-path generators as generators rather than forcing them into the bag", () => {
+            const migrated = migrateStoryDocumentToLatest(v17With({
+                iris: { action: "displayable", operation: "circleReveal", target: { name: "hero" }, durationMs: 600, effectProps: { from: 0, to: 150 } },
+                sweep: { action: "image", operation: "show", objectName: "hero", transform: { preset: "wipe", props: { direction: "right", reverse: true } } },
+            }));
+            expect(payloadOf(migrated, "iris")).toMatchObject({
+                operation: "transform",
+                transform: { clipReveal: { kind: "circleReveal", fromRadius: 0, toRadius: 150 }, durationMs: 600 },
+            });
+            expect(payloadOf(migrated, "sweep").transform.clipReveal).toEqual({ kind: "wipe", direction: "right", reverse: true });
+        });
+
+        it("reaches the refs that are not called `transform`", () => {
+            const migrated = migrateStoryDocumentToLatest(v17With({
+                nvl: { action: "nvl", transition: { preset: "fadeIn", durationMs: 250 } },
+                shot: { action: "camera", operation: "motion", motion: { mode: "animation", animationId: "anim-1" } },
+            }));
+            expect(payloadOf(migrated, "nvl").transition).toEqual({ mode: "props", to: { opacity: 1 }, durationMs: 250 });
+            expect(payloadOf(migrated, "shot").motion).toEqual({ mode: "animation", animationId: "anim-1" });
+        });
+
+        it("is idempotent: a document already at the new shape is returned unchanged", () => {
+            const already = v17With({
+                move: { action: "image", operation: "show", objectName: "hero", transform: { to: { zoom: 1.4 }, durationMs: 200 } },
+            });
+            expect(payloadOf(migrateStoryDocumentToLatest(already), "move").transform).toEqual({ to: { zoom: 1.4 }, durationMs: 200 });
+        });
     });
 
     /**
