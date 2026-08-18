@@ -55,6 +55,7 @@ import { GAME_RUNTIME_TEST_SIGNAL_CHANNEL, toGameTestEvent } from "../gameTestSi
 import {
     RuntimePersistenceStore,
     RuntimeSaveStore,
+    sweepAbandonedTempFiles,
 } from "./runtimeStorage";
 import { collectPackSidecars, SidecarHost } from "./sidecarHost";
 import { resolveRuntimeUserDataDir } from "./userDataDir";
@@ -1005,6 +1006,13 @@ function registerRuntimeIpc(): void {
     const persistence = new RuntimePersistenceStore(userDataDir);
     saveStore = saves;
     persistenceStore = persistence;
+    // Housekeeping, once, on the way up: a store write that was interrupted between its temp file
+    // and the rename leaves the temp behind for good. Not awaited and never fatal - nothing here
+    // is worth delaying a boot for, let alone failing one.
+    void Promise.all([
+        sweepAbandonedTempFiles(userDataDir),
+        sweepAbandonedTempFiles(path.join(userDataDir, "saves")),
+    ]).catch(() => undefined);
 
     ipcMain.handle("runtime:read-pack", () => readPack());
     ipcMain.handle("runtime:close", () => {
