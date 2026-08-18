@@ -2972,7 +2972,10 @@ export type IPCUITemplateEvents = {
             templateId: string;
             projectPath: string;
         },
-        response: { filesCopied: number };
+        // `locales` are the language codes the template shipped a translation file for; the
+        // creator registers them, because the registry lives in the `.nlproj` it is about to write
+        // and a template never carries one.
+        response: { filesCopied: number; locales: string[] };
     };
 };
 

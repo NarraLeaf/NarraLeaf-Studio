@@ -1047,7 +1047,7 @@ export interface RendererPreloadedInterface {
     /** Project templates bundled with this build (resources/templates). */
     projectTemplates: {
         list(): Promise<RequestStatus<ProjectTemplateDescriptor[]>>;
-        scaffold(templateId: string, projectPath: string): Promise<RequestStatus<{ filesCopied: number }>>;
+        scaffold(templateId: string, projectPath: string): Promise<RequestStatus<{ filesCopied: number; locales: string[] }>>;
     };
 
     assets: {
