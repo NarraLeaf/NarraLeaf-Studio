@@ -972,6 +972,32 @@ export function resolveContainerRectangleLike(
     return next;
 }
 
+/**
+ * The offsets an element is drawn at, whatever kind of widget it is.
+ *
+ * `transformOffsetX/Y` mean the same thing in every appearance model, so this reads them straight off
+ * the active variant rather than going through a per-kind resolver. The editor uses it to put the
+ * offsets on the node it selects and measures, instead of on a layer inside it.
+ */
+export function resolveAppearanceTransformOffsets(
+    appearance: AppearanceModel | null | undefined,
+    ctx: AppearanceResolveContext,
+): { x: number; y: number } {
+    if (!isUsableAppearance(appearance)) {
+        return { x: 0, y: 0 };
+    }
+    const variant = resolveActiveVariant(appearance, ctx.variantOverrideId);
+    if (!variant) {
+        return { x: 0, y: 0 };
+    }
+    const read = (key: string) => {
+        const group = variant.propertyGroups.find(g => g.key === key);
+        const value = group ? pickLastMatchingRowValue(group.rows, ctx.signals) : undefined;
+        return typeof value === "number" && Number.isFinite(value) ? value : 0;
+    };
+    return { x: read("transformOffsetX"), y: read("transformOffsetY") };
+}
+
 export function resolveContainerAppearanceTransitions(
     appearance: AppearanceModel | null | undefined,
     ctx: AppearanceResolveContext

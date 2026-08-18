@@ -263,8 +263,9 @@ export function TextRenderer({
           }
         : {};
 
-    const tx = Number.isFinite(p.transformOffsetX) ? p.transformOffsetX : 0;
-    const ty = Number.isFinite(p.transformOffsetY) ? p.transformOffsetY : 0;
+    // Zero while a state is entered; the wrapper carries the offsets then.
+    const tx = enteredState || !Number.isFinite(p.transformOffsetX) ? 0 : p.transformOffsetX;
+    const ty = enteredState || !Number.isFinite(p.transformOffsetY) ? 0 : p.transformOffsetY;
     const ts = Number.isFinite(p.transformScale) && p.transformScale > 0 ? p.transformScale : 1;
     const tr = Number.isFinite(p.transformRotation) ? p.transformRotation : 0;
     const transformCss = `translate(${tx}px, ${ty}px) scale(${ts}) rotate(${tr}deg)`;

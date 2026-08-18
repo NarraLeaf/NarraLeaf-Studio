@@ -22,6 +22,7 @@ import { strokeSideApplies, type StrokeEdge } from "./strokeSideSpec";
 import type { AppearanceFieldTransition, AppearancePropertyKey } from "@shared/types/ui-editor/appearance";
 import { DEFAULT_ELEMENT_EFFECT_VALUES, effectFilterStoredToCss } from "@shared/types/ui-editor/effects";
 import { toRuntimeMotionTransition } from "../appearance/appearanceMotion";
+import { useEnteredElementState } from "@/lib/ui-editor/hooks/useEnteredElementState";
 import { composeChromeEffectLayers } from "../effects/effectStyleComposer";
 
 const objectFitMap: Record<string, CSSProperties["objectFit"] | undefined> = {
@@ -120,7 +121,9 @@ export function RectangleChromeRenderer({
     extraRootProps,
     appearanceTransitions,
     rootOpacityFactor = 1,
+    useAppearanceInspectorPreview,
 }: RectangleChromeRendererProps) {
+    const chromeEnteredState = useEnteredElementState(element.id, useAppearanceInspectorPreview === true);
     const props = rectangleLike ?? getRectangleLikeProps(element);
     const effectValues = props.effects ?? DEFAULT_ELEMENT_EFFECT_VALUES;
     const composedEffects = composeChromeEffectLayers(effectValues);
@@ -306,8 +309,10 @@ export function RectangleChromeRenderer({
         ...extraRootStyle,
     };
 
-    const tx = Number.isFinite(props.transformOffsetX) ? props.transformOffsetX : 0;
-    const ty = Number.isFinite(props.transformOffsetY) ? props.transformOffsetY : 0;
+    // Zero while a state is entered - see EditorNodeWrapper, which carries them instead so the
+    // selection frame lands on the element rather than beside it.
+    const tx = chromeEnteredState || !Number.isFinite(props.transformOffsetX) ? 0 : props.transformOffsetX;
+    const ty = chromeEnteredState || !Number.isFinite(props.transformOffsetY) ? 0 : props.transformOffsetY;
     const ts = Number.isFinite(props.transformScale) && props.transformScale > 0 ? props.transformScale : 1;
     const tr = Number.isFinite(props.transformRotation) ? props.transformRotation : 0;
     const combinedRootOpacity = Math.max(0, Math.min(1, rootOpacityFactor));
