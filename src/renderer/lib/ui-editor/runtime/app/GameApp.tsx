@@ -116,6 +116,7 @@ import {
     savedVariableDefsFromView,
 } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { createPuppetStageHandle, loadPuppetBackends } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
+import { createStageSurfaceBackend } from "@/lib/ui-editor/runtime/game/stageSurfaceBackend";
 import { savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story";
 import { resolveStagePreloadTarget } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
@@ -2443,6 +2444,13 @@ export function GameApp(props: GameAppProps): ReactNode {
                 host.log("warning", `Puppet backends could not be discovered: ${normalizeError(error)}`);
             }
         }
+        // SPIKE (2026-08-17): Studio's own backend, drawing a Game UI surface inside a stage
+        // element's box. Registered after the author's so a project can still shadow the name.
+        game.registerPuppetBackend(createStageSurfaceBackend({
+            uidoc: bundle.ui.uidoc,
+            slotHostOptions,
+            log: host.log,
+        }));
         const environmentReady = new Promise<void>((resolve, reject) => {
             pendingEnvReadyRef.current.set(sessionId, { resolve, reject });
         });

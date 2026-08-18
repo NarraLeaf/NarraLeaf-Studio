@@ -2999,7 +2999,10 @@ async function getPuppetElement(
     if (existing) {
         return existing;
     }
-    if (!appearance.assetId) {
+    // SPIKE (2026-08-17): a character drawn by Studio's own surface backend has no model asset —
+    // what it draws is a Game UI surface named in `options.surfaceId`.
+    const isSurfaceBackend = appearance.backend === "nl.surface";
+    if (!appearance.assetId && !isSurfaceBackend) {
         diagnostic(ctx, "warning", blockId, `Puppet character "${objectName}" has no model asset.`);
         return null;
     }
@@ -3010,12 +3013,14 @@ async function getPuppetElement(
     // The bundle's entry file. Studio resolves the asset and stops there: which siblings a model
     // pulls in is knowable only after parsing this one, and the engine does that arithmetic itself
     // (`PuppetMountContext.resolveSibling`) against exactly this URL.
-    const bundleUrl = await resolveAsset(ctx, appearance.assetId, "model", blockId);
+    const bundleUrl = isSurfaceBackend
+        ? `uidoc:${String((appearance.options as Record<string, unknown> | undefined)?.surfaceId ?? "")}`
+        : await resolveAsset(ctx, appearance.assetId!, "model", blockId);
     if (!bundleUrl) {
         diagnostic(ctx, "warning", blockId, `Puppet model not found for ${objectName}.`);
         return null;
     }
-    const src = appearance.entry ? resolveBundleEntry(bundleUrl, appearance.entry) : bundleUrl;
+    const src = (!isSurfaceBackend && appearance.entry) ? resolveBundleEntry(bundleUrl, appearance.entry) : bundleUrl;
     const puppet = new Puppet({
         backend: appearance.backend,
         src,
