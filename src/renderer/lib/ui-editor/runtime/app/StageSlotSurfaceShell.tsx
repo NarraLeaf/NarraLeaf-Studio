@@ -1,6 +1,5 @@
 import {
     useCallback,
-    useEffect,
     useMemo,
     useRef,
     useState,
@@ -137,13 +136,6 @@ export type GameUiSlotHostOptions = {
     audioTracks?: readonly ProjectAudioTrack[];
     /** Preference stream so a mid-playback volume-slider drag reaches host-owned media elements. */
     subscribeGamePreferences?: (listener: () => void) => () => void;
-    /**
-     * What the host does about a language change beyond storing it - restart the run and resume it,
-     * or nothing at all when no playthrough is going. Carried here because a language picker is a
-     * quick-menu control as often as it is a settings page, and a slot surface's Set Language sees
-     * only the host API this shell builds.
-     */
-    localeChangedInGame?: (code: string) => Promise<void> | void;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -281,7 +273,6 @@ export function useStageSlotSurfaceRuntime(input: {
             onSetTrackVolume: options.soundTransport?.setTrackVolume,
             audioTracks: options.audioTracks,
             onSubscribeGamePreferences: options.subscribeGamePreferences,
-            onLocaleChanged: options.localeChangedInGame,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
@@ -333,9 +324,13 @@ export function useStageSlotSurfaceRuntime(input: {
         };
     }, [core, bundle, hostApi, runtimeScopeId, slotId, surface]);
 
-    useEffect(() => {
-        hostAdapterRef.current = hostAdapter;
-    }, [hostAdapter]);
+    // Assigned while rendering rather than from an effect: the ref is read by children (the dialog
+    // slot's state bridge flushes through it), and a child's effect runs before this component's
+    // does. Filled in from an effect, the very first flush after a mount found `null` and was
+    // dropped without a word - which is how a scene jump used to leave the previous speaker's
+    // avatar on the line that replaced it. Mirroring a memoized value is idempotent, so a repeated
+    // render writes the same adapter.
+    hostAdapterRef.current = hostAdapter;
 
     const flushElementIds = useMemo(
         () => collectSurfaceFlushElementIds({
@@ -429,7 +424,8 @@ export function StageSlotSurfaceBody(props: {
 
     return (
         <SurfaceLifecycleBoundary
-            core={subscriptionsReady ? core : null}
+            core={core}
+            ready={subscriptionsReady}
             blueprintDocument={bundle.ui.localBlueprints}
             persistentVariables={bundle.ui.persistentVariables}
             surface={surface}

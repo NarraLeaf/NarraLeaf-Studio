@@ -1,4 +1,4 @@
-import { useEffect, useRef, type MutableRefObject, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, type MutableRefObject, type ReactNode } from "react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import type { UISurface } from "@shared/types/ui-editor/document";
@@ -58,12 +58,22 @@ function executeScopeCommands(input: {
  * after mount (cancelled guard makes StrictMode double-effects safe), and
  * closes the scope + dispatches surfaceUnmount on unmount.
  *
- * The host withholds `core` (passes null) until the surface renderer has
- * registered its blueprint runtime subscriptions, so surfaceInit cannot
- * execute before init-time state writes are observable.
+ * `ready` is false until the surface renderer has registered its blueprint runtime
+ * subscriptions, so surfaceInit cannot execute before init-time state writes are observable.
+ *
+ * **The scope itself does not wait for that.** A scope id outlives the generation that closed
+ * it, and every dispatch made while it is closed is aborted where nobody can see it - so a
+ * surface entered a second time used to lose every `init` its widgets dispatch during the hidden
+ * prepaint pass, and any flush that arrived in the same window. The scene jump in a Game UI
+ * dialog slot showed it plainly: the dialogue box came back carrying the previous speaker's
+ * avatar, and nothing corrected it until the line finished typing and produced a second flush.
+ * Opening from a layout effect puts the scope back before any child of this boundary can
+ * dispatch into it; `surfaceReady` opens it again, which costs nothing.
  */
 export function SurfaceLifecycleBoundary(props: {
     core: BlueprintRuntimeCore | null;
+    /** Whether the surface renderer has registered its blueprint runtime subscriptions. */
+    ready: boolean;
     blueprintDocument: BlueprintDocument;
     persistentVariables: PersistentVariableRuntimeTable;
     surface: UISurface;
@@ -73,11 +83,17 @@ export function SurfaceLifecycleBoundary(props: {
     makeStateAccessors: (runtimeScopeId: string) => SurfaceStateAccessors | null;
     children: ReactNode;
 }) {
-    const { core, blueprintDocument, persistentVariables, surface, runtimeScopeId, hostAdapter, lifecycleRef, makeStateAccessors, children } = props;
+    const { core, ready, blueprintDocument, persistentVariables, surface, runtimeScopeId, hostAdapter, lifecycleRef, makeStateAccessors, children } = props;
     const latestRuntimeHostAdapterRef = useRef<UIHostAdapter | null>(
         hostAdapter.blueprintRuntime ? hostAdapter : null,
     );
     const hasBlueprintRuntime = Boolean(hostAdapter.blueprintRuntime);
+    // Everything below this line waits for `ready`; the scope does not - see the note above.
+    const readyCore = ready ? core : null;
+
+    useLayoutEffect(() => {
+        core?.executionManager.openScope(runtimeScopeId);
+    }, [core, runtimeScopeId]);
 
     useEffect(() => {
         if (hostAdapter.blueprintRuntime) {
@@ -87,7 +103,7 @@ export function SurfaceLifecycleBoundary(props: {
 
     useEffect(() => {
         const currentHostAdapter = latestRuntimeHostAdapterRef.current;
-        if (!core || !hasBlueprintRuntime || !currentHostAdapter?.blueprintRuntime) {
+        if (!readyCore || !hasBlueprintRuntime || !currentHostAdapter?.blueprintRuntime) {
             return;
         }
         let cancelled = false;
@@ -98,7 +114,7 @@ export function SurfaceLifecycleBoundary(props: {
             }
             executeScopeCommands({
                 commands: lifecycleRef.current.surfaceReady(runtimeScopeId, surface.id),
-                core,
+                core: readyCore,
                 blueprintDocument,
                 persistentVariables,
                 hostAdapter: currentHostAdapter,
@@ -108,10 +124,10 @@ export function SurfaceLifecycleBoundary(props: {
         return () => {
             cancelled = true;
         };
-    }, [blueprintDocument, core, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
+    }, [blueprintDocument, readyCore, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
 
     useEffect(() => {
-        if (!core || !hasBlueprintRuntime) {
+        if (!readyCore || !hasBlueprintRuntime) {
             return undefined;
         }
         const surfaceToUnmount = surface.id;
@@ -119,14 +135,14 @@ export function SurfaceLifecycleBoundary(props: {
         return () => {
             executeScopeCommands({
                 commands: lifecycleRef.current.surfaceUnmounted(scopeToUnmount, surfaceToUnmount),
-                core,
+                core: readyCore,
                 blueprintDocument,
                 persistentVariables,
                 hostAdapter: latestRuntimeHostAdapterRef.current,
                 makeStateAccessors,
             });
         };
-    }, [blueprintDocument, core, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
+    }, [blueprintDocument, readyCore, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
 
     return <>{children}</>;
 }
