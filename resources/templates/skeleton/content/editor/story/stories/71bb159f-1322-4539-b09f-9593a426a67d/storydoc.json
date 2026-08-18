@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 15,
+  "schemaVersion": 17,
   "id": "71bb159f-1322-4539-b09f-9593a426a67d",
   "name": "Skeleton",
   "entrySceneId": "f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33",
@@ -211,7 +211,7 @@
               "scope": "persistent",
               "variableId": "a1bbd280-c1a5-4828-8734-cd6c3a4761d5"
             },
-            "value": "Chapter 1 · The corridor"
+            "value": "The corridor"
           }
         }
       },
@@ -583,7 +583,7 @@
               "scope": "persistent",
               "variableId": "a1bbd280-c1a5-4828-8734-cd6c3a4761d5"
             },
-            "value": "Chapter 1 · The clubroom"
+            "value": "The clubroom"
           }
         }
       },
@@ -603,8 +603,10 @@
         "199cc19a-a416-4a56-8687-ebf6ec9c5e7f",
         "1cafc69e-d83a-48b8-a0f5-00446e2f428c",
         "cc6cf0c3-f193-422c-96bd-8e86be37ed50",
+        "6443d309-85a7-47b8-82e0-672754b6d6d0",
         "33451d3b-c09a-4bc2-98d6-3304ac7b9cd1",
         "baabcc8c-d1cd-48f6-bc91-91be99e4513e",
+        "a3dfeea5-1bdd-4943-b649-9140875e67ea",
         "6d06d8da-0f7b-49e6-a2b6-4a7d0112b11b",
         "deffff02-965b-44db-b126-6c0bec798a69",
         "cf1f223c-4487-4787-aec3-1f3bf98d7240"
@@ -805,7 +807,32 @@
               "scope": "persistent",
               "variableId": "a1bbd280-c1a5-4828-8734-cd6c3a4761d5"
             },
-            "value": "Chapter 1 · Last light"
+            "value": "Last light"
+          }
+        },
+        "6443d309-85a7-47b8-82e0-672754b6d6d0": {
+          "id": "6443d309-85a7-47b8-82e0-672754b6d6d0",
+          "kind": "action",
+          "parentId": null,
+          "childrenIds": [],
+          "payload": {
+            "action": "camera",
+            "operation": "zoom",
+            "zoom": 1.12,
+            "durationMs": 2600,
+            "easing": "easeOut"
+          }
+        },
+        "a3dfeea5-1bdd-4943-b649-9140875e67ea": {
+          "id": "a3dfeea5-1bdd-4943-b649-9140875e67ea",
+          "kind": "action",
+          "parentId": null,
+          "childrenIds": [],
+          "payload": {
+            "action": "camera",
+            "operation": "reset",
+            "durationMs": 900,
+            "easing": "easeInOut"
           }
         }
       },
@@ -818,6 +845,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T04:03:28.336Z",
-    "updatedAt": "2026-08-08T02:18:20.879Z"
+    "updatedAt": "2026-08-18T01:16:50.338Z"
   }
 }
