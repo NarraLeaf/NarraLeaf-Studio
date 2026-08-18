@@ -24,6 +24,7 @@ import {
     LOCALE_STORAGE_KEY,
     characterTranslationUnitId,
     matchSystemLocale,
+    normalizeLanguageChangeConfiguration,
     resolveLocalizedUnitText,
 } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY } from "@shared/types/voice";
@@ -1754,6 +1755,15 @@ export function GameApp(props: GameAppProps): ReactNode {
         () => normalizeSaveCompatibilityConfiguration(bundle.saveCompatibility),
         [bundle.saveCompatibility],
     );
+    /**
+     * What this project asked for when the player changes language mid-playthrough. Read from the
+     * bundle like every other policy the shipped game obeys, so a build behaves the same in Dev
+     * Mode, in a preview and in the packaged game.
+     */
+    const languageChange = useMemo(
+        () => normalizeLanguageChangeConfiguration(bundle.languageChange),
+        [bundle.languageChange],
+    );
     const writeSave = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean) => {
         const liveGame = requireActiveLiveGame("Save Game");
         let capture: string | undefined;
@@ -2040,6 +2050,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     const handleLocaleChanged = useCallback(async (): Promise<void> => {
         await applyLocaleChange({
             isPlaythroughRunning,
+            inGame: languageChange.inGame,
             writeSave: id => writeSave(id),
             persistenceSet: async (key, value) => {
                 await core?.scopeBridge.persistenceSet(key, value);
@@ -2047,7 +2058,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             restartApplication: host.restartApplication,
             report: reportLocaleRestart,
         });
-    }, [core, host.restartApplication, isPlaythroughRunning, reportLocaleRestart, writeSave]);
+    }, [core, host.restartApplication, isPlaythroughRunning, languageChange, reportLocaleRestart, writeSave]);
 
     /**
      * Put the player back into the run a language change restarted the game out of.

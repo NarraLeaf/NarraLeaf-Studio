@@ -32,6 +32,48 @@ export const LOCALE_STORAGE_KEY = "nls.locale";
  */
 export const LOCALE_RESTART_RESUME_KEY = "nls.localeRestart";
 
+/**
+ * What a shipped game does when the player changes language while a playthrough is running.
+ *
+ *  - `restart`: the run is written down, the game restarts, and the player comes back to the line
+ *    they were on with everything in the new language. The default, because it is the only outcome
+ *    where the whole game agrees about what language it is in.
+ *  - `nextScene`: nothing is restarted. Interface text and anything a graph asks for from now on is
+ *    in the new language; the scene being played is not, because its lines were resolved when it
+ *    was compiled, and neither is the backlog behind it or a voice clip already playing. The player
+ *    reaches the new language when a new scene starts.
+ *
+ * The second is a real answer for a game the first does not suit - a short piece with no saving, or
+ * one whose language picker is only ever reached from the title screen anyway - and it is what
+ * every build did before the restart existed. It is offered as a choice rather than inferred,
+ * because which of the two an author wants is not something the project can be read for.
+ */
+export type InGameLanguageChange = "restart" | "nextScene";
+
+export type LanguageChangeConfiguration = {
+    /** Only asked mid-playthrough. On a title screen the language simply changes, either way. */
+    inGame: InGameLanguageChange;
+};
+
+export const DEFAULT_LANGUAGE_CHANGE_CONFIGURATION: LanguageChangeConfiguration = {
+    inGame: "restart",
+};
+
+/**
+ * Coerce an unknown (persisted, partially-migrated, or absent) value into a complete configuration.
+ * Projects predating the setting have no `app.languageChange` and get the default, which is also
+ * the behaviour they were built against.
+ */
+export function normalizeLanguageChangeConfiguration(value: unknown): LanguageChangeConfiguration {
+    if (!value || typeof value !== "object") {
+        return { ...DEFAULT_LANGUAGE_CHANGE_CONFIGURATION };
+    }
+    const inGame = (value as Record<string, unknown>).inGame;
+    return {
+        inGame: inGame === "nextScene" ? "nextScene" : DEFAULT_LANGUAGE_CHANGE_CONFIGURATION.inGame,
+    };
+}
+
 /** Locale codes double as translation-file names; keep them to a conservative alphabet. */
 const LOCALE_CODE_PATTERN = /^[A-Za-z0-9-]{1,35}$/;
 
