@@ -12,6 +12,7 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { MotionField } from "../../story-motion";
 import { resolveStoryMotionStageSize } from "../../story-motion/StoryMotionEditorTab";
 import {
+    getStoryCameraLookPreset,
     resolveStoryCameraLook,
     STORY_CAMERA_LOOK_DEFAULT_PRESET_ID,
     STORY_CAMERA_LOOK_MAX_INTENSITY,
@@ -101,7 +102,7 @@ export function CameraActionEditor(props: {
             return;
         }
         if (next === "look" && !payload.lookPreset && !payload.filter) {
-            onChange({ ...payload, operation: next, lookPreset: STORY_CAMERA_LOOK_DEFAULT_PRESET_ID, lookIntensity: 1 });
+            onChange({ ...withLookPreset(payload, STORY_CAMERA_LOOK_DEFAULT_PRESET_ID), operation: next });
             return;
         }
         onChange({ ...payload, operation: next });
@@ -202,11 +203,7 @@ export function CameraActionEditor(props: {
                                         label={t("storyInspector.camera.look")}
                                         options={lookPresetOptions(t)}
                                         value={payload.lookPreset ?? ""}
-                                        onChange={next => onChange({
-                                            ...payload,
-                                            lookPreset: String(next) || undefined,
-                                            lookIntensity: payload.lookIntensity ?? 1,
-                                        })}
+                                        onChange={next => onChange(withLookPreset(payload, String(next) || undefined))}
                                     />
                                     <SliderRow
                                         label={t("storyInspector.camera.lookIntensity")}
@@ -233,6 +230,12 @@ export function CameraActionEditor(props: {
                                 <p className="text-2xs text-fg-subtle">{t("storyInspector.cameraLookHint.channel")}</p>
                                 {payload.lookPreset === "monologue" ? (
                                     <p className="text-2xs text-fg-subtle">{t("storyInspector.cameraLookHint.monologue")}</p>
+                                ) : null}
+                                {/* The one grade that does not settle immediately, so it is the one
+                                    whose row costs time. An author choosing it from a list of still
+                                    looks has no other way to know that. */}
+                                {payload.lookPreset === "hangover" ? (
+                                    <p className="text-2xs text-fg-subtle">{t("storyInspector.cameraLookHint.hangover")}</p>
                                 ) : null}
                             </div>
                         ) : null}
@@ -429,6 +432,28 @@ function SliderRow(props: {
 }
 
 /** The grade library as a picker. Every preset is named, never its id — the id is stored, not shown. */
+/**
+ * Move a row onto a look, carrying the grade's own tempo with it.
+ *
+ * The timing follows the preset only while the author has not set one of their own: a duration still
+ * sitting on the previous preset's default was never a choice, and leaving it behind is how `mono`
+ * ends up crawling at `faint`'s two seconds. A number the author typed is theirs and is left alone —
+ * so this reads the OLD preset to decide, not the new one.
+ */
+function withLookPreset(payload: CameraActionPayload, nextId: string | undefined): CameraActionPayload {
+    const next = nextId ? getStoryCameraLookPreset(nextId) : undefined;
+    const previous = getStoryCameraLookPreset(payload.lookPreset);
+    const untouched = payload.durationMs === undefined || payload.durationMs === previous?.defaultDurationMs;
+    return {
+        ...payload,
+        lookPreset: nextId,
+        lookIntensity: payload.lookIntensity ?? 1,
+        ...(next && untouched
+            ? { durationMs: next.defaultDurationMs, easing: next.defaultEasing }
+            : {}),
+    };
+}
+
 function lookPresetOptions(t: ReturnType<typeof useTranslation>["t"]): SelectOption[] {
     return STORY_CAMERA_LOOK_PRESETS.map(preset => ({
         value: preset.id,

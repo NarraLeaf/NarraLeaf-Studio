@@ -86,7 +86,16 @@ function cameraOperand(
             if (!preset) {
                 return strength === undefined ? {} : { lookIntensity: strength };
             }
-            return { lookPreset: preset.id, lookIntensity: strength ?? preset.defaultIntensity };
+            // The grade brings its own tempo. `build` puts the author's `d=` back over the top when
+            // they typed one, so this fills an empty slot rather than overriding a choice - and
+            // without it every look would arrive at the generic 600ms, which is a cut for `faint` and
+            // a crawl for `mono`.
+            return {
+                lookPreset: preset.id,
+                lookIntensity: strength ?? preset.defaultIntensity,
+                durationMs: preset.defaultDurationMs,
+                easing: preset.defaultEasing,
+            };
         }
         case "motion":
             // The knob here is a Story Motion asset, which is a binding rather than a word - so the
@@ -133,11 +142,15 @@ export const camera = defineStoryCommand({
     build(args, ctx): StoryBlock {
         const operationValue = asEnum(args.op);
         const operation: CameraOperation = isCameraOperation(operationValue) ? operationValue : "zoom";
+        const operand = cameraOperand(operation, asNumber(args.amount), asEnum(args.amount), asNumber(args.strength));
+        // `durationMs` is settled AFTER the operand is spread, not before: `look` carries its preset's
+        // own tempo, and a spread that landed on top of an explicit `d=` would make the author's
+        // number the one thing on the line that does nothing.
         const payload: Extract<StoryActionPayload, { action: "camera" }> = {
             action: "camera",
             operation,
-            durationMs: asDurationMs(args.d) ?? CAMERA_DEFAULT_DURATION_MS,
-            ...cameraOperand(operation, asNumber(args.amount), asEnum(args.amount), asNumber(args.strength)),
+            ...operand,
+            durationMs: asDurationMs(args.d) ?? operand.durationMs ?? CAMERA_DEFAULT_DURATION_MS,
         };
         return { id: ctx.generateId(), parentId: null, childrenIds: [], kind: "action", payload };
     },

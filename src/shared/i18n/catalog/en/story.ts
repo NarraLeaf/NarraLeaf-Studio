@@ -589,8 +589,18 @@ export const story = {
         zoom: "zoom",
         rotate: "rotate",
         darken: "darken",
+        look: "look",
         motion: "motion",
         reset: "reset",
+        // The grades `/camera look` names. Registered here as well as in the inspector because this
+        // namespace is what the command LINE prints and accepts: without them a row reads back in its
+        // canonical English id on every locale, which is what `darken` beside it does not do.
+        memory: "memory",
+        monologue: "monologue",
+        mono: "mono",
+        moonlight: "moonlight",
+        faint: "faint",
+        hangover: "hangover",
         // Variable types.
         boolean: "boolean",
         number: "number",
