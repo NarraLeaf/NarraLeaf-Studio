@@ -478,6 +478,8 @@ export const story = {
         transition: "トランジション",
         reveal: "現し方",
         placement: "位置",
+        // cameraOperation と同じく、スロットの名前ではなく 2 つの語をそのまま並べる。
+        mirrorState: "オン / オフ",
         waitFor: "秒またはクリック",
         // 値のキーがそのまま名前として読めるスロット。明示的な `hint` を持たず、ここに落ちてくる。
         fade: "フェード秒",
@@ -524,6 +526,10 @@ export const story = {
         // 表示と非表示で `t=` が届く、トランジションの語では名指しできない変形のプリセット。
         scale: "拡大縮小",
         opacity: "不透明度",
+        // `/mirror` がオブジェクトをどちら向きにするか。「裏返す」ではなく状態そのもの。
+        // コンパイル済みの変形は静的で、今の拡大率を読めないため。
+        on: "オン",
+        off: "オフ",
         // 位置（`at=`）とカメラの位置を表す値
         left: "左",
         center: "中央",
@@ -934,6 +940,7 @@ export const story = {
         camera: { label: "カメラ", detail: "ステージカメラをパン、ズーム、回転、または暗くする。姿勢はシーンをまたいで残る" },
         fx: { label: "エフェクト", detail: "オブジェクトにエフェクトを掛ける" },
         transform: { label: "変形", detail: "オブジェクトを移動、拡大縮小、回転する" },
+        mirror: { label: "反転", detail: "オブジェクトを左右反転する。off と書けば元に戻る" },
         note: { label: "メモ", detail: "Studio にだけ見えるメモ" },
     },
     containerHeader: {

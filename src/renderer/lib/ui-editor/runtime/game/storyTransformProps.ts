@@ -89,6 +89,18 @@ export function getInlineTransformProps(
         inlineProps.scaleY = numberProp(props, "scaleY", scale);
         return inlineProps;
     }
+    if (preset === "flip") {
+        // The mirror is a NEGATIVE scale, so it folds onto the very field the `scale` preset writes:
+        // NLR maps the pair onto `scale(zoom*scaleX, zoom*scaleY)` and `Displayable.scale` documents
+        // "use negative value to invert the scale". Giving `flip` a channel of its own would mean two
+        // fields both claiming the horizontal scale, and the last one applied would silently win.
+        //
+        // `scaleY` is deliberately untouched. A flip here is horizontal by definition, and writing a
+        // `scaleY: 1` beside it would RESET a vertical scale an earlier row had set — an absent axis
+        // reads as "leave it as it stands" the whole way down `Partial<TransformProps>`.
+        inlineProps.scaleX = numberProp(props, "scaleX", -1);
+        return inlineProps;
+    }
     if (preset === "rotate") {
         inlineProps.rotation = numberProp(props, "rotation", numberProp(props, "degrees", 0));
         return inlineProps;

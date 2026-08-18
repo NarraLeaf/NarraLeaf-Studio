@@ -443,6 +443,8 @@ export const story = {
         transition: "转场",
         reveal: "显隐动画",
         placement: "位置",
+        // 和 cameraOperation 一样，直接把两个词写出来：只有两个取值的位置参数，列出来比起一个名字更省事。
+        mirrorState: "开 / 关",
         waitFor: "秒数或 click",
         fade: "淡入淡出秒数",
         loop: "循环",
@@ -490,6 +492,9 @@ export const story = {
         // 用同一批词，作者在哪边选都读作同一件事。
         scale: "比例",
         opacity: "不透明度",
+        // `/mirror` 让对象朝向哪一边。这是绝对状态而非"翻一下"：编译出来的变换是静态的，读不到当前的缩放。
+        on: "开",
+        off: "关",
         // 位置（`at=`）与镜头的位置型数值
         left: "左",
         center: "居中",
@@ -878,6 +883,7 @@ export const story = {
         camera: { label: "镜头", detail: "平移、推拉、旋转或压暗舞台镜头，姿态跨场景保留" },
         fx: { label: "特效", detail: "为对象应用特效" },
         transform: { label: "变换", detail: "移动、缩放或旋转对象" },
+        mirror: { label: "镜像", detail: "把对象左右翻转。写 off 可以翻回来" },
         note: { label: "备注", detail: "仅 Studio 可见的备注" },
     },
     containerHeader: {
