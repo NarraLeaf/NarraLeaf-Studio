@@ -369,6 +369,9 @@ const corpus: Record<string, StoryScene> = {
         { id: "e8", kind: "action", payload: { action: "screenEffect", effect: "vignette", durationMs: 1000, opacity: 0.6 } },
         { id: "e14", kind: "action", payload: { action: "camera", operation: "look", lookPreset: "moonlight", lookIntensity: 0.8, durationMs: 700 } },
         { id: "e15", kind: "action", payload: { action: "camera", operation: "look", filter: "sepia(1) blur(2px)" } },
+        // The moving grade, with the easing its preset seeds. A look's timing is part of the look, so
+        // a script that printed the grade and dropped the tempo would read back as a different row.
+        { id: "e18", kind: "action", payload: { action: "camera", operation: "look", lookPreset: "hangover", lookIntensity: 1, durationMs: 650, easing: "easeInOut" } },
         { id: "e16", kind: "action", payload: { action: "screenEffect", effect: "blink", inMs: 80, holdMs: 400, outMs: 900 } },
         { id: "e17", kind: "action", payload: { action: "screenEffect", effect: "vignette", durationMs: 400, inner: 30, outer: 70 } },
         { id: "e9", kind: "action", payload: { action: "nvl", transition: { preset: "fadeIn", durationMs: 400 } } },
