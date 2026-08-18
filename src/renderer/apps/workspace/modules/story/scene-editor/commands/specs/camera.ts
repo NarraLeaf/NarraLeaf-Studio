@@ -1,7 +1,7 @@
 import { Aperture } from "lucide-react";
 import type { StoryActionPayload, StoryBlock } from "@shared/types/story";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
-import { getStoryCameraLookPreset, STORY_CAMERA_LOOK_PRESETS } from "../../cameraLookPresets";
+import { getStoryCameraLookPreset, STORY_CAMERA_LOOK_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { asDurationMs, asEnum, asNumber, defineStoryCommand, PLACEMENT_OPTIONS, secondsParam } from "../spec";
 
 /**

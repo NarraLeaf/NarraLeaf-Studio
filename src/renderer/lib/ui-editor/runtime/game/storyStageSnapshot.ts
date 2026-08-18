@@ -27,7 +27,7 @@ import {
     storyTransformRefFinalProps,
     type VisibilityTransformMode,
 } from "./storyTransformProps";
-import { resolveStoryCameraLook } from "@/apps/workspace/modules/story/scene-editor/cameraLookPresets";
+import { resolveStoryCameraLook } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 
 /**
  * Studio-side stage-state computation: walk a scene's blocks in execution order up to (but not
