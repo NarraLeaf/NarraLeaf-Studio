@@ -90,6 +90,7 @@ export const storyInspector = {
         rotate: "旋转",
         opacity: "不透明度",
         darken: "变暗",
+        flip: "水平翻转",
         circleReveal: "圆形展开",
         circleClose: "圆形收拢",
         slideReveal: "滑动揭示",

@@ -523,6 +523,9 @@ export const story = {
         transition: "Transition",
         reveal: "Reveal",
         placement: "Position",
+        // Spelled as the two words rather than as a name for the slot, the way `cameraOperation` is:
+        // a two-value positional teaches itself faster than a label an author has to guess at.
+        mirrorState: "On / Off",
         waitFor: "Seconds or click",
         // Slots whose payload key already reads as its own name, so they carry no explicit `hint`
         // and fall back to it. Listed here so the coverage test can see them.
@@ -573,6 +576,10 @@ export const story = {
         // The transform presets `t=` reaches on a show/hide that the transition words did not name.
         scale: "scale",
         opacity: "opacity",
+        // Which way `/mirror` leaves a sprite facing. Absolute, never a change: a compiled transform
+        // cannot read the scale it would have to invert.
+        on: "on",
+        off: "off",
         // Placement (`at=`) and the camera's positional amount.
         left: "left",
         center: "center",
@@ -992,6 +999,11 @@ export const story = {
         camera: { label: "Camera", detail: "Pan, zoom, rotate or darken the stage camera. Kept across scenes" },
         fx: { label: "Effect", detail: "Apply an effect to an object" },
         transform: { label: "Transform", detail: "Move, scale or rotate an object" },
+        // The detail says "mirror", not "flip", because the word the command is named after is the
+        // one thing it cannot explain: an author who is unsure what /flip does needs the other word.
+        // The token is `mirror` because `flip` is a live alias of `/toggle`; the label follows the
+        // token, since the word an author types and the word they read have to be the same one.
+        mirror: { label: "Mirror", detail: "Flip an object horizontally. Say off to face it back" },
         note: { label: "Note", detail: "A Studio-only note" },
     },
     containerHeader: {

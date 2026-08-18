@@ -4227,6 +4227,10 @@ function applyTransformPreset(target: any, transform: StoryTransformRef | undefi
         const scale = numberProp(props, "scale", 1);
         return target.scaleXY(numberProp(props, "scaleX", scale), numberProp(props, "scaleY", scale), duration, easing);
     }
+    // `scaleX` and not `scaleXY`: a flip is horizontal, and restating a vertical scale the row was
+    // never asked about would reset one an earlier row had set. See `getInlineTransformProps`, which
+    // folds the same preset for the paths that need settled props instead of a chained action.
+    if (preset === "flip") return target.scaleX(numberProp(props, "scaleX", -1), duration, easing);
     if (preset === "rotate") return target.rotate(numberProp(props, "rotation", numberProp(props, "degrees", 0)), duration, easing);
     if (preset === "opacity") return target.opacity(numberProp(props, "opacity", 1), duration, easing);
     if (preset === "darken") {

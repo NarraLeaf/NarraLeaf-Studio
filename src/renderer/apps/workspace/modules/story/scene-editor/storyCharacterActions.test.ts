@@ -43,10 +43,10 @@ const dialogue = (speaker: { characterId?: string; speakerName?: string }): Stor
 describe("storyCharacterActions — which verbs a speaker's line may insert", () => {
     it("offers every verb that acts on a character already on stage, and only those", () => {
         const scoped = characterScopedActions(specPaletteCommands()).map(command => command.id).sort();
-        // `/transform` and `/fx` are here because their target `accepts` includes a character — the
-        // same rule the sidebar files them by. Hard-coding a list of "character commands" instead is
-        // exactly the object-type × verb matrix the taxonomy exists to refuse.
-        expect(scoped).toEqual(["face", "fx", "motion", "move", "param", "rename", "say", "skin", "transform"].sort());
+        // `/transform`, `/fx` and `/mirror` are here because their target `accepts` includes a
+        // character — the same rule the sidebar files them by. Hard-coding a list of "character
+        // commands" instead is exactly the object-type × verb matrix the taxonomy exists to refuse.
+        expect(scoped).toEqual(["face", "fx", "mirror", "motion", "move", "param", "rename", "say", "skin", "transform"].sort());
     });
 
     it("leaves the staging pair out — the speaker of the line is already on stage", () => {
