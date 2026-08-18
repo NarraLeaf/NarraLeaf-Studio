@@ -265,6 +265,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
                     actions.hideMenu();
                     addElementState(
                         documentService,
+                        input.surfaceId,
                         stateElement.id,
                         UIEditorStateService.getInstance().getEnteredState()?.variantId ?? null,
                     );
