@@ -7,10 +7,17 @@
  * down with it. Every one of those is a single line that reads as fine either way.
  */
 import { describe, expect, it, vi } from "vitest";
-import { LOCALE_RESTART_RESUME_KEY } from "@shared/types/localization";
+import {
+    LOCALE_PENDING_KEY,
+    LOCALE_RESTART_FRESH_KEY,
+    LOCALE_RESTART_RESUME_KEY,
+    LOCALE_STORAGE_KEY,
+} from "@shared/types/localization";
 import { LOCALE_RESTART_SAVE_ID } from "@shared/types/saves";
 import {
     applyLocaleChange,
+    consumeFreshRestart,
+    promotePendingLocale,
     resumeAfterLocaleRestart,
     type LocaleChangeSeam,
     type LocaleResumeSeam,
@@ -25,7 +32,7 @@ function changeSeam(overrides: Partial<LocaleChangeSeam> = {}): {
     const reports: Array<{ level: string; message: string }> = [];
     const seam: LocaleChangeSeam = {
         isPlaythroughRunning: () => true,
-        inGame: "restart",
+        inGame: "resume",
         writeSave: async id => {
             trace.push(`write:${id}`);
         },
@@ -47,19 +54,21 @@ describe("applyLocaleChange", () => {
     it("leaves a title screen alone", async () => {
         const { seam, trace } = changeSeam({ isPlaythroughRunning: () => false });
 
-        await expect(applyLocaleChange(seam)).resolves.toBe("switched");
+        await expect(applyLocaleChange(seam, "ja")).resolves.toBe("switched");
 
-        // The common case by far: most players pick a language before they start playing, and
-        // restarting the game for them would be a restart of nothing.
-        expect(trace).toEqual([]);
+        // The common case by far: most players pick a language before they start playing. The
+        // language is stored and nothing else happens - no save, no restart.
+        expect(trace).toEqual([`persist:${LOCALE_STORAGE_KEY}=ja`]);
     });
 
     it("parks the run, marks the resume, then restarts - in that order", async () => {
         const { seam, trace } = changeSeam();
 
-        await expect(applyLocaleChange(seam)).resolves.toBe("restarting");
+        await expect(applyLocaleChange(seam, "ja")).resolves.toBe("restarting");
 
         expect(trace).toEqual([
+            // The language first: the boot that follows reads it to know what to come back in.
+            `persist:${LOCALE_STORAGE_KEY}=ja`,
             `write:${LOCALE_RESTART_SAVE_ID}`,
             `persist:${LOCALE_RESTART_RESUME_KEY}=${LOCALE_RESTART_SAVE_ID}`,
             "restart",
@@ -73,47 +82,79 @@ describe("applyLocaleChange", () => {
             },
         });
 
-        await expect(applyLocaleChange(seam)).resolves.toBe("failed");
+        await expect(applyLocaleChange(seam, "ja")).resolves.toBe("failed");
 
         // A restart here would be the playthrough gone, which is worse than a session that shows
-        // two languages until it ends.
-        expect(trace).toEqual([]);
+        // two languages until it ends. The language itself still changed.
+        expect(trace).toEqual([`persist:${LOCALE_STORAGE_KEY}=ja`]);
         expect(reports[0]?.level).toBe("error");
         expect(reports[0]?.message).toContain("the store is full");
     });
 
     it("does not restart when the resume marker could not be written", async () => {
+        // Only the marker refuses. The language itself landed, which is why the run is still worth
+        // protecting: without the marker nothing would ever read the save the restart left behind.
         const { seam, trace } = changeSeam({
-            persistenceSet: async () => {
-                throw new Error("no store");
+            persistenceSet: async (key, value) => {
+                if (key === LOCALE_RESTART_RESUME_KEY) {
+                    throw new Error("no store");
+                }
+                trace.push(`persist:${key}=${String(value)}`);
             },
         });
 
-        await expect(applyLocaleChange(seam)).resolves.toBe("failed");
+        await expect(applyLocaleChange(seam, "ja")).resolves.toBe("failed");
 
-        // The save exists but nothing would ever read it, so the restart would land on the title
-        // screen with the run stranded.
-        expect(trace).toEqual([`write:${LOCALE_RESTART_SAVE_ID}`]);
+        // The save exists but nothing would ever point a boot at it, so a restart would land on
+        // the title screen with the run stranded.
+        expect(trace).toEqual([`persist:${LOCALE_STORAGE_KEY}=ja`, `write:${LOCALE_RESTART_SAVE_ID}`]);
     });
 
-    it("leaves the run alone when the project asked it to", async () => {
-        // The author's own answer, and the behaviour every build had before the restart existed:
-        // the interface is in the new language and the scene being played is not, until a new one
-        // starts. Nothing is reported, because nothing went wrong.
-        const { seam, trace, reports } = changeSeam({ inGame: "nextScene" });
+    it("restarts without keeping the run when the project asked for that", async () => {
+        const { seam, trace, reports } = changeSeam({ inGame: "restart" });
 
-        await expect(applyLocaleChange(seam)).resolves.toBe("nextScene");
+        await expect(applyLocaleChange(seam, "ja")).resolves.toBe("restartingWithoutSave");
 
-        expect(trace).toEqual([]);
+        // No save of the run is written at all: this project asked for a language change to be a
+        // fresh start. The one write besides the language is the note that says so to the launch
+        // that follows, which is what keeps Dev Mode from quietly keeping the run.
+        expect(trace).toEqual([
+            `persist:${LOCALE_STORAGE_KEY}=ja`,
+            `persist:${LOCALE_RESTART_FRESH_KEY}=1`,
+            "restart",
+        ]);
+        expect(reports.map(entry => entry.level)).toEqual(["info"]);
+    });
+
+    it("keeps the choice for the next launch without touching this session", async () => {
+        // The whole point of this answer: the player is left in the language they were reading,
+        // interface included, so the live key must not be written.
+        const { seam, trace, reports } = changeSeam({ inGame: "nextLaunch" });
+
+        await expect(applyLocaleChange(seam, "ja")).resolves.toBe("deferred");
+
+        expect(trace).toEqual([`persist:${LOCALE_PENDING_KEY}=ja`]);
         expect(reports).toEqual([]);
+    });
+
+    it("applies a deferred choice at once on a title screen", async () => {
+        // Nothing is running to be inconsistent with, so deferring would only mean the player
+        // picking a language and watching nothing happen.
+        const { seam, trace } = changeSeam({ inGame: "nextLaunch", isPlaythroughRunning: () => false });
+
+        await expect(applyLocaleChange(seam, "ja")).resolves.toBe("switched");
+
+        expect(trace).toEqual([`persist:${LOCALE_STORAGE_KEY}=ja`]);
     });
 
     it("says so when the host cannot restart at all", async () => {
         const { seam, trace, reports } = changeSeam({ restartApplication: undefined });
 
-        await expect(applyLocaleChange(seam)).resolves.toBe("unsupported");
+        await expect(applyLocaleChange(seam, "ja")).resolves.toBe("unsupported");
 
-        expect(trace).toEqual([]);
+        // The language still changes; what cannot happen is the restart that would make the rest of
+        // the session agree with it.
+        expect(trace).toEqual([`persist:${LOCALE_STORAGE_KEY}=ja`]);
         expect(reports[0]?.level).toBe("warning");
     });
 });
@@ -202,5 +243,81 @@ describe("resumeAfterLocaleRestart", () => {
         await expect(resumeAfterLocaleRestart(seam)).resolves.toBe("resumed");
 
         expect(deleteSave).toHaveBeenCalled();
+    });
+});
+
+describe("consumeFreshRestart", () => {
+    function freshSeam(stored: unknown) {
+        const trace: string[] = [];
+        return {
+            trace,
+            seam: {
+                persistenceGetAsync: async () => stored,
+                persistenceSet: async (key: string, value: unknown) => {
+                    trace.push(`persist:${key}=${String(value)}`);
+                },
+            },
+        };
+    }
+
+    it("says no on an ordinary launch, and writes nothing", async () => {
+        const { seam, trace } = freshSeam(undefined);
+
+        await expect(consumeFreshRestart(seam)).resolves.toBe(false);
+
+        expect(trace).toEqual([]);
+    });
+
+    it("says yes once and clears the note", async () => {
+        // Cleared as it is answered: a note left behind would end the playthrough of every launch
+        // after this one.
+        const { seam, trace } = freshSeam("1");
+
+        await expect(consumeFreshRestart(seam)).resolves.toBe(true);
+
+        expect(trace).toEqual([`persist:${LOCALE_RESTART_FRESH_KEY}=undefined`]);
+    });
+});
+
+describe("promotePendingLocale", () => {
+    function pendingSeam(stored: unknown) {
+        const trace: string[] = [];
+        return {
+            trace,
+            seam: {
+                persistenceGetAsync: async () => stored,
+                persistenceSet: async (key: string, value: unknown) => {
+                    trace.push(`persist:${key}=${String(value)}`);
+                },
+            },
+        };
+    }
+
+    it("does nothing on an ordinary launch", async () => {
+        const { seam, trace } = pendingSeam(undefined);
+
+        await expect(promotePendingLocale(seam)).resolves.toBeNull();
+
+        expect(trace).toEqual([]);
+    });
+
+    it("moves the deferred choice into place and clears it", async () => {
+        const { seam, trace } = pendingSeam("ja");
+
+        await expect(promotePendingLocale(seam)).resolves.toBe("ja");
+
+        // Cleared as it is applied, so the launch after this one is an ordinary launch.
+        expect(trace).toEqual([
+            `persist:${LOCALE_STORAGE_KEY}=ja`,
+            `persist:${LOCALE_PENDING_KEY}=undefined`,
+        ]);
+    });
+
+    it("ignores anything that is not a language", async () => {
+        const { seam, trace } = pendingSeam(42);
+
+        await expect(promotePendingLocale(seam)).resolves.toBeNull();
+
+        expect(trace).toEqual([]);
     });
 });

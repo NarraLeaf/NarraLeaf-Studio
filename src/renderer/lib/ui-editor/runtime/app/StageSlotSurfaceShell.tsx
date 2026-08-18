@@ -147,7 +147,7 @@ export type GameUiSlotHostOptions = {
      * host leaves it unset, and a `Set Language` node on a slot surface there reaches nothing —
      * which is the truth about the capability, not a gap to fill with a partial imitation.
      */
-    localeChangedInGame?: () => Promise<void>;
+    localeChangedInGame?: (code: string) => Promise<void>;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
     widgetRuntimeStore: WidgetRuntimeStateStore;

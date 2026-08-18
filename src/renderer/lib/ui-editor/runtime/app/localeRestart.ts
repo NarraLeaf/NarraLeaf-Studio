@@ -1,31 +1,41 @@
 /**
- * Changing the player's language mid-playthrough, by restarting the game and coming back to it.
+ * Changing the player's language, and what that costs a playthrough already in progress.
  *
- * A language is not a setting the running game can be told about. It is baked into almost
- * everything already on screen and already in memory by the time the player picks a new one: the
- * lines that have been rendered, the backlog entries recording them, the sentence a typewriter is
- * halfway through, the voice clip playing under it, the preloaded assets of the current scene, and
- * the sentences the engine has already serialized into its own save state. A notification channel
- * would reach every one of those and none of them would know what to do with it - there is no
- * correct way to re-translate a backlog of lines the player has already read, and a game that
- * re-translated only what happens next would be showing two languages at once for the rest of the
- * session.
+ * A language is not a setting the running game can be told about. Text is translated when it
+ * renders, so the moment the stored language changes the *next* line is already in the new one -
+ * while the line on screen, the backlog behind it, the voice playing under it and the sentences
+ * inside every save written so far are all in the old one. There is no correct way to re-translate
+ * what a player has already read, so a game that simply switched would be saying two things at once
+ * for the rest of the session.
  *
- * So the language change is honoured the only way that leaves the game coherent: the run is written
- * into a reserved save, the process restarts, and the boot that follows loads it back. Everything
- * derived from the old language is rebuilt from scratch, because everything is.
+ * Three answers leave it saying one thing, and the project picks between them (see
+ * `InGameLanguageChange`):
  *
- * The restart is skipped when there is nothing to keep coherent - the title screen, a settings page
- * reached before a playthrough started - and that is the common case: most players pick a language
- * before they start playing, and for them this module does nothing at all. It is also skipped when
- * the project asked for it to be (`InGameLanguageChange`), which is the author saying they would
- * rather have the running scene keep its language than have the game restart under their player.
+ *  - `resume` (default): write the run into a reserved save, restart, and load it back. Everything
+ *    derived from the old language is rebuilt from scratch, because everything is.
+ *  - `restart`: restart without writing anything down. The player gets the game as it launches.
+ *  - `nextLaunch`: change nothing now, interface text included. The choice is kept under
+ *    `LOCALE_PENDING_KEY` and the next boot moves it into place.
+ *
+ * None of it happens on a title screen. Nothing is running there to be inconsistent with, so the
+ * language simply changes - which is the path most players take, and for them this module does one
+ * store write and nothing else.
+ *
+ * The live locale is written *here* rather than by the caller, because one of the three answers is
+ * "do not write it yet", and a write that has already happened cannot be taken back without the
+ * player watching it happen.
  *
  * React-free so the decision and the handoff can be driven and asserted directly; `GameApp` supplies
  * the seams. Comments in English per project convention.
  */
 
-import { LOCALE_RESTART_RESUME_KEY, type InGameLanguageChange } from "@shared/types/localization";
+import {
+    LOCALE_PENDING_KEY,
+    LOCALE_RESTART_FRESH_KEY,
+    LOCALE_RESTART_RESUME_KEY,
+    LOCALE_STORAGE_KEY,
+    type InGameLanguageChange,
+} from "@shared/types/localization";
 import { LOCALE_RESTART_SAVE_ID } from "@shared/types/saves";
 
 export type LocaleRestartLogLevel = "info" | "warning" | "error";
@@ -34,18 +44,16 @@ export type LocaleRestartLogLevel = "info" | "warning" | "error";
 export type LocaleChangeOutcome =
     /** Nothing was running that a language could be inconsistent with. The new language is live. */
     | "switched"
-    /**
-     * A run was going and this project asked for it to be left alone. The player gets the new
-     * language in the interface now and in the story when a new scene starts. The author's call,
-     * not a degradation - see `InGameLanguageChange`.
-     */
-    | "nextScene"
     /** The run was parked and the shell was asked to restart. Nothing after this is guaranteed to run. */
     | "restarting"
+    /** The shell was asked to restart with the run left behind, as this project asked. */
+    | "restartingWithoutSave"
+    /** The choice was kept for the next launch and this session was left exactly as it was. */
+    | "deferred"
     /**
-     * A run was going and this shell cannot restart, so the language was changed under it. The
-     * degradation a host without the capability takes, and the reason a host that has one should
-     * declare it.
+     * A run was going, this project asked for a restart, and this shell cannot restart. The language
+     * was changed under the run instead - the degradation a host without the capability takes, and
+     * the reason a host that has one should declare it.
      */
     | "unsupported"
     /** A run was going and could not be parked, so it was left alone rather than lost. */
@@ -66,24 +74,26 @@ export type LocaleChangeSeam = {
 };
 
 /**
- * Park the run, if there is one, and ask the shell to restart.
+ * Apply the player's choice of language, the way this project wants it applied.
  *
- * Called after the new language has already been persisted, so the boot that follows reads it as
- * the player's choice like any other. That ordering is also what makes every early return safe:
- * whatever happens to the run, the language the player asked for is the one the game is in.
+ * Order is the same on every path that restarts: store first, restart second. A restart that ran
+ * before the write landed would come back in the language the player just left.
  *
- * A failure to write the save stops the restart. A restart without a save is the one outcome worse
- * than a language that only half applies - it is the playthrough gone - so the run is left exactly
- * where it was and the author is told.
+ * A failure to write the parked save stops the restart. A restart without the save is the one
+ * outcome worse than a language that only half applies - it is the playthrough gone - so the run is
+ * left exactly where it was and the author is told.
  */
-export async function applyLocaleChange(seam: LocaleChangeSeam): Promise<LocaleChangeOutcome> {
-    if (!seam.isPlaythroughRunning()) {
-        return "switched";
+export async function applyLocaleChange(seam: LocaleChangeSeam, code: string): Promise<LocaleChangeOutcome> {
+    const running = seam.isPlaythroughRunning();
+    if (running && seam.inGame === "nextLaunch") {
+        // Deliberately not the live key: this session keeps the language it started in, down to the
+        // menu the player is standing in while they choose.
+        await seam.persistenceSet(LOCALE_PENDING_KEY, code);
+        return "deferred";
     }
-    if (seam.inGame === "nextScene") {
-        // Nothing to say and nothing to do: this is the project's own answer to the question, and
-        // reporting it would be telling the author about a setting they went and set.
-        return "nextScene";
+    await seam.persistenceSet(LOCALE_STORAGE_KEY, code);
+    if (!running) {
+        return "switched";
     }
     if (!seam.restartApplication) {
         seam.report(
@@ -92,6 +102,16 @@ export async function applyLocaleChange(seam: LocaleChangeSeam): Promise<LocaleC
             + "Text already on screen, the backlog and any playing voice stay in the previous language.",
         );
         return "unsupported";
+    }
+    if (seam.inGame === "restart") {
+        // Nothing of the run is written down, on purpose: this project asked for a language change
+        // to be a fresh start, and keeping it would be answering a question it did not ask. What IS
+        // written is a note for the launch that follows, which only Dev Mode acts on - its restart
+        // is a session reload, and a reload puts the author back into the story on purpose.
+        await seam.persistenceSet(LOCALE_RESTART_FRESH_KEY, "1");
+        seam.report("info", "The language changed; restarting without keeping the playthrough.");
+        await seam.restartApplication();
+        return "restartingWithoutSave";
     }
     try {
         await seam.writeSave(LOCALE_RESTART_SAVE_ID);
@@ -114,6 +134,54 @@ export async function applyLocaleChange(seam: LocaleChangeSeam): Promise<LocaleC
     seam.report("info", "The playthrough was parked for the language change; restarting.");
     await seam.restartApplication();
     return "restarting";
+}
+
+export type PendingLocaleSeam = {
+    /** Read a persisted value from the store, not from a session snapshot. */
+    persistenceGetAsync: (key: string) => Promise<unknown>;
+    /** Durable persistence write; `undefined` clears the key. */
+    persistenceSet: (key: string, value: unknown) => Promise<void>;
+};
+
+/**
+ * Move a language chosen for "next launch" into place. This is that launch.
+ *
+ * Answers which language it applied, or null when it applied none - which is every launch but the
+ * one after a player deferred a change, and costs those launches a single store read. The pending
+ * choice is cleared as it is applied, so the launch after this one is an ordinary one.
+ */
+export async function promotePendingLocale(seam: PendingLocaleSeam): Promise<string | null> {
+    let pending: unknown;
+    try {
+        pending = await seam.persistenceGetAsync(LOCALE_PENDING_KEY);
+    } catch {
+        // A store that cannot be read has bigger problems than this, and reports them itself.
+        return null;
+    }
+    if (typeof pending !== "string" || !pending) {
+        return null;
+    }
+    await seam.persistenceSet(LOCALE_STORAGE_KEY, pending);
+    await seam.persistenceSet(LOCALE_PENDING_KEY, undefined);
+    return pending;
+}
+
+/**
+ * Whether this launch is the one that must not come back to a playthrough, clearing the note as it
+ * answers. See {@link LOCALE_RESTART_FRESH_KEY}.
+ */
+export async function consumeFreshRestart(seam: PendingLocaleSeam): Promise<boolean> {
+    let marked: unknown;
+    try {
+        marked = await seam.persistenceGetAsync(LOCALE_RESTART_FRESH_KEY);
+    } catch {
+        return false;
+    }
+    if (!marked) {
+        return false;
+    }
+    await seam.persistenceSet(LOCALE_RESTART_FRESH_KEY, undefined);
+    return true;
 }
 
 /** What the boot found waiting for it. */
