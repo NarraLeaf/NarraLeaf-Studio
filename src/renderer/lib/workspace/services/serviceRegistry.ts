@@ -37,6 +37,7 @@ import { ReferenceService } from "./references/ReferenceService";
 import { VariableRegistryService } from "./variables/VariableRegistryService";
 import { AudioTrackService } from "./audio/AudioTrackService";
 import { AppTagService } from "./appTag/AppTagService";
+import { AssetSetService } from "./assets/AssetSetService";
 import { BrandService } from "./brand/BrandService";
 import { DictionaryService } from "./dictionary/DictionaryService";
 import { SaveSchemaService } from "./saves/SaveSchemaService";
@@ -89,6 +90,7 @@ export class ServiceRegistry {
         [Services.VariableRegistry]: VariableRegistryService.getInstance(),
         [Services.AudioTracks]: AudioTrackService.getInstance(),
         [Services.AppTags]: AppTagService.getInstance(),
+        [Services.AssetSets]: AssetSetService.getInstance(),
         [Services.Brand]: BrandService.getInstance(),
         [Services.Dictionary]: DictionaryService.getInstance(),
         [Services.SaveSchema]: SaveSchemaService.getInstance(),

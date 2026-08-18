@@ -511,6 +511,7 @@ export const workspace = {
                 variables: "変数の登録",
                 audioTracks: "オーディオトラック",
                 appTags: "ビルドバリアント",
+                assetSets: "アセットセット",
                 brand: "ブランドの配色",
                 dictionary: "プロジェクト辞書",
                 saveSchema: "セーブ項目",

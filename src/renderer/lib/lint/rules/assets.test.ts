@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { AssetSet } from "@shared/types/assetSet";
 import { AssetType } from "../../workspace/services/assets/assetTypes";
 import type { AssetReference } from "../../workspace/services/references/referenceModel";
 import type { LintAssetEntry, LintContext, LintImageProbe } from "../context";
@@ -21,7 +22,7 @@ function runRule(id: LintRuleId, ctx: LintContext): Promise<LintFinding[]> {
 }
 
 function asset(id: string, overrides: Partial<LintAssetEntry> = {}): LintAssetEntry {
-    return { id, type: AssetType.Image, name: `${id}.png`, ext: "png", meta: {}, ...overrides };
+    return { id, type: AssetType.Image, name: `${id}.png`, ext: "png", meta: {}, tags: [], ...overrides };
 }
 
 const storyReference: AssetReference = {
@@ -427,5 +428,140 @@ describe("assets/oversized", () => {
         });
 
         expect(await runOversized(ctx)).toEqual([]);
+    });
+});
+
+/**
+ * `assets/group-incomplete`.
+ *
+ * Stated as what a set must not be able to hide: a variant nobody imported, a variant two files
+ * claim, and an arrangement of axes no build could satisfy.
+ */
+describe("assets/group-incomplete", () => {
+    const runSets = (ctx: LintContext) => runRule("assets/group-incomplete", ctx);
+
+    /** `char:alice` fixed, one build axis over moods and one runtime axis over locales. */
+    function aliceSet(overrides: Partial<AssetSet> = {}): AssetSet {
+        return {
+            id: "set-alice",
+            name: "Alice",
+            type: AssetType.Image,
+            filter: ["char:alice"],
+            axes: [
+                { key: "mood", residency: "build", values: ["happy", "sad"] },
+                { key: "locale", residency: "runtime", values: ["en", "ja"] },
+            ],
+            ...overrides,
+        };
+    }
+
+    function tagged(id: string, tags: string[]): LintAssetEntry {
+        return asset(id, { tags });
+    }
+
+    const fullLibrary = [
+        tagged("a", ["char:alice", "mood:happy", "locale:en"]),
+        tagged("b", ["char:alice", "mood:happy", "locale:ja"]),
+        tagged("c", ["char:alice", "mood:sad", "locale:en"]),
+        tagged("d", ["char:alice", "mood:sad", "locale:ja"]),
+    ];
+
+    it("says nothing about a project that declares no sets", async () => {
+        expect(await runSets(createTestLintContext({ assets: fullLibrary }))).toEqual([]);
+    });
+
+    it("says nothing when every variant resolves to one file", async () => {
+        const ctx = createTestLintContext({ assets: fullLibrary, assetSets: [aliceSet()] });
+
+        expect(await runSets(ctx)).toEqual([]);
+    });
+
+    it("names the variant that has no file, as the tags that would fix it", async () => {
+        const ctx = createTestLintContext({
+            assets: fullLibrary.slice(0, 3),
+            assetSets: [aliceSet()],
+        });
+
+        expect(await runSets(ctx)).toEqual([{
+            ruleId: "assets/group-incomplete",
+            messageKey: "lint.rule.assetsGroupIncomplete.message",
+            messageParams: { set: "Alice", variant: "mood:sad · locale:ja" },
+            location: { kind: "project" },
+        }]);
+    });
+
+    it("reports a variant two files claim, which resolves to nothing just as a hole does", async () => {
+        const ctx = createTestLintContext({
+            assets: [...fullLibrary, tagged("e", ["char:alice", "mood:happy", "locale:en"])],
+            assetSets: [aliceSet()],
+        });
+
+        expect(await runSets(ctx)).toEqual([{
+            ruleId: "assets/group-incomplete",
+            messageKey: "lint.rule.assetsGroupIncomplete.messageAmbiguous",
+            messageParams: { set: "Alice", variant: "mood:happy · locale:en", count: "2" },
+            location: { kind: "project" },
+        }]);
+    });
+
+    it("never names a file, so a variant a package left out cannot reach a log", async () => {
+        const ctx = createTestLintContext({
+            assets: fullLibrary.slice(0, 3),
+            assetSets: [aliceSet()],
+        });
+
+        const params = (await runSets(ctx)).map(finding => JSON.stringify(finding.messageParams));
+        expect(params.some(text => text.includes("a.png") || text.includes("\"a\""))).toBe(false);
+    });
+
+    it("reports a build axis nested inside a runtime one, naming the outer axis", async () => {
+        const ctx = createTestLintContext({
+            assets: fullLibrary,
+            assetSets: [aliceSet({
+                axes: [
+                    { key: "locale", residency: "runtime", values: ["en", "ja"] },
+                    { key: "mood", residency: "build", values: ["happy", "sad"] },
+                ],
+            })],
+        });
+
+        expect(await runSets(ctx)).toEqual([{
+            ruleId: "assets/group-incomplete",
+            messageKey: "lint.rule.assetsGroupIncomplete.messageResidency",
+            messageParams: { set: "Alice", axis: "mood", outerAxis: "locale" },
+            location: { kind: "project" },
+        }]);
+    });
+
+    it("reports an incoherent set once, instead of a hole for every cell it does not have", async () => {
+        const ctx = createTestLintContext({
+            assets: fullLibrary,
+            assetSets: [aliceSet({ axes: [{ key: "mood", residency: "build", values: [] }] })],
+        });
+
+        const findings = await runSets(ctx);
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.assetsGroupIncomplete.messageDeclaration");
+    });
+
+    it("holds the fixed filter, so another character's files do not fill a hole", async () => {
+        const ctx = createTestLintContext({
+            assets: [...fullLibrary.slice(0, 3), tagged("z", ["char:bob", "mood:sad", "locale:ja"])],
+            assetSets: [aliceSet()],
+        });
+
+        expect(await runSets(ctx)).toHaveLength(1);
+    });
+
+    it("ignores a file of another type carrying the right tags", async () => {
+        const ctx = createTestLintContext({
+            assets: [
+                ...fullLibrary.slice(0, 3),
+                asset("z", { type: AssetType.Audio, tags: ["char:alice", "mood:sad", "locale:ja"] }),
+            ],
+            assetSets: [aliceSet()],
+        });
+
+        expect(await runSets(ctx)).toHaveLength(1);
     });
 });

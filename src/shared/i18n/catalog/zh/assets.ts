@@ -258,6 +258,55 @@ export const assets = {
         unreadable: "无法读取该文件夹",
         tooManyFiles: "该文件夹包含 {count} 个文件，数量过多，无法逐个核对；请选择模型所在的那一层目录",
     },
+    /**
+     * 资产集：库里的一个条目，代表按轴索引的一族文件。
+     *
+     * 叫「资产集」不叫「分组」，因为这个面板里的分组已经是文件夹。这里的词说的是作者拿它做什么
+     * （声明轴、看哪些变体有对应文件），不说构建怎么读它。
+     */
+    sets: {
+        itemType: "资产集",
+        variantCount: {
+            one: "{count} 个变体",
+            other: "{count} 个变体",
+        },
+        variantsResolved: "{total} 个变体中的 {resolved} 个",
+        unfinished: "尚未声明变体",
+        menu: {
+            create: "用所选文件新建资产集",
+        },
+        create: {
+            title: "新建资产集",
+            nameRequired: "请输入名称",
+            failed: "一个资产集只装一种资产。请选择同一种类的文件。",
+        },
+        inspector: {
+            axes: "轴",
+            filter: "成员共同带有",
+            addAxis: "添加轴",
+            removeAxis: "删除轴",
+            moveOut: "向外移",
+            moveIn: "向内移",
+            axisKey: "标签类别",
+            axisValues: "取值",
+            residency: {
+                label: "解析时机",
+                build: "构建时",
+                runtime: "运行时",
+            },
+            residencyBlocked: "构建时解析的轴不能嵌在运行时解析的轴里面。",
+            variants: "变体",
+            variantMissing: "无文件",
+            variantAmbiguous: "{count} 个文件",
+            noVariants: "声明一条轴后才会有变体。",
+        },
+        history: {
+            edit: "编辑资产集",
+            add: "新建资产集 {name}",
+            rename: "重命名资产集 {name}",
+            delete: "删除资产集 {name}",
+        },
+    },
     menu: {
         newGroup: "新建分组",
         newSubGroup: "新建子分组",

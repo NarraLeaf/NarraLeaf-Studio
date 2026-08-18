@@ -47,6 +47,16 @@ export const lint = {
             // finding can be acted on without opening the settings page it came from.
             message: "{asset} is {size}, over the {limit} a build should carry",
         },
+        assetsGroupIncomplete: {
+            title: "Unfinished asset set",
+            description: "A set that does not resolve to exactly one file for every variant it declares",
+            // The variant is named as the tags it is made of, because writing those tags on a file
+            // is the fix. The file that would resolve is not named: it does not exist yet.
+            message: "{set} has no file for {variant}",
+            messageAmbiguous: "{set} has {count} files for {variant}",
+            messageResidency: "{set} resolves {axis} while the game runs, inside {outerAxis}, which the build resolves",
+            messageDeclaration: "{set} declares no variants to resolve",
+        },
         portabilityAssetName: {
             title: "Unsafe file name",
             description: "Characters or names some filesystems reject",

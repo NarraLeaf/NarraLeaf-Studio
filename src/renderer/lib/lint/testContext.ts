@@ -23,6 +23,7 @@ export function createTestLintContext(overrides: Partial<LintContext> = {}): Lin
         blueprintDocument: null,
         uiDocument: null,
         assets: [],
+        assetSets: [],
         referencedAssetIds: new Set<string>(),
         assetReferences: new Map(),
         // A rule test asserts on the rule, so the index it reads is complete unless the test is
