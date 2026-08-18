@@ -53,8 +53,6 @@ import {
     createComponentDocumentServiceAdapter,
     parseComponentEditorSurfaceId,
 } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
-import { commitLayoutPatches } from "@/lib/ui-editor/interaction/enteredStateLayoutCommit";
-import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { ElementStateBar } from "@/lib/ui-editor/widget-modules/shared/appearance/ElementStateBar";
 import { ElementAnimationField } from "@/lib/ui-editor/widget-modules/shared/page-animation/ElementAnimationField";
 import { ComponentParamsEditor, LinkedComponentParamsField } from "./ComponentParamsEditor";
@@ -129,14 +127,7 @@ function createLayoutInspectorSchema(
                 [axis]: surfaceValue - parentTopLeft[axis] - Math.min(0, size),
             };
         });
-        // Same routing as a drag: typing a position while a state is entered says where the element
-        // sits in that state.
-        commitLayoutPatches(
-            documentService,
-            UIEditorStateService.getInstance().getEnteredState(),
-            patches,
-            surfaceId ?? null,
-        );
+        documentService.updateElementLayouts(patches);
     };
 
     const createDefaultSizeField = (): FieldDefinition<UIInspectorData> => {

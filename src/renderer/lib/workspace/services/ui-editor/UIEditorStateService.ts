@@ -618,36 +618,19 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     }
 
     /**
-     * Drops the entered state once the author selects something outside it.
+     * Drops the entered state when the author moves to another interface.
      *
-     * Selecting a part of what you are editing is the flow itself - entering a switch's on state and
-     * then clicking its thumb to drag it - so descendants keep it alive. Anything else does not:
-     * a state left entered on an element nobody is looking at is a canvas drawing something the
-     * document does not say.
+     * Selection is left alone on purpose. A canvas click on a widget's part promotes the selection to
+     * the parent it drills from, so exiting on "the selection left the subtree" exits on the very
+     * click an author makes to grab what they are editing - the state flickered away under them, and
+     * whatever they did next landed somewhere they were not looking.
      */
     private ensureEnteredStateValid(selection: SelectionState): void {
         const entered = this.enteredState;
-        if (!entered) {
+        if (!entered || selection.type !== "element" || !selection.data) {
             return;
         }
-        if (selection.type !== "element" || !selection.data) {
-            this.setEnteredState(null);
-            return;
-        }
-        const elements = this.documentService?.getDocument().elements;
-        const isInsideEntered = selection.data.elementIds.some((id: string) => {
-            let current: string | null | undefined = id;
-            const seen = new Set<string>();
-            while (current && !seen.has(current)) {
-                if (current === entered.elementId) {
-                    return true;
-                }
-                seen.add(current);
-                current = elements?.[current]?.parentId ?? null;
-            }
-            return false;
-        });
-        if (!isInsideEntered) {
+        if (selection.data.surfaceId !== entered.surfaceId) {
             this.setEnteredState(null);
         }
     }

@@ -29,7 +29,12 @@ function cloneVariant(source: AppearanceVariant, id: string, name: string): Appe
  * that still has a single state: one state is not a choice, so the bar stays out of the panel until
  * there is something to choose between.
  */
-export function addElementState(writer: StateWriter, elementId: string, basedOnVariantId?: string | null): string | null {
+export function addElementState(
+    writer: StateWriter,
+    surfaceId: string,
+    elementId: string,
+    basedOnVariantId?: string | null,
+): string | null {
     const element = writer.getDocument().elements[elementId];
     const model = element ? elementAppearanceModel(element) : null;
     if (!element || !model) {
@@ -46,7 +51,7 @@ export function addElementState(writer: StateWriter, elementId: string, basedOnV
     // author's UI language to every other author.
     const next = addVariant(model, cloneVariant(base, id, `State ${model.variants.length + 1}`));
     writer.updateElementProps(elementId, { ...(element.props ?? {}), appearance: next });
-    UIEditorStateService.getInstance().setEnteredState({ elementId, variantId: id });
+    UIEditorStateService.getInstance().setEnteredState({ surfaceId, elementId, variantId: id });
     return id;
 }
 

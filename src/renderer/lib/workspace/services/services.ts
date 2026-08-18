@@ -898,8 +898,13 @@ export type InteractionOverrideChange = {
  * one restored at startup would be a canvas that quietly disagrees with the document. `variantId`
  * is null for the resting state, which is also what descendants carrying no variant of that id
  * resolve to - so one value describes the whole subtree.
+ *
+ * `surfaceId` is what it is scoped to. Selection is deliberately not: clicking a widget's part on the
+ * canvas promotes the selection to the parent it drills from, so a rule that exits the state when the
+ * selection leaves the subtree exits it on the very click an author makes to grab the thing they are
+ * editing.
  */
-export type UIEditorEnteredState = { elementId: string; variantId: string | null };
+export type UIEditorEnteredState = { surfaceId: string; elementId: string; variantId: string | null };
 
 interface UIEditorStateEvents {
     toolChanged: UITool;
