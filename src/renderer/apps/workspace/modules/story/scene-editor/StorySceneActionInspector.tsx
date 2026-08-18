@@ -253,7 +253,31 @@ function VariableValueField(props: {
     return <TextField label={label} value={String(props.value ?? "")} onChange={value => props.onChange(value)} />;
 }
 
-const transformPresetOptions = (t: TFunc): SelectOption[] => [
+/**
+ * The three presets this dropdown no longer OFFERS, and the words a row that still holds one reads by.
+ *
+ * They are clip-path reveals, not settled poses: the paths that need a transform's props up front - a
+ * character's entrance, and the editor's own stage snapshot - cannot fold them and say so
+ * (`presetNotFoldable`), and the working way to ask for one is the `/fx` operation of the same name,
+ * which the effect editor above offers. They stay in `StoryTransformPreset`, in the compiler and in
+ * the `t=` vocabulary, because documents written while they were on the list still carry them and
+ * must keep compiling exactly as they did.
+ */
+const RETIRED_TRANSFORM_PRESETS: Readonly<Record<string, string>> = {
+    circleReveal: "storyInspector.transformPreset.circleReveal",
+    circleClose: "storyInspector.transformPreset.circleClose",
+    wipe: "storyInspector.transformPreset.slideReveal",
+};
+
+/**
+ * The presets a transform can actually BE, in the dropdown that sets one.
+ *
+ * `current` is a parameter because of the three above: a row that already holds one gets it back on
+ * the list, so the field shows what the block actually says instead of the empty trigger an unlisted
+ * value renders as. Dropping a value from a picker must not make the documents it came from
+ * unreadable - only unwritable.
+ */
+const transformPresetOptions = (t: TFunc, current?: string): SelectOption[] => [
     { value: "none", label: t("common.none") },
     { value: "left", label: t("storyInspector.transformPreset.left") },
     { value: "center", label: t("storyInspector.transformPreset.center") },
@@ -269,9 +293,10 @@ const transformPresetOptions = (t: TFunc): SelectOption[] => [
     { value: "rotate", label: t("storyInspector.transformPreset.rotate") },
     { value: "opacity", label: t("storyInspector.transformPreset.opacity") },
     { value: "darken", label: t("storyInspector.transformPreset.darken") },
-    { value: "circleReveal", label: t("storyInspector.transformPreset.circleReveal") },
-    { value: "circleClose", label: t("storyInspector.transformPreset.circleClose") },
-    { value: "wipe", label: t("storyInspector.transformPreset.slideReveal") },
+    { value: "flip", label: t("storyInspector.transformPreset.flip") },
+    ...(current && current in RETIRED_TRANSFORM_PRESETS
+        ? [{ value: current, label: t(RETIRED_TRANSFORM_PRESETS[current] as TranslationKey) }]
+        : []),
 ];
 
 const transitionOptions = (t: TFunc): SelectOption[] => [
@@ -2217,7 +2242,7 @@ function TransformPresetEditor(props: {
                     <FieldGrid cols={3}>
                         <SelectField
                             label={t("storyInspector.transform.preset")}
-                            options={transformPresetOptions(t)}
+                            options={transformPresetOptions(t, value.preset)}
                             value={value.preset ?? "none"}
                             onChange={preset => props.onChange({ ...value, mode: "preset", preset: preset as StoryTransformPreset })}
                         />
