@@ -76,6 +76,7 @@ export type LintRuleId =
     | "assets/missing"
     | "assets/unreadable"
     | "assets/oversized"
+    | "assets/group-incomplete"
     | "portability/asset-name"
     | "portability/case-collision"
     | "portability/media-format"

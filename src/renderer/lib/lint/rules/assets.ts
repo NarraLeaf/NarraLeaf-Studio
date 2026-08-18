@@ -1,4 +1,11 @@
 import { RELEASE_APP_TAG } from "@shared/types/appTag";
+import {
+    resolveAssetSetContents,
+    validateAssetSet,
+    type AssetSet,
+    type AssetSetCandidate,
+    type AssetSetProblem,
+} from "@shared/types/assetSet";
 import { formatBytes } from "@shared/utils/formatBytes";
 import { solveReleaseContent } from "../../build/releaseContent";
 import { AssetType, isBundleAssetType } from "../../workspace/services/assets/assetTypes";
@@ -344,7 +351,128 @@ export const ASSETS_LINT_RULES: readonly LintRule[] = [
             return findings;
         },
     },
+    {
+        /**
+         * A set that does not resolve to exactly one file for everything it promises.
+         *
+         * ## Why this is a project check and not only a colour in the panel
+         *
+         * A set is broken by people who are not looking at the asset panel. Whoever adds a language
+         * is doing localization; whoever adds a variant is doing release work. Neither has a reason
+         * to open the library, and the hole they leave shows up nowhere until something reaches for
+         * the file that was never imported. The panel's warning colour is for the author who is
+         * already standing in front of the library; this is for everyone who is not.
+         *
+         * ## Two failures, one rule
+         *
+         * A coordinate with **no** file and a coordinate with **more than one** are both "this set
+         * does not name a file", which is the single thing a reference to it depends on. They are
+         * separate sentences because the fix is the opposite one - import or tag a file, or stop
+         * two files claiming the same coordinate - but splitting them into two rules would let a
+         * project silence one severity and keep the other while both mean the same thing at a
+         * reference site.
+         *
+         * A set whose own declaration is incoherent (no axes, an axis promising no values, a build
+         * axis nested inside a runtime one) is reported here too, and instead of its contents: a set
+         * in that state has no coordinates to have holes in, so every cell would be silent and the
+         * author would be told nothing at all.
+         *
+         * ## What is deliberately not named
+         *
+         * The message names the set and the coordinate, never a file. A coordinate is what the
+         * author writes on a file; the file it would resolve to does not exist yet. And for a build
+         * axis, the variants a package leaves out must not be named anywhere a log can reach - see
+         * `@shared/types/assetSet` on why that residency is a safety property.
+         */
+        id: "assets/group-incomplete",
+        category: "assets",
+        defaultSeverity: "warning",
+        slug: "assetsGroupIncomplete",
+        run(ctx) {
+            if (ctx.assetSets.length === 0) {
+                return [];
+            }
+            const candidates: AssetSetCandidate[] = ctx.assets.map(asset => ({
+                id: asset.id,
+                type: asset.type,
+                tags: asset.tags,
+            }));
+            const findings: LintFinding[] = [];
+            for (const set of ctx.assetSets) {
+                const problems = validateAssetSet(set);
+                if (problems.length > 0) {
+                    findings.push(...problems.map(problem => assetSetFinding(set, problem)));
+                    continue;
+                }
+                const contents = resolveAssetSetContents(set, candidates);
+                for (const cell of contents.missing) {
+                    findings.push({
+                        ruleId: "assets/group-incomplete",
+                        messageKey: "lint.rule.assetsGroupIncomplete.message",
+                        messageParams: { set: assetSetLabel(set), variant: cell.label },
+                        location: { kind: "project" },
+                    });
+                }
+                for (const cell of contents.ambiguous) {
+                    findings.push({
+                        ruleId: "assets/group-incomplete",
+                        messageKey: "lint.rule.assetsGroupIncomplete.messageAmbiguous",
+                        messageParams: {
+                            set: assetSetLabel(set),
+                            variant: cell.label,
+                            count: String(cell.assetIds.length),
+                        },
+                        location: { kind: "project" },
+                    });
+                }
+            }
+            return findings;
+        },
+    },
 ];
+
+/** What `{set}` renders as. Falls back to the id only for a set whose name never got typed. */
+function assetSetLabel(set: AssetSet): string {
+    return set.name.trim() || set.id;
+}
+
+/**
+ * The sentence a declaration fault earns.
+ *
+ * Exhaustive over {@link AssetSetProblem}, so a fault added to the model has to be given words here
+ * rather than inheriting whichever branch happened to be the fallback - the same bargain
+ * `incompleteIndexMessageKey` makes above. The four shapes that are all "this set describes
+ * nothing" share one sentence: the inspector is where an author sees which axis is at fault, and a
+ * report that spelled out each of them would be four ways of saying the set is unfinished.
+ */
+function assetSetFinding(set: AssetSet, problem: AssetSetProblem): LintFinding {
+    const base = {
+        ruleId: "assets/group-incomplete" as const,
+        location: { kind: "project" } as const,
+    };
+    switch (problem.kind) {
+        case "residencyInversion":
+            return {
+                ...base,
+                messageKey: "lint.rule.assetsGroupIncomplete.messageResidency",
+                messageParams: {
+                    set: assetSetLabel(set),
+                    axis: problem.axisKey,
+                    outerAxis: problem.outerAxisKey,
+                },
+            };
+        case "noAxes":
+        case "emptyAxisKey":
+        case "emptyAxisValues":
+        case "duplicateAxis":
+        case "duplicateAxisValue":
+            return {
+                ...base,
+                messageKey: "lint.rule.assetsGroupIncomplete.messageDeclaration",
+                messageParams: { set: assetSetLabel(set) },
+            };
+    }
+}
 
 /** The bytes a record was measured at, or null when it has never been measured. */
 function assetByteSize(asset: LintAssetEntry): number | null {

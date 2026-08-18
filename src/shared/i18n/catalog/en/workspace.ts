@@ -513,6 +513,7 @@ export const workspace = {
                 variables: "variable registry",
                 audioTracks: "audio tracks",
                 appTags: "build variants",
+                assetSets: "asset sets",
                 brand: "brand palette",
                 dictionary: "project dictionary",
                 saveSchema: "save fields",
