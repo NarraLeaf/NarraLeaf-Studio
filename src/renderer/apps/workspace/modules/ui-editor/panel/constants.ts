@@ -2,6 +2,7 @@ import type { UIStageSlotId, UIStageSurfaceMount, UISurfaceKind } from "@shared/
 import { DEFAULT_UI_STAGE_SLOT_ID, UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
 import { translate } from "@/lib/i18n";
 import { getStageSlotLabel, type TranslateFn } from "@/lib/ui-editor/stageSlotLabel";
+import { stageMountSlotId } from "@shared/types/ui-editor/stageSlots";
 
 export type SurfaceKindOption = {
     kind: UISurfaceKind;
@@ -40,5 +41,6 @@ export const GAME_UI_SLOT_IDS: readonly UIStageSlotId[] = UI_STAGE_SLOT_IDS;
 export const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = DEFAULT_UI_STAGE_SLOT_ID;
 
 export const formatStageMountLabel = (mount: UIStageSurfaceMount, t: TranslateFn): string => {
-    return getStageSlotLabel(mount.slotId, t);
+    const slotId = stageMountSlotId(mount);
+    return slotId ? getStageSlotLabel(slotId, t) : t("uiEditor.surfaceOwner.stageAvatar");
 };

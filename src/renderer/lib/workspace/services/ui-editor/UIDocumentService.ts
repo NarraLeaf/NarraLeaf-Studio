@@ -126,6 +126,8 @@ import {
 import {
     DEFAULT_UI_STAGE_SLOT_ID,
     normalizeUIStageSlotId,
+    normalizeUIStageSurfaceMount,
+    stageMountSlotId,
 } from "@shared/types/ui-editor/stageSlots";
 import { defaultContainerWidgetProps, type ContainerWidgetProps } from "@shared/types/ui-editor/container";
 import { defaultTextWidgetProps, type TextWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/text/types";
@@ -1359,10 +1361,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             const rawMountRecord = rawMount && typeof rawMount === "object"
                 ? rawMount as Record<string, unknown>
                 : {};
-            surface.mount = {
-                kind: "slot",
-                slotId: normalizeUIStageSlotId(rawMountRecord.slotId),
-            };
+            surface.mount = normalizeUIStageSurfaceMount(rawMountRecord);
             surface.settings = {
                 backgroundColor: "transparent",
                 ...(surface.settings ?? {}),
@@ -1539,13 +1538,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const surfaceId = uuidService.generate();
 
         const { kind, name, host, settings, stageMount } = input;
-        const effectiveMount =
-            kind === "stageSurface"
-                ? {
-                      kind: "slot" as const,
-                      slotId: normalizeUIStageSlotId(stageMount?.slotId),
-                  }
-                : undefined;
+        const effectiveMount: UIStageSurfaceMount | undefined =
+            kind === "stageSurface" ? normalizeUIStageSurfaceMount(stageMount) : undefined;
 
         if (kind === "stageSurface" && host !== "player") {
             throw new RendererError("Game UI must be hosted by player");
@@ -1553,9 +1547,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (kind === "appSurface" && host !== "app") {
             throw new RendererError("Pages must be hosted by app");
         }
-        if (kind === "stageSurface") {
+        // A slot holds exactly one surface, so asking for one that exists hands back the existing
+        // one. An element-mounted surface is not a singleton — a project may have any number of
+        // avatar frames — so nothing is deduplicated there.
+        const requestedSlotId = stageMountSlotId(effectiveMount);
+        if (kind === "stageSurface" && requestedSlotId) {
             const existing = this.getDocument().surfaces.find(surface =>
-                surface.kind === "stageSurface" && surface.mount.slotId === effectiveMount?.slotId
+                surface.kind === "stageSurface" && stageMountSlotId(surface.mount) === requestedSlotId
             );
             if (existing) {
                 return existing;
@@ -1588,9 +1586,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                   };
 
         const rootElement = this.createRootElement(rootElementId, designSize);
+        // Only a slot has a starter layout worth seeding — a dialogue box, a choice list. An
+        // element-mounted surface is whatever its author draws, so it opens empty.
         const stageTemplate =
-            kind === "stageSurface" && effectiveMount
-                ? this.createStageSlotTemplate(effectiveMount.slotId, rootElement, designSize)
+            kind === "stageSurface" && requestedSlotId
+                ? this.createStageSlotTemplate(requestedSlotId, rootElement, designSize)
                 : null;
         const templateElements = stageTemplate?.elements ?? {};
 
@@ -1906,7 +1906,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             this.getDocument().surfaces
                 .filter((surface): surface is UISurface & { kind: "stageSurface"; mount: UIStageSurfaceMount } =>
                     surface.kind === "stageSurface")
-                .map(surface => surface.mount.slotId),
+                .map(surface => stageMountSlotId(surface.mount))
+                .filter((slotId): slotId is UIStageSlotId => slotId !== null),
         );
 
         const importedSurfaces: UISurface[] = [];

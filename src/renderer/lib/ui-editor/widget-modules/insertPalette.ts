@@ -1,6 +1,7 @@
 import { widgetModuleRegistry } from "./registryInstance";
 import type { UIWidgetModule } from "./types";
 import type { UIStageSlotId, UISurface, UISurfaceKind } from "@shared/types/ui-editor/document";
+import { stageMountSlotId } from "@shared/types/ui-editor/stageSlots";
 
 export type InsertPalettePlacement = "primary" | "overflow";
 
@@ -48,7 +49,7 @@ function surfaceKindForFilter(surface: InsertPaletteSurfaceFilter): UISurfaceKin
 function stageSlotForFilter(surface: InsertPaletteSurfaceFilter): UIStageSlotId | undefined {
     return typeof surface === "string" || !surface || surface.kind !== "stageSurface"
         ? undefined
-        : surface.mount.slotId;
+        : stageMountSlotId(surface.mount) ?? undefined;
 }
 
 export function resolveInsertPaletteEntries(

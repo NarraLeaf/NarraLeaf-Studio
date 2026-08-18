@@ -9,6 +9,11 @@ export function collectStageDiagnostics(surface: UISurface): UISurfaceDiagnostic
     if (surface.kind !== "stageSurface") {
         return out;
     }
+    if (surface.mount.kind === "element") {
+        // An element-mounted surface names no slot; where it is drawn is decided by the story row
+        // that puts it on stage, which is the story's diagnostic to make, not this one.
+        return out;
+    }
     if (!isUIStageSlotId(surface.mount.slotId)) {
         // Built per call, not once at module load: the list is read in whatever locale the author is
         // in when the diagnostic surfaces.

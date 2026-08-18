@@ -531,6 +531,20 @@ export type StoryActionPayload =
            * Additive, like `puppetName` above: no document written before this carries it.
            */
           params?: Record<string, number>;
+          /**
+           * Show this character *through a frame* — an element-mounted Game UI surface the author
+           * drew — instead of as a bare sprite.
+           *
+           * Read when the character reaches the stage and never afterwards: the frame is the stage
+           * element's own identity (a `Puppet` whose `src` cannot change under a live backend), so a
+           * row that names a different one for a character already on stage is a diagnostic rather
+           * than a silent swap. Showing the same character both ways at once is done the way two of
+           * anything is done on this stage — with two {@link objectName}s.
+           *
+           * Additive: no document written before this carries it, so no schema bump — the same rule
+           * `puppetName` and `params` were added under.
+           */
+          frameSurfaceId?: string;
           /** `setName` — the label shown from this row on. Empty is legal: some reveals hide the name again. */
           displayName?: string;
           transition?: StoryTransitionRef;

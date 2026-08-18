@@ -33,10 +33,37 @@ export type UISurfaceKind = "appSurface" | "stageSurface";
 
 export type UIStageSlotId = "onStage" | "dialog" | "notification" | "choice" | "nvl";
 
-export type UIStageSurfaceMount = {
-    kind: "slot";
-    slotId: UIStageSlotId;
-};
+/**
+ * Which feature a surface belongs to, when it is not one of the author's own pages.
+ *
+ * These surfaces are *implicit project assets*: a feature asks for one, it appears under that
+ * feature's group in the interface list, and it is addressed by id from wherever it is used. The
+ * author never creates one from a blank sheet the way they create a Page, and it is never hidden
+ * from them either — this tag is what lets one list show every one of them, grouped, without a
+ * second registry beside the document.
+ */
+export type UISurfaceOwnerKind = "stageAvatar";
+
+/**
+ * Where a Game UI surface is drawn.
+ *
+ * `slot` is the original answer and still the only one for the five Game UI singletons: one
+ * full-screen node in a fixed place, one surface per slot.
+ *
+ * `element` is a surface drawn *inside a stage element's box* — the engine owns where it sits, its
+ * layer, its transform and its entry in a saved game, and the surface paints the inside. That is the
+ * puppet seam, so it costs the engine nothing; what it costs here is that such a surface is not a
+ * singleton (a story may put several on stage at once) and therefore has no slot to be found by.
+ */
+export type UIStageSurfaceMount =
+    | {
+          kind: "slot";
+          slotId: UIStageSlotId;
+      }
+    | {
+          kind: "element";
+          owner: UISurfaceOwnerKind;
+      };
 
 export type UIAppSurface = {
     id: UISurfaceId;

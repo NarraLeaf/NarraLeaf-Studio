@@ -3,6 +3,7 @@ import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-ed
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import { Services } from "../services";
 import { UIDocumentService } from "./UIDocumentService";
+import { stageMountSlotId } from "@shared/types/ui-editor/stageSlots";
 
 /** Minimal harness: a UIDocumentService wired to stub Uuid + LocalBlueprint
  * services, seeded with a fresh empty document (one main app surface). */
@@ -156,7 +157,7 @@ describe("UIDocumentService.importTemplateBundle", () => {
 
         const imported = result.importedSurfaces[0];
         expect(imported.kind).toBe("stageSurface");
-        expect(imported.kind === "stageSurface" ? imported.mount.slotId : null).toBe("dialog");
+        expect(imported.kind === "stageSurface" ? stageMountSlotId(imported.mount) : null).toBe("dialog");
     });
 
     it("skips a surface whose target stage slot is already occupied", () => {

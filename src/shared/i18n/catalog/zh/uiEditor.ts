@@ -14,6 +14,12 @@ export const uiEditor = {
         choice: "选项",
         nvl: "NVL",
     },
+    surfaceOwner: {
+        stageAvatar: "舞台头像",
+    },
+    surfaceOwnerDescription: {
+        stageAvatar: "把角色画在里面的框，由故事行摆到舞台上",
+    },
     stageSlotDescription: {
         onStage: "游戏运行期间始终可用",
         dialog: "主要的对话或旁白界面",

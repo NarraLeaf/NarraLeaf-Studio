@@ -24,6 +24,7 @@ import { SurfaceBackgroundImageField } from "../fields/SurfaceBackgroundImageFie
 import { PageAnimationEditor } from "@/lib/ui-editor/widget-modules/shared/page-animation/PageAnimationEditor";
 import { normalizeUIPageAnimationSettings, type UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 import type { Translator } from "@shared/i18n";
+import { isElementMount, stageMountSlotId } from "@shared/types/ui-editor/stageSlots";
 
 /** Translator function, threaded into schema builders since they run outside React. */
 type TranslateFn = Translator["t"];
@@ -48,7 +49,8 @@ const getGameUiSlotLabel = (surface: UISurface, t: TranslateFn): string => {
     if (!isGameUi(surface)) {
         return "-";
     }
-    return getStageSlotLabel(surface.mount.slotId, t);
+    const slotId = stageMountSlotId(surface.mount);
+    return slotId ? getStageSlotLabel(slotId, t) : "-";
 };
 
 function SurfacePageAnimationField({ data }: CustomFieldProps<SceneEditorContext>) {
@@ -166,7 +168,7 @@ export const scenePropertySchema = (t: TranslateFn) =>
             type: "select",
             label: t("properties.scene.slot"),
             options: getStageSlotOptions(t),
-            getValue: data => (isGameUi(data.surface) ? data.surface.mount.slotId : DEFAULT_GAME_UI_SLOT_ID),
+            getValue: data => (isGameUi(data.surface) ? stageMountSlotId(data.surface.mount) ?? DEFAULT_GAME_UI_SLOT_ID : DEFAULT_GAME_UI_SLOT_ID),
             setValue: (data, value) => {
                 if (!isGameUi(data.surface)) {
                     return;
@@ -176,7 +178,7 @@ export const scenePropertySchema = (t: TranslateFn) =>
                     if (surface.kind !== "stageSurface") {
                         return;
                     }
-                    if (surface.mount.slotId === nextSlot) {
+                    if (stageMountSlotId(surface.mount) === nextSlot) {
                         return;
                     }
                     surface.mount = {
@@ -185,7 +187,7 @@ export const scenePropertySchema = (t: TranslateFn) =>
                     };
                 });
             },
-            hidden: data => !isGameUi(data.surface),
+            hidden: data => !isGameUi(data.surface) || isElementMount((data.surface as UIStageSurface).mount),
         }),
         defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({
             id: "scene.blueprintEntry",

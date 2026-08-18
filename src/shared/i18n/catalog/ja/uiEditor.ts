@@ -16,6 +16,12 @@ export const uiEditor = {
         choice: "選択肢",
         nvl: "NVL",
     },
+    surfaceOwner: {
+        stageAvatar: "ステージアバター",
+    },
+    surfaceOwnerDescription: {
+        stageAvatar: "キャラクターを内側に描く枠。ストーリー行がステージに配置します",
+    },
     stageSlotDescription: {
         onStage: "ゲームが動いている間はいつでも使える",
         dialog: "会話と地の文の主役になるインターフェース",

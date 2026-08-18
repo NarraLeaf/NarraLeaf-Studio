@@ -135,6 +135,7 @@ import {
     type StoryPlaybackStop,
 } from "./storyPlaybackWalk";
 import type { ScriptCtx } from "narraleaf-react";
+import { STAGE_SURFACE_BACKEND_NAME, stageSurfaceSrc } from "@shared/utils/stageSurfaceBackend";
 import {
     compileStoryActionBlueprintToScript,
     collectSceneStoryActionFns,
@@ -489,6 +490,8 @@ export type CompiledSceneElements = {
     layers: Map<string, Layer>;
     /** Puppet-kind characters, keyed by the same stage name their image-backed siblings use. */
     puppets: Map<string, Puppet>;
+    /** Stage names whose element is an author-drawn frame rather than a sprite. */
+    stageSurfaces: Map<string, Puppet>;
     /**
      * Named sounds this scene's compile built, keyed by the name the sound-control family addresses
      * them by - `bgm` for the music channel, the derived object name for a `/sound`.
@@ -696,6 +699,8 @@ type SceneCompileContext = {
     texts: Map<string, Text>;
     /** Puppet-kind characters. A separate map because a `Puppet` is not an `Image` and shares no API with one. */
     puppets: Map<string, Puppet>;
+    /** Stage names whose element is an author-drawn frame rather than a sprite. */
+    stageSurfaces: Map<string, Puppet>;
     layers: Map<string, Layer>;
     videos: Map<string, Video>;
     vfx: Map<string, Vfx>;
@@ -937,6 +942,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             images: new Map(),
             texts: new Map(),
             puppets: new Map(),
+            stageSurfaces: new Map(),
             layers: new Map(),
             videos: new Map(),
             vfx: new Map(),
@@ -979,7 +985,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         }
         const statements = await compileBlockList(ctx, scene.rootBlockIds);
         nlrScene.action([...seeds, ...statements] as unknown as Parameters<Scene["action"]>[0]);
-        sceneElements[scene.id] = { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets, sounds: ctx.sounds };
+        sceneElements[scene.id] = { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets, stageSurfaces: ctx.stageSurfaces, sounds: ctx.sounds };
     }
 
     // Row-precise launch: the story enters through a one-shot pre-posed scene that arrives at the
@@ -1150,6 +1156,7 @@ async function buildLaunchEntryScene(params: {
         images: new Map(),
         texts: new Map(),
         puppets: new Map(),
+        stageSurfaces: new Map(),
         layers: new Map(),
         videos: new Map(),
         vfx: new Map(),
@@ -1378,6 +1385,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         images: new Map(),
         texts: new Map(),
         puppets: new Map(),
+        stageSurfaces: new Map(),
         layers: new Map(),
         videos: new Map(),
         vfx: new Map(),
@@ -1547,7 +1555,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         diagnostics,
         characters: ctx.characters,
         avatarAssetIdByUrl: ctx.avatarAssetIdByUrl,
-        sceneElements: { [scene.id]: { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets, sounds: ctx.sounds } },
+        sceneElements: { [scene.id]: { images: ctx.images, texts: ctx.texts, layers: ctx.layers, puppets: ctx.puppets, stageSurfaces: ctx.stageSurfaces, sounds: ctx.sounds } },
         playbackStop,
     };
 }
@@ -2841,6 +2849,28 @@ async function compileCharacterStageAction(
         return compileCharacterPuppetAction(ctx, block, payload, name, characterAppearance);
     }
 
+    // A character shown through a frame: the stage element is the author's surface, and the
+    // character's own Image stays behind it as the state holder — unshown, but posed, because that
+    // is what `/face` writes to and what the widgets inside the frame read. Later rows carry no
+    // `frameSurfaceId`, so the stage name is what remembers.
+    const framed = payload.frameSurfaceId
+        ? getStageSurfaceElement(ctx, name, {
+              surfaceId: payload.frameSurfaceId,
+              characterId: payload.characterId,
+              size: null,
+          })
+        : ctx.stageSurfaces.get(normalizeObjectName(name)) ?? null;
+    if (framed && payload.operation === "exit") {
+        const chain = compileDisplayableOperation(framed, "hide", payload.transform ?? { preset: "fadeOut", durationMs: 250 }, ctx, block.id);
+        if (chain) statements.push(recordStatement(ctx, chain, block));
+        return statements;
+    }
+    if (framed && payload.operation === "move") {
+        const chain = compileDisplayableOperation(framed, "transform", payload.transform, ctx, block.id);
+        if (chain) statements.push(recordStatement(ctx, chain, block));
+        return statements;
+    }
+
     // Runtime state on a character Studio draws itself: there is no backend to ask, and the row was
     // authored against the wrong character rather than being a no-op worth swallowing.
     if (payload.operation === "setMotion" || payload.operation === "setSkin" || payload.operation === "setParams") {
@@ -2879,8 +2909,12 @@ async function compileCharacterStageAction(
             : payload.tags ?? {};
         const tags = Object.values(selection);
         if (payload.operation === "enter") {
-            const chain = image.char(tags as never).show(createShowTransform(payload.transform, ctx, block.id) as any);
+            // Framed: the sprite is posed but never shown — what enters is the frame.
+            const chain = framed
+                ? image.char(tags as never)
+                : image.char(tags as never).show(createShowTransform(payload.transform, ctx, block.id) as any);
             statements.push(recordStatement(ctx, chain, block));
+            pushFrameShow(ctx, statements, framed, payload, block);
             return statements;
         }
         if (tags.length === 0) {
@@ -2906,8 +2940,11 @@ async function compileCharacterStageAction(
         // An entering character has no prior image to transition from, so `enter` never uses a
         // transition - its entrance is driven entirely by the show transform. (A transition only
         // applies to `expression`, which swaps a visible character's source.)
-        const chain = image.char(src as any).show(createShowTransform(payload.transform, ctx, block.id) as any);
+        const chain = framed
+            ? image.char(src as any)
+            : image.char(src as any).show(createShowTransform(payload.transform, ctx, block.id) as any);
         statements.push(recordStatement(ctx, chain, block));
+        pushFrameShow(ctx, statements, framed, payload, block);
         return statements;
     }
 
@@ -2988,6 +3025,61 @@ async function compileCharacterPuppetAction(
  * null when the character names no model - the engine's `src` is required, and an empty one would
  * reach a backend as a resource descriptor pointing at nothing.
  */
+/**
+ * The scene's element-mounted **surface** for a stage name, created on first use.
+ *
+ * A frame is a `Puppet` whose backend is Studio's own (`nl.surface`), so everything a story already
+ * does to a stage object reaches it unchanged — placement, movement, layers, show/hide transitions
+ * and, above all, a saved game, because the element is an engine element. Nothing about the surface
+ * is serialised: a load rebuilds the element from the compiled story and the backend re-mounts the
+ * surface from the document, which is why a frame must be able to paint itself from the game's own
+ * state rather than from anything it accumulated while it was up.
+ *
+ * Memoised per stage name for the reason a puppet is: `src` cannot change under a live backend
+ * instance, so which frame a stage object wears is decided by the row that first put it there.
+ */
+function getStageSurfaceElement(
+    ctx: SceneCompileContext,
+    objectName: string,
+    input: { surfaceId: string; characterId?: string; size: { width: number; height: number } | null },
+): Puppet {
+    const key = normalizeObjectName(objectName);
+    const existing = ctx.puppets.get(key);
+    if (existing) {
+        return existing;
+    }
+    const puppet = new Puppet({
+        backend: STAGE_SURFACE_BACKEND_NAME,
+        src: stageSurfaceSrc(input.surfaceId),
+        // null is the engine's own default and means the stage size.
+        size: input.size,
+        options: {
+            objectName: key,
+            ...(input.characterId ? { characterId: input.characterId } : {}),
+        },
+    });
+    setStableElementId(ctx.elementIdBindings, puppet, `nl:surface:${ctx.scene.id}:${key}`);
+    ctx.stageSurfaces.set(key, puppet);
+    return puppet;
+}
+
+/** The frame's own entrance, emitted after the sprite behind it has been posed. */
+function pushFrameShow(
+    ctx: SceneCompileContext,
+    statements: NlrStatement[],
+    framed: Puppet | null,
+    payload: Extract<StoryActionPayload, { action: "character" }>,
+    block: StoryBlock,
+): void {
+    if (!framed) {
+        return;
+    }
+    const chain = compileDisplayableOperation(framed, "show", payload.transform, ctx, block.id);
+    if (chain) {
+        statements.push(recordStatement(ctx, chain, block));
+    }
+}
+
 async function getPuppetElement(
     ctx: SceneCompileContext,
     objectName: string,
@@ -2999,10 +3091,7 @@ async function getPuppetElement(
     if (existing) {
         return existing;
     }
-    // SPIKE (2026-08-17): a character drawn by Studio's own surface backend has no model asset —
-    // what it draws is a Game UI surface named in `options.surfaceId`.
-    const isSurfaceBackend = appearance.backend === "nl.surface";
-    if (!appearance.assetId && !isSurfaceBackend) {
+    if (!appearance.assetId) {
         diagnostic(ctx, "warning", blockId, `Puppet character "${objectName}" has no model asset.`);
         return null;
     }
@@ -3013,14 +3102,12 @@ async function getPuppetElement(
     // The bundle's entry file. Studio resolves the asset and stops there: which siblings a model
     // pulls in is knowable only after parsing this one, and the engine does that arithmetic itself
     // (`PuppetMountContext.resolveSibling`) against exactly this URL.
-    const bundleUrl = isSurfaceBackend
-        ? `uidoc:${String((appearance.options as Record<string, unknown> | undefined)?.surfaceId ?? "")}`
-        : await resolveAsset(ctx, appearance.assetId!, "model", blockId);
+    const bundleUrl = await resolveAsset(ctx, appearance.assetId, "model", blockId);
     if (!bundleUrl) {
         diagnostic(ctx, "warning", blockId, `Puppet model not found for ${objectName}.`);
         return null;
     }
-    const src = (!isSurfaceBackend && appearance.entry) ? resolveBundleEntry(bundleUrl, appearance.entry) : bundleUrl;
+    const src = appearance.entry ? resolveBundleEntry(bundleUrl, appearance.entry) : bundleUrl;
     const puppet = new Puppet({
         backend: appearance.backend,
         src,

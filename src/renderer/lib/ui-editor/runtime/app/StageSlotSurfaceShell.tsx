@@ -187,8 +187,15 @@ export function useStageSlotSurfaceRuntime(input: {
     options: GameUiSlotHostOptions;
     surface: UIStageSurface;
     slotId: UIStageSlotId;
+    /**
+     * Scope this surface's runtime state under something other than its slot.
+     *
+     * An element-mounted surface has no slot and is not a singleton, so it brings its own scope
+     * (see `stageElementRuntimeScopeId`). Left unset, the slot rule applies unchanged.
+     */
+    runtimeScopeIdOverride?: string;
 }): StageSlotSurfaceRuntime {
-    const { options, surface, slotId } = input;
+    const { options, surface, slotId, runtimeScopeIdOverride } = input;
     const {
         sessionId,
         core,
@@ -198,8 +205,8 @@ export function useStageSlotSurfaceRuntime(input: {
         widgetPatchesByScopeRef,
     } = options;
     const runtimeScopeId = useMemo(
-        () => stageSlotRuntimeScopeId(sessionId, slotId, surface.id),
-        [sessionId, slotId, surface.id],
+        () => runtimeScopeIdOverride ?? stageSlotRuntimeScopeId(sessionId, slotId, surface.id),
+        [runtimeScopeIdOverride, sessionId, slotId, surface.id],
     );
     const hostAdapterRef = useRef<UIHostAdapter | null>(null);
     const document = bundle.ui.uidoc;

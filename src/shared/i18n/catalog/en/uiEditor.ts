@@ -15,6 +15,14 @@ export const uiEditor = {
         choice: "Choice",
         nvl: "NVL",
     },
+    // Features that own element-mounted surfaces. The author meets these as groups in the
+    // interface list rather than as slots, because such a surface is placed by a story row.
+    surfaceOwner: {
+        stageAvatar: "Stage avatar",
+    },
+    surfaceOwnerDescription: {
+        stageAvatar: "A frame a character is drawn inside, placed on stage by a story line.",
+    },
     stageSlotDescription: {
         onStage: "Always available while the game is running.",
         dialog: "The main conversation or narration interface.",

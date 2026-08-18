@@ -33,6 +33,7 @@ import {
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS,
     BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
 } from "@shared/types/blueprint/graph";
+import { stageMountSlotId } from "@shared/types/ui-editor/stageSlots";
 
 function ownerKeyForTest(owner: BlueprintOwnerRef): string {
     switch (owner.kind) {
@@ -216,7 +217,7 @@ describe("UIDocumentService surface creation", () => {
         expect(page.settings?.pageAnimation?.exitBlocking).toBe(false);
         expect(gameUi.settings?.pageAnimation).toBeUndefined();
         expect(gameUi.settings?.backgroundColor).toBe("transparent");
-        expect(gameUi.kind === "stageSurface" ? gameUi.mount.slotId : null).toBe("onStage");
+        expect(gameUi.kind === "stageSurface" ? stageMountSlotId(gameUi.mount) : null).toBe("onStage");
     });
 
     it("creates Dialog Game UI with slot mount and decoupled dialog template", () => {
@@ -239,7 +240,7 @@ describe("UIDocumentService surface creation", () => {
         const children = stack.childrenIds.map(id => doc.elements[id]!.type);
 
         expect(root.childrenIds).toHaveLength(2);
-        expect(dialog.mount.slotId).toBe("dialog");
+        expect(stageMountSlotId(dialog.mount)).toBe("dialog");
         expect(dialog.settings?.backgroundColor).toBe("transparent");
         expect(interactionLayer.type).toBe("nl.container");
         expect(interactionLayer.layout).toMatchObject({ x: 0, y: 0, width: 1280, height: 720 });
@@ -373,7 +374,7 @@ describe("UIDocumentService surface creation", () => {
         const itemContainer = doc.elements[list.childrenIds[0]!]!;
         const itemText = doc.elements[itemContainer.childrenIds[0]!]!;
 
-        expect(notification.mount.slotId).toBe("notification");
+        expect(stageMountSlotId(notification.mount)).toBe("notification");
         expect(list.type).toBe("nl.notification.list");
         expect(list.props).toMatchObject({ itemKeyPath: "id", itemGap: 12 });
         expect(itemContainer.type).toBe("nl.container");
@@ -406,7 +407,7 @@ describe("UIDocumentService surface creation", () => {
         const itemContainer = doc.elements[list.childrenIds[0]!]!;
         const itemText = doc.elements[itemContainer.childrenIds[0]!]!;
 
-        expect(choice.mount.slotId).toBe("choice");
+        expect(stageMountSlotId(choice.mount)).toBe("choice");
         expect(list.type).toBe("nl.choice.list");
         expect(list.props).toMatchObject({ itemKeyPath: "index", itemGap: 16 });
         expect(itemContainer.extra?.listSlot).toBe("itemTemplate");
@@ -447,7 +448,7 @@ describe("UIDocumentService surface creation", () => {
         const nametag = doc.elements[list.childrenIds[0]!]!;
         const texts = doc.elements[list.childrenIds[1]!]!;
 
-        expect(nvl.mount.slotId).toBe("nvl");
+        expect(stageMountSlotId(nvl.mount)).toBe("nvl");
         expect(interactionLayer.type).toBe("nl.container");
         expect(list.type).toBe("nl.nvl.list");
         expect(nametag.type).toBe("nl.text");
@@ -493,7 +494,7 @@ describe("UIDocumentService surface creation", () => {
         const doc = service.getDocument();
         const root = doc.elements[onStage.rootElementId]!;
 
-        expect(onStage.mount.slotId).toBe("onStage");
+        expect(stageMountSlotId(onStage.mount)).toBe("onStage");
         expect(onStage.settings?.backgroundColor).toBe("transparent");
         expect(root.childrenIds).toEqual([]);
     });
@@ -515,7 +516,7 @@ describe("UIDocumentService surface creation", () => {
         });
 
         const dialogSurfaces = service.getDocument().surfaces.filter(surface =>
-            surface.kind === "stageSurface" && surface.mount.slotId === "dialog"
+            surface.kind === "stageSurface" && stageMountSlotId(surface.mount) === "dialog"
         );
         expect(second.id).toBe(first.id);
         expect(dialogSurfaces).toHaveLength(1);
@@ -595,7 +596,7 @@ describe("UIDocumentService surface creation", () => {
         const slots = new Map(
             migrated.surfaces
                 .filter((surface): surface is UIStageSurface => surface.kind === "stageSurface")
-                .map(surface => [surface.id, surface.mount.slotId]),
+                .map(surface => [surface.id, stageMountSlotId(surface.mount)]),
         );
         expect(migrated.schemaVersion).toBe(UI_DOCUMENT_SCHEMA_VERSION);
         expect(slots.get("legacy-menu")).toBe("choice");

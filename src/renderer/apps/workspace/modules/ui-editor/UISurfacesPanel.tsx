@@ -56,6 +56,7 @@ import { getStageSlotLabel } from "@/lib/ui-editor/stageSlotLabel";
 import type { EditorLayout, EditorTabDefinition } from "../../registry/types";
 import { getEditorSurfaceAreaBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPaletteRevision";
+import { stageMountSlotId } from "@shared/types/ui-editor/stageSlots";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const BLUEPRINT_ENTRY_TAB_PREFIX = "blueprint-entry:";
@@ -178,7 +179,8 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         return new Set(
             surfaces
                 .filter((surface): surface is UIStageSurface => surface.kind === "stageSurface")
-                .map(surface => surface.mount.slotId),
+                .map(surface => stageMountSlotId(surface.mount))
+                .filter((slotId): slotId is UIStageSlotId => slotId !== null),
         );
     }, [surfaces]);
     const disabledStageSlotIds = useMemo<UIStageSlotId[]>(
