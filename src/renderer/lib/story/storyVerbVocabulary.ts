@@ -1,3 +1,4 @@
+import { isMirrorTransform } from "@shared/story/transformProps";
 import type { StoryActionPayload } from "@shared/types/story";
 import type { TranslationKey } from "@shared/i18n";
 
@@ -137,7 +138,7 @@ export function storyVerbCommandId(payload: StoryActionPayload): CommandId | nul
             // only by the preset it carries, so the preset decides which word the row reads back as.
             // A row that says `/transform hero` when its author typed `/mirror hero` is the second
             // vocabulary this table exists to delete.
-            return payload.operation === "transform" && payload.transform?.preset === "flip"
+            return payload.operation === "transform" && isMirrorTransform(payload.transform)
                 ? "mirror"
                 : DISPLAYABLE[payload.operation] ?? null;
         case "audio":

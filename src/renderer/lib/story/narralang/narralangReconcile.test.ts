@@ -118,7 +118,7 @@ const hostile: StoryScene = scene([
             action: "displayable",
             operation: "show",
             target: { kind: "image", name: "bird", sourceBlockId: "n4" },
-            transform: { preset: "fadeIn", durationMs: 300 },
+            transform: { to: { opacity: 1 }, durationMs: 300 },
         },
     },
     { id: "n-var", kind: "declaration", payload: { scope: "scene", name: "trust", valueType: "number", defaultValue: 0, storageKey: "n-var" } },
