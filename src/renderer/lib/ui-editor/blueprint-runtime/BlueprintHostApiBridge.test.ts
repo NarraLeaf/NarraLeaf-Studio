@@ -1698,9 +1698,10 @@ describe("createDevModeBlueprintHostApi language", () => {
         return { hostApi, scope };
     }
 
-    it("stores the language before telling the host about it", async () => {
-        // The order the restart depends on: the host may end the process from inside this call, and
-        // the boot that replaces it reads the stored language to know what to come back in.
+    it("hands the whole change to the host, store included", async () => {
+        // The host owns the write because one of the answers a project can give is "not this
+        // session": a language kept for the next launch must not reach the key this session reads.
+        // So the bridge must not have written one before the host is asked.
         const seen: Array<string | undefined> = [];
         const { hostApi, scope } = createLanguageHostApi(code => {
             seen.push(code);
@@ -1709,8 +1710,9 @@ describe("createDevModeBlueprintHostApi language", () => {
 
         await hostApi.localization.setLocale("ja");
 
-        expect(seen).toEqual(["ja", "ja"]);
-        expect(await hostApi.localization.getLocale()).toBe("ja");
+        expect(seen).toEqual(["ja", undefined]);
+        // And the bridge does not write one afterwards either - the host is the only writer.
+        expect(scope.persistenceGet(LOCALE_STORAGE_KEY)).toBeUndefined();
     });
 
     it("waits for the host before the node moves on", async () => {
@@ -1727,7 +1729,7 @@ describe("createDevModeBlueprintHostApi language", () => {
         expect(settled).toBe(true);
     });
 
-    it("still changes the language on a host that wants no say in it", async () => {
+    it("stores the language itself on a host that wants no say in it", async () => {
         // The editor preview, and every host that has no game a language could be inconsistent with.
         const { hostApi } = createLanguageHostApi();
 

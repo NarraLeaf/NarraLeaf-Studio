@@ -190,9 +190,10 @@ export const project = {
         saveResumeScene: "尝试恢复到场景",
         saveForce: "强制载入",
         languageInGameTitle: "游戏进行中切换语言",
-        languageInGameDescription: "在标题画面切换时，两种设置的表现相同",
-        languageRestart: "重启并回到原处",
-        languageNextScene: "从下一个场景开始生效",
+        languageInGameDescription: "在标题画面切换时，三种设置都立即生效",
+        languageResume: "重启应用并回到原处",
+        languageRestart: "重启应用，不保留当前进度",
+        languageNextLaunch: "下次启动时应用",
     },
     preferences: {
         // 挂在小标题上的一句话，不再是页首的一段话。原先那段里其余的内容，要么行本身就写着，

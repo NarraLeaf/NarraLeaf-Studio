@@ -4,7 +4,7 @@
  * One row, and there is no second one, because the question only exists while a game is running. On
  * a title screen the language simply changes, and no setting could make that untrue.
  *
- * Its own group rather than a row under Saving, even though one of the two answers writes a save:
+ * Its own group rather than a row under Saving, even though one of the three answers writes a save:
  * what is being decided here is what the player gets, not when the game writes one.
  */
 
@@ -52,10 +52,12 @@ export function ProjectLanguageSection({
         }
     }, [onConfigChange, policy, projectService, saving, uiService]);
 
-    // Ordered by how much of the game ends up in the new language, so the list reads as a scale.
+    // Ordered by how much of the playthrough the player keeps, most to least, so the list reads as
+    // a scale rather than as three unrelated answers.
     const options = useMemo<SelectOption[]>(() => [
+        { value: "resume", label: t("project.game.languageResume") },
         { value: "restart", label: t("project.game.languageRestart") },
-        { value: "nextScene", label: t("project.game.languageNextScene") },
+        { value: "nextLaunch", label: t("project.game.languageNextLaunch") },
     ], [t]);
 
     return (

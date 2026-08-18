@@ -214,9 +214,10 @@ export const project = {
         // the row is named for the moment rather than for the setting, and each answer says what
         // the player gets rather than what the game does to get there.
         languageInGameTitle: "Changing language during a game",
-        languageInGameDescription: "On a title screen the language changes either way.",
-        languageRestart: "Restart and continue where they were",
-        languageNextScene: "Apply from the next scene",
+        languageInGameDescription: "On a title screen the language changes immediately, whichever is set.",
+        languageResume: "Restart and continue where they were",
+        languageRestart: "Restart without keeping the playthrough",
+        languageNextLaunch: "Apply the next time the game is started",
     },
     // The Player defaults group: the value each player setting starts at. Every one of these is
     // still the player's to change while they play, and what they change is kept, so the wording

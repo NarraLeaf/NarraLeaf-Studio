@@ -195,8 +195,13 @@ describe("bundleAssembler language change configuration", () => {
     });
 
     it("bakes the author's answer into the bundle", async () => {
-        const projectPath = await createProject({ inGame: "nextScene" });
-        expect(await loadLanguageChangeConfiguration(projectPath)).toEqual({ inGame: "nextScene" });
+        const projectPath = await createProject({ inGame: "nextLaunch" });
+        expect(await loadLanguageChangeConfiguration(projectPath)).toEqual({ inGame: "nextLaunch" });
+    });
+
+    it("carries the restart-without-saving answer too", async () => {
+        const projectPath = await createProject({ inGame: "restart" });
+        expect(await loadLanguageChangeConfiguration(projectPath)).toEqual({ inGame: "restart" });
     });
 
     it("reads anything it does not recognise as the default", async () => {
