@@ -2911,26 +2911,21 @@ function compileCameraAction(
             return [recordStatement(ctx, camera.filter(resolved, { duration: 0 }), block)];
         }
         case "reset":
-            // ⚠ CLEARING A GRADE STILL SWEEPS, and this zero-duration clear does NOT stop it —
-            // measured in Dev Mode over the moonlight grade, the hue still unwinds 185° over the
-            // reset's own duration. Do not read the line below as a fix; it is left in because it is
-            // harmless and because the next person needs to know it was tried.
+            // Ending a grade used to walk the picture through the colour wheel — blue, cyan, green,
+            // olive on the way out of the moonlight look — because `resetCamera` packed
+            // `filter: "none"` into the same transform as the pose and eased the two together.
             //
-            // `Camera.resetCamera` packs `filter: "none"` into the SAME transform as the pose, so the
-            // filter is eased along with the pan and zoom. Dropping it first in its own statement
-            // does not survive: both land in one tick, so the renderer sees a single style diff from
-            // the grade to neutral and animates the whole of it. Building the pose transform by hand
-            // WITHOUT a `filter` prop was tried too and changes nothing, which points at the merged
-            // TransformState rather than at what this file emits.
+            // **That is fixed in the engine, not here** (narraleaf-react 0.28.1: `resetCamera` now
+            // drops the filter in a zero-duration sequence and eases only the pose). Studio tried to
+            // paper over it from this side twice — a zero-duration `clearFilter` emitted first, and a
+            // hand-built pose transform carrying no `filter` prop — and neither worked, because both
+            // statements land in one tick and the renderer sees a single style diff either way. The
+            // attempts are gone; this note is what is left of them, so nobody re-tries either.
             //
-            // The fix therefore belongs in the engine — either a `clearFilter` that truly commits
-            // before the next transform reads the element, or a `resetCamera` that leaves the filter
-            // out of the eased set. Until then a grade is best ended by cutting the scene or hiding
-            // the change behind a `/blink`.
-            return [
-                recordStatement(ctx, camera.clearFilter({ duration: 0 }), block),
-                recordStatement(ctx, camera.resetCamera(duration, easing), block),
-            ];
+            // `package.json` still allows `^0.28.0`, so a tree resolved to plain 0.28.0 will show the
+            // sweep again. That is a dependency floor to raise at the next engine release, not
+            // something to work around here.
+            return [recordStatement(ctx, camera.resetCamera(duration, easing), block)];
         case "motion": {
             // A whole keyframed shot rather than one settled pose. `Camera` is a `Displayable`, so it
             // takes the same `Transform` a sprite does, built by the same function `/transform` uses -
