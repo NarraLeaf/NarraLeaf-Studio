@@ -132,7 +132,14 @@ export function storyVerbCommandId(payload: StoryActionPayload): CommandId | nul
         case "layer": return LAYER[payload.operation] ?? null;
         case "video": return VIDEO[payload.operation] ?? null;
         case "vfx": return VFX[payload.operation] ?? null;
-        case "displayable": return DISPLAYABLE[payload.operation] ?? null;
+        case "displayable":
+            // The mute/unmute case again: `/mirror` and `/transform` build the same payload and differ
+            // only by the preset it carries, so the preset decides which word the row reads back as.
+            // A row that says `/transform hero` when its author typed `/mirror hero` is the second
+            // vocabulary this table exists to delete.
+            return payload.operation === "transform" && payload.transform?.preset === "flip"
+                ? "mirror"
+                : DISPLAYABLE[payload.operation] ?? null;
         case "audio":
             // One payload, two verbs: `/mute` and `/unmute` both store `muteSound` and differ only by
             // the flag. Naming both "Mute" would misread half of them, so the flag decides.

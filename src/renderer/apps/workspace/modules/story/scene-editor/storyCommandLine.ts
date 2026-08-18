@@ -945,9 +945,25 @@ function displayableSentence(
 ): Sentence | null {
     const label = resolveDisplayableTargetRef(lookups.scene, payload.target).label || undefined;
     if (payload.operation === "transform") {
+        // A mirrored row reads its own word (`storyVerbCommandId`), so it prints its own second slot:
+        // the state, off the sign of the scale it wrote. Never a toggle - the stored transform is
+        // static, so the row states which way the sprite ends up facing, exactly as the line does.
+        const state = payload.transform?.preset === "flip"
+            ? positional("state", Number(payload.transform.props?.scaleX ?? -1) < 0 ? "on" : "off", { enum: true })
+            : null;
         return {
             commandId,
-            args: [positional("target", label), arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) })],
+            args: [
+                positional("target", label),
+                state,
+                // A mirror animates on its TRANSFORM's duration (it is a scale, not an effect); every
+                // other transform row keeps reading the effect timing it always did.
+                arg("d", seconds(state ? payload.transform?.durationMs : payload.durationMs), {
+                    apply: next => (state
+                        ? patchTransform(payload, { durationMs: msOf(next) })
+                        : { ...payload, durationMs: msOf(next) }),
+                }),
+            ],
         };
     }
     const direction = payload.operation === "show" ? "reveal" : "conceal";

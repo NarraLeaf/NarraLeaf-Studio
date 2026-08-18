@@ -95,6 +95,7 @@ export const storyInspector = {
         rotate: "Rotate",
         opacity: "Opacity",
         darken: "Darken",
+        flip: "Flip",
         circleReveal: "Circle reveal",
         circleClose: "Circle close",
         slideReveal: "Slide reveal",

@@ -1095,6 +1095,18 @@ export type StoryTransformPreset =
     | "zoom"
     | "scale"
     | "rotate"
+    /**
+     * Mirror the target horizontally — the sprite that faces both ways from one drawing.
+     *
+     * A sibling of `scale` rather than a channel of its own, because that is what it is in the
+     * engine: `Displayable.scale` documents "use negative value to invert the scale" and NLR maps
+     * the pair onto `scale(zoom*scaleX, zoom*scaleY)`, so a mirror IS `scaleX: -1`. Both presets
+     * therefore write the same field, and a transform holds one preset, so a row cannot ask to be
+     * mirrored and scaled by two different numbers at once.
+     *
+     * Additive: no document written before this carries it, so no schema bump.
+     */
+    | "flip"
     | "opacity"
     | "darken"
     | "circleReveal"

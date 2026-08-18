@@ -97,6 +97,7 @@ export const storyInspector = {
         rotate: "回転",
         opacity: "不透明度",
         darken: "暗くする",
+        flip: "左右反転",
         circleReveal: "円で開く",
         circleClose: "円で閉じる",
         slideReveal: "スライドで開く",

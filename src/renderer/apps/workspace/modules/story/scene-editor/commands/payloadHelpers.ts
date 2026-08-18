@@ -1,6 +1,6 @@
-import type { StoryActionPayload, StoryBlock, StoryTransformRef, StoryTransitionRef } from "@shared/types/story";
+import type { StoryActionPayload, StoryBlock, StoryDisplayableTargetRef, StoryTransformRef, StoryTransitionRef } from "@shared/types/story";
 import type { StoryCommandContext, StoryCommandStageObjectKind, StoryCommandValue } from "../storyCommandValues";
-import { asDurationMs, asEnum } from "./spec";
+import { asDurationMs, asEnum, asTarget } from "./spec";
 import { transformPresetFor, transitionKindFor } from "./transitions";
 
 /**
@@ -141,4 +141,30 @@ export function withRevealTransform(
         ...(preset !== undefined ? { preset } : {}),
         ...(durationMs !== undefined ? { durationMs } : {}),
     };
+}
+
+/**
+ * The displayable target ref a generic-effect block addresses — the resolved line target reduced to
+ * the name-plus-kind pair a `displayable` payload stores, which the inspector's binding resolves back.
+ *
+ * Shared because more than one command builds that payload from a target param, and the mapping is a
+ * rule rather than a formality: which kinds are Displayables at all is stated here once.
+ *
+ * (`specs/effects.ts` still carries a private twin of this, from before there was a second caller.
+ * Collapsing it onto this one is a one-line follow-up, left out here only to keep this change off a
+ * file another branch is editing.)
+ */
+export function displayableTargetRef(target: ReturnType<typeof asTarget>): StoryDisplayableTargetRef | undefined {
+    if (!target) {
+        return undefined;
+    }
+    if (target.type === "character") {
+        return { kind: "character", name: target.name };
+    }
+    // Audio, video and vfx are not Displayables and no caller's `accepts` list offers them; this arm
+    // exists to keep the function total, not because a line can reach it.
+    if (target.objectKind === "audio" || target.objectKind === "video" || target.objectKind === "vfx") {
+        return { name: target.name };
+    }
+    return { kind: target.objectKind, name: target.name };
 }
