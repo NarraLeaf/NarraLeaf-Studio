@@ -154,6 +154,13 @@ export function EditorNodeWrapper({
     const [resetMotionId, setResetMotionId] = useState<string | null>(null);
     const blueprintRuntime = hostAdapter?.blueprintRuntime;
     const enteredState = useEnteredElementState(element.id, useAppearanceInspectorPreview === true);
+    // Only the element the state was entered on says so; the broadcast below carries the state
+    // itself, not where it came from.
+    const isEnteredHere = enteredState?.own === true && interactive;
+    const broadcastState = useMemo(
+        () => (enteredState ? { variantId: enteredState.variantId } : null),
+        [enteredState],
+    );
     const appearance = (element.props as { appearance?: AppearanceModel | null } | undefined)?.appearance;
     const listScopedVariantId =
         typeof (element.extra as { runtimeVariantOverrideId?: unknown } | undefined)?.runtimeVariantOverrideId === "string"
@@ -637,11 +644,11 @@ export function EditorNodeWrapper({
     }, [displayableMotion, isResetPhase, runtimeElementKey, widgetRuntimeStore]);
 
     return (
-        <EnteredStateProvider value={enteredState}>
+        <EnteredStateProvider value={broadcastState}>
         <motion.div
             ref={containerRef}
             data-ui-element-id={interactive ? element.id : undefined}
-            className={`${interactive ? "ui-editor-node" : "ui-editor-node-preview"} ${isRoot ? "ui-editor-node-root" : ""}`}
+            className={`${interactive ? "ui-editor-node" : "ui-editor-node-preview"} ${isRoot ? "ui-editor-node-root" : ""} ${isEnteredHere ? "ui-editor-node-entered" : ""}`}
             style={motionStyle}
             initial={false}
             // Bind the controls unconditionally: the reset-to-base set() above must still reach

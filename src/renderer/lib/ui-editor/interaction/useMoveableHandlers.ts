@@ -32,6 +32,8 @@ import { createGestureDeadzone, type GestureDeadzone } from "./gestureDeadzone";
 import { applyLockedAspectToResizePreview } from "@/lib/ui-editor/layout/aspectRatioLock";
 import { isUIElementFlowLayoutChild, type UILayout } from "@shared/types/ui-editor/document";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
+import { commitLayoutPatches } from "./enteredStateLayoutCommit";
 import {
     collectSnapGuideLines,
     splitSnapLinesToAxes,
@@ -305,14 +307,21 @@ export function useMoveableHandlers({
         });
         if (Object.keys(patches).length > 0) {
             startTransition(() => {
-                documentService.updateElementLayouts(patches);
+                // A move made while a state is entered belongs to that state, not to the geometry the
+                // element keeps in every state.
+                commitLayoutPatches(
+                    documentService,
+                    UIEditorStateService.getInstance().getEnteredState(),
+                    patches,
+                    smartSnap?.surfaceId ?? null,
+                );
             });
         }
         clearPerformanceHints();
         clearSmartSnapGuides();
         scheduleMoveableRectUpdate();
         endTransform();
-    }, [clearPerformanceHints, clearSmartSnapGuides, documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform]);
+    }, [clearPerformanceHints, clearSmartSnapGuides, documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform, smartSnap]);
 
     const finalizeResize = useCallback(() => {
         const patches: Record<string, Partial<UILayout>> = {};
