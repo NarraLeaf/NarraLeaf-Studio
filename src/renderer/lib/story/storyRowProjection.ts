@@ -23,7 +23,7 @@ import {
 import { formatStorySecondsLabel, storyMsToSeconds } from "@shared/utils/storyTime";
 import { translate, translateCommand } from "@/lib/i18n";
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
-import { getStoryCameraLookPreset } from "@/apps/workspace/modules/story/scene-editor/cameraLookPresets";
+import { getStoryCameraLookPreset } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { getQuickParams, quickParamText, type QuickParam } from "./storyQuickParamsModel";
 import { storyVerbLabelKey } from "./storyVerbVocabulary";
 // Two pure tables that happen to live under the story editor: the command taxonomy (the colour unit)

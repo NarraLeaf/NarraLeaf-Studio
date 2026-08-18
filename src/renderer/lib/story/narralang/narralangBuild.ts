@@ -55,7 +55,7 @@ import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
 
 import { getPresetPosition } from "@/lib/ui-editor/runtime/game/storyTransformProps";
 import { transformPresetFor, transitionKindFor } from "@/apps/workspace/modules/story/scene-editor/commands/transitions";
-import { getStoryCameraLookPreset } from "@/apps/workspace/modules/story/scene-editor/cameraLookPresets";
+import { getStoryCameraLookPreset } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 
 import type {
     NarralangSlot,
