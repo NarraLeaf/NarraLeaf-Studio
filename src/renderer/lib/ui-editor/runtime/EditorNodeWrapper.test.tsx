@@ -18,6 +18,7 @@ vi.mock("motion/react", async () => {
                 children,
                 initial,
                 transition,
+                style,
                 ...props
             }: React.HTMLAttributes<HTMLDivElement> & {
                 animate?: unknown;
@@ -25,6 +26,18 @@ vi.mock("motion/react", async () => {
                 transition?: unknown;
             }) => ReactModule.createElement("div", {
                 ...props,
+                // Motion writes a motion value into the channel it names; the mock reads it back so
+                // the pose still shows up in the markup these tests assert on.
+                style: style
+                    ? Object.fromEntries(
+                          Object.entries(style).map(([key, value]) => [
+                              key,
+                              value && typeof value === "object" && typeof (value as { get?: unknown }).get === "function"
+                                  ? (value as { get: () => unknown }).get()
+                                  : value,
+                          ]),
+                      )
+                    : style,
                 "data-motion-animate": JSON.stringify(animate),
                 "data-motion-initial": JSON.stringify(initial),
                 "data-motion-transition": JSON.stringify(transition),
@@ -36,6 +49,25 @@ vi.mock("motion/react", async () => {
             start: () => Promise.resolve(),
             stop: () => undefined,
         }),
+        useMotionValue: (initial: number) => {
+            const ref = ReactModule.useRef<{ current: number; get(): number; set(next: number): void } | null>(null);
+            if (!ref.current) {
+                ref.current = {
+                    current: initial,
+                    get() {
+                        return this.current;
+                    },
+                    set(next: number) {
+                        this.current = next;
+                    },
+                };
+            }
+            return ref.current;
+        },
+        animate: (value: { set(next: number): void }, target: number) => {
+            value.set(target);
+            return { stop: () => undefined };
+        },
     };
 });
 
