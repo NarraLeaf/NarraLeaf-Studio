@@ -56,6 +56,9 @@ import {
 import { ElementStateBar } from "@/lib/ui-editor/widget-modules/shared/appearance/ElementStateBar";
 import { ElementAnimationField } from "@/lib/ui-editor/widget-modules/shared/page-animation/ElementAnimationField";
 import { ComponentParamsEditor, LinkedComponentParamsField } from "./ComponentParamsEditor";
+import { AssetSetInspector } from "./AssetSetInspector";
+import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
+import type { AssetSet, AssetSetCandidate } from "@shared/types/assetSet";
 import { StoryMotionKeyframeProperties } from "../story-motion/StoryMotionKeyframeProperties";
 import {
     STORY_MOTION_KEYFRAME_SELECTION_TYPE,
@@ -617,6 +620,16 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
     const [activeAsset, setActiveAsset] = useState<Asset | null>(null);
     const [activeCharacter, setActiveCharacter] = useState<Character | null>(null);
+    const [activeSetId, setActiveSetId] = useState<string | null>(null);
+    /**
+     * Bumped by the set service and by the asset library, and read only as a `useMemo` dependency.
+     *
+     * A counter rather than the values themselves: what this panel needs is "something changed, look
+     * again", and holding a copy of either would be a second answer to a question the services
+     * already own.
+     */
+    const [assetSetRevision, setAssetSetRevision] = useState(0);
+    const [assetLibraryRevision, setAssetLibraryRevision] = useState(0);
     const [assetMetadata, setAssetMetadata] = useState<AssetData<any> | null>(null);
     const [characterVersion, setCharacterVersion] = useState(0);
     const [uiSelection, setUISelection] = useState<UIElementSelection | null>(null);
@@ -635,6 +648,11 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     const assetsService = useMemo(() => {
         if (!context || !isInitialized) return null;
         return context.services.get<AssetsService>(Services.Assets);
+    }, [context, isInitialized]);
+
+    const assetSetService = useMemo(() => {
+        if (!context || !isInitialized) return null;
+        return context.services.get<AssetSetService>(Services.AssetSets);
     }, [context, isInitialized]);
 
     const serviceAssets = useMemo(() => {
@@ -735,6 +753,42 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     // The header states the context (which scene), the body states the subject (which row, via the
     // inspector's own heading). Restating the row here would put the same sentence on screen twice in
     // a 460px column.
+    /**
+     * The set the panel is showing, read back off the service every time it changes rather than
+     * taken from the selection.
+     *
+     * The selection carries the record as it was when the row was clicked, and every edit in this
+     * inspector rewrites that record - so drawing from the selection would show the author their
+     * first click for as long as they kept editing.
+     */
+    const activeSet = useMemo(
+        () => (activeSetId && assetSetService ? assetSetService.getSet(activeSetId) ?? null : null),
+        [activeSetId, assetSetService, assetSetRevision],
+    );
+
+    /**
+     * The library as resolution sees it, plus the names to print for a resolved variant.
+     *
+     * Rebuilt when the asset library changes rather than held: a set names its members by tag, so an
+     * import or a retag is exactly what makes a hole fill in, and a cached list would leave the
+     * inspector showing the hole.
+     */
+    const { setCandidates, setAssetNames } = useMemo(() => {
+        const candidates: AssetSetCandidate[] = [];
+        const names = new Map<string, string>();
+        if (!assetsService || !activeSet) {
+            return { setCandidates: candidates, setAssetNames: names as ReadonlyMap<string, string> };
+        }
+        const map = assetsService.getAssets();
+        for (const bucket of Object.values(map)) {
+            for (const asset of Object.values(bucket ?? {})) {
+                candidates.push({ id: asset.id, type: asset.type, tags: asset.tags });
+                names.set(asset.id, asset.name);
+            }
+        }
+        return { setCandidates: candidates, setAssetNames: names as ReadonlyMap<string, string> };
+    }, [assetsService, activeSet, assetLibraryRevision]);
+
     const panelTitle = storyMotionSelection
         ? t("properties.panel.motionKeyframe")
         : storyScene
@@ -747,6 +801,8 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         ? activeCharacter.profile.getProfile().name
         : activeAsset
         ? activeAsset.name
+        : activeSet
+        ? activeSet.name
         : t("properties.panel.title");
     const panelSubtitle = storyMotionSelection
         ? t("properties.panel.storyMotion")
@@ -758,7 +814,28 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         ? t("properties.panel.scene")
         : activeCharacter
         ? t("properties.panel.character")
+        : activeSet
+        ? t("assets.sets.itemType")
         : activeAsset?.type;
+
+    /**
+     * Both halves of what the set inspector draws.
+     *
+     * Subscribed only while a set is the subject: the asset library emits on every import, rename
+     * and retag in the project, and a panel showing a picture has no reason to re-run for any of it.
+     */
+    useEffect(() => {
+        if (!activeSetId || !assetSetService) return;
+        return assetSetService.onSetsChanged(() => setAssetSetRevision(revision => revision + 1));
+    }, [activeSetId, assetSetService]);
+
+    useEffect(() => {
+        if (!activeSetId || !assetsService) return;
+        const bump = () => setAssetLibraryRevision(revision => revision + 1);
+        const events = assetsService.getEvents();
+        const unsubs = [events.on("updated", bump), events.on("deleted", bump)];
+        return () => unsubs.forEach(unsub => unsub());
+    }, [activeSetId, assetsService]);
 
     // Listen to selection changes
     useEffect(() => {
@@ -780,6 +857,12 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             setStoryMotionSelection(motionSelection);
             setStorySelection(story);
             setActiveAsset(!motionSelection && !story && selection.type === "asset" ? (selection.data as Asset) : null);
+            // Only the id: the record itself is read back off the service, see `activeSet`.
+            setActiveSetId(
+                !motionSelection && !story && selection.type === "assetSet"
+                    ? (selection.data as AssetSet).id
+                    : null,
+            );
             setActiveCharacter(!motionSelection && !story && selection.type === "character" ? (selection.data as Character) : null);
             setAssetMetadata(null);
             setUISelection(!motionSelection && !story && isUIElementSelection(selection) ? (selection.data as UIElementSelection) : null);
@@ -1199,6 +1282,18 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             return <PropertyEditor schema={assetSchema} data={assetContext} />;
         }
 
+        // Asset set editor
+        if (activeSet && assetSetService) {
+            return (
+                <AssetSetInspector
+                    set={activeSet}
+                    candidates={setCandidates}
+                    assetNames={setAssetNames}
+                    service={assetSetService}
+                />
+            );
+        }
+
         return null;
     };
 
@@ -1214,7 +1309,8 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         && !activeComponentDefinition
         && !sceneEditorContext
         && !activeCharacter
-        && !activeAsset;
+        && !activeAsset
+        && !activeSet;
     if (isEmpty) {
         return (
             <div className="nl-editor-surface flex h-full min-h-0 items-center justify-center p-6 text-center text-xs text-fg-subtle">

@@ -37,6 +37,16 @@ export const lint = {
             // 两个数字都写进句子：这个文件多大，以及工程定的是多少，这样不用打开设置页也能处理。
             message: "{asset} 有 {size}，超过了构建应携带的 {limit}",
         },
+        assetsGroupIncomplete: {
+            title: "资产集未完成",
+            description: "资产集声明的变体中，有变体没有恰好对应一个文件",
+            // 变体按组成它的标签写出来，因为把这些标签写到文件上就是解决办法。
+            // 不写会解析到的文件名：那个文件还不存在。
+            message: "{set} 的 {variant} 没有对应文件",
+            messageAmbiguous: "{set} 的 {variant} 对应了 {count} 个文件",
+            messageResidency: "{set} 的 {axis} 在运行时解析，却嵌在构建时解析的 {outerAxis} 里",
+            messageDeclaration: "{set} 没有声明可解析的变体",
+        },
         portabilityAssetName: {
             title: "文件名不安全",
             description: "含有部分文件系统不接受的字符或保留名",

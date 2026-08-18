@@ -4,6 +4,8 @@ import { Upload, Link, FolderPlus, RefreshCw } from "lucide-react";
 import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import { useAssetsPanelContext } from "../AssetsPanelContext";
+import { AssetSetListRow } from "../components/AssetSetRow";
+import type { ResolvedAssetSet } from "../state/useAssetSets";
 import { AssetSupportBadge } from "../components/AssetSupportBadge";
 import { ASSET_CATEGORY_ICONS, ASSET_TYPE_ICONS } from "../constants";
 import { useTranslation } from "@/lib/i18n";
@@ -36,7 +38,7 @@ export function AssetsListView({
 }: AssetsListViewProps) {
     const { t, tn } = useTranslation();
     const freeze = useFreezeGuard();
-    const { filteredAssets, filteredGroups, draggedItem, showContextMenu } = useAssetsPanelContext();
+    const { filteredAssets, filteredGroups, assetSets, draggedItem, showContextMenu } = useAssetsPanelContext();
 
     const hasAnyItems = useMemo(() => Object.values(filteredAssets).some(list => list.length > 0) || Object.values(filteredGroups).some(list => list.length > 0), [filteredAssets, filteredGroups]);
 
@@ -46,6 +48,7 @@ export function AssetsListView({
                 const CategoryIcon = ASSET_CATEGORY_ICONS[category];
                 const categoryAssets = filteredAssets[category];
                 const categoryGroups = filteredGroups[category];
+                const categorySets = assetSets[category];
 
                 return (
                     <AccordionItem
@@ -125,8 +128,11 @@ export function AssetsListView({
                         >
                             {/* An empty category prints nothing. The accordion header's import buttons
                                 are the way in; announcing the absence is not information. */}
-                            {(categoryAssets.length > 0 || categoryGroups.length > 0) && (
+                            {(categoryAssets.length > 0 || categoryGroups.length > 0 || categorySets.length > 0) && (
                                 <div className="py-1">
+                                    {/* Above the folders: a set is what a reference points at, and the
+                                        files it resolves to are filed below in the ordinary way. */}
+                                    {categorySets.map(entry => <AssetSetItem key={entry.set.id} entry={entry} />)}
                                     {categoryGroups.filter(g => !g.parentGroupId).map(group => <GroupItem key={group.id} group={group} category={category} level={0} />)}
                                     {categoryAssets.filter(a => !a.groupId).map(asset => <AssetItem key={asset.id} asset={asset} category={category} level={0} />)}
                                 </div>
@@ -139,6 +145,22 @@ export function AssetsListView({
                 <div className="px-3 py-4 text-center text-xs text-fg-subtle">{t("assets.list.emptyFiltered")}</div>
             )}
         </Accordion>
+    );
+}
+
+function AssetSetItem({ entry }: { entry: ResolvedAssetSet }) {
+    const { handleAssetSetSelect, showAssetSetContextMenu } = useAssetsPanelContext();
+    return (
+        <AssetSetListRow
+            entry={entry}
+            level={0}
+            // A set is not part of the library's multi-selection: nothing that acts on marked rows
+            // (copy, export, delete bytes) means anything for a set, so it is never one of them.
+            selected={false}
+            focused={false}
+            onSelect={() => handleAssetSetSelect(entry)}
+            onContextMenu={event => showAssetSetContextMenu(event, entry)}
+        />
     );
 }
 

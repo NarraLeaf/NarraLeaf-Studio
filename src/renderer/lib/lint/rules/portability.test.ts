@@ -21,7 +21,7 @@ function runRule(id: LintRuleId, ctx: LintContext): Promise<LintFinding[]> {
 }
 
 function asset(id: string, name: string, overrides: Partial<LintAssetEntry> = {}): LintAssetEntry {
-    return { id, type: AssetType.Image, name, ext: "png", meta: {}, ...overrides };
+    return { id, type: AssetType.Image, name, ext: "png", meta: {}, tags: [], ...overrides };
 }
 
 async function flaggedNames(assets: readonly LintAssetEntry[]): Promise<string[]> {
