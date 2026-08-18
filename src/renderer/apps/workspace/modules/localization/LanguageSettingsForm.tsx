@@ -22,85 +22,91 @@ import { useTranslation } from "@/lib/i18n";
 
 /** One language offered as a fallback, with whether picking it would close a loop. */
 export type FallbackCandidate = {
-    code: string;
-    displayName: string;
-    /** Following this language's own fallbacks leads back to the language being edited. */
-    loops: boolean;
+  code: string;
+  displayName: string;
+  /** Following this language's own fallbacks leads back to the language being edited. */
+  loops: boolean;
 };
 
 export type LanguageSettingsFormProps = {
-    /** The language being edited; also the display-name placeholder, since a blank name renders as the code. */
-    code: string;
-    initialDisplayName: string;
-    /** Empty string means no fallback. */
-    initialFallback: string;
-    candidates: readonly FallbackCandidate[];
-    onChange: (displayName: string, fallback: string) => void;
+  /** The language being edited; also the display-name placeholder, since a blank name renders as the code. */
+  code: string;
+  initialDisplayName: string;
+  /** Empty string means no fallback. */
+  initialFallback: string;
+  candidates: readonly FallbackCandidate[];
+  onChange: (displayName: string, fallback: string) => void;
 };
 
 export function LanguageSettingsForm({
-    code,
-    initialDisplayName,
-    initialFallback,
-    candidates,
-    onChange,
+  code,
+  initialDisplayName,
+  initialFallback,
+  candidates,
+  onChange
 }: LanguageSettingsFormProps) {
-    const { t } = useTranslation();
-    const [displayName, setDisplayName] = useState(initialDisplayName);
-    const [fallback, setFallback] = useState(initialFallback);
+  const { t } = useTranslation();
+  const [displayName, setDisplayName] = useState(initialDisplayName);
+  const [fallback, setFallback] = useState(initialFallback);
 
-    const changeDisplayName = useCallback((next: string) => {
-        setDisplayName(next);
-        onChange(next, fallback);
-    }, [onChange, fallback]);
+  const changeDisplayName = useCallback(
+    (next: string) => {
+      setDisplayName(next);
+      onChange(next, fallback);
+    },
+    [onChange, fallback]
+  );
 
-    const changeFallback = useCallback((next: string) => {
-        setFallback(next);
-        onChange(displayName, next);
-    }, [onChange, displayName]);
+  const changeFallback = useCallback(
+    (next: string) => {
+      setFallback(next);
+      onChange(displayName, next);
+    },
+    [onChange, displayName]
+  );
 
-    const fallbackOptions: SelectOption[] = [
-        { value: "", label: t("common.none") },
-        ...candidates.map(candidate => ({
-            value: candidate.code,
-            label: candidate.displayName,
-            secondaryLabel: candidate.loops
-                ? `${candidate.code} · ${t("workspace.localization.settings.fallbackLoops")}`
-                : candidate.code,
-            // The one already stored stays pickable even if it loops, so a configuration
-            // hand-edited into a loop can still be read back and corrected here.
-            disabled: candidate.loops && candidate.code !== initialFallback,
-        })),
-    ];
+  const fallbackOptions: SelectOption[] = [
+    { value: "", label: t("common.none") },
+    ...candidates.map((candidate) => ({
+      value: candidate.code,
+      label: candidate.displayName,
+      secondaryLabel: candidate.loops
+        ? `${candidate.code} · ${t("workspace.localization.settings.fallbackLoops")}`
+        : candidate.code,
+      // The one already stored stays pickable even if it loops, so a configuration
+      // hand-edited into a loop can still be read back and corrected here.
+      disabled: candidate.loops && candidate.code !== initialFallback
+    }))
+  ];
 
-    return (
-        <div className="flex flex-col gap-3">
-            <div>
-                <FieldLabel as="div">{t("workspace.localization.settings.displayNameLabel")}</FieldLabel>
-                <Input
-                    value={displayName}
-                    placeholder={code}
-                    onChange={event => changeDisplayName(event.target.value)}
-                    onKeyDown={event => event.stopPropagation()}
-                    aria-label={t("workspace.localization.settings.displayNameLabel")}
-                    fullWidth
-                    autoFocus
-                />
-            </div>
-            <div>
-                <FieldLabel as="div">{t("workspace.localization.settings.fallbackLabel")}</FieldLabel>
-                <Select
-                    options={fallbackOptions}
-                    value={fallback}
-                    onChange={value => changeFallback(String(value))}
-                    ariaLabel={t("workspace.localization.settings.fallbackLabel")}
-                    fullWidth
-                    portalMenu
-                />
-                <p className="mt-1.5 text-xs leading-snug text-fg-subtle">
-                    {t("workspace.localization.settings.fallbackHint")}
-                </p>
-            </div>
-        </div>
-    );
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <FieldLabel as="div">{t("workspace.localization.settings.displayNameLabel")}</FieldLabel>
+        <Input
+          value={displayName}
+          placeholder={code}
+          onChange={(event) => changeDisplayName(event.target.value)}
+          onKeyDown={(event) => event.stopPropagation()}
+          aria-label={t("workspace.localization.settings.displayNameLabel")}
+          fullWidth
+          autoFocus
+        />
+      </div>
+      <div>
+        <FieldLabel as="div">{t("workspace.localization.settings.fallbackLabel")}</FieldLabel>
+        <Select
+          options={fallbackOptions}
+          value={fallback}
+          onChange={(value) => changeFallback(String(value))}
+          ariaLabel={t("workspace.localization.settings.fallbackLabel")}
+          fullWidth
+          portalMenu
+        />
+        <p className="mt-1.5 text-xs leading-snug text-fg-subtle">
+          {t("workspace.localization.settings.fallbackHint")}
+        </p>
+      </div>
+    </div>
+  );
 }

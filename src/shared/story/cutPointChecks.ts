@@ -1,8 +1,8 @@
 import {
-    listSceneBlocksInDocumentOrder,
-    listScenesInDocumentOrder,
-    type StoryDocument,
-    type StorySceneId,
+  listSceneBlocksInDocumentOrder,
+  listScenesInDocumentOrder,
+  type StoryDocument,
+  type StorySceneId
 } from "@shared/types/story";
 import { collectCutPoints, type CutPointSite } from "./appTagFold";
 import { reachableSceneIds } from "./storyReachability";
@@ -33,23 +33,23 @@ import { reachableSceneIds } from "./storyReachability";
 
 /** A fork whose branches disagree about whether this variant ends there. */
 export type UncutForkSite = {
-    storyId: string;
-    storyName: string;
-    /** The scene the routes part at. What an author opens to see both of them. */
-    sceneId: StorySceneId;
-    sceneName: string;
-    /** How many of its branches never reach a cut point naming this variant. */
-    uncutBranches: number;
+  storyId: string;
+  storyName: string;
+  /** The scene the routes part at. What an author opens to see both of them. */
+  sceneId: StorySceneId;
+  sceneName: string;
+  /** How many of its branches never reach a cut point naming this variant. */
+  uncutBranches: number;
 };
 
 /** Every cut point naming this variant that would take no shipped content with it. */
 export function collectInertCutPoints(document: StoryDocument, appTagId: string): CutPointSite[] {
-    return collectCutPoints(document).filter(cut => cut.appTagId === appTagId && !cut.removes);
+  return collectCutPoints(document).filter((cut) => cut.appTagId === appTagId && !cut.removes);
 }
 
 /** Every cut point naming this variant, inert ones included. */
 export function collectVariantCutPoints(document: StoryDocument, appTagId: string): CutPointSite[] {
-    return collectCutPoints(document).filter(cut => cut.appTagId === appTagId);
+  return collectCutPoints(document).filter((cut) => cut.appTagId === appTagId);
 }
 
 /**
@@ -66,48 +66,50 @@ export function collectVariantCutPoints(document: StoryDocument, appTagId: strin
  * would make every branch reach the whole story and no fork ever disagree.
  */
 export function collectUncutForks(document: StoryDocument, appTagId: string): UncutForkSite[] {
-    const cutScenes = new Set(collectVariantCutPoints(document, appTagId).map(cut => cut.sceneId));
-    if (cutScenes.size === 0) {
-        // Nothing to disagree with. A variant that cuts nowhere in this story is not a fork problem.
-        return [];
-    }
-    // Entry seed removed rather than the traversal reimplemented; see the note above.
-    const fromBranch: StoryDocument = { ...document, entrySceneId: undefined };
-    const found: UncutForkSite[] = [];
+  const cutScenes = new Set(collectVariantCutPoints(document, appTagId).map((cut) => cut.sceneId));
+  if (cutScenes.size === 0) {
+    // Nothing to disagree with. A variant that cuts nowhere in this story is not a fork problem.
+    return [];
+  }
+  // Entry seed removed rather than the traversal reimplemented; see the note above.
+  const fromBranch: StoryDocument = { ...document, entrySceneId: undefined };
+  const found: UncutForkSite[] = [];
 
-    for (const scene of listScenesInDocumentOrder(document)) {
-        const targets: StorySceneId[] = [];
-        const blocks = listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => Boolean(block.disabled) });
-        for (const block of blocks) {
-            const target = block.kind === "jump" ? block.payload.targetSceneId : undefined;
-            // Distinct targets the document actually has: two rows jumping to the same scene are one
-            // route, and a jump to a scene that is gone is not a route at all.
-            if (target && document.scenes?.[target] && !targets.includes(target)) {
-                targets.push(target);
-            }
-        }
-        if (targets.length < 2) {
-            continue;
-        }
-        let cutBranches = 0;
-        let uncutBranches = 0;
-        for (const target of targets) {
-            const reach = reachableSceneIds(fromBranch, { entrySceneIds: [target], fallback: "none" });
-            if ([...reach].some(sceneId => cutScenes.has(sceneId))) {
-                cutBranches += 1;
-            } else {
-                uncutBranches += 1;
-            }
-        }
-        if (cutBranches > 0 && uncutBranches > 0) {
-            found.push({
-                storyId: document.id,
-                storyName: document.name,
-                sceneId: scene.id,
-                sceneName: scene.name,
-                uncutBranches,
-            });
-        }
+  for (const scene of listScenesInDocumentOrder(document)) {
+    const targets: StorySceneId[] = [];
+    const blocks = listSceneBlocksInDocumentOrder(scene, {
+      skipSubtree: (block) => Boolean(block.disabled)
+    });
+    for (const block of blocks) {
+      const target = block.kind === "jump" ? block.payload.targetSceneId : undefined;
+      // Distinct targets the document actually has: two rows jumping to the same scene are one
+      // route, and a jump to a scene that is gone is not a route at all.
+      if (target && document.scenes?.[target] && !targets.includes(target)) {
+        targets.push(target);
+      }
     }
-    return found;
+    if (targets.length < 2) {
+      continue;
+    }
+    let cutBranches = 0;
+    let uncutBranches = 0;
+    for (const target of targets) {
+      const reach = reachableSceneIds(fromBranch, { entrySceneIds: [target], fallback: "none" });
+      if ([...reach].some((sceneId) => cutScenes.has(sceneId))) {
+        cutBranches += 1;
+      } else {
+        uncutBranches += 1;
+      }
+    }
+    if (cutBranches > 0 && uncutBranches > 0) {
+      found.push({
+        storyId: document.id,
+        storyName: document.name,
+        sceneId: scene.id,
+        sceneName: scene.name,
+        uncutBranches
+      });
+    }
+  }
+  return found;
 }

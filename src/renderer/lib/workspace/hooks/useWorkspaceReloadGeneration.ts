@@ -17,24 +17,26 @@ import type { WorkspaceReloadService } from "@/lib/workspace/services/core/Works
  * constant key is exactly right in that case, because nothing has been reloaded.
  */
 export function useWorkspaceReloadGeneration(context: WorkspaceContext | null): number {
-    const reloadService = (() => {
-        try {
-            return context ? context.services.get<WorkspaceReloadService>(Services.WorkspaceReload) : null;
-        } catch {
-            return null;
-        }
-    })();
-    const [generation, setGeneration] = useState(() => reloadService?.getGeneration() ?? 0);
+  const reloadService = (() => {
+    try {
+      return context
+        ? context.services.get<WorkspaceReloadService>(Services.WorkspaceReload)
+        : null;
+    } catch {
+      return null;
+    }
+  })();
+  const [generation, setGeneration] = useState(() => reloadService?.getGeneration() ?? 0);
 
-    useEffect(() => {
-        if (!reloadService) {
-            return;
-        }
-        // Read once on subscribe as well: a reload that finished between the first render and this
-        // effect would otherwise leave the tabs keyed on a generation that is already behind.
-        setGeneration(reloadService.getGeneration());
-        return reloadService.onReloaded(() => setGeneration(reloadService.getGeneration()));
-    }, [reloadService]);
+  useEffect(() => {
+    if (!reloadService) {
+      return;
+    }
+    // Read once on subscribe as well: a reload that finished between the first render and this
+    // effect would otherwise leave the tabs keyed on a generation that is already behind.
+    setGeneration(reloadService.getGeneration());
+    return reloadService.onReloaded(() => setGeneration(reloadService.getGeneration()));
+  }, [reloadService]);
 
-    return generation;
+  return generation;
 }

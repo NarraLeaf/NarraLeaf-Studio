@@ -1,10 +1,10 @@
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { IPCMessageType } from "@shared/types/ipc";
 import type {
-    AvailableSpellcheckDictionary,
-    InstalledSpellcheckDictionary,
-    SpellcheckRange,
-    SpellcheckStatus,
+  AvailableSpellcheckDictionary,
+  InstalledSpellcheckDictionary,
+  SpellcheckRange,
+  SpellcheckStatus
 } from "@shared/types/spellcheck";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
@@ -24,25 +24,25 @@ import { IPCHandler } from "./IPCHandler";
 
 /** Take this window's project: the language of its script, and the words it spells on purpose. */
 export class SpellcheckConfigureHandler extends IPCHandler<IPCEventType.spellcheckConfigure> {
-    readonly name = IPCEventType.spellcheckConfigure;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.spellcheckConfigure;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        data: IPCEvents[IPCEventType.spellcheckConfigure]["data"],
-    ): Promise<RequestStatus<SpellcheckStatus>> {
-        return this.tryUse(() => window.getApp().getSpellcheckManager().configure(window, data));
-    }
+  public async handle(
+    window: AppWindow,
+    data: IPCEvents[IPCEventType.spellcheckConfigure]["data"]
+  ): Promise<RequestStatus<SpellcheckStatus>> {
+    return this.tryUse(() => window.getApp().getSpellcheckManager().configure(window, data));
+  }
 }
 
 /** Forget this window's project words. Sent when a workspace closes or switches project. */
 export class SpellcheckClearHandler extends IPCHandler<IPCEventType.spellcheckClear> {
-    readonly name = IPCEventType.spellcheckClear;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.spellcheckClear;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<void>> {
-        return this.tryUse(() => window.getApp().getSpellcheckManager().clear(window));
-    }
+  public async handle(window: AppWindow): Promise<RequestStatus<void>> {
+    return this.tryUse(() => window.getApp().getSpellcheckManager().clear(window));
+  }
 }
 
 /**
@@ -52,12 +52,12 @@ export class SpellcheckClearHandler extends IPCHandler<IPCEventType.spellcheckCl
  * project's language or which languages have a dictionary installed.
  */
 export class SpellcheckStatusHandler extends IPCHandler<IPCEventType.spellcheckStatus> {
-    readonly name = IPCEventType.spellcheckStatus;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.spellcheckStatus;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<SpellcheckStatus>> {
-        return this.tryUse(() => window.getApp().getSpellcheckManager().getStatus());
-    }
+  public async handle(window: AppWindow): Promise<RequestStatus<SpellcheckStatus>> {
+    return this.tryUse(() => window.getApp().getSpellcheckManager().getStatus());
+  }
 }
 
 /**
@@ -67,48 +67,52 @@ export class SpellcheckStatusHandler extends IPCHandler<IPCEventType.spellcheckS
  * caller built the string and is the only thing that can map them back.
  */
 export class SpellcheckCheckHandler extends IPCHandler<IPCEventType.spellcheckCheck> {
-    readonly name = IPCEventType.spellcheckCheck;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.spellcheckCheck;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { text, language }: IPCEvents[IPCEventType.spellcheckCheck]["data"],
-    ): Promise<RequestStatus<{ ranges: SpellcheckRange[] }>> {
-        return this.tryUse(() => window.getApp().getSpellcheckManager().check(window, text, language));
-    }
+  public async handle(
+    window: AppWindow,
+    { text, language }: IPCEvents[IPCEventType.spellcheckCheck]["data"]
+  ): Promise<RequestStatus<{ ranges: SpellcheckRange[] }>> {
+    return this.tryUse(() => window.getApp().getSpellcheckManager().check(window, text, language));
+  }
 }
 
 /** Replacements for one misspelling, nearest first, at most five. */
 export class SpellcheckSuggestHandler extends IPCHandler<IPCEventType.spellcheckSuggest> {
-    readonly name = IPCEventType.spellcheckSuggest;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.spellcheckSuggest;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { word, language }: IPCEvents[IPCEventType.spellcheckSuggest]["data"],
-    ): Promise<RequestStatus<{ suggestions: string[] }>> {
-        return this.tryUse(() => window.getApp().getSpellcheckManager().suggest(word, language));
-    }
+  public async handle(
+    window: AppWindow,
+    { word, language }: IPCEvents[IPCEventType.spellcheckSuggest]["data"]
+  ): Promise<RequestStatus<{ suggestions: string[] }>> {
+    return this.tryUse(() => window.getApp().getSpellcheckManager().suggest(word, language));
+  }
 }
 
 /** The dictionaries on this machine. Reads the cache, so it never touches the network. */
 export class SpellcheckListInstalledHandler extends IPCHandler<IPCEventType.spellcheckListInstalled> {
-    readonly name = IPCEventType.spellcheckListInstalled;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.spellcheckListInstalled;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<{ languages: InstalledSpellcheckDictionary[] }>> {
-        return this.tryUse(() => window.getApp().getSpellcheckManager().listInstalled());
-    }
+  public async handle(
+    window: AppWindow
+  ): Promise<RequestStatus<{ languages: InstalledSpellcheckDictionary[] }>> {
+    return this.tryUse(() => window.getApp().getSpellcheckManager().listInstalled());
+  }
 }
 
 /** What the registry offers, with the licence each word list is published under. */
 export class SpellcheckListAvailableHandler extends IPCHandler<IPCEventType.spellcheckListAvailable> {
-    readonly name = IPCEventType.spellcheckListAvailable;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.spellcheckListAvailable;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<{ entries: AvailableSpellcheckDictionary[] }>> {
-        return this.tryUse(() => window.getApp().getSpellcheckManager().listAvailable());
-    }
+  public async handle(
+    window: AppWindow
+  ): Promise<RequestStatus<{ entries: AvailableSpellcheckDictionary[] }>> {
+    return this.tryUse(() => window.getApp().getSpellcheckManager().listAvailable());
+  }
 }
 
 /**
@@ -118,26 +122,26 @@ export class SpellcheckListAvailableHandler extends IPCHandler<IPCEventType.spel
  * `https:` by construction, and the bytes are refused unless their sha256 is the published one.
  */
 export class SpellcheckDownloadHandler extends IPCHandler<IPCEventType.spellcheckDownload> {
-    readonly name = IPCEventType.spellcheckDownload;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.spellcheckDownload;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { code }: IPCEvents[IPCEventType.spellcheckDownload]["data"],
-    ): Promise<RequestStatus<{ ok: boolean }>> {
-        return this.tryUse(() => window.getApp().getSpellcheckManager().download(code));
-    }
+  public async handle(
+    window: AppWindow,
+    { code }: IPCEvents[IPCEventType.spellcheckDownload]["data"]
+  ): Promise<RequestStatus<{ ok: boolean }>> {
+    return this.tryUse(() => window.getApp().getSpellcheckManager().download(code));
+  }
 }
 
 /** Delete one dictionary from the cache. */
 export class SpellcheckRemoveHandler extends IPCHandler<IPCEventType.spellcheckRemove> {
-    readonly name = IPCEventType.spellcheckRemove;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.spellcheckRemove;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { code }: IPCEvents[IPCEventType.spellcheckRemove]["data"],
-    ): Promise<RequestStatus<{ ok: boolean }>> {
-        return this.tryUse(() => window.getApp().getSpellcheckManager().remove(code));
-    }
+  public async handle(
+    window: AppWindow,
+    { code }: IPCEvents[IPCEventType.spellcheckRemove]["data"]
+  ): Promise<RequestStatus<{ ok: boolean }>> {
+    return this.tryUse(() => window.getApp().getSpellcheckManager().remove(code));
+  }
 }

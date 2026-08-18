@@ -14,19 +14,20 @@ import { validateMobileShellManifest, type MobileShellManifest } from "./mobileS
 import { MAX_PAYLOAD_BYTES, payloadExceedsLimit, runMobileRepack } from "./runMobileRepack";
 import { generateSigningIdentity } from "./signingIdentity";
 import {
-    ANDROID_KEYSTORE_ALIAS,
-    ANDROID_KEYSTORE_PASSWORD,
-    ANDROID_RELEASE_JKS_SHA256,
-    ANDROID_RELEASE_P12_SHA256,
-    ANDROID_RELEASE_P12_SUBJECT,
-    APPLE_IDENTITY_PASSWORD,
-    APPLE_PROFILE_BUNDLE_ID,
-    androidReleaseJks,
-    androidReleaseP12,
-    appleIdentityP12,
-    appleProvisioningProfile,
+  ANDROID_KEYSTORE_ALIAS,
+  ANDROID_KEYSTORE_PASSWORD,
+  ANDROID_RELEASE_JKS_SHA256,
+  ANDROID_RELEASE_P12_SHA256,
+  ANDROID_RELEASE_P12_SUBJECT,
+  androidReleaseJks,
+  androidReleaseP12
 } from "./signingFixtures";
-import { findMisalignedStoredEntries, parseZipIndex, readEntryBytes, ZIP_METHOD_STORE } from "./zipModel";
+import {
+  findMisalignedStoredEntries,
+  parseZipIndex,
+  readEntryBytes,
+  ZIP_METHOD_STORE
+} from "./zipModel";
 import type { GameBuildWorkerMobileJob } from "../protocol";
 
 /**
@@ -45,354 +46,386 @@ const MTIME = new Date(Date.UTC(2020, 0, 1));
 const tempDirs: string[] = [];
 
 afterEach(async () => {
-    await Promise.all(tempDirs.splice(0).map(dir => fs.rm(dir, { recursive: true, force: true })));
+  await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
 
 async function tempDir(prefix: string): Promise<string> {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-    tempDirs.push(dir);
-    return dir;
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
+  tempDirs.push(dir);
+  return dir;
 }
 
 async function readManifest(): Promise<MobileShellManifest> {
-    return validateMobileShellManifest(JSON.parse(await fs.readFile(path.join(TEMPLATE_DIR, "manifest.json"), "utf8")));
+  return validateMobileShellManifest(
+    JSON.parse(await fs.readFile(path.join(TEMPLATE_DIR, "manifest.json"), "utf8"))
+  );
 }
 
 /** A compiled-site stand-in: the files a real web export always has. */
 async function makeSiteDir(): Promise<string> {
-    const dir = await tempDir("nls-site-");
-    await fs.writeFile(path.join(dir, "index.html"), "<!doctype html><title>web variant</title>");
-    await fs.writeFile(path.join(dir, "web.js"), "/* bridge */");
-    await fs.writeFile(path.join(dir, "renderer.js"), "/* renderer */");
-    await fs.mkdir(path.join(dir, "assets"), { recursive: true });
-    await fs.writeFile(path.join(dir, "assets", "bgm.ogg"), Buffer.alloc(4096, 7));
-    await fs.mkdir(path.join(dir, "plugin-api"), { recursive: true });
-    await fs.writeFile(path.join(dir, "plugin-api", "runtime.js"), "export const x = 1;");
-    return dir;
+  const dir = await tempDir("nls-site-");
+  await fs.writeFile(path.join(dir, "index.html"), "<!doctype html><title>web variant</title>");
+  await fs.writeFile(path.join(dir, "web.js"), "/* bridge */");
+  await fs.writeFile(path.join(dir, "renderer.js"), "/* renderer */");
+  await fs.mkdir(path.join(dir, "assets"), { recursive: true });
+  await fs.writeFile(path.join(dir, "assets", "bgm.ogg"), Buffer.alloc(4096, 7));
+  await fs.mkdir(path.join(dir, "plugin-api"), { recursive: true });
+  await fs.writeFile(path.join(dir, "plugin-api", "runtime.js"), "export const x = 1;");
+  return dir;
 }
 
-async function makeJob(overrides: Partial<GameBuildWorkerMobileJob> = {}): Promise<GameBuildWorkerMobileJob> {
-    const templateManifest = await readManifest();
-    return {
-        sourceDir: await makeSiteDir(),
-        templateManifest,
-        productName: "My Game",
-        appDirBaseName: "My Game",
-        orientation: "landscape",
-        indexHtmlOverride: "<!doctype html><title>mobile variant</title>",
-        shellConfigJson: JSON.stringify({ schemaVersion: 1, orientation: "landscape", backgroundColor: "#000000" }),
-        android: {
-            templateApkPath: path.join(TEMPLATE_DIR, templateManifest.android.template),
-            outputs: { apk: "MyGame-1.2.3-android.apk", aab: "MyGame-1.2.3-android.aab" },
-            applicationId: "com.example.mygame",
-            versionName: "1.2.3",
-            versionCode: 1_002_003,
-            signingIdentity: generateSigningIdentity(),
-        },
-        ios: {
-            templateAppZipPath: path.join(TEMPLATE_DIR, templateManifest.ios.template),
-            outputName: "MyGame-1.2.3-ios.ipa",
-            bundleId: "com.example.mygame",
-            shortVersionString: "1.2.3",
-            bundleVersion: "1.2.3",
-        },
-        ...overrides,
-    };
+async function makeJob(
+  overrides: Partial<GameBuildWorkerMobileJob> = {}
+): Promise<GameBuildWorkerMobileJob> {
+  const templateManifest = await readManifest();
+  return {
+    sourceDir: await makeSiteDir(),
+    templateManifest,
+    productName: "My Game",
+    appDirBaseName: "My Game",
+    orientation: "landscape",
+    indexHtmlOverride: "<!doctype html><title>mobile variant</title>",
+    shellConfigJson: JSON.stringify({
+      schemaVersion: 1,
+      orientation: "landscape",
+      backgroundColor: "#000000"
+    }),
+    android: {
+      templateApkPath: path.join(TEMPLATE_DIR, templateManifest.android.template),
+      outputs: { apk: "MyGame-1.2.3-android.apk", aab: "MyGame-1.2.3-android.aab" },
+      applicationId: "com.example.mygame",
+      versionName: "1.2.3",
+      versionCode: 1_002_003,
+      signingIdentity: generateSigningIdentity()
+    },
+    ios: {
+      templateAppZipPath: path.join(TEMPLATE_DIR, templateManifest.ios.template),
+      outputName: "MyGame-1.2.3-ios.ipa",
+      bundleId: "com.example.mygame",
+      shortVersionString: "1.2.3",
+      bundleVersion: "1.2.3"
+    },
+    ...overrides
+  };
 }
 
 const logs: string[] = [];
 const log = (level: string, message: string) => void logs.push(`${level}: ${message}`);
 
 describe("runMobileRepack against the real shell templates", () => {
-    it("produces an installable APK carrying the game and the target identity", async () => {
-        const job = await makeJob();
-        const outputDir = await tempDir("nls-out-");
+  it("produces an installable APK carrying the game and the target identity", async () => {
+    const job = await makeJob();
+    const outputDir = await tempDir("nls-out-");
 
-        const artifacts = await runMobileRepack(job, outputDir, log, MTIME);
+    const artifacts = await runMobileRepack(job, outputDir, log, MTIME);
 
-        expect(artifacts).toContain(path.join(outputDir, "MyGame-1.2.3-android.apk"));
-        const apk = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+    expect(artifacts).toContain(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+    const apk = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
 
-        // The signature is what makes it installable at all; verify with the
-        // independent checker rather than trusting the signer's own word.
-        expect(verifyApkV2(apk)).toEqual(expect.objectContaining({ verified: true }));
+    // The signature is what makes it installable at all; verify with the
+    // independent checker rather than trusting the signer's own word.
+    expect(verifyApkV2(apk)).toEqual(expect.objectContaining({ verified: true }));
 
-        // Identity, read back out of the binary manifest.
-        const index = parseZipIndex(apk);
-        const manifestEntry = index.entries.find(entry => entry.name === "AndroidManifest.xml");
-        const axml = parseBinaryManifest(readEntryBytes(apk, manifestEntry!));
-        expect(axml.packageName).toBe("com.example.mygame");
-        expect(axml.label).toBe("My Game");
-        expect(axml.versionCode).toBe(1_002_003);
-        expect(axml.versionName).toBe("1.2.3");
+    // Identity, read back out of the binary manifest.
+    const index = parseZipIndex(apk);
+    const manifestEntry = index.entries.find((entry) => entry.name === "AndroidManifest.xml");
+    const axml = parseBinaryManifest(readEntryBytes(apk, manifestEntry!));
+    expect(axml.packageName).toBe("com.example.mygame");
+    expect(axml.label).toBe("My Game");
+    expect(axml.versionCode).toBe(1_002_003);
+    expect(axml.versionName).toBe("1.2.3");
 
-        // The resource table's package must be renamed in lockstep, or the app
-        // resolves resources against a package that no longer exists.
-        const arscEntry = index.entries.find(entry => entry.name === "resources.arsc")!;
-        expect(parseArscPackageNames(readEntryBytes(apk, arscEntry))).toEqual(["com.example.mygame"]);
+    // The resource table's package must be renamed in lockstep, or the app
+    // resolves resources against a package that no longer exists.
+    const arscEntry = index.entries.find((entry) => entry.name === "resources.arsc")!;
+    expect(parseArscPackageNames(readEntryBytes(apk, arscEntry))).toEqual(["com.example.mygame"]);
 
-        // API 30+ refuses to install unless resources.arsc is stored + aligned.
-        expect(arscEntry.method).toBe(ZIP_METHOD_STORE);
-        expect(findMisalignedStoredEntries(apk, 4)).toEqual([]);
+    // API 30+ refuses to install unless resources.arsc is stored + aligned.
+    expect(arscEntry.method).toBe(ZIP_METHOD_STORE);
+    expect(findMisalignedStoredEntries(apk, 4)).toEqual([]);
 
-        // The payload, under the manifest's declared root.
-        const { wwwRoot, shellConfigPath } = job.templateManifest.android;
-        const names = index.entries.map(entry => entry.name);
-        expect(names).toContain(`${wwwRoot}assets/bgm.ogg`);
-        expect(names).toContain(`${wwwRoot}plugin-api/runtime.js`);
-        expect(names).toContain(shellConfigPath);
+    // The payload, under the manifest's declared root.
+    const { wwwRoot, shellConfigPath } = job.templateManifest.android;
+    const names = index.entries.map((entry) => entry.name);
+    expect(names).toContain(`${wwwRoot}assets/bgm.ogg`);
+    expect(names).toContain(`${wwwRoot}plugin-api/runtime.js`);
+    expect(names).toContain(shellConfigPath);
 
-        // The mobile entry document replaces the web one.
-        const indexEntry = index.entries.find(entry => entry.name === `${wwwRoot}index.html`)!;
-        expect(readEntryBytes(apk, indexEntry).toString("utf8")).toContain("mobile variant");
+    // The mobile entry document replaces the web one.
+    const indexEntry = index.entries.find((entry) => entry.name === `${wwwRoot}index.html`)!;
+    expect(readEntryBytes(apk, indexEntry).toString("utf8")).toContain("mobile variant");
 
-        // Without a content key, the payload is plain: a known file's bytes come
-        // back verbatim and the package's own detector agrees.
-        const bgm = readEntryBytes(apk, index.entries.find(entry => entry.name === `${wwwRoot}assets/bgm.ogg`)!);
-        expect(Buffer.compare(bgm, Buffer.alloc(4096, 7))).toBe(0);
-        expect(isProtectedPayload(bgm)).toBe(false);
+    // Without a content key, the payload is plain: a known file's bytes come
+    // back verbatim and the package's own detector agrees.
+    const bgm = readEntryBytes(
+      apk,
+      index.entries.find((entry) => entry.name === `${wwwRoot}assets/bgm.ogg`)!
+    );
+    expect(Buffer.compare(bgm, Buffer.alloc(4096, 7))).toBe(0);
+    expect(isProtectedPayload(bgm)).toBe(false);
+  });
+
+  it("produces an AAB beside the APK, signed by the same identity", async () => {
+    const job = await makeJob();
+    const outputDir = await tempDir("nls-out-");
+
+    const artifacts = await runMobileRepack(job, outputDir, log, MTIME);
+
+    // Two packages out of one Android target - that is the shape the format
+    // decision buys, and the thing a second target would have prevented.
+    expect(artifacts).toContain(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+    expect(artifacts).toContain(path.join(outputDir, "MyGame-1.2.3-android.aab"));
+
+    const aab = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.aab"));
+    const apk = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+
+    // The bundle layout: proto resources, no binary leftovers. bundletool
+    // rejects a bundle carrying resources.arsc, and so should we.
+    const names = parseZipIndex(aab).entries.map((entry) => entry.name);
+    expect(names).toContain("BundleConfig.pb");
+    expect(names).toContain("base/manifest/AndroidManifest.xml");
+    expect(names).toContain("base/resources.pb");
+    expect(names).not.toContain("resources.arsc");
+    expect(names).not.toContain("AndroidManifest.xml");
+
+    // The payload lands under the bundle's assets root, not the APK's.
+    const { wwwRoot, shellConfigPath } = job.templateManifest.android;
+    expect(names).toContain(`base/${wwwRoot}assets/bgm.ogg`);
+    expect(names).toContain(`base/${shellConfigPath}`);
+
+    // Signed with the JAR scheme Play reads, by the same certificate that
+    // v2-signed the APK: one keystore, two encodings.
+    const jar = verifyJarSignature(aab);
+    expect(jar.verified).toBe(true);
+    expect(jar.certificateChainDer[0].toString("base64")).toBe(
+      job.android!.signingIdentity.certificateDerBase64
+    );
+    expect(verifyApkV2(apk).verified).toBe(true);
+  });
+
+  it("builds only the format that was asked for", async () => {
+    const job = await makeJob();
+    job.android!.outputs = { aab: "MyGame-1.2.3-android.aab" };
+    const outputDir = await tempDir("nls-out-");
+
+    const artifacts = await runMobileRepack(job, outputDir, log, MTIME);
+
+    expect(artifacts).toContain(path.join(outputDir, "MyGame-1.2.3-android.aab"));
+    expect(artifacts).not.toContain(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+    await expect(fs.access(path.join(outputDir, "MyGame-1.2.3-android.apk"))).rejects.toThrow();
+  });
+
+  it("protects every payload file under a content key, and leaves shell-config plain", async () => {
+    // A real key of the kind the packer hands the repack; the exact value
+    // does not matter here, only that the repack protects under it.
+    const contentKey = derivePackEncryptionKey(Buffer.alloc(32, 1), Buffer.alloc(16, 2));
+    const job = await makeJob({
+      contentKey,
+      // The manager writes the key into shell-config; mirror that here so
+      // the worker-level test reflects the real job it is handed.
+      shellConfigJson: JSON.stringify({
+        schemaVersion: 1,
+        orientation: "landscape",
+        backgroundColor: "#000000",
+        contentKey
+      })
     });
+    const outputDir = await tempDir("nls-out-");
+    await runMobileRepack(job, outputDir, log, MTIME);
+    const apk = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
 
-    it("produces an AAB beside the APK, signed by the same identity", async () => {
-        const job = await makeJob();
-        const outputDir = await tempDir("nls-out-");
+    const index = parseZipIndex(apk);
+    const { wwwRoot, shellConfigPath } = job.templateManifest.android;
 
-        const artifacts = await runMobileRepack(job, outputDir, log, MTIME);
+    // Every payload file under wwwRoot is protected (all-or-nothing): the
+    // package's own detector says so, checked with an independent parser
+    // reading the real entry bytes back out of the APK.
+    const wwwEntries = index.entries.filter(
+      (entry) => entry.name.startsWith(wwwRoot) && !entry.name.endsWith("/")
+    );
+    expect(wwwEntries.length).toBeGreaterThan(0);
+    for (const entry of wwwEntries) {
+      expect(isProtectedPayload(readEntryBytes(apk, entry))).toBe(true);
+    }
 
-        // Two packages out of one Android target - that is the shape the format
-        // decision buys, and the thing a second target would have prevented.
-        expect(artifacts).toContain(path.join(outputDir, "MyGame-1.2.3-android.apk"));
-        expect(artifacts).toContain(path.join(outputDir, "MyGame-1.2.3-android.aab"));
+    // A known plaintext file is not shipped as its plaintext.
+    const bgm = readEntryBytes(
+      apk,
+      index.entries.find((entry) => entry.name === `${wwwRoot}assets/bgm.ogg`)!
+    );
+    expect(Buffer.compare(bgm, Buffer.alloc(4096, 7))).not.toBe(0);
 
-        const aab = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.aab"));
-        const apk = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+    // The entry-document override is protected too, not served as HTML.
+    const indexBytes = readEntryBytes(
+      apk,
+      index.entries.find((entry) => entry.name === `${wwwRoot}index.html`)!
+    );
+    expect(isProtectedPayload(indexBytes)).toBe(true);
+    expect(indexBytes.toString("utf8")).not.toContain("mobile variant");
 
-        // The bundle layout: proto resources, no binary leftovers. bundletool
-        // rejects a bundle carrying resources.arsc, and so should we.
-        const names = parseZipIndex(aab).entries.map(entry => entry.name);
-        expect(names).toContain("BundleConfig.pb");
-        expect(names).toContain("base/manifest/AndroidManifest.xml");
-        expect(names).toContain("base/resources.pb");
-        expect(names).not.toContain("resources.arsc");
-        expect(names).not.toContain("AndroidManifest.xml");
+    // shell-config.json stays plain: it is the bootstrap the decoder reads,
+    // and it carries the key the shell hands to that decoder.
+    const cfgBytes = readEntryBytes(
+      apk,
+      index.entries.find((entry) => entry.name === shellConfigPath)!
+    );
+    expect(isProtectedPayload(cfgBytes)).toBe(false);
+    expect(JSON.parse(cfgBytes.toString("utf8")).contentKey).toBe(contentKey);
 
-        // The payload lands under the bundle's assets root, not the APK's.
-        const { wwwRoot, shellConfigPath } = job.templateManifest.android;
-        expect(names).toContain(`base/${wwwRoot}assets/bgm.ogg`);
-        expect(names).toContain(`base/${shellConfigPath}`);
+    // Still a valid, installable package.
+    expect(verifyApkV2(apk)).toEqual(expect.objectContaining({ verified: true }));
+  });
 
-        // Signed with the JAR scheme Play reads, by the same certificate that
-        // v2-signed the APK: one keystore, two encodings.
-        const jar = verifyJarSignature(aab);
-        expect(jar.verified).toBe(true);
-        expect(jar.certificateChainDer[0].toString("base64"))
-            .toBe(job.android!.signingIdentity.certificateDerBase64);
-        expect(verifyApkV2(apk).verified).toBe(true);
-    });
+  it("an external unzip confirms the payload is ciphertext under a key, plaintext without one", async () => {
+    // The judge is the system `unzip`, not Studio's own zip parser or its
+    // protected-payload detector: a bug that made both the writer and the
+    // reader agree on plaintext would still be caught here.
+    const contentKey = derivePackEncryptionKey(Buffer.alloc(32, 3), Buffer.alloc(16, 4));
+    const marker = Buffer.alloc(4096, 7); // the bgm.ogg bytes makeSiteDir writes
+    const wwwRoot = (await readManifest()).android.wwwRoot;
+    const bgmEntry = `${wwwRoot}assets/bgm.ogg`;
 
-    it("builds only the format that was asked for", async () => {
-        const job = await makeJob();
-        job.android!.outputs = { aab: "MyGame-1.2.3-android.aab" };
-        const outputDir = await tempDir("nls-out-");
+    const buildApk = async (key: string | undefined): Promise<string> => {
+      const job = await makeJob({
+        ...(key ? { contentKey: key } : {}),
+        shellConfigJson: JSON.stringify({
+          schemaVersion: 1,
+          orientation: "landscape",
+          backgroundColor: "#000000",
+          ...(key ? { contentKey: key } : {})
+        })
+      });
+      const outputDir = await tempDir("nls-out-");
+      await runMobileRepack(job, outputDir, log, MTIME);
+      return path.join(outputDir, "MyGame-1.2.3-android.apk");
+    };
 
-        const artifacts = await runMobileRepack(job, outputDir, log, MTIME);
+    const unzipEntry = (apkPath: string, entry: string): Buffer =>
+      execFileSync("unzip", ["-p", apkPath, entry], { maxBuffer: 64 * 1024 * 1024 });
 
-        expect(artifacts).toContain(path.join(outputDir, "MyGame-1.2.3-android.aab"));
-        expect(artifacts).not.toContain(path.join(outputDir, "MyGame-1.2.3-android.apk"));
-        await expect(fs.access(path.join(outputDir, "MyGame-1.2.3-android.apk"))).rejects.toThrow();
-    });
+    // Without a key: the external tool reads back the exact plaintext.
+    const plainApk = await buildApk(undefined);
+    expect(Buffer.compare(unzipEntry(plainApk, bgmEntry), marker)).toBe(0);
 
-    it("protects every payload file under a content key, and leaves shell-config plain", async () => {
-        // A real key of the kind the packer hands the repack; the exact value
-        // does not matter here, only that the repack protects under it.
-        const contentKey = derivePackEncryptionKey(Buffer.alloc(32, 1), Buffer.alloc(16, 2));
-        const job = await makeJob({
-            contentKey,
-            // The manager writes the key into shell-config; mirror that here so
-            // the worker-level test reflects the real job it is handed.
-            shellConfigJson: JSON.stringify({
-                schemaVersion: 1,
-                orientation: "landscape",
-                backgroundColor: "#000000",
-                contentKey,
-            }),
-        });
-        const outputDir = await tempDir("nls-out-");
-        await runMobileRepack(job, outputDir, log, MTIME);
-        const apk = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+    // With a key: the external tool reads back bytes that are NOT the
+    // plaintext, while shell-config.json stays plain JSON carrying the key.
+    const protectedApk = await buildApk(contentKey);
+    const protectedBgm = unzipEntry(protectedApk, bgmEntry);
+    expect(protectedBgm.length).toBeGreaterThan(0);
+    expect(Buffer.compare(protectedBgm, marker)).not.toBe(0);
+    expect(protectedBgm.includes(marker)).toBe(false);
 
-        const index = parseZipIndex(apk);
-        const { wwwRoot, shellConfigPath } = job.templateManifest.android;
+    const cfg = JSON.parse(
+      unzipEntry(protectedApk, (await readManifest()).android.shellConfigPath).toString("utf8")
+    );
+    expect(cfg.contentKey).toBe(contentKey);
+  });
 
-        // Every payload file under wwwRoot is protected (all-or-nothing): the
-        // package's own detector says so, checked with an independent parser
-        // reading the real entry bytes back out of the APK.
-        const wwwEntries = index.entries.filter(entry => entry.name.startsWith(wwwRoot) && !entry.name.endsWith("/"));
-        expect(wwwEntries.length).toBeGreaterThan(0);
-        for (const entry of wwwEntries) {
-            expect(isProtectedPayload(readEntryBytes(apk, entry))).toBe(true);
-        }
+  it("produces an IPA laid out as iOS expects, with the executable still executable", async () => {
+    const job = await makeJob();
+    const outputDir = await tempDir("nls-out-");
 
-        // A known plaintext file is not shipped as its plaintext.
-        const bgm = readEntryBytes(apk, index.entries.find(entry => entry.name === `${wwwRoot}assets/bgm.ogg`)!);
-        expect(Buffer.compare(bgm, Buffer.alloc(4096, 7))).not.toBe(0);
+    await runMobileRepack(job, outputDir, log, MTIME);
+    const ipa = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-ios.ipa"));
+    const index = parseZipIndex(ipa);
+    const names = index.entries.map((entry) => entry.name);
+    const appPrefix = "Payload/My Game.app/";
 
-        // The entry-document override is protected too, not served as HTML.
-        const indexBytes = readEntryBytes(apk, index.entries.find(entry => entry.name === `${wwwRoot}index.html`)!);
-        expect(isProtectedPayload(indexBytes)).toBe(true);
-        expect(indexBytes.toString("utf8")).not.toContain("mobile variant");
+    // The .app is renamed to the product; the executable inside keeps the
+    // template's name (CFBundleExecutable is not rewritten).
+    const executable = index.entries.find(
+      (entry) => entry.name === `${appPrefix}${job.templateManifest.ios.executableName}`
+    );
+    expect(executable).toBeDefined();
+    // 0755: an .app whose binary is not executable will not launch.
+    expect(executable!.unixMode & 0o777).toBe(0o755);
 
-        // shell-config.json stays plain: it is the bootstrap the decoder reads,
-        // and it carries the key the shell hands to that decoder.
-        const cfgBytes = readEntryBytes(apk, index.entries.find(entry => entry.name === shellConfigPath)!);
-        expect(isProtectedPayload(cfgBytes)).toBe(false);
-        expect(JSON.parse(cfgBytes.toString("utf8")).contentKey).toBe(contentKey);
+    const plistEntry = index.entries.find((entry) => entry.name === `${appPrefix}Info.plist`)!;
+    const plist = readEntryBytes(ipa, plistEntry).toString("utf8");
+    expect(plist).toContain("<string>com.example.mygame</string>");
+    expect(plist).toContain("<string>My Game</string>");
+    expect(plist).toContain("UIInterfaceOrientationLandscapeLeft");
 
-        // Still a valid, installable package.
-        expect(verifyApkV2(apk)).toEqual(expect.objectContaining({ verified: true }));
-    });
+    const wwwPrefix = `${appPrefix}${job.templateManifest.ios.wwwRoot}`;
+    expect(names).toContain(`${wwwPrefix}assets/bgm.ogg`);
+    expect(names).toContain(`${appPrefix}${job.templateManifest.ios.shellConfigPath}`);
+    // The mobile entry document must replace the web one here too - the
+    // APK asserting it does not prove the iOS path injects it.
+    const indexEntry = index.entries.find((entry) => entry.name === `${wwwPrefix}index.html`)!;
+    expect(readEntryBytes(ipa, indexEntry).toString("utf8")).toContain("mobile variant");
+    // Symlinks would break signing and are forbidden by the contract.
+    expect(index.entries.every((entry) => (entry.unixMode & 0o170000) !== 0o120000)).toBe(true);
+  });
 
-    it("an external unzip confirms the payload is ciphertext under a key, plaintext without one", async () => {
-        // The judge is the system `unzip`, not Studio's own zip parser or its
-        // protected-payload detector: a bug that made both the writer and the
-        // reader agree on plaintext would still be caught here.
-        const contentKey = derivePackEncryptionKey(Buffer.alloc(32, 3), Buffer.alloc(16, 4));
-        const marker = Buffer.alloc(4096, 7); // the bgm.ogg bytes makeSiteDir writes
-        const wwwRoot = (await readManifest()).android.wwwRoot;
-        const bgmEntry = `${wwwRoot}assets/bgm.ogg`;
+  it("injects the site in a deterministic order regardless of directory order", async () => {
+    // Reproducibility across machines rests on this: two hosts whose readdir
+    // returns a different order must still produce identical bytes, which
+    // comparing two runs on one machine can never show.
+    const job = await makeJob();
+    const outputDir = await tempDir("nls-out-");
+    await runMobileRepack(job, outputDir, log, MTIME);
+    const apk = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+    const wwwRoot = job.templateManifest.android.wwwRoot;
+    const injected = parseZipIndex(apk)
+      .entries.map((entry) => entry.name)
+      .filter((name) => name.startsWith(wwwRoot));
+    expect(injected).toEqual([...injected].sort());
+  });
 
-        const buildApk = async (key: string | undefined): Promise<string> => {
-            const job = await makeJob({
-                ...(key ? { contentKey: key } : {}),
-                shellConfigJson: JSON.stringify({
-                    schemaVersion: 1,
-                    orientation: "landscape",
-                    backgroundColor: "#000000",
-                    ...(key ? { contentKey: key } : {}),
-                }),
-            });
-            const outputDir = await tempDir("nls-out-");
-            await runMobileRepack(job, outputDir, log, MTIME);
-            return path.join(outputDir, "MyGame-1.2.3-android.apk");
-        };
+  it("is reproducible: identical inputs give byte-identical packages", async () => {
+    // Guards the golden property the whole test rests on - if output drifted
+    // run to run, no downstream assertion here would mean anything.
+    const job = await makeJob();
+    const [first, second] = [await tempDir("nls-out-"), await tempDir("nls-out-")];
+    await runMobileRepack(job, first, log, MTIME);
+    await runMobileRepack(job, second, log, MTIME);
+    for (const name of [
+      "MyGame-1.2.3-android.apk",
+      "MyGame-1.2.3-android.aab",
+      "MyGame-1.2.3-ios.ipa"
+    ]) {
+      expect(await fs.readFile(path.join(first, name))).toEqual(
+        await fs.readFile(path.join(second, name))
+      );
+    }
+    // Six real packages off the real templates; the default 5s holds when
+    // this file runs alone and does not when the whole suite is loading the
+    // machine, which reads as a flake rather than as the timeout it is.
+  }, 60_000);
 
-        const unzipEntry = (apkPath: string, entry: string): Buffer =>
-            execFileSync("unzip", ["-p", apkPath, entry], { maxBuffer: 64 * 1024 * 1024 });
+  it("packages one platform without the other", async () => {
+    const job = await makeJob();
+    delete job.ios;
+    const outputDir = await tempDir("nls-out-");
+    const artifacts = await runMobileRepack(job, outputDir, log, MTIME);
+    expect(artifacts).toEqual([
+      path.join(outputDir, "MyGame-1.2.3-android.apk"),
+      path.join(outputDir, "MyGame-1.2.3-android.aab")
+    ]);
+    await expect(fs.access(path.join(outputDir, "MyGame-1.2.3-ios.ipa"))).rejects.toThrow();
+  });
 
-        // Without a key: the external tool reads back the exact plaintext.
-        const plainApk = await buildApk(undefined);
-        expect(Buffer.compare(unzipEntry(plainApk, bgmEntry), marker)).toBe(0);
+  it("bounds the payload by what a Buffer can hold", () => {
+    // The package is assembled in memory, so this is a real ceiling, not a
+    // policy choice; a payload past it must be a clear error rather than an
+    // allocation failure deep in the writer.
+    expect(payloadExceedsLimit(MAX_PAYLOAD_BYTES)).toBe(false);
+    expect(payloadExceedsLimit(MAX_PAYLOAD_BYTES + 1)).toBe(true);
+    expect(MAX_PAYLOAD_BYTES).toBeLessThan(bufferConstants.MAX_LENGTH);
+  });
 
-        // With a key: the external tool reads back bytes that are NOT the
-        // plaintext, while shell-config.json stays plain JSON carrying the key.
-        const protectedApk = await buildApk(contentKey);
-        const protectedBgm = unzipEntry(protectedApk, bgmEntry);
-        expect(protectedBgm.length).toBeGreaterThan(0);
-        expect(Buffer.compare(protectedBgm, marker)).not.toBe(0);
-        expect(protectedBgm.includes(marker)).toBe(false);
-
-        const cfg = JSON.parse(unzipEntry(protectedApk, (await readManifest()).android.shellConfigPath).toString("utf8"));
-        expect(cfg.contentKey).toBe(contentKey);
-    });
-
-    it("produces an IPA laid out as iOS expects, with the executable still executable", async () => {
-        const job = await makeJob();
-        const outputDir = await tempDir("nls-out-");
-
-        await runMobileRepack(job, outputDir, log, MTIME);
-        const ipa = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-ios.ipa"));
-        const index = parseZipIndex(ipa);
-        const names = index.entries.map(entry => entry.name);
-        const appPrefix = "Payload/My Game.app/";
-
-        // The .app is renamed to the product; the executable inside keeps the
-        // template's name (CFBundleExecutable is not rewritten).
-        const executable = index.entries.find(
-            entry => entry.name === `${appPrefix}${job.templateManifest.ios.executableName}`,
-        );
-        expect(executable).toBeDefined();
-        // 0755: an .app whose binary is not executable will not launch.
-        expect(executable!.unixMode & 0o777).toBe(0o755);
-
-        const plistEntry = index.entries.find(entry => entry.name === `${appPrefix}Info.plist`)!;
-        const plist = readEntryBytes(ipa, plistEntry).toString("utf8");
-        expect(plist).toContain("<string>com.example.mygame</string>");
-        expect(plist).toContain("<string>My Game</string>");
-        expect(plist).toContain("UIInterfaceOrientationLandscapeLeft");
-
-        const wwwPrefix = `${appPrefix}${job.templateManifest.ios.wwwRoot}`;
-        expect(names).toContain(`${wwwPrefix}assets/bgm.ogg`);
-        expect(names).toContain(`${appPrefix}${job.templateManifest.ios.shellConfigPath}`);
-        // The mobile entry document must replace the web one here too - the
-        // APK asserting it does not prove the iOS path injects it.
-        const indexEntry = index.entries.find(entry => entry.name === `${wwwPrefix}index.html`)!;
-        expect(readEntryBytes(ipa, indexEntry).toString("utf8")).toContain("mobile variant");
-        // Symlinks would break signing and are forbidden by the contract.
-        expect(index.entries.every(entry => (entry.unixMode & 0o170000) !== 0o120000)).toBe(true);
-    });
-
-    it("injects the site in a deterministic order regardless of directory order", async () => {
-        // Reproducibility across machines rests on this: two hosts whose readdir
-        // returns a different order must still produce identical bytes, which
-        // comparing two runs on one machine can never show.
-        const job = await makeJob();
-        const outputDir = await tempDir("nls-out-");
-        await runMobileRepack(job, outputDir, log, MTIME);
-        const apk = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
-        const wwwRoot = job.templateManifest.android.wwwRoot;
-        const injected = parseZipIndex(apk).entries
-            .map(entry => entry.name)
-            .filter(name => name.startsWith(wwwRoot));
-        expect(injected).toEqual([...injected].sort());
-    });
-
-    it("is reproducible: identical inputs give byte-identical packages", async () => {
-        // Guards the golden property the whole test rests on - if output drifted
-        // run to run, no downstream assertion here would mean anything.
-        const job = await makeJob();
-        const [first, second] = [await tempDir("nls-out-"), await tempDir("nls-out-")];
-        await runMobileRepack(job, first, log, MTIME);
-        await runMobileRepack(job, second, log, MTIME);
-        for (const name of ["MyGame-1.2.3-android.apk", "MyGame-1.2.3-android.aab", "MyGame-1.2.3-ios.ipa"]) {
-            expect(await fs.readFile(path.join(first, name))).toEqual(await fs.readFile(path.join(second, name)));
-        }
-        // Six real packages off the real templates; the default 5s holds when
-        // this file runs alone and does not when the whole suite is loading the
-        // machine, which reads as a flake rather than as the timeout it is.
-    }, 60_000);
-
-    it("packages one platform without the other", async () => {
-        const job = await makeJob();
-        delete job.ios;
-        const outputDir = await tempDir("nls-out-");
-        const artifacts = await runMobileRepack(job, outputDir, log, MTIME);
-        expect(artifacts).toEqual([
-            path.join(outputDir, "MyGame-1.2.3-android.apk"),
-            path.join(outputDir, "MyGame-1.2.3-android.aab"),
-        ]);
-        await expect(fs.access(path.join(outputDir, "MyGame-1.2.3-ios.ipa"))).rejects.toThrow();
-    });
-
-    it("bounds the payload by what a Buffer can hold", () => {
-        // The package is assembled in memory, so this is a real ceiling, not a
-        // policy choice; a payload past it must be a clear error rather than an
-        // allocation failure deep in the writer.
-        expect(payloadExceedsLimit(MAX_PAYLOAD_BYTES)).toBe(false);
-        expect(payloadExceedsLimit(MAX_PAYLOAD_BYTES + 1)).toBe(true);
-        expect(MAX_PAYLOAD_BYTES).toBeLessThan(bufferConstants.MAX_LENGTH);
-    });
-
-    it("refuses an icon slot the template does not have", async () => {
-        // The manifest and the template disagreeing must fail, not silently
-        // ship the placeholder icon the author tried to replace.
-        const iconDir = await tempDir("nls-icon-");
-        const iconPath = path.join(iconDir, "icon.png");
-        await fs.writeFile(iconPath, Buffer.alloc(64));
-        const job = await makeJob();
-        job.android!.iconPngBySlot = { "res/mipmap-nonexistent/ic_launcher.png": iconPath };
-        await expect(runMobileRepack(job, await tempDir("nls-out-"), log, MTIME))
-            .rejects.toThrow(/not present in the template/);
-    });
+  it("refuses an icon slot the template does not have", async () => {
+    // The manifest and the template disagreeing must fail, not silently
+    // ship the placeholder icon the author tried to replace.
+    const iconDir = await tempDir("nls-icon-");
+    const iconPath = path.join(iconDir, "icon.png");
+    await fs.writeFile(iconPath, Buffer.alloc(64));
+    const job = await makeJob();
+    job.android!.iconPngBySlot = { "res/mipmap-nonexistent/ic_launcher.png": iconPath };
+    await expect(runMobileRepack(job, await tempDir("nls-out-"), log, MTIME)).rejects.toThrow(
+      /not present in the template/
+    );
+  });
 });
 
 /**
@@ -402,111 +435,110 @@ describe("runMobileRepack against the real shell templates", () => {
  * was made, so a signature by anything else cannot pass.
  */
 describe("runMobileRepack with an author's release keystore", () => {
-    /** The SHA-256 of the certificate the APK's v2 signature actually carries. */
-    function signerFingerprint(apk: Buffer): string {
-        const result = verifyApkV2(apk);
-        expect(result.verified).toBe(true);
-        return new crypto.X509Certificate(result.certificatesDer![0]).fingerprint256;
-    }
+  /** The SHA-256 of the certificate the APK's v2 signature actually carries. */
+  function signerFingerprint(apk: Buffer): string {
+    const result = verifyApkV2(apk);
+    expect(result.verified).toBe(true);
+    return new crypto.X509Certificate(result.certificatesDer![0]).fingerprint256;
+  }
 
-    async function buildWithKeystore(keystore: Buffer, name: string): Promise<Buffer> {
-        const materialDir = await tempDir("nls-keystore-");
-        const keystoreFile = path.join(materialDir, name);
-        await fs.writeFile(keystoreFile, keystore);
+  async function buildWithKeystore(keystore: Buffer, name: string): Promise<Buffer> {
+    const materialDir = await tempDir("nls-keystore-");
+    const keystoreFile = path.join(materialDir, name);
+    await fs.writeFile(keystoreFile, keystore);
 
-        const job = await makeJob();
-        delete job.ios;
-        job.android!.signing = {
-            keystoreFile,
-            alias: ANDROID_KEYSTORE_ALIAS,
-            storePassword: ANDROID_KEYSTORE_PASSWORD,
-            keyPassword: ANDROID_KEYSTORE_PASSWORD,
-        };
-        const outputDir = await tempDir("nls-out-");
-        await runMobileRepack(job, outputDir, log, MTIME);
-        return fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
-    }
+    const job = await makeJob();
+    delete job.ios;
+    job.android!.signing = {
+      keystoreFile,
+      alias: ANDROID_KEYSTORE_ALIAS,
+      storePassword: ANDROID_KEYSTORE_PASSWORD,
+      keyPassword: ANDROID_KEYSTORE_PASSWORD
+    };
+    const outputDir = await tempDir("nls-out-");
+    await runMobileRepack(job, outputDir, log, MTIME);
+    return fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+  }
 
-    it("signs with the PKCS#12 keystore's key, not the machine identity", async () => {
-        const apk = await buildWithKeystore(androidReleaseP12(), "release.p12");
-        expect(signerFingerprint(apk)).toBe(ANDROID_RELEASE_P12_SHA256);
-    });
+  it("signs with the PKCS#12 keystore's key, not the machine identity", async () => {
+    const apk = await buildWithKeystore(androidReleaseP12(), "release.p12");
+    expect(signerFingerprint(apk)).toBe(ANDROID_RELEASE_P12_SHA256);
+  });
 
-    it("signs with a JKS keystore's key just as well", async () => {
-        // Format is decided by the file's magic, not its extension - so the same
-        // path has to work for the other container authors actually hold.
-        const apk = await buildWithKeystore(androidReleaseJks(), "release.jks");
-        expect(signerFingerprint(apk)).toBe(ANDROID_RELEASE_JKS_SHA256);
-    });
+  it("signs with a JKS keystore's key just as well", async () => {
+    // Format is decided by the file's magic, not its extension - so the same
+    // path has to work for the other container authors actually hold.
+    const apk = await buildWithKeystore(androidReleaseJks(), "release.jks");
+    expect(signerFingerprint(apk)).toBe(ANDROID_RELEASE_JKS_SHA256);
+  });
 
-    it("puts the release certificate's subject into the package", async () => {
-        const apk = await buildWithKeystore(androidReleaseP12(), "release.p12");
-        const certificate = new crypto.X509Certificate(verifyApkV2(apk).certificatesDer![0]);
-        expect(certificate.subject).toContain(ANDROID_RELEASE_P12_SUBJECT);
-    });
+  it("puts the release certificate's subject into the package", async () => {
+    const apk = await buildWithKeystore(androidReleaseP12(), "release.p12");
+    const certificate = new crypto.X509Certificate(verifyApkV2(apk).certificatesDer![0]);
+    expect(certificate.subject).toContain(ANDROID_RELEASE_P12_SUBJECT);
+  });
 
-    it("uses the machine identity when no release keystore is configured", async () => {
-        const job = await makeJob();
-        delete job.ios;
-        const outputDir = await tempDir("nls-out-");
-        await runMobileRepack(job, outputDir, log, MTIME);
-        const apk = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
+  it("uses the machine identity when no release keystore is configured", async () => {
+    const job = await makeJob();
+    delete job.ios;
+    const outputDir = await tempDir("nls-out-");
+    await runMobileRepack(job, outputDir, log, MTIME);
+    const apk = await fs.readFile(path.join(outputDir, "MyGame-1.2.3-android.apk"));
 
-        const expected = new crypto.X509Certificate(
-            Buffer.from(job.android!.signingIdentity.certificateDerBase64, "base64"),
-        ).fingerprint256;
-        expect(signerFingerprint(apk)).toBe(expected);
-        // ...and that is emphatically not the release key.
-        expect(signerFingerprint(apk)).not.toBe(ANDROID_RELEASE_P12_SHA256);
-    });
+    const expected = new crypto.X509Certificate(
+      Buffer.from(job.android!.signingIdentity.certificateDerBase64, "base64")
+    ).fingerprint256;
+    expect(signerFingerprint(apk)).toBe(expected);
+    // ...and that is emphatically not the release key.
+    expect(signerFingerprint(apk)).not.toBe(ANDROID_RELEASE_P12_SHA256);
+  });
 
-    it("warns that switching identity breaks installing over an existing copy", async () => {
-        // Android keys an installed app on package name and signature together.
-        // Nobody guesses that from "App not installed", so the build has to say
-        // it - loudly enough to be a warning, not a line of noise.
-        logs.length = 0;
-        await buildWithKeystore(androidReleaseP12(), "release.p12");
-        const warnings = logs.filter(line => line.startsWith("warning:"));
-        expect(warnings.some(line => /uninstall/.test(line))).toBe(true);
-        expect(warnings.some(line => line.includes("App not installed"))).toBe(true);
-        expect(logs.some(line => line.includes(ANDROID_RELEASE_P12_SHA256))).toBe(true);
-        expect(logs.some(line => line.includes(ANDROID_KEYSTORE_ALIAS))).toBe(true);
-    });
+  it("warns that switching identity breaks installing over an existing copy", async () => {
+    // Android keys an installed app on package name and signature together.
+    // Nobody guesses that from "App not installed", so the build has to say
+    // it - loudly enough to be a warning, not a line of noise.
+    logs.length = 0;
+    await buildWithKeystore(androidReleaseP12(), "release.p12");
+    const warnings = logs.filter((line) => line.startsWith("warning:"));
+    expect(warnings.some((line) => /uninstall/.test(line))).toBe(true);
+    expect(warnings.some((line) => line.includes("App not installed"))).toBe(true);
+    expect(logs.some((line) => line.includes(ANDROID_RELEASE_P12_SHA256))).toBe(true);
+    expect(logs.some((line) => line.includes(ANDROID_KEYSTORE_ALIAS))).toBe(true);
+  });
 
-    it("never writes a password or a key into the log", async () => {
-        logs.length = 0;
-        await buildWithKeystore(androidReleaseP12(), "release.p12");
-        expect(logs.some(line => line.includes(ANDROID_KEYSTORE_PASSWORD))).toBe(false);
-        expect(logs.some(line => line.includes("PRIVATE KEY"))).toBe(false);
-    });
+  it("never writes a password or a key into the log", async () => {
+    logs.length = 0;
+    await buildWithKeystore(androidReleaseP12(), "release.p12");
+    expect(logs.some((line) => line.includes(ANDROID_KEYSTORE_PASSWORD))).toBe(false);
+    expect(logs.some((line) => line.includes("PRIVATE KEY"))).toBe(false);
+  });
 
-    it("still detects tampering after release signing", async () => {
-        // The reverse control for every assertion above: if the signature did
-        // not actually cover the payload, matching the fingerprint would mean
-        // nothing.
-        const apk = await buildWithKeystore(androidReleaseP12(), "release.p12");
-        const tampered = Buffer.from(apk);
-        const marker = tampered.indexOf(Buffer.alloc(4096, 7)); // the bgm.ogg payload
-        expect(marker, "payload bytes not found in the APK").toBeGreaterThan(0);
-        tampered[marker] ^= 0xff;
-        expect(verifyApkV2(tampered).verified).toBe(false);
-    });
+  it("still detects tampering after release signing", async () => {
+    // The reverse control for every assertion above: if the signature did
+    // not actually cover the payload, matching the fingerprint would mean
+    // nothing.
+    const apk = await buildWithKeystore(androidReleaseP12(), "release.p12");
+    const tampered = Buffer.from(apk);
+    const marker = tampered.indexOf(Buffer.alloc(4096, 7)); // the bgm.ogg payload
+    expect(marker, "payload bytes not found in the APK").toBeGreaterThan(0);
+    tampered[marker] ^= 0xff;
+    expect(verifyApkV2(tampered).verified).toBe(false);
+  });
 
-    it("says which key it could not open, rather than failing anonymously", async () => {
-        const materialDir = await tempDir("nls-keystore-");
-        const keystoreFile = path.join(materialDir, "release.p12");
-        await fs.writeFile(keystoreFile, androidReleaseP12());
-        const job = await makeJob();
-        delete job.ios;
-        job.android!.signing = {
-            keystoreFile,
-            alias: ANDROID_KEYSTORE_ALIAS,
-            storePassword: "wrong",
-            keyPassword: "wrong",
-        };
-        await expect(runMobileRepack(job, await tempDir("nls-out-"), log, MTIME))
-            .rejects.toThrow(/keystore password is incorrect/);
-    });
+  it("says which key it could not open, rather than failing anonymously", async () => {
+    const materialDir = await tempDir("nls-keystore-");
+    const keystoreFile = path.join(materialDir, "release.p12");
+    await fs.writeFile(keystoreFile, androidReleaseP12());
+    const job = await makeJob();
+    delete job.ios;
+    job.android!.signing = {
+      keystoreFile,
+      alias: ANDROID_KEYSTORE_ALIAS,
+      storePassword: "wrong",
+      keyPassword: "wrong"
+    };
+    await expect(runMobileRepack(job, await tempDir("nls-out-"), log, MTIME)).rejects.toThrow(
+      /keystore password is incorrect/
+    );
+  });
 });
-
-

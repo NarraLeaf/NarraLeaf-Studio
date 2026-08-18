@@ -10,7 +10,7 @@
 
 /** Official index, on the registry's `master` branch. Empty setting = this. */
 export const DEFAULT_UI_TEMPLATE_REGISTRY_URL =
-    "https://raw.githubusercontent.com/NarraLeaf/UI-Templates/master/index.json";
+  "https://raw.githubusercontent.com/NarraLeaf/UI-Templates/master/index.json";
 
 /** The only `formatVersion` this client knows how to read; a newer index is refused. */
 export const UI_TEMPLATE_REGISTRY_FORMAT_VERSION = 1;

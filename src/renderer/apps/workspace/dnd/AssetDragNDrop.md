@@ -4,12 +4,12 @@ This folder implements **cross-surface HTML5 drag-and-drop** for project **asset
 
 ## Architecture (short)
 
-| Piece | Role |
-|--------|------|
+| Piece                            | Role                                                                                                                                |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | **`WorkspaceAssetDragProvider`** | Holds a **live drag session** while the user drags from the assets panel (`session.assets`, `primaryId`, optional `sourcePanelId`). |
-| **`useAssetDropTarget`** | Drop-target hook: detects our MIME type, builds `AssetDropContext`, calls your `onDrop`, optional `canDrop`. |
-| **`useAssetDropFeedback`** | Shared Tailwind classes for hover highlight (`workspaceAssetDropTargetClass`). |
-| **`types.ts`** | `WorkspaceAssetDragSession`, `AssetDropContext`, hook options. |
+| **`useAssetDropTarget`**         | Drop-target hook: detects our MIME type, builds `AssetDropContext`, calls your `onDrop`, optional `canDrop`.                        |
+| **`useAssetDropFeedback`**       | Shared Tailwind classes for hover highlight (`workspaceAssetDropTargetClass`).                                                      |
+| **`types.ts`**                   | `WorkspaceAssetDragSession`, `AssetDropContext`, hook options.                                                                      |
 
 **Wire format** (payload on `DataTransfer`) is defined in:
 
@@ -52,7 +52,7 @@ const { dropTargetProps, isHovering, isAccepted, overlayClassName } = useAssetDr
 ```ts
 interface AssetDropContext {
   wire: AssetDragWirePayloadV1; // payload (primary id, all dragged ids)
-  resolved: Asset[];          // current metadata from AssetsService (subset if deleted)
+  resolved: Asset[]; // current metadata from AssetsService (subset if deleted)
 }
 ```
 
@@ -76,7 +76,7 @@ function MyDropZone({ groupId }: { groupId: string }) {
       const primary = resolved.find((a) => a.id === wire.p) ?? resolved[0];
       // e.g. update selection + open tabs
       openAssetPreviewTabsInEditor(context, resolved, { groupId });
-    },
+    }
   });
 
   return (
@@ -102,7 +102,7 @@ const { dropTargetProps, overlayClassName } = useAssetDropTarget({
   canDrop: ({ resolved }) => resolved.every((a) => a.type === AssetType.Image),
   onDrop: ({ resolved }) => {
     // only images reach here
-  },
+  }
 });
 ```
 
@@ -116,13 +116,13 @@ Use **`useWorkspaceAssetDragOptional()`** in drag sources; it returns `null` out
 
 ## Related modules (outside this folder)
 
-| Area | Path |
-|------|------|
-| Encode/decode payload, multi-select collection | `modules/assets/dnd/assetDragContract.ts` |
-| Custom drag image for multi-asset drag | `modules/assets/dnd/multiAssetDragImage.ts` |
-| Open previews / focus after drop | `modules/assets/dnd/openDraggedAssetsInEditor.tsx` |
-| Panel-internal move (groups / root) | `modules/assets/state/useDragAndDrop.ts` |
-| Global `-webkit-user-drag` override for rows | `styles.css` (`.nl-drag-source`) |
+| Area                                           | Path                                               |
+| ---------------------------------------------- | -------------------------------------------------- |
+| Encode/decode payload, multi-select collection | `modules/assets/dnd/assetDragContract.ts`          |
+| Custom drag image for multi-asset drag         | `modules/assets/dnd/multiAssetDragImage.ts`        |
+| Open previews / focus after drop               | `modules/assets/dnd/openDraggedAssetsInEditor.tsx` |
+| Panel-internal move (groups / root)            | `modules/assets/state/useDragAndDrop.ts`           |
+| Global `-webkit-user-drag` override for rows   | `styles.css` (`.nl-drag-source`)                   |
 
 > **Any** `draggable` element must carry `.nl-drag-source`. The global `*` rule sets
 > `-webkit-user-drag: none`, so without the class the attribute is inert and `dragstart` never

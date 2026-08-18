@@ -4,29 +4,33 @@ import { listSaveSchemaFields, migrateSaveSchemaToLatest } from "@shared/saves/s
 import type { SaveSchemaRuntimeTable } from "@shared/types/saveSchema";
 import { parseSharedBlueprintAssetJson } from "@shared/blueprint/parseSharedBlueprintAsset";
 import type {
-    Blueprint,
-    BlueprintDocument,
-    BlueprintPersistentVariable,
-    SharedBlueprintAsset,
+  Blueprint,
+  BlueprintDocument,
+  BlueprintPersistentVariable,
+  SharedBlueprintAsset
 } from "@shared/types/blueprint/document";
 import {
-    VARIABLE_REGISTRY_SCHEMA_VERSION,
-    type PersistentVariableRuntimeTable,
-    type SavedVariableRuntimeTable,
-    type VariableRegistry,
+  VARIABLE_REGISTRY_SCHEMA_VERSION,
+  type PersistentVariableRuntimeTable,
+  type SavedVariableRuntimeTable,
+  type VariableRegistry
 } from "@shared/types/variables/registry";
 import {
-    buildPersistentRuntimeTable,
-    buildSavedRuntimeTable,
-    migrateVariableRegistryToLatest,
-    seedRegistryEntriesFromBlueprintPersistent,
+  buildPersistentRuntimeTable,
+  buildSavedRuntimeTable,
+  migrateVariableRegistryToLatest,
+  seedRegistryEntriesFromBlueprintPersistent
 } from "@shared/variables/variableRegistryModel";
-import type { DevModeBundle, DevModeCharacterSummary, DevModeStoryLibrary } from "@shared/types/devMode";
+import type {
+  DevModeBundle,
+  DevModeCharacterSummary,
+  DevModeStoryLibrary
+} from "@shared/types/devMode";
 import type { GameLocalizationBundle } from "@shared/types/localization";
 import {
-    normalizeLocalizationConfiguration,
-    normalizeLocalizationDocument,
-    normalizeLocalizationKeysDocument,
+  normalizeLocalizationConfiguration,
+  normalizeLocalizationDocument,
+  normalizeLocalizationKeysDocument
 } from "@shared/types/localization";
 import type { PlayerPreferences } from "@shared/types/preference";
 import { normalizePlayerPreferences } from "@shared/types/preference";
@@ -40,33 +44,41 @@ import type { BrandColor } from "@shared/types/brand";
 import { migrateProjectBrandDocument, normalizeProjectBrandColors } from "@shared/types/brand";
 import { BRAND_DOCUMENT_PATH } from "@shared/documents/specs";
 import {
-    APP_TAG_ID_RELEASE,
-    appTagMechanismKey,
-    isBuiltinAppTagId,
-    RELEASE_APP_TAG,
-    type AppTagMechanismRef,
+  APP_TAG_ID_RELEASE,
+  appTagMechanismKey,
+  isBuiltinAppTagId,
+  RELEASE_APP_TAG,
+  type AppTagMechanismRef
 } from "@shared/types/appTag";
 import { runtimeCapabilitiesCanStartStory } from "@shared/types/pluginPermissions";
 import {
-    collectTextIds,
-    restrictLocalizationToTextIds,
-    restrictVoiceToTextIds,
+  collectTextIds,
+  restrictLocalizationToTextIds,
+  restrictVoiceToTextIds
 } from "@shared/build/variantPayload";
 import { applyAppTagToStoryDocument, type SceneReachability } from "@shared/story/appTagFold";
 import { blueprintGraphCarriers, scanStoryEntryPoints } from "@shared/story/storyReachability";
 import {
-    applyAppTagToBlueprint,
-    applyAppTagToBlueprintDocument,
-    collectUnfoldableAppTagGraphs,
-    collectUnfoldableAppTagGraphsInBlueprint,
-    type AppTagGraphFoldOptions,
-    type UnfoldableAppTagGraph,
+  applyAppTagToBlueprint,
+  applyAppTagToBlueprintDocument,
+  collectUnfoldableAppTagGraphs,
+  collectUnfoldableAppTagGraphsInBlueprint,
+  type AppTagGraphFoldOptions,
+  type UnfoldableAppTagGraph
 } from "@shared/blueprint/appTagGraphFold";
 import { createTranslator, FALLBACK_LOCALE, type LocaleCode } from "@shared/i18n";
-import { BLUEPRINT_NODE_TYPE_GAME_START_STORY } from "@shared/types/blueprint/graph";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
-import { migrateProjectAudioTrackDocument, normalizeProjectAudioTracks } from "@shared/types/audioTrack";
-import type { StoryAnimationAsset, StoryAnimationIndex, StoryDocument, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
+import {
+  migrateProjectAudioTrackDocument,
+  normalizeProjectAudioTracks
+} from "@shared/types/audioTrack";
+import type {
+  StoryAnimationAsset,
+  StoryAnimationIndex,
+  StoryDocument,
+  StoryLibraryEntry,
+  StoryLibraryIndex
+} from "@shared/types/story";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
@@ -79,106 +91,115 @@ import type { DevModeBundleLoadContext, DevModeBundleSource } from "./types";
 /**
  * Assemble a DevModeBundle by reading `editor/ui/uidoc.json` and `uigraphs.json` from disk.
  */
-export async function assembleDevModeBundleFromProjectPath(context: DevModeBundleLoadContext): Promise<DevModeBundle> {
-    const uidocPath = path.join(context.projectPath, "editor", "ui", "uidoc.json");
-    const uigraphsPath = path.join(context.projectPath, "editor", "ui", "uigraphs.json");
-    const uidoc = await readJsonFile<UIDocument>(uidocPath);
-    const uigraphsRaw = await readJsonFile<UIGraphDocument>(uigraphsPath);
-    const variant = context.appTag ?? { id: APP_TAG_ID_RELEASE, name: RELEASE_APP_TAG.name };
-    const fold = { tagName: variant.name };
-    // Where the variant stops being a label and starts deciding bytes, the blueprint half of what
-    // `loadStoryLibrary` does below. Graphs ship verbatim - this record is what the pack carries - so
-    // a branch this edition cannot take is only absent from the package if it is deleted here. The
-    // build gate has already refused anything this cannot fold; a graph it still cannot read comes
-    // back whole, which is what lets Dev Mode and the preview keep running.
-    const uigraphs: UIGraphDocument = {
-        ...uigraphsRaw,
-        blueprintDocument: applyAppTagToBlueprintDocument(
-            migrateBlueprintDocumentToLatest(uigraphsRaw.blueprintDocument),
-            fold,
-        ),
-    };
-    const localBlueprints = uigraphs.blueprintDocument;
-    const variableTables = await loadVariableRuntimeTables(context.projectPath, uigraphsRaw.blueprintDocument);
-    const sharedAssets = await loadSharedBlueprints(context.projectPath);
-    const sharedBlueprints = foldSharedBlueprints(sharedAssets, context, fold);
-    reportLiveVariantReads(context, fold, localBlueprints, sharedAssets);
-    const projectIdentifier = await readProjectIdentifier(context.projectPath);
-    // Read from the folded document on purpose: a `Start Game` on a branch this edition does not take
-    // cannot run, so the scene it names is not an entry into any story this package holds.
-    const sceneDrop = planSceneDrop(context, variant.id, [
-        ...Object.values(localBlueprints.blueprints ?? {}),
-        ...sharedBlueprints.map(asset => asset.blueprint),
-    ]);
-    const storyLibrary = await loadStoryLibrary(context.projectPath, variant, sceneDrop);
-    // Translations and voice lines are keyed by a row's `textId`, not by a scene, so dropping a scene
-    // leaves both behind: the prose is gone from the story document and still legible, in full, in
-    // every translation table the package carries. They are narrowed against the documents as this
-    // build actually holds them, which is why this happens here rather than in either loader.
-    const shippedTextIds = sceneDrop ? collectTextIds(storyLibrary?.documents ?? {}) : null;
-    const localization = restrictLocalization(
-        await loadGameLocalization(context.projectPath),
-        shippedTextIds,
-        context.onNotice,
-    );
-    const voice = restrictVoice(await loadGameVoice(context.projectPath), shippedTextIds, context.onNotice);
-    const audio = await loadGameAudio(context.projectPath);
-    const autoSave = await loadAutoSaveConfiguration(context.projectPath);
-    const preferences = await loadPlayerPreferences(context.projectPath);
-    const brand = await loadProjectBrand(context.projectPath);
-    const saveSchema = await loadSaveSchemaTable(context.projectPath);
-    return {
-        bundleId: context.bundleId,
-        revision: context.revision,
-        timestamp: new Date().toISOString(),
-        ui: {
-            uidoc,
-            uigraphs,
-            localBlueprints,
-            sharedBlueprints,
-            persistentVariables: variableTables.persistent,
-            savedVariables: variableTables.saved,
-            saveSchema,
-        },
-        storyLibrary,
-        localization,
-        voice,
-        audio,
-        autoSave,
-        preferences,
-        brand,
-        compiled: context.compiled,
-        blueprintCompiledScripts: context.blueprintCompiledScripts,
-        blueprintScriptsCompileOk: context.blueprintScriptsCompileOk ?? true,
-        blueprintScriptsCompileErrors: context.blueprintScriptsCompileErrors,
-        meta: projectIdentifier ? { projectIdentifier } : undefined,
-    };
+export async function assembleDevModeBundleFromProjectPath(
+  context: DevModeBundleLoadContext
+): Promise<DevModeBundle> {
+  const uidocPath = path.join(context.projectPath, "editor", "ui", "uidoc.json");
+  const uigraphsPath = path.join(context.projectPath, "editor", "ui", "uigraphs.json");
+  const uidoc = await readJsonFile<UIDocument>(uidocPath);
+  const uigraphsRaw = await readJsonFile<UIGraphDocument>(uigraphsPath);
+  const variant = context.appTag ?? { id: APP_TAG_ID_RELEASE, name: RELEASE_APP_TAG.name };
+  const fold = { tagName: variant.name };
+  // Where the variant stops being a label and starts deciding bytes, the blueprint half of what
+  // `loadStoryLibrary` does below. Graphs ship verbatim - this record is what the pack carries - so
+  // a branch this edition cannot take is only absent from the package if it is deleted here. The
+  // build gate has already refused anything this cannot fold; a graph it still cannot read comes
+  // back whole, which is what lets Dev Mode and the preview keep running.
+  const uigraphs: UIGraphDocument = {
+    ...uigraphsRaw,
+    blueprintDocument: applyAppTagToBlueprintDocument(
+      migrateBlueprintDocumentToLatest(uigraphsRaw.blueprintDocument),
+      fold
+    )
+  };
+  const localBlueprints = uigraphs.blueprintDocument;
+  const variableTables = await loadVariableRuntimeTables(
+    context.projectPath,
+    uigraphsRaw.blueprintDocument
+  );
+  const sharedAssets = await loadSharedBlueprints(context.projectPath);
+  const sharedBlueprints = foldSharedBlueprints(sharedAssets, context, fold);
+  reportLiveVariantReads(context, fold, localBlueprints, sharedAssets);
+  const projectIdentifier = await readProjectIdentifier(context.projectPath);
+  // Read from the folded document on purpose: a `Start Game` on a branch this edition does not take
+  // cannot run, so the scene it names is not an entry into any story this package holds.
+  const sceneDrop = planSceneDrop(context, variant.id, [
+    ...Object.values(localBlueprints.blueprints ?? {}),
+    ...sharedBlueprints.map((asset) => asset.blueprint)
+  ]);
+  const storyLibrary = await loadStoryLibrary(context.projectPath, variant, sceneDrop);
+  // Translations and voice lines are keyed by a row's `textId`, not by a scene, so dropping a scene
+  // leaves both behind: the prose is gone from the story document and still legible, in full, in
+  // every translation table the package carries. They are narrowed against the documents as this
+  // build actually holds them, which is why this happens here rather than in either loader.
+  const shippedTextIds = sceneDrop ? collectTextIds(storyLibrary?.documents ?? {}) : null;
+  const localization = restrictLocalization(
+    await loadGameLocalization(context.projectPath),
+    shippedTextIds,
+    context.onNotice
+  );
+  const voice = restrictVoice(
+    await loadGameVoice(context.projectPath),
+    shippedTextIds,
+    context.onNotice
+  );
+  const audio = await loadGameAudio(context.projectPath);
+  const autoSave = await loadAutoSaveConfiguration(context.projectPath);
+  const preferences = await loadPlayerPreferences(context.projectPath);
+  const brand = await loadProjectBrand(context.projectPath);
+  const saveSchema = await loadSaveSchemaTable(context.projectPath);
+  return {
+    bundleId: context.bundleId,
+    revision: context.revision,
+    timestamp: new Date().toISOString(),
+    ui: {
+      uidoc,
+      uigraphs,
+      localBlueprints,
+      sharedBlueprints,
+      persistentVariables: variableTables.persistent,
+      savedVariables: variableTables.saved,
+      saveSchema
+    },
+    storyLibrary,
+    localization,
+    voice,
+    audio,
+    autoSave,
+    preferences,
+    brand,
+    compiled: context.compiled,
+    blueprintCompiledScripts: context.blueprintCompiledScripts,
+    blueprintScriptsCompileOk: context.blueprintScriptsCompileOk ?? true,
+    blueprintScriptsCompileErrors: context.blueprintScriptsCompileErrors,
+    meta: projectIdentifier ? { projectIdentifier } : undefined
+  };
 }
 
 async function readOptionalJsonFile<T>(filePath: string): Promise<T | undefined> {
-    const result = await Fs.read(filePath, "utf-8");
-    if (!result.ok) {
-        return undefined;
-    }
-    try {
-        return JSON.parse(result.data) as T;
-    } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        throw new Error(`Invalid JSON in ${filePath}: ${msg}`);
-    }
+  const result = await Fs.read(filePath, "utf-8");
+  if (!result.ok) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(result.data) as T;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`Invalid JSON in ${filePath}: ${msg}`);
+  }
 }
 
 async function readJsonFile<T>(filePath: string): Promise<T> {
-    const result = await Fs.read(filePath, "utf-8");
-    if (!result.ok) {
-        throw new Error(result.error?.message ?? `Failed to read ${filePath}`);
-    }
-    try {
-        return JSON.parse(result.data) as T;
-    } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        throw new Error(`Invalid JSON in ${filePath}: ${msg}`);
-    }
+  const result = await Fs.read(filePath, "utf-8");
+  if (!result.ok) {
+    throw new Error(result.error?.message ?? `Failed to read ${filePath}`);
+  }
+  try {
+    return JSON.parse(result.data) as T;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`Invalid JSON in ${filePath}: ${msg}`);
+  }
 }
 
 /**
@@ -199,22 +220,28 @@ async function readJsonFile<T>(filePath: string): Promise<T> {
  * registry-backed saved variables at all - its saved ones are the story's `/save` rows.
  */
 async function loadVariableRuntimeTables(
-    projectPath: string,
-    rawBlueprintDocument: unknown,
+  projectPath: string,
+  rawBlueprintDocument: unknown
 ): Promise<{ persistent: PersistentVariableRuntimeTable; saved: SavedVariableRuntimeTable }> {
-    const registryPath = path.join(projectPath, "editor", "variables.json");
-    const raw = await readOptionalJsonFile<unknown>(registryPath);
-    if (raw) {
-        const registry = migrateVariableRegistryToLatest(raw);
-        return { persistent: buildPersistentRuntimeTable(registry), saved: buildSavedRuntimeTable(registry) };
-    }
-    const legacy = readRawPersistentVariables(rawBlueprintDocument);
-    const { entries } = seedRegistryEntriesFromBlueprintPersistent(legacy);
-    // Stamped at the current version, not at the version the legacy field belonged to: `entries` was
-    // just built by the seeder, so it already has the current shape (scope included) and claiming an
-    // older version would only mislead anything that reads it.
-    const registry: VariableRegistry = { schemaVersion: VARIABLE_REGISTRY_SCHEMA_VERSION, entries };
-    return { persistent: buildPersistentRuntimeTable(registry), saved: buildSavedRuntimeTable(registry) };
+  const registryPath = path.join(projectPath, "editor", "variables.json");
+  const raw = await readOptionalJsonFile<unknown>(registryPath);
+  if (raw) {
+    const registry = migrateVariableRegistryToLatest(raw);
+    return {
+      persistent: buildPersistentRuntimeTable(registry),
+      saved: buildSavedRuntimeTable(registry)
+    };
+  }
+  const legacy = readRawPersistentVariables(rawBlueprintDocument);
+  const { entries } = seedRegistryEntriesFromBlueprintPersistent(legacy);
+  // Stamped at the current version, not at the version the legacy field belonged to: `entries` was
+  // just built by the seeder, so it already has the current shape (scope included) and claiming an
+  // older version would only mislead anything that reads it.
+  const registry: VariableRegistry = { schemaVersion: VARIABLE_REGISTRY_SCHEMA_VERSION, entries };
+  return {
+    persistent: buildPersistentRuntimeTable(registry),
+    saved: buildSavedRuntimeTable(registry)
+  };
 }
 
 /**
@@ -227,19 +254,23 @@ async function loadVariableRuntimeTables(
  * the empty table plus a lint error does not.
  */
 async function loadSaveSchemaTable(projectPath: string): Promise<SaveSchemaRuntimeTable> {
-    const raw = await readOptionalJsonFile<unknown>(path.join(projectPath, "editor", "save-schema.json"));
-    return raw ? listSaveSchemaFields(migrateSaveSchemaToLatest(raw)) : [];
+  const raw = await readOptionalJsonFile<unknown>(
+    path.join(projectPath, "editor", "save-schema.json")
+  );
+  return raw ? listSaveSchemaFields(migrateSaveSchemaToLatest(raw)) : [];
 }
 
-function readRawPersistentVariables(blueprintDocument: unknown): Record<string, BlueprintPersistentVariable> | undefined {
-    if (typeof blueprintDocument !== "object" || blueprintDocument === null) {
-        return undefined;
-    }
-    const raw = (blueprintDocument as { persistentVariables?: unknown }).persistentVariables;
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-        return undefined;
-    }
-    return raw as Record<string, BlueprintPersistentVariable>;
+function readRawPersistentVariables(
+  blueprintDocument: unknown
+): Record<string, BlueprintPersistentVariable> | undefined {
+  if (typeof blueprintDocument !== "object" || blueprintDocument === null) {
+    return undefined;
+  }
+  const raw = (blueprintDocument as { persistentVariables?: unknown }).persistentVariables;
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return undefined;
+  }
+  return raw as Record<string, BlueprintPersistentVariable>;
 }
 
 /**
@@ -250,34 +281,34 @@ function readRawPersistentVariables(blueprintDocument: unknown): Record<string, 
  * only reads the blueprint document is blind to exactly the graphs this loads.
  */
 export async function loadSharedBlueprints(projectPath: string): Promise<SharedBlueprintAsset[]> {
-    const shardPath = path.join(projectPath, "assets", "assets.metadata.blueprint.json");
-    const shardResult = await Fs.read(shardPath, "utf-8");
-    if (!shardResult.ok) {
-        return [];
+  const shardPath = path.join(projectPath, "assets", "assets.metadata.blueprint.json");
+  const shardResult = await Fs.read(shardPath, "utf-8");
+  if (!shardResult.ok) {
+    return [];
+  }
+  let record: Record<string, unknown>;
+  try {
+    record = JSON.parse(shardResult.data) as Record<string, unknown>;
+  } catch {
+    return [];
+  }
+  const out: SharedBlueprintAsset[] = [];
+  for (const assetId of Object.keys(record)) {
+    const filePath = resolveAssetContentPath(projectPath, assetId);
+    if (!filePath) {
+      continue;
     }
-    let record: Record<string, unknown>;
+    const body = await Fs.read(filePath, "utf-8");
+    if (!body.ok) {
+      continue;
+    }
     try {
-        record = JSON.parse(shardResult.data) as Record<string, unknown>;
+      out.push(parseSharedBlueprintAssetJson(body.data));
     } catch {
-        return [];
+      // Skip invalid entries so Dev Mode still runs
     }
-    const out: SharedBlueprintAsset[] = [];
-    for (const assetId of Object.keys(record)) {
-        const filePath = resolveAssetContentPath(projectPath, assetId);
-        if (!filePath) {
-            continue;
-        }
-        const body = await Fs.read(filePath, "utf-8");
-        if (!body.ok) {
-            continue;
-        }
-        try {
-            out.push(parseSharedBlueprintAssetJson(body.data));
-        } catch {
-            // Skip invalid entries so Dev Mode still runs
-        }
-    }
-    return out;
+  }
+  return out;
 }
 
 /**
@@ -303,20 +334,20 @@ export async function loadSharedBlueprints(projectPath: string): Promise<SharedB
  * Exported for tests.
  */
 export function foldSharedBlueprints(
-    assets: readonly SharedBlueprintAsset[],
-    context: DevModeBundleLoadContext,
-    fold: AppTagGraphFoldOptions,
+  assets: readonly SharedBlueprintAsset[],
+  context: DevModeBundleLoadContext,
+  fold: AppTagGraphFoldOptions
 ): SharedBlueprintAsset[] {
-    return assets.map(asset => {
-        if (context.appTag && context.packaging) {
-            const refused = collectUnfoldableAppTagGraphsInBlueprint(asset.blueprint, fold);
-            if (refused.length > 0) {
-                throw new Error(describeAppTagGraphRefusal(refused[0], asset.name, context.locale));
-            }
-        }
-        const blueprint = applyAppTagToBlueprint(asset.blueprint, fold);
-        return blueprint === asset.blueprint ? asset : { ...asset, blueprint };
-    });
+  return assets.map((asset) => {
+    if (context.appTag && context.packaging) {
+      const refused = collectUnfoldableAppTagGraphsInBlueprint(asset.blueprint, fold);
+      if (refused.length > 0) {
+        throw new Error(describeAppTagGraphRefusal(refused[0], asset.name, context.locale));
+      }
+    }
+    const blueprint = applyAppTagToBlueprint(asset.blueprint, fold);
+    return blueprint === asset.blueprint ? asset : { ...asset, blueprint };
+  });
 }
 
 /**
@@ -332,27 +363,28 @@ export function foldSharedBlueprints(
  * a mystery.
  */
 function reportLiveVariantReads(
-    context: DevModeBundleLoadContext,
-    fold: AppTagGraphFoldOptions,
-    document: BlueprintDocument | null,
-    sharedAssets: readonly SharedBlueprintAsset[],
+  context: DevModeBundleLoadContext,
+  fold: AppTagGraphFoldOptions,
+  document: BlueprintDocument | null,
+  sharedAssets: readonly SharedBlueprintAsset[]
 ): void {
-    if (!context.appTag || context.packaging || !context.onNotice) {
-        return;
-    }
-    const names = [
-        ...collectUnfoldableAppTagGraphs(document, fold).map(graph => graph.blueprintName),
-        ...sharedAssets.flatMap(asset =>
-            collectUnfoldableAppTagGraphsInBlueprint(asset.blueprint, fold).map(() => asset.name)),
-    ];
-    const distinct = [...new Set(names)];
-    if (distinct.length === 0) {
-        return;
-    }
-    context.onNotice(
-        `${distinct.join(", ")} still asks which edition it is, and this run cannot fold the answer in, `
-        + `so it reads "${RELEASE_APP_TAG.name}" there. A build refuses those graphs.`,
-    );
+  if (!context.appTag || context.packaging || !context.onNotice) {
+    return;
+  }
+  const names = [
+    ...collectUnfoldableAppTagGraphs(document, fold).map((graph) => graph.blueprintName),
+    ...sharedAssets.flatMap((asset) =>
+      collectUnfoldableAppTagGraphsInBlueprint(asset.blueprint, fold).map(() => asset.name)
+    )
+  ];
+  const distinct = [...new Set(names)];
+  if (distinct.length === 0) {
+    return;
+  }
+  context.onNotice(
+    `${distinct.join(", ")} still asks which edition it is, and this run cannot fold the answer in, ` +
+      `so it reads "${RELEASE_APP_TAG.name}" there. A build refuses those graphs.`
+  );
 }
 
 /**
@@ -362,17 +394,17 @@ function reportLiveVariantReads(
  * as an asset; the blueprint's name inside the file is not what the author would go looking for.
  */
 function describeAppTagGraphRefusal(
-    refusal: UnfoldableAppTagGraph,
-    assetName: string,
-    locale: LocaleCode | undefined,
+  refusal: UnfoldableAppTagGraph,
+  assetName: string,
+  locale: LocaleCode | undefined
 ): string {
-    const { t } = createTranslator(locale ?? FALLBACK_LOCALE);
-    const keys = {
-        unresolved: "build.appTagGraphUnresolved",
-        unknownNode: "build.appTagGraphUnknownNode",
-        fnHeadRemoved: "build.appTagGraphFnHead",
-    } as const;
-    return t(keys[refusal.reason], { blueprint: assetName, graph: refusal.graphName });
+  const { t } = createTranslator(locale ?? FALLBACK_LOCALE);
+  const keys = {
+    unresolved: "build.appTagGraphUnresolved",
+    unknownNode: "build.appTagGraphUnknownNode",
+    fnHeadRemoved: "build.appTagGraphFnHead"
+  } as const;
+  return t(keys[refusal.reason], { blueprint: assetName, graph: refusal.graphName });
 }
 
 /**
@@ -416,74 +448,86 @@ type SceneDropPlan = Map<string, SceneReachability> | null;
  * a scene the package does not have. Exported for tests.
  */
 export function planSceneDrop(
-    context: DevModeBundleLoadContext,
-    appTagId: string,
-    blueprints: readonly Blueprint[],
+  context: DevModeBundleLoadContext,
+  appTagId: string,
+  blueprints: readonly Blueprint[]
 ): SceneDropPlan {
-    if (isBuiltinAppTagId(appTagId) || !context.packaging) {
-        return null;
+  if (isBuiltinAppTagId(appTagId) || !context.packaging) {
+    return null;
+  }
+  const declared = context.declaredScenes ?? {};
+  const entries: { storyId: string; sceneId: string }[] = [];
+  /** Whether this mechanism is answered; collects its scenes when it is. */
+  const answered = (mechanism: AppTagMechanismRef): boolean => {
+    const scenes = declared[appTagMechanismKey(mechanism)];
+    if (!scenes) {
+      return false;
     }
-    const declared = context.declaredScenes ?? {};
-    const entries: { storyId: string; sceneId: string }[] = [];
-    /** Whether this mechanism is answered; collects its scenes when it is. */
-    const answered = (mechanism: AppTagMechanismRef): boolean => {
-        const scenes = declared[appTagMechanismKey(mechanism)];
-        if (!scenes) {
-            return false;
-        }
-        entries.push(...scenes);
-        return true;
-    };
+    entries.push(...scenes);
+    return true;
+  };
 
-    for (const plugin of context.runtimePlugins ?? []) {
-        if (runtimeCapabilitiesCanStartStory(plugin.runtimeCapabilities)
-            && !answered({ kind: "plugin", pluginId: plugin.id })) {
-            context.onNotice?.(`the ${plugin.name} plugin can start any scene, so every story ships whole`);
-            return null;
-        }
+  for (const plugin of context.runtimePlugins ?? []) {
+    if (
+      runtimeCapabilitiesCanStartStory(plugin.runtimeCapabilities) &&
+      !answered({ kind: "plugin", pluginId: plugin.id })
+    ) {
+      context.onNotice?.(
+        `the ${plugin.name} plugin can start any scene, so every story ships whole`
+      );
+      return null;
     }
-    for (const blueprint of blueprints) {
-        if (blueprint.program.kind !== "graph"
-            && !answered({ kind: "scriptBlueprint", blueprintId: blueprint.id })) {
-            context.onNotice?.(`the TypeScript blueprint ${blueprint.name} can start any scene, so every story ships whole`);
-            return null;
-        }
+  }
+  for (const blueprint of blueprints) {
+    if (
+      blueprint.program.kind !== "graph" &&
+      !answered({ kind: "scriptBlueprint", blueprintId: blueprint.id })
+    ) {
+      context.onNotice?.(
+        `the TypeScript blueprint ${blueprint.name} can start any scene, so every story ships whole`
+      );
+      return null;
     }
-    const scan = scanStoryEntryPoints(
-        blueprintGraphCarriers(blueprints),
-        // Every named target is kept: the story documents have not been read at plan time, and a
-        // scene id no story has is dropped by the sweep's own seed filter rather than here.
-        () => true,
-    );
-    for (const undecided of scan.undecidable) {
-        if (!answered({
-            kind: "startStoryNode",
-            blueprintId: undecided.blueprintId,
-            graphKind: undecided.graphKind,
-            graphId: undecided.graphId,
-            nodeId: undecided.nodeId,
-        })) {
-            context.onNotice?.("a Start Game node picks its scene while the game runs, so every story ships whole");
-            return null;
-        }
+  }
+  const scan = scanStoryEntryPoints(
+    blueprintGraphCarriers(blueprints),
+    // Every named target is kept: the story documents have not been read at plan time, and a
+    // scene id no story has is dropped by the sweep's own seed filter rather than here.
+    () => true
+  );
+  for (const undecided of scan.undecidable) {
+    if (
+      !answered({
+        kind: "startStoryNode",
+        blueprintId: undecided.blueprintId,
+        graphKind: undecided.graphKind,
+        graphId: undecided.graphId,
+        nodeId: undecided.nodeId
+      })
+    ) {
+      context.onNotice?.(
+        "a Start Game node picks its scene while the game runs, so every story ships whole"
+      );
+      return null;
     }
+  }
 
-    const byStory = new Map<string, SceneReachability>();
-    const add = (storyId: string, sceneId: string): void => {
-        const existing = byStory.get(storyId);
-        byStory.set(storyId, { entrySceneIds: [...(existing?.entrySceneIds ?? []), sceneId] });
-    };
-    for (const [storyId, sceneIds] of scan.byStory) {
-        for (const sceneId of sceneIds) {
-            add(storyId, sceneId);
-        }
+  const byStory = new Map<string, SceneReachability>();
+  const add = (storyId: string, sceneId: string): void => {
+    const existing = byStory.get(storyId);
+    byStory.set(storyId, { entrySceneIds: [...(existing?.entrySceneIds ?? []), sceneId] });
+  };
+  for (const [storyId, sceneIds] of scan.byStory) {
+    for (const sceneId of sceneIds) {
+      add(storyId, sceneId);
     }
-    // A declared scene is an entry exactly like a picked one. One that no longer exists is dropped by
-    // the sweep's own seed filter, which is also what reports it to the author through the solver.
-    for (const entry of entries) {
-        add(entry.storyId, entry.sceneId);
-    }
-    return byStory;
+  }
+  // A declared scene is an entry exactly like a picked one. One that no longer exists is dropped by
+  // the sweep's own seed filter, which is also what reports it to the author through the solver.
+  for (const entry of entries) {
+    add(entry.storyId, entry.sceneId);
+  }
+  return byStory;
 }
 
 /**
@@ -497,59 +541,59 @@ export function planSceneDrop(
  * point absent rather than merely unplayed.
  */
 async function loadStoryLibrary(
-    projectPath: string,
-    variant: { id: string; name: string },
-    sceneDrop: SceneDropPlan,
+  projectPath: string,
+  variant: { id: string; name: string },
+  sceneDrop: SceneDropPlan
 ): Promise<DevModeStoryLibrary | undefined> {
-    const indexPath = path.join(projectPath, "editor", "story", "index.json");
-    const index = await readOptionalJsonFile<StoryLibraryIndex>(indexPath);
-    if (!index) {
-        return undefined;
+  const indexPath = path.join(projectPath, "editor", "story", "index.json");
+  const index = await readOptionalJsonFile<StoryLibraryIndex>(indexPath);
+  if (!index) {
+    return undefined;
+  }
+  const documents: Record<string, StoryDocument> = {};
+  const stories: StoryLibraryEntry[] = [];
+  const seen = new Set<string>();
+  for (const entry of Array.isArray(index.stories) ? index.stories : []) {
+    if (!isValidStoryId(entry.id) || seen.has(entry.id)) {
+      continue;
     }
-    const documents: Record<string, StoryDocument> = {};
-    const stories: StoryLibraryEntry[] = [];
-    const seen = new Set<string>();
-    for (const entry of Array.isArray(index.stories) ? index.stories : []) {
-        if (!isValidStoryId(entry.id) || seen.has(entry.id)) {
-            continue;
-        }
-        seen.add(entry.id);
-        const documentPath = resolveStoryDocumentPathForIndexEntry(projectPath, entry);
-        if (!documentPath) {
-            continue;
-        }
-        const document = await readJsonFile<StoryDocument>(documentPath);
-        if (document.id !== entry.id) {
-            throw new Error(`Story document id mismatch: expected ${entry.id}, received ${document.id}`);
-        }
-        documents[entry.id] = applyAppTagToStoryDocument(document, {
-            tagName: variant.name,
-            tagId: variant.id,
-            // A story no `Start Game` node names still gets swept, from its own entry scene: a jump
-            // never crosses stories, so nothing outside it can reach one of its scenes.
-            ...(sceneDrop ? { sceneReachability: sceneDrop.get(entry.id) ?? { entrySceneIds: [] } } : {}),
-        });
-        stories.push({
-            ...entry,
-            documentPath: storyDocumentRelativePath(entry.id),
-        });
+    seen.add(entry.id);
+    const documentPath = resolveStoryDocumentPathForIndexEntry(projectPath, entry);
+    if (!documentPath) {
+      continue;
     }
-    const normalizedIndex: StoryLibraryIndex = {
-        ...index,
-        stories,
-    };
-    if (index.defaultStoryId && stories.some(story => story.id === index.defaultStoryId)) {
-        normalizedIndex.defaultStoryId = index.defaultStoryId;
-    } else {
-        delete normalizedIndex.defaultStoryId;
+    const document = await readJsonFile<StoryDocument>(documentPath);
+    if (document.id !== entry.id) {
+      throw new Error(`Story document id mismatch: expected ${entry.id}, received ${document.id}`);
     }
-    return {
-        index: normalizedIndex,
-        documents,
-        characters: await loadCharacterSummaries(projectPath),
-        animations: await loadStoryAnimations(projectPath),
-        assetNames: await loadAssetNames(projectPath),
-    };
+    documents[entry.id] = applyAppTagToStoryDocument(document, {
+      tagName: variant.name,
+      tagId: variant.id,
+      // A story no `Start Game` node names still gets swept, from its own entry scene: a jump
+      // never crosses stories, so nothing outside it can reach one of its scenes.
+      ...(sceneDrop ? { sceneReachability: sceneDrop.get(entry.id) ?? { entrySceneIds: [] } } : {})
+    });
+    stories.push({
+      ...entry,
+      documentPath: storyDocumentRelativePath(entry.id)
+    });
+  }
+  const normalizedIndex: StoryLibraryIndex = {
+    ...index,
+    stories
+  };
+  if (index.defaultStoryId && stories.some((story) => story.id === index.defaultStoryId)) {
+    normalizedIndex.defaultStoryId = index.defaultStoryId;
+  } else {
+    delete normalizedIndex.defaultStoryId;
+  }
+  return {
+    index: normalizedIndex,
+    documents,
+    characters: await loadCharacterSummaries(projectPath),
+    animations: await loadStoryAnimations(projectPath),
+    assetNames: await loadAssetNames(projectPath)
+  };
 }
 
 /** The media types a story row can name; a font or a blueprint never appears in a row's sentence. */
@@ -564,26 +608,26 @@ const NAMED_ASSET_TYPES = ["image", "audio", "video", "model"] as const;
  * missing or broken shard degrades to "no name for that id", which prints the id exactly as before.
  */
 async function loadAssetNames(projectPath: string): Promise<Record<string, string>> {
-    const names: Record<string, string> = {};
-    for (const type of NAMED_ASSET_TYPES) {
-        const shardPath = path.join(projectPath, "assets", `assets.metadata.${type}.json`);
-        let record: Record<string, unknown> | undefined;
-        try {
-            record = await readOptionalJsonFile<Record<string, unknown>>(shardPath);
-        } catch {
-            continue;
-        }
-        if (!record || typeof record !== "object") {
-            continue;
-        }
-        for (const [assetId, raw] of Object.entries(record)) {
-            const name = raw && typeof raw === "object" ? (raw as { name?: unknown }).name : undefined;
-            if (typeof name === "string" && name) {
-                names[assetId] = name;
-            }
-        }
+  const names: Record<string, string> = {};
+  for (const type of NAMED_ASSET_TYPES) {
+    const shardPath = path.join(projectPath, "assets", `assets.metadata.${type}.json`);
+    let record: Record<string, unknown> | undefined;
+    try {
+      record = await readOptionalJsonFile<Record<string, unknown>>(shardPath);
+    } catch {
+      continue;
     }
-    return names;
+    if (!record || typeof record !== "object") {
+      continue;
+    }
+    for (const [assetId, raw] of Object.entries(record)) {
+      const name = raw && typeof raw === "object" ? (raw as { name?: unknown }).name : undefined;
+      if (typeof name === "string" && name) {
+        names[assetId] = name;
+      }
+    }
+  }
+  return names;
 }
 
 /**
@@ -606,24 +650,25 @@ async function loadAssetNames(projectPath: string): Promise<Record<string, strin
  * Exported for tests.
  */
 export async function loadGameAudio(projectPath: string): Promise<GameAudioBundle> {
-    const shardPath = path.join(projectPath, "assets", "assets.metadata.audio.json");
-    let record: Record<string, unknown> | undefined;
-    try {
-        record = await readOptionalJsonFile<Record<string, unknown>>(shardPath);
-    } catch {
-        record = undefined;
+  const shardPath = path.join(projectPath, "assets", "assets.metadata.audio.json");
+  let record: Record<string, unknown> | undefined;
+  try {
+    record = await readOptionalJsonFile<Record<string, unknown>>(shardPath);
+  } catch {
+    record = undefined;
+  }
+  const clips: Record<string, AudioClipRegion> = {};
+  if (record && typeof record === "object") {
+    for (const [assetId, raw] of Object.entries(record)) {
+      const extras =
+        raw && typeof raw === "object" ? (raw as { extras?: unknown }).extras : undefined;
+      const region = normalizeAudioClipRegion(extras);
+      if (region) {
+        clips[assetId] = region;
+      }
     }
-    const clips: Record<string, AudioClipRegion> = {};
-    if (record && typeof record === "object") {
-        for (const [assetId, raw] of Object.entries(record)) {
-            const extras = raw && typeof raw === "object" ? (raw as { extras?: unknown }).extras : undefined;
-            const region = normalizeAudioClipRegion(extras);
-            if (region) {
-                clips[assetId] = region;
-            }
-        }
-    }
-    return { clips, tracks: await loadProjectAudioTracks(projectPath) };
+  }
+  return { clips, tracks: await loadProjectAudioTracks(projectPath) };
 }
 
 /**
@@ -640,88 +685,103 @@ export async function loadGameAudio(projectPath: string): Promise<GameAudioBundl
  * the built-ins are precisely the fallback every unresolved reference already takes.
  */
 async function loadProjectAudioTracks(projectPath: string): Promise<ProjectAudioTrack[]> {
-    const tracksPath = path.join(projectPath, "editor", "audio-tracks.json");
-    try {
-        const raw = await readOptionalJsonFile<unknown>(tracksPath);
-        return migrateProjectAudioTrackDocument(raw ?? {}).tracks;
-    } catch {
-        return normalizeProjectAudioTracks([]);
-    }
+  const tracksPath = path.join(projectPath, "editor", "audio-tracks.json");
+  try {
+    const raw = await readOptionalJsonFile<unknown>(tracksPath);
+    return migrateProjectAudioTrackDocument(raw ?? {}).tracks;
+  } catch {
+    return normalizeProjectAudioTracks([]);
+  }
 }
 
-export function resolveStoryDocumentPathForIndexEntry(projectPath: string, entry: Pick<StoryLibraryEntry, "id">): string | null {
-    if (!isValidStoryId(entry.id)) {
-        return null;
-    }
-    return path.join(projectPath, "editor", "story", "stories", entry.id, "storydoc.json");
+export function resolveStoryDocumentPathForIndexEntry(
+  projectPath: string,
+  entry: Pick<StoryLibraryEntry, "id">
+): string | null {
+  if (!isValidStoryId(entry.id)) {
+    return null;
+  }
+  return path.join(projectPath, "editor", "story", "stories", entry.id, "storydoc.json");
 }
 
 function storyDocumentRelativePath(storyId: string): string {
-    return `editor/story/stories/${storyId}/storydoc.json`;
+  return `editor/story/stories/${storyId}/storydoc.json`;
 }
 
-async function loadStoryAnimations(projectPath: string): Promise<Record<string, StoryAnimationAsset>> {
-    const indexPath = path.join(projectPath, "editor", "story", "animations", "index.json");
-    const index = await readOptionalJsonFile<StoryAnimationIndex>(indexPath);
-    if (!index) {
-        return {};
+async function loadStoryAnimations(
+  projectPath: string
+): Promise<Record<string, StoryAnimationAsset>> {
+  const indexPath = path.join(projectPath, "editor", "story", "animations", "index.json");
+  const index = await readOptionalJsonFile<StoryAnimationIndex>(indexPath);
+  if (!index) {
+    return {};
+  }
+  const animations: Record<string, StoryAnimationAsset> = {};
+  const seen = new Set<string>();
+  for (const entry of Array.isArray(index.animations) ? index.animations : []) {
+    if (!isValidStoryEntityId(entry.id) || seen.has(entry.id)) {
+      continue;
     }
-    const animations: Record<string, StoryAnimationAsset> = {};
-    const seen = new Set<string>();
-    for (const entry of Array.isArray(index.animations) ? index.animations : []) {
-        if (!isValidStoryEntityId(entry.id) || seen.has(entry.id)) {
-            continue;
-        }
-        seen.add(entry.id);
-        const animationPath = path.join(projectPath, "editor", "story", "animations", `${entry.id}.json`);
-        const animation = await readOptionalJsonFile<StoryAnimationAsset>(animationPath);
-        if (!animation || animation.id !== entry.id) {
-            continue;
-        }
-        animations[entry.id] = animation;
+    seen.add(entry.id);
+    const animationPath = path.join(
+      projectPath,
+      "editor",
+      "story",
+      "animations",
+      `${entry.id}.json`
+    );
+    const animation = await readOptionalJsonFile<StoryAnimationAsset>(animationPath);
+    if (!animation || animation.id !== entry.id) {
+      continue;
     }
-    return animations;
+    animations[entry.id] = animation;
+  }
+  return animations;
 }
 
 async function loadCharacterSummaries(projectPath: string): Promise<DevModeCharacterSummary[]> {
-    const storePath = path.join(projectPath, "editor", "services", "character.json");
-    const store = await readOptionalJsonFile<{ characters?: unknown[] }>(storePath);
-    const characters = Array.isArray(store?.characters) ? store.characters : [];
-    return mapCharacterStoreEntriesToSummaries(characters);
+  const storePath = path.join(projectPath, "editor", "services", "character.json");
+  const store = await readOptionalJsonFile<{ characters?: unknown[] }>(storePath);
+  const characters = Array.isArray(store?.characters) ? store.characters : [];
+  return mapCharacterStoreEntriesToSummaries(characters);
 }
 
-async function readProjectConfigRecord(projectPath: string): Promise<Record<string, unknown> | undefined> {
-    try {
-        const entriesResult = await Fs.dirEntries(projectPath);
-        if (!entriesResult.ok) {
-            return undefined;
-        }
-        const configFileName = findProjectConfigFileName(entriesResult.data.map(entry => ({
-            name: path.parse(entry.name).name,
-            ext: path.extname(entry.name) || null,
-            type: entry.isFile() ? "file" : entry.isDirectory() ? "directory" : "other",
-        })));
-        if (!configFileName) {
-            return undefined;
-        }
-        const configPath = path.join(projectPath, configFileName);
-        if (configFileName.endsWith(".nlproj")) {
-            const result = await Fs.readRaw(configPath);
-            if (!result.ok) {
-                return undefined;
-            }
-            return decodeProjectConfig(result.data) as unknown as Record<string, unknown>;
-        }
-        return await readJsonFile<Record<string, unknown>>(configPath);
-    } catch {
-        return undefined;
+async function readProjectConfigRecord(
+  projectPath: string
+): Promise<Record<string, unknown> | undefined> {
+  try {
+    const entriesResult = await Fs.dirEntries(projectPath);
+    if (!entriesResult.ok) {
+      return undefined;
     }
+    const configFileName = findProjectConfigFileName(
+      entriesResult.data.map((entry) => ({
+        name: path.parse(entry.name).name,
+        ext: path.extname(entry.name) || null,
+        type: entry.isFile() ? "file" : entry.isDirectory() ? "directory" : "other"
+      }))
+    );
+    if (!configFileName) {
+      return undefined;
+    }
+    const configPath = path.join(projectPath, configFileName);
+    if (configFileName.endsWith(".nlproj")) {
+      const result = await Fs.readRaw(configPath);
+      if (!result.ok) {
+        return undefined;
+      }
+      return decodeProjectConfig(result.data) as unknown as Record<string, unknown>;
+    }
+    return await readJsonFile<Record<string, unknown>>(configPath);
+  } catch {
+    return undefined;
+  }
 }
 
 async function readProjectIdentifier(projectPath: string): Promise<string | undefined> {
-    const config = await readProjectConfigRecord(projectPath);
-    const id = config?.identifier;
-    return typeof id === "string" && id.trim() ? id.trim() : undefined;
+  const config = await readProjectConfigRecord(projectPath);
+  const id = config?.identifier;
+  return typeof id === "string" && id.trim() ? id.trim() : undefined;
 }
 
 /**
@@ -731,61 +791,68 @@ async function readProjectIdentifier(projectPath: string): Promise<string | unde
  * Dev Mode start or a pack. Returns undefined when the project has no setup.
  * Exported for tests.
  */
-export async function loadGameLocalization(projectPath: string): Promise<GameLocalizationBundle | undefined> {
-    const config = await readProjectConfigRecord(projectPath);
-    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
-    const localization = normalizeLocalizationConfiguration(app?.localization);
-    if (!localization.sourceLocale || localization.locales.length === 0) {
-        return undefined;
+export async function loadGameLocalization(
+  projectPath: string
+): Promise<GameLocalizationBundle | undefined> {
+  const config = await readProjectConfigRecord(projectPath);
+  const app =
+    config?.app && typeof config.app === "object"
+      ? (config.app as Record<string, unknown>)
+      : undefined;
+  const localization = normalizeLocalizationConfiguration(app?.localization);
+  if (!localization.sourceLocale || localization.locales.length === 0) {
+    return undefined;
+  }
+  const tables: Record<string, Record<string, string>> = {};
+  for (const locale of localization.locales) {
+    if (locale.code === localization.sourceLocale) {
+      continue;
     }
-    const tables: Record<string, Record<string, string>> = {};
-    for (const locale of localization.locales) {
-        if (locale.code === localization.sourceLocale) {
-            continue;
-        }
-        let raw: unknown;
-        try {
-            raw = await readOptionalJsonFile<unknown>(
-                path.join(projectPath, "editor", "localization", `${locale.code}.json`),
-            );
-        } catch {
-            continue;
-        }
-        if (!raw) {
-            continue;
-        }
-        const document = normalizeLocalizationDocument(raw, locale.code);
-        const table: Record<string, string> = {};
-        for (const [unitId, unit] of Object.entries(document.units)) {
-            if (unit.target) {
-                table[unitId] = unit.target;
-            }
-        }
-        if (Object.keys(table).length > 0) {
-            tables[locale.code] = table;
-        }
-    }
-    let keys: Record<string, string> | undefined;
+    let raw: unknown;
     try {
-        const rawKeys = await readOptionalJsonFile<unknown>(
-            path.join(projectPath, "editor", "localization", "keys.json"),
-        );
-        if (rawKeys) {
-            const keysDocument = normalizeLocalizationKeysDocument(rawKeys);
-            const entries = Object.entries(keysDocument.keys);
-            if (entries.length > 0) {
-                keys = Object.fromEntries(entries.map(([name, definition]) => [name, definition.sourceText]));
-            }
-        }
+      raw = await readOptionalJsonFile<unknown>(
+        path.join(projectPath, "editor", "localization", `${locale.code}.json`)
+      );
     } catch {
-        // Broken keys file degrades to no named keys.
+      continue;
     }
-    return {
-        sourceLocale: localization.sourceLocale,
-        locales: localization.locales,
-        tables,
-        ...(keys ? { keys } : {}),
-    };
+    if (!raw) {
+      continue;
+    }
+    const document = normalizeLocalizationDocument(raw, locale.code);
+    const table: Record<string, string> = {};
+    for (const [unitId, unit] of Object.entries(document.units)) {
+      if (unit.target) {
+        table[unitId] = unit.target;
+      }
+    }
+    if (Object.keys(table).length > 0) {
+      tables[locale.code] = table;
+    }
+  }
+  let keys: Record<string, string> | undefined;
+  try {
+    const rawKeys = await readOptionalJsonFile<unknown>(
+      path.join(projectPath, "editor", "localization", "keys.json")
+    );
+    if (rawKeys) {
+      const keysDocument = normalizeLocalizationKeysDocument(rawKeys);
+      const entries = Object.entries(keysDocument.keys);
+      if (entries.length > 0) {
+        keys = Object.fromEntries(
+          entries.map(([name, definition]) => [name, definition.sourceText])
+        );
+      }
+    }
+  } catch {
+    // Broken keys file degrades to no named keys.
+  }
+  return {
+    sourceLocale: localization.sourceLocale,
+    locales: localization.locales,
+    tables,
+    ...(keys ? { keys } : {})
+  };
 }
 
 /**
@@ -797,40 +864,43 @@ export async function loadGameLocalization(projectPath: string): Promise<GameLoc
  * no voice set up. Exported for tests.
  */
 export async function loadGameVoice(projectPath: string): Promise<GameVoiceBundle | undefined> {
-    const config = await readProjectConfigRecord(projectPath);
-    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
-    const voice = normalizeVoiceConfiguration(app?.voice);
-    if (voice.voicedLocales.length === 0) {
-        return undefined;
+  const config = await readProjectConfigRecord(projectPath);
+  const app =
+    config?.app && typeof config.app === "object"
+      ? (config.app as Record<string, unknown>)
+      : undefined;
+  const voice = normalizeVoiceConfiguration(app?.voice);
+  if (voice.voicedLocales.length === 0) {
+    return undefined;
+  }
+  const tables: Record<string, Record<string, string>> = {};
+  for (const locale of voice.voicedLocales) {
+    let raw: unknown;
+    try {
+      raw = await readOptionalJsonFile<unknown>(
+        path.join(projectPath, "editor", "voice", `${locale.code}.json`)
+      );
+    } catch {
+      continue;
     }
-    const tables: Record<string, Record<string, string>> = {};
-    for (const locale of voice.voicedLocales) {
-        let raw: unknown;
-        try {
-            raw = await readOptionalJsonFile<unknown>(
-                path.join(projectPath, "editor", "voice", `${locale.code}.json`),
-            );
-        } catch {
-            continue;
-        }
-        if (!raw) {
-            continue;
-        }
-        const document = normalizeVoiceDocument(raw, locale.code);
-        const table: Record<string, string> = {};
-        for (const [unitId, unit] of Object.entries(document.units)) {
-            if (unit.assetId) {
-                table[unitId] = unit.assetId;
-            }
-        }
-        if (Object.keys(table).length > 0) {
-            tables[locale.code] = table;
-        }
+    if (!raw) {
+      continue;
     }
-    return {
-        voicedLocales: voice.voicedLocales,
-        tables,
-    };
+    const document = normalizeVoiceDocument(raw, locale.code);
+    const table: Record<string, string> = {};
+    for (const [unitId, unit] of Object.entries(document.units)) {
+      if (unit.assetId) {
+        table[unitId] = unit.assetId;
+      }
+    }
+    if (Object.keys(table).length > 0) {
+      tables[locale.code] = table;
+    }
+  }
+  return {
+    voicedLocales: voice.voicedLocales,
+    tables
+  };
 }
 
 /**
@@ -839,10 +909,15 @@ export async function loadGameVoice(projectPath: string): Promise<GameVoiceBundl
  * default, so a project that never configured it must still get the defaults
  * rather than nothing. Exported for tests.
  */
-export async function loadAutoSaveConfiguration(projectPath: string): Promise<AutoSaveConfiguration> {
-    const config = await readProjectConfigRecord(projectPath);
-    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
-    return normalizeAutoSaveConfiguration(app?.autoSave);
+export async function loadAutoSaveConfiguration(
+  projectPath: string
+): Promise<AutoSaveConfiguration> {
+  const config = await readProjectConfigRecord(projectPath);
+  const app =
+    config?.app && typeof config.app === "object"
+      ? (config.app as Record<string, unknown>)
+      : undefined;
+  return normalizeAutoSaveConfiguration(app?.autoSave);
 }
 
 /**
@@ -853,9 +928,12 @@ export async function loadAutoSaveConfiguration(projectPath: string): Promise<Au
  * Exported for tests.
  */
 export async function loadPlayerPreferences(projectPath: string): Promise<PlayerPreferences> {
-    const config = await readProjectConfigRecord(projectPath);
-    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
-    return normalizePlayerPreferences(app?.preferences);
+  const config = await readProjectConfigRecord(projectPath);
+  const app =
+    config?.app && typeof config.app === "object"
+      ? (config.app as Record<string, unknown>)
+      : undefined;
+  return normalizePlayerPreferences(app?.preferences);
 }
 
 /**
@@ -877,30 +955,30 @@ export async function loadPlayerPreferences(projectPath: string): Promise<Player
  * reports. Exported for tests.
  */
 export async function loadProjectBrand(projectPath: string): Promise<BrandColor[]> {
-    const brandPath = path.join(projectPath, BRAND_DOCUMENT_PATH);
-    try {
-        const raw = await readOptionalJsonFile<unknown>(brandPath);
-        return migrateProjectBrandDocument(raw ?? {}).colors;
-    } catch {
-        return normalizeProjectBrandColors([]);
-    }
+  const brandPath = path.join(projectPath, BRAND_DOCUMENT_PATH);
+  try {
+    const raw = await readOptionalJsonFile<unknown>(brandPath);
+    return migrateProjectBrandDocument(raw ?? {}).colors;
+  } catch {
+    return normalizeProjectBrandColors([]);
+  }
 }
 
 function resolveAssetContentPath(projectPath: string, assetId: string): string | null {
-    try {
-        const [a, b, rest] = splitAssetStorageId(assetId);
-        return path.join(projectPath, "assets", "content", a, b, rest);
-    } catch {
-        return null;
-    }
+  try {
+    const [a, b, rest] = splitAssetStorageId(assetId);
+    return path.join(projectPath, "assets", "content", a, b, rest);
+  } catch {
+    return null;
+  }
 }
 
 /** Default bundle source: project files on disk. */
 export const devModeDiskBundleSource: DevModeBundleSource = {
-    kind: "disk",
-    load(context) {
-        return assembleDevModeBundleFromProjectPath(context);
-    },
+  kind: "disk",
+  load(context) {
+    return assembleDevModeBundleFromProjectPath(context);
+  }
 };
 
 /**
@@ -912,32 +990,32 @@ export const devModeDiskBundleSource: DevModeBundleSource = {
  * a line the player can still reach.
  */
 function restrictLocalization(
-    bundle: GameLocalizationBundle | undefined,
-    textIds: ReadonlySet<string> | null,
-    onNotice: DevModeBundleLoadContext["onNotice"],
+  bundle: GameLocalizationBundle | undefined,
+  textIds: ReadonlySet<string> | null,
+  onNotice: DevModeBundleLoadContext["onNotice"]
 ): GameLocalizationBundle | undefined {
-    if (!bundle || !textIds) {
-        return bundle;
-    }
-    const result = restrictLocalizationToTextIds(bundle, textIds);
-    if (result.removedUnitCount > 0) {
-        onNotice?.(`${result.removedUnitCount} translations belong to removed rows and do not ship`);
-    }
-    return result.bundle;
+  if (!bundle || !textIds) {
+    return bundle;
+  }
+  const result = restrictLocalizationToTextIds(bundle, textIds);
+  if (result.removedUnitCount > 0) {
+    onNotice?.(`${result.removedUnitCount} translations belong to removed rows and do not ship`);
+  }
+  return result.bundle;
 }
 
 /** The same narrowing for voice lines; each one dropped also drops its recording from the package. */
 function restrictVoice(
-    bundle: GameVoiceBundle | undefined,
-    textIds: ReadonlySet<string> | null,
-    onNotice: DevModeBundleLoadContext["onNotice"],
+  bundle: GameVoiceBundle | undefined,
+  textIds: ReadonlySet<string> | null,
+  onNotice: DevModeBundleLoadContext["onNotice"]
 ): GameVoiceBundle | undefined {
-    if (!bundle || !textIds) {
-        return bundle;
-    }
-    const result = restrictVoiceToTextIds(bundle, textIds);
-    if (result.removedUnitCount > 0) {
-        onNotice?.(`${result.removedUnitCount} voice lines belong to removed rows and do not ship`);
-    }
-    return result.bundle;
+  if (!bundle || !textIds) {
+    return bundle;
+  }
+  const result = restrictVoiceToTextIds(bundle, textIds);
+  if (result.removedUnitCount > 0) {
+    onNotice?.(`${result.removedUnitCount} voice lines belong to removed rows and do not ship`);
+  }
+  return result.bundle;
 }

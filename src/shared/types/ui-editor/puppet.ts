@@ -31,53 +31,53 @@
 export const UI_PUPPET_ELEMENT_TYPE = "nl.puppet";
 
 export type UIPuppetWidgetProps = {
-    /**
-     * The model bundle asset (`AssetType.Model`) — a preserved directory tree, not a single file.
-     *
-     * Named `assetId` on purpose, not `modelAssetId`: both generic asset walks key on that literal
-     * property name (`surfaceResourcePreload.ts` and `referenceModel.ts`), so this reference is
-     * preloaded by the shipped game and is visible in "what uses this asset" with no per-widget code.
-     */
-    assetId: string | null;
-    /**
-     * The author's runtime, by directory name under the project's `runtimes/puppet/`.
-     *
-     * `""` means none chosen. A name the current machine does not have installed is kept rather than
-     * dropped: the runtime is not on every machine the project is opened on, and silently rewriting
-     * the document to `""` there would lose the author's choice.
-     */
-    backend: string;
-    /** Handed to the backend verbatim. The engine never reads it and neither does Studio. */
-    options: Record<string, unknown>;
-    /** `PuppetState.motion` — the named action requested; `null` is "nothing playing", a real state. */
-    motion: string | null;
-    /** `PuppetState.expression`. `null` clears rather than substituting a model's own "neutral". */
-    expression: string | null;
-    /** `PuppetState.skin`. `null` is the model's own default skin. */
-    skin: string | null;
-    /** `PuppetState.params`. A key that is absent keeps the model's default, so clearing = dropping. */
-    params: Record<string, number>;
-    /** `PuppetState.slots`. An explicit `null` value is "cleared", which differs from an absent key. */
-    slots: Record<string, string | null>;
+  /**
+   * The model bundle asset (`AssetType.Model`) — a preserved directory tree, not a single file.
+   *
+   * Named `assetId` on purpose, not `modelAssetId`: both generic asset walks key on that literal
+   * property name (`surfaceResourcePreload.ts` and `referenceModel.ts`), so this reference is
+   * preloaded by the shipped game and is visible in "what uses this asset" with no per-widget code.
+   */
+  assetId: string | null;
+  /**
+   * The author's runtime, by directory name under the project's `runtimes/puppet/`.
+   *
+   * `""` means none chosen. A name the current machine does not have installed is kept rather than
+   * dropped: the runtime is not on every machine the project is opened on, and silently rewriting
+   * the document to `""` there would lose the author's choice.
+   */
+  backend: string;
+  /** Handed to the backend verbatim. The engine never reads it and neither does Studio. */
+  options: Record<string, unknown>;
+  /** `PuppetState.motion` — the named action requested; `null` is "nothing playing", a real state. */
+  motion: string | null;
+  /** `PuppetState.expression`. `null` clears rather than substituting a model's own "neutral". */
+  expression: string | null;
+  /** `PuppetState.skin`. `null` is the model's own default skin. */
+  skin: string | null;
+  /** `PuppetState.params`. A key that is absent keeps the model's default, so clearing = dropping. */
+  params: Record<string, number>;
+  /** `PuppetState.slots`. An explicit `null` value is "cleared", which differs from an absent key. */
+  slots: Record<string, string | null>;
 };
 
 export const defaultPuppetWidgetProps: UIPuppetWidgetProps = {
-    assetId: null,
-    backend: "",
-    options: {},
-    motion: null,
-    expression: null,
-    skin: null,
-    params: {},
-    slots: {},
+  assetId: null,
+  backend: "",
+  options: {},
+  motion: null,
+  expression: null,
+  skin: null,
+  params: {},
+  slots: {}
 };
 
 function readAssetId(value: unknown): string | null {
-    if (typeof value !== "string") {
-        return null;
-    }
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : null;
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 /**
@@ -88,14 +88,14 @@ function readAssetId(value: unknown): string | null {
  * be asked for a motion whose name is the empty string.
  */
 function readName(value: unknown): string | null {
-    return readAssetId(value);
+  return readAssetId(value);
 }
 
 /** A plain object, or `{}`. Arrays are rejected: none of these three fields is a list. */
 function readRecord(value: unknown): Record<string, unknown> {
-    return value !== null && typeof value === "object" && !Array.isArray(value)
-        ? { ...(value as Record<string, unknown>) }
-        : {};
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? { ...(value as Record<string, unknown>) }
+    : {};
 }
 
 /**
@@ -105,22 +105,23 @@ function readRecord(value: unknown): Record<string, unknown> {
  * keeps the model's own default, so dropping is exactly the documented "cleared".
  */
 function readParams(value: unknown): Record<string, number> {
-    const out: Record<string, number> = {};
-    for (const [key, raw] of Object.entries(readRecord(value))) {
-        // Numbers, and strings that spell one. Nothing else goes through `Number()`, because
-        // `Number(null)`, `Number("")` and `Number(false)` are all a perfectly finite 0 - so a
-        // blanket coercion would turn every kind of junk into a parameter driven to zero, which a
-        // model shows as a visibly wrong pose rather than as a missing key.
-        const candidate = typeof raw === "number"
-            ? raw
-            : typeof raw === "string" && raw.trim().length > 0
-                ? Number(raw)
-                : Number.NaN;
-        if (Number.isFinite(candidate)) {
-            out[key] = candidate;
-        }
+  const out: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(readRecord(value))) {
+    // Numbers, and strings that spell one. Nothing else goes through `Number()`, because
+    // `Number(null)`, `Number("")` and `Number(false)` are all a perfectly finite 0 - so a
+    // blanket coercion would turn every kind of junk into a parameter driven to zero, which a
+    // model shows as a visibly wrong pose rather than as a missing key.
+    const candidate =
+      typeof raw === "number"
+        ? raw
+        : typeof raw === "string" && raw.trim().length > 0
+          ? Number(raw)
+          : Number.NaN;
+    if (Number.isFinite(candidate)) {
+      out[key] = candidate;
     }
-    return out;
+  }
+  return out;
 }
 
 /**
@@ -131,28 +132,31 @@ function readParams(value: unknown): Record<string, number> {
  * string nor null is dropped rather than stringified.
  */
 function readSlots(value: unknown): Record<string, string | null> {
-    const out: Record<string, string | null> = {};
-    for (const [key, raw] of Object.entries(readRecord(value))) {
-        if (raw === null) {
-            out[key] = null;
-        } else if (typeof raw === "string") {
-            out[key] = raw;
-        }
+  const out: Record<string, string | null> = {};
+  for (const [key, raw] of Object.entries(readRecord(value))) {
+    if (raw === null) {
+      out[key] = null;
+    } else if (typeof raw === "string") {
+      out[key] = raw;
     }
-    return out;
+  }
+  return out;
 }
 
-export function normalizePuppetProps(raw: Record<string, unknown> | undefined): UIPuppetWidgetProps {
-    return {
-        assetId: readAssetId(raw?.assetId),
-        backend: typeof raw?.backend === "string" ? raw.backend.trim() : defaultPuppetWidgetProps.backend,
-        options: readRecord(raw?.options),
-        motion: readName(raw?.motion),
-        expression: readName(raw?.expression),
-        skin: readName(raw?.skin),
-        params: readParams(raw?.params),
-        slots: readSlots(raw?.slots),
-    };
+export function normalizePuppetProps(
+  raw: Record<string, unknown> | undefined
+): UIPuppetWidgetProps {
+  return {
+    assetId: readAssetId(raw?.assetId),
+    backend:
+      typeof raw?.backend === "string" ? raw.backend.trim() : defaultPuppetWidgetProps.backend,
+    options: readRecord(raw?.options),
+    motion: readName(raw?.motion),
+    expression: readName(raw?.expression),
+    skin: readName(raw?.skin),
+    params: readParams(raw?.params),
+    slots: readSlots(raw?.slots)
+  };
 }
 
 /**
@@ -162,5 +166,5 @@ export function normalizePuppetProps(raw: Record<string, unknown> | undefined): 
  * with no model are the two states every puppet widget passes through while it is being authored.
  */
 export function isPuppetWidgetConfigured(props: UIPuppetWidgetProps): boolean {
-    return Boolean(props.assetId) && props.backend.length > 0;
+  return Boolean(props.assetId) && props.backend.length > 0;
 }

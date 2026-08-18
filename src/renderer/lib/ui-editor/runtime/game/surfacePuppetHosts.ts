@@ -35,10 +35,7 @@ import { useCallback, useMemo, useSyncExternalStore } from "react";
 import type { PuppetBackendModuleSource } from "./puppetBackendHost";
 import { createPuppetModelSession } from "./puppetModelSession";
 import { resolveBundleEntry } from "./storyCompiler";
-import {
-    SurfacePuppetUnavailableError,
-    type SurfacePuppetOpener,
-} from "./surfacePuppetSession";
+import { SurfacePuppetUnavailableError, type SurfacePuppetOpener } from "./surfacePuppetSession";
 import { getGameRuntimeBridge } from "../gameRuntimeBridge";
 import { findPackPuppetBackendSource, resolvePackModelBundleUrl } from "./puppetPackRuntimes";
 
@@ -52,18 +49,18 @@ import { findPackPuppetBackendSource, resolvePackModelBundleUrl } from "./puppet
  * duplication that produced a Dev Mode stage able to draw puppets and a Dev Mode widget that could not.
  */
 export interface SurfacePuppetHost {
-    /** For diagnostics. Which arm answered. */
-    readonly kind: "dev-mode" | "packaged";
-    /** Every author-supplied runtime this host can see. Empty is the normal case. */
-    listBackendModules(): Promise<readonly PuppetBackendModuleSource[]>;
-    /**
-     * The URL of a model bundle's **entry file**, not of the asset id.
-     *
-     * `PuppetMountContext.resolveSibling(rel)` does URL arithmetic against this to find the bundle's
-     * textures and motions, so a URL the bundle's own relative references do not resolve against is
-     * worse than none. Null when the asset is not in this host.
-     */
-    resolveModelBundleUrl(assetId: string): Promise<string | null>;
+  /** For diagnostics. Which arm answered. */
+  readonly kind: "dev-mode" | "packaged";
+  /** Every author-supplied runtime this host can see. Empty is the normal case. */
+  listBackendModules(): Promise<readonly PuppetBackendModuleSource[]>;
+  /**
+   * The URL of a model bundle's **entry file**, not of the asset id.
+   *
+   * `PuppetMountContext.resolveSibling(rel)` does URL arithmetic against this to find the bundle's
+   * textures and motions, so a URL the bundle's own relative references do not resolve against is
+   * worse than none. Null when the asset is not in this host.
+   */
+  resolveModelBundleUrl(assetId: string): Promise<string | null>;
 }
 
 // ---------------------------------------------------------------- the Dev Mode registry
@@ -73,14 +70,14 @@ let devModeVersion = 0;
 const devModeListeners = new Set<() => void>();
 
 function notifyDevModeHost(): void {
-    devModeVersion += 1;
-    for (const listener of [...devModeListeners]) {
-        try {
-            listener();
-        } catch {
-            // A subscriber's own failure is not this registry's to propagate.
-        }
+  devModeVersion += 1;
+  for (const listener of [...devModeListeners]) {
+    try {
+      listener();
+    } catch {
+      // A subscriber's own failure is not this registry's to propagate.
     }
+  }
 }
 
 /**
@@ -88,24 +85,24 @@ function notifyDevModeHost(): void {
  * a relaunch against a different project cannot be served by the previous one's grants.
  */
 export function registerDevModePuppetHost(host: SurfacePuppetHost): () => void {
-    devModeHost = host;
-    notifyDevModeHost();
-    return () => {
-        if (devModeHost === host) {
-            devModeHost = null;
-            notifyDevModeHost();
-        }
-    };
+  devModeHost = host;
+  notifyDevModeHost();
+  return () => {
+    if (devModeHost === host) {
+      devModeHost = null;
+      notifyDevModeHost();
+    }
+  };
 }
 
 export function getDevModePuppetHost(): SurfacePuppetHost | null {
-    return devModeHost;
+  return devModeHost;
 }
 
 /** Test seam, and the reset a window teardown would otherwise leave to chance. */
 export function __resetDevModePuppetHost(): void {
-    devModeHost = null;
-    notifyDevModeHost();
+  devModeHost = null;
+  notifyDevModeHost();
 }
 
 // ---------------------------------------------------------------- the packaged arm
@@ -121,31 +118,31 @@ let packagedHost: SurfacePuppetHost | null | undefined;
  * runtimes" — the shell has already put the real failure on screen.
  */
 export function createPackagedPuppetHost(): SurfacePuppetHost | null {
-    if (packagedHost !== undefined) {
-        return packagedHost;
-    }
-    const bridge = getGameRuntimeBridge();
-    if (!bridge) {
-        packagedHost = null;
-        return null;
-    }
-    const pack = bridge.readPack().catch(() => null);
-    packagedHost = {
-        kind: "packaged",
-        listBackendModules: async () => {
-            const resolved = await pack;
-            return (resolved?.puppetRuntimes ?? [])
-                .map(runtime => findPackPuppetBackendSource(bridge, resolved, runtime.name))
-                .filter((source): source is PuppetBackendModuleSource => source !== null);
-        },
-        resolveModelBundleUrl: async assetId => resolvePackModelBundleUrl(bridge, await pack, assetId),
-    };
+  if (packagedHost !== undefined) {
     return packagedHost;
+  }
+  const bridge = getGameRuntimeBridge();
+  if (!bridge) {
+    packagedHost = null;
+    return null;
+  }
+  const pack = bridge.readPack().catch(() => null);
+  packagedHost = {
+    kind: "packaged",
+    listBackendModules: async () => {
+      const resolved = await pack;
+      return (resolved?.puppetRuntimes ?? [])
+        .map((runtime) => findPackPuppetBackendSource(bridge, resolved, runtime.name))
+        .filter((source): source is PuppetBackendModuleSource => source !== null);
+    },
+    resolveModelBundleUrl: async (assetId) => resolvePackModelBundleUrl(bridge, await pack, assetId)
+  };
+  return packagedHost;
 }
 
 /** Test seam: the module-level memo would otherwise leak one test's pack into the next. */
 export function __resetPackagedPuppetHost(): void {
-    packagedHost = undefined;
+  packagedHost = undefined;
 }
 
 // ---------------------------------------------------------------- host -> opener
@@ -157,36 +154,36 @@ export function __resetPackagedPuppetHost(): void {
  * broke", which is the split `SurfacePuppetMount` degrades on.
  */
 export function createPuppetHostOpener(host: SurfacePuppetHost): SurfacePuppetOpener {
-    return async ({ request, container, size, onWarn }) => {
-        const sources = await host.listBackendModules();
-        const source = sources.find(candidate => candidate.id === request.backend);
-        if (!source) {
-            // The exact condition the engine calls `missing-backend`: the box is there, nothing answers
-            // to its backend name. A project (or a published game) without the author's runtime draws
-            // nothing and keeps working.
-            throw new SurfacePuppetUnavailableError(
-                "backend-missing",
-                `No puppet runtime named "${request.backend}" is available here`,
-            );
-        }
-        const bundleUrl = request.assetId ? await host.resolveModelBundleUrl(request.assetId) : null;
-        if (!bundleUrl) {
-            throw new SurfacePuppetUnavailableError(
-                "no-model",
-                `Model bundle ${request.assetId ?? "(none)"} is not available here`,
-            );
-        }
-        const override = request.entry?.trim() ?? "";
-        return createPuppetModelSession({
-            container,
-            source,
-            backend: request.backend,
-            src: override ? resolveBundleEntry(bundleUrl, override) : bundleUrl,
-            options: request.options ?? {},
-            size,
-            onWarn: warning => onWarn(warning.message),
-        });
-    };
+  return async ({ request, container, size, onWarn }) => {
+    const sources = await host.listBackendModules();
+    const source = sources.find((candidate) => candidate.id === request.backend);
+    if (!source) {
+      // The exact condition the engine calls `missing-backend`: the box is there, nothing answers
+      // to its backend name. A project (or a published game) without the author's runtime draws
+      // nothing and keeps working.
+      throw new SurfacePuppetUnavailableError(
+        "backend-missing",
+        `No puppet runtime named "${request.backend}" is available here`
+      );
+    }
+    const bundleUrl = request.assetId ? await host.resolveModelBundleUrl(request.assetId) : null;
+    if (!bundleUrl) {
+      throw new SurfacePuppetUnavailableError(
+        "no-model",
+        `Model bundle ${request.assetId ?? "(none)"} is not available here`
+      );
+    }
+    const override = request.entry?.trim() ?? "";
+    return createPuppetModelSession({
+      container,
+      source,
+      backend: request.backend,
+      src: override ? resolveBundleEntry(bundleUrl, override) : bundleUrl,
+      options: request.options ?? {},
+      size,
+      onWarn: (warning) => onWarn(warning.message)
+    });
+  };
 }
 
 // ---------------------------------------------------------------- the chain
@@ -199,17 +196,17 @@ export function createPuppetHostOpener(host: SurfacePuppetHost): SurfacePuppetOp
  * allowed to import.
  */
 export function resolveSurfacePuppetOpener(
-    workspaceOpener: SurfacePuppetOpener | null,
+  workspaceOpener: SurfacePuppetOpener | null
 ): SurfacePuppetOpener | null {
-    if (workspaceOpener) {
-        return workspaceOpener;
-    }
-    const devMode = getDevModePuppetHost();
-    if (devMode) {
-        return createPuppetHostOpener(devMode);
-    }
-    const packaged = createPackagedPuppetHost();
-    return packaged ? createPuppetHostOpener(packaged) : null;
+  if (workspaceOpener) {
+    return workspaceOpener;
+  }
+  const devMode = getDevModePuppetHost();
+  if (devMode) {
+    return createPuppetHostOpener(devMode);
+  }
+  const packaged = createPackagedPuppetHost();
+  return packaged ? createPuppetHostOpener(packaged) : null;
 }
 
 /**
@@ -220,17 +217,23 @@ export function resolveSurfacePuppetOpener(
  * surface mounted first would otherwise sit at `missing-backend` for the life of the window.
  */
 export function useSurfacePuppetOpener(
-    workspaceOpener: SurfacePuppetOpener | null,
+  workspaceOpener: SurfacePuppetOpener | null
 ): SurfacePuppetOpener | null {
-    const subscribe = useCallback((onChange: () => void) => {
-        devModeListeners.add(onChange);
-        return () => { devModeListeners.delete(onChange); };
-    }, []);
-    const registryVersion = useSyncExternalStore(subscribe, () => devModeVersion, () => devModeVersion);
-    // Memoised on the version rather than on the resolver object: the opener's identity is what keys
-    // the mount effect, so rebuilding it per render would remount the model on every render.
-    return useMemo(
-        () => resolveSurfacePuppetOpener(workspaceOpener),
-        [workspaceOpener, registryVersion],
-    );
+  const subscribe = useCallback((onChange: () => void) => {
+    devModeListeners.add(onChange);
+    return () => {
+      devModeListeners.delete(onChange);
+    };
+  }, []);
+  const registryVersion = useSyncExternalStore(
+    subscribe,
+    () => devModeVersion,
+    () => devModeVersion
+  );
+  // Memoised on the version rather than on the resolver object: the opener's identity is what keys
+  // the mount effect, so rebuilding it per render would remount the model on every render.
+  return useMemo(
+    () => resolveSurfacePuppetOpener(workspaceOpener),
+    [workspaceOpener, registryVersion]
+  );
 }

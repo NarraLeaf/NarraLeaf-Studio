@@ -14,7 +14,7 @@ export const GAME_RUNTIME_BUNDLE_PACK_ENTRY = "pack";
 
 /** Entry name for a project asset, keyed by storage id with no extension. */
 export function gameRuntimeBundleAssetEntry(assetId: string): string {
-    return `assets/${assetId}`;
+  return `assets/${assetId}`;
 }
 
 /**
@@ -24,5 +24,5 @@ export function gameRuntimeBundleAssetEntry(assetId: string): string {
  * so both sides derive the same key from the same logical path.
  */
 export function gameRuntimeBundleRuntimeEntry(pathname: string): string {
-    return pathname.replace(/\\/g, "/").replace(/^\/+/, "");
+  return pathname.replace(/\\/g, "/").replace(/^\/+/, "");
 }

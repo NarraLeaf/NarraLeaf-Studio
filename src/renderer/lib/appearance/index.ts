@@ -1,9 +1,9 @@
 import { getInterface } from "@/lib/app/bridge";
 import { normalizeAccentColor } from "@shared/constants/accent";
 import {
-    EDITOR_SURFACE_OPACITY_KEY,
-    EDITOR_SURFACE_OPACITY_VAR,
-    editorSurfaceAlpha,
+  EDITOR_SURFACE_OPACITY_KEY,
+  EDITOR_SURFACE_OPACITY_VAR,
+  editorSurfaceAlpha
 } from "@/lib/settings/editorSurfaceOptions";
 import { TOOLTIP_DELAY_KEY } from "@/lib/settings/tooltipOptions";
 import { setTooltipDelay } from "@/lib/tooltip";
@@ -31,11 +31,11 @@ const motionListeners = new Set<(reduced: boolean) => void>();
 let reduceMotion = false;
 
 function applyAccentColor(value: unknown): void {
-    const accent = normalizeAccentColor(value);
-    document.documentElement.style.setProperty("--nl-primary", accent.channels);
-    // The ink that sits on the accent. Derived rather than fixed white: the user can pick any
-    // color, and a pale one would otherwise make every primary button unreadable.
-    document.documentElement.style.setProperty("--nl-on-primary", accent.foregroundChannels);
+  const accent = normalizeAccentColor(value);
+  document.documentElement.style.setProperty("--nl-primary", accent.channels);
+  // The ink that sits on the accent. Derived rather than fixed white: the user can pick any
+  // color, and a pale one would otherwise make every primary button unreadable.
+  document.documentElement.style.setProperty("--nl-on-primary", accent.foregroundChannels);
 }
 
 /**
@@ -47,7 +47,7 @@ function applyAccentColor(value: unknown): void {
  * instead, whose single rule resolves the sunken paint's alpha through this property.
  */
 function applyEditorSurfaceOpacity(value: unknown): void {
-    document.documentElement.style.setProperty(EDITOR_SURFACE_OPACITY_VAR, editorSurfaceAlpha(value));
+  document.documentElement.style.setProperty(EDITOR_SURFACE_OPACITY_VAR, editorSurfaceAlpha(value));
 }
 
 /**
@@ -57,18 +57,18 @@ function applyEditorSurfaceOpacity(value: unknown): void {
  * settles on a control - there is no rule CSS could apply on its own.
  */
 function applyTooltipDelay(value: unknown): void {
-    const numeric = typeof value === "number" ? value : Number(value);
-    if (Number.isFinite(numeric)) {
-        setTooltipDelay(numeric);
-    }
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (Number.isFinite(numeric)) {
+    setTooltipDelay(numeric);
+  }
 }
 
 function applyReduceMotion(value: unknown): void {
-    reduceMotion = value === true;
-    document.documentElement.classList.toggle("nl-reduce-motion", reduceMotion);
-    for (const listener of motionListeners) {
-        listener(reduceMotion);
-    }
+  reduceMotion = value === true;
+  document.documentElement.classList.toggle("nl-reduce-motion", reduceMotion);
+  for (const listener of motionListeners) {
+    listener(reduceMotion);
+  }
 }
 
 /**
@@ -80,7 +80,7 @@ function applyReduceMotion(value: unknown): void {
  * `change`). The framer-motion side reads the OS preference itself.
  */
 export function isReduceMotionEnabled(): boolean {
-    return reduceMotion;
+  return reduceMotion;
 }
 
 /**
@@ -92,54 +92,54 @@ export function isReduceMotionEnabled(): boolean {
  * window — including this one — back in agreement.
  */
 export function previewAccentColor(value: unknown): void {
-    applyAccentColor(value);
+  applyAccentColor(value);
 }
 
 export function subscribeReduceMotion(listener: (reduced: boolean) => void): () => void {
-    motionListeners.add(listener);
-    return () => {
-        motionListeners.delete(listener);
-    };
+  motionListeners.add(listener);
+  return () => {
+    motionListeners.delete(listener);
+  };
 }
 
 export async function initAppearance(): Promise<void> {
-    const state = getInterface().app.state;
+  const state = getInterface().app.state;
 
-    try {
-        const [accent, motion, surfaceOpacity, tooltipDelay] = await Promise.all([
-            state.getGlobalState("ui.accentColor"),
-            state.getGlobalState("ui.reduceMotion"),
-            state.getGlobalState(EDITOR_SURFACE_OPACITY_KEY),
-            state.getGlobalState(TOOLTIP_DELAY_KEY),
-        ]);
-        if (accent.success) {
-            applyAccentColor(accent.data.value);
-        }
-        if (motion.success) {
-            applyReduceMotion(motion.data.value);
-        }
-        if (surfaceOpacity.success) {
-            applyEditorSurfaceOpacity(surfaceOpacity.data.value);
-        }
-        if (tooltipDelay.success) {
-            applyTooltipDelay(tooltipDelay.data.value);
-        }
-    } catch (error) {
-        console.warn("[appearance] Failed to load appearance preferences; using defaults.", error);
+  try {
+    const [accent, motion, surfaceOpacity, tooltipDelay] = await Promise.all([
+      state.getGlobalState("ui.accentColor"),
+      state.getGlobalState("ui.reduceMotion"),
+      state.getGlobalState(EDITOR_SURFACE_OPACITY_KEY),
+      state.getGlobalState(TOOLTIP_DELAY_KEY)
+    ]);
+    if (accent.success) {
+      applyAccentColor(accent.data.value);
     }
+    if (motion.success) {
+      applyReduceMotion(motion.data.value);
+    }
+    if (surfaceOpacity.success) {
+      applyEditorSurfaceOpacity(surfaceOpacity.data.value);
+    }
+    if (tooltipDelay.success) {
+      applyTooltipDelay(tooltipDelay.data.value);
+    }
+  } catch (error) {
+    console.warn("[appearance] Failed to load appearance preferences; using defaults.", error);
+  }
 
-    if (!subscribed) {
-        subscribed = true;
-        state.onGlobalStateChanged?.((change) => {
-            if (change.key === "ui.accentColor") {
-                applyAccentColor(change.value);
-            } else if (change.key === "ui.reduceMotion") {
-                applyReduceMotion(change.value);
-            } else if (change.key === EDITOR_SURFACE_OPACITY_KEY) {
-                applyEditorSurfaceOpacity(change.value);
-            } else if (change.key === TOOLTIP_DELAY_KEY) {
-                applyTooltipDelay(change.value);
-            }
-        });
-    }
+  if (!subscribed) {
+    subscribed = true;
+    state.onGlobalStateChanged?.((change) => {
+      if (change.key === "ui.accentColor") {
+        applyAccentColor(change.value);
+      } else if (change.key === "ui.reduceMotion") {
+        applyReduceMotion(change.value);
+      } else if (change.key === EDITOR_SURFACE_OPACITY_KEY) {
+        applyEditorSurfaceOpacity(change.value);
+      } else if (change.key === TOOLTIP_DELAY_KEY) {
+        applyTooltipDelay(change.value);
+      }
+    });
+  }
 }

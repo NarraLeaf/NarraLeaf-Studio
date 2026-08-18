@@ -41,35 +41,35 @@ export type TranslationExchangeFormat = (typeof TRANSLATION_EXCHANGE_FORMATS)[nu
  * unrecognised value means, once, at the edge.
  */
 export type TranslationExchangeRow = {
-    unitId: string;
-    /** Where this line lives, for the translator to read. Never round-tripped into the project. */
-    context: string;
-    source: string;
-    target: string;
-    status: string;
-    note: string;
+  unitId: string;
+  /** Where this line lives, for the translator to read. Never round-tripped into the project. */
+  context: string;
+  source: string;
+  target: string;
+  status: string;
+  note: string;
 };
 
 /** What Studio writes out: the rows plus the two language tags that name them. */
 export type TranslationExchangeDocument = {
-    sourceLocale: string;
-    targetLocale: string;
-    /** Optional project name, written where the format has a place for it. */
-    projectName?: string;
-    rows: readonly TranslationExchangeRow[];
+  sourceLocale: string;
+  targetLocale: string;
+  /** Optional project name, written where the format has a place for it. */
+  projectName?: string;
+  rows: readonly TranslationExchangeRow[];
 };
 
 export type ParsedTranslationExchange = {
-    rows: TranslationExchangeRow[];
-    /**
-     * Language tags the file declared, when it carries them. Used to catch the
-     * expensive mistake - French landing in the German file - which is silent
-     * otherwise, because unit ids match perfectly across languages.
-     */
-    sourceLocale?: string;
-    targetLocale?: string;
-    /** Problems worth telling the author about. Rows may still be present. */
-    errors: string[];
+  rows: TranslationExchangeRow[];
+  /**
+   * Language tags the file declared, when it carries them. Used to catch the
+   * expensive mistake - French landing in the German file - which is silent
+   * otherwise, because unit ids match perfectly across languages.
+   */
+  sourceLocale?: string;
+  targetLocale?: string;
+  /** Problems worth telling the author about. Rows may still be present. */
+  errors: string[];
 };
 
 /**
@@ -81,78 +81,91 @@ export type ParsedTranslationExchange = {
  */
 export type TranslationExchangeState = "" | "machine" | "translated" | "reviewed" | "stale";
 
-const KNOWN_STATES: readonly TranslationExchangeState[] = ["machine", "translated", "reviewed", "stale"];
+const KNOWN_STATES: readonly TranslationExchangeState[] = [
+  "machine",
+  "translated",
+  "reviewed",
+  "stale"
+];
 
 /** Coerce whatever a file said into the shared vocabulary; anything unknown is untranslated. */
 export function normalizeExchangeStatus(value: string | undefined): TranslationExchangeState {
-    const normalized = (value ?? "").trim().toLowerCase();
-    return KNOWN_STATES.includes(normalized as TranslationExchangeState)
-        ? (normalized as TranslationExchangeState)
-        : "";
+  const normalized = (value ?? "").trim().toLowerCase();
+  return KNOWN_STATES.includes(normalized as TranslationExchangeState)
+    ? (normalized as TranslationExchangeState)
+    : "";
 }
 
 export type TranslationExchangeFormatInfo = {
-    /** Extension used when writing (no dot). */
-    extension: string;
-    /** Every extension accepted when reading (no dot). */
-    extensions: readonly string[];
-    /**
-     * True when the file has to start with a UTF-8 BOM. Excel reads a CSV
-     * without one as the system code page and mangles every non-ASCII line.
-     */
-    bom: boolean;
+  /** Extension used when writing (no dot). */
+  extension: string;
+  /** Every extension accepted when reading (no dot). */
+  extensions: readonly string[];
+  /**
+   * True when the file has to start with a UTF-8 BOM. Excel reads a CSV
+   * without one as the system code page and mangles every non-ASCII line.
+   */
+  bom: boolean;
 };
 
-export const TRANSLATION_EXCHANGE_FORMAT_INFO: Record<TranslationExchangeFormat, TranslationExchangeFormatInfo> = {
-    csv: { extension: "csv", extensions: ["csv"], bom: true },
-    xliff: { extension: "xlf", extensions: ["xlf", "xliff"], bom: false },
-    po: { extension: "po", extensions: ["po", "pot"], bom: false },
-    json: { extension: "json", extensions: ["json"], bom: false },
+export const TRANSLATION_EXCHANGE_FORMAT_INFO: Record<
+  TranslationExchangeFormat,
+  TranslationExchangeFormatInfo
+> = {
+  csv: { extension: "csv", extensions: ["csv"], bom: true },
+  xliff: { extension: "xlf", extensions: ["xlf", "xliff"], bom: false },
+  po: { extension: "po", extensions: ["po", "pot"], bom: false },
+  json: { extension: "json", extensions: ["json"], bom: false }
 };
 
 /** Every extension the import dialog accepts, in format order. */
 export function translationExchangeExtensions(): string[] {
-    return TRANSLATION_EXCHANGE_FORMATS.flatMap(format => [...TRANSLATION_EXCHANGE_FORMAT_INFO[format].extensions]);
+  return TRANSLATION_EXCHANGE_FORMATS.flatMap((format) => [
+    ...TRANSLATION_EXCHANGE_FORMAT_INFO[format].extensions
+  ]);
 }
 
 /** Serialize rows into one exchange file, BOM included where the format needs it. */
 export function serializeTranslationExchange(
-    format: TranslationExchangeFormat,
-    document: TranslationExchangeDocument,
+  format: TranslationExchangeFormat,
+  document: TranslationExchangeDocument
 ): string {
-    const body = serializeBody(format, document);
-    return TRANSLATION_EXCHANGE_FORMAT_INFO[format].bom ? `﻿${body}` : body;
+  const body = serializeBody(format, document);
+  return TRANSLATION_EXCHANGE_FORMAT_INFO[format].bom ? `﻿${body}` : body;
 }
 
-function serializeBody(format: TranslationExchangeFormat, document: TranslationExchangeDocument): string {
-    switch (format) {
-        case "csv":
-            return serializeTranslationCsv(document.rows);
-        case "xliff":
-            return serializeTranslationXliff(document);
-        case "po":
-            return serializeTranslationPo(document);
-        case "json":
-            return serializeTranslationJson(document);
-    }
+function serializeBody(
+  format: TranslationExchangeFormat,
+  document: TranslationExchangeDocument
+): string {
+  switch (format) {
+    case "csv":
+      return serializeTranslationCsv(document.rows);
+    case "xliff":
+      return serializeTranslationXliff(document);
+    case "po":
+      return serializeTranslationPo(document);
+    case "json":
+      return serializeTranslationJson(document);
+  }
 }
 
 /** Read one exchange file. Never throws: a file Studio cannot read reports errors and no rows. */
 export function parseTranslationExchange(
-    format: TranslationExchangeFormat,
-    text: string,
+  format: TranslationExchangeFormat,
+  text: string
 ): ParsedTranslationExchange {
-    const clean = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
-    switch (format) {
-        case "csv":
-            return parseTranslationCsv(clean);
-        case "xliff":
-            return parseTranslationXliff(clean);
-        case "po":
-            return parseTranslationPo(clean);
-        case "json":
-            return parseTranslationJson(clean);
-    }
+  const clean = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  switch (format) {
+    case "csv":
+      return parseTranslationCsv(clean);
+    case "xliff":
+      return parseTranslationXliff(clean);
+    case "po":
+      return parseTranslationPo(clean);
+    case "json":
+      return parseTranslationJson(clean);
+  }
 }
 
 /**
@@ -163,30 +176,30 @@ export function parseTranslationExchange(
  * told their file is unsupported while it sits there perfectly readable.
  */
 export function detectTranslationExchangeFormat(
-    fileName: string,
-    text?: string,
+  fileName: string,
+  text?: string
 ): TranslationExchangeFormat | null {
-    const extension = fileName.toLowerCase().split(/[\\/]/).pop()?.split(".").pop() ?? "";
-    for (const format of TRANSLATION_EXCHANGE_FORMATS) {
-        if (TRANSLATION_EXCHANGE_FORMAT_INFO[format].extensions.includes(extension)) {
-            return format;
-        }
+  const extension = fileName.toLowerCase().split(/[\\/]/).pop()?.split(".").pop() ?? "";
+  for (const format of TRANSLATION_EXCHANGE_FORMATS) {
+    if (TRANSLATION_EXCHANGE_FORMAT_INFO[format].extensions.includes(extension)) {
+      return format;
     }
-    if (text === undefined) {
-        return null;
-    }
-    const head = (text.charCodeAt(0) === 0xfeff ? text.slice(1) : text).trimStart();
-    if (head.startsWith("{") || head.startsWith("[")) {
-        return "json";
-    }
-    if (head.startsWith("<?xml") || head.startsWith("<xliff") || head.includes("<trans-unit")) {
-        return "xliff";
-    }
-    if (/^(#[.:,~|]?\s|msgid\s|msgctxt\s)/m.test(head)) {
-        return "po";
-    }
-    if (/^[^\r\n]*\bunit_id\b/i.test(head)) {
-        return "csv";
-    }
+  }
+  if (text === undefined) {
     return null;
+  }
+  const head = (text.charCodeAt(0) === 0xfeff ? text.slice(1) : text).trimStart();
+  if (head.startsWith("{") || head.startsWith("[")) {
+    return "json";
+  }
+  if (head.startsWith("<?xml") || head.startsWith("<xliff") || head.includes("<trans-unit")) {
+    return "xliff";
+  }
+  if (/^(#[.:,~|]?\s|msgid\s|msgctxt\s)/m.test(head)) {
+    return "po";
+  }
+  if (/^[^\r\n]*\bunit_id\b/i.test(head)) {
+    return "csv";
+  }
+  return null;
 }

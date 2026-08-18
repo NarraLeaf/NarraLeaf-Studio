@@ -12,30 +12,30 @@ import { sanitizeFontFamilyName } from "./editorFontOptions";
  */
 
 export interface SystemFontFamily {
-    /** The CSS family name, exactly as Chromium reports it — this is what gets stored. */
-    family: string;
-    /**
-     * Other names the same family answers to: the localized full names its faces carry, plus their
-     * PostScript names. Search matches against these too, because a Chinese user looks for 苹方,
-     * not for "PingFang SC" — the family name is Latin for most CJK faces.
-     */
-    aliases: string[];
+  /** The CSS family name, exactly as Chromium reports it — this is what gets stored. */
+  family: string;
+  /**
+   * Other names the same family answers to: the localized full names its faces carry, plus their
+   * PostScript names. Search matches against these too, because a Chinese user looks for 苹方,
+   * not for "PingFang SC" — the family name is Latin for most CJK faces.
+   */
+  aliases: string[];
 }
 
 export type SystemFontsResult =
-    | { status: "ok"; families: SystemFontFamily[] }
-    /** No Local Font Access API in this runtime (an older Chromium, or a non-desktop build). */
-    | { status: "unsupported" }
-    /** The API is there and refused: permission denied, or the window was not visible. */
-    | { status: "denied" }
-    | { status: "failed"; message: string };
+  | { status: "ok"; families: SystemFontFamily[] }
+  /** No Local Font Access API in this runtime (an older Chromium, or a non-desktop build). */
+  | { status: "unsupported" }
+  /** The API is there and refused: permission denied, or the window was not visible. */
+  | { status: "denied" }
+  | { status: "failed"; message: string };
 
 /** Minimal shape of a `FontData` entry; the DOM lib does not ship this API's types yet. */
 interface LocalFontData {
-    family: string;
-    fullName: string;
-    postscriptName: string;
-    style: string;
+  family: string;
+  fullName: string;
+  postscriptName: string;
+  style: string;
 }
 
 type QueryLocalFonts = () => Promise<LocalFontData[]>;
@@ -47,34 +47,38 @@ type QueryLocalFonts = () => Promise<LocalFontData[]>;
 let cached: SystemFontFamily[] | null = null;
 
 function collator(): Intl.Collator {
-    return new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+  return new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
 }
 
 /** Group faces into families, keeping every distinct name a family can be searched by. */
 export function groupFontFaces(faces: readonly LocalFontData[]): SystemFontFamily[] {
-    const byFamily = new Map<string, Set<string>>();
-    for (const face of faces) {
-        const family = sanitizeFontFamilyName(face?.family);
-        if (!family) {
-            continue;
-        }
-        let aliases = byFamily.get(family);
-        if (!aliases) {
-            aliases = new Set<string>();
-            byFamily.set(family, aliases);
-        }
-        for (const alias of [face.fullName, face.postscriptName]) {
-            // Only names that add something: a full name of "Georgia Bold" for family "Georgia" is
-            // already found by typing "georgia", and listing it would just grow every row's payload.
-            if (typeof alias === "string" && alias && !alias.toLowerCase().includes(family.toLowerCase())) {
-                aliases.add(alias);
-            }
-        }
+  const byFamily = new Map<string, Set<string>>();
+  for (const face of faces) {
+    const family = sanitizeFontFamilyName(face?.family);
+    if (!family) {
+      continue;
     }
-    const compare = collator();
-    return [...byFamily.entries()]
-        .map(([family, aliases]) => ({ family, aliases: [...aliases].sort(compare.compare) }))
-        .sort((a, b) => compare.compare(a.family, b.family));
+    let aliases = byFamily.get(family);
+    if (!aliases) {
+      aliases = new Set<string>();
+      byFamily.set(family, aliases);
+    }
+    for (const alias of [face.fullName, face.postscriptName]) {
+      // Only names that add something: a full name of "Georgia Bold" for family "Georgia" is
+      // already found by typing "georgia", and listing it would just grow every row's payload.
+      if (
+        typeof alias === "string" &&
+        alias &&
+        !alias.toLowerCase().includes(family.toLowerCase())
+      ) {
+        aliases.add(alias);
+      }
+    }
+  }
+  const compare = collator();
+  return [...byFamily.entries()]
+    .map(([family, aliases]) => ({ family, aliases: [...aliases].sort(compare.compare) }))
+    .sort((a, b) => compare.compare(a.family, b.family));
 }
 
 /**
@@ -90,33 +94,33 @@ export function groupFontFaces(faces: readonly LocalFontData[]): SystemFontFamil
  * list its fonts still has to leave the presets pickable.
  */
 export async function loadSystemFontFamilies(): Promise<SystemFontsResult> {
-    if (cached) {
-        return { status: "ok", families: cached };
+  if (cached) {
+    return { status: "ok", families: cached };
+  }
+  const query = (window as unknown as { queryLocalFonts?: QueryLocalFonts }).queryLocalFonts;
+  if (typeof query !== "function") {
+    return { status: "unsupported" };
+  }
+  try {
+    const faces = await query.call(window);
+    const families = groupFontFaces(faces ?? []);
+    cached = families;
+    return { status: "ok", families };
+  } catch (error) {
+    const name = error instanceof Error ? error.name : "";
+    if (name === "SecurityError" || name === "NotAllowedError") {
+      return { status: "denied" };
     }
-    const query = (window as unknown as { queryLocalFonts?: QueryLocalFonts }).queryLocalFonts;
-    if (typeof query !== "function") {
-        return { status: "unsupported" };
-    }
-    try {
-        const faces = await query.call(window);
-        const families = groupFontFaces(faces ?? []);
-        cached = families;
-        return { status: "ok", families };
-    } catch (error) {
-        const name = error instanceof Error ? error.name : "";
-        if (name === "SecurityError" || name === "NotAllowedError") {
-            return { status: "denied" };
-        }
-        return { status: "failed", message: error instanceof Error ? error.message : String(error) };
-    }
+    return { status: "failed", message: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 /** Whether the API exists at all — lets the picker offer the presets without pretending to more. */
 export function isSystemFontAccessSupported(): boolean {
-    return typeof (window as unknown as { queryLocalFonts?: unknown }).queryLocalFonts === "function";
+  return typeof (window as unknown as { queryLocalFonts?: unknown }).queryLocalFonts === "function";
 }
 
 /** Test seam: drops the cached list so the next load re-queries. */
 export function clearSystemFontCache(): void {
-    cached = null;
+  cached = null;
 }

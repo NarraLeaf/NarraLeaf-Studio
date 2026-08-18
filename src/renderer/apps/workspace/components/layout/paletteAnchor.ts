@@ -15,27 +15,27 @@ export const PALETTE_CARD_WIDTH_CLASS = "w-[min(720px,calc(100vw-32px))]";
  * different spots reads as two unrelated features.
  */
 export function usePaletteAnchorLeft(open: boolean): number | null {
-    const [anchorLeft, setAnchorLeft] = useState<number | null>(null);
+  const [anchorLeft, setAnchorLeft] = useState<number | null>(null);
 
-    useEffect(() => {
-        if (!open) {
-            return;
-        }
-        const measure = () => {
-            const box = document.querySelector("[data-titlebar-search-box]");
-            if (!box) {
-                setAnchorLeft(null);
-                return;
-            }
-            const rect = box.getBoundingClientRect();
-            const cardWidth = Math.min(PALETTE_CARD_MAX_WIDTH, window.innerWidth - 32);
-            const ideal = rect.left + rect.width / 2 - cardWidth / 2;
-            setAnchorLeft(Math.round(Math.min(Math.max(ideal, 16), window.innerWidth - cardWidth - 16)));
-        };
-        measure();
-        window.addEventListener("resize", measure);
-        return () => window.removeEventListener("resize", measure);
-    }, [open]);
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const measure = () => {
+      const box = document.querySelector("[data-titlebar-search-box]");
+      if (!box) {
+        setAnchorLeft(null);
+        return;
+      }
+      const rect = box.getBoundingClientRect();
+      const cardWidth = Math.min(PALETTE_CARD_MAX_WIDTH, window.innerWidth - 32);
+      const ideal = rect.left + rect.width / 2 - cardWidth / 2;
+      setAnchorLeft(Math.round(Math.min(Math.max(ideal, 16), window.innerWidth - cardWidth - 16)));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [open]);
 
-    return anchorLeft;
+  return anchorLeft;
 }

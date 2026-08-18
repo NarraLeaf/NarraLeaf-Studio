@@ -21,9 +21,9 @@ export const SIDEBAR_GROUP_ID = "narraleaf-studio:sidebar-group";
  * empty across restarts instead of springing back to these three.
  */
 export const DEFAULT_COLLAPSED_PANEL_IDS: readonly string[] = [
-    "narraleaf-studio:voice",
-    "narraleaf-studio:localization",
-    "narraleaf.gallery.panel",
+  "narraleaf-studio:voice",
+  "narraleaf-studio:localization",
+  "narraleaf.gallery.panel"
 ];
 
 /**
@@ -38,18 +38,18 @@ export const DEFAULT_COLLAPSED_PANEL_IDS: readonly string[] = [
  * plugin registers or unregisters a panel. With no recorded slot it goes last.
  */
 export function weaveGroupSlot(panelIds: string[], persistedOrder: string[] | undefined): string[] {
-    const recordedAt = persistedOrder ? persistedOrder.indexOf(SIDEBAR_GROUP_ID) : -1;
-    if (recordedAt < 0) {
-        return [...panelIds, SIDEBAR_GROUP_ID];
-    }
+  const recordedAt = persistedOrder ? persistedOrder.indexOf(SIDEBAR_GROUP_ID) : -1;
+  if (recordedAt < 0) {
+    return [...panelIds, SIDEBAR_GROUP_ID];
+  }
 
-    let insertAt = 0;
-    for (let i = recordedAt - 1; i >= 0; i--) {
-        const index = panelIds.indexOf(persistedOrder![i]);
-        if (index >= 0) {
-            insertAt = index + 1;
-            break;
-        }
+  let insertAt = 0;
+  for (let i = recordedAt - 1; i >= 0; i--) {
+    const index = panelIds.indexOf(persistedOrder![i]);
+    if (index >= 0) {
+      insertAt = index + 1;
+      break;
     }
-    return [...panelIds.slice(0, insertAt), SIDEBAR_GROUP_ID, ...panelIds.slice(insertAt)];
+  }
+  return [...panelIds.slice(0, insertAt), SIDEBAR_GROUP_ID, ...panelIds.slice(insertAt)];
 }

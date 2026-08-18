@@ -3,5 +3,5 @@ import { BlueprintFlowNode } from "./components/BlueprintFlowNode";
 
 /** Stable reference for React Flow (do not recreate per render). */
 export const blueprintFlowNodeTypes = {
-    blueprint: BlueprintFlowNode,
+  blueprint: BlueprintFlowNode
 } satisfies NodeTypes;

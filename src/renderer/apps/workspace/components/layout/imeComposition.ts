@@ -14,17 +14,17 @@ let composing = false;
 
 /** Bind to an input's `onCompositionStart` / `onCompositionEnd`. */
 export const compositionHandlers = {
-    onCompositionStart: () => {
-        composing = true;
-    },
-    onCompositionEnd: () => {
-        composing = false;
-    },
+  onCompositionStart: () => {
+    composing = true;
+  },
+  onCompositionEnd: () => {
+    composing = false;
+  }
 };
 
 /** True while an IME composition is in progress anywhere in this window. */
 export function isComposingText(): boolean {
-    return composing;
+  return composing;
 }
 
 /**
@@ -32,5 +32,5 @@ export function isComposingText(): boolean {
  * candidate window during composition and must not reach the overlay.
  */
 export function isImeKeyEvent(event: React.KeyboardEvent): boolean {
-    return event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229;
+  return event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229;
 }

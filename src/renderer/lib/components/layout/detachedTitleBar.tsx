@@ -27,13 +27,13 @@ import { useDetachedWindowKey, useHostWindow } from "./hostWindow";
 const MACOS_TRAFFIC_LIGHT_SAFE_AREA = "calc(66px / var(--nl-zoom, 1) + 24px)";
 
 export type DetachedTitleBarProps = {
-    /** True when this subtree is a detached window's contents; false leaves everything untouched. */
-    isDetached: boolean;
-    /**
-     * Spread onto the row acting as the title bar. Empty when not detached, so a docked editor's
-     * header keeps exactly the class list it had.
-     */
-    rowProps: { className?: string; style?: CSSProperties };
+  /** True when this subtree is a detached window's contents; false leaves everything untouched. */
+  isDetached: boolean;
+  /**
+   * Spread onto the row acting as the title bar. Empty when not detached, so a docked editor's
+   * header keeps exactly the class list it had.
+   */
+  rowProps: { className?: string; style?: CSSProperties };
 };
 
 /**
@@ -44,20 +44,20 @@ export type DetachedTitleBarProps = {
  * here.
  */
 export function useDetachedTitleBar(): DetachedTitleBarProps {
-    const isDetached = useDetachedWindowKey() !== null;
-    if (!isDetached) {
-        return { isDetached: false, rowProps: {} };
-    }
+  const isDetached = useDetachedWindowKey() !== null;
+  if (!isDetached) {
+    return { isDetached: false, rowProps: {} };
+  }
 
-    return {
-        isDetached: true,
-        rowProps: {
-            className: "titlebar-drag",
-            // Only macOS puts native buttons inside a frameless window; elsewhere the row starts at
-            // the window edge and the buttons below sit at its end.
-            style: isMacPlatform() ? { paddingLeft: MACOS_TRAFFIC_LIGHT_SAFE_AREA } : undefined,
-        },
-    };
+  return {
+    isDetached: true,
+    rowProps: {
+      className: "titlebar-drag",
+      // Only macOS puts native buttons inside a frameless window; elsewhere the row starts at
+      // the window edge and the buttons below sit at its end.
+      style: isMacPlatform() ? { paddingLeft: MACOS_TRAFFIC_LIGHT_SAFE_AREA } : undefined
+    }
+  };
 }
 
 /**
@@ -67,69 +67,71 @@ export function useDetachedTitleBar(): DetachedTitleBarProps {
  * window.
  */
 export function DetachedTitleBarControls() {
-    const { t } = useTranslation();
-    const windowKey = useDetachedWindowKey();
-    const hostWindow = useHostWindow();
-    const [isMaximized, setIsMaximized] = useState(false);
+  const { t } = useTranslation();
+  const windowKey = useDetachedWindowKey();
+  const hostWindow = useHostWindow();
+  const [isMaximized, setIsMaximized] = useState(false);
 
-    const send = useCallback(
-        async (control: "status" | "minimize" | "toggleMaximize" | "close") => {
-            if (!windowKey) {
-                return;
-            }
-            const result = await getInterface().window.detachedControl(windowKey, control);
-            if (result.success) {
-                setIsMaximized(result.data.status === "maximized");
-            }
-        },
-        [windowKey],
-    );
+  const send = useCallback(
+    async (control: "status" | "minimize" | "toggleMaximize" | "close") => {
+      if (!windowKey) {
+        return;
+      }
+      const result = await getInterface().window.detachedControl(windowKey, control);
+      if (result.success) {
+        setIsMaximized(result.data.status === "maximized");
+      }
+    },
+    [windowKey]
+  );
 
-    // The window can be maximised without these buttons - a double click on the drag region does it
-    // on Windows - so the icon follows the window rather than the last button pressed.
-    useEffect(() => {
-        if (!windowKey || isMacPlatform()) {
-            return;
-        }
-        void send("status");
-        const onResize = () => { void send("status"); };
-        hostWindow.addEventListener("resize", onResize);
-        return () => hostWindow.removeEventListener("resize", onResize);
-    }, [hostWindow, send, windowKey]);
-
+  // The window can be maximised without these buttons - a double click on the drag region does it
+  // on Windows - so the icon follows the window rather than the last button pressed.
+  useEffect(() => {
     if (!windowKey || isMacPlatform()) {
-        return null;
+      return;
     }
+    void send("status");
+    const onResize = () => {
+      void send("status");
+    };
+    hostWindow.addEventListener("resize", onResize);
+    return () => hostWindow.removeEventListener("resize", onResize);
+  }, [hostWindow, send, windowKey]);
 
-    return (
-        <div className="no-drag flex h-full items-center">
-            <button
-                type="button"
-                onClick={() => void send("minimize")}
-                className="grid h-8 w-9 cursor-default place-items-center rounded-sm text-fg-muted transition-colors hover:bg-fill"
-                aria-label={t("dialogs.window.minimize")}
-                data-tip={t("dialogs.window.minimize")}
-            >
-                <Minus className="h-4 w-4" />
-            </button>
-            <button
-                type="button"
-                onClick={() => void send("toggleMaximize")}
-                className="grid h-8 w-9 cursor-default place-items-center rounded-sm text-fg-muted transition-colors hover:bg-fill"
-                aria-label={isMaximized ? t("dialogs.window.restore") : t("dialogs.window.maximize")}
-                data-tip={isMaximized ? t("dialogs.window.restore") : t("dialogs.window.maximize")}
-            >
-                <Square className="h-3 w-3" />
-            </button>
-            <button
-                type="button"
-                onClick={() => void send("close")}
-                className="grid h-8 w-9 cursor-default place-items-center rounded-sm text-fg-muted transition-colors hover:bg-danger/80 hover:text-white"
-                aria-label={t("common.close")}
-                data-tip={t("common.close")}
-            >
-                <X className="h-4 w-4" />
-            </button>
-        </div>
-    );
+  if (!windowKey || isMacPlatform()) {
+    return null;
+  }
+
+  return (
+    <div className="no-drag flex h-full items-center">
+      <button
+        type="button"
+        onClick={() => void send("minimize")}
+        className="grid h-8 w-9 cursor-default place-items-center rounded-sm text-fg-muted transition-colors hover:bg-fill"
+        aria-label={t("dialogs.window.minimize")}
+        data-tip={t("dialogs.window.minimize")}
+      >
+        <Minus className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => void send("toggleMaximize")}
+        className="grid h-8 w-9 cursor-default place-items-center rounded-sm text-fg-muted transition-colors hover:bg-fill"
+        aria-label={isMaximized ? t("dialogs.window.restore") : t("dialogs.window.maximize")}
+        data-tip={isMaximized ? t("dialogs.window.restore") : t("dialogs.window.maximize")}
+      >
+        <Square className="h-3 w-3" />
+      </button>
+      <button
+        type="button"
+        onClick={() => void send("close")}
+        className="grid h-8 w-9 cursor-default place-items-center rounded-sm text-fg-muted transition-colors hover:bg-danger/80 hover:text-white"
+        aria-label={t("common.close")}
+        data-tip={t("common.close")}
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
 }

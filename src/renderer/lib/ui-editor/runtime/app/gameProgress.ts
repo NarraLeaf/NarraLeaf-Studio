@@ -28,7 +28,7 @@ import type { GameProgressDocumentV1, GameProgressImportOutcome } from "@shared/
 
 /** The one field of a variable definition either half needs. */
 export type GameProgressVariableDef = {
-    storageKey: string;
+  storageKey: string;
 };
 
 /**
@@ -39,27 +39,27 @@ export type GameProgressVariableDef = {
  * default - which is the right answer for a variable the release edition introduced.
  */
 export async function collectGameProgressVariables(
-    defs: Iterable<GameProgressVariableDef>,
-    read: (storageKey: string) => unknown | Promise<unknown>,
+  defs: Iterable<GameProgressVariableDef>,
+  read: (storageKey: string) => unknown | Promise<unknown>
 ): Promise<Record<string, unknown>> {
-    const values: Record<string, unknown> = {};
-    for (const def of defs) {
-        const storageKey = def?.storageKey?.trim();
-        if (!storageKey || Object.prototype.hasOwnProperty.call(values, storageKey)) {
-            continue;
-        }
-        let value: unknown;
-        try {
-            value = await read(storageKey);
-        } catch {
-            // One unreadable variable must not cost the player the rest of their progress.
-            continue;
-        }
-        if (value !== undefined) {
-            values[storageKey] = value;
-        }
+  const values: Record<string, unknown> = {};
+  for (const def of defs) {
+    const storageKey = def?.storageKey?.trim();
+    if (!storageKey || Object.prototype.hasOwnProperty.call(values, storageKey)) {
+      continue;
     }
-    return values;
+    let value: unknown;
+    try {
+      value = await read(storageKey);
+    } catch {
+      // One unreadable variable must not cost the player the rest of their progress.
+      continue;
+    }
+    if (value !== undefined) {
+      values[storageKey] = value;
+    }
+  }
+  return values;
 }
 
 /**
@@ -70,27 +70,27 @@ export async function collectGameProgressVariables(
  * does not have, which is the one thing worth saying out loud when progress arrives incomplete.
  */
 export function applyGameProgressVariables(
-    defs: Iterable<GameProgressVariableDef>,
-    values: Record<string, unknown>,
-    write: (storageKey: string, value: unknown) => void,
+  defs: Iterable<GameProgressVariableDef>,
+  values: Record<string, unknown>,
+  write: (storageKey: string, value: unknown) => void
 ): string[] {
-    const applied: string[] = [];
-    for (const def of defs) {
-        const storageKey = def?.storageKey?.trim();
-        if (!storageKey || applied.includes(storageKey)) {
-            continue;
-        }
-        if (!Object.prototype.hasOwnProperty.call(values, storageKey)) {
-            continue;
-        }
-        try {
-            write(storageKey, values[storageKey]);
-            applied.push(storageKey);
-        } catch {
-            // Same reasoning as the read side: one refused write is not the whole playthrough.
-        }
+  const applied: string[] = [];
+  for (const def of defs) {
+    const storageKey = def?.storageKey?.trim();
+    if (!storageKey || applied.includes(storageKey)) {
+      continue;
     }
-    return applied;
+    if (!Object.prototype.hasOwnProperty.call(values, storageKey)) {
+      continue;
+    }
+    try {
+      write(storageKey, values[storageKey]);
+      applied.push(storageKey);
+    } catch {
+      // Same reasoning as the read side: one refused write is not the whole playthrough.
+    }
+  }
+  return applied;
 }
 
 /**
@@ -103,19 +103,19 @@ export function applyGameProgressVariables(
  * telling them they had not.
  */
 export function mergeVisitedSceneIds(
-    current: readonly string[],
-    incoming: readonly string[],
+  current: readonly string[],
+  incoming: readonly string[]
 ): string[] {
-    const merged: string[] = [];
-    for (const id of [...current, ...incoming]) {
-        if (typeof id === "string" && id.trim() && !merged.includes(id)) {
-            merged.push(id);
-        }
+  const merged: string[] = [];
+  for (const id of [...current, ...incoming]) {
+    if (typeof id === "string" && id.trim() && !merged.includes(id)) {
+      merged.push(id);
     }
-    return merged;
+  }
+  return merged;
 }
 
 /** The node-facing shape of a document that arrived. */
 export function toImportOutcome(document: GameProgressDocumentV1): GameProgressImportOutcome {
-    return { outcome: "found", sceneId: document.anchor?.sceneId ?? "", error: "" };
+  return { outcome: "found", sceneId: document.anchor?.sceneId ?? "", error: "" };
 }

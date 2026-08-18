@@ -5,10 +5,10 @@ import { panelHelpTopic } from "../../modules/help/panelHelpTopics";
 import { useKeepAlivePanelIds } from "./useKeepAlivePanelIds";
 
 interface SidebarPanelStackProps {
-    /** All panels registered for this sidebar position. */
-    positionPanels: PanelDefinition[];
-    /** The panel currently shown; all other kept-alive panels are hidden with display:none. */
-    activePanelId: string;
+  /** All panels registered for this sidebar position. */
+  positionPanels: PanelDefinition[];
+  /** The panel currently shown; all other kept-alive panels are hidden with display:none. */
+  activePanelId: string;
 }
 
 /**
@@ -20,37 +20,37 @@ interface SidebarPanelStackProps {
  * display:none toggle — the parent must NOT be a scroll container (it lays these out at full height).
  */
 export function SidebarPanelStack({ positionPanels, activePanelId }: SidebarPanelStackProps) {
-    const mountedIds = useKeepAlivePanelIds(activePanelId, positionPanels);
+  const mountedIds = useKeepAlivePanelIds(activePanelId, positionPanels);
 
-    return (
-        <>
-            {positionPanels.map((panel) => {
-                if (!mountedIds.has(panel.id)) {
-                    return null;
-                }
-                const isActive = panel.id === activePanelId;
-                const PanelComponent = panel.component;
-                if (!PanelComponent) {
-                    // A rail action: it occupies a rail slot but has no body to stack.
-                    return null;
-                }
-                return (
-                    <div
-                        key={panel.id}
-                        className="h-full w-full overflow-auto"
-                        style={{ display: isActive ? undefined : "none" }}
-                        aria-hidden={isActive ? undefined : true}
-                        // What F1 answers with while the pointer or the caret is anywhere in this
-                        // panel. Applied here so a panel opts in through the map rather than by
-                        // knowing the help system exists (see panelHelpTopics.ts).
-                        data-help-topic={panelHelpTopic(panel.id)}
-                    >
-                        <WorkspacePanelErrorBoundary regionLabel={panel.title} isolationKey={panel.id}>
-                            <PanelComponent panelId={panel.id} payload={panel.payload} />
-                        </WorkspacePanelErrorBoundary>
-                    </div>
-                );
-            })}
-        </>
-    );
+  return (
+    <>
+      {positionPanels.map((panel) => {
+        if (!mountedIds.has(panel.id)) {
+          return null;
+        }
+        const isActive = panel.id === activePanelId;
+        const PanelComponent = panel.component;
+        if (!PanelComponent) {
+          // A rail action: it occupies a rail slot but has no body to stack.
+          return null;
+        }
+        return (
+          <div
+            key={panel.id}
+            className="h-full w-full overflow-auto"
+            style={{ display: isActive ? undefined : "none" }}
+            aria-hidden={isActive ? undefined : true}
+            // What F1 answers with while the pointer or the caret is anywhere in this
+            // panel. Applied here so a panel opts in through the map rather than by
+            // knowing the help system exists (see panelHelpTopics.ts).
+            data-help-topic={panelHelpTopic(panel.id)}
+          >
+            <WorkspacePanelErrorBoundary regionLabel={panel.title} isolationKey={panel.id}>
+              <PanelComponent panelId={panel.id} payload={panel.payload} />
+            </WorkspacePanelErrorBoundary>
+          </div>
+        );
+      })}
+    </>
+  );
 }

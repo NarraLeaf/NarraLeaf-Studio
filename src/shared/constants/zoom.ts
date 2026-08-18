@@ -13,15 +13,17 @@ export const ZOOM_PERCENT_MIN = 50;
 export const ZOOM_PERCENT_MAX = 200;
 
 /** The steps Cmd/Ctrl +/- walk through - the ladder browsers have trained everyone on. */
-export const ZOOM_PERCENT_STEPS: readonly number[] = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
+export const ZOOM_PERCENT_STEPS: readonly number[] = [
+  50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200
+];
 
 /** Clamp anything (stale config, a hand-typed setting) onto a usable whole percentage. */
 export function normalizeZoomPercent(value: unknown): number {
-    const parsed = typeof value === "number" ? value : Number(value);
-    if (!Number.isFinite(parsed)) {
-        return ZOOM_PERCENT_DEFAULT;
-    }
-    return Math.min(ZOOM_PERCENT_MAX, Math.max(ZOOM_PERCENT_MIN, Math.round(parsed)));
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return ZOOM_PERCENT_DEFAULT;
+  }
+  return Math.min(ZOOM_PERCENT_MAX, Math.max(ZOOM_PERCENT_MIN, Math.round(parsed)));
 }
 
 /**
@@ -31,19 +33,20 @@ export function normalizeZoomPercent(value: unknown): number {
  * the setting directly. Returns the current value unchanged at either end.
  */
 export function nextZoomPercent(current: unknown, direction: 1 | -1): number {
-    const from = normalizeZoomPercent(current);
-    const candidates = direction === 1
-        ? ZOOM_PERCENT_STEPS.filter(step => step > from)
-        : ZOOM_PERCENT_STEPS.filter(step => step < from);
-    if (candidates.length === 0) {
-        return from;
-    }
-    return direction === 1 ? candidates[0] : candidates[candidates.length - 1];
+  const from = normalizeZoomPercent(current);
+  const candidates =
+    direction === 1
+      ? ZOOM_PERCENT_STEPS.filter((step) => step > from)
+      : ZOOM_PERCENT_STEPS.filter((step) => step < from);
+  if (candidates.length === 0) {
+    return from;
+  }
+  return direction === 1 ? candidates[0] : candidates[candidates.length - 1];
 }
 
 /** webContents.setZoomFactor takes a multiplier, not a percentage. */
 export function zoomPercentToFactor(percent: unknown): number {
-    return normalizeZoomPercent(percent) / 100;
+  return normalizeZoomPercent(percent) / 100;
 }
 
 /**
@@ -69,10 +72,10 @@ const TRAFFIC_LIGHT_INSET_X_PX = 14;
  * were hard-coded to before zoom existed, so the default look is unchanged.
  */
 export function trafficLightPositionForZoom(percent: unknown): { x: number; y: number } {
-    const zoom = zoomPercentToFactor(percent);
-    const titlebarDeviceHeight = TITLEBAR_HEIGHT_CSS_PX * zoom;
-    return {
-        x: TRAFFIC_LIGHT_INSET_X_PX,
-        y: Math.max(0, Math.round((titlebarDeviceHeight - TRAFFIC_LIGHT_HEIGHT_PX) / 2)),
-    };
+  const zoom = zoomPercentToFactor(percent);
+  const titlebarDeviceHeight = TITLEBAR_HEIGHT_CSS_PX * zoom;
+  return {
+    x: TRAFFIC_LIGHT_INSET_X_PX,
+    y: Math.max(0, Math.round((titlebarDeviceHeight - TRAFFIC_LIGHT_HEIGHT_PX) / 2))
+  };
 }

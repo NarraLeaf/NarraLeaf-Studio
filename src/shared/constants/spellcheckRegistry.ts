@@ -8,7 +8,7 @@
 
 /** Official index. Empty setting = this. */
 export const DEFAULT_SPELLCHECK_REGISTRY_URL =
-    "https://raw.githubusercontent.com/NarraLeaf/Dictionaries/master/index.json";
+  "https://raw.githubusercontent.com/NarraLeaf/Dictionaries/master/index.json";
 
 /** The only `formatVersion` this client knows how to read; a newer index is refused. */
 export const SPELLCHECK_REGISTRY_FORMAT_VERSION = 1;

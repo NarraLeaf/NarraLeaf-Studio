@@ -20,22 +20,22 @@
 import type { ProjectAudioTrack } from "./audioTrack";
 
 export type AudioClipRegion = {
-    /** Offset from the start of the clip, in milliseconds. Where playback starts. */
-    inMs?: number;
-    /** Offset from the start of the clip, in milliseconds. Where playback stops, or where a loop turns around. */
-    outMs?: number;
-    /**
-     * Offset from the start of the clip, in milliseconds. Where each repeat returns to.
-     *
-     * Absent means "return to {@link inMs}" - a plain loop, and exactly what every record written
-     * before this field existed means. Set past the in point it describes the standard VN
-     * **intro→loop**: `inMs..loopStartMs` plays once, then `loopStartMs..outMs` repeats forever.
-     *
-     * Constrained to `inMs <= loopStartMs < outMs`. A value outside that window is dropped rather
-     * than clamped: clamping would invent a loop point the author never marked, while dropping
-     * degrades to the plain loop the two other markers already describe.
-     */
-    loopStartMs?: number;
+  /** Offset from the start of the clip, in milliseconds. Where playback starts. */
+  inMs?: number;
+  /** Offset from the start of the clip, in milliseconds. Where playback stops, or where a loop turns around. */
+  outMs?: number;
+  /**
+   * Offset from the start of the clip, in milliseconds. Where each repeat returns to.
+   *
+   * Absent means "return to {@link inMs}" - a plain loop, and exactly what every record written
+   * before this field existed means. Set past the in point it describes the standard VN
+   * **intro→loop**: `inMs..loopStartMs` plays once, then `loopStartMs..outMs` repeats forever.
+   *
+   * Constrained to `inMs <= loopStartMs < outMs`. A value outside that window is dropped rather
+   * than clamped: clamping would invent a loop point the author never marked, while dropping
+   * degrades to the plain loop the two other markers already describe.
+   */
+  loopStartMs?: number;
 };
 
 /**
@@ -51,20 +51,20 @@ export type AudioClipRegion = {
  *   back to anyway, so a consumer never has to decide what "no tracks" means.
  */
 export type GameAudioBundle = {
-    clips: Record<string, AudioClipRegion>;
-    /**
-     * Optional on the *type* only so a bundle serialized before tracks existed still parses; every
-     * bundle this Studio assembles carries it. Read it through `resolveAudioTrack`, which falls back
-     * to the built-ins, rather than branching on the absence here.
-     */
-    tracks?: ProjectAudioTrack[];
+  clips: Record<string, AudioClipRegion>;
+  /**
+   * Optional on the *type* only so a bundle serialized before tracks existed still parses; every
+   * bundle this Studio assembles carries it. Read it through `resolveAudioTrack`, which falls back
+   * to the built-ins, rather than branching on the absence here.
+   */
+  tracks?: ProjectAudioTrack[];
 };
 
 function finiteNonNegative(value: unknown): number | undefined {
-    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-        return undefined;
-    }
-    return value;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return value;
 }
 
 /**
@@ -78,52 +78,58 @@ function finiteNonNegative(value: unknown): number | undefined {
  * from a table with a single check.
  */
 export function normalizeAudioClipRegion(extras: unknown): AudioClipRegion | null {
-    if (!extras || typeof extras !== "object") {
-        return null;
+  if (!extras || typeof extras !== "object") {
+    return null;
+  }
+  const record = extras as { audioLoop?: unknown; cuePoints?: unknown };
+  const loop =
+    record.audioLoop && typeof record.audioLoop === "object"
+      ? (record.audioLoop as { inMs?: unknown; outMs?: unknown; loopStartMs?: unknown })
+      : null;
+  let inMs = finiteNonNegative(loop?.inMs);
+  let outMs = finiteNonNegative(loop?.outMs);
+  let loopStartMs = finiteNonNegative(loop?.loopStartMs);
+  // The legacy list is only consulted when the current shape yielded no marker at all - a record
+  // that carries a loop point was written by this model, and reading the old list underneath it
+  // would resurrect points the author has since replaced.
+  if (
+    inMs === undefined &&
+    outMs === undefined &&
+    loopStartMs === undefined &&
+    Array.isArray(record.cuePoints)
+  ) {
+    const legacy = record.cuePoints
+      .map((entry) => finiteNonNegative((entry as { timeMs?: unknown } | null)?.timeMs))
+      .filter((time): time is number => time !== undefined)
+      .sort((a, b) => a - b);
+    inMs = legacy[0];
+    outMs = legacy[1];
+  }
+  // An out point at or before the in point describes nothing playable. Dropping it here rather
+  // than at each consumer means the editor and the game agree on which end survived.
+  if (inMs !== undefined && outMs !== undefined && outMs <= inMs) {
+    outMs = undefined;
+  }
+  // The loop point has to sit inside the playable window, `[inMs, outMs)` - an unmarked end
+  // leaves that side open, because an absent in point is the head of the file and an absent out
+  // point is its tail. Outside the window it is dropped rather than moved to the nearest edge:
+  // a clamped point is a loop the author never marked, and silently playing one is worse than
+  // falling back to the plain in→out loop the surviving markers already describe.
+  if (loopStartMs !== undefined) {
+    const belowIn = inMs !== undefined && loopStartMs < inMs;
+    const atOrPastOut = outMs !== undefined && loopStartMs >= outMs;
+    if (belowIn || atOrPastOut) {
+      loopStartMs = undefined;
     }
-    const record = extras as { audioLoop?: unknown; cuePoints?: unknown };
-    const loop = record.audioLoop && typeof record.audioLoop === "object"
-        ? record.audioLoop as { inMs?: unknown; outMs?: unknown; loopStartMs?: unknown }
-        : null;
-    let inMs = finiteNonNegative(loop?.inMs);
-    let outMs = finiteNonNegative(loop?.outMs);
-    let loopStartMs = finiteNonNegative(loop?.loopStartMs);
-    // The legacy list is only consulted when the current shape yielded no marker at all - a record
-    // that carries a loop point was written by this model, and reading the old list underneath it
-    // would resurrect points the author has since replaced.
-    if (inMs === undefined && outMs === undefined && loopStartMs === undefined && Array.isArray(record.cuePoints)) {
-        const legacy = record.cuePoints
-            .map(entry => finiteNonNegative((entry as { timeMs?: unknown } | null)?.timeMs))
-            .filter((time): time is number => time !== undefined)
-            .sort((a, b) => a - b);
-        inMs = legacy[0];
-        outMs = legacy[1];
-    }
-    // An out point at or before the in point describes nothing playable. Dropping it here rather
-    // than at each consumer means the editor and the game agree on which end survived.
-    if (inMs !== undefined && outMs !== undefined && outMs <= inMs) {
-        outMs = undefined;
-    }
-    // The loop point has to sit inside the playable window, `[inMs, outMs)` - an unmarked end
-    // leaves that side open, because an absent in point is the head of the file and an absent out
-    // point is its tail. Outside the window it is dropped rather than moved to the nearest edge:
-    // a clamped point is a loop the author never marked, and silently playing one is worse than
-    // falling back to the plain in→out loop the surviving markers already describe.
-    if (loopStartMs !== undefined) {
-        const belowIn = inMs !== undefined && loopStartMs < inMs;
-        const atOrPastOut = outMs !== undefined && loopStartMs >= outMs;
-        if (belowIn || atOrPastOut) {
-            loopStartMs = undefined;
-        }
-    }
-    if (inMs === undefined && outMs === undefined && loopStartMs === undefined) {
-        return null;
-    }
-    return {
-        ...(inMs !== undefined ? { inMs } : {}),
-        ...(outMs !== undefined ? { outMs } : {}),
-        ...(loopStartMs !== undefined ? { loopStartMs } : {}),
-    };
+  }
+  if (inMs === undefined && outMs === undefined && loopStartMs === undefined) {
+    return null;
+  }
+  return {
+    ...(inMs !== undefined ? { inMs } : {}),
+    ...(outMs !== undefined ? { outMs } : {}),
+    ...(loopStartMs !== undefined ? { loopStartMs } : {})
+  };
 }
 
 /**
@@ -139,15 +145,15 @@ export function normalizeAudioClipRegion(extras: unknown): AudioClipRegion | nul
  * gave a third marker produces byte-for-byte the config it produced before this field existed.
  */
 export function audioClipRegionToSoundConfig(region: AudioClipRegion | null | undefined): {
-    seek: number;
-    endTime?: number;
-    loopStart?: number;
+  seek: number;
+  endTime?: number;
+  loopStart?: number;
 } {
-    const seek = (region?.inMs ?? 0) / 1000;
-    const loopStart = region?.loopStartMs === undefined ? undefined : region.loopStartMs / 1000;
-    const loopStartPart = loopStart !== undefined && loopStart !== seek ? { loopStart } : {};
-    if (region?.outMs === undefined) {
-        return { seek, ...loopStartPart };
-    }
-    return { seek, endTime: region.outMs / 1000, ...loopStartPart };
+  const seek = (region?.inMs ?? 0) / 1000;
+  const loopStart = region?.loopStartMs === undefined ? undefined : region.loopStartMs / 1000;
+  const loopStartPart = loopStart !== undefined && loopStart !== seek ? { loopStart } : {};
+  if (region?.outMs === undefined) {
+    return { seek, ...loopStartPart };
+  }
+  return { seek, endTime: region.outMs / 1000, ...loopStartPart };
 }

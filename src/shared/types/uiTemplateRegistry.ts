@@ -16,18 +16,18 @@ import type { UISurfaceKind, UIStageSlotId } from "./ui-editor/document";
  * migrated) document's own mount says, resolving the placement ambiguity of
  * templates authored on older schemas. */
 export type UITemplateSurfacePlacement = {
-    kind: UISurfaceKind;
-    /** Required for `stageSurface`; the game-UI slot the surface mounts into. */
-    slotId?: UIStageSlotId;
+  kind: UISurfaceKind;
+  /** Required for `stageSurface`; the game-UI slot the surface mounts into. */
+  slotId?: UIStageSlotId;
 };
 
 /** One resource a template ships alongside its document, fetched from the same
  * directory and re-imported into the project's asset store on apply. */
 export type UITemplateAssetRef = {
-    /** The `assetId` the document references; remapped to a fresh project id on import. */
-    id: string;
-    /** Repository-relative path, resolved against the template directory. */
-    path: string;
+  /** The `assetId` the document references; remapped to a fresh project id on import. */
+  id: string;
+  /** Repository-relative path, resolved against the template directory. */
+  path: string;
 };
 
 /**
@@ -44,19 +44,19 @@ export type UITemplateAssetRef = {
  * single screen's contents.
  */
 export type UIThemeDescriptor = {
-    id: string;
-    name: string;
-    version: string;
-    description: string;
-    publisher: string;
-    /** Source directory in the repository, e.g. `themes/narraleaf.coffee`. */
-    path: string;
-    /** Theme-relative path to the poster image. */
-    preview?: string;
-    /** How many templates in the index declare this theme. */
-    templateCount: number;
-    /** Per-locale name / description; see {@link LocalizedTextPack}. */
-    locales?: LocalizedTextPack;
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  publisher: string;
+  /** Source directory in the repository, e.g. `themes/narraleaf.coffee`. */
+  path: string;
+  /** Theme-relative path to the poster image. */
+  preview?: string;
+  /** How many templates in the index declare this theme. */
+  templateCount: number;
+  /** Per-locale name / description; see {@link LocalizedTextPack}. */
+  locales?: LocalizedTextPack;
 };
 
 /**
@@ -67,59 +67,59 @@ export type UIThemeDescriptor = {
  * index therefore cannot aim an `<img>` anywhere or use one as a per-user beacon.
  */
 export type UIThemePreview = {
-    id: string;
-    dataUrl: string;
+  id: string;
+  dataUrl: string;
 };
 
 export type UITemplateRegistryEntry = {
-    id: string;
-    name: string;
-    version: string;
-    description: string;
-    publisher: string;
-    categories: string[];
-    /** Source directory in the repository, e.g. `templates/narraleaf.save-load`. */
-    path: string;
-    /** Template-relative path to the `UIDocument` JSON. */
-    document: string;
-    /** Template-relative path to the `UIGraphDocument` JSON. */
-    graphs: string;
-    /** Template-relative path to an optional preview image. */
-    preview?: string;
-    /** Intended placement for the template's surface(s). */
-    surface: UITemplateSurfacePlacement;
-    /** Declared resources; empty for asset-free templates. */
-    assets: UITemplateAssetRef[];
-    /** The theme this template belongs to; absent on an unthemed template. */
-    theme?: string;
-    /** Per-locale name / description; see {@link LocalizedTextPack}. */
-    locales?: LocalizedTextPack;
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  publisher: string;
+  categories: string[];
+  /** Source directory in the repository, e.g. `templates/narraleaf.save-load`. */
+  path: string;
+  /** Template-relative path to the `UIDocument` JSON. */
+  document: string;
+  /** Template-relative path to the `UIGraphDocument` JSON. */
+  graphs: string;
+  /** Template-relative path to an optional preview image. */
+  preview?: string;
+  /** Intended placement for the template's surface(s). */
+  surface: UITemplateSurfacePlacement;
+  /** Declared resources; empty for asset-free templates. */
+  assets: UITemplateAssetRef[];
+  /** The theme this template belongs to; absent on an unthemed template. */
+  theme?: string;
+  /** Per-locale name / description; see {@link LocalizedTextPack}. */
+  locales?: LocalizedTextPack;
 };
 
 export type UITemplateRegistryIndex = {
-    formatVersion: number;
-    repository: string;
-    /** Themes the registry publishes; empty on a registry that predates them. */
-    themes: UIThemeDescriptor[];
-    templates: UITemplateRegistryEntry[];
+  formatVersion: number;
+  repository: string;
+  /** Themes the registry publishes; empty on a registry that predates them. */
+  themes: UIThemeDescriptor[];
+  templates: UITemplateRegistryEntry[];
 };
 
 /** Response of a store fetch: the parsed index plus the URL it came from. */
 export type UITemplateFetchResult = {
-    registryUrl: string;
-    index: UITemplateRegistryIndex;
+  registryUrl: string;
+  index: UITemplateRegistryIndex;
 };
 
 /** One fetched resource, handed to the renderer to re-import into the project. */
 export type UITemplateFetchedAsset = {
-    /** The document's original `assetId` for this resource. */
-    id: string;
-    /** File name (basename of the declared path), used to seed the imported asset. */
-    fileName: string;
-    /** Best-effort MIME type, inferred from the file extension. */
-    mime: string;
-    /** Base64-encoded bytes; decoded and ingested by the renderer. */
-    dataBase64: string;
+  /** The document's original `assetId` for this resource. */
+  id: string;
+  /** File name (basename of the declared path), used to seed the imported asset. */
+  fileName: string;
+  /** Best-effort MIME type, inferred from the file extension. */
+  mime: string;
+  /** Base64-encoded bytes; decoded and ingested by the renderer. */
+  dataBase64: string;
 };
 
 /**
@@ -130,9 +130,9 @@ export type UITemplateFetchedAsset = {
  * logic graph and every byte of its resources just to render a thumbnail.
  */
 export type UITemplatePreview = {
-    id: string;
-    /** Raw `UIDocument` JSON, pre-migration. */
-    document: unknown;
+  id: string;
+  /** Raw `UIDocument` JSON, pre-migration. */
+  document: unknown;
 };
 
 /**
@@ -140,11 +140,11 @@ export type UITemplatePreview = {
  * as raw JSON (migrated in the renderer, never here) plus any fetched resources.
  */
 export type UITemplateBundle = {
-    id: string;
-    surface: UITemplateSurfacePlacement;
-    /** Raw `UIDocument` JSON, pre-migration. */
-    document: unknown;
-    /** Raw `UIGraphDocument` JSON, pre-migration. */
-    graphs: unknown;
-    assets: UITemplateFetchedAsset[];
+  id: string;
+  surface: UITemplateSurfacePlacement;
+  /** Raw `UIDocument` JSON, pre-migration. */
+  document: unknown;
+  /** Raw `UIGraphDocument` JSON, pre-migration. */
+  graphs: unknown;
+  assets: UITemplateFetchedAsset[];
 };

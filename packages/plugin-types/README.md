@@ -17,10 +17,10 @@ yarn add -D narraleaf-studio
 import { definePlugin } from "narraleaf-studio/plugin";
 
 export default definePlugin({
-    setup(app) {
-        app.services.blueprintNodes.registerMany(myNodes());
-        app.services.ui.notifications.info(`${app.manifest.name} loaded`);
-    },
+  setup(app) {
+    app.services.blueprintNodes.registerMany(myNodes());
+    app.services.ui.notifications.info(`${app.manifest.name} loaded`);
+  }
 });
 ```
 
@@ -29,16 +29,16 @@ export default definePlugin({
 import { defineRuntimePlugin } from "narraleaf-studio/runtime";
 
 export default defineRuntimePlugin({
-    setup(app) {
-        app.game.blueprintNodes.registerMany(myNodes());
-    },
+  setup(app) {
+    app.game.blueprintNodes.registerMany(myNodes());
+  }
 });
 ```
 
-| Subpath                    | Surface                                                          |
-| -------------------------- | ---------------------------------------------------------------- |
-| `narraleaf-studio/plugin`  | Editor: `definePlugin`, `PluginApp`, `PluginServices`, `ui`       |
-| `narraleaf-studio/runtime` | Game: `defineRuntimePlugin`, `RuntimePluginApp`                   |
+| Subpath                    | Surface                                                     |
+| -------------------------- | ----------------------------------------------------------- |
+| `narraleaf-studio/plugin`  | Editor: `definePlugin`, `PluginApp`, `PluginServices`, `ui` |
+| `narraleaf-studio/runtime` | Game: `defineRuntimePlugin`, `RuntimePluginApp`             |
 
 The two are physically isolated at runtime. Importing `narraleaf-studio/plugin`
 from a runtime entry throws — the runtime host has no Studio services.
@@ -52,11 +52,13 @@ against their own game from Studio's Run ▸ Test, contributed through
 
 ```ts
 app.services.tests.register({
-    id: "acme.qa-pack.scene-names",   // declare it in contributes.tests
-    title: { text: "Scenes are named" },
-    presentation: "headless",
-    requires: ["project.read"],
-    async run(ctx) { /* … */ return { status: "passed" }; },
+  id: "acme.qa-pack.scene-names", // declare it in contributes.tests
+  title: { text: "Scenes are named" },
+  presentation: "headless",
+  requires: ["project.read"],
+  async run(ctx) {
+    /* … */ return { status: "passed" };
+  }
 });
 ```
 
@@ -76,13 +78,13 @@ broken React instance and a plugin that fails to load.
 ```js
 // esbuild
 external: [
-    "narraleaf-studio/plugin",
-    "narraleaf-studio/runtime",
-    "react",
-    "react-dom",
-    "react-dom/client",
-    "react/jsx-runtime",
-]
+  "narraleaf-studio/plugin",
+  "narraleaf-studio/runtime",
+  "react",
+  "react-dom",
+  "react-dom/client",
+  "react/jsx-runtime"
+];
 ```
 
 If you forget, this package's stub throws at import with a message saying so.
@@ -92,8 +94,8 @@ If you forget, this package's stub throws at import with a message saying so.
 Generated directly from Studio's source by `packages/plugin-types/build.mjs`,
 not written by hand:
 
-| Output            | Generated from                                                   |
-| ----------------- | ---------------------------------------------------------------- |
+| Output              | Generated from                                                   |
+| ------------------- | ---------------------------------------------------------------- |
 | `dist/plugin.d.ts`  | `src/renderer/plugin/index.ts`                                   |
 | `dist/runtime.d.ts` | `src/renderer/lib/ui-editor/runtime/plugins/runtimePluginApi.ts` |
 

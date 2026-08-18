@@ -9,6 +9,7 @@
 ## Common
 
 Common 节点组默认具有：
+
 - `blueprint.event.head.init` - 元素初始化事件；在 Blueprint Value 中也作为初始求值事件
 
 ## Blueprint Value
@@ -16,6 +17,7 @@ Common 节点组默认具有：
 Blueprint Value 节点组只存在于 `widgetValue` 私有蓝图。当前用于 `nl.text` 的 `props.text`、`nl.button` 的 `props.label`、Page 组件 `nl.frame` 的 `props.params` 和 `nl.slider` 的 `props.value` 动态值。
 
 Blueprint Value 可用节点包括：
+
 - `blueprint.event.head.init` - 初始求值事件
 - `blueprint.event.head.flush` - 属性刷新求值事件；默认 Dialog Nametag 的普通事件图使用该入口，以支持 Dialog 不重新挂载时随对话推进更新
 - `blueprint.data.returnValue` - 返回当前属性值的无尾执行节点
@@ -29,6 +31,7 @@ Blueprint Value 只允许安全的数据生产节点：`Init` / `On Flush` Head�
 ## Self 与 Element 方法节点
 
 内建控件方法分为两套节点形态：
+
 - Self 节点作用于当前私有蓝图所属控件，不带 Element/ref 输入，只在对应控件自己的 `widgetMain` 蓝图中出现，并通过 `executionOwner.elementId` 操作自己。
 - Element 节点作用于显式连入的 Element 引用，带 typed Element 输入，例如 `element:nl.button`、`element:nl.slider`。它们显示在 `Element` 分类下，包括 `blueprint.element.displayable.*` 这类 Displayable 派生节点。
 - Element 节点只有在当前图里已经存在兼容的 `Element`、`Element Flush` 或 `Element Click` 绑定节点时才显示。同一节点类型在创建浮窗中去重为唯一项；若兼容来源唯一，添加时会自动连接到该来源的目标输入，若有多个兼容来源则保留目标输入由作者选择。
@@ -41,6 +44,7 @@ Variables 节点组用于声明和读写当前蓝图可访问的本地变量，�
 `Get Var` / `Set Var` 的 `value` 引脚类型由当前选择的变量推断，节点卡、连接预览和 graph validation 使用同一份推断结果。变量类型改变后如果已有连线不再兼容，编辑器保留连线并上报类型不匹配诊断，不自动删除 edge。
 
 Persistent 变量定义保存在 Blueprint 文档中，运行时值由 Host 管理并按项目隔离。当前核心目录包含：
+
 - `blueprint.local.declareVar` - `Var`，无引脚变量声明节点，卡片上编辑名称、类型和默认值
 - `blueprint.local.get` - 读取变量
 - `blueprint.local.set` - 写入变量
@@ -52,6 +56,7 @@ Persistent 变量定义保存在 Blueprint 文档中，运行时值由 Host 管�
 Flow 节点组用于控制执行线路。所有支持蓝图的元素、Surface 蓝图和全局蓝图都可以使用 Flow 节点组。
 
 Flow 节点组默认具有：
+
 - `if` - 根据布尔条件选择 True 或 False 执行出口
 - `blueprint.flow.ifElse` - 按顺序判断一个或多个 If 条件，匹配时进入对应 Then，否则进入 Else 兜底出口
 - `blueprint.flow.noop` - 空操作
@@ -69,6 +74,7 @@ Flow 节点组默认具有：
 Debug 节点组用于调试输出和图内说明。所有支持蓝图的元素都可以使用 Debug 节点组；其中 `blueprint.log` 只用于 `event` 和 `macro` 图，图内注释可以用于 `event`、`function` 和 `macro` 图。
 
 Debug 节点组默认具有：
+
 - `blueprint.flow.comment` - 可调整大小、颜色、背景和多行说明的图内注释框；关闭背景后位于其它节点底层，不参与执行链
 - `blueprint.log` - 输出调试日志并继续执行
 
@@ -77,6 +83,7 @@ Debug 节点组默认具有：
 Element 节点组用于显式引用当前 Surface 内的控件，并放置所有带 Element/ref 输入的派生节点。
 
 Element 节点组默认具有：
+
 - `blueprint.element.ref` - Same-Surface 元素字面量引用，输出 `element` 或 typed `element:<widgetType>`
 - `blueprint.element.continueEventBubble` - 在当前 Widget 事件图中把当前事件继续派发给结构父元素，并从 `next` 继续执行
 - `blueprint.element.stopEventBubble` - 标记当前事件已处理，阻止后续父级冒泡或键盘事件继续传到背景层，并从 `next` 继续执行
@@ -96,6 +103,7 @@ Element 派生节点不会按每个绑定控件复制菜单项；每个节点类
 ## Displayable
 
 Displayable 节点组默认具有：
+
 - `blueprint.event.head.mouseClick`
 - `blueprint.event.head.beforeSurfaceExit`
 - `blueprint.event.head.afterSurfaceEnter`
@@ -135,12 +143,14 @@ Self `Set Variant` 只在当前控件支持 Appearance Variant 时出现，并�
 Widget Property 节点用于运行时读写内建控件的通用属性和控件特有属性。
 
 所有内建控件的 Self 版都提供：
+
 - `blueprint.<widget>.getVisible` / `setVisible`
 - `blueprint.<widget>.getEnabled` / `setEnabled`
 
 Element 版使用 `blueprint.element.<widget>.*`，带 typed Element 输入，统一显示在 `Element` 分类中，并只在当前图里存在兼容 Element 引用时出现。`Set Enabled(false)` 会映射到底层禁用交互机制，用户侧不暴露 `interactionDisabled`。
 
 控件特有方法包括：
+
 - `nl.button`：`getLabel` / `setLabel`、`setPointer`；`Set Pointer` 在卡片上用带鼠标图标的 Pointer 下拉选择 `auto`、`default`、`pointer` 等按钮指针形态；旧版 `getVariant` / `setVariant` 仅兼容旧图并隐藏，新图使用 Displayable `Set Variant` 下拉
 - `nl.container`：`getClipContent` / `setClipContent`；旧版 `getVariant` / `setVariant` 仅兼容旧图并隐藏，新图使用 Displayable `Set Variant` 下拉
 - `nl.image`：`getImageAsset` / `setImageAsset` / `clearImageAsset`、`getFitMode` / `setFitMode`、`getCropRect` / `setCropRect`、`getFlipX` / `setFlipX`、`getFlipY` / `setFlipY`
@@ -153,6 +163,7 @@ Page 导航、状态与通信节点 `blueprint.page.go`、`blueprint.page.getPro
 Page 节点组用于切换 Page，以及在 Page 组件和被 Page 组件嵌入的子 Page 之间传递 props 与事件。`nl.frame` 元素拥有 Page Event；被 Page 组件嵌入的子 Page 可以通过 Host API 读取 props 并向父级 Page 组件发出事件。
 
 Page 节点组默认具有：
+
 - `blueprint.event.head.pageEvent` - Page 组件收到子 Page 事件
 - `blueprint.event.head.keyDown` - Page 组件实例收到运行时窗口指定键按下事件
 - `blueprint.event.head.keyUp` - Page 组件实例收到运行时窗口指定键抬起事件
@@ -171,6 +182,7 @@ Page 节点组默认具有：
 Game 节点组用于控制当前 NarraLeaf 游戏运行时、Dialog 推进、NarraLeaf React Preference，以及访问当前 Studio 项目隔离的本地普通存档。Game 节点通过 Host API 执行；`Get Nametag`、`Is In Game`、`Is Game Overlay` 与 Preference Getter 为 pure 读取节点，可用于 Blueprint Value；执行节点和 Preference Setter 均为异步 latent 节点，只用于 `event` 和 `macro` 图。进入游戏状态后当前普通 Page 栈会作为底层隐藏；此时继续调用 `Go Page` 会把目标 Page 叠加在游戏舞台上，选择 `None` 会关闭顶层 Page 叠层并露出游戏舞台。要退出游戏并返回普通 Page，使用 `Quit Game` 的 Page 下拉选择返回目标。
 
 Game 节点组默认具有：
+
 - `blueprint.game.startStory` - 启动指定 Story / Scene（尾节点，无执行出口）
 - `blueprint.game.getNametag` - 读取当前 Dialog 说话人名字；没有说话人时返回 `null`；pure 节点，可用于 Blueprint Value
 - `blueprint.game.getNotifications` - 读取当前 NarraLeaf 通知数组（`{id, message}` 的 `array`）；pure 节点，可用于 Blueprint Value
@@ -200,6 +212,7 @@ Dialog 推进、Dialog 显示切换、Preference Getter/Setter、速度设置、
 只有全局蓝图具有 Global 节点组。
 
 Global 节点组默认具有：
+
 - `blueprint.event.head.appBoot` - 应用启动事件（仅全局蓝图具有）
 - `blueprint.event.head.gameReady` - NarraLeaf React `LiveGame` 准备就绪事件；用于在第一段剧情开始前初始化游戏 Preference（仅全局蓝图具有）
 - `blueprint.event.head.keyDown` - 运行时窗口指定键按下事件
@@ -212,6 +225,7 @@ Global 节点组默认具有：
 只有Surface蓝图（包括Game UI和Page）具有Surface节点组。
 
 Surface 节点组默认具有：
+
 - `blueprint.event.head.surfaceInit` - 当前 Surface 初始化事件（仅Surface蓝图具有）
 - `blueprint.event.head.surfaceUnmount` - 当前 Surface 卸载事件（仅Surface蓝图具有）
 - `blueprint.event.head.beforeSurfaceExit` - 当前 Surface 退出动画开始前事件
@@ -231,6 +245,7 @@ List 节点组用于 `nl.list` 的运行时内容、选中项、滚动和条目�
 List Self 节点在所有 list-like 控件（`nl.list`、`nl.notification.list`、`nl.choice.list`、`nl.nvl.list`）自己的私有蓝图中出现，创建浮窗中归入 `List` 分类，且没有 `list` 输入。List Element 节点使用 `blueprint.element.list.*`，带 `element:nl.list` 输入，归入 `Element` 分类，目前仍只针对 `nl.list`（Game UI slot 包装控件的 Element 派生版为后续跟进）；当前图中没有绑定到 `nl.list` 的 Element、Element Flush 或 Element Click 时不会显示。List item context 读取节点只在 item template 后代元素蓝图中出现（包括 Game UI slot 包装控件的 item 模板后代）。
 
 List 节点组默认具有：
+
 - `blueprint.event.head.scroll` - 列表滚动事件
 - `blueprint.event.head.scrollEnd` - 列表滚动到末端事件
 - `blueprint.event.head.itemRender` - 列表条目渲染事件
@@ -258,6 +273,7 @@ Slider 节点组用于读取和改写 `nl.slider` 的运行时映射值与范围
 Slider Self 节点只在 `nl.slider` 自己的私有蓝图中出现，创建浮窗中归入 `Slider` 分类，且没有 `slider` 输入。Slider Element 节点使用 `blueprint.element.slider.*`，带 `element:nl.slider` 输入，归入 `Element` 分类；当前图中没有绑定到 `nl.slider` 的 Element、Element Flush 或 Element Click 时不会显示。
 
 Slider 节点组默认具有：
+
 - `blueprint.event.head.sliderDragStart` - 滑块拖拽开始事件，输出映射值 `value`
 - `blueprint.event.head.sliderValueChanged` - 滑块值变化事件，输出映射值 `value` 和 `previousValue`
 - `blueprint.event.head.sliderDragEnd` - 滑块拖拽结束事件，输出映射值 `value`
@@ -280,6 +296,7 @@ Image 节点组用于读取和改写 `nl.image` 的界面图片资源、填充�
 Image Self 节点只在 `nl.image` 自己的私有蓝图中出现，创建浮窗中归入 `Image` 分类，且没有 `image` 输入。Image Element 节点使用 `blueprint.element.image.*`，带 `element:nl.image` 输入，归入 `Element` 分类；当前图中没有绑定到 `nl.image` 的 Element、Element Flush 或 Element Click 时不会显示。
 
 Image 节点组默认具有：
+
 - `blueprint.image.assetLiteral` - 图片资产字面量卡片，输出 `ImageAsset`
 - `blueprint.image.getImageAsset` - 获取当前图片资源，输出 `ImageAsset|null`
 - `blueprint.image.setImageAsset` - 设置图片资源，输入 `ImageAsset|null`；未接线时可在节点卡片上展开图片选择器
@@ -296,6 +313,7 @@ Element 版对应稳定 ID 使用 `blueprint.element.image.*`，方法目录与 
 Broadcast 节点组用于在页面和元素之间发送、接收广播事件。Surface 蓝图和所有支持蓝图的元素都可以使用 Broadcast 节点组。
 
 Broadcast 节点组默认具有：
+
 - `blueprint.event.head.onAnyBroadcast` - 任意事件广播事件
 - `blueprint.event.head.onBroadcast` - 事件广播事件
 - `blueprint.broadcast.send` - 发送广播事件
@@ -306,6 +324,7 @@ Broadcast 节点组默认具有：
 Network 节点组用于访问远程数据、在线配置、Web API、补丁公告和云存档等专业视觉小说游戏引擎运行时能力。具备项目网络权限的全局蓝图、Surface 蓝图和支持蓝图的元素可以使用 Network 节点组。
 
 Network 节点组默认具有以下 vNext 规划节点。Network 节点不表示已经注册到当前运行时 catalog，并且必须通过 Host API 与项目权限控制访问网络：
+
 - `blueprint.network.fetch` - 发送 HTTP 请求（vNext）
 
 ## Data
@@ -313,6 +332,7 @@ Network 节点组默认具有以下 vNext 规划节点。Network 节点不表示
 Data 节点组用于创建常量值、进行显式类型转换、处理字符串和读写结构化 JSON。所有支持蓝图的元素都可以使用 Data 节点组。
 
 Data 节点组默认具有：
+
 - `blueprint.data.stringLiteral` - String 常量
 - `blueprint.data.integerLiteral` - 整数常量
 - `blueprint.data.floatLiteral` - 浮点数常量
@@ -383,6 +403,7 @@ Data 节点组默认具有：
 - `blueprint.string.normalizeLineBreaks` - 统一换行符
 
 Data 分类还包含 Collection 节点：
+
 - `blueprint.collection.arrayLength` / `arrayGet` / `arraySet` / `arrayPush` / `arrayInsert` / `arrayRemove` / `arrayRemoveAt` / `arrayContains` / `arraySlice` / `arrayJoin`
 - `blueprint.collection.objectKeys` / `objectValues` / `objectMerge` / `objectSetField` / `objectRemoveField`
 - `blueprint.collection.arrayFind` / `arrayFilter` / `arrayMap` / `arraySort` 仅保留 planned/disabled 稳定 ID，不注册 palette/runtime
@@ -392,6 +413,7 @@ Data 分类还包含 Collection 节点：
 Math 节点组用于数值计算、取整、最小/最大值、随机数、布尔逻辑和值比较。所有支持蓝图的元素都可以使用 Math 节点组。
 
 Math 节点组默认具有：
+
 - `blueprint.math.add` - 数字相加；支持动态输入
 - `blueprint.math.subtract` - 数字相减
 - `blueprint.math.multiply` - 数字相乘
@@ -423,6 +445,7 @@ Math 节点组默认具有：
 Text 节点组用于设置和获取文本元素的内容、字体、排版、颜色和静态效果。只有 Text 元素具有 Text 节点组。
 
 Text 节点组默认具有：
+
 - `blueprint.text.getText` - 获取文本内容
 - `blueprint.text.setText` - 设置文本内容
 - `blueprint.text.appendText` - 追加文本内容

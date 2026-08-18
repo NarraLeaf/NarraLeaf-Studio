@@ -26,35 +26,35 @@ import { MISC_COMMANDS } from "./specs/misc";
 export type AnyStoryCommandSpec = StoryCommandSpec<StoryCommandParamsShape>;
 
 const ALL_SPECS: readonly AnyStoryCommandSpec[] = [
-    ...SCENE_COMMANDS,
-    ...CHARACTER_COMMANDS,
-    ...OBJECT_COMMANDS,
-    ...SOUND_COMMANDS,
-    ...VARIABLE_COMMANDS,
-    ...LOGIC_COMMANDS,
-    ...EFFECT_COMMANDS,
-    ...CAMERA_COMMANDS,
-    ...VFX_COMMANDS,
-    ...MISC_COMMANDS,
+  ...SCENE_COMMANDS,
+  ...CHARACTER_COMMANDS,
+  ...OBJECT_COMMANDS,
+  ...SOUND_COMMANDS,
+  ...VARIABLE_COMMANDS,
+  ...LOGIC_COMMANDS,
+  ...EFFECT_COMMANDS,
+  ...CAMERA_COMMANDS,
+  ...VFX_COMMANDS,
+  ...MISC_COMMANDS
 ] as readonly AnyStoryCommandSpec[];
 
 /** Project a spec's ordered params record onto the grammar's array shape (record key → param name). */
 function specParams(spec: AnyStoryCommandSpec): readonly StoryCommandParam[] {
-    return Object.entries(spec.params).map(([name, param]) => ({ name, ...param }));
+  return Object.entries(spec.params).map(([name, param]) => ({ name, ...param }));
 }
 
 function specToDef(spec: AnyStoryCommandSpec): StoryCommandDef {
-    return {
-        token: spec.token,
-        commandId: spec.id,
-        aliases: spec.aliases,
-        params: specParams(spec),
-    };
+  return {
+    token: spec.token,
+    commandId: spec.id,
+    aliases: spec.aliases,
+    params: specParams(spec)
+  };
 }
 
 const DEFS: readonly StoryCommandDef[] = ALL_SPECS.map(specToDef);
-const SPEC_BY_ID = new Map<string, AnyStoryCommandSpec>(ALL_SPECS.map(spec => [spec.id, spec]));
-const DEF_BY_ID = new Map<string, StoryCommandDef>(DEFS.map(def => [def.commandId, def]));
+const SPEC_BY_ID = new Map<string, AnyStoryCommandSpec>(ALL_SPECS.map((spec) => [spec.id, spec]));
+const DEF_BY_ID = new Map<string, StoryCommandDef>(DEFS.map((def) => [def.commandId, def]));
 
 /**
  * Every retired command, keyed by the id it had, spelling out the tokens it burned: canonical first,
@@ -80,9 +80,9 @@ const DEF_BY_ID = new Map<string, StoryCommandDef>(DEFS.map(def => [def.commandI
  * and is here only to burn its words; the two declarations left plenty.
  */
 const RETIRED_COMMAND_TOKENS: ReadonlyMap<string, readonly [string, ...string[]]> = new Map([
-    ["code", ["code", "script"]],
-    ["declareVar", ["save", "var", "savedvar"]],
-    ["declarePersis", ["global", "persis", "persistent"]],
+  ["code", ["code", "script"]],
+  ["declareVar", ["save", "var", "savedvar"]],
+  ["declarePersis", ["global", "persis", "persistent"]]
 ]);
 
 const RESERVED_TOKENS: ReadonlySet<string> = new Set([...RETIRED_COMMAND_TOKENS.values()].flat());
@@ -100,26 +100,28 @@ const RESERVED_TOKENS: ReadonlySet<string> = new Set([...RETIRED_COMMAND_TOKENS.
  * `/save …` line was most likely typed as, and the only one of the three that is a word.
  */
 export function retiredCommandToken(commandId: string): string | null {
-    return RETIRED_COMMAND_TOKENS.get(commandId)?.[0] ?? null;
+  return RETIRED_COMMAND_TOKENS.get(commandId)?.[0] ?? null;
 }
 
 // Duplicate ids or tokens are authoring mistakes worth failing loudly on, at import time.
 if (SPEC_BY_ID.size !== ALL_SPECS.length) {
-    throw new Error("Duplicate story command spec id.");
+  throw new Error("Duplicate story command spec id.");
 }
 {
-    const tokens = new Set<string>();
-    for (const spec of ALL_SPECS) {
-        for (const token of [spec.token, ...(spec.aliases ?? [])]) {
-            if (tokens.has(token)) {
-                throw new Error(`Duplicate story command token or alias: "${token}".`);
-            }
-            if (RESERVED_TOKENS.has(token)) {
-                throw new Error(`Reserved story command token or alias: "${token}" belonged to a retired command.`);
-            }
-            tokens.add(token);
-        }
+  const tokens = new Set<string>();
+  for (const spec of ALL_SPECS) {
+    for (const token of [spec.token, ...(spec.aliases ?? [])]) {
+      if (tokens.has(token)) {
+        throw new Error(`Duplicate story command token or alias: "${token}".`);
+      }
+      if (RESERVED_TOKENS.has(token)) {
+        throw new Error(
+          `Reserved story command token or alias: "${token}" belonged to a retired command.`
+        );
+      }
+      tokens.add(token);
     }
+  }
 }
 
 /**
@@ -131,24 +133,24 @@ if (SPEC_BY_ID.size !== ALL_SPECS.length) {
  * IS `bg`'s menu label in the active locale - not a second, hand-maintained alias list.
  */
 export function commandLabelKey(id: string): TranslationKey {
-    return `story.command.${id}.label` as TranslationKey;
+  return `story.command.${id}.label` as TranslationKey;
 }
 
 export function commandDetailKey(id: string): TranslationKey {
-    return `story.command.${id}.detail` as TranslationKey;
+  return `story.command.${id}.detail` as TranslationKey;
 }
 
 /** Every English spelling the parser already accepts for any command: canonical token, id, and aliases. */
 function canonicalTokens(): ReadonlySet<string> {
-    const tokens = new Set<string>();
-    for (const def of DEFS) {
-        tokens.add(def.token);
-        tokens.add(def.commandId.toLowerCase());
-        for (const alias of def.aliases ?? []) {
-            tokens.add(alias);
-        }
+  const tokens = new Set<string>();
+  for (const def of DEFS) {
+    tokens.add(def.token);
+    tokens.add(def.commandId.toLowerCase());
+    for (const alias of def.aliases ?? []) {
+      tokens.add(alias);
     }
-    return tokens;
+  }
+  return tokens;
 }
 
 /**
@@ -176,45 +178,45 @@ function canonicalTokens(): ReadonlySet<string> {
  * pack swapping the catalog under a fixed locale.
  */
 type LocalizedTokens = {
-    locale: string;
-    /** Folded localized spelling → def. The parser's pass. */
-    accept: ReadonlyMap<string, StoryCommandDef>;
-    /** Def → the spelling to write, as authored (case and all). Only defs that earned one. */
-    insert: ReadonlyMap<StoryCommandDef, string>;
+  locale: string;
+  /** Folded localized spelling → def. The parser's pass. */
+  accept: ReadonlyMap<string, StoryCommandDef>;
+  /** Def → the spelling to write, as authored (case and all). Only defs that earned one. */
+  insert: ReadonlyMap<StoryCommandDef, string>;
 };
 
 let localizedTokens: LocalizedTokens | null = null;
 commandI18nStore.subscribe(() => {
-    localizedTokens = null;
+  localizedTokens = null;
 });
 
 function localizedTokenTables(): LocalizedTokens {
-    const locale = commandI18nStore.getLocale();
-    if (localizedTokens?.locale === locale) {
-        return localizedTokens;
-    }
-    const canonical = canonicalTokens();
-    const accept = new Map<string, StoryCommandDef>();
-    const insert = new Map<StoryCommandDef, string>();
-    for (const def of DEFS) {
-        const key = commandLabelKey(def.commandId);
-        const raw = translateCommand(key).trim();
-        const label = raw.toLowerCase();
-        // `translate` echoes the key back on a missing entry - that is not a token. A blank or
-        // multi-word label is not a single inline token either; a label already spelling a canonical
-        // English token is handled by the English pass; a duplicate resolves to the first def.
-        if (!label || raw === key || /\s/.test(label) || canonical.has(label) || accept.has(label)) {
-            continue;
-        }
-        accept.set(label, def);
-        insert.set(def, raw);
-    }
-    localizedTokens = { locale, accept, insert };
+  const locale = commandI18nStore.getLocale();
+  if (localizedTokens?.locale === locale) {
     return localizedTokens;
+  }
+  const canonical = canonicalTokens();
+  const accept = new Map<string, StoryCommandDef>();
+  const insert = new Map<StoryCommandDef, string>();
+  for (const def of DEFS) {
+    const key = commandLabelKey(def.commandId);
+    const raw = translateCommand(key).trim();
+    const label = raw.toLowerCase();
+    // `translate` echoes the key back on a missing entry - that is not a token. A blank or
+    // multi-word label is not a single inline token either; a label already spelling a canonical
+    // English token is handled by the English pass; a duplicate resolves to the first def.
+    if (!label || raw === key || /\s/.test(label) || canonical.has(label) || accept.has(label)) {
+      continue;
+    }
+    accept.set(label, def);
+    insert.set(def, raw);
+  }
+  localizedTokens = { locale, accept, insert };
+  return localizedTokens;
 }
 
 function localizedTokenMap(): ReadonlyMap<string, StoryCommandDef> {
-    return localizedTokenTables().accept;
+  return localizedTokenTables().accept;
 }
 
 /**
@@ -227,28 +229,28 @@ function localizedTokenMap(): ReadonlyMap<string, StoryCommandDef> {
  * re-spelling produces a line the parser cannot take.
  */
 export function localizedCommandToken(def: StoryCommandDef): string {
-    // The source locale writes the canonical token, always: the English label is where the token came
-    // from, so anything else here would be the catalog second-guessing the grammar.
-    if (commandI18nStore.getLocale() === SOURCE_LOCALE) {
-        return def.token;
-    }
-    return localizedTokenTables().insert.get(def) ?? def.token;
+  // The source locale writes the canonical token, always: the English label is where the token came
+  // from, so anything else here would be the catalog second-guessing the grammar.
+  if (commandI18nStore.getLocale() === SOURCE_LOCALE) {
+    return def.token;
+  }
+  return localizedTokenTables().insert.get(def) ?? def.token;
 }
 
 export function listCommandSpecs(): readonly AnyStoryCommandSpec[] {
-    return ALL_SPECS;
+  return ALL_SPECS;
 }
 
 export function listCommandDefs(): readonly StoryCommandDef[] {
-    return DEFS;
+  return DEFS;
 }
 
 export function getCommandSpec(id: string): AnyStoryCommandSpec | null {
-    return SPEC_BY_ID.get(id) ?? null;
+  return SPEC_BY_ID.get(id) ?? null;
 }
 
 export function getDefById(id: string): StoryCommandDef | null {
-    return DEF_BY_ID.get(id) ?? null;
+  return DEF_BY_ID.get(id) ?? null;
 }
 
 /**
@@ -260,13 +262,15 @@ export function getDefById(id: string): StoryCommandDef | null {
  * every locale, and only a genuinely-translated token like `/背景` reaches the localized step.
  */
 export function getCommandDef(token: string): StoryCommandDef | null {
-    const normalized = token.trim().toLowerCase();
-    if (!normalized) {
-        return null;
-    }
-    return DEFS.find(def => def.token === normalized)
-        ?? DEFS.find(def => (def.aliases ?? []).includes(normalized))
-        ?? localizedTokenMap().get(normalized)
-        ?? DEFS.find(def => def.commandId.toLowerCase() === normalized)
-        ?? null;
+  const normalized = token.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return (
+    DEFS.find((def) => def.token === normalized) ??
+    DEFS.find((def) => (def.aliases ?? []).includes(normalized)) ??
+    localizedTokenMap().get(normalized) ??
+    DEFS.find((def) => def.commandId.toLowerCase() === normalized) ??
+    null
+  );
 }

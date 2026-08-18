@@ -21,23 +21,23 @@ let activeRevision = 0;
 const listeners = new Set<() => void>();
 
 function sameFields(a: SaveSchemaRuntimeTable, b: SaveSchemaRuntimeTable): boolean {
-    if (a === b) {
-        return true;
-    }
-    if (a.length !== b.length) {
-        return false;
-    }
-    return a.every((field, index) => {
-        const other = b[index];
-        return (
-            field.id === other.id &&
-            field.name === other.name &&
-            field.valueType === other.valueType &&
-            field.storageKey === other.storageKey &&
-            field.order === other.order &&
-            JSON.stringify(field.defaultValue) === JSON.stringify(other.defaultValue)
-        );
-    });
+  if (a === b) {
+    return true;
+  }
+  if (a.length !== b.length) {
+    return false;
+  }
+  return a.every((field, index) => {
+    const other = b[index];
+    return (
+      field.id === other.id &&
+      field.name === other.name &&
+      field.valueType === other.valueType &&
+      field.storageKey === other.storageKey &&
+      field.order === other.order &&
+      JSON.stringify(field.defaultValue) === JSON.stringify(other.defaultValue)
+    );
+  });
 }
 
 /**
@@ -49,36 +49,36 @@ function sameFields(a: SaveSchemaRuntimeTable, b: SaveSchemaRuntimeTable): boole
  * that cost at "when the author actually changed a field".
  */
 export function setActiveSaveSchemaFields(fields: SaveSchemaRuntimeTable): void {
-    if (sameFields(activeFields, fields)) {
-        return;
-    }
-    activeFields = [...fields];
-    activeRevision += 1;
-    // Iterated over a copy: a listener may unsubscribe from inside its own callback, and deleting
-    // from the live set mid-iteration skips whichever listener came next.
-    for (const listener of [...listeners]) {
-        listener();
-    }
+  if (sameFields(activeFields, fields)) {
+    return;
+  }
+  activeFields = [...fields];
+  activeRevision += 1;
+  // Iterated over a copy: a listener may unsubscribe from inside its own callback, and deleting
+  // from the live set mid-iteration skips whichever listener came next.
+  for (const listener of [...listeners]) {
+    listener();
+  }
 }
 
 /** The live fields, in pin order. Empty when no host has published - a working state. */
 export function getActiveSaveSchemaFields(): SaveSchemaRuntimeTable {
-    return activeFields;
+  return activeFields;
 }
 
 export function getActiveSaveSchemaField(id: string): SaveSchemaField | undefined {
-    return activeFields.find(field => field.id === id);
+  return activeFields.find((field) => field.id === id);
 }
 
 // Module-level function declarations so the references stay stable across renders, which is what
 // `useSyncExternalStore` needs to avoid re-subscribing on every one.
 export function subscribeActiveSaveSchema(listener: () => void): () => void {
-    listeners.add(listener);
-    return () => {
-        listeners.delete(listener);
-    };
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export function getActiveSaveSchemaRevision(): number {
-    return activeRevision;
+  return activeRevision;
 }

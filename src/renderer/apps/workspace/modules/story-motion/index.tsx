@@ -10,25 +10,34 @@ import type { StoryMotionPanelPayload } from "./storyMotionTypes";
 export { createStoryMotionEditorTab } from "./StoryMotionEditorTab";
 export { StoryMotionPicker } from "./StoryMotionPicker";
 export { MotionSelector, MotionField } from "./MotionSelector";
-export type { StoryMotionActionContext, StoryMotionEditorPayload, StoryMotionPanelPayload } from "./storyMotionTypes";
+export type {
+  StoryMotionActionContext,
+  StoryMotionEditorPayload,
+  StoryMotionPanelPayload
+} from "./storyMotionTypes";
 
 export const STORY_MOTION_PANEL_ID = "narraleaf-studio:story-motion";
 
 export const storyMotionPanelModule: PanelModule<StoryMotionPanelPayload> = {
-    metadata: {
-        id: STORY_MOTION_PANEL_ID,
-        titleKey: "placeholders.moduleTitles.storyMotion",
-        get title() { return translate("placeholders.moduleTitles.storyMotion"); },
-        icon: <Spline className="w-4 h-4" />,
-        position: PanelPosition.Bottom,
-        defaultVisible: false,
-        order: 8,
+  metadata: {
+    id: STORY_MOTION_PANEL_ID,
+    titleKey: "placeholders.moduleTitles.storyMotion",
+    get title() {
+      return translate("placeholders.moduleTitles.storyMotion");
     },
-    component: StoryMotionPanel,
+    icon: <Spline className="w-4 h-4" />,
+    position: PanelPosition.Bottom,
+    defaultVisible: false,
+    order: 8
+  },
+  component: StoryMotionPanel
 };
 
-export function openStoryMotionPanel(workspace: WorkspaceContext, payload: StoryMotionPanelPayload = {}): void {
-    const uiService = workspace.services.get<UIService>(Services.UI);
-    uiService.panels.updatePayload(STORY_MOTION_PANEL_ID, payload);
-    uiService.panels.show(STORY_MOTION_PANEL_ID);
+export function openStoryMotionPanel(
+  workspace: WorkspaceContext,
+  payload: StoryMotionPanelPayload = {}
+): void {
+  const uiService = workspace.services.get<UIService>(Services.UI);
+  uiService.panels.updatePayload(STORY_MOTION_PANEL_ID, payload);
+  uiService.panels.show(STORY_MOTION_PANEL_ID);
 }

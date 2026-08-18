@@ -1,12 +1,16 @@
-import { resolveAppTagPluginConfigValue, type AppTagPluginConfig, type ProjectAppTag } from "../types/appTag";
+import {
+  resolveAppTagPluginConfigValue,
+  type AppTagPluginConfig,
+  type ProjectAppTag
+} from "../types/appTag";
 import type { GameBuildPlatform } from "../types/gameBuild";
 import {
-    holdsPluginBuildConfigValue,
-    isPlatformScopedBuildConfig,
-    pluginBuildConfigStorageKey,
-    type PluginBuildConfigField,
-    type PluginBuildConfigFieldContribution,
-    type PluginBuildConfigValueField,
+  holdsPluginBuildConfigValue,
+  isPlatformScopedBuildConfig,
+  pluginBuildConfigStorageKey,
+  type PluginBuildConfigField,
+  type PluginBuildConfigFieldContribution,
+  type PluginBuildConfigValueField
 } from "../types/plugins";
 
 /**
@@ -23,21 +27,21 @@ import {
  * free of the plugin manager and testable with a literal.
  */
 export type PluginBuildConfigDeclaringPlugin = {
-    pluginId: string;
-    enabled: boolean;
-    manifest: {
-        name?: string;
-        contributes?: { buildConfig?: PluginBuildConfigFieldContribution[] };
-    };
+  pluginId: string;
+  enabled: boolean;
+  manifest: {
+    name?: string;
+    contributes?: { buildConfig?: PluginBuildConfigFieldContribution[] };
+  };
 };
 
 /** One value to be supplied: a field, and the platform it is being supplied for. */
 export type PluginBuildConfigSlot = {
-    field: PluginBuildConfigField;
-    /** Absent unless the field's scope takes one value per platform. */
-    platform?: GameBuildPlatform;
-    /** Where the value sits in the store. See {@link pluginBuildConfigStorageKey}. */
-    storageKey: string;
+  field: PluginBuildConfigField;
+  /** Absent unless the field's scope takes one value per platform. */
+  platform?: GameBuildPlatform;
+  /** Where the value sits in the store. See {@link pluginBuildConfigStorageKey}. */
+  storageKey: string;
 };
 
 /**
@@ -53,29 +57,29 @@ export type PluginBuildConfigSlot = {
  * all; pass none and nothing is required, which is the honest answer for a build with no targets.
  */
 export function collectPluginBuildConfigFields(
-    plugins: readonly PluginBuildConfigDeclaringPlugin[],
-    platforms: readonly GameBuildPlatform[],
+  plugins: readonly PluginBuildConfigDeclaringPlugin[],
+  platforms: readonly GameBuildPlatform[]
 ): PluginBuildConfigField[] {
-    const fields: PluginBuildConfigField[] = [];
-    for (const plugin of plugins) {
-        if (!plugin.enabled) {
-            continue;
-        }
-        const declared = plugin.manifest.contributes?.buildConfig ?? [];
-        for (const field of declared) {
-            if (!appliesToAnyPlatform(field, platforms)) {
-                continue;
-            }
-            fields.push({
-                ...field,
-                pluginId: plugin.pluginId,
-                // The id is the fallback rather than an empty string: a surface grouping fields by
-                // plugin has to print something, and the id is at least identifying.
-                pluginName: plugin.manifest.name?.trim() || plugin.pluginId,
-            });
-        }
+  const fields: PluginBuildConfigField[] = [];
+  for (const plugin of plugins) {
+    if (!plugin.enabled) {
+      continue;
     }
-    return fields;
+    const declared = plugin.manifest.contributes?.buildConfig ?? [];
+    for (const field of declared) {
+      if (!appliesToAnyPlatform(field, platforms)) {
+        continue;
+      }
+      fields.push({
+        ...field,
+        pluginId: plugin.pluginId,
+        // The id is the fallback rather than an empty string: a surface grouping fields by
+        // plugin has to print something, and the id is at least identifying.
+        pluginName: plugin.manifest.name?.trim() || plugin.pluginId
+      });
+    }
+  }
+  return fields;
 }
 
 /**
@@ -86,27 +90,27 @@ export function collectPluginBuildConfigFields(
  * refuse a build with a required slot left blank.
  */
 export function pluginBuildConfigSlots(
-    fields: readonly PluginBuildConfigField[],
-    platforms: readonly GameBuildPlatform[],
+  fields: readonly PluginBuildConfigField[],
+  platforms: readonly GameBuildPlatform[]
 ): PluginBuildConfigSlot[] {
-    const slots: PluginBuildConfigSlot[] = [];
-    for (const field of fields) {
-        if (!isPlatformScopedBuildConfig(field.scope)) {
-            slots.push({ field, storageKey: pluginBuildConfigStorageKey(field.key) });
-            continue;
-        }
-        for (const platform of platforms) {
-            if (!appliesToPlatform(field, platform)) {
-                continue;
-            }
-            slots.push({
-                field,
-                platform,
-                storageKey: pluginBuildConfigStorageKey(field.key, platform),
-            });
-        }
+  const slots: PluginBuildConfigSlot[] = [];
+  for (const field of fields) {
+    if (!isPlatformScopedBuildConfig(field.scope)) {
+      slots.push({ field, storageKey: pluginBuildConfigStorageKey(field.key) });
+      continue;
     }
-    return slots;
+    for (const platform of platforms) {
+      if (!appliesToPlatform(field, platform)) {
+        continue;
+      }
+      slots.push({
+        field,
+        platform,
+        storageKey: pluginBuildConfigStorageKey(field.key, platform)
+      });
+    }
+  }
+  return slots;
 }
 
 /**
@@ -134,51 +138,51 @@ export function pluginBuildConfigSlots(
  * the manifest. That is what `secret` is for.
  */
 export type ShippedPluginBuildConfig = {
-    /** What the pack carries for this plugin, keyed by field key. */
-    values: Record<string, string>;
-    /**
-     * Platform-scoped keys the served platforms disagree about, so nothing was carried for them.
-     *
-     * Reported rather than silent: a plugin reading its own field back as absent looks exactly like
-     * an author who never filled it in, and the author is the only one who can resolve the
-     * disagreement (by building the platforms separately, or by making the values match).
-     */
-    ambiguousKeys: string[];
+  /** What the pack carries for this plugin, keyed by field key. */
+  values: Record<string, string>;
+  /**
+   * Platform-scoped keys the served platforms disagree about, so nothing was carried for them.
+   *
+   * Reported rather than silent: a plugin reading its own field back as absent looks exactly like
+   * an author who never filled it in, and the author is the only one who can resolve the
+   * disagreement (by building the platforms separately, or by making the values match).
+   */
+  ambiguousKeys: string[];
 };
 
 export function resolveShippedPluginBuildConfig(
-    plugin: Omit<PluginBuildConfigDeclaringPlugin, "enabled">,
-    tag: ProjectAppTag,
-    base: AppTagPluginConfig,
-    /** The build targets this artifact serves. Absent - Dev Mode, the preview - is "no platform". */
-    platforms?: readonly GameBuildPlatform[],
+  plugin: Omit<PluginBuildConfigDeclaringPlugin, "enabled">,
+  tag: ProjectAppTag,
+  base: AppTagPluginConfig,
+  /** The build targets this artifact serves. Absent - Dev Mode, the preview - is "no platform". */
+  platforms?: readonly GameBuildPlatform[]
 ): ShippedPluginBuildConfig {
-    const values: Record<string, string> = {};
-    const ambiguousKeys: string[] = [];
-    for (const contribution of plugin.manifest.contributes?.buildConfig ?? []) {
-        const field: PluginBuildConfigField = {
-            ...contribution,
-            pluginId: plugin.pluginId,
-            pluginName: plugin.manifest.name?.trim() || plugin.pluginId,
-        };
-        if (!holdsPluginBuildConfigValue(field)) {
-            continue;
-        }
-        if (!isPlatformScopedBuildConfig(field.scope)) {
-            const value = shippedValue(field, tag, base);
-            if (value) {
-                values[field.key] = value;
-            }
-            continue;
-        }
-        const answer = platformScopedValue(field, tag, base, platforms ?? []);
-        if (answer.kind === "agreed" && answer.value) {
-            values[field.key] = answer.value;
-        } else if (answer.kind === "disagreed") {
-            ambiguousKeys.push(field.key);
-        }
+  const values: Record<string, string> = {};
+  const ambiguousKeys: string[] = [];
+  for (const contribution of plugin.manifest.contributes?.buildConfig ?? []) {
+    const field: PluginBuildConfigField = {
+      ...contribution,
+      pluginId: plugin.pluginId,
+      pluginName: plugin.manifest.name?.trim() || plugin.pluginId
+    };
+    if (!holdsPluginBuildConfigValue(field)) {
+      continue;
     }
-    return { values, ambiguousKeys };
+    if (!isPlatformScopedBuildConfig(field.scope)) {
+      const value = shippedValue(field, tag, base);
+      if (value) {
+        values[field.key] = value;
+      }
+      continue;
+    }
+    const answer = platformScopedValue(field, tag, base, platforms ?? []);
+    if (answer.kind === "agreed" && answer.value) {
+      values[field.key] = answer.value;
+    } else if (answer.kind === "disagreed") {
+      ambiguousKeys.push(field.key);
+    }
+  }
+  return { values, ambiguousKeys };
 }
 
 /**
@@ -190,25 +194,22 @@ export function resolveShippedPluginBuildConfig(
  * by the caller instead.
  */
 function platformScopedValue(
-    field: PluginBuildConfigValueField,
-    tag: ProjectAppTag,
-    base: AppTagPluginConfig,
-    platforms: readonly GameBuildPlatform[],
+  field: PluginBuildConfigValueField,
+  tag: ProjectAppTag,
+  base: AppTagPluginConfig,
+  platforms: readonly GameBuildPlatform[]
 ): { kind: "none" } | { kind: "agreed"; value: string } | { kind: "disagreed" } {
-    const applicable = platforms.filter(platform => appliesToPlatform(field, platform));
-    if (applicable.length === 0) {
-        return { kind: "none" };
-    }
-    const answers = new Set(applicable.map(platform => resolveAppTagPluginConfigValue(
-        tag,
-        base,
-        field,
-        platform,
-    ).value));
-    if (answers.size > 1) {
-        return { kind: "disagreed" };
-    }
-    return { kind: "agreed", value: [...answers][0] ?? "" };
+  const applicable = platforms.filter((platform) => appliesToPlatform(field, platform));
+  if (applicable.length === 0) {
+    return { kind: "none" };
+  }
+  const answers = new Set(
+    applicable.map((platform) => resolveAppTagPluginConfigValue(tag, base, field, platform).value)
+  );
+  if (answers.size > 1) {
+    return { kind: "disagreed" };
+  }
+  return { kind: "agreed", value: [...answers][0] ?? "" };
 }
 
 /**
@@ -218,24 +219,24 @@ function platformScopedValue(
  * cannot reach this line, because the type it takes says so.
  */
 function shippedValue(
-    field: PluginBuildConfigValueField,
-    tag: ProjectAppTag,
-    base: AppTagPluginConfig,
+  field: PluginBuildConfigValueField,
+  tag: ProjectAppTag,
+  base: AppTagPluginConfig
 ): string {
-    return resolveAppTagPluginConfigValue(tag, base, field).value;
+  return resolveAppTagPluginConfigValue(tag, base, field).value;
 }
 
 /** Whether the field is declared for this platform. A field with no `platforms` applies to all. */
 export function appliesToPlatform(
-    field: Pick<PluginBuildConfigFieldContribution, "platforms">,
-    platform: GameBuildPlatform,
+  field: Pick<PluginBuildConfigFieldContribution, "platforms">,
+  platform: GameBuildPlatform
 ): boolean {
-    return !field.platforms || field.platforms.includes(platform);
+  return !field.platforms || field.platforms.includes(platform);
 }
 
 function appliesToAnyPlatform(
-    field: Pick<PluginBuildConfigFieldContribution, "platforms">,
-    platforms: readonly GameBuildPlatform[],
+  field: Pick<PluginBuildConfigFieldContribution, "platforms">,
+  platforms: readonly GameBuildPlatform[]
 ): boolean {
-    return platforms.some(platform => appliesToPlatform(field, platform));
+  return platforms.some((platform) => appliesToPlatform(field, platform));
 }

@@ -56,52 +56,52 @@ export const PUPPET_DESCRIBE_TIMEOUT_MS = 20_000;
 export type PuppetSessionWarning = { level: "warning" | "error"; message: string };
 
 export interface PuppetModelSessionOptions {
-    /** Where the backend draws. The backend owns its interior and it is emptied on dispose. */
-    container: HTMLDivElement;
-    /** The module and its sibling resolver, as `loadPuppetBackends` wants them. */
-    source: PuppetBackendModuleSource;
-    /** Which registered backend to mount — the name the puppet's config refers to. */
-    backend: string;
-    /** The resource descriptor, passed through verbatim. Studio hands over the bundle's entry-file URL. */
-    src: string;
-    /** The author's options for this backend, passed through verbatim. */
-    options: Record<string, unknown>;
-    /** The logical size of the box. */
-    size: PuppetSize;
-    onWarn?: (warning: PuppetSessionWarning) => void;
-    /**
-     * Where loaded backends are registered. Injectable precisely because it is only a registration
-     * sink — nothing here mounts a `Player` against it — which is also the claim this module's
-     * design rests on, so a test gets to hold it to that.
-     */
-    gameFactory?: () => Game;
+  /** Where the backend draws. The backend owns its interior and it is emptied on dispose. */
+  container: HTMLDivElement;
+  /** The module and its sibling resolver, as `loadPuppetBackends` wants them. */
+  source: PuppetBackendModuleSource;
+  /** Which registered backend to mount — the name the puppet's config refers to. */
+  backend: string;
+  /** The resource descriptor, passed through verbatim. Studio hands over the bundle's entry-file URL. */
+  src: string;
+  /** The author's options for this backend, passed through verbatim. */
+  options: Record<string, unknown>;
+  /** The logical size of the box. */
+  size: PuppetSize;
+  onWarn?: (warning: PuppetSessionWarning) => void;
+  /**
+   * Where loaded backends are registered. Injectable precisely because it is only a registration
+   * sink — nothing here mounts a `Player` against it — which is also the claim this module's
+   * design rests on, so a test gets to hold it to that.
+   */
+  gameFactory?: () => Game;
 }
 
 export interface PuppetModelSession {
-    /** Ask the model what it contains. Rejects when the backend has none, or when it will not answer. */
-    describe(): Promise<PuppetDescription>;
-    /** Whether the backend implements `describe()` at all. */
-    describable: boolean;
-    /** Push a complete state. The backend re-poses; the engine's `apply` contract applies unchanged. */
-    apply(state: PuppetState): void | Promise<void>;
-    /**
-     * Settles when the backend has drawn its first frame, per the engine's lifecycle.
-     *
-     * Exposed rather than swallowed because a host that only knows "mount returned" cannot tell
-     * `loading` from `ready`, and those are two different pictures to show an author. Resolves
-     * immediately for a backend that implements no `ready()` — the engine checks for it the same way.
-     * Call order matches the engine's: `apply()` the complete initial state first, then this.
-     */
-    ready(): Promise<void>;
-    resize(size: PuppetSize): void;
-    dispose(): void;
+  /** Ask the model what it contains. Rejects when the backend has none, or when it will not answer. */
+  describe(): Promise<PuppetDescription>;
+  /** Whether the backend implements `describe()` at all. */
+  describable: boolean;
+  /** Push a complete state. The backend re-poses; the engine's `apply` contract applies unchanged. */
+  apply(state: PuppetState): void | Promise<void>;
+  /**
+   * Settles when the backend has drawn its first frame, per the engine's lifecycle.
+   *
+   * Exposed rather than swallowed because a host that only knows "mount returned" cannot tell
+   * `loading` from `ready`, and those are two different pictures to show an author. Resolves
+   * immediately for a backend that implements no `ready()` — the engine checks for it the same way.
+   * Call order matches the engine's: `apply()` the complete initial state first, then this.
+   */
+  ready(): Promise<void>;
+  resize(size: PuppetSize): void;
+  dispose(): void;
 }
 
 export class PuppetBackendUnavailableError extends Error {
-    constructor(public readonly backend: string) {
-        super(`No puppet backend named "${backend}" was registered by the module`);
-        this.name = "PuppetBackendUnavailableError";
-    }
+  constructor(public readonly backend: string) {
+    super(`No puppet backend named "${backend}" was registered by the module`);
+    this.name = "PuppetBackendUnavailableError";
+  }
 }
 
 /**
@@ -115,17 +115,17 @@ export class PuppetBackendUnavailableError extends Error {
  * rather than re-derived so the two can never disagree about where a bundle's root is.
  */
 function createMountContext(
-    options: PuppetModelSessionOptions,
-    warn: (message: string, detail?: unknown) => void,
+  options: PuppetModelSessionOptions,
+  warn: (message: string, detail?: unknown) => void
 ) {
-    return {
-        src: options.src,
-        options: options.options,
-        size: options.size,
-        resolveSrc: (src: string) => src,
-        resolveSibling: (relativePath: string) => resolveBundleEntry(options.src, relativePath),
-        warn,
-    };
+  return {
+    src: options.src,
+    options: options.options,
+    size: options.size,
+    resolveSrc: (src: string) => src,
+    resolveSibling: (relativePath: string) => resolveBundleEntry(options.src, relativePath),
+    warn
+  };
 }
 
 /**
@@ -137,79 +137,84 @@ function createMountContext(
  * or "mount threw".
  */
 export async function createPuppetModelSession(
-    options: PuppetModelSessionOptions,
+  options: PuppetModelSessionOptions
 ): Promise<PuppetModelSession> {
-    const report = (level: PuppetSessionWarning["level"], message: string) =>
-        options.onWarn?.({ level, message });
+  const report = (level: PuppetSessionWarning["level"], message: string) =>
+    options.onWarn?.({ level, message });
 
-    // A registration sink, not a running game: no Player is ever mounted against it, so it stays a
-    // configuration object holding the backend table `loadPuppetBackends` writes into.
-    const game = options.gameFactory ? options.gameFactory() : new Game({ app: { debug: false } });
-    await loadPuppetBackends(game, [options.source], {
-        log: (level, message) => {
-            if (level !== "info") {
-                report(level, message);
-            }
-        },
-    });
-
-    const backend = game.getPuppetBackend(options.backend);
-    if (!backend) {
-        throw new PuppetBackendUnavailableError(options.backend);
+  // A registration sink, not a running game: no Player is ever mounted against it, so it stays a
+  // configuration object holding the backend table `loadPuppetBackends` writes into.
+  const game = options.gameFactory ? options.gameFactory() : new Game({ app: { debug: false } });
+  await loadPuppetBackends(game, [options.source], {
+    log: (level, message) => {
+      if (level !== "info") {
+        report(level, message);
+      }
     }
+  });
 
-    const instance = backend.mount(options.container, createMountContext(options, (message, detail) => {
-        report("warning", detail === undefined ? message : `${message} (${String(detail)})`);
-    }));
+  const backend = game.getPuppetBackend(options.backend);
+  if (!backend) {
+    throw new PuppetBackendUnavailableError(options.backend);
+  }
 
-    let disposed = false;
-    return {
-        describable: typeof instance.describe === "function",
-        describe: async (): Promise<PuppetDescription> => {
-            if (typeof instance.describe !== "function") {
-                throw new Error("This runtime does not describe its models");
-            }
-            // Nothing gates `describe()` on status by design - a backend that can only answer for a
-            // loaded model awaits its own load inside it. Which means a backend whose load never
-            // settles would hang the editor's lookup forever, so the wait is bounded here.
-            let timer: ReturnType<typeof setTimeout> | undefined;
-            const answer = Promise.resolve(instance.describe());
-            // The loser of the race is abandoned, not cancelled - a backend that rejects a second
-            // after the deadline would otherwise surface as an unhandled rejection with no owner.
-            answer.catch(() => undefined);
-            try {
-                const settled = await Promise.race([
-                    answer.then(value => ({ described: value })),
-                    new Promise<{ timedOut: true }>(resolve => {
-                        timer = setTimeout(() => resolve({ timedOut: true }), PUPPET_DESCRIBE_TIMEOUT_MS);
-                    }),
-                ]);
-                if ("timedOut" in settled) {
-                    throw new Error(`The runtime did not describe the model within ${PUPPET_DESCRIBE_TIMEOUT_MS}ms`);
-                }
-                return settled.described;
-            } finally {
-                if (timer !== undefined) {
-                    clearTimeout(timer);
-                }
-            }
-        },
-        apply: (state: PuppetState) => instance.apply(state),
-        ready: () => Promise.resolve(instance.ready?.()),
-        resize: (size: PuppetSize) => instance.resize?.(size),
-        dispose: () => {
-            if (disposed) {
-                return;
-            }
-            disposed = true;
-            try {
-                instance.dispose();
-            } catch (error) {
-                // A backend that throws on the way out has already been abandoned; the container is
-                // cleared regardless so a half-disposed WebGL canvas cannot outlive the editor panel.
-                report("warning", error instanceof Error ? error.message : String(error));
-            }
-            options.container.replaceChildren();
-        },
-    };
+  const instance = backend.mount(
+    options.container,
+    createMountContext(options, (message, detail) => {
+      report("warning", detail === undefined ? message : `${message} (${String(detail)})`);
+    })
+  );
+
+  let disposed = false;
+  return {
+    describable: typeof instance.describe === "function",
+    describe: async (): Promise<PuppetDescription> => {
+      if (typeof instance.describe !== "function") {
+        throw new Error("This runtime does not describe its models");
+      }
+      // Nothing gates `describe()` on status by design - a backend that can only answer for a
+      // loaded model awaits its own load inside it. Which means a backend whose load never
+      // settles would hang the editor's lookup forever, so the wait is bounded here.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const answer = Promise.resolve(instance.describe());
+      // The loser of the race is abandoned, not cancelled - a backend that rejects a second
+      // after the deadline would otherwise surface as an unhandled rejection with no owner.
+      answer.catch(() => undefined);
+      try {
+        const settled = await Promise.race([
+          answer.then((value) => ({ described: value })),
+          new Promise<{ timedOut: true }>((resolve) => {
+            timer = setTimeout(() => resolve({ timedOut: true }), PUPPET_DESCRIBE_TIMEOUT_MS);
+          })
+        ]);
+        if ("timedOut" in settled) {
+          throw new Error(
+            `The runtime did not describe the model within ${PUPPET_DESCRIBE_TIMEOUT_MS}ms`
+          );
+        }
+        return settled.described;
+      } finally {
+        if (timer !== undefined) {
+          clearTimeout(timer);
+        }
+      }
+    },
+    apply: (state: PuppetState) => instance.apply(state),
+    ready: () => Promise.resolve(instance.ready?.()),
+    resize: (size: PuppetSize) => instance.resize?.(size),
+    dispose: () => {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      try {
+        instance.dispose();
+      } catch (error) {
+        // A backend that throws on the way out has already been abandoned; the container is
+        // cleared regardless so a half-disposed WebGL canvas cannot outlive the editor panel.
+        report("warning", error instanceof Error ? error.message : String(error));
+      }
+      options.container.replaceChildren();
+    }
+  };
 }

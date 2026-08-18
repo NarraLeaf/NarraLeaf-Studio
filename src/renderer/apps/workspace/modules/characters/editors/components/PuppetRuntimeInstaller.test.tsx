@@ -19,27 +19,27 @@ import { PuppetRuntimeInstaller, type PuppetRuntimeInstallTarget } from "./Puppe
 
 // Keys, not prose: the assertions below are about which step is on screen, and English wording is free
 // to change without this file having an opinion.
-vi.mock("@/lib/i18n", async importOriginal => ({
-    ...(await importOriginal<Record<string, unknown>>()),
-    useTranslation: () => ({ t: (key: string) => key, locale: "en" }),
+vi.mock("@/lib/i18n", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useTranslation: () => ({ t: (key: string) => key, locale: "en" })
 }));
 
 vi.mock("@/lib/app/bridge", () => ({
-    getInterface: () => ({ app: { openExternal: () => undefined } }),
+  getInterface: () => ({ app: { openExternal: () => undefined } })
 }));
 
 vi.mock("@/apps/workspace/context", () => ({
-    useWorkspace: () => ({ context: null }),
+  useWorkspace: () => ({ context: null })
 }));
 
 // Stubbed so the dialog can be rendered without the privileged facade or an engine `Game` behind it.
 // Nothing here is reached: no test gets as far as picking a file.
 vi.mock("@/lib/workspace/services/puppet/installPuppetRuntime", () => ({
-    installPrebuiltPuppetRuntime: async () => ({ backend: "", registered: [] }),
-    installPuppetRuntimeFromSdk: async () => ({ backend: "", entryPath: "" }),
-    pickPrebuiltRuntimeDirectory: async () => null,
-    pickPrebuiltRuntimeFile: async () => null,
-    pickSdkArchive: async () => null,
+  installPrebuiltPuppetRuntime: async () => ({ backend: "", registered: [] }),
+  installPuppetRuntimeFromSdk: async () => ({ backend: "", entryPath: "" }),
+  pickPrebuiltRuntimeDirectory: async () => null,
+  pickPrebuiltRuntimeFile: async () => null,
+  pickSdkArchive: async () => null
 }));
 
 /** What both hosts pass while nothing is being installed. */
@@ -49,19 +49,19 @@ const LIVE2D: PuppetRuntimeInstallTarget = { kind: "known", id: "live2d" };
 
 /** A host in the shape of the real two: the dialog stays mounted, `installing` decides the rest. */
 function Host({ open }: { open: PuppetRuntimeInstallTarget | null }) {
-    const [installing, setInstalling] = useState<PuppetRuntimeInstallTarget | null>(open);
-    // Mirrors the hosts' own `useEffect`-free wiring: a click sets `installing`, closing clears it.
-    if (installing !== open) {
-        setInstalling(open);
-    }
-    return (
-        <PuppetRuntimeInstaller
-            visible={installing !== null}
-            target={installing ?? PLACEHOLDER}
-            onClose={() => setInstalling(null)}
-            onInstalled={() => undefined}
-        />
-    );
+  const [installing, setInstalling] = useState<PuppetRuntimeInstallTarget | null>(open);
+  // Mirrors the hosts' own `useEffect`-free wiring: a click sets `installing`, closing clears it.
+  if (installing !== open) {
+    setInstalling(open);
+  }
+  return (
+    <PuppetRuntimeInstaller
+      visible={installing !== null}
+      target={installing ?? PLACEHOLDER}
+      onClose={() => setInstalling(null)}
+      onInstalled={() => undefined}
+    />
+  );
 }
 
 const licenseShown = () => screen.queryByText("characters.editor.runtime.licenseAgree") !== null;
@@ -70,53 +70,54 @@ const pickerShown = () => screen.queryByText("characters.editor.runtime.sdkPick"
 afterEach(cleanup);
 
 describe("the puppet runtime installer's first step", () => {
-    it("shows the licence notice the first time a known runtime is opened", () => {
-        const view = render(<Host open={null} />);
-        view.rerender(<Host open={LIVE2D} />);
+  it("shows the licence notice the first time a known runtime is opened", () => {
+    const view = render(<Host open={null} />);
+    view.rerender(<Host open={LIVE2D} />);
 
-        expect(licenseShown()).toBe(true);
-        expect(pickerShown()).toBe(false);
-    });
+    expect(licenseShown()).toBe(true);
+    expect(pickerShown()).toBe(false);
+  });
 
-    it("shows it again when the previous open was a custom runtime", () => {
-        const view = render(<Host open={null} />);
-        // A custom runtime has no terms of ours and opens at the picker — which must not become the
-        // step Live2D inherits.
-        view.rerender(<Host open={{ kind: "custom" }} />);
-        expect(licenseShown()).toBe(false);
+  it("shows it again when the previous open was a custom runtime", () => {
+    const view = render(<Host open={null} />);
+    // A custom runtime has no terms of ours and opens at the picker — which must not become the
+    // step Live2D inherits.
+    view.rerender(<Host open={{ kind: "custom" }} />);
+    expect(licenseShown()).toBe(false);
 
-        view.rerender(<Host open={null} />);
-        view.rerender(<Host open={LIVE2D} />);
+    view.rerender(<Host open={null} />);
+    view.rerender(<Host open={LIVE2D} />);
 
-        expect(licenseShown()).toBe(true);
-    });
+    expect(licenseShown()).toBe(true);
+  });
 
-    it("holds the picker back until the terms are agreed to", () => {
-        const view = render(<Host open={null} />);
-        view.rerender(<Host open={LIVE2D} />);
+  it("holds the picker back until the terms are agreed to", () => {
+    const view = render(<Host open={null} />);
+    view.rerender(<Host open={LIVE2D} />);
 
-        const advance = () => screen.getByRole("button", { name: "common.continue" }) as HTMLButtonElement;
-        expect(advance().disabled).toBe(true);
+    const advance = () =>
+      screen.getByRole("button", { name: "common.continue" }) as HTMLButtonElement;
+    expect(advance().disabled).toBe(true);
 
-        fireEvent.click(advance());
-        expect(pickerShown()).toBe(false);
+    fireEvent.click(advance());
+    expect(pickerShown()).toBe(false);
 
-        fireEvent.click(screen.getByRole("checkbox"));
-        fireEvent.click(advance());
-        expect(pickerShown()).toBe(true);
-    });
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(advance());
+    expect(pickerShown()).toBe(true);
+  });
 
-    it("returns to the notice after being closed and opened again", () => {
-        const view = render(<Host open={null} />);
-        view.rerender(<Host open={LIVE2D} />);
-        fireEvent.click(screen.getByRole("checkbox"));
-        fireEvent.click(screen.getByRole("button", { name: "common.continue" }));
-        expect(pickerShown()).toBe(true);
+  it("returns to the notice after being closed and opened again", () => {
+    const view = render(<Host open={null} />);
+    view.rerender(<Host open={LIVE2D} />);
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "common.continue" }));
+    expect(pickerShown()).toBe(true);
 
-        view.rerender(<Host open={null} />);
-        view.rerender(<Host open={LIVE2D} />);
+    view.rerender(<Host open={null} />);
+    view.rerender(<Host open={LIVE2D} />);
 
-        expect(licenseShown()).toBe(true);
-        expect(pickerShown()).toBe(false);
-    });
+    expect(licenseShown()).toBe(true);
+    expect(pickerShown()).toBe(false);
+  });
 });

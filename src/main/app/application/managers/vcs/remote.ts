@@ -2,23 +2,23 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
-    VCS_UNCONFIGURED_REMOTE,
-    isVcsRemoteConfigured,
-    parseVcsRemoteUrl,
-    type VcsPushResult,
-    type VcsSyncResult,
-    type VcsSyncState,
+  VCS_UNCONFIGURED_REMOTE,
+  isVcsRemoteConfigured,
+  parseVcsRemoteUrl,
+  type VcsPushResult,
+  type VcsSyncResult,
+  type VcsSyncState
 } from "@shared/types/vcs";
 import {
-    LORE_REMOTE_URL_KEY,
-    cloneRepository,
-    createRepository,
-    pushBranch,
-    releaseRepository,
-    repositoryConfig,
-    repositoryStatus,
-    syncRevision,
-    type LoreGlobals,
+  LORE_REMOTE_URL_KEY,
+  cloneRepository,
+  createRepository,
+  pushBranch,
+  releaseRepository,
+  repositoryConfig,
+  repositoryStatus,
+  syncRevision,
+  type LoreGlobals
 } from "./lore";
 
 /**
@@ -56,14 +56,14 @@ const CONFIG_FILE = "config.toml";
 const REMOTE_URL_LINE = /^[ \t]*remote_url[ \t]*=.*$/m;
 
 export class RemoteConfigError extends Error {
-    constructor(message: string) {
-        super(message);
-        this.name = "RemoteConfigError";
-    }
+  constructor(message: string) {
+    super(message);
+    this.name = "RemoteConfigError";
+  }
 }
 
 function configPath(root: string): string {
-    return path.join(root, REPOSITORY_DIRECTORY, CONFIG_FILE);
+  return path.join(root, REPOSITORY_DIRECTORY, CONFIG_FILE);
 }
 
 /**
@@ -77,8 +77,8 @@ function configPath(root: string): string {
  * to ask with offline globals and safe to ask on opening a panel.
  */
 export async function readRemote(globals: LoreGlobals): Promise<string | null> {
-    const url = await repositoryConfig(globals, LORE_REMOTE_URL_KEY);
-    return isVcsRemoteConfigured(url) ? (url as string).trim() : null;
+  const url = await repositoryConfig(globals, LORE_REMOTE_URL_KEY);
+  return isVcsRemoteConfigured(url) ? (url as string).trim() : null;
 }
 
 /**
@@ -98,36 +98,38 @@ export async function readRemote(globals: LoreGlobals): Promise<string | null> {
  * session. `VcsManager.setRemote` closes the session around this call for that reason.
  */
 export async function writeRemote(root: string, url: string | null): Promise<void> {
-    const file = configPath(root);
-    if (!fs.existsSync(file)) {
-        throw new RemoteConfigError(`${root} is not under version control`);
-    }
+  const file = configPath(root);
+  if (!fs.existsSync(file)) {
+    throw new RemoteConfigError(`${root} is not under version control`);
+  }
 
-    const trimmed = (url ?? "").trim();
-    // Validated here rather than only at the call site, because this is the function that
-    // makes the address permanent: an address with no repository name writes a config the
-    // backend will later reject, and the author would learn of it at their first push.
-    if (trimmed) parseRemoteUrl(trimmed);
-    const next = trimmed || VCS_UNCONFIGURED_REMOTE;
-    // A quote or newline in the value would break out of the TOML string and could write
-    // arbitrary keys into the backend's own config. The author types this into a text
-    // box, so it is untrusted input in the only sense that matters here.
-    if (/["\r\n\\]/.test(next)) {
-        throw new RemoteConfigError("A server address cannot contain quotes, backslashes or line breaks");
-    }
+  const trimmed = (url ?? "").trim();
+  // Validated here rather than only at the call site, because this is the function that
+  // makes the address permanent: an address with no repository name writes a config the
+  // backend will later reject, and the author would learn of it at their first push.
+  if (trimmed) parseRemoteUrl(trimmed);
+  const next = trimmed || VCS_UNCONFIGURED_REMOTE;
+  // A quote or newline in the value would break out of the TOML string and could write
+  // arbitrary keys into the backend's own config. The author types this into a text
+  // box, so it is untrusted input in the only sense that matters here.
+  if (/["\r\n\\]/.test(next)) {
+    throw new RemoteConfigError(
+      "A server address cannot contain quotes, backslashes or line breaks"
+    );
+  }
 
-    const current = fs.readFileSync(file, "utf-8");
-    const line = `remote_url = "${next}"`;
-    const updated = REMOTE_URL_LINE.test(current)
-        ? current.replace(REMOTE_URL_LINE, line)
-        // Prepended rather than appended: TOML puts bare keys before the first table
-        // header, and appending would land the key inside whatever section is last -
-        // `[file]` today - where the backend would not find it.
-        : `${line}\n${current}`;
+  const current = fs.readFileSync(file, "utf-8");
+  const line = `remote_url = "${next}"`;
+  const updated = REMOTE_URL_LINE.test(current)
+    ? current.replace(REMOTE_URL_LINE, line)
+    : // Prepended rather than appended: TOML puts bare keys before the first table
+      // header, and appending would land the key inside whatever section is last -
+      // `[file]` today - where the backend would not find it.
+      `${line}\n${current}`;
 
-    const temporary = `${file}.tmp`;
-    fs.writeFileSync(temporary, updated, "utf-8");
-    fs.renameSync(temporary, file);
+  const temporary = `${file}.tmp`;
+  fs.writeFileSync(temporary, updated, "utf-8");
+  fs.renameSync(temporary, file);
 }
 
 /**
@@ -143,14 +145,14 @@ export async function writeRemote(root: string, url: string | null): Promise<voi
  * with the sentence that names what is missing.
  */
 export function parseRemoteUrl(url: string): { origin: string; name: string } {
-    const parsed = parseVcsRemoteUrl(url);
-    if (!parsed) {
-        throw new RemoteConfigError(
-            "A server address needs a name for this project on it, like"
-            + " lore://studio.example.lan:41337/my-game",
-        );
-    }
-    return parsed;
+  const parsed = parseVcsRemoteUrl(url);
+  if (!parsed) {
+    throw new RemoteConfigError(
+      "A server address needs a name for this project on it, like" +
+        " lore://studio.example.lan:41337/my-game"
+    );
+  }
+  return parsed;
 }
 
 /**
@@ -174,35 +176,35 @@ export function parseRemoteUrl(url: string): { origin: string; name: string } {
  * call.
  */
 export async function publishToRemote(
-    globals: LoreGlobals,
-    options: { url: string; repositoryId: string },
+  globals: LoreGlobals,
+  options: { url: string; repositoryId: string }
 ): Promise<void> {
-    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "nl-vcs-publish-"));
-    const scratchGlobals: LoreGlobals = { ...globals, repositoryPath: scratch, offline: false };
-    try {
-        await createRepository(scratchGlobals, {
-            repositoryUrl: options.url,
-            id: options.repositoryId,
-        });
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        // Already registered. The backend distinguishes the two cases for us: it names
-        // BOTH ids when they disagree, which is the case the author has to act on (the
-        // name is taken by someone else's project). Same id is simply "already done" -
-        // and this call has to be safe to repeat, because connecting a second machine to
-        // the same server runs it again.
-        if (/already exist/i.test(message) && message.includes(options.repositoryId)) {
-            return;
-        }
-        throw error;
-    } finally {
-        await releaseRepository(scratchGlobals).catch(() => undefined);
-        try {
-            fs.rmSync(scratch, { recursive: true, force: true });
-        } catch {
-            // A leftover temp directory is not worth failing a connection over.
-        }
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "nl-vcs-publish-"));
+  const scratchGlobals: LoreGlobals = { ...globals, repositoryPath: scratch, offline: false };
+  try {
+    await createRepository(scratchGlobals, {
+      repositoryUrl: options.url,
+      id: options.repositoryId
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // Already registered. The backend distinguishes the two cases for us: it names
+    // BOTH ids when they disagree, which is the case the author has to act on (the
+    // name is taken by someone else's project). Same id is simply "already done" -
+    // and this call has to be safe to repeat, because connecting a second machine to
+    // the same server runs it again.
+    if (/already exist/i.test(message) && message.includes(options.repositoryId)) {
+      return;
     }
+    throw error;
+  } finally {
+    await releaseRepository(scratchGlobals).catch(() => undefined);
+    try {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    } catch {
+      // A leftover temp directory is not worth failing a connection over.
+    }
+  }
 }
 
 /**
@@ -217,15 +219,15 @@ export async function publishToRemote(
  * is information rather than a failure. It costs 2.03 s to learn.
  */
 export async function readSyncState(onlineGlobals: LoreGlobals): Promise<VcsSyncState> {
-    const { revision } = await repositoryStatus(onlineGlobals, { scan: false, revisionOnly: true });
-    return {
-        remoteAvailable: revision?.remoteAvailable ?? false,
-        remoteAuthorized: revision?.remoteAuthorized ?? false,
-        remoteBranchExists: revision?.remoteBranchExist ?? false,
-        localAhead: revision?.isLocalAhead ?? false,
-        remoteAhead: revision?.isRemoteAhead ?? false,
-        remoteRevision: revision?.revisionRemote,
-    };
+  const { revision } = await repositoryStatus(onlineGlobals, { scan: false, revisionOnly: true });
+  return {
+    remoteAvailable: revision?.remoteAvailable ?? false,
+    remoteAuthorized: revision?.remoteAuthorized ?? false,
+    remoteBranchExists: revision?.remoteBranchExist ?? false,
+    localAhead: revision?.isLocalAhead ?? false,
+    remoteAhead: revision?.isRemoteAhead ?? false,
+    remoteRevision: revision?.revisionRemote
+  };
 }
 
 /**
@@ -237,8 +239,8 @@ export async function readSyncState(onlineGlobals: LoreGlobals): Promise<VcsSync
  * useful than the English it hides.
  */
 export async function pushToRemote(onlineGlobals: LoreGlobals): Promise<VcsPushResult> {
-    const pushed = await pushBranch(onlineGlobals);
-    return { branch: pushed.branch, alreadyPushed: pushed.alreadyPushed };
+  const pushed = await pushBranch(onlineGlobals);
+  return { branch: pushed.branch, alreadyPushed: pushed.alreadyPushed };
 }
 
 /**
@@ -260,42 +262,43 @@ export async function pushToRemote(onlineGlobals: LoreGlobals): Promise<VcsPushR
  * paths are recovered from disk instead, by `readMergeState` in `merge.ts`.
  */
 export async function syncFromRemote(
-    onlineGlobals: LoreGlobals,
-    options: { onProgress?: (received: number, total: number) => void } = {},
+  onlineGlobals: LoreGlobals,
+  options: { onProgress?: (received: number, total: number) => void } = {}
 ): Promise<VcsSyncResult> {
-    const result = await syncRevision(onlineGlobals, {
-        onProgress: options.onProgress
-            ? (progress) => options.onProgress?.(progress.bytesUpdate, progress.bytesUpdateTotal)
-            : undefined,
-    });
+  const result = await syncRevision(onlineGlobals, {
+    onProgress: options.onProgress
+      ? (progress) => options.onProgress?.(progress.bytesUpdate, progress.bytesUpdateTotal)
+      : undefined
+  });
 
-    // **From the event stream, not from the file list.** The per-file sync events have no
-    // conflict fields in their struct at all - the decoder writes `false` into them - so
-    // the filter this used to run could never match, and every conflicted sync degraded to
-    // the "*" placeholder below. The paths come from the merge conflict event the sync
-    // emits alongside them (docs/version-control.md §4.24), and the progress counter is
-    // still consulted: a count with no paths must not read as a clean sync.
-    const conflicts = result.conflicts;
-    const conflicted = (result.progress?.fileConflict ?? 0) > 0 || conflicts.length > 0;
+  // **From the event stream, not from the file list.** The per-file sync events have no
+  // conflict fields in their struct at all - the decoder writes `false` into them - so
+  // the filter this used to run could never match, and every conflicted sync degraded to
+  // the "*" placeholder below. The paths come from the merge conflict event the sync
+  // emits alongside them (docs/version-control.md §4.24), and the progress counter is
+  // still consulted: a count with no paths must not read as a clean sync.
+  const conflicts = result.conflicts;
+  const conflicted = (result.progress?.fileConflict ?? 0) > 0 || conflicts.length > 0;
 
-    return {
-        filesChanged: result.files.length,
-        revisionsReceived: result.revisions.length,
-        conflicts: conflicted && conflicts.length === 0
-            // The count said yes but no path came with it. Naming nothing is better than
-            // naming the wrong file, and the caller still has to stop.
-            ? ["*"]
-            : conflicts,
-        alreadyCurrent: result.files.length === 0 && result.revisions.length === 0,
-    };
+  return {
+    filesChanged: result.files.length,
+    revisionsReceived: result.revisions.length,
+    conflicts:
+      conflicted && conflicts.length === 0
+        ? // The count said yes but no path came with it. Naming nothing is better than
+          // naming the wrong file, and the caller still has to stop.
+          ["*"]
+        : conflicts,
+    alreadyCurrent: result.files.length === 0 && result.revisions.length === 0
+  };
 }
 
 /** A destination that cannot safely receive a clone, with the reason. */
 export class CloneDestinationError extends Error {
-    constructor(message: string) {
-        super(message);
-        this.name = "CloneDestinationError";
-    }
+  constructor(message: string) {
+    super(message);
+    this.name = "CloneDestinationError";
+  }
 }
 
 /**
@@ -310,27 +313,27 @@ export class CloneDestinationError extends Error {
  * ordinary author choices from a folder picker.
  */
 export async function cloneInto(
-    onlineGlobals: LoreGlobals,
-    options: { repositoryUrl: string; onProgress?: (transferred: number, total: number) => void },
+  onlineGlobals: LoreGlobals,
+  options: { repositoryUrl: string; onProgress?: (transferred: number, total: number) => void }
 ): Promise<{ branch: string; fileCount: number }> {
-    const destination = onlineGlobals.repositoryPath;
+  const destination = onlineGlobals.repositoryPath;
 
-    if (fs.existsSync(destination)) {
-        if (!fs.statSync(destination).isDirectory()) {
-            throw new CloneDestinationError(`${destination} is not a folder`);
-        }
-        if (fs.readdirSync(destination).length > 0) {
-            throw new CloneDestinationError(`${destination} is not empty`);
-        }
-    } else {
-        fs.mkdirSync(destination, { recursive: true });
+  if (fs.existsSync(destination)) {
+    if (!fs.statSync(destination).isDirectory()) {
+      throw new CloneDestinationError(`${destination} is not a folder`);
     }
+    if (fs.readdirSync(destination).length > 0) {
+      throw new CloneDestinationError(`${destination} is not empty`);
+    }
+  } else {
+    fs.mkdirSync(destination, { recursive: true });
+  }
 
-    const cloned = await cloneRepository(onlineGlobals, {
-        repositoryUrl: options.repositoryUrl,
-        onProgress: options.onProgress
-            ? (count) => options.onProgress?.(count.bytesTransferred, count.bytesTotal)
-            : undefined,
-    });
-    return { branch: cloned.branch, fileCount: cloned.fileCount };
+  const cloned = await cloneRepository(onlineGlobals, {
+    repositoryUrl: options.repositoryUrl,
+    onProgress: options.onProgress
+      ? (count) => options.onProgress?.(count.bytesTransferred, count.bytesTotal)
+      : undefined
+  });
+  return { branch: cloned.branch, fileCount: cloned.fileCount };
 }

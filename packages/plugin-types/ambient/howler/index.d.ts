@@ -30,7 +30,7 @@
  * Delete this the day `@types/howler` (or a typed howler) is a dependency of the repo.
  */
 declare module "howler" {
-    /** Only ever referenced as `typeof Howler.Howl`; its real shape is nothing this repo needs. */
-    const Howl: unknown;
-    export { Howl };
+  /** Only ever referenced as `typeof Howler.Howl`; its real shape is nothing this repo needs. */
+  const Howl: unknown;
+  export { Howl };
 }

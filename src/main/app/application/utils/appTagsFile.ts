@@ -2,10 +2,10 @@ import fs from "fs/promises";
 import path from "path";
 import { APP_TAGS_DOCUMENT_PATH } from "@shared/documents/specs";
 import {
-    createEmptyAppTagDocument,
-    migrateProjectAppTagDocument,
-    type ProjectAppTag,
-    type ProjectAppTagDocument,
+  createEmptyAppTagDocument,
+  migrateProjectAppTagDocument,
+  type ProjectAppTag,
+  type ProjectAppTagDocument
 } from "@shared/types/appTag";
 
 /**
@@ -24,7 +24,7 @@ import {
  * with this list and never has to add it.
  */
 export async function readProjectAppTagsFromDir(projectPath: string): Promise<ProjectAppTag[]> {
-    return (await readProjectAppTagDocumentFromDir(projectPath)).tags;
+  return (await readProjectAppTagDocumentFromDir(projectPath)).tags;
 }
 
 /**
@@ -35,23 +35,23 @@ export async function readProjectAppTagsFromDir(projectPath: string): Promise<Pr
  * list. Same absent-is-empty, unreadable-throws rule as above, and for the same reasons.
  */
 export async function readProjectAppTagDocumentFromDir(
-    projectPath: string,
+  projectPath: string
 ): Promise<ProjectAppTagDocument> {
-    const filePath = path.join(projectPath, ...APP_TAGS_DOCUMENT_PATH.split("/"));
-    let raw: string;
-    try {
-        raw = await fs.readFile(filePath, "utf-8");
-    } catch (error) {
-        if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
-            return createEmptyAppTagDocument();
-        }
-        throw error;
+  const filePath = path.join(projectPath, ...APP_TAGS_DOCUMENT_PATH.split("/"));
+  let raw: string;
+  try {
+    raw = await fs.readFile(filePath, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      return createEmptyAppTagDocument();
     }
-    try {
-        return migrateProjectAppTagDocument(JSON.parse(raw));
-    } catch (error) {
-        throw new Error(
-            `Invalid JSON in ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-    }
+    throw error;
+  }
+  try {
+    return migrateProjectAppTagDocument(JSON.parse(raw));
+  } catch (error) {
+    throw new Error(
+      `Invalid JSON in ${filePath}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
 }

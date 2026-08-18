@@ -15,30 +15,28 @@ import type { BlueprintNodeDef } from "../types";
 export const BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE = "componentParams";
 
 export const componentBlueprintNodes: BlueprintNodeDef[] = [
-    {
-        type: BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM,
-        displayName: "Get Component Param",
-        category: "Component",
-        keywords: ["component", "param", "parameter", "instance", "input", "property"],
-        graphKinds: ["event", "macro"],
-        isPure: true,
-        // Only a component's own widget blueprint has an instance to ask. A page's widget has no
-        // placement behind it, and a value graph is not keyed per instance (see the params notes in
-        // BlueprintValueRuntimeStore), so offering the node there would read the wrong thing.
-        scope: { ownerKinds: ["componentWidgetMain"] },
-        pins: [
-            { id: "value", kind: "output", semantic: "data", valueType: "string", label: "Value" },
-        ],
-        inspectorParams: [
-            {
-                key: "paramId",
-                label: "Param",
-                kind: "select",
-                dynamicOptionsSource: BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE,
-                emptyOptionLabel: "None",
-            },
-        ],
-        // Output resolution lives in graphParamResolvers; a pure node's `execute` never publishes.
-        execute: () => ({}),
-    },
+  {
+    type: BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM,
+    displayName: "Get Component Param",
+    category: "Component",
+    keywords: ["component", "param", "parameter", "instance", "input", "property"],
+    graphKinds: ["event", "macro"],
+    isPure: true,
+    // Only a component's own widget blueprint has an instance to ask. A page's widget has no
+    // placement behind it, and a value graph is not keyed per instance (see the params notes in
+    // BlueprintValueRuntimeStore), so offering the node there would read the wrong thing.
+    scope: { ownerKinds: ["componentWidgetMain"] },
+    pins: [{ id: "value", kind: "output", semantic: "data", valueType: "string", label: "Value" }],
+    inspectorParams: [
+      {
+        key: "paramId",
+        label: "Param",
+        kind: "select",
+        dynamicOptionsSource: BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE,
+        emptyOptionLabel: "None"
+      }
+    ],
+    // Output resolution lives in graphParamResolvers; a pure node's `execute` never publishes.
+    execute: () => ({})
+  }
 ];

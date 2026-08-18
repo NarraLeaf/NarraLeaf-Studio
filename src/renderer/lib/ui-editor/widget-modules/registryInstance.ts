@@ -14,15 +14,17 @@ let seeding: Promise<void> | null = null;
  * Loads built-in widget modules and registers them once. Safe to call multiple times.
  */
 export async function ensureWidgetModulesRegistered(): Promise<void> {
-    if (seeded) {
-        return;
-    }
-    if (!seeding) {
-        seeding = import("./builtin").then(({ BuiltinWidgetModules, registerBuiltinWidgetBlueprintNodes }) => {
-            widgetModuleRegistry.registerMany(BuiltinWidgetModules);
-            registerBuiltinWidgetBlueprintNodes();
-            seeded = true;
-        });
-    }
-    await seeding;
+  if (seeded) {
+    return;
+  }
+  if (!seeding) {
+    seeding = import("./builtin").then(
+      ({ BuiltinWidgetModules, registerBuiltinWidgetBlueprintNodes }) => {
+        widgetModuleRegistry.registerMany(BuiltinWidgetModules);
+        registerBuiltinWidgetBlueprintNodes();
+        seeded = true;
+      }
+    );
+  }
+  await seeding;
 }

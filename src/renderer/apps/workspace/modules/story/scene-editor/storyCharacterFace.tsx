@@ -39,21 +39,42 @@ export type StoryFaceSurface = "plate" | "inline";
  * does not invent a look.
  */
 function getFaceSpec(
-    block: StoryBlock,
-    appearance: CharacterAppearanceRef | undefined,
-    surface: StoryFaceSurface,
-): { characterId: string; pose?: string; tags?: StoryCharacterTagSelection; resolveVariant: boolean } | null {
-    if (surface === "inline") {
-        return block.kind === "action" && block.payload.action === "character" && block.payload.characterId
-            ? { characterId: block.payload.characterId, pose: block.payload.pose, tags: block.payload.tags, resolveVariant: true }
-            : null;
-    }
-    if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
-        // Only a *shown* appearance pictures an avatar — a placement-only appearance (a `/move` on a
-        // never-shown speaker, used by the group-header dropdown) must not invent a look.
-        return { characterId: block.payload.characterId, pose: appearance?.pose, tags: appearance?.tags, resolveVariant: appearance?.shown === true };
-    }
-    return null;
+  block: StoryBlock,
+  appearance: CharacterAppearanceRef | undefined,
+  surface: StoryFaceSurface
+): {
+  characterId: string;
+  pose?: string;
+  tags?: StoryCharacterTagSelection;
+  resolveVariant: boolean;
+} | null {
+  if (surface === "inline") {
+    return block.kind === "action" &&
+      block.payload.action === "character" &&
+      block.payload.characterId
+      ? {
+          characterId: block.payload.characterId,
+          pose: block.payload.pose,
+          tags: block.payload.tags,
+          resolveVariant: true
+        }
+      : null;
+  }
+  if (
+    block.kind === "nodeAction" &&
+    block.payload.action === "dialogue" &&
+    block.payload.characterId
+  ) {
+    // Only a *shown* appearance pictures an avatar — a placement-only appearance (a `/move` on a
+    // never-shown speaker, used by the group-header dropdown) must not invent a look.
+    return {
+      characterId: block.payload.characterId,
+      pose: appearance?.pose,
+      tags: appearance?.tags,
+      resolveVariant: appearance?.shown === true
+    };
+  }
+  return null;
 }
 
 /**
@@ -74,18 +95,29 @@ const FACE_COMPOSITE_PX = 96;
  * compositor cannot draw). See {@link useCharacterFace}.
  */
 function resolveCharacterFaceImage(
-    character: Character,
-    pose: string | undefined,
-    tags: StoryCharacterTagSelection | undefined,
-    lookupAsset: (assetId: string) => Asset<AssetType.Image> | null,
+  character: Character,
+  pose: string | undefined,
+  tags: StoryCharacterTagSelection | undefined,
+  lookupAsset: (assetId: string) => Asset<AssetType.Image> | null
 ): { asset: Asset<AssetType.Image> | null; frame?: NormalizedCrop } {
-    const appearance = character.profile.appearance;
-    const summary = appearance.getKind() === "preset"
-        ? { kind: "preset" as const, poses: appearance.getPoses().map(p => ({ id: p.id, name: p.name, assetId: p.assetId })), defaultPoseId: appearance.getDefaultPoseId() }
-        : { kind: "layered" as const, canvas: appearance.getCanvas(), axes: appearance.getAxes(), layers: appearance.getLayers() };
-    const assetId = representativeAssetId(summary, { poseId: pose, tags });
-    const frame = (pose ? appearance.getPose(pose)?.portrait : undefined) ?? character.profile.getPortrait();
-    return { asset: assetId ? lookupAsset(assetId) : null, frame };
+  const appearance = character.profile.appearance;
+  const summary =
+    appearance.getKind() === "preset"
+      ? {
+          kind: "preset" as const,
+          poses: appearance.getPoses().map((p) => ({ id: p.id, name: p.name, assetId: p.assetId })),
+          defaultPoseId: appearance.getDefaultPoseId()
+        }
+      : {
+          kind: "layered" as const,
+          canvas: appearance.getCanvas(),
+          axes: appearance.getAxes(),
+          layers: appearance.getLayers()
+        };
+  const assetId = representativeAssetId(summary, { poseId: pose, tags });
+  const frame =
+    (pose ? appearance.getPose(pose)?.portrait : undefined) ?? character.profile.getPortrait();
+  return { asset: assetId ? lookupAsset(assetId) : null, frame };
 }
 
 /**
@@ -95,18 +127,20 @@ function resolveCharacterFaceImage(
  * head located — once no matter how many rows show it.
  */
 export function useCharacterFace(
-    block: StoryBlock,
-    appearance: CharacterAppearanceRef | undefined,
-    characters: Character[],
-    surface: StoryFaceSurface,
+  block: StoryBlock,
+  appearance: CharacterAppearanceRef | undefined,
+  characters: Character[],
+  surface: StoryFaceSurface
 ): { url: string | null; frame?: NormalizedCrop; showingSprite: boolean } {
-    const spec = getFaceSpec(block, appearance, surface);
-    const character = spec ? characters.find(next => next.profile.getId() === spec.characterId) : undefined;
-    return useCharacterAvatar(character, {
-        pose: spec?.pose,
-        tags: spec?.tags,
-        resolveVariant: spec?.resolveVariant === true,
-    });
+  const spec = getFaceSpec(block, appearance, surface);
+  const character = spec
+    ? characters.find((next) => next.profile.getId() === spec.characterId)
+    : undefined;
+  return useCharacterAvatar(character, {
+    pose: spec?.pose,
+    tags: spec?.tags,
+    resolveVariant: spec?.resolveVariant === true
+  });
 }
 
 /**
@@ -120,49 +154,59 @@ export function useCharacterFace(
  * be given a look they do not have.
  */
 export function useCharacterAvatar(
-    character: Character | null | undefined,
-    spec: {
-        pose?: string;
-        tags?: StoryCharacterTagSelection;
-        /** Resolve the sprite for that look at all. False leaves the profile thumbnail as the only source. */
-        resolveVariant: boolean;
-        preferThumbnail?: boolean;
-    },
+  character: Character | null | undefined,
+  spec: {
+    pose?: string;
+    tags?: StoryCharacterTagSelection;
+    /** Resolve the sprite for that look at all. False leaves the profile thumbnail as the only source. */
+    resolveVariant: boolean;
+    preferThumbnail?: boolean;
+  }
 ): { url: string | null; frame?: NormalizedCrop; showingSprite: boolean } {
-    // The appearance stores asset ids; the image cache needs the `Asset` record to fetch bytes, so
-    // the id is resolved against the live library here rather than embedded in the character store
-    // (which is what the old variant slots did, and what made a renamed or replaced asset go stale).
-    const { context, isInitialized } = useWorkspace();
-    const lookupAsset = useCallback((assetId: string): Asset<AssetType.Image> | null => {
-        if (!context || !isInitialized) {
-            return null;
-        }
-        const assets = context.services.get<AssetsService>(Services.Assets).getAssets();
-        return assets?.[AssetType.Image]?.[assetId] ?? null;
-    }, [context, isInitialized]);
-    const thumbnailId = character?.profile.getThumbnail() ?? null;
-    // The avatar the author chose wins outright when the caller asked for it, and asking the library
-    // for a sprite nobody will look at is work: skip the resolve and the composite both.
-    const thumbnailWins = spec.preferThumbnail === true && thumbnailId !== null;
-    const pictureLook = character !== null && character !== undefined && spec.resolveVariant && !thumbnailWins;
-    const resolved = character && pictureLook
-        ? resolveCharacterFaceImage(character, spec.pose, spec.tags, lookupAsset)
-        : { asset: null as Asset<AssetType.Image> | null, frame: undefined };
-    const source: BadgeImageSource | null = resolved.asset
-        ? { kind: "project", asset: resolved.asset }
-        : thumbnailId
-            ? { kind: "editor", fileId: thumbnailId }
-            : null;
-    const fallbackUrl = useBadgeImageUrl(source);
-    // A layered character is a stack, so the face shows the whole thing composited. The single-asset
-    // path above still runs: it is what the face shows while the composite is being drawn, which
-    // keeps a scrolling list from flashing empty plates.
-    const layered = character && pictureLook && character.profile.appearance.getKind() === "layered"
-        ? character
-        : null;
-    const composite = useCompositedSprite(layered, { tags: spec.tags }, FACE_COMPOSITE_PX);
-    const url = composite.url ?? fallbackUrl;
-    return { url, frame: resolved.frame, showingSprite: Boolean(composite.url) || resolved.asset !== null };
+  // The appearance stores asset ids; the image cache needs the `Asset` record to fetch bytes, so
+  // the id is resolved against the live library here rather than embedded in the character store
+  // (which is what the old variant slots did, and what made a renamed or replaced asset go stale).
+  const { context, isInitialized } = useWorkspace();
+  const lookupAsset = useCallback(
+    (assetId: string): Asset<AssetType.Image> | null => {
+      if (!context || !isInitialized) {
+        return null;
+      }
+      const assets = context.services.get<AssetsService>(Services.Assets).getAssets();
+      return assets?.[AssetType.Image]?.[assetId] ?? null;
+    },
+    [context, isInitialized]
+  );
+  const thumbnailId = character?.profile.getThumbnail() ?? null;
+  // The avatar the author chose wins outright when the caller asked for it, and asking the library
+  // for a sprite nobody will look at is work: skip the resolve and the composite both.
+  const thumbnailWins = spec.preferThumbnail === true && thumbnailId !== null;
+  const pictureLook =
+    character !== null && character !== undefined && spec.resolveVariant && !thumbnailWins;
+  const resolved =
+    character && pictureLook
+      ? resolveCharacterFaceImage(character, spec.pose, spec.tags, lookupAsset)
+      : { asset: null as Asset<AssetType.Image> | null, frame: undefined };
+  const source: BadgeImageSource | null = resolved.asset
+    ? { kind: "project", asset: resolved.asset }
+    : thumbnailId
+      ? { kind: "editor", fileId: thumbnailId }
+      : null;
+  const fallbackUrl = useBadgeImageUrl(source);
+  // A layered character is a stack, so the face shows the whole thing composited. The single-asset
+  // path above still runs: it is what the face shows while the composite is being drawn, which
+  // keeps a scrolling list from flashing empty plates.
+  const layered =
+    character && pictureLook && character.profile.appearance.getKind() === "layered"
+      ? character
+      : null;
+  const composite = useCompositedSprite(layered, { tags: spec.tags }, FACE_COMPOSITE_PX);
+  const url = composite.url ?? fallbackUrl;
+  return {
+    url,
+    frame: resolved.frame,
+    showingSprite: Boolean(composite.url) || resolved.asset !== null
+  };
 }
 
 /**
@@ -175,25 +219,37 @@ export function useCharacterAvatar(
  * border. It renders nothing at all when the character has no picture, which leaves the line the plain
  * words it always was rather than a hole where a face should be.
  */
-export function StoryLineCharacterFace({ block, characters }: { block: StoryBlock; characters: Character[] }) {
-    const { url, frame, showingSprite } = useCharacterFace(block, undefined, characters, "inline");
-    if (!url) {
-        return null;
-    }
-    return (
-        <span
-            aria-hidden
-            // Round, and the same round the group-expression bead already uses: a face folded into a
-            // line is the same object in both places, and a circle is the one shape that reads as
-            // "somebody" at 20px without also reading as a control. The row's square plate keeps its
-            // own rule — that is a column of furniture, this is a glyph in a sentence.
-            className="mr-[0.3em] inline-block h-[1.3em] w-[1.3em] overflow-hidden rounded-full bg-fill-subtle align-[-0.33em]"
-        >
-            {showingSprite ? (
-                <HeadThumbnail url={url} alt="" frame={frame} className="h-full w-full" iconClassName="h-2 w-2" />
-            ) : (
-                <img src={url} alt="" className="h-full w-full object-cover" draggable={false} />
-            )}
-        </span>
-    );
+export function StoryLineCharacterFace({
+  block,
+  characters
+}: {
+  block: StoryBlock;
+  characters: Character[];
+}) {
+  const { url, frame, showingSprite } = useCharacterFace(block, undefined, characters, "inline");
+  if (!url) {
+    return null;
+  }
+  return (
+    <span
+      aria-hidden
+      // Round, and the same round the group-expression bead already uses: a face folded into a
+      // line is the same object in both places, and a circle is the one shape that reads as
+      // "somebody" at 20px without also reading as a control. The row's square plate keeps its
+      // own rule — that is a column of furniture, this is a glyph in a sentence.
+      className="mr-[0.3em] inline-block h-[1.3em] w-[1.3em] overflow-hidden rounded-full bg-fill-subtle align-[-0.33em]"
+    >
+      {showingSprite ? (
+        <HeadThumbnail
+          url={url}
+          alt=""
+          frame={frame}
+          className="h-full w-full"
+          iconClassName="h-2 w-2"
+        />
+      ) : (
+        <img src={url} alt="" className="h-full w-full object-cover" draggable={false} />
+      )}
+    </span>
+  );
 }

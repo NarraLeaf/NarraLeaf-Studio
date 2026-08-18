@@ -21,15 +21,15 @@ import { getStorySceneEditorTabId } from "../scene-editor/storySceneEditorTabId"
 
 /** Close the editors for the named scenes of one story. */
 export function closeStorySceneEditorTabs(
-    uiService: UIService,
-    storyId: StoryId,
-    sceneIds: readonly StorySceneId[],
+  uiService: UIService,
+  storyId: StoryId,
+  sceneIds: readonly StorySceneId[]
 ): void {
-    if (sceneIds.length === 0) {
-        return;
-    }
-    const wanted = new Set(sceneIds.map(sceneId => getStorySceneEditorTabId(storyId, sceneId)));
-    closeMatchingEditorTabs(uiService, tabId => wanted.has(tabId));
+  if (sceneIds.length === 0) {
+    return;
+  }
+  const wanted = new Set(sceneIds.map((sceneId) => getStorySceneEditorTabId(storyId, sceneId)));
+  closeMatchingEditorTabs(uiService, (tabId) => wanted.has(tabId));
 }
 
 /**
@@ -40,32 +40,35 @@ export function closeStorySceneEditorTabs(
  * out what to close is the wrong way round. Story ids are UUIDs, so the prefix cannot collide.
  */
 export function closeStoryEditorTabs(uiService: UIService, storyId: StoryId): void {
-    const scenePrefix = getStorySceneEditorTabId(storyId, "" as StorySceneId);
-    const flowTabId = getSceneFlowTabId(storyId);
-    closeMatchingEditorTabs(uiService, tabId => tabId === flowTabId || tabId.startsWith(scenePrefix));
+  const scenePrefix = getStorySceneEditorTabId(storyId, "" as StorySceneId);
+  const flowTabId = getSceneFlowTabId(storyId);
+  closeMatchingEditorTabs(
+    uiService,
+    (tabId) => tabId === flowTabId || tabId.startsWith(scenePrefix)
+  );
 }
 
 function closeMatchingEditorTabs(uiService: UIService, matches: (tabId: string) => boolean): void {
-    const found: Array<{ tabId: string; groupId: string }> = [];
-    collectEditorTabs(uiService.getStore().getEditorLayout(), matches, found);
-    for (const tab of found) {
-        uiService.getStore().closeEditorTabInGroup(tab.tabId, tab.groupId);
-    }
+  const found: Array<{ tabId: string; groupId: string }> = [];
+  collectEditorTabs(uiService.getStore().getEditorLayout(), matches, found);
+  for (const tab of found) {
+    uiService.getStore().closeEditorTabInGroup(tab.tabId, tab.groupId);
+  }
 }
 
 function collectEditorTabs(
-    layout: Readonly<EditorLayout>,
-    matches: (tabId: string) => boolean,
-    acc: Array<{ tabId: string; groupId: string }>,
+  layout: Readonly<EditorLayout>,
+  matches: (tabId: string) => boolean,
+  acc: Array<{ tabId: string; groupId: string }>
 ): void {
-    if ("tabs" in layout) {
-        for (const tab of layout.tabs) {
-            if (matches(tab.id)) {
-                acc.push({ tabId: tab.id, groupId: layout.id });
-            }
-        }
-        return;
+  if ("tabs" in layout) {
+    for (const tab of layout.tabs) {
+      if (matches(tab.id)) {
+        acc.push({ tabId: tab.id, groupId: layout.id });
+      }
     }
-    collectEditorTabs(layout.first, matches, acc);
-    collectEditorTabs(layout.second, matches, acc);
+    return;
+  }
+  collectEditorTabs(layout.first, matches, acc);
+  collectEditorTabs(layout.second, matches, acc);
 }

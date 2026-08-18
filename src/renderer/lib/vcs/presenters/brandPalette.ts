@@ -13,30 +13,30 @@ import type { BrandColor } from "@shared/types/brand";
 
 /** Whether this presenter draws that file. The palette is a document, so its kind is the test. */
 export function isBrandEntry(entry: DocumentDiffEntry): boolean {
-    return entry.documentKind === "brand";
+  return entry.documentKind === "brand";
 }
 
 /** One side of one row: what the document stores, and what that paints as. */
 export interface SwatchSide {
-    /** The stored value: a CSS literal, or a `nlbrand:` link into this same palette. */
-    readonly value: string;
-    /** What the author called it, where they called it anything. */
-    readonly name: string | null;
-    /** The colour at the end of the chain, or null where the value does not land on one. */
-    readonly css: string | null;
+  /** The stored value: a CSS literal, or a `nlbrand:` link into this same palette. */
+  readonly value: string;
+  /** What the author called it, where they called it anything. */
+  readonly name: string | null;
+  /** The colour at the end of the chain, or null where the value does not land on one. */
+  readonly css: string | null;
 }
 
 export interface SwatchRow {
-    readonly id: string;
-    readonly state: "added" | "removed" | "changed";
-    readonly before: SwatchSide | null;
-    readonly after: SwatchSide | null;
+  readonly id: string;
+  readonly state: "added" | "removed" | "changed";
+  readonly before: SwatchSide | null;
+  readonly after: SwatchSide | null;
 }
 
 export interface PaletteComparison {
-    readonly rows: readonly SwatchRow[];
-    /** Entries both sides store identically. Counted rather than listed; see {@link comparePalettes}. */
-    readonly unchanged: number;
+  readonly rows: readonly SwatchRow[];
+  /** Entries both sides store identically. Counted rather than listed; see {@link comparePalettes}. */
+  readonly unchanged: number;
 }
 
 /**
@@ -47,31 +47,31 @@ export interface PaletteComparison {
  * and a taxonomy of parse failures is not something to put in front of an author.
  */
 export function readPalette(bytes: Uint8Array): readonly BrandColor[] | null {
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(new TextDecoder().decode(bytes));
-    } catch {
-        return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) {
+    return null;
+  }
+  const colors = (parsed as { colors?: unknown }).colors;
+  if (!Array.isArray(colors)) {
+    return null;
+  }
+  const out: BrandColor[] = [];
+  for (const entry of colors) {
+    if (typeof entry !== "object" || entry === null) {
+      continue;
     }
-    if (typeof parsed !== "object" || parsed === null) {
-        return null;
+    const { id, value, name } = entry as { id?: unknown; value?: unknown; name?: unknown };
+    if (typeof id !== "string" || typeof value !== "string") {
+      continue;
     }
-    const colors = (parsed as { colors?: unknown }).colors;
-    if (!Array.isArray(colors)) {
-        return null;
-    }
-    const out: BrandColor[] = [];
-    for (const entry of colors) {
-        if (typeof entry !== "object" || entry === null) {
-            continue;
-        }
-        const { id, value, name } = entry as { id?: unknown; value?: unknown; name?: unknown };
-        if (typeof id !== "string" || typeof value !== "string") {
-            continue;
-        }
-        out.push({ id, value, ...(typeof name === "string" ? { name } : {}) });
-    }
-    return out;
+    out.push({ id, value, ...(typeof name === "string" ? { name } : {}) });
+  }
+  return out;
 }
 
 /**
@@ -94,32 +94,32 @@ export function readPalette(bytes: Uint8Array): readonly BrandColor[] | null {
  * single row that differs somewhere in the middle of a screenful that does not.
  */
 export function comparePalettes(
-    before: readonly BrandColor[] | null,
-    after: readonly BrandColor[] | null,
+  before: readonly BrandColor[] | null,
+  after: readonly BrandColor[] | null
 ): PaletteComparison {
-    const beforeSides = sidesOf(before);
-    const afterSides = sidesOf(after);
-    const rows: SwatchRow[] = [];
-    let unchanged = 0;
+  const beforeSides = sidesOf(before);
+  const afterSides = sidesOf(after);
+  const rows: SwatchRow[] = [];
+  let unchanged = 0;
 
-    for (const [id, side] of afterSides) {
-        const was = beforeSides.get(id);
-        if (!was) {
-            rows.push({ id, state: "added", before: null, after: side });
-            continue;
-        }
-        if (was.value === side.value && was.name === side.name) {
-            unchanged += 1;
-            continue;
-        }
-        rows.push({ id, state: "changed", before: was, after: side });
+  for (const [id, side] of afterSides) {
+    const was = beforeSides.get(id);
+    if (!was) {
+      rows.push({ id, state: "added", before: null, after: side });
+      continue;
     }
-    for (const [id, side] of beforeSides) {
-        if (!afterSides.has(id)) {
-            rows.push({ id, state: "removed", before: side, after: null });
-        }
+    if (was.value === side.value && was.name === side.name) {
+      unchanged += 1;
+      continue;
     }
-    return { rows, unchanged };
+    rows.push({ id, state: "changed", before: was, after: side });
+  }
+  for (const [id, side] of beforeSides) {
+    if (!afterSides.has(id)) {
+      rows.push({ id, state: "removed", before: side, after: null });
+    }
+  }
+  return { rows, unchanged };
 }
 
 /**
@@ -133,20 +133,20 @@ export function comparePalettes(
  * A duplicate id keeps its first entry, which is what {@link BrandPalette} does with one.
  */
 function sidesOf(colors: readonly BrandColor[] | null): Map<string, SwatchSide> {
-    const out = new Map<string, SwatchSide>();
-    if (!colors) {
-        return out;
-    }
-    const palette = new BrandPalette(colors);
-    for (const color of colors) {
-        if (out.has(color.id)) {
-            continue;
-        }
-        out.set(color.id, {
-            value: color.value,
-            name: color.name ?? null,
-            css: palette.resolveValueCss(color.value),
-        });
-    }
+  const out = new Map<string, SwatchSide>();
+  if (!colors) {
     return out;
+  }
+  const palette = new BrandPalette(colors);
+  for (const color of colors) {
+    if (out.has(color.id)) {
+      continue;
+    }
+    out.set(color.id, {
+      value: color.value,
+      name: color.name ?? null,
+      css: palette.resolveValueCss(color.value)
+    });
+  }
+  return out;
 }

@@ -20,45 +20,45 @@ export type ReplaceAssetContentOutcome = "replaced" | "cancelled" | "failed";
  * re-checks the magic bytes — an author who renames a zip to `.png` still cannot smuggle it in.
  */
 export async function runReplaceAssetContentFlow(
-    context: WorkspaceContext,
-    asset: Asset,
-    t: Translator["t"],
+  context: WorkspaceContext,
+  asset: Asset,
+  t: Translator["t"]
 ): Promise<ReplaceAssetContentOutcome> {
-    const uiService = context.services.get<UIService>(Services.UI);
+  const uiService = context.services.get<UIService>(Services.UI);
 
-    if (asset.source !== AssetSource.Local) {
-        uiService.showAlert(t("assets.replace.failedTitle"), t("assets.replace.remoteUnsupported"));
-        return "failed";
-    }
+  if (asset.source !== AssetSource.Local) {
+    uiService.showAlert(t("assets.replace.failedTitle"), t("assets.replace.remoteUnsupported"));
+    return "failed";
+  }
 
-    // A bundle is replaced by another folder, not another file: swapping one file inside a model
-    // would leave a tree whose manifest names files from two different exports.
-    const selection = isBundleAssetType(asset.type)
-        ? await getInterface().fs.selectDirectory(false)
-        : await getInterface().fs.selectFile(AssetExtensions[asset.type], false);
-    if (!selection.success || !selection.data.ok) {
-        return "cancelled";
-    }
-    const sourcePath = selection.data.data[0];
-    if (!sourcePath) {
-        return "cancelled";
-    }
+  // A bundle is replaced by another folder, not another file: swapping one file inside a model
+  // would leave a tree whose manifest names files from two different exports.
+  const selection = isBundleAssetType(asset.type)
+    ? await getInterface().fs.selectDirectory(false)
+    : await getInterface().fs.selectFile(AssetExtensions[asset.type], false);
+  if (!selection.success || !selection.data.ok) {
+    return "cancelled";
+  }
+  const sourcePath = selection.data.data[0];
+  if (!sourcePath) {
+    return "cancelled";
+  }
 
-    const confirmed = await uiService.showDestructiveConfirm(
-        t("assets.replace.confirmTitle", { name: asset.name }),
-        undefined,
-        t("assets.replace.confirmAction"),
-    );
-    if (!confirmed) {
-        return "cancelled";
-    }
+  const confirmed = await uiService.showDestructiveConfirm(
+    t("assets.replace.confirmTitle", { name: asset.name }),
+    undefined,
+    t("assets.replace.confirmAction")
+  );
+  if (!confirmed) {
+    return "cancelled";
+  }
 
-    const assetsService = context.services.get<AssetsService>(Services.Assets);
-    const result = await assetsService.replaceAssetContent(asset, sourcePath);
-    if (!result.success) {
-        uiService.showAlert(t("assets.replace.failedTitle"), result.error || t("assets.unknownError"));
-        return "failed";
-    }
+  const assetsService = context.services.get<AssetsService>(Services.Assets);
+  const result = await assetsService.replaceAssetContent(asset, sourcePath);
+  if (!result.success) {
+    uiService.showAlert(t("assets.replace.failedTitle"), result.error || t("assets.unknownError"));
+    return "failed";
+  }
 
-    return "replaced";
+  return "replaced";
 }

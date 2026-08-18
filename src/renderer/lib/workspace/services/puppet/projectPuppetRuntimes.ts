@@ -29,28 +29,31 @@ const BACKEND_ENTRY_FILE = "index.js";
  * model data and must stay raw, or the bytes are decoded into a string and ruined.
  */
 async function grantUrl(filePath: string, mode: "text" | "raw"): Promise<string> {
-    const request = mode === "text"
-        ? await appPrivilegedFacade.fs.requestRead(filePath, "utf-8")
-        : await appPrivilegedFacade.fs.requestReadRaw(filePath);
-    if (!request.success) {
-        throw new Error(request.error ?? `Cannot read ${filePath}`);
-    }
-    if (!request.data.ok) {
-        throw new Error(request.data.error?.message ?? `Cannot read ${filePath}`);
-    }
-    return `${AppProtocol}://${AppHost.Fs}/${request.data.data}`;
+  const request =
+    mode === "text"
+      ? await appPrivilegedFacade.fs.requestRead(filePath, "utf-8")
+      : await appPrivilegedFacade.fs.requestReadRaw(filePath);
+  if (!request.success) {
+    throw new Error(request.error ?? `Cannot read ${filePath}`);
+  }
+  if (!request.data.ok) {
+    throw new Error(request.data.error?.message ?? `Cannot read ${filePath}`);
+  }
+  return `${AppProtocol}://${AppHost.Fs}/${request.data.data}`;
 }
 
 /** The backend names this project carries. Empty is the normal case — most projects use none. */
 export async function listProjectPuppetRuntimes(project: Porject): Promise<string[]> {
-    const listing = await appPrivilegedFacade.fs.list(project.resolve(ProjectNameConvention.PuppetRuntimes));
-    if (!listing.success || !listing.data.ok) {
-        return [];
-    }
-    return listing.data.data
-        .filter(entry => entry.type === "directory")
-        .map(entry => entry.fileName)
-        .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  const listing = await appPrivilegedFacade.fs.list(
+    project.resolve(ProjectNameConvention.PuppetRuntimes)
+  );
+  if (!listing.success || !listing.data.ok) {
+    return [];
+  }
+  return listing.data.data
+    .filter((entry) => entry.type === "directory")
+    .map((entry) => entry.fileName)
+    .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
 }
 
 /**
@@ -64,9 +67,9 @@ export async function listProjectPuppetRuntimes(project: Porject): Promise<strin
  * is the same reading, made before the author ships.
  */
 export type PuppetRuntimeInstallState =
-    | { status: "installed"; stamp: string }
-    | { status: "incomplete" }
-    | { status: "absent" };
+  | { status: "installed"; stamp: string }
+  | { status: "incomplete" }
+  | { status: "absent" };
 
 /**
  * Whether this project carries a usable runtime under `backend`.
@@ -77,19 +80,19 @@ export type PuppetRuntimeInstallState =
  * has never installed one.
  */
 export async function readPuppetRuntimeInstallState(
-    project: Porject,
-    backend: string,
+  project: Porject,
+  backend: string
 ): Promise<PuppetRuntimeInstallState> {
-    const name = backend.trim();
-    if (!name) {
-        return { status: "absent" };
-    }
-    const stamp = await readPuppetRuntimeStamp(project, name);
-    if (stamp !== null) {
-        return { status: "installed", stamp };
-    }
-    const installed = await listProjectPuppetRuntimes(project);
-    return installed.includes(name) ? { status: "incomplete" } : { status: "absent" };
+  const name = backend.trim();
+  if (!name) {
+    return { status: "absent" };
+  }
+  const stamp = await readPuppetRuntimeStamp(project, name);
+  if (stamp !== null) {
+    return { status: "installed", stamp };
+  }
+  const installed = await listProjectPuppetRuntimes(project);
+  return installed.includes(name) ? { status: "incomplete" } : { status: "absent" };
 }
 
 /**
@@ -101,14 +104,21 @@ export async function readPuppetRuntimeInstallState(
  * the same filesystem timestamp granularity keeps a stale description, and the author can force a
  * re-read; hashing every lookup to close that would cost more than it buys.
  */
-export async function readPuppetRuntimeStamp(project: Porject, backend: string): Promise<string | null> {
-    const entryPath = project.resolve(ProjectNameConvention.PuppetRuntimes, backend, BACKEND_ENTRY_FILE);
-    const details = await appPrivilegedFacade.fs.details(entryPath);
-    if (!details.success || !details.data.ok) {
-        return null;
-    }
-    const file = details.data.data;
-    return `${file.size}@${file.mtime}`;
+export async function readPuppetRuntimeStamp(
+  project: Porject,
+  backend: string
+): Promise<string | null> {
+  const entryPath = project.resolve(
+    ProjectNameConvention.PuppetRuntimes,
+    backend,
+    BACKEND_ENTRY_FILE
+  );
+  const details = await appPrivilegedFacade.fs.details(entryPath);
+  if (!details.success || !details.data.ok) {
+    return null;
+  }
+  const file = details.data.data;
+  return `${file.size}@${file.mtime}`;
 }
 
 /**
@@ -120,20 +130,23 @@ export async function readPuppetRuntimeStamp(project: Porject, backend: string):
  * the first. It gets the arithmetic rather than a list, and the path is confined to the backend's
  * own directory.
  */
-export async function createPuppetBackendSource(project: Porject, backend: string): Promise<PuppetBackendModuleSource> {
-    const directory = project.resolve(ProjectNameConvention.PuppetRuntimes, backend);
-    return {
-        id: backend,
-        url: await grantUrl(`${directory}/${BACKEND_ENTRY_FILE}`, "text"),
-        resolveFile: (relativePath: string) => {
-            const normalized = relativePath.replace(/\\/g, "/").replace(/^\.\//, "");
-            // The module names its own siblings; it does not get to name anything else.
-            if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
-                return Promise.reject(new Error(`Path escapes the backend directory: ${relativePath}`));
-            }
-            return grantUrl(`${directory}/${normalized}`, "raw");
-        },
-    };
+export async function createPuppetBackendSource(
+  project: Porject,
+  backend: string
+): Promise<PuppetBackendModuleSource> {
+  const directory = project.resolve(ProjectNameConvention.PuppetRuntimes, backend);
+  return {
+    id: backend,
+    url: await grantUrl(`${directory}/${BACKEND_ENTRY_FILE}`, "text"),
+    resolveFile: (relativePath: string) => {
+      const normalized = relativePath.replace(/\\/g, "/").replace(/^\.\//, "");
+      // The module names its own siblings; it does not get to name anything else.
+      if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
+        return Promise.reject(new Error(`Path escapes the backend directory: ${relativePath}`));
+      }
+      return grantUrl(`${directory}/${normalized}`, "raw");
+    }
+  };
 }
 
 /**
@@ -144,13 +157,13 @@ export async function createPuppetBackendSource(project: Porject, backend: strin
  * `resolveWorkspaceAssetUrl.resolveModelBundleUrl`, which mints this for the story compiler.
  */
 export async function grantModelBundleUrl(bundleRoot: string, entry: string): Promise<string> {
-    const grant = await getInterface().fs.requestReadDir(bundleRoot);
-    if (!grant.success || !grant.data?.ok) {
-        throw new Error(grant.error ?? "Failed to grant access to the model bundle");
-    }
-    // Each segment is encoded on its own so the separators stay separators - encoding the whole
-    // relative path would turn a nested texture into a single opaque segment and break the very
-    // sibling arithmetic this URL exists for.
-    const encoded = entry.split("/").map(encodeURIComponent).join("/");
-    return `${AppProtocol}://${AppHost.Fs}/${grant.data.data}/${encoded}`;
+  const grant = await getInterface().fs.requestReadDir(bundleRoot);
+  if (!grant.success || !grant.data?.ok) {
+    throw new Error(grant.error ?? "Failed to grant access to the model bundle");
+  }
+  // Each segment is encoded on its own so the separators stay separators - encoding the whole
+  // relative path would turn a nested texture into a single opaque segment and break the very
+  // sibling arithmetic this URL exists for.
+  const encoded = entry.split("/").map(encodeURIComponent).join("/");
+  return `${AppProtocol}://${AppHost.Fs}/${grant.data.data}/${encoded}`;
 }

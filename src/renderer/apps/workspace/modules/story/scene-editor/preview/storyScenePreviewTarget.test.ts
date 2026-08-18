@@ -1,96 +1,155 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
-import { resolvePlaybackStartBlockId, resolvePreviewTargetBlockId } from "./storyScenePreviewTarget";
+import {
+  resolvePlaybackStartBlockId,
+  resolvePreviewTargetBlockId
+} from "./storyScenePreviewTarget";
 
 function makeScene(blocks: Record<string, StoryBlock>, rootBlockIds: string[]): StoryScene {
-    return {
-        id: "scene-1",
-        name: "Scene 1",
-        runtimeName: "Scene 1",
-        rootBlockIds,
-        blocks,
-    };
+  return {
+    id: "scene-1",
+    name: "Scene 1",
+    runtimeName: "Scene 1",
+    rootBlockIds,
+    blocks
+  };
 }
 
-function block(id: string, kind: StoryBlock["kind"], payload: unknown, parentId: string | null = null, childrenIds: string[] = []): StoryBlock {
-    return { id, kind, parentId, childrenIds, payload } as StoryBlock;
+function block(
+  id: string,
+  kind: StoryBlock["kind"],
+  payload: unknown,
+  parentId: string | null = null,
+  childrenIds: string[] = []
+): StoryBlock {
+  return { id, kind, parentId, childrenIds, payload } as StoryBlock;
 }
 
 const say = (id: string, parentId: string | null = null, childrenIds: string[] = []) =>
-    block(id, "nodeAction", { action: "narration", text: { textId: `${id}-text`, value: "Text", role: "narration" } }, parentId, childrenIds);
+  block(
+    id,
+    "nodeAction",
+    { action: "narration", text: { textId: `${id}-text`, value: "Text", role: "narration" } },
+    parentId,
+    childrenIds
+  );
 
 describe("resolvePreviewTargetBlockId", () => {
-    it("returns null without an active block or for unknown ids", () => {
-        const scene = makeScene({ a: say("a") }, ["a"]);
-        expect(resolvePreviewTargetBlockId(scene, null)).toBeNull();
-        expect(resolvePreviewTargetBlockId(scene, "missing")).toBeNull();
-    });
+  it("returns null without an active block or for unknown ids", () => {
+    const scene = makeScene({ a: say("a") }, ["a"]);
+    expect(resolvePreviewTargetBlockId(scene, null)).toBeNull();
+    expect(resolvePreviewTargetBlockId(scene, "missing")).toBeNull();
+  });
 
-    it("returns regular action blocks unchanged", () => {
-        const scene = makeScene({ a: say("a") }, ["a"]);
-        expect(resolvePreviewTargetBlockId(scene, "a")).toBe("a");
-    });
+  it("returns regular action blocks unchanged", () => {
+    const scene = makeScene({ a: say("a") }, ["a"]);
+    expect(resolvePreviewTargetBlockId(scene, "a")).toBe("a");
+  });
 
-    it("maps choice options and condition branches to their parent container", () => {
-        const scene = makeScene({
-            choice: block("choice", "nodeAction", { action: "choice" }, null, ["option"]),
-            option: block("option", "nodeAction", { action: "choiceOption", text: { textId: "t", value: "Go", role: "choiceText" } }, "choice"),
-            condition: block("condition", "control", { control: "condition" }, null, ["branch"]),
-            branch: block("branch", "control", { control: "conditionBranch", branch: "if" }, "condition"),
-        }, ["choice", "condition"]);
-        expect(resolvePreviewTargetBlockId(scene, "option")).toBe("choice");
-        expect(resolvePreviewTargetBlockId(scene, "branch")).toBe("condition");
-    });
+  it("maps choice options and condition branches to their parent container", () => {
+    const scene = makeScene(
+      {
+        choice: block("choice", "nodeAction", { action: "choice" }, null, ["option"]),
+        option: block(
+          "option",
+          "nodeAction",
+          { action: "choiceOption", text: { textId: "t", value: "Go", role: "choiceText" } },
+          "choice"
+        ),
+        condition: block("condition", "control", { control: "condition" }, null, ["branch"]),
+        branch: block(
+          "branch",
+          "control",
+          { control: "conditionBranch", branch: "if" },
+          "condition"
+        )
+      },
+      ["choice", "condition"]
+    );
+    expect(resolvePreviewTargetBlockId(scene, "option")).toBe("choice");
+    expect(resolvePreviewTargetBlockId(scene, "branch")).toBe("condition");
+  });
 
-    it("falls back to the nearest previous previewable block for note rows", () => {
-        const scene = makeScene({
-            a: say("a"),
-            note: block("note", "note", { text: "Remember" }),
-            b: say("b"),
-        }, ["a", "note", "b"]);
-        expect(resolvePreviewTargetBlockId(scene, "note")).toBe("a");
-    });
+  it("falls back to the nearest previous previewable block for note rows", () => {
+    const scene = makeScene(
+      {
+        a: say("a"),
+        note: block("note", "note", { text: "Remember" }),
+        b: say("b")
+      },
+      ["a", "note", "b"]
+    );
+    expect(resolvePreviewTargetBlockId(scene, "note")).toBe("a");
+  });
 
-    it("previews the scene start when a note row has no previous previewable block", () => {
-        const scene = makeScene({
-            note: block("note", "note", { text: "Remember" }),
-            a: say("a"),
-        }, ["note", "a"]);
-        expect(resolvePreviewTargetBlockId(scene, "note")).toBeNull();
-    });
+  it("previews the scene start when a note row has no previous previewable block", () => {
+    const scene = makeScene(
+      {
+        note: block("note", "note", { text: "Remember" }),
+        a: say("a")
+      },
+      ["note", "a"]
+    );
+    expect(resolvePreviewTargetBlockId(scene, "note")).toBeNull();
+  });
 
-    it("keeps option and branch rows as playback start points, unlike the snapshot target", () => {
-        const scene = makeScene({
-            choice: block("choice", "nodeAction", { action: "choice" }, null, ["option"]),
-            option: block("option", "nodeAction", { action: "choiceOption", text: { textId: "t", value: "Go", role: "choiceText" } }, "choice"),
-            branch: block("branch", "control", { control: "conditionBranch", branch: "if" }, "condition"),
-            condition: block("condition", "control", { control: "condition" }, null, ["branch"]),
-            a: say("a"),
-        }, ["choice", "condition", "a"]);
+  it("keeps option and branch rows as playback start points, unlike the snapshot target", () => {
+    const scene = makeScene(
+      {
+        choice: block("choice", "nodeAction", { action: "choice" }, null, ["option"]),
+        option: block(
+          "option",
+          "nodeAction",
+          { action: "choiceOption", text: { textId: "t", value: "Go", role: "choiceText" } },
+          "choice"
+        ),
+        branch: block(
+          "branch",
+          "control",
+          { control: "conditionBranch", branch: "if" },
+          "condition"
+        ),
+        condition: block("condition", "control", { control: "condition" }, null, ["branch"]),
+        a: say("a")
+      },
+      ["choice", "condition", "a"]
+    );
 
-        // Starting playback on an option means "take this branch" — collapsing it to the menu would
-        // discard exactly the choice the author made.
-        expect(resolvePlaybackStartBlockId(scene, "option")).toBe("option");
-        expect(resolvePlaybackStartBlockId(scene, "branch")).toBe("branch");
-        expect(resolvePlaybackStartBlockId(scene, "a")).toBe("a");
-        expect(resolvePlaybackStartBlockId(scene, null)).toBeNull();
-        expect(resolvePlaybackStartBlockId(scene, "missing")).toBeNull();
-    });
+    // Starting playback on an option means "take this branch" — collapsing it to the menu would
+    // discard exactly the choice the author made.
+    expect(resolvePlaybackStartBlockId(scene, "option")).toBe("option");
+    expect(resolvePlaybackStartBlockId(scene, "branch")).toBe("branch");
+    expect(resolvePlaybackStartBlockId(scene, "a")).toBe("a");
+    expect(resolvePlaybackStartBlockId(scene, null)).toBeNull();
+    expect(resolvePlaybackStartBlockId(scene, "missing")).toBeNull();
+  });
 
-    it("falls back past note rows when starting playback", () => {
-        const scene = makeScene({
-            a: say("a"),
-            note: block("note", "note", { text: { textId: "n", value: "Remember", role: "note" } }),
-        }, ["a", "note"]);
-        expect(resolvePlaybackStartBlockId(scene, "note")).toBe("a");
-    });
+  it("falls back past note rows when starting playback", () => {
+    const scene = makeScene(
+      {
+        a: say("a"),
+        note: block("note", "note", { text: { textId: "n", value: "Remember", role: "note" } })
+      },
+      ["a", "note"]
+    );
+    expect(resolvePlaybackStartBlockId(scene, "note")).toBe("a");
+  });
 
-    it("resolves a note row inside a choice option to the option's parent choice", () => {
-        const scene = makeScene({
-            choice: block("choice", "nodeAction", { action: "choice" }, null, ["option"]),
-            option: block("option", "nodeAction", { action: "choiceOption", text: { textId: "t", value: "Go", role: "choiceText" } }, "choice", ["note"]),
-            note: block("note", "note", { text: "Remember" }, "option"),
-        }, ["choice"]);
-        expect(resolvePreviewTargetBlockId(scene, "note")).toBe("choice");
-    });
+  it("resolves a note row inside a choice option to the option's parent choice", () => {
+    const scene = makeScene(
+      {
+        choice: block("choice", "nodeAction", { action: "choice" }, null, ["option"]),
+        option: block(
+          "option",
+          "nodeAction",
+          { action: "choiceOption", text: { textId: "t", value: "Go", role: "choiceText" } },
+          "choice",
+          ["note"]
+        ),
+        note: block("note", "note", { text: "Remember" }, "option")
+      },
+      ["choice"]
+    );
+    expect(resolvePreviewTargetBlockId(scene, "note")).toBe("choice");
+  });
 });

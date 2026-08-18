@@ -1,8 +1,7 @@
-
 export type AppEventToken = {
-    cancel: () => void;
+  cancel: () => void;
 };
 
 export interface AppInfo {
-    version: string;
+  version: string;
 }

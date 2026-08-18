@@ -25,51 +25,51 @@ import { formatBrandLink } from "@shared/brand/brandLink";
  * so the slots had somewhere to go would be changing what a button *is*, not what colour it is.
  */
 const BRANDED_BUTTON_COLORS = {
-    backgroundColor: formatBrandLink("button.primary"),
-    borderColor: formatBrandLink("button.border"),
-    color: formatBrandLink("button.text"),
+  backgroundColor: formatBrandLink("button.primary"),
+  borderColor: formatBrandLink("button.border"),
+  color: formatBrandLink("button.text")
 } as const;
 
 export const ButtonWidgetModule: UIWidgetModule = {
-    type: "nl.button",
-    logicApi: getWidgetLogicApi("nl.button"),
-    get displayName() {
-        return translate("widgets.defaults.button.name");
-    },
-    icon: MousePointerClick,
+  type: "nl.button",
+  logicApi: getWidgetLogicApi("nl.button"),
+  get displayName() {
+    return translate("widgets.defaults.button.name");
+  },
+  icon: MousePointerClick,
 
-    createDefaultElement: () => {
-        // Built once and used for both halves: the appearance model's `default` variant is seeded
-        // from these props, so the rows have to be the branded ones or the panel would show the old
-        // literals the moment the author opened it.
-        const props = {
-            ...defaultButtonWidgetProps,
-            ...BRANDED_BUTTON_COLORS,
-            label: translate("widgets.defaults.button.label"),
-        };
-        return {
-            type: "nl.button",
-            name: translate("widgets.defaults.button.name"),
-            layout: {
-                x: 0,
-                y: 0,
-                width: 160,
-                height: 48,
-                opacity: 1,
-                visible: true,
-            },
-            props: {
-                ...props,
-                appearance: createInitialButtonAppearance(props),
-            },
-        };
-    },
+  createDefaultElement: () => {
+    // Built once and used for both halves: the appearance model's `default` variant is seeded
+    // from these props, so the rows have to be the branded ones or the panel would show the old
+    // literals the moment the author opened it.
+    const props = {
+      ...defaultButtonWidgetProps,
+      ...BRANDED_BUTTON_COLORS,
+      label: translate("widgets.defaults.button.label")
+    };
+    return {
+      type: "nl.button",
+      name: translate("widgets.defaults.button.name"),
+      layout: {
+        x: 0,
+        y: 0,
+        width: 160,
+        height: 48,
+        opacity: 1,
+        visible: true
+      },
+      props: {
+        ...props,
+        appearance: createInitialButtonAppearance(props)
+      }
+    };
+  },
 
-    render: (props: WidgetRendererProps) => <ButtonRenderer {...props} />,
+  render: (props: WidgetRendererProps) => <ButtonRenderer {...props} />,
 
-    createInspector: createButtonInspector,
+  createInspector: createButtonInspector,
 
-    createDockerBarItems: createButtonDockerBarItems,
+  createDockerBarItems: createButtonDockerBarItems,
 
-    createMultiSelectDockerBarItems: createButtonDockerBarItems,
+  createMultiSelectDockerBarItems: createButtonDockerBarItems
 };

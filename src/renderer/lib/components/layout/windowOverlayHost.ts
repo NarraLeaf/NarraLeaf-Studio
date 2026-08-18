@@ -43,22 +43,22 @@ export const windowRootProps = { [WINDOW_ROOT_ATTRIBUTE]: "" } as const;
 const overlayHosts = new WeakMap<Document, HTMLElement>();
 
 function ensureOverlayHost(doc: Document): HTMLElement {
-    let overlayHost = overlayHosts.get(doc) ?? null;
-    if (!overlayHost) {
-        overlayHost = doc.createElement("div");
-        overlayHost.setAttribute(OVERLAY_HOST_ATTRIBUTE, "");
-        overlayHost.style.display = "contents";
-        overlayHosts.set(doc, overlayHost);
-    }
-    if (!overlayHost.isConnected) {
-        // Connected straight away, during the render that first asks for it: a dialog that mounts
-        // already open runs its own mount effects in that same commit, and several of them reach for
-        // a node inside the dialog — the paste wizard takes focus there so that Escape closes the
-        // dialog instead of reaching the row underneath and committing it. `focus()` on a detached
-        // node is silently a no-op, so deferring this by even one render breaks them.
-        adopt(overlayHost);
-    }
-    return overlayHost;
+  let overlayHost = overlayHosts.get(doc) ?? null;
+  if (!overlayHost) {
+    overlayHost = doc.createElement("div");
+    overlayHost.setAttribute(OVERLAY_HOST_ATTRIBUTE, "");
+    overlayHost.style.display = "contents";
+    overlayHosts.set(doc, overlayHost);
+  }
+  if (!overlayHost.isConnected) {
+    // Connected straight away, during the render that first asks for it: a dialog that mounts
+    // already open runs its own mount effects in that same commit, and several of them reach for
+    // a node inside the dialog — the paste wizard takes focus there so that Escape closes the
+    // dialog instead of reaching the row underneath and committing it. `focus()` on a detached
+    // node is silently a no-op, so deferring this by even one render breaks them.
+    adopt(overlayHost);
+  }
+  return overlayHost;
 }
 
 /**
@@ -70,32 +70,32 @@ function ensureOverlayHost(doc: Document): HTMLElement {
  * and it is also where the host waits until the shell has committed.
  */
 function adopt(host: HTMLElement): void {
-    const doc = host.ownerDocument;
-    const root = doc.querySelector<HTMLElement>(`[${WINDOW_ROOT_ATTRIBUTE}]`);
-    const parent = root ?? doc.body;
-    if (host.parentElement !== parent) {
-        parent.appendChild(host);
-    }
+  const doc = host.ownerDocument;
+  const root = doc.querySelector<HTMLElement>(`[${WINDOW_ROOT_ATTRIBUTE}]`);
+  const parent = root ?? doc.body;
+  if (host.parentElement !== parent) {
+    parent.appendChild(host);
+  }
 }
 
 /** The element a dialog portals into, in whichever window the caller is drawn in. */
 export function useWindowOverlayHost(): HTMLElement {
-    const doc = useHostDocument();
-    const [host, setHost] = useState(() => ensureOverlayHost(doc));
-    // A subtree does not change window mid-life (a detached editor mounts its own copy), but the
-    // host has to follow the document if one ever does - a portal into another window's node
-    // renders nowhere visible rather than failing.
-    const current = host.ownerDocument === doc ? host : ensureOverlayHost(doc);
-    if (current !== host) {
-        setHost(current);
-    }
-    useLayoutEffect(() => adopt(current), [current]);
-    return current;
+  const doc = useHostDocument();
+  const [host, setHost] = useState(() => ensureOverlayHost(doc));
+  // A subtree does not change window mid-life (a detached editor mounts its own copy), but the
+  // host has to follow the document if one ever does - a portal into another window's node
+  // renders nowhere visible rather than failing.
+  const current = host.ownerDocument === doc ? host : ensureOverlayHost(doc);
+  if (current !== host) {
+    setHost(current);
+  }
+  useLayoutEffect(() => adopt(current), [current]);
+  return current;
 }
 
 /** Test seam: forget the window's host so each case starts from an empty document. */
 export function resetWindowOverlayHostForTests(): void {
-    const host = overlayHosts.get(document);
-    host?.remove();
-    overlayHosts.delete(document);
+  const host = overlayHosts.get(document);
+  host?.remove();
+  overlayHosts.delete(document);
 }

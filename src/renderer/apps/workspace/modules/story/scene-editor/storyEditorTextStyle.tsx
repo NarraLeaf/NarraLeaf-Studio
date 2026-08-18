@@ -4,11 +4,11 @@ import { STORY_MARK_PX } from "./StoryRowGutterMark";
 import { getInterface } from "@/lib/app/bridge";
 import type { StoryEditorDensity } from "./storyEditorSessionStore";
 import {
-    EDITOR_FONT_FAMILY_DEFAULT,
-    EDITOR_FONT_SIZE_DEFAULT,
-    EDITOR_FONT_SIZE_MAX,
-    EDITOR_FONT_SIZE_MIN,
-    editorFontCssFamily,
+  EDITOR_FONT_FAMILY_DEFAULT,
+  EDITOR_FONT_SIZE_DEFAULT,
+  EDITOR_FONT_SIZE_MAX,
+  EDITOR_FONT_SIZE_MIN,
+  editorFontCssFamily
 } from "@/lib/settings/editorFontOptions";
 
 /**
@@ -20,11 +20,11 @@ import {
  */
 
 function clampFontSize(value: unknown): number {
-    const numeric = typeof value === "number" ? value : Number(value);
-    if (!Number.isFinite(numeric)) {
-        return EDITOR_FONT_SIZE_DEFAULT;
-    }
-    return Math.min(EDITOR_FONT_SIZE_MAX, Math.max(EDITOR_FONT_SIZE_MIN, Math.round(numeric)));
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) {
+    return EDITOR_FONT_SIZE_DEFAULT;
+  }
+  return Math.min(EDITOR_FONT_SIZE_MAX, Math.max(EDITOR_FONT_SIZE_MIN, Math.round(numeric)));
 }
 
 /**
@@ -50,14 +50,17 @@ function clampFontSize(value: unknown): number {
  * identity token, not a picture to be looked at, and a 40px one only made the machine rows beside it
  * look like they were missing something.
  */
-export const STORY_DENSITY_METRICS: Record<StoryEditorDensity, { rowBox: number; fontScale: number; lineHeight?: number }> = {
-    // 28, not the historical 27: a dialogue row's speaker nametag is `min-h-[28px]` and was already
-    // driving those rows one pixel taller than narration rows. Matching it here makes every compact row
-    // the same height (the rhythm the 27 was meant to give) and lands the three columns on the same
-    // centre line, instead of half a pixel apart.
-    compact: { rowBox: 28, fontScale: 1 },
-    standard: { rowBox: 32, fontScale: 1.08, lineHeight: 1.55 },
-    comfortable: { rowBox: 38, fontScale: 1.15, lineHeight: 1.7 },
+export const STORY_DENSITY_METRICS: Record<
+  StoryEditorDensity,
+  { rowBox: number; fontScale: number; lineHeight?: number }
+> = {
+  // 28, not the historical 27: a dialogue row's speaker nametag is `min-h-[28px]` and was already
+  // driving those rows one pixel taller than narration rows. Matching it here makes every compact row
+  // the same height (the rhythm the 27 was meant to give) and lands the three columns on the same
+  // centre line, instead of half a pixel apart.
+  compact: { rowBox: 28, fontScale: 1 },
+  standard: { rowBox: 32, fontScale: 1.08, lineHeight: 1.55 },
+  comfortable: { rowBox: 38, fontScale: 1.15, lineHeight: 1.7 }
 };
 
 /** The CSS variable the row chrome sizes its single-line boxes from. */
@@ -108,8 +111,8 @@ const GUTTER_DIGIT_PX = 6;
  * collide with the fold chevron, which is exactly what a 1000-line chapter has.
  */
 export function storyGutterWidth(rowCount: number): number {
-    const digits = String(Math.max(1, rowCount)).length;
-    return GUTTER_BASE_PX + Math.max(0, digits - 2) * GUTTER_DIGIT_PX;
+  const digits = String(Math.max(1, rowCount)).length;
+  return GUTTER_BASE_PX + Math.max(0, digits - 2) * GUTTER_DIGIT_PX;
 }
 
 /**
@@ -118,22 +121,30 @@ export function storyGutterWidth(rowCount: number): number {
  * the attribute selectors and the tests read.
  */
 export function storyEditorRootStyle(density: StoryEditorDensity, rowCount: number): CSSProperties {
-    return {
-        [STORY_ROW_BOX_VAR]: `${STORY_DENSITY_METRICS[density].rowBox}px`,
-        [STORY_GUTTER_VAR]: `${storyGutterWidth(rowCount)}px`,
-        [STORY_MARK_VAR]: `${STORY_MARK_PX}px`,
-    } as CSSProperties;
+  return {
+    [STORY_ROW_BOX_VAR]: `${STORY_DENSITY_METRICS[density].rowBox}px`,
+    [STORY_GUTTER_VAR]: `${storyGutterWidth(rowCount)}px`,
+    [STORY_MARK_VAR]: `${STORY_MARK_PX}px`
+  } as CSSProperties;
 }
 
-function toStyle(fontSize: number, fontFamily: string, density: StoryEditorDensity | undefined): CSSProperties {
-    const metrics = STORY_DENSITY_METRICS[density ?? "compact"] ?? STORY_DENSITY_METRICS.compact;
-    const scaled = metrics.fontScale === 1 ? fontSize : Math.round(fontSize * metrics.fontScale);
-    return metrics.lineHeight === undefined
-        ? { fontSize: scaled, fontFamily }
-        : { fontSize: scaled, fontFamily, lineHeight: metrics.lineHeight };
+function toStyle(
+  fontSize: number,
+  fontFamily: string,
+  density: StoryEditorDensity | undefined
+): CSSProperties {
+  const metrics = STORY_DENSITY_METRICS[density ?? "compact"] ?? STORY_DENSITY_METRICS.compact;
+  const scaled = metrics.fontScale === 1 ? fontSize : Math.round(fontSize * metrics.fontScale);
+  return metrics.lineHeight === undefined
+    ? { fontSize: scaled, fontFamily }
+    : { fontSize: scaled, fontFamily, lineHeight: metrics.lineHeight };
 }
 
-const DEFAULT_STYLE = toStyle(EDITOR_FONT_SIZE_DEFAULT, editorFontCssFamily(EDITOR_FONT_FAMILY_DEFAULT), undefined);
+const DEFAULT_STYLE = toStyle(
+  EDITOR_FONT_SIZE_DEFAULT,
+  editorFontCssFamily(EDITOR_FONT_FAMILY_DEFAULT),
+  undefined
+);
 
 const StoryEditorTextStyleContext = createContext<CSSProperties>(DEFAULT_STYLE);
 
@@ -142,7 +153,7 @@ const StoryEditorTextStyleContext = createContext<CSSProperties>(DEFAULT_STYLE);
  * baseline when used outside a provider, so components render sensibly in isolation.
  */
 export function useStoryEditorTextStyle(): CSSProperties {
-    return useContext(StoryEditorTextStyleContext);
+  return useContext(StoryEditorTextStyleContext);
 }
 
 /**
@@ -150,40 +161,55 @@ export function useStoryEditorTextStyle(): CSSProperties {
  * when the workspace window regains focus, so a change made in the (separate) Settings window
  * applies as soon as the author returns to the editor — without any cross-window IPC push.
  */
-export function StoryEditorTextStyleProvider({ children, density }: { children: ReactNode; density?: StoryEditorDensity }) {
-    const [fontSize, setFontSize] = useState(EDITOR_FONT_SIZE_DEFAULT);
-    const [fontFamily, setFontFamily] = useState(() => editorFontCssFamily(EDITOR_FONT_FAMILY_DEFAULT));
+export function StoryEditorTextStyleProvider({
+  children,
+  density
+}: {
+  children: ReactNode;
+  density?: StoryEditorDensity;
+}) {
+  const [fontSize, setFontSize] = useState(EDITOR_FONT_SIZE_DEFAULT);
+  const [fontFamily, setFontFamily] = useState(() =>
+    editorFontCssFamily(EDITOR_FONT_FAMILY_DEFAULT)
+  );
 
-    useEffect(() => {
-        let cancelled = false;
-        const load = async () => {
-            try {
-                const [sizeResult, familyResult] = await Promise.all([
-                    getInterface().app.state.getGlobalState("editor.fontSize"),
-                    getInterface().app.state.getGlobalState("editor.fontFamily"),
-                ]);
-                if (cancelled) {
-                    return;
-                }
-                setFontSize(clampFontSize(sizeResult.success ? sizeResult.data.value : undefined));
-                setFontFamily(editorFontCssFamily(familyResult.success ? familyResult.data.value : undefined));
-            } catch {
-                // Keep the last known-good values on transient IPC failures.
-            }
-        };
-        void load();
-        const onFocus = () => { void load(); };
-        window.addEventListener("focus", onFocus);
-        return () => {
-            cancelled = true;
-            window.removeEventListener("focus", onFocus);
-        };
-    }, []);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [sizeResult, familyResult] = await Promise.all([
+          getInterface().app.state.getGlobalState("editor.fontSize"),
+          getInterface().app.state.getGlobalState("editor.fontFamily")
+        ]);
+        if (cancelled) {
+          return;
+        }
+        setFontSize(clampFontSize(sizeResult.success ? sizeResult.data.value : undefined));
+        setFontFamily(
+          editorFontCssFamily(familyResult.success ? familyResult.data.value : undefined)
+        );
+      } catch {
+        // Keep the last known-good values on transient IPC failures.
+      }
+    };
+    void load();
+    const onFocus = () => {
+      void load();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
 
-    const style = useMemo(() => toStyle(fontSize, fontFamily, density), [fontSize, fontFamily, density]);
-    return (
-        <StoryEditorTextStyleContext.Provider value={style}>
-            {children}
-        </StoryEditorTextStyleContext.Provider>
-    );
+  const style = useMemo(
+    () => toStyle(fontSize, fontFamily, density),
+    [fontSize, fontFamily, density]
+  );
+  return (
+    <StoryEditorTextStyleContext.Provider value={style}>
+      {children}
+    </StoryEditorTextStyleContext.Provider>
+  );
 }

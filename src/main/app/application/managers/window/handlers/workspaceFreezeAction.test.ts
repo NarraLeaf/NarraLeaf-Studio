@@ -12,71 +12,73 @@ const PROJECT = path.resolve(path.join("/nonexistent", "freeze-handler-project")
  * when the record is dropped.
  */
 function makeWindow(projectPath?: string) {
-    const closeListeners: (() => void)[] = [];
-    return {
-        getProps: () => ({ projectPath }),
-        onEvent(event: string, fn: () => void) {
-            if (event === "closed") {
-                closeListeners.push(fn);
-            }
-            return { cancel: () => undefined };
-        },
-        /** Fire the real "closed" event - the one that only happens when the window is truly gone. */
-        emitClosed() {
-            for (const listener of [...closeListeners]) {
-                listener();
-            }
-        },
-        closeListenerCount: () => closeListeners.length,
-    };
+  const closeListeners: (() => void)[] = [];
+  return {
+    getProps: () => ({ projectPath }),
+    onEvent(event: string, fn: () => void) {
+      if (event === "closed") {
+        closeListeners.push(fn);
+      }
+      return { cancel: () => undefined };
+    },
+    /** Fire the real "closed" event - the one that only happens when the window is truly gone. */
+    emitClosed() {
+      for (const listener of [...closeListeners]) {
+        listener();
+      }
+    },
+    closeListenerCount: () => closeListeners.length
+  };
 }
 
 afterEach(() => {
-    forgetWorkspaceFreeze(PROJECT);
+  forgetWorkspaceFreeze(PROJECT);
 });
 
 describe("WorkspaceReportWriteFreezeHandler", () => {
-    const handler = new WorkspaceReportWriteFreezeHandler();
+  const handler = new WorkspaceReportWriteFreezeHandler();
 
-    it("records the freeze against the window's own project", () => {
-        const window = makeWindow(PROJECT);
-        handler.handle(window as unknown as AppWindow, { reason: "revision" });
+  it("records the freeze against the window's own project", () => {
+    const window = makeWindow(PROJECT);
+    handler.handle(window as unknown as AppWindow, { reason: "revision" });
 
-        expect(getWorkspaceFreeze(PROJECT)).toBe("revision");
-    });
+    expect(getWorkspaceFreeze(PROJECT)).toBe("revision");
+  });
 
-    it("clears the record when the workspace reports it is writable again", () => {
-        const window = makeWindow(PROJECT);
-        handler.handle(window as unknown as AppWindow, { reason: "manual" });
-        handler.handle(window as unknown as AppWindow, { reason: null });
+  it("clears the record when the workspace reports it is writable again", () => {
+    const window = makeWindow(PROJECT);
+    handler.handle(window as unknown as AppWindow, { reason: "manual" });
+    handler.handle(window as unknown as AppWindow, { reason: null });
 
-        expect(getWorkspaceFreeze(PROJECT)).toBeNull();
-    });
+    expect(getWorkspaceFreeze(PROJECT)).toBeNull();
+  });
 
-    it("forgets the freeze once the window is closed", () => {
-        // Nothing in main can clear this on its own, so a project reopened later would otherwise
-        // inherit a freeze nobody could see and its builds would refuse forever.
-        const window = makeWindow(PROJECT);
-        handler.handle(window as unknown as AppWindow, { reason: "revision" });
-        window.emitClosed();
+  it("forgets the freeze once the window is closed", () => {
+    // Nothing in main can clear this on its own, so a project reopened later would otherwise
+    // inherit a freeze nobody could see and its builds would refuse forever.
+    const window = makeWindow(PROJECT);
+    handler.handle(window as unknown as AppWindow, { reason: "revision" });
+    window.emitClosed();
 
-        expect(getWorkspaceFreeze(PROJECT)).toBeNull();
-    });
+    expect(getWorkspaceFreeze(PROJECT)).toBeNull();
+  });
 
-    it("subscribes to the close once, however many times the freeze toggles", () => {
-        const window = makeWindow(PROJECT);
-        for (let i = 0; i < 12; i++) {
-            handler.handle(window as unknown as AppWindow, { reason: i % 2 === 0 ? "revision" : null });
-        }
-        // One listener per report would earn a MaxListenersExceededWarning for twelve copies of one
-        // idempotent delete.
-        expect(window.closeListenerCount()).toBe(1);
-    });
+  it("subscribes to the close once, however many times the freeze toggles", () => {
+    const window = makeWindow(PROJECT);
+    for (let i = 0; i < 12; i++) {
+      handler.handle(window as unknown as AppWindow, { reason: i % 2 === 0 ? "revision" : null });
+    }
+    // One listener per report would earn a MaxListenersExceededWarning for twelve copies of one
+    // idempotent delete.
+    expect(window.closeListenerCount()).toBe(1);
+  });
 
-    it("ignores a window that has no project to freeze", () => {
-        const window = makeWindow(undefined);
+  it("ignores a window that has no project to freeze", () => {
+    const window = makeWindow(undefined);
 
-        expect(() => handler.handle(window as unknown as AppWindow, { reason: "revision" })).not.toThrow();
-        expect(window.closeListenerCount()).toBe(0);
-    });
+    expect(() =>
+      handler.handle(window as unknown as AppWindow, { reason: "revision" })
+    ).not.toThrow();
+    expect(window.closeListenerCount()).toBe(0);
+  });
 });

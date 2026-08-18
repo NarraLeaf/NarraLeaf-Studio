@@ -16,17 +16,17 @@
 export type UISwitchChildSlot = "track" | "thumb";
 
 export type UISwitchElementExtra = {
-    switchSlot?: UISwitchChildSlot;
-    runtimeVariantOverrideId?: string;
+  switchSlot?: UISwitchChildSlot;
+  runtimeVariantOverrideId?: string;
 };
 
 export type UISwitchWidgetProps = {
-    /** The author's starting state. What the player toggles lives in WidgetRuntimeStateStore. */
-    checked: boolean;
-    /** Blocks pointer and keyboard toggling. Looks are the `disabled` appearance signal's job. */
-    interactionDisabled: boolean;
-    trackElementId?: string | null;
-    thumbElementId?: string | null;
+  /** The author's starting state. What the player toggles lives in WidgetRuntimeStateStore. */
+  checked: boolean;
+  /** Blocks pointer and keyboard toggling. Looks are the `disabled` appearance signal's job. */
+  interactionDisabled: boolean;
+  trackElementId?: string | null;
+  thumbElementId?: string | null;
 };
 
 export type UISwitchRuntimeValue = { checked: boolean };
@@ -37,27 +37,33 @@ export const UI_SWITCH_ELEMENT_TYPE = "nl.switch";
 export const UI_SWITCH_ON_VARIANT_ID = "on";
 
 export const defaultSwitchWidgetProps: UISwitchWidgetProps = {
-    checked: false,
-    interactionDisabled: false,
-    trackElementId: null,
-    thumbElementId: null,
+  checked: false,
+  interactionDisabled: false,
+  trackElementId: null,
+  thumbElementId: null
 };
 
-export function getUISwitchChildSlot(extra: Record<string, unknown> | undefined): UISwitchChildSlot | null {
-    const slot = extra?.switchSlot;
-    return slot === "track" || slot === "thumb" ? slot : null;
+export function getUISwitchChildSlot(
+  extra: Record<string, unknown> | undefined
+): UISwitchChildSlot | null {
+  const slot = extra?.switchSlot;
+  return slot === "track" || slot === "thumb" ? slot : null;
 }
 
-export function normalizeSwitchProps(raw: Record<string, unknown> | undefined): UISwitchWidgetProps {
-    return {
-        // Strict `=== true`: a stored string, number or missing key is off, never truthy-on.
-        checked: raw?.checked === true,
-        interactionDisabled: raw?.interactionDisabled === true,
-        trackElementId: typeof raw?.trackElementId === "string" ? raw.trackElementId : null,
-        thumbElementId: typeof raw?.thumbElementId === "string" ? raw.thumbElementId : null,
-    };
+export function normalizeSwitchProps(
+  raw: Record<string, unknown> | undefined
+): UISwitchWidgetProps {
+  return {
+    // Strict `=== true`: a stored string, number or missing key is off, never truthy-on.
+    checked: raw?.checked === true,
+    interactionDisabled: raw?.interactionDisabled === true,
+    trackElementId: typeof raw?.trackElementId === "string" ? raw.trackElementId : null,
+    thumbElementId: typeof raw?.thumbElementId === "string" ? raw.thumbElementId : null
+  };
 }
 
-export function resolveSwitchRuntimeValue(raw: Record<string, unknown> | undefined): UISwitchRuntimeValue {
-    return { checked: normalizeSwitchProps(raw).checked };
+export function resolveSwitchRuntimeValue(
+  raw: Record<string, unknown> | undefined
+): UISwitchRuntimeValue {
+  return { checked: normalizeSwitchProps(raw).checked };
 }

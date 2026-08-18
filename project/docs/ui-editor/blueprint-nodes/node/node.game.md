@@ -180,20 +180,20 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 
 以下节点直接对应 NarraLeaf React `GamePreference` 字段。Getter 是 pure 节点，只有一个传出值引脚；Setter 是 latent 执行节点，具有 `in`、偏好值输入和 `next`。除 `Get Sentence Speed` 外，每个字段都有成对的 Getter/Setter。`showDialog` 不在本组中注册新的 Getter/Setter，继续由现有 `Show Dialog`、`Hide Dialog`、`Toggle Dialog Display` 节点覆盖。
 
-| Preference key | Getter | Setter | Pin | Validation |
-| --- | --- | --- | --- | --- |
-| `autoForward` | `Get Auto Forward` (`blueprint.game.getAutoForward`) | `Set Auto Forward` (`blueprint.game.setAutoForward`) | `autoForward` / `Auto Forward`, `boolean` | 必须是 boolean |
-| `skip` | `Get Skip` (`blueprint.game.getSkip`) | `Set Skip` (`blueprint.game.setSkip`) | `skip` / `Skip`, `boolean` | 必须是 boolean |
-| `gameSpeed` | `Get Game Speed` (`blueprint.game.getGameSpeed`) | `Set Game Speed` (`blueprint.game.setGameSpeed`) | `gameSpeed` / `Game Speed`, `float` | 必须是大于 0 的有限数字 |
-| `cps` | `Get Sentence Speed` (`blueprint.game.getCps`) | 使用 `Set Sentence Speed` (`blueprint.game.setSentenceSpeed`) | `cps` / `CPS`, `float` | 必须是大于 0 的有限数字 |
-| `voiceVolume` | `Get Voice Volume` (`blueprint.game.getVoiceVolume`) | `Set Voice Volume` (`blueprint.game.setVoiceVolume`) | `voiceVolume` / `Voice Volume`, `float` | 必须是大于等于 0 的有限数字 |
-| `voiceFadeDuration` | `Get Voice Fade Duration` (`blueprint.game.getVoiceFadeDuration`) | `Set Voice Fade Duration` (`blueprint.game.setVoiceFadeDuration`) | `voiceFadeDuration` / `Voice Fade`, `float` | 必须是大于等于 0 的有限数字，单位 ms |
-| `voiceEndMode` | `Get Voice End Mode` (`blueprint.game.getVoiceEndMode`) | `Set Voice End Mode` (`blueprint.game.setVoiceEndMode`) | `voiceEndMode` / `Voice End Mode`, `string` | 必须是 `"fade"`、`"stop"` 或 `"none"` |
-| `bgmVolume` | `Get BGM Volume` (`blueprint.game.getBgmVolume`) | `Set BGM Volume` (`blueprint.game.setBgmVolume`) | `bgmVolume` / `BGM Volume`, `float` | 必须是大于等于 0 的有限数字 |
-| `soundVolume` | `Get Sound Volume` (`blueprint.game.getSoundVolume`) | `Set Sound Volume` (`blueprint.game.setSoundVolume`) | `soundVolume` / `Sound Volume`, `float` | 必须是大于等于 0 的有限数字 |
-| `globalVolume` | `Get Global Volume` (`blueprint.game.getGlobalVolume`) | `Set Global Volume` (`blueprint.game.setGlobalVolume`) | `globalVolume` / `Global Volume`, `float` | 必须是大于等于 0 的有限数字 |
-| `skipDelay` | `Get Skip Delay` (`blueprint.game.getSkipDelay`) | `Set Skip Delay` (`blueprint.game.setSkipDelay`) | `skipDelay` / `Skip Delay`, `float` | 必须是大于等于 0 的有限数字，单位 ms |
-| `skipInterval` | `Get Skip Interval` (`blueprint.game.getSkipInterval`) | `Set Skip Interval` (`blueprint.game.setSkipInterval`) | `skipInterval` / `Skip Interval`, `float` | 必须是大于 0 的有限数字，单位 ms |
+| Preference key      | Getter                                                            | Setter                                                            | Pin                                         | Validation                            |
+| ------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------- | ------------------------------------- |
+| `autoForward`       | `Get Auto Forward` (`blueprint.game.getAutoForward`)              | `Set Auto Forward` (`blueprint.game.setAutoForward`)              | `autoForward` / `Auto Forward`, `boolean`   | 必须是 boolean                        |
+| `skip`              | `Get Skip` (`blueprint.game.getSkip`)                             | `Set Skip` (`blueprint.game.setSkip`)                             | `skip` / `Skip`, `boolean`                  | 必须是 boolean                        |
+| `gameSpeed`         | `Get Game Speed` (`blueprint.game.getGameSpeed`)                  | `Set Game Speed` (`blueprint.game.setGameSpeed`)                  | `gameSpeed` / `Game Speed`, `float`         | 必须是大于 0 的有限数字               |
+| `cps`               | `Get Sentence Speed` (`blueprint.game.getCps`)                    | 使用 `Set Sentence Speed` (`blueprint.game.setSentenceSpeed`)     | `cps` / `CPS`, `float`                      | 必须是大于 0 的有限数字               |
+| `voiceVolume`       | `Get Voice Volume` (`blueprint.game.getVoiceVolume`)              | `Set Voice Volume` (`blueprint.game.setVoiceVolume`)              | `voiceVolume` / `Voice Volume`, `float`     | 必须是大于等于 0 的有限数字           |
+| `voiceFadeDuration` | `Get Voice Fade Duration` (`blueprint.game.getVoiceFadeDuration`) | `Set Voice Fade Duration` (`blueprint.game.setVoiceFadeDuration`) | `voiceFadeDuration` / `Voice Fade`, `float` | 必须是大于等于 0 的有限数字，单位 ms  |
+| `voiceEndMode`      | `Get Voice End Mode` (`blueprint.game.getVoiceEndMode`)           | `Set Voice End Mode` (`blueprint.game.setVoiceEndMode`)           | `voiceEndMode` / `Voice End Mode`, `string` | 必须是 `"fade"`、`"stop"` 或 `"none"` |
+| `bgmVolume`         | `Get BGM Volume` (`blueprint.game.getBgmVolume`)                  | `Set BGM Volume` (`blueprint.game.setBgmVolume`)                  | `bgmVolume` / `BGM Volume`, `float`         | 必须是大于等于 0 的有限数字           |
+| `soundVolume`       | `Get Sound Volume` (`blueprint.game.getSoundVolume`)              | `Set Sound Volume` (`blueprint.game.setSoundVolume`)              | `soundVolume` / `Sound Volume`, `float`     | 必须是大于等于 0 的有限数字           |
+| `globalVolume`      | `Get Global Volume` (`blueprint.game.getGlobalVolume`)            | `Set Global Volume` (`blueprint.game.setGlobalVolume`)            | `globalVolume` / `Global Volume`, `float`   | 必须是大于等于 0 的有限数字           |
+| `skipDelay`         | `Get Skip Delay` (`blueprint.game.getSkipDelay`)                  | `Set Skip Delay` (`blueprint.game.setSkipDelay`)                  | `skipDelay` / `Skip Delay`, `float`         | 必须是大于等于 0 的有限数字，单位 ms  |
+| `skipInterval`      | `Get Skip Interval` (`blueprint.game.getSkipInterval`)            | `Set Skip Interval` (`blueprint.game.setSkipInterval`)            | `skipInterval` / `Skip Interval`, `float`   | 必须是大于 0 的有限数字，单位 ms      |
 
 所有 Preference Getter/Setter 在没有活动 game runtime 时执行失败。初始化新游戏偏好时，将这些 Setter 接到 `On Game Ready`，这样写入会发生在 `LiveGame` 已存在且第一段剧情开始前。
 

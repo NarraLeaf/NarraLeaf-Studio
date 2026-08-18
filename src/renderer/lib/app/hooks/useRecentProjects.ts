@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { getInterface } from "@/lib/app/bridge";
-import type { MissingRecentProject, RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
+import type {
+  MissingRecentProject,
+  RecentlyOpenedProject
+} from "@shared/types/state/appStateTypes";
 import { normalizeProjectPath, withRecentProjectNames } from "@shared/utils/recentProject";
 
 const RECENT_PROJECTS_KEY = "app.recentProjects";
@@ -21,35 +24,37 @@ const RECENT_PROJECTS_KEY = "app.recentProjects";
  * consumer of the history goes through, so repairing it here repairs all of them.
  */
 export function useRecentProjects(): RecentlyOpenedProject[] {
-    const [recentProjects, setRecentProjects] = useState<RecentlyOpenedProject[]>([]);
+  const [recentProjects, setRecentProjects] = useState<RecentlyOpenedProject[]>([]);
 
-    useEffect(() => {
-        let cancelled = false;
+  useEffect(() => {
+    let cancelled = false;
 
-        void (async () => {
-            try {
-                const result = await getInterface().app.state.getGlobalState(RECENT_PROJECTS_KEY);
-                if (!cancelled && result.success) {
-                    setRecentProjects(withRecentProjectNames(result.data.value ?? []));
-                }
-            } catch (error) {
-                console.error("[recent] Failed to load recent projects:", error);
-            }
-        })();
+    void (async () => {
+      try {
+        const result = await getInterface().app.state.getGlobalState(RECENT_PROJECTS_KEY);
+        if (!cancelled && result.success) {
+          setRecentProjects(withRecentProjectNames(result.data.value ?? []));
+        }
+      } catch (error) {
+        console.error("[recent] Failed to load recent projects:", error);
+      }
+    })();
 
-        const token = getInterface().app.state.onGlobalStateChanged((change) => {
-            if (change.key === RECENT_PROJECTS_KEY) {
-                setRecentProjects(withRecentProjectNames((change.value as RecentlyOpenedProject[] | null) ?? []));
-            }
-        });
+    const token = getInterface().app.state.onGlobalStateChanged((change) => {
+      if (change.key === RECENT_PROJECTS_KEY) {
+        setRecentProjects(
+          withRecentProjectNames((change.value as RecentlyOpenedProject[] | null) ?? [])
+        );
+      }
+    });
 
-        return () => {
-            cancelled = true;
-            token.cancel();
-        };
-    }, []);
+    return () => {
+      cancelled = true;
+      token.cancel();
+    };
+  }, []);
 
-    return recentProjects;
+  return recentProjects;
 }
 
 /**
@@ -60,16 +65,16 @@ export function useRecentProjects(): RecentlyOpenedProject[] {
  * another one opens a project, and writing it would erase that.
  */
 export function useRemoveRecentProject(): (projectPath: string) => Promise<void> {
-    return useCallback(async (projectPath: string) => {
-        try {
-            const result = await getInterface().app.removeRecentProject(projectPath);
-            if (!result.success) {
-                console.error("[recent] Failed to remove recent project:", result.error);
-            }
-        } catch (error) {
-            console.error("[recent] Failed to remove recent project:", error);
-        }
-    }, []);
+  return useCallback(async (projectPath: string) => {
+    try {
+      const result = await getInterface().app.removeRecentProject(projectPath);
+      if (!result.success) {
+        console.error("[recent] Failed to remove recent project:", result.error);
+      }
+    } catch (error) {
+      console.error("[recent] Failed to remove recent project:", error);
+    }
+  }, []);
 }
 
 /**
@@ -82,14 +87,14 @@ export function useRemoveRecentProject(): (projectPath: string) => Promise<void>
  * other project actions.
  */
 export function useRevealRecentProject(): (projectPath: string) => Promise<string | null> {
-    return useCallback(async (projectPath: string) => {
-        try {
-            const result = await getInterface().app.revealRecentProject(projectPath);
-            return result.success ? null : (result.error ?? "");
-        } catch (error) {
-            return error instanceof Error ? error.message : String(error);
-        }
-    }, []);
+  return useCallback(async (projectPath: string) => {
+    try {
+      const result = await getInterface().app.revealRecentProject(projectPath);
+      return result.success ? null : (result.error ?? "");
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  }, []);
 }
 
 /**
@@ -105,30 +110,32 @@ export function useRevealRecentProject(): (projectPath: string) => Promise<strin
  * the user needs to find it again, so what happens to the entry is their call.
  */
 export function useMissingRecentProjects(): ReadonlyMap<string, MissingRecentProject> {
-    const [missing, setMissing] = useState<ReadonlyMap<string, MissingRecentProject>>(new Map());
+  const [missing, setMissing] = useState<ReadonlyMap<string, MissingRecentProject>>(new Map());
 
-    useEffect(() => {
-        let cancelled = false;
+  useEffect(() => {
+    let cancelled = false;
 
-        void (async () => {
-            try {
-                const result = await getInterface().app.checkRecentProjects();
-                if (!cancelled && result.success) {
-                    setMissing(new Map(result.data.missing.map(
-                        project => [normalizeProjectPath(project.path), project],
-                    )));
-                }
-            } catch (error) {
-                // A failed sweep is not worth surfacing: the list still works, and every entry in
-                // it is verified again the moment it is opened.
-                console.error("[recent] Failed to check recent projects:", error);
-            }
-        })();
+    void (async () => {
+      try {
+        const result = await getInterface().app.checkRecentProjects();
+        if (!cancelled && result.success) {
+          setMissing(
+            new Map(
+              result.data.missing.map((project) => [normalizeProjectPath(project.path), project])
+            )
+          );
+        }
+      } catch (error) {
+        // A failed sweep is not worth surfacing: the list still works, and every entry in
+        // it is verified again the moment it is opened.
+        console.error("[recent] Failed to check recent projects:", error);
+      }
+    })();
 
-        return () => {
-            cancelled = true;
-        };
-    }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-    return missing;
+  return missing;
 }

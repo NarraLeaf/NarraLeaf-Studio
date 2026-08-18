@@ -1,23 +1,28 @@
 import type { DocumentChangeKind, DocumentDiffEntry } from "@shared/documents/diff";
-import type { RevisionId, VcsChangeKind, VcsStatus, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import type {
+  RevisionId,
+  VcsChangeKind,
+  VcsStatus,
+  VcsWorkingTreeDiffResult
+} from "@shared/types/vcs";
 import {
-    contentClassOf,
-    CONTENT_CLASS_SNIFF_BYTES,
-    resolveContentClass,
-    type ContentClass,
+  contentClassOf,
+  CONTENT_CLASS_SNIFF_BYTES,
+  resolveContentClass,
+  type ContentClass
 } from "@shared/vcs/contentClass";
 import { LABEL_MOVED, type ContentSide } from "./contentDiff";
 import {
-    classOfReadSides,
-    DIFF_MOVE_CONFIRM_BYTE_CEILING,
-    DIFF_PATH_LIMIT,
-    DIFF_TOTAL_BYTE_BUDGET,
-    diffDocumentBytes,
-    diffDocumentContent,
-    DOCUMENT_DIFF_CHANGE_LIMIT,
-    planPathRead,
-    specForDocumentPath,
-    unreadDocumentDiff,
+  classOfReadSides,
+  DIFF_MOVE_CONFIRM_BYTE_CEILING,
+  DIFF_PATH_LIMIT,
+  DIFF_TOTAL_BYTE_BUDGET,
+  diffDocumentBytes,
+  diffDocumentContent,
+  DOCUMENT_DIFF_CHANGE_LIMIT,
+  planPathRead,
+  specForDocumentPath,
+  unreadDocumentDiff
 } from "./documentDiff";
 import type { RevisionEntry } from "./revisionDiff";
 
@@ -69,44 +74,47 @@ import type { RevisionEntry } from "./revisionDiff";
  */
 
 export interface WorkingTreeDiffSource {
-    /** What differs from the last commit. Scans, so see the note above. */
-    status(): Promise<VcsStatus>;
-    /**
-     * Every file at one revision with its size and content address, from one walk of its tree.
-     * Reads nothing.
-     */
-    entriesAt(revision: RevisionId): Promise<ReadonlyMap<string, RevisionEntry>>;
-    /** Bytes for named paths at one revision; `null` where the revision does not hold the path. */
-    readAt(revision: RevisionId, paths: readonly string[]): Promise<ReadonlyMap<string, Buffer | null>>;
-    /**
-     * The size of one working file, or `null` if it is not there.
-     *
-     * Null rather than a throw for a missing file, because a status entry can name a path that
-     * has since been deleted: the scan and this read are separated by however long the author
-     * took, and a race there must read as "removed", not as a failed diff.
-     */
-    statWorking(repositoryRelativePath: string): Promise<{ size: number } | null>;
-    /**
-     * The first `length` bytes of one working file, or `null` if it is not there.
-     *
-     * **A separate port from {@link readWorking} rather than a length argument on it**, and the
-     * separation is load-bearing twice over. It is a different COST - a positioned `fs.read`
-     * that stops after a few dozen bytes, against pulling a 200 MB video into the main process -
-     * and the tests here assert on the call list, so a probe and a whole-file read that arrived
-     * under one name could not be told apart by the thing that exists to tell them apart.
-     *
-     * Working tree only. The recorded side has no counterpart because the backend has no ranged
-     * fetch: `storageGet` answers with the whole blob or nothing (see
-     * {@link import("./documentDiff").CONTENT_HEAD_READ_CEILING}).
-     */
-    readWorkingHead(repositoryRelativePath: string, length: number): Promise<Buffer | null>;
-    /** Bytes of one working file, or `null` if it is not there. Same reasoning as above. */
-    readWorking(repositoryRelativePath: string): Promise<Buffer | null>;
+  /** What differs from the last commit. Scans, so see the note above. */
+  status(): Promise<VcsStatus>;
+  /**
+   * Every file at one revision with its size and content address, from one walk of its tree.
+   * Reads nothing.
+   */
+  entriesAt(revision: RevisionId): Promise<ReadonlyMap<string, RevisionEntry>>;
+  /** Bytes for named paths at one revision; `null` where the revision does not hold the path. */
+  readAt(
+    revision: RevisionId,
+    paths: readonly string[]
+  ): Promise<ReadonlyMap<string, Buffer | null>>;
+  /**
+   * The size of one working file, or `null` if it is not there.
+   *
+   * Null rather than a throw for a missing file, because a status entry can name a path that
+   * has since been deleted: the scan and this read are separated by however long the author
+   * took, and a race there must read as "removed", not as a failed diff.
+   */
+  statWorking(repositoryRelativePath: string): Promise<{ size: number } | null>;
+  /**
+   * The first `length` bytes of one working file, or `null` if it is not there.
+   *
+   * **A separate port from {@link readWorking} rather than a length argument on it**, and the
+   * separation is load-bearing twice over. It is a different COST - a positioned `fs.read`
+   * that stops after a few dozen bytes, against pulling a 200 MB video into the main process -
+   * and the tests here assert on the call list, so a probe and a whole-file read that arrived
+   * under one name could not be told apart by the thing that exists to tell them apart.
+   *
+   * Working tree only. The recorded side has no counterpart because the backend has no ranged
+   * fetch: `storageGet` answers with the whole blob or nothing (see
+   * {@link import("./documentDiff").CONTENT_HEAD_READ_CEILING}).
+   */
+  readWorkingHead(repositoryRelativePath: string, length: number): Promise<Buffer | null>;
+  /** Bytes of one working file, or `null` if it is not there. Same reasoning as above. */
+  readWorking(repositoryRelativePath: string): Promise<Buffer | null>;
 }
 
 export interface WorkingTreeDiffOptions {
-    readonly limit?: number;
-    readonly onDegrade?: (reason: string) => void;
+  readonly limit?: number;
+  readonly onDegrade?: (reason: string) => void;
 }
 
 /**
@@ -117,255 +125,261 @@ export interface WorkingTreeDiffOptions {
  * not change at all, which is the one thing worth saying about it.
  */
 const CHANGE_KINDS: Readonly<Record<VcsChangeKind, DocumentChangeKind>> = {
-    added: "added",
-    modified: "changed",
-    deleted: "removed",
-    moved: "moved",
-    copied: "added",
+  added: "added",
+  modified: "changed",
+  deleted: "removed",
+  moved: "moved",
+  copied: "added"
 };
 
 /** One status entry, flattened onto the document model but still knowing where it came from. */
 interface WorkingFile {
-    readonly path: string;
-    readonly kind: DocumentChangeKind;
-    /** The name the recorded side holds this file under. See where it is built. */
-    readonly was: string;
-    /**
-     * The backend's own word, which {@link CHANGE_KINDS} has already flattened.
-     *
-     * Kept because the two words it collapses mean different things to rename pairing: a
-     * `copied` file's source is still there, so the backend has already said this is not a move
-     * and there is no removal for it to pair with. Reading it back out of `kind` is impossible.
-     */
-    readonly reported: VcsChangeKind;
+  readonly path: string;
+  readonly kind: DocumentChangeKind;
+  /** The name the recorded side holds this file under. See where it is built. */
+  readonly was: string;
+  /**
+   * The backend's own word, which {@link CHANGE_KINDS} has already flattened.
+   *
+   * Kept because the two words it collapses mean different things to rename pairing: a
+   * `copied` file's source is still there, so the backend has already said this is not a move
+   * and there is no removal for it to pair with. Reading it back out of `kind` is impossible.
+   */
+  readonly reported: VcsChangeKind;
 }
 
 export async function diffWorkingTree(
-    source: WorkingTreeDiffSource,
-    options: WorkingTreeDiffOptions = {},
+  source: WorkingTreeDiffSource,
+  options: WorkingTreeDiffOptions = {}
 ): Promise<VcsWorkingTreeDiffResult> {
-    const limit = options.limit ?? DOCUMENT_DIFF_CHANGE_LIMIT;
-    const status = await source.status();
-    const head = status.head;
+  const limit = options.limit ?? DOCUMENT_DIFF_CHANGE_LIMIT;
+  const status = await source.status();
+  const head = status.head;
 
-    // Directories dropped: the backend reports them as changes in their own right (one new
-    // folder with one file in it is two entries), and a directory has no bytes to compare.
-    const files: WorkingFile[] = status.files
-        .filter((file) => !file.directory)
-        .map((file) => ({
-            path: file.path,
-            kind: CHANGE_KINDS[file.kind],
-            // A rename arrives as delete + add rather than as a move (§4.18), so this is only
-            // populated by the explicit move verbs - but where it IS set, the committed bytes
-            // live under the old name and looking for them under the new one finds nothing.
-            // The pairing below is the other road to a `moved` row and the two never meet: it
-            // only ever looks at a `deleted` and an `added` entry, neither of which carries one.
-            was: file.fromPath ?? file.path,
-            reported: file.kind,
-        }))
-        .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  // Directories dropped: the backend reports them as changes in their own right (one new
+  // folder with one file in it is two entries), and a directory has no bytes to compare.
+  const files: WorkingFile[] = status.files
+    .filter((file) => !file.directory)
+    .map((file) => ({
+      path: file.path,
+      kind: CHANGE_KINDS[file.kind],
+      // A rename arrives as delete + add rather than as a move (§4.18), so this is only
+      // populated by the explicit move verbs - but where it IS set, the committed bytes
+      // live under the old name and looking for them under the new one finds nothing.
+      // The pairing below is the other road to a `moved` row and the two never meet: it
+      // only ever looks at a `deleted` and an `added` entry, neither of which carries one.
+      was: file.fromPath ?? file.path,
+      reported: file.kind
+    }))
+    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 
-    if (files.length > DIFF_PATH_LIMIT) {
-        options.onDegrade?.(
-            `${files.length} files have changed, over the ${DIFF_PATH_LIMIT} path limit,`
-            + " so they are listed without being read",
-        );
-        return {
-            ...(head ? { head } : {}),
-            documents: files.slice(0, DIFF_PATH_LIMIT).map((file) => unreadEntry(file.path, file.kind)),
-            pathCount: files.length,
-            complete: false,
-            readFailure: null,
-        };
-    }
-
-    const needsRecorded = files.some((file) => file.kind !== "added");
-    let recorded: ReadonlyMap<string, RevisionEntry> = new Map();
-    if (head && needsRecorded) {
-        try {
-            recorded = await source.entriesAt(head);
-        } catch (error) {
-            // The author's working tree is still readable, but with nothing to compare against
-            // every change would look like an addition - which is a worse lie than saying the
-            // recorded side could not be listed.
-            const readFailure = messageOf(error);
-            options.onDegrade?.(`could not list version ${head}: ${readFailure}`);
-            return {
-                head,
-                documents: files.map((file) => unreadEntry(file.path, file.kind)),
-                pathCount: files.length,
-                complete: false,
-                readFailure,
-            };
-        }
-    }
-
-    // One `stat` per file, in place of one read per file. This is the step that stops a
-    // comparison touching a large asset at all.
-    const working = new Map<string, { size: number } | null>();
-    for (const file of files) {
-        working.set(file.path, file.kind === "removed" ? null : await source.statWorking(file.path));
-    }
-
-    const classes = await classifyFiles(source, files, working);
-    const classOf = (path: string): ContentClass => classes.get(path) ?? contentClassOf(path);
-
-    // Renames are settled before anything else is planned, so a file that only moved is never
-    // read a second time by the plan below - the same order `diffRevisions` takes.
-    const pairing = head ? await pairRenames(source, head, files, recorded, working) : NOTHING_PAIRED;
-    const paired = new Set([...pairing.moves.keys(), ...pairing.moves.values()]);
-
-    const plan: string[] = [];
-    // What the pairing already spent comes out of the same allowance, so one comparison reads
-    // DIFF_TOTAL_BYTE_BUDGET whoever spends it. A candidate that failed to pair therefore leaves
-    // less for the documents after it, which is the honest accounting: those bytes were read.
-    let budget = DIFF_TOTAL_BYTE_BUDGET - pairing.spent;
-    let complete = true;
-    for (const file of files) {
-        if (paired.has(file.path)) continue;
-        const before = file.kind === "added" ? undefined : recorded.get(file.was);
-        const wanted = planPathRead(
-            file.path,
-            before?.size ?? 0,
-            working.get(file.path)?.size ?? 0,
-            classOf(file.path),
-        );
-        if (wanted === 0) continue;
-        if (wanted > budget) {
-            complete = false;
-            continue;
-        }
-        budget -= wanted;
-        plan.push(file.path);
-    }
-    const planned = new Set(plan);
-
-    // One batched read for the whole recorded side, before the per-file working reads: the
-    // first read of a revision on a project with a remote goes to the network, and asking per
-    // path would pay that once per document. Paths the pairing already pulled are left out of
-    // it and taken from what it kept.
-    const recordedPaths = files
-        .filter((file) => planned.has(file.path) && file.kind !== "added" && !pairing.recorded.has(file.was))
-        .map((file) => file.was);
-    let recordedBytes: ReadonlyMap<string, Buffer | null> = new Map();
-    let readFailure: string | null = null;
-    if (head && recordedPaths.length > 0) {
-        try {
-            recordedBytes = await source.readAt(head, recordedPaths);
-        } catch (error) {
-            // The tree listed fine and only the blobs are unreachable - the measured case being
-            // content written by an online commit, which the writing process cannot fetch back
-            // (docs/version-control.md §4.29). The sizes are still true, so the files that
-            // needed no bytes keep their proper rows and only the planned ones go unread.
-            readFailure = messageOf(error);
-            options.onDegrade?.(`could not read version ${head}: ${readFailure}`);
-            complete = false;
-        }
-    }
-
-    const documents: DocumentDiffEntry[] = [];
-    for (const file of files) {
-        const before = file.kind === "added" ? undefined : recorded.get(file.was);
-        const after = working.get(file.path) ?? undefined;
-        if (!before && !after) {
-            // Deleted between the scan and this read, and never recorded either: there is
-            // nothing on either side to describe.
-            continue;
-        }
-        // The removal half of a rename; the pair is reported once, on the path it moved to.
-        if (!pairing.moves.has(file.path) && paired.has(file.path)) {
-            continue;
-        }
-        const spec = specForDocumentPath(file.path);
-        const documentKind = spec ? { documentKind: spec.kind } : {};
-        // Settled once for every branch below, off `classifyFiles` - which probed the header of
-        // every path whose name said nothing, so a content-store asset is placed here rather than
-        // being reported as `unknown` to whatever draws it.
-        const contentClass = classOf(file.path);
-
-        const movedFrom = pairing.moves.get(file.path);
-        if (movedFrom !== undefined) {
-            documents.push({
-                path: file.path,
-                kind: "moved",
-                ...documentKind,
-                contentClass,
-                diff: {
-                    changes: [{ path: [], kind: "moved", label: { key: LABEL_MOVED, params: { from: movedFrom } } }],
-                    complete: true,
-                    total: 1,
-                    tier: "opaque",
-                },
-            });
-            continue;
-        }
-
-        if (planned.has(file.path)) {
-            if (readFailure) {
-                documents.push({
-                    path: file.path,
-                    kind: file.kind,
-                    ...documentKind,
-                    contentClass,
-                    diff: unreadDocumentDiff(file.kind),
-                });
-                continue;
-            }
-            const base = before ? pairing.recorded.get(file.was) ?? recordedBytes.get(file.was) ?? null : null;
-            const bytes = after ? await bytesOnDisk(source, pairing, file.path) : null;
-            if (!base && !bytes) {
-                continue;
-            }
-            /**
-             * The class again, now that there are bytes - which for a DELETION is the only chance
-             * there is.
-             *
-             * `classifyFiles` cannot place a removal: the probe it uses is a positioned read of
-             * the working file, and the file is gone. So an asset deleted out of the content
-             * store, where the path carries no extension, reached the renderer as `unknown` and
-             * was drawn as the sentence "removed, 58.7 KB" - with no picture of what went, which
-             * is the one thing worth seeing about a deletion.
-             *
-             * **This costs no read.** Both buffers are the ones the plan already paid for, and
-             * every ceiling that decided whether to pay is untouched: a path over them arrives
-             * here with nothing in hand and stays `unknown`, which is the honest answer for a
-             * file nobody opened. The recorded side deliberately gets no probe of its own - the
-             * backend has no ranged fetch, so a header from a revision costs the whole blob, and
-             * sniffing one would be a read this comparison had already decided against.
-             */
-            const readClass = classOfReadSides(file.path, bytes, base, contentClass);
-            documents.push({
-                path: file.path,
-                kind: file.kind,
-                ...documentKind,
-                contentClass: readClass,
-                diff: diffDocumentBytes(
-                    { path: file.path, base, head: bytes, spec, contentClass: readClass },
-                    { limit, onDegrade: options.onDegrade },
-                ),
-            });
-            continue;
-        }
-
-        documents.push({
-            path: file.path,
-            kind: file.kind,
-            ...documentKind,
-            contentClass,
-            diff: diffDocumentContent(
-                { path: file.path, base: sideOf(before), head: sideOf(after), contentClass },
-                { limit, onDegrade: options.onDegrade },
-            ),
-        });
-    }
-
+  if (files.length > DIFF_PATH_LIMIT) {
+    options.onDegrade?.(
+      `${files.length} files have changed, over the ${DIFF_PATH_LIMIT} path limit,` +
+        " so they are listed without being read"
+    );
     return {
-        ...(head ? { head } : {}),
-        documents,
-        pathCount: documents.length,
-        complete,
-        readFailure,
+      ...(head ? { head } : {}),
+      documents: files.slice(0, DIFF_PATH_LIMIT).map((file) => unreadEntry(file.path, file.kind)),
+      pathCount: files.length,
+      complete: false,
+      readFailure: null
     };
+  }
+
+  const needsRecorded = files.some((file) => file.kind !== "added");
+  let recorded: ReadonlyMap<string, RevisionEntry> = new Map();
+  if (head && needsRecorded) {
+    try {
+      recorded = await source.entriesAt(head);
+    } catch (error) {
+      // The author's working tree is still readable, but with nothing to compare against
+      // every change would look like an addition - which is a worse lie than saying the
+      // recorded side could not be listed.
+      const readFailure = messageOf(error);
+      options.onDegrade?.(`could not list version ${head}: ${readFailure}`);
+      return {
+        head,
+        documents: files.map((file) => unreadEntry(file.path, file.kind)),
+        pathCount: files.length,
+        complete: false,
+        readFailure
+      };
+    }
+  }
+
+  // One `stat` per file, in place of one read per file. This is the step that stops a
+  // comparison touching a large asset at all.
+  const working = new Map<string, { size: number } | null>();
+  for (const file of files) {
+    working.set(file.path, file.kind === "removed" ? null : await source.statWorking(file.path));
+  }
+
+  const classes = await classifyFiles(source, files, working);
+  const classOf = (path: string): ContentClass => classes.get(path) ?? contentClassOf(path);
+
+  // Renames are settled before anything else is planned, so a file that only moved is never
+  // read a second time by the plan below - the same order `diffRevisions` takes.
+  const pairing = head ? await pairRenames(source, head, files, recorded, working) : NOTHING_PAIRED;
+  const paired = new Set([...pairing.moves.keys(), ...pairing.moves.values()]);
+
+  const plan: string[] = [];
+  // What the pairing already spent comes out of the same allowance, so one comparison reads
+  // DIFF_TOTAL_BYTE_BUDGET whoever spends it. A candidate that failed to pair therefore leaves
+  // less for the documents after it, which is the honest accounting: those bytes were read.
+  let budget = DIFF_TOTAL_BYTE_BUDGET - pairing.spent;
+  let complete = true;
+  for (const file of files) {
+    if (paired.has(file.path)) continue;
+    const before = file.kind === "added" ? undefined : recorded.get(file.was);
+    const wanted = planPathRead(
+      file.path,
+      before?.size ?? 0,
+      working.get(file.path)?.size ?? 0,
+      classOf(file.path)
+    );
+    if (wanted === 0) continue;
+    if (wanted > budget) {
+      complete = false;
+      continue;
+    }
+    budget -= wanted;
+    plan.push(file.path);
+  }
+  const planned = new Set(plan);
+
+  // One batched read for the whole recorded side, before the per-file working reads: the
+  // first read of a revision on a project with a remote goes to the network, and asking per
+  // path would pay that once per document. Paths the pairing already pulled are left out of
+  // it and taken from what it kept.
+  const recordedPaths = files
+    .filter(
+      (file) => planned.has(file.path) && file.kind !== "added" && !pairing.recorded.has(file.was)
+    )
+    .map((file) => file.was);
+  let recordedBytes: ReadonlyMap<string, Buffer | null> = new Map();
+  let readFailure: string | null = null;
+  if (head && recordedPaths.length > 0) {
+    try {
+      recordedBytes = await source.readAt(head, recordedPaths);
+    } catch (error) {
+      // The tree listed fine and only the blobs are unreachable - the measured case being
+      // content written by an online commit, which the writing process cannot fetch back
+      // (docs/version-control.md §4.29). The sizes are still true, so the files that
+      // needed no bytes keep their proper rows and only the planned ones go unread.
+      readFailure = messageOf(error);
+      options.onDegrade?.(`could not read version ${head}: ${readFailure}`);
+      complete = false;
+    }
+  }
+
+  const documents: DocumentDiffEntry[] = [];
+  for (const file of files) {
+    const before = file.kind === "added" ? undefined : recorded.get(file.was);
+    const after = working.get(file.path) ?? undefined;
+    if (!before && !after) {
+      // Deleted between the scan and this read, and never recorded either: there is
+      // nothing on either side to describe.
+      continue;
+    }
+    // The removal half of a rename; the pair is reported once, on the path it moved to.
+    if (!pairing.moves.has(file.path) && paired.has(file.path)) {
+      continue;
+    }
+    const spec = specForDocumentPath(file.path);
+    const documentKind = spec ? { documentKind: spec.kind } : {};
+    // Settled once for every branch below, off `classifyFiles` - which probed the header of
+    // every path whose name said nothing, so a content-store asset is placed here rather than
+    // being reported as `unknown` to whatever draws it.
+    const contentClass = classOf(file.path);
+
+    const movedFrom = pairing.moves.get(file.path);
+    if (movedFrom !== undefined) {
+      documents.push({
+        path: file.path,
+        kind: "moved",
+        ...documentKind,
+        contentClass,
+        diff: {
+          changes: [
+            { path: [], kind: "moved", label: { key: LABEL_MOVED, params: { from: movedFrom } } }
+          ],
+          complete: true,
+          total: 1,
+          tier: "opaque"
+        }
+      });
+      continue;
+    }
+
+    if (planned.has(file.path)) {
+      if (readFailure) {
+        documents.push({
+          path: file.path,
+          kind: file.kind,
+          ...documentKind,
+          contentClass,
+          diff: unreadDocumentDiff(file.kind)
+        });
+        continue;
+      }
+      const base = before
+        ? (pairing.recorded.get(file.was) ?? recordedBytes.get(file.was) ?? null)
+        : null;
+      const bytes = after ? await bytesOnDisk(source, pairing, file.path) : null;
+      if (!base && !bytes) {
+        continue;
+      }
+      /**
+       * The class again, now that there are bytes - which for a DELETION is the only chance
+       * there is.
+       *
+       * `classifyFiles` cannot place a removal: the probe it uses is a positioned read of
+       * the working file, and the file is gone. So an asset deleted out of the content
+       * store, where the path carries no extension, reached the renderer as `unknown` and
+       * was drawn as the sentence "removed, 58.7 KB" - with no picture of what went, which
+       * is the one thing worth seeing about a deletion.
+       *
+       * **This costs no read.** Both buffers are the ones the plan already paid for, and
+       * every ceiling that decided whether to pay is untouched: a path over them arrives
+       * here with nothing in hand and stays `unknown`, which is the honest answer for a
+       * file nobody opened. The recorded side deliberately gets no probe of its own - the
+       * backend has no ranged fetch, so a header from a revision costs the whole blob, and
+       * sniffing one would be a read this comparison had already decided against.
+       */
+      const readClass = classOfReadSides(file.path, bytes, base, contentClass);
+      documents.push({
+        path: file.path,
+        kind: file.kind,
+        ...documentKind,
+        contentClass: readClass,
+        diff: diffDocumentBytes(
+          { path: file.path, base, head: bytes, spec, contentClass: readClass },
+          { limit, onDegrade: options.onDegrade }
+        )
+      });
+      continue;
+    }
+
+    documents.push({
+      path: file.path,
+      kind: file.kind,
+      ...documentKind,
+      contentClass,
+      diff: diffDocumentContent(
+        { path: file.path, base: sideOf(before), head: sideOf(after), contentClass },
+        { limit, onDegrade: options.onDegrade }
+      )
+    });
+  }
+
+  return {
+    ...(head ? { head } : {}),
+    documents,
+    pathCount: documents.length,
+    complete,
+    readFailure
+  };
 }
 
 /**
@@ -389,39 +403,39 @@ export async function diffWorkingTree(
  * dimension that is not the file's.
  */
 async function classifyFiles(
-    source: WorkingTreeDiffSource,
-    files: readonly WorkingFile[],
-    working: ReadonlyMap<string, { size: number } | null>,
+  source: WorkingTreeDiffSource,
+  files: readonly WorkingFile[],
+  working: ReadonlyMap<string, { size: number } | null>
 ): Promise<Map<string, ContentClass>> {
-    const classes = new Map<string, ContentClass>();
-    for (const file of files) {
-        const named = contentClassOf(file.path);
-        if (named !== "unknown" || !working.get(file.path)) {
-            classes.set(file.path, named);
-            continue;
-        }
-        const head = await source.readWorkingHead(file.path, CONTENT_CLASS_SNIFF_BYTES);
-        classes.set(file.path, resolveContentClass(file.path, head));
+  const classes = new Map<string, ContentClass>();
+  for (const file of files) {
+    const named = contentClassOf(file.path);
+    if (named !== "unknown" || !working.get(file.path)) {
+      classes.set(file.path, named);
+      continue;
     }
-    return classes;
+    const head = await source.readWorkingHead(file.path, CONTENT_CLASS_SNIFF_BYTES);
+    classes.set(file.path, resolveContentClass(file.path, head));
+  }
+  return classes;
 }
 
 /** What one pass of rename pairing decided, and what it read on the way. */
 interface RenamePairing {
-    /** Added path -> the removed path holding the same bytes. */
-    readonly moves: ReadonlyMap<string, string>;
-    /** Bytes read while deciding, whether or not the candidate turned out to be a rename. */
-    readonly spent: number;
-    /** What was pulled, so the comparison after this does not pull any of it again. */
-    readonly recorded: ReadonlyMap<string, Buffer | null>;
-    readonly working: ReadonlyMap<string, Buffer | null>;
+  /** Added path -> the removed path holding the same bytes. */
+  readonly moves: ReadonlyMap<string, string>;
+  /** Bytes read while deciding, whether or not the candidate turned out to be a rename. */
+  readonly spent: number;
+  /** What was pulled, so the comparison after this does not pull any of it again. */
+  readonly recorded: ReadonlyMap<string, Buffer | null>;
+  readonly working: ReadonlyMap<string, Buffer | null>;
 }
 
 const NOTHING_PAIRED: RenamePairing = {
-    moves: new Map(),
-    spent: 0,
-    recorded: new Map(),
-    working: new Map(),
+  moves: new Map(),
+  spent: 0,
+  recorded: new Map(),
+  working: new Map()
 };
 
 /**
@@ -449,89 +463,92 @@ const NOTHING_PAIRED: RenamePairing = {
  * `Buffer.equals` over what is already in memory.
  */
 async function pairRenames(
-    source: WorkingTreeDiffSource,
-    head: RevisionId,
-    files: readonly WorkingFile[],
-    recorded: ReadonlyMap<string, RevisionEntry>,
-    working: ReadonlyMap<string, { size: number } | null>,
+  source: WorkingTreeDiffSource,
+  head: RevisionId,
+  files: readonly WorkingFile[],
+  recorded: ReadonlyMap<string, RevisionEntry>,
+  working: ReadonlyMap<string, { size: number } | null>
 ): Promise<RenamePairing> {
-    const removals = new Map<number, { path: string; was: string }[]>();
-    const additions = new Map<number, string[]>();
-    for (const file of files) {
-        if (file.kind === "removed") {
-            const entry = recorded.get(file.was);
-            if (entry) {
-                push(removals, entry.size, { path: file.path, was: file.was });
-            }
-        } else if (file.reported === "added") {
-            const stat = working.get(file.path);
-            if (stat) {
-                push(additions, stat.size, file.path);
-            }
-        }
+  const removals = new Map<number, { path: string; was: string }[]>();
+  const additions = new Map<number, string[]>();
+  for (const file of files) {
+    if (file.kind === "removed") {
+      const entry = recorded.get(file.was);
+      if (entry) {
+        push(removals, entry.size, { path: file.path, was: file.was });
+      }
+    } else if (file.reported === "added") {
+      const stat = working.get(file.path);
+      if (stat) {
+        push(additions, stat.size, file.path);
+      }
     }
+  }
 
-    // Steps one and two, and after this line nothing is decided without reading. Ascending, so
-    // a budget that runs out takes the most expensive groups rather than whichever ones the
-    // status happened to name first.
-    const candidates = [...removals.keys()]
-        // `size > 0` for the reason `probesMatch` excludes it on the other side: two empty files
-        // do have the same bytes, and emptiness is still not evidence that one became the other,
-        // so a pairing among them would be decided by path order and shown as a fact.
-        .filter((size) => size > 0 && additions.has(size) && size <= DIFF_MOVE_CONFIRM_BYTE_CEILING)
-        .sort((a, b) => a - b);
+  // Steps one and two, and after this line nothing is decided without reading. Ascending, so
+  // a budget that runs out takes the most expensive groups rather than whichever ones the
+  // status happened to name first.
+  const candidates = [...removals.keys()]
+    // `size > 0` for the reason `probesMatch` excludes it on the other side: two empty files
+    // do have the same bytes, and emptiness is still not evidence that one became the other,
+    // so a pairing among them would be decided by path order and shown as a fact.
+    .filter((size) => size > 0 && additions.has(size) && size <= DIFF_MOVE_CONFIRM_BYTE_CEILING)
+    .sort((a, b) => a - b);
 
-    let spent = 0;
-    const sizes: number[] = [];
-    for (const size of candidates) {
-        const cost = size * (removals.get(size)!.length + additions.get(size)!.length);
-        if (spent + cost > DIFF_TOTAL_BYTE_BUDGET) continue;
-        spent += cost;
-        sizes.push(size);
-    }
-    if (sizes.length === 0) {
-        return NOTHING_PAIRED;
-    }
+  let spent = 0;
+  const sizes: number[] = [];
+  for (const size of candidates) {
+    const cost = size * (removals.get(size)!.length + additions.get(size)!.length);
+    if (spent + cost > DIFF_TOTAL_BYTE_BUDGET) continue;
+    spent += cost;
+    sizes.push(size);
+  }
+  if (sizes.length === 0) {
+    return NOTHING_PAIRED;
+  }
 
-    let recordedBytes: ReadonlyMap<string, Buffer | null>;
-    try {
-        // One call for every candidate at once, for the same reason the plan's read is batched.
-        recordedBytes = await source.readAt(head, sizes.flatMap((size) => removals.get(size)!.map((one) => one.was)));
-    } catch {
-        // Nothing can be paired, and that is all this failure means here: the comparison's own
-        // read of the same revision is still to come and is where it gets reported (§4.29).
-        return NOTHING_PAIRED;
-    }
+  let recordedBytes: ReadonlyMap<string, Buffer | null>;
+  try {
+    // One call for every candidate at once, for the same reason the plan's read is batched.
+    recordedBytes = await source.readAt(
+      head,
+      sizes.flatMap((size) => removals.get(size)!.map((one) => one.was))
+    );
+  } catch {
+    // Nothing can be paired, and that is all this failure means here: the comparison's own
+    // read of the same revision is still to come and is where it gets reported (§4.29).
+    return NOTHING_PAIRED;
+  }
 
-    const workingBytes = new Map<string, Buffer | null>();
-    for (const size of sizes) {
-        for (const path of additions.get(size)!) {
-            workingBytes.set(path, await source.readWorking(path));
-        }
+  const workingBytes = new Map<string, Buffer | null>();
+  for (const size of sizes) {
+    for (const path of additions.get(size)!) {
+      workingBytes.set(path, await source.readWorking(path));
     }
+  }
 
-    const moves = new Map<string, string>();
-    for (const size of sizes) {
-        const pool = [...removals.get(size)!];
-        for (const path of additions.get(size)!) {
-            const bytes = workingBytes.get(path);
-            if (!bytes) continue;
-            const index = pool.findIndex((one) => recordedBytes.get(one.was)?.equals(bytes) === true);
-            if (index < 0) continue;
-            moves.set(path, pool[index].path);
-            pool.splice(index, 1);
-        }
+  const moves = new Map<string, string>();
+  for (const size of sizes) {
+    const pool = [...removals.get(size)!];
+    for (const path of additions.get(size)!) {
+      const bytes = workingBytes.get(path);
+      if (!bytes) continue;
+      const index = pool.findIndex((one) => recordedBytes.get(one.was)?.equals(bytes) === true);
+      if (index < 0) continue;
+      moves.set(path, pool[index].path);
+      pool.splice(index, 1);
     }
-    return { moves, spent, recorded: recordedBytes, working: workingBytes };
+  }
+  return { moves, spent, recorded: recordedBytes, working: workingBytes };
 }
 
 function push<K, V>(into: Map<K, V[]>, key: K, value: V): void {
-    const existing = into.get(key);
-    if (existing) {
-        existing.push(value);
-    } else {
-        into.set(key, [value]);
-    }
+  const existing = into.get(key);
+  if (existing) {
+    existing.push(value);
+  } else {
+    into.set(key, [value]);
+  }
 }
 
 /**
@@ -541,11 +558,11 @@ function push<K, V>(into: Map<K, V[]>, key: K, value: V): void {
  * and that is an answer - asking the disk again would only get the same one.
  */
 async function bytesOnDisk(
-    source: WorkingTreeDiffSource,
-    pairing: RenamePairing,
-    path: string,
+  source: WorkingTreeDiffSource,
+  pairing: RenamePairing,
+  path: string
 ): Promise<Buffer | null> {
-    return pairing.working.has(path) ? pairing.working.get(path) ?? null : source.readWorking(path);
+  return pairing.working.has(path) ? (pairing.working.get(path) ?? null) : source.readWorking(path);
 }
 
 /**
@@ -557,21 +574,23 @@ async function bytesOnDisk(
  * the same bytes, having read them both.
  */
 function sideOf(entry: { size: number; hash?: string } | undefined): ContentSide | null {
-    return entry ? { probe: { size: entry.size, ...(entry.hash ? { hash: entry.hash } : {}) } } : null;
+  return entry
+    ? { probe: { size: entry.size, ...(entry.hash ? { hash: entry.hash } : {}) } }
+    : null;
 }
 
 function unreadEntry(path: string, kind: DocumentChangeKind): DocumentDiffEntry {
-    const spec = specForDocumentPath(path);
-    return {
-        path,
-        kind,
-        ...(spec ? { documentKind: spec.kind } : {}),
-        // The name only: this is the path a comparison takes before anything has been classified.
-        contentClass: contentClassOf(path),
-        diff: unreadDocumentDiff(kind),
-    };
+  const spec = specForDocumentPath(path);
+  return {
+    path,
+    kind,
+    ...(spec ? { documentKind: spec.kind } : {}),
+    // The name only: this is the path a comparison takes before anything has been classified.
+    contentClass: contentClassOf(path),
+    diff: unreadDocumentDiff(kind)
+  };
 }
 
 function messageOf(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+  return error instanceof Error ? error.message : String(error);
 }

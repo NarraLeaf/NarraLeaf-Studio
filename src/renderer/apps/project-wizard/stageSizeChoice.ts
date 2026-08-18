@@ -1,12 +1,12 @@
 import type { SelectOption } from "@/lib/components/elements";
 import {
-    formatStageAspectRatio,
-    formatStageSize,
-    parseStageSize,
-    stageSizeValue,
-    stageSizesEqual,
-    STAGE_SIZE_PRESETS,
-    type StageSize,
+  formatStageAspectRatio,
+  formatStageSize,
+  parseStageSize,
+  stageSizeValue,
+  stageSizesEqual,
+  STAGE_SIZE_PRESETS,
+  type StageSize
 } from "@shared/types/stageSize";
 
 /** The option that swaps the preset list for two number fields. */
@@ -21,20 +21,20 @@ export const CUSTOM_STAGE_SIZE_VALUE = "custom";
  * silent) offers the full preset list.
  */
 export function offeredStageSizes(templateStageSizes: readonly StageSize[]): readonly StageSize[] {
-    return templateStageSizes.length > 0 ? templateStageSizes : STAGE_SIZE_PRESETS;
+  return templateStageSizes.length > 0 ? templateStageSizes : STAGE_SIZE_PRESETS;
 }
 
 /** Whether the author may type a size of their own, rather than pick one the template allows. */
 export function allowsCustomStageSize(templateStageSizes: readonly StageSize[]): boolean {
-    return templateStageSizes.length === 0;
+  return templateStageSizes.length === 0;
 }
 
 export function stageSizeSelectOptions(sizes: readonly StageSize[]): SelectOption[] {
-    return sizes.map(size => ({
-        value: stageSizeValue(size),
-        label: formatStageSize(size),
-        secondaryLabel: formatStageAspectRatio(size),
-    }));
+  return sizes.map((size) => ({
+    value: stageSizeValue(size),
+    label: formatStageSize(size),
+    secondaryLabel: formatStageAspectRatio(size)
+  }));
 }
 
 /**
@@ -46,15 +46,15 @@ export function stageSizeSelectOptions(sizes: readonly StageSize[]): SelectOptio
  * content cannot be laid out at.
  */
 export function stageSizeForTemplate(
-    current: string,
-    templateStageSizes: readonly StageSize[],
+  current: string,
+  templateStageSizes: readonly StageSize[]
 ): string {
-    if (templateStageSizes.length === 0) {
-        return current;
-    }
-    const parsed = parseStageSize(current);
-    if (parsed && templateStageSizes.some(size => stageSizesEqual(size, parsed))) {
-        return current;
-    }
-    return stageSizeValue(templateStageSizes[0]);
+  if (templateStageSizes.length === 0) {
+    return current;
+  }
+  const parsed = parseStageSize(current);
+  if (parsed && templateStageSizes.some((size) => stageSizesEqual(size, parsed))) {
+    return current;
+  }
+  return stageSizeValue(templateStageSizes[0]);
 }

@@ -28,19 +28,19 @@ import {
   type NormalizedPluginManifestV2,
   type PluginManifestEntries,
   type PluginPermissionRequest,
-  type PluginPermissionPromptResult,
+  type PluginPermissionPromptResult
 } from "narraleaf-studio/plugin";
 ```
 
 可用 runtime 值：
 
-| 值 | 说明 |
-| --- | --- |
-| `definePlugin` | 声明插件入口。 |
-| `ui` | Studio 公共 UI kit。 |
-| `AssetType` | 工程资源类型枚举：`Image`、`Audio`、`Video`、`JSON`、`Blueprint`、`Font`、`Other`。 |
-| `AssetSource` | 工程资源来源枚举：`Local`、`Remote`。 |
-| `PanelPosition` | Panel 位置枚举：`Left`、`Right`、`Bottom`。 |
+| 值              | 说明                                                                                |
+| --------------- | ----------------------------------------------------------------------------------- |
+| `definePlugin`  | 声明插件入口。                                                                      |
+| `ui`            | Studio 公共 UI kit。                                                                |
+| `AssetType`     | 工程资源类型枚举：`Image`、`Audio`、`Video`、`JSON`、`Blueprint`、`Font`、`Other`。 |
+| `AssetSource`   | 工程资源来源枚举：`Local`、`Remote`。                                               |
+| `PanelPosition` | Panel 位置枚举：`Left`、`Right`、`Bottom`。                                         |
 
 ## PluginApp
 
@@ -79,7 +79,7 @@ workspace 卸载时会执行返回的 cleanup，并撤销该插件 renderer 会�
 
 ```ts
 const data = await app.services.storage.readJson<{ version: 1; items: unknown[] }>(
-  `${app.plugin.id}.items`,
+  `${app.plugin.id}.items`
 );
 
 await app.services.storage.writeJson(`${app.plugin.id}.items`, { version: 1, items: [] });
@@ -95,9 +95,9 @@ await app.services.storage.writeJson(`${app.plugin.id}.items`, { version: 1, ite
 app.services.assets.getMap();
 app.services.assets.list(AssetType.Image);
 app.services.assets.get(AssetType.Image, assetId);
-app.services.assets.fetch(asset);          // 解码后的资源数据；失败 throw
+app.services.assets.fetch(asset); // 解码后的资源数据；失败 throw
 app.services.assets.createObjectUrl(asset); // 远程资源返回远程 URL；本地资源创建 blob URL
-app.services.assets.revokeObjectUrl(url);   // 不再展示时释放 blob URL
+app.services.assets.revokeObjectUrl(url); // 不再展示时释放 blob URL
 ```
 
 ```tsx
@@ -180,7 +180,13 @@ type ActionGroup = {
 };
 
 type ActionMenuItem = ActionDefinition | ActionSubmenu | ActionSeparator;
-type ActionSubmenu = { id: string; label: string; icon?: React.ReactNode; items: ActionMenuItem[]; order?: number };
+type ActionSubmenu = {
+  id: string;
+  label: string;
+  icon?: React.ReactNode;
+  items: ActionMenuItem[];
+  order?: number;
+};
 type ActionSeparator = { separator: true; order?: number };
 ```
 
@@ -223,7 +229,15 @@ type Keybinding = {
 };
 
 type FocusContext = {
-  area: "left-panel" | "right-panel" | "bottom-panel" | "editor" | "editor-tabs" | "action-bar" | "dialog" | "none";
+  area:
+    | "left-panel"
+    | "right-panel"
+    | "bottom-panel"
+    | "editor"
+    | "editor-tabs"
+    | "action-bar"
+    | "dialog"
+    | "none";
   targetId?: string;
 };
 ```
@@ -272,7 +286,7 @@ const sourceId = `${app.plugin.id}.items`;
 
 const disposeOptions = app.services.blueprintNodes.registerDynamicSelectOptionsSource(
   sourceId,
-  (): BlueprintInspectorParamSelectOption[] => [{ value: "item-a", label: "Item A" }],
+  (): BlueprintInspectorParamSelectOption[] => [{ value: "item-a", label: "Item A" }]
 );
 
 app.services.blueprintNodes.register({
@@ -283,12 +297,12 @@ app.services.blueprintNodes.register({
   isPure: false,
   pins: [
     { id: "in", kind: "input", semantic: "exec", label: "In" },
-    { id: "next", kind: "output", semantic: "exec", label: "Next" },
+    { id: "next", kind: "output", semantic: "exec", label: "Next" }
   ],
   inspectorParams: [
-    { key: "itemId", label: "Item", kind: "select", dynamicOptionsSource: sourceId },
+    { key: "itemId", label: "Item", kind: "select", dynamicOptionsSource: sourceId }
   ],
-  execute: () => ({ nextPort: "next" }),
+  execute: () => ({ nextPort: "next" })
 } satisfies PluginBlueprintNodeDef);
 ```
 
@@ -310,14 +324,14 @@ const dispose = app.services.story.actions.register({
     kind: "action",
     parentId: null,
     childrenIds: [],
-    payload: { action: "blueprint" /* ... */ },
-  }),
+    payload: { action: "blueprint" /* ... */ }
+  })
 });
 ```
 
 ```ts
 type StoryPluginActionRegistration = {
-  id: string;        // 必须以插件 ID 为前缀
+  id: string; // 必须以插件 ID 为前缀
   label: string;
   detail?: string;
   group?: string;
@@ -382,14 +396,14 @@ app.privileged.bash.execute(command, cwd); // 权限检查已接入；handler �
 
 插件边栏、编辑器 tab 和弹窗内容应使用 `ui` 组件，不要 import `@/lib/components/...` 或 workspace 内部路径。
 
-| namespace | 接口 |
-| --- | --- |
-| `ui.Panel` | `Root`、`Header`、`Toolbar`、`Section`、`Row`、`EmptyState`。 |
-| Controls | `Button`、`IconButton`、`Input`、`TextArea`、`SearchInput`、`InputGroup`、`Select`、`Combobox`、`SelectGroup`、`Switch`。 |
-| Overlays | `Modal`、`ConfirmModal`、`AlertModal`、`ModalHeader`、`ModalBody`、`ModalFooter`、`ContextMenu`、`ContextMenuSeparator`、`useContextMenu`。 |
-| Feedback | `Progress`、`ProgressIndeterminate`、`ProgressCircle`。 |
+| namespace  | 接口                                                                                                                                                    |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ui.Panel` | `Root`、`Header`、`Toolbar`、`Section`、`Row`、`EmptyState`。                                                                                           |
+| Controls   | `Button`、`IconButton`、`Input`、`TextArea`、`SearchInput`、`InputGroup`、`Select`、`Combobox`、`SelectGroup`、`Switch`。                               |
+| Overlays   | `Modal`、`ConfirmModal`、`AlertModal`、`ModalHeader`、`ModalBody`、`ModalFooter`、`ContextMenu`、`ContextMenuSeparator`、`useContextMenu`。             |
+| Feedback   | `Progress`、`ProgressIndeterminate`、`ProgressCircle`。                                                                                                 |
 | Containers | `Accordion`、`AccordionItem`、`NestedAccordion`、`Card`、`CardHeader`、`CardTitle`、`CardDescription`、`CardContent`、`CardFooter`、`InteractiveCard`。 |
-| Workspace | `AssetSelector`。 |
+| Workspace  | `AssetSelector`。                                                                                                                                       |
 
 ```tsx
 import { PanelPosition, definePlugin, ui } from "narraleaf-studio/plugin";
@@ -397,12 +411,19 @@ import { PanelPosition, definePlugin, ui } from "narraleaf-studio/plugin";
 function ToolsPanel() {
   return (
     <ui.Panel.Root>
-      <ui.Panel.Header title="Tools" description="Plugin controls" actions={<ui.Button size="sm">Run</ui.Button>} />
+      <ui.Panel.Header
+        title="Tools"
+        description="Plugin controls"
+        actions={<ui.Button size="sm">Run</ui.Button>}
+      />
       <ui.Panel.Toolbar>
         <ui.SearchInput size="sm" placeholder="Search" fullWidth />
       </ui.Panel.Toolbar>
       <ui.Panel.Section title="Options">
-        <ui.Panel.Row label="Enable feature" control={<ui.Switch checked onCheckedChange={() => {}} />} />
+        <ui.Panel.Row
+          label="Enable feature"
+          control={<ui.Switch checked onCheckedChange={() => {}} />}
+        />
       </ui.Panel.Section>
     </ui.Panel.Root>
   );

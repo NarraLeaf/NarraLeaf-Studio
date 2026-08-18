@@ -36,17 +36,17 @@ export type UserDataPlatform = "windows" | "macos" | "linux";
  * point is that each one is resolved by the machine reading it.
  */
 export type UserDataRootId =
-    | "windows-appdata-roaming"
-    | "macos-application-support"
-    | "linux-xdg-data-home";
+  | "windows-appdata-roaming"
+  | "macos-application-support"
+  | "linux-xdg-data-home";
 
 export type UserDataLocation = {
-    platform: UserDataPlatform;
-    root: UserDataRootId;
-    /** The root as a player's machine spells it, e.g. `%APPDATA%`. */
-    rootDisplay: string;
-    /** The directory the game writes to, root included, in this platform's separator. */
-    display: string;
+  platform: UserDataPlatform;
+  root: UserDataRootId;
+  /** The root as a player's machine spells it, e.g. `%APPDATA%`. */
+  rootDisplay: string;
+  /** The directory the game writes to, root included, in this platform's separator. */
+  display: string;
 };
 
 /**
@@ -57,12 +57,12 @@ export type UserDataLocation = {
  * and none of which should travel between their machines.
  */
 export type UserDataContentGroup = {
-    id: "saves" | "persistence";
-    /** Path relative to the user data directory. `.` when the files sit at its root. */
-    subdirectory: string;
-    /** Filename mask, where `*` stands for any run of characters. */
-    pattern: string;
-    recursive: boolean;
+  id: "saves" | "persistence";
+  /** Path relative to the user data directory. `.` when the files sit at its root. */
+  subdirectory: string;
+  /** Filename mask, where `*` stands for any run of characters. */
+  pattern: string;
+  recursive: boolean;
 };
 
 /**
@@ -72,17 +72,17 @@ export type UserDataContentGroup = {
  * half-written.
  */
 export const USER_DATA_CONTENT_GROUPS: readonly UserDataContentGroup[] = [
-    { id: "saves", subdirectory: "saves", pattern: "*.json", recursive: false },
-    { id: "persistence", subdirectory: ".", pattern: "persistence.json", recursive: false },
+  { id: "saves", subdirectory: "saves", pattern: "*.json", recursive: false },
+  { id: "persistence", subdirectory: ".", pattern: "persistence.json", recursive: false }
 ];
 
 const ROOT_DISPLAY: Record<UserDataRootId, string> = {
-    "windows-appdata-roaming": "%APPDATA%",
-    "macos-application-support": "~/Library/Application Support",
-    // The default when the variable is unset. Shown rather than `$XDG_DATA_HOME`
-    // because this is the path a player will actually have; `root` carries the
-    // variable for anyone filling in a form that asks for the root by name.
-    "linux-xdg-data-home": "~/.local/share",
+  "windows-appdata-roaming": "%APPDATA%",
+  "macos-application-support": "~/Library/Application Support",
+  // The default when the variable is unset. Shown rather than `$XDG_DATA_HOME`
+  // because this is the path a player will actually have; `root` carries the
+  // variable for anyone filling in a form that asks for the root by name.
+  "linux-xdg-data-home": "~/.local/share"
 };
 
 /**
@@ -92,36 +92,38 @@ const ROOT_DISPLAY: Record<UserDataRootId, string> = {
  * the caller can refuse rather than as a path escape.
  */
 export function userDataDirectoryName(appId: string): string {
-    return appId
-        .trim()
-        // One path segment, never a path: separators cannot survive.
-        .replace(/[/\\]+/g, "-")
-        // A leading dot hides the directory on two of the three platforms, and a
-        // leading `..` climbs out of the root it was joined to.
-        .replace(/^[.-]+/, "")
-        .replace(/-{2,}/g, "-");
+  return (
+    appId
+      .trim()
+      // One path segment, never a path: separators cannot survive.
+      .replace(/[/\\]+/g, "-")
+      // A leading dot hides the directory on two of the three platforms, and a
+      // leading `..` climbs out of the root it was joined to.
+      .replace(/^[.-]+/, "")
+      .replace(/-{2,}/g, "-")
+  );
 }
 
 /** Where `directoryName` resolves on each desktop platform, in display order. */
 export function describeUserDataLocations(directoryName: string): UserDataLocation[] {
-    return [
-        location("windows", "windows-appdata-roaming", directoryName, "\\"),
-        location("macos", "macos-application-support", directoryName, "/"),
-        location("linux", "linux-xdg-data-home", directoryName, "/"),
-    ];
+  return [
+    location("windows", "windows-appdata-roaming", directoryName, "\\"),
+    location("macos", "macos-application-support", directoryName, "/"),
+    location("linux", "linux-xdg-data-home", directoryName, "/")
+  ];
 }
 
 function location(
-    platform: UserDataPlatform,
-    root: UserDataRootId,
-    directoryName: string,
-    separator: string,
+  platform: UserDataPlatform,
+  root: UserDataRootId,
+  directoryName: string,
+  separator: string
 ): UserDataLocation {
-    const rootDisplay = ROOT_DISPLAY[root];
-    return {
-        platform,
-        root,
-        rootDisplay,
-        display: directoryName ? `${rootDisplay}${separator}${directoryName}` : rootDisplay,
-    };
+  const rootDisplay = ROOT_DISPLAY[root];
+  return {
+    platform,
+    root,
+    rootDisplay,
+    display: directoryName ? `${rootDisplay}${separator}${directoryName}` : rootDisplay
+  };
 }

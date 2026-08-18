@@ -49,30 +49,30 @@ export type VariableRegistryScope = "saved" | "persistent";
  * `variableId`).
  */
 export type VariableRegistryEntry = {
-    id: string;
-    /** Author-facing, proper-case label. Displayed to users; the id/storageKey are never shown. */
-    name: string;
-    /**
-     * Which project scope this definition belongs to. Decides which runtime table it lands in and
-     * which channel reads it - the two never mix, so no consumer may treat the registry as one flat
-     * list of persistent variables.
-     */
-    scope: VariableRegistryScope;
-    valueType: StoryVariableValueType;
-    defaultValue?: StoryLiteralValue;
-    /** Stable save-file / host-persistence key; defaults to `id`, unchanged on rename. */
-    storageKey: string;
-    description?: string;
+  id: string;
+  /** Author-facing, proper-case label. Displayed to users; the id/storageKey are never shown. */
+  name: string;
+  /**
+   * Which project scope this definition belongs to. Decides which runtime table it lands in and
+   * which channel reads it - the two never mix, so no consumer may treat the registry as one flat
+   * list of persistent variables.
+   */
+  scope: VariableRegistryScope;
+  valueType: StoryVariableValueType;
+  defaultValue?: StoryLiteralValue;
+  /** Stable save-file / host-persistence key; defaults to `id`, unchanged on rename. */
+  storageKey: string;
+  description?: string;
 };
 
 export type VariableRegistry = {
-    schemaVersion: VariableRegistrySchemaVersion;
-    /** Keyed by entry id. */
-    entries: Record<string, VariableRegistryEntry>;
-    meta?: {
-        createdAt?: string;
-        updatedAt?: string;
-    };
+  schemaVersion: VariableRegistrySchemaVersion;
+  /** Keyed by entry id. */
+  entries: Record<string, VariableRegistryEntry>;
+  meta?: {
+    createdAt?: string;
+    updatedAt?: string;
+  };
 };
 
 /**

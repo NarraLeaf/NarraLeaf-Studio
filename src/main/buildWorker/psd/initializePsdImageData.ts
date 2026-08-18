@@ -12,15 +12,16 @@ import { initializeCanvas } from "ag-psd";
  * reach a path that needs one, and a silent empty canvas would turn that mistake into a blank layer.
  */
 export function initializePsdImageData(): void {
-    initializeCanvas(
-        () => {
-            throw new Error("PSD import does not use a canvas; only ImageData is provided");
-        },
-        (width: number, height: number) => ({
-            width,
-            height,
-            data: new Uint8ClampedArray(width * height * 4),
-            colorSpace: "srgb",
-        }) as ImageData,
-    );
+  initializeCanvas(
+    () => {
+      throw new Error("PSD import does not use a canvas; only ImageData is provided");
+    },
+    (width: number, height: number) =>
+      ({
+        width,
+        height,
+        data: new Uint8ClampedArray(width * height * 4),
+        colorSpace: "srgb"
+      }) as ImageData
+  );
 }

@@ -8,9 +8,9 @@ import { ASSET_CATEGORY_ORDER, AssetCategory } from "@/lib/workspace/services/as
  * `type`, which is what the row icon, the inspector and every service call read.
  */
 export function createEmptyAssetCategoryRecord<T>(): Record<AssetCategory, T[]> {
-    const record = {} as Record<AssetCategory, T[]>;
-    for (const category of ASSET_CATEGORY_ORDER) {
-        record[category] = [];
-    }
-    return record;
+  const record = {} as Record<AssetCategory, T[]>;
+  for (const category of ASSET_CATEGORY_ORDER) {
+    record[category] = [];
+  }
+  return record;
 }

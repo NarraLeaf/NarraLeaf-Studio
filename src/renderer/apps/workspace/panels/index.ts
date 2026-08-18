@@ -6,4 +6,3 @@
 export { AssetsPanel } from "../modules/assets/AssetsPanel";
 export { PropertiesPanel } from "../modules/properties/PropertiesPanel";
 export { ConsolePanel } from "../modules/console/ConsolePanel";
-

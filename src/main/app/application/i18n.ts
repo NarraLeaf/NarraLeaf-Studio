@@ -1,4 +1,10 @@
-import { createTranslator, normalizeLocale, resolvePreferredLocale, Translator, type LocaleCode } from "@shared/i18n";
+import {
+  createTranslator,
+  normalizeLocale,
+  resolvePreferredLocale,
+  Translator,
+  type LocaleCode
+} from "@shared/i18n";
 import type { BaseApp } from "./baseApp";
 
 /**
@@ -11,9 +17,8 @@ import type { BaseApp } from "./baseApp";
  * so the require resolves normally at runtime; only the stored-language path is taken in tests.
  */
 function systemLanguages(): string[] {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { app } = require("electron/main") as typeof import("electron/main");
-    return [...app.getPreferredSystemLanguages(), app.getLocale()];
+  const { app } = require("electron/main") as typeof import("electron/main");
+  return [...app.getPreferredSystemLanguages(), app.getLocale()];
 }
 
 /**
@@ -28,11 +33,11 @@ function systemLanguages(): string[] {
  * settled on, kept as a tail entry because the ordered list is empty on some Linux setups.
  */
 export function getMainLocale(app: BaseApp): LocaleCode {
-    const stored = app.globalState.get("app.language");
-    if (typeof stored === "string" && stored.length > 0) {
-        return normalizeLocale(stored);
-    }
-    return resolvePreferredLocale(systemLanguages());
+  const stored = app.globalState.get("app.language");
+  if (typeof stored === "string" && stored.length > 0) {
+    return normalizeLocale(stored);
+  }
+  return resolvePreferredLocale(systemLanguages());
 }
 
 /**
@@ -42,5 +47,5 @@ export function getMainLocale(app: BaseApp): LocaleCode {
  * menu, dialogs, notifications - so the string reflects the latest choice.
  */
 export function getMainTranslator(app: BaseApp): Translator {
-    return createTranslator(getMainLocale(app));
+  return createTranslator(getMainLocale(app));
 }

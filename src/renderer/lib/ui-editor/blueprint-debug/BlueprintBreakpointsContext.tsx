@@ -17,37 +17,37 @@ import type { BlueprintBreakpoint } from "@shared/types/blueprint/breakpoints";
 import { blueprintBreakpointKey } from "@shared/types/blueprint/breakpoints";
 
 export type BlueprintBreakpointScope = {
-    blueprintId: string;
-    /** The graph on screen; a breakpoint's identity is (blueprint, graph, node). */
-    graphId: string;
-    byKey: ReadonlyMap<string, BlueprintBreakpoint>;
-    /** Add when absent, remove when present. */
-    toggle: (nodeId: string) => void;
-    setEnabled: (nodeId: string, enabled: boolean) => void;
-    /** Open the condition / hit-count editor for this node. */
-    edit: (nodeId: string) => void;
+  blueprintId: string;
+  /** The graph on screen; a breakpoint's identity is (blueprint, graph, node). */
+  graphId: string;
+  byKey: ReadonlyMap<string, BlueprintBreakpoint>;
+  /** Add when absent, remove when present. */
+  toggle: (nodeId: string) => void;
+  setEnabled: (nodeId: string, enabled: boolean) => void;
+  /** Open the condition / hit-count editor for this node. */
+  edit: (nodeId: string) => void;
 };
 
 const Context = createContext<BlueprintBreakpointScope | null>(null);
 
 export function BlueprintBreakpointScopeProvider(props: {
-    value: BlueprintBreakpointScope | null;
-    children: ReactNode;
+  value: BlueprintBreakpointScope | null;
+  children: ReactNode;
 }): ReactNode {
-    return <Context.Provider value={props.value}>{props.children}</Context.Provider>;
+  return <Context.Provider value={props.value}>{props.children}</Context.Provider>;
 }
 
 export function useBlueprintBreakpointScope(): BlueprintBreakpointScope | null {
-    return useContext(Context);
+  return useContext(Context);
 }
 
 /** The breakpoint on one node of the graph in scope, if there is one. */
 export function useBlueprintBreakpointForNode(nodeId: string): BlueprintBreakpoint | undefined {
-    const scope = useContext(Context);
-    if (!scope) {
-        return undefined;
-    }
-    return scope.byKey.get(
-        blueprintBreakpointKey({ blueprintId: scope.blueprintId, graphId: scope.graphId, nodeId }),
-    );
+  const scope = useContext(Context);
+  if (!scope) {
+    return undefined;
+  }
+  return scope.byKey.get(
+    blueprintBreakpointKey({ blueprintId: scope.blueprintId, graphId: scope.graphId, nodeId })
+  );
 }

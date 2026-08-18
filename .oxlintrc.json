@@ -1,0 +1,41 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript"],
+  "categories": { "correctness": "warn" },
+  "rules": {
+    "no-unused-vars": ["off", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    "no-unused-expressions": "off",
+    "no-control-regex": "off",
+    "react/no-children-prop": "off",
+    "no-unsafe-optional-chaining": "off",
+    "typescript/unbound-method": "off",
+    "typescript/no-floating-promises": "off",
+    "typescript/no-misused-spread": "off",
+    "typescript/no-base-to-string": "off",
+    "typescript/require-array-sort-compare": "off",
+    "typescript/no-redundant-type-constituents": "off",
+    "typescript/restrict-template-expressions": "off",
+    "typescript/await-thenable": "off",
+    "typescript/no-implied-eval": "off",
+    "typescript/no-explicit-any": "off",
+    "typescript/triple-slash-reference": "off",
+    "typescript/no-namespace": "off",
+    "typescript/no-this-alias": "off",
+    "typescript/no-unsafe-declaration-merging": "off",
+    "react/exhaustive-deps": "off"
+  },
+  "options": {
+    "typeAware": true,
+    "typeCheck": true
+  },
+  "ignorePatterns": [
+    "node_modules",
+    "out",
+    "dist",
+    ".vite",
+    "coverage",
+    "playwright-report",
+    "tests/fixtures",
+    "third_party"
+  ]
+}

@@ -1,5 +1,5 @@
 export function waitForAnimationFrame(): Promise<void> {
-    return new Promise(resolve => requestAnimationFrame(() => resolve()));
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 /**
@@ -10,24 +10,27 @@ export function waitForAnimationFrame(): Promise<void> {
  * Rejections settle the wait too — the failure is the promise owner's to report.
  */
 export function withDeadline(
-    promise: Promise<unknown>,
-    timeoutMs: number,
-    onTimeout?: () => void,
+  promise: Promise<unknown>,
+  timeoutMs: number,
+  onTimeout?: () => void
 ): Promise<void> {
-    return new Promise<void>(resolve => {
-        let settled = false;
-        const finish = (timedOut: boolean) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            window.clearTimeout(timer);
-            if (timedOut) {
-                onTimeout?.();
-            }
-            resolve();
-        };
-        const timer = window.setTimeout(() => finish(true), timeoutMs);
-        promise.then(() => finish(false), () => finish(false));
-    });
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = (timedOut: boolean) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      window.clearTimeout(timer);
+      if (timedOut) {
+        onTimeout?.();
+      }
+      resolve();
+    };
+    const timer = window.setTimeout(() => finish(true), timeoutMs);
+    promise.then(
+      () => finish(false),
+      () => finish(false)
+    );
+  });
 }

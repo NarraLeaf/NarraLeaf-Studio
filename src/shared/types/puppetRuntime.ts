@@ -8,15 +8,15 @@
 
 /** What the author gets told after a successful install. Everything here is shown, not acted on. */
 export type PuppetRuntimeInstallResult = {
-    /** The backend name now installed — also the directory under the project's `runtimes/puppet/`. */
-    backend: string;
-    /**
-     * The SDK version the archive stated, when it stated one. Worth surfacing because the produced
-     * module is opaque afterwards: nothing in the project records which SDK it came from except the
-     * README written beside it.
-     */
-    sdkVersion: string | null;
-    /** Absolute path of the written entry file, so the author can find what was added to their project. */
-    entryPath: string;
-    bytes: number;
+  /** The backend name now installed — also the directory under the project's `runtimes/puppet/`. */
+  backend: string;
+  /**
+   * The SDK version the archive stated, when it stated one. Worth surfacing because the produced
+   * module is opaque afterwards: nothing in the project records which SDK it came from except the
+   * README written beside it.
+   */
+  sdkVersion: string | null;
+  /** Absolute path of the written entry file, so the author can find what was added to their project. */
+  entryPath: string;
+  bytes: number;
 };

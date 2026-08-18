@@ -23,6 +23,6 @@ export * from "@shared/types/character/model";
  * the build instead.
  */
 type _CropsAgree = [
-    NormalizedCrop extends PortraitCrop ? true : never,
-    PortraitCrop extends NormalizedCrop ? true : never,
+  NormalizedCrop extends PortraitCrop ? true : never,
+  PortraitCrop extends NormalizedCrop ? true : never
 ];

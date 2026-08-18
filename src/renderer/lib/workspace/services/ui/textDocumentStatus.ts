@@ -15,29 +15,29 @@ import type { LineEnding } from "@/apps/workspace/modules/assets/editors/text/te
 
 /** Where the caret is and how much is selected, in the terms the status bar prints. */
 export interface TextDocumentSelection {
-    line: number;
-    column: number;
-    /** Characters covered by the selection. Zero when there is a caret and no selection. */
-    characters: number;
-    /**
-     * How many non-empty ranges those characters are spread across, for the multi-cursor readout.
-     * Zero when nothing is selected, one for an ordinary drag.
-     */
-    ranges: number;
+  line: number;
+  column: number;
+  /** Characters covered by the selection. Zero when there is a caret and no selection. */
+  characters: number;
+  /**
+   * How many non-empty ranges those characters are spread across, for the multi-cursor readout.
+   * Zero when nothing is selected, one for an ordinary drag.
+   */
+  ranges: number;
 }
 
 /** The values one text tab publishes. Updated in place as the author works. */
 export interface TextDocumentStatus {
-    tabId: string;
-    fileName: string;
-    encoding: TextEncodingId;
-    lineEnding: LineEnding;
-    /**
-     * The decode produced replacement characters, so the bytes are not in this encoding and the tab
-     * is refusing to autosave over them. The encoding cell reads this and tints itself.
-     */
-    lossy: boolean;
-    selection: TextDocumentSelection;
+  tabId: string;
+  fileName: string;
+  encoding: TextEncodingId;
+  lineEnding: LineEnding;
+  /**
+   * The decode produced replacement characters, so the bytes are not in this encoding and the tab
+   * is refusing to autosave over them. The encoding cell reads this and tints itself.
+   */
+  lossy: boolean;
+  selection: TextDocumentSelection;
 }
 
 /**
@@ -49,12 +49,12 @@ export interface TextDocumentStatus {
  * carries the calls instead of the state.
  */
 export interface TextDocumentCommands {
-    reopenWith(encoding: TextEncodingId): void;
-    saveWith(encoding: TextEncodingId): void;
-    setLineEnding(ending: LineEnding): void;
+  reopenWith(encoding: TextEncodingId): void;
+  saveWith(encoding: TextEncodingId): void;
+  setLineEnding(ending: LineEnding): void;
 }
 
 export interface TextDocumentEntry {
-    status: TextDocumentStatus;
-    commands: TextDocumentCommands;
+  status: TextDocumentStatus;
+  commands: TextDocumentCommands;
 }

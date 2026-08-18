@@ -7,7 +7,7 @@ import { definePlugin } from "narraleaf-studio/plugin";
 import { createQuickSaveBlueprintNodes } from "./nodes";
 
 export default definePlugin({
-    setup(app) {
-        app.services.blueprintNodes.registerMany(createQuickSaveBlueprintNodes());
-    },
+  setup(app) {
+    app.services.blueprintNodes.registerMany(createQuickSaveBlueprintNodes());
+  }
 });

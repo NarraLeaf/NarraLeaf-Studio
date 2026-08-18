@@ -58,22 +58,22 @@ export const SPELLCHECK_MAX_EDIT_DISTANCE = 2;
  * came from.
  */
 export type SpellcheckRange = {
-    /** Index of the first character of the word. */
-    start: number;
-    /** Index one past its last character. */
-    end: number;
-    /** The word itself, so a caller can act on it without slicing the text again. */
-    word: string;
+  /** Index of the first character of the word. */
+  start: number;
+  /** Index one past its last character. */
+  end: number;
+  /** The word itself, so a caller can act on it without slicing the text again. */
+  word: string;
 };
 
 /** A dictionary Studio has on disk and can check against right now. */
 export type InstalledSpellcheckDictionary = {
-    /** Language tag, e.g. `en-GB`. The name of the file in the cache, so it is path-safe. */
-    code: string;
-    /** Display name as the index gave it, e.g. `English (United Kingdom)`. */
-    name: string;
-    /** Bytes on disk, compressed. What the cache list shows and what removing it frees. */
-    bytes: number;
+  /** Language tag, e.g. `en-GB`. The name of the file in the cache, so it is path-safe. */
+  code: string;
+  /** Display name as the index gave it, e.g. `English (United Kingdom)`. */
+  name: string;
+  /** Bytes on disk, compressed. What the cache list shows and what removing it frees. */
+  bytes: number;
 };
 
 /**
@@ -83,33 +83,33 @@ export type InstalledSpellcheckDictionary = {
  * hosted, and "permissive" is a claim that has to be displayable next to the thing it describes.
  */
 export type AvailableSpellcheckDictionary = {
-    code: string;
-    name: string;
-    /** Compressed size, so the download can be described before it starts. */
-    bytes: number;
-    /** SPDX-style identifier, shown beside the entry. */
-    license: string;
+  code: string;
+  name: string;
+  /** Compressed size, so the download can be described before it starts. */
+  bytes: number;
+  /** SPDX-style identifier, shown beside the entry. */
+  license: string;
 };
 
 /** What spellchecking is currently doing, as the main process last worked it out. */
 export type SpellcheckStatus = {
-    /**
-     * The project's source language, or `""` when the project has not chosen one - and also when no
-     * project has configured spellchecking in this session yet.
-     */
-    sourceLocale: string;
-    /** The stored setting: {@link SPELLCHECK_FOLLOW_PROJECT}, {@link SPELLCHECK_OFF}, or a language. */
-    setting: string;
-    /** The language being checked, or `null` when nothing is. */
-    language: string | null;
-    /** Every language a dictionary is installed for. Empty until the author downloads one. */
-    available: string[];
+  /**
+   * The project's source language, or `""` when the project has not chosen one - and also when no
+   * project has configured spellchecking in this session yet.
+   */
+  sourceLocale: string;
+  /** The stored setting: {@link SPELLCHECK_FOLLOW_PROJECT}, {@link SPELLCHECK_OFF}, or a language. */
+  setting: string;
+  /** The language being checked, or `null` when nothing is. */
+  language: string | null;
+  /** Every language a dictionary is installed for. Empty until the author downloads one. */
+  available: string[];
 };
 
 /** The primary subtag of a language tag: `en-GB` -> `en`. Lower-cased, so comparisons are stable. */
 function primarySubtag(code: string): string {
-    const separator = code.indexOf("-");
-    return (separator < 0 ? code : code.slice(0, separator)).toLowerCase();
+  const separator = code.indexOf("-");
+  return (separator < 0 ? code : code.slice(0, separator)).toLowerCase();
 }
 
 /**
@@ -125,30 +125,32 @@ function primarySubtag(code: string): string {
  * is where an author who wants a different one says which.
  */
 export function resolveSpellcheckLanguage(
-    setting: string | undefined,
-    sourceLocale: string,
-    available: readonly string[],
+  setting: string | undefined,
+  sourceLocale: string,
+  available: readonly string[]
 ): string | null {
-    if (setting === SPELLCHECK_OFF) {
-        return null;
-    }
-    const desired = (!setting || setting === SPELLCHECK_FOLLOW_PROJECT ? sourceLocale : setting).trim();
-    if (!desired) {
-        return null;
-    }
+  if (setting === SPELLCHECK_OFF) {
+    return null;
+  }
+  const desired = (
+    !setting || setting === SPELLCHECK_FOLLOW_PROJECT ? sourceLocale : setting
+  ).trim();
+  if (!desired) {
+    return null;
+  }
 
-    const exact = available.find(candidate => candidate.toLowerCase() === desired.toLowerCase());
-    if (exact) {
-        return exact;
-    }
+  const exact = available.find((candidate) => candidate.toLowerCase() === desired.toLowerCase());
+  if (exact) {
+    return exact;
+  }
 
-    const primary = primarySubtag(desired);
-    const bare = available.find(candidate => candidate.toLowerCase() === primary);
-    if (bare) {
-        return bare;
-    }
+  const primary = primarySubtag(desired);
+  const bare = available.find((candidate) => candidate.toLowerCase() === primary);
+  if (bare) {
+    return bare;
+  }
 
-    return available.find(candidate => primarySubtag(candidate) === primary) ?? null;
+  return available.find((candidate) => primarySubtag(candidate) === primary) ?? null;
 }
 
 /**
@@ -160,8 +162,11 @@ export function resolveSpellcheckLanguage(
  * German in a Japanese project, German is what they get.
  */
 export function projectLanguageHasNoDictionary(status: SpellcheckStatus): boolean {
-    const follows = !status.setting || status.setting === SPELLCHECK_FOLLOW_PROJECT;
-    return follows
-        && status.sourceLocale !== ""
-        && resolveSpellcheckLanguage(SPELLCHECK_FOLLOW_PROJECT, status.sourceLocale, status.available) === null;
+  const follows = !status.setting || status.setting === SPELLCHECK_FOLLOW_PROJECT;
+  return (
+    follows &&
+    status.sourceLocale !== "" &&
+    resolveSpellcheckLanguage(SPELLCHECK_FOLLOW_PROJECT, status.sourceLocale, status.available) ===
+      null
+  );
 }

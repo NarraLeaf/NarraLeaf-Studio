@@ -7,13 +7,13 @@ import { IPCHost } from "./ipcHost";
  * IPCRegistry - see ipcRegistry.ts.
  */
 export class WindowIPC {
-    private ipc: IPCHost;
+  private ipc: IPCHost;
 
-    constructor(namespace: Namespace) {
-        this.ipc = new IPCHost(namespace);
-    }
+  constructor(namespace: Namespace) {
+    this.ipc = new IPCHost(namespace);
+  }
 
-    public getIPCHost(): IPCHost {
-        return this.ipc;
-    }
+  public getIPCHost(): IPCHost {
+    return this.ipc;
+  }
 }

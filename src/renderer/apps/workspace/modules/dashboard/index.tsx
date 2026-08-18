@@ -9,18 +9,18 @@ import { openDashboardTab } from "./openDashboardTab";
  * the dashboard's editor tab, which needs the full editor width to be worth reading.
  */
 export const dashboardPanelModule: PanelModule = {
-    metadata: {
-        id: "narraleaf-studio:dashboard",
-        // Resolved lazily on read (module registration runs after i18n init).
-        titleKey: "placeholders.moduleTitles.dashboard",
-        get title() {
-            return translate("placeholders.moduleTitles.dashboard");
-        },
-        icon: <LayoutDashboard className="w-4 h-4" />,
-        position: PanelPosition.Left,
-        order: -30,
+  metadata: {
+    id: "narraleaf-studio:dashboard",
+    // Resolved lazily on read (module registration runs after i18n init).
+    titleKey: "placeholders.moduleTitles.dashboard",
+    get title() {
+      return translate("placeholders.moduleTitles.dashboard");
     },
-    railAction: (ctx) => openDashboardTab(ctx),
+    icon: <LayoutDashboard className="w-4 h-4" />,
+    position: PanelPosition.Left,
+    order: -30
+  },
+  railAction: (ctx) => openDashboardTab(ctx)
 };
 
 export { openDashboardTab, createDashboardTab } from "./openDashboardTab";

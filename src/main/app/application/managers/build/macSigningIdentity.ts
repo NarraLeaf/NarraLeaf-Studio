@@ -40,16 +40,16 @@ const IDENTITY_LINE = /^\s*\d+\)\s+([0-9A-Fa-f]{40})\s+"(.+?)"\s*(?:\(([A-Z_0-9]
 const DEVELOPER_ID_PREFIX = "Developer ID Application:";
 
 export type MacIdentityProbeInput = {
-    platform?: NodeJS.Platform;
-    /**
-     * Whether to list only identities that can actually sign. True is the list
-     * to offer an author; false also returns the ones `security` knows about but
-     * refuses, which is what turns "your certificate is missing" into "your
-     * certificate is there and expired".
-     */
-    validOnly?: boolean;
-    /** Injected in tests; defaults to running `security`. */
-    run?: () => Promise<string>;
+  platform?: NodeJS.Platform;
+  /**
+   * Whether to list only identities that can actually sign. True is the list
+   * to offer an author; false also returns the ones `security` knows about but
+   * refuses, which is what turns "your certificate is missing" into "your
+   * certificate is there and expired".
+   */
+  validOnly?: boolean;
+  /** Injected in tests; defaults to running `security`. */
+  run?: () => Promise<string>;
 };
 
 /**
@@ -72,57 +72,66 @@ export type MacIdentityProbeInput = {
  * both run this while a dialog is open and need an answer, not an exception.
  */
 export async function findMacSigningIdentities(
-    input: MacIdentityProbeInput = {},
+  input: MacIdentityProbeInput = {}
 ): Promise<MacSigningIdentity[]> {
-    if ((input.platform ?? process.platform) !== "darwin") {
-        return [];
+  if ((input.platform ?? process.platform) !== "darwin") {
+    return [];
+  }
+  const validOnly = input.validOnly ?? true;
+  let output: string;
+  try {
+    output = input.run
+      ? await input.run()
+      : (
+          await execFileAsync("security", [
+            "find-identity",
+            ...(validOnly ? ["-v"] : []),
+            "-p",
+            "codesigning"
+          ])
+        ).stdout;
+  } catch {
+    return [];
+  }
+  const identities: MacSigningIdentity[] = [];
+  const seen = new Set<string>();
+  for (const line of output.split(/\r?\n/)) {
+    const match = IDENTITY_LINE.exec(line);
+    if (!match) {
+      continue;
     }
-    const validOnly = input.validOnly ?? true;
-    let output: string;
-    try {
-        output = input.run
-            ? await input.run()
-            : (await execFileAsync("security", [
-                "find-identity",
-                ...(validOnly ? ["-v"] : []),
-                "-p",
-                "codesigning",
-            ])).stdout;
-    } catch {
-        return [];
+    const sha1 = match[1].toUpperCase();
+    // The same certificate in two keychains is listed twice, and without -v
+    // `security` prints its whole list once as "Matching identities" and
+    // again as "Valid identities only". Either way it is one identity to
+    // sign with, and showing it twice only invites the question of which
+    // entry is which.
+    if (seen.has(sha1)) {
+      continue;
     }
-    const identities: MacSigningIdentity[] = [];
-    const seen = new Set<string>();
-    for (const line of output.split(/\r?\n/)) {
-        const match = IDENTITY_LINE.exec(line);
-        if (!match) {
-            continue;
-        }
-        const sha1 = match[1].toUpperCase();
-        // The same certificate in two keychains is listed twice, and without -v
-        // `security` prints its whole list once as "Matching identities" and
-        // again as "Valid identities only". Either way it is one identity to
-        // sign with, and showing it twice only invites the question of which
-        // entry is which.
-        if (seen.has(sha1)) {
-            continue;
-        }
-        seen.add(sha1);
-        identities.push({ sha1, name: match[2], developerId: match[2].startsWith(DEVELOPER_ID_PREFIX) });
-    }
-    return identities;
+    seen.add(sha1);
+    identities.push({
+      sha1,
+      name: match[2],
+      developerId: match[2].startsWith(DEVELOPER_ID_PREFIX)
+    });
+  }
+  return identities;
 }
 
 /** Whether `identity` names something this host can actually sign with. */
 export function macIdentityPresent(identities: MacSigningIdentity[], identity: string): boolean {
-    const wanted = identity.trim();
-    if (!wanted) {
-        return false;
-    }
-    // codesign matches a name by substring, so an author who typed only
-    // "Developer ID Application" - enough for codesign when they hold exactly one
-    // such certificate - must not be told it is missing.
-    return identities.some(candidate => candidate.name === wanted
-        || candidate.sha1 === wanted.toUpperCase()
-        || candidate.name.includes(wanted));
+  const wanted = identity.trim();
+  if (!wanted) {
+    return false;
+  }
+  // codesign matches a name by substring, so an author who typed only
+  // "Developer ID Application" - enough for codesign when they hold exactly one
+  // such certificate - must not be told it is missing.
+  return identities.some(
+    (candidate) =>
+      candidate.name === wanted ||
+      candidate.sha1 === wanted.toUpperCase() ||
+      candidate.name.includes(wanted)
+  );
 }

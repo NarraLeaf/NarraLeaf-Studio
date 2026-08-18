@@ -4,7 +4,6 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "baseUrl": ".",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -14,14 +13,12 @@
       "@shared/*": ["../shared/*"],
       "@services/*": ["../renderer/lib/workspace/services/*"]
     },
-    "typeRoots": [
-      "../../node_modules/@types",
-      "../shared/types"
-    ],
+    "typeRoots": ["../../node_modules/@types", "../shared/types"],
     "types": ["node", "react", "react-dom"]
   },
   "include": [
     "./**/*",
+    "../renderer/global.d.ts",
     "../renderer/lib/ui-editor/**/*",
     "../renderer/lib/workspace/hooks/useAssetObjectUrl.ts",
     "../renderer/lib/workspace/hooks/useEditorFontFamily.ts",

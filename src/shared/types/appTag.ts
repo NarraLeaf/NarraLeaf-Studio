@@ -1,9 +1,9 @@
 import type { GameBuildPlatform } from "./gameBuild";
 import {
-    isPlatformScopedBuildConfig,
-    isVariantScopedBuildConfig,
-    pluginBuildConfigStorageKey,
-    type PluginBuildConfigField,
+  isPlatformScopedBuildConfig,
+  isVariantScopedBuildConfig,
+  pluginBuildConfigStorageKey,
+  type PluginBuildConfigField
 } from "./plugins";
 
 /**
@@ -128,9 +128,9 @@ export type AppTagOverrideKey = (typeof APP_TAG_OVERRIDE_KEYS)[number];
  * so the normalizer drops it, and clearing a field in the editor and restoring it are the same act.
  */
 export type AppTagOverrides = {
-    displayName?: string;
-    identifier?: string;
-    version?: string;
+  displayName?: string;
+  identifier?: string;
+  version?: string;
 };
 
 /**
@@ -153,8 +153,8 @@ export type AppTagPluginConfig = Record<string, Record<string, string>>;
 
 /** One scene an author says a mechanism can start. Carries the story, because a jump never crosses one. */
 export type AppTagDeclaredScene = {
-    storyId: string;
-    sceneId: string;
+  storyId: string;
+  sceneId: string;
 };
 
 /**
@@ -197,33 +197,39 @@ export type AppTagReachableScenes = Record<string, AppTagDeclaredScene[]>;
 export type AppTagEndingSurfaceId = string;
 
 export interface ProjectAppTag {
-    /** Stable. What every stored reference holds, so renaming a tag never invalidates one. */
-    id: string;
-    /** Author-facing. Shown wherever a tag is named; the id is never displayed. */
-    name: string;
-    /** Only what this tag says differently. See {@link AppTagOverrides}. */
-    overrides: AppTagOverrides;
-    /**
-     * Only the plugin values this variant states itself. Absent when it states none, so a tag that
-     * configures nothing is byte-identical to one written before plugins could ask for anything.
-     */
-    pluginConfig?: AppTagPluginConfig;
-    /** Only the scene declarations this variant states itself. See {@link AppTagReachableScenes}. */
-    reachableScenes?: AppTagReachableScenes;
-    /**
-     * Only the ending page this variant states itself. See {@link AppTagEndingSurfaceId}: absent is
-     * the project's choice, and an empty string is this variant saying it shows nothing.
-     */
-    endingSurfaceId?: AppTagEndingSurfaceId;
-    /** Set on the release tag. Derived from the id, never authored, never stored. */
-    builtin?: true;
+  /** Stable. What every stored reference holds, so renaming a tag never invalidates one. */
+  id: string;
+  /** Author-facing. Shown wherever a tag is named; the id is never displayed. */
+  name: string;
+  /** Only what this tag says differently. See {@link AppTagOverrides}. */
+  overrides: AppTagOverrides;
+  /**
+   * Only the plugin values this variant states itself. Absent when it states none, so a tag that
+   * configures nothing is byte-identical to one written before plugins could ask for anything.
+   */
+  pluginConfig?: AppTagPluginConfig;
+  /** Only the scene declarations this variant states itself. See {@link AppTagReachableScenes}. */
+  reachableScenes?: AppTagReachableScenes;
+  /**
+   * Only the ending page this variant states itself. See {@link AppTagEndingSurfaceId}: absent is
+   * the project's choice, and an empty string is this variant saying it shows nothing.
+   */
+  endingSurfaceId?: AppTagEndingSurfaceId;
+  /** Set on the release tag. Derived from the id, never authored, never stored. */
+  builtin?: true;
 }
 
 /** The three mechanisms a scene declaration can be about. */
 export type AppTagMechanismRef =
-    | { kind: "startStoryNode"; blueprintId: string; graphKind: string; graphId: string; nodeId: string }
-    | { kind: "scriptBlueprint"; blueprintId: string }
-    | { kind: "plugin"; pluginId: string };
+  | {
+      kind: "startStoryNode";
+      blueprintId: string;
+      graphKind: string;
+      graphId: string;
+      nodeId: string;
+    }
+  | { kind: "scriptBlueprint"; blueprintId: string }
+  | { kind: "plugin"; pluginId: string };
 
 /**
  * The stable key a declaration is filed under.
@@ -234,14 +240,14 @@ export type AppTagMechanismRef =
  * and a collision would silently hand one mechanism's scene list to another.
  */
 export function appTagMechanismKey(ref: AppTagMechanismRef): string {
-    switch (ref.kind) {
-        case "startStoryNode":
-            return `node:${ref.blueprintId}:${ref.graphKind}:${ref.graphId}:${ref.nodeId}`;
-        case "scriptBlueprint":
-            return `blueprint:${ref.blueprintId}`;
-        case "plugin":
-            return `plugin:${ref.pluginId}`;
-    }
+  switch (ref.kind) {
+    case "startStoryNode":
+      return `node:${ref.blueprintId}:${ref.graphKind}:${ref.graphId}:${ref.nodeId}`;
+    case "scriptBlueprint":
+      return `blueprint:${ref.blueprintId}`;
+    case "plugin":
+      return `plugin:${ref.pluginId}`;
+  }
 }
 
 /**
@@ -260,43 +266,43 @@ export function appTagMechanismKey(ref: AppTagMechanismRef): string {
  * language would read true in one author's Studio and fold to false in the package.
  */
 export const RELEASE_APP_TAG: ProjectAppTag = Object.freeze({
-    id: APP_TAG_ID_RELEASE,
-    name: "main",
-    overrides: Object.freeze({}) as AppTagOverrides,
-    builtin: true as const,
+  id: APP_TAG_ID_RELEASE,
+  name: "main",
+  overrides: Object.freeze({}) as AppTagOverrides,
+  builtin: true as const
 }) as ProjectAppTag;
 
 /** The persisted document. An array because author ordering is meaningful and a map loses it. */
 export type ProjectAppTagDocument = {
-    schemaVersion: AppTagSchemaVersion;
-    /** Author-created tags only. The release tag is never stored; see {@link RELEASE_APP_TAG}. */
-    tags: ProjectAppTag[];
-    /**
-     * The project's own plugin values - what every variant inherits, and what the release tag reads.
-     *
-     * At the document root rather than on a tag because the release tag is synthesized and stores
-     * nothing: there is no record on it for a value to live in, and inventing one would be a second
-     * answer to "what does an unstated key resolve to". Absent when the project configures nothing.
-     */
-    pluginConfig?: AppTagPluginConfig;
-    /**
-     * The project's own scene declarations - what every variant inherits, and what the release tag
-     * reads. At the root for the reason {@link pluginConfig} is: the release tag is synthesized and
-     * stores nothing, so there is no record on it for a value to live in.
-     */
-    reachableScenes?: AppTagReachableScenes;
-    /**
-     * The project's own ending page - what every variant inherits, and what the release tag reads.
-     *
-     * At the root for the reason `reachableScenes` is, and absent when blank: on the record every
-     * other record is read against, "the project picks none" and "the key is not there" are one
-     * fact.
-     */
-    endingSurfaceId?: AppTagEndingSurfaceId;
-    meta?: {
-        createdAt?: string;
-        updatedAt?: string;
-    };
+  schemaVersion: AppTagSchemaVersion;
+  /** Author-created tags only. The release tag is never stored; see {@link RELEASE_APP_TAG}. */
+  tags: ProjectAppTag[];
+  /**
+   * The project's own plugin values - what every variant inherits, and what the release tag reads.
+   *
+   * At the document root rather than on a tag because the release tag is synthesized and stores
+   * nothing: there is no record on it for a value to live in, and inventing one would be a second
+   * answer to "what does an unstated key resolve to". Absent when the project configures nothing.
+   */
+  pluginConfig?: AppTagPluginConfig;
+  /**
+   * The project's own scene declarations - what every variant inherits, and what the release tag
+   * reads. At the root for the reason {@link pluginConfig} is: the release tag is synthesized and
+   * stores nothing, so there is no record on it for a value to live in.
+   */
+  reachableScenes?: AppTagReachableScenes;
+  /**
+   * The project's own ending page - what every variant inherits, and what the release tag reads.
+   *
+   * At the root for the reason `reachableScenes` is, and absent when blank: on the record every
+   * other record is read against, "the project picks none" and "the key is not there" are one
+   * fact.
+   */
+  endingSurfaceId?: AppTagEndingSurfaceId;
+  meta?: {
+    createdAt?: string;
+    updatedAt?: string;
+  };
 };
 
 /**
@@ -308,7 +314,7 @@ export type ProjectAppTagDocument = {
 export const APP_TAG_REFERENCE_FIELDS = ["appTagId"] as const;
 
 export function isBuiltinAppTagId(id: string): boolean {
-    return id === APP_TAG_ID_RELEASE;
+  return id === APP_TAG_ID_RELEASE;
 }
 
 /**
@@ -317,38 +323,38 @@ export function isBuiltinAppTagId(id: string): boolean {
  * question that already has one.
  */
 export function normalizeProjectAppTag(raw: unknown): ProjectAppTag | null {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        return null;
-    }
-    const record = raw as Record<string, unknown>;
-    const id = typeof record.id === "string" ? record.id.trim() : "";
-    if (!id || isBuiltinAppTagId(id)) {
-        return null;
-    }
-    const name = typeof record.name === "string" && record.name.trim() ? record.name.trim() : id;
-    const pluginConfig = normalizeAppTagPluginConfig(record.pluginConfig);
-    const reachableScenes = normalizeAppTagReachableScenes(record.reachableScenes);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  const id = typeof record.id === "string" ? record.id.trim() : "";
+  if (!id || isBuiltinAppTagId(id)) {
+    return null;
+  }
+  const name = typeof record.name === "string" && record.name.trim() ? record.name.trim() : id;
+  const pluginConfig = normalizeAppTagPluginConfig(record.pluginConfig);
+  const reachableScenes = normalizeAppTagReachableScenes(record.reachableScenes);
 
-    return {
-        id,
-        name,
-        overrides: normalizeAppTagOverrides(record.overrides),
-        // Omitted when empty rather than written as `{}`, so adopting this feature does not rewrite
-        // every tag in every project the author merely opened.
-        ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
-        ...(hasAppTagReachableScenes(reachableScenes) ? { reachableScenes } : {}),
-        // Kept whenever the key is present, blank included, for the reason the list above is: on a
-        // variant "" is the statement "this edition shows nothing when its story ends", and dropping
-        // it would silently hand the variant the project's page instead.
-        ...(record.endingSurfaceId === undefined
-            ? {}
-            : { endingSurfaceId: normalizeAppTagEndingSurfaceId(record.endingSurfaceId) }),
-    };
+  return {
+    id,
+    name,
+    overrides: normalizeAppTagOverrides(record.overrides),
+    // Omitted when empty rather than written as `{}`, so adopting this feature does not rewrite
+    // every tag in every project the author merely opened.
+    ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
+    ...(hasAppTagReachableScenes(reachableScenes) ? { reachableScenes } : {}),
+    // Kept whenever the key is present, blank included, for the reason the list above is: on a
+    // variant "" is the statement "this edition shows nothing when its story ends", and dropping
+    // it would silently hand the variant the project's page instead.
+    ...(record.endingSurfaceId === undefined
+      ? {}
+      : { endingSurfaceId: normalizeAppTagEndingSurfaceId(record.endingSurfaceId) })
+  };
 }
 
 /** A surface id as it is stored and compared: trimmed, or blank for anything that is not one. */
 export function normalizeAppTagEndingSurfaceId(raw: unknown): AppTagEndingSurfaceId {
-    return typeof raw === "string" ? raw.trim() : "";
+  return typeof raw === "string" ? raw.trim() : "";
 }
 
 /**
@@ -362,35 +368,35 @@ export function normalizeAppTagEndingSurfaceId(raw: unknown): AppTagEndingSurfac
  * needs the declaration, and that is {@link variantStorablePluginConfig}.
  */
 export function normalizeAppTagPluginConfig(raw: unknown): AppTagPluginConfig {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        return {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {};
+  }
+  const config: AppTagPluginConfig = {};
+  for (const [rawPluginId, rawValues] of Object.entries(raw as Record<string, unknown>)) {
+    const pluginId = rawPluginId.trim();
+    if (!pluginId || !rawValues || typeof rawValues !== "object" || Array.isArray(rawValues)) {
+      continue;
     }
-    const config: AppTagPluginConfig = {};
-    for (const [rawPluginId, rawValues] of Object.entries(raw as Record<string, unknown>)) {
-        const pluginId = rawPluginId.trim();
-        if (!pluginId || !rawValues || typeof rawValues !== "object" || Array.isArray(rawValues)) {
-            continue;
-        }
-        const values: Record<string, string> = {};
-        for (const [rawKey, rawValue] of Object.entries(rawValues as Record<string, unknown>)) {
-            const key = rawKey.trim();
-            // Blank is not a value: it is a field the author has not filled in, and the only spelling
-            // of that is the key being absent.
-            if (!key || typeof rawValue !== "string" || !rawValue.trim()) {
-                continue;
-            }
-            values[key] = rawValue.trim();
-        }
-        if (Object.keys(values).length > 0) {
-            config[pluginId] = values;
-        }
+    const values: Record<string, string> = {};
+    for (const [rawKey, rawValue] of Object.entries(rawValues as Record<string, unknown>)) {
+      const key = rawKey.trim();
+      // Blank is not a value: it is a field the author has not filled in, and the only spelling
+      // of that is the key being absent.
+      if (!key || typeof rawValue !== "string" || !rawValue.trim()) {
+        continue;
+      }
+      values[key] = rawValue.trim();
     }
-    return config;
+    if (Object.keys(values).length > 0) {
+      config[pluginId] = values;
+    }
+  }
+  return config;
 }
 
 /** Whether a record says anything at all. `{}` and `{ "acme.plugin": {} }` both say nothing. */
 export function hasAppTagPluginConfig(config: AppTagPluginConfig | undefined): boolean {
-    return Boolean(config && Object.values(config).some(values => Object.keys(values).length > 0));
+  return Boolean(config && Object.values(config).some((values) => Object.keys(values).length > 0));
 }
 
 /**
@@ -409,39 +415,39 @@ export function hasAppTagPluginConfig(config: AppTagPluginConfig | undefined): b
  * under this variant" is written. Only a key that is not a list at all is dropped.
  */
 export function normalizeAppTagReachableScenes(raw: unknown): AppTagReachableScenes {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        return {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {};
+  }
+  const declared: AppTagReachableScenes = {};
+  for (const [rawKey, rawScenes] of Object.entries(raw as Record<string, unknown>)) {
+    const key = rawKey.trim();
+    if (!key || !Array.isArray(rawScenes)) {
+      continue;
     }
-    const declared: AppTagReachableScenes = {};
-    for (const [rawKey, rawScenes] of Object.entries(raw as Record<string, unknown>)) {
-        const key = rawKey.trim();
-        if (!key || !Array.isArray(rawScenes)) {
-            continue;
-        }
-        const scenes: AppTagDeclaredScene[] = [];
-        const seen = new Set<string>();
-        for (const entry of rawScenes) {
-            if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-                continue;
-            }
-            const record = entry as Record<string, unknown>;
-            const storyId = typeof record.storyId === "string" ? record.storyId.trim() : "";
-            const sceneId = typeof record.sceneId === "string" ? record.sceneId.trim() : "";
-            const pair = `${storyId}:${sceneId}`;
-            if (!storyId || !sceneId || seen.has(pair)) {
-                continue;
-            }
-            seen.add(pair);
-            scenes.push({ storyId, sceneId });
-        }
-        declared[key] = scenes;
+    const scenes: AppTagDeclaredScene[] = [];
+    const seen = new Set<string>();
+    for (const entry of rawScenes) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        continue;
+      }
+      const record = entry as Record<string, unknown>;
+      const storyId = typeof record.storyId === "string" ? record.storyId.trim() : "";
+      const sceneId = typeof record.sceneId === "string" ? record.sceneId.trim() : "";
+      const pair = `${storyId}:${sceneId}`;
+      if (!storyId || !sceneId || seen.has(pair)) {
+        continue;
+      }
+      seen.add(pair);
+      scenes.push({ storyId, sceneId });
     }
-    return declared;
+    declared[key] = scenes;
+  }
+  return declared;
 }
 
 /** Whether a record declares anything. An empty record is a project that has answered nothing. */
 export function hasAppTagReachableScenes(declared: AppTagReachableScenes | undefined): boolean {
-    return Boolean(declared && Object.keys(declared).length > 0);
+  return Boolean(declared && Object.keys(declared).length > 0);
 }
 
 /**
@@ -453,10 +459,10 @@ export function hasAppTagReachableScenes(declared: AppTagReachableScenes | undef
  * nine chapters it exists to leave out.
  */
 export function resolveAppTagReachableScenes(
-    tag: ProjectAppTag,
-    base: AppTagReachableScenes | undefined,
+  tag: ProjectAppTag,
+  base: AppTagReachableScenes | undefined
 ): AppTagReachableScenes {
-    return { ...(base ?? {}), ...(tag.reachableScenes ?? {}) };
+  return { ...(base ?? {}), ...(tag.reachableScenes ?? {}) };
 }
 
 /**
@@ -474,46 +480,49 @@ export function resolveAppTagReachableScenes(
  * this whole record shape exists to avoid.
  */
 export function variantStorablePluginConfig(
-    config: AppTagPluginConfig,
-    fields: readonly PluginBuildConfigField[],
+  config: AppTagPluginConfig,
+  fields: readonly PluginBuildConfigField[]
 ): AppTagPluginConfig {
-    const rooted = fields.filter(field => !isVariantScopedBuildConfig(field.scope));
-    if (rooted.length === 0) {
-        return config;
+  const rooted = fields.filter((field) => !isVariantScopedBuildConfig(field.scope));
+  if (rooted.length === 0) {
+    return config;
+  }
+  const result: AppTagPluginConfig = {};
+  for (const [pluginId, values] of Object.entries(config)) {
+    const kept: Record<string, string> = {};
+    for (const [storageKey, value] of Object.entries(values)) {
+      // Matched by prefix so a platform-scoped field's `key@windows` spellings are covered
+      // without enumerating the platforms it happens to name.
+      const misplaced = rooted.some(
+        (field) =>
+          field.pluginId === pluginId &&
+          (storageKey === field.key || storageKey.startsWith(`${field.key}@`))
+      );
+      if (!misplaced) {
+        kept[storageKey] = value;
+      }
     }
-    const result: AppTagPluginConfig = {};
-    for (const [pluginId, values] of Object.entries(config)) {
-        const kept: Record<string, string> = {};
-        for (const [storageKey, value] of Object.entries(values)) {
-            // Matched by prefix so a platform-scoped field's `key@windows` spellings are covered
-            // without enumerating the platforms it happens to name.
-            const misplaced = rooted.some(field => field.pluginId === pluginId
-                && (storageKey === field.key || storageKey.startsWith(`${field.key}@`)));
-            if (!misplaced) {
-                kept[storageKey] = value;
-            }
-        }
-        if (Object.keys(kept).length > 0) {
-            result[pluginId] = kept;
-        }
+    if (Object.keys(kept).length > 0) {
+      result[pluginId] = kept;
     }
-    return result;
+  }
+  return result;
 }
 
 /** Known keys only, blanks dropped. An unknown key is discarded rather than carried. */
 export function normalizeAppTagOverrides(raw: unknown): AppTagOverrides {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        return {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {};
+  }
+  const record = raw as Record<string, unknown>;
+  const overrides: AppTagOverrides = {};
+  for (const key of APP_TAG_OVERRIDE_KEYS) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      overrides[key] = value.trim();
     }
-    const record = raw as Record<string, unknown>;
-    const overrides: AppTagOverrides = {};
-    for (const key of APP_TAG_OVERRIDE_KEYS) {
-        const value = record[key];
-        if (typeof value === "string" && value.trim()) {
-            overrides[key] = value.trim();
-        }
-    }
-    return overrides;
+  }
+  return overrides;
 }
 
 /**
@@ -525,51 +534,51 @@ export function normalizeAppTagOverrides(raw: unknown): AppTagOverrides {
  * the project open.
  */
 export function normalizeProjectAppTags(raw: unknown): ProjectAppTag[] {
-    const source = Array.isArray(raw) ? raw : [];
-    const byId = new Map<string, ProjectAppTag>();
+  const source = Array.isArray(raw) ? raw : [];
+  const byId = new Map<string, ProjectAppTag>();
 
-    for (const entry of source) {
-        const tag = normalizeProjectAppTag(entry);
-        // First wins. A duplicated id is one row on the surface either way, and taking the later one
-        // would silently discard whichever of the two the author had been editing first.
-        if (tag && !byId.has(tag.id)) {
-            byId.set(tag.id, tag);
-        }
+  for (const entry of source) {
+    const tag = normalizeProjectAppTag(entry);
+    // First wins. A duplicated id is one row on the surface either way, and taking the later one
+    // would silently discard whichever of the two the author had been editing first.
+    if (tag && !byId.has(tag.id)) {
+      byId.set(tag.id, tag);
     }
-    return [...byId.values()];
+  }
+  return [...byId.values()];
 }
 
 /** An absent or unreadable document is a project that has only ever had the release tag. */
 export function createEmptyAppTagDocument(now?: string): ProjectAppTagDocument {
-    return {
-        schemaVersion: APP_TAG_SCHEMA_VERSION,
-        tags: [],
-        ...(now ? { meta: { createdAt: now, updatedAt: now } } : {}),
-    };
+  return {
+    schemaVersion: APP_TAG_SCHEMA_VERSION,
+    tags: [],
+    ...(now ? { meta: { createdAt: now, updatedAt: now } } : {})
+  };
 }
 
 export function migrateProjectAppTagDocument(raw: unknown): ProjectAppTagDocument {
-    const record = raw && typeof raw === "object" && !Array.isArray(raw)
-        ? raw as Record<string, unknown>
-        : {};
-    const meta = record.meta && typeof record.meta === "object" && !Array.isArray(record.meta)
-        ? record.meta as ProjectAppTagDocument["meta"]
-        : undefined;
-    const pluginConfig = normalizeAppTagPluginConfig(record.pluginConfig);
-    const reachableScenes = normalizeAppTagReachableScenes(record.reachableScenes);
-    const endingSurfaceId = normalizeAppTagEndingSurfaceId(record.endingSurfaceId);
+  const record =
+    raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const meta =
+    record.meta && typeof record.meta === "object" && !Array.isArray(record.meta)
+      ? (record.meta as ProjectAppTagDocument["meta"])
+      : undefined;
+  const pluginConfig = normalizeAppTagPluginConfig(record.pluginConfig);
+  const reachableScenes = normalizeAppTagReachableScenes(record.reachableScenes);
+  const endingSurfaceId = normalizeAppTagEndingSurfaceId(record.endingSurfaceId);
 
-    return {
-        schemaVersion: APP_TAG_SCHEMA_VERSION,
-        tags: normalizeProjectAppTags(record.tags),
-        ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
-        ...(hasAppTagReachableScenes(reachableScenes) ? { reachableScenes } : {}),
-        // Omitted when blank, unlike a variant's own key and for the same reason the list above is:
-        // this is the record a variant that states nothing reads, so there is nothing for a blank to
-        // mean that absence does not already say.
-        ...(endingSurfaceId ? { endingSurfaceId } : {}),
-        ...(meta ? { meta } : {}),
-    };
+  return {
+    schemaVersion: APP_TAG_SCHEMA_VERSION,
+    tags: normalizeProjectAppTags(record.tags),
+    ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
+    ...(hasAppTagReachableScenes(reachableScenes) ? { reachableScenes } : {}),
+    // Omitted when blank, unlike a variant's own key and for the same reason the list above is:
+    // this is the record a variant that states nothing reads, so there is nothing for a blank to
+    // mean that absence does not already say.
+    ...(endingSurfaceId ? { endingSurfaceId } : {}),
+    ...(meta ? { meta } : {})
+  };
 }
 
 /**
@@ -579,19 +588,22 @@ export function migrateProjectAppTagDocument(raw: unknown): ProjectAppTagDocumen
  * and a list whose base moves as tags are added reads as an ordinary row.
  */
 export function listAppTags(stored: readonly ProjectAppTag[]): ProjectAppTag[] {
-    return [RELEASE_APP_TAG, ...stored];
+  return [RELEASE_APP_TAG, ...stored];
 }
 
 /**
  * Whether the project has a tag under this id - the single fact that decides whether a tag can be
  * named anywhere. The release tag is always present.
  */
-export function hasAppTag(stored: readonly ProjectAppTag[], id: string | null | undefined): boolean {
-    const trimmed = typeof id === "string" ? id.trim() : "";
-    if (!trimmed) {
-        return false;
-    }
-    return isBuiltinAppTagId(trimmed) || stored.some(tag => tag.id === trimmed);
+export function hasAppTag(
+  stored: readonly ProjectAppTag[],
+  id: string | null | undefined
+): boolean {
+  const trimmed = typeof id === "string" ? id.trim() : "";
+  if (!trimmed) {
+    return false;
+  }
+  return isBuiltinAppTagId(trimmed) || stored.some((tag) => tag.id === trimmed);
 }
 
 /**
@@ -600,14 +612,14 @@ export function hasAppTag(stored: readonly ProjectAppTag[], id: string | null | 
  * reading for one.
  */
 export function resolveAppTag(
-    stored: readonly ProjectAppTag[],
-    id: string | null | undefined,
+  stored: readonly ProjectAppTag[],
+  id: string | null | undefined
 ): ProjectAppTag {
-    const trimmed = typeof id === "string" ? id.trim() : "";
-    if (!trimmed || isBuiltinAppTagId(trimmed)) {
-        return RELEASE_APP_TAG;
-    }
-    return stored.find(tag => tag.id === trimmed) ?? RELEASE_APP_TAG;
+  const trimmed = typeof id === "string" ? id.trim() : "";
+  if (!trimmed || isBuiltinAppTagId(trimmed)) {
+    return RELEASE_APP_TAG;
+  }
+  return stored.find((tag) => tag.id === trimmed) ?? RELEASE_APP_TAG;
 }
 
 /**
@@ -618,38 +630,38 @@ export function resolveAppTag(
  * from: the other tags, plus the release tag's own name, which no surface spells differently.
  */
 export function uniqueAppTagName(taken: readonly string[], desired: string): string {
-    const base = desired.trim() || RELEASE_APP_TAG.name;
-    const used = new Set(taken.map(name => name.trim().toLowerCase()));
-    if (!used.has(base.toLowerCase())) {
-        return base;
-    }
-    // From 2, the way a duplicated audio bus is named: "Demo 2" reads as the second of them, while
-    // "Demo 1" would imply a first one that is not called that.
-    for (let suffix = 2; suffix < used.size + 3; suffix += 1) {
-        const candidate = `${base} ${suffix}`;
-        if (!used.has(candidate.toLowerCase())) {
-            return candidate;
-        }
-    }
-    // Unreachable: the loop tries more spellings than there are taken names. Answering the base is
-    // still better than answering nothing, and the caller's own uniqueness is what would suffer.
+  const base = desired.trim() || RELEASE_APP_TAG.name;
+  const used = new Set(taken.map((name) => name.trim().toLowerCase()));
+  if (!used.has(base.toLowerCase())) {
     return base;
+  }
+  // From 2, the way a duplicated audio bus is named: "Demo 2" reads as the second of them, while
+  // "Demo 1" would imply a first one that is not called that.
+  for (let suffix = 2; suffix < used.size + 3; suffix += 1) {
+    const candidate = `${base} ${suffix}`;
+    if (!used.has(candidate.toLowerCase())) {
+      return candidate;
+    }
+  }
+  // Unreachable: the loop tries more spellings than there are taken names. Answering the base is
+  // still better than answering nothing, and the caller's own uniqueness is what would suffer.
+  return base;
 }
 
 /** By display name, case-insensitively. `"ambiguous"` when two tags answer to it. */
 export function findAppTagByName(
-    tags: readonly ProjectAppTag[],
-    name: string,
+  tags: readonly ProjectAppTag[],
+  name: string
 ): ProjectAppTag | "ambiguous" | null {
-    const needle = name.trim().toLowerCase();
-    if (!needle) {
-        return null;
-    }
-    const matches = tags.filter(tag => tag.name.trim().toLowerCase() === needle);
-    if (matches.length > 1) {
-        return "ambiguous";
-    }
-    return matches[0] ?? null;
+  const needle = name.trim().toLowerCase();
+  if (!needle) {
+    return null;
+  }
+  const matches = tags.filter((tag) => tag.name.trim().toLowerCase() === needle);
+  if (matches.length > 1) {
+    return "ambiguous";
+  }
+  return matches[0] ?? null;
 }
 
 /** The project's own values - what a tag with no overrides resolves to. */
@@ -657,9 +669,9 @@ export type AppTagBaseIdentity = Record<AppTagOverrideKey, string>;
 
 /** One resolved key: the value in force, and whether this tag is the reason for it. */
 export type AppTagResolvedValue = {
-    value: string;
-    /** True when the tag states this key itself, false when it is reading the release value. */
-    overridden: boolean;
+  value: string;
+  /** True when the tag states this key itself, false when it is reading the release value. */
+  overridden: boolean;
 };
 
 export type AppTagIdentity = Record<AppTagOverrideKey, AppTagResolvedValue>;
@@ -671,15 +683,19 @@ export type AppTagIdentity = Record<AppTagOverrideKey, AppTagResolvedValue>;
  * from: an inherited value and an overridden one are the same string, and a reader who cannot tell
  * them apart cannot tell whether restoring would change anything.
  */
-export function resolveAppTagIdentity(tag: ProjectAppTag, base: AppTagBaseIdentity): AppTagIdentity {
-    const resolved = {} as AppTagIdentity;
-    for (const key of APP_TAG_OVERRIDE_KEYS) {
-        const override = tag.overrides[key];
-        resolved[key] = override === undefined
-            ? { value: base[key], overridden: false }
-            : { value: override, overridden: true };
-    }
-    return resolved;
+export function resolveAppTagIdentity(
+  tag: ProjectAppTag,
+  base: AppTagBaseIdentity
+): AppTagIdentity {
+  const resolved = {} as AppTagIdentity;
+  for (const key of APP_TAG_OVERRIDE_KEYS) {
+    const override = tag.overrides[key];
+    resolved[key] =
+      override === undefined
+        ? { value: base[key], overridden: false }
+        : { value: override, overridden: true };
+  }
+  return resolved;
 }
 
 /**
@@ -698,31 +714,31 @@ export function resolveAppTagIdentity(tag: ProjectAppTag, base: AppTagBaseIdenti
  * only the machine's vault can answer.
  */
 export function resolveAppTagPluginConfigValue(
-    tag: ProjectAppTag,
-    base: AppTagPluginConfig,
-    field: PluginBuildConfigField,
-    platform?: GameBuildPlatform,
+  tag: ProjectAppTag,
+  base: AppTagPluginConfig,
+  field: PluginBuildConfigField,
+  platform?: GameBuildPlatform
 ): AppTagResolvedValue {
-    const storageKey = pluginBuildConfigStorageKey(
-        field.key,
-        isPlatformScopedBuildConfig(field.scope) ? platform : undefined,
-    );
-    const inherited = base[field.pluginId]?.[storageKey] ?? "";
-    if (!isVariantScopedBuildConfig(field.scope)) {
-        return { value: inherited, overridden: false };
-    }
-    const stated = tag.pluginConfig?.[field.pluginId]?.[storageKey];
-    return stated === undefined
-        ? { value: inherited, overridden: false }
-        : { value: stated, overridden: true };
+  const storageKey = pluginBuildConfigStorageKey(
+    field.key,
+    isPlatformScopedBuildConfig(field.scope) ? platform : undefined
+  );
+  const inherited = base[field.pluginId]?.[storageKey] ?? "";
+  if (!isVariantScopedBuildConfig(field.scope)) {
+    return { value: inherited, overridden: false };
+  }
+  const stated = tag.pluginConfig?.[field.pluginId]?.[storageKey];
+  return stated === undefined
+    ? { value: inherited, overridden: false }
+    : { value: stated, overridden: true };
 }
 
 /** A resolved ending page, and whether the variant is the reason for it. */
 export type AppTagResolvedEndingSurface = {
-    /** The surface a build under this tag shows when its story ends. Blank shows nothing. */
-    value: AppTagEndingSurfaceId;
-    /** True when the tag states it itself, false when it is reading the project's choice. */
-    overridden: boolean;
+  /** The surface a build under this tag shows when its story ends. Blank shows nothing. */
+  value: AppTagEndingSurfaceId;
+  /** True when the tag states it itself, false when it is reading the project's choice. */
+  overridden: boolean;
 };
 
 /**
@@ -737,13 +753,13 @@ export type AppTagResolvedEndingSurface = {
  * always reads that.
  */
 export function resolveAppTagEndingSurface(
-    tag: ProjectAppTag,
-    base: string | undefined,
+  tag: ProjectAppTag,
+  base: string | undefined
 ): AppTagResolvedEndingSurface {
-    if (tag.endingSurfaceId === undefined) {
-        return { value: normalizeAppTagEndingSurfaceId(base), overridden: false };
-    }
-    return { value: normalizeAppTagEndingSurfaceId(tag.endingSurfaceId), overridden: true };
+  if (tag.endingSurfaceId === undefined) {
+    return { value: normalizeAppTagEndingSurfaceId(base), overridden: false };
+  }
+  return { value: normalizeAppTagEndingSurfaceId(tag.endingSurfaceId), overridden: true };
 }
 
 /**
@@ -755,47 +771,48 @@ export function resolveAppTagEndingSurface(
  * the name cannot inflate the number.
  */
 export function countAppTagReferences(
-    roots: readonly unknown[],
-    tagIds: readonly string[],
+  roots: readonly unknown[],
+  tagIds: readonly string[]
 ): Record<string, number> {
-    const known = new Set(tagIds);
-    const counts: Record<string, number> = {};
-    for (const id of tagIds) {
-        counts[id] = 0;
+  const known = new Set(tagIds);
+  const counts: Record<string, number> = {};
+  for (const id of tagIds) {
+    counts[id] = 0;
+  }
+  const seen = new Set<object>();
+
+  const walk = (value: unknown): void => {
+    if (!value || typeof value !== "object") {
+      return;
     }
-    const seen = new Set<object>();
-
-    const walk = (value: unknown): void => {
-        if (!value || typeof value !== "object") {
-            return;
-        }
-        // Documents are trees, but an in-memory one can hold a shared sub-object; without this a
-        // cycle would hang the surface rather than report a number.
-        if (seen.has(value as object)) {
-            return;
-        }
-        seen.add(value as object);
-
-        if (Array.isArray(value)) {
-            for (const item of value) {
-                walk(item);
-            }
-            return;
-        }
-        for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-            if (typeof child === "string"
-                && (APP_TAG_REFERENCE_FIELDS as readonly string[]).includes(key)
-                && known.has(child)
-            ) {
-                counts[child] += 1;
-                continue;
-            }
-            walk(child);
-        }
-    };
-
-    for (const root of roots) {
-        walk(root);
+    // Documents are trees, but an in-memory one can hold a shared sub-object; without this a
+    // cycle would hang the surface rather than report a number.
+    if (seen.has(value as object)) {
+      return;
     }
-    return counts;
+    seen.add(value as object);
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        walk(item);
+      }
+      return;
+    }
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      if (
+        typeof child === "string" &&
+        (APP_TAG_REFERENCE_FIELDS as readonly string[]).includes(key) &&
+        known.has(child)
+      ) {
+        counts[child] += 1;
+        continue;
+      }
+      walk(child);
+    }
+  };
+
+  for (const root of roots) {
+    walk(root);
+  }
+  return counts;
 }

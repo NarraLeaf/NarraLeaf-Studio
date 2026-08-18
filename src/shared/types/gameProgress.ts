@@ -68,31 +68,31 @@ export const GAME_PROGRESS_FILE_EXTENSION = ".json";
  * variables worth carrying and no playthrough in progress.
  */
 export type GameProgressAnchor = {
-    sceneId: string;
-    sceneRuntimeName: string;
+  sceneId: string;
+  sceneRuntimeName: string;
 };
 
 export type GameProgressDocumentV1 = {
-    schemaVersion: GameProgressSchemaVersion;
-    /** The title this belongs to. Compared on read: a document for another title is not ours. */
-    progressKey: string;
-    writtenAt: string;
-    /** Which story document the anchor and the saved values belong to. Blank when none was running. */
-    storyId: string;
-    /**
-     * Saved-scope values, keyed by `storageKey` and not by variable id.
-     *
-     * `storageKey` is the key that is rename-stable and that the save file itself uses (see
-     * `variables/registry.ts`), so a variable renamed between the demo and the release still lands.
-     * A variable id would have been the wrong half: it is stable within one project, but it is the
-     * storage key the two editions' stores actually agree on.
-     */
-    savedVariables: Record<string, unknown>;
-    /** Persistent-scope values, keyed by `storageKey` for the reason above. */
-    persistentVariables: Record<string, unknown>;
-    anchor: GameProgressAnchor | null;
-    /** Studio scene ids the player had entered. The saved-domain visited record. */
-    visitedSceneIds: string[];
+  schemaVersion: GameProgressSchemaVersion;
+  /** The title this belongs to. Compared on read: a document for another title is not ours. */
+  progressKey: string;
+  writtenAt: string;
+  /** Which story document the anchor and the saved values belong to. Blank when none was running. */
+  storyId: string;
+  /**
+   * Saved-scope values, keyed by `storageKey` and not by variable id.
+   *
+   * `storageKey` is the key that is rename-stable and that the save file itself uses (see
+   * `variables/registry.ts`), so a variable renamed between the demo and the release still lands.
+   * A variable id would have been the wrong half: it is stable within one project, but it is the
+   * storage key the two editions' stores actually agree on.
+   */
+  savedVariables: Record<string, unknown>;
+  /** Persistent-scope values, keyed by `storageKey` for the reason above. */
+  persistentVariables: Record<string, unknown>;
+  anchor: GameProgressAnchor | null;
+  /** Studio scene ids the player had entered. The saved-domain visited record. */
+  visitedSceneIds: string[];
 };
 
 /**
@@ -105,17 +105,19 @@ export type GameProgressDocumentV1 = {
  * file. Run through {@link userDataDirectoryName} so the result is one path segment by construction.
  */
 export function gameProgressKey(base: AppTagBaseIdentity): string {
-    // The release tag carries no overrides by construction (see RELEASE_APP_TAG), so this resolves
-    // to the project's own values whatever variant is being built. Spelled as a resolve rather than
-    // as a read of `base` so the intent survives: it is the release identity that is wanted, not
-    // "whatever is in hand".
-    const identity = resolveAppTagIdentity(RELEASE_APP_TAG, base);
-    return userDataDirectoryName(deriveGameAppId(identity.identifier.value, identity.displayName.value));
+  // The release tag carries no overrides by construction (see RELEASE_APP_TAG), so this resolves
+  // to the project's own values whatever variant is being built. Spelled as a resolve rather than
+  // as a read of `base` so the intent survives: it is the release identity that is wanted, not
+  // "whatever is in hand".
+  const identity = resolveAppTagIdentity(RELEASE_APP_TAG, base);
+  return userDataDirectoryName(
+    deriveGameAppId(identity.identifier.value, identity.displayName.value)
+  );
 }
 
 /** The file name a key answers to. One segment; the key is already path-safe. */
 export function gameProgressFileName(progressKey: string): string {
-    return `${progressKey}${GAME_PROGRESS_FILE_EXTENSION}`;
+  return `${progressKey}${GAME_PROGRESS_FILE_EXTENSION}`;
 }
 
 /**
@@ -124,11 +126,11 @@ export function gameProgressFileName(progressKey: string): string {
  * and a renderer that could state them could write a document naming another title.
  */
 export type GameProgressExportRequest = {
-    storyId: string;
-    savedVariables: Record<string, unknown>;
-    persistentVariables: Record<string, unknown>;
-    anchor: GameProgressAnchor | null;
-    visitedSceneIds: string[];
+  storyId: string;
+  savedVariables: Record<string, unknown>;
+  persistentVariables: Record<string, unknown>;
+  anchor: GameProgressAnchor | null;
+  visitedSceneIds: string[];
 };
 
 /**
@@ -136,8 +138,8 @@ export type GameProgressExportRequest = {
  * predating {@link gameProgressKey} has no key, and a disk can be full.
  */
 export type GameProgressExportResult =
-    | { outcome: "written"; error: null }
-    | { outcome: "failed"; error: string };
+  | { outcome: "written"; error: null }
+  | { outcome: "failed"; error: string };
 
 /**
  * The answer to an import.
@@ -147,9 +149,9 @@ export type GameProgressExportResult =
  * new game) than for a file that would not parse (say something went wrong).
  */
 export type GameProgressImportResult =
-    | { outcome: "found"; document: GameProgressDocumentV1; error: null }
-    | { outcome: "missing"; document: null; error: null }
-    | { outcome: "failed"; document: null; error: string };
+  | { outcome: "found"; document: GameProgressDocumentV1; error: null }
+  | { outcome: "missing"; document: null; error: null }
+  | { outcome: "failed"; document: null; error: string };
 
 /**
  * What `Import Progress` hands the author's graph.
@@ -159,38 +161,39 @@ export type GameProgressImportResult =
  * carried across, no playthrough in progress.
  */
 export type GameProgressImportOutcome = {
-    outcome: "found" | "missing" | "failed";
-    sceneId: string;
-    error: string;
+  outcome: "found" | "missing" | "failed";
+  sceneId: string;
+  error: string;
 };
 
 /** A record of plain values, or `{}`. Structural only - it judges the shape, never the meaning. */
 function normalizeValueRecord(raw: unknown): Record<string, unknown> {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        return {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {};
+  }
+  const values: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (key.trim()) {
+      values[key] = value;
     }
-    const values: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-        if (key.trim()) {
-            values[key] = value;
-        }
-    }
-    return values;
+  }
+  return values;
 }
 
 function normalizeAnchor(raw: unknown): GameProgressAnchor | null {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        return null;
-    }
-    const record = raw as Record<string, unknown>;
-    const sceneId = typeof record.sceneId === "string" ? record.sceneId.trim() : "";
-    if (!sceneId) {
-        // Without a scene id there is nothing to hand to `Start Game`, and a name alone names
-        // nothing the runtime can resolve. That is an anchor of none, not a broken document.
-        return null;
-    }
-    const sceneRuntimeName = typeof record.sceneRuntimeName === "string" ? record.sceneRuntimeName.trim() : "";
-    return { sceneId, sceneRuntimeName };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  const sceneId = typeof record.sceneId === "string" ? record.sceneId.trim() : "";
+  if (!sceneId) {
+    // Without a scene id there is nothing to hand to `Start Game`, and a name alone names
+    // nothing the runtime can resolve. That is an anchor of none, not a broken document.
+    return null;
+  }
+  const sceneRuntimeName =
+    typeof record.sceneRuntimeName === "string" ? record.sceneRuntimeName.trim() : "";
+  return { sceneId, sceneRuntimeName };
 }
 
 /**
@@ -203,43 +206,47 @@ function normalizeAnchor(raw: unknown): GameProgressAnchor | null {
  * the version is written.
  */
 export function normalizeGameProgressDocument(raw: unknown): GameProgressDocumentV1 | null {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        return null;
-    }
-    const record = raw as Record<string, unknown>;
-    if (record.schemaVersion !== GAME_PROGRESS_SCHEMA_VERSION) {
-        return null;
-    }
-    return {
-        schemaVersion: GAME_PROGRESS_SCHEMA_VERSION,
-        progressKey: typeof record.progressKey === "string" ? record.progressKey.trim() : "",
-        writtenAt: typeof record.writtenAt === "string" ? record.writtenAt : "",
-        storyId: typeof record.storyId === "string" ? record.storyId.trim() : "",
-        savedVariables: normalizeValueRecord(record.savedVariables),
-        persistentVariables: normalizeValueRecord(record.persistentVariables),
-        anchor: normalizeAnchor(record.anchor),
-        visitedSceneIds: Array.isArray(record.visitedSceneIds)
-            ? record.visitedSceneIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
-            : [],
-    };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  if (record.schemaVersion !== GAME_PROGRESS_SCHEMA_VERSION) {
+    return null;
+  }
+  return {
+    schemaVersion: GAME_PROGRESS_SCHEMA_VERSION,
+    progressKey: typeof record.progressKey === "string" ? record.progressKey.trim() : "",
+    writtenAt: typeof record.writtenAt === "string" ? record.writtenAt : "",
+    storyId: typeof record.storyId === "string" ? record.storyId.trim() : "",
+    savedVariables: normalizeValueRecord(record.savedVariables),
+    persistentVariables: normalizeValueRecord(record.persistentVariables),
+    anchor: normalizeAnchor(record.anchor),
+    visitedSceneIds: Array.isArray(record.visitedSceneIds)
+      ? record.visitedSceneIds.filter(
+          (id): id is string => typeof id === "string" && id.trim().length > 0
+        )
+      : []
+  };
 }
 
 /** The document a shell writes, from what the running game stated and what the build knows. */
 export function buildGameProgressDocument(
-    progressKey: string,
-    request: GameProgressExportRequest,
-    writtenAt: string,
+  progressKey: string,
+  request: GameProgressExportRequest,
+  writtenAt: string
 ): GameProgressDocumentV1 {
-    return {
-        schemaVersion: GAME_PROGRESS_SCHEMA_VERSION,
-        progressKey,
-        writtenAt,
-        storyId: typeof request.storyId === "string" ? request.storyId.trim() : "",
-        savedVariables: normalizeValueRecord(request.savedVariables),
-        persistentVariables: normalizeValueRecord(request.persistentVariables),
-        anchor: normalizeAnchor(request.anchor),
-        visitedSceneIds: Array.isArray(request.visitedSceneIds)
-            ? request.visitedSceneIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
-            : [],
-    };
+  return {
+    schemaVersion: GAME_PROGRESS_SCHEMA_VERSION,
+    progressKey,
+    writtenAt,
+    storyId: typeof request.storyId === "string" ? request.storyId.trim() : "",
+    savedVariables: normalizeValueRecord(request.savedVariables),
+    persistentVariables: normalizeValueRecord(request.persistentVariables),
+    anchor: normalizeAnchor(request.anchor),
+    visitedSceneIds: Array.isArray(request.visitedSceneIds)
+      ? request.visitedSceneIds.filter(
+          (id): id is string => typeof id === "string" && id.trim().length > 0
+        )
+      : []
+  };
 }

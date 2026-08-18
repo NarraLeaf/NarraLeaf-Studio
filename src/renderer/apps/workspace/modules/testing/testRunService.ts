@@ -1,11 +1,6 @@
 import type { Service } from "@/lib/workspace/services/Service";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
-import type {
-    RegisteredTest,
-    TestAvailability,
-    TestId,
-    TestRunRecord,
-} from "@/lib/testing/types";
+import type { RegisteredTest, TestAvailability, TestId, TestRunRecord } from "@/lib/testing/types";
 
 /**
  * The face of `Services.TestRun` this feature's interface uses.
@@ -17,18 +12,18 @@ import type {
  * interface starts runs and reads records, it does not register tests.
  */
 export type TestRunServiceHandle = Service & {
-    listTests(): RegisteredTest[];
-    getAvailability(id: TestId): TestAvailability;
-    /** Resolves the new run's id. */
-    start(testId: TestId): Promise<string>;
-    cancel(runId: string): void;
-    getActiveRun(): TestRunRecord | null;
-    getRun(runId: string): TestRunRecord | null;
-    /** Newest first. */
-    listRuns(): TestRunRecord[];
-    onChanged(listener: () => void): () => void;
+  listTests(): RegisteredTest[];
+  getAvailability(id: TestId): TestAvailability;
+  /** Resolves the new run's id. */
+  start(testId: TestId): Promise<string>;
+  cancel(runId: string): void;
+  getActiveRun(): TestRunRecord | null;
+  getRun(runId: string): TestRunRecord | null;
+  /** Newest first. */
+  listRuns(): TestRunRecord[];
+  onChanged(listener: () => void): () => void;
 };
 
 export function getTestRunService(context: WorkspaceContext): TestRunServiceHandle {
-    return context.services.get<TestRunServiceHandle>(Services.TestRun);
+  return context.services.get<TestRunServiceHandle>(Services.TestRun);
 }

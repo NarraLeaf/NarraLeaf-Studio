@@ -48,14 +48,14 @@ import { ATOMIC_WRITE_TEMP_PATTERN, ATOMIC_WRITE_TEMP_SUFFIX } from "@shared/uti
  * and is not" failure.
  */
 const ROOT_EXCLUDED_DIRECTORIES: readonly string[] = [
-    /** Build output. */
-    "dist",
-    /** Dependencies of the project's own scripts; restorable from a manifest. */
-    "node_modules",
-    /** Thumbnails and other derived artefacts, rebuilt on demand. */
-    "editor/cache",
-    /** Locally cached copies of remote assets; the reference is versioned, not the copy. */
-    "editor/assets/remote",
+  /** Build output. */
+  "dist",
+  /** Dependencies of the project's own scripts; restorable from a manifest. */
+  "node_modules",
+  /** Thumbnails and other derived artefacts, rebuilt on demand. */
+  "editor/cache",
+  /** Locally cached copies of remote assets; the reference is versioned, not the copy. */
+  "editor/assets/remote"
 ];
 
 /**
@@ -67,13 +67,13 @@ const ROOT_EXCLUDED_DIRECTORIES: readonly string[] = [
  * project nested in the tree, a `.DS_Store` in every folder a Mac user opened.
  */
 const EXCLUDED_NAMES: ReadonlySet<string> = new Set([
-    /** The repository itself. Lore excludes it intrinsically; listed so this predicate agrees. */
-    ".lore",
-    /** Studio's per-machine state: editor layout, installed plugins, quarantine. */
-    ".nlstudio",
-    ".git",
-    ".DS_Store",
-    "Thumbs.db",
+  /** The repository itself. Lore excludes it intrinsically; listed so this predicate agrees. */
+  ".lore",
+  /** Studio's per-machine state: editor layout, installed plugins, quarantine. */
+  ".nlstudio",
+  ".git",
+  ".DS_Store",
+  "Thumbs.db"
 ]);
 
 /**
@@ -88,10 +88,10 @@ const EXCLUDED_NAMES: ReadonlySet<string> = new Set([
 
 /** Header written above the generated patterns. `#` lines are measured to be inert. */
 const IGNORE_FILE_HEADER: readonly string[] = [
-    "# Written by NarraLeaf Studio when version control was enabled for this project.",
-    "# Studio's own copy of these rules is compiled in and it does not read this file,",
-    "# so editing a line changes what the repository stores without changing what",
-    "# Studio reports.",
+  "# Written by NarraLeaf Studio when version control was enabled for this project.",
+  "# Studio's own copy of these rules is compiled in and it does not read this file,",
+  "# so editing a line changes what the repository stores without changing what",
+  "# Studio reports."
 ];
 
 /**
@@ -101,20 +101,20 @@ const IGNORE_FILE_HEADER: readonly string[] = [
  * same rules in different languages and nothing but a test keeps them honest.
  */
 export function workingSetIgnorePatterns(): string[] {
-    return [
-        ...ROOT_EXCLUDED_DIRECTORIES.map((directory) => `/${directory}/`),
-        ...[...EXCLUDED_NAMES],
-        // Derived from the suffix the atomic writer actually appends rather than
-        // spelled out again: a scratch file that reaches a commit is a half-written
-        // document in permanent history, and the two constants drifting apart is the
-        // only way that happens.
-        `*${ATOMIC_WRITE_TEMP_SUFFIX}`,
-    ];
+  return [
+    ...ROOT_EXCLUDED_DIRECTORIES.map((directory) => `/${directory}/`),
+    ...[...EXCLUDED_NAMES],
+    // Derived from the suffix the atomic writer actually appends rather than
+    // spelled out again: a scratch file that reaches a commit is a half-written
+    // document in permanent history, and the two constants drifting apart is the
+    // only way that happens.
+    `*${ATOMIC_WRITE_TEMP_SUFFIX}`
+  ];
 }
 
 /** The full text of the repository's ignore file, header included. */
 export function renderWorkingSetIgnoreFile(): string {
-    return [...IGNORE_FILE_HEADER, "", ...workingSetIgnorePatterns(), ""].join("\n");
+  return [...IGNORE_FILE_HEADER, "", ...workingSetIgnorePatterns(), ""].join("\n");
 }
 
 /**
@@ -127,21 +127,21 @@ export function renderWorkingSetIgnoreFile(): string {
  * Accepts either separator; callers on Windows have both spellings in hand.
  */
 export function isVersioned(repositoryRelativePath: string): boolean {
-    const segments = splitRelative(repositoryRelativePath);
-    if (segments.length === 0) return false;
-    if (segments.some((segment) => segment === ".." || EXCLUDED_NAMES.has(segment))) return false;
+  const segments = splitRelative(repositoryRelativePath);
+  if (segments.length === 0) return false;
+  if (segments.some((segment) => segment === ".." || EXCLUDED_NAMES.has(segment))) return false;
 
-    const relative = segments.join("/");
-    if (ATOMIC_WRITE_TEMP_PATTERN.test(relative)) return false;
+  const relative = segments.join("/");
+  if (ATOMIC_WRITE_TEMP_PATTERN.test(relative)) return false;
 
-    return !ROOT_EXCLUDED_DIRECTORIES.some(
-        (directory) => relative === directory || relative.startsWith(`${directory}/`),
-    );
+  return !ROOT_EXCLUDED_DIRECTORIES.some(
+    (directory) => relative === directory || relative.startsWith(`${directory}/`)
+  );
 }
 
 /** Path to segments, tolerating either separator, a leading `./`, and trailing slashes. */
 function splitRelative(repositoryRelativePath: string): string[] {
-    return repositoryRelativePath
-        .split(/[\\/]+/)
-        .filter((segment) => segment.length > 0 && segment !== ".");
+  return repositoryRelativePath
+    .split(/[\\/]+/)
+    .filter((segment) => segment.length > 0 && segment !== ".");
 }

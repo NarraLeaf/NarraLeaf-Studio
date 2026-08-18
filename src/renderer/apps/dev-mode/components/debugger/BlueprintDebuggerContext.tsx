@@ -12,41 +12,43 @@ import type { BlueprintDebugSession } from "@/lib/ui-editor/blueprint-runtime/Bl
 import { useBlueprintDebugger, type UseBlueprintDebuggerResult } from "./useBlueprintDebugger";
 
 type BlueprintDebuggerContextValue = UseBlueprintDebuggerResult & {
-    session: BlueprintDebugSession | null;
-    blueprintDocument: BlueprintDocument | undefined;
-    /** The graph overlay is open because the author asked for it, rather than because of a stop. */
-    graphBrowserOpen: boolean;
-    openGraphBrowser: () => void;
-    closeGraphBrowser: () => void;
+  session: BlueprintDebugSession | null;
+  blueprintDocument: BlueprintDocument | undefined;
+  /** The graph overlay is open because the author asked for it, rather than because of a stop. */
+  graphBrowserOpen: boolean;
+  openGraphBrowser: () => void;
+  closeGraphBrowser: () => void;
 };
 
 const BlueprintDebuggerContext = createContext<BlueprintDebuggerContextValue | null>(null);
 
 export function BlueprintDebuggerProvider(props: {
-    session: BlueprintDebugSession | null;
-    blueprintDocument: BlueprintDocument | undefined;
-    projectPath: string | null;
-    children: ReactNode;
+  session: BlueprintDebugSession | null;
+  blueprintDocument: BlueprintDocument | undefined;
+  projectPath: string | null;
+  children: ReactNode;
 }): ReactNode {
-    const { session, blueprintDocument, projectPath, children } = props;
-    const debugger_ = useBlueprintDebugger({ session, blueprintDocument, projectPath });
-    const [graphBrowserOpen, setGraphBrowserOpen] = useState(false);
+  const { session, blueprintDocument, projectPath, children } = props;
+  const debugger_ = useBlueprintDebugger({ session, blueprintDocument, projectPath });
+  const [graphBrowserOpen, setGraphBrowserOpen] = useState(false);
 
-    const value = useMemo<BlueprintDebuggerContextValue>(
-        () => ({
-            ...debugger_,
-            session,
-            blueprintDocument,
-            graphBrowserOpen,
-            openGraphBrowser: () => setGraphBrowserOpen(true),
-            closeGraphBrowser: () => setGraphBrowserOpen(false),
-        }),
-        [debugger_, session, blueprintDocument, graphBrowserOpen],
-    );
+  const value = useMemo<BlueprintDebuggerContextValue>(
+    () => ({
+      ...debugger_,
+      session,
+      blueprintDocument,
+      graphBrowserOpen,
+      openGraphBrowser: () => setGraphBrowserOpen(true),
+      closeGraphBrowser: () => setGraphBrowserOpen(false)
+    }),
+    [debugger_, session, blueprintDocument, graphBrowserOpen]
+  );
 
-    return <BlueprintDebuggerContext.Provider value={value}>{children}</BlueprintDebuggerContext.Provider>;
+  return (
+    <BlueprintDebuggerContext.Provider value={value}>{children}</BlueprintDebuggerContext.Provider>
+  );
 }
 
 export function useBlueprintDebuggerContext(): BlueprintDebuggerContextValue | null {
-    return useContext(BlueprintDebuggerContext);
+  return useContext(BlueprintDebuggerContext);
 }

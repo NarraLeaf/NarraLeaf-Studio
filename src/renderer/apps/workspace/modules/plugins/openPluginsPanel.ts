@@ -5,7 +5,7 @@ export const PLUGINS_PANEL_ID = "narraleaf-studio:plugins";
 
 /** Deep-link payload: open the panel already showing one plugin. */
 export type PluginsPanelPayload = {
-    pluginId?: string;
+  pluginId?: string;
 };
 
 /**
@@ -17,8 +17,11 @@ export type PluginsPanelPayload = {
  * path, and routing that through the module index would make the panel import the runtime that
  * imports the panel.
  */
-export function openPluginsPanel(workspace: WorkspaceContext, payload: PluginsPanelPayload = {}): void {
-    const uiService = workspace.services.get<UIService>(Services.UI);
-    uiService.panels.updatePayload(PLUGINS_PANEL_ID, payload);
-    uiService.panels.show(PLUGINS_PANEL_ID);
+export function openPluginsPanel(
+  workspace: WorkspaceContext,
+  payload: PluginsPanelPayload = {}
+): void {
+  const uiService = workspace.services.get<UIService>(Services.UI);
+  uiService.panels.updatePayload(PLUGINS_PANEL_ID, payload);
+  uiService.panels.show(PLUGINS_PANEL_ID);
 }

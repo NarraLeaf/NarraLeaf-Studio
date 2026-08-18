@@ -10,19 +10,19 @@ import type { PluginActivity } from "./useWorkspacePluginActivity";
  * on a dot beside it, for the same reason the dependencies list dropped its dots.
  */
 export const ACTIVITY_LABEL_KEYS: Readonly<Record<PluginActivity, TranslationKey | null>> = {
-    running: null,
-    off: null,
-    runtimeOnly: "plugins.workspace.activity.runtimeOnly",
-    suppressed: "plugins.workspace.activity.suppressed",
-    failed: "plugins.workspace.activity.failed",
-    stopped: "plugins.workspace.activity.stopped",
+  running: null,
+  off: null,
+  runtimeOnly: "plugins.workspace.activity.runtimeOnly",
+  suppressed: "plugins.workspace.activity.suppressed",
+  failed: "plugins.workspace.activity.failed",
+  stopped: "plugins.workspace.activity.stopped"
 };
 
 export const ACTIVITY_TONES: Readonly<Record<PluginActivity, string>> = {
-    running: "text-fg-subtle",
-    off: "text-fg-subtle",
-    runtimeOnly: "text-fg-subtle",
-    suppressed: "text-warning",
-    failed: "text-danger",
-    stopped: "text-warning",
+  running: "text-fg-subtle",
+  off: "text-fg-subtle",
+  runtimeOnly: "text-fg-subtle",
+  suppressed: "text-warning",
+  failed: "text-danger",
+  stopped: "text-warning"
 };

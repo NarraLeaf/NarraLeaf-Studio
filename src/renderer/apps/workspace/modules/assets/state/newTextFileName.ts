@@ -38,18 +38,18 @@ export type NewTextFileNameProblem = "empty" | "illegalChars";
  * translated strings live with the dialog that shows them.
  */
 export function validateNewTextFileName(input: string): NewTextFileNameProblem | null {
-    const trimmed = input.trim();
-    if (!trimmed) {
-        return "empty";
-    }
-    if (ILLEGAL_TEXT_FILE_NAME_CHARS.test(trimmed)) {
-        return "illegalChars";
-    }
-    // `...` survives the character check and still names nothing.
-    if (!trimmed.replace(TRAILING_NOISE, "")) {
-        return "empty";
-    }
-    return null;
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return "empty";
+  }
+  if (ILLEGAL_TEXT_FILE_NAME_CHARS.test(trimmed)) {
+    return "illegalChars";
+  }
+  // `...` survives the character check and still names nothing.
+  if (!trimmed.replace(TRAILING_NOISE, "")) {
+    return "empty";
+  }
+  return null;
 }
 
 /**
@@ -60,10 +60,10 @@ export function validateNewTextFileName(input: string): NewTextFileNameProblem |
  * `textFileExtension`, which the editor's own whitelist reads names with.
  */
 export function resolveNewTextFileName(input: string): string {
-    const name = input.trim().replace(TRAILING_NOISE, "");
-    const dot = name.lastIndexOf(".");
-    if (dot >= 0 && dot < name.length - 1) {
-        return name;
-    }
-    return `${name}.${NEW_TEXT_FILE_DEFAULT_EXTENSION}`;
+  const name = input.trim().replace(TRAILING_NOISE, "");
+  const dot = name.lastIndexOf(".");
+  if (dot >= 0 && dot < name.length - 1) {
+    return name;
+  }
+  return `${name}.${NEW_TEXT_FILE_DEFAULT_EXTENSION}`;
 }

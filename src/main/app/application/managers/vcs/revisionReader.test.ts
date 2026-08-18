@@ -13,91 +13,91 @@ import type { RevisionNode } from "./lore";
  */
 
 function graph(...nodes: Array<[string, number, string[]]>): Map<string, RevisionNode> {
-    const map = new Map<string, RevisionNode>();
-    for (const [revision, number, parents] of nodes) {
-        map.set(revision, { revision, number, parents });
-    }
-    return map;
+  const map = new Map<string, RevisionNode>();
+  for (const [revision, number, parents] of nodes) {
+    map.set(revision, { revision, number, parents });
+  }
+  return map;
 }
 
 describe("mergeBase", () => {
-    it("returns the shared ancestor of a simple fork", () => {
-        //   a - b - c        (main)
-        //        \- d - e    (branch)
-        const dag = graph(
-            ["a", 1, []],
-            ["b", 2, ["a"]],
-            ["c", 3, ["b"]],
-            ["d", 3, ["b"]],
-            ["e", 4, ["d"]],
-        );
-        expect(mergeBase(dag, "c", "e")).toBe("b");
-        // Order must not matter.
-        expect(mergeBase(dag, "e", "c")).toBe("b");
-    });
+  it("returns the shared ancestor of a simple fork", () => {
+    //   a - b - c        (main)
+    //        \- d - e    (branch)
+    const dag = graph(
+      ["a", 1, []],
+      ["b", 2, ["a"]],
+      ["c", 3, ["b"]],
+      ["d", 3, ["b"]],
+      ["e", 4, ["d"]]
+    );
+    expect(mergeBase(dag, "c", "e")).toBe("b");
+    // Order must not matter.
+    expect(mergeBase(dag, "e", "c")).toBe("b");
+  });
 
-    it("returns the older revision when one side is an ancestor of the other", () => {
-        const dag = graph(["a", 1, []], ["b", 2, ["a"]], ["c", 3, ["b"]]);
-        expect(mergeBase(dag, "c", "a")).toBe("a");
-        expect(mergeBase(dag, "c", "c")).toBe("c");
-    });
+  it("returns the older revision when one side is an ancestor of the other", () => {
+    const dag = graph(["a", 1, []], ["b", 2, ["a"]], ["c", 3, ["b"]]);
+    expect(mergeBase(dag, "c", "a")).toBe("a");
+    expect(mergeBase(dag, "c", "c")).toBe("c");
+  });
 
-    it("follows both parents of a merge revision", () => {
-        //   a - b ---- m      m has parents b and d
-        //    \- c - d -/
-        //       b -- x        x is a sibling of m, not an ancestor
-        const dag = graph(
-            ["a", 1, []],
-            ["b", 2, ["a"]],
-            ["c", 2, ["a"]],
-            ["d", 3, ["c"]],
-            ["m", 4, ["b", "d"]],
-            ["x", 3, ["b"]],
-        );
-        // Reachable only through the merge's SECOND parent.
-        expect(mergeBase(dag, "m", "d")).toBe("d");
-        // x forked from b and was never merged, so the shared ancestor is b - not x,
-        // which is what a traversal following only first parents would report.
-        expect(mergeBase(dag, "m", "x")).toBe("b");
-    });
+  it("follows both parents of a merge revision", () => {
+    //   a - b ---- m      m has parents b and d
+    //    \- c - d -/
+    //       b -- x        x is a sibling of m, not an ancestor
+    const dag = graph(
+      ["a", 1, []],
+      ["b", 2, ["a"]],
+      ["c", 2, ["a"]],
+      ["d", 3, ["c"]],
+      ["m", 4, ["b", "d"]],
+      ["x", 3, ["b"]]
+    );
+    // Reachable only through the merge's SECOND parent.
+    expect(mergeBase(dag, "m", "d")).toBe("d");
+    // x forked from b and was never merged, so the shared ancestor is b - not x,
+    // which is what a traversal following only first parents would report.
+    expect(mergeBase(dag, "m", "x")).toBe("b");
+  });
 
-    it("returns undefined for unrelated histories", () => {
-        // Two roots with no shared ancestor. The caller must treat a missing base as
-        // an add/add conflict, NOT as an empty file - assuming empty silently accepts
-        // one side of the merge.
-        const dag = graph(["a", 1, []], ["b", 2, ["a"]], ["x", 1, []], ["y", 2, ["x"]]);
-        expect(mergeBase(dag, "b", "y")).toBeUndefined();
-    });
+  it("returns undefined for unrelated histories", () => {
+    // Two roots with no shared ancestor. The caller must treat a missing base as
+    // an add/add conflict, NOT as an empty file - assuming empty silently accepts
+    // one side of the merge.
+    const dag = graph(["a", 1, []], ["b", 2, ["a"]], ["x", 1, []], ["y", 2, ["x"]]);
+    expect(mergeBase(dag, "b", "y")).toBeUndefined();
+  });
 
-    it("resolves a criss-cross to one stable candidate", () => {
-        // Two branches that have merged each other leave SEVERAL equally-minimal
-        // common ancestors - here b and c, both at revision number 2. Git resolves
-        // this by recursively merging them; Studio picks one, which is the documented
-        // degradation: a slightly worse base means the user sees a few extra
-        // conflicts, never a wrong merge.
-        //
-        // What this pins is that the choice is STABLE. Without the id tie-break the
-        // winner depended on traversal order, so two people merging the same pair of
-        // branches could be shown different conflicts.
-        const dag = graph(
-            ["a", 1, []],
-            ["b", 2, ["a"]],
-            ["c", 2, ["a"]],
-            ["m1", 3, ["b", "c"]],
-            ["m2", 4, ["c", "b"]],
-            ["left", 5, ["m1"]],
-            ["right", 6, ["m2"]],
-        );
-        expect(mergeBase(dag, "left", "right")).toBe("b");
-        expect(mergeBase(dag, "right", "left")).toBe("b");
-    });
+  it("resolves a criss-cross to one stable candidate", () => {
+    // Two branches that have merged each other leave SEVERAL equally-minimal
+    // common ancestors - here b and c, both at revision number 2. Git resolves
+    // this by recursively merging them; Studio picks one, which is the documented
+    // degradation: a slightly worse base means the user sees a few extra
+    // conflicts, never a wrong merge.
+    //
+    // What this pins is that the choice is STABLE. Without the id tie-break the
+    // winner depended on traversal order, so two people merging the same pair of
+    // branches could be shown different conflicts.
+    const dag = graph(
+      ["a", 1, []],
+      ["b", 2, ["a"]],
+      ["c", 2, ["a"]],
+      ["m1", 3, ["b", "c"]],
+      ["m2", 4, ["c", "b"]],
+      ["left", 5, ["m1"]],
+      ["right", 6, ["m2"]]
+    );
+    expect(mergeBase(dag, "left", "right")).toBe("b");
+    expect(mergeBase(dag, "right", "left")).toBe("b");
+  });
 
-    it("terminates on a cycle rather than hanging", () => {
-        // Lore cannot produce one, but the graph arrives over FFI and a hung main
-        // process is a far worse failure than a wrong answer.
-        const dag = graph(["a", 1, ["b"]], ["b", 2, ["a"]]);
-        expect(() => mergeBase(dag, "a", "b")).not.toThrow();
-    });
+  it("terminates on a cycle rather than hanging", () => {
+    // Lore cannot produce one, but the graph arrives over FFI and a hung main
+    // process is a far worse failure than a wrong answer.
+    const dag = graph(["a", 1, ["b"]], ["b", 2, ["a"]]);
+    expect(() => mergeBase(dag, "a", "b")).not.toThrow();
+  });
 });
 
 /**
@@ -110,28 +110,28 @@ describe("mergeBase", () => {
  * year on that spelling. This is what makes the two tellable apart before anyone acts on either.
  */
 describe("graphCoversAncestry", () => {
-    it("accepts a graph holding the tip and everything above it", () => {
-        const dag = graph(["a", 1, []], ["b", 2, ["a"]], ["c", 3, ["b"]]);
-        expect(graphCoversAncestry(dag, "c")).toBe(true);
-    });
+  it("accepts a graph holding the tip and everything above it", () => {
+    const dag = graph(["a", 1, []], ["b", 2, ["a"]], ["c", 3, ["b"]]);
+    expect(graphCoversAncestry(dag, "c")).toBe(true);
+  });
 
-    it("rejects a graph that does not hold the tip at all", () => {
-        // Exactly the measured §4.30 shape: the current branch's history, asked about the tip of
-        // the branch being merged in.
-        const mainOnly = graph(["base", 1, []], ["mine", 2, ["base"]]);
-        expect(graphCoversAncestry(mainOnly, "theirs")).toBe(false);
-        expect(mergeBase(mainOnly, "mine", "theirs")).toBeUndefined();
-    });
+  it("rejects a graph that does not hold the tip at all", () => {
+    // Exactly the measured §4.30 shape: the current branch's history, asked about the tip of
+    // the branch being merged in.
+    const mainOnly = graph(["base", 1, []], ["mine", 2, ["base"]]);
+    expect(graphCoversAncestry(mainOnly, "theirs")).toBe(false);
+    expect(mergeBase(mainOnly, "mine", "theirs")).toBeUndefined();
+  });
 
-    it("rejects a graph whose walk runs off the end of a parent link", () => {
-        // A limited history read: the tip is present, its parent is named, and the parent's own
-        // entry was never returned. Nothing about `mergeBase`'s answer would say so.
-        const truncated = graph(["c", 3, ["b"]], ["b", 2, ["a"]]);
-        expect(graphCoversAncestry(truncated, "c")).toBe(false);
-    });
+  it("rejects a graph whose walk runs off the end of a parent link", () => {
+    // A limited history read: the tip is present, its parent is named, and the parent's own
+    // entry was never returned. Nothing about `mergeBase`'s answer would say so.
+    const truncated = graph(["c", 3, ["b"]], ["b", 2, ["a"]]);
+    expect(graphCoversAncestry(truncated, "c")).toBe(false);
+  });
 
-    it("terminates on a cycle rather than hanging", () => {
-        const dag = graph(["a", 1, ["b"]], ["b", 2, ["a"]]);
-        expect(graphCoversAncestry(dag, "a")).toBe(true);
-    });
+  it("terminates on a cycle rather than hanging", () => {
+    const dag = graph(["a", 1, ["b"]], ["b", 2, ["a"]]);
+    expect(graphCoversAncestry(dag, "a")).toBe(true);
+  });
 });

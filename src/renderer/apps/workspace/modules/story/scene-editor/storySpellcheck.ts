@@ -43,25 +43,28 @@ const CHIP_PLACEHOLDER = " ";
  * something other than one character on a chip stays a one-line change here rather than a silent
  * mis-mapping everywhere else.
  */
-export function buildSpellcheckText(runs: readonly StoryRichRun[]): { text: string; unitAt: number[] } {
-    let text = "";
-    const unitAt: number[] = [];
-    let unit = 0;
-    for (const run of runs) {
-        if (isTextRun(run)) {
-            for (const character of run.text) {
-                text += character;
-                unitAt.push(unit);
-                unit += 1;
-            }
-            continue;
-        }
-        text += CHIP_PLACEHOLDER;
+export function buildSpellcheckText(runs: readonly StoryRichRun[]): {
+  text: string;
+  unitAt: number[];
+} {
+  let text = "";
+  const unitAt: number[] = [];
+  let unit = 0;
+  for (const run of runs) {
+    if (isTextRun(run)) {
+      for (const character of run.text) {
+        text += character;
         unitAt.push(unit);
         unit += 1;
+      }
+      continue;
     }
+    text += CHIP_PLACEHOLDER;
     unitAt.push(unit);
-    return { text, unitAt };
+    unit += 1;
+  }
+  unitAt.push(unit);
+  return { text, unitAt };
 }
 
 /**
@@ -73,15 +76,15 @@ export function buildSpellcheckText(runs: readonly StoryRichRun[]): { text: stri
  * the unit pair is what builds the DOM range and what an accepted suggestion is spliced over.
  */
 export type SpellMark = {
-    /** Offset of the first character in the checked string. */
-    start: number;
-    /** Offset one past the last character in the checked string. */
-    end: number;
-    /** Unit offset of the first character, for `createUnitRange` and for splicing. */
-    unitStart: number;
-    /** Unit offset one past the last character. */
-    unitEnd: number;
-    word: string;
+  /** Offset of the first character in the checked string. */
+  start: number;
+  /** Offset one past the last character in the checked string. */
+  end: number;
+  /** Unit offset of the first character, for `createUnitRange` and for splicing. */
+  unitStart: number;
+  /** Unit offset one past the last character. */
+  unitEnd: number;
+  word: string;
 };
 
 /**
@@ -92,31 +95,41 @@ export type SpellMark = {
  * means the answer was computed for text this row no longer holds, and a clamped version of it would
  * underline a word chosen at random.
  */
-export function markFromRange(unitAt: readonly number[], text: string, range: SpellcheckRange): SpellMark | null {
-    const { start, end, word } = range;
-    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start || end >= unitAt.length) {
-        return null;
-    }
-    if (text.slice(start, end) !== word) {
-        return null;
-    }
-    return { start, end, unitStart: unitAt[start], unitEnd: unitAt[end], word };
+export function markFromRange(
+  unitAt: readonly number[],
+  text: string,
+  range: SpellcheckRange
+): SpellMark | null {
+  const { start, end, word } = range;
+  if (
+    !Number.isInteger(start) ||
+    !Number.isInteger(end) ||
+    start < 0 ||
+    end <= start ||
+    end >= unitAt.length
+  ) {
+    return null;
+  }
+  if (text.slice(start, end) !== word) {
+    return null;
+  }
+  return { start, end, unitStart: unitAt[start], unitEnd: unitAt[end], word };
 }
 
 /** Every range that describes a word in `text`, in the unit model. Ranges that do not are dropped. */
 export function marksFromRanges(
-    unitAt: readonly number[],
-    text: string,
-    ranges: readonly SpellcheckRange[],
+  unitAt: readonly number[],
+  text: string,
+  ranges: readonly SpellcheckRange[]
 ): SpellMark[] {
-    const marks: SpellMark[] = [];
-    for (const range of ranges) {
-        const mark = markFromRange(unitAt, text, range);
-        if (mark) {
-            marks.push(mark);
-        }
+  const marks: SpellMark[] = [];
+  for (const range of ranges) {
+    const mark = markFromRange(unitAt, text, range);
+    if (mark) {
+      marks.push(mark);
     }
-    return marks;
+  }
+  return marks;
 }
 
 /**
@@ -137,27 +150,34 @@ export function marksFromRanges(
  * stops costing exactly one character.
  */
 export function pruneStaleMarks(
-    marks: readonly SpellMark[],
-    text: string,
-    unitAt: readonly number[],
+  marks: readonly SpellMark[],
+  text: string,
+  unitAt: readonly number[]
 ): SpellMark[] {
-    const kept: SpellMark[] = [];
-    for (const mark of marks) {
-        if (mark.end >= unitAt.length || text.slice(mark.start, mark.end) !== mark.word) {
-            continue;
-        }
-        kept.push({ ...mark, unitStart: unitAt[mark.start], unitEnd: unitAt[mark.end] });
+  const kept: SpellMark[] = [];
+  for (const mark of marks) {
+    if (mark.end >= unitAt.length || text.slice(mark.start, mark.end) !== mark.word) {
+      continue;
     }
-    return kept;
+    kept.push({ ...mark, unitStart: unitAt[mark.start], unitEnd: unitAt[mark.end] });
+  }
+  return kept;
 }
 
 /** The mark the pointer is standing in, or `null`. Both edges count, so the ends of a word are hit. */
 export function markAtUnit(marks: readonly SpellMark[], unit: number): SpellMark | null {
-    return marks.find(mark => unit >= mark.unitStart && unit <= mark.unitEnd) ?? null;
+  return marks.find((mark) => unit >= mark.unitStart && unit <= mark.unitEnd) ?? null;
 }
 
 /** Just enough of a `DOMRect` to place a box by. Written out so the geometry is testable without layout. */
-export type RectLike = { left: number; top: number; right: number; bottom: number; width: number; height: number };
+export type RectLike = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+};
 
 /** One drawn underline: where it sits in the overlay's coordinate space, and how wide. */
 export type UnderlineBox = { left: number; top: number; width: number };
@@ -186,22 +206,22 @@ const UNDERLINE_OVERLAP_PX = 1;
  * put a one-pixel wave in the middle of a word.
  */
 export function underlineBoxes(
-    rects: readonly RectLike[],
-    origin: { left: number; top: number },
-    scroll: { left: number; top: number },
+  rects: readonly RectLike[],
+  origin: { left: number; top: number },
+  scroll: { left: number; top: number }
 ): UnderlineBox[] {
-    const boxes: UnderlineBox[] = [];
-    for (const rect of rects) {
-        if (rect.width <= 0) {
-            continue;
-        }
-        boxes.push({
-            left: rect.left - origin.left + scroll.left,
-            top: rect.bottom - origin.top + scroll.top - UNDERLINE_OVERLAP_PX,
-            width: rect.width,
-        });
+  const boxes: UnderlineBox[] = [];
+  for (const rect of rects) {
+    if (rect.width <= 0) {
+      continue;
     }
-    return boxes;
+    boxes.push({
+      left: rect.left - origin.left + scroll.left,
+      top: rect.bottom - origin.top + scroll.top - UNDERLINE_OVERLAP_PX,
+      width: rect.width
+    });
+  }
+  return boxes;
 }
 
 /**
@@ -214,18 +234,18 @@ export function underlineBoxes(
 export const SPELLCHECK_DEBOUNCE_MS = 400;
 
 export type SpellcheckRunnerOptions = {
-    /** Ask the checker. Resolves `null` when the call could not be made or failed. */
-    check: (text: string, language: string) => Promise<readonly SpellcheckRange[] | null>;
-    /**
-     * The row's runs as they stand at the moment of asking. Read again when an answer arrives, which
-     * is what lets the answer be judged against the text rather than against its own age.
-     */
-    readRuns: () => StoryRichRun[] | null;
-    /** Words the project spells this way are never marked, however the checker feels about them. */
-    isKnownWord: (word: string) => boolean;
-    /** Called whenever the marks change - including to nothing. */
-    onMarks: (marks: SpellMark[]) => void;
-    debounceMs?: number;
+  /** Ask the checker. Resolves `null` when the call could not be made or failed. */
+  check: (text: string, language: string) => Promise<readonly SpellcheckRange[] | null>;
+  /**
+   * The row's runs as they stand at the moment of asking. Read again when an answer arrives, which
+   * is what lets the answer be judged against the text rather than against its own age.
+   */
+  readRuns: () => StoryRichRun[] | null;
+  /** Words the project spells this way are never marked, however the checker feels about them. */
+  isKnownWord: (word: string) => boolean;
+  /** Called whenever the marks change - including to nothing. */
+  onMarks: (marks: SpellMark[]) => void;
+  debounceMs?: number;
 };
 
 /**
@@ -251,112 +271,114 @@ export type SpellcheckRunnerOptions = {
  * ever on screen, not even for the length of the pause.
  */
 export class SpellcheckRunner {
-    private readonly options: SpellcheckRunnerOptions;
-    private readonly debounceMs: number;
-    private marks: SpellMark[] = [];
-    private generation = 0;
-    private timer: ReturnType<typeof setTimeout> | null = null;
-    private language: string | null = null;
-    private disposed = false;
+  private readonly options: SpellcheckRunnerOptions;
+  private readonly debounceMs: number;
+  private marks: SpellMark[] = [];
+  private generation = 0;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private language: string | null = null;
+  private disposed = false;
 
-    constructor(options: SpellcheckRunnerOptions) {
-        this.options = options;
-        this.debounceMs = options.debounceMs ?? SPELLCHECK_DEBOUNCE_MS;
-    }
+  constructor(options: SpellcheckRunnerOptions) {
+    this.options = options;
+    this.debounceMs = options.debounceMs ?? SPELLCHECK_DEBOUNCE_MS;
+  }
 
-    /** What is believed true right now. */
-    public getMarks(): readonly SpellMark[] {
-        return this.marks;
-    }
+  /** What is believed true right now. */
+  public getMarks(): readonly SpellMark[] {
+    return this.marks;
+  }
 
-    /**
-     * Point the runner at a language, checking straight away when it changes.
-     *
-     * Not debounced: this is not the author typing, it is the answer to "what should this row be
-     * checked against" changing under a row that has already been checked.
-     */
-    public setLanguage(language: string | null): void {
-        this.language = language;
-        this.generation += 1;
-        if (!language) {
-            this.publish([]);
-            return;
-        }
-        this.request();
+  /**
+   * Point the runner at a language, checking straight away when it changes.
+   *
+   * Not debounced: this is not the author typing, it is the answer to "what should this row be
+   * checked against" changing under a row that has already been checked.
+   */
+  public setLanguage(language: string | null): void {
+    this.language = language;
+    this.generation += 1;
+    if (!language) {
+      this.publish([]);
+      return;
     }
+    this.request();
+  }
 
-    /** Check again in the current language - the project taught itself a word, or forgot one. */
-    public refresh(): void {
-        this.generation += 1;
-        if (!this.language) {
-            this.publish([]);
-            return;
-        }
-        this.request();
+  /** Check again in the current language - the project taught itself a word, or forgot one. */
+  public refresh(): void {
+    this.generation += 1;
+    if (!this.language) {
+      this.publish([]);
+      return;
     }
+    this.request();
+  }
 
-    /** The row changed. Prune what is drawn, then schedule a check of what it now says. */
-    public edited(runs: StoryRichRun[]): void {
-        this.generation += 1;
-        if (this.marks.length > 0) {
-            const { text, unitAt } = buildSpellcheckText(runs);
-            const kept = pruneStaleMarks(this.marks, text, unitAt);
-            // Published even when nothing was dropped: the words have moved on the line, so the
-            // boxes under them have to be measured again.
-            this.publish(kept);
-        }
-        if (!this.language) {
-            return;
-        }
-        this.clearTimer();
-        this.timer = setTimeout(() => {
-            this.timer = null;
-            this.request();
-        }, this.debounceMs);
+  /** The row changed. Prune what is drawn, then schedule a check of what it now says. */
+  public edited(runs: StoryRichRun[]): void {
+    this.generation += 1;
+    if (this.marks.length > 0) {
+      const { text, unitAt } = buildSpellcheckText(runs);
+      const kept = pruneStaleMarks(this.marks, text, unitAt);
+      // Published even when nothing was dropped: the words have moved on the line, so the
+      // boxes under them have to be measured again.
+      this.publish(kept);
     }
+    if (!this.language) {
+      return;
+    }
+    this.clearTimer();
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this.request();
+    }, this.debounceMs);
+  }
 
-    public dispose(): void {
-        this.disposed = true;
-        this.clearTimer();
-    }
+  public dispose(): void {
+    this.disposed = true;
+    this.clearTimer();
+  }
 
-    private clearTimer(): void {
-        if (this.timer !== null) {
-            clearTimeout(this.timer);
-            this.timer = null;
-        }
+  private clearTimer(): void {
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
     }
+  }
 
-    private request(): void {
-        const language = this.language;
-        const runs = this.options.readRuns();
-        if (!language || !runs) {
-            return;
-        }
-        const { text } = buildSpellcheckText(runs);
-        if (text.trim() === "") {
-            this.publish([]);
-            return;
-        }
-        const generation = this.generation;
-        void (async () => {
-            const ranges = await this.options.check(text, language);
-            if (this.disposed || !ranges || generation !== this.generation) {
-                return;
-            }
-            const live = this.options.readRuns();
-            if (!live) {
-                return;
-            }
-            const map = buildSpellcheckText(live);
-            this.publish(
-                marksFromRanges(map.unitAt, map.text, ranges).filter(mark => !this.options.isKnownWord(mark.word)),
-            );
-        })();
+  private request(): void {
+    const language = this.language;
+    const runs = this.options.readRuns();
+    if (!language || !runs) {
+      return;
     }
+    const { text } = buildSpellcheckText(runs);
+    if (text.trim() === "") {
+      this.publish([]);
+      return;
+    }
+    const generation = this.generation;
+    void (async () => {
+      const ranges = await this.options.check(text, language);
+      if (this.disposed || !ranges || generation !== this.generation) {
+        return;
+      }
+      const live = this.options.readRuns();
+      if (!live) {
+        return;
+      }
+      const map = buildSpellcheckText(live);
+      this.publish(
+        marksFromRanges(map.unitAt, map.text, ranges).filter(
+          (mark) => !this.options.isKnownWord(mark.word)
+        )
+      );
+    })();
+  }
 
-    private publish(marks: SpellMark[]): void {
-        this.marks = marks;
-        this.options.onMarks(marks);
-    }
+  private publish(marks: SpellMark[]): void {
+    this.marks = marks;
+    this.options.onMarks(marks);
+  }
 }

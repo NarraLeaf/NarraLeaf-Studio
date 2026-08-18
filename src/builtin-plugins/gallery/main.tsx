@@ -24,11 +24,11 @@ import { GalleryEditorTab } from "./GalleryEditorTab";
 import { GalleryPanel } from "./GalleryPanel";
 import { createGalleryStore } from "./store";
 import {
-    DYNAMIC_OPTIONS_SOURCE,
-    GROUP_OPTIONS_SOURCE,
-    PLUGIN_ID,
-    VARIANT_OPTIONS_SOURCE,
-    createGalleryBlueprintNodes,
+  DYNAMIC_OPTIONS_SOURCE,
+  GROUP_OPTIONS_SOURCE,
+  PLUGIN_ID,
+  VARIANT_OPTIONS_SOURCE,
+  createGalleryBlueprintNodes
 } from "./nodes";
 
 const PANEL_ID = `${PLUGIN_ID}.panel`;
@@ -40,71 +40,72 @@ const EDITOR_TAB_ID = `${PLUGIN_ID}.editor`;
  * sitting between 本地化 and 配音 in the rail's overflow menu.
  */
 const MESSAGES = {
-    messages: {
-        en: { title: "Gallery" },
-        zh: { title: "画廊" },
-    },
-    fallbackLocale: "en",
+  messages: {
+    en: { title: "Gallery" },
+    zh: { title: "画廊" }
+  },
+  fallbackLocale: "en"
 };
 
 export default definePlugin({
-    async setup(app) {
-        const store = createGalleryStore(app);
-        await store.load();
-        // One translator, read at render: `.t()` resolves against the LIVE editor locale, and both
-        // registrations below expose the title as a getter, so a language switch re-titles them on
-        // the next render with no re-registration (the same shape the core panel modules use).
-        const tr = app.services.i18n.createTranslator(MESSAGES);
+  async setup(app) {
+    const store = createGalleryStore(app);
+    await store.load();
+    // One translator, read at render: `.t()` resolves against the LIVE editor locale, and both
+    // registrations below expose the title as a getter, so a language switch re-titles them on
+    // the next render with no re-registration (the same shape the core panel modules use).
+    const tr = app.services.i18n.createTranslator(MESSAGES);
 
-        const openEditor = () => app.services.ui.editors.open({
-            id: EDITOR_TAB_ID,
-            get title() {
-                return tr.t("title");
-            },
-            icon: <Images size={14} />,
-            closable: true,
-            component: () => <GalleryEditorTab app={app} store={store} />,
-        });
+    const openEditor = () =>
+      app.services.ui.editors.open({
+        id: EDITOR_TAB_ID,
+        get title() {
+          return tr.t("title");
+        },
+        icon: <Images size={14} />,
+        closable: true,
+        component: () => <GalleryEditorTab app={app} store={store} />
+      });
 
-        const unregisterReloader = app.services.workspace.registerReloader(() => store.reload());
+    const unregisterReloader = app.services.workspace.registerReloader(() => store.reload());
 
-        const unregisterArtworkOptions = app.services.blueprintNodes.registerDynamicSelectOptionsSource(
-            DYNAMIC_OPTIONS_SOURCE,
-            () => store.getArtworkOptions(),
-        );
-        const unregisterVariantOptions = app.services.blueprintNodes.registerDynamicSelectOptionsSource(
-            VARIANT_OPTIONS_SOURCE,
-            () => store.getVariantOptions(),
-        );
-        const unregisterGroupOptions = app.services.blueprintNodes.registerDynamicSelectOptionsSource(
-            GROUP_OPTIONS_SOURCE,
-            () => store.getGroupOptions(),
-        );
-        // In the editor the catalog is the live panel store; the runtime entry
-        // reads the copy published with the game instead.
-        app.services.blueprintNodes.registerMany(createGalleryBlueprintNodes(() => store.getData()));
+    const unregisterArtworkOptions = app.services.blueprintNodes.registerDynamicSelectOptionsSource(
+      DYNAMIC_OPTIONS_SOURCE,
+      () => store.getArtworkOptions()
+    );
+    const unregisterVariantOptions = app.services.blueprintNodes.registerDynamicSelectOptionsSource(
+      VARIANT_OPTIONS_SOURCE,
+      () => store.getVariantOptions()
+    );
+    const unregisterGroupOptions = app.services.blueprintNodes.registerDynamicSelectOptionsSource(
+      GROUP_OPTIONS_SOURCE,
+      () => store.getGroupOptions()
+    );
+    // In the editor the catalog is the live panel store; the runtime entry
+    // reads the copy published with the game instead.
+    app.services.blueprintNodes.registerMany(createGalleryBlueprintNodes(() => store.getData()));
 
-        const unregisterPanel = app.services.ui.panels.register({
-            id: PANEL_ID,
-            get title() {
-                return tr.t("title");
-            },
-            icon: <Images size={16} />,
-            position: PanelPosition.Left,
-            component: () => <GalleryPanel app={app} store={store} onOpenEditor={openEditor} />,
-            defaultVisible: false,
-            order: 640,
-        });
+    const unregisterPanel = app.services.ui.panels.register({
+      id: PANEL_ID,
+      get title() {
+        return tr.t("title");
+      },
+      icon: <Images size={16} />,
+      position: PanelPosition.Left,
+      component: () => <GalleryPanel app={app} store={store} onOpenEditor={openEditor} />,
+      defaultVisible: false,
+      order: 640
+    });
 
-        return () => {
-            unregisterPanel();
-            unregisterReloader();
-            unregisterArtworkOptions();
-            unregisterVariantOptions();
-            unregisterGroupOptions();
-            // Object URLs outlive React unmounts by design (see components.tsx),
-            // so unload is the one place they get released.
-            disposeAssetUrls();
-        };
-    },
+    return () => {
+      unregisterPanel();
+      unregisterReloader();
+      unregisterArtworkOptions();
+      unregisterVariantOptions();
+      unregisterGroupOptions();
+      // Object URLs outlive React unmounts by design (see components.tsx),
+      // so unload is the one place they get released.
+      disposeAssetUrls();
+    };
+  }
 });

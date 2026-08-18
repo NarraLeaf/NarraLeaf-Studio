@@ -21,9 +21,9 @@
  */
 
 import {
-    BLUEPRINT_NODE_TYPE_GAME_CLEAR_VISITED,
-    BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED,
-    BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED,
+  BLUEPRINT_NODE_TYPE_GAME_CLEAR_VISITED,
+  BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED,
+  BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED
 } from "@shared/types/blueprint/graph";
 import type { BlueprintNodeDef } from "../types";
 import { requireHostApi } from "./hostApi";
@@ -41,105 +41,126 @@ const STORY_CHOICE_OPTIONS_SOURCE = "storyChoiceOptions";
 
 /** Present on both readers so the dependent picker below has a story to filter against. */
 const storyParam = {
-    key: "storyId",
-    label: "Story",
-    kind: "select",
-    dynamicOptionsSource: "stories",
+  key: "storyId",
+  label: "Story",
+  kind: "select",
+  dynamicOptionsSource: "stories"
 } as const;
 
 export const visitedBlueprintNodes: BlueprintNodeDef[] = [
-    {
-        type: BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED,
-        displayName: "Is Scene Visited",
-        category: "Game",
-        keywords: ["game", "scene", "visited", "seen", "been", "route", "unlock", "gallery", "recollection", "extra"],
-        graphKinds: ["event", "function", "macro"],
-        isPure: true,
-        isLatent: false,
-        pins: [
-            {
-                id: "isVisited",
-                kind: "output",
-                semantic: "data",
-                valueType: "boolean",
-                label: "Is Visited",
-            },
-        ],
-        inspectorParams: [
-            storyParam,
-            {
-                key: "sceneId",
-                label: "Scene",
-                kind: "select",
-                dynamicOptionsSource: STORY_SCENE_OPTIONS_SOURCE,
-                dynamicOptionsFilter: { paramKey: "storyId", optionMetaKey: "storyId" },
-            },
-        ],
-        execute(ctx) {
-            const sceneId = String(ctx.params.sceneId ?? "").trim();
-            return {
-                outputValues: {
-                    // Nothing picked is "not visited" rather than an error, the same bargain
-                    // `Has Read Text` makes: a half-wired row on a gallery screen stays locked
-                    // instead of taking the whole page down.
-                    isVisited: sceneId ? requireHostApi(ctx).game.isSceneVisited(sceneId) : false,
-                },
-            };
-        },
-    },
-    {
-        type: BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED,
-        displayName: "Is Option Picked",
-        category: "Game",
-        keywords: ["game", "choice", "option", "picked", "chosen", "selected", "once", "one-shot", "menu"],
-        graphKinds: ["event", "function", "macro"],
-        isPure: true,
-        isLatent: false,
-        pins: [
-            {
-                id: "isPicked",
-                kind: "output",
-                semantic: "data",
-                valueType: "boolean",
-                label: "Is Picked",
-            },
-        ],
-        inspectorParams: [
-            storyParam,
-            {
-                key: "optionId",
-                label: "Option",
-                kind: "select",
-                dynamicOptionsSource: STORY_CHOICE_OPTIONS_SOURCE,
-                dynamicOptionsFilter: { paramKey: "storyId", optionMetaKey: "storyId" },
-            },
-        ],
-        execute(ctx) {
-            const optionId = String(ctx.params.optionId ?? "").trim();
-            return {
-                outputValues: {
-                    isPicked: optionId ? requireHostApi(ctx).game.isOptionPicked(optionId) : false,
-                },
-            };
-        },
-    },
-    {
-        type: BLUEPRINT_NODE_TYPE_GAME_CLEAR_VISITED,
-        displayName: "Clear Visited",
-        category: "Game",
-        keywords: ["game", "visited", "picked", "clear", "reset", "wipe", "route", "gallery"],
-        graphKinds: ["event", "macro"],
-        isPure: false,
-        // Not latent, unlike `Clear Text Read`: that one writes host persistence and has to be
-        // awaited, this one empties two keys in the live `Storable` and is done within the tick.
-        isLatent: false,
-        pins: [
-            { id: "in", kind: "input", semantic: "exec", label: "In" },
-            { id: "next", kind: "output", semantic: "exec", label: "Next" },
-        ],
-        execute(ctx) {
-            requireHostApi(ctx).game.clearVisited();
-            return { nextPort: "next" };
-        },
-    },
+  {
+    type: BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED,
+    displayName: "Is Scene Visited",
+    category: "Game",
+    keywords: [
+      "game",
+      "scene",
+      "visited",
+      "seen",
+      "been",
+      "route",
+      "unlock",
+      "gallery",
+      "recollection",
+      "extra"
+    ],
+    graphKinds: ["event", "function", "macro"],
+    isPure: true,
+    isLatent: false,
+    pins: [
+      {
+        id: "isVisited",
+        kind: "output",
+        semantic: "data",
+        valueType: "boolean",
+        label: "Is Visited"
+      }
+    ],
+    inspectorParams: [
+      storyParam,
+      {
+        key: "sceneId",
+        label: "Scene",
+        kind: "select",
+        dynamicOptionsSource: STORY_SCENE_OPTIONS_SOURCE,
+        dynamicOptionsFilter: { paramKey: "storyId", optionMetaKey: "storyId" }
+      }
+    ],
+    execute(ctx) {
+      const sceneId = String(ctx.params.sceneId ?? "").trim();
+      return {
+        outputValues: {
+          // Nothing picked is "not visited" rather than an error, the same bargain
+          // `Has Read Text` makes: a half-wired row on a gallery screen stays locked
+          // instead of taking the whole page down.
+          isVisited: sceneId ? requireHostApi(ctx).game.isSceneVisited(sceneId) : false
+        }
+      };
+    }
+  },
+  {
+    type: BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED,
+    displayName: "Is Option Picked",
+    category: "Game",
+    keywords: [
+      "game",
+      "choice",
+      "option",
+      "picked",
+      "chosen",
+      "selected",
+      "once",
+      "one-shot",
+      "menu"
+    ],
+    graphKinds: ["event", "function", "macro"],
+    isPure: true,
+    isLatent: false,
+    pins: [
+      {
+        id: "isPicked",
+        kind: "output",
+        semantic: "data",
+        valueType: "boolean",
+        label: "Is Picked"
+      }
+    ],
+    inspectorParams: [
+      storyParam,
+      {
+        key: "optionId",
+        label: "Option",
+        kind: "select",
+        dynamicOptionsSource: STORY_CHOICE_OPTIONS_SOURCE,
+        dynamicOptionsFilter: { paramKey: "storyId", optionMetaKey: "storyId" }
+      }
+    ],
+    execute(ctx) {
+      const optionId = String(ctx.params.optionId ?? "").trim();
+      return {
+        outputValues: {
+          isPicked: optionId ? requireHostApi(ctx).game.isOptionPicked(optionId) : false
+        }
+      };
+    }
+  },
+  {
+    type: BLUEPRINT_NODE_TYPE_GAME_CLEAR_VISITED,
+    displayName: "Clear Visited",
+    category: "Game",
+    keywords: ["game", "visited", "picked", "clear", "reset", "wipe", "route", "gallery"],
+    graphKinds: ["event", "macro"],
+    isPure: false,
+    // Not latent, unlike `Clear Text Read`: that one writes host persistence and has to be
+    // awaited, this one empties two keys in the live `Storable` and is done within the tick.
+    isLatent: false,
+    pins: [
+      { id: "in", kind: "input", semantic: "exec", label: "In" },
+      { id: "next", kind: "output", semantic: "exec", label: "Next" }
+    ],
+    execute(ctx) {
+      requireHostApi(ctx).game.clearVisited();
+      return { nextPort: "next" };
+    }
+  }
 ];

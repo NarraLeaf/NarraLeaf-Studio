@@ -46,20 +46,20 @@ const APP_ID = "com.narraleaf.signprobe";
  * two flags that interact with signing.
  */
 const SIGNED_GAME_FUSES = {
-    runAsNode: false,
-    enableCookieEncryption: false,
-    enableNodeOptionsEnvironmentVariable: false,
-    enableNodeCliInspectArguments: false,
-    enableEmbeddedAsarIntegrityValidation: true,
-    onlyLoadAppFromAsar: true,
-    grantFileProtocolExtraPrivileges: false,
-    resetAdHocDarwinSignature: true,
+  runAsNode: false,
+  enableCookieEncryption: false,
+  enableNodeOptionsEnvironmentVariable: false,
+  enableNodeCliInspectArguments: false,
+  enableEmbeddedAsarIntegrityValidation: true,
+  onlyLoadAppFromAsar: true,
+  grantFileProtocolExtraPrivileges: false,
+  resetAdHocDarwinSignature: true
 };
 
 const roots: string[] = [];
 
 afterAll(async () => {
-    await Promise.all(roots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })));
+  await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
 /**
@@ -73,82 +73,87 @@ afterAll(async () => {
  * distribution's own "Electron" when it does not.
  */
 async function codesignIdentifier(appPath: string): Promise<string> {
-    // codesign -dv writes to stderr, and exits non-zero only when there is no
-    // signature at all.
-    const { stderr } = await execFileAsync("codesign", ["-dv", "--verbose=4", appPath])
-        .catch((error: { stderr?: string }) => ({ stderr: error.stderr ?? "" }));
-    return (/Identifier=(\S+)/.exec(stderr) ?? [])[1] ?? "";
+  // codesign -dv writes to stderr, and exits non-zero only when there is no
+  // signature at all.
+  const { stderr } = await execFileAsync("codesign", ["-dv", "--verbose=4", appPath]).catch(
+    (error: { stderr?: string }) => ({ stderr: error.stderr ?? "" })
+  );
+  return (/Identifier=(\S+)/.exec(stderr) ?? [])[1] ?? "";
 }
 
 async function buildProbe(
-    label: string,
-    mac: Record<string, unknown>,
-    fuses?: Record<string, boolean>,
+  label: string,
+  mac: Record<string, unknown>,
+  fuses?: Record<string, boolean>
 ): Promise<string> {
-    const { build, Platform, Arch } = await import("electron-builder");
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), `nls-macsign-${label}-`));
-    roots.push(root);
-    const appDir = path.join(root, "app");
-    const outDir = path.join(root, "out");
-    await fs.mkdir(appDir, { recursive: true });
-    await fs.writeFile(
-        path.join(appDir, "package.json"),
-        JSON.stringify({ name: "signprobe", version: "1.0.0", main: "main.js" }),
-    );
-    await fs.writeFile(path.join(appDir, "main.js"), "require('electron').app.quit();\n");
+  const { build, Platform, Arch } = await import("electron-builder");
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), `nls-macsign-${label}-`));
+  roots.push(root);
+  const appDir = path.join(root, "app");
+  const outDir = path.join(root, "out");
+  await fs.mkdir(appDir, { recursive: true });
+  await fs.writeFile(
+    path.join(appDir, "package.json"),
+    JSON.stringify({ name: "signprobe", version: "1.0.0", main: "main.js" })
+  );
+  await fs.writeFile(path.join(appDir, "main.js"), "require('electron').app.quit();\n");
 
-    const electronPackage = JSON.parse(
-        await fs.readFile(path.join(repoRoot, "node_modules", "electron", "package.json"), "utf8"),
-    ) as { version: string };
+  const electronPackage = JSON.parse(
+    await fs.readFile(path.join(repoRoot, "node_modules", "electron", "package.json"), "utf8")
+  ) as { version: string };
 
-    await build({
-        targets: Platform.MAC.createTarget(["dir"], Arch.arm64),
-        projectDir: appDir,
-        config: {
-            mac,
-            appId: APP_ID,
-            productName: "SignProbe",
-            electronVersion: electronPackage.version,
-            // The installed dist, so the build neither downloads nor depends on
-            // the network - the same discipline the real pipeline keeps.
-            electronDist: path.join(repoRoot, "node_modules", "electron", "dist"),
-            directories: { output: outDir },
-            files: ["**/*"],
-            asar: true,
-            ...(fuses ? { electronFuses: fuses } : {}),
-            npmRebuild: false,
-            publish: null,
-        },
-    });
-    return codesignIdentifier(path.join(outDir, "mac-arm64", "SignProbe.app"));
+  await build({
+    targets: Platform.MAC.createTarget(["dir"], Arch.arm64),
+    projectDir: appDir,
+    config: {
+      mac,
+      appId: APP_ID,
+      productName: "SignProbe",
+      electronVersion: electronPackage.version,
+      // The installed dist, so the build neither downloads nor depends on
+      // the network - the same discipline the real pipeline keeps.
+      electronDist: path.join(repoRoot, "node_modules", "electron", "dist"),
+      directories: { output: outDir },
+      files: ["**/*"],
+      asar: true,
+      ...(fuses ? { electronFuses: fuses } : {}),
+      npmRebuild: false,
+      publish: null
+    }
+  });
+  return codesignIdentifier(path.join(outDir, "mac-arm64", "SignProbe.app"));
 }
 
 describe.skipIf(!enabled)("the electron-builder macOS signing oracle", () => {
-    it("leaves the app untouched when the mapping says not to sign", { timeout: 300_000 }, async () => {
-        const { mac } = macSigningConfiguration(null);
-        expect(mac).toEqual({ identity: null, notarize: false });
+  it(
+    "leaves the app untouched when the mapping says not to sign",
+    { timeout: 300_000 },
+    async () => {
+      const { mac } = macSigningConfiguration(null);
+      expect(mac).toEqual({ identity: null, notarize: false });
 
-        // Still the distribution's own identifier: electron-builder logged
-        // "skipped macOS code signing" and never re-signed. Had `identity` been
-        // left unset instead, it would have searched the keychain.
-        expect(await buildProbe("unsigned", mac as Record<string, unknown>)).toBe("Electron");
-    });
+      // Still the distribution's own identifier: electron-builder logged
+      // "skipped macOS code signing" and never re-signed. Had `identity` been
+      // left unset instead, it would have searched the keychain.
+      expect(await buildProbe("unsigned", mac as Record<string, unknown>)).toBe("Electron");
+    }
+  );
 
-    it("signs, and the fuse flip does not undo it", { timeout: 300_000 }, async () => {
-        const { mac } = macSigningConfiguration({ source: "keychain", identity: "-" });
-        expect(mac).toMatchObject({ identity: "-", notarize: false });
+  it("signs, and the fuse flip does not undo it", { timeout: 300_000 }, async () => {
+    const { mac } = macSigningConfiguration({ source: "keychain", identity: "-" });
+    expect(mac).toMatchObject({ identity: "-", notarize: false });
 
-        const identifier = await buildProbe(
-            "signed",
-            // Ad-hoc plus hardened runtime rejects the pre-signed Electron
-            // framework's differing team id at launch; irrelevant to whether the
-            // signature was applied, and off so the build is about one thing.
-            { ...mac, hardenedRuntime: false } as Record<string, unknown>,
-            SIGNED_GAME_FUSES,
-        );
+    const identifier = await buildProbe(
+      "signed",
+      // Ad-hoc plus hardened runtime rejects the pre-signed Electron
+      // framework's differing team id at launch; irrelevant to whether the
+      // signature was applied, and off so the build is about one thing.
+      { ...mac, hardenedRuntime: false } as Record<string, unknown>,
+      SIGNED_GAME_FUSES
+    );
 
-        // Rewritten to the appId, which only the signing step does - and it did
-        // it after @electron/fuses rewrote the binary.
-        expect(identifier).toBe(APP_ID);
-    });
+    // Rewritten to the appId, which only the signing step does - and it did
+    // it after @electron/fuses rewrote the binary.
+    expect(identifier).toBe(APP_ID);
+  });
 });

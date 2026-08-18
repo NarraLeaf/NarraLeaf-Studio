@@ -1,14 +1,14 @@
 import {
-    createTranslator,
-    DEFAULT_LOCALE,
-    getLocaleMeta,
-    InterpolationParams,
-    LocaleCode,
-    normalizeLocale,
-    PluralKey,
-    subscribeLocaleRegistry,
-    TranslationKey,
-    Translator,
+  createTranslator,
+  DEFAULT_LOCALE,
+  getLocaleMeta,
+  InterpolationParams,
+  LocaleCode,
+  normalizeLocale,
+  PluralKey,
+  subscribeLocaleRegistry,
+  TranslationKey,
+  Translator
 } from "@shared/i18n";
 
 /**
@@ -31,50 +31,50 @@ let translator: Translator = createTranslator(currentLocale);
 const listeners = new Set<() => void>();
 
 function applyDocumentLocale(locale: LocaleCode): void {
-    if (typeof document === "undefined") {
-        return;
-    }
-    const meta = getLocaleMeta(locale);
-    document.documentElement.lang = meta.intl;
-    document.documentElement.dir = meta.dir;
+  if (typeof document === "undefined") {
+    return;
+  }
+  const meta = getLocaleMeta(locale);
+  document.documentElement.lang = meta.intl;
+  document.documentElement.dir = meta.dir;
 }
 
 export const i18nStore = {
-    getLocale(): LocaleCode {
-        return currentLocale;
-    },
-    getTranslator(): Translator {
-        return translator;
-    },
-    subscribe(listener: () => void): () => void {
-        listeners.add(listener);
-        return () => {
-            listeners.delete(listener);
-        };
-    },
-    /** Swap the active locale and notify subscribers. No-op if unchanged. */
-    setLocale(next: LocaleCode): void {
-        if (next === currentLocale) {
-            return;
-        }
-        currentLocale = next;
-        translator = createTranslator(next);
-        applyDocumentLocale(next);
-        listeners.forEach((listener) => listener());
-    },
-    /**
-     * Rebuild the translator without changing the locale value. Called when the
-     * locale registry changes: catalog messages for the current locale may have
-     * changed, or the current locale's provider may have been removed (in which
-     * case the active locale re-resolves to the fallback). Always notifies.
-     */
-    refresh(): void {
-        const resolved = normalizeLocale(currentLocale);
-        currentLocale = resolved;
-        translator = createTranslator(resolved);
-        applyDocumentLocale(resolved);
-        listeners.forEach((listener) => listener());
-    },
+  getLocale(): LocaleCode {
+    return currentLocale;
+  },
+  getTranslator(): Translator {
+    return translator;
+  },
+  subscribe(listener: () => void): () => void {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  },
+  /** Swap the active locale and notify subscribers. No-op if unchanged. */
+  setLocale(next: LocaleCode): void {
+    if (next === currentLocale) {
+      return;
+    }
+    currentLocale = next;
+    translator = createTranslator(next);
+    applyDocumentLocale(next);
+    listeners.forEach((listener) => listener());
+  },
+  /**
+   * Rebuild the translator without changing the locale value. Called when the
+   * locale registry changes: catalog messages for the current locale may have
+   * changed, or the current locale's provider may have been removed (in which
+   * case the active locale re-resolves to the fallback). Always notifies.
+   */
+  refresh(): void {
+    const resolved = normalizeLocale(currentLocale);
+    currentLocale = resolved;
+    translator = createTranslator(resolved);
+    applyDocumentLocale(resolved);
+    listeners.forEach((listener) => listener());
+  }
 };
 
 // Reflect the default locale onto the document before the first paint.
@@ -93,10 +93,10 @@ subscribeLocaleRegistry(() => i18nStore.refresh());
  * use the `useTranslation` hook instead - an imperative call is a snapshot.
  */
 export function translate(key: TranslationKey, params?: InterpolationParams): string {
-    return translator.t(key, params);
+  return translator.t(key, params);
 }
 
 /** Imperative plural translation. See {@link translate}. */
 export function translateN(base: PluralKey, count: number, params?: InterpolationParams): string {
-    return translator.tn(base, count, params);
+  return translator.tn(base, count, params);
 }

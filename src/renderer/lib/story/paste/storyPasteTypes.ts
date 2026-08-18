@@ -21,60 +21,60 @@ import type { StoryBlock } from "@shared/types/story";
  * first-class choice rather than left to a regex that matches nothing.
  */
 export type PasteSeparatorKind =
-    | "none"
-    /** `Name: text` - the ASCII colon. */
-    | "colon"
-    /** `Name：text` - the fullwidth colon, which is what a Chinese manuscript actually uses. */
-    | "fullwidthColon"
-    /** `Name - text` / `Name — text`. Requires surrounding space, or every hyphenated word matches. */
-    | "dash"
-    /** `【Name】text` */
-    | "lenticular"
-    /** `「Name」text` */
-    | "cornerBracket"
-    /** `Name\ttext` - what a spreadsheet column pair pastes as. */
-    | "tab"
-    | "regex";
+  | "none"
+  /** `Name: text` - the ASCII colon. */
+  | "colon"
+  /** `Name：text` - the fullwidth colon, which is what a Chinese manuscript actually uses. */
+  | "fullwidthColon"
+  /** `Name - text` / `Name — text`. Requires surrounding space, or every hyphenated word matches. */
+  | "dash"
+  /** `【Name】text` */
+  | "lenticular"
+  /** `「Name」text` */
+  | "cornerBracket"
+  /** `Name\ttext` - what a spreadsheet column pair pastes as. */
+  | "tab"
+  | "regex";
 
 export type PasteSeparatorChoice =
-    | { kind: Exclude<PasteSeparatorKind, "regex"> }
-    /**
-     * A custom pattern, applied per line. Must carry named groups `speaker` and `text`; a pattern that
-     * does not compile, or does not name both, is reported rather than thrown - the author is typing
-     * it live, so every intermediate state is invalid and none of them may break the wizard.
-     */
-    | { kind: "regex"; source: string };
+  | { kind: Exclude<PasteSeparatorKind, "regex"> }
+  /**
+   * A custom pattern, applied per line. Must carry named groups `speaker` and `text`; a pattern that
+   * does not compile, or does not name both, is reported rather than thrown - the author is typing
+   * it live, so every intermediate state is invalid and none of them may break the wizard.
+   */
+  | { kind: "regex"; source: string };
 
 export type PasteSeparatorProblem = "invalidRegex" | "missingGroups";
 
 /** One pasted line after splitting. Blank lines never produce one - they are paragraph breaks. */
 export type PastedLine = {
-    /** 0-based over the non-blank lines, so it indexes {@link PasteSplit.lines} directly. */
-    index: number;
-    /** The line as pasted, before the separator was applied. Kept for the "not a speaker" undo path. */
-    raw: string;
-    /** Present only when the separator matched. Trimmed. */
-    speaker?: string;
-    /** The line minus its speaker label, trimmed. Equals `raw` when there is no speaker. */
-    text: string;
+  /** 0-based over the non-blank lines, so it indexes {@link PasteSplit.lines} directly. */
+  index: number;
+  /** The line as pasted, before the separator was applied. Kept for the "not a speaker" undo path. */
+  raw: string;
+  /** Present only when the separator matched. Trimmed. */
+  speaker?: string;
+  /** The line minus its speaker label, trimmed. Equals `raw` when there is no speaker. */
+  text: string;
 };
 
 export type PasteSpeakerTally = {
-    label: string;
-    count: number;
-    /** Line indices, so the preview can show which lines a mapping decision affects. */
-    lineIndices: number[];
+  label: string;
+  count: number;
+  /** Line indices, so the preview can show which lines a mapping decision affects. */
+  lineIndices: number[];
 };
 
 export type PasteSplit = {
-    lines: PastedLine[];
-    /** Distinct speaker labels in first-appearance order. First appearance, not frequency: it matches
-     *  reading order, so the table does not reshuffle itself as the author changes the separator. */
-    speakers: PasteSpeakerTally[];
-    /** Lines the separator did not match. */
-    narrationCount: number;
-    /** Set when a `regex` choice could not be used; the split then falls back to `none`. */
-    problem?: PasteSeparatorProblem;
+  lines: PastedLine[];
+  /** Distinct speaker labels in first-appearance order. First appearance, not frequency: it matches
+   *  reading order, so the table does not reshuffle itself as the author changes the separator. */
+  speakers: PasteSpeakerTally[];
+  /** Lines the separator did not match. */
+  narrationCount: number;
+  /** Set when a `regex` choice could not be used; the split then falls back to `none`. */
+  problem?: PasteSeparatorProblem;
 };
 
 /**
@@ -86,11 +86,11 @@ export type PasteSplit = {
  * `NarraLeaf` renders a bare `speakerName` perfectly well, so the safe default is also a correct one.
  */
 export type SpeakerMappingTarget =
-    | { kind: "character"; characterId: string }
-    | { kind: "createCharacter" }
-    | { kind: "tempSpeaker" }
-    /** The label was a false positive; it folds back into the line and the row becomes narration. */
-    | { kind: "notASpeaker" };
+  | { kind: "character"; characterId: string }
+  | { kind: "createCharacter" }
+  | { kind: "tempSpeaker" }
+  /** The label was a false positive; it folds back into the line and the row becomes narration. */
+  | { kind: "notASpeaker" };
 
 /**
  * Per-project memory of the two decisions the author should only make once.
@@ -103,36 +103,36 @@ export type SpeakerMappingTarget =
  * not an edit to the project, so it must keep working on a frozen (historical) revision.
  */
 export type StoryPasteMemory = {
-    version: 1;
-    speakers: Record<string, SpeakerMappingTarget>;
-    /** Author-named separator presets, newest first. The built-ins are not stored here. */
-    separators: { name: string; choice: PasteSeparatorChoice }[];
+  version: 1;
+  speakers: Record<string, SpeakerMappingTarget>;
+  /** Author-named separator presets, newest first. The built-ins are not stored here. */
+  separators: { name: string; choice: PasteSeparatorChoice }[];
 };
 
 export const STORY_PASTE_MEMORY_PANEL_ID = "story:editor:paste-memory";
 
 export type PastePlanRow =
-    | { kind: "narration"; text: string }
-    | {
-          kind: "dialogue";
-          text: string;
-          characterId?: string;
-          speakerName?: string;
-          /** Set when this row waits on a character the confirm step still has to create. */
-          pendingCharacterName?: string;
-      };
+  | { kind: "narration"; text: string }
+  | {
+      kind: "dialogue";
+      text: string;
+      characterId?: string;
+      speakerName?: string;
+      /** Set when this row waits on a character the confirm step still has to create. */
+      pendingCharacterName?: string;
+    };
 
 export type PastePlan = {
-    rows: PastePlanRow[];
-    /** Distinct names the confirm step must create, in first-appearance order. */
-    charactersToCreate: string[];
-    counts: { dialogue: number; narration: number };
+  rows: PastePlanRow[];
+  /** Distinct names the confirm step must create, in first-appearance order. */
+  charactersToCreate: string[];
+  counts: { dialogue: number; narration: number };
 };
 
 export type PastePlanInput = {
-    split: PasteSplit;
-    /** Keyed the same way {@link StoryPasteMemory.speakers} is - lower-cased and trimmed. */
-    mappings: Record<string, SpeakerMappingTarget>;
+  split: PasteSplit;
+  /** Keyed the same way {@link StoryPasteMemory.speakers} is - lower-cased and trimmed. */
+  mappings: Record<string, SpeakerMappingTarget>;
 };
 
 /**
@@ -143,16 +143,16 @@ export type PastePlanInput = {
  * a plain paste that started guessing speakers would be the wizard with no way to correct it.
  */
 export type PlainPasteAnchor =
-    | { kind: "narration" | "note" | "none" }
-    | { kind: "dialogue"; characterId?: string; speakerName?: string };
+  | { kind: "narration" | "note" | "none" }
+  | { kind: "dialogue"; characterId?: string; speakerName?: string };
 
 export type StoryPasteIdFactory = () => string;
 
 export type MaterializeContext = {
-    /** Must yield UUID v4 - `assertValidStoryEntityId` rejects anything else, and only on next load. */
-    generateId: StoryPasteIdFactory;
-    /** Name -> id for the characters the confirm step created, before materializing. */
-    createdCharacterIds: Record<string, string>;
+  /** Must yield UUID v4 - `assertValidStoryEntityId` rejects anything else, and only on next load. */
+  generateId: StoryPasteIdFactory;
+  /** Name -> id for the characters the confirm step created, before materializing. */
+  createdCharacterIds: Record<string, string>;
 };
 
 /** How many rows a paste may add before it has to be confirmed even without the wizard. */
@@ -168,10 +168,10 @@ export const STORY_PASTE_CONFIRM_THRESHOLD = 300;
 export const STORY_SCRIPT_HEADER = "#nlscript";
 
 export type StoryPasteRoute =
-    | { kind: "blocks" }
-    | { kind: "single" }
-    | { kind: "wizard"; text: string }
-    | { kind: "plain"; text: string }
-    | { kind: "scriptFile" };
+  | { kind: "blocks" }
+  | { kind: "single" }
+  | { kind: "wizard"; text: string }
+  | { kind: "plain"; text: string }
+  | { kind: "scriptFile" };
 
 export type MaterializedPaste = { blocks: StoryBlock[] };

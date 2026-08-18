@@ -24,34 +24,34 @@ import type { StoryBlock } from "@shared/types/story";
 import { useStoryVoiceState } from "./useStoryVoiceState";
 
 export function StoryVoiceIndicator({ block }: { block: StoryBlock }) {
-    const { t } = useTranslation();
-    const voice = useStoryVoiceState(block);
+  const { t } = useTranslation();
+  const voice = useStoryVoiceState(block);
 
-    if (!voice.segment || !voice.primary || !voice.hasTake) {
-        // No take for this line - nothing to hear, so no control.
-        return null;
-    }
+  if (!voice.segment || !voice.primary || !voice.hasTake) {
+    // No take for this line - nothing to hear, so no control.
+    return null;
+  }
 
-    const auditionLabel = voice.isPlaying ? t("story.rows.voiceStop") : t("story.rows.voicePlay");
+  const auditionLabel = voice.isPlaying ? t("story.rows.voiceStop") : t("story.rows.voicePlay");
 
-    // Named through `aria-label` rather than leaning on `title` as the last-resort accessible name:
-    // it is the convention the rest of the row cluster uses, and it keeps the name from depending on
-    // whether a tooltip is exposed at all.
-    return (
-        <button
-            type="button"
-            tabIndex={-1}
-            data-tip={auditionLabel}
-            aria-label={auditionLabel}
-            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md opacity-0 transition hover:bg-fill hover:text-fg group-hover:opacity-100 ${
-                voice.isPlaying ? "text-primary" : "text-fg-subtle"
-            }`}
-            onClick={event => {
-                event.stopPropagation();
-                voice.toggleAudition();
-            }}
-        >
-            <Volume2 className="h-3.5 w-3.5" />
-        </button>
-    );
+  // Named through `aria-label` rather than leaning on `title` as the last-resort accessible name:
+  // it is the convention the rest of the row cluster uses, and it keeps the name from depending on
+  // whether a tooltip is exposed at all.
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      data-tip={auditionLabel}
+      aria-label={auditionLabel}
+      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md opacity-0 transition hover:bg-fill hover:text-fg group-hover:opacity-100 ${
+        voice.isPlaying ? "text-primary" : "text-fg-subtle"
+      }`}
+      onClick={(event) => {
+        event.stopPropagation();
+        voice.toggleAudition();
+      }}
+    >
+      <Volume2 className="h-3.5 w-3.5" />
+    </button>
+  );
 }

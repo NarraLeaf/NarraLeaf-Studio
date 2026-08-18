@@ -1,162 +1,167 @@
 import { describe, expect, it } from "vitest";
 import {
-    appTagSelection,
-    BUILD_DIALOG_PAGES,
-    BUILD_DIALOG_SECTIONS,
-    initialDialogState,
-    isDesktopPlatform,
-    requestToBuildConfiguration,
-    stateFromRequest,
-    stateToRequest,
-    toggleFormat,
-    togglePlatform,
-    visibleBuildDialogPages,
+  appTagSelection,
+  BUILD_DIALOG_PAGES,
+  BUILD_DIALOG_SECTIONS,
+  initialDialogState,
+  isDesktopPlatform,
+  requestToBuildConfiguration,
+  stateFromRequest,
+  stateToRequest,
+  toggleFormat,
+  togglePlatform,
+  visibleBuildDialogPages
 } from "./buildDialogState";
 import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import type { BuildConfiguration } from "@/lib/workspace/project/configuration";
 
 describe("isDesktopPlatform", () => {
-    it("rejects web and the mobile platforms", () => {
-        // Type-predicate bodies are unchecked; a revert to `platform !== "web"`
-        // would hand android/ios an arch select and desktop treatment.
-        expect(isDesktopPlatform("windows")).toBe(true);
-        expect(isDesktopPlatform("macos")).toBe(true);
-        expect(isDesktopPlatform("linux")).toBe(true);
-        expect(isDesktopPlatform("web")).toBe(false);
-        expect(isDesktopPlatform("android")).toBe(false);
-        expect(isDesktopPlatform("ios")).toBe(false);
-    });
+  it("rejects web and the mobile platforms", () => {
+    // Type-predicate bodies are unchecked; a revert to `platform !== "web"`
+    // would hand android/ios an arch select and desktop treatment.
+    expect(isDesktopPlatform("windows")).toBe(true);
+    expect(isDesktopPlatform("macos")).toBe(true);
+    expect(isDesktopPlatform("linux")).toBe(true);
+    expect(isDesktopPlatform("web")).toBe(false);
+    expect(isDesktopPlatform("android")).toBe(false);
+    expect(isDesktopPlatform("ios")).toBe(false);
+  });
 });
 
 describe("initialDialogState", () => {
-    it("starts a never-built project on the host platform only", () => {
-        const state = initialDialogState(null, "macos", "arm64");
-        expect(stateToRequest(state).targets.map(t => t.platform)).toEqual(["macos"]);
-    });
+  it("starts a never-built project on the host platform only", () => {
+    const state = initialDialogState(null, "macos", "arm64");
+    expect(stateToRequest(state).targets.map((t) => t.platform)).toEqual(["macos"]);
+  });
 
-    it("seeds a formats entry for every platform, including ones the dialog hides", () => {
-        // formats is typed as a total Record; the mobile platforms are not in
-        // DIALOG_PLATFORMS yet, but code trusting the type may index them.
-        const state = initialDialogState(null, "macos", "arm64");
-        expect(state.formats.android).toEqual(new Set());
-        expect(state.formats.ios).toEqual(new Set());
-        const restored = stateFromRequest({ targets: [] }, "macos", "arm64");
-        expect(restored.formats.android).toEqual(new Set());
-        expect(restored.formats.ios).toEqual(new Set());
-    });
+  it("seeds a formats entry for every platform, including ones the dialog hides", () => {
+    // formats is typed as a total Record; the mobile platforms are not in
+    // DIALOG_PLATFORMS yet, but code trusting the type may index them.
+    const state = initialDialogState(null, "macos", "arm64");
+    expect(state.formats.android).toEqual(new Set());
+    expect(state.formats.ios).toEqual(new Set());
+    const restored = stateFromRequest({ targets: [] }, "macos", "arm64");
+    expect(restored.formats.android).toEqual(new Set());
+    expect(restored.formats.ios).toEqual(new Set());
+  });
 
-    it("never seeds a target the host cannot build, even if remembered", () => {
-        // Project last built on macOS, reopened on a Windows host.
-        const stored: BuildConfiguration = {
-            platforms: ["macos", "windows"],
-            formats: { macos: ["dmg"], windows: ["nsis"] },
-            archs: {},
-            outputDir: "",
-            compression: "maximum",
-            openWhenDone: true,
-        };
-        const targets = stateToRequest(initialDialogState(stored, "windows", "x64")).targets;
-        expect(targets.some(t => t.platform === "macos")).toBe(false);
-        expect(targets.some(t => t.platform === "windows")).toBe(true);
-    });
+  it("never seeds a target the host cannot build, even if remembered", () => {
+    // Project last built on macOS, reopened on a Windows host.
+    const stored: BuildConfiguration = {
+      platforms: ["macos", "windows"],
+      formats: { macos: ["dmg"], windows: ["nsis"] },
+      archs: {},
+      outputDir: "",
+      compression: "maximum",
+      openWhenDone: true
+    };
+    const targets = stateToRequest(initialDialogState(stored, "windows", "x64")).targets;
+    expect(targets.some((t) => t.platform === "macos")).toBe(false);
+    expect(targets.some((t) => t.platform === "windows")).toBe(true);
+  });
 
-    it("defaults the host platform's arch to the host arch", () => {
-        const state = initialDialogState(null, "macos", "arm64");
-        expect(state.archs.macos).toBe("arm64");
-        // Cross builds still default to x64, the broadest player base.
-        expect(state.archs.windows).toBe("x64");
-    });
+  it("defaults the host platform's arch to the host arch", () => {
+    const state = initialDialogState(null, "macos", "arm64");
+    expect(state.archs.macos).toBe("arm64");
+    // Cross builds still default to x64, the broadest player base.
+    expect(state.archs.windows).toBe("x64");
+  });
 
-    it("prefers a remembered arch over the host default", () => {
-        const stored: BuildConfiguration = {
-            platforms: ["macos"],
-            formats: { macos: ["dmg"] },
-            archs: { macos: "universal" },
-            outputDir: "",
-            compression: "maximum",
-            openWhenDone: true,
-        };
-        expect(initialDialogState(stored, "macos", "arm64").archs.macos).toBe("universal");
-    });
+  it("prefers a remembered arch over the host default", () => {
+    const stored: BuildConfiguration = {
+      platforms: ["macos"],
+      formats: { macos: ["dmg"] },
+      archs: { macos: "universal" },
+      outputDir: "",
+      compression: "maximum",
+      openWhenDone: true
+    };
+    expect(initialDialogState(stored, "macos", "arm64").archs.macos).toBe("universal");
+  });
 
-    it("keeps web selectable on any host", () => {
-        const stored: BuildConfiguration = {
-            platforms: ["web"],
-            formats: { web: ["zip"] },
-            archs: {},
-            outputDir: "",
-            compression: "maximum",
-            openWhenDone: true,
-        };
-        const targets = stateToRequest(initialDialogState(stored, "windows", "x64")).targets;
-        expect(targets.map(t => t.platform)).toEqual(["web"]);
-    });
+  it("keeps web selectable on any host", () => {
+    const stored: BuildConfiguration = {
+      platforms: ["web"],
+      formats: { web: ["zip"] },
+      archs: {},
+      outputDir: "",
+      compression: "maximum",
+      openWhenDone: true
+    };
+    const targets = stateToRequest(initialDialogState(stored, "windows", "x64")).targets;
+    expect(targets.map((t) => t.platform)).toEqual(["web"]);
+  });
 });
 
 describe("stateToRequest", () => {
-    it("drops platforms with no formats and trims the output dir", () => {
-        let state = initialDialogState(null, "macos", "arm64");
-        state = { ...state, outputDir: "  " };
-        const request = stateToRequest(state);
-        expect(request.targets).toHaveLength(1);
-        expect(request.outputDir).toBe("");
-    });
+  it("drops platforms with no formats and trims the output dir", () => {
+    let state = initialDialogState(null, "macos", "arm64");
+    state = { ...state, outputDir: "  " };
+    const request = stateToRequest(state);
+    expect(request.targets).toHaveLength(1);
+    expect(request.outputDir).toBe("");
+  });
 
-    it("carries an arch for desktop targets but never for web", () => {
-        let state = initialDialogState(null, "macos", "arm64");
-        state = togglePlatform(state, "web", true);
-        const request = stateToRequest(state);
-        expect(request.targets.find(t => t.platform === "macos")?.arch).toBe("arm64");
-        expect(request.targets.find(t => t.platform === "web")).not.toHaveProperty("arch");
-    });
+  it("carries an arch for desktop targets but never for web", () => {
+    let state = initialDialogState(null, "macos", "arm64");
+    state = togglePlatform(state, "web", true);
+    const request = stateToRequest(state);
+    expect(request.targets.find((t) => t.platform === "macos")?.arch).toBe("arm64");
+    expect(request.targets.find((t) => t.platform === "web")).not.toHaveProperty("arch");
+  });
 });
 
 describe("togglePlatform / toggleFormat", () => {
-    it("switching a platform on selects its default formats", () => {
-        const state = togglePlatform(initialDialogState(null, "macos", "arm64"), "windows", true);
-        expect([...state.formats.windows].sort()).toEqual(["nsis", "zip"]);
-    });
+  it("switching a platform on selects its default formats", () => {
+    const state = togglePlatform(initialDialogState(null, "macos", "arm64"), "windows", true);
+    expect([...state.formats.windows].sort()).toEqual(["nsis", "zip"]);
+  });
 
-    it("switching a platform off clears it entirely", () => {
-        const state = togglePlatform(initialDialogState(null, "macos", "arm64"), "macos", false);
-        expect(stateToRequest(state).targets).toEqual([]);
-    });
+  it("switching a platform off clears it entirely", () => {
+    const state = togglePlatform(initialDialogState(null, "macos", "arm64"), "macos", false);
+    expect(stateToRequest(state).targets).toEqual([]);
+  });
 
-    it("toggling a format adds and removes it", () => {
-        let state = initialDialogState(null, "macos", "arm64");
-        state = toggleFormat(state, "macos", "dir");
-        expect(state.formats.macos.has("dir")).toBe(true);
-        state = toggleFormat(state, "macos", "dir");
-        expect(state.formats.macos.has("dir")).toBe(false);
-    });
+  it("toggling a format adds and removes it", () => {
+    let state = initialDialogState(null, "macos", "arm64");
+    state = toggleFormat(state, "macos", "dir");
+    expect(state.formats.macos.has("dir")).toBe(true);
+    state = toggleFormat(state, "macos", "dir");
+    expect(state.formats.macos.has("dir")).toBe(false);
+  });
 });
 
 describe("draft round trip", () => {
-    it("restores the exact selection a parked draft held", () => {
-        let state = initialDialogState(null, "macos", "arm64");
-        state = togglePlatform(state, "windows", true);
-        state = { ...state, archs: { ...state.archs, windows: "arm64" }, compression: "store", openWhenDone: false };
-        const restored = stateFromRequest(stateToRequest(state), "macos", "arm64");
-        expect(stateToRequest(restored)).toEqual(stateToRequest(state));
-    });
+  it("restores the exact selection a parked draft held", () => {
+    let state = initialDialogState(null, "macos", "arm64");
+    state = togglePlatform(state, "windows", true);
+    state = {
+      ...state,
+      archs: { ...state.archs, windows: "arm64" },
+      compression: "store",
+      openWhenDone: false
+    };
+    const restored = stateFromRequest(stateToRequest(state), "macos", "arm64");
+    expect(stateToRequest(restored)).toEqual(stateToRequest(state));
+  });
 });
 
 describe("requestToBuildConfiguration", () => {
-    it("persists archs for desktop targets only", () => {
-        let state = initialDialogState(null, "macos", "arm64");
-        state = togglePlatform(state, "web", true);
-        const config = requestToBuildConfiguration(stateToRequest(state));
-        expect(config.archs).toEqual({ macos: "arm64" });
-        expect(config.platforms).toContain("web");
-    });
+  it("persists archs for desktop targets only", () => {
+    let state = initialDialogState(null, "macos", "arm64");
+    state = togglePlatform(state, "web", true);
+    const config = requestToBuildConfiguration(stateToRequest(state));
+    expect(config.archs).toEqual({ macos: "arm64" });
+    expect(config.platforms).toContain("web");
+  });
 
-    it("round trips back through initialDialogState", () => {
-        let state = initialDialogState(null, "macos", "arm64");
-        state = { ...state, compression: "store", openWhenDone: false, outputDir: "/tmp/out" };
-        const config = requestToBuildConfiguration(stateToRequest(state));
-        const reopened = initialDialogState(config, "macos", "arm64");
-        expect(stateToRequest(reopened)).toEqual(stateToRequest(state));
-    });
+  it("round trips back through initialDialogState", () => {
+    let state = initialDialogState(null, "macos", "arm64");
+    state = { ...state, compression: "store", openWhenDone: false, outputDir: "/tmp/out" };
+    const config = requestToBuildConfiguration(stateToRequest(state));
+    const reopened = initialDialogState(config, "macos", "arm64");
+    expect(stateToRequest(reopened)).toEqual(stateToRequest(state));
+  });
 });
 
 /**
@@ -164,64 +169,68 @@ describe("requestToBuildConfiguration", () => {
  * does: into the request, into the remembered configuration, and back out of a parked draft.
  */
 describe("build variant selection", () => {
-    it("is the release variant until one is picked, and is then left out of the request", () => {
-        const state = initialDialogState(null, "macos", "arm64");
+  it("is the release variant until one is picked, and is then left out of the request", () => {
+    const state = initialDialogState(null, "macos", "arm64");
 
-        expect(state.appTagId).toBe("");
-        // Absent rather than empty: the pipeline reads an absent id as release and refuses one it
-        // cannot find, so "" would name a variant nothing has.
-        expect(stateToRequest(state).appTagId).toBeUndefined();
-    });
+    expect(state.appTagId).toBe("");
+    // Absent rather than empty: the pipeline reads an absent id as release and refuses one it
+    // cannot find, so "" would name a variant nothing has.
+    expect(stateToRequest(state).appTagId).toBeUndefined();
+  });
 
-    it("carries the picked variant into the request", () => {
-        const state = { ...initialDialogState(null, "macos", "arm64"), appTagId: "tag-demo" };
+  it("carries the picked variant into the request", () => {
+    const state = { ...initialDialogState(null, "macos", "arm64"), appTagId: "tag-demo" };
 
-        expect(stateToRequest(state).appTagId).toBe("tag-demo");
-    });
+    expect(stateToRequest(state).appTagId).toBe("tag-demo");
+  });
 
-    it("is remembered for the next open", () => {
-        const state = { ...initialDialogState(null, "macos", "arm64"), appTagId: "tag-demo" };
-        const config = requestToBuildConfiguration(stateToRequest(state));
+  it("is remembered for the next open", () => {
+    const state = { ...initialDialogState(null, "macos", "arm64"), appTagId: "tag-demo" };
+    const config = requestToBuildConfiguration(stateToRequest(state));
 
-        expect(config.appTagId).toBe("tag-demo");
-        expect(initialDialogState(config, "macos", "arm64").appTagId).toBe("tag-demo");
-    });
+    expect(config.appTagId).toBe("tag-demo");
+    expect(initialDialogState(config, "macos", "arm64").appTagId).toBe("tag-demo");
+  });
 
-    it("survives a parked draft", () => {
-        const state = { ...initialDialogState(null, "macos", "arm64"), appTagId: "tag-demo" };
+  it("survives a parked draft", () => {
+    const state = { ...initialDialogState(null, "macos", "arm64"), appTagId: "tag-demo" };
 
-        expect(stateFromRequest(stateToRequest(state), "macos", "arm64").appTagId).toBe("tag-demo");
-    });
+    expect(stateFromRequest(stateToRequest(state), "macos", "arm64").appTagId).toBe("tag-demo");
+  });
 
-    /**
-     * The release variant has an id, and the dialog once persisted it. Two spellings of one choice
-     * is one spelling too many: whichever arrives, the release variant is the empty string here and
-     * nothing at all in the request and in the stored configuration.
-     */
-    it("has one spelling of the release variant, whichever one arrives", () => {
-        expect(appTagSelection(RELEASE_APP_TAG.id)).toBe("");
-        expect(appTagSelection("  ")).toBe("");
-        expect(appTagSelection(undefined)).toBe("");
-        expect(appTagSelection(" tag-demo ")).toBe("tag-demo");
-    });
+  /**
+   * The release variant has an id, and the dialog once persisted it. Two spellings of one choice
+   * is one spelling too many: whichever arrives, the release variant is the empty string here and
+   * nothing at all in the request and in the stored configuration.
+   */
+  it("has one spelling of the release variant, whichever one arrives", () => {
+    expect(appTagSelection(RELEASE_APP_TAG.id)).toBe("");
+    expect(appTagSelection("  ")).toBe("");
+    expect(appTagSelection(undefined)).toBe("");
+    expect(appTagSelection(" tag-demo ")).toBe("tag-demo");
+  });
 
-    it("reads a stored release id back as the choice it always meant", () => {
-        const stored = {
-            ...requestToBuildConfiguration(stateToRequest(initialDialogState(null, "macos", "arm64"))),
-            appTagId: RELEASE_APP_TAG.id,
-        };
+  it("reads a stored release id back as the choice it always meant", () => {
+    const stored = {
+      ...requestToBuildConfiguration(stateToRequest(initialDialogState(null, "macos", "arm64"))),
+      appTagId: RELEASE_APP_TAG.id
+    };
 
-        expect(initialDialogState(stored, "macos", "arm64").appTagId).toBe("");
-        expect(stateFromRequest({ targets: [], appTagId: RELEASE_APP_TAG.id }, "macos", "arm64").appTagId).toBe("");
-    });
+    expect(initialDialogState(stored, "macos", "arm64").appTagId).toBe("");
+    expect(
+      stateFromRequest({ targets: [], appTagId: RELEASE_APP_TAG.id }, "macos", "arm64").appTagId
+    ).toBe("");
+  });
 
-    it("keeps the release variant out of the request and out of what is remembered", () => {
-        const state = { ...initialDialogState(null, "macos", "arm64"), appTagId: RELEASE_APP_TAG.id };
-        const request = stateToRequest(state);
+  it("keeps the release variant out of the request and out of what is remembered", () => {
+    const state = { ...initialDialogState(null, "macos", "arm64"), appTagId: RELEASE_APP_TAG.id };
+    const request = stateToRequest(state);
 
-        expect(request.appTagId).toBeUndefined();
-        expect(requestToBuildConfiguration({ ...request, appTagId: RELEASE_APP_TAG.id }).appTagId).toBeUndefined();
-    });
+    expect(request.appTagId).toBeUndefined();
+    expect(
+      requestToBuildConfiguration({ ...request, appTagId: RELEASE_APP_TAG.id }).appTagId
+    ).toBeUndefined();
+  });
 });
 
 /**
@@ -230,34 +239,44 @@ describe("build variant selection", () => {
  * rather than the constant, or it lands on a page that is not shown.
  */
 describe("visibleBuildDialogPages", () => {
-    it("puts the variant page first for a project that has a variant beside release", () => {
-        const pages = visibleBuildDialogPages({ hasAuthoredVariants: true, declaresPluginConfig: true });
-
-        expect(pages).toEqual(BUILD_DIALOG_PAGES);
-        expect(pages[0]).toBe("variant");
+  it("puts the variant page first for a project that has a variant beside release", () => {
+    const pages = visibleBuildDialogPages({
+      hasAuthoredVariants: true,
+      declaresPluginConfig: true
     });
 
-    it("is the sections alone for a project whose only variant is release", () => {
-        expect(visibleBuildDialogPages({ hasAuthoredVariants: false, declaresPluginConfig: true }))
-            .toEqual(BUILD_DIALOG_SECTIONS);
+    expect(pages).toEqual(BUILD_DIALOG_PAGES);
+    expect(pages[0]).toBe("variant");
+  });
+
+  it("is the sections alone for a project whose only variant is release", () => {
+    expect(
+      visibleBuildDialogPages({ hasAuthoredVariants: false, declaresPluginConfig: true })
+    ).toEqual(BUILD_DIALOG_SECTIONS);
+  });
+
+  /**
+   * The plugins page is a section and can still be hidden, which is only safe because a finding in
+   * that section can only come from a declared field - the same fact that shows the page.
+   */
+  it("drops the plugins page where no plugin asks the build for anything", () => {
+    const pages = visibleBuildDialogPages({
+      hasAuthoredVariants: true,
+      declaresPluginConfig: false
     });
 
-    /**
-     * The plugins page is a section and can still be hidden, which is only safe because a finding in
-     * that section can only come from a declared field - the same fact that shows the page.
-     */
-    it("drops the plugins page where no plugin asks the build for anything", () => {
-        const pages = visibleBuildDialogPages({ hasAuthoredVariants: true, declaresPluginConfig: false });
+    expect(pages).not.toContain("plugins");
+    // Everything else keeps its place, so Output stays the end of the walk.
+    expect(pages).toEqual(BUILD_DIALOG_PAGES.filter((page) => page !== "plugins"));
+  });
 
-        expect(pages).not.toContain("plugins");
-        // Everything else keeps its place, so Output stays the end of the walk.
-        expect(pages).toEqual(BUILD_DIALOG_PAGES.filter(page => page !== "plugins"));
+  it("keeps the plugins page between Content and Signing", () => {
+    const pages = visibleBuildDialogPages({
+      hasAuthoredVariants: false,
+      declaresPluginConfig: true
     });
 
-    it("keeps the plugins page between Content and Signing", () => {
-        const pages = visibleBuildDialogPages({ hasAuthoredVariants: false, declaresPluginConfig: true });
-
-        expect(pages.indexOf("plugins")).toBe(pages.indexOf("content") + 1);
-        expect(pages.indexOf("plugins")).toBe(pages.indexOf("signing") - 1);
-    });
+    expect(pages.indexOf("plugins")).toBe(pages.indexOf("content") + 1);
+    expect(pages.indexOf("plugins")).toBe(pages.indexOf("signing") - 1);
+  });
 });

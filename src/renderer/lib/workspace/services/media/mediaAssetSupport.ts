@@ -28,12 +28,12 @@ import type { MediaProbeOutcome } from "@shared/types/mediaProbe";
 
 /** What the author has to do about an asset. */
 export type MediaAssetSupportState =
-    /** Plays as it is. Nothing to show and nothing to offer. */
-    | "playable"
-    /** Does not play, and there is a conversion that would fix it. */
-    | "convertible"
-    /** Does not play, and no conversion would produce what the author expected. */
-    | "unplayable";
+  /** Plays as it is. Nothing to show and nothing to offer. */
+  | "playable"
+  /** Does not play, and there is a conversion that would fix it. */
+  | "convertible"
+  /** Does not play, and no conversion would produce what the author expected. */
+  | "unplayable";
 
 /**
  * One asset's answer.
@@ -44,32 +44,32 @@ export type MediaAssetSupportState =
  * conversion needs.
  */
 export type MediaAssetSupportRecord = {
-    state: MediaAssetSupportState;
-    /** What to convert into. Non-null exactly when `state` is `convertible`. */
-    target: MediaConvertTarget | null;
-    /**
-     * Source duration in microseconds, or `null` when the file does not say.
-     *
-     * Carried so a conversion started later can show a percentage without spawning a second probe
-     * for a number the first one already printed. `null` is a real answer and must stay `null`.
-     */
-    durationUs: number | null;
-    /**
-     * Whether the conversion rebuilds the picture and sound rather than repacking them.
-     *
-     * The only thing that distinguishes the two sentences the author is shown, so it is worth a
-     * field: "the picture and sound stay exactly as they are" is a promise, and making it about a
-     * re-encode would be a lie.
-     */
-    lossy: boolean;
+  state: MediaAssetSupportState;
+  /** What to convert into. Non-null exactly when `state` is `convertible`. */
+  target: MediaConvertTarget | null;
+  /**
+   * Source duration in microseconds, or `null` when the file does not say.
+   *
+   * Carried so a conversion started later can show a percentage without spawning a second probe
+   * for a number the first one already printed. `null` is a real answer and must stay `null`.
+   */
+  durationUs: number | null;
+  /**
+   * Whether the conversion rebuilds the picture and sound rather than repacking them.
+   *
+   * The only thing that distinguishes the two sentences the author is shown, so it is worth a
+   * field: "the picture and sound stay exactly as they are" is a promise, and making it about a
+   * re-encode would be a lie.
+   */
+  lossy: boolean;
 };
 
 /** Which question to ask about an asset, or `null` when there is nothing to ask. */
 export type MediaSupportCheckKind =
-    /** Sound or video: the answer is inside the bytes, so the main process has to probe them. */
-    | "probe"
-    /** A still image in a format no browser decodes. Decided by name; no process is spawned. */
-    | "image";
+  /** Sound or video: the answer is inside the bytes, so the main process has to probe them. */
+  | "probe"
+  /** A still image in a format no browser decodes. Decided by name; no process is spawned. */
+  | "image";
 
 /**
  * The name this asset's bytes are written under.
@@ -80,11 +80,13 @@ export type MediaSupportCheckKind =
  * it, and this is four lines.
  */
 function assetFileName(asset: Asset): string {
-    const ext = asset.ext?.trim().replace(/^\./, "");
-    if (!ext) {
-        return asset.name;
-    }
-    return asset.name.toLowerCase().endsWith(`.${ext.toLowerCase()}`) ? asset.name : `${asset.name}.${ext}`;
+  const ext = asset.ext?.trim().replace(/^\./, "");
+  if (!ext) {
+    return asset.name;
+  }
+  return asset.name.toLowerCase().endsWith(`.${ext.toLowerCase()}`)
+    ? asset.name
+    : `${asset.name}.${ext}`;
 }
 
 /**
@@ -99,13 +101,13 @@ function assetFileName(asset: Asset): string {
  * than probed, because ffprobe would happily describe a PNG and the answer would never be news.
  */
 export function mediaSupportCheckKind(asset: Asset): MediaSupportCheckKind | null {
-    if (asset.type === AssetType.Audio || asset.type === AssetType.Video) {
-        return "probe";
-    }
-    if (asset.type === AssetType.Image) {
-        return imageConvertTargetFor(assetFileName(asset)) ? "image" : null;
-    }
-    return null;
+  if (asset.type === AssetType.Audio || asset.type === AssetType.Video) {
+    return "probe";
+  }
+  if (asset.type === AssetType.Image) {
+    return imageConvertTargetFor(assetFileName(asset)) ? "image" : null;
+  }
+  return null;
 }
 
 /**
@@ -116,11 +118,11 @@ export function mediaSupportCheckKind(asset: Asset): MediaSupportCheckKind | nul
  * precisely so this promise stays true.
  */
 export function imageSupportRecord(asset: Asset): MediaAssetSupportRecord | null {
-    const target = imageConvertTargetFor(assetFileName(asset));
-    if (!target) {
-        return null;
-    }
-    return { state: "convertible", target, durationUs: null, lossy: false };
+  const target = imageConvertTargetFor(assetFileName(asset));
+  if (!target) {
+    return null;
+  }
+  return { state: "convertible", target, durationUs: null, lossy: false };
 }
 
 /**
@@ -131,34 +133,36 @@ export function imageSupportRecord(asset: Asset): MediaAssetSupportRecord | null
  * anywhere else in this module, because the build gate refuses builds. A caller that treated an
  * unanswered probe as a verdict would fail builds on a machine that merely lacks a tool.
  */
-export function mediaSupportRecordFromProbe(outcome: MediaProbeOutcome | null): MediaAssetSupportRecord | null {
-    if (!outcome || outcome.status !== "probed") {
-        return null;
-    }
-    const { verdict, durationUs } = outcome;
-    switch (verdict.tier) {
-        case "accept":
-            return { state: "playable", target: null, durationUs, lossy: false };
-        case "refuse":
-            return { state: "unplayable", target: null, durationUs: null, lossy: false };
-        case "remux":
-        case "reencode":
-            // The classifier never returns those two tiers without a target; the guard is for a
-            // record that was hand-edited or written by a future version, not for a real branch.
-            return verdict.target
-                ? {
-                    state: "convertible",
-                    target: verdict.target,
-                    durationUs,
-                    lossy: verdict.tier === "reencode",
-                }
-                : { state: "unplayable", target: null, durationUs: null, lossy: false };
-    }
+export function mediaSupportRecordFromProbe(
+  outcome: MediaProbeOutcome | null
+): MediaAssetSupportRecord | null {
+  if (!outcome || outcome.status !== "probed") {
+    return null;
+  }
+  const { verdict, durationUs } = outcome;
+  switch (verdict.tier) {
+    case "accept":
+      return { state: "playable", target: null, durationUs, lossy: false };
+    case "refuse":
+      return { state: "unplayable", target: null, durationUs: null, lossy: false };
+    case "remux":
+    case "reencode":
+      // The classifier never returns those two tiers without a target; the guard is for a
+      // record that was hand-edited or written by a future version, not for a real branch.
+      return verdict.target
+        ? {
+            state: "convertible",
+            target: verdict.target,
+            durationUs,
+            lossy: verdict.tier === "reencode"
+          }
+        : { state: "unplayable", target: null, durationUs: null, lossy: false };
+  }
 }
 
 /** Whether this record describes an asset that will not play, whatever can be done about it. */
 export function blocksShipping(record: MediaAssetSupportRecord): boolean {
-    return record.state !== "playable";
+  return record.state !== "playable";
 }
 
 /* -------------------------------------------------------------------------------------------- */
@@ -188,14 +192,14 @@ export const MEDIA_SUPPORT_CACHE_VERSION = 1;
  * to" is a question nothing here asks.
  */
 export type MediaSupportCacheDocument = {
-    version: number;
-    entries: Record<string, MediaAssetSupportRecord>;
+  version: number;
+  entries: Record<string, MediaAssetSupportRecord>;
 };
 
 const SUPPORT_STATES: ReadonlySet<string> = new Set<MediaAssetSupportState>([
-    "playable",
-    "convertible",
-    "unplayable",
+  "playable",
+  "convertible",
+  "unplayable"
 ]);
 
 /**
@@ -206,60 +210,64 @@ const SUPPORT_STATES: ReadonlySet<string> = new Set<MediaAssetSupportState>([
  * file - all of them come back as an empty map and the scan simply does its work.
  */
 export function parseMediaSupportCache(raw: unknown): Map<string, MediaAssetSupportRecord> {
-    const out = new Map<string, MediaAssetSupportRecord>();
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-        return out;
-    }
-    const document = raw as Partial<MediaSupportCacheDocument>;
-    if (document.version !== MEDIA_SUPPORT_CACHE_VERSION) {
-        return out;
-    }
-    const entries = document.entries;
-    if (typeof entries !== "object" || entries === null || Array.isArray(entries)) {
-        return out;
-    }
-    for (const [hash, value] of Object.entries(entries)) {
-        const record = parseRecord(value);
-        if (hash && record) {
-            out.set(hash, record);
-        }
-    }
+  const out = new Map<string, MediaAssetSupportRecord>();
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     return out;
+  }
+  const document = raw as Partial<MediaSupportCacheDocument>;
+  if (document.version !== MEDIA_SUPPORT_CACHE_VERSION) {
+    return out;
+  }
+  const entries = document.entries;
+  if (typeof entries !== "object" || entries === null || Array.isArray(entries)) {
+    return out;
+  }
+  for (const [hash, value] of Object.entries(entries)) {
+    const record = parseRecord(value);
+    if (hash && record) {
+      out.set(hash, record);
+    }
+  }
+  return out;
 }
 
 function parseRecord(value: unknown): MediaAssetSupportRecord | null {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-        return null;
-    }
-    const candidate = value as Partial<MediaAssetSupportRecord>;
-    if (typeof candidate.state !== "string" || !SUPPORT_STATES.has(candidate.state)) {
-        return null;
-    }
-    const target = candidate.target;
-    const hasTarget = typeof target === "object" && target !== null && typeof (target as { kind?: unknown }).kind === "string";
-    // A `convertible` with no target is not a state this code can render or act on: the badge would
-    // offer a conversion the dialog could not start. Refuse the entry and re-probe.
-    if (candidate.state === "convertible" && !hasTarget) {
-        return null;
-    }
-    return {
-        state: candidate.state,
-        target: hasTarget ? (target as MediaConvertTarget) : null,
-        durationUs: typeof candidate.durationUs === "number" && Number.isFinite(candidate.durationUs)
-            ? candidate.durationUs
-            : null,
-        lossy: candidate.lossy === true,
-    };
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const candidate = value as Partial<MediaAssetSupportRecord>;
+  if (typeof candidate.state !== "string" || !SUPPORT_STATES.has(candidate.state)) {
+    return null;
+  }
+  const target = candidate.target;
+  const hasTarget =
+    typeof target === "object" &&
+    target !== null &&
+    typeof (target as { kind?: unknown }).kind === "string";
+  // A `convertible` with no target is not a state this code can render or act on: the badge would
+  // offer a conversion the dialog could not start. Refuse the entry and re-probe.
+  if (candidate.state === "convertible" && !hasTarget) {
+    return null;
+  }
+  return {
+    state: candidate.state,
+    target: hasTarget ? (target as MediaConvertTarget) : null,
+    durationUs:
+      typeof candidate.durationUs === "number" && Number.isFinite(candidate.durationUs)
+        ? candidate.durationUs
+        : null,
+    lossy: candidate.lossy === true
+  };
 }
 
 /** The document to write for these entries. */
 export function serializeMediaSupportCache(
-    entries: ReadonlyMap<string, MediaAssetSupportRecord>,
+  entries: ReadonlyMap<string, MediaAssetSupportRecord>
 ): MediaSupportCacheDocument {
-    return {
-        version: MEDIA_SUPPORT_CACHE_VERSION,
-        entries: Object.fromEntries(entries),
-    };
+  return {
+    version: MEDIA_SUPPORT_CACHE_VERSION,
+    entries: Object.fromEntries(entries)
+  };
 }
 
 /**
@@ -270,14 +278,14 @@ export function serializeMediaSupportCache(
  * dropped entry costs one probe: this is a cache, and forgetting is always allowed.
  */
 export function pruneMediaSupportCache(
-    entries: ReadonlyMap<string, MediaAssetSupportRecord>,
-    liveHashes: ReadonlySet<string>,
+  entries: ReadonlyMap<string, MediaAssetSupportRecord>,
+  liveHashes: ReadonlySet<string>
 ): Map<string, MediaAssetSupportRecord> {
-    const out = new Map<string, MediaAssetSupportRecord>();
-    for (const [hash, record] of entries) {
-        if (liveHashes.has(hash)) {
-            out.set(hash, record);
-        }
+  const out = new Map<string, MediaAssetSupportRecord>();
+  for (const [hash, record] of entries) {
+    if (liveHashes.has(hash)) {
+      out.set(hash, record);
     }
-    return out;
+  }
+  return out;
 }

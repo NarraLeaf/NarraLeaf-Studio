@@ -15,23 +15,23 @@ import { defineBlueprintNode } from "./defineBlueprintNode";
  * This function is the one entry every execution environment already calls.
  */
 function installDataPinResolver(): void {
-    setBehaviorDataPinResolver((ctx, pinId) =>
-        resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
-            hostAdapter: ctx.hostAdapter,
-            eventPayload: ctx.eventPayload,
-            listItemScope: ctx.listItemScope,
-            instanceKey: ctx.instanceKey,
-            executionOwner: ctx.executionOwner,
-            valueExecution: ctx.valueExecution,
-        }),
-    );
+  setBehaviorDataPinResolver((ctx, pinId) =>
+    resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
+      hostAdapter: ctx.hostAdapter,
+      eventPayload: ctx.eventPayload,
+      listItemScope: ctx.listItemScope,
+      instanceKey: ctx.instanceKey,
+      executionOwner: ctx.executionOwner,
+      valueExecution: ctx.valueExecution
+    })
+  );
 }
 
 export function registerCoreBlueprintNodes(): void {
-    installDataPinResolver();
-    for (const def of allBuiltinBlueprintNodes) {
-        if (!blueprintNodeRegistry.get(def.type)) {
-            defineBlueprintNode(def);
-        }
+  installDataPinResolver();
+  for (const def of allBuiltinBlueprintNodes) {
+    if (!blueprintNodeRegistry.get(def.type)) {
+      defineBlueprintNode(def);
     }
+  }
 }

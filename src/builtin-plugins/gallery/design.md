@@ -1,6 +1,6 @@
 # Gallery editor: UI design decisions
 
-Not documentation of what exists — the *reasons*, so the next change does not
+Not documentation of what exists — the _reasons_, so the next change does not
 undo them by accident. Written 2026-07-29 when the editor grew from one content
 kind to four.
 
@@ -10,12 +10,12 @@ A CG, a recollection, a music track and a voice line are not four flavours of
 the same object. They differ in what identifies them, what you must see to
 recognise one, and what you do to verify one:
 
-| kind | identity | must see | verify by |
-|---|---|---|---|
-| cg | the picture | the picture | looking |
-| scene | a story coordinate | thumbnail **+ where it points** | looking |
-| music | a filename you cannot see | title, duration | **hearing it** |
-| voice | the spoken line | **the line text** | hearing it |
+| kind  | identity                  | must see                        | verify by      |
+| ----- | ------------------------- | ------------------------------- | -------------- |
+| cg    | the picture               | the picture                     | looking        |
+| scene | a story coordinate        | thumbnail **+ where it points** | looking        |
+| music | a filename you cannot see | title, duration                 | **hearing it** |
+| voice | the spoken line           | **the line text**               | hearing it     |
 
 The first editor forced everything through one shape: a 16:9 image tile in a
 grid, an inspector that appeared on selection, and a group sidebar. That shape
@@ -23,7 +23,7 @@ is right for exactly one of the four rows above.
 
 ## P1 — Kind is the primary axis; group is secondary
 
-Kinds are content *types* with different fields, verbs and shapes, so they are
+Kinds are content _types_ with different fields, verbs and shapes, so they are
 top-level segments, not a filter dropdown. Groups are a cross-cutting tag, so
 they became a chip row under the segments.
 
@@ -65,7 +65,7 @@ The point of every entry is to be read by `Get Gallery` and fed into a List
 widget, and the first editor never said so. The idle inspector now names the
 node, its Kind setting, and the row fields this kind carries.
 
-Deliberately in the *idle* state and nowhere else: the project's UI convention
+Deliberately in the _idle_ state and nowhere else: the project's UI convention
 is minimal chrome and no explanatory prose (`ui-style-constraints`), so this
 must never become a banner over the content. It fills space that would
 otherwise be blank, and disappears the moment the author selects something.

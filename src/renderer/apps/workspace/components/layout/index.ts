@@ -10,4 +10,3 @@ export { MainEditorArea } from "./MainEditorArea";
 export { EditorGroup } from "./EditorGroup";
 export { ActionBar } from "./ActionBar";
 export { ControlBar } from "./ControlBar";
-

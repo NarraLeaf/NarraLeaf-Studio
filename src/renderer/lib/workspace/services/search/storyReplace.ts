@@ -1,8 +1,15 @@
-import type { StoryBlock, StoryBlockId, StoryDocument, StoryId, StorySceneId, StoryTextSegment } from "@shared/types/story";
+import type {
+  StoryBlock,
+  StoryBlockId,
+  StoryDocument,
+  StoryId,
+  StorySceneId,
+  StoryTextSegment
+} from "@shared/types/story";
 import {
-    getSegmentSlot,
-    replaceRangesInSegment,
-    segmentPlainText,
+  getSegmentSlot,
+  replaceRangesInSegment,
+  segmentPlainText
 } from "@/apps/workspace/modules/story/scene-editor/storyFindReplace";
 import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
 import { Services, type WorkspaceContext } from "../services";
@@ -47,68 +54,68 @@ import type { CompiledMatcher } from "./textMatcher";
  */
 
 export type StoryReplaceFailureReason =
-    /** The story document is not loaded (or would not load) any more. */
-    | "storyMissing"
-    /** The scene was deleted between the index build and now. */
-    | "sceneMissing"
-    /** The block was deleted between the index build and now. */
-    | "blockMissing"
-    /** The block is still there but no longer carries text (its action was changed). */
-    | "noTextSegment"
-    /** The rich-run splice threw - a malformed run list, which must never reach a write. */
-    | "rewriteFailed";
+  /** The story document is not loaded (or would not load) any more. */
+  | "storyMissing"
+  /** The scene was deleted between the index build and now. */
+  | "sceneMissing"
+  /** The block was deleted between the index build and now. */
+  | "blockMissing"
+  /** The block is still there but no longer carries text (its action was changed). */
+  | "noTextSegment"
+  /** The rich-run splice threw - a malformed run list, which must never reach a write. */
+  | "rewriteFailed";
 
 export interface StoryReplaceFailure {
-    reason: StoryReplaceFailureReason;
-    storyId: StoryId;
-    sceneId: StorySceneId;
-    blockId: StoryBlockId;
+  reason: StoryReplaceFailureReason;
+  storyId: StoryId;
+  sceneId: StorySceneId;
+  blockId: StoryBlockId;
 }
 
 /** One block's rewrite, as segments rather than payloads - see {@link applyStoryReplace}. */
 export interface StoryReplaceEdit {
-    storyId: StoryId;
-    sceneId: StorySceneId;
-    blockId: StoryBlockId;
-    before: StoryTextSegment;
-    after: StoryTextSegment;
-    /** Hits inside this one block. A line containing the query twice contributes two. */
-    occurrences: number;
+  storyId: StoryId;
+  sceneId: StorySceneId;
+  blockId: StoryBlockId;
+  before: StoryTextSegment;
+  after: StoryTextSegment;
+  /** Hits inside this one block. A line containing the query twice contributes two. */
+  occurrences: number;
 }
 
 export interface ReplacePlan {
-    edits: readonly StoryReplaceEdit[];
-    /**
-     * Hits, not rows. This is the number the button shows, because "replace all 14" has to mean the
-     * fourteen things that will change and not the eleven rows they are spread over.
-     */
-    occurrences: number;
-    blockCount: number;
-    sceneCount: number;
-    storyCount: number;
-    /** Everything phase 1 could not resolve. Non-empty means {@link applicable} is false. */
-    failures: readonly StoryReplaceFailure[];
-    /** Whether {@link applyStoryReplace} will write this plan. */
-    applicable: boolean;
+  edits: readonly StoryReplaceEdit[];
+  /**
+   * Hits, not rows. This is the number the button shows, because "replace all 14" has to mean the
+   * fourteen things that will change and not the eleven rows they are spread over.
+   */
+  occurrences: number;
+  blockCount: number;
+  sceneCount: number;
+  storyCount: number;
+  /** Everything phase 1 could not resolve. Non-empty means {@link applicable} is false. */
+  failures: readonly StoryReplaceFailure[];
+  /** Whether {@link applyStoryReplace} will write this plan. */
+  applicable: boolean;
 }
 
 export interface StoryReplaceRequest {
-    /** Compiled once by the caller, per (query, options) change - never per candidate. */
-    matcher: CompiledMatcher;
-    /** Literal in plain mode; a template expanded per hit (`$1`, `$&`) in regex mode. */
-    replacement: string;
-    /** Narrows the candidate set exactly as the query path narrows results. */
-    filters?: SearchFilters;
+  /** Compiled once by the caller, per (query, options) change - never per candidate. */
+  matcher: CompiledMatcher;
+  /** Literal in plain mode; a template expanded per hit (`$1`, `$&`) in regex mode. */
+  replacement: string;
+  /** Narrows the candidate set exactly as the query path narrows results. */
+  filters?: SearchFilters;
 }
 
 const EMPTY_PLAN: ReplacePlan = {
-    edits: [],
-    occurrences: 0,
-    blockCount: 0,
-    sceneCount: 0,
-    storyCount: 0,
-    failures: [],
-    applicable: false,
+  edits: [],
+  occurrences: 0,
+  blockCount: 0,
+  sceneCount: 0,
+  storyCount: 0,
+  failures: [],
+  applicable: false
 };
 
 /**
@@ -120,92 +127,99 @@ const EMPTY_PLAN: ReplacePlan = {
  * cannot be completed, and completing part of it is the outcome the author ruled out.
  */
 export function planStoryReplace(ctx: WorkspaceContext, request: StoryReplaceRequest): ReplacePlan {
-    const { matcher, replacement, filters } = request;
-    if (matcher.error) {
-        return EMPTY_PLAN;
+  const { matcher, replacement, filters } = request;
+  if (matcher.error) {
+    return EMPTY_PLAN;
+  }
+
+  const searchService = ctx.services.get<SearchService>(Services.Search);
+  const storyService = ctx.services.get<StoryService>(Services.Story);
+
+  const edits: StoryReplaceEdit[] = [];
+  const failures: StoryReplaceFailure[] = [];
+  // One lookup per story rather than one per candidate; a chapter is hundreds of entries deep.
+  const documents = new Map<StoryId, StoryDocument | null>();
+  const scenes = new Set<string>();
+  const stories = new Set<StoryId>();
+  let occurrences = 0;
+
+  for (const entry of searchService.listEntries()) {
+    if (entry.group !== "storyText" || entry.target.kind !== "storyBlock") {
+      continue;
+    }
+    if (filters && !passesFilters(entry, filters)) {
+      continue;
+    }
+    // The index's copy is stale by up to a debounce, which is fine for *choosing* candidates and
+    // never used for the rewrite itself. It is also the cheap half of the sweep: one test per
+    // entry against a string that is already in memory.
+    if (!matcher.test(entry.text)) {
+      continue;
     }
 
-    const searchService = ctx.services.get<SearchService>(Services.Search);
-    const storyService = ctx.services.get<StoryService>(Services.Story);
-
-    const edits: StoryReplaceEdit[] = [];
-    const failures: StoryReplaceFailure[] = [];
-    // One lookup per story rather than one per candidate; a chapter is hundreds of entries deep.
-    const documents = new Map<StoryId, StoryDocument | null>();
-    const scenes = new Set<string>();
-    const stories = new Set<StoryId>();
-    let occurrences = 0;
-
-    for (const entry of searchService.listEntries()) {
-        if (entry.group !== "storyText" || entry.target.kind !== "storyBlock") {
-            continue;
-        }
-        if (filters && !passesFilters(entry, filters)) {
-            continue;
-        }
-        // The index's copy is stale by up to a debounce, which is fine for *choosing* candidates and
-        // never used for the rewrite itself. It is also the cheap half of the sweep: one test per
-        // entry against a string that is already in memory.
-        if (!matcher.test(entry.text)) {
-            continue;
-        }
-
-        const { storyId, sceneId, blockId } = entry.target;
-        const document = resolveDocument(storyService, documents, storyId);
-        if (!document) {
-            failures.push({ reason: "storyMissing", storyId, sceneId, blockId });
-            continue;
-        }
-        const scene = document.scenes[sceneId];
-        if (!scene) {
-            failures.push({ reason: "sceneMissing", storyId, sceneId, blockId });
-            continue;
-        }
-        const block = scene.blocks[blockId];
-        if (!block) {
-            failures.push({ reason: "blockMissing", storyId, sceneId, blockId });
-            continue;
-        }
-        const slot = getSegmentSlot(block);
-        if (!slot) {
-            failures.push({ reason: "noTextSegment", storyId, sceneId, blockId });
-            continue;
-        }
-
-        const plain = segmentPlainText(slot.segment);
-        const ranges = matcher.findRanges(plain);
-        if (ranges.length === 0) {
-            // The index said this line matched and the live line does not: the author edited it
-            // since. Nothing to do, and nothing wrong.
-            continue;
-        }
-
-        let after: StoryTextSegment;
-        try {
-            after = replaceRangesInSegment(slot.segment, ranges, range =>
-                matcher.expand(plain, range, replacement),
-            );
-        } catch (error) {
-            console.warn(`[storyReplace] Could not rewrite ${storyId}/${sceneId}/${blockId}:`, error);
-            failures.push({ reason: "rewriteFailed", storyId, sceneId, blockId });
-            continue;
-        }
-
-        edits.push({ storyId, sceneId, blockId, before: slot.segment, after, occurrences: ranges.length });
-        occurrences += ranges.length;
-        scenes.add(`${storyId}/${sceneId}`);
-        stories.add(storyId);
+    const { storyId, sceneId, blockId } = entry.target;
+    const document = resolveDocument(storyService, documents, storyId);
+    if (!document) {
+      failures.push({ reason: "storyMissing", storyId, sceneId, blockId });
+      continue;
+    }
+    const scene = document.scenes[sceneId];
+    if (!scene) {
+      failures.push({ reason: "sceneMissing", storyId, sceneId, blockId });
+      continue;
+    }
+    const block = scene.blocks[blockId];
+    if (!block) {
+      failures.push({ reason: "blockMissing", storyId, sceneId, blockId });
+      continue;
+    }
+    const slot = getSegmentSlot(block);
+    if (!slot) {
+      failures.push({ reason: "noTextSegment", storyId, sceneId, blockId });
+      continue;
     }
 
-    return {
-        edits,
-        occurrences,
-        blockCount: edits.length,
-        sceneCount: scenes.size,
-        storyCount: stories.size,
-        failures,
-        applicable: failures.length === 0 && edits.length > 0,
-    };
+    const plain = segmentPlainText(slot.segment);
+    const ranges = matcher.findRanges(plain);
+    if (ranges.length === 0) {
+      // The index said this line matched and the live line does not: the author edited it
+      // since. Nothing to do, and nothing wrong.
+      continue;
+    }
+
+    let after: StoryTextSegment;
+    try {
+      after = replaceRangesInSegment(slot.segment, ranges, (range) =>
+        matcher.expand(plain, range, replacement)
+      );
+    } catch (error) {
+      console.warn(`[storyReplace] Could not rewrite ${storyId}/${sceneId}/${blockId}:`, error);
+      failures.push({ reason: "rewriteFailed", storyId, sceneId, blockId });
+      continue;
+    }
+
+    edits.push({
+      storyId,
+      sceneId,
+      blockId,
+      before: slot.segment,
+      after,
+      occurrences: ranges.length
+    });
+    occurrences += ranges.length;
+    scenes.add(`${storyId}/${sceneId}`);
+    stories.add(storyId);
+  }
+
+  return {
+    edits,
+    occurrences,
+    blockCount: edits.length,
+    sceneCount: scenes.size,
+    storyCount: stories.size,
+    failures,
+    applicable: failures.length === 0 && edits.length > 0
+  };
 }
 
 /**
@@ -215,15 +229,15 @@ export function planStoryReplace(ctx: WorkspaceContext, request: StoryReplaceReq
  * available even when the sweep it was planned alongside is not.
  */
 export function planForEdit(edit: StoryReplaceEdit): ReplacePlan {
-    return {
-        edits: [edit],
-        occurrences: edit.occurrences,
-        blockCount: 1,
-        sceneCount: 1,
-        storyCount: 1,
-        failures: [],
-        applicable: true,
-    };
+  return {
+    edits: [edit],
+    occurrences: edit.occurrences,
+    blockCount: 1,
+    sceneCount: 1,
+    storyCount: 1,
+    failures: [],
+    applicable: true
+  };
 }
 
 /**
@@ -234,37 +248,41 @@ export function planForEdit(edit: StoryReplaceEdit): ReplacePlan {
  * point: an undo entry for a write that did not happen is a press that silently rewrites the
  * document to a state it was never in.
  */
-export function applyStoryReplace(ctx: WorkspaceContext, plan: ReplacePlan, label: HistoryLabel): boolean {
-    if (!plan.applicable || plan.edits.length === 0) {
-        return false;
-    }
-    if (getProjectWriteFreeze()) {
-        return false;
-    }
+export function applyStoryReplace(
+  ctx: WorkspaceContext,
+  plan: ReplacePlan,
+  label: HistoryLabel
+): boolean {
+  if (!plan.applicable || plan.edits.length === 0) {
+    return false;
+  }
+  if (getProjectWriteFreeze()) {
+    return false;
+  }
 
-    const storyService = ctx.services.get<StoryService>(Services.Story);
-    const historyService = ctx.services.get<HistoryService>(Services.History);
+  const storyService = ctx.services.get<StoryService>(Services.Story);
+  const historyService = ctx.services.get<HistoryService>(Services.History);
 
-    if (writeSegments(storyService, plan.edits, "after") === 0) {
-        return false;
+  if (writeSegments(storyService, plan.edits, "after") === 0) {
+    return false;
+  }
+
+  /**
+   * A command entry, not a snapshot: the edit spans several documents, and there is no one scope
+   * whose `capture`/`apply` could describe it. Both directions re-derive from whatever is live at
+   * the moment they run - see {@link writeSegments} - so a redo after an unrelated edit elsewhere
+   * still puts back only the text this replace touched.
+   */
+  historyService.pushCommand(projectHistoryScope(), {
+    label,
+    undo: () => {
+      writeSegments(storyService, plan.edits, "before");
+    },
+    redo: () => {
+      writeSegments(storyService, plan.edits, "after");
     }
-
-    /**
-     * A command entry, not a snapshot: the edit spans several documents, and there is no one scope
-     * whose `capture`/`apply` could describe it. Both directions re-derive from whatever is live at
-     * the moment they run - see {@link writeSegments} - so a redo after an unrelated edit elsewhere
-     * still puts back only the text this replace touched.
-     */
-    historyService.pushCommand(projectHistoryScope(), {
-        label,
-        undo: () => {
-            writeSegments(storyService, plan.edits, "before");
-        },
-        redo: () => {
-            writeSegments(storyService, plan.edits, "after");
-        },
-    });
-    return true;
+  });
+  return true;
 }
 
 /**
@@ -280,58 +298,63 @@ export function applyStoryReplace(ctx: WorkspaceContext, plan: ReplacePlan, labe
  * escape hatch, and an escape hatch that refuses because one of forty rows was deleted is not one.
  */
 function writeSegments(
-    storyService: StoryService,
-    edits: readonly StoryReplaceEdit[],
-    side: "before" | "after",
+  storyService: StoryService,
+  edits: readonly StoryReplaceEdit[],
+  side: "before" | "after"
 ): number {
-    const byStory = new Map<StoryId, { sceneId: StorySceneId; blockId: StoryBlockId; payload: StoryBlock["payload"] }[]>();
-    const documents = new Map<StoryId, StoryDocument | null>();
-    let applied = 0;
-    let skipped = 0;
+  const byStory = new Map<
+    StoryId,
+    { sceneId: StorySceneId; blockId: StoryBlockId; payload: StoryBlock["payload"] }[]
+  >();
+  const documents = new Map<StoryId, StoryDocument | null>();
+  let applied = 0;
+  let skipped = 0;
 
-    for (const edit of edits) {
-        const document = resolveDocument(storyService, documents, edit.storyId);
-        const block = document?.scenes[edit.sceneId]?.blocks[edit.blockId];
-        const slot = block ? getSegmentSlot(block) : null;
-        if (!slot) {
-            skipped += 1;
-            continue;
-        }
-        const payload = slot.withSegment(side === "before" ? edit.before : edit.after).payload;
-        const bucket = byStory.get(edit.storyId);
-        const item = { sceneId: edit.sceneId, blockId: edit.blockId, payload };
-        if (bucket) {
-            bucket.push(item);
-        } else {
-            byStory.set(edit.storyId, [item]);
-        }
-        applied += 1;
+  for (const edit of edits) {
+    const document = resolveDocument(storyService, documents, edit.storyId);
+    const block = document?.scenes[edit.sceneId]?.blocks[edit.blockId];
+    const slot = block ? getSegmentSlot(block) : null;
+    if (!slot) {
+      skipped += 1;
+      continue;
     }
+    const payload = slot.withSegment(side === "before" ? edit.before : edit.after).payload;
+    const bucket = byStory.get(edit.storyId);
+    const item = { sceneId: edit.sceneId, blockId: edit.blockId, payload };
+    if (bucket) {
+      bucket.push(item);
+    } else {
+      byStory.set(edit.storyId, [item]);
+    }
+    applied += 1;
+  }
 
-    // One mutation per story, so the story editor repaints once for the sweep instead of once a row.
-    for (const [storyId, storyEdits] of byStory) {
-        storyService.updateBlocks(storyId, storyEdits);
-    }
-    if (skipped > 0) {
-        console.warn(`[storyReplace] ${skipped} of ${edits.length} blocks were gone; wrote the other ${applied}.`);
-    }
-    return applied;
+  // One mutation per story, so the story editor repaints once for the sweep instead of once a row.
+  for (const [storyId, storyEdits] of byStory) {
+    storyService.updateBlocks(storyId, storyEdits);
+  }
+  if (skipped > 0) {
+    console.warn(
+      `[storyReplace] ${skipped} of ${edits.length} blocks were gone; wrote the other ${applied}.`
+    );
+  }
+  return applied;
 }
 
 function resolveDocument(
-    storyService: StoryService,
-    cache: Map<StoryId, StoryDocument | null>,
-    storyId: StoryId,
+  storyService: StoryService,
+  cache: Map<StoryId, StoryDocument | null>,
+  storyId: StoryId
 ): StoryDocument | null {
-    if (cache.has(storyId)) {
-        return cache.get(storyId) ?? null;
-    }
-    let document: StoryDocument | null;
-    try {
-        document = storyService.getStoryDocument(storyId);
-    } catch {
-        document = null;
-    }
-    cache.set(storyId, document);
-    return document;
+  if (cache.has(storyId)) {
+    return cache.get(storyId) ?? null;
+  }
+  let document: StoryDocument | null;
+  try {
+    document = storyService.getStoryDocument(storyId);
+  } catch {
+    document = null;
+  }
+  cache.set(storyId, document);
+  return document;
 }

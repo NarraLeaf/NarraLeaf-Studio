@@ -13,30 +13,30 @@ import { IPCHandler } from "./IPCHandler";
  * pushing state rather than letting a panel animate a plausible-looking bar.
  */
 export class AppUpdateGetStateHandler extends IPCHandler<IPCEventType.appUpdateGetState> {
-    readonly name = IPCEventType.appUpdateGetState;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.appUpdateGetState;
+  readonly type = IPCMessageType.request;
 
-    public handle(window: AppWindow): RequestStatus<{ state: UpdateState }> {
-        return this.success({ state: window.getApp().getUpdateManager().getState() });
-    }
+  public handle(window: AppWindow): RequestStatus<{ state: UpdateState }> {
+    return this.success({ state: window.getApp().getUpdateManager().getState() });
+  }
 }
 
 export class AppUpdateCheckHandler extends IPCHandler<IPCEventType.appUpdateCheck> {
-    readonly name = IPCEventType.appUpdateCheck;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.appUpdateCheck;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<{ state: UpdateState }>> {
-        return this.success({ state: await window.getApp().getUpdateManager().check() });
-    }
+  public async handle(window: AppWindow): Promise<RequestStatus<{ state: UpdateState }>> {
+    return this.success({ state: await window.getApp().getUpdateManager().check() });
+  }
 }
 
 export class AppUpdateDownloadHandler extends IPCHandler<IPCEventType.appUpdateDownload> {
-    readonly name = IPCEventType.appUpdateDownload;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.appUpdateDownload;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<{ state: UpdateState }>> {
-        return this.success({ state: await window.getApp().getUpdateManager().download() });
-    }
+  public async handle(window: AppWindow): Promise<RequestStatus<{ state: UpdateState }>> {
+    return this.success({ state: await window.getApp().getUpdateManager().download() });
+  }
 }
 
 /**
@@ -46,12 +46,12 @@ export class AppUpdateDownloadHandler extends IPCHandler<IPCEventType.appUpdateD
  * there is nothing left to answer.
  */
 export class AppUpdateInstallHandler extends IPCHandler<IPCEventType.appUpdateInstall> {
-    readonly name = IPCEventType.appUpdateInstall;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.appUpdateInstall;
+  readonly type = IPCMessageType.request;
 
-    public handle(window: AppWindow): RequestStatus<void> {
-        const app = window.getApp();
-        setImmediate(() => app.getUpdateManager().installNow());
-        return this.success(void 0);
-    }
+  public handle(window: AppWindow): RequestStatus<void> {
+    const app = window.getApp();
+    setImmediate(() => app.getUpdateManager().installNow());
+    return this.success(void 0);
+  }
 }

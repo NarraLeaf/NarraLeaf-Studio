@@ -22,10 +22,10 @@ import type { LocaleMeta } from "./locales";
 
 /** Overlay metadata a plugin may supply for a locale it introduces. */
 export type LocaleContributionMeta = {
-    nativeName?: string;
-    englishName?: string;
-    intl?: string;
-    dir?: "ltr" | "rtl";
+  nativeName?: string;
+  englishName?: string;
+  intl?: string;
+  dir?: "ltr" | "rtl";
 };
 
 /**
@@ -34,15 +34,15 @@ export type LocaleContributionMeta = {
  * keyed by Studio's own {@link TranslationKey}s.
  */
 export type LocaleContribution = {
-    pluginId: string;
-    code: string;
-    meta?: LocaleContributionMeta;
-    messages: Record<string, string>;
+  pluginId: string;
+  code: string;
+  meta?: LocaleContributionMeta;
+  messages: Record<string, string>;
 };
 
 type OverlayEntry = {
-    meta: LocaleContributionMeta;
-    messages: FlatMessages;
+  meta: LocaleContributionMeta;
+  messages: FlatMessages;
 };
 
 const overlay = new Map<string, OverlayEntry>();
@@ -55,17 +55,17 @@ const BUILTIN_CODES = new Set(Object.keys(CATALOGS));
 /** Lazily-flattened baseline messages per built-in locale, for the collision check. */
 const baselineFlatCache = new Map<string, FlatMessages>();
 function baselineFlat(code: string): FlatMessages {
-    let flat = baselineFlatCache.get(code);
-    if (!flat) {
-        flat = flattenCatalog((CATALOGS as Record<string, unknown>)[code]);
-        baselineFlatCache.set(code, flat);
-    }
-    return flat;
+  let flat = baselineFlatCache.get(code);
+  if (!flat) {
+    flat = flattenCatalog((CATALOGS as Record<string, unknown>)[code]);
+    baselineFlatCache.set(code, flat);
+  }
+  return flat;
 }
 
 export type SetLocaleContributionsOptions = {
-    /** Sink for collision warnings. Defaults to `console.warn`. */
-    onWarn?: (message: string) => void;
+  /** Sink for collision warnings. Defaults to `console.warn`. */
+  onWarn?: (message: string) => void;
 };
 
 /**
@@ -82,94 +82,94 @@ export type SetLocaleContributionsOptions = {
  *    DISALLOWED — the baseline wins and a warning is emitted.
  */
 export function setLocaleContributions(
-    contributions: readonly LocaleContribution[],
-    options: SetLocaleContributionsOptions = {},
+  contributions: readonly LocaleContribution[],
+  options: SetLocaleContributionsOptions = {}
 ): void {
-    const warn = options.onWarn ?? ((message: string) => console.warn(message));
+  const warn = options.onWarn ?? ((message: string) => console.warn(message));
 
-    const next = new Map<string, OverlayEntry>();
-    // code -> key -> owning pluginId, for plugin-vs-plugin overwrite warnings.
-    const owners = new Map<string, Map<string, string>>();
+  const next = new Map<string, OverlayEntry>();
+  // code -> key -> owning pluginId, for plugin-vs-plugin overwrite warnings.
+  const owners = new Map<string, Map<string, string>>();
 
-    for (const contribution of contributions) {
-        const code = contribution.code;
-        if (!code) {
-            continue;
-        }
-        const isBuiltin = BUILTIN_CODES.has(code);
+  for (const contribution of contributions) {
+    const code = contribution.code;
+    if (!code) {
+      continue;
+    }
+    const isBuiltin = BUILTIN_CODES.has(code);
 
-        let entry = next.get(code);
-        if (!entry) {
-            entry = { meta: {}, messages: new Map() };
-            next.set(code, entry);
-            owners.set(code, new Map());
-        }
-        // Meta only matters for a NEW locale; the first contributor to supply it wins.
-        if (!isBuiltin && contribution.meta) {
-            entry.meta = { ...contribution.meta, ...entry.meta };
-        }
-
-        const keyOwners = owners.get(code)!;
-        for (const [key, value] of Object.entries(contribution.messages)) {
-            if (typeof value !== "string") {
-                continue;
-            }
-            if (isBuiltin && baselineFlat(code).has(key)) {
-                warn(
-                    `[i18n] plugin "${contribution.pluginId}" tried to override built-in locale "${code}" key "${key}"; ignored (built-in translations cannot be overridden, only gaps filled).`,
-                );
-                continue;
-            }
-            const priorOwner = keyOwners.get(key);
-            if (priorOwner && priorOwner !== contribution.pluginId) {
-                warn(
-                    `[i18n] plugin "${contribution.pluginId}" overrides locale "${code}" key "${key}" previously provided by "${priorOwner}" (last wins).`,
-                );
-            }
-            entry.messages.set(key, value);
-            keyOwners.set(key, contribution.pluginId);
-        }
+    let entry = next.get(code);
+    if (!entry) {
+      entry = { meta: {}, messages: new Map() };
+      next.set(code, entry);
+      owners.set(code, new Map());
+    }
+    // Meta only matters for a NEW locale; the first contributor to supply it wins.
+    if (!isBuiltin && contribution.meta) {
+      entry.meta = { ...contribution.meta, ...entry.meta };
     }
 
-    // Drop empty entries (a contributor whose every key collided).
-    for (const [code, entry] of next) {
-        if (entry.messages.size === 0 && Object.keys(entry.meta).length === 0) {
-            next.delete(code);
-        }
+    const keyOwners = owners.get(code)!;
+    for (const [key, value] of Object.entries(contribution.messages)) {
+      if (typeof value !== "string") {
+        continue;
+      }
+      if (isBuiltin && baselineFlat(code).has(key)) {
+        warn(
+          `[i18n] plugin "${contribution.pluginId}" tried to override built-in locale "${code}" key "${key}"; ignored (built-in translations cannot be overridden, only gaps filled).`
+        );
+        continue;
+      }
+      const priorOwner = keyOwners.get(key);
+      if (priorOwner && priorOwner !== contribution.pluginId) {
+        warn(
+          `[i18n] plugin "${contribution.pluginId}" overrides locale "${code}" key "${key}" previously provided by "${priorOwner}" (last wins).`
+        );
+      }
+      entry.messages.set(key, value);
+      keyOwners.set(key, contribution.pluginId);
     }
+  }
 
-    overlay.clear();
-    for (const [code, entry] of next) {
-        overlay.set(code, entry);
+  // Drop empty entries (a contributor whose every key collided).
+  for (const [code, entry] of next) {
+    if (entry.messages.size === 0 && Object.keys(entry.meta).length === 0) {
+      next.delete(code);
     }
-    version += 1;
-    for (const listener of listeners) {
-        listener();
-    }
+  }
+
+  overlay.clear();
+  for (const [code, entry] of next) {
+    overlay.set(code, entry);
+  }
+  version += 1;
+  for (const listener of listeners) {
+    listener();
+  }
 }
 
 /** Overlay locale codes currently registered (excludes the built-in baseline). */
 export function listOverlayLocales(): string[] {
-    return [...overlay.keys()];
+  return [...overlay.keys()];
 }
 
 /** Overlay metadata for a locale, or `undefined` if none is registered. */
 export function getOverlayMeta(code: string): Partial<LocaleMeta> | undefined {
-    const entry = overlay.get(code);
-    if (!entry) {
-        return undefined;
-    }
-    const meta: Partial<LocaleMeta> = {};
-    if (entry.meta.nativeName) meta.nativeName = entry.meta.nativeName;
-    if (entry.meta.englishName) meta.englishName = entry.meta.englishName;
-    if (entry.meta.intl) meta.intl = entry.meta.intl;
-    if (entry.meta.dir) meta.dir = entry.meta.dir;
-    return meta;
+  const entry = overlay.get(code);
+  if (!entry) {
+    return undefined;
+  }
+  const meta: Partial<LocaleMeta> = {};
+  if (entry.meta.nativeName) meta.nativeName = entry.meta.nativeName;
+  if (entry.meta.englishName) meta.englishName = entry.meta.englishName;
+  if (entry.meta.intl) meta.intl = entry.meta.intl;
+  if (entry.meta.dir) meta.dir = entry.meta.dir;
+  return meta;
 }
 
 /** Overlay messages for a locale, or `undefined` if none is registered. */
 export function getOverlayMessages(code: string): FlatMessages | undefined {
-    return overlay.get(code)?.messages;
+  return overlay.get(code)?.messages;
 }
 
 /**
@@ -177,13 +177,13 @@ export function getOverlayMessages(code: string): FlatMessages | undefined {
  * (e.g. the translator's `flatCache`) compare against it to invalidate.
  */
 export function getLocaleRegistryVersion(): number {
-    return version;
+  return version;
 }
 
 /** Subscribe to overlay changes. Returns an unsubscribe function. */
 export function subscribeLocaleRegistry(listener: () => void): () => void {
-    listeners.add(listener);
-    return () => {
-        listeners.delete(listener);
-    };
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }

@@ -7,15 +7,15 @@ import type { ProjectConfig } from "../../project/project";
 const PROJECT_PATH = "D:/projects/demo";
 
 function config(encryptAssets: boolean): ProjectConfig {
-    return {
-        name: "Demo",
-        identifier: "demo",
-        metadata: {},
-        app: {
-            network: { allowHttp: false, allowRemoteResource: false, allowRemoteScript: false },
-            security: { encryptAssets },
-        },
-    } as ProjectConfig;
+  return {
+    name: "Demo",
+    identifier: "demo",
+    metadata: {},
+    app: {
+      network: { allowHttp: false, allowRemoteResource: false, allowRemoteScript: false },
+      security: { encryptAssets }
+    }
+  } as ProjectConfig;
 }
 
 /**
@@ -24,55 +24,57 @@ function config(encryptAssets: boolean): ProjectConfig {
  * packaging pipeline, a hand edit - none of which the service is told about.
  */
 function mount(initial: ProjectConfig) {
-    const disk = { bytes: encodeProjectConfig(initial as never) };
-    const filesystem = {
-        list: async () => ({ ok: true, data: [{ name: "Demo", ext: ".nlproj", type: "file" }] }),
-        readRaw: async () => ({ ok: true, data: disk.bytes }),
-    };
-    const ctx = {
-        project: { getConfig: () => ({ projectPath: PROJECT_PATH }) } as unknown as WorkspaceContext["project"],
-        services: {
-            get: (serviceId: Services) => {
-                if (serviceId === Services.FileSystem) {
-                    return filesystem;
-                }
-                throw new Error(`Unexpected service lookup: ${serviceId}`);
-            },
-        },
-    } as WorkspaceContext;
+  const disk = { bytes: encodeProjectConfig(initial as never) };
+  const filesystem = {
+    list: async () => ({ ok: true, data: [{ name: "Demo", ext: ".nlproj", type: "file" }] }),
+    readRaw: async () => ({ ok: true, data: disk.bytes })
+  };
+  const ctx = {
+    project: {
+      getConfig: () => ({ projectPath: PROJECT_PATH })
+    } as unknown as WorkspaceContext["project"],
+    services: {
+      get: (serviceId: Services) => {
+        if (serviceId === Services.FileSystem) {
+          return filesystem;
+        }
+        throw new Error(`Unexpected service lookup: ${serviceId}`);
+      }
+    }
+  } as WorkspaceContext;
 
-    return {
-        ctx,
-        write: (next: ProjectConfig) => {
-            disk.bytes = encodeProjectConfig(next as never);
-        },
-    };
+  return {
+    ctx,
+    write: (next: ProjectConfig) => {
+      disk.bytes = encodeProjectConfig(next as never);
+    }
+  };
 }
 
 describe("ProjectService security configuration", () => {
-    it("reads the effective policy from the manifest it loaded", async () => {
-        const service = new ProjectService();
-        const { ctx } = mount(config(true));
+  it("reads the effective policy from the manifest it loaded", async () => {
+    const service = new ProjectService();
+    const { ctx } = mount(config(true));
 
-        await service.initialize(ctx, async () => undefined);
+    await service.initialize(ctx, async () => undefined);
 
-        expect(service.getSecurityConfiguration().encryptAssets).toBe(true);
-    });
+    expect(service.getSecurityConfiguration().encryptAssets).toBe(true);
+  });
 
-    it("picks up a manifest change made outside this window only on reload", async () => {
-        const service = new ProjectService();
-        const { ctx, write } = mount(config(true));
-        await service.initialize(ctx, async () => undefined);
+  it("picks up a manifest change made outside this window only on reload", async () => {
+    const service = new ProjectService();
+    const { ctx, write } = mount(config(true));
+    await service.initialize(ctx, async () => undefined);
 
-        write(config(false));
+    write(config(false));
 
-        // The cache is deliberately not a file watcher, so the stale read is
-        // expected - it is why the build dialog reloads before describing the
-        // package it is about to produce.
-        expect(service.getSecurityConfiguration().encryptAssets).toBe(true);
+    // The cache is deliberately not a file watcher, so the stale read is
+    // expected - it is why the build dialog reloads before describing the
+    // package it is about to produce.
+    expect(service.getSecurityConfiguration().encryptAssets).toBe(true);
 
-        await service.reloadProjectConfig();
+    await service.reloadProjectConfig();
 
-        expect(service.getSecurityConfiguration().encryptAssets).toBe(false);
-    });
+    expect(service.getSecurityConfiguration().encryptAssets).toBe(false);
+  });
 });

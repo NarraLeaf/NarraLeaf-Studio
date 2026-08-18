@@ -8,35 +8,38 @@ import { HintPopover, Switch } from "@/lib/components/elements";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 export function SettingShell({
-    title,
-    description,
-    hint,
-    tooltip,
-    children,
+  title,
+  description,
+  hint,
+  tooltip,
+  children
 }: {
-    title: string;
-    description: string;
-    /** Optional caveat shown behind a small info icon next to the title. */
-    hint?: string;
-    /**
-     * Hover text for the whole row. The freeze reason goes here rather than on the control, because a
-     * `disabled` switch or select never reports a hover of its own on every platform.
-     */
-    tooltip?: string;
-    children: React.ReactNode;
+  title: string;
+  description: string;
+  /** Optional caveat shown behind a small info icon next to the title. */
+  hint?: string;
+  /**
+   * Hover text for the whole row. The freeze reason goes here rather than on the control, because a
+   * `disabled` switch or select never reports a hover of its own on every platform.
+   */
+  tooltip?: string;
+  children: React.ReactNode;
 }) {
-    return (
-        <section className="flex items-start justify-between gap-3 rounded-md border border-edge bg-fill-subtle p-3" data-tip={tooltip}>
-            <div className="min-w-0">
-                <div className="flex items-center gap-1.5 text-sm font-medium text-fg">
-                    <span>{title}</span>
-                    {hint && <HintPopover text={hint} />}
-                </div>
-                <div className="mt-1 text-2xs leading-relaxed text-fg-subtle">{description}</div>
-            </div>
-            {children}
-        </section>
-    );
+  return (
+    <section
+      className="flex items-start justify-between gap-3 rounded-md border border-edge bg-fill-subtle p-3"
+      data-tip={tooltip}
+    >
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5 text-sm font-medium text-fg">
+          <span>{title}</span>
+          {hint && <HintPopover text={hint} />}
+        </div>
+        <div className="mt-1 text-2xs leading-relaxed text-fg-subtle">{description}</div>
+      </div>
+      {children}
+    </section>
+  );
 }
 
 /**
@@ -54,73 +57,73 @@ export function SettingShell({
  * surface once came to be 512px wide inside a 318px panel.
  */
 export function SettingStack({
-    title,
-    description,
-    hint,
-    tooltip,
-    helpTopic,
-    children,
+  title,
+  description,
+  hint,
+  tooltip,
+  helpTopic,
+  children
 }: {
-    title: string;
-    description: string;
-    hint?: string;
-    tooltip?: string;
-    /**
-     * Topic `F1` resolves to anywhere inside this row. No `?` is drawn: the row already carries a
-     * control, and a second glyph beside the hint icon would be a row of glyphs to skim past.
-     */
-    helpTopic?: string;
-    children: React.ReactNode;
+  title: string;
+  description: string;
+  hint?: string;
+  tooltip?: string;
+  /**
+   * Topic `F1` resolves to anywhere inside this row. No `?` is drawn: the row already carries a
+   * control, and a second glyph beside the hint icon would be a row of glyphs to skim past.
+   */
+  helpTopic?: string;
+  children: React.ReactNode;
 }) {
-    return (
-        <section
-            className="grid gap-2 rounded-md border border-edge bg-fill-subtle p-3 [&>*]:min-w-0"
-            data-tip={tooltip}
-            data-help-topic={helpTopic}
-        >
-            <div className="min-w-0">
-                <div className="flex items-center gap-1.5 text-sm font-medium text-fg">
-                    <span>{title}</span>
-                    {hint && <HintPopover text={hint} />}
-                </div>
-                <div className="mt-1 text-2xs leading-relaxed text-fg-subtle">{description}</div>
-            </div>
-            {children}
-        </section>
-    );
+  return (
+    <section
+      className="grid gap-2 rounded-md border border-edge bg-fill-subtle p-3 [&>*]:min-w-0"
+      data-tip={tooltip}
+      data-help-topic={helpTopic}
+    >
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5 text-sm font-medium text-fg">
+          <span>{title}</span>
+          {hint && <HintPopover text={hint} />}
+        </div>
+        <div className="mt-1 text-2xs leading-relaxed text-fg-subtle">{description}</div>
+      </div>
+      {children}
+    </section>
+  );
 }
 
 export function SettingRow({
-    title,
-    description,
-    hint,
-    checked,
-    loading,
-    disabled,
-    onChange,
+  title,
+  description,
+  hint,
+  checked,
+  loading,
+  disabled,
+  onChange
 }: {
-    title: string;
-    description: string;
-    hint?: string;
-    checked: boolean;
-    loading: boolean;
-    disabled?: boolean;
-    onChange: (value: boolean) => void;
+  title: string;
+  description: string;
+  hint?: string;
+  checked: boolean;
+  loading: boolean;
+  disabled?: boolean;
+  onChange: (value: boolean) => void;
 }) {
-    // Every project setting writes `project.json`, so the whole surface goes read-only together. Read
-    // here rather than in each section so a new setting row is frozen the day it is added.
-    const freeze = useFreezeGuard();
-    const frozen = freeze.writes(disabled);
-    return (
-        <SettingShell title={title} description={description} hint={hint} tooltip={frozen["data-tip"]}>
-            <Switch
-                size="sm"
-                checked={checked}
-                loading={loading}
-                disabled={frozen.disabled}
-                onCheckedChange={onChange}
-                aria-label={title}
-            />
-        </SettingShell>
-    );
+  // Every project setting writes `project.json`, so the whole surface goes read-only together. Read
+  // here rather than in each section so a new setting row is frozen the day it is added.
+  const freeze = useFreezeGuard();
+  const frozen = freeze.writes(disabled);
+  return (
+    <SettingShell title={title} description={description} hint={hint} tooltip={frozen["data-tip"]}>
+      <Switch
+        size="sm"
+        checked={checked}
+        loading={loading}
+        disabled={frozen.disabled}
+        onCheckedChange={onChange}
+        aria-label={title}
+      />
+    </SettingShell>
+  );
 }

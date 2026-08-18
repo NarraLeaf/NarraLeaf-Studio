@@ -31,16 +31,17 @@ const BACKEND_ENTRY_FILE = "index.js";
  * data — textures, skeletons — and must stay raw, or the bytes are decoded into a string and ruined.
  */
 async function grantUrl(filePath: string, mode: "text" | "raw"): Promise<string> {
-    const request = mode === "text"
-        ? await getInterface().fs.requestRead(filePath, "utf-8")
-        : await getInterface().fs.requestReadRaw(filePath);
-    if (!request.success) {
-        throw new Error(request.error ?? `Cannot read ${filePath}`);
-    }
-    if (!request.data.ok) {
-        throw new Error(request.data.error.message ?? `Cannot read ${filePath}`);
-    }
-    return `${AppProtocol}://${AppHost.Fs}/${request.data.data}`;
+  const request =
+    mode === "text"
+      ? await getInterface().fs.requestRead(filePath, "utf-8")
+      : await getInterface().fs.requestReadRaw(filePath);
+  if (!request.success) {
+    throw new Error(request.error ?? `Cannot read ${filePath}`);
+  }
+  if (!request.data.ok) {
+    throw new Error(request.data.error.message ?? `Cannot read ${filePath}`);
+  }
+  return `${AppProtocol}://${AppHost.Fs}/${request.data.data}`;
 }
 
 /**
@@ -50,33 +51,37 @@ async function grantUrl(filePath: string, mode: "text" | "raw"): Promise<string>
  * most projects use no puppet runtime at all — and comes back empty rather than throwing.
  */
 export async function listDevModePuppetBackendModules(
-    projectPath: string | null,
+  projectPath: string | null
 ): Promise<PuppetBackendModuleSource[]> {
-    if (!projectPath) {
-        return [];
-    }
-    const root = `${projectPath}/runtimes/puppet`;
-    const listing = await getInterface().fs.list(root);
-    if (!listing.success || !listing.data.ok) {
-        return [];
-    }
-    return Promise.all(listing.data.data
-        .filter(entry => entry.type === "directory")
-        .map(async entry => {
-            const directory = `${root}/${entry.fileName}`;
-            return {
-                id: entry.fileName,
-                url: await grantUrl(`${directory}/${BACKEND_ENTRY_FILE}`, "text"),
-                resolveFile: (relativePath: string) => {
-                    const normalized = relativePath.replace(/\\/g, "/").replace(/^\.\//, "");
-                    // The module names its own siblings; it does not get to name anything else.
-                    if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
-                        return Promise.reject(new Error(`Path escapes the backend directory: ${relativePath}`));
-                    }
-                    return grantUrl(`${directory}/${normalized}`, "raw");
-                },
-            };
-        }));
+  if (!projectPath) {
+    return [];
+  }
+  const root = `${projectPath}/runtimes/puppet`;
+  const listing = await getInterface().fs.list(root);
+  if (!listing.success || !listing.data.ok) {
+    return [];
+  }
+  return Promise.all(
+    listing.data.data
+      .filter((entry) => entry.type === "directory")
+      .map(async (entry) => {
+        const directory = `${root}/${entry.fileName}`;
+        return {
+          id: entry.fileName,
+          url: await grantUrl(`${directory}/${BACKEND_ENTRY_FILE}`, "text"),
+          resolveFile: (relativePath: string) => {
+            const normalized = relativePath.replace(/\\/g, "/").replace(/^\.\//, "");
+            // The module names its own siblings; it does not get to name anything else.
+            if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
+              return Promise.reject(
+                new Error(`Path escapes the backend directory: ${relativePath}`)
+              );
+            }
+            return grantUrl(`${directory}/${normalized}`, "raw");
+          }
+        };
+      })
+  );
 }
 
 /**
@@ -91,15 +96,17 @@ export async function listDevModePuppetBackendModules(
  * box, not an error.
  */
 export async function resolveDevModeModelBundleUrl(assetId: string): Promise<string | null> {
-    const result = await getInterface().devMode.resolveAssetUrl(assetId, "model").catch(() => null);
-    return result?.success && result.data?.url ? result.data.url : null;
+  const result = await getInterface()
+    .devMode.resolveAssetUrl(assetId, "model")
+    .catch(() => null);
+  return result?.success && result.data?.url ? result.data.url : null;
 }
 
 /** The Dev Mode arm of the chain in `surfacePuppetHosts.ts`, bound to one open project. */
 export function createDevModePuppetHost(projectPath: string | null): SurfacePuppetHost {
-    return {
-        kind: "dev-mode",
-        listBackendModules: () => listDevModePuppetBackendModules(projectPath),
-        resolveModelBundleUrl: resolveDevModeModelBundleUrl,
-    };
+  return {
+    kind: "dev-mode",
+    listBackendModules: () => listDevModePuppetBackendModules(projectPath),
+    resolveModelBundleUrl: resolveDevModeModelBundleUrl
+  };
 }

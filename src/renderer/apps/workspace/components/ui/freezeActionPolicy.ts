@@ -28,14 +28,14 @@ import { isActionMenuAction, isActionMenuSeparator } from "./actionMenuModel";
  * matches ids exactly can name no such thing.
  */
 const FREEZE_EXEMPT_GROUP_IDS: ReadonlySet<string> = new Set([
-    "narraleaf-studio:file",
-    "narraleaf-studio:help",
-    "narraleaf-studio:image-preview-actions",
+  "narraleaf-studio:file",
+  "narraleaf-studio:help",
+  "narraleaf-studio:image-preview-actions"
 ]);
 
 /** Whether a top-bar action group and everything inside it keeps working while frozen. */
 export function isFreezeExemptActionGroup(groupId: string): boolean {
-    return FREEZE_EXEMPT_GROUP_IDS.has(groupId);
+  return FREEZE_EXEMPT_GROUP_IDS.has(groupId);
 }
 
 /**
@@ -53,13 +53,11 @@ export function isFreezeExemptActionGroup(groupId: string): boolean {
  * catch. Exempting the wrong thing offers a write inside a frozen project; leaving something out
  * only greys a control.
  */
-const FREEZE_EXEMPT_COMMAND_IDS: ReadonlySet<string> = new Set([
-    "lint:project",
-]);
+const FREEZE_EXEMPT_COMMAND_IDS: ReadonlySet<string> = new Set(["lint:project"]);
 
 /** Whether a registered palette command, and the controls that run it, stay live while frozen. */
 export function isFreezeExemptCommand(commandId: string): boolean {
-    return FREEZE_EXEMPT_COMMAND_IDS.has(commandId);
+  return FREEZE_EXEMPT_COMMAND_IDS.has(commandId);
 }
 
 /**
@@ -71,10 +69,10 @@ export function isFreezeExemptCommand(commandId: string): boolean {
  * the thaw.
  */
 export function isActionFrozenOut(action: ActionDefinition, frozen: boolean): boolean {
-    if (!frozen) {
-        return false;
-    }
-    return action.group === undefined || !isFreezeExemptActionGroup(action.group);
+  if (!frozen) {
+    return false;
+  }
+  return action.group === undefined || !isFreezeExemptActionGroup(action.group);
 }
 
 /**
@@ -83,7 +81,7 @@ export function isActionFrozenOut(action: ActionDefinition, frozen: boolean): bo
  * leave every action disabled forever once the author thawed.
  */
 export function resolveFrozenActionDisabled(action: ActionDefinition, frozen: boolean): boolean {
-    return action.disabled === true || isActionFrozenOut(action, frozen);
+  return action.disabled === true || isActionFrozenOut(action, frozen);
 }
 
 /**
@@ -96,17 +94,23 @@ export function resolveFrozenActionDisabled(action: ActionDefinition, frozen: bo
  * `frozenOut === false` returns the input untouched, by identity, so nothing downstream re-renders
  * on the common path.
  */
-export function applyFreezeToActionMenuItems(items: ActionMenuItem[], frozenOut: boolean): ActionMenuItem[] {
-    if (!frozenOut) {
-        return items;
+export function applyFreezeToActionMenuItems(
+  items: ActionMenuItem[],
+  frozenOut: boolean
+): ActionMenuItem[] {
+  if (!frozenOut) {
+    return items;
+  }
+  return (items || []).map<ActionMenuItem>((item) => {
+    if (isActionMenuSeparator(item)) {
+      return item;
     }
-    return (items || []).map<ActionMenuItem>(item => {
-        if (isActionMenuSeparator(item)) {
-            return item;
-        }
-        if (isActionMenuAction(item)) {
-            return { ...item, disabled: true };
-        }
-        return { ...item, items: applyFreezeToActionMenuItems(item.items, true) } satisfies ActionSubmenu;
-    });
+    if (isActionMenuAction(item)) {
+      return { ...item, disabled: true };
+    }
+    return {
+      ...item,
+      items: applyFreezeToActionMenuItems(item.items, true)
+    } satisfies ActionSubmenu;
+  });
 }

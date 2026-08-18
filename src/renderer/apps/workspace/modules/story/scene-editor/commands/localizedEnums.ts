@@ -1,6 +1,10 @@
 import type { TranslationKey } from "@shared/i18n";
 import { commandI18nStore, translateCommand } from "@/lib/i18n";
-import { matchEnumOption, type StoryCommandEnumOption, type StoryCommandParamType } from "../storyCommandGrammar";
+import {
+  matchEnumOption,
+  type StoryCommandEnumOption,
+  type StoryCommandParamType
+} from "../storyCommandGrammar";
 
 type EnumType = Extract<StoryCommandParamType, { kind: "enum" }>;
 
@@ -33,25 +37,25 @@ type EnumType = Extract<StoryCommandParamType, { kind: "enum" }>;
  */
 
 type LocalizedEnumCache = {
-    locale: string;
-    bySet: Map<readonly StoryCommandEnumOption[], ReadonlyMap<string, StoryCommandEnumOption>>;
+  locale: string;
+  bySet: Map<readonly StoryCommandEnumOption[], ReadonlyMap<string, StoryCommandEnumOption>>;
 };
 
 let cache: LocalizedEnumCache | null = null;
 commandI18nStore.subscribe(() => {
-    cache = null;
+  cache = null;
 });
 
 /** Every English spelling this option set already accepts. */
 function canonicalValues(options: readonly StoryCommandEnumOption[]): ReadonlySet<string> {
-    const values = new Set<string>();
-    for (const option of options) {
-        values.add(option.value.toLowerCase());
-        for (const alias of option.aliases ?? []) {
-            values.add(alias.toLowerCase());
-        }
+  const values = new Set<string>();
+  for (const option of options) {
+    values.add(option.value.toLowerCase());
+    for (const alias of option.aliases ?? []) {
+      values.add(alias.toLowerCase());
     }
-    return values;
+  }
+  return values;
 }
 
 /**
@@ -63,41 +67,43 @@ function canonicalValues(options: readonly StoryCommandEnumOption[]): ReadonlySe
  * already have typed, and dropping it would break lines that parse today.
  */
 function spellingsOf(option: StoryCommandEnumOption): string[] {
-    const keys = [option.labelKey, `story.enumValue.${option.value}`].filter(Boolean) as string[];
-    return keys
-        .map(key => ({ key, raw: translateCommand(key as TranslationKey) }))
-        .filter(entry => entry.raw !== entry.key)
-        .map(entry => entry.raw.trim())
-        .filter(Boolean);
+  const keys = [option.labelKey, `story.enumValue.${option.value}`].filter(Boolean) as string[];
+  return keys
+    .map((key) => ({ key, raw: translateCommand(key as TranslationKey) }))
+    .filter((entry) => entry.raw !== entry.key)
+    .map((entry) => entry.raw.trim())
+    .filter(Boolean);
 }
 
-function buildMap(options: readonly StoryCommandEnumOption[]): ReadonlyMap<string, StoryCommandEnumOption> {
-    const canonical = canonicalValues(options);
-    const map = new Map<string, StoryCommandEnumOption>();
-    for (const option of options) {
-        for (const spelling of spellingsOf(option)) {
-            const label = spelling.toLowerCase();
-            if (/\s/.test(label) || canonical.has(label) || map.has(label)) {
-                continue;
-            }
-            map.set(label, option);
-        }
+function buildMap(
+  options: readonly StoryCommandEnumOption[]
+): ReadonlyMap<string, StoryCommandEnumOption> {
+  const canonical = canonicalValues(options);
+  const map = new Map<string, StoryCommandEnumOption>();
+  for (const option of options) {
+    for (const spelling of spellingsOf(option)) {
+      const label = spelling.toLowerCase();
+      if (/\s/.test(label) || canonical.has(label) || map.has(label)) {
+        continue;
+      }
+      map.set(label, option);
     }
-    return map;
+  }
+  return map;
 }
 
 function mapFor(type: EnumType): ReadonlyMap<string, StoryCommandEnumOption> {
-    const locale = commandI18nStore.getLocale();
-    if (cache?.locale !== locale) {
-        cache = { locale, bySet: new Map() };
-    }
-    const existing = cache.bySet.get(type.options);
-    if (existing) {
-        return existing;
-    }
-    const built = buildMap(type.options);
-    cache.bySet.set(type.options, built);
-    return built;
+  const locale = commandI18nStore.getLocale();
+  if (cache?.locale !== locale) {
+    cache = { locale, bySet: new Map() };
+  }
+  const existing = cache.bySet.get(type.options);
+  if (existing) {
+    return existing;
+  }
+  const built = buildMap(type.options);
+  cache.bySet.set(type.options, built);
+  return built;
 }
 
 /**
@@ -109,8 +115,11 @@ function mapFor(type: EnumType): ReadonlyMap<string, StoryCommandEnumOption> {
  * is. Use this everywhere {@link matchEnumOption} was used from the command pipeline; the bare
  * `matchEnumOption` stays the pure, locale-free lookup, as `findParam` does for params.
  */
-export function matchEnumOptionLocalized(type: EnumType, raw: string): StoryCommandEnumOption | null {
-    return matchEnumOption(type, raw) ?? mapFor(type).get(raw.trim().toLowerCase()) ?? null;
+export function matchEnumOptionLocalized(
+  type: EnumType,
+  raw: string
+): StoryCommandEnumOption | null {
+  return matchEnumOption(type, raw) ?? mapFor(type).get(raw.trim().toLowerCase()) ?? null;
 }
 
 /**
@@ -122,14 +131,14 @@ export function matchEnumOptionLocalized(type: EnumType, raw: string): StoryComm
  * reads, so it always round-trips.
  */
 export function localizedEnumValue(type: EnumType, option: StoryCommandEnumOption): string {
-    const table = mapFor(type);
-    // First spelling that survived the drop rules for THIS option — the inspector's word when it has
-    // one, else the vocabulary's own. Whatever comes back is a key of the accept table, so the menu
-    // still shows only what it would take back.
-    for (const spelling of spellingsOf(option)) {
-        if (table.get(spelling.toLowerCase()) === option) {
-            return spelling;
-        }
+  const table = mapFor(type);
+  // First spelling that survived the drop rules for THIS option — the inspector's word when it has
+  // one, else the vocabulary's own. Whatever comes back is a key of the accept table, so the menu
+  // still shows only what it would take back.
+  for (const spelling of spellingsOf(option)) {
+    if (table.get(spelling.toLowerCase()) === option) {
+      return spelling;
     }
-    return option.value;
+  }
+  return option.value;
 }

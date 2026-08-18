@@ -9,5 +9,5 @@ import type { LayerStackController, LayerStackSnapshot } from "./LayerStackContr
  * the composite-stack panel exists to show exactly those two.
  */
 export function useLayerStack(controller: LayerStackController): LayerStackSnapshot {
-    return useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+  return useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
 }

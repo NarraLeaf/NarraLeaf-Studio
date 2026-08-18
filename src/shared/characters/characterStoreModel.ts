@@ -1,11 +1,11 @@
 import {
-    CharacterGroup,
-    CharacterPose,
-    ICharacterAppearance,
-    isCharacterAppearanceKind,
-    PortraitCrop,
-    PresetAppearance,
-    StoredCharacter,
+  CharacterGroup,
+  CharacterPose,
+  ICharacterAppearance,
+  isCharacterAppearanceKind,
+  PortraitCrop,
+  PresetAppearance,
+  StoredCharacter
 } from "@shared/types/character/model";
 
 /**
@@ -18,10 +18,10 @@ import {
  * would have to store that order somewhere else or lose it to the canonical encoder's key sort.
  */
 export type CharacterStoreDocument = {
-    /** Absent on stores written before the appearance rework; see {@link migrateCharacterStore}. */
-    version?: number;
-    characters: StoredCharacter[];
-    groups?: Record<string, CharacterGroup>;
+  /** Absent on stores written before the appearance rework; see {@link migrateCharacterStore}. */
+  version?: number;
+  characters: StoredCharacter[];
+  groups?: Record<string, CharacterGroup>;
 };
 
 /**
@@ -48,24 +48,26 @@ export const CHARACTER_STORE_VERSION = 2 as const;
  * is for.
  */
 export function isNewerCharacterStore(version: unknown): boolean {
-    return typeof version === "number" && Number.isFinite(version) && version > CHARACTER_STORE_VERSION;
+  return (
+    typeof version === "number" && Number.isFinite(version) && version > CHARACTER_STORE_VERSION
+  );
 }
 
 /** The shape the pre-v1 store held, read defensively — it was never validated on the way in. */
 export type LegacyForm = {
-    name?: unknown;
-    groups?: unknown[];
-    variantAssets?: Record<string, { data?: { id?: unknown } }>;
-    portrait?: PortraitCrop;
+  name?: unknown;
+  groups?: unknown[];
+  variantAssets?: Record<string, { data?: { id?: unknown } }>;
+  portrait?: PortraitCrop;
 };
 
 function fnv1a(input: string): string {
-    let hash = 0x811c9dc5;
-    for (let i = 0; i < input.length; i++) {
-        hash ^= input.charCodeAt(i);
-        hash = Math.imul(hash, 0x01000193) >>> 0;
-    }
-    return hash.toString(36);
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(36);
 }
 
 /**
@@ -78,18 +80,18 @@ function fnv1a(input: string): string {
  * pose, which is the outcome we want anyway.
  */
 export function legacyPoseId(formName: string, variantName: string): string {
-    return `p${fnv1a(`${formName}\u0000${variantName}`)}`;
+  return `p${fnv1a(`${formName}\u0000${variantName}`)}`;
 }
 
 export type LegacyAppearanceMigration = {
-    appearance: PresetAppearance;
-    /**
-     * Forms that declared two or more variant groups. Those were already broken before this
-     * migration — the old resolver walked the selection and took the first variant that happened to
-     * have an asset, so a two-axis differential never composed — and the flattening here cannot
-     * recover an intent the data never expressed. Surfaced so the author can check the result.
-     */
-    multiGroupForms: string[];
+  appearance: PresetAppearance;
+  /**
+   * Forms that declared two or more variant groups. Those were already broken before this
+   * migration — the old resolver walked the selection and took the first variant that happened to
+   * have an asset, so a two-axis differential never composed — and the flattening here cannot
+   * recover an intent the data never expressed. Surfaced so the author can check the result.
+   */
+  multiGroupForms: string[];
 };
 
 /**
@@ -102,93 +104,93 @@ export type LegacyAppearanceMigration = {
  * `folder`, which is all it was doing in practice.
  */
 export function migrateLegacyAppearance(
-    forms: readonly LegacyForm[],
-    defaultFormName: string | null,
-    profilePortrait: PortraitCrop | undefined,
+  forms: readonly LegacyForm[],
+  defaultFormName: string | null,
+  profilePortrait: PortraitCrop | undefined
 ): LegacyAppearanceMigration {
-    const poses: CharacterPose[] = [];
-    const multiGroupForms: string[] = [];
-    const named = forms.filter(form => typeof form?.name === "string" && form.name.trim());
-    const multipleForms = named.length > 1;
+  const poses: CharacterPose[] = [];
+  const multiGroupForms: string[] = [];
+  const named = forms.filter((form) => typeof form?.name === "string" && form.name.trim());
+  const multipleForms = named.length > 1;
 
-    for (const form of named) {
-        const formName = (form.name as string).trim();
-        const groups = Array.isArray(form.groups) ? form.groups : [];
-        if (groups.length > 1) {
-            multiGroupForms.push(formName);
-        }
-
-        // Group order, then variant order — the order the old resolver walked, so the first pose of
-        // a form is the one it would have landed on.
-        const ordered: string[] = [];
-        for (const group of groups) {
-            const variants = (group as { variants?: unknown[] })?.variants;
-            if (!Array.isArray(variants)) continue;
-            for (const variant of variants) {
-                const name = (variant as { name?: unknown })?.name;
-                if (typeof name === "string" && name.trim()) {
-                    ordered.push(name.trim());
-                }
-            }
-        }
-        // Assets can outlive the group that named them; keep them rather than drop the sprite.
-        for (const name of Object.keys(form.variantAssets ?? {})) {
-            if (!ordered.includes(name)) {
-                ordered.push(name);
-            }
-        }
-
-        for (const variantName of ordered) {
-            const assetId = form.variantAssets?.[variantName]?.data?.id;
-            if (typeof assetId !== "string" || !assetId) {
-                continue;
-            }
-            // The two optional fields are SPREAD IN rather than assigned, and this is the shape the
-            // whole store now has to keep. `folder: undefined` and "no folder" are the same value to
-            // TypeScript and different documents to the canonical encoder, which throws on
-            // `undefined` where `JSON.stringify` silently dropped it - so a pose built the assigning
-            // way is a character store that cannot be saved at all, and it would surface as "the
-            // characters spec is broken" rather than as "this file is corrupt". Inside a migration
-            // it is worse still: it reaches every project that has not been opened since the
-            // appearance rework, at the moment they are opened.
-            const portrait = form.portrait ?? profilePortrait;
-            poses.push({
-                id: legacyPoseId(formName, variantName),
-                name: multipleForms ? `${formName}·${variantName}` : variantName,
-                ...(multipleForms ? { folder: formName } : {}),
-                assetId,
-                ...(portrait ? { portrait } : {}),
-            });
-        }
+  for (const form of named) {
+    const formName = (form.name as string).trim();
+    const groups = Array.isArray(form.groups) ? form.groups : [];
+    if (groups.length > 1) {
+      multiGroupForms.push(formName);
     }
 
-    // The old default was a *form*; its first pose is the sprite that form would have shown.
-    const defaultForm = defaultFormName?.trim();
-    const preferred = defaultForm ? poses.find(pose => pose.folder === defaultForm) : undefined;
+    // Group order, then variant order — the order the old resolver walked, so the first pose of
+    // a form is the one it would have landed on.
+    const ordered: string[] = [];
+    for (const group of groups) {
+      const variants = (group as { variants?: unknown[] })?.variants;
+      if (!Array.isArray(variants)) continue;
+      for (const variant of variants) {
+        const name = (variant as { name?: unknown })?.name;
+        if (typeof name === "string" && name.trim()) {
+          ordered.push(name.trim());
+        }
+      }
+    }
+    // Assets can outlive the group that named them; keep them rather than drop the sprite.
+    for (const name of Object.keys(form.variantAssets ?? {})) {
+      if (!ordered.includes(name)) {
+        ordered.push(name);
+      }
+    }
 
-    return {
-        appearance: {
-            kind: "preset",
-            poses,
-            defaultPoseId: (preferred ?? poses[0])?.id ?? null,
-        },
-        multiGroupForms,
-    };
+    for (const variantName of ordered) {
+      const assetId = form.variantAssets?.[variantName]?.data?.id;
+      if (typeof assetId !== "string" || !assetId) {
+        continue;
+      }
+      // The two optional fields are SPREAD IN rather than assigned, and this is the shape the
+      // whole store now has to keep. `folder: undefined` and "no folder" are the same value to
+      // TypeScript and different documents to the canonical encoder, which throws on
+      // `undefined` where `JSON.stringify` silently dropped it - so a pose built the assigning
+      // way is a character store that cannot be saved at all, and it would surface as "the
+      // characters spec is broken" rather than as "this file is corrupt". Inside a migration
+      // it is worse still: it reaches every project that has not been opened since the
+      // appearance rework, at the moment they are opened.
+      const portrait = form.portrait ?? profilePortrait;
+      poses.push({
+        id: legacyPoseId(formName, variantName),
+        name: multipleForms ? `${formName}·${variantName}` : variantName,
+        ...(multipleForms ? { folder: formName } : {}),
+        assetId,
+        ...(portrait ? { portrait } : {})
+      });
+    }
+  }
+
+  // The old default was a *form*; its first pose is the sprite that form would have shown.
+  const defaultForm = defaultFormName?.trim();
+  const preferred = defaultForm ? poses.find((pose) => pose.folder === defaultForm) : undefined;
+
+  return {
+    appearance: {
+      kind: "preset",
+      poses,
+      defaultPoseId: (preferred ?? poses[0])?.id ?? null
+    },
+    multiGroupForms
+  };
 }
 
 export type CharacterMigrationReport = {
-    migrated: number;
-    /** `characterName › formName` for every form that was already broken. See {@link LegacyAppearanceMigration}. */
-    multiGroupForms: string[];
+  migrated: number;
+  /** `characterName › formName` for every form that was already broken. See {@link LegacyAppearanceMigration}. */
+  multiGroupForms: string[];
 };
 
 type LegacyCharacterConfig = {
-    profile?: {
-        name?: unknown;
-        defaultForm?: unknown;
-        portrait?: PortraitCrop;
-        appearance?: { forms?: unknown[] } | ICharacterAppearance;
-    };
+  profile?: {
+    name?: unknown;
+    defaultForm?: unknown;
+    portrait?: PortraitCrop;
+    appearance?: { forms?: unknown[] } | ICharacterAppearance;
+  };
 };
 
 /**
@@ -200,7 +202,7 @@ type LegacyCharacterConfig = {
  * next load rather than merely unsupported.
  */
 function isCurrentAppearance(appearance: unknown): appearance is ICharacterAppearance {
-    return isCharacterAppearanceKind((appearance as { kind?: unknown } | null)?.kind);
+  return isCharacterAppearanceKind((appearance as { kind?: unknown } | null)?.kind);
 }
 
 /**
@@ -208,27 +210,34 @@ function isCurrentAppearance(appearance: unknown): appearance is ICharacterAppea
  * so this is safe to run on every load.
  */
 export function migrateCharacterStore(characters: unknown[]): CharacterMigrationReport {
-    const report: CharacterMigrationReport = { migrated: 0, multiGroupForms: [] };
+  const report: CharacterMigrationReport = { migrated: 0, multiGroupForms: [] };
 
-    for (const entry of characters) {
-        const config = entry as LegacyCharacterConfig;
-        const profile = config?.profile;
-        if (!profile || isCurrentAppearance(profile.appearance)) {
-            continue;
-        }
-        const forms = Array.isArray((profile.appearance as { forms?: unknown[] })?.forms)
-            ? ((profile.appearance as { forms?: unknown[] }).forms as LegacyForm[])
-            : [];
-        const defaultForm = typeof profile.defaultForm === "string" ? profile.defaultForm : null;
-        const { appearance, multiGroupForms } = migrateLegacyAppearance(forms, defaultForm, profile.portrait);
-
-        profile.appearance = appearance;
-        delete (profile as { defaultForm?: unknown }).defaultForm;
-
-        const characterName = typeof profile.name === "string" && profile.name.trim() ? profile.name.trim() : "(unnamed)";
-        report.multiGroupForms.push(...multiGroupForms.map(formName => `${characterName} › ${formName}`));
-        report.migrated += 1;
+  for (const entry of characters) {
+    const config = entry as LegacyCharacterConfig;
+    const profile = config?.profile;
+    if (!profile || isCurrentAppearance(profile.appearance)) {
+      continue;
     }
+    const forms = Array.isArray((profile.appearance as { forms?: unknown[] })?.forms)
+      ? ((profile.appearance as { forms?: unknown[] }).forms as LegacyForm[])
+      : [];
+    const defaultForm = typeof profile.defaultForm === "string" ? profile.defaultForm : null;
+    const { appearance, multiGroupForms } = migrateLegacyAppearance(
+      forms,
+      defaultForm,
+      profile.portrait
+    );
 
-    return report;
+    profile.appearance = appearance;
+    delete (profile as { defaultForm?: unknown }).defaultForm;
+
+    const characterName =
+      typeof profile.name === "string" && profile.name.trim() ? profile.name.trim() : "(unnamed)";
+    report.multiGroupForms.push(
+      ...multiGroupForms.map((formName) => `${characterName} › ${formName}`)
+    );
+    report.migrated += 1;
+  }
+
+  return report;
 }

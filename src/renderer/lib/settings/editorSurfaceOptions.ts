@@ -37,19 +37,19 @@ export const EDITOR_SURFACE_OPACITY_DEFAULT = 100;
  * that the prose is on an opaque plate.
  */
 export function editorSurfaceAlpha(value: unknown): string {
-    const numeric = typeof value === "number" ? value : Number(value);
-    if (!Number.isFinite(numeric)) {
-        return "1";
-    }
-    const percent = Math.min(
-        EDITOR_SURFACE_OPACITY_MAX,
-        Math.max(EDITOR_SURFACE_OPACITY_MIN, Math.round(numeric)),
-    );
-    if (percent === EDITOR_SURFACE_OPACITY_MAX) {
-        return "1";
-    }
-    if (percent === EDITOR_SURFACE_OPACITY_MIN) {
-        return "0";
-    }
-    return String(percent / 100);
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "1";
+  }
+  const percent = Math.min(
+    EDITOR_SURFACE_OPACITY_MAX,
+    Math.max(EDITOR_SURFACE_OPACITY_MIN, Math.round(numeric))
+  );
+  if (percent === EDITOR_SURFACE_OPACITY_MAX) {
+    return "1";
+  }
+  if (percent === EDITOR_SURFACE_OPACITY_MIN) {
+    return "0";
+  }
+  return String(percent / 100);
 }

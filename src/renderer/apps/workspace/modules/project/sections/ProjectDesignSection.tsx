@@ -41,9 +41,9 @@ import { Button, IconButton, Input } from "@/lib/components/elements";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { useBrandColorLabel } from "@/apps/workspace/modules/properties/framework/fields/brandPalette";
 import {
-    colorValueToCss,
-    parseColorValue,
-    serializeColorValue,
+  colorValueToCss,
+  parseColorValue,
+  serializeColorValue
 } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
@@ -51,7 +51,10 @@ import type { BrandService } from "@/lib/workspace/services/brand/BrandService";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { BrandPalette } from "@shared/brand/brandRegistry";
-import { collectBrandLinkReferences, countBrandLinkReferences } from "@shared/brand/brandReferences";
+import {
+  collectBrandLinkReferences,
+  countBrandLinkReferences
+} from "@shared/brand/brandReferences";
 import type { TranslationKey } from "@shared/i18n";
 import { BRAND_CONTROL_GROUPS, type BrandColor } from "@shared/types/brand";
 import { useWorkspace } from "../../../context";
@@ -73,8 +76,9 @@ const UNREADABLE_COLOR_FALLBACK: ColorValue = { hex: "#FFFFFF", alpha: 1 };
  * `ColorDisplayMode`). Not a control height, and deliberately not on the §3 scale: it is a dot in a
  * 28px row, centred, the same shape the settings window's accent chip uses.
  */
-const SWATCH_BOX_CLASS = "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
-    + " ring-1 ring-inset ring-edge-strong";
+const SWATCH_BOX_CLASS =
+  "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full" +
+  " ring-1 ring-inset ring-edge-strong";
 
 /**
  * Clamps that keep this subtree from widening the panel.
@@ -104,187 +108,192 @@ const GROUP_BODY_CLASS = "min-w-0 bg-fill-subtle px-3 [&>*:last-child]:border-b-
  * surface at once) has no cheap symptom on screen.
  */
 export function brandLinkExclusions(palette: BrandPalette, id: string): string[] {
-    const excluded = [id];
-    for (const color of palette.list()) {
-        if (color.id !== id && palette.chainOf(color.id).includes(id)) {
-            excluded.push(color.id);
-        }
+  const excluded = [id];
+  for (const color of palette.list()) {
+    if (color.id !== id && palette.chainOf(color.id).includes(id)) {
+      excluded.push(color.id);
     }
-    return excluded;
+  }
+  return excluded;
 }
 
 export function ProjectDesignSection({ uiService }: ProjectSectionProps) {
-    const { t, tn, has } = useTranslation();
-    const { context, isInitialized } = useWorkspace();
-    const freeze = useFreezeGuard();
-    const colorLabel = useBrandColorLabel();
+  const { t, tn, has } = useTranslation();
+  const { context, isInitialized } = useWorkspace();
+  const freeze = useFreezeGuard();
+  const colorLabel = useBrandColorLabel();
 
-    const brandService = useMemo(() => {
-        if (!context || !isInitialized) {
-            return null;
-        }
-        return context.services.get<BrandService>(Services.Brand);
-    }, [context, isInitialized]);
+  const brandService = useMemo(() => {
+    if (!context || !isInitialized) {
+      return null;
+    }
+    return context.services.get<BrandService>(Services.Brand);
+  }, [context, isInitialized]);
 
-    const [colors, setColors] = useState<BrandColor[]>([]);
+  const [colors, setColors] = useState<BrandColor[]>([]);
 
-    useEffect(() => {
-        if (!brandService) {
-            setColors([]);
-            return;
-        }
-        setColors(brandService.listColors());
-        return brandService.onColorsChanged(setColors);
-    }, [brandService]);
+  useEffect(() => {
+    if (!brandService) {
+      setColors([]);
+      return;
+    }
+    setColors(brandService.listColors());
+    return brandService.onColorsChanged(setColors);
+  }, [brandService]);
 
-    /**
-     * The live palette, which is the module-level one every colour field in Studio paints from.
-     *
-     * Read on each render rather than memoized: `getActiveBrandPalette` hands back a cached
-     * instance and only builds a new one when a host publishes different colours, so the identity
-     * changes exactly when the rows below need to recompute and never in between.
-     */
-    const palette = brandService?.getPalette() ?? null;
+  /**
+   * The live palette, which is the module-level one every colour field in Studio paints from.
+   *
+   * Read on each render rather than memoized: `getActiveBrandPalette` hands back a cached
+   * instance and only builds a new one when a host publishes different colours, so the identity
+   * changes exactly when the rows below need to recompute and never in between.
+   */
+  const palette = brandService?.getPalette() ?? null;
 
-    // Ids with no dot. That is the model's own distinction between a colour the author decided and
-    // a slot a control consumes, and taking it from the id keeps this list and `BRAND_CONTROL_GROUPS`
-    // reading the same array (see `@shared/types/brand`).
-    const projectColors = useMemo(() => colors.filter(color => !color.id.includes(".")), [colors]);
-    const byId = useMemo(() => new Map(colors.map(color => [color.id, color])), [colors]);
+  // Ids with no dot. That is the model's own distinction between a colour the author decided and
+  // a slot a control consumes, and taking it from the id keeps this list and `BRAND_CONTROL_GROUPS`
+  // reading the same array (see `@shared/types/brand`).
+  const projectColors = useMemo(() => colors.filter((color) => !color.id.includes(".")), [colors]);
+  const byId = useMemo(() => new Map(colors.map((color) => [color.id, color])), [colors]);
 
-    const addColor = useCallback(() => {
-        // A name is passed rather than left to the service, which deliberately invents none: the
-        // row would otherwise show its generated id as a placeholder.
-        brandService?.createColor({ name: t("brand.panel.newColorName") });
-    }, [brandService, t]);
+  const addColor = useCallback(() => {
+    // A name is passed rather than left to the service, which deliberately invents none: the
+    // row would otherwise show its generated id as a placeholder.
+    brandService?.createColor({ name: t("brand.panel.newColorName") });
+  }, [brandService, t]);
 
-    /**
-     * Delete, once the author has been told what points at the colour.
-     *
-     * The scan runs here rather than in an effect over the id set. `ProjectAudioSection` counts in
-     * an effect because its scan is asynchronous (it loads every story document) and the number is
-     * on screen beside the button; this one is synchronous and the number is only ever read by the
-     * confirmation, so counting on the click costs one scan per delete instead of one per colour
-     * edit - and cannot be stale, which an effect racing an edit could be.
-     */
-    const removeColor = useCallback(async (color: BrandColor) => {
-        if (!brandService || !context) {
-            return;
-        }
-        const name = colorLabel(color);
-        const uses = countReferences(context).get(color.id) ?? 0;
-        const confirmed = await uiService?.showDestructiveConfirm(
-            t("brand.panel.deleteConfirm", { name }),
-            uses > 0 ? tn("brand.panel.deleteDetail", uses) : t("brand.panel.deleteUnused"),
-            t("brand.panel.delete"),
-        );
-        if (confirmed) {
-            brandService.deleteColor(color.id);
-        }
-    }, [brandService, colorLabel, context, t, tn, uiService]);
+  /**
+   * Delete, once the author has been told what points at the colour.
+   *
+   * The scan runs here rather than in an effect over the id set. `ProjectAudioSection` counts in
+   * an effect because its scan is asynchronous (it loads every story document) and the number is
+   * on screen beside the button; this one is synchronous and the number is only ever read by the
+   * confirmation, so counting on the click costs one scan per delete instead of one per colour
+   * edit - and cannot be stale, which an effect racing an edit could be.
+   */
+  const removeColor = useCallback(
+    async (color: BrandColor) => {
+      if (!brandService || !context) {
+        return;
+      }
+      const name = colorLabel(color);
+      const uses = countReferences(context).get(color.id) ?? 0;
+      const confirmed = await uiService?.showDestructiveConfirm(
+        t("brand.panel.deleteConfirm", { name }),
+        uses > 0 ? tn("brand.panel.deleteDetail", uses) : t("brand.panel.deleteUnused"),
+        t("brand.panel.delete")
+      );
+      if (confirmed) {
+        brandService.deleteColor(color.id);
+      }
+    },
+    [brandService, colorLabel, context, t, tn, uiService]
+  );
 
-    return (
-        // The same grid the multi-part sub-pages use, so the two headings sit at the spacing every
-        // other project page has. `SettingsGroup` drops its own top rule on the first child, which
-        // is why the parts have to be direct children of this element rather than wrapped further.
-        <div className="grid gap-3 [&>*]:min-w-0">
-            <SettingsGroup title={t("project.group.brandColors")}>
-                {/* The top rule is the list's own edge: every row carries a bottom hairline, so
+  return (
+    // The same grid the multi-part sub-pages use, so the two headings sit at the spacing every
+    // other project page has. `SettingsGroup` drops its own top rule on the first child, which
+    // is why the parts have to be direct children of this element rather than wrapped further.
+    <div className="grid gap-3 [&>*]:min-w-0">
+      <SettingsGroup title={t("project.group.brandColors")}>
+        {/* The top rule is the list's own edge: every row carries a bottom hairline, so
                     without it the list is bounded below and open above - the same edge the control
                     groups' accordion draws for itself. */}
-                <div className="min-w-0 border-t border-edge">
-                    {projectColors.map(color => (
-                        <ColorRow
-                            key={color.id}
-                            color={color}
-                            service={brandService}
-                            palette={palette}
-                            label={colorLabel(color)}
-                            // Only the author's own colours. The four seeded ones are what every
-                            // control slot points at and what the panel is built from, and
-                            // `BrandService.deleteColor` refuses them anyway.
-                            onDelete={color.builtin ? undefined : () => void removeColor(color)}
-                        />
-                    ))}
-                </div>
-                <div className="flex min-w-0">
-                    <Button size="sm" onClick={addColor} {...freeze.writes(!brandService)}>
-                        <Plus className="h-3.5 w-3.5" />
-                        {t("brand.panel.add")}
-                    </Button>
-                </div>
-            </SettingsGroup>
+        <div className="min-w-0 border-t border-edge">
+          {projectColors.map((color) => (
+            <ColorRow
+              key={color.id}
+              color={color}
+              service={brandService}
+              palette={palette}
+              label={colorLabel(color)}
+              // Only the author's own colours. The four seeded ones are what every
+              // control slot points at and what the panel is built from, and
+              // `BrandService.deleteColor` refuses them anyway.
+              onDelete={color.builtin ? undefined : () => void removeColor(color)}
+            />
+          ))}
+        </div>
+        <div className="flex min-w-0">
+          <Button size="sm" onClick={addColor} {...freeze.writes(!brandService)}>
+            <Plus className="h-3.5 w-3.5" />
+            {t("brand.panel.add")}
+          </Button>
+        </div>
+      </SettingsGroup>
 
-            <SettingsGroup title={t("project.group.brandControls")}>
-                <div className="min-w-0 border-t border-edge">
-                    {/* Collapsed by default, all of them. A control group is where an author goes
+      <SettingsGroup title={t("project.group.brandControls")}>
+        <div className="min-w-0 border-t border-edge">
+          {/* Collapsed by default, all of them. A control group is where an author goes
                         to override one slot, not what they scan; open they are thirteen rows
                         between them, and the four colours above scroll off the top. */}
-                    <Accordion className="min-w-0" multiple>
-                        {BRAND_CONTROL_GROUPS.map(group => (
-                            <AccordionItem
-                                key={group.id}
-                                id={group.id}
-                                className="min-w-0"
-                                headerClassName={HEADER_WIDTH_CLAMP}
-                                contentClassName="min-w-0"
-                                headerProps={{
-                                    // The row's handle: verification, and anything that later has to
-                                    // find a group on screen, reads this rather than matching a
-                                    // translated label.
-                                    "data-brand-group": group.id,
-                                }}
-                                title={<span className="min-w-0 truncate text-fg">{groupTitle(group.id, t, has)}</span>}
-                            >
-                                {/*
-                                  * `Accordion` listens for Enter/Space on `window` to toggle the
-                                  * focused row, and its only exemption is for real
-                                  * `input`/`textarea`/`select` elements. The swatch is a `button`,
-                                  * so without this a Space on it would open the picker and collapse
-                                  * the group underneath it at the same time. Scoped to the two keys
-                                  * the accordion consumes, so application keybindings still reach
-                                  * the window from inside an open group.
-                                  */}
-                                <div
-                                    className={GROUP_BODY_CLASS}
-                                    onKeyDown={event => {
-                                        if (event.key === "Enter" || event.key === " ") {
-                                            event.stopPropagation();
-                                        }
-                                    }}
-                                >
-                                    {group.slotIds.map(slotId => {
-                                        const color = byId.get(slotId);
-                                        return color ? (
-                                            <ColorRow
-                                                key={slotId}
-                                                color={color}
-                                                service={brandService}
-                                                palette={palette}
-                                                label={colorLabel(color)}
-                                                // No delete: which slots exist is decided by the
-                                                // controls that consume them, not here.
-                                            />
-                                        ) : null;
-                                    })}
-                                </div>
-                            </AccordionItem>
-                        ))}
-                    </Accordion>
+          <Accordion className="min-w-0" multiple>
+            {BRAND_CONTROL_GROUPS.map((group) => (
+              <AccordionItem
+                key={group.id}
+                id={group.id}
+                className="min-w-0"
+                headerClassName={HEADER_WIDTH_CLAMP}
+                contentClassName="min-w-0"
+                headerProps={{
+                  // The row's handle: verification, and anything that later has to
+                  // find a group on screen, reads this rather than matching a
+                  // translated label.
+                  "data-brand-group": group.id
+                }}
+                title={
+                  <span className="min-w-0 truncate text-fg">{groupTitle(group.id, t, has)}</span>
+                }
+              >
+                {/*
+                 * `Accordion` listens for Enter/Space on `window` to toggle the
+                 * focused row, and its only exemption is for real
+                 * `input`/`textarea`/`select` elements. The swatch is a `button`,
+                 * so without this a Space on it would open the picker and collapse
+                 * the group underneath it at the same time. Scoped to the two keys
+                 * the accordion consumes, so application keybindings still reach
+                 * the window from inside an open group.
+                 */}
+                <div
+                  className={GROUP_BODY_CLASS}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.stopPropagation();
+                    }
+                  }}
+                >
+                  {group.slotIds.map((slotId) => {
+                    const color = byId.get(slotId);
+                    return color ? (
+                      <ColorRow
+                        key={slotId}
+                        color={color}
+                        service={brandService}
+                        palette={palette}
+                        label={colorLabel(color)}
+                        // No delete: which slots exist is decided by the
+                        // controls that consume them, not here.
+                      />
+                    ) : null;
+                  })}
                 </div>
-            </SettingsGroup>
+              </AccordionItem>
+            ))}
+          </Accordion>
         </div>
-    );
+      </SettingsGroup>
+    </div>
+  );
 }
 
 /** The group's heading, falling back to its id so a slot seeded ahead of its translation still reads. */
 function groupTitle(
-    groupId: string,
-    t: (key: TranslationKey, params?: Record<string, string | number>) => string,
-    has: (key: string) => boolean,
+  groupId: string,
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string,
+  has: (key: string) => boolean
 ): string {
-    const key = `brand.group.${groupId}`;
-    return has(key) ? t(key as TranslationKey) : groupId;
+  const key = `brand.group.${groupId}`;
+  return has(key) ? t(key as TranslationKey) : groupId;
 }
 
 /**
@@ -295,100 +304,103 @@ function groupTitle(
  * {@link SWATCH_BOX_CLASS}).
  */
 function ColorRow({
-    color,
-    service,
-    palette,
-    label,
-    onDelete,
+  color,
+  service,
+  palette,
+  label,
+  onDelete
 }: {
-    color: BrandColor;
-    service: BrandService | null;
-    palette: BrandPalette | null;
-    label: string;
-    onDelete?: () => void;
+  color: BrandColor;
+  service: BrandService | null;
+  palette: BrandPalette | null;
+  label: string;
+  onDelete?: () => void;
 }) {
-    const { t } = useTranslation();
-    const freeze = useFreezeGuard();
-    const edit = freeze.writes(!service, t("brand.panel.editColor", { name: label }));
+  const { t } = useTranslation();
+  const freeze = useFreezeGuard();
+  const edit = freeze.writes(!service, t("brand.panel.editColor", { name: label }));
 
-    /**
-     * What the picker is showing, which is the stored value except while its panel is open.
-     *
-     * Not memoized on `color.value`: a linked entry's resolved hex changes when the colour it points
-     * at changes, and the string it is stored as does not.
-     */
-    const stored = parseColorValue(color.value, UNREADABLE_COLOR_FALLBACK);
-    const [draft, setDraft] = useState<ColorValue | null>(null);
-    const shown = draft ?? stored;
+  /**
+   * What the picker is showing, which is the stored value except while its panel is open.
+   *
+   * Not memoized on `color.value`: a linked entry's resolved hex changes when the colour it points
+   * at changes, and the string it is stored as does not.
+   */
+  const stored = parseColorValue(color.value, UNREADABLE_COLOR_FALLBACK);
+  const [draft, setDraft] = useState<ColorValue | null>(null);
+  const shown = draft ?? stored;
 
-    const exclusions = useMemo(
-        () => (palette ? brandLinkExclusions(palette, color.id) : [color.id]),
-        [color.id, palette],
-    );
+  const exclusions = useMemo(
+    () => (palette ? brandLinkExclusions(palette, color.id) : [color.id]),
+    [color.id, palette]
+  );
 
-    const commit = useCallback((value: ColorValue) => {
-        setDraft(null);
-        const next = serializeColorValue(value);
-        // Opening the picker and closing it without touching anything must write nothing: the value
-        // is identical, and storing it anyway would dirty the project and schedule a save over an
-        // edit the author never made.
-        if (next && next !== color.value) {
-            service?.updateColor(color.id, { value: next });
-        }
-    }, [color.id, color.value, service]);
+  const commit = useCallback(
+    (value: ColorValue) => {
+      setDraft(null);
+      const next = serializeColorValue(value);
+      // Opening the picker and closing it without touching anything must write nothing: the value
+      // is identical, and storing it anyway would dirty the project and schedule a save over an
+      // edit the author never made.
+      if (next && next !== color.value) {
+        service?.updateColor(color.id, { value: next });
+      }
+    },
+    [color.id, color.value, service]
+  );
 
-    return (
-        // No horizontal padding of its own: the flat list runs to the section's own edges, and a
-        // group's rows take their inset from the disclosure body they sit in.
-        <div className="flex min-w-0 items-center gap-2 border-b border-edge py-1.5">
-            {/* The fill lives on the frame, not on the trigger: in `swatch` mode the trigger is a
+  return (
+    // No horizontal padding of its own: the flat list runs to the section's own edges, and a
+    // group's rows take their inset from the disclosure body they sit in.
+    <div className="flex min-w-0 items-center gap-2 border-b border-edge py-1.5">
+      {/* The fill lives on the frame, not on the trigger: in `swatch` mode the trigger is a
                 bare hit area with no paint of its own. Author data, not a theme colour, so the
                 value goes through `colorValueToCss` - the paint function - rather than a token. */}
-            <span
-                className={SWATCH_BOX_CLASS}
-                style={{ backgroundColor: colorValueToCss(shown) }}
-                data-tip={edit["data-tip"]}
-            >
-                {/* Frozen maps to `readOnly`, not to `writes().disabled`. A disabled trigger cannot
+      <span
+        className={SWATCH_BOX_CLASS}
+        style={{ backgroundColor: colorValueToCss(shown) }}
+        data-tip={edit["data-tip"]}
+      >
+        {/* Frozen maps to `readOnly`, not to `writes().disabled`. A disabled trigger cannot
                     be opened, and the panel is the only place a colour is legible - a swatch shows
                     that this row is teal, not whether it is #40A8C4. Reading is exactly what the
                     freeze guard's own doc says it has no business blocking; `disabled` stays for
                     the case where there is no service to read from either. */}
-                <ColorPickerTrigger
-                    value={shown}
-                    displayMode="swatch"
-                    allowOpacity
-                    brandPalette
-                    brandExclude={exclusions}
-                    disabled={!service}
-                    readOnly={freeze.frozen}
-                    ariaLabel={edit["data-tip"]}
-                    onChange={setDraft}
-                    onCommit={commit}
-                />
-            </span>
+        <ColorPickerTrigger
+          value={shown}
+          displayMode="swatch"
+          allowOpacity
+          brandPalette
+          brandExclude={exclusions}
+          disabled={!service}
+          readOnly={freeze.frozen}
+          ariaLabel={edit["data-tip"]}
+          onChange={setDraft}
+          onCommit={commit}
+        />
+      </span>
 
-            <NameField
-                name={color.name ?? ""}
-                placeholder={label}
-                disabled={edit.disabled}
-                title={edit["data-tip"]}
-                onCommit={next => service?.renameColor(color.id, next)}
-            />
+      <NameField
+        name={color.name ?? ""}
+        placeholder={label}
+        disabled={edit.disabled}
+        title={edit["data-tip"]}
+        onCommit={(next) => service?.renameColor(color.id, next)}
+      />
 
-            {onDelete ? (
-                <IconButton
-                    size="sm"
-                    aria-label={t("brand.panel.deleteColor", { name: label })}
-                    className="shrink-0 hover:text-danger"
-                    onClick={onDelete}
-                    {...freeze.writes(!service)}
-                >
-                    <Trash2 className="h-3.5 w-3.5" />
-                </IconButton>
-            ) : null}
-        </div>
-    );
+      {onDelete ? (
+        <IconButton
+          size="sm"
+          aria-label={t("brand.panel.deleteColor", { name: label })}
+          className="shrink-0 hover:text-danger"
+          onClick={onDelete}
+          {...freeze.writes(!service)}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </IconButton>
+      ) : null}
+    </div>
+  );
 }
 
 /**
@@ -401,54 +413,54 @@ function ColorRow({
  * back rather than leaving the row unlabelled.
  */
 function NameField({
-    name,
-    placeholder,
-    disabled,
-    title,
-    onCommit,
+  name,
+  placeholder,
+  disabled,
+  title,
+  onCommit
 }: {
-    name: string;
-    placeholder: string;
-    disabled: boolean;
-    title: string | undefined;
-    onCommit: (name: string) => void;
+  name: string;
+  placeholder: string;
+  disabled: boolean;
+  title: string | undefined;
+  onCommit: (name: string) => void;
 }) {
-    const [draft, setDraft] = useState(name);
+  const [draft, setDraft] = useState(name);
 
-    useEffect(() => {
-        setDraft(name);
-    }, [name]);
+  useEffect(() => {
+    setDraft(name);
+  }, [name]);
 
-    const commit = useCallback(() => {
-        const next = draft.trim();
-        if (next && next !== name) {
-            onCommit(next);
-        } else {
-            setDraft(name);
+  const commit = useCallback(() => {
+    const next = draft.trim();
+    if (next && next !== name) {
+      onCommit(next);
+    } else {
+      setDraft(name);
+    }
+  }, [draft, name, onCommit]);
+
+  return (
+    <Input
+      size="sm"
+      value={draft}
+      placeholder={placeholder}
+      disabled={disabled}
+      data-tip={title}
+      aria-label={placeholder}
+      className="min-w-0 flex-1"
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.currentTarget.blur();
+        } else if (event.key === "Escape") {
+          setDraft(name);
+          event.currentTarget.blur();
         }
-    }, [draft, name, onCommit]);
-
-    return (
-        <Input
-            size="sm"
-            value={draft}
-            placeholder={placeholder}
-            disabled={disabled}
-            data-tip={title}
-            aria-label={placeholder}
-            className="min-w-0 flex-1"
-            onChange={event => setDraft(event.target.value)}
-            onBlur={commit}
-            onKeyDown={event => {
-                if (event.key === "Enter") {
-                    event.currentTarget.blur();
-                } else if (event.key === "Escape") {
-                    setDraft(name);
-                    event.currentTarget.blur();
-                }
-            }}
-        />
-    );
+      }}
+    />
+  );
 }
 
 /**
@@ -460,19 +472,23 @@ function NameField({
  * document this panel could not read.
  */
 function countReferences(context: WorkspaceContext): Map<string, number> {
-    let uidoc: unknown;
-    let characters: unknown;
-    try {
-        uidoc = context.services.get<UIDocumentService>(Services.UIDocument).getDocument();
-    } catch { /* not loaded */ }
-    try {
-        // The profile, not the `Character` wrapper: `collectBrandLinkReferences` names a reference
-        // after the `id` and `name` it finds on the entry, and both live one level down.
-        characters = context.services
-            .get<CharacterService>(Services.Character)
-            .listCharacter()
-            .map(character => character.toJSON().profile);
-    } catch { /* not loaded */ }
+  let uidoc: unknown;
+  let characters: unknown;
+  try {
+    uidoc = context.services.get<UIDocumentService>(Services.UIDocument).getDocument();
+  } catch {
+    /* not loaded */
+  }
+  try {
+    // The profile, not the `Character` wrapper: `collectBrandLinkReferences` names a reference
+    // after the `id` and `name` it finds on the entry, and both live one level down.
+    characters = context.services
+      .get<CharacterService>(Services.Character)
+      .listCharacter()
+      .map((character) => character.toJSON().profile);
+  } catch {
+    /* not loaded */
+  }
 
-    return countBrandLinkReferences(collectBrandLinkReferences({ uidoc, characters }));
+  return countBrandLinkReferences(collectBrandLinkReferences({ uidoc, characters }));
 }

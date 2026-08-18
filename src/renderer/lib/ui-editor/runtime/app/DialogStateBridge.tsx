@@ -1,11 +1,11 @@
 import { useEffect } from "react";
 import { useAvatar, useDialog } from "narraleaf-react";
 import {
-    BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
-    BLUEPRINT_GAME_NAMETAG_STATE_KEY,
-    BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY,
-    BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY,
-    BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY,
+  BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
+  BLUEPRINT_GAME_NAMETAG_STATE_KEY,
+  BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY,
+  BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY,
+  BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY
 } from "@shared/types/blueprint/hostApi";
 import { findBlueprintCharacterInfo } from "@shared/types/blueprint/characterInfo";
 import { toBlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
@@ -30,46 +30,53 @@ import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBluep
  * lets a narrator line blank the colour without losing who spoke last.
  */
 export function DialogStateBridge(props: {
-    core: BlueprintRuntimeCore | null;
-    getCurrentNametag: () => string | null;
-    resolveAvatarAssetId?: (url: string) => string | null;
-    flushDialogElements: () => void;
+  core: BlueprintRuntimeCore | null;
+  getCurrentNametag: () => string | null;
+  resolveAvatarAssetId?: (url: string) => string | null;
+  flushDialogElements: () => void;
 }) {
-    const { core, getCurrentNametag, resolveAvatarAssetId, flushDialogElements } = props;
-    const dialog = useDialog();
-    const avatar = useAvatar();
-    const avatarSrc = avatar.visible ? avatar.src : null;
+  const { core, getCurrentNametag, resolveAvatarAssetId, flushDialogElements } = props;
+  const dialog = useDialog();
+  const avatar = useAvatar();
+  const avatarSrc = avatar.visible ? avatar.src : null;
 
-    useEffect(() => {
-        if (!core) {
-            return;
-        }
-        const nametag = dialog.isNarrator ? null : getCurrentNametag();
-        const avatarAssetId = avatarSrc ? resolveAvatarAssetId?.(avatarSrc) ?? null : null;
-        core.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
-        // The same write is the clock: `refreshAll` is key-agnostic, so mirroring the avatar here
-        // re-evaluates every value graph on the same beat the nametag already did.
-        core.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY, toBlueprintImageAsset(avatarAssetId));
-        // Same beat, same reason: a nametag widget that tints itself from the speaker colour has to
-        // repaint with the line it belongs to, not one line late.
-        const speakerId = dialog.isNarrator
-            ? null
-            : core.scopeBridge.globalGet(BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY);
-        const speaker = typeof speakerId === "string"
-            ? findBlueprintCharacterInfo(core.scopeBridge.globalGet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY), speakerId)
-            : null;
-        core.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, speaker?.color ?? null);
-        flushDialogElements();
-    }, [
-        core,
-        dialog.done,
-        dialog.isNarrator,
-        dialog.text,
-        avatarSrc,
-        resolveAvatarAssetId,
-        flushDialogElements,
-        getCurrentNametag,
-    ]);
+  useEffect(() => {
+    if (!core) {
+      return;
+    }
+    const nametag = dialog.isNarrator ? null : getCurrentNametag();
+    const avatarAssetId = avatarSrc ? (resolveAvatarAssetId?.(avatarSrc) ?? null) : null;
+    core.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
+    // The same write is the clock: `refreshAll` is key-agnostic, so mirroring the avatar here
+    // re-evaluates every value graph on the same beat the nametag already did.
+    core.scopeBridge.globalSet(
+      BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY,
+      toBlueprintImageAsset(avatarAssetId)
+    );
+    // Same beat, same reason: a nametag widget that tints itself from the speaker colour has to
+    // repaint with the line it belongs to, not one line late.
+    const speakerId = dialog.isNarrator
+      ? null
+      : core.scopeBridge.globalGet(BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY);
+    const speaker =
+      typeof speakerId === "string"
+        ? findBlueprintCharacterInfo(
+            core.scopeBridge.globalGet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY),
+            speakerId
+          )
+        : null;
+    core.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, speaker?.color ?? null);
+    flushDialogElements();
+  }, [
+    core,
+    dialog.done,
+    dialog.isNarrator,
+    dialog.text,
+    avatarSrc,
+    resolveAvatarAssetId,
+    flushDialogElements,
+    getCurrentNametag
+  ]);
 
-    return null;
+  return null;
 }

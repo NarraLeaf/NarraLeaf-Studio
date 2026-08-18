@@ -11,17 +11,17 @@
  * Any extra args are forwarded to electron-builder.
  */
 
-const path = require('path');
-const { spawn } = require('child_process');
+const path = require("path");
+const { spawn } = require("child_process");
 
 function run(cmd, args = [], opts = {}) {
-    return new Promise((resolve, reject) => {
-        const p = spawn(cmd, args, { stdio: 'inherit', shell: process.platform === 'win32', ...opts });
-        p.on('close', (code) => {
-            if (code === 0) resolve();
-            else reject(new Error(`${cmd} exited with code ${code}`));
-        });
+  return new Promise((resolve, reject) => {
+    const p = spawn(cmd, args, { stdio: "inherit", shell: process.platform === "win32", ...opts });
+    p.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`${cmd} exited with code ${code}`));
     });
+  });
 }
 
 /**
@@ -42,67 +42,67 @@ function run(cmd, args = [], opts = {}) {
  * back to the host and their own per-arch tables decide.
  */
 function targetArch(args) {
-    if (args.includes('--x64')) return 'x64';
-    if (args.includes('--arm64')) return 'arm64';
-    return null;
+  if (args.includes("--x64")) return "x64";
+  if (args.includes("--arm64")) return "arm64";
+  return null;
 }
 
 (async () => {
-    const rootDir = path.resolve(__dirname, '../..');
-    process.chdir(rootDir);
+  const rootDir = path.resolve(__dirname, "../..");
+  process.chdir(rootDir);
 
-    const extraArgs = process.argv.slice(2);
-    const arch = targetArch(extraArgs);
-    const archArgs = arch === null ? [] : [`--arch=${arch}`];
+  const extraArgs = process.argv.slice(2);
+  const arch = targetArch(extraArgs);
+  const archArgs = arch === null ? [] : [`--arch=${arch}`];
 
-    try {
-        console.log('[pack] Building preview runtime (production)...');
-        await run('node', ['project/build/build-runtime.js']);
+  try {
+    console.log("[pack] Building preview runtime (production)...");
+    await run("node", ["project/build/build-runtime.js"]);
 
-        console.log('[pack] Building renderer apps (production)...');
-        await run('node', ['project/build/build-apps.js']);
+    console.log("[pack] Building renderer apps (production)...");
+    await run("node", ["project/build/build-apps.js"]);
 
-        console.log('[pack] Building main process (production)...');
-        await run('node', ['project/build/build-main.js']);
+    console.log("[pack] Building main process (production)...");
+    await run("node", ["project/build/build-main.js"]);
 
-        console.log('[pack] Building built-in plugins (production)...');
-        await run('node', ['project/build/build-builtin-plugins.js']);
+    console.log("[pack] Building built-in plugins (production)...");
+    await run("node", ["project/build/build-builtin-plugins.js"]);
 
-        console.log('[pack] Preparing embedded preview runner...');
-        await run('node', ['project/build/prepare-preview-runner.js']);
+    console.log("[pack] Preparing embedded preview runner...");
+    await run("node", ["project/build/prepare-preview-runner.js"]);
 
-        console.log('[pack] Staging mobile shell templates...');
-        await run('node', ['project/build/prepare-mobile-shell.js']);
+    console.log("[pack] Staging mobile shell templates...");
+    await run("node", ["project/build/prepare-mobile-shell.js"]);
 
-        // --arch goes to both staging steps below and to none of the ones above: these two write
-        // native binaries that electron-builder then copies into the installer wholesale, and the
-        // runner's architecture is not the installer's. See targetArch above. Getting it wrong
-        // costs a Mach-O that cannot execute where it lands on the zsign side, and a wasted 3-5
-        // minute compile producing the same on the FFmpeg side.
-        console.log('[pack] Staging code-signing tools...');
-        await run('node', ['project/build/prepare-codesign-tools.js', ...archArgs]);
+    // --arch goes to both staging steps below and to none of the ones above: these two write
+    // native binaries that electron-builder then copies into the installer wholesale, and the
+    // runner's architecture is not the installer's. See targetArch above. Getting it wrong
+    // costs a Mach-O that cannot execute where it lands on the zsign side, and a wasted 3-5
+    // minute compile producing the same on the FFmpeg side.
+    console.log("[pack] Staging code-signing tools...");
+    await run("node", ["project/build/prepare-codesign-tools.js", ...archArgs]);
 
-        console.log('[pack] Staging FFmpeg tools...');
-        await run('node', ['project/build/prepare-ffmpeg.js', ...archArgs]);
+    console.log("[pack] Staging FFmpeg tools...");
+    await run("node", ["project/build/prepare-ffmpeg.js", ...archArgs]);
 
-        console.log('[pack] Packaging with electron-builder...');
-        // Force output dir to build/ unless user overrides via CLI
-        const hasOutputArg = extraArgs.some((arg) => arg.includes('directories.output'));
-        const builderArgs = [
-            'electron-builder',
-            ...(hasOutputArg ? [] : ['--config.directories.output=build']),
-            ...extraArgs,
-        ];
-        // electron-builder is intentionally a runtime `dependency`: the in-app
-        // game build feature requires it inside the packaged Studio. Its default
-        // guard forbids that, so opt in via the official escape hatch.
-        await run('npx', builderArgs, {
-            env: { ...process.env, ALLOW_ELECTRON_BUILDER_AS_PRODUCTION_DEPENDENCY: 'true' },
-        });
+    console.log("[pack] Packaging with electron-builder...");
+    // Force output dir to build/ unless user overrides via CLI
+    const hasOutputArg = extraArgs.some((arg) => arg.includes("directories.output"));
+    const builderArgs = [
+      "electron-builder",
+      ...(hasOutputArg ? [] : ["--config.directories.output=build"]),
+      ...extraArgs
+    ];
+    // electron-builder is intentionally a runtime `dependency`: the in-app
+    // game build feature requires it inside the packaged Studio. Its default
+    // guard forbids that, so opt in via the official escape hatch.
+    await run("npx", builderArgs, {
+      env: { ...process.env, ALLOW_ELECTRON_BUILDER_AS_PRODUCTION_DEPENDENCY: "true" }
+    });
 
-        console.log('[pack] Done. Artifacts are in the dist/ directory generated by electron-builder.');
-    } catch (err) {
-        console.error('[pack] Failed:', err);
-        process.exit(1);
-    }
+    console.log("[pack] Done. Artifacts are in the dist/ directory generated by electron-builder.");
+  } catch (err) {
+    console.error("[pack] Failed:", err);
+    process.exit(1);
+  }
 })();

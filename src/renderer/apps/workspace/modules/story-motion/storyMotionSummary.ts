@@ -10,18 +10,18 @@ import { getStoryMotionDurationMs } from "./storyMotionTimeline";
  * needs it for an asset — two callers that must not describe the same motion two different ways.
  */
 export function storyMotionTimelineSummary(
-    timeline: StoryAnimationTimeline | undefined,
-    t: UseTranslation["t"],
+  timeline: StoryAnimationTimeline | undefined,
+  t: UseTranslation["t"]
 ): string {
-    const duration = formatStorySecondsLabel(getStoryMotionDurationMs(timeline));
-    const tracks = timeline?.tracks ?? [];
-    const labels = tracks
-        .slice(0, 3)
-        .map(track => t(`motion.propertyLabel.${track.property}`))
-        .join(", ");
-    return `${duration}${labels ? ` / ${labels}${tracks.length > 3 ? "..." : ""}` : ""}`;
+  const duration = formatStorySecondsLabel(getStoryMotionDurationMs(timeline));
+  const tracks = timeline?.tracks ?? [];
+  const labels = tracks
+    .slice(0, 3)
+    .map((track) => t(`motion.propertyLabel.${track.property}`))
+    .join(", ");
+  return `${duration}${labels ? ` / ${labels}${tracks.length > 3 ? "..." : ""}` : ""}`;
 }
 
 export function motionSummary(asset: StoryAnimationAsset, t: UseTranslation["t"]): string {
-    return storyMotionTimelineSummary(asset.timeline, t);
+  return storyMotionTimelineSummary(asset.timeline, t);
 }

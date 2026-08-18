@@ -26,8 +26,8 @@ export const PROJECT_DICTIONARY_SCHEMA_VERSION = 1;
  * it, and none of it can be answered by the one gesture that writes here (a right click on a word).
  */
 export type ProjectDictionaryDocument = {
-    schemaVersion: number;
-    words: string[];
+  schemaVersion: number;
+  words: string[];
 };
 
 /**
@@ -39,11 +39,11 @@ export type ProjectDictionaryDocument = {
  * trimmed.
  */
 export function normalizeDictionaryWord(raw: unknown): string | null {
-    if (typeof raw !== "string") {
-        return null;
-    }
-    const word = raw.trim().replace(/\s+/g, " ");
-    return word ? word : null;
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const word = raw.trim().replace(/\s+/g, " ");
+  return word ? word : null;
 }
 
 /**
@@ -56,15 +56,15 @@ export function normalizeDictionaryWord(raw: unknown): string | null {
  * into a sorted list is one line in a diff wherever it lands.
  */
 export function normalizeDictionaryWords(raw: unknown): string[] {
-    const source = Array.isArray(raw) ? raw : [];
-    const words = new Set<string>();
-    for (const entry of source) {
-        const word = normalizeDictionaryWord(entry);
-        if (word) {
-            words.add(word);
-        }
+  const source = Array.isArray(raw) ? raw : [];
+  const words = new Set<string>();
+  for (const entry of source) {
+    const word = normalizeDictionaryWord(entry);
+    if (word) {
+      words.add(word);
     }
-    return [...words].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  }
+  return [...words].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
 }
 
 /**
@@ -74,20 +74,19 @@ export function normalizeDictionaryWords(raw: unknown): string[] {
  * start so the spec has one entry point and a v2 has one place to be written.
  */
 export function migrateProjectDictionaryDocument(raw: unknown): ProjectDictionaryDocument {
-    const record = raw && typeof raw === "object" && !Array.isArray(raw)
-        ? raw as Record<string, unknown>
-        : {};
+  const record =
+    raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
 
-    return {
-        schemaVersion: PROJECT_DICTIONARY_SCHEMA_VERSION,
-        words: normalizeDictionaryWords(record.words),
-    };
+  return {
+    schemaVersion: PROJECT_DICTIONARY_SCHEMA_VERSION,
+    words: normalizeDictionaryWords(record.words)
+  };
 }
 
 /** An absent document is a project nobody has taught a word yet: no words at all. */
 export function createEmptyProjectDictionaryDocument(): ProjectDictionaryDocument {
-    return {
-        schemaVersion: PROJECT_DICTIONARY_SCHEMA_VERSION,
-        words: [],
-    };
+  return {
+    schemaVersion: PROJECT_DICTIONARY_SCHEMA_VERSION,
+    words: []
+  };
 }

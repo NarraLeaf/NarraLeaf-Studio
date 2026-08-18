@@ -7,8 +7,8 @@ import { installStudioDebugBridge } from "@lib/workspace/debug/studioDebugBridge
 // revoked. `__NLS_STUDIO_DEV__` is an esbuild define, so this whole branch is dropped
 // from production bundles.
 if (__NLS_STUDIO_DEV__) {
-    installStudioDebugBridge();
-    installServerTrustDevHook();
+  installStudioDebugBridge();
+  installServerTrustDevHook();
 }
 
 render(import("./WorkSpaceApp"));

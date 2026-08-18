@@ -23,26 +23,26 @@ export const LINT_LOCATION_SEPARATOR = " / ";
  * name, so it spells a location its own way (`lintLocationLabel`).
  */
 export function describeLintLocation(location: LintLocation): string {
-    switch (location.kind) {
-        case "project":
-            return "";
-        case "asset":
-            return location.assetName;
-        case "story": {
-            const scene = location.sceneName
-                ? `${location.storyName}${LINT_LOCATION_SEPARATOR}${location.sceneName}`
-                : location.storyName;
-            return location.line === undefined ? scene : `${scene}:${location.line}`;
-        }
-        case "blueprint":
-            return location.blueprintName ?? location.blueprintId;
-        case "surface":
-            return location.elementName
-                ? `${location.surfaceName}${LINT_LOCATION_SEPARATOR}${location.elementName}`
-                : location.surfaceName;
-        case "character":
-            return location.characterName;
+  switch (location.kind) {
+    case "project":
+      return "";
+    case "asset":
+      return location.assetName;
+    case "story": {
+      const scene = location.sceneName
+        ? `${location.storyName}${LINT_LOCATION_SEPARATOR}${location.sceneName}`
+        : location.storyName;
+      return location.line === undefined ? scene : `${scene}:${location.line}`;
     }
+    case "blueprint":
+      return location.blueprintName ?? location.blueprintId;
+    case "surface":
+      return location.elementName
+        ? `${location.surfaceName}${LINT_LOCATION_SEPARATOR}${location.elementName}`
+        : location.surfaceName;
+    case "character":
+      return location.characterName;
+  }
 }
 
 /**
@@ -64,13 +64,13 @@ export function describeLintLocation(location: LintLocation): string {
  * carry the site with a suffix, and that is still a repeat of "Narra".
  */
 export function nonRedundantLintLocation(location: string, message: string): string {
-    if (!location || message.includes(location)) {
-        return "";
-    }
-    const segments = location.split(LINT_LOCATION_SEPARATOR);
-    if (segments.length < 2) {
-        // Nothing to take apart, and the whole of it is new: print it.
-        return location;
-    }
-    return segments.filter(segment => !message.includes(segment)).join(LINT_LOCATION_SEPARATOR);
+  if (!location || message.includes(location)) {
+    return "";
+  }
+  const segments = location.split(LINT_LOCATION_SEPARATOR);
+  if (segments.length < 2) {
+    // Nothing to take apart, and the whole of it is new: print it.
+    return location;
+  }
+  return segments.filter((segment) => !message.includes(segment)).join(LINT_LOCATION_SEPARATOR);
 }

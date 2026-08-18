@@ -8,17 +8,17 @@ import { FocusContext } from "@/lib/workspace/services/ui";
 import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
 import { isMacPlatform } from "@/lib/app/platform";
 import {
-    getActionGroupItems,
-    getVisibleActionMenuItems,
-    isActionMenuAction,
-    isActionMenuSeparator,
+  getActionGroupItems,
+  getVisibleActionMenuItems,
+  isActionMenuAction,
+  isActionMenuSeparator
 } from "./actionMenuModel";
 import { applyFreezeToActionMenuItems, isFreezeExemptActionGroup } from "./freezeActionPolicy";
 import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
 import { useTranslation } from "@/lib/i18n";
 
 interface ActionDropdownProps {
-    group: ActionGroup;
+  group: ActionGroup;
 }
 
 /**
@@ -30,410 +30,430 @@ interface ActionDropdownProps {
  * menu that refused to open would hide what the freeze is doing, which is the opposite of the point.
  */
 export function ActionDropdown({ group }: ActionDropdownProps) {
-    const { t } = useTranslation();
-    const { workspace, context } = useWorkspace();
-    const frozen = useWorkspaceFrozen();
-    const frozenOut = frozen && !isFreezeExemptActionGroup(group.id);
-    const groupLabel = group.labelKey ? t(group.labelKey) : group.label;
-    const [isOpen, setIsOpen] = useState(false);
-    const [openPath, setOpenPath] = useState<number[]>([]); // path of opened submenus
-    const [focusPath, setFocusPath] = useState<number[]>([]); // path of focused item
-    const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
-    const dropdownRef = useRef<HTMLDivElement>(null);
-    const rootMenuRef = useRef<HTMLDivElement>(null);
-    const hoverOpenTimerRef = useRef<number | null>(null);
-    const hoverCloseTimerRef = useRef<number | null>(null);
+  const { t } = useTranslation();
+  const { workspace, context } = useWorkspace();
+  const frozen = useWorkspaceFrozen();
+  const frozenOut = frozen && !isFreezeExemptActionGroup(group.id);
+  const groupLabel = group.labelKey ? t(group.labelKey) : group.label;
+  const [isOpen, setIsOpen] = useState(false);
+  const [openPath, setOpenPath] = useState<number[]>([]); // path of opened submenus
+  const [focusPath, setFocusPath] = useState<number[]>([]); // path of focused item
+  const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const rootMenuRef = useRef<HTMLDivElement>(null);
+  const hoverOpenTimerRef = useRef<number | null>(null);
+  const hoverCloseTimerRef = useRef<number | null>(null);
 
-    // Subscribe to focus changes
-    useEffect(() => {
-        if (!context) return;
+  // Subscribe to focus changes
+  useEffect(() => {
+    if (!context) return;
 
-        const uiService = context.services.get<UIService>(Services.UI);
-        setFocusContext(uiService.focus.getFocus());
+    const uiService = context.services.get<UIService>(Services.UI);
+    setFocusContext(uiService.focus.getFocus());
 
-        return uiService.focus.onFocusChange((newContext) => {
-            setFocusContext(newContext);
-        });
-    }, [context]);
+    return uiService.focus.onFocusChange((newContext) => {
+      setFocusContext(newContext);
+    });
+  }, [context]);
 
-    // Normalize items: prefer hierarchical `items`, fallback to flat `actions`.
-    // The freeze is applied to COPIES here rather than to the registrations, which are shared
-    // registry state that outlives a freeze - mutating them would leave the menu dead after a thaw.
-    const rootItems: ActionMenuItem[] = useMemo(() => {
-        return applyFreezeToActionMenuItems(
-            getVisibleActionMenuItems(getActionGroupItems(group), focusContext),
-            frozenOut,
-        );
-    }, [group, focusContext, frozenOut]);
+  // Normalize items: prefer hierarchical `items`, fallback to flat `actions`.
+  // The freeze is applied to COPIES here rather than to the registrations, which are shared
+  // registry state that outlives a freeze - mutating them would leave the menu dead after a thaw.
+  const rootItems: ActionMenuItem[] = useMemo(() => {
+    return applyFreezeToActionMenuItems(
+      getVisibleActionMenuItems(getActionGroupItems(group), focusContext),
+      frozenOut
+    );
+  }, [group, focusContext, frozenOut]);
 
-    useEffect(() => {
-        if (!isOpen) {
-            setOpenPath([]);
-            setFocusPath([]);
-        } else {
-            // initialize focus on first enabled item
-            const idx = firstEnabledIndex(rootItems);
-            setFocusPath(idx >= 0 ? [idx] : []);
-            // focus the root menu container to receive keyboard events
-            if (rootMenuRef.current) {
-                rootMenuRef.current.focus();
-            }
-        }
-    }, [isOpen, rootItems]);
+  useEffect(() => {
+    if (!isOpen) {
+      setOpenPath([]);
+      setFocusPath([]);
+    } else {
+      // initialize focus on first enabled item
+      const idx = firstEnabledIndex(rootItems);
+      setFocusPath(idx >= 0 ? [idx] : []);
+      // focus the root menu container to receive keyboard events
+      if (rootMenuRef.current) {
+        rootMenuRef.current.focus();
+      }
+    }
+  }, [isOpen, rootItems]);
 
-    useEffect(() => {
-        // Cleanup timers on unmount
-        return () => {
-            if (hoverOpenTimerRef.current) window.clearTimeout(hoverOpenTimerRef.current);
-            if (hoverCloseTimerRef.current) window.clearTimeout(hoverCloseTimerRef.current);
-        };
-    }, []);
-
-    const toggleDropdown = () => {
-        setIsOpen((v) => !v);
+  useEffect(() => {
+    // Cleanup timers on unmount
+    return () => {
+      if (hoverOpenTimerRef.current) window.clearTimeout(hoverOpenTimerRef.current);
+      if (hoverCloseTimerRef.current) window.clearTimeout(hoverCloseTimerRef.current);
     };
+  }, []);
 
-    const handleActionClick = (action: ActionDefinition) => {
-        if (!workspace) {
-            console.warn("[ActionDropdown] Unhandled action click: workspace is not initialized");
-            return;
-        }
+  const toggleDropdown = () => {
+    setIsOpen((v) => !v);
+  };
 
-        if (!action.disabled) {
-            action.onClick(workspace);
-            setIsOpen(false);
-        }
-    };
-
-    const handleGlobalKeyDown = (event: React.KeyboardEvent) => {
-        if (!isOpen) return;
-        if (event.key === "Escape") {
-            // Close current submenu or whole menu
-            if (openPath.length > 0) {
-                setOpenPath(openPath.slice(0, -1));
-                setFocusPath(focusPath.slice(0, -1));
-            } else {
-                setIsOpen(false);
-            }
-            event.preventDefault();
-            return;
-        }
-
-        const { key } = event;
-        if (!focusPath.length) return;
-
-        const level = focusPath.length - 1;
-        const itemsAtLevel = getItemsAtPath(rootItems, focusPath.slice(0, -1), focusContext);
-        const focusedIndex = focusPath[level];
-        const focusedItem = itemsAtLevel[focusedIndex];
-
-        if (key === "ArrowDown" || key === "Down") {
-            const next = nextEnabledIndex(itemsAtLevel, focusedIndex);
-            if (next !== -1) setFocusPath(replaceIndex(focusPath, level, next));
-            event.preventDefault();
-        } else if (key === "ArrowUp" || key === "Up") {
-            const prev = prevEnabledIndex(itemsAtLevel, focusedIndex);
-            if (prev !== -1) setFocusPath(replaceIndex(focusPath, level, prev));
-            event.preventDefault();
-        } else if (key === "ArrowRight" || key === "Right") {
-            if (!isActionMenuAction(focusedItem) && !isActionMenuSeparator(focusedItem)) {
-                // open submenu and focus first item
-                const visible = getVisibleActionMenuItems(focusedItem.items, focusContext);
-                if (visible.length > 0) {
-                    setOpenPath(focusPath);
-                    const first = firstEnabledIndex(visible);
-                    if (first !== -1) setFocusPath([...focusPath, first]);
-                }
-            }
-            event.preventDefault();
-        } else if (key === "ArrowLeft" || key === "Left") {
-            if (openPath.length > 0) {
-                setOpenPath(openPath.slice(0, -1));
-                setFocusPath(focusPath.slice(0, -1));
-            } else {
-                setIsOpen(false);
-            }
-            event.preventDefault();
-        } else if (key === "Enter" || key === " ") {
-            if (isActionMenuAction(focusedItem) && !focusedItem.disabled) {
-                handleActionClick(focusedItem);
-            } else if (!isActionMenuAction(focusedItem) && !isActionMenuSeparator(focusedItem)) {
-                const visible = getVisibleActionMenuItems(focusedItem.items, focusContext);
-                if (visible.length > 0) {
-                    setOpenPath(focusPath);
-                    const first = firstEnabledIndex(visible);
-                    if (first !== -1) setFocusPath([...focusPath, first]);
-                }
-            }
-            event.preventDefault();
-        }
-    };
-
-    if (rootItems.length === 0) {
-        return null;
+  const handleActionClick = (action: ActionDefinition) => {
+    if (!workspace) {
+      console.warn("[ActionDropdown] Unhandled action click: workspace is not initialized");
+      return;
     }
 
-    return (
-        <div className="relative" ref={dropdownRef}>
-            <button
-                onClick={toggleDropdown}
-                onKeyDown={(e) => {
-                    if ((e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") && !isOpen) {
-                        setIsOpen(true);
-                        e.preventDefault();
-                    }
-                }}
-                className="h-8 px-2 rounded-md flex items-center gap-2 text-sm transition-colors cursor-default text-fg-muted hover:bg-fill hover:text-fg"
-                data-tip={String(groupLabel)}
-                aria-label={String(groupLabel)}
-                aria-expanded={isOpen}
-                aria-haspopup="true"
-            >
-                {group.icon && <span className="w-4 h-4">{group.icon}</span>}
-                <span>{String(groupLabel)}</span>
-                <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? "rotate-180" : ""}`} />
-            </button>
+    if (!action.disabled) {
+      action.onClick(workspace);
+      setIsOpen(false);
+    }
+  };
 
-            {isOpen && (
-                <>
-                    {/* Backdrop */}
-                    <div
-                        className="nl-window-content-layer z-10"
-                        onClick={() => setIsOpen(false)}
-                    />
+  const handleGlobalKeyDown = (event: React.KeyboardEvent) => {
+    if (!isOpen) return;
+    if (event.key === "Escape") {
+      // Close current submenu or whole menu
+      if (openPath.length > 0) {
+        setOpenPath(openPath.slice(0, -1));
+        setFocusPath(focusPath.slice(0, -1));
+      } else {
+        setIsOpen(false);
+      }
+      event.preventDefault();
+      return;
+    }
 
-                    {/* Root menu */}
-                    <div
-                        ref={rootMenuRef}
-                        className="absolute top-full left-0 mt-1 z-20 min-w-64 bg-surface-overlay border border-edge-strong rounded-md shadow-lg py-1"
-                        role="menu"
-                        aria-label={groupLabel}
-                        tabIndex={0}
-                        onKeyDown={handleGlobalKeyDown}
-                    >
-                        <MenuLevel
-                            level={0}
-                            items={rootItems}
-                            openPath={openPath}
-                            focusPath={focusPath}
-                            setOpenPath={setOpenPath}
-                            setFocusPath={setFocusPath}
-                            onActionClick={handleActionClick}
-                            hoverOpenTimerRef={hoverOpenTimerRef}
-                            hoverCloseTimerRef={hoverCloseTimerRef}
-                            focusContext={focusContext}
-                            disabledTitle={frozenOut ? t("workspace.shell.freeze.unavailable") : undefined}
-                        />
-                    </div>
-                </>
-            )}
-        </div>
-    );
+    const { key } = event;
+    if (!focusPath.length) return;
+
+    const level = focusPath.length - 1;
+    const itemsAtLevel = getItemsAtPath(rootItems, focusPath.slice(0, -1), focusContext);
+    const focusedIndex = focusPath[level];
+    const focusedItem = itemsAtLevel[focusedIndex];
+
+    if (key === "ArrowDown" || key === "Down") {
+      const next = nextEnabledIndex(itemsAtLevel, focusedIndex);
+      if (next !== -1) setFocusPath(replaceIndex(focusPath, level, next));
+      event.preventDefault();
+    } else if (key === "ArrowUp" || key === "Up") {
+      const prev = prevEnabledIndex(itemsAtLevel, focusedIndex);
+      if (prev !== -1) setFocusPath(replaceIndex(focusPath, level, prev));
+      event.preventDefault();
+    } else if (key === "ArrowRight" || key === "Right") {
+      if (!isActionMenuAction(focusedItem) && !isActionMenuSeparator(focusedItem)) {
+        // open submenu and focus first item
+        const visible = getVisibleActionMenuItems(focusedItem.items, focusContext);
+        if (visible.length > 0) {
+          setOpenPath(focusPath);
+          const first = firstEnabledIndex(visible);
+          if (first !== -1) setFocusPath([...focusPath, first]);
+        }
+      }
+      event.preventDefault();
+    } else if (key === "ArrowLeft" || key === "Left") {
+      if (openPath.length > 0) {
+        setOpenPath(openPath.slice(0, -1));
+        setFocusPath(focusPath.slice(0, -1));
+      } else {
+        setIsOpen(false);
+      }
+      event.preventDefault();
+    } else if (key === "Enter" || key === " ") {
+      if (isActionMenuAction(focusedItem) && !focusedItem.disabled) {
+        handleActionClick(focusedItem);
+      } else if (!isActionMenuAction(focusedItem) && !isActionMenuSeparator(focusedItem)) {
+        const visible = getVisibleActionMenuItems(focusedItem.items, focusContext);
+        if (visible.length > 0) {
+          setOpenPath(focusPath);
+          const first = firstEnabledIndex(visible);
+          if (first !== -1) setFocusPath([...focusPath, first]);
+        }
+      }
+      event.preventDefault();
+    }
+  };
+
+  if (rootItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={toggleDropdown}
+        onKeyDown={(e) => {
+          if ((e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") && !isOpen) {
+            setIsOpen(true);
+            e.preventDefault();
+          }
+        }}
+        className="h-8 px-2 rounded-md flex items-center gap-2 text-sm transition-colors cursor-default text-fg-muted hover:bg-fill hover:text-fg"
+        data-tip={String(groupLabel)}
+        aria-label={String(groupLabel)}
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+      >
+        {group.icon && <span className="w-4 h-4">{group.icon}</span>}
+        <span>{String(groupLabel)}</span>
+        <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+      </button>
+
+      {isOpen && (
+        <>
+          {/* Backdrop */}
+          <div className="nl-window-content-layer z-10" onClick={() => setIsOpen(false)} />
+
+          {/* Root menu */}
+          <div
+            ref={rootMenuRef}
+            className="absolute top-full left-0 mt-1 z-20 min-w-64 bg-surface-overlay border border-edge-strong rounded-md shadow-lg py-1"
+            role="menu"
+            aria-label={groupLabel}
+            tabIndex={0}
+            onKeyDown={handleGlobalKeyDown}
+          >
+            <MenuLevel
+              level={0}
+              items={rootItems}
+              openPath={openPath}
+              focusPath={focusPath}
+              setOpenPath={setOpenPath}
+              setFocusPath={setFocusPath}
+              onActionClick={handleActionClick}
+              hoverOpenTimerRef={hoverOpenTimerRef}
+              hoverCloseTimerRef={hoverCloseTimerRef}
+              focusContext={focusContext}
+              disabledTitle={frozenOut ? t("workspace.shell.freeze.unavailable") : undefined}
+            />
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 function firstEnabledIndex(items: ActionMenuItem[]): number {
-    for (let i = 0; i < items.length; i++) {
-        const it = items[i];
-        if (isActionMenuSeparator(it)) continue;
-        if (isActionMenuAction(it)) {
-            if (!it.disabled) return i;
-        } else {
-            return i; // submenu focusable
-        }
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (isActionMenuSeparator(it)) continue;
+    if (isActionMenuAction(it)) {
+      if (!it.disabled) return i;
+    } else {
+      return i; // submenu focusable
     }
-    return -1;
+  }
+  return -1;
 }
 
 function nextEnabledIndex(items: ActionMenuItem[], from: number): number {
-    const n = items.length;
-    for (let i = 1; i <= n; i++) {
-        const idx = (from + i) % n;
-        const it = items[idx];
-        if (isActionMenuSeparator(it)) continue;
-        if (isActionMenuAction(it)) {
-            if (!it.disabled) return idx;
-        } else {
-            return idx; // submenu is focusable
-        }
+  const n = items.length;
+  for (let i = 1; i <= n; i++) {
+    const idx = (from + i) % n;
+    const it = items[idx];
+    if (isActionMenuSeparator(it)) continue;
+    if (isActionMenuAction(it)) {
+      if (!it.disabled) return idx;
+    } else {
+      return idx; // submenu is focusable
     }
-    return -1;
+  }
+  return -1;
 }
 
 function prevEnabledIndex(items: ActionMenuItem[], from: number): number {
-    const n = items.length;
-    for (let i = 1; i <= n; i++) {
-        const idx = (from - i + n) % n;
-        const it = items[idx];
-        if (isActionMenuSeparator(it)) continue;
-        if (isActionMenuAction(it)) {
-            if (!it.disabled) return idx;
-        } else {
-            return idx;
-        }
+  const n = items.length;
+  for (let i = 1; i <= n; i++) {
+    const idx = (from - i + n) % n;
+    const it = items[idx];
+    if (isActionMenuSeparator(it)) continue;
+    if (isActionMenuAction(it)) {
+      if (!it.disabled) return idx;
+    } else {
+      return idx;
     }
-    return -1;
+  }
+  return -1;
 }
 
 function replaceIndex(path: number[], level: number, value: number): number[] {
-    const next = path.slice();
-    next[level] = value;
-    return next;
+  const next = path.slice();
+  next[level] = value;
+  return next;
 }
 
-function getItemsAtPath(root: ActionMenuItem[], parentPath: number[], focusContext: FocusContext | null = null): ActionMenuItem[] {
-    let items: ActionMenuItem[] = root;
-    for (const idx of parentPath) {
-        const node = items[idx];
-        if (!node || isActionMenuAction(node) || isActionMenuSeparator(node)) return [];
-        // node is assured to be submenu here
-        items = getVisibleActionMenuItems((node as any).items, focusContext);
-    }
-    return items;
+function getItemsAtPath(
+  root: ActionMenuItem[],
+  parentPath: number[],
+  focusContext: FocusContext | null = null
+): ActionMenuItem[] {
+  let items: ActionMenuItem[] = root;
+  for (const idx of parentPath) {
+    const node = items[idx];
+    if (!node || isActionMenuAction(node) || isActionMenuSeparator(node)) return [];
+    // node is assured to be submenu here
+    items = getVisibleActionMenuItems((node as any).items, focusContext);
+  }
+  return items;
 }
 
 interface MenuLevelProps {
-    level: number;
-    items: ActionMenuItem[];
-    openPath: number[];
-    focusPath: number[];
-    setOpenPath: (p: number[]) => void;
-    setFocusPath: (p: number[]) => void;
-    onActionClick: (a: ActionDefinition) => void;
-    hoverOpenTimerRef: React.MutableRefObject<number | null>;
-    hoverCloseTimerRef: React.MutableRefObject<number | null>;
-    focusContext: FocusContext | null;
-    /**
-     * Hover text for the items this menu has turned off wholesale - the frozen workspace's reason.
-     * Set only when the freeze is the cause, so a row disabled by its own registration is not given
-     * an explanation that would be wrong.
-     */
-    disabledTitle?: string;
+  level: number;
+  items: ActionMenuItem[];
+  openPath: number[];
+  focusPath: number[];
+  setOpenPath: (p: number[]) => void;
+  setFocusPath: (p: number[]) => void;
+  onActionClick: (a: ActionDefinition) => void;
+  hoverOpenTimerRef: React.MutableRefObject<number | null>;
+  hoverCloseTimerRef: React.MutableRefObject<number | null>;
+  focusContext: FocusContext | null;
+  /**
+   * Hover text for the items this menu has turned off wholesale - the frozen workspace's reason.
+   * Set only when the freeze is the cause, so a row disabled by its own registration is not given
+   * an explanation that would be wrong.
+   */
+  disabledTitle?: string;
 }
 
 function MenuLevel(props: MenuLevelProps) {
-    const { t } = useTranslation();
-    const { level, items, openPath, focusPath, setOpenPath, setFocusPath, onActionClick, hoverOpenTimerRef, hoverCloseTimerRef, focusContext, disabledTitle } = props;
-    const parentPath = focusPath.slice(0, level);
-    const focusedIndex = focusPath[level] ?? -1;
+  const { t } = useTranslation();
+  const {
+    level,
+    items,
+    openPath,
+    focusPath,
+    setOpenPath,
+    setFocusPath,
+    onActionClick,
+    hoverOpenTimerRef,
+    hoverCloseTimerRef,
+    focusContext,
+    disabledTitle
+  } = props;
+  const parentPath = focusPath.slice(0, level);
+  const focusedIndex = focusPath[level] ?? -1;
 
-    return (
-        <div className="relative">
-            <div role="menu" aria-level={level + 1}>
-                {items.map((item, index) => {
-                    if (isActionMenuSeparator(item)) {
-                        return (
-                            <div key={`sep-${index}`} className="h-px bg-fill-strong my-1 mx-2" />
-                        );
-                    }
-                    const isFocused = focusedIndex === index;
-                    const isSubmenu = !isActionMenuAction(item);
-                    const isOpened = openPath[level] === index && openPath.length === level + 1;
-                    const isDisabled = isActionMenuAction(item)
-                        ? !!item.disabled
-                        : getVisibleActionMenuItems(item.items, focusContext).length === 0;
+  return (
+    <div className="relative">
+      <div role="menu" aria-level={level + 1}>
+        {items.map((item, index) => {
+          if (isActionMenuSeparator(item)) {
+            return <div key={`sep-${index}`} className="h-px bg-fill-strong my-1 mx-2" />;
+          }
+          const isFocused = focusedIndex === index;
+          const isSubmenu = !isActionMenuAction(item);
+          const isOpened = openPath[level] === index && openPath.length === level + 1;
+          const isDisabled = isActionMenuAction(item)
+            ? !!item.disabled
+            : getVisibleActionMenuItems(item.items, focusContext).length === 0;
 
-                    const onMouseEnter = () => {
-                        if (hoverCloseTimerRef.current) window.clearTimeout(hoverCloseTimerRef.current);
-                        if (isSubmenu) {
-                            if (hoverOpenTimerRef.current) window.clearTimeout(hoverOpenTimerRef.current);
-                            hoverOpenTimerRef.current = window.setTimeout(() => {
-                                const visible = getVisibleActionMenuItems(item.items, focusContext);
-                                if (visible.length > 0) {
-                                    setOpenPath([...parentPath, index]);
-                                    // do not change focus unless keyboard navigates
-                                }
-                            }, 150);
-                        } else {
-                            setOpenPath(parentPath); // keep only parents open
-                        }
-                        // update focus to hovered item directly
-                        setFocusPath([...parentPath, index]);
-                    };
+          const onMouseEnter = () => {
+            if (hoverCloseTimerRef.current) window.clearTimeout(hoverCloseTimerRef.current);
+            if (isSubmenu) {
+              if (hoverOpenTimerRef.current) window.clearTimeout(hoverOpenTimerRef.current);
+              hoverOpenTimerRef.current = window.setTimeout(() => {
+                const visible = getVisibleActionMenuItems(item.items, focusContext);
+                if (visible.length > 0) {
+                  setOpenPath([...parentPath, index]);
+                  // do not change focus unless keyboard navigates
+                }
+              }, 150);
+            } else {
+              setOpenPath(parentPath); // keep only parents open
+            }
+            // update focus to hovered item directly
+            setFocusPath([...parentPath, index]);
+          };
 
-                    const onMouseLeave = () => {
-                        if (isSubmenu) {
-                            if (hoverCloseTimerRef.current) window.clearTimeout(hoverCloseTimerRef.current);
-                            hoverCloseTimerRef.current = window.setTimeout(() => {
-                                // close only if not focused via keyboard
-                                setOpenPath(parentPath);
-                            }, 250);
-                        }
-                    };
+          const onMouseLeave = () => {
+            if (isSubmenu) {
+              if (hoverCloseTimerRef.current) window.clearTimeout(hoverCloseTimerRef.current);
+              hoverCloseTimerRef.current = window.setTimeout(() => {
+                // close only if not focused via keyboard
+                setOpenPath(parentPath);
+              }, 250);
+            }
+          };
 
-                    return (
-                        <div key={item.id}
-                            className={`w-full px-3 py-2 text-sm flex items-center justify-between cursor-default ${
-                                isDisabled ? "text-fg-subtle cursor-not-allowed" : isFocused ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg"
-                            }`}
-                            role="menuitem"
-                            data-tip={isDisabled ? disabledTitle : undefined}
-                            aria-disabled={isDisabled || undefined}
-                            aria-haspopup={isSubmenu || undefined}
-                            aria-expanded={isSubmenu ? isOpened : undefined}
-                            tabIndex={-1}
-                            onMouseEnter={onMouseEnter}
-                            onMouseLeave={onMouseLeave}
-                            onClick={() => {
-                                if (isDisabled) return;
-                                if (isActionMenuAction(item)) {
-                                    onActionClick(item);
-                                } else {
-                                    const visible = getVisibleActionMenuItems(item.items, focusContext);
-                                    if (visible.length > 0) {
-                                        setOpenPath([...parentPath, index]);
-                                        const first = firstEnabledIndex(visible);
-                                        if (first !== -1) setFocusPath([...parentPath, index, first]);
-                                    }
-                                }
-                            }}
-                        >
-                            <span className="flex items-center gap-2">
-                                {isActionMenuAction(item) ? null : (item.icon ? <span className="w-4 h-4">{item.icon}</span> : null)}
-                                {/* A toggle keeps its checkmark column even while unchecked, so
+          return (
+            <div
+              key={item.id}
+              className={`w-full px-3 py-2 text-sm flex items-center justify-between cursor-default ${
+                isDisabled
+                  ? "text-fg-subtle cursor-not-allowed"
+                  : isFocused
+                    ? "bg-fill text-fg"
+                    : "text-fg-muted hover:bg-fill hover:text-fg"
+              }`}
+              role="menuitem"
+              data-tip={isDisabled ? disabledTitle : undefined}
+              aria-disabled={isDisabled || undefined}
+              aria-haspopup={isSubmenu || undefined}
+              aria-expanded={isSubmenu ? isOpened : undefined}
+              tabIndex={-1}
+              onMouseEnter={onMouseEnter}
+              onMouseLeave={onMouseLeave}
+              onClick={() => {
+                if (isDisabled) return;
+                if (isActionMenuAction(item)) {
+                  onActionClick(item);
+                } else {
+                  const visible = getVisibleActionMenuItems(item.items, focusContext);
+                  if (visible.length > 0) {
+                    setOpenPath([...parentPath, index]);
+                    const first = firstEnabledIndex(visible);
+                    if (first !== -1) setFocusPath([...parentPath, index, first]);
+                  }
+                }
+              }}
+            >
+              <span className="flex items-center gap-2">
+                {isActionMenuAction(item) ? null : item.icon ? (
+                  <span className="w-4 h-4">{item.icon}</span>
+                ) : null}
+                {/* A toggle keeps its checkmark column even while unchecked, so
                                     the labels in a group of toggles stay on one line. */}
-                                {isActionMenuAction(item) && item.checked !== undefined ? (
-                                    <span className="w-3 flex-none">
-                                        {item.checked ? <Check className="w-3 h-3" /> : null}
-                                    </span>
-                                ) : null}
-                                <span>{String(item.labelKey ? t(item.labelKey) : item.label)}</span>
-                            </span>
-                            {/* Right side: shortcut + badge/chevron */}
-                            <span className="flex items-center gap-2">
-                                {isActionMenuAction(item) && item.shortcut ? (
-                                    <span className="text-sm text-fg-muted tabular-nums">
-                                        {formatKeybinding(item.shortcut, isMacPlatform())}
-                                    </span>
-                                ) : null}
-                                {isActionMenuAction(item) ? (
-                                    item.badge ? (
-                                        <span className="bg-danger text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{item.badge}</span>
-                                    ) : null
-                                ) : (
-                                    <ChevronRight className="w-3 h-3 opacity-80" />
-                                )}
-                            </span>
-                            {!isActionMenuAction(item) && isOpened && (
-                                <div className="absolute top-0 left-full ml-1 z-20 min-w-56 bg-surface-overlay border border-edge-strong rounded-md shadow-lg py-1">
-                                    <MenuLevel
-                                        level={level + 1}
-                                        items={getVisibleActionMenuItems(item.items, focusContext)}
-                                        openPath={openPath}
-                                        focusPath={focusPath}
-                                        setOpenPath={setOpenPath}
-                                        setFocusPath={setFocusPath}
-                                        onActionClick={onActionClick}
-                                        hoverOpenTimerRef={hoverOpenTimerRef}
-                                        hoverCloseTimerRef={hoverCloseTimerRef}
-                                        focusContext={focusContext}
-                                        disabledTitle={disabledTitle}
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
+                {isActionMenuAction(item) && item.checked !== undefined ? (
+                  <span className="w-3 flex-none">
+                    {item.checked ? <Check className="w-3 h-3" /> : null}
+                  </span>
+                ) : null}
+                <span>{String(item.labelKey ? t(item.labelKey) : item.label)}</span>
+              </span>
+              {/* Right side: shortcut + badge/chevron */}
+              <span className="flex items-center gap-2">
+                {isActionMenuAction(item) && item.shortcut ? (
+                  <span className="text-sm text-fg-muted tabular-nums">
+                    {formatKeybinding(item.shortcut, isMacPlatform())}
+                  </span>
+                ) : null}
+                {isActionMenuAction(item) ? (
+                  item.badge ? (
+                    <span className="bg-danger text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                      {item.badge}
+                    </span>
+                  ) : null
+                ) : (
+                  <ChevronRight className="w-3 h-3 opacity-80" />
+                )}
+              </span>
+              {!isActionMenuAction(item) && isOpened && (
+                <div className="absolute top-0 left-full ml-1 z-20 min-w-56 bg-surface-overlay border border-edge-strong rounded-md shadow-lg py-1">
+                  <MenuLevel
+                    level={level + 1}
+                    items={getVisibleActionMenuItems(item.items, focusContext)}
+                    openPath={openPath}
+                    focusPath={focusPath}
+                    setOpenPath={setOpenPath}
+                    setFocusPath={setFocusPath}
+                    onActionClick={onActionClick}
+                    hoverOpenTimerRef={hoverOpenTimerRef}
+                    hoverCloseTimerRef={hoverCloseTimerRef}
+                    focusContext={focusContext}
+                    disabledTitle={disabledTitle}
+                  />
+                </div>
+              )}
             </div>
-        </div>
-    );
+          );
+        })}
+      </div>
+    </div>
+  );
 }

@@ -1,8 +1,8 @@
 import {
-    clampSurfaceWheelDelta,
-    normalizeSurfaceWheelDelta,
-    resolveSurfaceWheelPageDelta,
-    SURFACE_PINCH_ZOOM_DELTA_LIMIT_PX,
+  clampSurfaceWheelDelta,
+  normalizeSurfaceWheelDelta,
+  resolveSurfaceWheelPageDelta,
+  SURFACE_PINCH_ZOOM_DELTA_LIMIT_PX
 } from "@/lib/ui-editor/interaction/surfaceWheelInput";
 
 /**
@@ -26,10 +26,10 @@ import {
 
 /** A pan and a zoom over the fitted picture, in drawn pixels. `x`/`y` are where its origin lands. */
 export interface GraphNav {
-    /** Multiplier on the fitted scale. 1 draws the whole graph exactly as fit left it. */
-    readonly zoom: number;
-    readonly x: number;
-    readonly y: number;
+  /** Multiplier on the fitted scale. 1 draws the whole graph exactly as fit left it. */
+  readonly zoom: number;
+  readonly x: number;
+  readonly y: number;
 }
 
 /** The whole graph in the frame: what the canvas opens at, and what the fit control returns to. */
@@ -56,26 +56,26 @@ export const GRAPH_NAV_MAX_SCALE = 4;
 const ZOOM_SPEED = 0.006;
 
 export function isFittedGraphNav(nav: GraphNav): boolean {
-    return nav.zoom === 1 && nav.x === 0 && nav.y === 0;
+  return nav.zoom === 1 && nav.x === 0 && nav.y === 0;
 }
 
 /** The zoom, held inside the band {@link GRAPH_NAV_MIN_SCALE} and {@link GRAPH_NAV_MAX_SCALE} set. */
 export function clampGraphNavZoom(zoom: number, fittedScale: number): number {
-    if (!Number.isFinite(zoom) || zoom <= 0) {
-        return 1;
-    }
-    const fitted = Number.isFinite(fittedScale) && fittedScale > 0 ? fittedScale : 1;
-    const low = Math.min(GRAPH_NAV_MIN_SCALE / fitted, 1);
-    const high = Math.max(GRAPH_NAV_MAX_SCALE / fitted, 1);
-    return Math.min(Math.max(zoom, low), high);
+  if (!Number.isFinite(zoom) || zoom <= 0) {
+    return 1;
+  }
+  const fitted = Number.isFinite(fittedScale) && fittedScale > 0 ? fittedScale : 1;
+  const low = Math.min(GRAPH_NAV_MIN_SCALE / fitted, 1);
+  const high = Math.max(GRAPH_NAV_MAX_SCALE / fitted, 1);
+  return Math.min(Math.max(zoom, low), high);
 }
 
 /** The view dragged by a pointer's travel. A drag moves the picture, not the window onto it. */
 export function panGraphNav(nav: GraphNav, dx: number, dy: number): GraphNav {
-    if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
-        return nav;
-    }
-    return { zoom: nav.zoom, x: nav.x + dx, y: nav.y + dy };
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+    return nav;
+  }
+  return { zoom: nav.zoom, x: nav.x + dx, y: nav.y + dy };
 }
 
 /**
@@ -86,9 +86,13 @@ export function panGraphNav(nav: GraphNav, dx: number, dy: number): GraphNav {
  * an uncapped notch from a coarse mouse would cross the whole band in one turn.
  */
 export function graphNavZoomFactor(deltaY: number, deltaMode: number, framePx: number): number {
-    const normalized = normalizeSurfaceWheelDelta(deltaY, deltaMode, resolveSurfaceWheelPageDelta(framePx));
-    const capped = clampSurfaceWheelDelta(normalized, SURFACE_PINCH_ZOOM_DELTA_LIMIT_PX);
-    return Math.exp(-capped * ZOOM_SPEED);
+  const normalized = normalizeSurfaceWheelDelta(
+    deltaY,
+    deltaMode,
+    resolveSurfaceWheelPageDelta(framePx)
+  );
+  const capped = clampSurfaceWheelDelta(normalized, SURFACE_PINCH_ZOOM_DELTA_LIMIT_PX);
+  return Math.exp(-capped * ZOOM_SPEED);
 }
 
 /**
@@ -100,31 +104,31 @@ export function graphNavZoomFactor(deltaY: number, deltaMode: number, framePx: n
  * graph terms - the two stay in step.
  */
 export function zoomGraphNavAt(
-    nav: GraphNav,
-    factor: number,
-    anchorX: number,
-    anchorY: number,
-    fittedScale: number,
+  nav: GraphNav,
+  factor: number,
+  anchorX: number,
+  anchorY: number,
+  fittedScale: number
 ): GraphNav {
-    if (!Number.isFinite(factor) || factor <= 0 || nav.zoom <= 0) {
-        return nav;
-    }
-    const held = graphNavPoint(anchorX, anchorY, nav);
-    const zoom = clampGraphNavZoom(nav.zoom * factor, fittedScale);
-    return { zoom, x: anchorX - held.x * zoom, y: anchorY - held.y * zoom };
+  if (!Number.isFinite(factor) || factor <= 0 || nav.zoom <= 0) {
+    return nav;
+  }
+  const held = graphNavPoint(anchorX, anchorY, nav);
+  const zoom = clampGraphNavZoom(nav.zoom * factor, fittedScale);
+  return { zoom, x: anchorX - held.x * zoom, y: anchorY - held.y * zoom };
 }
 
 /** A box of the fitted picture, where the current view draws it. */
 export function graphNavBox(
-    box: { left: number; top: number; width: number; height: number },
-    nav: GraphNav,
+  box: { left: number; top: number; width: number; height: number },
+  nav: GraphNav
 ): { left: number; top: number; width: number; height: number } {
-    return {
-        left: box.left * nav.zoom + nav.x,
-        top: box.top * nav.zoom + nav.y,
-        width: box.width * nav.zoom,
-        height: box.height * nav.zoom,
-    };
+  return {
+    left: box.left * nav.zoom + nav.x,
+    top: box.top * nav.zoom + nav.y,
+    width: box.width * nav.zoom,
+    height: box.height * nav.zoom
+  };
 }
 
 /**
@@ -134,10 +138,10 @@ export function graphNavBox(
  * which is the only route between what a pointer reports and what a node's layout says.
  */
 export function graphNavPoint(
-    canvasX: number,
-    canvasY: number,
-    nav: GraphNav,
+  canvasX: number,
+  canvasY: number,
+  nav: GraphNav
 ): { x: number; y: number } {
-    const zoom = nav.zoom > 0 ? nav.zoom : 1;
-    return { x: (canvasX - nav.x) / zoom, y: (canvasY - nav.y) / zoom };
+  const zoom = nav.zoom > 0 ? nav.zoom : 1;
+  return { x: (canvasX - nav.x) / zoom, y: (canvasY - nav.y) / zoom };
 }

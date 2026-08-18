@@ -8,7 +8,7 @@
  * slots are left exactly where they were.
  */
 export function mergeVisibleRailOrder(fullIds: string[], orderedVisibleIds: string[]): string[] {
-    const visibleSet = new Set(orderedVisibleIds);
-    let cursor = 0;
-    return fullIds.map(id => (visibleSet.has(id) ? orderedVisibleIds[cursor++] : id));
+  const visibleSet = new Set(orderedVisibleIds);
+  let cursor = 0;
+  return fullIds.map((id) => (visibleSet.has(id) ? orderedVisibleIds[cursor++] : id));
 }

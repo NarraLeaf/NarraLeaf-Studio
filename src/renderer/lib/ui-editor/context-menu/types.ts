@@ -8,68 +8,68 @@ import type { UiEditorAlignOp } from "@/lib/ui-editor/commands/uiEditorAlign";
 
 /** User-triggered actions; callers wire to uiEditorCommands + UI state. */
 export type UiEditorContextMenuActions = {
-    hideMenu: () => void;
-    /** Z-order / sibling index within parent (`childrenIds`). */
-    arrange: (op: UiEditorArrangeOp) => void;
-    /** Geometric alignment and distribution, computed in surface space. */
-    align: (op: UiEditorAlignOp) => void;
-    insertType: (type: string) => void;
-    paste: () => void;
-    copy: () => void;
-    cut: () => void;
-    duplicate: () => void;
-    delete: () => void;
-    selectAll: () => void;
-    renamePrimary: () => void;
-    /** Multi or single: set layout.visible */
-    setSelectedVisible: (visible: boolean) => void;
-    addSelectionToLeaderGroup: () => void;
-    /** Dissolve the selected groups; their children take their place. */
-    ungroupSelection: () => void;
-    addSelectionToComponentLibrary: () => void;
+  hideMenu: () => void;
+  /** Z-order / sibling index within parent (`childrenIds`). */
+  arrange: (op: UiEditorArrangeOp) => void;
+  /** Geometric alignment and distribution, computed in surface space. */
+  align: (op: UiEditorAlignOp) => void;
+  insertType: (type: string) => void;
+  paste: () => void;
+  copy: () => void;
+  cut: () => void;
+  duplicate: () => void;
+  delete: () => void;
+  selectAll: () => void;
+  renamePrimary: () => void;
+  /** Multi or single: set layout.visible */
+  setSelectedVisible: (visible: boolean) => void;
+  addSelectionToLeaderGroup: () => void;
+  /** Dissolve the selected groups; their children take their place. */
+  ungroupSelection: () => void;
+  addSelectionToComponentLibrary: () => void;
 };
 
 export type BuildCanvasContextMenuInput = {
-    document: UIDocument;
-    surfaceId: string;
-    /** After resolveCanvasContextSelection + optional state sync */
-    menuSelection: UIElementSelection | null;
-    hasClipboard: boolean;
-    widgetModules: UIWidgetModule[];
-    documentService: UIDocumentService;
-    actions: UiEditorContextMenuActions;
-    /** Leader is first id and is nl.container, multi-select */
-    canAddToGroup: boolean;
-    /** At least one selected element is a group that can be dissolved */
-    canUngroup: boolean;
-    allowAddToComponentLibrary?: boolean;
+  document: UIDocument;
+  surfaceId: string;
+  /** After resolveCanvasContextSelection + optional state sync */
+  menuSelection: UIElementSelection | null;
+  hasClipboard: boolean;
+  widgetModules: UIWidgetModule[];
+  documentService: UIDocumentService;
+  actions: UiEditorContextMenuActions;
+  /** Leader is first id and is nl.container, multi-select */
+  canAddToGroup: boolean;
+  /** At least one selected element is a group that can be dissolved */
+  canUngroup: boolean;
+  allowAddToComponentLibrary?: boolean;
 };
 
 export type BuildOutlineContextMenuInput = {
-    document: UIDocument;
-    surfaceId: string;
-    /** Row right-click: element under cursor; blank: null */
-    rowElement: import("@shared/types/ui-editor/document").UIElement | null;
-    /** Effective selection for bulk ops (same as canvas: retarget when row not in set) */
-    menuSelection: UIElementSelection | null;
-    hasClipboard: boolean;
-    widgetModules: UIWidgetModule[];
-    documentService: UIDocumentService;
-    actions: UiEditorContextMenuActions & {
-        pasteIntoParent: (parentId: string) => void;
-        expandAllBranches: () => void;
-        collapseAllBranches: () => void;
-        /** Insert widget under outline-specific parent (row insert parent or blank = surface root). */
-        insertChildInOutline: (type: string) => void;
-    };
-    canAddToGroup: boolean;
-    /** At least one selected element is a group that can be dissolved */
-    canUngroup: boolean;
-    allowAddToComponentLibrary?: boolean;
-    /** For insert-child submenu on a row */
-    insertParentIdForRow: string | null;
+  document: UIDocument;
+  surfaceId: string;
+  /** Row right-click: element under cursor; blank: null */
+  rowElement: import("@shared/types/ui-editor/document").UIElement | null;
+  /** Effective selection for bulk ops (same as canvas: retarget when row not in set) */
+  menuSelection: UIElementSelection | null;
+  hasClipboard: boolean;
+  widgetModules: UIWidgetModule[];
+  documentService: UIDocumentService;
+  actions: UiEditorContextMenuActions & {
+    pasteIntoParent: (parentId: string) => void;
+    expandAllBranches: () => void;
+    collapseAllBranches: () => void;
+    /** Insert widget under outline-specific parent (row insert parent or blank = surface root). */
+    insertChildInOutline: (type: string) => void;
+  };
+  canAddToGroup: boolean;
+  /** At least one selected element is a group that can be dissolved */
+  canUngroup: boolean;
+  allowAddToComponentLibrary?: boolean;
+  /** For insert-child submenu on a row */
+  insertParentIdForRow: string | null;
 };
 
 export type BuildOutlineMenuResult = {
-    items: ContextMenuDef;
+  items: ContextMenuDef;
 };

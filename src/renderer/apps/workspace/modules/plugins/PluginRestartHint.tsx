@@ -18,14 +18,14 @@ import { useTranslation } from "@/lib/i18n";
  * ghost button, so the two read as one idea rather than two people's idea of a banner.
  */
 export function PluginRestartHint({ onRestart, busy }: { onRestart: () => void; busy: boolean }) {
-    const { t } = useTranslation();
-    return (
-        <div className="flex shrink-0 items-center gap-2 border-b border-warning/30 bg-warning/10 px-3 py-1.5">
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" aria-hidden />
-            <p className="min-w-0 flex-1 text-xs text-fg-muted">{t("plugins.workspace.restartHint")}</p>
-            <Button variant="ghost" size="sm" onClick={onRestart} disabled={busy}>
-                {t("plugins.workspace.restart")}
-            </Button>
-        </div>
-    );
+  const { t } = useTranslation();
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-b border-warning/30 bg-warning/10 px-3 py-1.5">
+      <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" aria-hidden />
+      <p className="min-w-0 flex-1 text-xs text-fg-muted">{t("plugins.workspace.restartHint")}</p>
+      <Button variant="ghost" size="sm" onClick={onRestart} disabled={busy}>
+        {t("plugins.workspace.restart")}
+      </Button>
+    </div>
+  );
 }

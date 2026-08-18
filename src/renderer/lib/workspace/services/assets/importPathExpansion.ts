@@ -8,17 +8,17 @@ import { AssetExtensions, AssetType, isBundleAssetType } from "./assetTypes";
  * be unit tested against an in-memory tree without standing up the IPC/service stack.
  */
 export interface ImportPathExpansionFs {
-    /** Whether the path is a directory. Access errors resolve to `false` (treated as a plain file). */
-    isDir(path: string): Promise<boolean>;
-    /** Directory entries, or `null` when the directory cannot be read (skipped, not fatal). */
-    list(path: string): Promise<FileStat[] | null>;
+  /** Whether the path is a directory. Access errors resolve to `false` (treated as a plain file). */
+  isDir(path: string): Promise<boolean>;
+  /** Directory entries, or `null` when the directory cannot be read (skipped, not fatal). */
+  list(path: string): Promise<FileStat[] | null>;
 }
 
 export interface ExpandImportPathsResult {
-    /** De-duplicated file paths to import, in stable discovery order. */
-    files: string[];
-    /** True when at least one input path was a directory — drives the "nothing matched" message. */
-    expandedDirectory: boolean;
+  /** De-duplicated file paths to import, in stable discovery order. */
+  files: string[];
+  /** True when at least one input path was a directory — drives the "nothing matched" message. */
+  expandedDirectory: boolean;
 }
 
 /**
@@ -29,12 +29,12 @@ const MAX_DIRECTORY_DEPTH = 32;
 
 /** Whether a filename's extension is importable as the given asset type. `Other` accepts everything. */
 export function assetTypeMatchesExtension(type: AssetType, fileName: string): boolean {
-    const allowed = AssetExtensions[type];
-    if (allowed.includes("*")) {
-        return true;
-    }
-    const ext = extname(fileName).replace(/^\./, "").toLowerCase();
-    return ext.length > 0 && allowed.includes(ext);
+  const allowed = AssetExtensions[type];
+  if (allowed.includes("*")) {
+    return true;
+  }
+  const ext = extname(fileName).replace(/^\./, "").toLowerCase();
+  return ext.length > 0 && allowed.includes(ext);
 }
 
 /**
@@ -46,59 +46,59 @@ export function assetTypeMatchesExtension(type: AssetType, fileName: string): bo
  * rest.
  */
 export async function expandImportPaths(
-    type: AssetType,
-    paths: string[],
-    fs: ImportPathExpansionFs,
+  type: AssetType,
+  paths: string[],
+  fs: ImportPathExpansionFs
 ): Promise<ExpandImportPathsResult> {
-    if (isBundleAssetType(type)) {
-        return expandBundleImportPaths(paths, fs);
+  if (isBundleAssetType(type)) {
+    return expandBundleImportPaths(paths, fs);
+  }
+
+  const files: string[] = [];
+  const seen = new Set<string>();
+  let expandedDirectory = false;
+
+  const pushFile = (filePath: string): void => {
+    if (!seen.has(filePath)) {
+      seen.add(filePath);
+      files.push(filePath);
     }
+  };
 
-    const files: string[] = [];
-    const seen = new Set<string>();
-    let expandedDirectory = false;
-
-    const pushFile = (filePath: string): void => {
-        if (!seen.has(filePath)) {
-            seen.add(filePath);
-            files.push(filePath);
-        }
-    };
-
-    const walk = async (dir: string, depth: number): Promise<void> => {
-        if (depth > MAX_DIRECTORY_DEPTH) {
-            return;
-        }
-        const entries = await fs.list(dir);
-        if (!entries) {
-            return;
-        }
-        for (const entry of entries) {
-            const name = entryFileName(entry);
-            const childPath = join(dir, name);
-            if (entry.type === "directory") {
-                await walk(childPath, depth + 1);
-            } else if (assetTypeMatchesExtension(type, name)) {
-                pushFile(childPath);
-            }
-        }
-    };
-
-    // Classify the dropped top-level paths concurrently; a dropped selection can be large.
-    const classified = await Promise.all(
-        paths.map(async (path) => ({ path, isDir: await fs.isDir(path) })),
-    );
-
-    for (const { path, isDir } of classified) {
-        if (isDir) {
-            expandedDirectory = true;
-            await walk(path, 0);
-        } else {
-            pushFile(path);
-        }
+  const walk = async (dir: string, depth: number): Promise<void> => {
+    if (depth > MAX_DIRECTORY_DEPTH) {
+      return;
     }
+    const entries = await fs.list(dir);
+    if (!entries) {
+      return;
+    }
+    for (const entry of entries) {
+      const name = entryFileName(entry);
+      const childPath = join(dir, name);
+      if (entry.type === "directory") {
+        await walk(childPath, depth + 1);
+      } else if (assetTypeMatchesExtension(type, name)) {
+        pushFile(childPath);
+      }
+    }
+  };
 
-    return { files, expandedDirectory };
+  // Classify the dropped top-level paths concurrently; a dropped selection can be large.
+  const classified = await Promise.all(
+    paths.map(async (path) => ({ path, isDir: await fs.isDir(path) }))
+  );
+
+  for (const { path, isDir } of classified) {
+    if (isDir) {
+      expandedDirectory = true;
+      await walk(path, 0);
+    } else {
+      pushFile(path);
+    }
+  }
+
+  return { files, expandedDirectory };
 }
 
 /**
@@ -114,24 +114,24 @@ export async function expandImportPaths(
  * texture at mount time.
  */
 async function expandBundleImportPaths(
-    paths: string[],
-    fs: ImportPathExpansionFs,
+  paths: string[],
+  fs: ImportPathExpansionFs
 ): Promise<ExpandImportPathsResult> {
-    const classified = await Promise.all(
-        paths.map(async (path) => ({ path, isDir: await fs.isDir(path) })),
-    );
+  const classified = await Promise.all(
+    paths.map(async (path) => ({ path, isDir: await fs.isDir(path) }))
+  );
 
-    const directories: string[] = [];
-    const seen = new Set<string>();
-    for (const { path, isDir } of classified) {
-        if (isDir && !seen.has(path)) {
-            seen.add(path);
-            directories.push(path);
-        }
+  const directories: string[] = [];
+  const seen = new Set<string>();
+  for (const { path, isDir } of classified) {
+    if (isDir && !seen.has(path)) {
+      seen.add(path);
+      directories.push(path);
     }
+  }
 
-    // `expandedDirectory` drives the "nothing matched" notice. Reported as true whenever a directory
-    // was dropped, so a folder that yielded nothing importable still reads as "that folder had
-    // nothing", not as a silent no-op.
-    return { files: directories, expandedDirectory: classified.some(entry => entry.isDir) };
+  // `expandedDirectory` drives the "nothing matched" notice. Reported as true whenever a directory
+  // was dropped, so a folder that yielded nothing importable still reads as "that folder had
+  // nothing", not as a silent no-op.
+  return { files: directories, expandedDirectory: classified.some((entry) => entry.isDir) };
 }

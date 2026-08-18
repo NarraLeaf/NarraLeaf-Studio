@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
-import { ContextMenu, ContextMenuDef, ContextMenuItemDef } from "@/lib/components/elements/ContextMenu";
+import {
+  ContextMenu,
+  ContextMenuDef,
+  ContextMenuItemDef
+} from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
 import { SearchBox } from "../assets/components/SearchBox";
@@ -11,7 +15,10 @@ import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freez
 import { Character } from "@/lib/workspace/services/character/Character";
 import { CharacterGroup } from "@/lib/workspace/services/character/types";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
-import { CreateCharacterDialogContent, CreateCharacterDialogValue } from "./dialogs/CreateCharacterDialogContent";
+import {
+  CreateCharacterDialogContent,
+  CreateCharacterDialogValue
+} from "./dialogs/CreateCharacterDialogContent";
 import { useCharacterAvatarBake } from "./useCharacterAvatarBake";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -27,746 +34,830 @@ import { syncCharacterEditorTabTitle, useCharacterFocus } from "./state/useChara
 const FREEZE_READ_ONLY_CHARACTER_MENU_IDS: ReadonlySet<string> = new Set(["panel-refresh"]);
 
 type MenuTarget =
-    | { type: "panel" }
-    | { type: "character"; character: Character }
-    | { type: "group"; group: CharacterGroup };
+  | { type: "panel" }
+  | { type: "character"; character: Character }
+  | { type: "group"; group: CharacterGroup };
 
 /** What Developer options can copy from each of the three menus. The panel's own menu names nothing. */
 function developerIdEntriesFor(target: MenuTarget): DeveloperIdEntry[] {
-    if (target.type === "character") {
-        return [{ kind: "character", value: target.character.profile.getProfile().id }];
-    }
-    if (target.type === "group") {
-        return [{ kind: "characterGroup", value: target.group.id }];
-    }
-    return [];
+  if (target.type === "character") {
+    return [{ kind: "character", value: target.character.profile.getProfile().id }];
+  }
+  if (target.type === "group") {
+    return [{ kind: "characterGroup", value: target.group.id }];
+  }
+  return [];
 }
 
 type CharacterItem = {
-    id: string;
-    name: string;
-    groupId?: string;
-    thumbnailId: string | null;
-    nicknames: string[];
-    tags: string[];
-    /**
-     * The editor accent, already through the readability guard — `undefined` when there is none or
-     * when the one set would vanish into one of the two themes' surfaces. Resolved here rather than
-     * at the row so the row cannot forget the guard.
-     */
-    color?: string;
-    source: Character;
+  id: string;
+  name: string;
+  groupId?: string;
+  thumbnailId: string | null;
+  nicknames: string[];
+  tags: string[];
+  /**
+   * The editor accent, already through the readability guard — `undefined` when there is none or
+   * when the one set would vanish into one of the two themes' surfaces. Resolved here rather than
+   * at the row so the row cannot forget the guard.
+   */
+  color?: string;
+  source: Character;
 };
 
 interface CharacterPanelState {
-    groupOpenItems?: string[];
+  groupOpenItems?: string[];
 }
 
 export function CharacterPanel({ panelId }: PanelComponentProps) {
-    const { t } = useTranslation();
-    const freeze = useFreezeGuard();
-    const { context, isInitialized } = useWorkspace();
-    const { focusedCharacterId, handleCharacterClick, setFocusToPanel } = useCharacterFocus({ context, panelId });
+  const { t } = useTranslation();
+  const freeze = useFreezeGuard();
+  const { context, isInitialized } = useWorkspace();
+  const { focusedCharacterId, handleCharacterClick, setFocusToPanel } = useCharacterFocus({
+    context,
+    panelId
+  });
 
-    const [characters, setCharacters] = useState<Character[]>([]);
-    const [groups, setGroups] = useState<CharacterGroup[]>([]);
-    const [searchQuery, setSearchQuery] = useState("");
-    const [groupFilter, setGroupFilter] = useState<string>("all");
-    const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
-    const [filterRefreshKey, setFilterRefreshKey] = useState(0);
-    const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
-    const [loading, setLoading] = useState(true);
-    const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
-    const [menuState, setMenuState] = useState({ visible: false, position: { x: 0, y: 0 } });
-    const [groupOpenItems, setGroupOpenItems] = useState<string[]>([]);
-    const [stateReady, setStateReady] = useState(false);
-    const [groupOpenItemsInitialized, setGroupOpenItemsInitialized] = useState(false);
-    const [disableAccordionAnimation, setDisableAccordionAnimation] = useState(true);
+  const [characters, setCharacters] = useState<Character[]>([]);
+  const [groups, setGroups] = useState<CharacterGroup[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [groupFilter] = useState<string>("all");
+  const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
+  const [filterRefreshKey, setFilterRefreshKey] = useState(0);
+  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
+  const [menuState, setMenuState] = useState({ visible: false, position: { x: 0, y: 0 } });
+  const [groupOpenItems, setGroupOpenItems] = useState<string[]>([]);
+  const [stateReady, setStateReady] = useState(false);
+  const [groupOpenItemsInitialized, setGroupOpenItemsInitialized] = useState(false);
+  const [disableAccordionAnimation, setDisableAccordionAnimation] = useState(true);
 
-    const inputDialog = useMemo(() => {
-        if (!context) return null;
-        const uiService = context.services.get<UIService>(Services.UI);
-        return createInputDialog(uiService);
-    }, [context]);
+  const inputDialog = useMemo(() => {
+    if (!context) return null;
+    const uiService = context.services.get<UIService>(Services.UI);
+    return createInputDialog(uiService);
+  }, [context]);
 
-    const characterService = useMemo(() => {
-        if (!context || !isInitialized) return null;
-        return context.services.get<CharacterService>(Services.Character);
-    }, [context, isInitialized]);
+  const characterService = useMemo(() => {
+    if (!context || !isInitialized) return null;
+    return context.services.get<CharacterService>(Services.Character);
+  }, [context, isInitialized]);
 
-    // Reconcile the baked dialog avatars when the panel opens. An up-to-date project performs
-    // reads only, so the common case leaves the working tree untouched.
-    useCharacterAvatarBake(Boolean(characterService));
+  // Reconcile the baked dialog avatars when the panel opens. An up-to-date project performs
+  // reads only, so the common case leaves the working tree untouched.
+  useCharacterAvatarBake(Boolean(characterService));
 
-    const loadCharacters = useCallback(() => {
-        if (!characterService) return;
-        setCharacters([...characterService.listCharacter()]);
-        setGroups([...characterService.listGroups()]);
-        setLoading(false);
-    }, [characterService]);
+  const loadCharacters = useCallback(() => {
+    if (!characterService) return;
+    setCharacters([...characterService.listCharacter()]);
+    setGroups([...characterService.listGroups()]);
+    setLoading(false);
+  }, [characterService]);
 
-    useEffect(() => {
+  useEffect(() => {
+    loadCharacters();
+  }, [loadCharacters]);
+
+  // Subscribe to character service changes (rename, group changes, etc.)
+  useEffect(() => {
+    if (!characterService) return;
+    const unsubscribe = characterService.subscribe(() => {
+      loadCharacters();
+    });
+    return () => unsubscribe();
+  }, [characterService, loadCharacters]);
+
+  const characterItems = useMemo<CharacterItem[]>(() => {
+    return characters.map((character) => {
+      const profile = character.profile.getProfile();
+      return {
+        id: profile.id,
+        name: profile.name,
+        groupId: profile.groupId,
+        thumbnailId: profile.thumbnail,
+        nicknames: profile.nicknames,
+        tags: profile.tags,
+        // Resolved here, once, rather than where the row paints it: the stored value can be
+        // a brand link, and `item.color` is documented downstream as a colour to hand to CSS.
+        color: readableAccentColor(profile.color),
+        source: character
+      };
+    });
+  }, [characters]);
+
+  const groupMap = useMemo<Record<string, CharacterGroup>>(() => {
+    const map: Record<string, CharacterGroup> = {};
+    groups.forEach((group) => {
+      map[group.id] = group;
+    });
+    return map;
+  }, [groups]);
+
+  useEffect(() => {
+    if (!context || !isInitialized) return;
+    let cancelled = false;
+    const serviceAssets = context.services.get<ServiceAssetsService>(Services.ServiceAssets);
+
+    const loadThumbnails = async () => {
+      const results = await Promise.all(
+        characterItems.map(async (item) => {
+          if (!item.thumbnailId) {
+            return [item.id, null] as const;
+          }
+          const result = await serviceAssets.readRaw(item.thumbnailId);
+          if (!result.ok || cancelled) {
+            return [item.id, null] as const;
+          }
+          const buffer = new Uint8Array(result.data);
+          const url = URL.createObjectURL(new Blob([buffer]));
+          return [item.id, url] as const;
+        })
+      );
+
+      if (cancelled) {
+        results.forEach(([, url]) => {
+          if (url) URL.revokeObjectURL(url);
+        });
+        return;
+      }
+
+      const next: Record<string, string> = {};
+      results.forEach(([id, url]) => {
+        if (url) {
+          next[id] = url;
+        }
+      });
+      setThumbnails(next);
+    };
+
+    loadThumbnails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [context, isInitialized, characterItems]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(thumbnails).forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [thumbnails]);
+
+  const normalizeTag = useCallback((tag: string) => tag.trim().toLowerCase(), []);
+
+  const tagFilter = useMemo(
+    () =>
+      new Set(
+        activeFilters.filter((f) => f.filterId === "tags").map((f) => normalizeTag(f.optionId))
+      ),
+    [activeFilters, normalizeTag]
+  );
+
+  const filteredCharacters = useMemo(() => {
+    const keyword = searchQuery.trim().toLowerCase();
+    return characterItems
+      .filter((item) => {
+        const matchesKeyword =
+          !keyword ||
+          item.name.toLowerCase().includes(keyword) ||
+          item.nicknames.some((nickname) => nickname.toLowerCase().includes(keyword));
+        const matchesGroup =
+          groupFilter === "all"
+            ? true
+            : groupFilter === "ungrouped"
+              ? !item.groupId || !groupMap[item.groupId]
+              : item.groupId === groupFilter;
+        const normalizedTags = new Set(item.tags.map(normalizeTag));
+        const matchesTags =
+          tagFilter.size === 0
+            ? true
+            : Array.from(tagFilter).every((tag) => normalizedTags.has(tag));
+        return matchesKeyword && matchesGroup && matchesTags;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [characterItems, searchQuery, groupFilter, groupMap, tagFilter, normalizeTag]);
+
+  const filterConfigs = useMemo<FilterConfig[]>(() => {
+    const tagMap = new Map<string, string>();
+    characterItems.forEach((item) => {
+      item.tags.forEach((raw) => {
+        const id = normalizeTag(raw);
+        if (!id) return;
+        if (!tagMap.has(id)) {
+          tagMap.set(id, raw.trim() || id);
+        }
+      });
+    });
+    const tagOptions = Array.from(tagMap.entries())
+      .map(([id, label]) => ({ id, label, value: id }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+    return [
+      {
+        id: "tags",
+        label: t("characters.panel.filterTags"),
+        icon: <Tag className="w-4 h-4" />,
+        options: tagOptions,
+        multiSelect: true
+      }
+    ];
+  }, [characterItems, normalizeTag, filterRefreshKey, t]);
+
+  const handleFilterOpen = useCallback(() => {
+    // Force refresh to reflect latest tag updates when opening dropdown
+    setFilterRefreshKey((prev) => prev + 1);
+  }, []);
+
+  const ungroupedCharacters = useMemo(
+    () => filteredCharacters.filter((item) => !item.groupId || !groupMap[item.groupId]),
+    [filteredCharacters, groupMap]
+  );
+
+  const groupedCharacters = useMemo(
+    () =>
+      groups.map((group) => ({
+        group,
+        members: filteredCharacters.filter((item) => item.groupId === group.id)
+      })),
+    [groups, filteredCharacters]
+  );
+
+  const defaultGroupOpenItems = useMemo(
+    () => groupedCharacters.filter((item) => item.members.length > 0).map((item) => item.group.id),
+    [groupedCharacters]
+  );
+
+  useEffect(() => {
+    if (!context) return;
+    setStateReady(false);
+    setDisableAccordionAnimation(true);
+    setGroupOpenItems([]);
+    setGroupOpenItemsInitialized(false);
+
+    const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
+    const saved = panelStateService.getPanelState<CharacterPanelState>(panelId);
+    if (Array.isArray(saved?.groupOpenItems)) {
+      setGroupOpenItems(
+        saved.groupOpenItems.filter((id) => typeof id === "string" && id.length > 0)
+      );
+      setGroupOpenItemsInitialized(true);
+    }
+    setStateReady(true);
+  }, [context, panelId]);
+
+  useEffect(() => {
+    if (!stateReady || loading || groupOpenItemsInitialized) return;
+    setGroupOpenItems(defaultGroupOpenItems);
+    setGroupOpenItemsInitialized(true);
+  }, [defaultGroupOpenItems, groupOpenItemsInitialized, loading, stateReady]);
+
+  useEffect(() => {
+    if (!stateReady || loading || !groupOpenItemsInitialized) return;
+    const knownGroupIds = new Set(groups.map((group) => group.id));
+    setGroupOpenItems((prev) => {
+      const next = prev.filter((id) => knownGroupIds.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [groups, groupOpenItemsInitialized, loading, stateReady]);
+
+  useEffect(() => {
+    if (!context || !stateReady || !groupOpenItemsInitialized) return;
+    const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
+    panelStateService.setPanelState<CharacterPanelState>(panelId, { groupOpenItems });
+  }, [context, groupOpenItems, groupOpenItemsInitialized, panelId, stateReady]);
+
+  useEffect(() => {
+    if (!stateReady || !groupOpenItemsInitialized || loading) return;
+    const frame = requestAnimationFrame(() => setDisableAccordionAnimation(false));
+    return () => cancelAnimationFrame(frame);
+  }, [groupOpenItemsInitialized, loading, panelId, stateReady]);
+
+  const closeMenu = useCallback(() => {
+    setMenuState((prev) => ({ ...prev, visible: false }));
+  }, []);
+
+  /**
+   * The one dialog that asks everything a new character needs.
+   *
+   * It replaces a submenu of appearance kinds followed by a one-field name prompt: the kind is a
+   * detail the author can read about in the editor, and putting it in front of the name made the
+   * cheap decision block the one they came to make — with nowhere at all to put the colour.
+   */
+  const promptCreateCharacter = useCallback((): Promise<CreateCharacterDialogValue | null> => {
+    const uiService = context?.services.get<UIService>(Services.UI);
+    if (!uiService) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      let dialogId: string | null = null;
+      let settled = false;
+      // The content owns validation (an empty name has to be reported next to the field, not as
+      // a toast), so the footer's Create button asks it to submit rather than reading a draft.
+      let submitHandler: (() => void) | null = null;
+
+      const safeResolve = (value: CreateCharacterDialogValue | null) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+      const closeDialog = () => {
+        if (dialogId) {
+          uiService.dialogs.close(dialogId);
+          dialogId = null;
+        }
+      };
+      const handleCancel = () => {
+        safeResolve(null);
+        closeDialog();
+      };
+
+      dialogId = uiService.dialogs.show({
+        title: t("characters.panel.newCharacter"),
+        content: (
+          <CreateCharacterDialogContent
+            registerHandlers={(handlers) => {
+              submitHandler = handlers.submit;
+            }}
+            onSubmit={(value) => {
+              safeResolve(value);
+              closeDialog();
+            }}
+          />
+        ),
+        closable: true,
+        width: 480,
+        buttons: [
+          { label: t("common.cancel"), onClick: handleCancel },
+          { label: t("common.create"), primary: true, onClick: () => submitHandler?.() }
+        ],
+        onClose: handleCancel
+      });
+    });
+  }, [context, t]);
+
+  const handleCreateCharacter = useCallback(
+    async (groupId?: string) => {
+      if (!characterService) return;
+      // Closed before the await rather than after it: the menu this may have been launched from has
+      // no business sitting over the dialog.
+      closeMenu();
+      const created = await promptCreateCharacter();
+      if (!created) return;
+      const character = characterService.createCharacter(created.name, created.kind);
+      if (created.color) {
+        // Absent means "no colour", which is not the same as a colour that happens to match the
+        // hash — the story rows fall back to the name for as long as this stays unset.
+        character.profile.setColor(created.color);
+      }
+      if (groupId) {
+        characterService.assignCharacterToGroup(character.profile.getId(), groupId);
+      }
+      loadCharacters();
+    },
+    [characterService, closeMenu, loadCharacters, promptCreateCharacter]
+  );
+
+  const handleCreateGroup = useCallback(async () => {
+    if (!characterService || !inputDialog) return;
+    const name = await inputDialog.show({
+      title: t("characters.panel.newGroup"),
+      placeholder: t("characters.panel.groupNamePlaceholder"),
+      required: true,
+      maxLength: 100
+    });
+    if (!name) return;
+    characterService.createGroup(name);
+    loadCharacters();
+    closeMenu();
+  }, [characterService, inputDialog, loadCharacters, closeMenu, t]);
+
+  const handleRenameCharacter = useCallback(
+    async (item: CharacterItem) => {
+      if (!characterService || !inputDialog || !context) return;
+      const nextName = await inputDialog.showRenameDialog(item.name, "character");
+      if (!nextName) return;
+      characterService.renameCharacter(item.id, nextName);
+      // The tab's title was a snapshot taken at open time, so a rename left it on the old name
+      // until the tab was closed and reopened.
+      syncCharacterEditorTabTitle(context.services.get<UIService>(Services.UI), item.id, nextName);
+      loadCharacters();
+      closeMenu();
+    },
+    [characterService, context, inputDialog, loadCharacters, closeMenu]
+  );
+
+  const handleDeleteCharacter = useCallback(
+    async (item: CharacterItem) => {
+      if (!characterService || !context) return;
+      const uiService = context.services.get<UIService>(Services.UI);
+      const confirmed = await uiService.showConfirm(
+        t("characters.panel.deleteCharacterConfirm", { name: item.name }),
+        t("characters.panel.deleteCharacterDetail")
+      );
+      if (!confirmed) return;
+      const removed = await characterService.deleteCharacter(item.id);
+      if (removed) {
+        const editorId = `narraleaf-studio:character-editor-${item.id}`;
+        const store = uiService.getStore();
+        const layout = store.getEditorLayout();
+
+        // Ensure all editor instances related to this character are closed across groups
+        const collectTabs = (node: any, acc: Array<{ tab: any; groupId: string }>) => {
+          if (!node) return;
+          if ("tabs" in node) {
+            (node.tabs as any[]).forEach((t) => acc.push({ tab: t, groupId: node.id }));
+          } else {
+            collectTabs(node.first, acc);
+            collectTabs(node.second, acc);
+          }
+        };
+
+        const allTabs: Array<{ tab: any; groupId: string }> = [];
+        collectTabs(layout, allTabs);
+
+        allTabs.forEach(({ tab, groupId }) => {
+          const sameId = tab.id === editorId;
+          const payloadCharacterId = tab?.payload?.character?.profile?.getId?.();
+          if (sameId || payloadCharacterId === item.id) {
+            store.closeEditorTabInGroup(tab.id, groupId);
+          }
+        });
+
+        const selection = store.getSelection();
+        if (
+          selection.type === "character" &&
+          (selection.data as Character)?.profile?.getId?.() === item.id
+        ) {
+          store.setSelection({ type: null, data: null });
+        }
         loadCharacters();
-    }, [loadCharacters]);
+      }
+      closeMenu();
+    },
+    [characterService, context, loadCharacters, closeMenu, t]
+  );
 
-    // Subscribe to character service changes (rename, group changes, etc.)
-    useEffect(() => {
-        if (!characterService) return;
-        const unsubscribe = characterService.subscribe(() => {
-            loadCharacters();
-        });
-        return () => unsubscribe();
-    }, [characterService, loadCharacters]);
+  const handleAssignToGroup = useCallback(
+    (characterId: string, targetGroupId?: string) => {
+      if (!characterService) return;
+      characterService.assignCharacterToGroup(characterId, targetGroupId);
+      loadCharacters();
+      closeMenu();
+    },
+    [characterService, loadCharacters, closeMenu]
+  );
 
-    const characterItems = useMemo<CharacterItem[]>(() => {
-        return characters.map(character => {
-            const profile = character.profile.getProfile();
-            return {
-                id: profile.id,
-                name: profile.name,
-                groupId: profile.groupId,
-                thumbnailId: profile.thumbnail,
-                nicknames: profile.nicknames,
-                tags: profile.tags,
-                // Resolved here, once, rather than where the row paints it: the stored value can be
-                // a brand link, and `item.color` is documented downstream as a colour to hand to CSS.
-                color: readableAccentColor(profile.color),
-                source: character,
-            };
-        });
-    }, [characters]);
+  const handleRenameGroup = useCallback(
+    async (group: CharacterGroup) => {
+      if (!characterService || !inputDialog) return;
+      const name = await inputDialog.showRenameDialog(group.name, "group");
+      if (!name) return;
+      characterService.renameGroup(group.id, name);
+      loadCharacters();
+      closeMenu();
+    },
+    [characterService, inputDialog, loadCharacters, closeMenu]
+  );
 
-    const groupMap = useMemo<Record<string, CharacterGroup>>(() => {
-        const map: Record<string, CharacterGroup> = {};
-        groups.forEach(group => {
-            map[group.id] = group;
-        });
-        return map;
-    }, [groups]);
+  const handleDeleteGroup = useCallback(
+    async (group: CharacterGroup) => {
+      if (!characterService || !context) return;
+      const uiService = context.services.get<UIService>(Services.UI);
+      const confirmed = await uiService.showConfirm(
+        t("characters.panel.deleteGroupConfirm", { name: group.name }),
+        t("characters.panel.deleteGroupDetail")
+      );
+      if (!confirmed) return;
+      await characterService.deleteGroup(group.id);
+      loadCharacters();
+      closeMenu();
+    },
+    [characterService, context, loadCharacters, closeMenu, t]
+  );
 
-    useEffect(() => {
-        if (!context || !isInitialized) return;
-        let cancelled = false;
-        const serviceAssets = context.services.get<ServiceAssetsService>(Services.ServiceAssets);
-
-        const loadThumbnails = async () => {
-            const results = await Promise.all(characterItems.map(async (item) => {
-                if (!item.thumbnailId) {
-                    return [item.id, null] as const;
-                }
-                const result = await serviceAssets.readRaw(item.thumbnailId);
-                if (!result.ok || cancelled) {
-                    return [item.id, null] as const;
-                }
-                const buffer = new Uint8Array(result.data);
-                const url = URL.createObjectURL(new Blob([buffer]));
-                return [item.id, url] as const;
-            }));
-
-            if (cancelled) {
-                results.forEach(([, url]) => {
-                    if (url) URL.revokeObjectURL(url);
-                });
-                return;
-            }
-
-            const next: Record<string, string> = {};
-            results.forEach(([id, url]) => {
-                if (url) {
-                    next[id] = url;
-                }
-            });
-            setThumbnails(next);
-        };
-
-        loadThumbnails();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [context, isInitialized, characterItems]);
-
-    useEffect(() => {
-        return () => {
-            Object.values(thumbnails).forEach(url => URL.revokeObjectURL(url));
-        };
-    }, [thumbnails]);
-
-    const normalizeTag = useCallback((tag: string) => tag.trim().toLowerCase(), []);
-
-    const tagFilter = useMemo(
-        () => new Set(activeFilters.filter(f => f.filterId === "tags").map(f => normalizeTag(f.optionId))),
-        [activeFilters, normalizeTag]
-    );
-
-    const filteredCharacters = useMemo(() => {
-        const keyword = searchQuery.trim().toLowerCase();
-        return characterItems
-            .filter(item => {
-                const matchesKeyword = !keyword
-                    || item.name.toLowerCase().includes(keyword)
-                    || item.nicknames.some(nickname => nickname.toLowerCase().includes(keyword));
-                const matchesGroup = groupFilter === "all"
-                    ? true
-                    : groupFilter === "ungrouped"
-                        ? !item.groupId || !groupMap[item.groupId]
-                        : item.groupId === groupFilter;
-                const normalizedTags = new Set(item.tags.map(normalizeTag));
-                const matchesTags = tagFilter.size === 0
-                    ? true
-                    : Array.from(tagFilter).every(tag => normalizedTags.has(tag));
-                return matchesKeyword && matchesGroup && matchesTags;
-            })
-            .sort((a, b) => a.name.localeCompare(b.name));
-    }, [characterItems, searchQuery, groupFilter, groupMap, tagFilter, normalizeTag]);
-
-    const filterConfigs = useMemo<FilterConfig[]>(() => {
-        const tagMap = new Map<string, string>();
-        characterItems.forEach(item => {
-            item.tags.forEach(raw => {
-                const id = normalizeTag(raw);
-                if (!id) return;
-                if (!tagMap.has(id)) {
-                    tagMap.set(id, raw.trim() || id);
-                }
-            });
-        });
-        const tagOptions = Array.from(tagMap.entries())
-            .map(([id, label]) => ({ id, label, value: id }))
-            .sort((a, b) => a.label.localeCompare(b.label));
-        return [
-            {
-                id: "tags",
-                label: t("characters.panel.filterTags"),
-                icon: <Tag className="w-4 h-4" />,
-                options: tagOptions,
-                multiSelect: true,
-            },
+  const buildContextMenu = useCallback(
+    (target: MenuTarget): ContextMenuDef => {
+      if (target.type === "character") {
+        const profile = target.character.profile.getProfile();
+        const item = filteredCharacters.find((c) => c.id === profile.id);
+        const moveItems: ContextMenuItemDef[] = [
+          {
+            id: "move-none",
+            label: t("characters.panel.moveToUngrouped"),
+            disabled: !profile.groupId,
+            onClick: () => handleAssignToGroup(profile.id)
+          },
+          ...groups.map((group) => ({
+            id: `move-${group.id}`,
+            label: group.name,
+            disabled: profile.groupId === group.id,
+            onClick: () => handleAssignToGroup(profile.id, group.id)
+          }))
         ];
-    }, [characterItems, normalizeTag, filterRefreshKey, t]);
-
-    const handleFilterOpen = useCallback(() => {
-        // Force refresh to reflect latest tag updates when opening dropdown
-        setFilterRefreshKey(prev => prev + 1);
-    }, []);
-
-    const ungroupedCharacters = useMemo(
-        () => filteredCharacters.filter(item => !item.groupId || !groupMap[item.groupId]),
-        [filteredCharacters, groupMap]
-    );
-
-    const groupedCharacters = useMemo(
-        () => groups.map(group => ({
-            group,
-            members: filteredCharacters.filter(item => item.groupId === group.id),
-        })),
-        [groups, filteredCharacters]
-    );
-
-    const defaultGroupOpenItems = useMemo(
-        () => groupedCharacters.filter(item => item.members.length > 0).map(item => item.group.id),
-        [groupedCharacters]
-    );
-
-    useEffect(() => {
-        if (!context) return;
-        setStateReady(false);
-        setDisableAccordionAnimation(true);
-        setGroupOpenItems([]);
-        setGroupOpenItemsInitialized(false);
-
-        const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
-        const saved = panelStateService.getPanelState<CharacterPanelState>(panelId);
-        if (Array.isArray(saved?.groupOpenItems)) {
-            setGroupOpenItems(saved.groupOpenItems.filter(id => typeof id === "string" && id.length > 0));
-            setGroupOpenItemsInitialized(true);
-        }
-        setStateReady(true);
-    }, [context, panelId]);
-
-    useEffect(() => {
-        if (!stateReady || loading || groupOpenItemsInitialized) return;
-        setGroupOpenItems(defaultGroupOpenItems);
-        setGroupOpenItemsInitialized(true);
-    }, [defaultGroupOpenItems, groupOpenItemsInitialized, loading, stateReady]);
-
-    useEffect(() => {
-        if (!stateReady || loading || !groupOpenItemsInitialized) return;
-        const knownGroupIds = new Set(groups.map(group => group.id));
-        setGroupOpenItems(prev => {
-            const next = prev.filter(id => knownGroupIds.has(id));
-            return next.length === prev.length ? prev : next;
-        });
-    }, [groups, groupOpenItemsInitialized, loading, stateReady]);
-
-    useEffect(() => {
-        if (!context || !stateReady || !groupOpenItemsInitialized) return;
-        const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
-        panelStateService.setPanelState<CharacterPanelState>(panelId, { groupOpenItems });
-    }, [context, groupOpenItems, groupOpenItemsInitialized, panelId, stateReady]);
-
-    useEffect(() => {
-        if (!stateReady || !groupOpenItemsInitialized || loading) return;
-        const frame = requestAnimationFrame(() => setDisableAccordionAnimation(false));
-        return () => cancelAnimationFrame(frame);
-    }, [groupOpenItemsInitialized, loading, panelId, stateReady]);
-
-    const closeMenu = useCallback(() => {
-        setMenuState(prev => ({ ...prev, visible: false }));
-    }, []);
-
-    /**
-     * The one dialog that asks everything a new character needs.
-     *
-     * It replaces a submenu of appearance kinds followed by a one-field name prompt: the kind is a
-     * detail the author can read about in the editor, and putting it in front of the name made the
-     * cheap decision block the one they came to make — with nowhere at all to put the colour.
-     */
-    const promptCreateCharacter = useCallback((): Promise<CreateCharacterDialogValue | null> => {
-        const uiService = context?.services.get<UIService>(Services.UI);
-        if (!uiService) return Promise.resolve(null);
-        return new Promise(resolve => {
-            let dialogId: string | null = null;
-            let settled = false;
-            // The content owns validation (an empty name has to be reported next to the field, not as
-            // a toast), so the footer's Create button asks it to submit rather than reading a draft.
-            let submitHandler: (() => void) | null = null;
-
-            const safeResolve = (value: CreateCharacterDialogValue | null) => {
-                if (settled) return;
-                settled = true;
-                resolve(value);
-            };
-            const closeDialog = () => {
-                if (dialogId) {
-                    uiService.dialogs.close(dialogId);
-                    dialogId = null;
-                }
-            };
-            const handleCancel = () => {
-                safeResolve(null);
-                closeDialog();
-            };
-
-            dialogId = uiService.dialogs.show({
-                title: t("characters.panel.newCharacter"),
-                content: (
-                    <CreateCharacterDialogContent
-                        registerHandlers={handlers => { submitHandler = handlers.submit; }}
-                        onSubmit={value => {
-                            safeResolve(value);
-                            closeDialog();
-                        }}
-                    />
-                ),
-                closable: true,
-                width: 480,
-                buttons: [
-                    { label: t("common.cancel"), onClick: handleCancel },
-                    { label: t("common.create"), primary: true, onClick: () => submitHandler?.() },
-                ],
-                onClose: handleCancel,
-            });
-        });
-    }, [context, t]);
-
-    const handleCreateCharacter = useCallback(async (groupId?: string) => {
-        if (!characterService) return;
-        // Closed before the await rather than after it: the menu this may have been launched from has
-        // no business sitting over the dialog.
-        closeMenu();
-        const created = await promptCreateCharacter();
-        if (!created) return;
-        const character = characterService.createCharacter(created.name, created.kind);
-        if (created.color) {
-            // Absent means "no colour", which is not the same as a colour that happens to match the
-            // hash — the story rows fall back to the name for as long as this stays unset.
-            character.profile.setColor(created.color);
-        }
-        if (groupId) {
-            characterService.assignCharacterToGroup(character.profile.getId(), groupId);
-        }
-        loadCharacters();
-    }, [characterService, closeMenu, loadCharacters, promptCreateCharacter]);
-
-    const handleCreateGroup = useCallback(async () => {
-        if (!characterService || !inputDialog) return;
-        const name = await inputDialog.show({
-            title: t("characters.panel.newGroup"),
-            placeholder: t("characters.panel.groupNamePlaceholder"),
-            required: true,
-            maxLength: 100,
-        });
-        if (!name) return;
-        characterService.createGroup(name);
-        loadCharacters();
-        closeMenu();
-    }, [characterService, inputDialog, loadCharacters, closeMenu, t]);
-
-    const handleRenameCharacter = useCallback(async (item: CharacterItem) => {
-        if (!characterService || !inputDialog || !context) return;
-        const nextName = await inputDialog.showRenameDialog(item.name, "character");
-        if (!nextName) return;
-        characterService.renameCharacter(item.id, nextName);
-        // The tab's title was a snapshot taken at open time, so a rename left it on the old name
-        // until the tab was closed and reopened.
-        syncCharacterEditorTabTitle(context.services.get<UIService>(Services.UI), item.id, nextName);
-        loadCharacters();
-        closeMenu();
-    }, [characterService, context, inputDialog, loadCharacters, closeMenu]);
-
-    const handleDeleteCharacter = useCallback(async (item: CharacterItem) => {
-        if (!characterService || !context) return;
-        const uiService = context.services.get<UIService>(Services.UI);
-        const confirmed = await uiService.showConfirm(t("characters.panel.deleteCharacterConfirm", { name: item.name }), t("characters.panel.deleteCharacterDetail"));
-        if (!confirmed) return;
-        const removed = await characterService.deleteCharacter(item.id);
-        if (removed) {
-            const editorId = `narraleaf-studio:character-editor-${item.id}`;
-            const store = uiService.getStore();
-            const layout = store.getEditorLayout();
-
-            // Ensure all editor instances related to this character are closed across groups
-            const collectTabs = (node: any, acc: Array<{ tab: any; groupId: string }>) => {
-                if (!node) return;
-                if ("tabs" in node) {
-                    (node.tabs as any[]).forEach((t) => acc.push({ tab: t, groupId: node.id }));
-                } else {
-                    collectTabs(node.first, acc);
-                    collectTabs(node.second, acc);
-                }
-            };
-
-            const allTabs: Array<{ tab: any; groupId: string }> = [];
-            collectTabs(layout, allTabs);
-
-            allTabs.forEach(({ tab, groupId }) => {
-                const sameId = tab.id === editorId;
-                const payloadCharacterId = tab?.payload?.character?.profile?.getId?.();
-                if (sameId || payloadCharacterId === item.id) {
-                    store.closeEditorTabInGroup(tab.id, groupId);
-                }
-            });
-
-            const selection = store.getSelection();
-            if (selection.type === "character" && (selection.data as Character)?.profile?.getId?.() === item.id) {
-                store.setSelection({ type: null, data: null });
-            }
-            loadCharacters();
-        }
-        closeMenu();
-    }, [characterService, context, loadCharacters, closeMenu, t]);
-
-    const handleAssignToGroup = useCallback((characterId: string, targetGroupId?: string) => {
-        if (!characterService) return;
-        characterService.assignCharacterToGroup(characterId, targetGroupId);
-        loadCharacters();
-        closeMenu();
-    }, [characterService, loadCharacters, closeMenu]);
-
-    const handleRenameGroup = useCallback(async (group: CharacterGroup) => {
-        if (!characterService || !inputDialog) return;
-        const name = await inputDialog.showRenameDialog(group.name, "group");
-        if (!name) return;
-        characterService.renameGroup(group.id, name);
-        loadCharacters();
-        closeMenu();
-    }, [characterService, inputDialog, loadCharacters, closeMenu]);
-
-    const handleDeleteGroup = useCallback(async (group: CharacterGroup) => {
-        if (!characterService || !context) return;
-        const uiService = context.services.get<UIService>(Services.UI);
-        const confirmed = await uiService.showConfirm(t("characters.panel.deleteGroupConfirm", { name: group.name }), t("characters.panel.deleteGroupDetail"));
-        if (!confirmed) return;
-        await characterService.deleteGroup(group.id);
-        loadCharacters();
-        closeMenu();
-    }, [characterService, context, loadCharacters, closeMenu, t]);
-
-    const buildContextMenu = useCallback((target: MenuTarget): ContextMenuDef => {
-        if (target.type === "character") {
-            const profile = target.character.profile.getProfile();
-            const item = filteredCharacters.find(c => c.id === profile.id);
-            const moveItems: ContextMenuItemDef[] = [
-                {
-                    id: "move-none",
-                    label: t("characters.panel.moveToUngrouped"),
-                    disabled: !profile.groupId,
-                    onClick: () => handleAssignToGroup(profile.id),
-                },
-                ...groups.map(group => ({
-                    id: `move-${group.id}`,
-                    label: group.name,
-                    disabled: profile.groupId === group.id,
-                    onClick: () => handleAssignToGroup(profile.id, group.id),
-                })),
-            ];
-
-            return [
-                {
-                    id: "rename-character",
-                    label: t("common.rename"),
-                    onClick: () => item && handleRenameCharacter(item),
-                },
-                {
-                    id: "move-character",
-                    label: t("characters.panel.moveToGroup"),
-                    submenu: moveItems,
-                },
-                { separator: true, id: "character-separator" },
-                {
-                    id: "delete-character",
-                    label: t("common.delete"),
-                    onClick: () => item && handleDeleteCharacter(item),
-                },
-            ];
-        }
-
-        if (target.type === "group") {
-            return [
-                {
-                    id: "create-character-in-group",
-                    label: t("characters.panel.addCharacter"),
-                    onClick: () => handleCreateCharacter(target.group.id),
-                },
-                {
-                    id: "rename-group",
-                    label: t("characters.panel.renameGroup"),
-                    onClick: () => handleRenameGroup(target.group),
-                },
-                { separator: true, id: "group-sep" },
-                {
-                    id: "delete-group",
-                    label: t("characters.panel.deleteGroup"),
-                    onClick: () => handleDeleteGroup(target.group),
-                },
-            ];
-        }
 
         return [
-            {
-                id: "panel-new-character",
-                label: t("characters.panel.newCharacter"),
-                onClick: () => handleCreateCharacter(),
-            },
-            {
-                id: "panel-new-group",
-                label: t("characters.panel.newGroup"),
-                onClick: () => handleCreateGroup(),
-            },
-            {
-                id: "panel-refresh",
-                label: t("common.refresh"),
-                onClick: loadCharacters,
-            },
+          {
+            id: "rename-character",
+            label: t("common.rename"),
+            onClick: () => item && handleRenameCharacter(item)
+          },
+          {
+            id: "move-character",
+            label: t("characters.panel.moveToGroup"),
+            submenu: moveItems
+          },
+          { separator: true, id: "character-separator" },
+          {
+            id: "delete-character",
+            label: t("common.delete"),
+            onClick: () => item && handleDeleteCharacter(item)
+          }
         ];
-    }, [filteredCharacters, groups, handleAssignToGroup, handleCreateCharacter, handleCreateGroup, handleDeleteCharacter, handleDeleteGroup, handleRenameCharacter, handleRenameGroup, loadCharacters, t]);
+      }
 
-    const handleMenuOpen = useCallback((event: React.MouseEvent, target: MenuTarget) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-        const items = buildContextMenu(target);
-        // Every row here creates, renames, moves or deletes a character or a group - all writes - except
-        // the one that re-reads the list. Menus still open and still list what exists, so a frozen
-        // project can be browsed; the rows are simply inert.
-        const frozen = freezeContextMenuRows(items, freeze.frozen, FREEZE_READ_ONLY_CHARACTER_MENU_IDS, freeze.reason);
-        const uiService = context?.services.get<UIService>(Services.UI);
-        setMenuItems(appendDeveloperIdSection(frozen, developerIdEntriesFor(target), {
-            hideMenu: closeMenu,
-            notify: uiService ? (message, type) => uiService.showNotification(message, type) : undefined,
-        }));
-        setMenuState({ visible: true, position: { x: rect.right, y: rect.bottom } });
-    }, [buildContextMenu, closeMenu, context, freeze]);
+      if (target.type === "group") {
+        return [
+          {
+            id: "create-character-in-group",
+            label: t("characters.panel.addCharacter"),
+            onClick: () => handleCreateCharacter(target.group.id)
+          },
+          {
+            id: "rename-group",
+            label: t("characters.panel.renameGroup"),
+            onClick: () => handleRenameGroup(target.group)
+          },
+          { separator: true, id: "group-sep" },
+          {
+            id: "delete-group",
+            label: t("characters.panel.deleteGroup"),
+            onClick: () => handleDeleteGroup(target.group)
+          }
+        ];
+      }
 
-    const renderCharacterRow = useCallback((item: CharacterItem) => {
-        const thumbnailUrl = thumbnails[item.id];
-        const isFocused = focusedCharacterId === item.id;
+      return [
+        {
+          id: "panel-new-character",
+          label: t("characters.panel.newCharacter"),
+          onClick: () => handleCreateCharacter()
+        },
+        {
+          id: "panel-new-group",
+          label: t("characters.panel.newGroup"),
+          onClick: () => handleCreateGroup()
+        },
+        {
+          id: "panel-refresh",
+          label: t("common.refresh"),
+          onClick: loadCharacters
+        }
+      ];
+    },
+    [
+      filteredCharacters,
+      groups,
+      handleAssignToGroup,
+      handleCreateCharacter,
+      handleCreateGroup,
+      handleDeleteCharacter,
+      handleDeleteGroup,
+      handleRenameCharacter,
+      handleRenameGroup,
+      loadCharacters,
+      t
+    ]
+  );
 
-        return (
-            <div
-                key={item.id}
-                className={cn(
-                    "group flex items-center gap-3 px-3 py-2 cursor-default transition-colors hover:bg-fill",
-                    // Per side, not `border-edge-subtle`: the whole-element form also paints the accent
-                    // bar below, and the row that had one was the only row in the list showing it.
-                    "border-b border-b-edge-subtle last:border-b-0",
-                    isFocused && "bg-primary/20 border-l-2 border-l-primary",
-                )}
-                data-character-id={item.id}
-                onClick={() => handleCharacterClick(item.source)}
-            >
-                <div className="w-10 h-10 rounded-md bg-fill overflow-hidden flex items-center justify-center flex-shrink-0">
-                    {thumbnailUrl ? (
-                        <img src={thumbnailUrl} alt={item.name} className="w-full h-full object-cover" />
-                    ) : (
-                        <User className="w-5 h-5 text-fg-muted" />
-                    )}
-                </div>
-                <div className="min-w-0 flex-1">
-                    {/* The accent is a real field the story editor already renders on nametags; the
+  const handleMenuOpen = useCallback(
+    (event: React.MouseEvent, target: MenuTarget) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      const items = buildContextMenu(target);
+      // Every row here creates, renames, moves or deletes a character or a group - all writes - except
+      // the one that re-reads the list. Menus still open and still list what exists, so a frozen
+      // project can be browsed; the rows are simply inert.
+      const frozen = freezeContextMenuRows(
+        items,
+        freeze.frozen,
+        FREEZE_READ_ONLY_CHARACTER_MENU_IDS,
+        freeze.reason
+      );
+      const uiService = context?.services.get<UIService>(Services.UI);
+      setMenuItems(
+        appendDeveloperIdSection(frozen, developerIdEntriesFor(target), {
+          hideMenu: closeMenu,
+          notify: uiService
+            ? (message, type) => uiService.showNotification(message, type)
+            : undefined
+        })
+      );
+      setMenuState({ visible: true, position: { x: rect.right, y: rect.bottom } });
+    },
+    [buildContextMenu, closeMenu, context, freeze]
+  );
+
+  const renderCharacterRow = useCallback(
+    (item: CharacterItem) => {
+      const thumbnailUrl = thumbnails[item.id];
+      const isFocused = focusedCharacterId === item.id;
+
+      return (
+        <div
+          key={item.id}
+          className={cn(
+            "group flex items-center gap-3 px-3 py-2 cursor-default transition-colors hover:bg-fill",
+            // Per side, not `border-edge-subtle`: the whole-element form also paints the accent
+            // bar below, and the row that had one was the only row in the list showing it.
+            "border-b border-b-edge-subtle last:border-b-0",
+            isFocused && "bg-primary/20 border-l-2 border-l-primary"
+          )}
+          data-character-id={item.id}
+          onClick={() => handleCharacterClick(item.source)}
+        >
+          <div className="w-10 h-10 rounded-md bg-fill overflow-hidden flex items-center justify-center flex-shrink-0">
+            {thumbnailUrl ? (
+              <img src={thumbnailUrl} alt={item.name} className="w-full h-full object-cover" />
+            ) : (
+              <User className="w-5 h-5 text-fg-muted" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            {/* The accent is a real field the story editor already renders on nametags; the
                         list was the one place a character's colour could be set and never seen. */}
-                    <div className="text-sm text-fg truncate" style={item.color ? { color: item.color } : undefined}>
-                        {item.name}
-                    </div>
-                    {item.nicknames.length > 0 && (
-                        <div className="text-xs text-fg-subtle truncate">{item.nicknames.join(", ")}</div>
-                    )}
-                </div>
-                <button
-                    className="p-1 rounded-md hover:bg-fill text-fg-muted opacity-0 group-hover:opacity-100"
-                    onClick={(event) => { event.stopPropagation(); handleMenuOpen(event, { type: "character", character: item.source }); }}
-                    data-tip={t("characters.panel.rowActions")} aria-label={t("characters.panel.rowActions")}
-                >
-                    <MoreVertical className="w-4 h-4" />
-                </button>
+            <div
+              className="text-sm text-fg truncate"
+              style={item.color ? { color: item.color } : undefined}
+            >
+              {item.name}
             </div>
-        );
-    }, [focusedCharacterId, handleCharacterClick, handleMenuOpen, thumbnails, t]);
+            {item.nicknames.length > 0 && (
+              <div className="text-xs text-fg-subtle truncate">{item.nicknames.join(", ")}</div>
+            )}
+          </div>
+          <button
+            className="p-1 rounded-md hover:bg-fill text-fg-muted opacity-0 group-hover:opacity-100"
+            onClick={(event) => {
+              event.stopPropagation();
+              handleMenuOpen(event, { type: "character", character: item.source });
+            }}
+            data-tip={t("characters.panel.rowActions")}
+            aria-label={t("characters.panel.rowActions")}
+          >
+            <MoreVertical className="w-4 h-4" />
+          </button>
+        </div>
+      );
+    },
+    [focusedCharacterId, handleCharacterClick, handleMenuOpen, thumbnails, t]
+  );
 
-    const hasNoData = !loading && filteredCharacters.length === 0 && groups.length === 0;
+  const hasNoData = !loading && filteredCharacters.length === 0 && groups.length === 0;
 
-    return (
-        <div className="h-full flex flex-col" data-panel-id={panelId} onClick={setFocusToPanel}>
-            <div className="px-3 py-2 border-b border-edge space-y-3">
-                <SearchBox
-                    value={searchQuery}
-                    onChange={setSearchQuery}
-                    placeholder={t("characters.panel.searchPlaceholder")}
-                    className="w-full"
-                />
-                {/* One row, one height: the two square actions, the filter button and the refresh
+  return (
+    <div className="h-full flex flex-col" data-panel-id={panelId} onClick={setFocusToPanel}>
+      <div className="px-3 py-2 border-b border-edge space-y-3">
+        <SearchBox
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder={t("characters.panel.searchPlaceholder")}
+          className="w-full"
+        />
+        {/* One row, one height: the two square actions, the filter button and the refresh
                     button all sit at the shared `md` 36px (design-system §3). They used to be
                     38/38/38/32 - three numbers in a row four buttons long. */}
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={(event) => { event.stopPropagation(); handleCreateCharacter(); }}
-                        className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                        aria-label={t("characters.panel.addCharacter")}
-                        {...freeze.writes(false, t("characters.panel.addCharacter"))}
-                    >
-                        <UserPlus className="w-4 h-4" />
-                    </button>
-                    <button
-                        onClick={(event) => { event.stopPropagation(); handleCreateGroup(); }}
-                        className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-edge-strong bg-fill-subtle text-fg hover:bg-fill transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                        {...freeze.writes(false, t("characters.panel.addGroup"))}
-                    >
-                        <FolderPlus className="w-4 h-4" />
-                    </button>
-                    <FilterSystem
-                        className="flex-1"
-                        filters={filterConfigs}
-                        activeFilters={activeFilters}
-                        onFiltersChange={(next) => {
-                            setActiveFilters(next.filter(f => f.filterId === "tags"));
-                        }}
-                        onFilterOpen={handleFilterOpen}
-                    />
-                    {/* Count removed per request */}
-                    <button
-                        onClick={loadCharacters}
-                        className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md hover:bg-fill text-fg-muted"
-                        data-tip={t("common.refresh")} aria-label={t("common.refresh")}
-                    >
-                        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                    </button>
-                </div>
-            </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              handleCreateCharacter();
+            }}
+            className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label={t("characters.panel.addCharacter")}
+            {...freeze.writes(false, t("characters.panel.addCharacter"))}
+          >
+            <UserPlus className="w-4 h-4" />
+          </button>
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              handleCreateGroup();
+            }}
+            className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-edge-strong bg-fill-subtle text-fg hover:bg-fill transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            {...freeze.writes(false, t("characters.panel.addGroup"))}
+          >
+            <FolderPlus className="w-4 h-4" />
+          </button>
+          <FilterSystem
+            className="flex-1"
+            filters={filterConfigs}
+            activeFilters={activeFilters}
+            onFiltersChange={(next) => {
+              setActiveFilters(next.filter((f) => f.filterId === "tags"));
+            }}
+            onFilterOpen={handleFilterOpen}
+          />
+          {/* Count removed per request */}
+          <button
+            onClick={loadCharacters}
+            className="grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md hover:bg-fill text-fg-muted"
+            data-tip={t("common.refresh")}
+            aria-label={t("common.refresh")}
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
+      </div>
 
-            <div className="flex-1 overflow-y-auto">
-                {loading ? (
-                    <div className="p-4 flex items-center gap-2 text-fg-muted">
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>{t("characters.panel.loading")}</span>
-                    </div>
-                ) : hasNoData ? (
-                    <div className="p-4 text-sm text-fg-muted">{t("characters.panel.empty")}</div>
-                ) : (
-                    <div className="divide-y divide-edge">
-                        {ungroupedCharacters.length > 0 && (
-                            <div>
-                                <div className="px-3 py-2 text-xs text-fg-muted flex items-center gap-2 border-b border-edge">
-                                    <Users className="w-4 h-4" />
-                                    <span>{t("characters.panel.ungrouped")}</span>
-                                    <span className="text-fg-subtle">({ungroupedCharacters.length})</span>
-                                </div>
-                                {/* No `divide-y` here, nor around the members below. Every row already
+      <div className="flex-1 overflow-y-auto">
+        {loading ? (
+          <div className="p-4 flex items-center gap-2 text-fg-muted">
+            <RefreshCw className="w-4 h-4 animate-spin" />
+            <span>{t("characters.panel.loading")}</span>
+          </div>
+        ) : hasNoData ? (
+          <div className="p-4 text-sm text-fg-muted">{t("characters.panel.empty")}</div>
+        ) : (
+          <div className="divide-y divide-edge">
+            {ungroupedCharacters.length > 0 && (
+              <div>
+                <div className="px-3 py-2 text-xs text-fg-muted flex items-center gap-2 border-b border-edge">
+                  <Users className="w-4 h-4" />
+                  <span>{t("characters.panel.ungrouped")}</span>
+                  <span className="text-fg-subtle">({ungroupedCharacters.length})</span>
+                </div>
+                {/* No `divide-y` here, nor around the members below. Every row already
                                     draws its own separator, and the divide utilities are written as
                                     `> * + *` — higher specificity than anything a row can set — so
                                     they were zeroing the second row's border and recolouring every
                                     focused row's accent bar back to the separator colour. */}
-                                <div>
-                                    {ungroupedCharacters.map(renderCharacterRow)}
-                                </div>
-                            </div>
-                        )}
+                <div>{ungroupedCharacters.map(renderCharacterRow)}</div>
+              </div>
+            )}
 
-                        {groupedCharacters.length > 0 && (
-                            <Accordion
-                                openItems={groupOpenItems}
-                                onOpenChange={setGroupOpenItems}
-                                multiple
-                                disableAnimation={disableAccordionAnimation}
-                            >
-                                {groupedCharacters.map(({ group, members }) => (
-                                    <div key={group.id}>
-                                        <AccordionItem
-                                            id={group.id}
-                                            title={
-                                                <div className="flex items-center gap-2">
-                                                    <span>{group.name}</span>
-                                                    <span className="text-xs text-fg-subtle">({members.length})</span>
-                                                </div>
-                                            }
-                                            icon={<Users className="w-4 h-4" />}
-                                            actions={
-                                                <div className="flex items-center gap-1">
-                                                    <button
-                                                        onClick={(event) => {
-                                                            event.stopPropagation();
-                                                            handleCreateCharacter(group.id);
-                                                        }}
-                                                        className="inline-flex items-center justify-center p-1.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors"
-                                                        aria-label={t("characters.panel.addCharacter")}
-                                                    >
-                                                        <UserPlus className="w-3 h-3" />
-                                                    </button>
-                                                    <button
-                                                        onClick={(event) => handleMenuOpen(event, { type: "group", group })}
-                                                        className="p-1 rounded-md hover:bg-fill"
-                                                        title={t("characters.panel.groupActions")}
-                                                    >
-                                                        <MoreVertical className="w-3 h-3" />
-                                                    </button>
-                                                </div>
-                                            }
-                                            headerClassName="border-b border-edge"
-                                            focusable={false}
-                                        >
-                                            {members.length === 0 ? (
-                                                <div className="px-3 py-2 text-xs text-fg-subtle">{t("characters.panel.groupEmpty")}</div>
-                                            ) : (
-                                                <div>
-                                                    {members.map(renderCharacterRow)}
-                                                </div>
-                                            )}
-                                        </AccordionItem>
-                                    </div>
-                                ))}
-                            </Accordion>
-                        )}
-                    </div>
-                )}
-            </div>
+            {groupedCharacters.length > 0 && (
+              <Accordion
+                openItems={groupOpenItems}
+                onOpenChange={setGroupOpenItems}
+                multiple
+                disableAnimation={disableAccordionAnimation}
+              >
+                {groupedCharacters.map(({ group, members }) => (
+                  <div key={group.id}>
+                    <AccordionItem
+                      id={group.id}
+                      title={
+                        <div className="flex items-center gap-2">
+                          <span>{group.name}</span>
+                          <span className="text-xs text-fg-subtle">({members.length})</span>
+                        </div>
+                      }
+                      icon={<Users className="w-4 h-4" />}
+                      actions={
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleCreateCharacter(group.id);
+                            }}
+                            className="inline-flex items-center justify-center p-1.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors"
+                            aria-label={t("characters.panel.addCharacter")}
+                          >
+                            <UserPlus className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={(event) => handleMenuOpen(event, { type: "group", group })}
+                            className="p-1 rounded-md hover:bg-fill"
+                            title={t("characters.panel.groupActions")}
+                          >
+                            <MoreVertical className="w-3 h-3" />
+                          </button>
+                        </div>
+                      }
+                      headerClassName="border-b border-edge"
+                      focusable={false}
+                    >
+                      {members.length === 0 ? (
+                        <div className="px-3 py-2 text-xs text-fg-subtle">
+                          {t("characters.panel.groupEmpty")}
+                        </div>
+                      ) : (
+                        <div>{members.map(renderCharacterRow)}</div>
+                      )}
+                    </AccordionItem>
+                  </div>
+                ))}
+              </Accordion>
+            )}
+          </div>
+        )}
+      </div>
 
-            <ContextMenu
-                items={menuItems}
-                position={menuState.position}
-                visible={menuState.visible}
-                onClose={closeMenu}
-            />
-        </div>
-    );
+      <ContextMenu
+        items={menuItems}
+        position={menuState.position}
+        visible={menuState.visible}
+        onClose={closeMenu}
+      />
+    </div>
+  );
 }
-

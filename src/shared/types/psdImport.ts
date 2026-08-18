@@ -7,25 +7,25 @@
 
 /** One entry of the PSD's layer tree, geometry only — pixels never cross until a bake is asked for. */
 export type PsdLayerNode = {
-    /** Position in the tree, top-level first. Stable across re-imports; this is the reconnect key. */
-    path: string[];
-    name: string;
-    /** Absent for a group. Document coordinates. */
-    bounds?: { left: number; top: number; right: number; bottom: number };
-    /** Photoshop's name for the mode, `normal` when it is the plain stack. */
-    blendMode: string;
-    opacity: number;
-    hidden: boolean;
-    /** True when Photoshop clips this layer to the one below it. */
-    clipping: boolean;
-    children?: PsdLayerNode[];
+  /** Position in the tree, top-level first. Stable across re-imports; this is the reconnect key. */
+  path: string[];
+  name: string;
+  /** Absent for a group. Document coordinates. */
+  bounds?: { left: number; top: number; right: number; bottom: number };
+  /** Photoshop's name for the mode, `normal` when it is the plain stack. */
+  blendMode: string;
+  opacity: number;
+  hidden: boolean;
+  /** True when Photoshop clips this layer to the one below it. */
+  clipping: boolean;
+  children?: PsdLayerNode[];
 };
 
 export type PsdDocument = {
-    width: number;
-    height: number;
-    fileName: string;
-    layers: PsdLayerNode[];
+  width: number;
+  height: number;
+  fileName: string;
+  layers: PsdLayerNode[];
 };
 
 /**
@@ -46,8 +46,8 @@ export type BlendResolution = "merge" | "skip";
  * one more thing the wizard asks about.
  */
 export type PsdMergeSource = {
-    path: string[];
-    clip?: boolean;
+  path: string[];
+  clip?: boolean;
 };
 
 /**
@@ -56,39 +56,39 @@ export type PsdMergeSource = {
  * only stacks.
  */
 export type PsdBakeTarget = {
-    path: string[];
-    mergeFrom?: PsdMergeSource[];
-    /**
-     * What to call the baked file, before sanitising. The asset library takes an asset's name from
-     * the file it imported, so this is where `<character>_<layer>_<tag>` gets decided — the Photoshop
-     * layer name alone would land a stack of "Happy.png"s in the library with nothing to tell them
-     * apart. A file name, never a path: the output directory stays the main process's business.
-     */
-    name?: string;
+  path: string[];
+  mergeFrom?: PsdMergeSource[];
+  /**
+   * What to call the baked file, before sanitising. The asset library takes an asset's name from
+   * the file it imported, so this is where `<character>_<layer>_<tag>` gets decided — the Photoshop
+   * layer name alone would land a stack of "Happy.png"s in the library with nothing to tell them
+   * apart. A file name, never a path: the output directory stays the main process's business.
+   */
+  name?: string;
 };
 
 export type PsdBakeRequest = {
-    filePath: string;
-    layers: PsdBakeTarget[];
+  filePath: string;
+  layers: PsdBakeTarget[];
 };
 
 /** What the main process adds before handing the request to the worker. */
 export type PsdBakeJob = PsdBakeRequest & {
-    /** Where the baked PNGs are written. Chosen by the main process; the renderer never names a path. */
-    outputDir: string;
+  /** Where the baked PNGs are written. Chosen by the main process; the renderer never names a path. */
+  outputDir: string;
 };
 
 export type PsdBakedLayer = {
-    path: string[];
-    name: string;
-    /**
-     * Where the baked PNG was written: full document size, contents at their document position.
-     *
-     * A path rather than the bytes, because a six-layer character sheet is a hundred megabytes of
-     * PNG to push through IPC — and because it lets the import reuse the asset library's own
-     * file-import pipeline instead of growing a second way to make an asset.
-     */
-    filePath: string;
+  path: string[];
+  name: string;
+  /**
+   * Where the baked PNG was written: full document size, contents at their document position.
+   *
+   * A path rather than the bytes, because a six-layer character sheet is a hundred megabytes of
+   * PNG to push through IPC — and because it lets the import reuse the asset library's own
+   * file-import pipeline instead of growing a second way to make an asset.
+   */
+  filePath: string;
 };
 
 /**
@@ -97,11 +97,11 @@ export type PsdBakedLayer = {
  * writes back to the PSD.
  */
 export type PsdFingerprintSlot = {
-    path: string[];
-    /** The Studio layer this PSD layer feeds. */
-    layerId: string;
-    /** The tag it feeds, when that layer is bound to an axis. Absent for a constant layer. */
-    tagId?: string;
+  path: string[];
+  /** The Studio layer this PSD layer feeds. */
+  layerId: string;
+  /** The tag it feeds, when that layer is bound to an axis. Absent for a constant layer. */
+  tagId?: string;
 };
 
 /**
@@ -113,9 +113,9 @@ export type PsdFingerprintSlot = {
  * bindings alone. Without it a re-import could only mean "build it all again".
  */
 export type PsdFingerprint = {
-    fileName: string;
-    width: number;
-    height: number;
-    slots: PsdFingerprintSlot[];
-    importedAt: number;
+  fileName: string;
+  width: number;
+  height: number;
+  slots: PsdFingerprintSlot[];
+  importedAt: number;
 };

@@ -19,7 +19,7 @@ import type { ProjectSectionProps } from "./sections/types";
 
 /** Deep-link payload: open the panel already showing a sub-page. */
 export type ProjectPanelPayload = {
-    section?: ProjectSectionId;
+  section?: ProjectSectionId;
 };
 
 /**
@@ -29,124 +29,127 @@ export type ProjectPanelPayload = {
  * answers about whichever part the author was not looking at.
  */
 const SUB_PAGE_HELP_TOPICS: Partial<Record<ProjectSectionId, HelpTopicId>> = {
-    design: "brand",
-    project: "lint",
-    runtimes: "puppetRuntimes",
+  design: "brand",
+  project: "lint",
+  runtimes: "puppetRuntimes"
 };
 
-export function ProjectPanel({ panelId, payload }: PanelComponentProps<ProjectPanelPayload | undefined>) {
-    const { context, isInitialized } = useWorkspace();
-    const [config, setConfig] = useState<ProjectConfig | null>(null);
-    const [activeSection, setActiveSection] = useState<ProjectSectionId | null>(null);
+export function ProjectPanel({
+  panelId,
+  payload
+}: PanelComponentProps<ProjectPanelPayload | undefined>) {
+  const { context, isInitialized } = useWorkspace();
+  const [config, setConfig] = useState<ProjectConfig | null>(null);
+  const [activeSection, setActiveSection] = useState<ProjectSectionId | null>(null);
 
-    // Depends on the payload OBJECT, not payload.section: the panel is
-    // keep-alive, so a user who opens `assets`, backs out to the overview, then
-    // asks for `assets` again would see an unchanged section value and no
-    // re-open. updatePayload hands us a fresh object each request, which does.
-    useEffect(() => {
-        if (payload?.section) {
-            setActiveSection(payload.section);
-        }
-    }, [payload]);
+  // Depends on the payload OBJECT, not payload.section: the panel is
+  // keep-alive, so a user who opens `assets`, backs out to the overview, then
+  // asks for `assets` again would see an unchanged section value and no
+  // re-open. updatePayload hands us a fresh object each request, which does.
+  useEffect(() => {
+    if (payload?.section) {
+      setActiveSection(payload.section);
+    }
+  }, [payload]);
 
-    const projectService = useMemo(() => {
-        if (!context || !isInitialized) return null;
-        return context.services.get<ProjectService>(Services.Project);
-    }, [context, isInitialized]);
+  const projectService = useMemo(() => {
+    if (!context || !isInitialized) return null;
+    return context.services.get<ProjectService>(Services.Project);
+  }, [context, isInitialized]);
 
-    const uiService = useMemo(() => {
-        if (!context || !isInitialized) return null;
-        return context.services.get<UIService>(Services.UI);
-    }, [context, isInitialized]);
+  const uiService = useMemo(() => {
+    if (!context || !isInitialized) return null;
+    return context.services.get<UIService>(Services.UI);
+  }, [context, isInitialized]);
 
-    useEffect(() => {
-        if (!projectService) {
-            setConfig(null);
-            return;
-        }
-        setConfig(cloneProjectConfig(projectService.getProjectConfig()));
-    }, [projectService]);
+  useEffect(() => {
+    if (!projectService) {
+      setConfig(null);
+      return;
+    }
+    setConfig(cloneProjectConfig(projectService.getProjectConfig()));
+  }, [projectService]);
 
-    const handleConfigChange = useCallback((next: ProjectConfig) => {
-        setConfig(cloneProjectConfig(next));
-    }, []);
+  const handleConfigChange = useCallback((next: ProjectConfig) => {
+    setConfig(cloneProjectConfig(next));
+  }, []);
 
-    const closeSection = useCallback(() => setActiveSection(null), []);
+  const closeSection = useCallback(() => setActiveSection(null), []);
 
-    // Escape returns to the overview when a sub-page is open.
-    useEffect(() => {
-        if (!activeSection) {
-            return;
-        }
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                event.stopPropagation();
-                setActiveSection(null);
-            }
-        };
-        window.addEventListener("keydown", onKeyDown);
-        return () => window.removeEventListener("keydown", onKeyDown);
-    }, [activeSection]);
+  // Escape returns to the overview when a sub-page is open.
+  useEffect(() => {
+    if (!activeSection) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        setActiveSection(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeSection]);
 
-    const navItems = useProjectNavItems();
-    const activeItem = activeSection
-        ? navItems.find(item => item.id === activeSection) ?? null
-        : null;
+  const navItems = useProjectNavItems();
+  const activeItem = activeSection
+    ? (navItems.find((item) => item.id === activeSection) ?? null)
+    : null;
 
-    const sectionProps: ProjectSectionProps | null = useMemo(() => {
-        if (!projectService || !config) {
-            return null;
-        }
-        return { projectService, uiService, config, onConfigChange: handleConfigChange };
-    }, [config, handleConfigChange, projectService, uiService]);
+  const sectionProps: ProjectSectionProps | null = useMemo(() => {
+    if (!projectService || !config) {
+      return null;
+    }
+    return { projectService, uiService, config, onConfigChange: handleConfigChange };
+  }, [config, handleConfigChange, projectService, uiService]);
 
-    return (
-        <div
-            className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface"
-            data-panel-id={panelId}
-        >
-            <ProjectPanelHome config={config} onOpen={setActiveSection} />
+  return (
+    <div
+      className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface"
+      data-panel-id={panelId}
+    >
+      <ProjectPanelHome config={config} onOpen={setActiveSection} />
 
-            <AnimatePresence>
-                {activeItem && sectionProps ? (
-                    <motion.div
-                        key={activeItem.id}
-                        // `.nl-opaque-surface`, not `bg-surface`: this slides over the overview list,
-                        // which stays mounted underneath, so its fill has to survive the wallpaper
-                        // rule that clears every base surface (see styles.css). Same colour either way.
-                        className="absolute inset-0 z-10 nl-opaque-surface shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
-                        initial={{ x: "100%" }}
-                        animate={{ x: 0 }}
-                        exit={{ x: "100%" }}
-                        transition={{ type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                    >
-                        <ProjectSubPage
-                            title={activeItem.title}
-                            description={activeItem.description}
-                            // Only the three pages that are one subject from top to bottom. Brand
-                            // carries two headings but one subject, so the topic answers for both.
-                            // App, Game and Settings each hold several, and those tag themselves.
-                            helpTopic={SUB_PAGE_HELP_TOPICS[activeItem.id]}
-                            onBack={closeSection}
-                        >
-                            {activeItem.id === "app" ? <ProjectAppPage {...sectionProps} /> : null}
-                            {activeItem.id === "game" ? <ProjectGamePage {...sectionProps} /> : null}
-                            {/* Brand is two parts of one subject and names them itself: the
+      <AnimatePresence>
+        {activeItem && sectionProps ? (
+          <motion.div
+            key={activeItem.id}
+            // `.nl-opaque-surface`, not `bg-surface`: this slides over the overview list,
+            // which stays mounted underneath, so its fill has to survive the wallpaper
+            // rule that clears every base surface (see styles.css). Same colour either way.
+            className="absolute inset-0 z-10 nl-opaque-surface shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <ProjectSubPage
+              title={activeItem.title}
+              description={activeItem.description}
+              // Only the three pages that are one subject from top to bottom. Brand
+              // carries two headings but one subject, so the topic answers for both.
+              // App, Game and Settings each hold several, and those tag themselves.
+              helpTopic={SUB_PAGE_HELP_TOPICS[activeItem.id]}
+              onBack={closeSection}
+            >
+              {activeItem.id === "app" ? <ProjectAppPage {...sectionProps} /> : null}
+              {activeItem.id === "game" ? <ProjectGamePage {...sectionProps} /> : null}
+              {/* Brand is two parts of one subject and names them itself: the
                                 colours an author decides, and the slots that follow them. */}
-                            {activeItem.id === "design" ? <ProjectDesignSection {...sectionProps} /> : null}
-                            {/* Project and Runtimes hold a single part each, so they carry no
+              {activeItem.id === "design" ? <ProjectDesignSection {...sectionProps} /> : null}
+              {/* Project and Runtimes hold a single part each, so they carry no
                                 headings of their own - the sub-page header already named it. */}
-                            {activeItem.id === "project" ? <ProjectLintingSection {...sectionProps} /> : null}
-                            {activeItem.id === "runtimes" ? <ProjectRuntimesSection {...sectionProps} /> : null}
-                            {activeItem.id === "settings" ? <ProjectSettingsSection {...sectionProps} /> : null}
-                        </ProjectSubPage>
-                    </motion.div>
-                ) : null}
-            </AnimatePresence>
-        </div>
-    );
+              {activeItem.id === "project" ? <ProjectLintingSection {...sectionProps} /> : null}
+              {activeItem.id === "runtimes" ? <ProjectRuntimesSection {...sectionProps} /> : null}
+              {activeItem.id === "settings" ? <ProjectSettingsSection {...sectionProps} /> : null}
+            </ProjectSubPage>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
 }
 
 function cloneProjectConfig(config: ProjectConfig): ProjectConfig {
-    return JSON.parse(JSON.stringify(config)) as ProjectConfig;
+  return JSON.parse(JSON.stringify(config)) as ProjectConfig;
 }

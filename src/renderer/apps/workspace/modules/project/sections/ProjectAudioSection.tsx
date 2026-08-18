@@ -31,17 +31,25 @@ import { useTranslation } from "@/lib/i18n";
 import { HelpTrigger } from "@/lib/help";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
-import { Button, HintPopover, Input, Select, Slider, Switch, type SelectOption } from "@/lib/components/elements";
+import {
+  Button,
+  HintPopover,
+  Input,
+  Select,
+  Slider,
+  Switch,
+  type SelectOption
+} from "@/lib/components/elements";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import {
-    audioTrackDescendantIds,
-    countAudioTrackReferences,
-    flattenAudioTrackTree,
-    type ProjectAudioTrack,
+  audioTrackDescendantIds,
+  countAudioTrackReferences,
+  flattenAudioTrackTree,
+  type ProjectAudioTrack
 } from "@shared/types/audioTrack";
 import { useWorkspace } from "../../../context";
 import { SettingsGroup } from "../components/SettingsGroup";
@@ -82,151 +90,157 @@ const VOLUME_PERCENT_MAX = 100;
 const HEADER_WIDTH_CLAMP = "min-w-0 [&>button]:min-w-0 [&>button>span]:min-w-0";
 
 export function ProjectAudioSection({ uiService }: ProjectSectionProps) {
-    const { t, tn } = useTranslation();
-    const { context, isInitialized } = useWorkspace();
-    const freeze = useFreezeGuard();
+  const { t, tn } = useTranslation();
+  const { context, isInitialized } = useWorkspace();
+  const freeze = useFreezeGuard();
 
-    const trackService = useMemo(() => {
-        if (!context || !isInitialized) {
-            return null;
-        }
-        return context.services.get<AudioTrackService>(Services.AudioTracks);
-    }, [context, isInitialized]);
+  const trackService = useMemo(() => {
+    if (!context || !isInitialized) {
+      return null;
+    }
+    return context.services.get<AudioTrackService>(Services.AudioTracks);
+  }, [context, isInitialized]);
 
-    const [tracks, setTracks] = useState<ProjectAudioTrack[]>([]);
-    const [references, setReferences] = useState<Record<string, number>>({});
-    /**
-     * Collapsed is the default: the list opens as one row per bus, and nothing is expanded until the
-     * author asks. A bus the author just created is the one exception - they made it to name it.
+  const [tracks, setTracks] = useState<ProjectAudioTrack[]>([]);
+  const [references, setReferences] = useState<Record<string, number>>({});
+  /**
+   * Collapsed is the default: the list opens as one row per bus, and nothing is expanded until the
+   * author asks. A bus the author just created is the one exception - they made it to name it.
+   */
+  const [openIds, setOpenIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!trackService) {
+      setTracks([]);
+      return;
+    }
+    setTracks(trackService.listTracks());
+    return trackService.onTracksChanged(setTracks);
+  }, [trackService]);
+
+  // Recomputed when the id set changes rather than on every keystroke: renaming a bus or nudging
+  // its volume cannot change how many things point at it, and re-reading every story document for
+  // each character typed into the name field would be a scan per frame.
+  // JSON rather than a delimiter join: an id is only trimmed, not restricted, so any
+  // separator could in principle appear inside one and split a single track into two.
+  const trackIdKey = JSON.stringify(tracks.map((track) => track.id));
+  useEffect(() => {
+    if (!context || !isInitialized) {
+      return;
+    }
+    let active = true;
+    void (async () => {
+      const counts = await countReferences(context, JSON.parse(trackIdKey) as string[]);
+      if (active) {
+        setReferences(counts);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [context, isInitialized, trackIdKey]);
+
+  const rows = useMemo(() => flattenAudioTrackTree(tracks), [tracks]);
+
+  // Filtered rather than pruned in an effect: a deleted bus's id would otherwise sit in the open
+  // set and re-open a later track that happened to be handed the same id.
+  const openItems = useMemo(() => {
+    const known = new Set(tracks.map((track) => track.id));
+    return openIds.filter((id) => known.has(id));
+  }, [openIds, tracks]);
+
+  const addTrack = useCallback(() => {
+    const created = trackService?.createTrack({ name: t("project.audio.newTrackName") });
+    if (created) {
+      setOpenIds((prev) => [...prev, created.id]);
+    }
+  }, [t, trackService]);
+
+  const duplicateTrack = useCallback(
+    (id: string) => {
+      const created = trackService?.duplicateTrack(id);
+      if (created) {
+        setOpenIds((prev) => [...prev, created.id]);
+      }
+    },
+    [trackService]
+  );
+
+  const removeTrack = useCallback(
+    async (track: ProjectAudioTrack) => {
+      if (!trackService) {
+        return;
+      }
+      const uses = references[track.id] ?? 0;
+      const children = tracks.filter((entry) => entry.parentId === track.id).length;
+      const parent =
+        track.parentId === null
+          ? t("project.audio.parentMaster")
+          : (trackService.getTrack(track.parentId)?.name ?? t("project.audio.parentMaster"));
+      const detail = [
+        tn("project.audio.deleteDetail", uses),
+        children > 0 ? tn("project.audio.deleteChildren", children, { parent }) : null
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const confirmed = await uiService?.showDestructiveConfirm(
+        t("project.audio.deleteConfirm", { name: track.name }),
+        detail,
+        t("project.audio.delete")
+      );
+      if (confirmed) {
+        trackService.deleteTrack(track.id);
+      }
+    },
+    [references, t, tn, trackService, tracks, uiService]
+  );
+
+  return (
+    /*
+     * The explanation is the `audio` help topic, reached by the `?` on this heading: what a bus
+     * is and how the mix multiplies is a topic, not something a settings pane repeats at every
+     * author who opens it. It was a paragraph here once, and before that the same paragraph on
+     * every field of every track.
      */
-    const [openIds, setOpenIds] = useState<string[]>([]);
-
-    useEffect(() => {
-        if (!trackService) {
-            setTracks([]);
-            return;
-        }
-        setTracks(trackService.listTracks());
-        return trackService.onTracksChanged(setTracks);
-    }, [trackService]);
-
-    // Recomputed when the id set changes rather than on every keystroke: renaming a bus or nudging
-    // its volume cannot change how many things point at it, and re-reading every story document for
-    // each character typed into the name field would be a scan per frame.
-    // JSON rather than a delimiter join: an id is only trimmed, not restricted, so any
-    // separator could in principle appear inside one and split a single track into two.
-    const trackIdKey = JSON.stringify(tracks.map(track => track.id));
-    useEffect(() => {
-        if (!context || !isInitialized) {
-            return;
-        }
-        let active = true;
-        void (async () => {
-            const counts = await countReferences(context, JSON.parse(trackIdKey) as string[]);
-            if (active) {
-                setReferences(counts);
-            }
-        })();
-        return () => { active = false; };
-    }, [context, isInitialized, trackIdKey]);
-
-    const rows = useMemo(() => flattenAudioTrackTree(tracks), [tracks]);
-
-    // Filtered rather than pruned in an effect: a deleted bus's id would otherwise sit in the open
-    // set and re-open a later track that happened to be handed the same id.
-    const openItems = useMemo(() => {
-        const known = new Set(tracks.map(track => track.id));
-        return openIds.filter(id => known.has(id));
-    }, [openIds, tracks]);
-
-    const addTrack = useCallback(() => {
-        const created = trackService?.createTrack({ name: t("project.audio.newTrackName") });
-        if (created) {
-            setOpenIds(prev => [...prev, created.id]);
-        }
-    }, [t, trackService]);
-
-    const duplicateTrack = useCallback((id: string) => {
-        const created = trackService?.duplicateTrack(id);
-        if (created) {
-            setOpenIds(prev => [...prev, created.id]);
-        }
-    }, [trackService]);
-
-    const removeTrack = useCallback(async (track: ProjectAudioTrack) => {
-        if (!trackService) {
-            return;
-        }
-        const uses = references[track.id] ?? 0;
-        const children = tracks.filter(entry => entry.parentId === track.id).length;
-        const parent = track.parentId === null
-            ? t("project.audio.parentMaster")
-            : trackService.getTrack(track.parentId)?.name ?? t("project.audio.parentMaster");
-        const detail = [
-            tn("project.audio.deleteDetail", uses),
-            children > 0 ? tn("project.audio.deleteChildren", children, { parent }) : null,
-        ].filter(Boolean).join("\n");
-        const confirmed = await uiService?.showDestructiveConfirm(
-            t("project.audio.deleteConfirm", { name: track.name }),
-            detail,
-            t("project.audio.delete"),
-        );
-        if (confirmed) {
-            trackService.deleteTrack(track.id);
-        }
-    }, [references, t, tn, trackService, tracks, uiService]);
-
-    return (
-        /*
-         * The explanation is the `audio` help topic, reached by the `?` on this heading: what a bus
-         * is and how the mix multiplies is a topic, not something a settings pane repeats at every
-         * author who opens it. It was a paragraph here once, and before that the same paragraph on
-         * every field of every track.
-         */
-        <SettingsGroup
-            title={t("project.group.audioTracks")}
-            helpTopic="audio"
-            trailing={(
-                <>
-                    <HelpTrigger topic="audio" />
-                    <Button
-                        size="sm"
-                        onClick={addTrack}
-                        {...freeze.writes(!trackService)}
-                        className="shrink-0"
-                    >
-                        <Plus className="h-3.5 w-3.5" />
-                        {t("project.audio.add")}
-                    </Button>
-                </>
-            )}
-        >
-            {/* The top rule is the list's own edge: every row carries a bottom hairline, so without
+    <SettingsGroup
+      title={t("project.group.audioTracks")}
+      helpTopic="audio"
+      trailing={
+        <>
+          <HelpTrigger topic="audio" />
+          <Button
+            size="sm"
+            onClick={addTrack}
+            {...freeze.writes(!trackService)}
+            className="shrink-0"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t("project.audio.add")}
+          </Button>
+        </>
+      }
+    >
+      {/* The top rule is the list's own edge: every row carries a bottom hairline, so without
                 it the list is bounded below and open above. `[&>*]:min-w-0` on every grid in this
                 subtree; see HEADER_WIDTH_CLAMP. */}
-            <div className="min-w-0 border-t border-edge">
-                <Accordion
-                    className="min-w-0"
-                    multiple
-                    openItems={openItems}
-                    onOpenChange={setOpenIds}
-                >
-                    {rows.map(({ track, depth }) => (
-                        <TrackItem
-                            key={track.id}
-                            track={track}
-                            depth={depth}
-                            tracks={tracks}
-                            service={trackService}
-                            uses={references[track.id] ?? 0}
-                            onDuplicate={() => duplicateTrack(track.id)}
-                            onDelete={() => void removeTrack(track)}
-                        />
-                    ))}
-                </Accordion>
-            </div>
-        </SettingsGroup>
-    );
+      <div className="min-w-0 border-t border-edge">
+        <Accordion className="min-w-0" multiple openItems={openItems} onOpenChange={setOpenIds}>
+          {rows.map(({ track, depth }) => (
+            <TrackItem
+              key={track.id}
+              track={track}
+              depth={depth}
+              tracks={tracks}
+              service={trackService}
+              uses={references[track.id] ?? 0}
+              onDuplicate={() => duplicateTrack(track.id)}
+              onDelete={() => void removeTrack(track)}
+            />
+          ))}
+        </Accordion>
+      </div>
+    </SettingsGroup>
+  );
 }
 
 /**
@@ -237,211 +251,215 @@ export function ProjectAudioSection({ uiService }: ProjectSectionProps) {
  * bus lines up under its parent exactly the way a group does in the assets panel.
  */
 function TrackItem({
-    track,
-    depth,
-    tracks,
-    service,
-    uses,
-    onDuplicate,
-    onDelete,
+  track,
+  depth,
+  tracks,
+  service,
+  uses,
+  onDuplicate,
+  onDelete
 }: {
-    track: ProjectAudioTrack;
-    depth: number;
-    tracks: readonly ProjectAudioTrack[];
-    service: AudioTrackService | null;
-    uses: number;
-    onDuplicate: () => void;
-    onDelete: () => void;
+  track: ProjectAudioTrack;
+  depth: number;
+  tracks: readonly ProjectAudioTrack[];
+  service: AudioTrackService | null;
+  uses: number;
+  onDuplicate: () => void;
+  onDelete: () => void;
 }) {
-    const { t, tn } = useTranslation();
-    const freeze = useFreezeGuard();
-    const frozen = freeze.writes(!service);
+  const { t, tn } = useTranslation();
+  const freeze = useFreezeGuard();
+  const frozen = freeze.writes(!service);
 
-    /**
-     * The volume the surface is showing, which is the stored one except while a drag is in flight.
-     *
-     * Held here rather than inside the field so the collapsed row's readout and the expanded
-     * slider are never a frame apart - both are visible at once while the bus is open, and a header
-     * that lags the slider under it reads as a broken control. The service is written on release
-     * (see {@link Slider.onValueCommit}), not per pointer move, so a drag costs one document
-     * revision rather than sixty.
-     */
-    const storedPercent = Math.round(track.volume * 100);
-    const [draftPercent, setDraftPercent] = useState(storedPercent);
-    useEffect(() => {
-        setDraftPercent(storedPercent);
-    }, [storedPercent]);
+  /**
+   * The volume the surface is showing, which is the stored one except while a drag is in flight.
+   *
+   * Held here rather than inside the field so the collapsed row's readout and the expanded
+   * slider are never a frame apart - both are visible at once while the bus is open, and a header
+   * that lags the slider under it reads as a broken control. The service is written on release
+   * (see {@link Slider.onValueCommit}), not per pointer move, so a drag costs one document
+   * revision rather than sixty.
+   */
+  const storedPercent = Math.round(track.volume * 100);
+  const [draftPercent, setDraftPercent] = useState(storedPercent);
+  useEffect(() => {
+    setDraftPercent(storedPercent);
+  }, [storedPercent]);
 
-    const parentOptions = useMemo<SelectOption[]>(() => {
-        // Itself and its own descendants are excluded rather than offered and refused: a select that
-        // lets the author pick a cycle and then silently re-roots the bus teaches them the control
-        // is broken.
-        const forbidden = audioTrackDescendantIds(tracks, track.id);
-        return [
-            { value: "", label: t("project.audio.parentMaster") },
-            ...tracks
-                .filter(entry => entry.id !== track.id && !forbidden.has(entry.id))
-                .map(entry => ({ value: entry.id, label: entry.name })),
-        ];
-    }, [t, track.id, tracks]);
+  const parentOptions = useMemo<SelectOption[]>(() => {
+    // Itself and its own descendants are excluded rather than offered and refused: a select that
+    // lets the author pick a cycle and then silently re-roots the bus teaches them the control
+    // is broken.
+    const forbidden = audioTrackDescendantIds(tracks, track.id);
+    return [
+      { value: "", label: t("project.audio.parentMaster") },
+      ...tracks
+        .filter((entry) => entry.id !== track.id && !forbidden.has(entry.id))
+        .map((entry) => ({ value: entry.id, label: entry.name }))
+    ];
+  }, [t, track.id, tracks]);
 
-    const level = Math.min(depth, TRACK_INDENT_MAX_LEVEL);
+  const level = Math.min(depth, TRACK_INDENT_MAX_LEVEL);
 
-    return (
-        <AccordionItem
-            id={track.id}
-            level={level}
+  return (
+    <AccordionItem
+      id={track.id}
+      level={level}
+      className="min-w-0"
+      headerClassName={HEADER_WIDTH_CLAMP}
+      contentClassName="min-w-0"
+      headerProps={{
+        // The row's handle: verification, and anything that later has to find a bus on
+        // screen, reads this rather than matching a translated label.
+        "data-audio-track": track.id
+      }}
+      title={
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-fg">{track.name}</span>
+          <VolumeReadout
+            percent={draftPercent}
+            title={`${t("project.audio.volumeTitle")} ${draftPercent}${t("project.audio.volumeUnit")}`}
+          />
+        </span>
+      }
+    >
+      {/*
+       * `Accordion` listens for Enter/Space on `window` to toggle the focused row, and its
+       * only exemption is for real `input`/`textarea`/`select` elements. `Select` and
+       * `Switch` are buttons, so without this a Space on the loop switch would collapse the
+       * bus instead of toggling it. Scoped to the two keys the accordion consumes, so
+       * application keybindings still reach the window from inside an open bus.
+       */}
+      <div
+        className="grid gap-2.5 bg-fill-subtle py-2.5 pr-3 [&>*]:min-w-0"
+        style={{
+          paddingLeft:
+            TRACK_INDENT_PX + Math.min(level, TRACK_BODY_INDENT_MAX_LEVEL) * TRACK_INDENT_PX
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.stopPropagation();
+          }
+        }}
+      >
+        <Field label={t("project.audio.nameTitle")}>
+          <TrackNameField
+            name={track.name}
+            disabled={frozen.disabled}
+            label={t("project.audio.nameTitle")}
+            onCommit={(name) => service?.renameTrack(track.id, name)}
+          />
+        </Field>
+
+        <Field label={t("project.audio.parentTitle")}>
+          <Select
+            size="sm"
+            fullWidth
+            portalMenu
             className="min-w-0"
-            headerClassName={HEADER_WIDTH_CLAMP}
-            contentClassName="min-w-0"
-            headerProps={{
-                // The row's handle: verification, and anything that later has to find a bus on
-                // screen, reads this rather than matching a translated label.
-                "data-audio-track": track.id,
-            }}
-            title={
-                <span className="flex min-w-0 items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate text-fg">{track.name}</span>
-                    <VolumeReadout
-                        percent={draftPercent}
-                        title={`${t("project.audio.volumeTitle")} ${draftPercent}${t("project.audio.volumeUnit")}`}
-                    />
-                </span>
-            }
+            options={parentOptions}
+            value={track.parentId ?? ""}
+            disabled={frozen.disabled}
+            ariaLabel={t("project.audio.parentTitle")}
+            onChange={(value) => service?.reparentTrack(track.id, String(value) || null)}
+          />
+        </Field>
+
+        <Field
+          label={t("project.audio.volumeTitle")}
+          trailing={
+            <span className="shrink-0 tabular-nums text-2xs text-fg-muted">
+              {draftPercent}
+              {t("project.audio.volumeUnit")}
+            </span>
+          }
         >
+          <Slider
+            value={draftPercent}
+            min={VOLUME_PERCENT_MIN}
+            max={VOLUME_PERCENT_MAX}
+            step={1}
+            disabled={frozen.disabled}
+            data-tip={frozen["data-tip"]}
+            aria-label={t("project.audio.volumeTitle")}
+            onValueChange={setDraftPercent}
+            onValueCommit={(percent) => service?.updateTrack(track.id, { volume: percent / 100 })}
+          />
+        </Field>
+
+        <div
+          className="flex min-w-0 items-center justify-between gap-2"
+          data-tip={frozen["data-tip"]}
+        >
+          <span className="flex min-w-0 items-center gap-1 text-2xs font-medium text-fg-muted">
+            <span className="truncate">{t("project.audio.loopTitle")}</span>
             {/*
-              * `Accordion` listens for Enter/Space on `window` to toggle the focused row, and its
-              * only exemption is for real `input`/`textarea`/`select` elements. `Select` and
-              * `Switch` are buttons, so without this a Space on the loop switch would collapse the
-              * bus instead of toggling it. Scoped to the two keys the accordion consumes, so
-              * application keybindings still reach the window from inside an open bus.
-              */}
-            <div
-                className="grid gap-2.5 bg-fill-subtle py-2.5 pr-3 [&>*]:min-w-0"
-                style={{
-                    paddingLeft: TRACK_INDENT_PX
-                        + Math.min(level, TRACK_BODY_INDENT_MAX_LEVEL) * TRACK_INDENT_PX,
-                }}
-                onKeyDown={event => {
-                    if (event.key === "Enter" || event.key === " ") {
-                        event.stopPropagation();
-                    }
-                }}
+             * The one per-field explanation that survives as prose, and it is behind an
+             * icon rather than on screen: what "routes into" and "volume" mean is in the
+             * section intro, but a loop *default* is a policy the label alone does not
+             * state.
+             */}
+            <HintPopover text={t("project.audio.loopDescription")} />
+          </span>
+          <Switch
+            size="sm"
+            checked={track.loop}
+            disabled={frozen.disabled}
+            onCheckedChange={(loop) => service?.updateTrack(track.id, { loop })}
+            aria-label={t("project.audio.loopTitle")}
+          />
+        </div>
+
+        {/*
+         * How many stored references point here sits next to Delete rather than in the row,
+         * because that is the only question it answers: what the confirmation is about to
+         * tell the author will fall back to a default bus.
+         */}
+        {/*
+         * The buttons wrap, the row does not. Squeezed to ~190px with another panel open,
+         * a nested bus has less body width than Duplicate and Delete side by side, and a
+         * group that refuses to wrap pushes the whole sub-page into horizontal scroll -
+         * measured, 20px of it. `flex-wrap` on the *row* would fix that too and costs 20px
+         * of height on every open bus at full width, because flexbox wraps on content size
+         * before it shrinks anything: the count would jump to its own line rather than
+         * ellipsing. So the row stays one line and the count is what gives way.
+         */}
+        <div className="flex min-w-0 items-center justify-between gap-2 border-t border-edge pt-2">
+          <span className="min-w-0 truncate text-2xs text-fg-subtle">
+            {tn("project.audio.usedBy", uses)}
+          </span>
+          {/*
+           * `shrink-0` so the count gives way first, `max-w-full` so the pair still
+           * wraps once even that is not enough. Without `shrink-0` flexbox shrinks both
+           * items in proportion, which wrapped the buttons - and cost 28px of height -
+           * on every nested bus at full width, where they fit perfectly well.
+           */}
+          <span className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={onDuplicate}
+              {...freeze.writes(!service)}
+              className="px-1.5"
             >
-                <Field label={t("project.audio.nameTitle")}>
-                    <TrackNameField
-                        name={track.name}
-                        disabled={frozen.disabled}
-                        label={t("project.audio.nameTitle")}
-                        onCommit={name => service?.renameTrack(track.id, name)}
-                    />
-                </Field>
-
-                <Field label={t("project.audio.parentTitle")}>
-                    <Select
-                        size="sm"
-                        fullWidth
-                        portalMenu
-                        className="min-w-0"
-                        options={parentOptions}
-                        value={track.parentId ?? ""}
-                        disabled={frozen.disabled}
-                        ariaLabel={t("project.audio.parentTitle")}
-                        onChange={value => service?.reparentTrack(track.id, String(value) || null)}
-                    />
-                </Field>
-
-                <Field
-                    label={t("project.audio.volumeTitle")}
-                    trailing={
-                        <span className="shrink-0 tabular-nums text-2xs text-fg-muted">
-                            {draftPercent}{t("project.audio.volumeUnit")}
-                        </span>
-                    }
-                >
-                    <Slider
-                        value={draftPercent}
-                        min={VOLUME_PERCENT_MIN}
-                        max={VOLUME_PERCENT_MAX}
-                        step={1}
-                        disabled={frozen.disabled}
-                        data-tip={frozen["data-tip"]}
-                        aria-label={t("project.audio.volumeTitle")}
-                        onValueChange={setDraftPercent}
-                        onValueCommit={percent => service?.updateTrack(track.id, { volume: percent / 100 })}
-                    />
-                </Field>
-
-                <div className="flex min-w-0 items-center justify-between gap-2" data-tip={frozen["data-tip"]}>
-                    <span className="flex min-w-0 items-center gap-1 text-2xs font-medium text-fg-muted">
-                        <span className="truncate">{t("project.audio.loopTitle")}</span>
-                        {/*
-                          * The one per-field explanation that survives as prose, and it is behind an
-                          * icon rather than on screen: what "routes into" and "volume" mean is in the
-                          * section intro, but a loop *default* is a policy the label alone does not
-                          * state.
-                          */}
-                        <HintPopover text={t("project.audio.loopDescription")} />
-                    </span>
-                    <Switch
-                        size="sm"
-                        checked={track.loop}
-                        disabled={frozen.disabled}
-                        onCheckedChange={loop => service?.updateTrack(track.id, { loop })}
-                        aria-label={t("project.audio.loopTitle")}
-                    />
-                </div>
-
-                {/*
-                  * How many stored references point here sits next to Delete rather than in the row,
-                  * because that is the only question it answers: what the confirmation is about to
-                  * tell the author will fall back to a default bus.
-                  */}
-                {/*
-                  * The buttons wrap, the row does not. Squeezed to ~190px with another panel open,
-                  * a nested bus has less body width than Duplicate and Delete side by side, and a
-                  * group that refuses to wrap pushes the whole sub-page into horizontal scroll -
-                  * measured, 20px of it. `flex-wrap` on the *row* would fix that too and costs 20px
-                  * of height on every open bus at full width, because flexbox wraps on content size
-                  * before it shrinks anything: the count would jump to its own line rather than
-                  * ellipsing. So the row stays one line and the count is what gives way.
-                  */}
-                <div className="flex min-w-0 items-center justify-between gap-2 border-t border-edge pt-2">
-                    <span className="min-w-0 truncate text-2xs text-fg-subtle">
-                        {tn("project.audio.usedBy", uses)}
-                    </span>
-                    {/*
-                      * `shrink-0` so the count gives way first, `max-w-full` so the pair still
-                      * wraps once even that is not enough. Without `shrink-0` flexbox shrinks both
-                      * items in proportion, which wrapped the buttons - and cost 28px of height -
-                      * on every nested bus at full width, where they fit perfectly well.
-                      */}
-                    <span className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1">
-                        <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={onDuplicate}
-                            {...freeze.writes(!service)}
-                            className="px-1.5"
-                        >
-                            {t("project.audio.duplicate")}
-                        </Button>
-                        {track.builtin ? null : (
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={onDelete}
-                                {...freeze.writes(!service)}
-                                className="px-1.5 hover:text-danger"
-                            >
-                                {t("project.audio.delete")}
-                            </Button>
-                        )}
-                    </span>
-                </div>
-            </div>
-        </AccordionItem>
-    );
+              {t("project.audio.duplicate")}
+            </Button>
+            {track.builtin ? null : (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={onDelete}
+                {...freeze.writes(!service)}
+                className="px-1.5 hover:text-danger"
+              >
+                {t("project.audio.delete")}
+              </Button>
+            )}
+          </span>
+        </div>
+      </div>
+    </AccordionItem>
+  );
 }
 
 /**
@@ -454,23 +472,23 @@ function TrackItem({
  * trigger.
  */
 function Field({
-    label,
-    trailing,
-    children,
+  label,
+  trailing,
+  children
 }: {
-    label: string;
-    trailing?: React.ReactNode;
-    children: React.ReactNode;
+  label: string;
+  trailing?: React.ReactNode;
+  children: React.ReactNode;
 }) {
-    return (
-        <div className="grid min-w-0 gap-1 [&>*]:min-w-0">
-            <div className="flex min-w-0 items-baseline justify-between gap-2">
-                <span className="min-w-0 truncate text-2xs font-medium text-fg-muted">{label}</span>
-                {trailing}
-            </div>
-            {children}
-        </div>
-    );
+  return (
+    <div className="grid min-w-0 gap-1 [&>*]:min-w-0">
+      <div className="flex min-w-0 items-baseline justify-between gap-2">
+        <span className="min-w-0 truncate text-2xs font-medium text-fg-muted">{label}</span>
+        {trailing}
+      </div>
+      {children}
+    </div>
+  );
 }
 
 /**
@@ -483,22 +501,21 @@ function Field({
  * carries the *reading* a slider would give and the real `Slider` lives one click away, in the body.
  */
 function VolumeReadout({ percent, title }: { percent: number; title: string }) {
-    return (
-        // `gap-1`, not `gap-1.5`: measured, the wider gap put the readout 1.6px past the section's
-        // right edge at a 190px panel with a depth-4 bus open and a scrollbar showing.
-        <span className="flex shrink-0 items-center gap-1" data-tip={title}>
-            <span
-                aria-hidden="true"
-                className="h-1 w-8 shrink-0 overflow-hidden rounded-full bg-fill-strong"
-            >
-                <span
-                    className="block h-full rounded-full bg-primary"
-                    style={{ width: `${percent}%` }}
-                />
-            </span>
-            <span className="w-7 shrink-0 text-right tabular-nums text-2xs text-fg-muted">{percent}%</span>
-        </span>
-    );
+  return (
+    // `gap-1`, not `gap-1.5`: measured, the wider gap put the readout 1.6px past the section's
+    // right edge at a 190px panel with a depth-4 bus open and a scrollbar showing.
+    <span className="flex shrink-0 items-center gap-1" data-tip={title}>
+      <span
+        aria-hidden="true"
+        className="h-1 w-8 shrink-0 overflow-hidden rounded-full bg-fill-strong"
+      >
+        <span className="block h-full rounded-full bg-primary" style={{ width: `${percent}%` }} />
+      </span>
+      <span className="w-7 shrink-0 text-right tabular-nums text-2xs text-fg-muted">
+        {percent}%
+      </span>
+    </span>
+  );
 }
 
 /**
@@ -509,50 +526,50 @@ function VolumeReadout({ percent, title }: { percent: number; title: string }) {
  * moment they cleared it to retype.
  */
 function TrackNameField({
-    name,
-    disabled,
-    label,
-    onCommit,
+  name,
+  disabled,
+  label,
+  onCommit
 }: {
-    name: string;
-    disabled: boolean;
-    label: string;
-    onCommit: (name: string) => void;
+  name: string;
+  disabled: boolean;
+  label: string;
+  onCommit: (name: string) => void;
 }) {
-    const [draft, setDraft] = useState(name);
+  const [draft, setDraft] = useState(name);
 
-    useEffect(() => {
-        setDraft(name);
-    }, [name]);
+  useEffect(() => {
+    setDraft(name);
+  }, [name]);
 
-    const commit = useCallback(() => {
-        const next = draft.trim();
-        if (next && next !== name) {
-            onCommit(next);
-        } else {
-            setDraft(name);
+  const commit = useCallback(() => {
+    const next = draft.trim();
+    if (next && next !== name) {
+      onCommit(next);
+    } else {
+      setDraft(name);
+    }
+  }, [draft, name, onCommit]);
+
+  return (
+    <Input
+      size="sm"
+      value={draft}
+      disabled={disabled}
+      aria-label={label}
+      className="w-full min-w-0"
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.currentTarget.blur();
+        } else if (event.key === "Escape") {
+          setDraft(name);
+          event.currentTarget.blur();
         }
-    }, [draft, name, onCommit]);
-
-    return (
-        <Input
-            size="sm"
-            value={draft}
-            disabled={disabled}
-            aria-label={label}
-            className="w-full min-w-0"
-            onChange={event => setDraft(event.target.value)}
-            onBlur={commit}
-            onKeyDown={event => {
-                if (event.key === "Enter") {
-                    event.currentTarget.blur();
-                } else if (event.key === "Escape") {
-                    setDraft(name);
-                    event.currentTarget.blur();
-                }
-            }}
-        />
-    );
+      }}
+    />
+  );
 }
 
 /**
@@ -564,29 +581,33 @@ function TrackNameField({
  * elsewhere and must not leave this surface without a number.
  */
 async function countReferences(
-    context: WorkspaceContext,
-    trackIds: readonly string[],
+  context: WorkspaceContext,
+  trackIds: readonly string[]
 ): Promise<Record<string, number>> {
-    const roots: unknown[] = [];
-    try {
-        const storyService = context.services.get<StoryService>(Services.Story);
-        for (const entry of storyService.listStories()) {
-            const document = await storyService.loadStory(entry.id).catch(() => null);
-            if (document) {
-                roots.push(document);
-            }
-        }
-    } catch {
-        // The story library is not loaded in every context this panel can mount in.
+  const roots: unknown[] = [];
+  try {
+    const storyService = context.services.get<StoryService>(Services.Story);
+    for (const entry of storyService.listStories()) {
+      const document = await storyService.loadStory(entry.id).catch(() => null);
+      if (document) {
+        roots.push(document);
+      }
     }
-    // Each in its own guard: a document service that has not loaded contributes nothing rather than
-    // costing the surface the counts the others could have provided.
-    try {
-        roots.push(context.services.get<UIGraphService>(Services.UIGraph).getDocument());
-    } catch { /* not loaded */ }
-    try {
-        roots.push(context.services.get<UIDocumentService>(Services.UIDocument).getDocument());
-    } catch { /* not loaded */ }
+  } catch {
+    // The story library is not loaded in every context this panel can mount in.
+  }
+  // Each in its own guard: a document service that has not loaded contributes nothing rather than
+  // costing the surface the counts the others could have provided.
+  try {
+    roots.push(context.services.get<UIGraphService>(Services.UIGraph).getDocument());
+  } catch {
+    /* not loaded */
+  }
+  try {
+    roots.push(context.services.get<UIDocumentService>(Services.UIDocument).getDocument());
+  } catch {
+    /* not loaded */
+  }
 
-    return countAudioTrackReferences(roots, trackIds);
+  return countAudioTrackReferences(roots, trackIds);
 }

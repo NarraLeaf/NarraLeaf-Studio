@@ -40,36 +40,36 @@ export type MeasuredNode = { x: number; y: number; width: number; height: number
  * passes in.
  */
 export function boundsOfMeasuredNodes(nodes: Iterable<MeasuredNode>): FlowRect | null {
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const node of nodes) {
-        if (!Number.isFinite(node.x) || !Number.isFinite(node.y)) {
-            continue;
-        }
-        const width = Number.isFinite(node.width) ? node.width : 0;
-        const height = Number.isFinite(node.height) ? node.height : 0;
-        minX = Math.min(minX, node.x);
-        minY = Math.min(minY, node.y);
-        maxX = Math.max(maxX, node.x + width);
-        maxY = Math.max(maxY, node.y + height);
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const node of nodes) {
+    if (!Number.isFinite(node.x) || !Number.isFinite(node.y)) {
+      continue;
     }
-    if (minX === Infinity) {
-        return null;
-    }
-    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+    const width = Number.isFinite(node.width) ? node.width : 0;
+    const height = Number.isFinite(node.height) ? node.height : 0;
+    minX = Math.min(minX, node.x);
+    minY = Math.min(minY, node.y);
+    maxX = Math.max(maxX, node.x + width);
+    maxY = Math.max(maxY, node.y + height);
+  }
+  if (minX === Infinity) {
+    return null;
+  }
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
 export type ComputeBlueprintZoomParams = {
-    mode: CanvasFitMode;
-    /** Bounding box of the nodes, in graph coordinates; `null` for a graph with nothing in it. */
-    bounds: FlowRect | null;
-    /** The pane the graph is drawn in, in screen pixels. */
-    container: { width: number; height: number };
-    /** What the canvas will accept; React Flow clamps to this anyway, so the caller must not lie. */
-    range: ZoomRange;
-    padding?: number;
+  mode: CanvasFitMode;
+  /** Bounding box of the nodes, in graph coordinates; `null` for a graph with nothing in it. */
+  bounds: FlowRect | null;
+  /** The pane the graph is drawn in, in screen pixels. */
+  container: { width: number; height: number };
+  /** What the canvas will accept; React Flow clamps to this anyway, so the caller must not lie. */
+  range: ZoomRange;
+  padding?: number;
 };
 
 /**
@@ -79,53 +79,56 @@ export type ComputeBlueprintZoomParams = {
  * pointing a camera at, and a pane that has not been laid out yet reports 0x0.
  */
 export function computeBlueprintZoomViewport({
-    mode,
-    bounds,
-    container,
-    range,
-    padding = BLUEPRINT_FIT_PADDING,
+  mode,
+  bounds,
+  container,
+  range,
+  padding = BLUEPRINT_FIT_PADDING
 }: ComputeBlueprintZoomParams): FlowViewport | null {
-    if (
-        !Number.isFinite(container.width) ||
-        !Number.isFinite(container.height) ||
-        container.width <= 0 ||
-        container.height <= 0
-    ) {
-        return null;
-    }
-    if (
-        !bounds ||
-        !Number.isFinite(bounds.width) ||
-        !Number.isFinite(bounds.height) ||
-        bounds.width <= 0 ||
-        bounds.height <= 0
-    ) {
-        return null;
-    }
+  if (
+    !Number.isFinite(container.width) ||
+    !Number.isFinite(container.height) ||
+    container.width <= 0 ||
+    container.height <= 0
+  ) {
+    return null;
+  }
+  if (
+    !bounds ||
+    !Number.isFinite(bounds.width) ||
+    !Number.isFinite(bounds.height) ||
+    bounds.width <= 0 ||
+    bounds.height <= 0
+  ) {
+    return null;
+  }
 
-    // Padding is breathing room, and a mode whose whole point is to leave no empty side must not
-    // have any: "fill" that stopped short of the edges would be answering a different question.
-    const padded = mode === "cover" ? 1 : 1 + padding;
-    const byWidth = container.width / (padded * bounds.width);
-    const byHeight = container.height / (padded * bounds.height);
-    const rawZoom =
-        mode === "actual" ? 1
-            : mode === "width" ? byWidth
-                : mode === "cover" ? Math.max(byWidth, byHeight)
-                    : Math.min(byWidth, byHeight);
-    const zoom = Math.max(range.min, Math.min(range.max, rawZoom));
+  // Padding is breathing room, and a mode whose whole point is to leave no empty side must not
+  // have any: "fill" that stopped short of the edges would be answering a different question.
+  const padded = mode === "cover" ? 1 : 1 + padding;
+  const byWidth = container.width / (padded * bounds.width);
+  const byHeight = container.height / (padded * bounds.height);
+  const rawZoom =
+    mode === "actual"
+      ? 1
+      : mode === "width"
+        ? byWidth
+        : mode === "cover"
+          ? Math.max(byWidth, byHeight)
+          : Math.min(byWidth, byHeight);
+  const zoom = Math.max(range.min, Math.min(range.max, rawZoom));
 
-    return {
-        zoom,
-        x: container.width / 2 - (bounds.x + bounds.width / 2) * zoom,
-        y: container.height / 2 - (bounds.y + bounds.height / 2) * zoom,
-    };
+  return {
+    zoom,
+    x: container.width / 2 - (bounds.x + bounds.width / 2) * zoom,
+    y: container.height / 2 - (bounds.y + bounds.height / 2) * zoom
+  };
 }
 
 /** Holds a zoom inside what the canvas accepts, so the box never shows a value it cannot reach. */
 export function clampBlueprintZoom(scale: number, range: ZoomRange): number {
-    if (!Number.isFinite(scale)) {
-        return range.min;
-    }
-    return Math.max(range.min, Math.min(range.max, scale));
+  if (!Number.isFinite(scale)) {
+    return range.min;
+  }
+  return Math.max(range.min, Math.min(range.max, scale));
 }

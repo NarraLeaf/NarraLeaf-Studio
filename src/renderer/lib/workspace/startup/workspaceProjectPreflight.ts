@@ -1,46 +1,44 @@
 import { RendererError, throwException } from "@shared/utils/error";
-import {
-    DirEntry,
-    findNlprojConfigFileName,
-} from "@shared/utils/nlproj";
+import { DirEntry, findNlprojConfigFileName } from "@shared/utils/nlproj";
 import { getInterface } from "@/lib/app/bridge";
 import { clearMergeConflictReads, setMergeConflictReads } from "@/lib/app/mergeConflictReads";
 import { freezeProjectWrites } from "@/lib/app/writeFreeze";
 import { BaseFileSystemService } from "../services/core/FileSystem";
 
 export const WorkspaceStartupErrorKind = {
-    MissingProjectConfig: "missing-project-config",
+  MissingProjectConfig: "missing-project-config"
 } as const;
 
-export type WorkspaceStartupErrorKind = typeof WorkspaceStartupErrorKind[keyof typeof WorkspaceStartupErrorKind];
+export type WorkspaceStartupErrorKind =
+  (typeof WorkspaceStartupErrorKind)[keyof typeof WorkspaceStartupErrorKind];
 
 export class WorkspaceStartupError extends RendererError {
-    constructor(
-        public readonly kind: WorkspaceStartupErrorKind,
-        public readonly projectPath: string,
-        message: string,
-    ) {
-        super(message);
-        this.name = "WorkspaceStartupError";
-    }
+  constructor(
+    public readonly kind: WorkspaceStartupErrorKind,
+    public readonly projectPath: string,
+    message: string
+  ) {
+    super(message);
+    this.name = "WorkspaceStartupError";
+  }
 }
 
 export interface WorkspaceProjectPreflightIssue {
-    kind: typeof WorkspaceStartupErrorKind.MissingProjectConfig;
+  kind: typeof WorkspaceStartupErrorKind.MissingProjectConfig;
 }
 
 export function isWorkspaceStartupError(error: Error): error is WorkspaceStartupError {
-    return error instanceof WorkspaceStartupError;
+  return error instanceof WorkspaceStartupError;
 }
 
 export function getWorkspaceProjectPreflightIssue(
-    entries: DirEntry[],
+  entries: DirEntry[]
 ): WorkspaceProjectPreflightIssue | null {
-    if (findNlprojConfigFileName(entries)) {
-        return null;
-    }
+  if (findNlprojConfigFileName(entries)) {
+    return null;
+  }
 
-    return { kind: WorkspaceStartupErrorKind.MissingProjectConfig };
+  return { kind: WorkspaceStartupErrorKind.MissingProjectConfig };
 }
 
 /**
@@ -73,49 +71,49 @@ export function getWorkspaceProjectPreflightIssue(
  * tolerance is scoped to paths a merge has named, and to nothing else.
  */
 async function prepareForOpenMerge(projectPath: string): Promise<void> {
-    // Anything left by a previous project in this window, and the default for every project that is
-    // not mid-merge. Cleared first so an early return cannot leave one project's substitution
-    // standing over another's files.
-    clearMergeConflictReads();
-    try {
-        const availability = await getInterface().vcs.getAvailability();
-        if (!availability.success || !availability.data.available) {
-            return;
-        }
-        const state = await getInterface().vcs.getMergeState(projectPath);
-        if (!state.success || !state.data.inProgress || state.data.conflicts.length === 0) {
-            return;
-        }
-        setMergeConflictReads(projectPath, state.data.conflicts);
-        freezeProjectWrites({ projectPath, reason: { kind: "merge" } });
-    } catch {
-        // See the note above: opening a project must not depend on version control answering.
-        clearMergeConflictReads();
+  // Anything left by a previous project in this window, and the default for every project that is
+  // not mid-merge. Cleared first so an early return cannot leave one project's substitution
+  // standing over another's files.
+  clearMergeConflictReads();
+  try {
+    const availability = await getInterface().vcs.getAvailability();
+    if (!availability.success || !availability.data.available) {
+      return;
     }
+    const state = await getInterface().vcs.getMergeState(projectPath);
+    if (!state.success || !state.data.inProgress || state.data.conflicts.length === 0) {
+      return;
+    }
+    setMergeConflictReads(projectPath, state.data.conflicts);
+    freezeProjectWrites({ projectPath, reason: { kind: "merge" } });
+  } catch {
+    // See the note above: opening a project must not depend on version control answering.
+    clearMergeConflictReads();
+  }
 }
 
 export async function ensureWorkspaceProjectCanStart(projectPath: string): Promise<void> {
-    const entries = throwException(await BaseFileSystemService.list(projectPath));
-    const dirEntries = entries.map<DirEntry>((entry) => ({
-        name: entry.name,
-        ext: entry.ext,
-        type: entry.type,
-    }));
+  const entries = throwException(await BaseFileSystemService.list(projectPath));
+  const dirEntries = entries.map<DirEntry>((entry) => ({
+    name: entry.name,
+    ext: entry.ext,
+    type: entry.type
+  }));
 
-    if (findNlprojConfigFileName(dirEntries)) {
-        // After the folder is known to be a project and before any service reads a document.
-        await prepareForOpenMerge(projectPath);
-        return;
-    }
+  if (findNlprojConfigFileName(dirEntries)) {
+    // After the folder is known to be a project and before any service reads a document.
+    await prepareForOpenMerge(projectPath);
+    return;
+  }
 
-    const issue = getWorkspaceProjectPreflightIssue(dirEntries);
-    if (!issue) {
-        return;
-    }
+  const issue = getWorkspaceProjectPreflightIssue(dirEntries);
+  if (!issue) {
+    return;
+  }
 
-    throw new WorkspaceStartupError(
-        issue.kind,
-        projectPath,
-        "Selected folder is not a NarraLeaf project.",
-    );
+  throw new WorkspaceStartupError(
+    issue.kind,
+    projectPath,
+    "Selected folder is not a NarraLeaf project."
+  );
 }

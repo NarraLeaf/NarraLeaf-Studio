@@ -1,4 +1,8 @@
-import { EditorTabComponentProps, FocusContext, PanelComponentProps } from "@/lib/workspace/services/ui/types";
+import {
+  EditorTabComponentProps,
+  FocusContext,
+  PanelComponentProps
+} from "@/lib/workspace/services/ui/types";
 import type { WorkspaceContext } from "@/lib/workspace/services/services";
 import { Workspace } from "@/lib/workspace/workspace";
 import { ComponentType, ReactNode } from "react";
@@ -9,56 +13,56 @@ import { EditMenuRole, NativeMenuSlot } from "@shared/types/menu";
  * Position where a panel can be displayed
  */
 export enum PanelPosition {
-    Left = "left",
-    Right = "right",
-    Bottom = "bottom",
+  Left = "left",
+  Right = "right",
+  Bottom = "bottom"
 }
 
 /**
  * Panel definition for sidebar/bottom panels with generic payload support
  */
 export interface PanelDefinition<TPayload = any> {
-    id: string;
-    title: string;
-    /** i18n key for the title; resolved reactively at render so it follows a live language switch. */
-    titleKey?: TranslationKey;
-    icon: ReactNode;
-    position: PanelPosition;
-    /** Omitted only by rail actions, which have no panel body to render. */
-    component?: ComponentType<PanelComponentProps<TPayload>>;
-    /**
-     * Turns the rail icon into a button: clicking runs this instead of opening a panel body, and
-     * the icon never enters the active state.
-     *
-     * This is how a rail entry can lead somewhere other than the sidebar - the dashboard uses it to
-     * open its editor tab. Entries that set this leave `component` undefined. Honored by the left
-     * rail only; the right and bottom docks have no button affordance.
-     */
-    railAction?: (workspace: WorkspaceContext) => void;
-    defaultVisible?: boolean;
-    order?: number; // For sorting panels
-    badge?: string | number;
-    payload?: TPayload; // Payload data passed to the panel component
+  id: string;
+  title: string;
+  /** i18n key for the title; resolved reactively at render so it follows a live language switch. */
+  titleKey?: TranslationKey;
+  icon: ReactNode;
+  position: PanelPosition;
+  /** Omitted only by rail actions, which have no panel body to render. */
+  component?: ComponentType<PanelComponentProps<TPayload>>;
+  /**
+   * Turns the rail icon into a button: clicking runs this instead of opening a panel body, and
+   * the icon never enters the active state.
+   *
+   * This is how a rail entry can lead somewhere other than the sidebar - the dashboard uses it to
+   * open its editor tab. Entries that set this leave `component` undefined. Honored by the left
+   * rail only; the right and bottom docks have no button affordance.
+   */
+  railAction?: (workspace: WorkspaceContext) => void;
+  defaultVisible?: boolean;
+  order?: number; // For sorting panels
+  badge?: string | number;
+  payload?: TPayload; // Payload data passed to the panel component
 }
 
 /**
  * Action group definition
  */
 export interface ActionSubmenu {
-    id: string;
-    label: string;
-    /** i18n key; when set, it overrides `label` at render time (falls back to `label`). */
-    labelKey?: TranslationKey;
-    icon?: ReactNode;
-    items: ActionMenuItem[];
-    order?: number;
+  id: string;
+  label: string;
+  /** i18n key; when set, it overrides `label` at render time (falls back to `label`). */
+  labelKey?: TranslationKey;
+  icon?: ReactNode;
+  items: ActionMenuItem[];
+  order?: number;
 }
 
 export interface ActionSeparator {
-    /** Marker flag to identify separator items */
-    separator: true;
-    /** Optional sort order */
-    order?: number;
+  /** Marker flag to identify separator items */
+  separator: true;
+  /** Optional sort order */
+  order?: number;
 }
 
 /**
@@ -70,109 +74,108 @@ export const Separator: ActionSeparator = { separator: true };
 export type ActionMenuItem = ActionDefinition | ActionSubmenu | ActionSeparator;
 
 export interface ActionGroup {
-    id: string;
-    label: string;
-    /** i18n key; when set, it overrides `label` at render time (falls back to `label`). */
-    labelKey?: TranslationKey;
-    icon?: ReactNode;
-    /**
-     * Backward-compatible flat actions. If provided and `items` is undefined,
-     * the dropdown will render these as the top-level items.
-     */
-    actions?: (ActionDefinition | ActionSeparator)[];
-    /**
-     * Hierarchical menu items (actions or submenus). Takes precedence over `actions` when defined.
-     */
-    items?: ActionMenuItem[];
-    order?: number;
-    /**
-     * Where this group lands on the macOS menu bar (default `top-level`). The group declares its
-     * own placement so the main process never has to recognise it by id. Ignored elsewhere: on
-     * other platforms the group is only ever an in-app dropdown.
-     */
-    menuSlot?: NativeMenuSlot;
+  id: string;
+  label: string;
+  /** i18n key; when set, it overrides `label` at render time (falls back to `label`). */
+  labelKey?: TranslationKey;
+  icon?: ReactNode;
+  /**
+   * Backward-compatible flat actions. If provided and `items` is undefined,
+   * the dropdown will render these as the top-level items.
+   */
+  actions?: (ActionDefinition | ActionSeparator)[];
+  /**
+   * Hierarchical menu items (actions or submenus). Takes precedence over `actions` when defined.
+   */
+  items?: ActionMenuItem[];
+  order?: number;
+  /**
+   * Where this group lands on the macOS menu bar (default `top-level`). The group declares its
+   * own placement so the main process never has to recognise it by id. Ignored elsewhere: on
+   * other platforms the group is only ever an in-app dropdown.
+   */
+  menuSlot?: NativeMenuSlot;
 }
 
 /**
  * Action definition for toolbar actions
  */
 export interface ActionDefinition {
-    id: string;
-    label?: string;
-    /** i18n key; when set, it overrides `label` at render time (falls back to `label`). */
-    labelKey?: TranslationKey;
-    icon?: ReactNode;
-    tooltip?: string;
-    /** i18n key; when set, it overrides `tooltip` at render time (falls back to `tooltip`). */
-    tooltipKey?: TranslationKey;
-    shortcut?: string;
-    onClick: (workspace: Workspace) => void;
-    order?: number;
-    disabled?: boolean;
-    visible?: boolean;
-    /**
-     * Marks the action as a toggle and carries its current state. Renders as a checkmark in the
-     * in-app dropdown and as a native checkbox item on the macOS menu bar.
-     */
-    checked?: boolean;
-    /**
-     * Declares that this action is the focused surface's version of a standard Edit-menu
-     * command. The macOS Edit menu then routes that command (Copy/Cut/Paste/Delete) here instead
-     * of listing the action a second time below the built-in items.
-     *
-     * This is also how the action becomes reachable by Cmd+C/X/V on macOS, where those keys are
-     * Edit-menu key equivalents and never reach `shortcut`'s `ctrl+*` binding. Use it only for
-     * the four standard commands; any other Cmd shortcut needs an explicit `meta+…` keybinding
-     * (see BlueprintEntryTab), since the native menu has nowhere to hang it.
-     */
-    menuRole?: EditMenuRole;
-    when?: (context: FocusContext) => boolean;
-    badge?: string | number; // Badge text/count
-    group?: string; // Group ID this action belongs to
-    /**
-     * Command-palette category for a *standalone* action (one with no `group`, whose group label
-     * would otherwise supply it). Without it a standalone action lands in the palette's catch-all
-     * section, which is where Build sat: alone, under "Other", next to nothing it relates to.
-     * Ignored for grouped actions — their group's label wins, so a menu and the palette cannot
-     * disagree about where an action belongs.
-     */
-    paletteCategoryKey?: TranslationKey;
-    /** When true, shortcut may run while DOM focus is in a text field (default false). */
-    allowInEditable?: boolean;
+  id: string;
+  label?: string;
+  /** i18n key; when set, it overrides `label` at render time (falls back to `label`). */
+  labelKey?: TranslationKey;
+  icon?: ReactNode;
+  tooltip?: string;
+  /** i18n key; when set, it overrides `tooltip` at render time (falls back to `tooltip`). */
+  tooltipKey?: TranslationKey;
+  shortcut?: string;
+  onClick: (workspace: Workspace) => void;
+  order?: number;
+  disabled?: boolean;
+  visible?: boolean;
+  /**
+   * Marks the action as a toggle and carries its current state. Renders as a checkmark in the
+   * in-app dropdown and as a native checkbox item on the macOS menu bar.
+   */
+  checked?: boolean;
+  /**
+   * Declares that this action is the focused surface's version of a standard Edit-menu
+   * command. The macOS Edit menu then routes that command (Copy/Cut/Paste/Delete) here instead
+   * of listing the action a second time below the built-in items.
+   *
+   * This is also how the action becomes reachable by Cmd+C/X/V on macOS, where those keys are
+   * Edit-menu key equivalents and never reach `shortcut`'s `ctrl+*` binding. Use it only for
+   * the four standard commands; any other Cmd shortcut needs an explicit `meta+…` keybinding
+   * (see BlueprintEntryTab), since the native menu has nowhere to hang it.
+   */
+  menuRole?: EditMenuRole;
+  when?: (context: FocusContext) => boolean;
+  badge?: string | number; // Badge text/count
+  group?: string; // Group ID this action belongs to
+  /**
+   * Command-palette category for a *standalone* action (one with no `group`, whose group label
+   * would otherwise supply it). Without it a standalone action lands in the palette's catch-all
+   * section, which is where Build sat: alone, under "Other", next to nothing it relates to.
+   * Ignored for grouped actions — their group's label wins, so a menu and the palette cannot
+   * disagree about where an action belongs.
+   */
+  paletteCategoryKey?: TranslationKey;
+  /** When true, shortcut may run while DOM focus is in a text field (default false). */
+  allowInEditable?: boolean;
 }
 
 /**
  * Editor tab definition with generic payload support
  */
 export interface EditorTabDefinition<TPayload = any> {
-    id: string;
-    title: string;
-    icon?: ReactNode;
-    component: ComponentType<EditorTabComponentProps<TPayload>>;
-    closable?: boolean;
-    modified?: boolean;
-    payload?: TPayload; // Payload data passed to the editor component
+  id: string;
+  title: string;
+  icon?: ReactNode;
+  component: ComponentType<EditorTabComponentProps<TPayload>>;
+  closable?: boolean;
+  modified?: boolean;
+  payload?: TPayload; // Payload data passed to the editor component
 }
 
 /**
  * Editor area split configuration
  */
 export interface EditorSplit {
-    id: string;
-    direction: "horizontal" | "vertical";
-    ratio: number; // 0-1, proportion of first split
-    first: EditorSplit | EditorGroup;
-    second: EditorSplit | EditorGroup;
+  id: string;
+  direction: "horizontal" | "vertical";
+  ratio: number; // 0-1, proportion of first split
+  first: EditorSplit | EditorGroup;
+  second: EditorSplit | EditorGroup;
 }
 
 /**
  * Editor group (tabs container)
  */
 export interface EditorGroup {
-    id: string;
-    tabs: EditorTabDefinition<any>[];
-    focus: string | null;
+  id: string;
+  tabs: EditorTabDefinition<any>[];
+  focus: string | null;
 }
 
 export type EditorLayout = EditorSplit | EditorGroup;
-

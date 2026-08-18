@@ -4,4 +4,3 @@
  * and convenience. New code should import directly from modules.
  */
 export { WelcomeEditor } from "../modules/welcome/WelcomeEditor";
-

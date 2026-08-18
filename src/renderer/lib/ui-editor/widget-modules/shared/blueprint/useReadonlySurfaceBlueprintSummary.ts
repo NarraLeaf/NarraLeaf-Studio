@@ -9,31 +9,33 @@ import type { ReadonlyBlueprintSurfaceSummary } from "@/lib/workspace/services/u
 import { emptyReadonlyBlueprintSurfaceSummary } from "@/lib/workspace/services/ui-editor/blueprint/readonlyBlueprintSummary";
 
 export function useReadonlySurfaceBlueprintSummary(
-    documentService: UIDocumentService | null | undefined,
-    surfaceId: string | undefined,
+  documentService: UIDocumentService | null | undefined,
+  surfaceId: string | undefined
 ): ReadonlyBlueprintSurfaceSummary {
-    const { context, isInitialized } = useWorkspace();
-    const resolvedDocumentService =
-        documentService ??
-        (isInitialized && context ? context.services.get<UIDocumentService>(Services.UIDocument) : null);
-    const docVersion = useDocumentVersion(resolvedDocumentService);
-    const [graphTick, setGraphTick] = useState(0);
+  const { context, isInitialized } = useWorkspace();
+  const resolvedDocumentService =
+    documentService ??
+    (isInitialized && context
+      ? context.services.get<UIDocumentService>(Services.UIDocument)
+      : null);
+  const docVersion = useDocumentVersion(resolvedDocumentService);
+  const [graphTick, setGraphTick] = useState(0);
 
-    useEffect(() => {
-        if (!isInitialized || !context) {
-            return;
-        }
-        const graph = context.services.get<UIGraphService>(Services.UIGraph);
-        return graph.onGraphsChanged(() => {
-            setGraphTick(t => t + 1);
-        });
-    }, [context, isInitialized]);
+  useEffect(() => {
+    if (!isInitialized || !context) {
+      return;
+    }
+    const graph = context.services.get<UIGraphService>(Services.UIGraph);
+    return graph.onGraphsChanged(() => {
+      setGraphTick((t) => t + 1);
+    });
+  }, [context, isInitialized]);
 
-    return useMemo(() => {
-        if (!isInitialized || !context || !surfaceId) {
-            return emptyReadonlyBlueprintSurfaceSummary();
-        }
-        const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
-        return localBp.getReadonlySurfaceMainSummary(surfaceId);
-    }, [context, isInitialized, surfaceId, docVersion, graphTick]);
+  return useMemo(() => {
+    if (!isInitialized || !context || !surfaceId) {
+      return emptyReadonlyBlueprintSurfaceSummary();
+    }
+    const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+    return localBp.getReadonlySurfaceMainSummary(surfaceId);
+  }, [context, isInitialized, surfaceId, docVersion, graphTick]);
 }

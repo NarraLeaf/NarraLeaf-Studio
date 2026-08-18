@@ -4,9 +4,9 @@ import type { WorkspaceContext } from "@/lib/workspace/services/services";
 import type { RecoveryProbeState } from "@/lib/workspace/services/core/RecoveryService";
 import type { RecoveryService } from "@/lib/workspace/services/core/RecoveryService";
 import {
-    getWorkspaceAnomalies,
-    observeWorkspaceAnomalies,
-    type WorkspaceAnomaly,
+  getWorkspaceAnomalies,
+  observeWorkspaceAnomalies,
+  type WorkspaceAnomaly
 } from "@/lib/workspace/recovery/anomalyLog";
 
 /**
@@ -18,36 +18,36 @@ import {
  * not empty.
  */
 export function useWorkspaceAnomalyList(): readonly WorkspaceAnomaly[] {
-    return useSyncExternalStore(
-        // The observer fires immediately on subscribe, which React does not want here (it would be a
-        // render-phase update); the immediate call is harmless because the snapshot below is what
-        // React reads, and this only has to schedule re-renders.
-        onStoreChange => observeWorkspaceAnomalies(() => onStoreChange()),
-        getWorkspaceAnomalies,
-        getWorkspaceAnomalies,
-    );
+  return useSyncExternalStore(
+    // The observer fires immediately on subscribe, which React does not want here (it would be a
+    // render-phase update); the immediate call is harmless because the snapshot below is what
+    // React reads, and this only has to schedule re-renders.
+    (onStoreChange) => observeWorkspaceAnomalies(() => onStoreChange()),
+    getWorkspaceAnomalies,
+    getWorkspaceAnomalies
+  );
 }
 
 /** Probe rows plus whether one is running. Re-renders on every probe state change. */
 export function useRecoveryProbes(context: WorkspaceContext | null): {
-    probes: readonly RecoveryProbeState[];
-    running: boolean;
+  probes: readonly RecoveryProbeState[];
+  running: boolean;
 } {
-    const [state, setState] = useState<{ probes: readonly RecoveryProbeState[]; running: boolean }>({
-        probes: [],
-        running: false,
-    });
+  const [state, setState] = useState<{ probes: readonly RecoveryProbeState[]; running: boolean }>({
+    probes: [],
+    running: false
+  });
 
-    useEffect(() => {
-        if (!context) {
-            setState({ probes: [], running: false });
-            return;
-        }
-        const service = context.services.get<RecoveryService>(Services.Recovery);
-        const read = () => setState({ probes: service.getProbes(), running: service.isRunning() });
-        read();
-        return service.onChanged(read);
-    }, [context]);
+  useEffect(() => {
+    if (!context) {
+      setState({ probes: [], running: false });
+      return;
+    }
+    const service = context.services.get<RecoveryService>(Services.Recovery);
+    const read = () => setState({ probes: service.getProbes(), running: service.isRunning() });
+    read();
+    return service.onChanged(read);
+  }, [context]);
 
-    return state;
+  return state;
 }

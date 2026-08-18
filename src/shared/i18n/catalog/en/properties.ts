@@ -1,264 +1,267 @@
 /** `properties` - the Properties/Inspector panel and its per-type property editors. */
 export const properties = {
-    saving: "Saving…",
-    preview: "Preview",
-    select: "Select",
-    panel: {
-        title: "Properties",
-        empty: "Select an element to adjust its properties",
-        motionKeyframe: "Motion Keyframe",
-        storyMotion: "Story Motion",
-        scene: "Scene",
-        component: "Component",
-        character: "Character",
+  saving: "Saving…",
+  preview: "Preview",
+  select: "Select",
+  panel: {
+    title: "Properties",
+    empty: "Select an element to adjust its properties",
+    motionKeyframe: "Motion Keyframe",
+    storyMotion: "Story Motion",
+    scene: "Scene",
+    component: "Component",
+    character: "Character"
+  },
+  scene: {
+    title: "Interface Properties",
+    interface: "Interface",
+    type: "Type",
+    slot: "Slot",
+    typeGameUi: "Game UI",
+    typePage: "Page",
+    backgroundColor: "Background Color",
+    backgroundImage: "Background Image",
+    animation: "Animation",
+    logic: "Logic"
+  },
+  diagnostics: {
+    title: "Static checks",
+    selectOnCanvas: "→ select on canvas",
+    help: "For graph and binding problems, open the Blueprint editor. Live execution traces only appear in Dev Mode."
+  },
+  layout: {
+    title: "Layout",
+    size: "Size",
+    position: "Position",
+    rotation: "Rotation",
+    appearance: "Appearance",
+    width: "Width",
+    height: "Height",
+    lockAspect: "Lock aspect ratio",
+    unlockAspect: "Unlock aspect ratio",
+    resetRotation: "Reset rotation",
+    toggleVisibility: "Toggle visibility",
+    animation: "Animation",
+    uiElement: "UI Element",
+    linkedComponent: "Linked Component"
+  },
+  linkedComponent: {
+    missing: "Missing component",
+    info: "Linked instance. Only its params and its position, size and rotation can be changed before unlinking."
+  },
+  componentParams: {
+    title: "Params",
+    none: "No params",
+    add: "Add param",
+    remove: "Remove param",
+    namePlaceholder: "Name",
+    defaultPlaceholder: "Default"
+  },
+  binding: {
+    notReady: "Blueprint not ready for this control.",
+    bindToField: "Bind to field…",
+    bindProperty: "Bind property",
+    closePicker: "Close binding picker",
+    searchFields: "Search fields…",
+    noMatches: "No matching fields.",
+    newField: "New field",
+    createAndBind: "Create & bind",
+    openField: "Open field",
+    removeBinding: "Remove binding",
+    removeBroken: "Remove broken binding",
+    fieldLabel: "Field",
+    fieldMissing: "Field missing",
+    scopePage: "Page",
+    scopeApp: "App",
+    scopeItem: "Item",
+    scopeKey: "{scope} key"
+  },
+  events: {
+    title: "Events",
+    legacy: "Legacy event ids detected."
+  },
+  blueprintEntry: {
+    gameUiLogic: "Game UI Logic",
+    pageLogic: "Page Logic",
+    interfaceFallback: "Interface",
+    title: "{logic} - {name}",
+    open: "Open surface blueprint",
+    noBlueprint: "No blueprint for this surface",
+    brokenBindings: {
+      one: "{count} broken binding.",
+      other: "{count} broken bindings."
+    }
+  },
+  color: {
+    hue: "Hue",
+    opacity: "Opacity"
+  },
+  fontAsset: {
+    fallbackName: "Font",
+    none: "No font",
+    choose: "Choose font",
+    loadError:
+      "The font could not be loaded ({error}). The preview uses a fallback until the asset is valid.",
+    select: "Select Font"
+  },
+  imageFill: {
+    title: "Image Fill",
+    imageSelected: "Image selected",
+    noImage: "No image",
+    close: "Close image fill editor",
+    modeLabel: "Mode",
+    selectMode: "Select mode",
+    previewAlt: "Fill preview",
+    selectImage: "Select an image",
+    selectHint: "Asset browser opens on click",
+    changeImage: "Change image",
+    openEditor: "Click to open editor",
+    resolveError:
+      "The image asset could not be resolved ({error}). The preview is inaccurate until it exists.",
+    selectFillImage: "Select Fill Image",
+    mode: {
+      cover: "Cover",
+      contain: "Contain",
+      stretch: "Stretch",
+      crop: "Crop",
+      tile: "Tile"
+    }
+  },
+  menu: {
+    open: "Open menu"
+  },
+  palette: {
+    base: "Base",
+    common: "Common",
+    recent: "Recent",
+    custom: "Custom"
+  },
+  references: {
+    label: "References",
+    building: "Scanning the project…",
+    none: "Not referenced anywhere",
+    // Shown instead of `none` when the index found nothing AND could not read part of the
+    // project. The two look identical from here, and only one of them is safe to act on.
+    unknown: "Usage could not be determined",
+    unknownDetail: "{location} could not be read",
+    count: {
+      one: "{count} reference",
+      other: "{count} references"
     },
-    scene: {
-        title: "Interface Properties",
-        interface: "Interface",
-        type: "Type",
-        slot: "Slot",
-        typeGameUi: "Game UI",
-        typePage: "Page",
-        backgroundColor: "Background Color",
-        backgroundImage: "Background Image",
-        animation: "Animation",
-        logic: "Logic",
+    dormant: "inactive",
+    dormantHint:
+      "Stored on the widget but not drawn, because the fill is set to a color. Deleting this asset would clear it.",
+    kind: {
+      story: "Story",
+      blueprint: "Blueprint",
+      uiElement: "Interface",
+      character: "Character",
+      voice: "Voice"
+    }
+  },
+  tags: {
+    label: "Tags",
+    addPlaceholder: "Add tag…",
+    add: "Add tag",
+    remove: "Remove tag",
+    removeAria: "Remove tag {tag}"
+  },
+  thumbnail: {
+    alt: "Thumbnail",
+    selectTitle: "Select Thumbnail",
+    cropTitle: "Crop Thumbnail",
+    error: {
+      workspaceNotReady: "Workspace not ready",
+      selectImage: "Please select an image asset",
+      loadAsset: "Failed to load asset",
+      deleteFailed: "Failed to delete thumbnail",
+      saveFailed: "Failed to save thumbnail",
+      unknown: "Unknown error"
+    }
+  },
+  asset: {
+    namePlaceholder: "Asset name",
+    descriptionPlaceholder: "Enter description…",
+    info: {
+      dimensions: "Dimensions",
+      format: "Format",
+      size: "Size",
+      hash: "Hash",
+      duration: "Duration",
+      sampleRate: "Sample Rate",
+      channels: "Channels",
+      family: "Family",
+      style: "Style",
+      weight: "Weight",
+      schema: "Schema",
+      mimeType: "MIME Type",
+      extension: "Extension",
+      frameRate: "Frame Rate"
     },
-    diagnostics: {
-        title: "Static checks",
-        selectOnCanvas: "→ select on canvas",
-        help: "For graph and binding problems, open the Blueprint editor. Live execution traces only appear in Dev Mode.",
+    /**
+     * A remote asset's provenance. "Fetched" and "Refresh", not "cached" and "re-download": what
+     * the project holds is a snapshot under version control, not a cache, and the distinction is
+     * the whole reason this asset kind builds offline and survives a fresh clone.
+     */
+    remote: {
+      url: "Source",
+      fetched: "Fetched",
+      neverFetched: "Not downloaded yet",
+      refresh: "Check for Updates",
+      refreshFailedTitle: "Could not check the source"
     },
-    layout: {
-        title: "Layout",
-        size: "Size",
-        position: "Position",
-        rotation: "Rotation",
-        appearance: "Appearance",
-        width: "Width",
-        height: "Height",
-        lockAspect: "Lock aspect ratio",
-        unlockAspect: "Unlock aspect ratio",
-        resetRotation: "Reset rotation",
-        toggleVisibility: "Toggle visibility",
-        animation: "Animation",
-        uiElement: "UI Element",
-        linkedComponent: "Linked Component",
+    image: {
+      title: "Image Properties",
+      info: "Image Information"
     },
-    linkedComponent: {
-        missing: "Missing component",
-        info: "Linked instance. Only its params and its position, size and rotation can be changed before unlinking.",
+    audio: {
+      title: "Audio Properties",
+      info: "Audio Information",
+      preview: "Audio Info",
+      channelCount: {
+        one: "{count} channel",
+        other: "{count} channels"
+      }
     },
-    componentParams: {
-        title: "Params",
-        none: "No params",
-        add: "Add param",
-        remove: "Remove param",
-        namePlaceholder: "Name",
-        defaultPlaceholder: "Default",
+    video: {
+      title: "Video Properties",
+      info: "Video Information",
+      preview: "Video Info"
     },
-    binding: {
-        notReady: "Blueprint not ready for this control.",
-        bindToField: "Bind to field…",
-        bindProperty: "Bind property",
-        closePicker: "Close binding picker",
-        searchFields: "Search fields…",
-        noMatches: "No matching fields.",
-        newField: "New field",
-        createAndBind: "Create & bind",
-        openField: "Open field",
-        removeBinding: "Remove binding",
-        removeBroken: "Remove broken binding",
-        fieldLabel: "Field",
-        fieldMissing: "Field missing",
-        scopePage: "Page",
-        scopeApp: "App",
-        scopeItem: "Item",
-        scopeKey: "{scope} key",
+    font: {
+      title: "Font Properties",
+      info: "Font Information",
+      preview: "Font Preview",
+      sampleText: "Sample Text"
     },
-    events: {
-        title: "Events",
-        legacy: "Legacy event ids detected.",
+    json: {
+      title: "JSON Properties",
+      info: "JSON Information",
+      preview: "JSON Structure",
+      schemaValue: "Schema: {schema}",
+      noSchema: "No schema"
     },
-    blueprintEntry: {
-        gameUiLogic: "Game UI Logic",
-        pageLogic: "Page Logic",
-        interfaceFallback: "Interface",
-        title: "{logic} - {name}",
-        open: "Open surface blueprint",
-        noBlueprint: "No blueprint for this surface",
-        brokenBindings: {
-            one: "{count} broken binding.",
-            other: "{count} broken bindings.",
-        },
+    model: {
+      title: "Model Properties",
+      info: "Model Information",
+      entry: "Entry File",
+      entryAuto: "Detected: {entry}",
+      entryUnresolvedNone: "No entry file could be identified. Choose one.",
+      entryUnresolvedAmbiguous: "More than one file could be the entry. Choose one.",
+      files: "Files",
+      fileCount: {
+        one: "{count} file",
+        other: "{count} files"
+      },
+      browse: "Bundle Contents"
     },
-    color: {
-        hue: "Hue",
-        opacity: "Opacity",
-    },
-    fontAsset: {
-        fallbackName: "Font",
-        none: "No font",
-        choose: "Choose font",
-        loadError: "The font could not be loaded ({error}). The preview uses a fallback until the asset is valid.",
-        select: "Select Font",
-    },
-    imageFill: {
-        title: "Image Fill",
-        imageSelected: "Image selected",
-        noImage: "No image",
-        close: "Close image fill editor",
-        modeLabel: "Mode",
-        selectMode: "Select mode",
-        previewAlt: "Fill preview",
-        selectImage: "Select an image",
-        selectHint: "Asset browser opens on click",
-        changeImage: "Change image",
-        openEditor: "Click to open editor",
-        resolveError: "The image asset could not be resolved ({error}). The preview is inaccurate until it exists.",
-        selectFillImage: "Select Fill Image",
-        mode: {
-            cover: "Cover",
-            contain: "Contain",
-            stretch: "Stretch",
-            crop: "Crop",
-            tile: "Tile",
-        },
-    },
-    menu: {
-        open: "Open menu",
-    },
-    palette: {
-        base: "Base",
-        common: "Common",
-        recent: "Recent",
-        custom: "Custom",
-    },
-    references: {
-        label: "References",
-        building: "Scanning the project…",
-        none: "Not referenced anywhere",
-        // Shown instead of `none` when the index found nothing AND could not read part of the
-        // project. The two look identical from here, and only one of them is safe to act on.
-        unknown: "Usage could not be determined",
-        unknownDetail: "{location} could not be read",
-        count: {
-            one: "{count} reference",
-            other: "{count} references",
-        },
-        dormant: "inactive",
-        dormantHint: "Stored on the widget but not drawn, because the fill is set to a color. Deleting this asset would clear it.",
-        kind: {
-            story: "Story",
-            blueprint: "Blueprint",
-            uiElement: "Interface",
-            character: "Character",
-            voice: "Voice",
-        },
-    },
-    tags: {
-        label: "Tags",
-        addPlaceholder: "Add tag…",
-        add: "Add tag",
-        remove: "Remove tag",
-        removeAria: "Remove tag {tag}",
-    },
-    thumbnail: {
-        alt: "Thumbnail",
-        selectTitle: "Select Thumbnail",
-        cropTitle: "Crop Thumbnail",
-        error: {
-            workspaceNotReady: "Workspace not ready",
-            selectImage: "Please select an image asset",
-            loadAsset: "Failed to load asset",
-            deleteFailed: "Failed to delete thumbnail",
-            saveFailed: "Failed to save thumbnail",
-            unknown: "Unknown error",
-        },
-    },
-    asset: {
-        namePlaceholder: "Asset name",
-        descriptionPlaceholder: "Enter description…",
-        info: {
-            dimensions: "Dimensions",
-            format: "Format",
-            size: "Size",
-            hash: "Hash",
-            duration: "Duration",
-            sampleRate: "Sample Rate",
-            channels: "Channels",
-            family: "Family",
-            style: "Style",
-            weight: "Weight",
-            schema: "Schema",
-            mimeType: "MIME Type",
-            extension: "Extension",
-            frameRate: "Frame Rate",
-        },
-        /**
-         * A remote asset's provenance. "Fetched" and "Refresh", not "cached" and "re-download": what
-         * the project holds is a snapshot under version control, not a cache, and the distinction is
-         * the whole reason this asset kind builds offline and survives a fresh clone.
-         */
-        remote: {
-            url: "Source",
-            fetched: "Fetched",
-            neverFetched: "Not downloaded yet",
-            refresh: "Check for Updates",
-            refreshFailedTitle: "Could not check the source",
-        },
-        image: {
-            title: "Image Properties",
-            info: "Image Information",
-        },
-        audio: {
-            title: "Audio Properties",
-            info: "Audio Information",
-            preview: "Audio Info",
-            channelCount: {
-                one: "{count} channel",
-                other: "{count} channels",
-            },
-        },
-        video: {
-            title: "Video Properties",
-            info: "Video Information",
-            preview: "Video Info",
-        },
-        font: {
-            title: "Font Properties",
-            info: "Font Information",
-            preview: "Font Preview",
-            sampleText: "Sample Text",
-        },
-        json: {
-            title: "JSON Properties",
-            info: "JSON Information",
-            preview: "JSON Structure",
-            schemaValue: "Schema: {schema}",
-            noSchema: "No schema",
-        },
-        model: {
-            title: "Model Properties",
-            info: "Model Information",
-            entry: "Entry File",
-            entryAuto: "Detected: {entry}",
-            entryUnresolvedNone: "No entry file could be identified. Choose one.",
-            entryUnresolvedAmbiguous: "More than one file could be the entry. Choose one.",
-            files: "Files",
-            fileCount: {
-                one: "{count} file",
-                other: "{count} files",
-            },
-            browse: "Bundle Contents",
-        },
-        other: {
-            title: "File Properties",
-            info: "File Information",
-            preview: "File Info",
-            fileSuffix: "{ext} File",
-            unknownType: "Unknown type",
-            unknown: "Unknown",
-        },
-    },
+    other: {
+      title: "File Properties",
+      info: "File Information",
+      preview: "File Info",
+      fileSuffix: "{ext} File",
+      unknownType: "Unknown type",
+      unknown: "Unknown"
+    }
+  }
 } as const;

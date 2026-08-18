@@ -18,11 +18,14 @@ import { useMemo } from "react";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import type { PuppetDescriptionService } from "@/lib/workspace/services/puppet/PuppetDescriptionService";
-import type { SurfacePuppetOpener, SurfacePuppetSessionState } from "@/lib/ui-editor/runtime/game/surfacePuppetSession";
+import type {
+  SurfacePuppetOpener,
+  SurfacePuppetSessionState
+} from "@/lib/ui-editor/runtime/game/surfacePuppetSession";
 import { useSurfacePuppetOpener } from "@/lib/ui-editor/runtime/game/surfacePuppetHosts";
 import {
-    useSurfacePuppetMount,
-    type UseSurfacePuppetSessionInput,
+  useSurfacePuppetMount,
+  type UseSurfacePuppetSessionInput
 } from "@/lib/ui-editor/runtime/game/useSurfacePuppetMount";
 
 export type { UseSurfacePuppetSessionInput };
@@ -38,33 +41,40 @@ export type { UseSurfacePuppetSessionInput };
  * model asset that has gone missing all come back as `missing-backend` with a reason. See the
  * degradation contract in `surfacePuppetSession.ts`.
  */
-export function useSurfacePuppetSession(input: UseSurfacePuppetSessionInput): SurfacePuppetSessionState {
-    let context: ReturnType<typeof useWorkspace>["context"] | null = null;
-    try {
-        context = useWorkspace().context;
-    } catch {
-        // Dev Mode draws Surfaces outside the workspace provider - the same allowance
-        // `useAssetObjectUrl` makes. It has the project but not the services, so this arm declines and
-        // the chain's Dev Mode arm picks it up.
-        context = null;
+export function useSurfacePuppetSession(
+  input: UseSurfacePuppetSessionInput
+): SurfacePuppetSessionState {
+  let context: ReturnType<typeof useWorkspace>["context"] | null = null;
+  try {
+    context = useWorkspace().context;
+  } catch {
+    // Dev Mode draws Surfaces outside the workspace provider - the same allowance
+    // `useAssetObjectUrl` makes. It has the project but not the services, so this arm declines and
+    // the chain's Dev Mode arm picks it up.
+    context = null;
+  }
+
+  const workspaceOpener = useMemo<SurfacePuppetOpener | null>(() => {
+    if (!context) {
+      return null;
     }
+    const service = context.services.get<PuppetDescriptionService>(Services.PuppetDescription);
+    // `openSession` already distinguishes "nothing to mount" (a typed
+    // `SurfacePuppetUnavailableError` carrying the reason) from "it broke" (anything else), which
+    // is precisely the split the mount machine degrades on - so nothing here reads messages.
+    return ({ request, container, size, onWarn }) =>
+      service.openSession(
+        {
+          assetId: request.assetId ?? "",
+          backend: request.backend,
+          entry: request.entry ?? null,
+          options: request.options ?? {},
+          size
+        },
+        container,
+        { size, onWarn }
+      );
+  }, [context]);
 
-    const workspaceOpener = useMemo<SurfacePuppetOpener | null>(() => {
-        if (!context) {
-            return null;
-        }
-        const service = context.services.get<PuppetDescriptionService>(Services.PuppetDescription);
-        // `openSession` already distinguishes "nothing to mount" (a typed
-        // `SurfacePuppetUnavailableError` carrying the reason) from "it broke" (anything else), which
-        // is precisely the split the mount machine degrades on - so nothing here reads messages.
-        return ({ request, container, size, onWarn }) => service.openSession({
-            assetId: request.assetId ?? "",
-            backend: request.backend,
-            entry: request.entry ?? null,
-            options: request.options ?? {},
-            size,
-        }, container, { size, onWarn });
-    }, [context]);
-
-    return useSurfacePuppetMount(useSurfacePuppetOpener(workspaceOpener), input);
+  return useSurfacePuppetMount(useSurfacePuppetOpener(workspaceOpener), input);
 }

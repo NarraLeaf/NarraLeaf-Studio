@@ -9,7 +9,7 @@
 
 /** Official index, on the registry's `master` branch. Empty setting = this. */
 export const DEFAULT_PLUGIN_REGISTRY_URL =
-    "https://raw.githubusercontent.com/NarraLeaf/Plugins/master/index.json";
+  "https://raw.githubusercontent.com/NarraLeaf/Plugins/master/index.json";
 
 /** The only `formatVersion` this client knows how to read; a newer index is refused. */
 export const PLUGIN_REGISTRY_FORMAT_VERSION = 1;

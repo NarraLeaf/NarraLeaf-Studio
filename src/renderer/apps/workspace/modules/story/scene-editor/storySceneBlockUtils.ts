@@ -1,21 +1,59 @@
-import { Aperture, Bookmark, Clock, CornerUpLeft, Eye, FileText, GitBranch, Image, Layers, LogOut, MessageSquare, Move, Music, Puzzle, Route, SeparatorHorizontal, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
+import {
+  Aperture,
+  Bookmark,
+  Clock,
+  CornerUpLeft,
+  Eye,
+  FileText,
+  GitBranch,
+  Image,
+  Layers,
+  LogOut,
+  MessageSquare,
+  Move,
+  Music,
+  Puzzle,
+  Route,
+  SeparatorHorizontal,
+  Settings2,
+  Sparkles,
+  StickyNote,
+  TriangleAlert,
+  Type,
+  UserRound,
+  Variable,
+  Video,
+  Wind
+} from "lucide-react";
 import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
-import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment } from "@shared/types/story";
+import type {
+  StoryBlock,
+  StoryBlockId,
+  StoryRichRun,
+  StoryScene,
+  StorySceneId,
+  StoryTextSegment
+} from "@shared/types/story";
 import { storyVariableRefKey } from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { richIfMeaningful } from "./richText";
 import { paragraphActionCharacterId } from "./storyCharacterActions";
 import type { Character } from "@/lib/workspace/services/character/Character";
-import type { CharacterAppearanceRef, StoryBlockTarget, StoryStagePlacement, VisibleStoryRow } from "./storySceneEditorTypes";
+import type {
+  CharacterAppearanceRef,
+  StoryBlockTarget,
+  StoryStagePlacement,
+  VisibleStoryRow
+} from "./storySceneEditorTypes";
 import {
-    describeStoryBlock,
-    getStoryEmptyTextPlaceholder,
-    getStorySceneName,
-    getStoryTextSegment,
-    storyBlockBadge,
-    storyRowAccentColor,
-    type StoryBlockBadgeId,
-    type StoryRowLookups,
+  describeStoryBlock,
+  getStoryEmptyTextPlaceholder,
+  getStorySceneName,
+  getStoryTextSegment,
+  storyBlockBadge,
+  storyRowAccentColor,
+  type StoryBlockBadgeId,
+  type StoryRowLookups
 } from "@/lib/story/storyRowProjection";
 import { storyVerbCommandId } from "@/lib/story/storyVerbVocabulary";
 import { translate } from "@/lib/i18n";
@@ -28,9 +66,9 @@ import { DECLARATION_COMMANDS } from "./commands/specs/variables";
  * service adapters, the lucide icons, and the reading-layer passes (dialogue groups, visible rows).
  */
 export {
-    getStoryContainerHeaderInfo as getContainerHeaderInfo,
-    type StoryContainerHeaderInfo,
-    type StoryContainerRole,
+  getStoryContainerHeaderInfo as getContainerHeaderInfo,
+  type StoryContainerHeaderInfo,
+  type StoryContainerRole
 } from "@/lib/story/storyRowProjection";
 
 /**
@@ -41,56 +79,79 @@ export {
  */
 /** The `at=` placement a character block carries, or undefined when its transform is not a placement. */
 function placementOf(preset: string | undefined): StoryStagePlacement | undefined {
-    return preset === "left" || preset === "center" || preset === "right" ? preset : undefined;
+  return preset === "left" || preset === "center" || preset === "right" ? preset : undefined;
 }
 
-export function buildDialogueAppearances(scene: StoryScene): Map<StoryBlockId, CharacterAppearanceRef> {
-    const current = new Map<string, CharacterAppearanceRef>();
-    const result = new Map<StoryBlockId, CharacterAppearanceRef>();
-    const visit = (blockId: StoryBlockId) => {
-        const block = scene.blocks[blockId];
-        if (!block) {
-            return;
-        }
-        if (block.kind === "action" && block.payload.action === "character" && block.payload.characterId) {
-            const characterId = block.payload.characterId;
-            const position = placementOf(block.payload.transform?.preset);
-            if (block.payload.operation === "exit") {
-                current.delete(characterId);
-            } else if (block.payload.operation === "enter") {
-                // An entrance shows the character and sets the whole appearance, placement included — its
-                // own block is the row the group-header dropdown rewrites.
-                current.set(characterId, { pose: block.payload.pose, tags: block.payload.tags, position, positionSourceId: block.id, shown: true });
-            } else if (block.payload.operation === "expression") {
-                // An expression changes the appearance but not where the character stands, so the
-                // accumulated placement (and the row that owns it) is preserved. Tags merge rather
-                // than replace: the row names only the axes it changes, exactly as the engine treats
-                // them, so the outfit an earlier row chose has to survive a mood change here.
-                const previous = current.get(characterId);
-                current.set(characterId, {
-                    ...previous,
-                    pose: block.payload.pose ?? previous?.pose,
-                    tags: previous?.tags || block.payload.tags ? { ...previous?.tags, ...block.payload.tags } : undefined,
-                    shown: true,
-                });
-            } else if (block.payload.operation === "move" && position) {
-                // A placement move relocates the character and becomes the row the dropdown rewrites —
-                // including the case where the group-header dropdown authored this `/move` for a speaker
-                // with no prior enter (so the round-trip reads its own write back). It does not "show" the
-                // character (a move on a hidden one is a runtime no-op), so it never invents an avatar; a
-                // coordinate/scale-only move carries no placement and leaves the accumulated one untouched.
-                current.set(characterId, { ...current.get(characterId), position, positionSourceId: block.id });
-            }
-        } else if (block.kind === "nodeAction" && block.payload.action === "dialogue" && block.payload.characterId) {
-            const appearance = current.get(block.payload.characterId);
-            if (appearance) {
-                result.set(block.id, appearance);
-            }
-        }
-        block.childrenIds.forEach(visit);
-    };
-    scene.rootBlockIds.forEach(visit);
-    return result;
+export function buildDialogueAppearances(
+  scene: StoryScene
+): Map<StoryBlockId, CharacterAppearanceRef> {
+  const current = new Map<string, CharacterAppearanceRef>();
+  const result = new Map<StoryBlockId, CharacterAppearanceRef>();
+  const visit = (blockId: StoryBlockId) => {
+    const block = scene.blocks[blockId];
+    if (!block) {
+      return;
+    }
+    if (
+      block.kind === "action" &&
+      block.payload.action === "character" &&
+      block.payload.characterId
+    ) {
+      const characterId = block.payload.characterId;
+      const position = placementOf(block.payload.transform?.preset);
+      if (block.payload.operation === "exit") {
+        current.delete(characterId);
+      } else if (block.payload.operation === "enter") {
+        // An entrance shows the character and sets the whole appearance, placement included — its
+        // own block is the row the group-header dropdown rewrites.
+        current.set(characterId, {
+          pose: block.payload.pose,
+          tags: block.payload.tags,
+          position,
+          positionSourceId: block.id,
+          shown: true
+        });
+      } else if (block.payload.operation === "expression") {
+        // An expression changes the appearance but not where the character stands, so the
+        // accumulated placement (and the row that owns it) is preserved. Tags merge rather
+        // than replace: the row names only the axes it changes, exactly as the engine treats
+        // them, so the outfit an earlier row chose has to survive a mood change here.
+        const previous = current.get(characterId);
+        current.set(characterId, {
+          ...previous,
+          pose: block.payload.pose ?? previous?.pose,
+          tags:
+            previous?.tags || block.payload.tags
+              ? { ...previous?.tags, ...block.payload.tags }
+              : undefined,
+          shown: true
+        });
+      } else if (block.payload.operation === "move" && position) {
+        // A placement move relocates the character and becomes the row the dropdown rewrites —
+        // including the case where the group-header dropdown authored this `/move` for a speaker
+        // with no prior enter (so the round-trip reads its own write back). It does not "show" the
+        // character (a move on a hidden one is a runtime no-op), so it never invents an avatar; a
+        // coordinate/scale-only move carries no placement and leaves the accumulated one untouched.
+        current.set(characterId, {
+          ...current.get(characterId),
+          position,
+          positionSourceId: block.id
+        });
+      }
+    } else if (
+      block.kind === "nodeAction" &&
+      block.payload.action === "dialogue" &&
+      block.payload.characterId
+    ) {
+      const appearance = current.get(block.payload.characterId);
+      if (appearance) {
+        result.set(block.id, appearance);
+      }
+    }
+    block.childrenIds.forEach(visit);
+  };
+  scene.rootBlockIds.forEach(visit);
+  return result;
 }
 
 /**
@@ -116,11 +177,11 @@ export type StoryRowLayer = "script" | "machine";
 
 /** Which of the two layers a row belongs to. A whitelist: a new kind is machinery until argued otherwise. */
 export function storyRowLayer(block: StoryBlock): StoryRowLayer {
-    if (block.kind === "nodeAction") {
-        const action = block.payload.action;
-        return action === "narration" || action === "dialogue" ? "script" : "machine";
-    }
-    return "machine";
+  if (block.kind === "nodeAction") {
+    const action = block.payload.action;
+    return action === "narration" || action === "dialogue" ? "script" : "machine";
+  }
+  return "machine";
 }
 
 /**
@@ -133,13 +194,13 @@ type GroupSpeaker = { narrator?: true; characterId?: string; speakerName?: strin
 
 /** Whether two speakers are the same run: the narrator ties with itself; a character id wins; a bare, non-empty name ties otherwise. */
 function sameGroupSpeaker(a: GroupSpeaker, b: GroupSpeaker): boolean {
-    if (a.narrator || b.narrator) {
-        return Boolean(a.narrator && b.narrator);
-    }
-    if (a.characterId || b.characterId) {
-        return Boolean(a.characterId) && a.characterId === b.characterId;
-    }
-    return Boolean(a.speakerName) && a.speakerName === b.speakerName;
+  if (a.narrator || b.narrator) {
+    return Boolean(a.narrator && b.narrator);
+  }
+  if (a.characterId || b.characterId) {
+    return Boolean(a.characterId) && a.characterId === b.characterId;
+  }
+  return Boolean(a.speakerName) && a.speakerName === b.speakerName;
 }
 
 /**
@@ -152,16 +213,16 @@ function sameGroupSpeaker(a: GroupSpeaker, b: GroupSpeaker): boolean {
  * speech that re-announced itself on every single line.
  */
 function rowGroupSpeaker(block: StoryBlock): GroupSpeaker | null {
-    if (block.kind !== "nodeAction") {
-        return null;
-    }
-    if (block.payload.action === "narration") {
-        return { narrator: true };
-    }
-    if (block.payload.action === "dialogue") {
-        return { characterId: block.payload.characterId, speakerName: block.payload.speakerName };
-    }
+  if (block.kind !== "nodeAction") {
     return null;
+  }
+  if (block.payload.action === "narration") {
+    return { narrator: true };
+  }
+  if (block.payload.action === "dialogue") {
+    return { characterId: block.payload.characterId, speakerName: block.payload.speakerName };
+  }
+  return null;
 }
 
 /**
@@ -184,39 +245,43 @@ function rowGroupSpeaker(block: StoryBlock): GroupSpeaker | null {
  * found), only the one fact a row cannot see about itself: whether its paragraph carries on past its
  * own bottom edge, which is what tells the gutter's continuation rule how far to run.
  */
-export function annotateDialogueGroups(rows: VisibleStoryRow[], characters: readonly Character[] = []): VisibleStoryRow[] {
-    let groupSpeaker: GroupSpeaker | null = null;
-    let groupParentId: StoryBlockId | null = null;
-    const annotated = rows.map(row => {
-        const block = row.block;
-        const parentId = block.parentId ?? null;
-        const sameContainer = groupSpeaker !== null && groupParentId === parentId;
-        const speaker = rowGroupSpeaker(block);
-        if (speaker) {
-            if (sameContainer && sameGroupSpeaker(groupSpeaker!, speaker)) {
-                return { ...row, groupRole: "member" as const };
-            }
-            groupSpeaker = speaker;
-            groupParentId = parentId;
-            return { ...row, groupRole: "head" as const };
-        }
-        if (
-            sameContainer
-            && groupSpeaker!.characterId
-            && paragraphActionCharacterId(block, characters) === groupSpeaker!.characterId
-        ) {
-            // Something done to the group's own speaker: still their paragraph, so the run continues
-            // and the row wears its rule rather than a directive's glyph.
-            return { ...row, groupRole: "member" as const };
-        }
-        groupSpeaker = null;
-        groupParentId = null;
-        return row;
-    });
-    return annotated.map((row, index) =>
-        row.groupRole !== undefined && annotated[index + 1]?.groupRole === "member"
-            ? { ...row, groupContinues: true }
-            : row);
+export function annotateDialogueGroups(
+  rows: VisibleStoryRow[],
+  characters: readonly Character[] = []
+): VisibleStoryRow[] {
+  let groupSpeaker: GroupSpeaker | null = null;
+  let groupParentId: StoryBlockId | null = null;
+  const annotated = rows.map((row) => {
+    const block = row.block;
+    const parentId = block.parentId ?? null;
+    const sameContainer = groupSpeaker !== null && groupParentId === parentId;
+    const speaker = rowGroupSpeaker(block);
+    if (speaker) {
+      if (sameContainer && sameGroupSpeaker(groupSpeaker!, speaker)) {
+        return { ...row, groupRole: "member" as const };
+      }
+      groupSpeaker = speaker;
+      groupParentId = parentId;
+      return { ...row, groupRole: "head" as const };
+    }
+    if (
+      sameContainer &&
+      groupSpeaker!.characterId &&
+      paragraphActionCharacterId(block, characters) === groupSpeaker!.characterId
+    ) {
+      // Something done to the group's own speaker: still their paragraph, so the run continues
+      // and the row wears its rule rather than a directive's glyph.
+      return { ...row, groupRole: "member" as const };
+    }
+    groupSpeaker = null;
+    groupParentId = null;
+    return row;
+  });
+  return annotated.map((row, index) =>
+    row.groupRole !== undefined && annotated[index + 1]?.groupRole === "member"
+      ? { ...row, groupContinues: true }
+      : row
+  );
 }
 
 /**
@@ -227,7 +292,7 @@ export function annotateDialogueGroups(rows: VisibleStoryRow[], characters: read
  * hence the 0.
  */
 export function annotateNestingBranches(rows: VisibleStoryRow[]): VisibleStoryRow[] {
-    return rows.map((row, index) => ({ ...row, nextRowDepth: rows[index + 1]?.depth ?? 0 }));
+  return rows.map((row, index) => ({ ...row, nextRowDepth: rows[index + 1]?.depth ?? 0 }));
 }
 
 /**
@@ -244,109 +309,132 @@ export function annotateNestingBranches(rows: VisibleStoryRow[]): VisibleStoryRo
  *    "line 12" about a row this gutter called 9 because something above it was folded would be
  *    worse than a report that said nothing at all.
  */
-export function buildVisibleRows(scene: StoryScene, collapsedIds: Set<StoryBlockId>): VisibleStoryRow[] {
-    const rows: VisibleStoryRow[] = [];
-    let lineNumber = 0;
-    const visit = (blockId: StoryBlockId, depth: number, disabledAncestor: boolean, visible: boolean) => {
-        const block = scene.blocks[blockId];
-        if (!block) {
-            return;
-        }
-        // Disabled propagates down: a disabled container's whole subtree renders muted (and compiles
-        // out), so a row is effectively disabled when it or any ancestor is (schema v7).
-        const disabled = disabledAncestor || Boolean(block.disabled);
-        lineNumber += 1;
-        if (visible) {
-            rows.push(disabled ? { block, depth, lineNumber, disabled } : { block, depth, lineNumber });
-        }
-        // Descend even when nothing below will be drawn: those rows still take their numbers.
-        const childrenVisible = visible && !collapsedIds.has(blockId);
-        block.childrenIds.forEach(childId => visit(childId, depth + 1, disabled, childrenVisible));
-    };
-    scene.rootBlockIds.forEach(blockId => visit(blockId, 0, false, true));
-    return rows;
+export function buildVisibleRows(
+  scene: StoryScene,
+  collapsedIds: Set<StoryBlockId>
+): VisibleStoryRow[] {
+  const rows: VisibleStoryRow[] = [];
+  let lineNumber = 0;
+  const visit = (
+    blockId: StoryBlockId,
+    depth: number,
+    disabledAncestor: boolean,
+    visible: boolean
+  ) => {
+    const block = scene.blocks[blockId];
+    if (!block) {
+      return;
+    }
+    // Disabled propagates down: a disabled container's whole subtree renders muted (and compiles
+    // out), so a row is effectively disabled when it or any ancestor is (schema v7).
+    const disabled = disabledAncestor || Boolean(block.disabled);
+    lineNumber += 1;
+    if (visible) {
+      rows.push(disabled ? { block, depth, lineNumber, disabled } : { block, depth, lineNumber });
+    }
+    // Descend even when nothing below will be drawn: those rows still take their numbers.
+    const childrenVisible = visible && !collapsedIds.has(blockId);
+    block.childrenIds.forEach((childId) => visit(childId, depth + 1, disabled, childrenVisible));
+  };
+  scene.rootBlockIds.forEach((blockId) => visit(blockId, 0, false, true));
+  return rows;
 }
 
 export const getTextSegment = getStoryTextSegment;
 
-function mergeSegment(text: StoryTextSegment, value: string, rich: StoryRichRun[] | undefined): StoryTextSegment {
-    const meaningful = rich ? richIfMeaningful(rich) : undefined;
-    const next: StoryTextSegment = { ...text, value };
-    if (meaningful) {
-        next.rich = meaningful;
-    } else {
-        delete next.rich;
-    }
-    return next;
+function mergeSegment(
+  text: StoryTextSegment,
+  value: string,
+  rich: StoryRichRun[] | undefined
+): StoryTextSegment {
+  const meaningful = rich ? richIfMeaningful(rich) : undefined;
+  const next: StoryTextSegment = { ...text, value };
+  if (meaningful) {
+    next.rich = meaningful;
+  } else {
+    delete next.rich;
+  }
+  return next;
 }
 
-export function updateTextPayload(block: StoryBlock, value: string, rich?: StoryRichRun[]): StoryBlock["payload"] | null {
-    if (block.kind === "note") {
-        return { ...block.payload, text: mergeSegment(block.payload.text, value, rich) };
-    }
-    if (block.kind !== "nodeAction") {
-        return null;
-    }
-    if ("text" in block.payload) {
-        return { ...block.payload, text: mergeSegment(block.payload.text, value, rich) };
-    }
-    if (block.payload.action === "choice" && block.payload.prompt) {
-        return { ...block.payload, prompt: mergeSegment(block.payload.prompt, value, rich) };
-    }
+export function updateTextPayload(
+  block: StoryBlock,
+  value: string,
+  rich?: StoryRichRun[]
+): StoryBlock["payload"] | null {
+  if (block.kind === "note") {
+    return { ...block.payload, text: mergeSegment(block.payload.text, value, rich) };
+  }
+  if (block.kind !== "nodeAction") {
     return null;
+  }
+  if ("text" in block.payload) {
+    return { ...block.payload, text: mergeSegment(block.payload.text, value, rich) };
+  }
+  if (block.payload.action === "choice" && block.payload.prompt) {
+    return { ...block.payload, prompt: mergeSegment(block.payload.prompt, value, rich) };
+  }
+  return null;
 }
 
-export function getInsertionTargetAfter(scene: StoryScene, afterBlockId: StoryBlockId | null): StoryBlockTarget {
-    if (!afterBlockId) {
-        return { parentId: null };
-    }
-    const block = scene.blocks[afterBlockId];
-    if (!block) {
-        return { parentId: null };
-    }
-    const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds : scene.rootBlockIds;
-    if (!siblings) {
-        return { parentId: block.parentId };
-    }
-    const index = siblings.indexOf(afterBlockId);
-    if (index === -1) {
-        return { parentId: block.parentId };
-    }
-    return { parentId: block.parentId, beforeBlockId: siblings[index + 1] ?? null };
+export function getInsertionTargetAfter(
+  scene: StoryScene,
+  afterBlockId: StoryBlockId | null
+): StoryBlockTarget {
+  if (!afterBlockId) {
+    return { parentId: null };
+  }
+  const block = scene.blocks[afterBlockId];
+  if (!block) {
+    return { parentId: null };
+  }
+  const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds : scene.rootBlockIds;
+  if (!siblings) {
+    return { parentId: block.parentId };
+  }
+  const index = siblings.indexOf(afterBlockId);
+  if (index === -1) {
+    return { parentId: block.parentId };
+  }
+  return { parentId: block.parentId, beforeBlockId: siblings[index + 1] ?? null };
 }
 
 /** Where a moving group lands, and the order its rows are inserted in. See {@link planBlockGroupMove}. */
 export interface StoryBlockGroupMove {
-    /** The roots to move, in document order. Every one is inserted at {@link target}, in this order. */
-    blockIds: StoryBlockId[];
-    target: StoryBlockTarget;
+  /** The roots to move, in document order. Every one is inserted at {@link target}, in this order. */
+  blockIds: StoryBlockId[];
+  target: StoryBlockTarget;
 }
 
 /** The ids in `ids`, in the order a reader meets them walking the scene. */
 function inDocumentOrder(scene: StoryScene, ids: Set<StoryBlockId>): StoryBlockId[] {
-    const ordered: StoryBlockId[] = [];
-    const visit = (blockId: StoryBlockId) => {
-        if (ids.has(blockId)) {
-            ordered.push(blockId);
-        }
-        for (const childId of scene.blocks[blockId]?.childrenIds ?? []) {
-            visit(childId);
-        }
-    };
-    scene.rootBlockIds.forEach(visit);
-    return ordered;
+  const ordered: StoryBlockId[] = [];
+  const visit = (blockId: StoryBlockId) => {
+    if (ids.has(blockId)) {
+      ordered.push(blockId);
+    }
+    for (const childId of scene.blocks[blockId]?.childrenIds ?? []) {
+      visit(childId);
+    }
+  };
+  scene.rootBlockIds.forEach(visit);
+  return ordered;
 }
 
 /** The member of `ancestors` that contains `blockId` (or is it), else null. */
-function enclosingId(scene: StoryScene, blockId: StoryBlockId, ancestors: Set<StoryBlockId>): StoryBlockId | null {
-    let id: StoryBlockId | null = blockId;
-    while (id) {
-        if (ancestors.has(id)) {
-            return id;
-        }
-        id = scene.blocks[id]?.parentId ?? null;
+function enclosingId(
+  scene: StoryScene,
+  blockId: StoryBlockId,
+  ancestors: Set<StoryBlockId>
+): StoryBlockId | null {
+  let id: StoryBlockId | null = blockId;
+  while (id) {
+    if (ancestors.has(id)) {
+      return id;
     }
-    return null;
+    id = scene.blocks[id]?.parentId ?? null;
+  }
+  return null;
 }
 
 /**
@@ -366,34 +454,36 @@ function enclosingId(scene: StoryScene, blockId: StoryBlockId, ancestors: Set<St
  * moving rows, or a target inside a moving row's own subtree (a container cannot be moved into itself).
  */
 export function planBlockGroupMove(
-    scene: StoryScene,
-    movingIds: StoryBlockId[],
-    grabbedBlockId: StoryBlockId,
-    targetBlockId: StoryBlockId,
+  scene: StoryScene,
+  movingIds: StoryBlockId[],
+  grabbedBlockId: StoryBlockId,
+  targetBlockId: StoryBlockId
 ): StoryBlockGroupMove | null {
-    const roots = filterOutSelectedDescendants(scene, [...new Set(movingIds)]);
-    const target = scene.blocks[targetBlockId];
-    if (roots.length === 0 || !target) {
-        return null;
-    }
-    const rootSet = new Set(roots);
-    if (enclosingId(scene, targetBlockId, rootSet)) {
-        return null;
-    }
-    const siblings = target.parentId ? scene.blocks[target.parentId]?.childrenIds : scene.rootBlockIds;
-    const targetIndex = siblings?.indexOf(targetBlockId) ?? -1;
-    if (!siblings || targetIndex === -1) {
-        return null;
-    }
-    const blockIds = inDocumentOrder(scene, rootSet);
-    // The grabbed row tells us the direction, but a row grabbed *inside* a moving container is not
-    // itself a root — the container's own position is the one being dragged, so ask for that instead.
-    const grabbedRoot = enclosingId(scene, grabbedBlockId, rootSet) ?? blockIds[0];
-    const order = inDocumentOrder(scene, new Set([grabbedRoot, targetBlockId]));
-    const draggingDown = order.indexOf(grabbedRoot) < order.indexOf(targetBlockId);
-    const anchorIndex = draggingDown ? targetIndex + 1 : targetIndex;
-    const beforeBlockId = siblings.slice(anchorIndex).find(id => !rootSet.has(id)) ?? null;
-    return { blockIds, target: { parentId: target.parentId, beforeBlockId } };
+  const roots = filterOutSelectedDescendants(scene, [...new Set(movingIds)]);
+  const target = scene.blocks[targetBlockId];
+  if (roots.length === 0 || !target) {
+    return null;
+  }
+  const rootSet = new Set(roots);
+  if (enclosingId(scene, targetBlockId, rootSet)) {
+    return null;
+  }
+  const siblings = target.parentId
+    ? scene.blocks[target.parentId]?.childrenIds
+    : scene.rootBlockIds;
+  const targetIndex = siblings?.indexOf(targetBlockId) ?? -1;
+  if (!siblings || targetIndex === -1) {
+    return null;
+  }
+  const blockIds = inDocumentOrder(scene, rootSet);
+  // The grabbed row tells us the direction, but a row grabbed *inside* a moving container is not
+  // itself a root — the container's own position is the one being dragged, so ask for that instead.
+  const grabbedRoot = enclosingId(scene, grabbedBlockId, rootSet) ?? blockIds[0];
+  const order = inDocumentOrder(scene, new Set([grabbedRoot, targetBlockId]));
+  const draggingDown = order.indexOf(grabbedRoot) < order.indexOf(targetBlockId);
+  const anchorIndex = draggingDown ? targetIndex + 1 : targetIndex;
+  const beforeBlockId = siblings.slice(anchorIndex).find((id) => !rootSet.has(id)) ?? null;
+  return { blockIds, target: { parentId: target.parentId, beforeBlockId } };
 }
 
 /**
@@ -415,75 +505,82 @@ export function planBlockGroupMove(
  * would silently close a gap the author would have to rebuild by hand.
  */
 export function planSelectionNudge(
-    scene: StoryScene,
-    movingIds: StoryBlockId[],
-    direction: "up" | "down",
+  scene: StoryScene,
+  movingIds: StoryBlockId[],
+  direction: "up" | "down"
 ): StoryBlockGroupMove[] | null {
-    const roots = filterOutSelectedDescendants(scene, [...new Set(movingIds)]);
-    if (roots.length === 0) {
-        return null;
+  const roots = filterOutSelectedDescendants(scene, [...new Set(movingIds)]);
+  if (roots.length === 0) {
+    return null;
+  }
+  const rootSet = new Set(roots);
+  const moves: StoryBlockGroupMove[] = [];
+  // Runs are per parent: a selection that spans a container's body and the rows after it is two runs,
+  // and each stays where it is in the tree.
+  const parents = new Set(roots.map((id) => scene.blocks[id]?.parentId ?? null));
+  for (const parentId of parents) {
+    const siblings = parentId ? scene.blocks[parentId]?.childrenIds : scene.rootBlockIds;
+    if (!siblings) {
+      return null;
     }
-    const rootSet = new Set(roots);
-    const moves: StoryBlockGroupMove[] = [];
-    // Runs are per parent: a selection that spans a container's body and the rows after it is two runs,
-    // and each stays where it is in the tree.
-    const parents = new Set(roots.map(id => scene.blocks[id]?.parentId ?? null));
-    for (const parentId of parents) {
-        const siblings = parentId ? scene.blocks[parentId]?.childrenIds : scene.rootBlockIds;
-        if (!siblings) {
-            return null;
+    for (let index = 0; index < siblings.length;) {
+      if (!rootSet.has(siblings[index])) {
+        index += 1;
+        continue;
+      }
+      let end = index;
+      while (end + 1 < siblings.length && rootSet.has(siblings[end + 1])) {
+        end += 1;
+      }
+      const blockIds = siblings.slice(index, end + 1);
+      if (direction === "up") {
+        const previousId = siblings[index - 1];
+        if (!previousId) {
+          return null;
         }
-        for (let index = 0; index < siblings.length;) {
-            if (!rootSet.has(siblings[index])) {
-                index += 1;
-                continue;
-            }
-            let end = index;
-            while (end + 1 < siblings.length && rootSet.has(siblings[end + 1])) {
-                end += 1;
-            }
-            const blockIds = siblings.slice(index, end + 1);
-            if (direction === "up") {
-                const previousId = siblings[index - 1];
-                if (!previousId) {
-                    return null;
-                }
-                moves.push({ blockIds, target: { parentId, beforeBlockId: previousId } });
-            } else {
-                const nextId = siblings[end + 1];
-                if (!nextId) {
-                    return null;
-                }
-                // Past the neighbour, and past any further selected rows — the next run's rows are
-                // moving too, and an anchor that moves is one `insertId` will not find.
-                const beforeBlockId = siblings.slice(end + 2).find(id => !rootSet.has(id)) ?? null;
-                moves.push({ blockIds, target: { parentId, beforeBlockId } });
-            }
-            index = end + 1;
+        moves.push({ blockIds, target: { parentId, beforeBlockId: previousId } });
+      } else {
+        const nextId = siblings[end + 1];
+        if (!nextId) {
+          return null;
         }
+        // Past the neighbour, and past any further selected rows — the next run's rows are
+        // moving too, and an anchor that moves is one `insertId` will not find.
+        const beforeBlockId = siblings.slice(end + 2).find((id) => !rootSet.has(id)) ?? null;
+        moves.push({ blockIds, target: { parentId, beforeBlockId } });
+      }
+      index = end + 1;
     }
-    return moves.length > 0 ? moves : null;
+  }
+  return moves.length > 0 ? moves : null;
 }
 
 export function canAcceptChildren(block: StoryBlock | undefined): boolean {
-    if (!block) {
-        return false;
-    }
-    // `label`, `goto`, `break` and `cut` are the control rows that are NOT containers: a label is a
-    // point, a goto is a move, a break is an exit and a cut is an ending - none has a body.
-    // Everything else under `control` groups rows.
-    if (block.kind === "control"
-        && (block.payload.control === "label" || block.payload.control === "goto"
-            || block.payload.control === "break" || block.payload.control === "cut")) {
-        return false;
-    }
-    return block.kind === "control" ||
-        (block.kind === "action" && block.payload.action === "nvl") ||
-        (block.kind === "nodeAction" && (block.payload.action === "choice" || block.payload.action === "choiceOption"));
+  if (!block) {
+    return false;
+  }
+  // `label`, `goto`, `break` and `cut` are the control rows that are NOT containers: a label is a
+  // point, a goto is a move, a break is an exit and a cut is an ending - none has a body.
+  // Everything else under `control` groups rows.
+  if (
+    block.kind === "control" &&
+    (block.payload.control === "label" ||
+      block.payload.control === "goto" ||
+      block.payload.control === "break" ||
+      block.payload.control === "cut")
+  ) {
+    return false;
+  }
+  return (
+    block.kind === "control" ||
+    (block.kind === "action" && block.payload.action === "nvl") ||
+    (block.kind === "nodeAction" &&
+      (block.payload.action === "choice" || block.payload.action === "choiceOption"))
+  );
 }
 
 export function isTextEditableBlock(block: StoryBlock): boolean {
-    return Boolean(getTextSegment(block));
+  return Boolean(getTextSegment(block));
 }
 
 /**
@@ -496,10 +593,13 @@ export function isTextEditableBlock(block: StoryBlock): boolean {
  * wins for text rows, so this is only consulted for the non-text action/control rows.
  */
 export function hasInspector(block: StoryBlock): boolean {
-    if (block.kind === "control" && (block.payload.control === "condition" || block.payload.control === "conditionBranch")) {
-        return false;
-    }
-    return true;
+  if (
+    block.kind === "control" &&
+    (block.payload.control === "condition" || block.payload.control === "conditionBranch")
+  ) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -508,7 +608,7 @@ export function hasInspector(block: StoryBlock): boolean {
  * kept as a distinct name so rendering intent reads clearly at call sites.
  */
 export function isContainerBlock(block: StoryBlock | undefined): boolean {
-    return canAcceptChildren(block);
+  return canAcceptChildren(block);
 }
 
 /**
@@ -525,35 +625,35 @@ export function isContainerBlock(block: StoryBlock | undefined): boolean {
  * resolving.
  */
 const BADGE_ICONS: Record<StoryBlockBadgeId, typeof FileText> = {
-    narration: FileText,
-    dialogue: MessageSquare,
-    choice: GitBranch,
-    choiceOption: Route,
-    background: Image,
-    character: UserRound,
-    audio: Music,
-    variable: Variable,
-    wait: Clock,
-    image: Image,
-    transform: Move,
-    displayable: Eye,
-    text: Type,
-    layer: Layers,
-    video: Video,
-    vfx: Wind,
-    nvl: FileText,
-    blueprint: Puzzle,
-    camera: Aperture,
-    effect: Sparkles,
-    label: Bookmark,
-    goto: CornerUpLeft,
-    break: LogOut,
-    cut: SeparatorHorizontal,
-    control: Settings2,
-    jump: Route,
-    invalid: TriangleAlert,
-    declaration: Variable,
-    note: StickyNote,
+  narration: FileText,
+  dialogue: MessageSquare,
+  choice: GitBranch,
+  choiceOption: Route,
+  background: Image,
+  character: UserRound,
+  audio: Music,
+  variable: Variable,
+  wait: Clock,
+  image: Image,
+  transform: Move,
+  displayable: Eye,
+  text: Type,
+  layer: Layers,
+  video: Video,
+  vfx: Wind,
+  nvl: FileText,
+  blueprint: Puzzle,
+  camera: Aperture,
+  effect: Sparkles,
+  label: Bookmark,
+  goto: CornerUpLeft,
+  break: LogOut,
+  cut: SeparatorHorizontal,
+  control: Settings2,
+  jump: Route,
+  invalid: TriangleAlert,
+  declaration: Variable,
+  note: StickyNote
 };
 
 /**
@@ -574,47 +674,57 @@ const BADGE_ICONS: Record<StoryBlockBadgeId, typeof FileText> = {
  *    and has no typed word, yet every one of them arrives through `/fx`.
  */
 function rowCommandId(block: StoryBlock): string | null {
-    switch (block.kind) {
-        case "action":
-            if (block.payload.action === "blueprint") {
-                return "blueprint";
-            }
-            if (block.payload.action === "displayable") {
-                return storyVerbCommandId(block.payload) ?? "fx";
-            }
-            return storyVerbCommandId(block.payload);
-        case "nodeAction":
-            // Narration and a choice option are text rows, not commands - `/say` writes a dialogue and
-            // `/menu` writes the choice, but nothing writes the option except Enter inside one.
-            if (block.payload.action === "dialogue") return "say";
-            if (block.payload.action === "choice") return "menu";
-            return null;
-        case "control":
-            switch (block.payload.control) {
-                // A branch belongs to its container's command: `/if` is what puts both rows there.
-                case "condition":
-                case "conditionBranch": return "if";
-                // One payload, two commands: `until` present IS the conditional form (see the payload's
-                // note), which is `/until` - the same flag the container header reads.
-                case "repeat": return block.payload.until ? "until" : "repeat";
-                case "parallel": return "parallel";
-                case "race": return "race";
-                case "sequence": return "sequence";
-                case "break": return "break";
-                case "cut": return "cut";
-                case "label": return "label";
-                case "goto": return "goto";
-                default: return null;
-            }
-        case "jump":
-            return "jump";
-        case "declaration":
-            return DECLARATION_COMMANDS[block.payload.scope] ?? null;
-        case "note":
-            return "note";
+  switch (block.kind) {
+    case "action":
+      if (block.payload.action === "blueprint") {
+        return "blueprint";
+      }
+      if (block.payload.action === "displayable") {
+        return storyVerbCommandId(block.payload) ?? "fx";
+      }
+      return storyVerbCommandId(block.payload);
+    case "nodeAction":
+      // Narration and a choice option are text rows, not commands - `/say` writes a dialogue and
+      // `/menu` writes the choice, but nothing writes the option except Enter inside one.
+      if (block.payload.action === "dialogue") return "say";
+      if (block.payload.action === "choice") return "menu";
+      return null;
+    case "control":
+      switch (block.payload.control) {
+        // A branch belongs to its container's command: `/if` is what puts both rows there.
+        case "condition":
+        case "conditionBranch":
+          return "if";
+        // One payload, two commands: `until` present IS the conditional form (see the payload's
+        // note), which is `/until` - the same flag the container header reads.
+        case "repeat":
+          return block.payload.until ? "until" : "repeat";
+        case "parallel":
+          return "parallel";
+        case "race":
+          return "race";
+        case "sequence":
+          return "sequence";
+        case "break":
+          return "break";
+        case "cut":
+          return "cut";
+        case "label":
+          return "label";
+        case "goto":
+          return "goto";
         default:
-            return null;
-    }
+          return null;
+      }
+    case "jump":
+      return "jump";
+    case "declaration":
+      return DECLARATION_COMMANDS[block.payload.scope] ?? null;
+    case "note":
+      return "note";
+    default:
+      return null;
+  }
 }
 
 /**
@@ -631,15 +741,19 @@ function rowCommandId(block: StoryBlock): string | null {
  * under one `audio` badge, eight character verbs under one `character` - so a scene of `/bgm`, `/vol`
  * and `/stop` rows wore three identical notes.
  */
-export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typeof FileText; iconColor: string } {
-    const badge = storyBlockBadge(block);
-    const commandId = rowCommandId(block);
-    const commandIcon = commandId ? getCommandSpec(commandId)?.icon : null;
-    return {
-        label: translate(badge.labelKey),
-        icon: commandIcon ?? BADGE_ICONS[badge.id],
-        iconColor: storyRowAccentColor(block),
-    };
+export function getBlockBadgeInfo(block: StoryBlock): {
+  label: string;
+  icon: typeof FileText;
+  iconColor: string;
+} {
+  const badge = storyBlockBadge(block);
+  const commandId = rowCommandId(block);
+  const commandIcon = commandId ? getCommandSpec(commandId)?.icon : null;
+  return {
+    label: translate(badge.labelKey),
+    icon: commandIcon ?? BADGE_ICONS[badge.id],
+    iconColor: storyRowAccentColor(block)
+  };
 }
 
 /**
@@ -651,16 +765,16 @@ export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typ
  * object that happens to hold them here.
  */
 export function characterRowLookup(characters: Character[]): StoryRowLookups["character"] {
-    return characterId => {
-        const character = characters.find(candidate => candidate.profile.getId() === characterId);
-        if (!character) {
-            return null;
-        }
-        const color = readableAccentColor(character.profile.getColor());
-        return color
-            ? { name: character.profile.getName(), color }
-            : { name: character.profile.getName() };
-    };
+  return (characterId) => {
+    const character = characters.find((candidate) => candidate.profile.getId() === characterId);
+    if (!character) {
+      return null;
+    }
+    const color = readableAccentColor(character.profile.getColor());
+    return color
+      ? { name: character.profile.getName(), color }
+      : { name: character.profile.getName() };
+  };
 }
 
 /**
@@ -672,26 +786,33 @@ export function characterRowLookup(characters: Character[]): StoryRowLookups["ch
  * to remember which is which.
  */
 export function projectVariableNameLookup(
-    entries: readonly VariableRegistryEntry[],
+  entries: readonly VariableRegistryEntry[]
 ): NonNullable<StoryRowLookups["projectVariableName"]> {
-    const names = new Map(entries.map(entry => [
-        storyVariableRefKey({
-            scope: entry.scope,
-            variableId: entry.scope === "persistent" ? entry.storageKey : entry.id,
-        }),
-        entry.name,
-    ]));
-    return (scope, variableId) => names.get(storyVariableRefKey({ scope, variableId })) ?? null;
+  const names = new Map(
+    entries.map((entry) => [
+      storyVariableRefKey({
+        scope: entry.scope,
+        variableId: entry.scope === "persistent" ? entry.storageKey : entry.id
+      }),
+      entry.name
+    ])
+  );
+  return (scope, variableId) => names.get(storyVariableRefKey({ scope, variableId })) ?? null;
 }
 
 export function describeBlock(
-    block: StoryBlock,
-    characters: Character[],
-    scene?: StoryScene,
-    scenes?: Record<StorySceneId, StoryScene>,
-    projectVariableName?: StoryRowLookups["projectVariableName"],
+  block: StoryBlock,
+  characters: Character[],
+  scene?: StoryScene,
+  scenes?: Record<StorySceneId, StoryScene>,
+  projectVariableName?: StoryRowLookups["projectVariableName"]
 ): string {
-    return describeStoryBlock(block, { character: characterRowLookup(characters), scene, scenes, projectVariableName });
+  return describeStoryBlock(block, {
+    character: characterRowLookup(characters),
+    scene,
+    scenes,
+    projectVariableName
+  });
 }
 
 /**
@@ -705,22 +826,22 @@ export function describeBlock(
  * pure, and the caller, which is in React and has the service, supplies the lookup.
  */
 export function describeBlockSubject(
-    block: StoryBlock,
-    characters: Character[],
-    resolveAssetName: (assetId: string) => string | null,
-    scene?: StoryScene,
-    scenes?: Record<StorySceneId, StoryScene>,
-    resolveMotionName?: (animationId: string) => string | null,
-    projectVariableName?: StoryRowLookups["projectVariableName"],
+  block: StoryBlock,
+  characters: Character[],
+  resolveAssetName: (assetId: string) => string | null,
+  scene?: StoryScene,
+  scenes?: Record<StorySceneId, StoryScene>,
+  resolveMotionName?: (animationId: string) => string | null,
+  projectVariableName?: StoryRowLookups["projectVariableName"]
 ): string {
-    return describeStoryBlock(block, {
-        character: characterRowLookup(characters),
-        assetName: resolveAssetName,
-        scene,
-        scenes,
-        motionName: resolveMotionName,
-        projectVariableName,
-    });
+  return describeStoryBlock(block, {
+    character: characterRowLookup(characters),
+    assetName: resolveAssetName,
+    scene,
+    scenes,
+    motionName: resolveMotionName,
+    projectVariableName
+  });
 }
 
 export const getEmptyTextPlaceholder = getStoryEmptyTextPlaceholder;
@@ -728,36 +849,45 @@ export const getEmptyTextPlaceholder = getStoryEmptyTextPlaceholder;
 export const getSceneName = getStorySceneName;
 
 export function getCharacterName(characters: Character[], characterId: string | undefined): string {
-    if (!characterId) {
-        return translate("story.characterName.unassigned");
-    }
-    return characters.find(character => character.profile.getId() === characterId)?.profile.getName() ?? translate("story.characterName.unknown");
+  if (!characterId) {
+    return translate("story.characterName.unassigned");
+  }
+  return (
+    characters.find((character) => character.profile.getId() === characterId)?.profile.getName() ??
+    translate("story.characterName.unknown")
+  );
 }
 
 function parseHexColor(hex: string): { r: number; g: number; b: number } | null {
-    const value = hex.trim().replace(/^#/, "");
-    const full = value.length === 3 ? value.split("").map(channel => channel + channel).join("") : value;
-    if (!/^[0-9a-fA-F]{6}$/.test(full)) {
-        return null;
-    }
-    return {
-        r: parseInt(full.slice(0, 2), 16),
-        g: parseInt(full.slice(2, 4), 16),
-        b: parseInt(full.slice(4, 6), 16),
-    };
+  const value = hex.trim().replace(/^#/, "");
+  const full =
+    value.length === 3
+      ? value
+          .split("")
+          .map((channel) => channel + channel)
+          .join("")
+      : value;
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) {
+    return null;
+  }
+  return {
+    r: parseInt(full.slice(0, 2), 16),
+    g: parseInt(full.slice(2, 4), 16),
+    b: parseInt(full.slice(4, 6), 16)
+  };
 }
 
 /** WCAG relative luminance (0–1) of a hex colour, or `null` when it cannot be parsed. */
 function relativeLuminance(hex: string): number | null {
-    const rgb = parseHexColor(hex);
-    if (!rgb) {
-        return null;
-    }
-    const linear = (value: number) => {
-        const c = value / 255;
-        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-    };
-    return 0.2126 * linear(rgb.r) + 0.7152 * linear(rgb.g) + 0.0722 * linear(rgb.b);
+  const rgb = parseHexColor(hex);
+  if (!rgb) {
+    return null;
+  }
+  const linear = (value: number) => {
+    const c = value / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * linear(rgb.r) + 0.7152 * linear(rgb.g) + 0.0722 * linear(rgb.b);
 }
 
 /**
@@ -768,8 +898,8 @@ function relativeLuminance(hex: string): number | null {
  * chosen guard, not a WCAG-AA promise: an accent is decorative, it only has to be visible.
  */
 export function isReadableAccentColor(hex: string): boolean {
-    const luminance = relativeLuminance(hex);
-    return luminance !== null && luminance > 0.03 && luminance < 0.85;
+  const luminance = relativeLuminance(hex);
+  return luminance !== null && luminance > 0.03 && luminance < 0.85;
 }
 
 /**
@@ -791,8 +921,8 @@ export function isReadableAccentColor(hex: string): boolean {
  * never a thing any of these surfaces could honour.
  */
 export function readableAccentColor(stored: string | null | undefined): string | undefined {
-    const resolved = resolveBrandColorValue(stored);
-    return resolved && isReadableAccentColor(resolved) ? resolved : undefined;
+  const resolved = resolveBrandColorValue(stored);
+  return resolved && isReadableAccentColor(resolved) ? resolved : undefined;
 }
 
 /**
@@ -800,35 +930,47 @@ export function readableAccentColor(stored: string | null | undefined): string |
  * would be unreadable on either theme's surface, in which case the nametag keeps the default ink
  * rather than disappearing into the background (see {@link readableAccentColor}).
  */
-export function getCharacterColor(characters: Character[], characterId: string | undefined): string | undefined {
-    if (!characterId) {
-        return undefined;
-    }
-    return readableAccentColor(characters.find(character => character.profile.getId() === characterId)?.profile.getColor());
+export function getCharacterColor(
+  characters: Character[],
+  characterId: string | undefined
+): string | undefined {
+  if (!characterId) {
+    return undefined;
+  }
+  return readableAccentColor(
+    characters.find((character) => character.profile.getId() === characterId)?.profile.getColor()
+  );
 }
 
-export function selectRange(rows: VisibleStoryRow[], fromId: StoryBlockId, toId: StoryBlockId): Set<StoryBlockId> {
-    const from = rows.findIndex(row => row.block.id === fromId);
-    const to = rows.findIndex(row => row.block.id === toId);
-    if (from === -1 || to === -1) {
-        return new Set([toId]);
-    }
-    const [start, end] = from < to ? [from, to] : [to, from];
-    return new Set(rows.slice(start, end + 1).map(row => row.block.id));
+export function selectRange(
+  rows: VisibleStoryRow[],
+  fromId: StoryBlockId,
+  toId: StoryBlockId
+): Set<StoryBlockId> {
+  const from = rows.findIndex((row) => row.block.id === fromId);
+  const to = rows.findIndex((row) => row.block.id === toId);
+  if (from === -1 || to === -1) {
+    return new Set([toId]);
+  }
+  const [start, end] = from < to ? [from, to] : [to, from];
+  return new Set(rows.slice(start, end + 1).map((row) => row.block.id));
 }
 
-export function filterOutSelectedDescendants(scene: StoryScene, ids: StoryBlockId[]): StoryBlockId[] {
-    const selected = new Set(ids);
-    return ids.filter(id => {
-        let parentId = scene.blocks[id]?.parentId ?? null;
-        while (parentId) {
-            if (selected.has(parentId)) {
-                return false;
-            }
-            parentId = scene.blocks[parentId]?.parentId ?? null;
-        }
-        return Boolean(scene.blocks[id]);
-    });
+export function filterOutSelectedDescendants(
+  scene: StoryScene,
+  ids: StoryBlockId[]
+): StoryBlockId[] {
+  const selected = new Set(ids);
+  return ids.filter((id) => {
+    let parentId = scene.blocks[id]?.parentId ?? null;
+    while (parentId) {
+      if (selected.has(parentId)) {
+        return false;
+      }
+      parentId = scene.blocks[parentId]?.parentId ?? null;
+    }
+    return Boolean(scene.blocks[id]);
+  });
 }
 
 /**
@@ -840,28 +982,35 @@ export function filterOutSelectedDescendants(scene: StoryScene, ids: StoryBlockI
  * never need enumerating. Pure, so the post-delete focus is unit-tested rather than only observed in the
  * running app.
  */
-export function nextSelectionAfterDelete(scene: StoryScene, visibleRows: VisibleStoryRow[], roots: StoryBlockId[]): StoryBlockId | null {
-    const rootSet = new Set(roots);
-    const isDeleted = (blockId: StoryBlockId): boolean => {
-        let id: StoryBlockId | null = blockId;
-        while (id) {
-            if (rootSet.has(id)) {
-                return true;
-            }
-            id = scene.blocks[id]?.parentId ?? null;
-        }
-        return false;
-    };
-    const firstDeletedIndex = visibleRows.findIndex(row => isDeleted(row.block.id));
-    if (firstDeletedIndex === -1) {
-        return null;
+export function nextSelectionAfterDelete(
+  scene: StoryScene,
+  visibleRows: VisibleStoryRow[],
+  roots: StoryBlockId[]
+): StoryBlockId | null {
+  const rootSet = new Set(roots);
+  const isDeleted = (blockId: StoryBlockId): boolean => {
+    let id: StoryBlockId | null = blockId;
+    while (id) {
+      if (rootSet.has(id)) {
+        return true;
+      }
+      id = scene.blocks[id]?.parentId ?? null;
     }
-    // Every row above the first deleted one survives (it is the *first* deleted), so its previous line
-    // is a safe landing. Only when the top row itself is going do we fall to the first survivor below.
-    if (firstDeletedIndex > 0) {
-        return visibleRows[firstDeletedIndex - 1].block.id;
-    }
-    return visibleRows.find((row, index) => index > firstDeletedIndex && !isDeleted(row.block.id))?.block.id ?? null;
+    return false;
+  };
+  const firstDeletedIndex = visibleRows.findIndex((row) => isDeleted(row.block.id));
+  if (firstDeletedIndex === -1) {
+    return null;
+  }
+  // Every row above the first deleted one survives (it is the *first* deleted), so its previous line
+  // is a safe landing. Only when the top row itself is going do we fall to the first survivor below.
+  if (firstDeletedIndex > 0) {
+    return visibleRows[firstDeletedIndex - 1].block.id;
+  }
+  return (
+    visibleRows.find((row, index) => index > firstDeletedIndex && !isDeleted(row.block.id))?.block
+      .id ?? null
+  );
 }
 
 /**
@@ -879,21 +1028,24 @@ export function nextSelectionAfterDelete(scene: StoryScene, visibleRows: Visible
  *   line in either is not a legal tree, so those rows keep the plain delete.
  */
 export function planRowBackspaceReplacement(
-    scene: StoryScene,
-    ids: StoryBlockId[],
+  scene: StoryScene,
+  ids: StoryBlockId[]
 ): { replaceBlockId: StoryBlockId; target: StoryBlockTarget } | null {
-    if (ids.length !== 1) {
-        return null;
-    }
-    const block = scene.blocks[ids[0]];
-    if (!block || isTextEditableBlock(block) || block.childrenIds.length > 0) {
-        return null;
-    }
-    const parent = block.parentId ? scene.blocks[block.parentId] : null;
-    if (block.parentId && !acceptsPlainRows(parent)) {
-        return null;
-    }
-    return { replaceBlockId: block.id, target: { parentId: block.parentId, beforeBlockId: block.id } };
+  if (ids.length !== 1) {
+    return null;
+  }
+  const block = scene.blocks[ids[0]];
+  if (!block || isTextEditableBlock(block) || block.childrenIds.length > 0) {
+    return null;
+  }
+  const parent = block.parentId ? scene.blocks[block.parentId] : null;
+  if (block.parentId && !acceptsPlainRows(parent)) {
+    return null;
+  }
+  return {
+    replaceBlockId: block.id,
+    target: { parentId: block.parentId, beforeBlockId: block.id }
+  };
 }
 
 /**
@@ -908,24 +1060,24 @@ export function planRowBackspaceReplacement(
  * `canAcceptChildren`, so an insert there throws.
  */
 function acceptsPlainRows(parent: StoryBlock | null | undefined): boolean {
-    if (!parent) {
-        return false;
-    }
-    if (parent.kind === "control") {
-        return parent.payload.control !== "condition";
-    }
-    return parent.kind === "nodeAction" && parent.payload.action === "choiceOption";
+  if (!parent) {
+    return false;
+  }
+  if (parent.kind === "control") {
+    return parent.payload.control !== "condition";
+  }
+  return parent.kind === "nodeAction" && parent.payload.action === "choiceOption";
 }
 
 export function findPreviousSibling(scene: StoryScene, blockId: StoryBlockId): StoryBlock | null {
-    const block = scene.blocks[blockId];
-    if (!block) {
-        return null;
-    }
-    const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds : scene.rootBlockIds;
-    if (!siblings) {
-        return null;
-    }
-    const index = siblings.indexOf(blockId);
-    return index > 0 ? scene.blocks[siblings[index - 1]] ?? null : null;
+  const block = scene.blocks[blockId];
+  if (!block) {
+    return null;
+  }
+  const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds : scene.rootBlockIds;
+  if (!siblings) {
+    return null;
+  }
+  const index = siblings.indexOf(blockId);
+  return index > 0 ? (scene.blocks[siblings[index - 1]] ?? null) : null;
 }

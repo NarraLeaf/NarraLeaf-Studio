@@ -4,8 +4,8 @@ import { WEB_SHELL_VARIANT_META, type GameRuntimePackV1 } from "@shared/types/ga
 import { resolveGameRuntimeInitialBackgroundColor } from "@shared/utils/gameRuntimeEntrySurface";
 import { networkAllowlistCspSources, packNetworkAllowlist } from "@shared/types/networkAllowlist";
 import {
-    PLUGIN_REACT_MODULE_SOURCES,
-    PLUGIN_RUNTIME_API_MODULE_SOURCE,
+  PLUGIN_REACT_MODULE_SOURCES,
+  PLUGIN_RUNTIME_API_MODULE_SOURCE
 } from "@shared/utils/pluginRuntimeApiModule";
 
 /**
@@ -44,25 +44,29 @@ export const WEB_APPLE_TOUCH_FILENAME = "apple-touch-icon.png";
 export type GameWebShellVariant = "web" | "mobile";
 
 export async function writeWebShellFiles(input: {
-    appDir: string;
-    pack: GameRuntimePackV1;
-    hasFavicon: boolean;
-    hasAppleTouchIcon: boolean;
+  appDir: string;
+  pack: GameRuntimePackV1;
+  hasFavicon: boolean;
+  hasAppleTouchIcon: boolean;
 }): Promise<void> {
-    const pluginApiDir = path.join(input.appDir, "plugin-api");
-    await fs.mkdir(pluginApiDir, { recursive: true });
-    await fs.writeFile(path.join(pluginApiDir, "runtime.js"), PLUGIN_RUNTIME_API_MODULE_SOURCE, "utf-8");
-    for (const [servedPath, source] of Object.entries(PLUGIN_REACT_MODULE_SOURCES)) {
-        await fs.writeFile(path.join(pluginApiDir, servedPath.replace(/^\//, "")), source, "utf-8");
-    }
-    await fs.writeFile(
-        path.join(input.appDir, "index.html"),
-        buildWebIndexHtml(input.pack, {
-            hasFavicon: input.hasFavicon,
-            hasAppleTouchIcon: input.hasAppleTouchIcon,
-        }),
-        "utf-8",
-    );
+  const pluginApiDir = path.join(input.appDir, "plugin-api");
+  await fs.mkdir(pluginApiDir, { recursive: true });
+  await fs.writeFile(
+    path.join(pluginApiDir, "runtime.js"),
+    PLUGIN_RUNTIME_API_MODULE_SOURCE,
+    "utf-8"
+  );
+  for (const [servedPath, source] of Object.entries(PLUGIN_REACT_MODULE_SOURCES)) {
+    await fs.writeFile(path.join(pluginApiDir, servedPath.replace(/^\//, "")), source, "utf-8");
+  }
+  await fs.writeFile(
+    path.join(input.appDir, "index.html"),
+    buildWebIndexHtml(input.pack, {
+      hasFavicon: input.hasFavicon,
+      hasAppleTouchIcon: input.hasAppleTouchIcon
+    }),
+    "utf-8"
+  );
 }
 
 /**
@@ -76,34 +80,36 @@ export async function writeWebShellFiles(input: {
  * that want a broader policy set one as a header.
  */
 export function buildWebIndexHtml(
-    pack: GameRuntimePackV1,
-    options: { hasFavicon: boolean; hasAppleTouchIcon?: boolean; variant?: GameWebShellVariant },
+  pack: GameRuntimePackV1,
+  options: { hasFavicon: boolean; hasAppleTouchIcon?: boolean; variant?: GameWebShellVariant }
 ): string {
-    const title = escapeHtml(pack.project.name?.trim() || "NarraLeaf Game");
-    // Guaranteed markup-safe: a #rrggbb hex or a bare lowercase color name.
-    const background = resolveGameRuntimeInitialBackgroundColor(pack);
-    const iconLinks = [
-        options.hasFavicon
-            ? `    <link rel="icon" type="image/png" href="./${WEB_FAVICON_FILENAME}" />\n`
-            : "",
-        options.hasAppleTouchIcon
-            ? `    <link rel="apple-touch-icon" href="./${WEB_APPLE_TOUCH_FILENAME}" />\n`
-            : "",
-    ].join("");
-    // viewport-fit=cover lets the game paint under a notch/home indicator
-    // instead of being letterboxed by the browser's default safe-area inset;
-    // the shells run full-screen, so the inset would show as bars.
-    const viewport = options.variant === "mobile"
-        ? "width=device-width, initial-scale=1.0, viewport-fit=cover"
-        : "width=device-width, initial-scale=1.0";
-    // The pack is built once and the mobile repack serves this same site, so the pack cannot say
-    // which shell is running it — the entry document can, and it is already the one file that
-    // differs. The stage crop is mobile-only, and this is what it reads.
-    const shellMeta = options.variant === "mobile"
-        ? `    <meta name="${WEB_SHELL_VARIANT_META}" content="mobile" />\n`
-        : "";
-    const cspMeta = buildWebCspMeta(pack);
-    return `<!doctype html>
+  const title = escapeHtml(pack.project.name?.trim() || "NarraLeaf Game");
+  // Guaranteed markup-safe: a #rrggbb hex or a bare lowercase color name.
+  const background = resolveGameRuntimeInitialBackgroundColor(pack);
+  const iconLinks = [
+    options.hasFavicon
+      ? `    <link rel="icon" type="image/png" href="./${WEB_FAVICON_FILENAME}" />\n`
+      : "",
+    options.hasAppleTouchIcon
+      ? `    <link rel="apple-touch-icon" href="./${WEB_APPLE_TOUCH_FILENAME}" />\n`
+      : ""
+  ].join("");
+  // viewport-fit=cover lets the game paint under a notch/home indicator
+  // instead of being letterboxed by the browser's default safe-area inset;
+  // the shells run full-screen, so the inset would show as bars.
+  const viewport =
+    options.variant === "mobile"
+      ? "width=device-width, initial-scale=1.0, viewport-fit=cover"
+      : "width=device-width, initial-scale=1.0";
+  // The pack is built once and the mobile repack serves this same site, so the pack cannot say
+  // which shell is running it — the entry document can, and it is already the one file that
+  // differs. The stage crop is mobile-only, and this is what it reads.
+  const shellMeta =
+    options.variant === "mobile"
+      ? `    <meta name="${WEB_SHELL_VARIANT_META}" content="mobile" />\n`
+      : "";
+  const cspMeta = buildWebCspMeta(pack);
+  return `<!doctype html>
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
@@ -149,27 +155,27 @@ ${iconLinks}    <link rel="stylesheet" href="./renderer.css" />
  * where that trade is written down.
  */
 function buildWebCspMeta(pack: GameRuntimePackV1): string {
-    const sources = networkAllowlistCspSources(packNetworkAllowlist(pack));
-    if (sources === null) {
-        return "";
-    }
-    const remote = sources.length > 0 ? " " + sources.join(" ") : "";
-    const policy = [
-        `default-src 'self' data: blob:${remote}`,
-        `img-src 'self' data: blob:${remote}`,
-        `media-src 'self' data: blob:${remote}`,
-        `font-src 'self' data: blob:${remote}`,
-        `connect-src 'self' data: blob:${remote}`,
-        "object-src 'none'",
-    ].join("; ");
-    return `    <meta http-equiv="Content-Security-Policy" content="${escapeHtml(policy)}" />\n`;
+  const sources = networkAllowlistCspSources(packNetworkAllowlist(pack));
+  if (sources === null) {
+    return "";
+  }
+  const remote = sources.length > 0 ? " " + sources.join(" ") : "";
+  const policy = [
+    `default-src 'self' data: blob:${remote}`,
+    `img-src 'self' data: blob:${remote}`,
+    `media-src 'self' data: blob:${remote}`,
+    `font-src 'self' data: blob:${remote}`,
+    `connect-src 'self' data: blob:${remote}`,
+    "object-src 'none'"
+  ].join("; ");
+  return `    <meta http-equiv="Content-Security-Policy" content="${escapeHtml(policy)}" />\n`;
 }
 
 function escapeHtml(value: string): string {
-    return value
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }

@@ -1,5 +1,10 @@
 import { isContainerFlowLayoutParent } from "./container";
-import { getUIListChildSlot, isListLikeWidgetType, isUIListScrollbarSlot, UI_LIST_LIKE_WIDGET_TYPES } from "./list";
+import {
+  getUIListChildSlot,
+  isListLikeWidgetType,
+  isUIListScrollbarSlot,
+  UI_LIST_LIKE_WIDGET_TYPES
+} from "./list";
 import type { UIPageAnimationSettings } from "./pageAnimation";
 import { getUISliderChildSlot } from "./slider";
 import type { UISurfaceBackgroundImage } from "./surfaceBackgroundImage";
@@ -13,18 +18,18 @@ export type UISurfaceId = string;
 export type UIElementId = string;
 
 export type UIDocument = {
-    schemaVersion: UIDocumentVersion;
-    id: UIDocumentId;
-    name: string;
-    surfaces: UISurface[];
-    components?: UIComponentDefinition[];
-    elements: Record<UIElementId, UIElement>;
-    meta?: UIDocumentMeta;
+  schemaVersion: UIDocumentVersion;
+  id: UIDocumentId;
+  name: string;
+  surfaces: UISurface[];
+  components?: UIComponentDefinition[];
+  elements: Record<UIElementId, UIElement>;
+  meta?: UIDocumentMeta;
 };
 
 export type UIDocumentMeta = {
-    createdAt?: string;
-    updatedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type UIHost = "app" | "player";
@@ -34,70 +39,70 @@ export type UISurfaceKind = "appSurface" | "stageSurface";
 export type UIStageSlotId = "onStage" | "dialog" | "notification" | "choice" | "nvl";
 
 export type UIStageSurfaceMount = {
-    kind: "slot";
-    slotId: UIStageSlotId;
+  kind: "slot";
+  slotId: UIStageSlotId;
 };
 
 export type UIAppSurface = {
-    id: UISurfaceId;
-    name: string;
-    host: "app";
-    kind: "appSurface";
-    designSize: UISurfaceDesignSize;
-    rootElementId: UIElementId;
-    settings?: UISurfaceSettings;
+  id: UISurfaceId;
+  name: string;
+  host: "app";
+  kind: "appSurface";
+  designSize: UISurfaceDesignSize;
+  rootElementId: UIElementId;
+  settings?: UISurfaceSettings;
 };
 
 export type UIStageSurface = {
-    id: UISurfaceId;
-    name: string;
-    host: "player";
-    kind: "stageSurface";
-    designSize: UISurfaceDesignSize;
-    rootElementId: UIElementId;
-    settings?: UISurfaceSettings;
-    mount: UIStageSurfaceMount;
-    slots?: Record<string, UISlotDefinition>;
+  id: UISurfaceId;
+  name: string;
+  host: "player";
+  kind: "stageSurface";
+  designSize: UISurfaceDesignSize;
+  rootElementId: UIElementId;
+  settings?: UISurfaceSettings;
+  mount: UIStageSurfaceMount;
+  slots?: Record<string, UISlotDefinition>;
 };
 
 export type UISurface = UIAppSurface | UIStageSurface;
 
 export type UISurfaceDesignSize = {
-    width: number;
-    height: number;
+  width: number;
+  height: number;
 };
 
 export type UISurfaceSettings = {
-    backgroundColor?: string;
-    /**
-     * Painted over {@link backgroundColor}, inside the design area only - the letterbox bars around
-     * a scaled Surface keep showing the colour, so the two settings are not alternatives.
-     */
-    backgroundImage?: UISurfaceBackgroundImage;
-    pageAnimation?: UIPageAnimationSettings;
+  backgroundColor?: string;
+  /**
+   * Painted over {@link backgroundColor}, inside the design area only - the letterbox bars around
+   * a scaled Surface keep showing the colour, so the two settings are not alternatives.
+   */
+  backgroundImage?: UISurfaceBackgroundImage;
+  pageAnimation?: UIPageAnimationSettings;
 };
 
 export type UISlotDefinition = {
-    id: string; 
-    name: string;
-    rootElementId?: UIElementId;
+  id: string;
+  name: string;
+  rootElementId?: UIElementId;
 };
 
 export type UIComponentId = string;
 
 export type UIComponentDefinition = {
-    id: UIComponentId;
-    name: string;
-    rootElementId: UIElementId;
-    elements: Record<UIElementId, UIElement>;
-    /** Declared in the component's own inspector; each instance supplies its own values. */
-    params?: UIComponentParam[];
-    previewMeta?: {
-        width?: number;
-        height?: number;
-    };
-    createdAt?: string;
-    updatedAt?: string;
+  id: UIComponentId;
+  name: string;
+  rootElementId: UIElementId;
+  elements: Record<UIElementId, UIElement>;
+  /** Declared in the component's own inspector; each instance supplies its own values. */
+  params?: UIComponentParam[];
+  previewMeta?: {
+    width?: number;
+    height?: number;
+  };
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 /**
@@ -113,101 +118,121 @@ export type UIComponentDefinition = {
  * as long as `type` stays required.
  */
 export type UIComponentParam = {
-    /** Stable identity. Blueprints and instance values reference this, so renaming `name` is free. */
-    id: string;
-    /** What the author called it, shown in the instance's inspector. */
-    name: string;
-    type: "string";
-    /** Used by an instance that has not overridden it, and by the definition's own preview. */
-    defaultValue: string;
+  /** Stable identity. Blueprints and instance values reference this, so renaming `name` is free. */
+  id: string;
+  /** What the author called it, shown in the instance's inspector. */
+  name: string;
+  type: "string";
+  /** Used by an instance that has not overridden it, and by the definition's own preview. */
+  defaultValue: string;
 };
 
 export type UIComponentLink = {
-    componentId: UIComponentId;
-    linked: true;
-    /** Values by param id. Absent ids fall back to the definition's `defaultValue`. */
-    params?: Record<string, string>;
+  componentId: UIComponentId;
+  linked: true;
+  /** Values by param id. Absent ids fall back to the definition's `defaultValue`. */
+  params?: Record<string, string>;
 };
 
 export type UIElementExtraComponentLink = {
-    componentLink?: UIComponentLink;
+  componentLink?: UIComponentLink;
 };
 
 /** Types that may own `childrenIds` (structural parents). Leaf widgets must stay childless. */
-const UI_PARENT_CAPABLE_ELEMENT_TYPES = new Set<string>(["nl.root", "nl.container", "nl.button", "nl.slider", "nl.switch", ...UI_LIST_LIKE_WIDGET_TYPES]);
+const UI_PARENT_CAPABLE_ELEMENT_TYPES = new Set<string>([
+  "nl.root",
+  "nl.container",
+  "nl.button",
+  "nl.slider",
+  "nl.switch",
+  ...UI_LIST_LIKE_WIDGET_TYPES
+]);
 /** Types that accept ordinary user-inserted children. Structural part parents can be narrower. */
-const UI_USER_CHILD_PARENT_ELEMENT_TYPES = new Set<string>(["nl.root", "nl.container", "nl.button", ...UI_LIST_LIKE_WIDGET_TYPES]);
+const UI_USER_CHILD_PARENT_ELEMENT_TYPES = new Set<string>([
+  "nl.root",
+  "nl.container",
+  "nl.button",
+  ...UI_LIST_LIKE_WIDGET_TYPES
+]);
 
 export function uiElementTypeAcceptsChildren(elementType: string): boolean {
-    return UI_PARENT_CAPABLE_ELEMENT_TYPES.has(elementType);
+  return UI_PARENT_CAPABLE_ELEMENT_TYPES.has(elementType);
 }
 
 export function uiElementTypeAcceptsUserChildren(elementType: string): boolean {
-    return UI_USER_CHILD_PARENT_ELEMENT_TYPES.has(elementType);
+  return UI_USER_CHILD_PARENT_ELEMENT_TYPES.has(elementType);
 }
 
 export type UIElement = {
-    id: UIElementId;
-    type: string;
-    name?: string;
-    parentId: UIElementId | null;
-    childrenIds: UIElementId[];
-    layout: UILayout;
-    style?: UIStyle;
-    props?: Record<string, unknown>;
-    behavior?: UIBehavior;
-    valueBindings?: Record<string, UIElementValueBinding>;
-    /**
-     * How this element arrives and leaves - the same record a Surface uses for its page animation.
-     * Absent means it does neither. Read it through `elementAnimation.ts` rather than directly.
-     *
-     * Its own field rather than a `props` key, because it belongs to the placement and not to the
-     * widget: every type has one, no renderer reads it, and a linked component instance may set it
-     * even though its props come from the definition.
-     */
-    animation?: UIPageAnimationSettings;
-    extra?: Record<string, unknown>;
+  id: UIElementId;
+  type: string;
+  name?: string;
+  parentId: UIElementId | null;
+  childrenIds: UIElementId[];
+  layout: UILayout;
+  style?: UIStyle;
+  props?: Record<string, unknown>;
+  behavior?: UIBehavior;
+  valueBindings?: Record<string, UIElementValueBinding>;
+  /**
+   * How this element arrives and leaves - the same record a Surface uses for its page animation.
+   * Absent means it does neither. Read it through `elementAnimation.ts` rather than directly.
+   *
+   * Its own field rather than a `props` key, because it belongs to the placement and not to the
+   * widget: every type has one, no renderer reads it, and a linked component instance may set it
+   * even though its props come from the definition.
+   */
+  animation?: UIPageAnimationSettings;
+  extra?: Record<string, unknown>;
 };
 
-export function getUIComponentLink(element: Pick<UIElement, "extra"> | null | undefined): UIComponentLink | null {
-    const raw = element?.extra?.componentLink;
-    if (!raw || typeof raw !== "object") {
-        return null;
+export function getUIComponentLink(
+  element: Pick<UIElement, "extra"> | null | undefined
+): UIComponentLink | null {
+  const raw = element?.extra?.componentLink;
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const link = raw as Partial<UIComponentLink>;
+  if (
+    link.linked !== true ||
+    typeof link.componentId !== "string" ||
+    link.componentId.trim().length === 0
+  ) {
+    return null;
+  }
+  // Rebuilt rather than spread, so a link cannot smuggle unknown keys through; params are copied
+  // across explicitly because dropping them here would silently unset every instance value.
+  const params: Record<string, string> = {};
+  if (link.params && typeof link.params === "object" && !Array.isArray(link.params)) {
+    for (const [id, value] of Object.entries(link.params as Record<string, unknown>)) {
+      if (typeof value === "string") {
+        params[id] = value;
+      }
     }
-    const link = raw as Partial<UIComponentLink>;
-    if (link.linked !== true || typeof link.componentId !== "string" || link.componentId.trim().length === 0) {
-        return null;
-    }
-    // Rebuilt rather than spread, so a link cannot smuggle unknown keys through; params are copied
-    // across explicitly because dropping them here would silently unset every instance value.
-    const params: Record<string, string> = {};
-    if (link.params && typeof link.params === "object" && !Array.isArray(link.params)) {
-        for (const [id, value] of Object.entries(link.params as Record<string, unknown>)) {
-            if (typeof value === "string") {
-                params[id] = value;
-            }
-        }
-    }
-    return {
-        componentId: link.componentId,
-        linked: true,
-        ...(Object.keys(params).length > 0 ? { params } : {}),
-    };
+  }
+  return {
+    componentId: link.componentId,
+    linked: true,
+    ...(Object.keys(params).length > 0 ? { params } : {})
+  };
 }
 
 /** Declared params of a component definition, in author order. */
-export function getUIComponentParams(component: Pick<UIComponentDefinition, "params"> | null | undefined): UIComponentParam[] {
-    const raw = component?.params;
-    if (!Array.isArray(raw)) {
-        return [];
-    }
-    return raw.filter(
-        (param): param is UIComponentParam =>
-            Boolean(param) &&
-            typeof param === "object" &&
-            typeof (param as UIComponentParam).id === "string" &&
-            (param as UIComponentParam).id.trim().length > 0,
-    );
+export function getUIComponentParams(
+  component: Pick<UIComponentDefinition, "params"> | null | undefined
+): UIComponentParam[] {
+  const raw = component?.params;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.filter(
+    (param): param is UIComponentParam =>
+      Boolean(param) &&
+      typeof param === "object" &&
+      typeof (param as UIComponentParam).id === "string" &&
+      (param as UIComponentParam).id.trim().length > 0
+  );
 }
 
 /**
@@ -217,56 +242,56 @@ export function getUIComponentParams(component: Pick<UIComponentDefinition, "par
  * value, and a param that was renamed out from under an instance should read as blank, not crash.
  */
 export function resolveUIComponentParams(
-    component: Pick<UIComponentDefinition, "params"> | null | undefined,
-    link: UIComponentLink | null | undefined,
+  component: Pick<UIComponentDefinition, "params"> | null | undefined,
+  link: UIComponentLink | null | undefined
 ): Record<string, string> {
-    const out: Record<string, string> = {};
-    for (const param of getUIComponentParams(component)) {
-        const supplied = link?.params?.[param.id];
-        out[param.id] = typeof supplied === "string" ? supplied : (param.defaultValue ?? "");
-    }
-    return out;
+  const out: Record<string, string> = {};
+  for (const param of getUIComponentParams(component)) {
+    const supplied = link?.params?.[param.id];
+    out[param.id] = typeof supplied === "string" ? supplied : (param.defaultValue ?? "");
+  }
+  return out;
 }
 
-export function isLinkedUIComponentElement(element: Pick<UIElement, "extra"> | null | undefined): boolean {
-    return getUIComponentLink(element) != null;
+export function isLinkedUIComponentElement(
+  element: Pick<UIElement, "extra"> | null | undefined
+): boolean {
+  return getUIComponentLink(element) != null;
 }
 
 export type UIElementValueBindingValueType = "string" | "json" | "float" | "boolean";
 
-export type UIElementValueBinding =
-    | {
-          kind: "blueprintValue";
-          blueprintId: string;
-          valueType: UIElementValueBindingValueType;
-      };
+export type UIElementValueBinding = {
+  kind: "blueprintValue";
+  blueprintId: string;
+  valueType: UIElementValueBindingValueType;
+};
 
 export type UILayout = {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    rotation?: number;
-    opacity?: number;
-    visible?: boolean;
-    /** When true, width and height stay proportional in the inspector and on-canvas resize. */
-    lockAspectRatio?: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+  opacity?: number;
+  visible?: boolean;
+  /** When true, width and height stay proportional in the inspector and on-canvas resize. */
+  lockAspectRatio?: boolean;
 };
 
 export type UIStyle = Record<string, unknown>;
 
 export type UIBehavior = {
-    events?: Record<string, UIBehaviorBinding>;
+  events?: Record<string, UIBehaviorBinding>;
 };
 
 export type UIBehaviorBinding =
-    | { kind: "noop" }
-    | { kind: "actions"; actions: UIBehaviorAction[] }
-    /** M2: event handler targets an event graph entry on an instance main blueprint. */
-    | { kind: "blueprintEvent"; blueprintId: string; eventId: string };
+  | { kind: "noop" }
+  | { kind: "actions"; actions: UIBehaviorAction[] }
+  /** M2: event handler targets an event graph entry on an instance main blueprint. */
+  | { kind: "blueprintEvent"; blueprintId: string; eventId: string };
 
-export type UIBehaviorAction =
-    | { kind: "noop" };
+export type UIBehaviorAction = { kind: "noop" };
 
 /**
  * True when this element acts as a flow-layout parent: direct children use flex inside the parent
@@ -276,10 +301,10 @@ export type UIBehaviorAction =
  * `clipContent`: clipping can still hide overflow without changing flex vs absolute rules.
  */
 export function isUIFlowLayoutParentElement(element: UIElement): boolean {
-    if (isListLikeWidgetType(element.type)) {
-        return true;
-    }
-    return isContainerFlowLayoutParent(element);
+  if (isListLikeWidgetType(element.type)) {
+    return true;
+  }
+  return isContainerFlowLayoutParent(element);
 }
 
 /**
@@ -292,18 +317,21 @@ export function isUIFlowLayoutParentElement(element: UIElement): boolean {
  */
 // The type argument goes on `new Map`, not on the const: inference from the entries alone widens to
 // the FIRST reader's return type and then rejects the second.
-const UI_STRUCTURAL_SLOT_READERS = new Map<string, (extra: Record<string, unknown> | undefined) => string | null>([
-    ["nl.slider", getUISliderChildSlot],
-    ["nl.switch", getUISwitchChildSlot],
+const UI_STRUCTURAL_SLOT_READERS = new Map<
+  string,
+  (extra: Record<string, unknown> | undefined) => string | null
+>([
+  ["nl.slider", getUISliderChildSlot],
+  ["nl.switch", getUISwitchChildSlot]
 ]);
 
 /** The structural slot `extra` claims inside `parentType`, or null when that pairing has no slots. */
 export function getUIStructuralChildSlot(
-    parentType: string | undefined,
-    extra: Record<string, unknown> | undefined,
+  parentType: string | undefined,
+  extra: Record<string, unknown> | undefined
 ): string | null {
-    const read = parentType != null ? UI_STRUCTURAL_SLOT_READERS.get(parentType) : undefined;
-    return read ? read(extra) : null;
+  const read = parentType != null ? UI_STRUCTURAL_SLOT_READERS.get(parentType) : undefined;
+  return read ? read(extra) : null;
 }
 
 /**
@@ -319,27 +347,30 @@ export function getUIStructuralChildSlot(
  * is reversible by the same gesture that did it.
  */
 export function isUIStructuralWidgetPart(document: UIDocument, element: UIElement): boolean {
-    if (element.parentId == null) {
-        return false;
-    }
-    const parent = document.elements[element.parentId];
-    if (!parent || uiElementTypeAcceptsUserChildren(parent.type)) {
-        return false;
-    }
-    return getUIStructuralChildSlot(parent.type, element.extra) != null;
+  if (element.parentId == null) {
+    return false;
+  }
+  const parent = document.elements[element.parentId];
+  if (!parent || uiElementTypeAcceptsUserChildren(parent.type)) {
+    return false;
+  }
+  return getUIStructuralChildSlot(parent.type, element.extra) != null;
 }
 
 /** True when this element is a direct child of a flow-layout parent (Container stack/scroll or List). */
 export function isUIElementFlowLayoutChild(document: UIDocument, element: UIElement): boolean {
-    if (element.parentId == null) {
-        return false;
-    }
-    const parent = document.elements[element.parentId];
-    if (isListLikeWidgetType(parent?.type) && isUIListScrollbarSlot(getUIListChildSlot(element.extra))) {
-        return false;
-    }
-    if (getUIStructuralChildSlot(parent?.type, element.extra) != null) {
-        return false;
-    }
-    return parent != null && isUIFlowLayoutParentElement(parent);
+  if (element.parentId == null) {
+    return false;
+  }
+  const parent = document.elements[element.parentId];
+  if (
+    isListLikeWidgetType(parent?.type) &&
+    isUIListScrollbarSlot(getUIListChildSlot(element.extra))
+  ) {
+    return false;
+  }
+  if (getUIStructuralChildSlot(parent?.type, element.extra) != null) {
+    return false;
+  }
+  return parent != null && isUIFlowLayoutParentElement(parent);
 }

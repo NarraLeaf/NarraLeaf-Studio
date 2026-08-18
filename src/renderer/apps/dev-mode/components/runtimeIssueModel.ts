@@ -22,7 +22,13 @@ import { projectSceneTimeline } from "./storyRuntimeDebugModel";
 import type { GameAppRuntimeIssue } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeBundle } from "@shared/types/devMode";
-import type { StoryBlockId, StoryDocument, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
+import type {
+  StoryBlockId,
+  StoryDocument,
+  StoryId,
+  StoryScene,
+  StorySceneId
+} from "@shared/types/story";
 
 /**
  * Row lookups built straight off the Dev Mode bundle: characters as the compiler sees them (a name,
@@ -41,61 +47,68 @@ import type { StoryBlockId, StoryDocument, StoryId, StoryScene, StorySceneId } f
  * whole bundle, and omitting `ui` costs exactly the names of the registry-declared variables.
  */
 export type StoryRowBundle = Pick<DevModeBundle, "storyLibrary"> & {
-    ui?: Pick<DevModeBundle["ui"], "savedVariables" | "persistentVariables">
-        // The interface half of the same job: a Game UI blueprint failure names a surface rather than
-        // a row, and `uidoc` is where a surface id becomes the name the author gave it. Optional for
-        // the same reason the rest of `ui` is — a fixture may hand over a story library alone.
-        & Partial<Pick<DevModeBundle["ui"], "uidoc">>;
+  ui?: Pick<DevModeBundle["ui"], "savedVariables" | "persistentVariables"> &
+    // The interface half of the same job: a Game UI blueprint failure names a surface rather than
+    // a row, and `uidoc` is where a surface id becomes the name the author gave it. Optional for
+    // the same reason the rest of `ui` is — a fixture may hand over a story library alone.
+    Partial<Pick<DevModeBundle["ui"], "uidoc">>;
 };
 
 export function buildStoryRowLookups(
-    bundle: StoryRowBundle,
-    document: StoryDocument,
-    scene: StoryScene | undefined,
+  bundle: StoryRowBundle,
+  document: StoryDocument,
+  scene: StoryScene | undefined
 ): StoryRowLookups {
-    const charactersById = new Map((bundle.storyLibrary?.characters ?? []).map(character => [character.id, character]));
-    const assetNames = bundle.storyLibrary?.assetNames;
-    // Keyed the way each scope's ref addresses its entry: `saved` by entry id, `persistent` by
-    // storage key. Both tables are baked into the bundle precisely because Dev Mode is its own window
-    // with no workspace services to read `editor/variables.json` through.
-    const savedNames = new Map(Object.values(bundle.ui?.savedVariables ?? {}).map(entry => [entry.id, entry.name]));
-    const persistentNames = new Map(
-        Object.values(bundle.ui?.persistentVariables ?? {}).map(entry => [entry.storageKey, entry.name]),
-    );
-    return {
-        projectVariableName: (scope, variableId) =>
-            (scope === "saved" ? savedNames.get(variableId) : persistentNames.get(variableId)) ?? null,
-        character: characterId => {
-            const character = charactersById.get(characterId);
-            if (!character) {
-                return null;
-            }
-            const color = readableAccentColor(character.color);
-            return {
-                name: character.name,
-                ...(color ? { color } : {}),
-            };
-        },
-        assetName: assetId => assetNames?.[assetId] ?? null,
-        scene,
-        scenes: document.scenes,
-        document,
-    };
+  const charactersById = new Map(
+    (bundle.storyLibrary?.characters ?? []).map((character) => [character.id, character])
+  );
+  const assetNames = bundle.storyLibrary?.assetNames;
+  // Keyed the way each scope's ref addresses its entry: `saved` by entry id, `persistent` by
+  // storage key. Both tables are baked into the bundle precisely because Dev Mode is its own window
+  // with no workspace services to read `editor/variables.json` through.
+  const savedNames = new Map(
+    Object.values(bundle.ui?.savedVariables ?? {}).map((entry) => [entry.id, entry.name])
+  );
+  const persistentNames = new Map(
+    Object.values(bundle.ui?.persistentVariables ?? {}).map((entry) => [
+      entry.storageKey,
+      entry.name
+    ])
+  );
+  return {
+    projectVariableName: (scope, variableId) =>
+      (scope === "saved" ? savedNames.get(variableId) : persistentNames.get(variableId)) ?? null,
+    character: (characterId) => {
+      const character = charactersById.get(characterId);
+      if (!character) {
+        return null;
+      }
+      const color = readableAccentColor(character.color);
+      return {
+        name: character.name,
+        ...(color ? { color } : {})
+      };
+    },
+    assetName: (assetId) => assetNames?.[assetId] ?? null,
+    scene,
+    scenes: document.scenes,
+    document
+  };
 }
 
 /** Where a block sits, in the terms an author navigates by. */
 export type StoryBlockLocation = {
-    storyId: StoryId;
-    storyName: string;
-    sceneId: StorySceneId;
-    sceneName: string;
-    blockId: StoryBlockId;
-    /** 1-based, matching the row numbering the story editor shows. */
-    lineNumber: number;
-    /** The row's own sentence, word for word what the editor shows on that line. */
-    sentence: string;
-    /** The dialogue speaker's name, or null on a row that has none. */
-    speaker: string | null;
+  storyId: StoryId;
+  storyName: string;
+  sceneId: StorySceneId;
+  sceneName: string;
+  blockId: StoryBlockId;
+  /** 1-based, matching the row numbering the story editor shows. */
+  lineNumber: number;
+  /** The row's own sentence, word for word what the editor shows on that line. */
+  sentence: string;
+  /** The dialogue speaker's name, or null on a row that has none. */
+  speaker: string | null;
 };
 
 /**
@@ -107,74 +120,74 @@ export type StoryBlockLocation = {
  * — a stale session against an edited document — rather than inventing a line number for it.
  */
 export function locateStoryBlock(
-    bundle: StoryRowBundle,
-    blockId: string | undefined,
+  bundle: StoryRowBundle,
+  blockId: string | undefined
 ): StoryBlockLocation | null {
-    if (!blockId) {
-        return null;
-    }
-    const library = bundle.storyLibrary;
-    if (!library) {
-        return null;
-    }
-    for (const [storyId, document] of Object.entries(library.documents)) {
-        for (const [sceneId, scene] of Object.entries(document.scenes)) {
-            if (!(blockId in scene.blocks)) {
-                continue;
-            }
-            const lookups = buildStoryRowLookups(bundle, document, scene);
-            const row = projectSceneTimeline(scene, lookups).find(entry => entry.blockId === blockId);
-            if (!row) {
-                // In `scene.blocks` but not reachable from `rootBlockIds` — an orphan. It has no line
-                // number because it occupies no line; naming the scene is still better than nothing.
-                return {
-                    storyId,
-                    storyName: document.name,
-                    sceneId,
-                    sceneName: getStorySceneName(document.scenes, sceneId),
-                    blockId,
-                    lineNumber: 0,
-                    sentence: "",
-                    speaker: null,
-                };
-            }
-            return {
-                storyId,
-                storyName: document.name,
-                sceneId,
-                sceneName: getStorySceneName(document.scenes, sceneId),
-                blockId,
-                lineNumber: row.lineNumber,
-                sentence: row.summary,
-                speaker: row.speaker,
-            };
-        }
-    }
+  if (!blockId) {
     return null;
+  }
+  const library = bundle.storyLibrary;
+  if (!library) {
+    return null;
+  }
+  for (const [storyId, document] of Object.entries(library.documents)) {
+    for (const [sceneId, scene] of Object.entries(document.scenes)) {
+      if (!(blockId in scene.blocks)) {
+        continue;
+      }
+      const lookups = buildStoryRowLookups(bundle, document, scene);
+      const row = projectSceneTimeline(scene, lookups).find((entry) => entry.blockId === blockId);
+      if (!row) {
+        // In `scene.blocks` but not reachable from `rootBlockIds` — an orphan. It has no line
+        // number because it occupies no line; naming the scene is still better than nothing.
+        return {
+          storyId,
+          storyName: document.name,
+          sceneId,
+          sceneName: getStorySceneName(document.scenes, sceneId),
+          blockId,
+          lineNumber: 0,
+          sentence: "",
+          speaker: null
+        };
+      }
+      return {
+        storyId,
+        storyName: document.name,
+        sceneId,
+        sceneName: getStorySceneName(document.scenes, sceneId),
+        blockId,
+        lineNumber: row.lineNumber,
+        sentence: row.summary,
+        speaker: row.speaker
+      };
+    }
+  }
+  return null;
 }
 
 /** Where a Game UI failure happened, in the terms the interface editor names things by. */
 export type SurfaceLocation = {
-    surfaceId: string;
-    /** What the author called it, or the id when the document no longer has that surface. */
-    surfaceName: string;
+  surfaceId: string;
+  /** What the author called it, or the id when the document no longer has that surface. */
+  surfaceName: string;
 };
 
 /** A reported failure, with wherever it turned out to be. */
 export type LocatedRuntimeIssue = {
-    /** Stable per-entry key for React, and what dismissal addresses. */
-    id: string;
-    level: GameAppRuntimeIssue["level"];
-    message: string;
-    origin: GameAppRuntimeIssue["origin"];
-    stack?: string;
-    /** Null when the failure could not be pinned to a row — a boot failure, or a deleted block. */
-    location: StoryBlockLocation | null;
-    /**
-     * The surface it happened on, for a failure that happened on one. Absent rather than null, like
-     * `stack`: a story failure has no surface to report and should not carry an empty field saying so.
-     */
-    surface?: SurfaceLocation;
+  /** Stable per-entry key for React, and what dismissal addresses. */
+  id: string;
+  level: GameAppRuntimeIssue["level"];
+  message: string;
+  origin: GameAppRuntimeIssue["origin"];
+  stack?: string;
+  /** Null when the failure could not be pinned to a row — a boot failure, or a deleted block. */
+  location: StoryBlockLocation | null;
+  /**
+   * The surface it happened on, for a failure that happened on one. Absent rather than null, like
+   * `stack`: a story failure has no surface to report and should not carry an empty field saying so.
+   */
+  surface?: SurfaceLocation;
 };
 
 /**
@@ -183,12 +196,15 @@ export type LocatedRuntimeIssue = {
  * Falls back to the id rather than to nothing: a surface deleted since the bundle was built still
  * happened somewhere, and an id an author can search for beats "unknown".
  */
-export function locateSurface(bundle: StoryRowBundle, surfaceId: string | undefined): SurfaceLocation | null {
-    if (!surfaceId) {
-        return null;
-    }
-    const surface = bundle.ui?.uidoc?.surfaces.find(entry => entry.id === surfaceId);
-    return { surfaceId, surfaceName: surface?.name || surfaceId };
+export function locateSurface(
+  bundle: StoryRowBundle,
+  surfaceId: string | undefined
+): SurfaceLocation | null {
+  if (!surfaceId) {
+    return null;
+  }
+  const surface = bundle.ui?.uidoc?.surfaces.find((entry) => entry.id === surfaceId);
+  return { surfaceId, surfaceName: surface?.name || surfaceId };
 }
 
 /**
@@ -200,15 +216,15 @@ export function locateSurface(bundle: StoryRowBundle, surfaceId: string | undefi
  * button just did not work. Every host that owns an issue list runs its debug events through here.
  */
 export function blueprintDebugEventIssue(event: BlueprintDebugEvent): GameAppRuntimeIssue | null {
-    if (event.type !== "execution.error") {
-        return null;
-    }
-    return {
-        level: "error",
-        message: event.message,
-        origin: "interface",
-        ...(event.surfaceId ? { surfaceId: event.surfaceId } : {}),
-    };
+  if (event.type !== "execution.error") {
+    return null;
+  }
+  return {
+    level: "error",
+    message: event.message,
+    origin: "interface",
+    ...(event.surfaceId ? { surfaceId: event.surfaceId } : {})
+  };
 }
 
 /**
@@ -223,11 +239,11 @@ export const RUNTIME_ISSUE_LIMIT = 20;
 
 /** Errors and warnings in the list, for the one-line count the strip and the panel heading show. */
 export function countRuntimeIssues(issues: readonly LocatedRuntimeIssue[]): {
-    errors: number;
-    warnings: number;
+  errors: number;
+  warnings: number;
 } {
-    const errors = issues.reduce((total, issue) => (issue.level === "error" ? total + 1 : total), 0);
-    return { errors, warnings: issues.length - errors };
+  const errors = issues.reduce((total, issue) => (issue.level === "error" ? total + 1 : total), 0);
+  return { errors, warnings: issues.length - errors };
 }
 
 /**
@@ -241,21 +257,21 @@ export function countRuntimeIssues(issues: readonly LocatedRuntimeIssue[]): {
  * is a new entry, so an acknowledgement keyed on entries would be undone a frame after it was made.
  */
 function issueKey(
-    issue: Pick<LocatedRuntimeIssue, "level" | "message"> & { blockId?: string; surfaceId?: string },
+  issue: Pick<LocatedRuntimeIssue, "level" | "message"> & { blockId?: string; surfaceId?: string }
 ): string {
-    return `${issue.level}\u0000${issue.blockId ?? ""}\u0000${issue.surfaceId ?? ""}\u0000${issue.message}`;
+  return `${issue.level}\u0000${issue.blockId ?? ""}\u0000${issue.surfaceId ?? ""}\u0000${issue.message}`;
 }
 
 /** That identity, for a located issue — the form every caller outside this file has. */
 export function runtimeIssueKey(issue: LocatedRuntimeIssue): string {
-    return issueKey({
-        ...issue,
-        ...(issue.location ? { blockId: issue.location.blockId } : {}),
-        // The surface is part of the place for the same reason the block is: a quick menu and a
-        // settings page can fail to reach the running game word for word, and collapsing those two
-        // into one entry would hide the second surface entirely.
-        ...(issue.surface ? { surfaceId: issue.surface.surfaceId } : {}),
-    });
+  return issueKey({
+    ...issue,
+    ...(issue.location ? { blockId: issue.location.blockId } : {}),
+    // The surface is part of the place for the same reason the block is: a quick menu and a
+    // settings page can fail to reach the running game word for word, and collapsing those two
+    // into one entry would hide the second surface entirely.
+    ...(issue.surface ? { surfaceId: issue.surface.surfaceId } : {})
+  });
 }
 
 /**
@@ -266,12 +282,12 @@ export function runtimeIssueKey(issue: LocatedRuntimeIssue): string {
  * is failing right now" stays at the top.
  */
 export function appendRuntimeIssue(
-    current: readonly LocatedRuntimeIssue[],
-    issue: LocatedRuntimeIssue,
+  current: readonly LocatedRuntimeIssue[],
+  issue: LocatedRuntimeIssue
 ): LocatedRuntimeIssue[] {
-    const key = runtimeIssueKey(issue);
-    const withoutRepeat = current.filter(entry => runtimeIssueKey(entry) !== key);
-    return [issue, ...withoutRepeat].slice(0, RUNTIME_ISSUE_LIMIT);
+  const key = runtimeIssueKey(issue);
+  const withoutRepeat = current.filter((entry) => runtimeIssueKey(entry) !== key);
+  return [issue, ...withoutRepeat].slice(0, RUNTIME_ISSUE_LIMIT);
 }
 
 /**
@@ -281,18 +297,18 @@ export function appendRuntimeIssue(
  * reaches for a clock or a random number is a function that cannot be tested twice.
  */
 export function locateRuntimeIssue(
-    bundle: StoryRowBundle,
-    issue: GameAppRuntimeIssue,
-    id: string,
+  bundle: StoryRowBundle,
+  issue: GameAppRuntimeIssue,
+  id: string
 ): LocatedRuntimeIssue {
-    const surface = locateSurface(bundle, issue.surfaceId);
-    return {
-        id,
-        level: issue.level,
-        message: issue.message,
-        origin: issue.origin,
-        ...(issue.stack ? { stack: issue.stack } : {}),
-        location: locateStoryBlock(bundle, issue.blockId),
-        ...(surface ? { surface } : {}),
-    };
+  const surface = locateSurface(bundle, issue.surfaceId);
+  return {
+    id,
+    level: issue.level,
+    message: issue.message,
+    origin: issue.origin,
+    ...(issue.stack ? { stack: issue.stack } : {}),
+    location: locateStoryBlock(bundle, issue.blockId),
+    ...(surface ? { surface } : {})
+  };
 }

@@ -44,7 +44,13 @@
       "type": "nl.container",
       "name": "Menu stack",
       "parentId": "ex-el-pause-dim",
-      "childrenIds": ["ex-el-pause-title", "ex-el-pause-div", "ex-el-pause-resume", "ex-el-pause-settings", "ex-el-pause-quit"],
+      "childrenIds": [
+        "ex-el-pause-title",
+        "ex-el-pause-div",
+        "ex-el-pause-resume",
+        "ex-el-pause-settings",
+        "ex-el-pause-quit"
+      ],
       "layout": { "x": 490, "y": 220, "width": 300, "height": 280, "visible": true, "opacity": 1 },
       "props": {
         "layoutKind": "stack",

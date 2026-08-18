@@ -10,15 +10,13 @@ Studio/editor 偏好现在只有一套设置存储：Electron `userData/state/gl
 
 ## 存储模型
 
-
-| 范围                  | 入口                                                                  | 存储                                                                                    |
-| ------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| 应用全局设置              | `getInterface().app.state.*` / `GlobalStateManager`                 | `userData/state/global.json`                                                          |
-| Workspace/editor 设置 | `GlobalSettingsService`                                             | 同一个 `global.json`                                                                     |
-| Settings 窗口设置       | `SettingsApp` + `app.state.getGlobalState/setGlobalState`           | 同一个 `global.json`                                                                     |
-| 项目配置                | `ProjectService` / project wizard / project config helpers          | 项目根 `.nlproj`，legacy fallback 为 `project.json`                                        |
-| 项目内容设置              | 对应功能 service，例如 `StoryService`、`UIDocumentService`、`UIGraphService` | 项目内功能文件，例如 `editor/story/index.json`、`editor/ui/uidoc.json`、`editor/ui/uigraphs.json` |
-
+| 范围                  | 入口                                                                         | 存储                                                                                              |
+| --------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 应用全局设置          | `getInterface().app.state.*` / `GlobalStateManager`                          | `userData/state/global.json`                                                                      |
+| Workspace/editor 设置 | `GlobalSettingsService`                                                      | 同一个 `global.json`                                                                              |
+| Settings 窗口设置     | `SettingsApp` + `app.state.getGlobalState/setGlobalState`                    | 同一个 `global.json`                                                                              |
+| 项目配置              | `ProjectService` / project wizard / project config helpers                   | 项目根 `.nlproj`，legacy fallback 为 `project.json`                                               |
+| 项目内容设置          | 对应功能 service，例如 `StoryService`、`UIDocumentService`、`UIGraphService` | 项目内功能文件，例如 `editor/story/index.json`、`editor/ui/uidoc.json`、`editor/ui/uigraphs.json` |
 
 不要再新增 project settings、workspace runtime settings、service-specific settings namespace。编辑器 UI 状态、workspace layout、editor session、UI editor viewport/snap/outline cache、Story action 收藏等，都走 `GlobalSettingsService`，最终写到 `global.json`。
 
@@ -162,4 +160,3 @@ Studio 自己的下载分两类，不要混：
 - 重开 Studio 后，确认这些状态从 `global.json` 恢复。
 - 修改项目配置或项目内容后，确认对应项目文件更新，而不是 `global.json`。
 - `rg -n "ProjectSettings|projectSettings|runtime_settings|appUserSettings|userSettings" src` 不应出现结果。
-

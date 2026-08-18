@@ -8,19 +8,19 @@
  */
 
 export interface StripRevealMetrics {
-    /** Current horizontal scroll offset of the strip viewport. */
-    scrollLeft: number;
-    /** Visible width of the strip viewport. */
-    clientWidth: number;
-    /** Full scrollable width of the strip content. */
-    scrollWidth: number;
+  /** Current horizontal scroll offset of the strip viewport. */
+  scrollLeft: number;
+  /** Visible width of the strip viewport. */
+  clientWidth: number;
+  /** Full scrollable width of the strip content. */
+  scrollWidth: number;
 }
 
 export interface TabRevealMetrics {
-    /** Tab's left edge measured from the content's start, so it does not move as the strip scrolls. */
-    offsetLeft: number;
-    /** Tab header width. */
-    width: number;
+  /** Tab's left edge measured from the content's start, so it does not move as the strip scrolls. */
+  offsetLeft: number;
+  /** Tab header width. */
+  width: number;
 }
 
 /**
@@ -33,29 +33,29 @@ export interface TabRevealMetrics {
  * the current position returns null so callers can skip a no-op write.
  */
 export function tabStripRevealScrollLeft(
-    strip: StripRevealMetrics,
-    tab: TabRevealMetrics,
-    margin: number = 0,
+  strip: StripRevealMetrics,
+  tab: TabRevealMetrics,
+  margin: number = 0
 ): number | null {
-    const maxScroll = strip.scrollWidth - strip.clientWidth;
-    if (maxScroll <= 0) {
-        return null;
-    }
+  const maxScroll = strip.scrollWidth - strip.clientWidth;
+  if (maxScroll <= 0) {
+    return null;
+  }
 
-    const viewLeft = strip.scrollLeft;
-    const viewRight = strip.scrollLeft + strip.clientWidth;
-    const tabLeft = tab.offsetLeft;
-    const tabRight = tab.offsetLeft + tab.width;
+  const viewLeft = strip.scrollLeft;
+  const viewRight = strip.scrollLeft + strip.clientWidth;
+  const tabLeft = tab.offsetLeft;
+  const tabRight = tab.offsetLeft + tab.width;
 
-    let target: number;
-    if (tabLeft - margin < viewLeft) {
-        target = tabLeft - margin;
-    } else if (tabRight + margin > viewRight) {
-        target = tabRight + margin - strip.clientWidth;
-    } else {
-        return null;
-    }
+  let target: number;
+  if (tabLeft - margin < viewLeft) {
+    target = tabLeft - margin;
+  } else if (tabRight + margin > viewRight) {
+    target = tabRight + margin - strip.clientWidth;
+  } else {
+    return null;
+  }
 
-    const clamped = Math.max(0, Math.min(maxScroll, target));
-    return clamped === strip.scrollLeft ? null : clamped;
+  const clamped = Math.max(0, Math.min(maxScroll, target));
+  return clamped === strip.scrollLeft ? null : clamped;
 }

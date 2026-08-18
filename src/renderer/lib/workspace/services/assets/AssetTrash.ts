@@ -32,85 +32,85 @@ import type { AssetType } from "./assetTypes";
  * report, which is a third reason.
  */
 export class AssetTrash {
-    constructor(private readonly project: Porject) {}
+  constructor(private readonly project: Porject) {}
 
-    private root(): string {
-        return this.project.resolve(ProjectNameConvention.NLCache, "trash/");
+  private root(): string {
+    return this.project.resolve(ProjectNameConvention.NLCache, "trash/");
+  }
+
+  private slotPath(token: string): string {
+    return this.project.resolve(ProjectNameConvention.NLCache, "trash/", token);
+  }
+
+  /**
+   * Move an asset's payload aside. Returns the token to restore it with, or null when there was
+   * nothing there - a record whose file is already missing is not an error, and callers must not
+   * be forced to care.
+   */
+  public async put(assetId: string, type: AssetType, payloadPath: string): Promise<string | null> {
+    const isBundle = isBundleAssetType(type);
+    const exists = isBundle
+      ? await appPrivilegedFacade.fs.isDirExists(payloadPath)
+      : await appPrivilegedFacade.fs.isFileExists(payloadPath);
+    if (!exists.success || !exists.data?.ok || !exists.data.data) {
+      return null;
     }
 
-    private slotPath(token: string): string {
-        return this.project.resolve(ProjectNameConvention.NLCache, "trash/", token);
+    // The id alone is not unique enough: delete, undo, delete again inside one session produces
+    // two live entries for the same asset, and the second `put` would land on the first's slot.
+    const token = `${assetId}-${nextTrashSequence()}`;
+    const created = await appPrivilegedFacade.fs.createDir(this.root());
+    if (!created.success) {
+      return null;
     }
-
-    /**
-     * Move an asset's payload aside. Returns the token to restore it with, or null when there was
-     * nothing there - a record whose file is already missing is not an error, and callers must not
-     * be forced to care.
-     */
-    public async put(assetId: string, type: AssetType, payloadPath: string): Promise<string | null> {
-        const isBundle = isBundleAssetType(type);
-        const exists = isBundle
-            ? await appPrivilegedFacade.fs.isDirExists(payloadPath)
-            : await appPrivilegedFacade.fs.isFileExists(payloadPath);
-        if (!exists.success || !exists.data?.ok || !exists.data.data) {
-            return null;
-        }
-
-        // The id alone is not unique enough: delete, undo, delete again inside one session produces
-        // two live entries for the same asset, and the second `put` would land on the first's slot.
-        const token = `${assetId}-${nextTrashSequence()}`;
-        const created = await appPrivilegedFacade.fs.createDir(this.root());
-        if (!created.success) {
-            return null;
-        }
-        const moved = isBundle
-            ? await appPrivilegedFacade.fs.moveDir(payloadPath, this.slotPath(token))
-            : await appPrivilegedFacade.fs.moveFile(payloadPath, this.slotPath(token));
-        if (!moved.success || !moved.data?.ok) {
-            return null;
-        }
-        return token;
+    const moved = isBundle
+      ? await appPrivilegedFacade.fs.moveDir(payloadPath, this.slotPath(token))
+      : await appPrivilegedFacade.fs.moveFile(payloadPath, this.slotPath(token));
+    if (!moved.success || !moved.data?.ok) {
+      return null;
     }
+    return token;
+  }
 
-    /** Move a payload back where it came from. False when the slot is gone or the move failed. */
-    public async restore(token: string, type: AssetType, payloadPath: string): Promise<boolean> {
-        const isBundle = isBundleAssetType(type);
-        const moved = isBundle
-            ? await appPrivilegedFacade.fs.moveDir(this.slotPath(token), payloadPath)
-            : await appPrivilegedFacade.fs.moveFile(this.slotPath(token), payloadPath);
-        return moved.success && !!moved.data?.ok;
-    }
+  /** Move a payload back where it came from. False when the slot is gone or the move failed. */
+  public async restore(token: string, type: AssetType, payloadPath: string): Promise<boolean> {
+    const isBundle = isBundleAssetType(type);
+    const moved = isBundle
+      ? await appPrivilegedFacade.fs.moveDir(this.slotPath(token), payloadPath)
+      : await appPrivilegedFacade.fs.moveFile(this.slotPath(token), payloadPath);
+    return moved.success && !!moved.data?.ok;
+  }
 
-    /** Let a slot go for real. Called from an undo entry's disposer, so it never throws. */
-    public purge(token: string, type: AssetType): void {
-        const path = this.slotPath(token);
-        const remove = isBundleAssetType(type)
-            ? appPrivilegedFacade.fs.deleteDir(path)
-            : appPrivilegedFacade.fs.deleteFile(path);
-        void remove.catch(error => {
-            console.warn(`[AssetTrash] could not purge ${token}`, error);
-        });
-    }
+  /** Let a slot go for real. Called from an undo entry's disposer, so it never throws. */
+  public purge(token: string, type: AssetType): void {
+    const path = this.slotPath(token);
+    const remove = isBundleAssetType(type)
+      ? appPrivilegedFacade.fs.deleteDir(path)
+      : appPrivilegedFacade.fs.deleteFile(path);
+    void remove.catch((error) => {
+      console.warn(`[AssetTrash] could not purge ${token}`, error);
+    });
+  }
 
-    /**
-     * Empty the trash. Called once at workspace startup: undo history does not survive a restart,
-     * so every slot left from a previous session is unreachable by construction.
-     */
-    public async sweep(): Promise<void> {
-        try {
-            const exists = await appPrivilegedFacade.fs.isDirExists(this.root());
-            if (exists.success && exists.data?.ok && exists.data.data) {
-                await appPrivilegedFacade.fs.deleteDir(this.root());
-            }
-        } catch (error) {
-            console.warn("[AssetTrash] could not sweep the trash", error);
-        }
+  /**
+   * Empty the trash. Called once at workspace startup: undo history does not survive a restart,
+   * so every slot left from a previous session is unreachable by construction.
+   */
+  public async sweep(): Promise<void> {
+    try {
+      const exists = await appPrivilegedFacade.fs.isDirExists(this.root());
+      if (exists.success && exists.data?.ok && exists.data.data) {
+        await appPrivilegedFacade.fs.deleteDir(this.root());
+      }
+    } catch (error) {
+      console.warn("[AssetTrash] could not sweep the trash", error);
     }
+  }
 }
 
 let trashSequence = 0;
 
 function nextTrashSequence(): number {
-    trashSequence += 1;
-    return trashSequence;
+  trashSequence += 1;
+  return trashSequence;
 }

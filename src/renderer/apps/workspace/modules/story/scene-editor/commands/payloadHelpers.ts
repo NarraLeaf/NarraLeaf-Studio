@@ -1,5 +1,14 @@
-import type { StoryActionPayload, StoryBlock, StoryTransformRef, StoryTransitionRef } from "@shared/types/story";
-import type { StoryCommandContext, StoryCommandStageObjectKind, StoryCommandValue } from "../storyCommandValues";
+import type {
+  StoryActionPayload,
+  StoryBlock,
+  StoryTransformRef,
+  StoryTransitionRef
+} from "@shared/types/story";
+import type {
+  StoryCommandContext,
+  StoryCommandStageObjectKind,
+  StoryCommandValue
+} from "../storyCommandValues";
 import { asDurationMs, asEnum } from "./spec";
 import { transformPresetFor, transitionKindFor } from "./transitions";
 
@@ -18,40 +27,40 @@ import { transformPresetFor, transitionKindFor } from "./transitions";
  * dropped on the floor - the house default is the context's own `fade`.
  */
 export function withTransitionRef(
-    current: StoryTransitionRef | undefined,
-    context: "scene" | "character",
-    t: StoryCommandValue | undefined,
-    d: StoryCommandValue | undefined,
+  current: StoryTransitionRef | undefined,
+  context: "scene" | "character",
+  t: StoryCommandValue | undefined,
+  d: StoryCommandValue | undefined
 ): StoryTransitionRef | undefined {
-    const word = asEnum(t);
-    const kind = word === undefined ? undefined : transitionKindFor(context, word);
-    const durationMs = asDurationMs(d);
-    if (kind === undefined && durationMs === undefined) {
-        return current;
-    }
-    return {
-        ...(current ?? { kind: transitionKindFor(context, "fade") ?? "fadeIn" }),
-        ...(kind !== undefined ? { kind } : {}),
-        ...(durationMs !== undefined ? { durationMs } : {}),
-    };
+  const word = asEnum(t);
+  const kind = word === undefined ? undefined : transitionKindFor(context, word);
+  const durationMs = asDurationMs(d);
+  if (kind === undefined && durationMs === undefined) {
+    return current;
+  }
+  return {
+    ...(current ?? { kind: transitionKindFor(context, "fade") ?? "fadeIn" }),
+    ...(kind !== undefined ? { kind } : {}),
+    ...(durationMs !== undefined ? { durationMs } : {})
+  };
 }
 
 /** Fold `at=` / `d=` into a transform - placement presets, for character and create commands. */
 export function withPlacementTransform(
-    current: StoryTransformRef | undefined,
-    at: StoryCommandValue | undefined,
-    d: StoryCommandValue | undefined,
+  current: StoryTransformRef | undefined,
+  at: StoryCommandValue | undefined,
+  d: StoryCommandValue | undefined
 ): StoryTransformRef | undefined {
-    const preset = asEnum(at) as StoryTransformRef["preset"] | undefined;
-    const durationMs = asDurationMs(d);
-    if (preset === undefined && durationMs === undefined) {
-        return current;
-    }
-    return {
-        ...(current ?? {}),
-        ...(preset !== undefined ? { preset } : {}),
-        ...(durationMs !== undefined ? { durationMs } : {}),
-    };
+  const preset = asEnum(at) as StoryTransformRef["preset"] | undefined;
+  const durationMs = asDurationMs(d);
+  if (preset === undefined && durationMs === undefined) {
+    return current;
+  }
+  return {
+    ...(current ?? {}),
+    ...(preset !== undefined ? { preset } : {}),
+    ...(durationMs !== undefined ? { durationMs } : {})
+  };
 }
 
 /**
@@ -62,18 +71,18 @@ export function withPlacementTransform(
  * displayable or audio payloads can carry them.
  */
 export function vfxOperationBlock(
-    operation: Exclude<Extract<StoryActionPayload, { action: "vfx" }>["operation"], "create">,
-    objectName: string,
-    generateId: () => string,
-    extra?: Partial<Extract<StoryActionPayload, { action: "vfx" }>>,
+  operation: Exclude<Extract<StoryActionPayload, { action: "vfx" }>["operation"], "create">,
+  objectName: string,
+  generateId: () => string,
+  extra?: Partial<Extract<StoryActionPayload, { action: "vfx" }>>
 ): StoryBlock {
-    return {
-        id: generateId(),
-        parentId: null,
-        childrenIds: [],
-        kind: "action",
-        payload: { action: "vfx", operation, objectName, ...extra },
-    };
+  return {
+    id: generateId(),
+    parentId: null,
+    childrenIds: [],
+    kind: "action",
+    payload: { action: "vfx", operation, objectName, ...extra }
+  };
 }
 
 /**
@@ -83,40 +92,57 @@ export function vfxOperationBlock(
  * `/text` lines become `text` and `text2` rather than colliding. Skipped when the author named it -
  * their choice wins.
  */
-export function deriveObjectName(stageKind: StoryCommandStageObjectKind, assetParam: string | null, base: string) {
-    return (args: Readonly<Record<string, StoryCommandValue | undefined>>, context: StoryCommandContext): Record<string, StoryCommandValue> => {
-        if (args.name) {
-            return {};
-        }
-        const asset = assetParam ? args[assetParam] : undefined;
-        const seed = asset?.kind === "asset" ? assetBaseName(context, stageKind, asset.assetId) ?? base : base;
-        return { name: { kind: "text", value: dedupeObjectName(seed, context.stageObjects[stageKind] ?? []) } };
+export function deriveObjectName(
+  stageKind: StoryCommandStageObjectKind,
+  assetParam: string | null,
+  base: string
+) {
+  return (
+    args: Readonly<Record<string, StoryCommandValue | undefined>>,
+    context: StoryCommandContext
+  ): Record<string, StoryCommandValue> => {
+    if (args.name) {
+      return {};
+    }
+    const asset = assetParam ? args[assetParam] : undefined;
+    const seed =
+      asset?.kind === "asset" ? (assetBaseName(context, stageKind, asset.assetId) ?? base) : base;
+    return {
+      name: { kind: "text", value: dedupeObjectName(seed, context.stageObjects[stageKind] ?? []) }
     };
+  };
 }
 
 /** The asset's display name without its extension - `forest.png` → `forest` - or null when unknown. */
-function assetBaseName(context: StoryCommandContext, stageKind: StoryCommandStageObjectKind, assetId: string): string | null {
-    // An ambience overlay's clip comes out of the video library, so it names itself off the same list.
-    const list = stageKind === "video" || stageKind === "vfx"
-        ? context.videos
-        : stageKind === "audio" ? context.audio : context.images;
-    const found = list.find(entry => entry.id === assetId);
-    const stripped = found?.name.replace(/\.[^./\\]+$/, "").trim();
-    return stripped ? stripped : null;
+function assetBaseName(
+  context: StoryCommandContext,
+  stageKind: StoryCommandStageObjectKind,
+  assetId: string
+): string | null {
+  // An ambience overlay's clip comes out of the video library, so it names itself off the same list.
+  const list =
+    stageKind === "video" || stageKind === "vfx"
+      ? context.videos
+      : stageKind === "audio"
+        ? context.audio
+        : context.images;
+  const found = list.find((entry) => entry.id === assetId);
+  const stripped = found?.name.replace(/\.[^./\\]+$/, "").trim();
+  return stripped ? stripped : null;
 }
 
 /** `base`, or `base2`, `base3`… - the first not already taken (case-insensitive) by an object on stage. */
 function dedupeObjectName(base: string, existing: readonly string[]): string {
-    const taken = new Set(existing.map(name => name.trim().toLowerCase()));
-    if (!taken.has(base.trim().toLowerCase())) {
-        return base;
+  const taken = new Set(existing.map((name) => name.trim().toLowerCase()));
+  if (!taken.has(base.trim().toLowerCase())) {
+    return base;
+  }
+  for (let suffix = 2; ; suffix += 1) {
+    const candidate = `${base}${suffix}`;
+    if (!taken.has(candidate.toLowerCase())) {
+      return candidate;
     }
-    for (let suffix = 2; ; suffix += 1) {
-        const candidate = `${base}${suffix}`;
-        if (!taken.has(candidate.toLowerCase())) {
-            return candidate;
-        }
-    }
+  }
 }
 
 /**
@@ -125,20 +151,20 @@ function dedupeObjectName(base: string, existing: readonly string[]): string {
  * comes from the verb, which is why the caller names the context.
  */
 export function withRevealTransform(
-    current: StoryTransformRef | undefined,
-    context: "reveal" | "conceal" | "nvl",
-    t: StoryCommandValue | undefined,
-    d: StoryCommandValue | undefined,
+  current: StoryTransformRef | undefined,
+  context: "reveal" | "conceal" | "nvl",
+  t: StoryCommandValue | undefined,
+  d: StoryCommandValue | undefined
 ): StoryTransformRef | undefined {
-    const word = asEnum(t);
-    const preset = word === undefined ? undefined : transformPresetFor(context, word);
-    const durationMs = asDurationMs(d);
-    if (preset === undefined && durationMs === undefined) {
-        return current;
-    }
-    return {
-        ...(current ?? {}),
-        ...(preset !== undefined ? { preset } : {}),
-        ...(durationMs !== undefined ? { durationMs } : {}),
-    };
+  const word = asEnum(t);
+  const preset = word === undefined ? undefined : transformPresetFor(context, word);
+  const durationMs = asDurationMs(d);
+  if (preset === undefined && durationMs === undefined) {
+    return current;
+  }
+  return {
+    ...(current ?? {}),
+    ...(preset !== undefined ? { preset } : {}),
+    ...(durationMs !== undefined ? { durationMs } : {})
+  };
 }

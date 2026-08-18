@@ -13,14 +13,14 @@
 export const GAME_RUNTIME_ASSET_VERSION_ARG = "--nls-asset-version";
 
 export function buildGameRuntimeAssetVersionArg(version: string): string {
-    return `${GAME_RUNTIME_ASSET_VERSION_ARG}=${version}`;
+  return `${GAME_RUNTIME_ASSET_VERSION_ARG}=${version}`;
 }
 
 export function readGameRuntimeAssetVersionArg(argv: readonly string[]): string | null {
-    const prefix = `${GAME_RUNTIME_ASSET_VERSION_ARG}=`;
-    const match = argv.find(arg => arg.startsWith(prefix));
-    const value = match ? match.slice(prefix.length).trim() : "";
-    return value || null;
+  const prefix = `${GAME_RUNTIME_ASSET_VERSION_ARG}=`;
+  const match = argv.find((arg) => arg.startsWith(prefix));
+  const value = match ? match.slice(prefix.length).trim() : "";
+  return value || null;
 }
 
 /**
@@ -31,24 +31,24 @@ export function readGameRuntimeAssetVersionArg(argv: readonly string[]): string 
 export const GAME_RUNTIME_CRASH_POLICY_ARG = "--nls-crash-policy";
 
 export function buildGameRuntimeCrashPolicyArg(policy: string): string {
-    return `${GAME_RUNTIME_CRASH_POLICY_ARG}=${policy}`;
+  return `${GAME_RUNTIME_CRASH_POLICY_ARG}=${policy}`;
 }
 
 export function readGameRuntimeCrashPolicyArg(argv: readonly string[]): string | null {
-    const prefix = `${GAME_RUNTIME_CRASH_POLICY_ARG}=`;
-    const found = argv.find(arg => arg.startsWith(prefix));
-    return found ? found.slice(prefix.length) : null;
+  const prefix = `${GAME_RUNTIME_CRASH_POLICY_ARG}=`;
+  const found = argv.find((arg) => arg.startsWith(prefix));
+  return found ? found.slice(prefix.length) : null;
 }
 
 /** Where the shell writes its log, handed over the same way and for the same reason. */
 export const GAME_RUNTIME_LOG_PATH_ARG = "--nls-log-path";
 
 export function buildGameRuntimeLogPathArg(logPath: string): string {
-    return `${GAME_RUNTIME_LOG_PATH_ARG}=${logPath}`;
+  return `${GAME_RUNTIME_LOG_PATH_ARG}=${logPath}`;
 }
 
 export function readGameRuntimeLogPathArg(argv: readonly string[]): string | null {
-    const prefix = `${GAME_RUNTIME_LOG_PATH_ARG}=`;
-    const found = argv.find(arg => arg.startsWith(prefix));
-    return found ? found.slice(prefix.length) : null;
+  const prefix = `${GAME_RUNTIME_LOG_PATH_ARG}=`;
+  const found = argv.find((arg) => arg.startsWith(prefix));
+  return found ? found.slice(prefix.length) : null;
 }

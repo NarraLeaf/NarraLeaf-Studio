@@ -16,15 +16,12 @@
 
 import type { BehaviorNodeExecutionContext } from "./BehaviorNodeRegistry";
 
-export type BehaviorDataPinResolver = (
-    ctx: BehaviorNodeExecutionContext,
-    pinId: string,
-) => unknown;
+export type BehaviorDataPinResolver = (ctx: BehaviorNodeExecutionContext, pinId: string) => unknown;
 
 let dataPinResolver: BehaviorDataPinResolver | null = null;
 
 export function setBehaviorDataPinResolver(resolver: BehaviorDataPinResolver): void {
-    dataPinResolver = resolver;
+  dataPinResolver = resolver;
 }
 
 /**
@@ -34,8 +31,8 @@ export function setBehaviorDataPinResolver(resolver: BehaviorDataPinResolver): v
  * fall back to their own defaults.
  */
 export function resolveBehaviorNodeInput(
-    ctx: BehaviorNodeExecutionContext,
-    pinId: string,
+  ctx: BehaviorNodeExecutionContext,
+  pinId: string
 ): unknown {
-    return dataPinResolver ? dataPinResolver(ctx, pinId) : undefined;
+  return dataPinResolver ? dataPinResolver(ctx, pinId) : undefined;
 }

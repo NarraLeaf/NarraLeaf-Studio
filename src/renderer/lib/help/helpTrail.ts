@@ -14,23 +14,23 @@ import type { HelpTopicId } from "./helpTopics";
  */
 
 export interface HelpTrail {
-    /** Oldest first; the last entry is what is on screen. Never empty. */
-    readonly topics: readonly HelpTopicId[];
+  /** Oldest first; the last entry is what is on screen. Never empty. */
+  readonly topics: readonly HelpTopicId[];
 }
 
 /** A fresh visit. Asking for help from outside is a new question, not a continuation. */
 export function startTrail(topicId: HelpTopicId): HelpTrail {
-    return { topics: [topicId] };
+  return { topics: [topicId] };
 }
 
 /** What the popover renders. */
 export function currentTopic(trail: HelpTrail): HelpTopicId {
-    return trail.topics[trail.topics.length - 1];
+  return trail.topics[trail.topics.length - 1];
 }
 
 /** Where `back` would land, or undefined at the start of a visit (the arrow is hidden there). */
 export function previousTopic(trail: HelpTrail): HelpTopicId | undefined {
-    return trail.topics.length > 1 ? trail.topics[trail.topics.length - 2] : undefined;
+  return trail.topics.length > 1 ? trail.topics[trail.topics.length - 2] : undefined;
 }
 
 /**
@@ -39,13 +39,13 @@ export function previousTopic(trail: HelpTrail): HelpTopicId | undefined {
  * leave the reader pressing back to arrive where they already are.
  */
 export function pushTopic(trail: HelpTrail, topicId: HelpTopicId): HelpTrail {
-    if (currentTopic(trail) === topicId) {
-        return trail;
-    }
-    return { topics: [...trail.topics, topicId] };
+  if (currentTopic(trail) === topicId) {
+    return trail;
+  }
+  return { topics: [...trail.topics, topicId] };
 }
 
 /** Step back one topic. A no-op at the start of a visit, so the popover can never empty itself. */
 export function popTopic(trail: HelpTrail): HelpTrail {
-    return trail.topics.length > 1 ? { topics: trail.topics.slice(0, -1) } : trail;
+  return trail.topics.length > 1 ? { topics: trail.topics.slice(0, -1) } : trail;
 }

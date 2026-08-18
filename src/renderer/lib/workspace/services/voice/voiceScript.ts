@@ -14,51 +14,53 @@ import { deriveVoiceUnitState } from "./voiceModel";
 
 /** One voiceable line with everything the naming pattern and script need. */
 export type VoiceScriptEntry = {
-    unitId: string;
-    sceneName: string;
-    /** 1-based position among the voiceable lines of its scene. */
-    indexInScene: number;
-    /** Resolved speaker (character name or narration label). */
-    speaker: string;
-    sourceText: string;
+  unitId: string;
+  sceneName: string;
+  /** 1-based position among the voiceable lines of its scene. */
+  indexInScene: number;
+  /** Resolved speaker (character name or narration label). */
+  speaker: string;
+  sourceText: string;
 };
 
 /** Assign each row its 1-based index within its own scene (rows must be in narrative order). */
-export function withSceneIndices<T extends { sceneId: string }>(rows: readonly T[]): (T & { indexInScene: number })[] {
-    const counters = new Map<string, number>();
-    return rows.map(row => {
-        const next = (counters.get(row.sceneId) ?? 0) + 1;
-        counters.set(row.sceneId, next);
-        return { ...row, indexInScene: next };
-    });
+export function withSceneIndices<T extends { sceneId: string }>(
+  rows: readonly T[]
+): (T & { indexInScene: number })[] {
+  const counters = new Map<string, number>();
+  return rows.map((row) => {
+    const next = (counters.get(row.sceneId) ?? 0) + 1;
+    counters.set(row.sceneId, next);
+    return { ...row, indexInScene: next };
+  });
 }
 
 /** Build recording-script CSV rows: human filename + authoritative unit id + context + current status. */
 export function buildRecordingScriptRows(
-    entries: readonly VoiceScriptEntry[],
-    pattern: string,
-    locale: string,
-    document: VoiceDocument | undefined,
+  entries: readonly VoiceScriptEntry[],
+  pattern: string,
+  locale: string,
+  document: VoiceDocument | undefined
 ): VoiceCsvRow[] {
-    return entries.map(entry => {
-        const state = deriveVoiceUnitState(document?.units[entry.unitId], entry.sourceText);
-        const filename = formatVoiceFilename(pattern, {
-            scene: entry.sceneName,
-            index: entry.indexInScene,
-            character: entry.speaker,
-            locale,
-            unitId: entry.unitId,
-        });
-        return {
-            filename,
-            unitId: entry.unitId,
-            character: entry.speaker,
-            scene: entry.sceneName,
-            line: entry.sourceText,
-            status: state,
-            note: document?.units[entry.unitId]?.note ?? "",
-        };
+  return entries.map((entry) => {
+    const state = deriveVoiceUnitState(document?.units[entry.unitId], entry.sourceText);
+    const filename = formatVoiceFilename(pattern, {
+      scene: entry.sceneName,
+      index: entry.indexInScene,
+      character: entry.speaker,
+      locale,
+      unitId: entry.unitId
     });
+    return {
+      filename,
+      unitId: entry.unitId,
+      character: entry.speaker,
+      scene: entry.sceneName,
+      line: entry.sourceText,
+      status: state,
+      note: document?.units[entry.unitId]?.note ?? ""
+    };
+  });
 }
 
 export type VoiceNameKey = { unitId: string; sourceText: string };
@@ -69,33 +71,35 @@ export type VoiceNameKey = { unitId: string; sourceText: string };
  * a silently ambiguous match is worse than an unmatched file the user can see.
  */
 export function buildVoiceNameKeyMap(
-    entries: readonly VoiceScriptEntry[],
-    pattern: string,
-    locale: string,
+  entries: readonly VoiceScriptEntry[],
+  pattern: string,
+  locale: string
 ): Map<string, VoiceNameKey> {
-    const map = new Map<string, VoiceNameKey>();
-    const ambiguous = new Set<string>();
-    for (const entry of entries) {
-        const key = matchKeyForFilename(formatVoiceFilename(pattern, {
-            scene: entry.sceneName,
-            index: entry.indexInScene,
-            character: entry.speaker,
-            locale,
-            unitId: entry.unitId,
-        }));
-        if (!key) {
-            continue;
-        }
-        if (map.has(key)) {
-            ambiguous.add(key);
-            continue;
-        }
-        map.set(key, { unitId: entry.unitId, sourceText: entry.sourceText });
+  const map = new Map<string, VoiceNameKey>();
+  const ambiguous = new Set<string>();
+  for (const entry of entries) {
+    const key = matchKeyForFilename(
+      formatVoiceFilename(pattern, {
+        scene: entry.sceneName,
+        index: entry.indexInScene,
+        character: entry.speaker,
+        locale,
+        unitId: entry.unitId
+      })
+    );
+    if (!key) {
+      continue;
     }
-    for (const key of ambiguous) {
-        map.delete(key);
+    if (map.has(key)) {
+      ambiguous.add(key);
+      continue;
     }
-    return map;
+    map.set(key, { unitId: entry.unitId, sourceText: entry.sourceText });
+  }
+  for (const key of ambiguous) {
+    map.delete(key);
+  }
+  return map;
 }
 
 /**
@@ -104,14 +108,20 @@ export function buildVoiceNameKeyMap(
  * The one place the naming pattern is turned into a key, so the batch import and the per-line
  * assign picker agree on what "this clip belongs to this line" means.
  */
-export function voiceMatchKeyForEntry(entry: VoiceScriptEntry, pattern: string, locale: string): string {
-    return matchKeyForFilename(formatVoiceFilename(pattern, {
-        scene: entry.sceneName,
-        index: entry.indexInScene,
-        character: entry.speaker,
-        locale,
-        unitId: entry.unitId,
-    }));
+export function voiceMatchKeyForEntry(
+  entry: VoiceScriptEntry,
+  pattern: string,
+  locale: string
+): string {
+  return matchKeyForFilename(
+    formatVoiceFilename(pattern, {
+      scene: entry.sceneName,
+      index: entry.indexInScene,
+      character: entry.speaker,
+      locale,
+      unitId: entry.unitId
+    })
+  );
 }
 
 /**
@@ -124,40 +134,45 @@ export function voiceMatchKeyForEntry(entry: VoiceScriptEntry, pattern: string, 
  * Ambiguous keys are dropped for the same reason `buildVoiceNameKeyMap` drops them: silently
  * pointing a line at the wrong one of two identically-named clips is worse than pointing at none.
  */
-export function buildAssetNameKeyMap(assets: readonly { id: string; name: string }[]): Map<string, string> {
-    const map = new Map<string, string>();
-    const ambiguous = new Set<string>();
-    for (const asset of assets) {
-        const key = matchKeyForFilename(asset.name);
-        if (!key) {
-            continue;
-        }
-        if (map.has(key)) {
-            ambiguous.add(key);
-            continue;
-        }
-        map.set(key, asset.id);
+export function buildAssetNameKeyMap(
+  assets: readonly { id: string; name: string }[]
+): Map<string, string> {
+  const map = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  for (const asset of assets) {
+    const key = matchKeyForFilename(asset.name);
+    if (!key) {
+      continue;
     }
-    for (const key of ambiguous) {
-        map.delete(key);
+    if (map.has(key)) {
+      ambiguous.add(key);
+      continue;
     }
-    return map;
+    map.set(key, asset.id);
+  }
+  for (const key of ambiguous) {
+    map.delete(key);
+  }
+  return map;
 }
 
 export type ImportedFileMatch = { path: string; unitId: string; sourceText: string };
 export type ImportedFileMatches = { matched: ImportedFileMatch[]; unmatched: string[] };
 
 /** Split imported file paths into those that match a line and those that do not. */
-export function matchImportedFiles(paths: readonly string[], keyMap: Map<string, VoiceNameKey>): ImportedFileMatches {
-    const matched: ImportedFileMatch[] = [];
-    const unmatched: string[] = [];
-    for (const path of paths) {
-        const hit = keyMap.get(matchKeyForFilename(path));
-        if (hit) {
-            matched.push({ path, unitId: hit.unitId, sourceText: hit.sourceText });
-        } else {
-            unmatched.push(path);
-        }
+export function matchImportedFiles(
+  paths: readonly string[],
+  keyMap: Map<string, VoiceNameKey>
+): ImportedFileMatches {
+  const matched: ImportedFileMatch[] = [];
+  const unmatched: string[] = [];
+  for (const path of paths) {
+    const hit = keyMap.get(matchKeyForFilename(path));
+    if (hit) {
+      matched.push({ path, unitId: hit.unitId, sourceText: hit.sourceText });
+    } else {
+      unmatched.push(path);
     }
-    return { matched, unmatched };
+  }
+  return { matched, unmatched };
 }

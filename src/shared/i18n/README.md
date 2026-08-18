@@ -35,14 +35,14 @@ src/main/app/application/i18n.ts   getMainTranslator(app) for main-process text
 import { useTranslation } from "@/lib/i18n";
 
 function Save() {
-    const { t, tn, locale, setLocale, formatDate } = useTranslation();
-    return (
-        <>
-            <button>{t("common.save")}</button>
-            <span>{tn("launcher.recentCount", projects.length)}</span>
-            <time>{formatDate(Date.now(), { dateStyle: "medium" })}</time>
-        </>
-    );
+  const { t, tn, locale, setLocale, formatDate } = useTranslation();
+  return (
+    <>
+      <button>{t("common.save")}</button>
+      <span>{tn("launcher.recentCount", projects.length)}</span>
+      <time>{formatDate(Date.now(), { dateStyle: "medium" })}</time>
+    </>
+  );
 }
 ```
 
@@ -59,7 +59,7 @@ function Save() {
 
 1. Add the key to `catalog/en/<namespace>.ts` (this defines the type — do it first).
 2. Translate it in the other locales. They're typed `satisfies LocaleMessages`,
-   so a typo or wrong shape fails the build; a *missing* key is allowed and falls
+   so a typo or wrong shape fails the build; a _missing_ key is allowed and falls
    back to English at runtime, so you can translate incrementally.
 
 Namespace by surface (`common`, `menu`, `settings`, `launcher`, …). Keep the

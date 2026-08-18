@@ -6,29 +6,29 @@ import { WorkspaceContext } from "./services/services";
 import { WindowAppType } from "@shared/types/window";
 
 export class Workspace {
-    public static async createContext(): Promise<WorkspaceContext> {
-        const props = throwException(await getInterface().getWindowProps<WindowAppType.Workspace>());
-        const project = new Porject({
-            projectPath: props.projectPath,
-        });
+  public static async createContext(): Promise<WorkspaceContext> {
+    const props = throwException(await getInterface().getWindowProps<WindowAppType.Workspace>());
+    const project = new Porject({
+      projectPath: props.projectPath
+    });
 
-        return {
-            project,
-            services: new ServiceRegistry(),
-        };
-    }
+    return {
+      project,
+      services: new ServiceRegistry()
+    };
+  }
 
-    public static create(context: WorkspaceContext): Workspace {
-        return new Workspace(context);
-    }
+  public static create(context: WorkspaceContext): Workspace {
+    return new Workspace(context);
+  }
 
-    private context: WorkspaceContext;
+  private context: WorkspaceContext;
 
-    constructor(context: WorkspaceContext) {
-        this.context = context;
-    }
+  constructor(context: WorkspaceContext) {
+    this.context = context;
+  }
 
-    public getContext(): WorkspaceContext {
-        return this.context;
-    }
+  public getContext(): WorkspaceContext {
+    return this.context;
+  }
 }

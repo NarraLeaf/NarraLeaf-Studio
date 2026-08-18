@@ -29,77 +29,77 @@ import type { TranslationKey } from "@shared/i18n";
  */
 
 type OperationOf<A extends StoryActionPayload["action"]> =
-    Extract<StoryActionPayload, { action: A }> extends { operation: infer O } ? O & string : never;
+  Extract<StoryActionPayload, { action: A }> extends { operation: infer O } ? O & string : never;
 
 /** A story command's spec id — the `<id>` in `story.command.<id>.label`. Validated by the test. */
 type CommandId = string;
 
 const CHARACTER: Record<OperationOf<"character">, CommandId> = {
-    enter: "show",
-    exit: "hide",
-    move: "move",
-    expression: "face",
-    setName: "rename",
-    setMotion: "motion",
-    setSkin: "skin",
-    setParams: "param",
+  enter: "show",
+  exit: "hide",
+  move: "move",
+  expression: "face",
+  setName: "rename",
+  setMotion: "motion",
+  setSkin: "skin",
+  setParams: "param"
 };
 
 const IMAGE: Record<OperationOf<"image">, CommandId> = {
-    create: "image",
-    setSource: "swap",
-    show: "show",
-    hide: "hide",
+  create: "image",
+  setSource: "swap",
+  show: "show",
+  hide: "hide"
 };
 
 const TEXT: Record<OperationOf<"text">, CommandId> = {
-    create: "text",
-    setText: "swap",
-    show: "show",
-    hide: "hide",
-    // Both spellings are the one `/font` command; its size and colour are two params of one row.
-    setFontSize: "font",
-    setFontColor: "font",
+  create: "text",
+  setText: "swap",
+  show: "show",
+  hide: "hide",
+  // Both spellings are the one `/font` command; its size and colour are two params of one row.
+  setFontSize: "font",
+  setFontColor: "font"
 };
 
 const LAYER: Record<OperationOf<"layer">, CommandId> = {
-    create: "layer",
-    // `z=` is a param of `/layer`, not a verb of its own.
-    setZIndex: "layer",
-    show: "show",
-    hide: "hide",
-    transform: "transform",
+  create: "layer",
+  // `z=` is a param of `/layer`, not a verb of its own.
+  setZIndex: "layer",
+  show: "show",
+  hide: "hide",
+  transform: "transform"
 };
 
 const VIDEO: Record<OperationOf<"video">, CommandId> = {
-    create: "video",
-    show: "show",
-    hide: "hide",
-    play: "play",
-    pause: "pause",
-    resume: "resume",
-    stop: "stop",
-    seek: "seek",
+  create: "video",
+  show: "show",
+  hide: "hide",
+  play: "play",
+  pause: "pause",
+  resume: "resume",
+  stop: "stop",
+  seek: "seek"
 };
 
 const VFX: Record<OperationOf<"vfx">, CommandId> = {
-    create: "vfx",
-    show: "show",
-    hide: "hide",
-    pause: "pause",
-    resume: "resume",
-    setRate: "rate",
+  create: "vfx",
+  show: "show",
+  hide: "hide",
+  pause: "pause",
+  resume: "resume",
+  setRate: "rate"
 };
 
 const AUDIO: Record<Exclude<OperationOf<"audio">, "muteSound">, CommandId> = {
-    setBgm: "bgm",
-    playSound: "sound",
-    stopSound: "stop",
-    pauseSound: "pause",
-    resumeSound: "resume",
-    setVolume: "volume",
-    setRate: "rate",
-    seekSound: "seek",
+  setBgm: "bgm",
+  playSound: "sound",
+  stopSound: "stop",
+  pauseSound: "pause",
+  resumeSound: "resume",
+  setVolume: "volume",
+  setRate: "rate",
+  seekSound: "seek"
 };
 
 /**
@@ -108,9 +108,9 @@ const AUDIO: Record<Exclude<OperationOf<"audio">, "muteSound">, CommandId> = {
  * there is no verb the author typed and nothing here to say.
  */
 const DISPLAYABLE: Partial<Record<OperationOf<"displayable">, CommandId>> = {
-    show: "show",
-    hide: "hide",
-    transform: "transform",
+  show: "show",
+  hide: "hide",
+  transform: "transform"
 };
 
 /**
@@ -118,39 +118,58 @@ const DISPLAYABLE: Partial<Record<OperationOf<"displayable">, CommandId>> = {
  * gestures with different knobs (a blink holds, a vignette has an opacity), and the vocabulary names
  * the idea rather than the type.
  */
-const SCREEN_EFFECT: Record<Extract<StoryActionPayload, { action: "screenEffect" }>["effect"], CommandId> = {
-    blink: "blink",
-    vignette: "vignette",
+const SCREEN_EFFECT: Record<
+  Extract<StoryActionPayload, { action: "screenEffect" }>["effect"],
+  CommandId
+> = {
+  blink: "blink",
+  vignette: "vignette"
 };
 
 /** The command id whose label names this payload's verb, or `null` when no command owns it. */
 export function storyVerbCommandId(payload: StoryActionPayload): CommandId | null {
-    switch (payload.action) {
-        case "character": return CHARACTER[payload.operation] ?? null;
-        case "image": return IMAGE[payload.operation] ?? null;
-        case "text": return TEXT[payload.operation] ?? null;
-        case "layer": return LAYER[payload.operation] ?? null;
-        case "video": return VIDEO[payload.operation] ?? null;
-        case "vfx": return VFX[payload.operation] ?? null;
-        case "displayable": return DISPLAYABLE[payload.operation] ?? null;
-        case "audio":
-            // One payload, two verbs: `/mute` and `/unmute` both store `muteSound` and differ only by
-            // the flag. Naming both "Mute" would misread half of them, so the flag decides.
-            return payload.operation === "muteSound"
-                ? (payload.muted === false ? "unmute" : "mute")
-                : AUDIO[payload.operation] ?? null;
-        case "screenEffect": return SCREEN_EFFECT[payload.effect] ?? null;
-        case "setBackground": return "background";
-        case "wait": return "wait";
-        case "nvl": return "nvl";
-        case "camera": return "camera";
-        case "setVariable": return "set";
-        default: return null;
-    }
+  switch (payload.action) {
+    case "character":
+      return CHARACTER[payload.operation] ?? null;
+    case "image":
+      return IMAGE[payload.operation] ?? null;
+    case "text":
+      return TEXT[payload.operation] ?? null;
+    case "layer":
+      return LAYER[payload.operation] ?? null;
+    case "video":
+      return VIDEO[payload.operation] ?? null;
+    case "vfx":
+      return VFX[payload.operation] ?? null;
+    case "displayable":
+      return DISPLAYABLE[payload.operation] ?? null;
+    case "audio":
+      // One payload, two verbs: `/mute` and `/unmute` both store `muteSound` and differ only by
+      // the flag. Naming both "Mute" would misread half of them, so the flag decides.
+      return payload.operation === "muteSound"
+        ? payload.muted === false
+          ? "unmute"
+          : "mute"
+        : (AUDIO[payload.operation] ?? null);
+    case "screenEffect":
+      return SCREEN_EFFECT[payload.effect] ?? null;
+    case "setBackground":
+      return "background";
+    case "wait":
+      return "wait";
+    case "nvl":
+      return "nvl";
+    case "camera":
+      return "camera";
+    case "setVariable":
+      return "set";
+    default:
+      return null;
+  }
 }
 
 /** The `story.command.*` key naming this payload's verb, or `null`. Resolve it in the COMMAND locale. */
 export function storyVerbLabelKey(payload: StoryActionPayload): TranslationKey | null {
-    const id = storyVerbCommandId(payload);
-    return id === null ? null : (`story.command.${id}.label` as TranslationKey);
+  const id = storyVerbCommandId(payload);
+  return id === null ? null : (`story.command.${id}.label` as TranslationKey);
 }

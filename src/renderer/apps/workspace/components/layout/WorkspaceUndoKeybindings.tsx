@@ -33,58 +33,55 @@ import { FocusArea, type FocusContext } from "@/lib/workspace/services/ui/types"
  * beside it reached an empty stack and did nothing.
  */
 export function WorkspaceUndoKeybindings() {
-    const { context } = useWorkspace();
-    const freeze = useFreezeGuard();
-    const history = useMemo(
-        () => (context ? context.services.get<HistoryService>(Services.History) : null),
-        [context],
-    );
-    const [focus, setFocus] = useState<FocusContext | null>(null);
+  const { context } = useWorkspace();
+  const freeze = useFreezeGuard();
+  const history = useMemo(
+    () => (context ? context.services.get<HistoryService>(Services.History) : null),
+    [context]
+  );
+  const [focus, setFocus] = useState<FocusContext | null>(null);
 
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const uiService = context.services.get<UIService>(Services.UI);
-        setFocus(uiService.focus.getFocus());
-        return uiService.focus.onFocusChange(setFocus);
-    }, [context]);
+  useEffect(() => {
+    if (!context) {
+      return;
+    }
+    const uiService = context.services.get<UIService>(Services.UI);
+    setFocus(uiService.focus.getFocus());
+    return uiService.focus.onFocusChange(setFocus);
+  }, [context]);
 
-    const scopeId = useMemo(
-        () => (history && focus ? resolveWorkspaceUndoScope(history, focus) : projectHistoryScope()),
-        [focus, history],
-    );
+  const scopeId = useMemo(
+    () => (history && focus ? resolveWorkspaceUndoScope(history, focus) : projectHistoryScope()),
+    [focus, history]
+  );
 
-    const outsideAnEditor = useCallback(
-        (next: FocusContext) => next.area !== FocusArea.Editor,
-        [],
-    );
+  const outsideAnEditor = useCallback((next: FocusContext) => next.area !== FocusArea.Editor, []);
 
-    const keybindings = useMemo(
-        () => [
-            {
-                id: "undo",
-                key: "mod+z",
-                description: "Undo the last project-level change",
-                when: outsideAnEditor,
-                handler: freeze.run(() => {
-                    history?.undo(scopeId);
-                }),
-            },
-            {
-                id: "redo",
-                key: "mod+shift+z",
-                description: "Redo the last project-level change",
-                when: outsideAnEditor,
-                handler: freeze.run(() => {
-                    history?.redo(scopeId);
-                }),
-            },
-        ],
-        [freeze, history, outsideAnEditor, scopeId],
-    );
+  const keybindings = useMemo(
+    () => [
+      {
+        id: "undo",
+        key: "mod+z",
+        description: "Undo the last project-level change",
+        when: outsideAnEditor,
+        handler: freeze.run(() => {
+          history?.undo(scopeId);
+        })
+      },
+      {
+        id: "redo",
+        key: "mod+shift+z",
+        description: "Redo the last project-level change",
+        when: outsideAnEditor,
+        handler: freeze.run(() => {
+          history?.redo(scopeId);
+        })
+      }
+    ],
+    [freeze, history, outsideAnEditor, scopeId]
+  );
 
-    useKeybindings({ keybindings, idPrefix: "workspace-history", catalogPrefix: "workspace." });
+  useKeybindings({ keybindings, idPrefix: "workspace-history", catalogPrefix: "workspace." });
 
-    return null;
+  return null;
 }

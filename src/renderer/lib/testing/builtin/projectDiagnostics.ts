@@ -31,55 +31,62 @@ export const PROJECT_DIAGNOSTICS_TEST_ID = "narraleaf-studio:project-diagnostics
 export const PROJECT_DIAGNOSTICS_SLUG = "projectDiagnostics";
 
 export function createProjectDiagnosticsTest(host: BuiltInTestHost): TestDefinition {
-    return {
-        id: PROJECT_DIAGNOSTICS_TEST_ID,
-        title: { key: "test.builtin.projectDiagnostics.title" },
-        description: { key: "test.builtin.projectDiagnostics.description" },
-        category: "integrity",
-        // A sweep of documents already in memory: no window, and therefore runnable while the
-        // workspace is frozen, exactly as `lint:project` is (ruling R9).
-        presentation: "headless",
-        // Not `project.read`: a built-in closes over the workspace directly, and `TestProjectHandle`
-        // exists to give a *plugin* a bounded way in. Declaring it would claim a door it never uses.
-        requires: [],
-        async run(ctx) {
-            const lint = host.services().get<LintService>(Services.Lint);
+  return {
+    id: PROJECT_DIAGNOSTICS_TEST_ID,
+    title: { key: "test.builtin.projectDiagnostics.title" },
+    description: { key: "test.builtin.projectDiagnostics.description" },
+    category: "integrity",
+    // A sweep of documents already in memory: no window, and therefore runnable while the
+    // workspace is frozen, exactly as `lint:project` is (ruling R9).
+    presentation: "headless",
+    // Not `project.read`: a built-in closes over the workspace directly, and `TestProjectHandle`
+    // exists to give a *plugin* a bounded way in. Declaring it would claim a door it never uses.
+    requires: [],
+    async run(ctx) {
+      const lint = host.services().get<LintService>(Services.Lint);
 
-            const report = await lint.run({
-                signal: ctx.signal,
-                // The engine reports `done / total` over the scheduled rules, so this is a real
-                // fraction rather than an invented one - the only case where a determinate bar is
-                // honest. `label` is the rule id as a literal: it is an identifier, not prose.
-                onProgress: progress => ctx.progress({
-                    completed: progress.done,
-                    total: progress.total,
-                    label: { text: progress.ruleId },
-                }),
-            });
+      const report = await lint.run({
+        signal: ctx.signal,
+        // The engine reports `done / total` over the scheduled rules, so this is a real
+        // fraction rather than an invented one - the only case where a determinate bar is
+        // honest. `label` is the rule id as a literal: it is an identifier, not prose.
+        onProgress: (progress) =>
+          ctx.progress({
+            completed: progress.done,
+            total: progress.total,
+            label: { text: progress.ruleId }
+          })
+      });
 
-            for (const entry of report.entries) {
-                ctx.report(toFinding(entry));
-            }
+      for (const entry of report.entries) {
+        ctx.report(toFinding(entry));
+      }
 
-            // Reported before this line, kept after it: a cancelled run is still evidence, and the
-            // findings the sweep did produce are on the record by now.
-            //
-            // The engine answers a cancelled sweep with a *partial* report rather than by throwing,
-            // so without this a run the author stopped halfway would come back "passed" - a clean
-            // bill from rules that never ran, which is precisely the state the engine's own
-            // `skipped` list exists to prevent anyone claiming. Surfacing the abort as a rejection
-            // is what makes the host record it as `cancelled` (ruling R4).
-            ctx.signal.throwIfAborted();
+      // Reported before this line, kept after it: a cancelled run is still evidence, and the
+      // findings the sweep did produce are on the record by now.
+      //
+      // The engine answers a cancelled sweep with a *partial* report rather than by throwing,
+      // so without this a run the author stopped halfway would come back "passed" - a clean
+      // bill from rules that never ran, which is precisely the state the engine's own
+      // `skipped` list exists to prevent anyone claiming. Surfacing the abort as a rejection
+      // is what makes the host record it as `cancelled` (ruling R4).
+      ctx.signal.throwIfAborted();
 
-            const params = { errors: report.counts.error, warnings: report.counts.warning };
-            // `error` and nothing else decides the verdict: warnings are the project's own
-            // configured opinion (a rule's severity is a settings row), and a test that failed on
-            // one would be re-deciding a question the author already answered.
-            return report.counts.error > 0
-                ? { status: "failed", summary: { key: "test.builtin.projectDiagnostics.summary.failed", params } }
-                : { status: "passed", summary: { key: "test.builtin.projectDiagnostics.summary.passed", params } };
-        },
-    };
+      const params = { errors: report.counts.error, warnings: report.counts.warning };
+      // `error` and nothing else decides the verdict: warnings are the project's own
+      // configured opinion (a rule's severity is a settings row), and a test that failed on
+      // one would be re-deciding a question the author already answered.
+      return report.counts.error > 0
+        ? {
+            status: "failed",
+            summary: { key: "test.builtin.projectDiagnostics.summary.failed", params }
+          }
+        : {
+            status: "passed",
+            summary: { key: "test.builtin.projectDiagnostics.summary.passed", params }
+          };
+    }
+  };
 }
 
 /**
@@ -92,9 +99,9 @@ export function createProjectDiagnosticsTest(host: BuiltInTestHost): TestDefinit
  * layer that could disagree with the lint report's.
  */
 function toFinding(entry: LintReportEntry): TestFinding {
-    return {
-        severity: entry.severity,
-        message: { key: entry.messageKey, params: entry.messageParams },
-        target: entry.target,
-    };
+  return {
+    severity: entry.severity,
+    message: { key: entry.messageKey, params: entry.messageParams },
+    target: entry.target
+  };
 }

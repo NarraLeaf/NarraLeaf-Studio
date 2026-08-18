@@ -15,18 +15,18 @@ export const ALT_ACTION_TRIGGER = "@";
 
 /** The trigger at the head of the line, or null when the line does not open the action creator. */
 export function actionTrigger(value: string, aliasEnabled: boolean): "/" | "@" | null {
-    if (value.startsWith(ACTION_TRIGGER)) {
-        return ACTION_TRIGGER;
-    }
-    if (aliasEnabled && value.startsWith(ALT_ACTION_TRIGGER)) {
-        return ALT_ACTION_TRIGGER;
-    }
-    return null;
+  if (value.startsWith(ACTION_TRIGGER)) {
+    return ACTION_TRIGGER;
+  }
+  if (aliasEnabled && value.startsWith(ALT_ACTION_TRIGGER)) {
+    return ALT_ACTION_TRIGGER;
+  }
+  return null;
 }
 
 /** Whether the line opens the action creator (via "/", or "@" when the alias is enabled). */
 export function isActionCommandLine(value: string, aliasEnabled: boolean): boolean {
-    return actionTrigger(value, aliasEnabled) !== null;
+  return actionTrigger(value, aliasEnabled) !== null;
 }
 
 /** Which candidate menu an insert line is asking for. */
@@ -42,13 +42,13 @@ export type InsertChooser = "none" | "action" | "character";
  * `chooserDismissed` flag that the next keystroke clears.
  */
 export function insertChooserType(value: string, aliasEnabled: boolean): InsertChooser {
-    if (isActionCommandLine(value, aliasEnabled)) {
-        return "action";
-    }
-    if (value.startsWith("#")) {
-        return "character";
-    }
-    return "none";
+  if (isActionCommandLine(value, aliasEnabled)) {
+    return "action";
+  }
+  if (value.startsWith("#")) {
+    return "character";
+  }
+  return "none";
 }
 
 /**
@@ -57,7 +57,9 @@ export function insertChooserType(value: string, aliasEnabled: boolean): InsertC
  * unchanged. Only the first character can differ, so offsets into the input remain valid.
  */
 export function toCanonicalCommandLine(value: string, aliasEnabled: boolean): string {
-    return aliasEnabled && value.startsWith(ALT_ACTION_TRIGGER) ? ACTION_TRIGGER + value.slice(1) : value;
+  return aliasEnabled && value.startsWith(ALT_ACTION_TRIGGER)
+    ? ACTION_TRIGGER + value.slice(1)
+    : value;
 }
 
 /**
@@ -69,5 +71,5 @@ export function toCanonicalCommandLine(value: string, aliasEnabled: boolean): st
  * span recorded against the canonical string stays valid.
  */
 export function toDisplayedCommandLine(source: string, trigger: "/" | "@"): string {
-    return source.startsWith(ACTION_TRIGGER) ? trigger + source.slice(1) : source;
+  return source.startsWith(ACTION_TRIGGER) ? trigger + source.slice(1) : source;
 }

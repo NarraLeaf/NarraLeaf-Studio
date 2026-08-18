@@ -4,19 +4,19 @@ A layer is a Page composited over whatever is already on screen, instead of repl
 
 Before layers the app surface system was a router: `navStack` held history, and at rest exactly one
 entry was on screen. Two entries coexisted only while a transition was running. A screen that had to
-appear *over* another one - a confirmation, a panel raised from a settings page - had no way to say
+appear _over_ another one - a confirmation, a panel raised from a settings page - had no way to say
 so, and every feature that wanted one added a hard-coded z-index of its own.
 
 ## The composite
 
 Bottom to top:
 
-| | |
-|---|---|
-| stage | the NarraLeaf `Player`, engine-owned |
-| plugin overlays | host-rendered, fixed |
-| page lane | the whole navigation stack, occupying one slot |
-| layers | in mount order |
+|                 |                                                |
+| --------------- | ---------------------------------------------- |
+| stage           | the NarraLeaf `Player`, engine-owned           |
+| plugin overlays | host-rendered, fixed                           |
+| page lane       | the whole navigation stack, occupying one slot |
+| layers          | in mount order                                 |
 
 The page lane keeps its own rules unchanged: back and forward move inside it, one entry settles at
 rest. A layer replaces nothing, so it is held beside the lane rather than inside it.
@@ -48,7 +48,7 @@ answer both once more than one thing is live:
 
 - **Pointer.** The topmost modal layer is a floor. Everything below it, the whole page lane
   included, is inert; it and everything above it stay live.
-- **Keyboard.** The topmost *modal* layer owns it - not the topmost layer. With a modal below a
+- **Keyboard.** The topmost _modal_ layer owns it - not the topmost layer. With a modal below a
   non-modal, both are clickable and the keys still belong to the modal underneath, because it is the
   one that asked for them.
 
@@ -77,15 +77,15 @@ fallback backs up the animation, so the group drains even when nothing animates.
 
 ## Author surface
 
-| Node | |
-|---|---|
-| `Go Page` | replace the current page |
-| `Go back` | close the top dismissible layer if there is one, otherwise step back a page |
-| `Show Layer` | composite a Page over what is there; returns a handle |
-| `Hide Layer` | remove one by handle |
-| `Wait For Layer` | wait for it to close and read what it returned |
-| `Close This Layer` | called from inside a layer, with a result |
-| `Is Layer Mounted` | whether a handle still names a live layer |
+| Node               |                                                                             |
+| ------------------ | --------------------------------------------------------------------------- |
+| `Go Page`          | replace the current page                                                    |
+| `Go back`          | close the top dismissible layer if there is one, otherwise step back a page |
+| `Show Layer`       | composite a Page over what is there; returns a handle                       |
+| `Hide Layer`       | remove one by handle                                                        |
+| `Wait For Layer`   | wait for it to close and read what it returned                              |
+| `Close This Layer` | called from inside a layer, with a result                                   |
+| `Is Layer Mounted` | whether a handle still names a live layer                                   |
 
 One node and one wire is enough to stack a Page: `Show Layer`, pick the page, run an exec line into
 it. A layer reads what it was opened with through `Get Page Prop`, exactly as a page does.

@@ -4,63 +4,63 @@ import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "./types";
 
 export type ElementRendererProps = {
-    element: UIElement;
-    surface: UISurface;
-    document: UIDocument;
-    hostAdapter: UIHostAdapter;
-    children?: ReactNode;
-    instanceKey?: string;
-    /** Current list item scope when this element renders inside a list-like item template. */
+  element: UIElement;
+  surface: UISurface;
+  document: UIDocument;
+  hostAdapter: UIHostAdapter;
+  children?: ReactNode;
+  instanceKey?: string;
+  /** Current list item scope when this element renders inside a list-like item template. */
+  listItemScope?: UIListItemScope | null;
+  renderChildren?: (options?: {
+    childrenIds?: string[];
     listItemScope?: UIListItemScope | null;
-    renderChildren?: (options?: {
-        childrenIds?: string[];
-        listItemScope?: UIListItemScope | null;
-        instanceKey?: string;
-        elementOverrides?: Record<string, UIElement>;
-    }) => ReactNode[];
-    renderSurface?: (options: {
-        targetSurfaceId: string | null;
-        frameElement: UIElement;
-        params?: Record<string, unknown>;
-        instanceKey?: string;
-    }) => ReactNode;
-    runtimeData?: {
-        surfaceState?: { get(key: string): unknown };
-        globalState?: { get(key: string): unknown };
-        /** Props the current page was opened with; fixed for the life of the page instance. */
-        pageProps?: Readonly<Record<string, unknown>>;
-    };
-    /** Passed by the workspace editor bridge; omitted in Dev Mode and other hosts. */
-    useAppearanceInspectorPreview?: boolean;
+    instanceKey?: string;
+    elementOverrides?: Record<string, UIElement>;
+  }) => ReactNode[];
+  renderSurface?: (options: {
+    targetSurfaceId: string | null;
+    frameElement: UIElement;
+    params?: Record<string, unknown>;
+    instanceKey?: string;
+  }) => ReactNode;
+  runtimeData?: {
+    surfaceState?: { get(key: string): unknown };
+    globalState?: { get(key: string): unknown };
+    /** Props the current page was opened with; fixed for the life of the page instance. */
+    pageProps?: Readonly<Record<string, unknown>>;
+  };
+  /** Passed by the workspace editor bridge; omitted in Dev Mode and other hosts. */
+  useAppearanceInspectorPreview?: boolean;
 };
 
 export type ElementRendererDefinition = {
-    type: string;
-    render: (props: ElementRendererProps) => ReactElement | null;
+  type: string;
+  render: (props: ElementRendererProps) => ReactElement | null;
 };
 
 export class ElementRendererRegistry {
-    private readonly renderers = new Map<string, ElementRendererDefinition>();
+  private readonly renderers = new Map<string, ElementRendererDefinition>();
 
-    public constructor(definitions: ElementRendererDefinition[] = []) {
-        this.registerMany(definitions);
-    }
+  public constructor(definitions: ElementRendererDefinition[] = []) {
+    this.registerMany(definitions);
+  }
 
-    public register(definition: ElementRendererDefinition): void {
-        this.renderers.set(definition.type, definition);
-    }
+  public register(definition: ElementRendererDefinition): void {
+    this.renderers.set(definition.type, definition);
+  }
 
-    public registerMany(definitions: ElementRendererDefinition[]): void {
-        for (const definition of definitions) {
-            this.register(definition);
-        }
+  public registerMany(definitions: ElementRendererDefinition[]): void {
+    for (const definition of definitions) {
+      this.register(definition);
     }
+  }
 
-    public get(type: string): ElementRendererDefinition | undefined {
-        return this.renderers.get(type);
-    }
+  public get(type: string): ElementRendererDefinition | undefined {
+    return this.renderers.get(type);
+  }
 
-    public list(): ElementRendererDefinition[] {
-        return Array.from(this.renderers.values());
-    }
+  public list(): ElementRendererDefinition[] {
+    return Array.from(this.renderers.values());
+  }
 }

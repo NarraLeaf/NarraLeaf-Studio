@@ -8,10 +8,10 @@ import type { StoryCharacterTagSelection } from "@shared/types/story";
  * Only the action can name a puppet's look — an inline event always targets a character Studio draws.
  */
 export type StoryAppearanceSelection = {
-    characterId?: string;
-    pose?: string;
-    tags?: StoryCharacterTagSelection;
-    puppetName?: string;
+  characterId?: string;
+  pose?: string;
+  tags?: StoryCharacterTagSelection;
+  puppetName?: string;
 };
 
 /** The author-facing name behind a pose / tag id, or `null` when it resolves to nothing. */
@@ -36,25 +36,25 @@ export type StoryAppearanceNameLookup = (characterId: string, refId: string) => 
  * back to the bare chip, because "the face changes here" is true and an id is not an answer.
  */
 export function storyAppearanceLabel(
-    appearance: StoryAppearanceSelection,
-    appearanceName: StoryAppearanceNameLookup | undefined,
+  appearance: StoryAppearanceSelection,
+  appearanceName: StoryAppearanceNameLookup | undefined
 ): string | null {
-    // A puppet's expression is a name its own model owns: there is nothing to look up, and the stored
-    // string IS the word the author typed.
-    const puppetName = appearance.puppetName?.trim();
-    if (puppetName) {
-        return puppetName;
-    }
-    const characterId = appearance.characterId;
-    if (!characterId || !appearanceName) {
-        return null;
-    }
-    const ids = [
-        ...(appearance.pose ? [appearance.pose] : []),
-        ...Object.values(appearance.tags ?? {}),
-    ];
-    const names = ids
-        .map(id => appearanceName(characterId, id))
-        .filter((name): name is string => Boolean(name?.trim()));
-    return names.length > 0 ? names.join(" · ") : null;
+  // A puppet's expression is a name its own model owns: there is nothing to look up, and the stored
+  // string IS the word the author typed.
+  const puppetName = appearance.puppetName?.trim();
+  if (puppetName) {
+    return puppetName;
+  }
+  const characterId = appearance.characterId;
+  if (!characterId || !appearanceName) {
+    return null;
+  }
+  const ids = [
+    ...(appearance.pose ? [appearance.pose] : []),
+    ...Object.values(appearance.tags ?? {})
+  ];
+  const names = ids
+    .map((id) => appearanceName(characterId, id))
+    .filter((name): name is string => Boolean(name?.trim()));
+  return names.length > 0 ? names.join(" · ") : null;
 }

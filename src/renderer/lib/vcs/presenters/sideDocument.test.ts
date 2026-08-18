@@ -16,50 +16,54 @@ import { parseSideDocument, SideDocumentParseError } from "./sideDocument";
 const PATH = "editor/ui/uidoc.json";
 
 function bytesOf(text: string): Uint8Array {
-    return new TextEncoder().encode(text);
+  return new TextEncoder().encode(text);
 }
 
 const MINIMAL = {
-    schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-    id: "ui-1",
-    name: "Interface",
-    surfaces: [],
-    components: [],
-    elements: {},
+  schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+  id: "ui-1",
+  name: "Interface",
+  surfaces: [],
+  components: [],
+  elements: {}
 };
 
 describe("reading one side of a comparison as a document", () => {
-    it("parses bytes the spec accepts", () => {
-        const document = parseSideDocument(uiDocumentSpec, PATH, bytesOf(JSON.stringify(MINIMAL)));
+  it("parses bytes the spec accepts", () => {
+    const document = parseSideDocument(uiDocumentSpec, PATH, bytesOf(JSON.stringify(MINIMAL)));
 
-        expect(document.name).toBe("Interface");
-    });
+    expect(document.name).toBe("Interface");
+  });
 
-    it("refuses bytes that are not UTF-8 text rather than decoding them lossily", () => {
-        // A multi-byte sequence cut in half, which is what a truncated write leaves behind.
-        expect(() => parseSideDocument(uiDocumentSpec, PATH, new Uint8Array([0x7b, 0xe2, 0x28])))
-            .toThrow(SideDocumentParseError);
-    });
+  it("refuses bytes that are not UTF-8 text rather than decoding them lossily", () => {
+    // A multi-byte sequence cut in half, which is what a truncated write leaves behind.
+    expect(() =>
+      parseSideDocument(uiDocumentSpec, PATH, new Uint8Array([0x7b, 0xe2, 0x28]))
+    ).toThrow(SideDocumentParseError);
+  });
 
-    it("refuses text that is not JSON", () => {
-        expect(() => parseSideDocument(uiDocumentSpec, PATH, bytesOf("not json")))
-            .toThrow(SideDocumentParseError);
-    });
+  it("refuses text that is not JSON", () => {
+    expect(() => parseSideDocument(uiDocumentSpec, PATH, bytesOf("not json"))).toThrow(
+      SideDocumentParseError
+    );
+  });
 
-    /**
-     * The spec's own refusal, carried through verbatim: it is the same gate the comparison went
-     * through in the main process, so a document this refuses is one whose change list is also
-     * missing - and the author is better told which field was wrong than "unreadable".
-     */
-    it("carries the spec's reason when the document is not of this format", () => {
-        expect(() => parseSideDocument(uiDocumentSpec, PATH, bytesOf(JSON.stringify({ ...MINIMAL, surfaces: {} }))))
-            .toThrow(/"surfaces" must be an array/);
-    });
+  /**
+   * The spec's own refusal, carried through verbatim: it is the same gate the comparison went
+   * through in the main process, so a document this refuses is one whose change list is also
+   * missing - and the author is better told which field was wrong than "unreadable".
+   */
+  it("carries the spec's reason when the document is not of this format", () => {
+    expect(() =>
+      parseSideDocument(uiDocumentSpec, PATH, bytesOf(JSON.stringify({ ...MINIMAL, surfaces: {} })))
+    ).toThrow(/"surfaces" must be an array/);
+  });
 
-    it("refuses a document a newer Studio wrote", () => {
-        const newer = { ...MINIMAL, schemaVersion: UI_DOCUMENT_SCHEMA_VERSION + 1 };
+  it("refuses a document a newer Studio wrote", () => {
+    const newer = { ...MINIMAL, schemaVersion: UI_DOCUMENT_SCHEMA_VERSION + 1 };
 
-        expect(() => parseSideDocument(uiDocumentSpec, PATH, bytesOf(JSON.stringify(newer))))
-            .toThrow(SideDocumentParseError);
-    });
+    expect(() => parseSideDocument(uiDocumentSpec, PATH, bytesOf(JSON.stringify(newer)))).toThrow(
+      SideDocumentParseError
+    );
+  });
 });

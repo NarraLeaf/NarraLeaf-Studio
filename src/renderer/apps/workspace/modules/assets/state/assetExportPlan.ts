@@ -10,16 +10,16 @@ import type { AssetActionTarget } from "./assetActionTargets";
  * record, and the folder structure from wherever the row sat in the library.
  */
 export interface AssetExportPlanEntry {
-    asset: Asset;
-    /** Relative to the folder the author picks, `/`-separated. */
-    relativePath: string;
+  asset: Asset;
+  /** Relative to the folder the author picks, `/`-separated. */
+  relativePath: string;
 }
 
 export interface BuildAssetExportPlanParams {
-    /** Rows the action applies to, from `resolveAssetActionTargets`. */
-    targets: readonly AssetActionTarget[];
-    assets: Record<AssetCategory, Asset[]>;
-    groups: Record<AssetCategory, AssetGroup[]>;
+  /** Rows the action applies to, from `resolveAssetActionTargets`. */
+  targets: readonly AssetActionTarget[];
+  assets: Record<AssetCategory, Asset[]>;
+  groups: Record<AssetCategory, AssetGroup[]>;
 }
 
 /**
@@ -31,30 +31,30 @@ export interface BuildAssetExportPlanParams {
  * the same records.
  */
 export function assetExportFileName(asset: Asset): string {
-    const name = asset.name.trim() || asset.id;
-    const ext = asset.ext?.trim().replace(/^\./, "");
-    if (!ext) {
-        return name;
-    }
-    return name.toLowerCase().endsWith(`.${ext.toLowerCase()}`) ? name : `${name}.${ext}`;
+  const name = asset.name.trim() || asset.id;
+  const ext = asset.ext?.trim().replace(/^\./, "");
+  if (!ext) {
+    return name;
+  }
+  return name.toLowerCase().endsWith(`.${ext.toLowerCase()}`) ? name : `${name}.${ext}`;
 }
 
 /** Whether any ancestor of `groupId` is itself being exported, walking up until the tree runs out. */
 function hasTargetedAncestor(
-    groupId: string | undefined,
-    targetedGroupIds: ReadonlySet<string>,
-    groupById: ReadonlyMap<string, AssetGroup>,
+  groupId: string | undefined,
+  targetedGroupIds: ReadonlySet<string>,
+  groupById: ReadonlyMap<string, AssetGroup>
 ): boolean {
-    const seen = new Set<string>();
-    let current = groupId;
-    while (current && !seen.has(current)) {
-        if (targetedGroupIds.has(current)) {
-            return true;
-        }
-        seen.add(current);
-        current = groupById.get(current)?.parentGroupId;
+  const seen = new Set<string>();
+  let current = groupId;
+  while (current && !seen.has(current)) {
+    if (targetedGroupIds.has(current)) {
+      return true;
     }
-    return false;
+    seen.add(current);
+    current = groupById.get(current)?.parentGroupId;
+  }
+  return false;
 }
 
 /**
@@ -68,55 +68,63 @@ function hasTargetedAncestor(
  * Rows already covered by a selected folder drop out, so selecting a group *and* something inside it
  * exports that thing once, in its place - the same de-duplication copy and cut already do.
  */
-export function buildAssetExportPlan({ targets, assets, groups }: BuildAssetExportPlanParams): AssetExportPlanEntry[] {
-    const allGroups = Object.values(groups).flat();
-    const groupById = new Map<string, AssetGroup>(allGroups.map(group => [group.id, group]));
+export function buildAssetExportPlan({
+  targets,
+  assets,
+  groups
+}: BuildAssetExportPlanParams): AssetExportPlanEntry[] {
+  const allGroups = Object.values(groups).flat();
+  const groupById = new Map<string, AssetGroup>(allGroups.map((group) => [group.id, group]));
 
-    const targetedGroupIds = new Set(
-        targets.filter(target => target.isGroup).map(target => target.item.id),
-    );
+  const targetedGroupIds = new Set(
+    targets.filter((target) => target.isGroup).map((target) => target.item.id)
+  );
 
-    const entries: AssetExportPlanEntry[] = [];
-    const taken = new Set<string>();
+  const entries: AssetExportPlanEntry[] = [];
+  const taken = new Set<string>();
 
-    const pushAsset = (asset: Asset, prefix: readonly string[]): void => {
-        if (taken.has(asset.id)) {
-            return;
-        }
-        taken.add(asset.id);
-        entries.push({ asset, relativePath: [...prefix, assetExportFileName(asset)].join("/") });
-    };
+  const pushAsset = (asset: Asset, prefix: readonly string[]): void => {
+    if (taken.has(asset.id)) {
+      return;
+    }
+    taken.add(asset.id);
+    entries.push({ asset, relativePath: [...prefix, assetExportFileName(asset)].join("/") });
+  };
 
-    const pushGroup = (group: AssetGroup, category: AssetCategory, prefix: readonly string[]): void => {
-        const folder = [...prefix, group.name.trim() || group.id];
-        for (const asset of assets[category] ?? []) {
-            if (asset.groupId === group.id) {
-                pushAsset(asset, folder);
-            }
-        }
-        for (const child of groups[category] ?? []) {
-            if (child.parentGroupId === group.id) {
-                pushGroup(child, category, folder);
-            }
-        }
-    };
+  const pushGroup = (
+    group: AssetGroup,
+    category: AssetCategory,
+    prefix: readonly string[]
+  ): void => {
+    const folder = [...prefix, group.name.trim() || group.id];
+    for (const asset of assets[category] ?? []) {
+      if (asset.groupId === group.id) {
+        pushAsset(asset, folder);
+      }
+    }
+    for (const child of groups[category] ?? []) {
+      if (child.parentGroupId === group.id) {
+        pushGroup(child, category, folder);
+      }
+    }
+  };
 
-    for (const target of targets) {
-        if (target.isGroup) {
-            const group = target.item as AssetGroup;
-            if (hasTargetedAncestor(group.parentGroupId, targetedGroupIds, groupById)) {
-                continue;
-            }
-            pushGroup(group, target.category, []);
-            continue;
-        }
-
-        const asset = target.item as Asset;
-        if (hasTargetedAncestor(asset.groupId, targetedGroupIds, groupById)) {
-            continue;
-        }
-        pushAsset(asset, []);
+  for (const target of targets) {
+    if (target.isGroup) {
+      const group = target.item as AssetGroup;
+      if (hasTargetedAncestor(group.parentGroupId, targetedGroupIds, groupById)) {
+        continue;
+      }
+      pushGroup(group, target.category, []);
+      continue;
     }
 
-    return entries;
+    const asset = target.item as Asset;
+    if (hasTargetedAncestor(asset.groupId, targetedGroupIds, groupById)) {
+      continue;
+    }
+    pushAsset(asset, []);
+  }
+
+  return entries;
 }

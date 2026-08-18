@@ -1,5 +1,9 @@
-import {DocumentPathPattern, documentPathParameterNames, matchDocumentPath} from "../documentPath";
-import {DocumentParseContext} from "../types";
+import {
+  DocumentPathPattern,
+  documentPathParameterNames,
+  matchDocumentPath
+} from "../documentPath";
+import { DocumentParseContext } from "../types";
 
 /**
  * The three checks every spec's `parse` runs before it hands the bytes to the format's own
@@ -16,19 +20,19 @@ import {DocumentParseContext} from "../types";
 
 /** A JSON object, as opposed to an array, a scalar or null. */
 export function isJsonObject(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** The document root as an object, or `corrupt` if it is anything else. */
 export function requireDocumentObject(
-    raw: unknown,
-    context: DocumentParseContext,
-    what: string,
+  raw: unknown,
+  context: DocumentParseContext,
+  what: string
 ): Record<string, unknown> {
-    if (!isJsonObject(raw)) {
-        return context.corrupt(`expected ${what} object at the document root, got ${describe(raw)}`);
-    }
-    return raw;
+  if (!isJsonObject(raw)) {
+    return context.corrupt(`expected ${what} object at the document root, got ${describe(raw)}`);
+  }
+  return raw;
 }
 
 /**
@@ -39,14 +43,14 @@ export function requireDocumentObject(
  * normalizer return an empty document, and an empty document is what would be written back.
  */
 export function requireOptionalMap(
-    record: Record<string, unknown>,
-    key: string,
-    context: DocumentParseContext,
+  record: Record<string, unknown>,
+  key: string,
+  context: DocumentParseContext
 ): void {
-    const value = record[key];
-    if (value !== undefined && !isJsonObject(value)) {
-        context.corrupt(`"${key}" must be an object keyed by id, got ${describe(value)}`);
-    }
+  const value = record[key];
+  if (value !== undefined && !isJsonObject(value)) {
+    context.corrupt(`"${key}" must be an object keyed by id, got ${describe(value)}`);
+  }
 }
 
 /**
@@ -62,16 +66,16 @@ export function requireOptionalMap(
  * requirement for it here would quarantine files that read back perfectly well.
  */
 export function rejectNewerSchema(
-    record: Record<string, unknown>,
-    context: DocumentParseContext,
-    version: number,
+  record: Record<string, unknown>,
+  context: DocumentParseContext,
+  version: number
 ): void {
-    const schemaVersion = record.schemaVersion;
-    if (typeof schemaVersion === "number" && schemaVersion > version) {
-        context.corrupt(
-            `written by a newer version of Studio (schema v${schemaVersion}; this build reads v${version})`,
-        );
-    }
+  const schemaVersion = record.schemaVersion;
+  if (typeof schemaVersion === "number" && schemaVersion > version) {
+    context.corrupt(
+      `written by a newer version of Studio (schema v${schemaVersion}; this build reads v${version})`
+    );
+  }
 }
 
 /**
@@ -83,27 +87,27 @@ export function rejectNewerSchema(
  * saved back to the location its contents claim - i.e. to a different file.
  */
 export function parameterFromPath(
-    pattern: DocumentPathPattern,
-    name: string,
-    context: DocumentParseContext,
+  pattern: DocumentPathPattern,
+  name: string,
+  context: DocumentParseContext
 ): string {
-    const parameters = matchDocumentPath(pattern, context.path);
-    const value = parameters?.[name];
-    if (value === undefined) {
-        return context.corrupt(
-            `is at "${context.path}", which is not a "${pattern.source}" and so carries no <${name}>`
-            + ` (this spec captures ${documentPathParameterNames(pattern).join(", ") || "nothing"})`,
-        );
-    }
-    return value;
+  const parameters = matchDocumentPath(pattern, context.path);
+  const value = parameters?.[name];
+  if (value === undefined) {
+    return context.corrupt(
+      `is at "${context.path}", which is not a "${pattern.source}" and so carries no <${name}>` +
+        ` (this spec captures ${documentPathParameterNames(pattern).join(", ") || "nothing"})`
+    );
+  }
+  return value;
 }
 
 function describe(value: unknown): string {
-    if (value === null) {
-        return "null";
-    }
-    if (Array.isArray(value)) {
-        return "an array";
-    }
-    return `a ${typeof value}`;
+  if (value === null) {
+    return "null";
+  }
+  if (Array.isArray(value)) {
+    return "an array";
+  }
+  return `a ${typeof value}`;
 }

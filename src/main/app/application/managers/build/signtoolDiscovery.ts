@@ -19,9 +19,9 @@ import path from "path";
 
 /** Windows Kits `bin` subdirectory names, by the arch of the tools inside. */
 const ARCH_DIRS: Record<string, string> = {
-    x64: "x64",
-    arm64: "arm64",
-    ia32: "x86",
+  x64: "x64",
+  arm64: "arm64",
+  ia32: "x86"
 };
 
 /**
@@ -30,54 +30,57 @@ const ARCH_DIRS: Record<string, string> = {
  * arm64 signtool is useless to any other host.
  */
 function archPreference(arch: string): string[] {
-    const host = ARCH_DIRS[arch];
-    return [...new Set([host, "x64", "x86", "arm64"].filter((value): value is string => Boolean(value)))];
+  const host = ARCH_DIRS[arch];
+  return [
+    ...new Set([host, "x64", "x86", "arm64"].filter((value): value is string => Boolean(value)))
+  ];
 }
 
 /** `10.0.26100.0` sorts above `10.0.17134.0`; anything unparseable sorts last. */
 function compareVersionsDescending(a: string, b: string): number {
-    const parse = (value: string): number[] => value.split(".").map(part => Number.parseInt(part, 10));
-    const left = parse(a);
-    const right = parse(b);
-    for (let i = 0; i < Math.max(left.length, right.length); i++) {
-        const l = left[i] ?? -1;
-        const r = right[i] ?? -1;
-        if (Number.isNaN(l) || Number.isNaN(r)) {
-            return Number.isNaN(l) ? 1 : -1;
-        }
-        if (l !== r) {
-            return r - l;
-        }
+  const parse = (value: string): number[] =>
+    value.split(".").map((part) => Number.parseInt(part, 10));
+  const left = parse(a);
+  const right = parse(b);
+  for (let i = 0; i < Math.max(left.length, right.length); i++) {
+    const l = left[i] ?? -1;
+    const r = right[i] ?? -1;
+    if (Number.isNaN(l) || Number.isNaN(r)) {
+      return Number.isNaN(l) ? 1 : -1;
     }
-    return 0;
+    if (l !== r) {
+      return r - l;
+    }
+  }
+  return 0;
 }
 
 async function isFile(candidate: string): Promise<boolean> {
-    try {
-        return (await fs.stat(candidate)).isFile();
-    } catch {
-        // A kit version this host does not have is the normal case.
-        return false;
-    }
+  try {
+    return (await fs.stat(candidate)).isFile();
+  } catch {
+    // A kit version this host does not have is the normal case.
+    return false;
+  }
 }
 
 async function versionDirs(binDir: string): Promise<string[]> {
-    try {
-        const entries = await fs.readdir(binDir, { withFileTypes: true });
-        return entries
-            .filter(entry => entry.isDirectory() && /^\d+(\.\d+)+$/.test(entry.name))
-            .map(entry => entry.name)
-            .sort(compareVersionsDescending);
-    } catch {
-        return [];
-    }
+  try {
+    const entries = await fs.readdir(binDir, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isDirectory() && /^\d+(\.\d+)+$/.test(entry.name))
+      .map((entry) => entry.name)
+      .sort(compareVersionsDescending);
+  } catch {
+    return [];
+  }
 }
 
 export type SigntoolProbeInput = {
-    env?: NodeJS.ProcessEnv;
-    platform?: NodeJS.Platform;
-    /** `process.arch` of the host, i.e. which tool arch to prefer. */
-    arch?: string;
+  env?: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
+  /** `process.arch` of the host, i.e. which tool arch to prefer. */
+  arch?: string;
 };
 
 /**
@@ -88,48 +91,52 @@ export type SigntoolProbeInput = {
  * Program Files, preferring the host's own tool arch.
  */
 export async function findSigntool(input: SigntoolProbeInput = {}): Promise<string | null> {
-    const env = input.env ?? process.env;
-    if ((input.platform ?? process.platform) !== "win32") {
-        // signtool is a Windows binary; a Windows build from a Unix host signs
-        // through electron-builder's osslsigncode path, which ignores this.
-        return null;
-    }
-    const archs = archPreference(input.arch ?? process.arch);
-
-    const override = env.SIGNTOOL_PATH?.trim();
-    if (override) {
-        // Either the binary or the directory holding it: both are what people
-        // put in a variable named like a path.
-        for (const candidate of [override, path.join(override, "signtool.exe")]) {
-            if (await isFile(candidate)) {
-                return path.resolve(candidate);
-            }
-        }
-    }
-
-    const programRoots = [env["ProgramFiles(x86)"], env.ProgramFiles, env.ProgramW6432]
-        .map(root => root?.trim())
-        .filter((root): root is string => Boolean(root));
-    const kitRoots = [...new Set(
-        programRoots.flatMap(root => ["10", "8.1"].map(kit => path.join(root, "Windows Kits", kit, "bin"))),
-    )];
-
-    for (const binDir of kitRoots) {
-        for (const version of await versionDirs(binDir)) {
-            for (const arch of archs) {
-                const candidate = path.join(binDir, version, arch, "signtool.exe");
-                if (await isFile(candidate)) {
-                    return candidate;
-                }
-            }
-        }
-        // Pre-10.0.15063 kits put the tools straight under bin/<arch>.
-        for (const arch of archs) {
-            const candidate = path.join(binDir, arch, "signtool.exe");
-            if (await isFile(candidate)) {
-                return candidate;
-            }
-        }
-    }
+  const env = input.env ?? process.env;
+  if ((input.platform ?? process.platform) !== "win32") {
+    // signtool is a Windows binary; a Windows build from a Unix host signs
+    // through electron-builder's osslsigncode path, which ignores this.
     return null;
+  }
+  const archs = archPreference(input.arch ?? process.arch);
+
+  const override = env.SIGNTOOL_PATH?.trim();
+  if (override) {
+    // Either the binary or the directory holding it: both are what people
+    // put in a variable named like a path.
+    for (const candidate of [override, path.join(override, "signtool.exe")]) {
+      if (await isFile(candidate)) {
+        return path.resolve(candidate);
+      }
+    }
+  }
+
+  const programRoots = [env["ProgramFiles(x86)"], env.ProgramFiles, env.ProgramW6432]
+    .map((root) => root?.trim())
+    .filter((root): root is string => Boolean(root));
+  const kitRoots = [
+    ...new Set(
+      programRoots.flatMap((root) =>
+        ["10", "8.1"].map((kit) => path.join(root, "Windows Kits", kit, "bin"))
+      )
+    )
+  ];
+
+  for (const binDir of kitRoots) {
+    for (const version of await versionDirs(binDir)) {
+      for (const arch of archs) {
+        const candidate = path.join(binDir, version, arch, "signtool.exe");
+        if (await isFile(candidate)) {
+          return candidate;
+        }
+      }
+    }
+    // Pre-10.0.15063 kits put the tools straight under bin/<arch>.
+    for (const arch of archs) {
+      const candidate = path.join(binDir, arch, "signtool.exe");
+      if (await isFile(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return null;
 }

@@ -3,15 +3,15 @@ import type { RevisionId, VcsRevisionDiffResult } from "@shared/types/vcs";
 import { contentClassOf } from "@shared/vcs/contentClass";
 import { LABEL_MOVED, pairMoves, type ContentProbe, type ContentSide } from "./contentDiff";
 import {
-    classOfReadSides,
-    DIFF_PATH_LIMIT,
-    DIFF_TOTAL_BYTE_BUDGET,
-    diffDocumentBytes,
-    diffDocumentContent,
-    DOCUMENT_DIFF_CHANGE_LIMIT,
-    planPathRead,
-    specForDocumentPath,
-    unreadDocumentDiff,
+  classOfReadSides,
+  DIFF_PATH_LIMIT,
+  DIFF_TOTAL_BYTE_BUDGET,
+  diffDocumentBytes,
+  diffDocumentContent,
+  DOCUMENT_DIFF_CHANGE_LIMIT,
+  planPathRead,
+  specForDocumentPath,
+  unreadDocumentDiff
 } from "./documentDiff";
 
 /**
@@ -48,193 +48,202 @@ import {
 
 /** What a revision's tree says about one file, before anything is read. */
 export interface RevisionEntry {
-    readonly size: number;
-    /** Content address. Two entries with the same one hold the same bytes. */
-    readonly hash?: string;
+  readonly size: number;
+  /** Content address. Two entries with the same one hold the same bytes. */
+  readonly hash?: string;
 }
 
 export interface RevisionDiffSource {
-    /** Paths differing between two revisions. Repository-relative. */
-    changedPaths(from: RevisionId, to: RevisionId): Promise<readonly string[]>;
-    /**
-     * Every file at one revision with its size and content address, from one walk of its tree.
-     *
-     * **Reads nothing.** The implementation must be the tree walk and only the tree walk;
-     * anything that touches a blob here defeats the whole arrangement.
-     */
-    entriesAt(revision: RevisionId): Promise<ReadonlyMap<string, RevisionEntry>>;
-    /**
-     * Bytes for named paths at one revision.
-     *
-     * `null` for a path the revision does not hold - an answer, not a failure. Must reuse the
-     * walk {@link entriesAt} already did rather than performing another; see the note above.
-     */
-    readAt(revision: RevisionId, paths: readonly string[]): Promise<ReadonlyMap<string, Buffer | null>>;
+  /** Paths differing between two revisions. Repository-relative. */
+  changedPaths(from: RevisionId, to: RevisionId): Promise<readonly string[]>;
+  /**
+   * Every file at one revision with its size and content address, from one walk of its tree.
+   *
+   * **Reads nothing.** The implementation must be the tree walk and only the tree walk;
+   * anything that touches a blob here defeats the whole arrangement.
+   */
+  entriesAt(revision: RevisionId): Promise<ReadonlyMap<string, RevisionEntry>>;
+  /**
+   * Bytes for named paths at one revision.
+   *
+   * `null` for a path the revision does not hold - an answer, not a failure. Must reuse the
+   * walk {@link entriesAt} already did rather than performing another; see the note above.
+   */
+  readAt(
+    revision: RevisionId,
+    paths: readonly string[]
+  ): Promise<ReadonlyMap<string, Buffer | null>>;
 }
 
 export interface RevisionDiffOptions {
-    readonly from: RevisionId;
-    readonly to: RevisionId;
-    /** Changes per document. Defaults to {@link DOCUMENT_DIFF_CHANGE_LIMIT}. */
-    readonly limit?: number;
-    /** Where a document that came back at a lower tier than expected is reported. */
-    readonly onDegrade?: (reason: string) => void;
+  readonly from: RevisionId;
+  readonly to: RevisionId;
+  /** Changes per document. Defaults to {@link DOCUMENT_DIFF_CHANGE_LIMIT}. */
+  readonly limit?: number;
+  /** Where a document that came back at a lower tier than expected is reported. */
+  readonly onDegrade?: (reason: string) => void;
 }
 
 export async function diffRevisions(
-    source: RevisionDiffSource,
-    options: RevisionDiffOptions,
+  source: RevisionDiffSource,
+  options: RevisionDiffOptions
 ): Promise<VcsRevisionDiffResult> {
-    const { from, to } = options;
-    const limit = options.limit ?? DOCUMENT_DIFF_CHANGE_LIMIT;
-    // Sorted and de-duplicated here rather than trusted from the backend: the order of the
-    // list is the order the budget is spent in, so an unstable one would make WHICH
-    // documents get compared depend on tree-walk order.
-    const paths = [...new Set(await source.changedPaths(from, to))].sort();
+  const { from, to } = options;
+  const limit = options.limit ?? DOCUMENT_DIFF_CHANGE_LIMIT;
+  // Sorted and de-duplicated here rather than trusted from the backend: the order of the
+  // list is the order the budget is spent in, so an unstable one would make WHICH
+  // documents get compared depend on tree-walk order.
+  const paths = [...new Set(await source.changedPaths(from, to))].sort();
 
-    if (paths.length > DIFF_PATH_LIMIT) {
-        options.onDegrade?.(
-            `${paths.length} paths differ between ${from} and ${to}, over the ${DIFF_PATH_LIMIT} path limit,`
-            + " so they are listed without being read",
-        );
-        return {
-            from,
-            to,
-            documents: paths.slice(0, DIFF_PATH_LIMIT).map((path) => unreadEntry(path)),
-            pathCount: paths.length,
-            complete: false,
-            readFailure: null,
-        };
-    }
-
-    let baseEntries: ReadonlyMap<string, RevisionEntry>;
-    let headEntries: ReadonlyMap<string, RevisionEntry>;
-    try {
-        baseEntries = await source.entriesAt(from);
-        headEntries = await source.entriesAt(to);
-    } catch (error) {
-        // The walk itself failing means nothing at all is known about either side - not even
-        // the sizes - so every path is reported as changed and uninspected. An empty list here
-        // would read as "these two versions are identical".
-        const readFailure = messageOf(error);
-        options.onDegrade?.(`could not list the files of ${from}..${to}: ${readFailure}`);
-        return {
-            from,
-            to,
-            documents: paths.map((path) => unreadEntry(path)),
-            pathCount: paths.length,
-            complete: false,
-            readFailure,
-        };
-    }
-
-    // Renames are settled before anything is planned, so a file that only moved costs no read
-    // on either side - which is the whole point of pairing them.
-    const moves = pairMoves(
-        presenceProbes(paths, baseEntries, headEntries),
-        presenceProbes(paths, headEntries, baseEntries),
+  if (paths.length > DIFF_PATH_LIMIT) {
+    options.onDegrade?.(
+      `${paths.length} paths differ between ${from} and ${to}, over the ${DIFF_PATH_LIMIT} path limit,` +
+        " so they are listed without being read"
     );
-    const paired = new Set([...moves.keys(), ...moves.values()]);
-    const plan = planReads(paths.filter((path) => !paired.has(path)), baseEntries, headEntries);
-    const planned = new Set(plan.read);
+    return {
+      from,
+      to,
+      documents: paths.slice(0, DIFF_PATH_LIMIT).map((path) => unreadEntry(path)),
+      pathCount: paths.length,
+      complete: false,
+      readFailure: null
+    };
+  }
 
-    let base: ReadonlyMap<string, Buffer | null> = new Map();
-    let head: ReadonlyMap<string, Buffer | null> = new Map();
-    let readFailure: string | null = null;
-    if (plan.read.length > 0) {
-        try {
-            base = await source.readAt(from, plan.read);
-            head = await source.readAt(to, plan.read);
-        } catch (error) {
-            // The tree is intact and only the blobs are unreachable - the measured case being
-            // content written by an online commit, which the writing process cannot fetch back
-            // even though the walk still lists it (docs/version-control.md §4.29). The sizes
-            // and addresses in hand are still true, so the paths that needed no bytes are still
-            // described properly and only the ones that needed them are reported as unread.
-            readFailure = messageOf(error);
-            options.onDegrade?.(`could not read the bytes of ${from}..${to}: ${readFailure}`);
-        }
+  let baseEntries: ReadonlyMap<string, RevisionEntry>;
+  let headEntries: ReadonlyMap<string, RevisionEntry>;
+  try {
+    baseEntries = await source.entriesAt(from);
+    headEntries = await source.entriesAt(to);
+  } catch (error) {
+    // The walk itself failing means nothing at all is known about either side - not even
+    // the sizes - so every path is reported as changed and uninspected. An empty list here
+    // would read as "these two versions are identical".
+    const readFailure = messageOf(error);
+    options.onDegrade?.(`could not list the files of ${from}..${to}: ${readFailure}`);
+    return {
+      from,
+      to,
+      documents: paths.map((path) => unreadEntry(path)),
+      pathCount: paths.length,
+      complete: false,
+      readFailure
+    };
+  }
+
+  // Renames are settled before anything is planned, so a file that only moved costs no read
+  // on either side - which is the whole point of pairing them.
+  const moves = pairMoves(
+    presenceProbes(paths, baseEntries, headEntries),
+    presenceProbes(paths, headEntries, baseEntries)
+  );
+  const paired = new Set([...moves.keys(), ...moves.values()]);
+  const plan = planReads(
+    paths.filter((path) => !paired.has(path)),
+    baseEntries,
+    headEntries
+  );
+  const planned = new Set(plan.read);
+
+  let base: ReadonlyMap<string, Buffer | null> = new Map();
+  let head: ReadonlyMap<string, Buffer | null> = new Map();
+  let readFailure: string | null = null;
+  if (plan.read.length > 0) {
+    try {
+      base = await source.readAt(from, plan.read);
+      head = await source.readAt(to, plan.read);
+    } catch (error) {
+      // The tree is intact and only the blobs are unreachable - the measured case being
+      // content written by an online commit, which the writing process cannot fetch back
+      // even though the walk still lists it (docs/version-control.md §4.29). The sizes
+      // and addresses in hand are still true, so the paths that needed no bytes are still
+      // described properly and only the ones that needed them are reported as unread.
+      readFailure = messageOf(error);
+      options.onDegrade?.(`could not read the bytes of ${from}..${to}: ${readFailure}`);
+    }
+  }
+
+  const documents: DocumentDiffEntry[] = [];
+  const complete = plan.complete && !readFailure;
+
+  for (const path of paths) {
+    const before = baseEntries.get(path);
+    const after = headEntries.get(path);
+    if (!before && !after) {
+      // A directory, which the backend reports as a changed path in its own right.
+      // Neither side holds bytes for it and there is nothing to say about it.
+      continue;
+    }
+    // The removal half of a rename; the pair is reported once, on the path it moved to.
+    if (moves.has(path) === false && paired.has(path)) {
+      continue;
     }
 
-    const documents: DocumentDiffEntry[] = [];
-    const complete = plan.complete && !readFailure;
+    const kind = presenceKind(before, after);
+    const spec = specForDocumentPath(path);
+    const documentKind = spec ? { documentKind: spec.kind } : {};
+    // The name is all this side has until bytes arrive: a revision tree has no ranged fetch,
+    // so nothing here can sniff a header the way the working-tree comparison does. Refined
+    // below for the paths that were read whole anyway.
+    const named = { contentClass: contentClassOf(path) };
 
-    for (const path of paths) {
-        const before = baseEntries.get(path);
-        const after = headEntries.get(path);
-        if (!before && !after) {
-            // A directory, which the backend reports as a changed path in its own right.
-            // Neither side holds bytes for it and there is nothing to say about it.
-            continue;
+    const movedFrom = moves.get(path);
+    if (movedFrom !== undefined) {
+      documents.push({
+        path,
+        kind: "moved",
+        ...documentKind,
+        ...named,
+        diff: {
+          changes: [
+            { path: [], kind: "moved", label: { key: LABEL_MOVED, params: { from: movedFrom } } }
+          ],
+          complete: true,
+          total: 1,
+          tier: "opaque"
         }
-        // The removal half of a rename; the pair is reported once, on the path it moved to.
-        if (moves.has(path) === false && paired.has(path)) {
-            continue;
-        }
-
-        const kind = presenceKind(before, after);
-        const spec = specForDocumentPath(path);
-        const documentKind = spec ? { documentKind: spec.kind } : {};
-        // The name is all this side has until bytes arrive: a revision tree has no ranged fetch,
-        // so nothing here can sniff a header the way the working-tree comparison does. Refined
-        // below for the paths that were read whole anyway.
-        const named = { contentClass: contentClassOf(path) };
-
-        const movedFrom = moves.get(path);
-        if (movedFrom !== undefined) {
-            documents.push({
-                path,
-                kind: "moved",
-                ...documentKind,
-                ...named,
-                diff: {
-                    changes: [{ path: [], kind: "moved", label: { key: LABEL_MOVED, params: { from: movedFrom } } }],
-                    complete: true,
-                    total: 1,
-                    tier: "opaque",
-                },
-            });
-            continue;
-        }
-
-        if (planned.has(path)) {
-            if (readFailure) {
-                documents.push({ path, kind, ...documentKind, ...named, diff: unreadDocumentDiff(kind) });
-                continue;
-            }
-            const beforeBytes = base.get(path) ?? null;
-            const afterBytes = head.get(path) ?? null;
-            if (!beforeBytes && !afterBytes) {
-                continue;
-            }
-            documents.push({
-                path,
-                kind,
-                ...documentKind,
-                // The one place this side can do better than the name, and the place it matters:
-                // Studio's content store gives its files no extension at all.
-                contentClass: classOfReadSides(path, afterBytes, beforeBytes),
-                diff: diffDocumentBytes(
-                    { path, base: beforeBytes, head: afterBytes, spec },
-                    { limit, onDegrade: options.onDegrade },
-                ),
-            });
-            continue;
-        }
-
-        documents.push({
-            path,
-            kind,
-            ...documentKind,
-            ...named,
-            diff: diffDocumentContent(
-                { path, base: sideOf(before), head: sideOf(after) },
-                { limit, onDegrade: options.onDegrade },
-            ),
-        });
+      });
+      continue;
     }
 
-    return { from, to, documents, pathCount: documents.length, complete, readFailure };
+    if (planned.has(path)) {
+      if (readFailure) {
+        documents.push({ path, kind, ...documentKind, ...named, diff: unreadDocumentDiff(kind) });
+        continue;
+      }
+      const beforeBytes = base.get(path) ?? null;
+      const afterBytes = head.get(path) ?? null;
+      if (!beforeBytes && !afterBytes) {
+        continue;
+      }
+      documents.push({
+        path,
+        kind,
+        ...documentKind,
+        // The one place this side can do better than the name, and the place it matters:
+        // Studio's content store gives its files no extension at all.
+        contentClass: classOfReadSides(path, afterBytes, beforeBytes),
+        diff: diffDocumentBytes(
+          { path, base: beforeBytes, head: afterBytes, spec },
+          { limit, onDegrade: options.onDegrade }
+        )
+      });
+      continue;
+    }
+
+    documents.push({
+      path,
+      kind,
+      ...documentKind,
+      ...named,
+      diff: diffDocumentContent(
+        { path, base: sideOf(before), head: sideOf(after) },
+        { limit, onDegrade: options.onDegrade }
+      )
+    });
+  }
+
+  return { from, to, documents, pathCount: documents.length, complete, readFailure };
 }
 
 /**
@@ -244,30 +253,30 @@ export async function diffRevisions(
  * built from one definition rather than two mirrored loops.
  */
 function presenceProbes(
-    paths: readonly string[],
-    entries: ReadonlyMap<string, RevisionEntry>,
-    other: ReadonlyMap<string, RevisionEntry>,
+  paths: readonly string[],
+  entries: ReadonlyMap<string, RevisionEntry>,
+  other: ReadonlyMap<string, RevisionEntry>
 ): Map<string, ContentProbe> {
-    const out = new Map<string, ContentProbe>();
-    for (const path of paths) {
-        const entry = entries.get(path);
-        if (entry && !other.has(path)) {
-            out.set(path, probeOf(entry));
-        }
+  const out = new Map<string, ContentProbe>();
+  for (const path of paths) {
+    const entry = entries.get(path);
+    if (entry && !other.has(path)) {
+      out.set(path, probeOf(entry));
     }
-    return out;
+  }
+  return out;
 }
 
 /** One side as the content step sees it: what the tree said, and no bytes. */
 function sideOf(entry: RevisionEntry | undefined): ContentSide | null {
-    return entry ? { probe: probeOf(entry) } : null;
+  return entry ? { probe: probeOf(entry) } : null;
 }
 
 interface ReadPlan {
-    /** Paths whose bytes are worth pulling, in the order the budget was spent on them. */
-    readonly read: string[];
-    /** False when the byte budget stopped the plan short of everything it wanted. */
-    readonly complete: boolean;
+  /** Paths whose bytes are worth pulling, in the order the budget was spent on them. */
+  readonly read: string[];
+  /** False when the byte budget stopped the plan short of everything it wanted. */
+  readonly complete: boolean;
 }
 
 /**
@@ -278,57 +287,57 @@ interface ReadPlan {
  * them. A budget enforced after the read never prevented the read.
  */
 function planReads(
-    paths: readonly string[],
-    baseEntries: ReadonlyMap<string, RevisionEntry>,
-    headEntries: ReadonlyMap<string, RevisionEntry>,
+  paths: readonly string[],
+  baseEntries: ReadonlyMap<string, RevisionEntry>,
+  headEntries: ReadonlyMap<string, RevisionEntry>
 ): ReadPlan {
-    const read: string[] = [];
-    let budget = DIFF_TOTAL_BYTE_BUDGET;
-    let complete = true;
+  const read: string[] = [];
+  let budget = DIFF_TOTAL_BYTE_BUDGET;
+  let complete = true;
 
-    for (const path of paths) {
-        const before = baseEntries.get(path);
-        const after = headEntries.get(path);
-        if (!before && !after) {
-            continue;
-        }
-        const wanted = planPathRead(path, before?.size ?? 0, after?.size ?? 0);
-        if (wanted === 0) {
-            continue;
-        }
-        if (wanted > budget) {
-            complete = false;
-            continue;
-        }
-        budget -= wanted;
-        read.push(path);
+  for (const path of paths) {
+    const before = baseEntries.get(path);
+    const after = headEntries.get(path);
+    if (!before && !after) {
+      continue;
     }
-    return { read, complete };
+    const wanted = planPathRead(path, before?.size ?? 0, after?.size ?? 0);
+    if (wanted === 0) {
+      continue;
+    }
+    if (wanted > budget) {
+      complete = false;
+      continue;
+    }
+    budget -= wanted;
+    read.push(path);
+  }
+  return { read, complete };
 }
 
 function probeOf(entry: RevisionEntry): ContentProbe {
-    return { size: entry.size, ...(entry.hash ? { hash: entry.hash } : {}) };
+  return { size: entry.size, ...(entry.hash ? { hash: entry.hash } : {}) };
 }
 
 /** Which side holds the document. A revision comparison has no other way to tell. */
 function presenceKind(base: unknown, head: unknown): DocumentChangeKind {
-    if (!base) return "added";
-    if (!head) return "removed";
-    return "changed";
+  if (!base) return "added";
+  if (!head) return "removed";
+  return "changed";
 }
 
 /** A path that is known to have changed and was deliberately not read. See {@link unreadDocumentDiff}. */
 function unreadEntry(path: string, kind: DocumentChangeKind = "changed"): DocumentDiffEntry {
-    const spec = specForDocumentPath(path);
-    return {
-        path,
-        kind,
-        ...(spec ? { documentKind: spec.kind } : {}),
-        contentClass: contentClassOf(path),
-        diff: unreadDocumentDiff(kind),
-    };
+  const spec = specForDocumentPath(path);
+  return {
+    path,
+    kind,
+    ...(spec ? { documentKind: spec.kind } : {}),
+    contentClass: contentClassOf(path),
+    diff: unreadDocumentDiff(kind)
+  };
 }
 
 function messageOf(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+  return error instanceof Error ? error.message : String(error);
 }

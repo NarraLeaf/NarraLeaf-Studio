@@ -1,207 +1,210 @@
 /** `uiEditor` - the workspace UI editor: surfaces panel, surface editor canvas, component library, and snap settings. */
 export const uiEditor = {
-    surfaceKind: {
-        page: "Page",
-        gameUi: "Game UI",
-        pageDescription: "Pages are complete screens such as title, settings, save, history, or gallery.",
-        gameUiDescription: "Game UI belongs to active gameplay, such as dialog, choices, HUD, shortcuts, and notifications.",
+  surfaceKind: {
+    page: "Page",
+    gameUi: "Game UI",
+    pageDescription:
+      "Pages are complete screens such as title, settings, save, history, or gallery.",
+    gameUiDescription:
+      "Game UI belongs to active gameplay, such as dialog, choices, HUD, shortcuts, and notifications."
+  },
+  // The five stage slots a Game UI can take. Named once here because the author meets the same
+  // five in the create dialog, the surface list, the properties panel and the template store.
+  stageSlot: {
+    onStage: "On Stage",
+    dialog: "Dialog",
+    notification: "Notification",
+    choice: "Choice",
+    nvl: "NVL"
+  },
+  stageSlotDescription: {
+    onStage: "Always available while the game is running.",
+    dialog: "The main conversation or narration interface.",
+    notification: "Short runtime messages and prompts.",
+    choice: "Player choice menus and decision prompts.",
+    nvl: "Full-screen novel-mode dialog history."
+  },
+  panel: {
+    interfaceType: "Interface Type",
+    createPage: "Create Page",
+    createGameUi: "Create Game UI",
+    globalSubtitle: "Global",
+    blueprintType: "Blueprint",
+    openGlobalBlueprint: "Open global blueprint",
+    globalBlueprintUnavailable: "Global blueprint unavailable",
+    openSurface: "Open {label}",
+    renameSurface: "Rename {label}",
+    duplicateSurface: "Duplicate {label}",
+    deleteSurface: "Delete {label}",
+    surfaceActions: "{label} actions",
+    deleteConfirm: "Delete {label}?",
+    deleteDetail: "All elements in this {label} are removed.",
+    duplicateFailed: "Page could not be duplicated.",
+    pageValidationHint: "Check the page name and size before creating it.",
+    gameUiSlotHint: "Select an available Game UI slot before creating it.",
+    allSlotsUsed:
+      "All Game UI slots already have a surface. Open an existing Game UI from the list."
+  },
+  naming: {
+    page: "Page {index}",
+    gameUi: "{slot} UI",
+    component: "Component {index}"
+  },
+  createDialog: {
+    slotIntro: "Choose where this Game UI belongs during gameplay.",
+    slotAlreadyCreated: "Already created. Open the existing Game UI from the list.",
+    resolutionNote: "Game UI uses the project resolution: {width}×{height}.",
+    nameRequired: "Name is required",
+    width: "Width",
+    height: "Height",
+    positiveIntegerError: "Use a positive integer"
+  },
+  componentLibrary: {
+    title: "Component Library",
+    createComponent: "Create component",
+    createComponentTitle: "Create Component",
+    rename: "Rename…",
+    duplicateSelected: "Duplicate selected",
+    deleteSelected: "Delete selected",
+    selectedCount: "{count} selected",
+    emptyCreate: "Create a component or add selected elements from the canvas.",
+    noMatches: "No matches.",
+    selectComponent: "Select {name}",
+    componentActions: "Component actions",
+    deleteReferencedTitle: "Delete referenced components?",
+    deleteReferencedDetail: {
+      one: "{count} linked instance will show as missing until unlinked or replaced.",
+      other: "{count} linked instances will show as missing until unlinked or replaced."
     },
-    // The five stage slots a Game UI can take. Named once here because the author meets the same
-    // five in the create dialog, the surface list, the properties panel and the template store.
-    stageSlot: {
-        onStage: "On Stage",
-        dialog: "Dialog",
-        notification: "Notification",
-        choice: "Choice",
-        nvl: "NVL",
+    refs: "{count} refs"
+  },
+  editor: {
+    componentNotFound: "Component not found",
+    interfaceNotFound: "Interface not found",
+    outlineTitle: "UI Outline",
+    expandOutline: "Expand outline panel",
+    collapseOutline: "Collapse outline panel",
+    loadingServices: "Loading editor services…",
+    selectTool: "Select tool",
+    panTool: "Pan the canvas",
+    openInDevMode: "Open this interface in Dev Mode",
+    componentDefinitionHint: "Components are edited as definitions",
+    bindElement: "Bind Element",
+    bindSelectHint: "Select one element on this Surface",
+    staticChecks: "Static checks (editor only): ",
+    devModeHint: "Open Dev Mode for real execution, node traces, and Host API calls.",
+    layerFallback: "Layer",
+    openComponent: "Open component",
+    unlinkComponent: "Unlink component"
+  },
+  zoom: {
+    label: "Zoom",
+    actualSize: "Actual size",
+    fitArea: "Fit the editing area",
+    fillArea: "Fill the editing area",
+    fitWidth: "Fit the width",
+    custom: "Custom"
+  },
+  snap: {
+    label: "Smart snap",
+    tip: "Smart snap to guides and neighbors (hold Alt to temporarily disable)",
+    settings: "Snap settings",
+    targets: "Snap targets",
+    canvasLayout: "Canvas layout (edges & center)",
+    elementBorders: "Element borders (edge to edge)",
+    elementLayout: "Element layout (centers)"
+  },
+  contextMenu: {
+    pasteIntoContainer: "Paste into container",
+    insert: "Insert",
+    insertChild: "Insert child",
+    selectAll: "Select all",
+    expandAll: "Expand all",
+    collapseAll: "Collapse all",
+    rename: "Rename…",
+    showSelected: "Show selected",
+    hideSelected: "Hide selected",
+    addToComponentLibrary: "Add to Component Library",
+    addToGroup: "Add to group",
+    ungroup: "Ungroup",
+    arrange: {
+      label: "Arrange",
+      bringToFront: "Bring to front",
+      sendToBack: "Send to back",
+      bringForward: "Bring forward",
+      sendBackward: "Send backward"
+    }
+  },
+  // One home for the eight command names: the canvas toolbar, the canvas context menu and the
+  // outline context menu all render the same words, so they are not repeated per surface.
+  align: {
+    label: "Align",
+    distribute: "Distribute",
+    left: "Align left",
+    horizontalCenter: "Center horizontally",
+    right: "Align right",
+    top: "Align top",
+    verticalCenter: "Center vertically",
+    bottom: "Align bottom",
+    distributeHorizontal: "Distribute horizontally",
+    distributeVertical: "Distribute vertically"
+  },
+  preview: {
+    label: "Screen preview",
+    aspect: "Aspect ratio",
+    safeArea: "Safe area",
+    off: "Off",
+    /** Shown when the letterbox bars swallow every inset — the device is genuinely clear. */
+    noOverlap: "No overlap",
+    /** Edge names for the inset readout, e.g. "bottom 58". Lowercase: they sit mid-line. */
+    inset: {
+      top: "top",
+      right: "right",
+      bottom: "bottom",
+      left: "left"
+    }
+  },
+  templateStore: {
+    open: "Start from a template",
+    title: "UI templates",
+    search: "Search templates",
+    add: "Add to project",
+    retry: "Retry",
+    empty: "No templates available.",
+    emptyFiltered: "No templates match your search.",
+    applied: "Added “{name}”.",
+    slotTaken: "The {slot} slot already has a Game UI.",
+    slotOccupied: "Slot in use",
+    openDetail: "See this template",
+    target: "Adds",
+    noDescription: "No description.",
+    detailBack: "Back to the list",
+    publisher: "By",
+    version: "Version",
+    themesTitle: "Themes",
+    themesBack: "All themes",
+    themeOpen: "See the screens",
+    searchThemes: "Search themes",
+    themeScreens: {
+      one: "{count} screen",
+      other: "{count} screens"
     },
-    stageSlotDescription: {
-        onStage: "Always available while the game is running.",
-        dialog: "The main conversation or narration interface.",
-        notification: "Short runtime messages and prompts.",
-        choice: "Player choice menus and decision prompts.",
-        nvl: "Full-screen novel-mode dialog history.",
+    assetsSkipped: {
+      one: "{count} resource could not be imported.",
+      other: "{count} resources could not be imported."
     },
-    panel: {
-        interfaceType: "Interface Type",
-        createPage: "Create Page",
-        createGameUi: "Create Game UI",
-        globalSubtitle: "Global",
-        blueprintType: "Blueprint",
-        openGlobalBlueprint: "Open global blueprint",
-        globalBlueprintUnavailable: "Global blueprint unavailable",
-        openSurface: "Open {label}",
-        renameSurface: "Rename {label}",
-        duplicateSurface: "Duplicate {label}",
-        deleteSurface: "Delete {label}",
-        surfaceActions: "{label} actions",
-        deleteConfirm: "Delete {label}?",
-        deleteDetail: "All elements in this {label} are removed.",
-        duplicateFailed: "Page could not be duplicated.",
-        pageValidationHint: "Check the page name and size before creating it.",
-        gameUiSlotHint: "Select an available Game UI slot before creating it.",
-        allSlotsUsed: "All Game UI slots already have a surface. Open an existing Game UI from the list.",
+    componentsAdded: {
+      one: "{count} component was added to the library.",
+      other: "{count} components were added to the library."
     },
-    naming: {
-        page: "Page {index}",
-        gameUi: "{slot} UI",
-        component: "Component {index}",
+    placement: {
+      page: "A new page",
+      gameUi: "Game UI · {slot}"
     },
-    createDialog: {
-        slotIntro: "Choose where this Game UI belongs during gameplay.",
-        slotAlreadyCreated: "Already created. Open the existing Game UI from the list.",
-        resolutionNote: "Game UI uses the project resolution: {width}×{height}.",
-        nameRequired: "Name is required",
-        width: "Width",
-        height: "Height",
-        positiveIntegerError: "Use a positive integer",
-    },
-    componentLibrary: {
-        title: "Component Library",
-        createComponent: "Create component",
-        createComponentTitle: "Create Component",
-        rename: "Rename…",
-        duplicateSelected: "Duplicate selected",
-        deleteSelected: "Delete selected",
-        selectedCount: "{count} selected",
-        emptyCreate: "Create a component or add selected elements from the canvas.",
-        noMatches: "No matches.",
-        selectComponent: "Select {name}",
-        componentActions: "Component actions",
-        deleteReferencedTitle: "Delete referenced components?",
-        deleteReferencedDetail: {
-            one: "{count} linked instance will show as missing until unlinked or replaced.",
-            other: "{count} linked instances will show as missing until unlinked or replaced.",
-        },
-        refs: "{count} refs",
-    },
-    editor: {
-        componentNotFound: "Component not found",
-        interfaceNotFound: "Interface not found",
-        outlineTitle: "UI Outline",
-        expandOutline: "Expand outline panel",
-        collapseOutline: "Collapse outline panel",
-        loadingServices: "Loading editor services…",
-        selectTool: "Select tool",
-        panTool: "Pan the canvas",
-        openInDevMode: "Open this interface in Dev Mode",
-        componentDefinitionHint: "Components are edited as definitions",
-        bindElement: "Bind Element",
-        bindSelectHint: "Select one element on this Surface",
-        staticChecks: "Static checks (editor only): ",
-        devModeHint: "Open Dev Mode for real execution, node traces, and Host API calls.",
-        layerFallback: "Layer",
-        openComponent: "Open component",
-        unlinkComponent: "Unlink component",
-    },
-    zoom: {
-        label: "Zoom",
-        actualSize: "Actual size",
-        fitArea: "Fit the editing area",
-        fillArea: "Fill the editing area",
-        fitWidth: "Fit the width",
-        custom: "Custom",
-    },
-    snap: {
-        label: "Smart snap",
-        tip: "Smart snap to guides and neighbors (hold Alt to temporarily disable)",
-        settings: "Snap settings",
-        targets: "Snap targets",
-        canvasLayout: "Canvas layout (edges & center)",
-        elementBorders: "Element borders (edge to edge)",
-        elementLayout: "Element layout (centers)",
-    },
-    contextMenu: {
-        pasteIntoContainer: "Paste into container",
-        insert: "Insert",
-        insertChild: "Insert child",
-        selectAll: "Select all",
-        expandAll: "Expand all",
-        collapseAll: "Collapse all",
-        rename: "Rename…",
-        showSelected: "Show selected",
-        hideSelected: "Hide selected",
-        addToComponentLibrary: "Add to Component Library",
-        addToGroup: "Add to group",
-        ungroup: "Ungroup",
-        arrange: {
-            label: "Arrange",
-            bringToFront: "Bring to front",
-            sendToBack: "Send to back",
-            bringForward: "Bring forward",
-            sendBackward: "Send backward",
-        },
-    },
-    // One home for the eight command names: the canvas toolbar, the canvas context menu and the
-    // outline context menu all render the same words, so they are not repeated per surface.
-    align: {
-        label: "Align",
-        distribute: "Distribute",
-        left: "Align left",
-        horizontalCenter: "Center horizontally",
-        right: "Align right",
-        top: "Align top",
-        verticalCenter: "Center vertically",
-        bottom: "Align bottom",
-        distributeHorizontal: "Distribute horizontally",
-        distributeVertical: "Distribute vertically",
-    },
-    preview: {
-        label: "Screen preview",
-        aspect: "Aspect ratio",
-        safeArea: "Safe area",
-        off: "Off",
-        /** Shown when the letterbox bars swallow every inset — the device is genuinely clear. */
-        noOverlap: "No overlap",
-        /** Edge names for the inset readout, e.g. "bottom 58". Lowercase: they sit mid-line. */
-        inset: {
-            top: "top",
-            right: "right",
-            bottom: "bottom",
-            left: "left",
-        },
-    },
-    templateStore: {
-        open: "Start from a template",
-        title: "UI templates",
-        search: "Search templates",
-        add: "Add to project",
-        retry: "Retry",
-        empty: "No templates available.",
-        emptyFiltered: "No templates match your search.",
-        applied: "Added “{name}”.",
-        slotTaken: "The {slot} slot already has a Game UI.",
-        slotOccupied: "Slot in use",
-        openDetail: "See this template",
-        target: "Adds",
-        noDescription: "No description.",
-        detailBack: "Back to the list",
-        publisher: "By",
-        version: "Version",
-        themesTitle: "Themes",
-        themesBack: "All themes",
-        themeOpen: "See the screens",
-        searchThemes: "Search themes",
-        themeScreens: {
-            one: "{count} screen",
-            other: "{count} screens",
-        },
-        assetsSkipped: {
-            one: "{count} resource could not be imported.",
-            other: "{count} resources could not be imported.",
-        },
-        componentsAdded: {
-            one: "{count} component was added to the library.",
-            other: "{count} components were added to the library.",
-        },
-        placement: {
-            page: "A new page",
-            gameUi: "Game UI · {slot}",
-        },
-        error: {
-            load: "Could not load the template store.",
-            offline: "Template store unavailable",
-            apply: "Could not apply the template.",
-        },
-    },
+    error: {
+      load: "Could not load the template store.",
+      offline: "Template store unavailable",
+      apply: "Could not apply the template."
+    }
+  }
 } as const;

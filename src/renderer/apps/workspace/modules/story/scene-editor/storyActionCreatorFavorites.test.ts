@@ -14,16 +14,63 @@ import { LEGACY_FAVORITE_TO_SPEC_ID, migrateStarredActionIds } from "./storyActi
 
 /** The 57 ids `ACTION_COMMANDS` shipped - frozen here because the catalogue itself is gone. */
 const LEGACY_STARRABLE_IDS = [
-    "dialogue", "narration", "characterEnter", "characterMove", "characterExpression", "characterExit",
-    "background", "jump", "choice", "condition", "repeat", "parallel", "race", "sequence",
-    "waitDuration", "waitClick", "setVariable", "incrementVariable", "decrementVariable",
-    "toggleVariable", "resetVariable", "declareSceneVariable", "declareSavedVariable",
-    "declarePersistentVariable", "conditionIf", "executeScript", "imageCreate", "imageSetSource",
-    "imageShow", "imageHide", "displayableTransform", "displayableShow", "displayableHide",
-    "displayableEffect", "textCreate", "textSet", "textShow", "textHide", "textFont", "layerCreate",
-    "layerZIndex", "videoCreate", "videoShow", "videoHide", "videoPlay", "nvl", "screenBlink",
-    "screenVignette", "bgm", "sound", "stopSound", "pauseSound", "resumeSound", "soundVolume",
-    "soundRate", "muteSound", "note",
+  "dialogue",
+  "narration",
+  "characterEnter",
+  "characterMove",
+  "characterExpression",
+  "characterExit",
+  "background",
+  "jump",
+  "choice",
+  "condition",
+  "repeat",
+  "parallel",
+  "race",
+  "sequence",
+  "waitDuration",
+  "waitClick",
+  "setVariable",
+  "incrementVariable",
+  "decrementVariable",
+  "toggleVariable",
+  "resetVariable",
+  "declareSceneVariable",
+  "declareSavedVariable",
+  "declarePersistentVariable",
+  "conditionIf",
+  "executeScript",
+  "imageCreate",
+  "imageSetSource",
+  "imageShow",
+  "imageHide",
+  "displayableTransform",
+  "displayableShow",
+  "displayableHide",
+  "displayableEffect",
+  "textCreate",
+  "textSet",
+  "textShow",
+  "textHide",
+  "textFont",
+  "layerCreate",
+  "layerZIndex",
+  "videoCreate",
+  "videoShow",
+  "videoHide",
+  "videoPlay",
+  "nvl",
+  "screenBlink",
+  "screenVignette",
+  "bgm",
+  "sound",
+  "stopSound",
+  "pauseSound",
+  "resumeSound",
+  "soundVolume",
+  "soundRate",
+  "muteSound",
+  "note"
 ] as const;
 
 /**
@@ -34,50 +81,60 @@ const LEGACY_STARRABLE_IDS = [
 const DROPPED = ["conditionIf", "narration", "declareSavedVariable", "declarePersistentVariable"];
 
 describe("starred favourites migration", () => {
-    it("covers the whole legacy catalogue - no stored favourite falls through unmapped", () => {
-        for (const id of LEGACY_STARRABLE_IDS) {
-            expect(Object.hasOwn(LEGACY_FAVORITE_TO_SPEC_ID, id)).toBe(true);
-        }
-    });
+  it("covers the whole legacy catalogue - no stored favourite falls through unmapped", () => {
+    for (const id of LEGACY_STARRABLE_IDS) {
+      expect(Object.hasOwn(LEGACY_FAVORITE_TO_SPEC_ID, id)).toBe(true);
+    }
+  });
 
-    it("lands every legacy id on a live spec, except the two documented drops", () => {
-        for (const id of LEGACY_STARRABLE_IDS) {
-            const migrated = migrateStarredActionIds([id]);
-            if (DROPPED.includes(id)) {
-                expect(migrated).toEqual([]);
-                continue;
-            }
-            expect(migrated).toHaveLength(1);
-            expect(getCommandSpec(migrated[0])).toBeTruthy();
-        }
-    });
+  it("lands every legacy id on a live spec, except the two documented drops", () => {
+    for (const id of LEGACY_STARRABLE_IDS) {
+      const migrated = migrateStarredActionIds([id]);
+      if (DROPPED.includes(id)) {
+        expect(migrated).toEqual([]);
+        continue;
+      }
+      expect(migrated).toHaveLength(1);
+      expect(getCommandSpec(migrated[0])).toBeTruthy();
+    }
+  });
 
-    it("loses nothing but the drops when the whole catalogue is starred", () => {
-        const migrated = migrateStarredActionIds([...LEGACY_STARRABLE_IDS]);
-        // Ten "object type × verb" entries collapse onto the generic verbs that replaced them, so the
-        // set is smaller by construction - what must NOT happen is a survivor going missing.
-        for (const id of LEGACY_STARRABLE_IDS) {
-            if (DROPPED.includes(id)) {
-                continue;
-            }
-            expect(migrated).toContain(LEGACY_FAVORITE_TO_SPEC_ID[id]);
-        }
-        expect(migrated.every(id => Boolean(getCommandSpec(id)))).toBe(true);
-        expect(new Set(migrated).size).toBe(migrated.length);
-    });
+  it("loses nothing but the drops when the whole catalogue is starred", () => {
+    const migrated = migrateStarredActionIds([...LEGACY_STARRABLE_IDS]);
+    // Ten "object type × verb" entries collapse onto the generic verbs that replaced them, so the
+    // set is smaller by construction - what must NOT happen is a survivor going missing.
+    for (const id of LEGACY_STARRABLE_IDS) {
+      if (DROPPED.includes(id)) {
+        continue;
+      }
+      expect(migrated).toContain(LEGACY_FAVORITE_TO_SPEC_ID[id]);
+    }
+    expect(migrated.every((id) => Boolean(getCommandSpec(id)))).toBe(true);
+    expect(new Set(migrated).size).toBe(migrated.length);
+  });
 
-    it("folds the five old show entries onto one starred /show, keeping first-seen order", () => {
-        expect(migrateStarredActionIds([
-            "imageShow", "textShow", "videoShow", "displayableShow", "characterEnter", "bgm",
-        ])).toEqual(["show", "bgm"]);
-    });
+  it("folds the five old show entries onto one starred /show, keeping first-seen order", () => {
+    expect(
+      migrateStarredActionIds([
+        "imageShow",
+        "textShow",
+        "videoShow",
+        "displayableShow",
+        "characterEnter",
+        "bgm"
+      ])
+    ).toEqual(["show", "bgm"]);
+  });
 
-    it("is idempotent - a migrated list migrates to itself", () => {
-        const once = migrateStarredActionIds([...LEGACY_STARRABLE_IDS]);
-        expect(migrateStarredActionIds(once)).toEqual(once);
-    });
+  it("is idempotent - a migrated list migrates to itself", () => {
+    const once = migrateStarredActionIds([...LEGACY_STARRABLE_IDS]);
+    expect(migrateStarredActionIds(once)).toEqual(once);
+  });
 
-    it("keeps ids it does not own, so a plugin action stays starred", () => {
-        expect(migrateStarredActionIds(["acme.confetti", "imageHide"])).toEqual(["acme.confetti", "hide"]);
-    });
+  it("keeps ids it does not own, so a plugin action stays starred", () => {
+    expect(migrateStarredActionIds(["acme.confetti", "imageHide"])).toEqual([
+      "acme.confetti",
+      "hide"
+    ]);
+  });
 });

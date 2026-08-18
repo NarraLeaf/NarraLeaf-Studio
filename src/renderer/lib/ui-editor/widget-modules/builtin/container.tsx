@@ -18,43 +18,43 @@ import { formatBrandLink } from "@shared/brand/brandLink";
  * greater length, including why `container.shadow` is not among these.
  */
 const BRANDED_CONTAINER_COLORS = {
-    backgroundColor: formatBrandLink("container.background"),
-    borderColor: formatBrandLink("container.border"),
+  backgroundColor: formatBrandLink("container.background"),
+  borderColor: formatBrandLink("container.border")
 } as const;
 
 export const ContainerWidgetModule: UIWidgetModule = {
-    type: "nl.container",
-    logicApi: getWidgetLogicApi("nl.container"),
-    get displayName() {
-        return translate("widgets.defaults.container.name");
-    },
-    icon: Box,
+  type: "nl.container",
+  logicApi: getWidgetLogicApi("nl.container"),
+  get displayName() {
+    return translate("widgets.defaults.container.name");
+  },
+  icon: Box,
 
-    createDefaultElement: () => {
-        const props = { ...defaultContainerWidgetProps, ...BRANDED_CONTAINER_COLORS };
-        return {
-            type: "nl.container",
-            name: translate("widgets.defaults.container.name"),
-            layout: {
-                x: 0,
-                y: 0,
-                width: 320,
-                height: 240,
-                opacity: 1,
-                visible: true,
-            },
-            props: {
-                ...props,
-                appearance: createInitialContainerAppearance(props),
-            },
-        };
-    },
+  createDefaultElement: () => {
+    const props = { ...defaultContainerWidgetProps, ...BRANDED_CONTAINER_COLORS };
+    return {
+      type: "nl.container",
+      name: translate("widgets.defaults.container.name"),
+      layout: {
+        x: 0,
+        y: 0,
+        width: 320,
+        height: 240,
+        opacity: 1,
+        visible: true
+      },
+      props: {
+        ...props,
+        appearance: createInitialContainerAppearance(props)
+      }
+    };
+  },
 
-    render: (props: WidgetRendererProps) => <ContainerRenderer {...props} />,
+  render: (props: WidgetRendererProps) => <ContainerRenderer {...props} />,
 
-    createInspector: createContainerInspector,
+  createInspector: createContainerInspector,
 
-    createDockerBarItems: createContainerDockerBarItems,
+  createDockerBarItems: createContainerDockerBarItems,
 
-    createMultiSelectDockerBarItems: createContainerDockerBarItems,
+  createMultiSelectDockerBarItems: createContainerDockerBarItems
 };

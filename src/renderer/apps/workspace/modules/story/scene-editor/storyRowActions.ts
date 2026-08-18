@@ -23,51 +23,58 @@ import type { StoryStagePlacement } from "./storySceneEditorTypes";
  * them as dependencies.
  */
 export type StoryRowActions = {
-    select: (blockId: StoryBlockId, event: MouseEvent) => void;
-    contextMenu: (blockId: StoryBlockId, event: MouseEvent) => void;
-    mouseDown: (blockId: StoryBlockId, event: MouseEvent) => void;
-    /** Pointer entered the row — extends an in-progress drag selection. */
-    mouseEnter: (blockId: StoryBlockId) => void;
-    toggleCollapsed: (blockId: StoryBlockId) => void;
-    /** Open this row's text for in-place editing (no-op on a row that carries none). */
-    startTextEdit: (blockId: StoryBlockId) => void;
-    editRichChange: (blockId: StoryBlockId, value: string, runs: StoryRichRun[]) => void;
-    /**
-     * A multi-line paste landed in this row's text field. Returns whether it was taken — a row is one
-     * line, so more than one goes to the paste pipeline, and anything it declines stays the browser's.
-     */
-    pasteIntoRowText: (blockId: StoryBlockId, event: ClipboardEvent<HTMLDivElement>) => boolean;
-    commitTextEdit: () => void;
-    exitTextEdit: () => void;
-    /** Enter while editing: commit and open a continuation row. */
-    continueRow: () => void;
-    arrowOut: (direction: "up" | "down" | "left" | "right", caretX: number | null) => void;
-    goalColumnInvalidated: () => void;
-    backspaceAtEmptyStart: () => void;
-    undoBeyondRow: () => void;
-    redoBeyondRow: () => void;
-    /** Activate a non-text row: opens its inspector, or runs its card-less op. */
-    openInspector: (blockId: StoryBlockId) => void;
-    /**
-     * Bring the property editor's rail on screen without taking focus. Addresses no row — the rail
-     * already follows the selection — so it takes no id.
-     */
-    revealInspectorPanel: () => void;
-    updatePayload: (blockId: StoryBlockId, payload: StoryBlock["payload"]) => void;
-    setDialogueCharacter: (blockId: StoryBlockId, characterId: string | undefined) => void;
-    /**
-     * Set the dialogue group's placement. `sourceId` is the row's own resolved appearance source —
-     * the row knows it, the tab does not, so it stays an argument rather than a lookup.
-     */
-    setPosition: (blockId: StoryBlockId, position: StoryStagePlacement, sourceId: StoryBlockId | null) => void;
-    setSpeaker: (blockId: StoryBlockId, speaker: { characterId: string } | { speakerName: string } | null) => void;
-    createCharacter: (blockId: StoryBlockId, name: string) => void;
-    insertAfter: (blockId: StoryBlockId) => void;
-    deleteRow: (blockId: StoryBlockId) => void;
-    /** Insert a fresh child at the end of a container. */
-    addInside: (parentId: StoryBlockId) => void;
-    addBranch: (conditionId: StoryBlockId, branch: "if" | "elseIf" | "else") => void;
-    playFromRow: (blockId: StoryBlockId) => void;
+  select: (blockId: StoryBlockId, event: MouseEvent) => void;
+  contextMenu: (blockId: StoryBlockId, event: MouseEvent) => void;
+  mouseDown: (blockId: StoryBlockId, event: MouseEvent) => void;
+  /** Pointer entered the row — extends an in-progress drag selection. */
+  mouseEnter: (blockId: StoryBlockId) => void;
+  toggleCollapsed: (blockId: StoryBlockId) => void;
+  /** Open this row's text for in-place editing (no-op on a row that carries none). */
+  startTextEdit: (blockId: StoryBlockId) => void;
+  editRichChange: (blockId: StoryBlockId, value: string, runs: StoryRichRun[]) => void;
+  /**
+   * A multi-line paste landed in this row's text field. Returns whether it was taken — a row is one
+   * line, so more than one goes to the paste pipeline, and anything it declines stays the browser's.
+   */
+  pasteIntoRowText: (blockId: StoryBlockId, event: ClipboardEvent<HTMLDivElement>) => boolean;
+  commitTextEdit: () => void;
+  exitTextEdit: () => void;
+  /** Enter while editing: commit and open a continuation row. */
+  continueRow: () => void;
+  arrowOut: (direction: "up" | "down" | "left" | "right", caretX: number | null) => void;
+  goalColumnInvalidated: () => void;
+  backspaceAtEmptyStart: () => void;
+  undoBeyondRow: () => void;
+  redoBeyondRow: () => void;
+  /** Activate a non-text row: opens its inspector, or runs its card-less op. */
+  openInspector: (blockId: StoryBlockId) => void;
+  /**
+   * Bring the property editor's rail on screen without taking focus. Addresses no row — the rail
+   * already follows the selection — so it takes no id.
+   */
+  revealInspectorPanel: () => void;
+  updatePayload: (blockId: StoryBlockId, payload: StoryBlock["payload"]) => void;
+  setDialogueCharacter: (blockId: StoryBlockId, characterId: string | undefined) => void;
+  /**
+   * Set the dialogue group's placement. `sourceId` is the row's own resolved appearance source —
+   * the row knows it, the tab does not, so it stays an argument rather than a lookup.
+   */
+  setPosition: (
+    blockId: StoryBlockId,
+    position: StoryStagePlacement,
+    sourceId: StoryBlockId | null
+  ) => void;
+  setSpeaker: (
+    blockId: StoryBlockId,
+    speaker: { characterId: string } | { speakerName: string } | null
+  ) => void;
+  createCharacter: (blockId: StoryBlockId, name: string) => void;
+  insertAfter: (blockId: StoryBlockId) => void;
+  deleteRow: (blockId: StoryBlockId) => void;
+  /** Insert a fresh child at the end of a container. */
+  addInside: (parentId: StoryBlockId) => void;
+  addBranch: (conditionId: StoryBlockId, branch: "if" | "elseIf" | "else") => void;
+  playFromRow: (blockId: StoryBlockId) => void;
 };
 
 /**
@@ -75,38 +82,38 @@ export type StoryRowActions = {
  * in tests and in isolated previews, and a thrown "missing provider" there would be noise, not a bug.
  */
 const NOOP_ACTIONS: StoryRowActions = {
-    select: () => {},
-    contextMenu: () => {},
-    mouseDown: () => {},
-    mouseEnter: () => {},
-    toggleCollapsed: () => {},
-    startTextEdit: () => {},
-    editRichChange: () => {},
-    pasteIntoRowText: () => false,
-    commitTextEdit: () => {},
-    exitTextEdit: () => {},
-    continueRow: () => {},
-    arrowOut: () => {},
-    goalColumnInvalidated: () => {},
-    backspaceAtEmptyStart: () => {},
-    undoBeyondRow: () => {},
-    redoBeyondRow: () => {},
-    openInspector: () => {},
-    revealInspectorPanel: () => {},
-    updatePayload: () => {},
-    setDialogueCharacter: () => {},
-    setPosition: () => {},
-    setSpeaker: () => {},
-    createCharacter: () => {},
-    insertAfter: () => {},
-    deleteRow: () => {},
-    addInside: () => {},
-    addBranch: () => {},
-    playFromRow: () => {},
+  select: () => {},
+  contextMenu: () => {},
+  mouseDown: () => {},
+  mouseEnter: () => {},
+  toggleCollapsed: () => {},
+  startTextEdit: () => {},
+  editRichChange: () => {},
+  pasteIntoRowText: () => false,
+  commitTextEdit: () => {},
+  exitTextEdit: () => {},
+  continueRow: () => {},
+  arrowOut: () => {},
+  goalColumnInvalidated: () => {},
+  backspaceAtEmptyStart: () => {},
+  undoBeyondRow: () => {},
+  redoBeyondRow: () => {},
+  openInspector: () => {},
+  revealInspectorPanel: () => {},
+  updatePayload: () => {},
+  setDialogueCharacter: () => {},
+  setPosition: () => {},
+  setSpeaker: () => {},
+  createCharacter: () => {},
+  insertAfter: () => {},
+  deleteRow: () => {},
+  addInside: () => {},
+  addBranch: () => {},
+  playFromRow: () => {}
 };
 
 export const StoryRowActionsContext = createContext<StoryRowActions>(NOOP_ACTIONS);
 
 export function useStoryRowActions(): StoryRowActions {
-    return useContext(StoryRowActionsContext);
+  return useContext(StoryRowActionsContext);
 }

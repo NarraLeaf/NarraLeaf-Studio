@@ -18,9 +18,9 @@ export type LocalizedTextPack = Record<string, { name?: string; description?: st
 
 /** Content that can be shown in the author's language. */
 export type LocalizableDescriptor = {
-    name: string;
-    description: string;
-    locales?: LocalizedTextPack;
+  name: string;
+  description: string;
+  locales?: LocalizedTextPack;
 };
 
 /**
@@ -33,36 +33,37 @@ export type LocalizableDescriptor = {
  * should not force the name back to English too.
  */
 export function resolveLocalizedText(
-    descriptor: LocalizableDescriptor,
-    locale: string,
+  descriptor: LocalizableDescriptor,
+  locale: string
 ): { name: string; description: string } {
-    const packs = descriptor.locales ?? {};
-    const exact = packs[locale];
-    const base = locale.includes("-") ? packs[locale.split("-")[0]] : undefined;
-    return {
-        name: exact?.name ?? base?.name ?? descriptor.name,
-        description: exact?.description ?? base?.description ?? descriptor.description,
-    };
+  const packs = descriptor.locales ?? {};
+  const exact = packs[locale];
+  const base = locale.includes("-") ? packs[locale.split("-")[0]] : undefined;
+  return {
+    name: exact?.name ?? base?.name ?? descriptor.name,
+    description: exact?.description ?? base?.description ?? descriptor.description
+  };
 }
 
 /** Coerce an untrusted `locales` object, dropping anything malformed. */
 export function normalizeLocalizedTextPack(raw: unknown): LocalizedTextPack {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        return {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {};
+  }
+  const pack: LocalizedTextPack = {};
+  for (const [locale, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!locale.trim() || !value || typeof value !== "object") {
+      continue;
     }
-    const pack: LocalizedTextPack = {};
-    for (const [locale, value] of Object.entries(raw as Record<string, unknown>)) {
-        if (!locale.trim() || !value || typeof value !== "object") {
-            continue;
-        }
-        const record = value as Record<string, unknown>;
-        const name = typeof record.name === "string" && record.name.trim() ? record.name : undefined;
-        const description = typeof record.description === "string" && record.description.trim()
-            ? record.description
-            : undefined;
-        if (name || description) {
-            pack[locale] = { name, description };
-        }
+    const record = value as Record<string, unknown>;
+    const name = typeof record.name === "string" && record.name.trim() ? record.name : undefined;
+    const description =
+      typeof record.description === "string" && record.description.trim()
+        ? record.description
+        : undefined;
+    if (name || description) {
+      pack[locale] = { name, description };
     }
-    return pack;
+  }
+  return pack;
 }

@@ -1,24 +1,24 @@
 import {
-    changedPaths as loreChangedPaths,
-    closeStore,
-    closeTree,
-    flushRepository,
-    history,
-    listBranches,
-    listTreeChildren,
-    loadTree,
-    LORE_NODE_TYPE,
-    openStore,
-    readAddress,
-    releaseRepository,
-    repositoryPath,
-    ROOT_NODE_ID,
-    treeNode,
-    type LoreGlobals,
-    type LoreHex,
-    type RevisionNode,
-    type StoreHandle,
-    type TreeHandle,
+  changedPaths as loreChangedPaths,
+  closeStore,
+  closeTree,
+  flushRepository,
+  history,
+  listBranches,
+  listTreeChildren,
+  loadTree,
+  LORE_NODE_TYPE,
+  openStore,
+  readAddress,
+  releaseRepository,
+  repositoryPath,
+  ROOT_NODE_ID,
+  treeNode,
+  type LoreGlobals,
+  type LoreHex,
+  type RevisionNode,
+  type StoreHandle,
+  type TreeHandle
 } from "./lore";
 
 /**
@@ -50,40 +50,40 @@ export { closeStore, flushRepository, openStore, releaseRepository, repositoryPa
 
 /** Read one file's bytes as of one revision. */
 export async function blobAt(
-    globals: LoreGlobals,
-    store: StoreHandle,
-    repository: LoreHex,
-    revision: LoreHex,
-    repositoryRelativePath: string,
+  globals: LoreGlobals,
+  store: StoreHandle,
+  repository: LoreHex,
+  revision: LoreHex,
+  repositoryRelativePath: string
 ): Promise<Buffer> {
-    const tree = await loadTree(globals, store, repository, revision);
-    try {
-        const node = await treeNode(globals, tree, repositoryRelativePath);
-        return await readAddress(globals, store, repository, node);
-    } finally {
-        await closeTree(globals, tree);
-    }
+  const tree = await loadTree(globals, store, repository, revision);
+  try {
+    const node = await treeNode(globals, tree, repositoryRelativePath);
+    return await readAddress(globals, store, repository, node);
+  } finally {
+    await closeTree(globals, tree);
+  }
 }
 
 /** Same as {@link blobAt}, reusing one tree handle across many paths in one revision. */
 export async function blobsAt(
-    globals: LoreGlobals,
-    store: StoreHandle,
-    repository: LoreHex,
-    revision: LoreHex,
-    repositoryRelativePaths: readonly string[],
+  globals: LoreGlobals,
+  store: StoreHandle,
+  repository: LoreHex,
+  revision: LoreHex,
+  repositoryRelativePaths: readonly string[]
 ): Promise<Map<string, Buffer>> {
-    const out = new Map<string, Buffer>();
-    const tree = await loadTree(globals, store, repository, revision);
-    try {
-        for (const relative of repositoryRelativePaths) {
-            const node = await treeNode(globals, tree, relative);
-            out.set(relative, await readAddress(globals, store, repository, node));
-        }
-    } finally {
-        await closeTree(globals, tree);
+  const out = new Map<string, Buffer>();
+  const tree = await loadTree(globals, store, repository, revision);
+  try {
+    for (const relative of repositoryRelativePaths) {
+      const node = await treeNode(globals, tree, relative);
+      out.set(relative, await readAddress(globals, store, repository, node));
     }
-    return out;
+  } finally {
+    await closeTree(globals, tree);
+  }
+  return out;
 }
 
 /**
@@ -94,21 +94,21 @@ export async function blobsAt(
  * tree handle and without holding every buffer at once, which is what {@link documentsAt} does.
  */
 export async function readEntryBytes(
-    globals: LoreGlobals,
-    store: StoreHandle,
-    repository: LoreHex,
-    entry: Pick<RevisionFileEntry, "hash" | "context">,
+  globals: LoreGlobals,
+  store: StoreHandle,
+  repository: LoreHex,
+  entry: Pick<RevisionFileEntry, "hash" | "context">
 ): Promise<Buffer> {
-    return readAddress(globals, store, repository, entry);
+  return readAddress(globals, store, repository, entry);
 }
 
 /** One file as it existed at a revision, with the address its bytes live at. */
 export interface RevisionFileEntry {
-    /** Repository-relative, forward slashes. */
-    path: string;
-    size: number;
-    hash: LoreHex;
-    context: LoreHex;
+  /** Repository-relative, forward slashes. */
+  path: string;
+  size: number;
+  hash: LoreHex;
+  context: LoreHex;
 }
 
 /**
@@ -130,17 +130,17 @@ const MAX_TREE_DEPTH = 32;
  * only place here that could escape the revision.
  */
 export async function listFilesAt(
-    globals: LoreGlobals,
-    store: StoreHandle,
-    repository: LoreHex,
-    revision: LoreHex,
+  globals: LoreGlobals,
+  store: StoreHandle,
+  repository: LoreHex,
+  revision: LoreHex
 ): Promise<RevisionFileEntry[]> {
-    const tree = await loadTree(globals, store, repository, revision);
-    try {
-        return await walkTree(globals, tree);
-    } finally {
-        await closeTree(globals, tree);
-    }
+  const tree = await loadTree(globals, store, repository, revision);
+  try {
+    return await walkTree(globals, tree);
+  } finally {
+    await closeTree(globals, tree);
+  }
 }
 
 /**
@@ -156,43 +156,43 @@ export async function listFilesAt(
  * The paths are the walk's own spelling: repository-relative with forward slashes.
  */
 export async function entriesAt(
-    globals: LoreGlobals,
-    store: StoreHandle,
-    repository: LoreHex,
-    revision: LoreHex,
+  globals: LoreGlobals,
+  store: StoreHandle,
+  repository: LoreHex,
+  revision: LoreHex
 ): Promise<Map<string, RevisionFileEntry>> {
-    const entries = await listFilesAt(globals, store, repository, revision);
-    return new Map(entries.map((entry) => [entry.path, entry]));
+  const entries = await listFilesAt(globals, store, repository, revision);
+  return new Map(entries.map((entry) => [entry.path, entry]));
 }
 
 async function walkTree(globals: LoreGlobals, tree: TreeHandle): Promise<RevisionFileEntry[]> {
-    const files: RevisionFileEntry[] = [];
-    const seen = new Set<number>([ROOT_NODE_ID]);
-    let level: { nodeId: number; prefix: string }[] = [{ nodeId: ROOT_NODE_ID, prefix: "" }];
+  const files: RevisionFileEntry[] = [];
+  const seen = new Set<number>([ROOT_NODE_ID]);
+  let level: { nodeId: number; prefix: string }[] = [{ nodeId: ROOT_NODE_ID, prefix: "" }];
 
-    for (let depth = 0; depth < MAX_TREE_DEPTH && level.length > 0; depth += 1) {
-        const next: typeof level = [];
-        for (const directory of level) {
-            for (const child of await listTreeChildren(globals, tree, directory.nodeId)) {
-                // An entry with no name cannot be addressed by path, so it cannot be
-                // asked for either; including it would put an unusable key in the map.
-                if (!child.name) continue;
-                const path = directory.prefix ? `${directory.prefix}/${child.name}` : child.name;
-                if (child.kind === LORE_NODE_TYPE.DIRECTORY) {
-                    // A tree that names a node twice would otherwise be walked twice, and
-                    // a tree that names its own ancestor forever.
-                    if (seen.has(child.nodeId)) continue;
-                    seen.add(child.nodeId);
-                    next.push({ nodeId: child.nodeId, prefix: path });
-                    continue;
-                }
-                if (child.kind !== LORE_NODE_TYPE.FILE) continue;
-                files.push({ path, size: child.size, hash: child.hash, context: child.context });
-            }
+  for (let depth = 0; depth < MAX_TREE_DEPTH && level.length > 0; depth += 1) {
+    const next: typeof level = [];
+    for (const directory of level) {
+      for (const child of await listTreeChildren(globals, tree, directory.nodeId)) {
+        // An entry with no name cannot be addressed by path, so it cannot be
+        // asked for either; including it would put an unusable key in the map.
+        if (!child.name) continue;
+        const path = directory.prefix ? `${directory.prefix}/${child.name}` : child.name;
+        if (child.kind === LORE_NODE_TYPE.DIRECTORY) {
+          // A tree that names a node twice would otherwise be walked twice, and
+          // a tree that names its own ancestor forever.
+          if (seen.has(child.nodeId)) continue;
+          seen.add(child.nodeId);
+          next.push({ nodeId: child.nodeId, prefix: path });
+          continue;
         }
-        level = next;
+        if (child.kind !== LORE_NODE_TYPE.FILE) continue;
+        files.push({ path, size: child.size, hash: child.hash, context: child.context });
+      }
     }
-    return files;
+    level = next;
+  }
+  return files;
 }
 
 /**
@@ -217,32 +217,33 @@ async function walkTree(globals: LoreGlobals, tree: TreeHandle): Promise<Revisio
  * neither, every file is read.
  */
 export async function documentsAt(
-    globals: LoreGlobals,
-    store: StoreHandle,
-    repository: LoreHex,
-    revision: LoreHex,
-    select: {
-        paths?: readonly string[];
-        accept?: (entry: RevisionFileEntry) => boolean;
-    } = {},
+  globals: LoreGlobals,
+  store: StoreHandle,
+  repository: LoreHex,
+  revision: LoreHex,
+  select: {
+    paths?: readonly string[];
+    accept?: (entry: RevisionFileEntry) => boolean;
+  } = {}
 ): Promise<Map<string, Buffer | null>> {
-    const out = new Map<string, Buffer | null>();
-    const tree = await loadTree(globals, store, repository, revision);
-    let entries: RevisionFileEntry[];
-    try {
-        entries = await walkTree(globals, tree);
-    } finally {
-        await closeTree(globals, tree);
-    }
+  const out = new Map<string, Buffer | null>();
+  const tree = await loadTree(globals, store, repository, revision);
+  let entries: RevisionFileEntry[];
+  try {
+    entries = await walkTree(globals, tree);
+  } finally {
+    await closeTree(globals, tree);
+  }
 
-    const index = new Map(entries.map((entry) => [entry.path, entry]));
-    const wanted = select.paths
-        ?? entries.filter((entry) => select.accept?.(entry) ?? true).map((entry) => entry.path);
-    for (const requested of wanted) {
-        const entry = index.get(normalizeRepositoryRelative(requested));
-        out.set(requested, entry ? await readAddress(globals, store, repository, entry) : null);
-    }
-    return out;
+  const index = new Map(entries.map((entry) => [entry.path, entry]));
+  const wanted =
+    select.paths ??
+    entries.filter((entry) => select.accept?.(entry) ?? true).map((entry) => entry.path);
+  for (const requested of wanted) {
+    const entry = index.get(normalizeRepositoryRelative(requested));
+    out.set(requested, entry ? await readAddress(globals, store, repository, entry) : null);
+  }
+  return out;
 }
 
 /**
@@ -250,7 +251,7 @@ export async function documentsAt(
  * a caller holding a path from `path.join` would otherwise miss every entry.
  */
 function normalizeRepositoryRelative(path: string): string {
-    return path.replace(/\\/g, "/").replace(/^\.?\//, "");
+  return path.replace(/\\/g, "/").replace(/^\.?\//, "");
 }
 
 /**
@@ -261,11 +262,11 @@ function normalizeRepositoryRelative(path: string): string {
  * {@link readMergeGraph}.
  */
 export async function readRevisionGraph(
-    globals: LoreGlobals,
-    limit = 0,
+  globals: LoreGlobals,
+  limit = 0
 ): Promise<Map<LoreHex, RevisionNode>> {
-    const { nodes } = await history(globals, { limit });
-    return nodes;
+  const { nodes } = await history(globals, { limit });
+  return nodes;
 }
 
 /**
@@ -277,20 +278,20 @@ export async function readRevisionGraph(
  * what separates "there is no base" from "we could not see far enough to find one".
  */
 export function graphCoversAncestry(
-    graph: ReadonlyMap<LoreHex, RevisionNode>,
-    tip: LoreHex,
+  graph: ReadonlyMap<LoreHex, RevisionNode>,
+  tip: LoreHex
 ): boolean {
-    const seen = new Set<LoreHex>();
-    const stack: LoreHex[] = [tip];
-    while (stack.length > 0) {
-        const revision = stack.pop();
-        if (!revision || seen.has(revision)) continue;
-        seen.add(revision);
-        const node = graph.get(revision);
-        if (!node) return false;
-        for (const parent of node.parents) stack.push(parent);
-    }
-    return true;
+  const seen = new Set<LoreHex>();
+  const stack: LoreHex[] = [tip];
+  while (stack.length > 0) {
+    const revision = stack.pop();
+    if (!revision || seen.has(revision)) continue;
+    seen.add(revision);
+    const node = graph.get(revision);
+    if (!node) return false;
+    for (const parent of node.parents) stack.push(parent);
+  }
+  return true;
 }
 
 /**
@@ -318,39 +319,39 @@ export function graphCoversAncestry(
  * {@link graphCoversAncestry} is how it finds out.
  */
 export async function readMergeGraph(
-    globals: LoreGlobals,
-    tips: readonly LoreHex[],
+  globals: LoreGlobals,
+  tips: readonly LoreHex[]
 ): Promise<Map<LoreHex, RevisionNode>> {
-    const graph = new Map(await readRevisionGraph(globals));
-    const covered = (): boolean => tips.every((tip) => graphCoversAncestry(graph, tip));
+  const graph = new Map(await readRevisionGraph(globals));
+  const covered = (): boolean => tips.every((tip) => graphCoversAncestry(graph, tip));
 
-    const absorb = async (scope: { revision?: LoreHex; branch?: string }): Promise<void> => {
-        try {
-            const { nodes } = await history(globals, scope);
-            for (const [revision, node] of nodes) {
-                if (!graph.has(revision)) graph.set(revision, node);
-            }
-        } catch {
-            // An unreadable scope is not a failure here: a repository with an archived or
-            // half-written branch would otherwise take the whole merge down with it.
-        }
-    };
-
-    for (const tip of tips) {
-        if (graphCoversAncestry(graph, tip)) continue;
-        await absorb({ revision: tip });
-    }
-    if (covered()) return graph;
-
+  const absorb = async (scope: { revision?: LoreHex; branch?: string }): Promise<void> => {
     try {
-        for (const branch of await listBranches(globals, { archived: true })) {
-            await absorb({ branch: branch.name });
-            if (covered()) break;
-        }
+      const { nodes } = await history(globals, scope);
+      for (const [revision, node] of nodes) {
+        if (!graph.has(revision)) graph.set(revision, node);
+      }
     } catch {
-        // Same reasoning: an incomplete graph is reported through the return value.
+      // An unreadable scope is not a failure here: a repository with an archived or
+      // half-written branch would otherwise take the whole merge down with it.
     }
-    return graph;
+  };
+
+  for (const tip of tips) {
+    if (graphCoversAncestry(graph, tip)) continue;
+    await absorb({ revision: tip });
+  }
+  if (covered()) return graph;
+
+  try {
+    for (const branch of await listBranches(globals, { archived: true })) {
+      await absorb({ branch: branch.name });
+      if (covered()) break;
+    }
+  } catch {
+    // Same reasoning: an incomplete graph is reported through the return value.
+  }
+  return graph;
 }
 
 /**
@@ -361,20 +362,20 @@ export async function readMergeGraph(
  * `offline: true` and blocks until the connection times out.
  */
 export async function readRepositoryIdentity(
-    globals: LoreGlobals,
+  globals: LoreGlobals
 ): Promise<{ repository: LoreHex; branch: LoreHex } | undefined> {
-    const { header } = await history(globals, { limit: 1 });
-    return header;
+  const { header } = await history(globals, { limit: 1 });
+  return header;
 }
 
 /** Paths that differ between two revisions - the cheap filter before diffing. */
 export async function changedPaths(
-    globals: LoreGlobals,
-    from: LoreHex,
-    to: LoreHex,
+  globals: LoreGlobals,
+  from: LoreHex,
+  to: LoreHex
 ): Promise<string[]> {
-    const entries = await loreChangedPaths(globals, from, to);
-    return entries.map((entry) => entry.path).filter(Boolean);
+  const entries = await loreChangedPaths(globals, from, to);
+  return entries.map((entry) => entry.path).filter(Boolean);
 }
 
 /**
@@ -400,35 +401,37 @@ export async function changedPaths(
  * which is indistinguishable from a bug from where they are sitting.
  */
 export function mergeBase(
-    graph: ReadonlyMap<LoreHex, RevisionNode>,
-    a: LoreHex,
-    b: LoreHex,
+  graph: ReadonlyMap<LoreHex, RevisionNode>,
+  a: LoreHex,
+  b: LoreHex
 ): LoreHex | undefined {
-    const ancestorsOfA = ancestors(graph, a);
-    let best: RevisionNode | undefined;
-    for (const revision of ancestors(graph, b)) {
-        if (!ancestorsOfA.has(revision)) continue;
-        const node = graph.get(revision);
-        if (!node) continue;
-        if (!best
-            || node.number > best.number
-            || (node.number === best.number && node.revision < best.revision)) {
-            best = node;
-        }
+  const ancestorsOfA = ancestors(graph, a);
+  let best: RevisionNode | undefined;
+  for (const revision of ancestors(graph, b)) {
+    if (!ancestorsOfA.has(revision)) continue;
+    const node = graph.get(revision);
+    if (!node) continue;
+    if (
+      !best ||
+      node.number > best.number ||
+      (node.number === best.number && node.revision < best.revision)
+    ) {
+      best = node;
     }
-    return best?.revision;
+  }
+  return best?.revision;
 }
 
 function ancestors(graph: ReadonlyMap<LoreHex, RevisionNode>, start: LoreHex): Set<LoreHex> {
-    const seen = new Set<LoreHex>();
-    const stack: LoreHex[] = [start];
-    while (stack.length > 0) {
-        const revision = stack.pop();
-        if (!revision || seen.has(revision)) continue;
-        seen.add(revision);
-        for (const parent of graph.get(revision)?.parents ?? []) stack.push(parent);
-    }
-    return seen;
+  const seen = new Set<LoreHex>();
+  const stack: LoreHex[] = [start];
+  while (stack.length > 0) {
+    const revision = stack.pop();
+    if (!revision || seen.has(revision)) continue;
+    seen.add(revision);
+    for (const parent of graph.get(revision)?.parents ?? []) stack.push(parent);
+  }
+  return seen;
 }
 
 /**
@@ -443,21 +446,21 @@ function ancestors(graph: ReadonlyMap<LoreHex, RevisionNode>, start: LoreHex): S
  * exactly the defect this layer shipped with.
  */
 export type ThreeWayBaseStatus =
-    /** A common ancestor was found and it holds this file. */
-    | "found"
-    /** A common ancestor was found and this file is not in it: add/add. */
-    | "absent-in-base"
-    /** The graph is complete and the two sides share no ancestor at all: add/add. */
-    | "no-common-ancestor"
-    /** The graph could not be completed, so no claim is made either way. NOT an add/add. */
-    | "indeterminate";
+  /** A common ancestor was found and it holds this file. */
+  | "found"
+  /** A common ancestor was found and this file is not in it: add/add. */
+  | "absent-in-base"
+  /** The graph is complete and the two sides share no ancestor at all: add/add. */
+  | "no-common-ancestor"
+  /** The graph could not be completed, so no claim is made either way. NOT an add/add. */
+  | "indeterminate";
 
 export interface ThreeWay {
-    base: Buffer | undefined;
-    mine: Buffer;
-    theirs: Buffer;
-    baseRevision: LoreHex | undefined;
-    baseStatus: ThreeWayBaseStatus;
+  base: Buffer | undefined;
+  mine: Buffer;
+  theirs: Buffer;
+  baseRevision: LoreHex | undefined;
+  baseStatus: ThreeWayBaseStatus;
 }
 
 /**
@@ -470,35 +473,35 @@ export interface ThreeWay {
  * what {@link ThreeWay.baseStatus} is for.
  */
 export async function threeWay(
-    globals: LoreGlobals,
-    store: StoreHandle,
-    repository: LoreHex,
-    mine: LoreHex,
-    theirs: LoreHex,
-    repositoryRelativePath: string,
+  globals: LoreGlobals,
+  store: StoreHandle,
+  repository: LoreHex,
+  mine: LoreHex,
+  theirs: LoreHex,
+  repositoryRelativePath: string
 ): Promise<ThreeWay> {
-    // Both sides' ancestries, not the current branch's: the incoming tip of a cross-branch
-    // merge is not on the branch the working tree is on (§4.30).
-    const graph = await readMergeGraph(globals, [mine, theirs]);
-    const complete = graphCoversAncestry(graph, mine) && graphCoversAncestry(graph, theirs);
-    const baseRevision = mergeBase(graph, mine, theirs);
+  // Both sides' ancestries, not the current branch's: the incoming tip of a cross-branch
+  // merge is not on the branch the working tree is on (§4.30).
+  const graph = await readMergeGraph(globals, [mine, theirs]);
+  const complete = graphCoversAncestry(graph, mine) && graphCoversAncestry(graph, theirs);
+  const baseRevision = mergeBase(graph, mine, theirs);
 
-    const [mineBytes, theirsBytes] = await Promise.all([
-        blobAt(globals, store, repository, mine, repositoryRelativePath),
-        blobAt(globals, store, repository, theirs, repositoryRelativePath),
-    ]);
+  const [mineBytes, theirsBytes] = await Promise.all([
+    blobAt(globals, store, repository, mine, repositoryRelativePath),
+    blobAt(globals, store, repository, theirs, repositoryRelativePath)
+  ]);
 
-    let base: Buffer | undefined;
-    let baseStatus: ThreeWayBaseStatus = complete ? "no-common-ancestor" : "indeterminate";
-    if (baseRevision) {
-        try {
-            base = await blobAt(globals, store, repository, baseRevision, repositoryRelativePath);
-            baseStatus = "found";
-        } catch {
-            // Absent from the base revision: an add/add, not an empty file.
-            base = undefined;
-            baseStatus = "absent-in-base";
-        }
+  let base: Buffer | undefined;
+  let baseStatus: ThreeWayBaseStatus = complete ? "no-common-ancestor" : "indeterminate";
+  if (baseRevision) {
+    try {
+      base = await blobAt(globals, store, repository, baseRevision, repositoryRelativePath);
+      baseStatus = "found";
+    } catch {
+      // Absent from the base revision: an add/add, not an empty file.
+      base = undefined;
+      baseStatus = "absent-in-base";
     }
-    return { base, mine: mineBytes, theirs: theirsBytes, baseRevision, baseStatus };
+  }
+  return { base, mine: mineBytes, theirs: theirsBytes, baseRevision, baseStatus };
 }

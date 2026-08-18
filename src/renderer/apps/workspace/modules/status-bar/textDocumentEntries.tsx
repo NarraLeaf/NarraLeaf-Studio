@@ -4,7 +4,11 @@ import { useWorkspace } from "../../context";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
-import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import {
+  ContextMenu,
+  useContextMenu,
+  type ContextMenuDef
+} from "@/lib/components/elements/ContextMenu";
 import { useFreezeGuard } from "../../components/ui/freezeGuard";
 import { TEXT_ENCODING_IDS, textEncodingLabel } from "@shared/types/textEncoding";
 import type { TextDocumentEntry } from "@/lib/workspace/services/ui/textDocumentStatus";
@@ -43,38 +47,38 @@ const LINE_ENDINGS: readonly LineEnding[] = ["LF", "CRLF"];
  * quietly lies.
  */
 export function useActiveTextDocument(): TextDocumentEntry | null {
-    const { context } = useWorkspace();
-    const [doc, setDoc] = useState<TextDocumentEntry | null>(null);
+  const { context } = useWorkspace();
+  const [doc, setDoc] = useState<TextDocumentEntry | null>(null);
 
-    useEffect(() => {
-        if (!context) {
-            setDoc(null);
-            return;
-        }
-        const uiService = context.services.get<UIService>(Services.UI);
-        const statuses = uiService.textDocumentStatus;
+  useEffect(() => {
+    if (!context) {
+      setDoc(null);
+      return;
+    }
+    const uiService = context.services.get<UIService>(Services.UI);
+    const statuses = uiService.textDocumentStatus;
 
-        const resolve = () => {
-            const [focused] = uiService.getStore().getEditorTabsByRecency();
-            const entry = focused?.id.startsWith(TEXT_EDITOR_TAB_PREFIX)
-                ? statuses.get(focused.id) ?? null
-                : null;
-            // Compared by identity, which is exactly right here: the service replaces the entry
-            // object on every change and leaves it alone otherwise, so `===` *is* "did anything
-            // move" and a caret that did not move cannot re-render four cells.
-            setDoc(current => (current === entry ? current : entry));
-        };
+    const resolve = () => {
+      const [focused] = uiService.getStore().getEditorTabsByRecency();
+      const entry = focused?.id.startsWith(TEXT_EDITOR_TAB_PREFIX)
+        ? (statuses.get(focused.id) ?? null)
+        : null;
+      // Compared by identity, which is exactly right here: the service replaces the entry
+      // object on every change and leaves it alone otherwise, so `===` *is* "did anything
+      // move" and a caret that did not move cannot re-render four cells.
+      setDoc((current) => (current === entry ? current : entry));
+    };
 
-        resolve();
-        const unsubscribeLayout = uiService.getEvents().on("editorLayoutChanged", resolve);
-        const unsubscribeStatus = statuses.onChanged(resolve);
-        return () => {
-            unsubscribeLayout();
-            unsubscribeStatus();
-        };
-    }, [context]);
+    resolve();
+    const unsubscribeLayout = uiService.getEvents().on("editorLayoutChanged", resolve);
+    const unsubscribeStatus = statuses.onChanged(resolve);
+    return () => {
+      unsubscribeLayout();
+      unsubscribeStatus();
+    };
+  }, [context]);
 
-    return doc;
+  return doc;
 }
 
 /**
@@ -85,15 +89,15 @@ export function useActiveTextDocument(): TextDocumentEntry | null {
  * strip.
  */
 export function TextFileNameEntry() {
-    const doc = useActiveTextDocument();
-    if (!doc) {
-        return null;
-    }
-    return (
-        <StatusEntry tooltip={doc.status.fileName}>
-            <span className="max-w-[24ch] truncate">{doc.status.fileName}</span>
-        </StatusEntry>
-    );
+  const doc = useActiveTextDocument();
+  if (!doc) {
+    return null;
+  }
+  return (
+    <StatusEntry tooltip={doc.status.fileName}>
+      <span className="max-w-[24ch] truncate">{doc.status.fileName}</span>
+    </StatusEntry>
+  );
 }
 
 /**
@@ -105,24 +109,25 @@ export function TextFileNameEntry() {
  * this is a readout people already know how to read, and a better one would only be slower.
  */
 export function TextSelectionEntry() {
-    const { t } = useTranslation();
-    const doc = useActiveTextDocument();
-    if (!doc) {
-        return null;
-    }
-    const { line, column, characters, ranges } = doc.status.selection;
-    const caret = t("assets.textEditor.caret", { line, column });
-    const selected = characters === 0
-        ? ""
-        : ranges > 1
-            ? ` ${t("assets.textEditor.selectedInRanges", { count: characters, ranges })}`
-            : ` ${t("assets.textEditor.selected", { count: characters })}`;
+  const { t } = useTranslation();
+  const doc = useActiveTextDocument();
+  if (!doc) {
+    return null;
+  }
+  const { line, column, characters, ranges } = doc.status.selection;
+  const caret = t("assets.textEditor.caret", { line, column });
+  const selected =
+    characters === 0
+      ? ""
+      : ranges > 1
+        ? ` ${t("assets.textEditor.selectedInRanges", { count: characters, ranges })}`
+        : ` ${t("assets.textEditor.selected", { count: characters })}`;
 
-    return (
-        <StatusEntry tooltip={t("assets.textEditor.selectionLabel")}>
-            <span className="tabular-nums">{`${caret}${selected}`}</span>
-        </StatusEntry>
-    );
+  return (
+    <StatusEntry tooltip={t("assets.textEditor.selectionLabel")}>
+      <span className="tabular-nums">{`${caret}${selected}`}</span>
+    </StatusEntry>
+  );
 }
 
 /**
@@ -134,56 +139,56 @@ export function TextSelectionEntry() {
  * already have".
  */
 export function TextLineEndingEntry() {
-    const { t } = useTranslation();
-    const freeze = useFreezeGuard();
-    const doc = useActiveTextDocument();
-    const { menuState, showMenu, hideMenu } = useContextMenu();
+  const { t } = useTranslation();
+  const freeze = useFreezeGuard();
+  const doc = useActiveTextDocument();
+  const { menuState, showMenu, hideMenu } = useContextMenu();
 
-    const commands = doc?.commands;
-    const current = doc?.status.lineEnding;
-    const choose = useCallback(
-        (ending: LineEnding) => {
-            commands?.setLineEnding(ending);
-        },
-        [commands],
-    );
+  const commands = doc?.commands;
+  const current = doc?.status.lineEnding;
+  const choose = useCallback(
+    (ending: LineEnding) => {
+      commands?.setLineEnding(ending);
+    },
+    [commands]
+  );
 
-    const menu = useMemo<ContextMenuDef>(
-        () =>
-            LINE_ENDINGS.map(ending => ({
-                id: `line-ending-${ending}`,
-                // The value, not a sentence: "LF" is what the cell says and what every other editor
-                // calls it, so the menu is the two answers rather than a description of them.
-                label: ending,
-                icon: ending === current ? <Check className="h-3 w-3" /> : undefined,
-                ...freeze.menuRow(),
-                onClick: () => choose(ending),
-            })),
-        [choose, current, freeze],
-    );
+  const menu = useMemo<ContextMenuDef>(
+    () =>
+      LINE_ENDINGS.map((ending) => ({
+        id: `line-ending-${ending}`,
+        // The value, not a sentence: "LF" is what the cell says and what every other editor
+        // calls it, so the menu is the two answers rather than a description of them.
+        label: ending,
+        icon: ending === current ? <Check className="h-3 w-3" /> : undefined,
+        ...freeze.menuRow(),
+        onClick: () => choose(ending)
+      })),
+    [choose, current, freeze]
+  );
 
-    if (!doc) {
-        return null;
-    }
-    return (
-        <>
-            <StatusEntry
-                onClick={showMenu}
-                tooltip={t("assets.textEditor.selectLineEnding")}
-                ariaLabel={t("assets.textEditor.lineEndingLabel", { ending: doc.status.lineEnding })}
-                dataAttributes={{ "data-text-editor-line-ending": doc.status.lineEnding }}
-            >
-                {doc.status.lineEnding}
-            </StatusEntry>
-            <ContextMenu
-                items={menu}
-                iconsEnabled
-                position={menuState.position}
-                onClose={hideMenu}
-                visible={menuState.visible}
-            />
-        </>
-    );
+  if (!doc) {
+    return null;
+  }
+  return (
+    <>
+      <StatusEntry
+        onClick={showMenu}
+        tooltip={t("assets.textEditor.selectLineEnding")}
+        ariaLabel={t("assets.textEditor.lineEndingLabel", { ending: doc.status.lineEnding })}
+        dataAttributes={{ "data-text-editor-line-ending": doc.status.lineEnding }}
+      >
+        {doc.status.lineEnding}
+      </StatusEntry>
+      <ContextMenu
+        items={menu}
+        iconsEnabled
+        position={menuState.position}
+        onClose={hideMenu}
+        visible={menuState.visible}
+      />
+    </>
+  );
 }
 
 /**
@@ -195,59 +200,64 @@ export function TextLineEndingEntry() {
  * another encoding is a write and does not.
  */
 export function TextEncodingEntry() {
-    const { t } = useTranslation();
-    const freeze = useFreezeGuard();
-    const doc = useActiveTextDocument();
-    const { menuState, showMenu, hideMenu } = useContextMenu();
+  const { t } = useTranslation();
+  const freeze = useFreezeGuard();
+  const doc = useActiveTextDocument();
+  const { menuState, showMenu, hideMenu } = useContextMenu();
 
-    const commands = doc?.commands;
-    const menu = useMemo<ContextMenuDef>(
-        () => [
-            {
-                id: "reopen",
-                label: t("assets.textEditor.reopenWithEncoding"),
-                submenu: TEXT_ENCODING_IDS.map(id => ({
-                    id: `reopen-${id}`,
-                    label: textEncodingLabel(id),
-                    onClick: () => commands?.reopenWith(id),
-                })),
-            },
-            {
-                id: "save",
-                label: t("assets.textEditor.saveWithEncoding"),
-                // The parent row stays openable while frozen and only its leaves go dead - the
-                // rule `freezeContextMenuRows` follows for every menu it walks. Disabling the
-                // group itself hid the encodings behind a row that would not open, so the author
-                // could not even see which ones the freeze had taken away.
-                submenu: TEXT_ENCODING_IDS.map(id => ({
-                    id: `save-${id}`,
-                    label: textEncodingLabel(id),
-                    ...freeze.menuRow(),
-                    onClick: () => commands?.saveWith(id),
-                })),
-            },
-        ],
-        [commands, freeze, t],
-    );
+  const commands = doc?.commands;
+  const menu = useMemo<ContextMenuDef>(
+    () => [
+      {
+        id: "reopen",
+        label: t("assets.textEditor.reopenWithEncoding"),
+        submenu: TEXT_ENCODING_IDS.map((id) => ({
+          id: `reopen-${id}`,
+          label: textEncodingLabel(id),
+          onClick: () => commands?.reopenWith(id)
+        }))
+      },
+      {
+        id: "save",
+        label: t("assets.textEditor.saveWithEncoding"),
+        // The parent row stays openable while frozen and only its leaves go dead - the
+        // rule `freezeContextMenuRows` follows for every menu it walks. Disabling the
+        // group itself hid the encodings behind a row that would not open, so the author
+        // could not even see which ones the freeze had taken away.
+        submenu: TEXT_ENCODING_IDS.map((id) => ({
+          id: `save-${id}`,
+          label: textEncodingLabel(id),
+          ...freeze.menuRow(),
+          onClick: () => commands?.saveWith(id)
+        }))
+      }
+    ],
+    [commands, freeze, t]
+  );
 
-    if (!doc) {
-        return null;
-    }
-    const { encoding, lossy } = doc.status;
-    return (
-        <>
-            <StatusEntry
-                onClick={showMenu}
-                tone={lossy ? "text-danger" : undefined}
-                tooltip={t("assets.textEditor.selectEncoding")}
-                // The cell's visible text is the value alone, which reads as a bare word to a screen
-                // reader; the label says what the value is of.
-                ariaLabel={t("assets.textEditor.encodingLabel", { encoding: textEncodingLabel(encoding) })}
-                dataAttributes={{ "data-text-editor-encoding": encoding }}
-            >
-                {textEncodingLabel(encoding)}
-            </StatusEntry>
-            <ContextMenu items={menu} position={menuState.position} onClose={hideMenu} visible={menuState.visible} />
-        </>
-    );
+  if (!doc) {
+    return null;
+  }
+  const { encoding, lossy } = doc.status;
+  return (
+    <>
+      <StatusEntry
+        onClick={showMenu}
+        tone={lossy ? "text-danger" : undefined}
+        tooltip={t("assets.textEditor.selectEncoding")}
+        // The cell's visible text is the value alone, which reads as a bare word to a screen
+        // reader; the label says what the value is of.
+        ariaLabel={t("assets.textEditor.encodingLabel", { encoding: textEncodingLabel(encoding) })}
+        dataAttributes={{ "data-text-editor-encoding": encoding }}
+      >
+        {textEncodingLabel(encoding)}
+      </StatusEntry>
+      <ContextMenu
+        items={menu}
+        position={menuState.position}
+        onClose={hideMenu}
+        visible={menuState.visible}
+      />
+    </>
+  );
 }

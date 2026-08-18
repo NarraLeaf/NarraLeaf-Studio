@@ -1,8 +1,8 @@
 import { uiElementTypeAcceptsChildren, type UIElement } from "./document";
 import {
-    isDefaultUIPageAnimationSettings,
-    normalizeUIPageAnimationSettings,
-    type UIPageAnimationSettings,
+  isDefaultUIPageAnimationSettings,
+  normalizeUIPageAnimationSettings,
+  type UIPageAnimationSettings
 } from "./pageAnimation";
 
 /**
@@ -13,25 +13,27 @@ import {
  * Callers that need a record to show or edit use {@link resolveUIElementAnimationSettings}.
  */
 export function getUIElementAnimationSettings(
-    element: Pick<UIElement, "animation"> | null | undefined,
+  element: Pick<UIElement, "animation"> | null | undefined
 ): UIPageAnimationSettings | null {
-    const raw = element?.animation;
-    if (!raw || typeof raw !== "object") {
-        return null;
-    }
-    const settings = normalizeUIPageAnimationSettings(raw);
-    return isDefaultUIPageAnimationSettings(settings) ? null : settings;
+  const raw = element?.animation;
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const settings = normalizeUIPageAnimationSettings(raw);
+  return isDefaultUIPageAnimationSettings(settings) ? null : settings;
 }
 
 /** The record to show in an inspector: the element's own, falling back to a fully-default one. */
 export function resolveUIElementAnimationSettings(
-    element: Pick<UIElement, "animation"> | null | undefined,
+  element: Pick<UIElement, "animation"> | null | undefined
 ): UIPageAnimationSettings {
-    return normalizeUIPageAnimationSettings(element?.animation);
+  return normalizeUIPageAnimationSettings(element?.animation);
 }
 
-export function hasUIElementAnimation(element: Pick<UIElement, "animation"> | null | undefined): boolean {
-    return getUIElementAnimationSettings(element) !== null;
+export function hasUIElementAnimation(
+  element: Pick<UIElement, "animation"> | null | undefined
+): boolean {
+  return getUIElementAnimationSettings(element) !== null;
 }
 
 /**
@@ -41,5 +43,5 @@ export function hasUIElementAnimation(element: Pick<UIElement, "animation"> | nu
  * author fills an empty container.
  */
 export function uiElementOwnsChildAnimationTiming(elementType: string): boolean {
-    return uiElementTypeAcceptsChildren(elementType);
+  return uiElementTypeAcceptsChildren(elementType);
 }

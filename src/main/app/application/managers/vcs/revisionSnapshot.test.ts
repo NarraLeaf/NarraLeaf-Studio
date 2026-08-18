@@ -5,13 +5,13 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isVersioned } from "@shared/vcs/workingSet";
 import {
-    blueprintAssetContentPaths,
-    materializeRevisionSnapshot,
-    partitionSnapshotEntries,
-    removeRevisionSnapshots,
-    resolveSnapshotEntryTarget,
-    revisionSnapshotDirectory,
-    type RevisionSnapshotSource,
+  blueprintAssetContentPaths,
+  materializeRevisionSnapshot,
+  partitionSnapshotEntries,
+  removeRevisionSnapshots,
+  resolveSnapshotEntryTarget,
+  revisionSnapshotDirectory,
+  type RevisionSnapshotSource
 } from "./revisionSnapshot";
 import type { RevisionFileEntry } from "./revisionReader";
 
@@ -33,203 +33,229 @@ const BLUEPRINT_CONTENT = "assets/content/2d/44/332f18b94892b269c6f02ad31d95";
 let project: string;
 
 function entry(relative: string, size = 8): RevisionFileEntry {
-    return { path: relative, size, hash: "a".repeat(64), context: "b".repeat(64) };
+  return { path: relative, size, hash: "a".repeat(64), context: "b".repeat(64) };
 }
 
 function sourceOf(files: Map<string, Buffer>): RevisionSnapshotSource {
-    return {
-        list: async () => [...files].map(([relative, bytes]) => entry(relative, bytes.length)),
-        read: async (e) => files.get(e.path) ?? Buffer.alloc(0),
-    };
+  return {
+    list: async () => [...files].map(([relative, bytes]) => entry(relative, bytes.length)),
+    read: async (e) => files.get(e.path) ?? Buffer.alloc(0)
+  };
 }
 
 beforeEach(() => {
-    project = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "nl-snap-")));
+  project = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "nl-snap-")));
 });
 
 afterEach(() => {
-    fs.rmSync(project, { recursive: true, force: true });
+  fs.rmSync(project, { recursive: true, force: true });
 });
 
 describe("where a snapshot lives", () => {
-    it("is outside the working set, so running an old version cannot look like an edit", () => {
-        const directory = revisionSnapshotDirectory(project, REVISION);
-        const relative = path.relative(project, directory);
+  it("is outside the working set, so running an old version cannot look like an edit", () => {
+    const directory = revisionSnapshotDirectory(project, REVISION);
+    const relative = path.relative(project, directory);
 
-        // The predicate the repository itself is generated from. If this ever answers true, every
-        // launch of a past revision adds a few hundred files to the author's change list.
-        expect(isVersioned(relative)).toBe(false);
-        expect(relative.split(path.sep)[0]).toBe(".nlstudio");
-    });
+    // The predicate the repository itself is generated from. If this ever answers true, every
+    // launch of a past revision adds a few hundred files to the author's change list.
+    expect(isVersioned(relative)).toBe(false);
+    expect(relative.split(path.sep)[0]).toBe(".nlstudio");
+  });
 
-    it("names the revision, so a stray directory says which one it is", () => {
-        const directory = revisionSnapshotDirectory(project, REVISION);
-        expect(path.basename(directory)).toBe(REVISION.slice(0, 16));
-        // Shorter than the full id on purpose: the project's own deepest paths are appended to this
-        // one, and Windows still enforces MAX_PATH in plenty of places.
-        expect(path.basename(directory).length).toBeLessThan(REVISION.length);
-    });
+  it("names the revision, so a stray directory says which one it is", () => {
+    const directory = revisionSnapshotDirectory(project, REVISION);
+    expect(path.basename(directory)).toBe(REVISION.slice(0, 16));
+    // Shorter than the full id on purpose: the project's own deepest paths are appended to this
+    // one, and Windows still enforces MAX_PATH in plenty of places.
+    expect(path.basename(directory).length).toBeLessThan(REVISION.length);
+  });
 });
 
 describe("what travels", () => {
-    it("drops anything the working set excludes, because a tree is untrusted input", () => {
-        const { documents, media } = partitionSnapshotEntries([
-            entry("editor/story/index.json"),
-            entry(".nlstudio/services/panel_state.json"),
-            entry("editor/cache/thumbnail/aa/bb/x.png"),
-            entry("../escape.json"),
-            entry("assets/content/aa/bb/cc"),
-        ]);
+  it("drops anything the working set excludes, because a tree is untrusted input", () => {
+    const { documents, media } = partitionSnapshotEntries([
+      entry("editor/story/index.json"),
+      entry(".nlstudio/services/panel_state.json"),
+      entry("editor/cache/thumbnail/aa/bb/x.png"),
+      entry("../escape.json"),
+      entry("assets/content/aa/bb/cc")
+    ]);
 
-        expect(documents.map((e) => e.path)).toEqual(["editor/story/index.json"]);
-        expect(media.map((e) => e.path)).toEqual(["assets/content/aa/bb/cc"]);
-    });
+    expect(documents.map((e) => e.path)).toEqual(["editor/story/index.json"]);
+    expect(media.map((e) => e.path)).toEqual(["assets/content/aa/bb/cc"]);
+  });
 
-    it("resolves blueprint content the same way the compile path does", () => {
-        const paths = blueprintAssetContentPaths(Buffer.from(JSON.stringify({
-            [BLUEPRINT_ID]: { id: BLUEPRINT_ID, name: "shared" },
-            "not-a-storage-id": {},
-        })));
-        expect([...paths]).toEqual([BLUEPRINT_CONTENT]);
-    });
+  it("resolves blueprint content the same way the compile path does", () => {
+    const paths = blueprintAssetContentPaths(
+      Buffer.from(
+        JSON.stringify({
+          [BLUEPRINT_ID]: { id: BLUEPRINT_ID, name: "shared" },
+          "not-a-storage-id": {}
+        })
+      )
+    );
+    expect([...paths]).toEqual([BLUEPRINT_CONTENT]);
+  });
 
-    it("treats a broken shard as no shared blueprints, which is what the bundle would hold", () => {
-        expect(blueprintAssetContentPaths(Buffer.from("{ truncated"))).toEqual(new Set());
-        expect(blueprintAssetContentPaths(undefined)).toEqual(new Set());
-    });
+  it("treats a broken shard as no shared blueprints, which is what the bundle would hold", () => {
+    expect(blueprintAssetContentPaths(Buffer.from("{ truncated"))).toEqual(new Set());
+    expect(blueprintAssetContentPaths(undefined)).toEqual(new Set());
+  });
 });
 
 describe("materialising", () => {
-    it("writes the documents and leaves the media in the repository", async () => {
-        const files = new Map<string, Buffer>([
-            ["editor/story/index.json", Buffer.from("{\"stories\":[]}")],
-            ["assets/assets.metadata.blueprint.json", Buffer.from(JSON.stringify({ [BLUEPRINT_ID]: {} }))],
-            [BLUEPRINT_CONTENT, Buffer.from("{\"blueprint\":true}")],
-            ["assets/content/ff/ee/dddddddddddddddddddddddddddd", Buffer.alloc(4096, 7)],
-        ]);
+  it("writes the documents and leaves the media in the repository", async () => {
+    const files = new Map<string, Buffer>([
+      ["editor/story/index.json", Buffer.from('{"stories":[]}')],
+      [
+        "assets/assets.metadata.blueprint.json",
+        Buffer.from(JSON.stringify({ [BLUEPRINT_ID]: {} }))
+      ],
+      [BLUEPRINT_CONTENT, Buffer.from('{"blueprint":true}')],
+      ["assets/content/ff/ee/dddddddddddddddddddddddddddd", Buffer.alloc(4096, 7)]
+    ]);
 
-        const result = await materializeRevisionSnapshot({ projectPath: project, revision: REVISION, source: sourceOf(files) });
-
-        expect(fs.readFileSync(path.join(result.directory, "editor", "story", "index.json"), "utf-8"))
-            .toBe("{\"stories\":[]}");
-        // The one exception to skipping `assets/content/`: `loadSharedBlueprints` reads these, and a
-        // snapshot without them assembles a bundle whose shared blueprints are silently empty.
-        expect(fs.existsSync(path.join(result.directory, ...BLUEPRINT_CONTENT.split("/")))).toBe(true);
-        expect(fs.existsSync(path.join(result.directory, "assets", "content", "ff", "ee", "dddddddddddddddddddddddddddd")))
-            .toBe(false);
-        expect(result.files).toBe(3);
-        expect(result.skippedFiles).toBe(1);
-        expect(result.skippedBytes).toBe(4096);
+    const result = await materializeRevisionSnapshot({
+      projectPath: project,
+      revision: REVISION,
+      source: sourceOf(files)
     });
 
-    it("replaces the previous snapshot rather than accumulating one per revision", async () => {
-        const first = await materializeRevisionSnapshot({
-            projectPath: project,
-            revision: REVISION,
-            source: sourceOf(new Map([["editor/a.json", Buffer.from("1")]])),
-        });
-        const other = `f${REVISION.slice(1)}`;
-        const second = await materializeRevisionSnapshot({
-            projectPath: project,
-            revision: other,
-            source: sourceOf(new Map([["editor/a.json", Buffer.from("2")]])),
-        });
+    expect(
+      fs.readFileSync(path.join(result.directory, "editor", "story", "index.json"), "utf-8")
+    ).toBe('{"stories":[]}');
+    // The one exception to skipping `assets/content/`: `loadSharedBlueprints` reads these, and a
+    // snapshot without them assembles a bundle whose shared blueprints are silently empty.
+    expect(fs.existsSync(path.join(result.directory, ...BLUEPRINT_CONTENT.split("/")))).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(result.directory, "assets", "content", "ff", "ee", "dddddddddddddddddddddddddddd")
+      )
+    ).toBe(false);
+    expect(result.files).toBe(3);
+    expect(result.skippedFiles).toBe(1);
+    expect(result.skippedBytes).toBe(4096);
+  });
 
-        expect(fs.existsSync(first.directory)).toBe(false);
-        expect(fs.readFileSync(path.join(second.directory, "editor", "a.json"), "utf-8")).toBe("2");
-        expect(fs.readdirSync(path.dirname(second.directory))).toEqual([path.basename(second.directory)]);
+  it("replaces the previous snapshot rather than accumulating one per revision", async () => {
+    const first = await materializeRevisionSnapshot({
+      projectPath: project,
+      revision: REVISION,
+      source: sourceOf(new Map([["editor/a.json", Buffer.from("1")]]))
+    });
+    const other = `f${REVISION.slice(1)}`;
+    const second = await materializeRevisionSnapshot({
+      projectPath: project,
+      revision: other,
+      source: sourceOf(new Map([["editor/a.json", Buffer.from("2")]]))
     });
 
-    it("cannot be made to write outside the snapshot by a crafted tree", async () => {
-        // A revision is untrusted input: the repository is a directory the author's other tools can
-        // write, so an entry name is not a Studio-controlled string. `..` is the escape that matters and
-        // `isVersioned` rejects it, which is why the traversal attempt below is simply absent from the
-        // snapshot rather than an error - and the `outside` file is never created.
-        const outside = path.join(path.dirname(project), "nl-snap-escape.json");
-        fs.rmSync(outside, { force: true });
-        const result = await materializeRevisionSnapshot({
-            projectPath: project,
-            revision: REVISION,
-            source: sourceOf(new Map([
-                ["editor/a.json", Buffer.from("kept")],
-                ["../../../nl-snap-escape.json", Buffer.from("escaped")],
-            ])),
-        });
+    expect(fs.existsSync(first.directory)).toBe(false);
+    expect(fs.readFileSync(path.join(second.directory, "editor", "a.json"), "utf-8")).toBe("2");
+    expect(fs.readdirSync(path.dirname(second.directory))).toEqual([
+      path.basename(second.directory)
+    ]);
+  });
 
-        expect(result.files).toBe(1);
-        expect(fs.existsSync(outside)).toBe(false);
+  it("cannot be made to write outside the snapshot by a crafted tree", async () => {
+    // A revision is untrusted input: the repository is a directory the author's other tools can
+    // write, so an entry name is not a Studio-controlled string. `..` is the escape that matters and
+    // `isVersioned` rejects it, which is why the traversal attempt below is simply absent from the
+    // snapshot rather than an error - and the `outside` file is never created.
+    const outside = path.join(path.dirname(project), "nl-snap-escape.json");
+    fs.rmSync(outside, { force: true });
+    const result = await materializeRevisionSnapshot({
+      projectPath: project,
+      revision: REVISION,
+      source: sourceOf(
+        new Map([
+          ["editor/a.json", Buffer.from("kept")],
+          ["../../../nl-snap-escape.json", Buffer.from("escaped")]
+        ])
+      )
     });
 
-    /**
-     * The writer's own guard, exercised directly.
-     *
-     * It cannot be reached through `materializeRevisionSnapshot` - `isVersioned` drops every `..`
-     * first - so driving it through the public API tests the predicate a second time and the guard
-     * not at all. This previously went through the API with an absolute path built from
-     * `path.parse(project).root`, which proved neither: on Windows `C:/absolute.json` lands at
-     * `<snapshot>\C:\absolute.json`, INSIDE the directory, and the rejection came from the OS
-     * refusing a name containing a colon; on Linux the same path is perfectly legal and it was
-     * written without complaint.
-     */
-    it("refuses an entry that would resolve outside the snapshot", () => {
-        const directory = path.resolve(revisionSnapshotDirectory(project, REVISION));
+    expect(result.files).toBe(1);
+    expect(fs.existsSync(outside)).toBe(false);
+  });
 
-        expect(() => resolveSnapshotEntryTarget(directory, "../escape.json")).toThrow(/escapes the snapshot/);
-        expect(() => resolveSnapshotEntryTarget(directory, "editor/../../escape.json")).toThrow(/escapes the snapshot/);
+  /**
+   * The writer's own guard, exercised directly.
+   *
+   * It cannot be reached through `materializeRevisionSnapshot` - `isVersioned` drops every `..`
+   * first - so driving it through the public API tests the predicate a second time and the guard
+   * not at all. This previously went through the API with an absolute path built from
+   * `path.parse(project).root`, which proved neither: on Windows `C:/absolute.json` lands at
+   * `<snapshot>\C:\absolute.json`, INSIDE the directory, and the rejection came from the OS
+   * refusing a name containing a colon; on Linux the same path is perfectly legal and it was
+   * written without complaint.
+   */
+  it("refuses an entry that would resolve outside the snapshot", () => {
+    const directory = path.resolve(revisionSnapshotDirectory(project, REVISION));
 
-        // An absolute entry path is NOT an escape: `path.join` only concatenates, so the leading
-        // separator is neutralised and the file lands inside. Asserted so the distinction stays
-        // deliberate rather than looking like a case nobody thought about.
-        expect(resolveSnapshotEntryTarget(directory, "/absolute.json"))
-            .toBe(path.join(directory, "absolute.json"));
-        expect(resolveSnapshotEntryTarget(directory, "editor/a.json"))
-            .toBe(path.join(directory, "editor", "a.json"));
+    expect(() => resolveSnapshotEntryTarget(directory, "../escape.json")).toThrow(
+      /escapes the snapshot/
+    );
+    expect(() => resolveSnapshotEntryTarget(directory, "editor/../../escape.json")).toThrow(
+      /escapes the snapshot/
+    );
+
+    // An absolute entry path is NOT an escape: `path.join` only concatenates, so the leading
+    // separator is neutralised and the file lands inside. Asserted so the distinction stays
+    // deliberate rather than looking like a case nobody thought about.
+    expect(resolveSnapshotEntryTarget(directory, "/absolute.json")).toBe(
+      path.join(directory, "absolute.json")
+    );
+    expect(resolveSnapshotEntryTarget(directory, "editor/a.json")).toBe(
+      path.join(directory, "editor", "a.json")
+    );
+  });
+
+  it("reports what it cost, because the launch has to say so", async () => {
+    const messages: string[] = [];
+    const result = await materializeRevisionSnapshot({
+      projectPath: project,
+      revision: REVISION,
+      source: sourceOf(new Map([["editor/a.json", Buffer.from("hello")]])),
+      onProgress: (message) => messages.push(message)
     });
 
-    it("reports what it cost, because the launch has to say so", async () => {
-        const messages: string[] = [];
-        const result = await materializeRevisionSnapshot({
-            projectPath: project,
-            revision: REVISION,
-            source: sourceOf(new Map([["editor/a.json", Buffer.from("hello")]])),
-            onProgress: (message) => messages.push(message),
-        });
+    expect(result.bytes).toBe(5);
+    expect(result.durationMs).toBeGreaterThanOrEqual(0);
+    expect(messages.some((m) => m.includes("materialising revision d59feba37af3"))).toBe(true);
+    expect(messages.some((m) => /materialised revision d59feba37af3 in \d+ ms/.test(m))).toBe(true);
+  });
 
-        expect(result.bytes).toBe(5);
-        expect(result.durationMs).toBeGreaterThanOrEqual(0);
-        expect(messages.some((m) => m.includes("materialising revision d59feba37af3"))).toBe(true);
-        expect(messages.some((m) => /materialised revision d59feba37af3 in \d+ ms/.test(m))).toBe(true);
+  it("reports that a snapshot is gone, and says so again when there was none", async () => {
+    // The boolean is the point. An earlier version returned void and swallowed the error, so a
+    // removal that did nothing was indistinguishable from one that worked - and what is left behind
+    // is a full copy of a revision's documents in the author's project.
+    const result = await materializeRevisionSnapshot({
+      projectPath: project,
+      revision: REVISION,
+      source: sourceOf(new Map([["editor/a.json", Buffer.from("1")]]))
     });
+    await expect(removeRevisionSnapshots(project)).resolves.toBe(true);
+    expect(fs.existsSync(result.directory)).toBe(false);
+    await expect(removeRevisionSnapshots(project)).resolves.toBe(true);
+  });
 
-    it("reports that a snapshot is gone, and says so again when there was none", async () => {
-        // The boolean is the point. An earlier version returned void and swallowed the error, so a
-        // removal that did nothing was indistinguishable from one that worked - and what is left behind
-        // is a full copy of a revision's documents in the author's project.
-        const result = await materializeRevisionSnapshot({
-            projectPath: project,
-            revision: REVISION,
-            source: sourceOf(new Map([["editor/a.json", Buffer.from("1")]])),
-        });
-        await expect(removeRevisionSnapshots(project)).resolves.toBe(true);
-        expect(fs.existsSync(result.directory)).toBe(false);
-        await expect(removeRevisionSnapshots(project)).resolves.toBe(true);
-    });
+  it("refuses to materialise on top of a snapshot it could not clear", async () => {
+    // Materialising into a directory that still holds another run's files would produce a MIXED tree
+    // - some documents from the revision, some from before - which is the "wrong build that looks
+    // right" the whole module exists to avoid. So this fails the launch instead.
+    const source = sourceOf(new Map([["editor/a.json", Buffer.from("1")]]));
+    await materializeRevisionSnapshot({ projectPath: project, revision: REVISION, source });
 
-    it("refuses to materialise on top of a snapshot it could not clear", async () => {
-        // Materialising into a directory that still holds another run's files would produce a MIXED tree
-        // - some documents from the revision, some from before - which is the "wrong build that looks
-        // right" the whole module exists to avoid. So this fails the launch instead.
-        const source = sourceOf(new Map([["editor/a.json", Buffer.from("1")]]));
-        await materializeRevisionSnapshot({ projectPath: project, revision: REVISION, source });
-
-        const root = path.dirname(revisionSnapshotDirectory(project, REVISION));
-        const rm = vi.spyOn(fsPromises, "rm").mockRejectedValue(new Error("EPERM"));
-        try {
-            await expect(materializeRevisionSnapshot({ projectPath: project, revision: REVISION, source }))
-                .rejects.toThrow(/could not clear the previous dev mode snapshot/i);
-        } finally {
-            rm.mockRestore();
-        }
-        expect(fs.existsSync(root)).toBe(true);
-    });
+    const root = path.dirname(revisionSnapshotDirectory(project, REVISION));
+    const rm = vi.spyOn(fsPromises, "rm").mockRejectedValue(new Error("EPERM"));
+    try {
+      await expect(
+        materializeRevisionSnapshot({ projectPath: project, revision: REVISION, source })
+      ).rejects.toThrow(/could not clear the previous dev mode snapshot/i);
+    } finally {
+      rm.mockRestore();
+    }
+    expect(fs.existsSync(root)).toBe(true);
+  });
 });

@@ -15,20 +15,22 @@ import { useBadgeImageUrl } from "../../story/scene-editor/storyBadgeImageCache"
  * A waveform or a first frame replaces the mark per type; a generic file glyph never stands in.
  */
 export function AssetThumbnail({ asset, className = "" }: { asset: Asset; className?: string }) {
-    const Icon = ASSET_TYPE_ICONS[asset.type];
-    const url = useBadgeImageUrl(
-        asset.type === AssetType.Image ? { kind: "thumbnail", asset: asset as Asset<AssetType.Image> } : null,
-    );
+  const Icon = ASSET_TYPE_ICONS[asset.type];
+  const url = useBadgeImageUrl(
+    asset.type === AssetType.Image
+      ? { kind: "thumbnail", asset: asset as Asset<AssetType.Image> }
+      : null
+  );
 
-    if (asset.type !== AssetType.Image) {
-        return (
-            <span className={`flex items-center justify-center ${className}`}>
-                <Icon className="h-1/2 w-1/2 text-fg-muted" />
-            </span>
-        );
-    }
-    if (!url) {
-        return <span className={className} />;
-    }
-    return <img src={url} alt="" draggable={false} className={`${className} object-contain`} />;
+  if (asset.type !== AssetType.Image) {
+    return (
+      <span className={`flex items-center justify-center ${className}`}>
+        <Icon className="h-1/2 w-1/2 text-fg-muted" />
+      </span>
+    );
+  }
+  if (!url) {
+    return <span className={className} />;
+  }
+  return <img src={url} alt="" draggable={false} className={`${className} object-contain`} />;
 }

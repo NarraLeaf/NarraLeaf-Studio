@@ -14,19 +14,19 @@ export const RECOVERY_PANEL_ID = "narraleaf-studio:recovery";
  * that window it is the reason the window is open.
  */
 export const recoveryPanelModule: PanelModule = {
-    metadata: {
-        id: RECOVERY_PANEL_ID,
-        // Resolved lazily on read: module registration runs before i18n has necessarily settled.
-        titleKey: "workspace.recovery.panelTitle",
-        get title() {
-            return translate("workspace.recovery.panelTitle");
-        },
-        icon: <LifeBuoy className="w-4 h-4" />,
-        position: PanelPosition.Left,
-        defaultVisible: true,
-        order: -100,
+  metadata: {
+    id: RECOVERY_PANEL_ID,
+    // Resolved lazily on read: module registration runs before i18n has necessarily settled.
+    titleKey: "workspace.recovery.panelTitle",
+    get title() {
+      return translate("workspace.recovery.panelTitle");
     },
-    component: RecoveryPanel,
+    icon: <LifeBuoy className="w-4 h-4" />,
+    position: PanelPosition.Left,
+    defaultVisible: true,
+    order: -100
+  },
+  component: RecoveryPanel
 };
 
 /**
@@ -44,15 +44,15 @@ export const recoveryPanelModule: PanelModule = {
  * subsystem, so none of them has a single check that could honestly enable it.
  */
 export const PANELS_UNLOCKED_BY_PROBE: Readonly<Record<RecoveryProbeId, readonly string[]>> = {
-    project: ["narraleaf-studio:project"],
-    assets: ["narraleaf-studio:assets", "narraleaf-studio:assets-bottom"],
-    story: ["narraleaf-studio:story", "narraleaf-studio:story-motion"],
-    // Reading the scripts needs the outline, so this check unlocks nothing the outline has not.
-    storyDocuments: [],
-    interface: ["narraleaf-studio:ui-surfaces"],
-    characters: ["narraleaf-studio:characters"],
-    localization: ["narraleaf-studio:localization"],
-    voice: ["narraleaf-studio:voice"],
-    variables: [],
-    audioTracks: [],
+  project: ["narraleaf-studio:project"],
+  assets: ["narraleaf-studio:assets", "narraleaf-studio:assets-bottom"],
+  story: ["narraleaf-studio:story", "narraleaf-studio:story-motion"],
+  // Reading the scripts needs the outline, so this check unlocks nothing the outline has not.
+  storyDocuments: [],
+  interface: ["narraleaf-studio:ui-surfaces"],
+  characters: ["narraleaf-studio:characters"],
+  localization: ["narraleaf-studio:localization"],
+  voice: ["narraleaf-studio:voice"],
+  variables: [],
+  audioTracks: []
 };

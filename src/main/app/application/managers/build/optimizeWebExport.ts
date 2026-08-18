@@ -29,27 +29,27 @@ import type { WebImageCodec, WebImageSourceType } from "./webImageCodec";
 export type WebExportOptimizationLog = (level: "info" | "warning", message: string) => void;
 
 export type WebExportOptimizationInput = {
-    /** The compiled static site (the artifact compile's `appDir`). */
-    appDir: string;
-    config: WebOptimizationConfiguration;
-    /**
-     * Injected rather than opened here so the caller owns the window's lifetime
-     * across several passes, and so tests can drive the decision logic without a
-     * browser engine.
-     */
-    codec: WebImageCodec;
-    log: WebExportOptimizationLog;
-    cancelled?: () => boolean;
+  /** The compiled static site (the artifact compile's `appDir`). */
+  appDir: string;
+  config: WebOptimizationConfiguration;
+  /**
+   * Injected rather than opened here so the caller owns the window's lifetime
+   * across several passes, and so tests can drive the decision logic without a
+   * browser engine.
+   */
+  codec: WebImageCodec;
+  log: WebExportOptimizationLog;
+  cancelled?: () => boolean;
 };
 
 export type WebExportOptimizationResult = {
-    /** Images whose re-encoded form was kept. */
-    converted: number;
-    /** Images that were tried and whose original was kept anyway. */
-    keptOriginal: number;
-    /** Total size of the converted images before, and after. */
-    beforeBytes: number;
-    afterBytes: number;
+  /** Images whose re-encoded form was kept. */
+  converted: number;
+  /** Images that were tried and whose original was kept anyway. */
+  keptOriginal: number;
+  /** Total size of the converted images before, and after. */
+  beforeBytes: number;
+  afterBytes: number;
 };
 
 const PACK_FILENAME = "pack.json";
@@ -58,102 +58,107 @@ const PACK_FILENAME = "pack.json";
 const MAX_VERIFICATION_WARNINGS = 3;
 
 export async function optimizeWebExportImages(
-    input: WebExportOptimizationInput,
+  input: WebExportOptimizationInput
 ): Promise<WebExportOptimizationResult> {
-    const packPath = path.join(input.appDir, PACK_FILENAME);
-    const pack = JSON.parse(await fs.readFile(packPath, "utf-8")) as GameRuntimePackV1;
-    const result: WebExportOptimizationResult = { converted: 0, keptOriginal: 0, beforeBytes: 0, afterBytes: 0 };
-    let verificationWarnings = 0;
-    let changed = false;
+  const packPath = path.join(input.appDir, PACK_FILENAME);
+  const pack = JSON.parse(await fs.readFile(packPath, "utf-8")) as GameRuntimePackV1;
+  const result: WebExportOptimizationResult = {
+    converted: 0,
+    keptOriginal: 0,
+    beforeBytes: 0,
+    afterBytes: 0
+  };
+  let verificationWarnings = 0;
+  let changed = false;
 
-    // Sequential on purpose. Each image holds its decoded bitmap plus two full
-    // RGBA buffers for the comparison - roughly 24 bytes per pixel at the peak,
-    // which for a 4K sprite is already a couple of hundred megabytes. Running
-    // several at once would multiply that against a saving measured in seconds,
-    // on a step that is already the smaller half of a production build.
-    for (const [manifestKey, entry] of Object.entries(pack.assets.items)) {
-        if (input.cancelled?.()) {
-            break;
-        }
-        // A path outside `assets/` is not a loose asset file: a sealed pack keeps
-        // its items inside the protected store, which the web export never
-        // produces, but the manifest shape allows for it.
-        if (!entry.relativePath.startsWith("assets/")) {
-            continue;
-        }
-        const filePath = path.join(input.appDir, ...entry.relativePath.split("/"));
-        let bytes: Buffer;
-        try {
-            bytes = await fs.readFile(filePath);
-        } catch {
-            // The manifest names a file the compile did not write. Not this
-            // step's problem to diagnose, and not its place to fail the build.
-            continue;
-        }
-        const plan = planWebImageTranscode(
-            { manifestKey, assetType: entry.type, bytes },
-            input.config,
+  // Sequential on purpose. Each image holds its decoded bitmap plus two full
+  // RGBA buffers for the comparison - roughly 24 bytes per pixel at the peak,
+  // which for a 4K sprite is already a couple of hundred megabytes. Running
+  // several at once would multiply that against a saving measured in seconds,
+  // on a step that is already the smaller half of a production build.
+  for (const [manifestKey, entry] of Object.entries(pack.assets.items)) {
+    if (input.cancelled?.()) {
+      break;
+    }
+    // A path outside `assets/` is not a loose asset file: a sealed pack keeps
+    // its items inside the protected store, which the web export never
+    // produces, but the manifest shape allows for it.
+    if (!entry.relativePath.startsWith("assets/")) {
+      continue;
+    }
+    const filePath = path.join(input.appDir, ...entry.relativePath.split("/"));
+    let bytes: Buffer;
+    try {
+      bytes = await fs.readFile(filePath);
+    } catch {
+      // The manifest names a file the compile did not write. Not this
+      // step's problem to diagnose, and not its place to fail the build.
+      continue;
+    }
+    const plan = planWebImageTranscode({ manifestKey, assetType: entry.type, bytes }, input.config);
+    if (plan.action === "skip") {
+      continue;
+    }
+    const sourceType = sourceTypeOf(bytes);
+    if (!sourceType) {
+      continue;
+    }
+    const encoded = await input.codec.encode({
+      bytes,
+      sourceType,
+      lossless: plan.action === "lossless",
+      ...(plan.action === "lossy" ? { quality: input.config.lossyQuality } : {})
+    });
+    if (!encoded) {
+      result.keptOriginal += 1;
+      continue;
+    }
+    // The guarantee, enforced rather than assumed: a lossless conversion
+    // that does not decode back to the source pixels is thrown away. If this
+    // ever starts firing the engine's behaviour has changed underneath us,
+    // and the right outcome is a bigger export, not an altered one.
+    if (plan.action === "lossless" && !encoded.verifiedLossless) {
+      result.keptOriginal += 1;
+      if (verificationWarnings < MAX_VERIFICATION_WARNINGS) {
+        verificationWarnings += 1;
+        input.log(
+          "warning",
+          `"${entry.name}" did not survive a lossless round trip; it ships unchanged`
         );
-        if (plan.action === "skip") {
-            continue;
-        }
-        const sourceType = sourceTypeOf(bytes);
-        if (!sourceType) {
-            continue;
-        }
-        const encoded = await input.codec.encode({
-            bytes,
-            sourceType,
-            lossless: plan.action === "lossless",
-            ...(plan.action === "lossy" ? { quality: input.config.lossyQuality } : {}),
-        });
-        if (!encoded) {
-            result.keptOriginal += 1;
-            continue;
-        }
-        // The guarantee, enforced rather than assumed: a lossless conversion
-        // that does not decode back to the source pixels is thrown away. If this
-        // ever starts firing the engine's behaviour has changed underneath us,
-        // and the right outcome is a bigger export, not an altered one.
-        if (plan.action === "lossless" && !encoded.verifiedLossless) {
-            result.keptOriginal += 1;
-            if (verificationWarnings < MAX_VERIFICATION_WARNINGS) {
-                verificationWarnings += 1;
-                input.log("warning", `"${entry.name}" did not survive a lossless round trip; it ships unchanged`);
-            }
-            continue;
-        }
-        if (!webImageWorthKeeping(bytes.length, encoded.bytes.length)) {
-            result.keptOriginal += 1;
-            continue;
-        }
-        const nextRelativePath = withWebpExtension(entry.relativePath);
-        const nextPath = path.join(input.appDir, ...nextRelativePath.split("/"));
-        // Two assets can only collide here by differing solely in extension,
-        // which their unique ids rule out - but the check costs nothing and the
-        // failure it prevents is one asset silently overwriting another.
-        if (nextRelativePath !== entry.relativePath && await exists(nextPath)) {
-            result.keptOriginal += 1;
-            continue;
-        }
-        // Written before the original is removed: an interrupted pass then
-        // leaves a stray file rather than an asset that exists in the manifest
-        // and nowhere on disk.
-        await fs.writeFile(nextPath, encoded.bytes);
-        if (nextPath !== filePath) {
-            await fs.rm(filePath, { force: true });
-        }
-        pack.assets.items[manifestKey] = webpManifestEntry(entry, nextRelativePath);
-        changed = true;
-        result.converted += 1;
-        result.beforeBytes += bytes.length;
-        result.afterBytes += encoded.bytes.length;
+      }
+      continue;
     }
+    if (!webImageWorthKeeping(bytes.length, encoded.bytes.length)) {
+      result.keptOriginal += 1;
+      continue;
+    }
+    const nextRelativePath = withWebpExtension(entry.relativePath);
+    const nextPath = path.join(input.appDir, ...nextRelativePath.split("/"));
+    // Two assets can only collide here by differing solely in extension,
+    // which their unique ids rule out - but the check costs nothing and the
+    // failure it prevents is one asset silently overwriting another.
+    if (nextRelativePath !== entry.relativePath && (await exists(nextPath))) {
+      result.keptOriginal += 1;
+      continue;
+    }
+    // Written before the original is removed: an interrupted pass then
+    // leaves a stray file rather than an asset that exists in the manifest
+    // and nowhere on disk.
+    await fs.writeFile(nextPath, encoded.bytes);
+    if (nextPath !== filePath) {
+      await fs.rm(filePath, { force: true });
+    }
+    pack.assets.items[manifestKey] = webpManifestEntry(entry, nextRelativePath);
+    changed = true;
+    result.converted += 1;
+    result.beforeBytes += bytes.length;
+    result.afterBytes += encoded.bytes.length;
+  }
 
-    if (changed) {
-        await fs.writeFile(packPath, JSON.stringify(pack), "utf-8");
-    }
-    return result;
+  if (changed) {
+    await fs.writeFile(packPath, JSON.stringify(pack), "utf-8");
+  }
+  return result;
 }
 
 /**
@@ -165,20 +170,20 @@ export async function optimizeWebExportImages(
  * the only trail from a shipped asset back to its source.
  */
 function webpManifestEntry(
-    entry: GameRuntimeAssetManifestEntry,
-    relativePath: string,
+  entry: GameRuntimeAssetManifestEntry,
+  relativePath: string
 ): GameRuntimeAssetManifestEntry {
-    return { ...entry, relativePath, ext: "webp", mimeType: "image/webp" };
+  return { ...entry, relativePath, ext: "webp", mimeType: "image/webp" };
 }
 
 /** Swap a trailing extension for `.webp`, or add one where there was none. */
 function withWebpExtension(relativePath: string): string {
-    const lastSlash = relativePath.lastIndexOf("/");
-    const lastDot = relativePath.lastIndexOf(".");
-    if (lastDot > lastSlash + 1) {
-        return `${relativePath.slice(0, lastDot)}.webp`;
-    }
-    return `${relativePath}.webp`;
+  const lastSlash = relativePath.lastIndexOf("/");
+  const lastDot = relativePath.lastIndexOf(".");
+  if (lastDot > lastSlash + 1) {
+    return `${relativePath.slice(0, lastDot)}.webp`;
+  }
+  return `${relativePath}.webp`;
 }
 
 /**
@@ -190,21 +195,21 @@ function withWebpExtension(relativePath: string): string {
  * failure at best.
  */
 function sourceTypeOf(bytes: Buffer): WebImageSourceType | null {
-    switch (readImageDimensions(bytes)?.format) {
-        case "png":
-            return "image/png";
-        case "jpeg":
-            return "image/jpeg";
-        default:
-            return null;
-    }
+  switch (readImageDimensions(bytes)?.format) {
+    case "png":
+      return "image/png";
+    case "jpeg":
+      return "image/jpeg";
+    default:
+      return null;
+  }
 }
 
 async function exists(filePath: string): Promise<boolean> {
-    try {
-        await fs.access(filePath);
-        return true;
-    } catch {
-        return false;
-    }
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
 }

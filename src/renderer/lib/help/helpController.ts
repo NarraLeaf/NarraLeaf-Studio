@@ -16,9 +16,9 @@ import { getHelpTopic, type HelpTopicId } from "./helpTopics";
 export const HELP_TOPIC_ATTRIBUTE = "data-help-topic";
 
 export interface HelpRequest {
-    topicId: HelpTopicId;
-    /** What the popover points at. Null centres it, which is what a palette command wants. */
-    anchor: HTMLElement | null;
+  topicId: HelpTopicId;
+  /** What the popover points at. Null centres it, which is what a palette command wants. */
+  anchor: HTMLElement | null;
 }
 
 type HelpOpener = (request: HelpRequest) => void;
@@ -27,12 +27,12 @@ let opener: HelpOpener | null = null;
 
 /** Called by the mounted overlay; returns the teardown. */
 export function registerHelpOpener(next: HelpOpener): () => void {
-    opener = next;
-    return () => {
-        if (opener === next) {
-            opener = null;
-        }
-    };
+  opener = next;
+  return () => {
+    if (opener === next) {
+      opener = null;
+    }
+  };
 }
 
 /**
@@ -43,34 +43,34 @@ export function registerHelpOpener(next: HelpOpener): () => void {
 let pointerTarget: HTMLElement | null = null;
 
 export function startHelpPointerTracking(): () => void {
-    const onPointerOver = (event: PointerEvent) => {
-        pointerTarget = event.target instanceof HTMLElement ? event.target : null;
-    };
-    document.addEventListener("pointerover", onPointerOver, { passive: true });
-    return () => {
-        document.removeEventListener("pointerover", onPointerOver);
-        pointerTarget = null;
-    };
+  const onPointerOver = (event: PointerEvent) => {
+    pointerTarget = event.target instanceof HTMLElement ? event.target : null;
+  };
+  document.addEventListener("pointerover", onPointerOver, { passive: true });
+  return () => {
+    document.removeEventListener("pointerover", onPointerOver);
+    pointerTarget = null;
+  };
 }
 
 /** The nearest enclosing element that declares a registered topic, if any. */
 export function resolveHelpTopicElement(from: Element | null): HTMLElement | null {
-    let node: Element | null = from;
-    while (node) {
-        if (node instanceof HTMLElement) {
-            const id = node.getAttribute(HELP_TOPIC_ATTRIBUTE);
-            if (id && getHelpTopic(id)) {
-                return node;
-            }
-        }
-        node = node.parentElement;
+  let node: Element | null = from;
+  while (node) {
+    if (node instanceof HTMLElement) {
+      const id = node.getAttribute(HELP_TOPIC_ATTRIBUTE);
+      if (id && getHelpTopic(id)) {
+        return node;
+      }
     }
-    return null;
+    node = node.parentElement;
+  }
+  return null;
 }
 
 /** Open a named topic. `anchor` omitted centres the popover. */
 export function openHelpTopic(topicId: HelpTopicId, anchor?: HTMLElement | null): void {
-    opener?.({ topicId, anchor: anchor ?? null });
+  opener?.({ topicId, anchor: anchor ?? null });
 }
 
 /**
@@ -81,16 +81,16 @@ export function openHelpTopic(topicId: HelpTopicId, anchor?: HTMLElement | null)
  * here" means - the workspace opens the browser rather than swallowing the key silently.
  */
 export function requestContextHelp(): boolean {
-    const element =
-        resolveHelpTopicElement(document.activeElement) ?? resolveHelpTopicElement(pointerTarget);
-    if (!element) {
-        return false;
-    }
-    const topicId = element.getAttribute(HELP_TOPIC_ATTRIBUTE);
-    const topic = getHelpTopic(topicId);
-    if (!topic) {
-        return false;
-    }
-    opener?.({ topicId: topic.id, anchor: element });
-    return true;
+  const element =
+    resolveHelpTopicElement(document.activeElement) ?? resolveHelpTopicElement(pointerTarget);
+  if (!element) {
+    return false;
+  }
+  const topicId = element.getAttribute(HELP_TOPIC_ATTRIBUTE);
+  const topic = getHelpTopic(topicId);
+  if (!topic) {
+    return false;
+  }
+  opener?.({ topicId: topic.id, anchor: element });
+  return true;
 }

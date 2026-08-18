@@ -1,4 +1,10 @@
-import type { StoryBlock, StoryBlockId, StoryControlBlock, StoryControlPayload, StoryScene } from "./document";
+import type {
+  StoryBlock,
+  StoryBlockId,
+  StoryControlBlock,
+  StoryControlPayload,
+  StoryScene
+} from "./document";
 import { listSceneBlocksInDocumentOrder } from "./order";
 
 /**
@@ -19,16 +25,18 @@ import { listSceneBlocksInDocumentOrder } from "./order";
  */
 
 export type StorySceneLabel = {
-    /** The declaring block. Its id is what an editor scrolls to; the NAME is what the engine matches. */
-    blockId: StoryBlockId;
-    name: string;
+  /** The declaring block. Its id is what an editor scrolls to; the NAME is what the engine matches. */
+  blockId: StoryBlockId;
+  name: string;
 };
 
-type StoryLabelBlock = StoryControlBlock & { payload: Extract<StoryControlPayload, { control: "label" }> };
+type StoryLabelBlock = StoryControlBlock & {
+  payload: Extract<StoryControlPayload, { control: "label" }>;
+};
 
 /** What the block IS. Whether it still counts (disabled, blank name) is the scan's business. */
 function isLabelBlock(block: StoryBlock): block is StoryLabelBlock {
-    return block.kind === "control" && block.payload.control === "label";
+  return block.kind === "control" && block.payload.control === "label";
 }
 
 /**
@@ -38,23 +46,23 @@ function isLabelBlock(block: StoryBlock): block is StoryLabelBlock {
  * keeps, so the diagnostic has to name the later row.
  */
 export function listSceneLabels(scene: StoryScene | null | undefined): StorySceneLabel[] {
-    // A container's own disabled state already removed its subtree from the runtime, so its labels
-    // are gone with it - the same rule the compiler applies when it skips the subtree.
-    return listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => Boolean(block.disabled) })
-        .filter(isLabelBlock)
-        .map(block => ({ blockId: block.id, name: block.payload.name.trim() }))
-        .filter(label => label.name.length > 0);
+  // A container's own disabled state already removed its subtree from the runtime, so its labels
+  // are gone with it - the same rule the compiler applies when it skips the subtree.
+  return listSceneBlocksInDocumentOrder(scene, { skipSubtree: (block) => Boolean(block.disabled) })
+    .filter(isLabelBlock)
+    .map((block) => ({ blockId: block.id, name: block.payload.name.trim() }))
+    .filter((label) => label.name.length > 0);
 }
 
 /** The label names a `/goto` in this scene may address, deduped, in declaration order. */
 export function sceneLabelNames(scene: StoryScene | null | undefined): string[] {
-    const names: string[] = [];
-    for (const label of listSceneLabels(scene)) {
-        if (!names.includes(label.name)) {
-            names.push(label.name);
-        }
+  const names: string[] = [];
+  for (const label of listSceneLabels(scene)) {
+    if (!names.includes(label.name)) {
+      names.push(label.name);
     }
-    return names;
+  }
+  return names;
 }
 
 /**
@@ -68,14 +76,14 @@ export function sceneLabelNames(scene: StoryScene | null | undefined): string[] 
  * which is exactly the `Story.build` throw this scan exists to prevent.
  */
 export function duplicateSceneLabels(scene: StoryScene | null | undefined): StorySceneLabel[] {
-    const seen = new Set<string>();
-    const duplicates: StorySceneLabel[] = [];
-    for (const label of listSceneLabels(scene)) {
-        if (seen.has(label.name)) {
-            duplicates.push(label);
-            continue;
-        }
-        seen.add(label.name);
+  const seen = new Set<string>();
+  const duplicates: StorySceneLabel[] = [];
+  for (const label of listSceneLabels(scene)) {
+    if (seen.has(label.name)) {
+      duplicates.push(label);
+      continue;
     }
-    return duplicates;
+    seen.add(label.name);
+  }
+  return duplicates;
 }

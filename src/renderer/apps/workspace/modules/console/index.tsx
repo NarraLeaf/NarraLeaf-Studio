@@ -9,15 +9,16 @@ import { PanelPosition } from "../../registry/types";
  * Displays application logs and console output
  */
 export const consoleModule: PanelModule = {
-    metadata: {
-        id: "narraleaf-studio:console",
-        titleKey: "placeholders.moduleTitles.console",
-        get title() { return translate("placeholders.moduleTitles.console"); },
-        icon: <Terminal className="w-4 h-4" />,
-        position: PanelPosition.Bottom,
-        defaultVisible: false,
-        order: 0,
+  metadata: {
+    id: "narraleaf-studio:console",
+    titleKey: "placeholders.moduleTitles.console",
+    get title() {
+      return translate("placeholders.moduleTitles.console");
     },
-    component: ConsolePanel,
+    icon: <Terminal className="w-4 h-4" />,
+    position: PanelPosition.Bottom,
+    defaultVisible: false,
+    order: 0
+  },
+  component: ConsolePanel
 };
-

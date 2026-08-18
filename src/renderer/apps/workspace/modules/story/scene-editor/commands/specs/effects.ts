@@ -2,7 +2,16 @@ import { Focus, Move3d, Sparkles, Zap } from "lucide-react";
 import type { StoryDisplayableTargetRef } from "@shared/types/story";
 import { createBlockForCommand } from "../../storyActionCommands";
 import type { StoryCommandValue } from "../../storyCommandValues";
-import { asColor, asDurationMs, asNumber, asTarget, defineStoryCommand, SECONDS_TYPE, secondsParam, targetParam } from "../spec";
+import {
+  asColor,
+  asDurationMs,
+  asNumber,
+  asTarget,
+  defineStoryCommand,
+  SECONDS_TYPE,
+  secondsParam,
+  targetParam
+} from "../spec";
 
 /**
  * Screen and displayable effects: `/blink`, `/vignette`, `/fx`, `/transform`.
@@ -14,138 +23,144 @@ import { asColor, asDurationMs, asNumber, asTarget, defineStoryCommand, SECONDS_
  */
 
 function screenEffectBuild(commandId: "screenBlink" | "screenVignette") {
-    return (
-        args: {
-            readonly d?: StoryCommandValue;
-            readonly hold?: StoryCommandValue;
-            readonly color?: StoryCommandValue;
-            readonly opacity?: StoryCommandValue;
-        },
-        ctx: { generateId: () => string },
-    ) => {
-        const block = createBlockForCommand(commandId, ctx.generateId);
-        if (block.kind !== "action" || block.payload.action !== "screenEffect") {
-            return block;
-        }
-        const payload = { ...block.payload };
-        const durationMs = asDurationMs(args.d);
-        if (durationMs !== undefined) {
-            payload.durationMs = durationMs;
-        }
-        const holdMs = asDurationMs(args.hold);
-        if (holdMs !== undefined) {
-            payload.holdMs = holdMs;
-        }
-        const color = asColor(args.color);
-        if (color !== undefined) {
-            payload.color = color;
-        }
-        const opacity = asNumber(args.opacity);
-        if (opacity !== undefined) {
-            payload.opacity = opacity;
-        }
-        return { ...block, payload };
-    };
+  return (
+    args: {
+      readonly d?: StoryCommandValue;
+      readonly hold?: StoryCommandValue;
+      readonly color?: StoryCommandValue;
+      readonly opacity?: StoryCommandValue;
+    },
+    ctx: { generateId: () => string }
+  ) => {
+    const block = createBlockForCommand(commandId, ctx.generateId);
+    if (block.kind !== "action" || block.payload.action !== "screenEffect") {
+      return block;
+    }
+    const payload = { ...block.payload };
+    const durationMs = asDurationMs(args.d);
+    if (durationMs !== undefined) {
+      payload.durationMs = durationMs;
+    }
+    const holdMs = asDurationMs(args.hold);
+    if (holdMs !== undefined) {
+      payload.holdMs = holdMs;
+    }
+    const color = asColor(args.color);
+    if (color !== undefined) {
+      payload.color = color;
+    }
+    const opacity = asNumber(args.opacity);
+    if (opacity !== undefined) {
+      payload.opacity = opacity;
+    }
+    return { ...block, payload };
+  };
 }
 
 export const blink = defineStoryCommand({
-    id: "blink",
-    token: "blink",
-    category: "scene",
-    icon: Zap,
-    examples: ["/blink", "/blink d=0.2 hold=0.1"],
-    params: {
-        d: secondsParam(),
-        hold: { hint: "hold", type: SECONDS_TYPE },
-        color: { hint: "color", type: { kind: "color" } },
-    },
-    build: screenEffectBuild("screenBlink"),
+  id: "blink",
+  token: "blink",
+  category: "scene",
+  icon: Zap,
+  examples: ["/blink", "/blink d=0.2 hold=0.1"],
+  params: {
+    d: secondsParam(),
+    hold: { hint: "hold", type: SECONDS_TYPE },
+    color: { hint: "color", type: { kind: "color" } }
+  },
+  build: screenEffectBuild("screenBlink")
 });
 
 export const vignette = defineStoryCommand({
-    id: "vignette",
-    token: "vignette",
-    aliases: ["vig"],
-    category: "scene",
-    icon: Focus,
-    examples: ["/vignette", "/vignette d=0.5 opacity=0.6"],
-    params: {
-        d: secondsParam(),
-        hold: { hint: "hold", type: SECONDS_TYPE },
-        color: { hint: "color", type: { kind: "color" } },
-        opacity: { hint: "opacity", type: { kind: "number", min: 0, max: 1 } },
-    },
-    build: screenEffectBuild("screenVignette"),
+  id: "vignette",
+  token: "vignette",
+  aliases: ["vig"],
+  category: "scene",
+  icon: Focus,
+  examples: ["/vignette", "/vignette d=0.5 opacity=0.6"],
+  params: {
+    d: secondsParam(),
+    hold: { hint: "hold", type: SECONDS_TYPE },
+    color: { hint: "color", type: { kind: "color" } },
+    opacity: { hint: "opacity", type: { kind: "number", min: 0, max: 1 } }
+  },
+  build: screenEffectBuild("screenVignette")
 });
 
 /** The displayable target ref a generic-effect block addresses - name plus kind, resolved later by the inspector's binding. */
-function displayableTargetRef(target: ReturnType<typeof asTarget>): StoryDisplayableTargetRef | undefined {
-    if (!target) {
-        return undefined;
-    }
-    if (target.type === "character") {
-        return { kind: "character", name: target.name };
-    }
-    // Audio, video and vfx are not displayables; the target param never accepts them here. (The
-    // payload type says so too - `StoryDisplayableTargetKind` excludes them - so this arm exists only
-    // to keep the function total, not because a line can reach it.)
-    if (target.objectKind === "audio" || target.objectKind === "video" || target.objectKind === "vfx") {
-        return { name: target.name };
-    }
-    return { kind: target.objectKind, name: target.name };
+function displayableTargetRef(
+  target: ReturnType<typeof asTarget>
+): StoryDisplayableTargetRef | undefined {
+  if (!target) {
+    return undefined;
+  }
+  if (target.type === "character") {
+    return { kind: "character", name: target.name };
+  }
+  // Audio, video and vfx are not displayables; the target param never accepts them here. (The
+  // payload type says so too - `StoryDisplayableTargetKind` excludes them - so this arm exists only
+  // to keep the function total, not because a line can reach it.)
+  if (
+    target.objectKind === "audio" ||
+    target.objectKind === "video" ||
+    target.objectKind === "vfx"
+  ) {
+    return { name: target.name };
+  }
+  return { kind: target.objectKind, name: target.name };
 }
 
 export const fx = defineStoryCommand({
-    id: "fx",
-    token: "fx",
-    aliases: ["effect"],
-    // Only the flat surfaces read this; the sidebar files `/fx` under all four subjects it accepts.
-    category: "image",
-    icon: Sparkles,
-    examples: ["/fx hero"],
-    params: {
-        target: targetParam(["image", "text", "layer", "character"], { core: true }),
-    },
-    build(args, ctx) {
-        const block = createBlockForCommand("displayableEffect", ctx.generateId);
-        if (block.kind !== "action" || block.payload.action !== "displayable") {
-            return block;
-        }
-        const ref = displayableTargetRef(asTarget(args.target));
-        return ref ? { ...block, payload: { ...block.payload, target: ref } } : block;
-    },
-    // Which effect, and its knobs, is inspector territory - the line only says what it acts on.
-    inspectorAfterCommit: true,
+  id: "fx",
+  token: "fx",
+  aliases: ["effect"],
+  // Only the flat surfaces read this; the sidebar files `/fx` under all four subjects it accepts.
+  category: "image",
+  icon: Sparkles,
+  examples: ["/fx hero"],
+  params: {
+    target: targetParam(["image", "text", "layer", "character"], { core: true })
+  },
+  build(args, ctx) {
+    const block = createBlockForCommand("displayableEffect", ctx.generateId);
+    if (block.kind !== "action" || block.payload.action !== "displayable") {
+      return block;
+    }
+    const ref = displayableTargetRef(asTarget(args.target));
+    return ref ? { ...block, payload: { ...block.payload, target: ref } } : block;
+  },
+  // Which effect, and its knobs, is inspector territory - the line only says what it acts on.
+  inspectorAfterCommit: true
 });
 
 export const transform = defineStoryCommand({
-    id: "transform",
-    token: "transform",
-    aliases: ["displayabletransform"],
-    category: "image",
-    icon: Move3d,
-    examples: ["/transform hero", "/transform hero d=0.5"],
-    params: {
-        target: targetParam(["image", "text", "layer", "character"], { core: true }),
-        d: secondsParam(),
-    },
-    build(args, ctx) {
-        const block = createBlockForCommand("displayableTransform", ctx.generateId);
-        if (block.kind !== "action" || block.payload.action !== "displayable") {
-            return block;
-        }
-        const payload = { ...block.payload };
-        const ref = displayableTargetRef(asTarget(args.target));
-        if (ref) {
-            payload.target = ref;
-        }
-        const durationMs = asDurationMs(args.d);
-        if (durationMs !== undefined) {
-            payload.durationMs = durationMs;
-        }
-        return { ...block, payload };
-    },
-    inspectorAfterCommit: true,
+  id: "transform",
+  token: "transform",
+  aliases: ["displayabletransform"],
+  category: "image",
+  icon: Move3d,
+  examples: ["/transform hero", "/transform hero d=0.5"],
+  params: {
+    target: targetParam(["image", "text", "layer", "character"], { core: true }),
+    d: secondsParam()
+  },
+  build(args, ctx) {
+    const block = createBlockForCommand("displayableTransform", ctx.generateId);
+    if (block.kind !== "action" || block.payload.action !== "displayable") {
+      return block;
+    }
+    const payload = { ...block.payload };
+    const ref = displayableTargetRef(asTarget(args.target));
+    if (ref) {
+      payload.target = ref;
+    }
+    const durationMs = asDurationMs(args.d);
+    if (durationMs !== undefined) {
+      payload.durationMs = durationMs;
+    }
+    return { ...block, payload };
+  },
+  inspectorAfterCommit: true
 });
 
 export const EFFECT_COMMANDS = [blink, vignette, fx, transform];

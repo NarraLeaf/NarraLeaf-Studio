@@ -1,18 +1,21 @@
 import { useMemo } from "react";
 import { useTranslation } from "@/lib/i18n";
 import type {
-    SafeAreaMobileOrientation,
-    SurfacePreviewFit,
-    SurfacePreviewSize,
+  SafeAreaMobileOrientation,
+  SurfacePreviewFit,
+  SurfacePreviewSize
 } from "@/lib/ui-editor/preview/surfacePreviewFrames";
-import { computeSafeAreaFrameById, getSafeAreaPreset } from "@/lib/ui-editor/preview/surfacePreviewFrames";
+import {
+  computeSafeAreaFrameById,
+  getSafeAreaPreset
+} from "@/lib/ui-editor/preview/surfacePreviewFrames";
 
 type Props = {
-    designSize: SurfacePreviewSize;
-    aspectId: string | null;
-    safeAreaId: string | null;
-    mobileOrientation?: SafeAreaMobileOrientation | null;
-    stageFit?: SurfacePreviewFit;
+  designSize: SurfacePreviewSize;
+  aspectId: string | null;
+  safeAreaId: string | null;
+  mobileOrientation?: SafeAreaMobileOrientation | null;
+  stageFit?: SurfacePreviewFit;
 };
 
 /**
@@ -26,41 +29,49 @@ type Props = {
  * of text the most valuable answer the feature can give ("this device is fine") is indistinguishable
  * from the feature being off.
  */
-export function SurfacePreviewFramesReadout({ designSize, aspectId, safeAreaId, mobileOrientation, stageFit }: Props) {
-    const { t } = useTranslation();
+export function SurfacePreviewFramesReadout({
+  designSize,
+  aspectId,
+  safeAreaId,
+  mobileOrientation,
+  stageFit
+}: Props) {
+  const { t } = useTranslation();
 
-    const safeFrame = useMemo(
-        () => computeSafeAreaFrameById(designSize, safeAreaId, mobileOrientation, stageFit),
-        [designSize, safeAreaId, mobileOrientation, stageFit],
-    );
-    const preset = getSafeAreaPreset(safeAreaId);
+  const safeFrame = useMemo(
+    () => computeSafeAreaFrameById(designSize, safeAreaId, mobileOrientation, stageFit),
+    [designSize, safeAreaId, mobileOrientation, stageFit]
+  );
+  const preset = getSafeAreaPreset(safeAreaId);
 
-    const parts: string[] = [];
-    if (aspectId) {
-        parts.push(aspectId);
-    }
-    if (preset && safeFrame) {
-        const insets = safeFrame.fullySafe
-            ? t("uiEditor.preview.noOverlap")
-            : (["top", "right", "bottom", "left"] as const)
-                  .filter(edge => safeFrame.insets[edge] > 0)
-                  // Rounded: these are millimetre-accurate device numbers projected through a fit
-                  // scale, and a fractional design pixel is not a number anyone acts on.
-                  .map(edge => `${t(`uiEditor.preview.inset.${edge}`)} ${Math.round(safeFrame.insets[edge])}`)
-                  .join("  ");
-        parts.push(`${preset.reference} · ${insets}`);
-    }
+  const parts: string[] = [];
+  if (aspectId) {
+    parts.push(aspectId);
+  }
+  if (preset && safeFrame) {
+    const insets = safeFrame.fullySafe
+      ? t("uiEditor.preview.noOverlap")
+      : (["top", "right", "bottom", "left"] as const)
+          .filter((edge) => safeFrame.insets[edge] > 0)
+          // Rounded: these are millimetre-accurate device numbers projected through a fit
+          // scale, and a fractional design pixel is not a number anyone acts on.
+          .map(
+            (edge) => `${t(`uiEditor.preview.inset.${edge}`)} ${Math.round(safeFrame.insets[edge])}`
+          )
+          .join("  ");
+    parts.push(`${preset.reference} · ${insets}`);
+  }
 
-    if (parts.length === 0) {
-        return null;
-    }
+  if (parts.length === 0) {
+    return null;
+  }
 
-    return (
-        <div
-            data-surface-preview-readout
-            className="pointer-events-none absolute bottom-3 right-3 z-20 rounded-md border border-edge-strong bg-surface-canvas/80 px-2 py-1 text-2xs tabular-nums text-fg-muted"
-        >
-            {parts.join("  ·  ")}
-        </div>
-    );
+  return (
+    <div
+      data-surface-preview-readout
+      className="pointer-events-none absolute bottom-3 right-3 z-20 rounded-md border border-edge-strong bg-surface-canvas/80 px-2 py-1 text-2xs tabular-nums text-fg-muted"
+    >
+      {parts.join("  ·  ")}
+    </div>
+  );
 }

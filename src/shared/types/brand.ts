@@ -24,40 +24,40 @@
 export const BRAND_SCHEMA_VERSION = 1;
 
 export type BrandColor = {
-    /**
-     * Stable, and the only thing references hold.
-     *
-     * Seeded entries use the spelling in {@link BUILTIN_BRAND_COLORS}; an author's own colour gets
-     * a generated short id. Both have to be addressable by a link, so a generator must stay inside
-     * the grammar `@shared/brand/brandLink` accepts - each segment starting with a lower-case
-     * letter, at most one dot. `brand.test.ts` asserts every seed does.
-     */
-    id: string;
-    /**
-     * What the author called it. Absent on the seeded entries, where the panel shows a translated
-     * default instead.
-     */
-    name?: string;
-    /**
-     * A CSS literal (`#RRGGBB`, `rgba(...)`), or a link to another entry of this same palette.
-     *
-     * The link case is the whole point of the feature - `button.primary` is `nlbrand:primary`, so
-     * a button follows the brand without anyone re-entering the colour. Depth is bounded and cycles
-     * are refused when the palette is resolved, not here; see `@shared/brand/brandRegistry`.
-     */
-    value: string;
-    /** Set on the seeded entries. Derived from {@link isBuiltinBrandColorId}, never authored. */
-    builtin?: true;
+  /**
+   * Stable, and the only thing references hold.
+   *
+   * Seeded entries use the spelling in {@link BUILTIN_BRAND_COLORS}; an author's own colour gets
+   * a generated short id. Both have to be addressable by a link, so a generator must stay inside
+   * the grammar `@shared/brand/brandLink` accepts - each segment starting with a lower-case
+   * letter, at most one dot. `brand.test.ts` asserts every seed does.
+   */
+  id: string;
+  /**
+   * What the author called it. Absent on the seeded entries, where the panel shows a translated
+   * default instead.
+   */
+  name?: string;
+  /**
+   * A CSS literal (`#RRGGBB`, `rgba(...)`), or a link to another entry of this same palette.
+   *
+   * The link case is the whole point of the feature - `button.primary` is `nlbrand:primary`, so
+   * a button follows the brand without anyone re-entering the colour. Depth is bounded and cycles
+   * are refused when the palette is resolved, not here; see `@shared/brand/brandRegistry`.
+   */
+  value: string;
+  /** Set on the seeded entries. Derived from {@link isBuiltinBrandColorId}, never authored. */
+  builtin?: true;
 };
 
 /** The persisted document. An array because the seed order is the order the panel draws. */
 export type ProjectBrandDocument = {
-    schemaVersion: number;
-    colors: BrandColor[];
+  schemaVersion: number;
+  colors: BrandColor[];
 };
 
 function seedColor(id: string, value: string): BrandColor {
-    return Object.freeze({id, value, builtin: true as const});
+  return Object.freeze({ id, value, builtin: true as const });
 }
 
 /**
@@ -75,54 +75,58 @@ function seedColor(id: string, value: string): BrandColor {
  * colour they are a shade of - a shadow is not the brand darkened, it is a shadow.
  */
 export const BUILTIN_BRAND_COLORS: readonly BrandColor[] = Object.freeze([
-    seedColor("primary", "#40A8C4"),
-    seedColor("secondary", "#2E6E80"),
-    seedColor("background", "#101317"),
-    seedColor("foreground", "#F2F4F7"),
+  seedColor("primary", "#40A8C4"),
+  seedColor("secondary", "#2E6E80"),
+  seedColor("background", "#101317"),
+  seedColor("foreground", "#F2F4F7"),
 
-    seedColor("button.primary", "nlbrand:primary"),
-    seedColor("button.secondary", "nlbrand:secondary"),
-    seedColor("button.border", "nlbrand:secondary"),
-    seedColor("button.text", "nlbrand:foreground"),
-    seedColor("button.shadow", "rgba(0, 0, 0, 0.35)"),
+  seedColor("button.primary", "nlbrand:primary"),
+  seedColor("button.secondary", "nlbrand:secondary"),
+  seedColor("button.border", "nlbrand:secondary"),
+  seedColor("button.text", "nlbrand:foreground"),
+  seedColor("button.shadow", "rgba(0, 0, 0, 0.35)"),
 
-    seedColor("container.background", "nlbrand:background"),
-    seedColor("container.border", "nlbrand:secondary"),
-    seedColor("container.shadow", "rgba(0, 0, 0, 0.35)"),
+  seedColor("container.background", "nlbrand:background"),
+  seedColor("container.border", "nlbrand:secondary"),
+  seedColor("container.shadow", "rgba(0, 0, 0, 0.35)"),
 
-    seedColor("text.primary", "nlbrand:foreground"),
-    seedColor("text.muted", "#9AA3AE"),
+  seedColor("text.primary", "nlbrand:foreground"),
+  seedColor("text.muted", "#9AA3AE"),
 
-    seedColor("textInput.background", "nlbrand:background"),
-    seedColor("textInput.border", "nlbrand:secondary"),
-    seedColor("textInput.text", "nlbrand:foreground"),
+  seedColor("textInput.background", "nlbrand:background"),
+  seedColor("textInput.border", "nlbrand:secondary"),
+  seedColor("textInput.text", "nlbrand:foreground")
 ]) as readonly BrandColor[];
 
 /** One accordion in the Brand panel: a widget, and the slots it consumes. */
 export type BrandControlGroup = {
-    id: string;
-    slotIds: readonly string[];
+  id: string;
+  slotIds: readonly string[];
 };
 
 function deriveControlGroups(colors: readonly BrandColor[]): readonly BrandControlGroup[] {
-    const groups: {id: string; slotIds: string[]}[] = [];
-    for (const color of colors) {
-        const dot = color.id.indexOf(".");
-        if (dot <= 0) {
-            continue;
-        }
-        const groupId = color.id.slice(0, dot);
-        const existing = groups.find(group => group.id === groupId);
-        if (existing) {
-            existing.slotIds.push(color.id);
-        } else {
-            groups.push({id: groupId, slotIds: [color.id]});
-        }
+  const groups: { id: string; slotIds: string[] }[] = [];
+  for (const color of colors) {
+    const dot = color.id.indexOf(".");
+    if (dot <= 0) {
+      continue;
     }
-    return Object.freeze(groups.map(group => Object.freeze({
+    const groupId = color.id.slice(0, dot);
+    const existing = groups.find((group) => group.id === groupId);
+    if (existing) {
+      existing.slotIds.push(color.id);
+    } else {
+      groups.push({ id: groupId, slotIds: [color.id] });
+    }
+  }
+  return Object.freeze(
+    groups.map((group) =>
+      Object.freeze({
         id: group.id,
-        slotIds: Object.freeze([...group.slotIds]) as readonly string[],
-    }))) as readonly BrandControlGroup[];
+        slotIds: Object.freeze([...group.slotIds]) as readonly string[]
+      })
+    )
+  ) as readonly BrandControlGroup[];
 }
 
 /**
@@ -139,14 +143,15 @@ function deriveControlGroups(colors: readonly BrandColor[]): readonly BrandContr
  * would drift the first time a slot was added, and the drift is invisible - the new slot simply
  * never appears in the panel, with nothing reporting why.
  */
-export const BRAND_CONTROL_GROUPS: readonly BrandControlGroup[] = deriveControlGroups(BUILTIN_BRAND_COLORS);
+export const BRAND_CONTROL_GROUPS: readonly BrandControlGroup[] =
+  deriveControlGroups(BUILTIN_BRAND_COLORS);
 
 export function isBuiltinBrandColorId(id: string): boolean {
-    return BUILTIN_BRAND_COLORS.some(color => color.id === id);
+  return BUILTIN_BRAND_COLORS.some((color) => color.id === id);
 }
 
 export function builtinBrandColor(id: string): BrandColor | undefined {
-    return BUILTIN_BRAND_COLORS.find(color => color.id === id);
+  return BUILTIN_BRAND_COLORS.find((color) => color.id === id);
 }
 
 /**
@@ -165,32 +170,33 @@ export function builtinBrandColor(id: string): BrandColor | undefined {
  * author can see - whereas dropping the row here would lose the name they typed.
  */
 export function normalizeProjectBrandColor(raw: unknown): BrandColor | null {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        return null;
-    }
-    const record = raw as Record<string, unknown>;
-    const id = typeof record.id === "string" ? record.id.trim() : "";
-    if (!id) {
-        return null;
-    }
-    const seeded = builtinBrandColor(id);
-    const value = (typeof record.value === "string" ? record.value.trim() : "") || seeded?.value || "";
-    if (!value) {
-        return null;
-    }
-    const name = typeof record.name === "string" ? record.name.trim() : "";
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  const id = typeof record.id === "string" ? record.id.trim() : "";
+  if (!id) {
+    return null;
+  }
+  const seeded = builtinBrandColor(id);
+  const value =
+    (typeof record.value === "string" ? record.value.trim() : "") || seeded?.value || "";
+  if (!value) {
+    return null;
+  }
+  const name = typeof record.name === "string" ? record.name.trim() : "";
 
-    return {
-        id,
-        // Absent rather than empty. The panel falls back to a translated default for a nameless
-        // entry, and `""` would draw an empty row instead of that default.
-        ...(name ? {name} : {}),
-        value,
-        // Derived from the id and re-derived on every load, so a hand-written `builtin: true` on an
-        // author's own colour cannot make it undeletable, and a stripped one cannot make `primary`
-        // deletable.
-        ...(seeded ? {builtin: true as const} : {}),
-    };
+  return {
+    id,
+    // Absent rather than empty. The panel falls back to a translated default for a nameless
+    // entry, and `""` would draw an empty row instead of that default.
+    ...(name ? { name } : {}),
+    value,
+    // Derived from the id and re-derived on every load, so a hand-written `builtin: true` on an
+    // author's own colour cannot make it undeletable, and a stripped one cannot make `primary`
+    // deletable.
+    ...(seeded ? { builtin: true as const } : {})
+  };
 }
 
 /**
@@ -202,27 +208,27 @@ export function normalizeProjectBrandColor(raw: unknown): BrandColor | null {
  * appended at the bottom.
  */
 export function normalizeProjectBrandColors(raw: unknown): BrandColor[] {
-    const source = Array.isArray(raw) ? raw : [];
-    const byId = new Map<string, BrandColor>();
-    const order: string[] = [];
+  const source = Array.isArray(raw) ? raw : [];
+  const byId = new Map<string, BrandColor>();
+  const order: string[] = [];
 
-    for (const entry of source) {
-        const color = normalizeProjectBrandColor(entry);
-        if (!color || byId.has(color.id)) {
-            // First wins. A duplicated id is one row on the surface either way, and taking the later
-            // one would silently discard whichever of the two the author had been editing first.
-            continue;
-        }
-        byId.set(color.id, color);
-        order.push(color.id);
+  for (const entry of source) {
+    const color = normalizeProjectBrandColor(entry);
+    if (!color || byId.has(color.id)) {
+      // First wins. A duplicated id is one row on the surface either way, and taking the later
+      // one would silently discard whichever of the two the author had been editing first.
+      continue;
     }
+    byId.set(color.id, color);
+    order.push(color.id);
+  }
 
-    const missing = BUILTIN_BRAND_COLORS.filter(seed => !byId.has(seed.id));
-    for (const seed of missing) {
-        byId.set(seed.id, {...seed});
-    }
+  const missing = BUILTIN_BRAND_COLORS.filter((seed) => !byId.has(seed.id));
+  for (const seed of missing) {
+    byId.set(seed.id, { ...seed });
+  }
 
-    return [...missing.map(seed => seed.id), ...order].map(id => byId.get(id)!);
+  return [...missing.map((seed) => seed.id), ...order].map((id) => byId.get(id)!);
 }
 
 /**
@@ -232,20 +238,19 @@ export function normalizeProjectBrandColors(raw: unknown): BrandColor[] {
  * start so the spec has one entry point and a v2 has one place to be written.
  */
 export function migrateProjectBrandDocument(raw: unknown): ProjectBrandDocument {
-    const record = raw && typeof raw === "object" && !Array.isArray(raw)
-        ? raw as Record<string, unknown>
-        : {};
+  const record =
+    raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
 
-    return {
-        schemaVersion: BRAND_SCHEMA_VERSION,
-        colors: normalizeProjectBrandColors(record.colors),
-    };
+  return {
+    schemaVersion: BRAND_SCHEMA_VERSION,
+    colors: normalizeProjectBrandColors(record.colors)
+  };
 }
 
 /** An absent document is a project that has never had the Brand surface opened: the seeds, alone. */
 export function createEmptyProjectBrandDocument(): ProjectBrandDocument {
-    return {
-        schemaVersion: BRAND_SCHEMA_VERSION,
-        colors: normalizeProjectBrandColors([]),
-    };
+  return {
+    schemaVersion: BRAND_SCHEMA_VERSION,
+    colors: normalizeProjectBrandColors([])
+  };
 }

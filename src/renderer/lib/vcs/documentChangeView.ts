@@ -1,4 +1,9 @@
-import type { DocumentChange, DocumentChangeKind, DocumentDiff, DocumentDiffTier } from "@shared/documents/diff";
+import type {
+  DocumentChange,
+  DocumentChangeKind,
+  DocumentDiff,
+  DocumentDiffTier
+} from "@shared/documents/diff";
 import type { TranslationKey, Translator } from "@shared/i18n";
 
 /**
@@ -21,29 +26,29 @@ import type { TranslationKey, Translator } from "@shared/i18n";
 
 /** One line of a change list: a top-level change, or one of its children. */
 export interface DocumentChangeRow {
-    /** Stable within one list. Not derived from the path alone - two roots can share an empty one. */
-    readonly key: string;
-    /** 0 for a change, 1 for a child of one. The model is two levels deep and no deeper. */
-    readonly depth: 0 | 1;
-    readonly change: DocumentChange;
-    /**
-     * Children of this row that the list is not showing: the ones the producer already dropped
-     * ({@link DocumentChange.truncated}) plus any this cap left out. Zero on a child row.
-     */
-    readonly truncated: number;
+  /** Stable within one list. Not derived from the path alone - two roots can share an empty one. */
+  readonly key: string;
+  /** 0 for a change, 1 for a child of one. The model is two levels deep and no deeper. */
+  readonly depth: 0 | 1;
+  readonly change: DocumentChange;
+  /**
+   * Children of this row that the list is not showing: the ones the producer already dropped
+   * ({@link DocumentChange.truncated}) plus any this cap left out. Zero on a child row.
+   */
+  readonly truncated: number;
 }
 
 export interface DocumentChangeRowList {
-    readonly rows: DocumentChangeRow[];
-    /**
-     * Leaf changes not on screen, counting what the producer dropped as well as what this cap did.
-     *
-     * The number an omission notice quotes. Zero means the rows really are the whole list, which is
-     * the only condition under which a surface may stay silent.
-     */
-    readonly hidden: number;
-    /** Everything the diff stands for - `DocumentDiff.total`, and the count "view all N" names. */
-    readonly total: number;
+  readonly rows: DocumentChangeRow[];
+  /**
+   * Leaf changes not on screen, counting what the producer dropped as well as what this cap did.
+   *
+   * The number an omission notice quotes. Zero means the rows really are the whole list, which is
+   * the only condition under which a surface may stay silent.
+   */
+  readonly hidden: number;
+  /** Everything the diff stands for - `DocumentDiff.total`, and the count "view all N" names. */
+  readonly total: number;
 }
 
 /**
@@ -62,55 +67,55 @@ export interface DocumentChangeRowList {
  * reason.
  */
 export function buildDocumentChangeRows(diff: DocumentDiff, limit: number): DocumentChangeRowList {
-    const rows: DocumentChangeRow[] = [];
-    let budget = Math.max(0, limit);
-    let shownLeaves = 0;
+  const rows: DocumentChangeRow[] = [];
+  let budget = Math.max(0, limit);
+  let shownLeaves = 0;
 
-    for (const change of diff.changes) {
-        if (budget <= 0) {
-            break;
-        }
-        const children = change.children ?? [];
-        budget -= 1;
-        const taken = Math.min(children.length, budget);
-        rows.push({
-            key: `${rows.length}:${change.path.join("/")}`,
-            depth: 0,
-            change,
-            truncated: (change.truncated ?? 0) + (children.length - taken),
-        });
-        for (let index = 0; index < taken; index += 1) {
-            rows.push({
-                key: `${rows.length}:${children[index].path.join("/")}`,
-                depth: 1,
-                change: children[index],
-                truncated: 0,
-            });
-        }
-        budget -= taken;
-        // A group stands for its children; a change with none stands for itself. Counted the way
-        // `countDocumentChanges` counts, so `hidden` and `total` are measured on the same scale.
-        shownLeaves += children.length > 0 ? taken : 1;
+  for (const change of diff.changes) {
+    if (budget <= 0) {
+      break;
     }
+    const children = change.children ?? [];
+    budget -= 1;
+    const taken = Math.min(children.length, budget);
+    rows.push({
+      key: `${rows.length}:${change.path.join("/")}`,
+      depth: 0,
+      change,
+      truncated: (change.truncated ?? 0) + (children.length - taken)
+    });
+    for (let index = 0; index < taken; index += 1) {
+      rows.push({
+        key: `${rows.length}:${children[index].path.join("/")}`,
+        depth: 1,
+        change: children[index],
+        truncated: 0
+      });
+    }
+    budget -= taken;
+    // A group stands for its children; a change with none stands for itself. Counted the way
+    // `countDocumentChanges` counts, so `hidden` and `total` are measured on the same scale.
+    shownLeaves += children.length > 0 ? taken : 1;
+  }
 
-    return { rows, hidden: Math.max(0, diff.total - shownLeaves), total: diff.total };
+  return { rows, hidden: Math.max(0, diff.total - shownLeaves), total: diff.total };
 }
 
 /** One change, ready to draw. */
 export interface DocumentChangeLabelView {
-    /** The row's leading text: the author's own word when the label does not already carry it. */
-    readonly primary: string;
-    /** The translated label, when {@link primary} is the subject instead. */
-    readonly detail?: string;
-    /**
-     * The two values either side of the change, when the producer supplied them.
-     *
-     * Drawn by the surface as a pair rather than interpolated into a sentence: an arrow between two
-     * values is not language, so no locale has to word "a became b" once per kind of thing that can
-     * change - and a narrow column can truncate the value without truncating the sentence around it.
-     */
-    readonly from?: string;
-    readonly to?: string;
+  /** The row's leading text: the author's own word when the label does not already carry it. */
+  readonly primary: string;
+  /** The translated label, when {@link primary} is the subject instead. */
+  readonly detail?: string;
+  /**
+   * The two values either side of the change, when the producer supplied them.
+   *
+   * Drawn by the surface as a pair rather than interpolated into a sentence: an arrow between two
+   * values is not language, so no locale has to word "a became b" once per kind of thing that can
+   * change - and a narrow column can truncate the value without truncating the sentence around it.
+   */
+  readonly from?: string;
+  readonly to?: string;
 }
 
 /**
@@ -140,52 +145,57 @@ export type LabelTranslator = Pick<Translator, "t" | "has">;
  * three parameters it can coincide with are named exactly rather than guessed at by substring.
  */
 export function resolveDocumentChangeLabel(
-    change: DocumentChange,
-    translator: LabelTranslator,
+  change: DocumentChange,
+  translator: LabelTranslator
 ): DocumentChangeLabelView {
-    const params = change.label.params;
-    const interpolated: Record<string, string | number> = { ...params };
+  const params = change.label.params;
+  const interpolated: Record<string, string | number> = { ...params };
 
-    // Byte counts are the one parameter the author reads as a size rather than as a number. Formatted
-    // here rather than in the producer, which has no locale and no idea how wide the column is.
-    for (const key of ["bytes", "fromBytes", "toBytes"] as const) {
-        const value = params?.[key];
-        if (typeof value === "number") {
-            interpolated[key] = formatBytes(value);
-        }
+  // Byte counts are the one parameter the author reads as a size rather than as a number. Formatted
+  // here rather than in the producer, which has no locale and no idea how wide the column is.
+  for (const key of ["bytes", "fromBytes", "toBytes"] as const) {
+    const value = params?.[key];
+    if (typeof value === "number") {
+      interpolated[key] = formatBytes(value);
     }
-    if (change.label.key === LABEL_SUMMARY_COUNT && typeof params?.name === "string") {
-        interpolated.name = translateCountName(params.name, translator);
-    }
+  }
+  if (change.label.key === LABEL_SUMMARY_COUNT && typeof params?.name === "string") {
+    interpolated.name = translateCountName(params.name, translator);
+  }
 
-    // Cast because a producer's key is a plain string by contract - the diff model is shared with the
-    // main process, which has no business importing a renderer's key union. A key with no entry
-    // renders as itself, which is what makes a stale producer visible rather than blank.
-    const text = translator.t(change.label.key as TranslationKey, interpolated);
-    const from = params?.from === undefined ? undefined : String(params.from);
-    const to = params?.to === undefined ? undefined : String(params.to);
-    const subject = change.subject;
-    const carriedByLabel = subject === undefined
-        || subject === params?.name
-        || subject === params?.from
-        || subject === params?.to;
+  // Cast because a producer's key is a plain string by contract - the diff model is shared with the
+  // main process, which has no business importing a renderer's key union. A key with no entry
+  // renders as itself, which is what makes a stale producer visible rather than blank.
+  const text = translator.t(change.label.key as TranslationKey, interpolated);
+  const from = params?.from === undefined ? undefined : String(params.from);
+  const to = params?.to === undefined ? undefined : String(params.to);
+  const subject = change.subject;
+  const carriedByLabel =
+    subject === undefined ||
+    subject === params?.name ||
+    subject === params?.from ||
+    subject === params?.to;
 
-    return carriedByLabel
-        ? { primary: text, ...(from === undefined ? {} : { from }), ...(to === undefined ? {} : { to }) }
-        : {
-            primary: subject,
-            detail: text,
-            ...(from === undefined ? {} : { from }),
-            ...(to === undefined ? {} : { to }),
-        };
+  return carriedByLabel
+    ? {
+        primary: text,
+        ...(from === undefined ? {} : { from }),
+        ...(to === undefined ? {} : { to })
+      }
+    : {
+        primary: subject,
+        detail: text,
+        ...(from === undefined ? {} : { from }),
+        ...(to === undefined ? {} : { to })
+      };
 }
 
 function translateCountName(name: string, translator: LabelTranslator): string {
-    const key = `${COUNT_NAME_PREFIX}${name}`;
-    // `has` rather than letting `t` fall through: an untranslated key logs a warning once per key and
-    // renders the dotted path, and a spec may well add a count before anyone translates it. The raw
-    // identifier is a worse label than a translated one and a much better one than `documentDiff.count.x`.
-    return translator.has(key) ? translator.t(key as TranslationKey) : name;
+  const key = `${COUNT_NAME_PREFIX}${name}`;
+  // `has` rather than letting `t` fall through: an untranslated key logs a warning once per key and
+  // renders the dotted path, and a spec may well add a count before anyone translates it. The raw
+  // identifier is a worse label than a translated one and a much better one than `documentDiff.count.x`.
+  return translator.has(key) ? translator.t(key as TranslationKey) : name;
 }
 
 /**
@@ -210,14 +220,14 @@ function translateCountName(name: string, translator: LabelTranslator): string {
  * reason, one layer further out.
  */
 export function isWholeDocumentChange(kind: DocumentChangeKind): boolean {
-    return kind === "added" || kind === "removed" || kind === "moved";
+  return kind === "added" || kind === "removed" || kind === "moved";
 }
 
 /** The caption above a change list, or null for the one tier that needs no caveat. */
 export interface DocumentDiffTierCaption {
-    readonly key: TranslationKey;
-    /** The longer explanation, for a `title`. A 320px rail has room for the first and not the second. */
-    readonly hintKey: TranslationKey;
+  readonly key: TranslationKey;
+  /** The longer explanation, for a `title`. A 320px rail has room for the first and not the second. */
+  readonly hintKey: TranslationKey;
 }
 
 /**
@@ -229,30 +239,30 @@ export interface DocumentDiffTierCaption {
  * are indistinguishable at a glance and are not the same claim (see `DocumentDiffTier`).
  */
 export function documentDiffTierCaption(tier: DocumentDiffTier): DocumentDiffTierCaption | null {
-    switch (tier) {
-        case "semantic":
-            return null;
-        case "summary":
-            return {
-                key: "documentDiff.tier.summary" as TranslationKey,
-                hintKey: "documentDiff.tier.summaryHint" as TranslationKey,
-            };
-        case "structural":
-            return {
-                key: "documentDiff.tier.structural" as TranslationKey,
-                hintKey: "documentDiff.tier.structuralHint" as TranslationKey,
-            };
-        case "content":
-            return {
-                key: "documentDiff.tier.content" as TranslationKey,
-                hintKey: "documentDiff.tier.contentHint" as TranslationKey,
-            };
-        case "opaque":
-            return {
-                key: "documentDiff.tier.opaque" as TranslationKey,
-                hintKey: "documentDiff.tier.opaqueHint" as TranslationKey,
-            };
-    }
+  switch (tier) {
+    case "semantic":
+      return null;
+    case "summary":
+      return {
+        key: "documentDiff.tier.summary" as TranslationKey,
+        hintKey: "documentDiff.tier.summaryHint" as TranslationKey
+      };
+    case "structural":
+      return {
+        key: "documentDiff.tier.structural" as TranslationKey,
+        hintKey: "documentDiff.tier.structuralHint" as TranslationKey
+      };
+    case "content":
+      return {
+        key: "documentDiff.tier.content" as TranslationKey,
+        hintKey: "documentDiff.tier.contentHint" as TranslationKey
+      };
+    case "opaque":
+      return {
+        key: "documentDiff.tier.opaque" as TranslationKey,
+        hintKey: "documentDiff.tier.opaqueHint" as TranslationKey
+      };
+  }
 }
 
 /**
@@ -278,17 +288,17 @@ export function documentDiffTierCaption(tier: DocumentDiffTier): DocumentDiffTie
  *    rather than unreachable-by-assumption.
  */
 export function documentDiffEmptyKey(tier: DocumentDiffTier): TranslationKey {
-    switch (tier) {
-        case "structural":
-            return "documentDiff.rows.emptyFormatting" as TranslationKey;
-        case "semantic":
-            return "documentDiff.rows.emptyUntracked" as TranslationKey;
-        case "summary":
-            return "documentDiff.rows.emptyCounts" as TranslationKey;
-        case "content":
-        case "opaque":
-            return "documentDiff.rows.empty" as TranslationKey;
-    }
+  switch (tier) {
+    case "structural":
+      return "documentDiff.rows.emptyFormatting" as TranslationKey;
+    case "semantic":
+      return "documentDiff.rows.emptyUntracked" as TranslationKey;
+    case "summary":
+      return "documentDiff.rows.emptyCounts" as TranslationKey;
+    case "content":
+    case "opaque":
+      return "documentDiff.rows.empty" as TranslationKey;
+  }
 }
 
 /**
@@ -299,17 +309,17 @@ export function documentDiffEmptyKey(tier: DocumentDiffTier): TranslationKey {
  * gained or lost, which is the same rule the file list's own markers follow.
  */
 export const CHANGE_KIND_GLYPH: Record<DocumentChange["kind"], string> = {
-    added: "+",
-    removed: "−",
-    changed: "·",
-    moved: "→",
+  added: "+",
+  removed: "−",
+  changed: "·",
+  moved: "→"
 };
 
 export const CHANGE_KIND_TINT: Record<DocumentChange["kind"], string> = {
-    added: "text-success",
-    removed: "text-danger",
-    changed: "text-fg-subtle",
-    moved: "text-fg-subtle",
+  added: "text-success",
+  removed: "text-danger",
+  changed: "text-fg-subtle",
+  moved: "text-fg-subtle"
 };
 
 /**
@@ -320,14 +330,14 @@ export const CHANGE_KIND_TINT: Record<DocumentChange["kind"], string> = {
  * size in the app at once rather than only the ones a diff happens to mention.
  */
 export function formatBytes(bytes: number): string {
-    if (!Number.isFinite(bytes) || bytes < 0) {
-        return "—";
-    }
-    if (bytes < 1024) {
-        return `${bytes} B`;
-    }
-    if (bytes < 1024 * 1024) {
-        return `${(bytes / 1024).toFixed(1)} KB`;
-    }
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (!Number.isFinite(bytes) || bytes < 0) {
+    return "—";
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

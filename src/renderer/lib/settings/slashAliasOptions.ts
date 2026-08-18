@@ -25,15 +25,15 @@ export const SLASH_AT_ALIAS_KEY = "editor.slashAtAlias" as const;
  * device - where the IME lives - that decides whether the "/" key types "、".
  */
 export function isSimplifiedChineseDevice(): boolean {
-    for (const tag of deviceLanguageTags()) {
-        if (!tag.startsWith("zh")) {
-            continue;
-        }
-        // Decide on the most-preferred Chinese tag: an explicit Traditional marker opts out, and
-        // everything else (bare `zh`, `zh-cn`, `zh-hans`, `zh-sg`) is Simplified.
-        return !/(^|-)(hant|tw|hk|mo)(-|$)/.test(tag);
+  for (const tag of deviceLanguageTags()) {
+    if (!tag.startsWith("zh")) {
+      continue;
     }
-    return false;
+    // Decide on the most-preferred Chinese tag: an explicit Traditional marker opts out, and
+    // everything else (bare `zh`, `zh-cn`, `zh-hans`, `zh-sg`) is Simplified.
+    return !/(^|-)(hant|tw|hk|mo)(-|$)/.test(tag);
+  }
+  return false;
 }
 
 /**
@@ -41,5 +41,5 @@ export function isSimplifiedChineseDevice(): boolean {
  * Simplified-Chinese device (where the "/" key types "、"), off everywhere else.
  */
 export function slashAtAliasDefault(): boolean {
-    return isSimplifiedChineseDevice();
+  return isSimplifiedChineseDevice();
 }

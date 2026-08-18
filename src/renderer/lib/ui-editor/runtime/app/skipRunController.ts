@@ -27,39 +27,39 @@
  */
 
 export type SkipRunControllerOptions = {
-    /** Whether a keyboard event's `key` is bound to skipping. */
-    matchesSkipKey: (key: string) => boolean;
-    /**
-     * Whether skipping may run at all right now: the `skip` preference, plus whatever the host
-     * means by "the story is on screen". Read per press, like the engine's own gate.
-     */
-    canSkip: () => boolean;
-    /**
-     * Whether the run must stop here. Read before every step, including the first.
-     *
-     * This is `skipReadText` && "a dialogue line is on screen the player has not read", and it is
-     * deliberately *not* "the current text is read": no dialogue on screen at all (a transition, a
-     * sound, an image action) is not unread text, and a skip that refused to cross those would
-     * strand the player mid-scene with a key that does nothing.
-     */
-    isBlocked: () => boolean;
-    /** Milliseconds the key is held before continuous skipping starts; 0 starts at once. */
-    getSkipDelay: () => number;
-    /** Milliseconds between steps once continuous skipping has started. */
-    getSkipInterval: () => number;
-    /** Advance the story one step. */
-    skipOnce: () => void;
-    /** Suppress the key while the player is typing into a field; defaults to never. */
-    isTextEntryTarget?: (target: EventTarget | null) => boolean;
+  /** Whether a keyboard event's `key` is bound to skipping. */
+  matchesSkipKey: (key: string) => boolean;
+  /**
+   * Whether skipping may run at all right now: the `skip` preference, plus whatever the host
+   * means by "the story is on screen". Read per press, like the engine's own gate.
+   */
+  canSkip: () => boolean;
+  /**
+   * Whether the run must stop here. Read before every step, including the first.
+   *
+   * This is `skipReadText` && "a dialogue line is on screen the player has not read", and it is
+   * deliberately *not* "the current text is read": no dialogue on screen at all (a transition, a
+   * sound, an image action) is not unread text, and a skip that refused to cross those would
+   * strand the player mid-scene with a key that does nothing.
+   */
+  isBlocked: () => boolean;
+  /** Milliseconds the key is held before continuous skipping starts; 0 starts at once. */
+  getSkipDelay: () => number;
+  /** Milliseconds between steps once continuous skipping has started. */
+  getSkipInterval: () => number;
+  /** Advance the story one step. */
+  skipOnce: () => void;
+  /** Suppress the key while the player is typing into a field; defaults to never. */
+  isTextEntryTarget?: (target: EventTarget | null) => boolean;
 };
 
 export type SkipRunController = {
-    handleKeyDown: (event: KeyboardEvent) => void;
-    handleKeyUp: (event: KeyboardEvent) => void;
-    /** Stop any run in flight; the key must be released and pressed again to start another. */
-    stop: () => void;
-    /** Whether a run is currently in flight. Exposed for tests. */
-    isRunning: () => boolean;
+  handleKeyDown: (event: KeyboardEvent) => void;
+  handleKeyUp: (event: KeyboardEvent) => void;
+  /** Stop any run in flight; the key must be released and pressed again to start another. */
+  stop: () => void;
+  /** Whether a run is currently in flight. Exposed for tests. */
+  isRunning: () => boolean;
 };
 
 /**
@@ -73,90 +73,90 @@ export type SkipRunController = {
 const MIN_SKIP_INTERVAL_MS = 8;
 
 export function createSkipRunController(options: SkipRunControllerOptions): SkipRunController {
-    const {
-        matchesSkipKey,
-        canSkip,
-        isBlocked,
-        getSkipDelay,
-        getSkipInterval,
-        skipOnce,
-        isTextEntryTarget,
-    } = options;
+  const {
+    matchesSkipKey,
+    canSkip,
+    isBlocked,
+    getSkipDelay,
+    getSkipInterval,
+    skipOnce,
+    isTextEntryTarget
+  } = options;
 
-    let held = false;
-    let delayTimer: ReturnType<typeof setTimeout> | null = null;
-    let stepTimer: ReturnType<typeof setInterval> | null = null;
+  let held = false;
+  let delayTimer: ReturnType<typeof setTimeout> | null = null;
+  let stepTimer: ReturnType<typeof setInterval> | null = null;
 
-    const clearTimers = () => {
-        if (delayTimer !== null) {
-            clearTimeout(delayTimer);
-            delayTimer = null;
-        }
-        if (stepTimer !== null) {
-            clearInterval(stepTimer);
-            stepTimer = null;
-        }
-    };
+  const clearTimers = () => {
+    if (delayTimer !== null) {
+      clearTimeout(delayTimer);
+      delayTimer = null;
+    }
+    if (stepTimer !== null) {
+      clearInterval(stepTimer);
+      stepTimer = null;
+    }
+  };
 
-    /** One step, or the end of the run. Returns false when the run was stopped. */
-    const step = (): boolean => {
-        if (isBlocked()) {
-            clearTimers();
-            return false;
-        }
-        skipOnce();
-        return true;
-    };
+  /** One step, or the end of the run. Returns false when the run was stopped. */
+  const step = (): boolean => {
+    if (isBlocked()) {
+      clearTimers();
+      return false;
+    }
+    skipOnce();
+    return true;
+  };
 
-    const startContinuous = () => {
-        delayTimer = null;
-        const interval = Math.max(MIN_SKIP_INTERVAL_MS, getSkipInterval());
-        stepTimer = setInterval(() => {
-            step();
-        }, interval);
-    };
+  const startContinuous = () => {
+    delayTimer = null;
+    const interval = Math.max(MIN_SKIP_INTERVAL_MS, getSkipInterval());
+    stepTimer = setInterval(() => {
+      step();
+    }, interval);
+  };
 
-    return {
-        handleKeyDown: event => {
-            if (!matchesSkipKey(event.key) || isTextEntryTarget?.(event.target)) {
-                return;
-            }
-            // `held` rather than `event.repeat`: the latch above needs a run that the guard cut
-            // short to stay cut short, and an OS auto-repeat keydown is indistinguishable from a
-            // fresh press on some platforms. The flag is only cleared by a real keyup.
-            if (held) {
-                return;
-            }
-            held = true;
-            if (!canSkip()) {
-                return;
-            }
-            clearTimers();
-            // The first step is immediate, so a tap skips one line however long `skipDelay` is.
-            if (!step()) {
-                return;
-            }
-            const delay = getSkipDelay();
-            if (delay <= 0) {
-                startContinuous();
-            } else {
-                delayTimer = setTimeout(startContinuous, delay);
-            }
-        },
+  return {
+    handleKeyDown: (event) => {
+      if (!matchesSkipKey(event.key) || isTextEntryTarget?.(event.target)) {
+        return;
+      }
+      // `held` rather than `event.repeat`: the latch above needs a run that the guard cut
+      // short to stay cut short, and an OS auto-repeat keydown is indistinguishable from a
+      // fresh press on some platforms. The flag is only cleared by a real keyup.
+      if (held) {
+        return;
+      }
+      held = true;
+      if (!canSkip()) {
+        return;
+      }
+      clearTimers();
+      // The first step is immediate, so a tap skips one line however long `skipDelay` is.
+      if (!step()) {
+        return;
+      }
+      const delay = getSkipDelay();
+      if (delay <= 0) {
+        startContinuous();
+      } else {
+        delayTimer = setTimeout(startContinuous, delay);
+      }
+    },
 
-        handleKeyUp: event => {
-            if (!matchesSkipKey(event.key)) {
-                return;
-            }
-            held = false;
-            clearTimers();
-        },
+    handleKeyUp: (event) => {
+      if (!matchesSkipKey(event.key)) {
+        return;
+      }
+      held = false;
+      clearTimers();
+    },
 
-        stop: () => {
-            held = false;
-            clearTimers();
-        },
+    stop: () => {
+      held = false;
+      clearTimers();
+    },
 
-        isRunning: () => stepTimer !== null || delayTimer !== null,
-    };
+    isRunning: () => stepTimer !== null || delayTimer !== null
+  };
 }

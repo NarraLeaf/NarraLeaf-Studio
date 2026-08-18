@@ -23,18 +23,18 @@ import { TooltipHost } from "@/lib/tooltip";
  * - a preload bridge of its own (the preload refuses; see `preload.ts`).
  */
 export type DetachedWindowProps = {
-    /**
-     * Stable identity for the popup, unique within the opener. Doubles as the frame name, so
-     * asking twice for the same key reuses the window rather than opening a second one.
-     */
-    windowKey: string;
-    /** The OS window title. */
-    title: string;
-    initialWidth?: number;
-    initialHeight?: number;
-    /** The window is gone - closed by the author, by the OS, or because opening it failed. */
-    onClosed: () => void;
-    children: ReactNode;
+  /**
+   * Stable identity for the popup, unique within the opener. Doubles as the frame name, so
+   * asking twice for the same key reuses the window rather than opening a second one.
+   */
+  windowKey: string;
+  /** The OS window title. */
+  title: string;
+  initialWidth?: number;
+  initialHeight?: number;
+  /** The window is gone - closed by the author, by the OS, or because opening it failed. */
+  onClosed: () => void;
+  children: ReactNode;
 };
 
 const DEFAULT_WIDTH = 1100;
@@ -55,23 +55,23 @@ const CLOSE_DEFERRAL_MS = 250;
 const FORWARDED_KEY_FLAG = "__nlsForwardedFromDetachedWindow";
 
 type OpenDetachedWindow = {
-    win: Window;
-    container: HTMLElement;
-    /** Everything to undo when the window really goes away. */
-    dispose: () => void;
-    /** Pending teardown, cancelled if the same key is re-opened in the same tick (see below). */
-    closeTimer: ReturnType<typeof setTimeout> | null;
-    /**
-     * True while WE are the ones closing the window.
-     *
-     * A window closing is normally the author's decision and gets reported as one - the editor
-     * comes back to the workspace, or ends, per their setting. But this component closes windows
-     * too (StrictMode's throwaway first mount, a re-dock, the opener navigating away), and those
-     * closes must not be mistaken for that decision: reporting one releases the detached entry,
-     * which unmounts this component, which closes the window that was actually alive. That cascade
-     * is exactly how a pop-out ended up leaving no window and no tab.
-     */
-    selfClosing: boolean;
+  win: Window;
+  container: HTMLElement;
+  /** Everything to undo when the window really goes away. */
+  dispose: () => void;
+  /** Pending teardown, cancelled if the same key is re-opened in the same tick (see below). */
+  closeTimer: ReturnType<typeof setTimeout> | null;
+  /**
+   * True while WE are the ones closing the window.
+   *
+   * A window closing is normally the author's decision and gets reported as one - the editor
+   * comes back to the workspace, or ends, per their setting. But this component closes windows
+   * too (StrictMode's throwaway first mount, a re-dock, the opener navigating away), and those
+   * closes must not be mistaken for that decision: reporting one releases the detached entry,
+   * which unmounts this component, which closes the window that was actually alive. That cascade
+   * is exactly how a pop-out ended up leaving no window and no tab.
+   */
+  selfClosing: boolean;
 };
 
 /**
@@ -86,86 +86,95 @@ type OpenDetachedWindow = {
 const openWindows = new Map<string, OpenDetachedWindow>();
 
 export function DetachedWindow({
-    windowKey,
-    title,
-    initialWidth = DEFAULT_WIDTH,
-    initialHeight = DEFAULT_HEIGHT,
-    onClosed,
-    children,
+  windowKey,
+  title,
+  initialWidth = DEFAULT_WIDTH,
+  initialHeight = DEFAULT_HEIGHT,
+  onClosed,
+  children
 }: DetachedWindowProps) {
-    const [opened, setOpened] = useState<OpenDetachedWindow | null>(null);
-    // Read through a ref: the open effect runs once per key and must not re-run (and re-open a
-    // window) because the caller passed a fresh callback on a later render.
-    const onClosedRef = useRef(onClosed);
-    onClosedRef.current = onClosed;
+  const [opened, setOpened] = useState<OpenDetachedWindow | null>(null);
+  // Read through a ref: the open effect runs once per key and must not re-run (and re-open a
+  // window) because the caller passed a fresh callback on a later render.
+  const onClosedRef = useRef(onClosed);
+  onClosedRef.current = onClosed;
 
-    useEffect(() => {
-        const existing = openWindows.get(windowKey);
-        if (existing && !existing.win.closed) {
-            if (existing.closeTimer !== null) {
-                clearTimeout(existing.closeTimer);
-                existing.closeTimer = null;
-            }
-            setOpened(existing);
-            return () => scheduleClose(windowKey);
-        }
-
-        const created = openDetachedWindow(windowKey, { title, width: initialWidth, height: initialHeight });
-        if (!created) {
-            // Chromium refused the popup, or the main process denied it. Nothing to portal into,
-            // and the caller has to put the editor back where it came from.
-            onClosedRef.current();
-            return;
-        }
-
-        openWindows.set(windowKey, created);
-        setOpened(created);
-
-        const onGone = () => {
-            if (openWindows.get(windowKey) === created) {
-                openWindows.delete(windowKey);
-            }
-            const wasSelfClosing = created.selfClosing;
-            created.dispose();
-            if (!wasSelfClosing) {
-                onClosedRef.current();
-            }
-        };
-        created.win.addEventListener("pagehide", onGone);
-        created.dispose = chain(created.dispose, () => created.win.removeEventListener("pagehide", onGone));
-        // A window closed by its OS button fires `pagehide` in every browser Studio ships on, but
-        // the poll is the backstop for the paths that do not (the opener being told to close it,
-        // a crash of the popup's own frame): a detached editor that has silently lost its window
-        // would otherwise never come back to the workspace.
-        const poll = window.setInterval(() => {
-            if (created.win.closed) {
-                window.clearInterval(poll);
-                onGone();
-            }
-        }, 500);
-        const stopPoll = () => window.clearInterval(poll);
-        created.dispose = chain(created.dispose, stopPoll);
-
-        return () => scheduleClose(windowKey);
-        // Title and size are applied at open time only: resizing or renaming an author's window
-        // out from under them is worse than a stale title, and the title is kept live below.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [windowKey]);
-
-    useEffect(() => {
-        if (opened && !opened.win.closed) {
-            opened.win.document.title = title;
-        }
-    }, [opened, title]);
-
-    if (!opened) {
-        return null;
+  useEffect(() => {
+    const existing = openWindows.get(windowKey);
+    if (existing && !existing.win.closed) {
+      if (existing.closeTimer !== null) {
+        clearTimeout(existing.closeTimer);
+        existing.closeTimer = null;
+      }
+      setOpened(existing);
+      return () => scheduleClose(windowKey);
     }
 
-    return createPortal(
-        <HostWindowProvider window={opened.win} windowKey={windowKey}><TooltipHost />{children}</HostWindowProvider>,
-        opened.container,
+    const created = openDetachedWindow(windowKey, {
+      title,
+      width: initialWidth,
+      height: initialHeight
+    });
+    if (!created) {
+      // Chromium refused the popup, or the main process denied it. Nothing to portal into,
+      // and the caller has to put the editor back where it came from.
+      onClosedRef.current();
+      return;
+    }
+
+    openWindows.set(windowKey, created);
+    setOpened(created);
+
+    const onGone = () => {
+      if (openWindows.get(windowKey) === created) {
+        openWindows.delete(windowKey);
+      }
+      const wasSelfClosing = created.selfClosing;
+      created.dispose();
+      if (!wasSelfClosing) {
+        onClosedRef.current();
+      }
+    };
+    created.win.addEventListener("pagehide", onGone);
+    created.dispose = chain(created.dispose, () =>
+      created.win.removeEventListener("pagehide", onGone)
     );
+    // A window closed by its OS button fires `pagehide` in every browser Studio ships on, but
+    // the poll is the backstop for the paths that do not (the opener being told to close it,
+    // a crash of the popup's own frame): a detached editor that has silently lost its window
+    // would otherwise never come back to the workspace.
+    const poll = window.setInterval(() => {
+      if (created.win.closed) {
+        window.clearInterval(poll);
+        onGone();
+      }
+    }, 500);
+    const stopPoll = () => window.clearInterval(poll);
+    created.dispose = chain(created.dispose, stopPoll);
+
+    return () => scheduleClose(windowKey);
+    // Title and size are applied at open time only: resizing or renaming an author's window
+    // out from under them is worse than a stale title, and the title is kept live below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windowKey]);
+
+  useEffect(() => {
+    if (opened && !opened.win.closed) {
+      opened.win.document.title = title;
+    }
+  }, [opened, title]);
+
+  if (!opened) {
+    return null;
+  }
+
+  return createPortal(
+    <HostWindowProvider window={opened.win} windowKey={windowKey}>
+      <TooltipHost />
+      {children}
+    </HostWindowProvider>,
+    opened.container
+  );
 }
 
 /**
@@ -176,67 +185,67 @@ export function DetachedWindow({
  * leave the author looking at the one that did not move.
  */
 export function focusDetachedWindow(windowKey: string): boolean {
-    const entry = openWindows.get(windowKey);
-    if (!entry || entry.win.closed) {
-        return false;
-    }
-    entry.win.focus();
-    return true;
+  const entry = openWindows.get(windowKey);
+  if (!entry || entry.win.closed) {
+    return false;
+  }
+  entry.win.focus();
+  return true;
 }
 
 function scheduleClose(windowKey: string): void {
-    const entry = openWindows.get(windowKey);
-    if (!entry || entry.closeTimer !== null) {
-        return;
+  const entry = openWindows.get(windowKey);
+  if (!entry || entry.closeTimer !== null) {
+    return;
+  }
+  entry.closeTimer = setTimeout(() => {
+    if (openWindows.get(windowKey) === entry) {
+      openWindows.delete(windowKey);
     }
-    entry.closeTimer = setTimeout(() => {
-        if (openWindows.get(windowKey) === entry) {
-            openWindows.delete(windowKey);
-        }
-        entry.selfClosing = true;
-        entry.dispose();
-        entry.win.close();
-    }, CLOSE_DEFERRAL_MS);
+    entry.selfClosing = true;
+    entry.dispose();
+    entry.win.close();
+  }, CLOSE_DEFERRAL_MS);
 }
 
 function openDetachedWindow(
-    windowKey: string,
-    options: { title: string; width: number; height: number },
+  windowKey: string,
+  options: { title: string; width: number; height: number }
 ): OpenDetachedWindow | null {
-    const features = `width=${Math.round(options.width)},height=${Math.round(options.height)}`;
-    const win = window.open("", detachedFrameName(windowKey), features);
-    if (!win) {
-        return null;
-    }
+  const features = `width=${Math.round(options.width)},height=${Math.round(options.height)}`;
+  const win = window.open("", detachedFrameName(windowKey), features);
+  if (!win) {
+    return null;
+  }
 
-    const doc = win.document;
-    doc.title = options.title;
-    doc.documentElement.lang = document.documentElement.lang;
+  const doc = win.document;
+  doc.title = options.title;
+  doc.documentElement.lang = document.documentElement.lang;
 
-    const container = doc.createElement("div");
-    container.className = "h-screen w-screen overflow-hidden";
-    doc.body.appendChild(container);
+  const container = doc.createElement("div");
+  container.className = "h-screen w-screen overflow-hidden";
+  doc.body.appendChild(container);
 
-    const disposers: Array<() => void> = [];
-    const entry: OpenDetachedWindow = {
-        win,
-        container,
-        dispose: () => disposers.forEach(fn => fn()),
-        closeTimer: null,
-        selfClosing: false,
-    };
+  const disposers: Array<() => void> = [];
+  const entry: OpenDetachedWindow = {
+    win,
+    container,
+    dispose: () => disposers.forEach((fn) => fn()),
+    closeTimer: null,
+    selfClosing: false
+  };
 
-    disposers.push(adoptStyles(doc));
-    disposers.push(mirrorRootAttributes(doc));
-    disposers.push(forwardKeyEvents(doc));
-    disposers.push(closeWithOpenerDocument(entry));
+  disposers.push(adoptStyles(doc));
+  disposers.push(mirrorRootAttributes(doc));
+  disposers.push(forwardKeyEvents(doc));
+  disposers.push(closeWithOpenerDocument(entry));
 
-    return entry;
+  return entry;
 }
 
 /** Must match `detachedWindowFrameName` in the main process, which gates the popup. */
 function detachedFrameName(windowKey: string): string {
-    return `nls-detached:${windowKey}`;
+  return `nls-detached:${windowKey}`;
 }
 
 /**
@@ -250,14 +259,14 @@ function detachedFrameName(windowKey: string): string {
  * path instead.
  */
 function closeWithOpenerDocument(entry: OpenDetachedWindow): () => void {
-    const close = () => {
-        // Ours, not the author's: nobody is left to hear a report anyway, and the flag is what
-        // keeps the closing window from being read as a decision to put the editor back.
-        entry.selfClosing = true;
-        entry.win.close();
-    };
-    window.addEventListener("pagehide", close);
-    return () => window.removeEventListener("pagehide", close);
+  const close = () => {
+    // Ours, not the author's: nobody is left to hear a report anyway, and the flag is what
+    // keeps the closing window from being read as a decision to put the editor back.
+    entry.selfClosing = true;
+    entry.win.close();
+  };
+  window.addEventListener("pagehide", close);
+  return () => window.removeEventListener("pagehide", close);
 }
 
 /**
@@ -268,25 +277,27 @@ function closeWithOpenerDocument(entry: OpenDetachedWindow): () => void {
  * unstyled. Kept live because a dev build replaces the stylesheet on every hot reload.
  */
 function adoptStyles(doc: Document): () => void {
-    const copyAll = () => {
-        doc.head.querySelectorAll("[data-nl-adopted-style]").forEach(node => node.remove());
-        document.head.querySelectorAll<HTMLElement>("link[rel='stylesheet'], style").forEach((source) => {
-            const copy = doc.createElement(source.tagName.toLowerCase());
-            copy.setAttribute("data-nl-adopted-style", "");
-            if (source instanceof HTMLLinkElement) {
-                (copy as HTMLLinkElement).rel = "stylesheet";
-                (copy as HTMLLinkElement).href = source.href;
-            } else {
-                copy.textContent = source.textContent;
-            }
-            doc.head.appendChild(copy);
-        });
-    };
+  const copyAll = () => {
+    doc.head.querySelectorAll("[data-nl-adopted-style]").forEach((node) => node.remove());
+    document.head
+      .querySelectorAll<HTMLElement>("link[rel='stylesheet'], style")
+      .forEach((source) => {
+        const copy = doc.createElement(source.tagName.toLowerCase());
+        copy.setAttribute("data-nl-adopted-style", "");
+        if (source instanceof HTMLLinkElement) {
+          (copy as HTMLLinkElement).rel = "stylesheet";
+          (copy as HTMLLinkElement).href = source.href;
+        } else {
+          copy.textContent = source.textContent;
+        }
+        doc.head.appendChild(copy);
+      });
+  };
 
-    copyAll();
-    const observer = new MutationObserver(copyAll);
-    observer.observe(document.head, { childList: true });
-    return () => observer.disconnect();
+  copyAll();
+  const observer = new MutationObserver(copyAll);
+  observer.observe(document.head, { childList: true });
+  return () => observer.disconnect();
 }
 
 /**
@@ -297,17 +308,17 @@ function adoptStyles(doc: Document): () => void {
  * lib/appearance). They change while the app runs, so this mirrors rather than copies once.
  */
 function mirrorRootAttributes(doc: Document): () => void {
-    const source = document.documentElement;
-    const target = doc.documentElement;
-    const sync = () => {
-        target.className = source.className;
-        target.setAttribute("style", source.getAttribute("style") ?? "");
-    };
+  const source = document.documentElement;
+  const target = doc.documentElement;
+  const sync = () => {
+    target.className = source.className;
+    target.setAttribute("style", source.getAttribute("style") ?? "");
+  };
 
-    sync();
-    const observer = new MutationObserver(sync);
-    observer.observe(source, { attributes: true, attributeFilter: ["class", "style"] });
-    return () => observer.disconnect();
+  sync();
+  const observer = new MutationObserver(sync);
+  observer.observe(source, { attributes: true, attributeFilter: ["class", "style"] });
+  return () => observer.disconnect();
 }
 
 /**
@@ -323,39 +334,42 @@ function mirrorRootAttributes(doc: Document): () => void {
  * - decide nothing is being edited, and delete the selected nodes instead.
  */
 function forwardKeyEvents(doc: Document): () => void {
-    const forward = (event: KeyboardEvent) => {
-        if (event.defaultPrevented || (event as unknown as Record<string, unknown>)[FORWARDED_KEY_FLAG]) {
-            return;
-        }
-        if (isEditableTarget(doc.activeElement)) {
-            return;
-        }
+  const forward = (event: KeyboardEvent) => {
+    if (
+      event.defaultPrevented ||
+      (event as unknown as Record<string, unknown>)[FORWARDED_KEY_FLAG]
+    ) {
+      return;
+    }
+    if (isEditableTarget(doc.activeElement)) {
+      return;
+    }
 
-        const echo = new KeyboardEvent(event.type, {
-            key: event.key,
-            code: event.code,
-            location: event.location,
-            repeat: event.repeat,
-            ctrlKey: event.ctrlKey,
-            shiftKey: event.shiftKey,
-            altKey: event.altKey,
-            metaKey: event.metaKey,
-            bubbles: true,
-            cancelable: true,
-        });
-        Object.defineProperty(echo, FORWARDED_KEY_FLAG, { value: true });
-        const handled = !document.dispatchEvent(echo);
-        if (handled) {
-            event.preventDefault();
-        }
-    };
+    const echo = new KeyboardEvent(event.type, {
+      key: event.key,
+      code: event.code,
+      location: event.location,
+      repeat: event.repeat,
+      ctrlKey: event.ctrlKey,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      metaKey: event.metaKey,
+      bubbles: true,
+      cancelable: true
+    });
+    Object.defineProperty(echo, FORWARDED_KEY_FLAG, { value: true });
+    const handled = !document.dispatchEvent(echo);
+    if (handled) {
+      event.preventDefault();
+    }
+  };
 
-    doc.addEventListener("keydown", forward);
-    doc.addEventListener("keyup", forward);
-    return () => {
-        doc.removeEventListener("keydown", forward);
-        doc.removeEventListener("keyup", forward);
-    };
+  doc.addEventListener("keydown", forward);
+  doc.addEventListener("keyup", forward);
+  return () => {
+    doc.removeEventListener("keydown", forward);
+    doc.removeEventListener("keyup", forward);
+  };
 }
 
 /**
@@ -363,19 +377,19 @@ function forwardKeyEvents(doc: Document): () => void {
  * instances of this realm's `HTMLInputElement` however much they look like one.
  */
 function isEditableTarget(node: Element | null): boolean {
-    if (!node) {
-        return false;
-    }
-    const tag = node.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
-        return true;
-    }
-    return (node as HTMLElement).isContentEditable === true;
+  if (!node) {
+    return false;
+  }
+  const tag = node.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+    return true;
+  }
+  return (node as HTMLElement).isContentEditable === true;
 }
 
 function chain(first: () => void, second: () => void): () => void {
-    return () => {
-        first();
-        second();
-    };
+  return () => {
+    first();
+    second();
+  };
 }

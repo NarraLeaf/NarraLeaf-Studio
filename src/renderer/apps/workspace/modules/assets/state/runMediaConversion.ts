@@ -1,7 +1,4 @@
-import type {
-    MediaConvertRequest,
-    MediaConvertStateSnapshot,
-} from "@shared/types/mediaConvert";
+import type { MediaConvertRequest, MediaConvertStateSnapshot } from "@shared/types/mediaConvert";
 
 /**
  * Driving one conversion from the renderer, and reading its answers honestly.
@@ -28,26 +25,26 @@ import type {
 
 /** The renderer's view of the three IPC calls, injected so the loop is testable without a host. */
 export type MediaConvertBridge = {
-    /** `null` when the call itself failed, as opposed to the conversion failing. */
-    start(request: MediaConvertRequest): Promise<MediaConvertStateSnapshot | null>;
-    cancel(jobId: string): Promise<void>;
-    getStatus(jobId: string): Promise<MediaConvertStateSnapshot | null>;
+  /** `null` when the call itself failed, as opposed to the conversion failing. */
+  start(request: MediaConvertRequest): Promise<MediaConvertStateSnapshot | null>;
+  cancel(jobId: string): Promise<void>;
+  getStatus(jobId: string): Promise<MediaConvertStateSnapshot | null>;
 };
 
 export type MediaConversionOutcome =
-    | { status: "done"; outputPath: string }
-    | { status: "stopped" }
-    /** No ffmpeg on this machine. Nothing is wrong with the file. */
-    | { status: "unavailable"; detail?: string }
-    | { status: "failed"; detail?: string };
+  | { status: "done"; outputPath: string }
+  | { status: "stopped" }
+  /** No ffmpeg on this machine. Nothing is wrong with the file. */
+  | { status: "unavailable"; detail?: string }
+  | { status: "failed"; detail?: string };
 
 export type MediaConversionHooks = {
-    /** The job id, the moment there is one, so a stop request can reach the running process. */
-    onStarted(jobId: string): void;
-    /** `null` means the source has no duration; the caller must not invent a number for it. */
-    onProgress(fraction: number | null): void;
-    /** Waits between polls. Injected so a test does not spend real seconds sleeping. */
-    wait(): Promise<void>;
+  /** The job id, the moment there is one, so a stop request can reach the running process. */
+  onStarted(jobId: string): void;
+  /** `null` means the source has no duration; the caller must not invent a number for it. */
+  onProgress(fraction: number | null): void;
+  /** Waits between polls. Injected so a test does not spend real seconds sleeping. */
+  wait(): Promise<void>;
 };
 
 /** How often the renderer asks. Fast enough that a two-second remux still moves its bar. */
@@ -60,49 +57,49 @@ export const MEDIA_CONVERT_POLL_MS = 200;
  * that dialog can render on a row.
  */
 export async function runMediaConversion(
-    request: MediaConvertRequest,
-    bridge: MediaConvertBridge,
-    hooks: MediaConversionHooks,
+  request: MediaConvertRequest,
+  bridge: MediaConvertBridge,
+  hooks: MediaConversionHooks
 ): Promise<MediaConversionOutcome> {
-    let snapshot: MediaConvertStateSnapshot | null;
+  let snapshot: MediaConvertStateSnapshot | null;
+  try {
+    snapshot = await bridge.start(request);
+  } catch {
+    return { status: "failed" };
+  }
+  if (!snapshot) {
+    return { status: "failed" };
+  }
+  hooks.onStarted(snapshot.jobId);
+
+  while (snapshot && snapshot.status === "converting") {
+    if (snapshot.progress) {
+      hooks.onProgress(snapshot.progress.fraction);
+    }
+    await hooks.wait();
     try {
-        snapshot = await bridge.start(request);
+      snapshot = await bridge.getStatus(snapshot.jobId);
     } catch {
-        return { status: "failed" };
+      return { status: "failed" };
     }
-    if (!snapshot) {
-        return { status: "failed" };
-    }
-    hooks.onStarted(snapshot.jobId);
+  }
 
-    while (snapshot && snapshot.status === "converting") {
-        if (snapshot.progress) {
-            hooks.onProgress(snapshot.progress.fraction);
-        }
-        await hooks.wait();
-        try {
-            snapshot = await bridge.getStatus(snapshot.jobId);
-        } catch {
-            return { status: "failed" };
-        }
-    }
-
-    if (!snapshot) {
-        return { status: "failed" };
-    }
-    switch (snapshot.status) {
-        case "done":
-            // `outputPath` is set only once the file is at its final name, so its absence here is a
-            // contradiction rather than a variant to render.
-            return snapshot.outputPath
-                ? { status: "done", outputPath: snapshot.outputPath }
-                : { status: "failed", detail: snapshot.error };
-        case "cancelled":
-            return { status: "stopped" };
-        case "unavailable":
-            return { status: "unavailable", detail: snapshot.error };
-        default:
-            // `error` and `idle` alike: a job that aged out mid-run produced no file either.
-            return { status: "failed", detail: snapshot.error };
-    }
+  if (!snapshot) {
+    return { status: "failed" };
+  }
+  switch (snapshot.status) {
+    case "done":
+      // `outputPath` is set only once the file is at its final name, so its absence here is a
+      // contradiction rather than a variant to render.
+      return snapshot.outputPath
+        ? { status: "done", outputPath: snapshot.outputPath }
+        : { status: "failed", detail: snapshot.error };
+    case "cancelled":
+      return { status: "stopped" };
+    case "unavailable":
+      return { status: "unavailable", detail: snapshot.error };
+    default:
+      // `error` and `idle` alike: a job that aged out mid-run produced no file either.
+      return { status: "failed", detail: snapshot.error };
+  }
 }

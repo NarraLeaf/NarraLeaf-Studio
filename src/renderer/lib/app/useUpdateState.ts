@@ -15,25 +15,26 @@ import { getInterface } from "./bridge";
  * loading state: the common case is that there is no update and there never was anything to show.
  */
 export function useUpdateState(): UpdateState | null {
-    const [state, setState] = useState<UpdateState | null>(null);
+  const [state, setState] = useState<UpdateState | null>(null);
 
-    useEffect(() => {
-        let mounted = true;
-        void getInterface().app.update.getState()
-            .then(result => {
-                if (mounted && result.success) {
-                    setState(result.data.state);
-                }
-            })
-            .catch(() => undefined);
-        const token = getInterface().app.update.onStateChanged(next => {
-            setState(next);
-        });
-        return () => {
-            mounted = false;
-            token?.cancel();
-        };
-    }, []);
+  useEffect(() => {
+    let mounted = true;
+    void getInterface()
+      .app.update.getState()
+      .then((result) => {
+        if (mounted && result.success) {
+          setState(result.data.state);
+        }
+      })
+      .catch(() => undefined);
+    const token = getInterface().app.update.onStateChanged((next) => {
+      setState(next);
+    });
+    return () => {
+      mounted = false;
+      token?.cancel();
+    };
+  }, []);
 
-    return state;
+  return state;
 }

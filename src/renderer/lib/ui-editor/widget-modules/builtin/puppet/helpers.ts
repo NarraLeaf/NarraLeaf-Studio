@@ -1,30 +1,30 @@
 import type { PuppetSize, PuppetState } from "narraleaf-react";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import {
-    defaultPuppetWidgetProps,
-    isPuppetWidgetConfigured,
-    normalizePuppetProps,
-    type UIPuppetWidgetProps,
+  defaultPuppetWidgetProps,
+  isPuppetWidgetConfigured,
+  normalizePuppetProps,
+  type UIPuppetWidgetProps
 } from "@shared/types/ui-editor/puppet";
 import type { SurfacePuppetRequest } from "@/lib/ui-editor/runtime/game/surfacePuppetSession";
 
 export function getPuppetProps(element: UIElement): UIPuppetWidgetProps {
-    return normalizePuppetProps({
-        ...defaultPuppetWidgetProps,
-        ...(element.props ?? {}),
-    });
+  return normalizePuppetProps({
+    ...defaultPuppetWidgetProps,
+    ...(element.props ?? {})
+  });
 }
 
 export function patchPuppetProps(
-    element: UIElement,
-    partial: Partial<UIPuppetWidgetProps>,
+  element: UIElement,
+  partial: Partial<UIPuppetWidgetProps>
 ): Record<string, unknown> {
-    const current = getPuppetProps(element);
-    return {
-        ...(element.props ?? {}),
-        ...current,
-        ...partial,
-    };
+  const current = getPuppetProps(element);
+  return {
+    ...(element.props ?? {}),
+    ...current,
+    ...partial
+  };
 }
 
 /**
@@ -36,13 +36,13 @@ export function patchPuppetProps(
  * applied *whole* and a missing field is read as "cleared".
  */
 export function puppetWidgetState(props: UIPuppetWidgetProps): PuppetState {
-    return {
-        motion: props.motion,
-        expression: props.expression,
-        skin: props.skin,
-        params: props.params,
-        slots: props.slots,
-    };
+  return {
+    motion: props.motion,
+    expression: props.expression,
+    skin: props.skin,
+    params: props.params,
+    slots: props.slots
+  };
 }
 
 /**
@@ -57,15 +57,15 @@ export function puppetWidgetState(props: UIPuppetWidgetProps): PuppetState {
  * past it.
  */
 export function puppetWidgetRequest(props: UIPuppetWidgetProps): SurfacePuppetRequest | null {
-    if (!isPuppetWidgetConfigured(props)) {
-        return null;
-    }
-    return {
-        assetId: props.assetId,
-        backend: props.backend,
-        entry: null,
-        options: props.options,
-    };
+  if (!isPuppetWidgetConfigured(props)) {
+    return null;
+  }
+  return {
+    assetId: props.assetId,
+    backend: props.backend,
+    entry: null,
+    options: props.options
+  };
 }
 
 /**
@@ -76,8 +76,8 @@ export function puppetWidgetRequest(props: UIPuppetWidgetProps): SurfacePuppetRe
  * pulling a handle backwards through the origin.
  */
 export function puppetWidgetSize(element: UIElement): PuppetSize {
-    return {
-        width: Math.max(1, Math.round(Math.abs(element.layout.width))),
-        height: Math.max(1, Math.round(Math.abs(element.layout.height))),
-    };
+  return {
+    width: Math.max(1, Math.round(Math.abs(element.layout.width))),
+    height: Math.max(1, Math.round(Math.abs(element.layout.height)))
+  };
 }

@@ -37,43 +37,43 @@ export const FALLBACK_LOCALE: Locale = "en";
 export const DEFAULT_LOCALE: Locale = "en";
 
 export interface LocaleMeta {
-    /** Endonym shown in language pickers. Never translated. */
-    nativeName: string;
-    /** English name, for docs and logs. */
-    englishName: string;
-    /** BCP-47 tag handed to the `Intl.*` APIs for this locale. */
-    intl: string;
-    /** Writing direction of the script. */
-    dir: "ltr" | "rtl";
+  /** Endonym shown in language pickers. Never translated. */
+  nativeName: string;
+  /** English name, for docs and logs. */
+  englishName: string;
+  /** BCP-47 tag handed to the `Intl.*` APIs for this locale. */
+  intl: string;
+  /** Writing direction of the script. */
+  dir: "ltr" | "rtl";
 }
 
 export const LOCALE_META: Record<Locale, LocaleMeta> = {
-    en: { nativeName: "English", englishName: "English", intl: "en-US", dir: "ltr" },
-    zh: { nativeName: "中文", englishName: "Chinese (Simplified)", intl: "zh-CN", dir: "ltr" },
-    ja: { nativeName: "日本語", englishName: "Japanese", intl: "ja-JP", dir: "ltr" },
+  en: { nativeName: "English", englishName: "English", intl: "en-US", dir: "ltr" },
+  zh: { nativeName: "中文", englishName: "Chinese (Simplified)", intl: "zh-CN", dir: "ltr" },
+  ja: { nativeName: "日本語", englishName: "Japanese", intl: "ja-JP", dir: "ltr" }
 };
 
 /** Whether `value` is one of the static built-in locales. */
 export function isLocale(value: unknown): value is Locale {
-    return typeof value === "string" && (SUPPORTED_LOCALES as readonly string[]).includes(value);
+  return typeof value === "string" && (SUPPORTED_LOCALES as readonly string[]).includes(value);
 }
 
 /** Every locale code available right now: the built-in baseline plus plugin overlays. */
 export function getRegisteredLocales(): LocaleCode[] {
-    const seen = new Set<string>(SUPPORTED_LOCALES);
-    const all: LocaleCode[] = [...SUPPORTED_LOCALES];
-    for (const code of listOverlayLocales()) {
-        if (!seen.has(code)) {
-            seen.add(code);
-            all.push(code);
-        }
+  const seen = new Set<string>(SUPPORTED_LOCALES);
+  const all: LocaleCode[] = [...SUPPORTED_LOCALES];
+  for (const code of listOverlayLocales()) {
+    if (!seen.has(code)) {
+      seen.add(code);
+      all.push(code);
     }
-    return all;
+  }
+  return all;
 }
 
 /** Whether `value` is a currently registered locale (built-in or plugin-provided). */
 export function isRegisteredLocale(value: unknown): value is LocaleCode {
-    return typeof value === "string" && getRegisteredLocales().includes(value);
+  return typeof value === "string" && getRegisteredLocales().includes(value);
 }
 
 const DEFAULT_META_DIR: LocaleMeta["dir"] = "ltr";
@@ -85,16 +85,16 @@ const DEFAULT_META_DIR: LocaleMeta["dir"] = "ltr";
  * an unknown code, unlike direct `LOCALE_META[code]` indexing.
  */
 export function getLocaleMeta(code: LocaleCode): LocaleMeta {
-    if (isLocale(code)) {
-        return LOCALE_META[code];
-    }
-    const overlay = getOverlayMeta(code);
-    return {
-        nativeName: overlay?.nativeName ?? code,
-        englishName: overlay?.englishName ?? overlay?.nativeName ?? code,
-        intl: overlay?.intl ?? code,
-        dir: overlay?.dir ?? DEFAULT_META_DIR,
-    };
+  if (isLocale(code)) {
+    return LOCALE_META[code];
+  }
+  const overlay = getOverlayMeta(code);
+  return {
+    nativeName: overlay?.nativeName ?? code,
+    englishName: overlay?.englishName ?? overlay?.nativeName ?? code,
+    intl: overlay?.intl ?? code,
+    dir: overlay?.dir ?? DEFAULT_META_DIR
+  };
 }
 
 /**
@@ -106,16 +106,16 @@ export function getLocaleMeta(code: LocaleCode): LocaleMeta {
  * plugin locale whose plugin is no longer installed.
  */
 export function normalizeLocale(value: unknown): LocaleCode {
-    if (isRegisteredLocale(value)) {
-        return value;
+  if (isRegisteredLocale(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const primary = value.toLowerCase().split(/[-_]/)[0];
+    if (isRegisteredLocale(primary)) {
+      return primary;
     }
-    if (typeof value === "string") {
-        const primary = value.toLowerCase().split(/[-_]/)[0];
-        if (isRegisteredLocale(primary)) {
-            return primary;
-        }
-    }
-    return DEFAULT_LOCALE;
+  }
+  return DEFAULT_LOCALE;
 }
 
 /**
@@ -132,20 +132,22 @@ export function normalizeLocale(value: unknown): LocaleCode {
  * implementations of "which language is this machine in" is two answers waiting to disagree.
  */
 export function resolvePreferredLocale(tags: readonly string[]): LocaleCode {
-    for (const tag of tags) {
-        const normalized = String(tag ?? "").toLowerCase().replace(/_/g, "-");
-        if (!normalized) {
-            continue;
-        }
-        // Read off before the guard below: `LocaleCode` is `string`, so a failed narrowing leaves
-        // `normalized` as `never` and nothing can be done with it afterwards.
-        const primary = normalized.split("-")[0];
-        if (isRegisteredLocale(normalized)) {
-            return normalized;
-        }
-        if (isRegisteredLocale(primary)) {
-            return primary;
-        }
+  for (const tag of tags) {
+    const normalized = String(tag ?? "")
+      .toLowerCase()
+      .replace(/_/g, "-");
+    if (!normalized) {
+      continue;
     }
-    return DEFAULT_LOCALE;
+    // Read off before the guard below: `LocaleCode` is `string`, so a failed narrowing leaves
+    // `normalized` as `never` and nothing can be done with it afterwards.
+    const primary = normalized.split("-")[0];
+    if (isRegisteredLocale(normalized)) {
+      return normalized;
+    }
+    if (isRegisteredLocale(primary)) {
+      return primary;
+    }
+  }
+  return DEFAULT_LOCALE;
 }

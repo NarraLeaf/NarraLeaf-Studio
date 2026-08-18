@@ -33,41 +33,41 @@ export const LINT_TEXT_COUNT_MODES: readonly LintTextCountMode[] = ["eastAsianWi
  * one hole in the CJK span - it is the ideographic *half* fill space, one column by definition.
  */
 const WIDE_RANGES: readonly (readonly [number, number])[] = [
-    [0x1100, 0x115f],
-    [0x2e80, 0x303e],
-    [0x3040, 0xa4cf],
-    [0xac00, 0xd7a3],
-    [0xf900, 0xfaff],
-    [0xfe30, 0xfe6f],
-    [0xff00, 0xff60],
-    [0xffe0, 0xffe6],
-    [0x20000, 0x2fffd],
-    [0x30000, 0x3fffd],
+  [0x1100, 0x115f],
+  [0x2e80, 0x303e],
+  [0x3040, 0xa4cf],
+  [0xac00, 0xd7a3],
+  [0xf900, 0xfaff],
+  [0xfe30, 0xfe6f],
+  [0xff00, 0xff60],
+  [0xffe0, 0xffe6],
+  [0x20000, 0x2fffd],
+  [0x30000, 0x3fffd]
 ];
 
 export function isEastAsianWide(codePoint: number): boolean {
-    for (const [start, end] of WIDE_RANGES) {
-        if (codePoint < start) {
-            return false;
-        }
-        if (codePoint <= end) {
-            return true;
-        }
+  for (const [start, end] of WIDE_RANGES) {
+    if (codePoint < start) {
+      return false;
     }
-    return false;
+    if (codePoint <= end) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Rendered columns of a plain string under the given mode. */
 export function measureTextWidth(text: string, mode: LintTextCountMode): number {
-    let width = 0;
-    for (const character of text) {
-        if (mode === "codePoints") {
-            width += 1;
-            continue;
-        }
-        width += isEastAsianWide(character.codePointAt(0) ?? 0) ? 2 : 1;
+  let width = 0;
+  for (const character of text) {
+    if (mode === "codePoints") {
+      width += 1;
+      continue;
     }
-    return width;
+    width += isEastAsianWide(character.codePointAt(0) ?? 0) ? 2 : 1;
+  }
+  return width;
 }
 
 /**
@@ -82,18 +82,18 @@ export function measureTextWidth(text: string, mode: LintTextCountMode): number 
  * translators, which is exactly the fictional width this must not charge for.
  */
 export function segmentLiteralText(segment: StoryTextSegment): string {
-    if (!segment.rich || segment.rich.length === 0) {
-        return segment.value;
+  if (!segment.rich || segment.rich.length === 0) {
+    return segment.value;
+  }
+  let out = "";
+  for (const run of segment.rich) {
+    if ("text" in run) {
+      out += run.text;
     }
-    let out = "";
-    for (const run of segment.rich) {
-        if ("text" in run) {
-            out += run.text;
-        }
-    }
-    return out;
+  }
+  return out;
 }
 
 export function measureSegmentWidth(segment: StoryTextSegment, mode: LintTextCountMode): number {
-    return measureTextWidth(segmentLiteralText(segment), mode);
+  return measureTextWidth(segmentLiteralText(segment), mode);
 }

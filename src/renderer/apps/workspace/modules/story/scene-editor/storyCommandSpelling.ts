@@ -25,10 +25,10 @@ import { parseCommandLine } from "./storyCommandParser";
  */
 
 export type RespelledCommandLine = {
-    /** The line as it should now read - same trigger, same arguments, verb re-spelled. */
-    value: string;
-    /** Where the caret belongs in it. */
-    caret: number;
+  /** The line as it should now read - same trigger, same arguments, verb re-spelled. */
+  value: string;
+  /** Where the caret belongs in it. */
+  caret: number;
 };
 
 /**
@@ -38,38 +38,45 @@ export type RespelledCommandLine = {
  * `value` is the DISPLAYED line, "@" trigger and all; the parse runs against the canonical form, whose
  * offsets match character for character (see `commandTrigger`), and the trigger is never touched.
  */
-export function localizeCommandVerb(value: string, caret: number, aliasEnabled: boolean): RespelledCommandLine | null {
-    if (actionTrigger(value, aliasEnabled) === null) {
-        return null;
-    }
-    const line = parseCommandLine(toCanonicalCommandLine(value, aliasEnabled));
-    if (line.kind !== "command" || !line.token || !line.def) {
-        return null;
-    }
-    // The verb has to be FINISHED before it can be corrected. While the token still runs to the end of
-    // the line the author is mid-word, and rewriting `@sho` the instant it passes through `@show`
-    // would take the line out from under them; the space that starts the next argument is the signal.
-    if (line.tokenSpan.end >= value.length) {
-        return null;
-    }
-    const spelled = localizedCommandToken(line.def);
-    // Canonical target = this locale has no word of its own here. Leave the author's spelling alone.
-    if (spelled === line.def.token || spelled === line.token) {
-        return null;
-    }
-    // Guard the round trip at the point of use as well as at the point of construction: a word that
-    // does not read back as this command is a word that must not be written, whatever the table says.
-    if (getCommandDef(spelled)?.commandId !== line.def.commandId) {
-        return null;
-    }
-    const { start, end } = line.tokenSpan;
-    return {
-        value: value.slice(0, start) + spelled + value.slice(end),
-        // A caret inside the word just replaced lands after it - there is no character-for-character
-        // correspondence between `show` and `显示` to preserve, and the author's next keystroke belongs
-        // to whatever comes after the verb.
-        caret: caret <= start ? caret
-            : caret >= end ? caret + (spelled.length - (end - start))
-                : start + spelled.length,
-    };
+export function localizeCommandVerb(
+  value: string,
+  caret: number,
+  aliasEnabled: boolean
+): RespelledCommandLine | null {
+  if (actionTrigger(value, aliasEnabled) === null) {
+    return null;
+  }
+  const line = parseCommandLine(toCanonicalCommandLine(value, aliasEnabled));
+  if (line.kind !== "command" || !line.token || !line.def) {
+    return null;
+  }
+  // The verb has to be FINISHED before it can be corrected. While the token still runs to the end of
+  // the line the author is mid-word, and rewriting `@sho` the instant it passes through `@show`
+  // would take the line out from under them; the space that starts the next argument is the signal.
+  if (line.tokenSpan.end >= value.length) {
+    return null;
+  }
+  const spelled = localizedCommandToken(line.def);
+  // Canonical target = this locale has no word of its own here. Leave the author's spelling alone.
+  if (spelled === line.def.token || spelled === line.token) {
+    return null;
+  }
+  // Guard the round trip at the point of use as well as at the point of construction: a word that
+  // does not read back as this command is a word that must not be written, whatever the table says.
+  if (getCommandDef(spelled)?.commandId !== line.def.commandId) {
+    return null;
+  }
+  const { start, end } = line.tokenSpan;
+  return {
+    value: value.slice(0, start) + spelled + value.slice(end),
+    // A caret inside the word just replaced lands after it - there is no character-for-character
+    // correspondence between `show` and `显示` to preserve, and the author's next keystroke belongs
+    // to whatever comes after the verb.
+    caret:
+      caret <= start
+        ? caret
+        : caret >= end
+          ? caret + (spelled.length - (end - start))
+          : start + spelled.length
+  };
 }

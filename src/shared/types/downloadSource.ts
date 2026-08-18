@@ -20,30 +20,30 @@ export const DOWNLOAD_REWRITES_KEY = "network.downloadRewrites";
 
 /** One prefix substitution. Order in the stored array is match order. */
 export type DownloadRewriteRule = {
-    /**
-     * URL prefix to match, compared literally after both sides are trimmed. A prefix rather
-     * than a host so one rule can cover `github.com/NarraLeaf/` without claiming all of
-     * GitHub, and a glob rather than nothing so nobody has to learn a pattern language for
-     * what is, in practice, "put this in front instead".
-     */
-    from: string;
-    /** Replacement for the matched prefix. The composed URL must parse and must be https. */
-    to: string;
-    /** Off keeps a rule the author is still tuning without it taking effect. */
-    enabled: boolean;
+  /**
+   * URL prefix to match, compared literally after both sides are trimmed. A prefix rather
+   * than a host so one rule can cover `github.com/NarraLeaf/` without claiming all of
+   * GitHub, and a glob rather than nothing so nobody has to learn a pattern language for
+   * what is, in practice, "put this in front instead".
+   */
+  from: string;
+  /** Replacement for the matched prefix. The composed URL must parse and must be https. */
+  to: string;
+  /** Off keeps a rule the author is still tuning without it taking effect. */
+  enabled: boolean;
 };
 
 /** What {@link rewriteDownloadUrl} did, so the caller can log it. */
 export type DownloadRewriteOutcome = {
-    /** The URL to fetch: rewritten when a rule applied, the original otherwise. */
-    url: string;
-    /** The rule that applied, absent when none did or when its result was refused. */
-    applied?: DownloadRewriteRule;
-    /**
-     * Why a matching rule did not apply. Present only when a rule matched and was then
-     * rejected, so a silently-ignored mirror can be told apart from a mirror nobody typed.
-     */
-    refused?: "unparseable" | "not-https";
+  /** The URL to fetch: rewritten when a rule applied, the original otherwise. */
+  url: string;
+  /** The rule that applied, absent when none did or when its result was refused. */
+  applied?: DownloadRewriteRule;
+  /**
+   * Why a matching rule did not apply. Present only when a rule matched and was then
+   * rejected, so a silently-ignored mirror can be told apart from a mirror nobody typed.
+   */
+  refused?: "unparseable" | "not-https";
 };
 
 /**
@@ -53,10 +53,10 @@ export type DownloadRewriteOutcome = {
  * same list; adding a fifth source is one entry here rather than four edits apart.
  */
 export const DOWNLOAD_SOURCE_KEYS = [
-    "plugins.registryUrl",
-    "uiTemplates.registryUrl",
-    "build.electronMirror",
-    "build.electronBuilderBinariesMirror",
+  "plugins.registryUrl",
+  "uiTemplates.registryUrl",
+  "build.electronMirror",
+  "build.electronBuilderBinariesMirror"
 ] as const;
 
 export type DownloadSourceKey = (typeof DOWNLOAD_SOURCE_KEYS)[number];

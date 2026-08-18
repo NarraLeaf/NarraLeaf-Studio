@@ -24,8 +24,8 @@ import "monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution.js";
 import "monaco-editor/esm/vs/basic-languages/xml/xml.contribution.js";
 import { getInterface } from "@/lib/app/bridge";
 import {
-    normalizeTextEditorExtension,
-    type PluginTextEditorLanguageDef,
+  normalizeTextEditorExtension,
+  type PluginTextEditorLanguageDef
 } from "@/lib/workspace/services/ui/textEditorContributions";
 
 export { monaco };
@@ -60,30 +60,30 @@ export const STUDIO_MONACO_THEME = "narraleaf-studio";
  * the context menu. All main-thread, and all part of "a reasonably complete editor".
  */
 export const WORKER_FREE_EDITOR_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions = {
-    minimap: { enabled: false, showMarkSectionHeaders: false, showRegionSectionHeaders: false },
-    wordBasedSuggestions: "off",
-    quickSuggestions: false,
-    suggestOnTriggerCharacters: false,
-    links: false,
-    codeLens: false,
-    colorDecorators: false,
-    defaultColorDecorators: "never",
-    occurrencesHighlight: "off",
-    unicodeHighlight: {
-        ambiguousCharacters: false,
-        invisibleCharacters: false,
-        nonBasicASCII: false,
-        includeComments: false,
-        includeStrings: false,
-    },
-    inlineSuggest: { enabled: false },
-    parameterHints: { enabled: false },
-    hover: { enabled: false },
-    stickyScroll: { enabled: false },
-    dropIntoEditor: { enabled: false },
-    pasteAs: { enabled: false },
-    formatOnPaste: false,
-    formatOnType: false,
+  minimap: { enabled: false, showMarkSectionHeaders: false, showRegionSectionHeaders: false },
+  wordBasedSuggestions: "off",
+  quickSuggestions: false,
+  suggestOnTriggerCharacters: false,
+  links: false,
+  codeLens: false,
+  colorDecorators: false,
+  defaultColorDecorators: "never",
+  occurrencesHighlight: "off",
+  unicodeHighlight: {
+    ambiguousCharacters: false,
+    invisibleCharacters: false,
+    nonBasicASCII: false,
+    includeComments: false,
+    includeStrings: false
+  },
+  inlineSuggest: { enabled: false },
+  parameterHints: { enabled: false },
+  hover: { enabled: false },
+  stickyScroll: { enabled: false },
+  dropIntoEditor: { enabled: false },
+  pasteAs: { enabled: false },
+  formatOnPaste: false,
+  formatOnType: false
 };
 
 /**
@@ -121,50 +121,59 @@ const installedPluginLanguages = new Map<string, PluginTextEditorLanguageDef>();
  * nothing said.
  */
 export function installPluginTextEditorLanguage(def: PluginTextEditorLanguageDef): string | null {
-    if (installedPluginLanguages.get(def.id) === def) {
-        return def.id;
+  if (installedPluginLanguages.get(def.id) === def) {
+    return def.id;
+  }
+  try {
+    if (!registeredPluginLanguages.has(def.id)) {
+      monaco.languages.register({
+        id: def.id,
+        // Monaco wants the dot; the registry accepts either spelling from plugins.
+        extensions: def.extensions.map(
+          (extension) => `.${normalizeTextEditorExtension(extension)}`
+        ),
+        aliases: def.aliases
+      });
+      registeredPluginLanguages.add(def.id);
     }
-    try {
-        if (!registeredPluginLanguages.has(def.id)) {
-            monaco.languages.register({
-                id: def.id,
-                // Monaco wants the dot; the registry accepts either spelling from plugins.
-                extensions: def.extensions.map(extension => `.${normalizeTextEditorExtension(extension)}`),
-                aliases: def.aliases,
-            });
-            registeredPluginLanguages.add(def.id);
-        }
-        if (def.monarch) {
-            monaco.languages.setMonarchTokensProvider(
-                def.id,
-                def.monarch as unknown as monaco.languages.IMonarchLanguage,
-            );
-        }
-        if (def.configuration) {
-            monaco.languages.setLanguageConfiguration(
-                def.id,
-                def.configuration as unknown as monaco.languages.LanguageConfiguration,
-            );
-        }
-        installedPluginLanguages.set(def.id, def);
-        return def.id;
-    } catch (error) {
-        console.error(`[text-editor] failed to install plugin language "${def.id}":`, error);
-        installedPluginLanguages.delete(def.id);
-        return null;
+    if (def.monarch) {
+      monaco.languages.setMonarchTokensProvider(
+        def.id,
+        def.monarch as unknown as monaco.languages.IMonarchLanguage
+      );
     }
+    if (def.configuration) {
+      monaco.languages.setLanguageConfiguration(
+        def.id,
+        def.configuration as unknown as monaco.languages.LanguageConfiguration
+      );
+    }
+    installedPluginLanguages.set(def.id, def);
+    return def.id;
+  } catch (error) {
+    console.error(`[text-editor] failed to install plugin language "${def.id}":`, error);
+    installedPluginLanguages.delete(def.id);
+    return null;
+  }
 }
 
 function readChannels(styles: CSSStyleDeclaration, name: string, fallback: string): string {
-    const raw = styles.getPropertyValue(name).trim();
-    const parts = raw.split(/[\s,/]+/).filter(Boolean).slice(0, 3);
-    if (parts.length !== 3) {
-        return fallback;
-    }
-    const hex = parts
-        .map(part => Math.max(0, Math.min(255, Number(part) || 0)).toString(16).padStart(2, "0"))
-        .join("");
-    return `#${hex}`;
+  const raw = styles.getPropertyValue(name).trim();
+  const parts = raw
+    .split(/[\s,/]+/)
+    .filter(Boolean)
+    .slice(0, 3);
+  if (parts.length !== 3) {
+    return fallback;
+  }
+  const hex = parts
+    .map((part) =>
+      Math.max(0, Math.min(255, Number(part) || 0))
+        .toString(16)
+        .padStart(2, "0")
+    )
+    .join("");
+  return `#${hex}`;
 }
 
 /**
@@ -188,14 +197,15 @@ function readChannels(styles: CSSStyleDeclaration, name: string, fallback: strin
  * module knowing the setting exists.
  */
 function transparent(hex: string): string {
-    return `${hex}00`;
+  return `${hex}00`;
 }
 
 function isDark(hex: string): boolean {
-    const value = parseInt(hex.slice(1), 16);
-    // Rec. 601 luma, the same rough test the accent contrast helper uses.
-    const luma = 0.299 * ((value >> 16) & 0xff) + 0.587 * ((value >> 8) & 0xff) + 0.114 * (value & 0xff);
-    return luma < 128;
+  const value = parseInt(hex.slice(1), 16);
+  // Rec. 601 luma, the same rough test the accent contrast helper uses.
+  const luma =
+    0.299 * ((value >> 16) & 0xff) + 0.587 * ((value >> 8) & 0xff) + 0.114 * (value & 0xff);
+  return luma < 128;
 }
 
 /**
@@ -209,45 +219,45 @@ function isDark(hex: string): boolean {
  * after a theme switch repaints every open text tab.
  */
 export function defineStudioMonacoTheme(): void {
-    const styles = getComputedStyle(document.documentElement);
-    const background = readChannels(styles, "--nl-surface-sunken", "#0b0d12");
-    const foreground = readChannels(styles, "--nl-fg", "#eef1f5");
-    const subtle = readChannels(styles, "--nl-fg-subtle", "#6b7480");
-    const muted = readChannels(styles, "--nl-fg-muted", "#9aa3ae");
-    const accent = readChannels(styles, "--nl-primary", "#40a8c4");
-    const success = readChannels(styles, "--nl-success", "#6db094");
-    const warning = readChannels(styles, "--nl-warning", "#ccaa5c");
-    const dark = isDark(background);
+  const styles = getComputedStyle(document.documentElement);
+  const background = readChannels(styles, "--nl-surface-sunken", "#0b0d12");
+  const foreground = readChannels(styles, "--nl-fg", "#eef1f5");
+  const subtle = readChannels(styles, "--nl-fg-subtle", "#6b7480");
+  const muted = readChannels(styles, "--nl-fg-muted", "#9aa3ae");
+  const accent = readChannels(styles, "--nl-primary", "#40a8c4");
+  const success = readChannels(styles, "--nl-success", "#6db094");
+  const warning = readChannels(styles, "--nl-warning", "#ccaa5c");
+  const dark = isDark(background);
 
-    monaco.editor.defineTheme(STUDIO_MONACO_THEME, {
-        base: dark ? "vs-dark" : "vs",
-        // Inherit, then override: the base themes carry rules for token types no plain-text or
-        // Markdown document produces, and re-deriving all of them here would be a palette nobody
-        // maintains.
-        inherit: true,
-        rules: [
-            { token: "comment", foreground: subtle.slice(1) },
-            { token: "keyword", foreground: accent.slice(1) },
-            { token: "string", foreground: success.slice(1) },
-            { token: "number", foreground: warning.slice(1) },
-            { token: "attribute.name", foreground: accent.slice(1) },
-            { token: "tag", foreground: accent.slice(1) },
-        ],
-        colors: {
-            // Transparent on purpose - the host element paints the surface. See `transparent`.
-            "editor.background": transparent(background),
-            "editor.foreground": foreground,
-            "editorLineNumber.foreground": subtle,
-            "editorLineNumber.activeForeground": muted,
-            "editorCursor.foreground": foreground,
-            "editorIndentGuide.background1": subtle,
-            "editorWidget.background": readChannels(styles, "--nl-surface-raised", "#1e1f22"),
-            "editorWidget.foreground": foreground,
-            "input.background": readChannels(styles, "--nl-surface", "#0f1115"),
-            "input.foreground": foreground,
-            "focusBorder": accent,
-        },
-    });
+  monaco.editor.defineTheme(STUDIO_MONACO_THEME, {
+    base: dark ? "vs-dark" : "vs",
+    // Inherit, then override: the base themes carry rules for token types no plain-text or
+    // Markdown document produces, and re-deriving all of them here would be a palette nobody
+    // maintains.
+    inherit: true,
+    rules: [
+      { token: "comment", foreground: subtle.slice(1) },
+      { token: "keyword", foreground: accent.slice(1) },
+      { token: "string", foreground: success.slice(1) },
+      { token: "number", foreground: warning.slice(1) },
+      { token: "attribute.name", foreground: accent.slice(1) },
+      { token: "tag", foreground: accent.slice(1) }
+    ],
+    colors: {
+      // Transparent on purpose - the host element paints the surface. See `transparent`.
+      "editor.background": transparent(background),
+      "editor.foreground": foreground,
+      "editorLineNumber.foreground": subtle,
+      "editorLineNumber.activeForeground": muted,
+      "editorCursor.foreground": foreground,
+      "editorIndentGuide.background1": subtle,
+      "editorWidget.background": readChannels(styles, "--nl-surface-raised", "#1e1f22"),
+      "editorWidget.foreground": foreground,
+      "input.background": readChannels(styles, "--nl-surface", "#0f1115"),
+      "input.foreground": foreground,
+      focusBorder: accent
+    }
+  });
 }
 
 const THEME_SETTINGS_KEY = "ui.themeMode";
@@ -270,34 +280,34 @@ let releaseThemeWatch: (() => void) | null = null;
  * setting broadcast covers exactly that case.
  */
 export function watchStudioMonacoTheme(): () => void {
-    themeWatchers += 1;
-    if (themeWatchers === 1) {
-        const repaint = () => {
-            defineStudioMonacoTheme();
-            monaco.editor.setTheme(STUDIO_MONACO_THEME);
-        };
-        const query = window.matchMedia("(prefers-color-scheme: dark)");
-        query.addEventListener("change", repaint);
-        const token = getInterface().app.state.onGlobalStateChanged?.(change => {
-            if (change.key === THEME_SETTINGS_KEY) {
-                repaint();
-            }
-        });
-        releaseThemeWatch = () => {
-            query.removeEventListener("change", repaint);
-            token?.cancel();
-        };
-    }
-    let released = false;
-    return () => {
-        if (released) {
-            return;
-        }
-        released = true;
-        themeWatchers -= 1;
-        if (themeWatchers === 0) {
-            releaseThemeWatch?.();
-            releaseThemeWatch = null;
-        }
+  themeWatchers += 1;
+  if (themeWatchers === 1) {
+    const repaint = () => {
+      defineStudioMonacoTheme();
+      monaco.editor.setTheme(STUDIO_MONACO_THEME);
     };
+    const query = window.matchMedia("(prefers-color-scheme: dark)");
+    query.addEventListener("change", repaint);
+    const token = getInterface().app.state.onGlobalStateChanged?.((change) => {
+      if (change.key === THEME_SETTINGS_KEY) {
+        repaint();
+      }
+    });
+    releaseThemeWatch = () => {
+      query.removeEventListener("change", repaint);
+      token?.cancel();
+    };
+  }
+  let released = false;
+  return () => {
+    if (released) {
+      return;
+    }
+    released = true;
+    themeWatchers -= 1;
+    if (themeWatchers === 0) {
+      releaseThemeWatch?.();
+      releaseThemeWatch = null;
+    }
+  };
 }

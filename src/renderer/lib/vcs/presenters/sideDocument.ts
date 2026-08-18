@@ -27,23 +27,23 @@ import { comparisonSideKey, type ComparisonSide } from "./comparisonSide";
  */
 
 export type SideDocumentStatus =
-    /** Nothing was asked for: this side does not hold the file, or there is no such side. */
-    | "absent"
-    | "loading"
-    /** {@link SideDocument.document} is there. */
-    | "ready"
-    /** The file is there and past the ceiling the read applies. */
-    | "tooLarge"
-    /** Read in full, and not a document of this format. */
-    | "unreadable"
-    | "failed";
+  /** Nothing was asked for: this side does not hold the file, or there is no such side. */
+  | "absent"
+  | "loading"
+  /** {@link SideDocument.document} is there. */
+  | "ready"
+  /** The file is there and past the ceiling the read applies. */
+  | "tooLarge"
+  /** Read in full, and not a document of this format. */
+  | "unreadable"
+  | "failed";
 
 export interface SideDocument<T> {
-    readonly status: SideDocumentStatus;
-    /** Non-null only when `ready`. */
-    readonly document: T | null;
-    /** Why it could not be read, when it could not. */
-    readonly error: string | null;
+  readonly status: SideDocumentStatus;
+  /** Non-null only when `ready`. */
+  readonly document: T | null;
+  /** Why it could not be read, when it could not. */
+  readonly error: string | null;
 }
 
 const NOTHING: SideDocument<never> = { status: "absent", document: null, error: null };
@@ -58,64 +58,65 @@ const NOTHING: SideDocument<never> = { status: "absent", document: null, error: 
  *  constant, so this is stable across renders and is safe as a dependency.
  */
 export function useSideDocument<T>(
-    side: ComparisonSide | null,
-    path: string,
-    spec: DocumentSpec<T>,
+  side: ComparisonSide | null,
+  path: string,
+  spec: DocumentSpec<T>
 ): SideDocument<T> {
-    const { context } = useWorkspace();
-    const [state, setState] = useState<SideDocument<T>>(NOTHING);
+  const { context } = useWorkspace();
+  const [state, setState] = useState<SideDocument<T>>(NOTHING);
 
-    const service = useMemo(
-        () => (context ? context.services.get<VersionControlService>(Services.VersionControl) : null),
-        [context],
-    );
+  const service = useMemo(
+    () => (context ? context.services.get<VersionControlService>(Services.VersionControl) : null),
+    [context]
+  );
 
-    const key = comparisonSideKey(side);
-    const revision = side?.at === "revision" ? side.revision : null;
+  const key = comparisonSideKey(side);
+  const revision = side?.at === "revision" ? side.revision : null;
 
-    useEffect(() => {
-        if (!service || !side) {
-            setState(NOTHING);
-            return;
+  useEffect(() => {
+    if (!service || !side) {
+      setState(NOTHING);
+      return;
+    }
+
+    let cancelled = false;
+    setState({ status: "loading", document: null, error: null });
+
+    void (async () => {
+      try {
+        const bytes =
+          revision === null
+            ? await service.readWorkingFile(path)
+            : await service.readBlob(revision, path);
+        if (cancelled) return;
+        if (bytes === null) {
+          setState({ status: "tooLarge", document: null, error: null });
+          return;
         }
+        setState({ status: "ready", document: parseSideDocument(spec, path, bytes), error: null });
+      } catch (thrown) {
+        if (cancelled) return;
+        const message = thrown instanceof Error ? thrown.message : String(thrown);
+        // A read that failed and a document that would not parse are different facts and
+        // stay different: one is the repository, the other is the file, and an author who
+        // is told "unreadable" for a network fault looks in the wrong place.
+        setState({
+          status: thrown instanceof SideDocumentParseError ? "unreadable" : "failed",
+          document: null,
+          error: message
+        });
+      }
+    })();
 
-        let cancelled = false;
-        setState({ status: "loading", document: null, error: null });
+    return () => {
+      cancelled = true;
+    };
+    // `side` itself is excluded on purpose: it is written as an object literal at the call
+    // sites, and `key` plus `revision` carry everything about it that changes a read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [service, key, revision, path, spec]);
 
-        void (async () => {
-            try {
-                const bytes = revision === null
-                    ? await service.readWorkingFile(path)
-                    : await service.readBlob(revision, path);
-                if (cancelled) return;
-                if (bytes === null) {
-                    setState({ status: "tooLarge", document: null, error: null });
-                    return;
-                }
-                setState({ status: "ready", document: parseSideDocument(spec, path, bytes), error: null });
-            } catch (thrown) {
-                if (cancelled) return;
-                const message = thrown instanceof Error ? thrown.message : String(thrown);
-                // A read that failed and a document that would not parse are different facts and
-                // stay different: one is the repository, the other is the file, and an author who
-                // is told "unreadable" for a network fault looks in the wrong place.
-                setState({
-                    status: thrown instanceof SideDocumentParseError ? "unreadable" : "failed",
-                    document: null,
-                    error: message,
-                });
-            }
-        })();
-
-        return () => {
-            cancelled = true;
-        };
-        // `side` itself is excluded on purpose: it is written as an object literal at the call
-        // sites, and `key` plus `revision` carry everything about it that changes a read.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [service, key, revision, path, spec]);
-
-    return state;
+  return state;
 }
 
 /** Thrown for bytes that are not this format, so the hook can tell that from a failed read. */
@@ -128,25 +129,25 @@ export class SideDocumentParseError extends Error {}
  * are three different sentences at the author, and a component test cannot reach any of them.
  */
 export function parseSideDocument<T>(spec: DocumentSpec<T>, path: string, bytes: Uint8Array): T {
-    let raw: unknown;
-    try {
-        // Fatal rather than lenient: a decoder that substitutes U+FFFD turns a truncated file into
-        // one that parses to something nobody wrote, and the canvas would then draw it.
-        const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-        raw = JSON.parse(text) as unknown;
-    } catch (thrown) {
-        throw new SideDocumentParseError(thrown instanceof Error ? thrown.message : String(thrown));
-    }
-    try {
-        return spec.parse(raw, {
-            path,
-            corrupt: (reason: string) => {
-                throw new SideDocumentParseError(reason);
-            },
-        });
-    } catch (thrown) {
-        throw thrown instanceof SideDocumentParseError
-            ? thrown
-            : new SideDocumentParseError(thrown instanceof Error ? thrown.message : String(thrown));
-    }
+  let raw: unknown;
+  try {
+    // Fatal rather than lenient: a decoder that substitutes U+FFFD turns a truncated file into
+    // one that parses to something nobody wrote, and the canvas would then draw it.
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    raw = JSON.parse(text) as unknown;
+  } catch (thrown) {
+    throw new SideDocumentParseError(thrown instanceof Error ? thrown.message : String(thrown));
+  }
+  try {
+    return spec.parse(raw, {
+      path,
+      corrupt: (reason: string) => {
+        throw new SideDocumentParseError(reason);
+      }
+    });
+  } catch (thrown) {
+    throw thrown instanceof SideDocumentParseError
+      ? thrown
+      : new SideDocumentParseError(thrown instanceof Error ? thrown.message : String(thrown));
+  }
 }

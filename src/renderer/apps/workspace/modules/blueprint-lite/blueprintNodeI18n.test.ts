@@ -17,9 +17,9 @@
 import { describe, expect, it } from "vitest";
 import { allBuiltinBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/built-in";
 import {
-    resolveBlueprintCategoryLabel,
-    resolveBlueprintLabel,
-    resolveBlueprintNodeTitle,
+  resolveBlueprintCategoryLabel,
+  resolveBlueprintLabel,
+  resolveBlueprintNodeTitle
 } from "./blueprintNodeI18n";
 
 const echoKey = ((key: string) => key) as never;
@@ -40,57 +40,66 @@ const UNTRANSLATED_TITLES = new Set(["+", "+1", "−", "−1", "×", "÷", "<", 
  * `GET` would name something that does not exist.
  */
 const UNTRANSLATED_LABELS = new Set([
-    "A", "B", "X", "Y", "-",
-    "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD",
+  "A",
+  "B",
+  "X",
+  "Y",
+  "-",
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "HEAD"
 ]);
 
 function collectLabels(): Array<{ text: string; where: string }> {
-    const out: Array<{ text: string; where: string }> = [];
-    const push = (text: string | undefined, where: string) => {
-        if (text) {
-            out.push({ text, where });
-        }
-    };
-    for (const def of allBuiltinBlueprintNodes) {
-        for (const pin of def.pins ?? []) {
-            push(pin.label, `${def.type}#${pin.id}`);
-        }
-        for (const param of def.inspectorParams ?? []) {
-            push(param.label, `${def.type}!${param.key}`);
-            push(param.emptyOptionLabel, `${def.type}!${param.key} (empty option)`);
-            for (const option of param.options ?? []) {
-                push(option.label, `${def.type}!${param.key}=${option.value}`);
-            }
-        }
-        push(def.dynamicInputPins?.labelPrefix, `${def.type} (dynamic pin prefix)`);
-        push(def.dynamicInputPins?.addButtonLabel, `${def.type} (add pin button)`);
+  const out: Array<{ text: string; where: string }> = [];
+  const push = (text: string | undefined, where: string) => {
+    if (text) {
+      out.push({ text, where });
     }
-    return out;
+  };
+  for (const def of allBuiltinBlueprintNodes) {
+    for (const pin of def.pins ?? []) {
+      push(pin.label, `${def.type}#${pin.id}`);
+    }
+    for (const param of def.inspectorParams ?? []) {
+      push(param.label, `${def.type}!${param.key}`);
+      push(param.emptyOptionLabel, `${def.type}!${param.key} (empty option)`);
+      for (const option of param.options ?? []) {
+        push(option.label, `${def.type}!${param.key}=${option.value}`);
+      }
+    }
+    push(def.dynamicInputPins?.labelPrefix, `${def.type} (dynamic pin prefix)`);
+    push(def.dynamicInputPins?.addButtonLabel, `${def.type} (add pin button)`);
+  }
+  return out;
 }
 
 describe("blueprint node i18n coverage", () => {
-    it("maps every built-in node title", () => {
-        const unmapped = allBuiltinBlueprintNodes
-            .filter(def => !UNTRANSLATED_TITLES.has(def.displayName))
-            .filter(def => resolveBlueprintNodeTitle(def.displayName, echoKey) === def.displayName)
-            .map(def => `${def.displayName} (${def.type})`);
-        expect(unmapped).toEqual([]);
-    });
+  it("maps every built-in node title", () => {
+    const unmapped = allBuiltinBlueprintNodes
+      .filter((def) => !UNTRANSLATED_TITLES.has(def.displayName))
+      .filter((def) => resolveBlueprintNodeTitle(def.displayName, echoKey) === def.displayName)
+      .map((def) => `${def.displayName} (${def.type})`);
+    expect(unmapped).toEqual([]);
+  });
 
-    it("maps every palette category", () => {
-        const unmapped = [...new Set(allBuiltinBlueprintNodes.map(def => def.category))].filter(
-            category => resolveBlueprintCategoryLabel(category, echoKey) === category,
-        );
-        expect(unmapped).toEqual([]);
-    });
+  it("maps every palette category", () => {
+    const unmapped = [...new Set(allBuiltinBlueprintNodes.map((def) => def.category))].filter(
+      (category) => resolveBlueprintCategoryLabel(category, echoKey) === category
+    );
+    expect(unmapped).toEqual([]);
+  });
 
-    it("maps every pin, inspector and option label", () => {
-        const seen = new Set<string>();
-        const unmapped = collectLabels()
-            .filter(({ text }) => !UNTRANSLATED_LABELS.has(text))
-            .filter(({ text }) => resolveBlueprintLabel(text, echoKey) === text)
-            .filter(({ text }) => !seen.has(text) && seen.add(text))
-            .map(({ text, where }) => `${text} (${where})`);
-        expect(unmapped).toEqual([]);
-    });
+  it("maps every pin, inspector and option label", () => {
+    const seen = new Set<string>();
+    const unmapped = collectLabels()
+      .filter(({ text }) => !UNTRANSLATED_LABELS.has(text))
+      .filter(({ text }) => resolveBlueprintLabel(text, echoKey) === text)
+      .filter(({ text }) => !seen.has(text) && seen.add(text))
+      .map(({ text, where }) => `${text} (${where})`);
+    expect(unmapped).toEqual([]);
+  });
 });

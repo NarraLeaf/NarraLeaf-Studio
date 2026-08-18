@@ -17,38 +17,42 @@ import { getPuppetProps, patchPuppetProps } from "./helpers";
  * the inspector to do it is the kind of chore a docker bar exists to remove.
  */
 export function createPuppetDockerBarItems(ctx: DockerBarContext): DockerBarItem[] {
-    const { element, documentService } = ctx;
-    const props = getPuppetProps(element);
-    const posed = props.motion !== null
-        || props.expression !== null
-        || props.skin !== null
-        || Object.keys(props.params).length > 0
-        || Object.keys(props.slots).length > 0;
+  const { element, documentService } = ctx;
+  const props = getPuppetProps(element);
+  const posed =
+    props.motion !== null ||
+    props.expression !== null ||
+    props.skin !== null ||
+    Object.keys(props.params).length > 0 ||
+    Object.keys(props.slots).length > 0;
 
-    return [
-        {
-            kind: "button",
-            id: "docker-puppet-clear-state",
-            label: translate("widgets.puppet.clearState"),
-            tooltip: translate("widgets.puppet.clearStateHint"),
-            disabled: !posed,
-            onClick: () => {
-                const live = documentService.getDocument().elements[element.id] ?? element;
-                // The whole state, because the engine's is applied whole: `null` clears rather than
-                // "leave as-is", and dropping `params` / `slots` here is what "cleared" means for them.
-                documentService.updateElementProps(live.id, patchPuppetProps(live, {
-                    motion: null,
-                    expression: null,
-                    skin: null,
-                    params: {},
-                    slots: {},
-                }));
-            },
-        },
-        {
-            kind: "separator",
-            id: "docker-puppet-sep-state",
-        },
-        ...createRectangleDockerBarItems(ctx),
-    ];
+  return [
+    {
+      kind: "button",
+      id: "docker-puppet-clear-state",
+      label: translate("widgets.puppet.clearState"),
+      tooltip: translate("widgets.puppet.clearStateHint"),
+      disabled: !posed,
+      onClick: () => {
+        const live = documentService.getDocument().elements[element.id] ?? element;
+        // The whole state, because the engine's is applied whole: `null` clears rather than
+        // "leave as-is", and dropping `params` / `slots` here is what "cleared" means for them.
+        documentService.updateElementProps(
+          live.id,
+          patchPuppetProps(live, {
+            motion: null,
+            expression: null,
+            skin: null,
+            params: {},
+            slots: {}
+          })
+        );
+      }
+    },
+    {
+      kind: "separator",
+      id: "docker-puppet-sep-state"
+    },
+    ...createRectangleDockerBarItems(ctx)
+  ];
 }

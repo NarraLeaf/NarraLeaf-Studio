@@ -12,23 +12,23 @@ import { getSwitchProps, patchSwitchProps } from "./helpers";
  * leaving the canvas, and the label says "by default" for exactly that reason.
  */
 export function createSwitchDockerBarItems(ctx: DockerBarContext): DockerBarItem[] {
-    const { element, documentService } = ctx;
-    const props = getSwitchProps(element);
+  const { element, documentService } = ctx;
+  const props = getSwitchProps(element);
 
-    return [
-        {
-            kind: "button",
-            id: "docker-switch-default-checked",
-            icon: props.checked ? ToggleRight : ToggleLeft,
-            tooltip: translate("widgets.switch.defaultCheckedHint"),
-            active: props.checked,
-            onClick: () => {
-                const live = documentService.getDocument().elements[element.id] ?? element;
-                documentService.updateElementProps(
-                    live.id,
-                    patchSwitchProps(live, { checked: !getSwitchProps(live).checked }),
-                );
-            },
-        },
-    ];
+  return [
+    {
+      kind: "button",
+      id: "docker-switch-default-checked",
+      icon: props.checked ? ToggleRight : ToggleLeft,
+      tooltip: translate("widgets.switch.defaultCheckedHint"),
+      active: props.checked,
+      onClick: () => {
+        const live = documentService.getDocument().elements[element.id] ?? element;
+        documentService.updateElementProps(
+          live.id,
+          patchSwitchProps(live, { checked: !getSwitchProps(live).checked })
+        );
+      }
+    }
+  ];
 }

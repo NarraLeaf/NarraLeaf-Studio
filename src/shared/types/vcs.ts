@@ -33,24 +33,24 @@ export type RevisionId = string;
  * branch on it; every other VCS call fails on an unsupported host.
  */
 export type VcsUnavailableReason =
-    /** No native build exists for this OS/arch combination. */
-    | "unsupported-platform"
-    /** Platform is supported, but the native package is not installed in this build. */
-    | "backend-missing"
-    /** The native library exists but failed to load (corrupt install, missing CRT, blocked by policy). */
-    | "backend-load-failed";
+  /** No native build exists for this OS/arch combination. */
+  | "unsupported-platform"
+  /** Platform is supported, but the native package is not installed in this build. */
+  | "backend-missing"
+  /** The native library exists but failed to load (corrupt install, missing CRT, blocked by policy). */
+  | "backend-load-failed";
 
 export type VcsAvailability =
-    | { available: true }
-    | { available: false; reason: VcsUnavailableReason; detail?: string };
+  | { available: true }
+  | { available: false; reason: VcsUnavailableReason; detail?: string };
 
 /** OS/arch pairs Epic ships a Lore native build for, as of Lore v0.8.5. */
 export const VCS_SUPPORTED_PLATFORMS: ReadonlyArray<{ platform: NodeJS.Platform; arch: string }> = [
-    { platform: "win32", arch: "x64" },
-    { platform: "darwin", arch: "arm64" },
-    { platform: "linux", arch: "x64" },
-    // linux arm64 is a Graviton/Neoverse (SVE) build; it will not run on generic ARM.
-    { platform: "linux", arch: "arm64" },
+  { platform: "win32", arch: "x64" },
+  { platform: "darwin", arch: "arm64" },
+  { platform: "linux", arch: "x64" },
+  // linux arm64 is a Graviton/Neoverse (SVE) build; it will not run on generic ARM.
+  { platform: "linux", arch: "arm64" }
 ];
 
 /**
@@ -60,10 +60,10 @@ export const VCS_SUPPORTED_PLATFORMS: ReadonlyArray<{ platform: NodeJS.Platform;
  * "a build should exist", not "it loaded" - only the main process knows that.
  */
 export function isVcsPlatformSupported(
-    platform: NodeJS.Platform = process.platform,
-    arch: string = process.arch,
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch
 ): boolean {
-    return VCS_SUPPORTED_PLATFORMS.some((p) => p.platform === platform && p.arch === arch);
+  return VCS_SUPPORTED_PLATFORMS.some((p) => p.platform === platform && p.arch === arch);
 }
 
 /**
@@ -90,15 +90,15 @@ export function isVcsPlatformSupported(
  *                   difference between "nobody said" and a name.
  */
 export function composeVcsIdentity(name: string | undefined, email: string | undefined): string {
-    const cleanName = (name ?? "").trim();
-    // Angle brackets would nest inside the ones added below and produce an identity no reader can
-    // split. Stripped rather than rejected: this runs on every write, and refusing to record
-    // because of a stray character in a setting would block committing rather than fix anything.
-    const cleanEmail = (email ?? "").trim().replace(/[<>]/g, "");
-    if (!cleanEmail) {
-        return cleanName;
-    }
-    return cleanName ? `${cleanName} <${cleanEmail}>` : `<${cleanEmail}>`;
+  const cleanName = (name ?? "").trim();
+  // Angle brackets would nest inside the ones added below and produce an identity no reader can
+  // split. Stripped rather than rejected: this runs on every write, and refusing to record
+  // because of a stray character in a setting would block committing rather than fix anything.
+  const cleanEmail = (email ?? "").trim().replace(/[<>]/g, "");
+  if (!cleanEmail) {
+    return cleanName;
+  }
+  return cleanName ? `${cleanName} <${cleanEmail}>` : `<${cleanEmail}>`;
 }
 
 /**
@@ -116,27 +116,27 @@ export function composeVcsIdentity(name: string | undefined, email: string | und
 export const VCS_DEFAULT_BRANCH = "main";
 
 export interface VcsRepositoryInfo {
-    /** Repository root on disk. */
-    root: string;
-    /** Stable repository identifier. */
-    repositoryId: string;
-    /** Newest revision on the current branch, if any. */
-    head?: RevisionId;
-    /**
-     * {@link head}'s revision number - monotonic per repository, and what `#12` is made of.
-     *
-     * Zero in a repository with no revisions, which is the same state {@link head} reports by being
-     * absent.
-     */
-    headNumber: number;
-    /**
-     * Branch the working tree is on, e.g. `main`.
-     *
-     * Empty string when the backend did not report one, matching {@link VcsStatus.branch}. A
-     * surface deciding whether to SHOW it compares against {@link VCS_DEFAULT_BRANCH}, so "" and
-     * the default are treated alike: neither is worth saying.
-     */
-    branch: string;
+  /** Repository root on disk. */
+  root: string;
+  /** Stable repository identifier. */
+  repositoryId: string;
+  /** Newest revision on the current branch, if any. */
+  head?: RevisionId;
+  /**
+   * {@link head}'s revision number - monotonic per repository, and what `#12` is made of.
+   *
+   * Zero in a repository with no revisions, which is the same state {@link head} reports by being
+   * absent.
+   */
+  headNumber: number;
+  /**
+   * Branch the working tree is on, e.g. `main`.
+   *
+   * Empty string when the backend did not report one, matching {@link VcsStatus.branch}. A
+   * surface deciding whether to SHOW it compares against {@link VCS_DEFAULT_BRANCH}, so "" and
+   * the default are treated alike: neither is worth saying.
+   */
+  branch: string;
 }
 
 /**
@@ -148,12 +148,12 @@ export interface VcsRepositoryInfo {
  * defaults are what "just turn it on" means.
  */
 export interface VcsInitOptions {
-    /** Author recorded on the first commit, and persisted into the repository config. */
-    identity?: string;
-    description?: string;
-    message?: string;
-    /** Only for a repository created against a known remote; a placeholder is used otherwise. */
-    repositoryUrl?: string;
+  /** Author recorded on the first commit, and persisted into the repository config. */
+  identity?: string;
+  description?: string;
+  message?: string;
+  /** Only for a repository created against a known remote; a placeholder is used otherwise. */
+  repositoryUrl?: string;
 }
 
 /**
@@ -194,14 +194,14 @@ export const VCS_REVISION_KIND_KEY = "narraleaf.kind";
  * is shared with everything else that throws, including Node's own `ENOENT`.
  */
 export const VcsErrorCode = {
-    /** The working tree matches the last version, so there was nothing to record. */
-    NothingToCommit: "vcs/nothing-to-commit",
-    /** No usable backend on this host: a platform Epic ships no library for, or a broken install. */
-    Unavailable: "vcs/unavailable",
-    /** A project path this layer will not work in. Reaches an author only through a defect. */
-    ProjectPath: "vcs/project-path",
-    /** The app is closing and refused to start another call rather than abandoning it. */
-    ShuttingDown: "vcs/shutting-down",
+  /** The working tree matches the last version, so there was nothing to record. */
+  NothingToCommit: "vcs/nothing-to-commit",
+  /** No usable backend on this host: a platform Epic ships no library for, or a broken install. */
+  Unavailable: "vcs/unavailable",
+  /** A project path this layer will not work in. Reaches an author only through a defect. */
+  ProjectPath: "vcs/project-path",
+  /** The app is closing and refused to start another call rather than abandoning it. */
+  ShuttingDown: "vcs/shutting-down"
 } as const;
 
 export type VcsErrorCode = (typeof VcsErrorCode)[keyof typeof VcsErrorCode];
@@ -215,38 +215,38 @@ export type VcsErrorCode = (typeof VcsErrorCode)[keyof typeof VcsErrorCode];
  * checkpoint of a tree that has not changed is a lie about the author's history.
  */
 export type VcsCheckpointReason =
-    /** The `versionControl.checkpointIntervalMinutes` timer, after a versioned write. */
-    | "interval"
-    /** The author is closing the project; nothing will be watching the tree afterwards. */
-    | "project-close"
-    /** A production build is about to run. */
-    | "build"
-    /**
-     * A restore is about to overwrite the working tree.
-     *
-     * The only one taken BEFORE the act rather than around it, because it is the only act
-     * that writes over files the author has not seen recorded anywhere. It is also the
-     * reason a restore is safe to offer at all, which is why the confirmation says so.
-     */
-    | "restore";
+  /** The `versionControl.checkpointIntervalMinutes` timer, after a versioned write. */
+  | "interval"
+  /** The author is closing the project; nothing will be watching the tree afterwards. */
+  | "project-close"
+  /** A production build is about to run. */
+  | "build"
+  /**
+   * A restore is about to overwrite the working tree.
+   *
+   * The only one taken BEFORE the act rather than around it, because it is the only act
+   * that writes over files the author has not seen recorded anywhere. It is also the
+   * reason a restore is safe to offer at all, which is why the confirmation says so.
+   */
+  | "restore";
 
 export interface VcsCommitOptions {
-    /** Recorded verbatim on the revision. Empty means the default for the kind. */
-    message?: string;
-    /**
-     * Who to record as the author. The seam for a logged-in identity; left unset,
-     * the main process resolves it from settings.
-     */
-    identity?: string;
+  /** Recorded verbatim on the revision. Empty means the default for the kind. */
+  message?: string;
+  /**
+   * Who to record as the author. The seam for a logged-in identity; left unset,
+   * the main process resolves it from settings.
+   */
+  identity?: string;
 }
 
 export interface VcsCommitResult {
-    revision: RevisionId;
-    /** Monotonic per repository. */
-    number: number;
-    kind: VcsRevisionKind;
-    /** Files the commit added or changed, as the backend counted them. */
-    fileCount: number;
+  revision: RevisionId;
+  /** Monotonic per repository. */
+  number: number;
+  kind: VcsRevisionKind;
+  /** Files the commit added or changed, as the backend counted them. */
+  fileCount: number;
 }
 
 /**
@@ -257,16 +257,16 @@ export interface VcsCommitResult {
  * saying which half), and it is a later milestone.
  */
 export interface VcsRestoreOptions {
-    /**
-     * How the surface that asked names the source revision - `#12`, as the rail spells it.
-     *
-     * Folded into the recorded message, which is why it must NOT be a translated string: a commit
-     * message is permanent repository content that travels to collaborators and outlives the
-     * interface language it was written under. A revision number is not language; a sentence is.
-     * Absent, the main process names the revision by its short hash instead.
-     */
-    label?: string;
-    identity?: string;
+  /**
+   * How the surface that asked names the source revision - `#12`, as the rail spells it.
+   *
+   * Folded into the recorded message, which is why it must NOT be a translated string: a commit
+   * message is permanent repository content that travels to collaborators and outlives the
+   * interface language it was written under. A revision number is not language; a sentence is.
+   * Absent, the main process names the revision by its short hash instead.
+   */
+  label?: string;
+  identity?: string;
 }
 
 /**
@@ -277,106 +277,106 @@ export interface VcsRestoreOptions {
  * written to match an older version and that state is then recorded as the newest one.
  */
 export interface VcsRestoreResult {
-    /** The revision the working tree was put back to. */
-    from: RevisionId;
-    /**
-     * The checkpoint taken before a single byte was written, or null when there was nothing to
-     * protect.
-     *
-     * Null is the ordinary case for a clean tree, and it is not a failure: with nothing uncommitted,
-     * the head already IS the pre-restore state, so there is nothing a checkpoint could add.
-     */
-    checkpoint: VcsCommitResult | null;
-    /**
-     * The revision the restore recorded, or null when the working tree already matched the target.
-     *
-     * Also not a failure: restoring to what is already on disk changes nothing, and an empty
-     * revision would be a lie about the author's history (see `NothingToCommitError`).
-     */
-    revision: VcsCommitResult | null;
-    /**
-     * Why {@link revision} is null, when the reason is a failure rather than an unchanged tree.
-     *
-     * The two are not interchangeable and a surface must tell them apart: with `revision: null` and
-     * no failure, nothing happened because nothing needed to. With a failure, **the author's files
-     * have already been replaced** and only the record of it is missing - which is a sentence they
-     * have to read, because "the restore failed" is what they would otherwise assume, and the fix
-     * (submit a version) is one they can do themselves.
-     *
-     * Reported here rather than thrown for the same reason: past the write step there is no honest
-     * way to answer "it did not happen".
-     */
-    recordFailure: string | null;
-    filesWritten: number;
-    /** Files that existed only because they were added after {@link from}. */
-    filesRemoved: number;
+  /** The revision the working tree was put back to. */
+  from: RevisionId;
+  /**
+   * The checkpoint taken before a single byte was written, or null when there was nothing to
+   * protect.
+   *
+   * Null is the ordinary case for a clean tree, and it is not a failure: with nothing uncommitted,
+   * the head already IS the pre-restore state, so there is nothing a checkpoint could add.
+   */
+  checkpoint: VcsCommitResult | null;
+  /**
+   * The revision the restore recorded, or null when the working tree already matched the target.
+   *
+   * Also not a failure: restoring to what is already on disk changes nothing, and an empty
+   * revision would be a lie about the author's history (see `NothingToCommitError`).
+   */
+  revision: VcsCommitResult | null;
+  /**
+   * Why {@link revision} is null, when the reason is a failure rather than an unchanged tree.
+   *
+   * The two are not interchangeable and a surface must tell them apart: with `revision: null` and
+   * no failure, nothing happened because nothing needed to. With a failure, **the author's files
+   * have already been replaced** and only the record of it is missing - which is a sentence they
+   * have to read, because "the restore failed" is what they would otherwise assume, and the fix
+   * (submit a version) is one they can do themselves.
+   *
+   * Reported here rather than thrown for the same reason: past the write step there is no honest
+   * way to answer "it did not happen".
+   */
+  recordFailure: string | null;
+  filesWritten: number;
+  /** Files that existed only because they were added after {@link from}. */
+  filesRemoved: number;
 }
 
 export interface VcsHistoryEntry {
-    revision: RevisionId;
-    /** Monotonic per repository; usable as a cheap topological rank. */
-    number: number;
-    /**
-     * Direct parent first, second parent of a merge (when present) second.
-     * Root revisions have none.
-     */
-    parents: RevisionId[];
-    /**
-     * What kind of revision this is, when the caller asked for kinds.
-     *
-     * Absent both when the caller did not ask and when the revision records no kind,
-     * because reading it costs one backend call PER REVISION - there is no batch verb -
-     * and a history list that paid for it unconditionally would make opening the panel
-     * on a long-lived project a few hundred round trips.
-     */
-    kind?: VcsRevisionKind;
-    /**
-     * What the revision says it is, as its author wrote it.
-     *
-     * Read from the same per-revision metadata call as {@link kind} and gated by the
-     * same flag, so it costs nothing extra once kinds are asked for.
-     *
-     * Optional because it genuinely can be missing: nothing in the backend obliges a
-     * revision to carry a message, and one written by another client carries whatever
-     * that client wrote. Absent must render as absent - an empty string here would show
-     * as a commit with a blank title rather than as one that did not say.
-     */
-    message?: string;
-    /**
-     * When the revision was made, in **epoch milliseconds** (UTC).
-     *
-     * Milliseconds is measured, not assumed: the backend records this key as its
-     * numeric metadata type and the value read back off a fresh commit falls inside the
-     * wall-clock window around it in ms. Reading it as seconds dates every revision to
-     * January 1970; reading a seconds value as ms lands it in the year 56000. Either
-     * looks like a UI defect forever.
-     */
-    timestamp?: number;
-    /**
-     * Who the backend recorded as the committer.
-     *
-     * A free-form identity string, not an account: it is whatever the committing client
-     * was configured with, so it can be a name, an email, or Studio's own fallback for
-     * a project whose author name is unset.
-     */
-    author?: string;
+  revision: RevisionId;
+  /** Monotonic per repository; usable as a cheap topological rank. */
+  number: number;
+  /**
+   * Direct parent first, second parent of a merge (when present) second.
+   * Root revisions have none.
+   */
+  parents: RevisionId[];
+  /**
+   * What kind of revision this is, when the caller asked for kinds.
+   *
+   * Absent both when the caller did not ask and when the revision records no kind,
+   * because reading it costs one backend call PER REVISION - there is no batch verb -
+   * and a history list that paid for it unconditionally would make opening the panel
+   * on a long-lived project a few hundred round trips.
+   */
+  kind?: VcsRevisionKind;
+  /**
+   * What the revision says it is, as its author wrote it.
+   *
+   * Read from the same per-revision metadata call as {@link kind} and gated by the
+   * same flag, so it costs nothing extra once kinds are asked for.
+   *
+   * Optional because it genuinely can be missing: nothing in the backend obliges a
+   * revision to carry a message, and one written by another client carries whatever
+   * that client wrote. Absent must render as absent - an empty string here would show
+   * as a commit with a blank title rather than as one that did not say.
+   */
+  message?: string;
+  /**
+   * When the revision was made, in **epoch milliseconds** (UTC).
+   *
+   * Milliseconds is measured, not assumed: the backend records this key as its
+   * numeric metadata type and the value read back off a fresh commit falls inside the
+   * wall-clock window around it in ms. Reading it as seconds dates every revision to
+   * January 1970; reading a seconds value as ms lands it in the year 56000. Either
+   * looks like a UI defect forever.
+   */
+  timestamp?: number;
+  /**
+   * Who the backend recorded as the committer.
+   *
+   * A free-form identity string, not an account: it is whatever the committing client
+   * was configured with, so it can be a name, an email, or Studio's own fallback for
+   * a project whose author name is unset.
+   */
+  author?: string;
 }
 
 export interface VcsBlobRequest {
-    projectPath: string;
-    revision: RevisionId;
-    /** Repository-relative path. Absolute or escaping paths are rejected. */
-    path: string;
+  projectPath: string;
+  revision: RevisionId;
+  /** Repository-relative path. Absolute or escaping paths are rejected. */
+  path: string;
 }
 
 /** {@link VcsBlobRequest}'s working-tree twin: the same file as it is on disk now. */
 export interface VcsWorkingFileRequest {
-    projectPath: string;
-    /**
-     * Repository-relative path. Absolute paths, escaping paths and paths outside version
-     * control are rejected rather than skipped.
-     */
-    path: string;
+  projectPath: string;
+  /**
+   * Repository-relative path. Absolute paths, escaping paths and paths outside version
+   * control are rejected rather than skipped.
+   */
+  path: string;
 }
 
 /**
@@ -387,9 +387,9 @@ export interface VcsWorkingFileRequest {
  * path that should never have been asked for is a failure and arrives as one.
  */
 export interface VcsWorkingFileRead {
-    contentBase64: string | null;
-    /** Present exactly when `contentBase64` is null. */
-    refusal?: "tooLarge";
+  contentBase64: string | null;
+  /** Present exactly when `contentBase64` is null. */
+  refusal?: "tooLarge";
 }
 
 /**
@@ -401,67 +401,67 @@ export interface VcsWorkingFileRead {
 export type VcsChangeKind = "added" | "modified" | "deleted" | "moved" | "copied";
 
 export interface VcsFileChange {
-    /**
-     * REPOSITORY-RELATIVE, which is the opposite of what the write side wants.
-     * Anything that feeds a status result back into a stage or restore call has to
-     * make it absolute first; both are `string` and the compiler will not object.
-     */
-    path: string;
-    kind: VcsChangeKind;
-    /**
-     * A directory rather than a file.
-     *
-     * Directories are reported as changes in their own right - creating one folder
-     * with one file in it produces two entries - and the counts include them. Kept
-     * rather than filtered out because a directory can change with no file under it
-     * changing at all, and because dropping them would leave `counts` describing a
-     * different list than `files`. A change list shown to an author usually wants
-     * only the entries where this is false.
-     *
-     * Symbolic links are reported here as files; Studio treats them as ordinary
-     * entries everywhere else too.
-     */
-    directory: boolean;
-    /** Working-tree size in bytes; zero for a deletion or a directory. */
-    size: number;
-    /** Already recorded in the staged revision, so the next commit will include it. */
-    staged: boolean;
-    /** The working tree differs from the recorded state. */
-    dirty: boolean;
-    conflicted: boolean;
-    /** A conflict nobody has resolved yet - the only kind that blocks a commit. */
-    conflictUnresolved: boolean;
-    /**
-     * The backend reconciled this path on its own, without anyone choosing.
-     *
-     * The first of three flags that say HOW a conflict was settled, as opposed to the two
-     * above, which say whether there is one. They were being decoded and thrown away, and
-     * dropping them is how a surface ends up unable to tell "merged automatically" from
-     * "the author decided".
-     *
-     * **Optional because no producer has ever set one.** Measured: a status read taken
-     * while a conflicted merge is open reports NO FILES AT ALL - the merge has already
-     * recorded its result as the staged revision, so nothing is pending
-     * (docs/version-control.md §4.24, pinned in `merge.integration.test.ts`). So `false`
-     * and absent mean the same thing here, which is "nobody said", and a caller must not
-     * read either as "not settled that way". The paths a merge left open come from
-     * {@link VcsMergeState.conflicts}, which is rebuilt from disk rather than from this.
-     */
-    conflictAutomerged?: boolean;
-    /** Settled by taking this project's side. See {@link conflictAutomerged} for the caveat. */
-    conflictMine?: boolean;
-    /** Settled by taking the incoming side. See {@link conflictAutomerged} for the caveat. */
-    conflictTheirs?: boolean;
-    /** Where a move or copy came from. Absent for every other kind. */
-    fromPath?: string;
+  /**
+   * REPOSITORY-RELATIVE, which is the opposite of what the write side wants.
+   * Anything that feeds a status result back into a stage or restore call has to
+   * make it absolute first; both are `string` and the compiler will not object.
+   */
+  path: string;
+  kind: VcsChangeKind;
+  /**
+   * A directory rather than a file.
+   *
+   * Directories are reported as changes in their own right - creating one folder
+   * with one file in it produces two entries - and the counts include them. Kept
+   * rather than filtered out because a directory can change with no file under it
+   * changing at all, and because dropping them would leave `counts` describing a
+   * different list than `files`. A change list shown to an author usually wants
+   * only the entries where this is false.
+   *
+   * Symbolic links are reported here as files; Studio treats them as ordinary
+   * entries everywhere else too.
+   */
+  directory: boolean;
+  /** Working-tree size in bytes; zero for a deletion or a directory. */
+  size: number;
+  /** Already recorded in the staged revision, so the next commit will include it. */
+  staged: boolean;
+  /** The working tree differs from the recorded state. */
+  dirty: boolean;
+  conflicted: boolean;
+  /** A conflict nobody has resolved yet - the only kind that blocks a commit. */
+  conflictUnresolved: boolean;
+  /**
+   * The backend reconciled this path on its own, without anyone choosing.
+   *
+   * The first of three flags that say HOW a conflict was settled, as opposed to the two
+   * above, which say whether there is one. They were being decoded and thrown away, and
+   * dropping them is how a surface ends up unable to tell "merged automatically" from
+   * "the author decided".
+   *
+   * **Optional because no producer has ever set one.** Measured: a status read taken
+   * while a conflicted merge is open reports NO FILES AT ALL - the merge has already
+   * recorded its result as the staged revision, so nothing is pending
+   * (docs/version-control.md §4.24, pinned in `merge.integration.test.ts`). So `false`
+   * and absent mean the same thing here, which is "nobody said", and a caller must not
+   * read either as "not settled that way". The paths a merge left open come from
+   * {@link VcsMergeState.conflicts}, which is rebuilt from disk rather than from this.
+   */
+  conflictAutomerged?: boolean;
+  /** Settled by taking this project's side. See {@link conflictAutomerged} for the caveat. */
+  conflictMine?: boolean;
+  /** Settled by taking the incoming side. See {@link conflictAutomerged} for the caveat. */
+  conflictTheirs?: boolean;
+  /** Where a move or copy came from. Absent for every other kind. */
+  fromPath?: string;
 }
 
 export interface VcsChangeCounts {
-    added: number;
-    modified: number;
-    deleted: number;
-    moved: number;
-    copied: number;
+  added: number;
+  modified: number;
+  deleted: number;
+  moved: number;
+  copied: number;
 }
 
 /**
@@ -473,17 +473,17 @@ export interface VcsChangeCounts {
  * absent while no remote is configured, which is what "purely local" looks like.
  */
 export interface VcsSyncState {
-    /** A remote is configured and answered. */
-    remoteAvailable: boolean;
-    /** The remote accepted this identity. False also means "never asked". */
-    remoteAuthorized: boolean;
-    /** This branch exists on the remote. */
-    remoteBranchExists: boolean;
-    /** Local commits the remote does not have. */
-    localAhead: boolean;
-    /** Remote commits this machine does not have. */
-    remoteAhead: boolean;
-    remoteRevision?: RevisionId;
+  /** A remote is configured and answered. */
+  remoteAvailable: boolean;
+  /** The remote accepted this identity. False also means "never asked". */
+  remoteAuthorized: boolean;
+  /** This branch exists on the remote. */
+  remoteBranchExists: boolean;
+  /** Local commits the remote does not have. */
+  localAhead: boolean;
+  /** Remote commits this machine does not have. */
+  remoteAhead: boolean;
+  remoteRevision?: RevisionId;
 }
 
 /**
@@ -499,8 +499,8 @@ export const VCS_SIGN_IN_SCHEMES: readonly string[] = ["https", "ucs-auth"];
 
 /** Whether this address is one the sign-in call would even attempt. */
 export function isVcsSignInAddress(url: string): boolean {
-    const match = /^([a-z][a-z0-9+.-]*):\/\/[^/?#\s]+\/*$/i.exec(url.trim());
-    return match !== null && VCS_SIGN_IN_SCHEMES.includes(match[1].toLowerCase());
+  const match = /^([a-z][a-z0-9+.-]*):\/\/[^/?#\s]+\/*$/i.exec(url.trim());
+  return match !== null && VCS_SIGN_IN_SCHEMES.includes(match[1].toLowerCase());
 }
 
 /**
@@ -512,27 +512,27 @@ export function isVcsSignInAddress(url: string): boolean {
  * signing in at all.
  */
 export interface VcsServerAccount {
-    /**
-     * The account id the server keys its stored session by.
-     *
-     * **Never shown and never asked for.** It is a random identifier, an author has no
-     * way to know theirs, and it is only here because the backend's session lookup uses
-     * it - see `serverSession.ts`.
-     */
-    userId: string;
-    /** The account's display name, e.g. `Ada Blackwood`. */
-    displayName: string;
-    /** The account's name on the server, e.g. `ada`. */
-    username: string;
-    /** The address recorded on revisions, or "" when the token carries none. */
-    email: string;
-    /**
-     * What is recorded as the author of a revision while this session is in force -
-     * `composeVcsIdentity` applied to the two fields above.
-     */
-    identity: string;
-    /** When the pasted token stops being accepted. Epoch ms; 0 when it did not say. */
-    expiresAt: number;
+  /**
+   * The account id the server keys its stored session by.
+   *
+   * **Never shown and never asked for.** It is a random identifier, an author has no
+   * way to know theirs, and it is only here because the backend's session lookup uses
+   * it - see `serverSession.ts`.
+   */
+  userId: string;
+  /** The account's display name, e.g. `Ada Blackwood`. */
+  displayName: string;
+  /** The account's name on the server, e.g. `ada`. */
+  username: string;
+  /** The address recorded on revisions, or "" when the token carries none. */
+  email: string;
+  /**
+   * What is recorded as the author of a revision while this session is in force -
+   * `composeVcsIdentity` applied to the two fields above.
+   */
+  identity: string;
+  /** When the pasted token stops being accepted. Epoch ms; 0 when it did not say. */
+  expiresAt: number;
 }
 
 /**
@@ -550,13 +550,13 @@ export interface VcsServerAccount {
  * field appears and the author types what they were told, as before.
  */
 export interface VcsSignInToken {
-    account: VcsServerAccount;
-    /** Where to present it, from `aud`: `https://team.example.lan:41402`. */
-    authUrl: string;
-    /** The servers it is good for, from `aud`: `lore://team.example.lan:41337`. */
-    remotes: readonly string[];
-    /** SHA-256 of the authority signing that endpoint, from `authority_sha256`. */
-    authorityFingerprint: string;
+  account: VcsServerAccount;
+  /** Where to present it, from `aud`: `https://team.example.lan:41402`. */
+  authUrl: string;
+  /** The servers it is good for, from `aud`: `lore://team.example.lan:41337`. */
+  remotes: readonly string[];
+  /** SHA-256 of the authority signing that endpoint, from `authority_sha256`. */
+  authorityFingerprint: string;
 }
 
 /**
@@ -571,25 +571,25 @@ export interface VcsSignInToken {
  * server writes its own endpoint before any data remote.
  */
 export function vcsAddressesInAudience(audience: readonly unknown[]): {
-    authUrls: string[];
-    remotes: string[];
+  authUrls: string[];
+  remotes: string[];
 } {
-    const authUrls: string[] = [];
-    const remotes: string[] = [];
-    for (const entry of audience) {
-        if (typeof entry !== "string") continue;
-        // A trailing slash is one of the spellings the audience carries on purpose, and
-        // it is not one of the two things being read out here.
-        const address = entry.trim().replace(/\/+$/, "");
-        if (isVcsSignInAddress(address)) {
-            if (!authUrls.includes(address)) authUrls.push(address);
-            continue;
-        }
-        if (/^lore:\/\/[^/?#\s]+$/i.test(address) && !remotes.includes(address)) {
-            remotes.push(address);
-        }
+  const authUrls: string[] = [];
+  const remotes: string[] = [];
+  for (const entry of audience) {
+    if (typeof entry !== "string") continue;
+    // A trailing slash is one of the spellings the audience carries on purpose, and
+    // it is not one of the two things being read out here.
+    const address = entry.trim().replace(/\/+$/, "");
+    if (isVcsSignInAddress(address)) {
+      if (!authUrls.includes(address)) authUrls.push(address);
+      continue;
     }
-    return { authUrls, remotes };
+    if (/^lore:\/\/[^/?#\s]+$/i.test(address) && !remotes.includes(address)) {
+      remotes.push(address);
+    }
+  }
+  return { authUrls, remotes };
 }
 
 /**
@@ -604,22 +604,22 @@ export function vcsAddressesInAudience(audience: readonly unknown[]): {
  * happens to run, not something anybody chose, and Studio stores it without showing it.
  */
 export interface VcsServerDiscovery {
-    /** Bumped only when a field an older Studio relies on changes meaning. */
-    protocol: number;
-    /** What this deployment calls itself, for a list a person reads. */
-    name: string;
-    auth: {
-        /** False for a server that asks nobody who they are; then no token is wanted. */
-        required: boolean;
-        /** Where a token is presented, e.g. `https://team.example.lan:41402`. */
-        url: string;
-    };
-    /** The remote the repositories live on. Stored, never shown. */
-    data: { url: string };
-    /** SHA-256 of the authority answering, as a label rather than as evidence. */
-    authority: { sha256: string };
-    /** The server's own version, for a support conversation. */
-    version: string;
+  /** Bumped only when a field an older Studio relies on changes meaning. */
+  protocol: number;
+  /** What this deployment calls itself, for a list a person reads. */
+  name: string;
+  auth: {
+    /** False for a server that asks nobody who they are; then no token is wanted. */
+    required: boolean;
+    /** Where a token is presented, e.g. `https://team.example.lan:41402`. */
+    url: string;
+  };
+  /** The remote the repositories live on. Stored, never shown. */
+  data: { url: string };
+  /** SHA-256 of the authority answering, as a label rather than as evidence. */
+  authority: { sha256: string };
+  /** The server's own version, for a support conversation. */
+  version: string;
 }
 
 /**
@@ -630,19 +630,24 @@ export interface VcsServerDiscovery {
  * server of this kind. Only the second is a question for the author.
  */
 export type VcsServerProbe =
-    /** It answered and this machine already trusts it. */
-    | { kind: "ready"; address: string; discovery: VcsServerDiscovery }
-    /**
-     * It answered, and its certificate chains to an authority this machine does not
-     * trust. The discovery document is read over that same connection, so it is carried
-     * here too - it is what the trust prompt names, and it is not acted on until the
-     * author says yes.
-     */
-    | { kind: "untrusted"; address: string; authority: VcsServerAuthority; discovery: VcsServerDiscovery | null }
-    /** Nothing answered at that address. */
-    | { kind: "unreachable"; detail: string }
-    /** Something answered and it was not a NarraLeaf Team server. */
-    | { kind: "not-a-server"; detail: string };
+  /** It answered and this machine already trusts it. */
+  | { kind: "ready"; address: string; discovery: VcsServerDiscovery }
+  /**
+   * It answered, and its certificate chains to an authority this machine does not
+   * trust. The discovery document is read over that same connection, so it is carried
+   * here too - it is what the trust prompt names, and it is not acted on until the
+   * author says yes.
+   */
+  | {
+      kind: "untrusted";
+      address: string;
+      authority: VcsServerAuthority;
+      discovery: VcsServerDiscovery | null;
+    }
+  /** Nothing answered at that address. */
+  | { kind: "unreachable"; detail: string }
+  /** Something answered and it was not a NarraLeaf Team server. */
+  | { kind: "not-a-server"; detail: string };
 
 /**
  * A signed-in session, as Studio holds it.
@@ -652,13 +657,13 @@ export type VcsServerProbe =
  * that server.
  */
 export interface VcsServerSession {
-    /** Where the sign-in happened, e.g. `https://studio.example.lan:41402`. */
-    authUrl: string;
-    /** The server this session is good for, as an origin: `lore://host:41337`. */
-    remoteOrigin: string;
-    account: VcsServerAccount;
-    /** When this installation signed in. Epoch ms. */
-    signedInAt: number;
+  /** Where the sign-in happened, e.g. `https://studio.example.lan:41402`. */
+  authUrl: string;
+  /** The server this session is good for, as an origin: `lore://host:41337`. */
+  remoteOrigin: string;
+  account: VcsServerAccount;
+  /** When this installation signed in. Epoch ms. */
+  signedInAt: number;
 }
 
 /**
@@ -675,32 +680,32 @@ export interface VcsServerSession {
  * {@link vcsAuthorityIsVouchedFor}.
  */
 export interface VcsServerAuthority {
-    /** SHA-256 of the authority, colon-separated upper-case hex. */
-    fingerprint: string;
-    /**
-     * The fingerprint the pasted token named, empty when it named none.
-     *
-     * A plain loreserver, or a Team server older than this claim, mints tokens that say nothing
-     * about certificates; then this is empty and the author is back to comparing by eye,
-     * which is what they did before and still works.
-     */
-    expected: string;
-    /** The authority's subject, e.g. `CN=NarraLeaf Team`. Shown, never compared. */
-    subject: string;
-    /** When it stops being valid, as an ISO date. Shown so a decade-long one reads as one. */
-    expiresAt: string;
-    /** Where Studio wrote the certificate on this machine, for the command below. */
-    path: string;
-    /**
-     * Whether Studio can put this into the trust store itself.
-     *
-     * False on Linux and anything else: the only store other programs read there is
-     * machine-wide and needs root, and a per-user NSS database would be believed by
-     * browsers and by nothing else. So the command is printed for a person to run.
-     */
-    canInstall: boolean;
-    /** The command that installs it here, as a person would type it. */
-    command: string;
+  /** SHA-256 of the authority, colon-separated upper-case hex. */
+  fingerprint: string;
+  /**
+   * The fingerprint the pasted token named, empty when it named none.
+   *
+   * A plain loreserver, or a Team server older than this claim, mints tokens that say nothing
+   * about certificates; then this is empty and the author is back to comparing by eye,
+   * which is what they did before and still works.
+   */
+  expected: string;
+  /** The authority's subject, e.g. `CN=NarraLeaf Team`. Shown, never compared. */
+  subject: string;
+  /** When it stops being valid, as an ISO date. Shown so a decade-long one reads as one. */
+  expiresAt: string;
+  /** Where Studio wrote the certificate on this machine, for the command below. */
+  path: string;
+  /**
+   * Whether Studio can put this into the trust store itself.
+   *
+   * False on Linux and anything else: the only store other programs read there is
+   * machine-wide and needs root, and a per-user NSS database would be believed by
+   * browsers and by nothing else. So the command is printed for a person to run.
+   */
+  canInstall: boolean;
+  /** The command that installs it here, as a person would type it. */
+  command: string;
 }
 
 /**
@@ -722,8 +727,8 @@ export interface VcsServerAuthority {
  * named an authority and something else answered. That is the shape an interception has.
  */
 export function vcsAuthorityIsVouchedFor(authority: VcsServerAuthority): boolean {
-    const expected = authority.expected.trim().toUpperCase();
-    return expected.length > 0 && expected === authority.fingerprint.trim().toUpperCase();
+  const expected = authority.expected.trim().toUpperCase();
+  return expected.length > 0 && expected === authority.fingerprint.trim().toUpperCase();
 }
 
 /**
@@ -737,43 +742,43 @@ export function vcsAuthorityIsVouchedFor(authority: VcsServerAuthority): boolean
  * next, so the transport is diagnosed separately and reported as one of these.
  */
 export type VcsSignInProblem =
-    /** The address is not `https` or `ucs-auth`. Refused before any socket is opened. */
-    | { kind: "scheme" }
-    /** The pasted text is not a token this server would have issued. */
-    | { kind: "token" }
-    /**
-     * The token is a token, and it does not say where to sign in.
-     *
-     * Answered when nothing was typed into the address field and the token's audience
-     * named no https endpoint - a plain loreserver's does not. It is what makes the
-     * address field appear at all: the author is asked for it once it is established
-     * that nothing else can supply it, rather than in front of every sign-in.
-     */
-    | { kind: "address" }
-    /**
-     * The endpoint answered, but its certificate is signed by an authority this machine
-     * does not trust.
-     *
-     * The only refusal here whose remedy changes the machine rather than the project,
-     * which is why it carries a whole {@link VcsServerAuthority} instead of a string:
-     * what to do about it depends on whether the token vouched for this authority, and
-     * on whether this platform lets Studio act on the answer.
-     */
-    | { kind: "certificate"; authority: VcsServerAuthority }
-    /**
-     * The token is a token, and it does not say which server it is good for.
-     *
-     * Only reachable where a server is being added on its own rather than from a project,
-     * because a project already knows its own address. A plain loreserver's token names
-     * nothing, so the address is asked for once and then kept.
-     */
-    | { kind: "server" }
-    /** Nothing answered at that address. */
-    | { kind: "unreachable"; detail: string }
-    /** The endpoint answered and refused the token: expired, revoked, or another server's. */
-    | { kind: "refused"; detail: string }
-    /** Anything else, with whatever the backend said. */
-    | { kind: "unknown"; detail: string };
+  /** The address is not `https` or `ucs-auth`. Refused before any socket is opened. */
+  | { kind: "scheme" }
+  /** The pasted text is not a token this server would have issued. */
+  | { kind: "token" }
+  /**
+   * The token is a token, and it does not say where to sign in.
+   *
+   * Answered when nothing was typed into the address field and the token's audience
+   * named no https endpoint - a plain loreserver's does not. It is what makes the
+   * address field appear at all: the author is asked for it once it is established
+   * that nothing else can supply it, rather than in front of every sign-in.
+   */
+  | { kind: "address" }
+  /**
+   * The endpoint answered, but its certificate is signed by an authority this machine
+   * does not trust.
+   *
+   * The only refusal here whose remedy changes the machine rather than the project,
+   * which is why it carries a whole {@link VcsServerAuthority} instead of a string:
+   * what to do about it depends on whether the token vouched for this authority, and
+   * on whether this platform lets Studio act on the answer.
+   */
+  | { kind: "certificate"; authority: VcsServerAuthority }
+  /**
+   * The token is a token, and it does not say which server it is good for.
+   *
+   * Only reachable where a server is being added on its own rather than from a project,
+   * because a project already knows its own address. A plain loreserver's token names
+   * nothing, so the address is asked for once and then kept.
+   */
+  | { kind: "server" }
+  /** Nothing answered at that address. */
+  | { kind: "unreachable"; detail: string }
+  /** The endpoint answered and refused the token: expired, revoked, or another server's. */
+  | { kind: "refused"; detail: string }
+  /** Anything else, with whatever the backend said. */
+  | { kind: "unknown"; detail: string };
 
 /**
  * What a completed sign-in came to, including whether the two ends can work together.
@@ -785,16 +790,16 @@ export type VcsSignInProblem =
  * what happened.
  */
 export type VcsServerReach =
-    /** Signed in, and the server answered a repository read. */
-    | "ready"
-    /** Signed in, but the server will not give this account this project. */
-    | "notPermitted"
-    /** Signed in, and the data port did not answer. */
-    | "dataPortSilent";
+  /** Signed in, and the server answered a repository read. */
+  | "ready"
+  /** Signed in, but the server will not give this account this project. */
+  | "notPermitted"
+  /** Signed in, and the data port did not answer. */
+  | "dataPortSilent";
 
 export interface VcsSignInResult {
-    session: VcsServerSession;
-    reach: VcsServerReach;
+  session: VcsServerSession;
+  reach: VcsServerReach;
 }
 
 /**
@@ -807,8 +812,8 @@ export interface VcsSignInResult {
  * instead of relaying an English one from the backend.
  */
 export type VcsSignInOutcome =
-    | ({ ok: true } & VcsSignInResult)
-    | { ok: false; problem: VcsSignInProblem };
+  | ({ ok: true } & VcsSignInResult)
+  | { ok: false; problem: VcsSignInProblem };
 
 /**
  * What adding a server came to.
@@ -819,8 +824,8 @@ export type VcsSignInOutcome =
  * ask again.
  */
 export type VcsAddServerOutcome =
-    | { ok: true; session: VcsServerSession; servers: VcsServerSession[] }
-    | { ok: false; problem: VcsSignInProblem };
+  | { ok: true; session: VcsServerSession; servers: VcsServerSession[] }
+  | { ok: false; problem: VcsSignInProblem };
 
 /**
  * The server a project synchronises with, as the author configured it.
@@ -832,8 +837,8 @@ export type VcsAddServerOutcome =
  * is one field.
  */
 export interface VcsRemote {
-    /** Server origin, e.g. `lore://vcs.example.lan:41337`. */
-    url: string;
+  /** Server origin, e.g. `lore://vcs.example.lan:41337`. */
+  url: string;
 }
 
 /**
@@ -881,10 +886,12 @@ export const VCS_LEGACY_PLACEHOLDER_REMOTE = "lore://127.0.0.1:41337";
  * correctly reported as having no server.
  */
 export function isVcsRemoteConfigured(url: string | null | undefined): boolean {
-    const trimmed = (url ?? "").trim().replace(/\/+$/, "");
-    if (!trimmed) return false;
-    return trimmed !== VCS_UNCONFIGURED_REMOTE.replace(/\/+$/, "")
-        && trimmed !== VCS_LEGACY_PLACEHOLDER_REMOTE;
+  const trimmed = (url ?? "").trim().replace(/\/+$/, "");
+  if (!trimmed) return false;
+  return (
+    trimmed !== VCS_UNCONFIGURED_REMOTE.replace(/\/+$/, "") &&
+    trimmed !== VCS_LEGACY_PLACEHOLDER_REMOTE
+  );
 }
 
 /**
@@ -901,20 +908,20 @@ export function isVcsRemoteConfigured(url: string | null | undefined): boolean {
  * it after the destination folder had already been written into.
  */
 export function parseVcsRemoteUrl(url: string): { origin: string; name: string } | null {
-    const match = /^(lore:\/\/[^/?#\s]+)\/([^/?#\s]+)\/*$/i.exec(url.trim());
-    return match ? { origin: match[1], name: match[2] } : null;
+  const match = /^(lore:\/\/[^/?#\s]+)\/([^/?#\s]+)\/*$/i.exec(url.trim());
+  return match ? { origin: match[1], name: match[2] } : null;
 }
 
 /** What a push did. */
 export interface VcsPushResult {
-    branch: string;
-    /**
-     * The server already had this branch tip, so nothing was transferred.
-     *
-     * A SUCCESS. Pressing Push twice is ordinary and the second press has to read as
-     * "already there" rather than as a failure.
-     */
-    alreadyPushed: boolean;
+  branch: string;
+  /**
+   * The server already had this branch tip, so nothing was transferred.
+   *
+   * A SUCCESS. Pressing Push twice is ordinary and the second press has to read as
+   * "already there" rather than as a failure.
+   */
+  alreadyPushed: boolean;
 }
 
 /**
@@ -924,22 +931,22 @@ export interface VcsPushResult {
  * so divergence is not a dead end. Only edits to the same file produce {@link conflicts}.
  */
 export interface VcsSyncResult {
-    /** Files written or removed in the working tree. Non-zero means editors must re-read. */
-    filesChanged: number;
-    /** Revisions brought down from the server. */
-    revisionsReceived: number;
-    /**
-     * Paths the merge could not settle, which the author must resolve before committing.
-     *
-     * Empty in the ordinary case. A non-empty list is REPORTED and the sync stops there: it does
-     * not carry the author into the resolve surface, which they reach by pressing something. Same
-     * discipline as never creating a repository on their behalf, and forced by the mechanism too -
-     * these paths exist only in the sync's own event stream (docs §4.24), so handing them over has
-     * to be deliberate.
-     */
-    conflicts: string[];
-    /** True when nothing was behind: the working tree already matched the server. */
-    alreadyCurrent: boolean;
+  /** Files written or removed in the working tree. Non-zero means editors must re-read. */
+  filesChanged: number;
+  /** Revisions brought down from the server. */
+  revisionsReceived: number;
+  /**
+   * Paths the merge could not settle, which the author must resolve before committing.
+   *
+   * Empty in the ordinary case. A non-empty list is REPORTED and the sync stops there: it does
+   * not carry the author into the resolve surface, which they reach by pressing something. Same
+   * discipline as never creating a repository on their behalf, and forced by the mechanism too -
+   * these paths exist only in the sync's own event stream (docs §4.24), so handing them over has
+   * to be deliberate.
+   */
+  conflicts: string[];
+  /** True when nothing was behind: the working tree already matched the server. */
+  alreadyCurrent: boolean;
 }
 
 /**
@@ -956,42 +963,42 @@ export interface VcsSyncResult {
  * revision and the working tree agrees with it (docs/version-control.md §4.24).
  */
 export interface VcsMergeState {
-    /**
-     * A merge has begun here and has not been recorded as a revision yet.
-     *
-     * False the moment the merge is committed or abandoned, and false in the ordinary
-     * life of a project. While it is true, the working tree holds two sides' work and a
-     * plain commit is what closes it.
-     */
-    inProgress: boolean;
-    /**
-     * The revision being merged in, when the backend named one.
-     *
-     * Only ever present while {@link inProgress}: the field it comes from keeps its last
-     * value after the merge is recorded, so reporting it afterwards would describe a
-     * merge that is over as one that is happening.
-     */
-    incoming?: RevisionId;
-    /**
-     * Repository-relative paths the merge could not settle on its own.
-     *
-     * **This is "the merge left these to a human", not "these are still undecided", and
-     * the difference is measured rather than a nicety.** A path stays on this list after
-     * the author settles it: settling records no per-path mark anywhere Studio can read -
-     * the file that says so is the backend's own, the status call reports nothing for the
-     * whole of a merge, and two of the three settle verbs emit no events at all. The list
-     * shrinks only when the merge is committed or abandoned.
-     *
-     * The one observation that DOES separate settled from unsettled is the commit itself:
-     * committing with a path still unsettled fails with `Unable to commit when <path> is
-     * still in conflict`. That is a write, so it is the backstop rather than a probe -
-     * which is why a surface that wants to show progress must remember the author's own
-     * decisions for the life of the window, and must not present that memory as the
-     * repository's state after a restart.
-     *
-     * Ordered by path, so a list drawn from it does not reshuffle between two reads.
-     */
-    conflicts: string[];
+  /**
+   * A merge has begun here and has not been recorded as a revision yet.
+   *
+   * False the moment the merge is committed or abandoned, and false in the ordinary
+   * life of a project. While it is true, the working tree holds two sides' work and a
+   * plain commit is what closes it.
+   */
+  inProgress: boolean;
+  /**
+   * The revision being merged in, when the backend named one.
+   *
+   * Only ever present while {@link inProgress}: the field it comes from keeps its last
+   * value after the merge is recorded, so reporting it afterwards would describe a
+   * merge that is over as one that is happening.
+   */
+  incoming?: RevisionId;
+  /**
+   * Repository-relative paths the merge could not settle on its own.
+   *
+   * **This is "the merge left these to a human", not "these are still undecided", and
+   * the difference is measured rather than a nicety.** A path stays on this list after
+   * the author settles it: settling records no per-path mark anywhere Studio can read -
+   * the file that says so is the backend's own, the status call reports nothing for the
+   * whole of a merge, and two of the three settle verbs emit no events at all. The list
+   * shrinks only when the merge is committed or abandoned.
+   *
+   * The one observation that DOES separate settled from unsettled is the commit itself:
+   * committing with a path still unsettled fails with `Unable to commit when <path> is
+   * still in conflict`. That is a write, so it is the backstop rather than a probe -
+   * which is why a surface that wants to show progress must remember the author's own
+   * decisions for the life of the window, and must not present that memory as the
+   * repository's state after a restart.
+   *
+   * Ordered by path, so a list drawn from it does not reshuffle between two reads.
+   */
+  conflicts: string[];
 }
 
 /**
@@ -1025,9 +1032,9 @@ export type VcsMergeSideChoice = Exclude<VcsConflictChoice, "working-tree">;
  * rarely what anyone means - and per file is still tier one, since each file is taken whole.
  */
 export interface VcsMergeWholeDecision {
-    /** Repository-relative, as {@link VcsMergeState.conflicts} reports it. */
-    path: string;
-    choice: VcsMergeSideChoice;
+  /** Repository-relative, as {@link VcsMergeState.conflicts} reports it. */
+  path: string;
+  choice: VcsMergeSideChoice;
 }
 
 /**
@@ -1048,9 +1055,9 @@ export interface VcsMergeWholeDecision {
  * is what makes flipping one and answering a conflict the same act.
  */
 export interface VcsMergePerChangeDecision {
-    path: string;
-    choice: "per-change";
-    changes: Record<string, VcsMergeSideChoice>;
+  path: string;
+  choice: "per-change";
+  changes: Record<string, VcsMergeSideChoice>;
 }
 
 export type VcsMergeDecision = VcsMergeWholeDecision | VcsMergePerChangeDecision;
@@ -1075,12 +1082,12 @@ export type VcsMergeDecision = VcsMergeWholeDecision | VcsMergePerChangeDecision
  *  - `unreadable` - a side is missing, is not JSON, or the spec rejected it.
  */
 export type VcsMergeDocumentBlocker =
-    | "no-spec"
-    | "no-merge3"
-    | "read-only"
-    | "too-large"
-    | "too-many"
-    | "unreadable";
+  | "no-spec"
+  | "no-merge3"
+  | "read-only"
+  | "too-large"
+  | "too-many"
+  | "unreadable";
 
 /**
  * What a three-way merge of one conflicted document says, or why there is nothing to say.
@@ -1091,18 +1098,18 @@ export type VcsMergeDocumentBlocker =
  * choices live in the window that is drawing them, exactly as tier one's do.
  */
 export interface VcsMergeDocument {
-    /** Repository-relative, as {@link VcsMergeState.conflicts} reports it. */
-    path: string;
-    /** The format, when a spec claims this path. */
-    documentKind?: DocumentKind;
-    /** Empty when {@link blocked} is set. */
-    decisions: DocumentMergeDecision[];
-    /** How many of {@link decisions} are still the author's. */
-    conflicts: number;
-    /** Set when this path stays at tier one. {@link detail} carries the producer's own sentence. */
-    blocked?: VcsMergeDocumentBlocker;
-    /** Untranslated, from whatever refused. Shown beside the translated reason, never instead. */
-    detail?: string;
+  /** Repository-relative, as {@link VcsMergeState.conflicts} reports it. */
+  path: string;
+  /** The format, when a spec claims this path. */
+  documentKind?: DocumentKind;
+  /** Empty when {@link blocked} is set. */
+  decisions: DocumentMergeDecision[];
+  /** How many of {@link decisions} are still the author's. */
+  conflicts: number;
+  /** Set when this path stays at tier one. {@link detail} carries the producer's own sentence. */
+  blocked?: VcsMergeDocumentBlocker;
+  /** Untranslated, from whatever refused. Shown beside the translated reason, never instead. */
+  detail?: string;
 }
 
 /**
@@ -1114,39 +1121,39 @@ export interface VcsMergeDocument {
  * decisions covered everything.
  */
 export interface VcsMergeCompletion {
-    revision: VcsCommitResult;
-    state: VcsMergeState;
+  revision: VcsCommitResult;
+  state: VcsMergeState;
 }
 
 /** What settling some paths did. */
 export interface VcsMergeResolveResult {
-    /**
-     * Paths the backend acknowledged, repository-relative.
-     *
-     * **Empty is not a failure.** Measured, only the verb that accepts the working tree
-     * reports per-file events at all (docs/version-control.md §4.25) - which is now the
-     * verb every choice goes through, so this is usually populated, and a caller that
-     * needs to know what is LEFT asks {@link VcsMergeState} again rather than reading this.
-     */
-    files: string[];
-    /** What is still open afterwards, re-read rather than inferred. */
-    state: VcsMergeState;
+  /**
+   * Paths the backend acknowledged, repository-relative.
+   *
+   * **Empty is not a failure.** Measured, only the verb that accepts the working tree
+   * reports per-file events at all (docs/version-control.md §4.25) - which is now the
+   * verb every choice goes through, so this is usually populated, and a caller that
+   * needs to know what is LEFT asks {@link VcsMergeState} again rather than reading this.
+   */
+  files: string[];
+  /** What is still open afterwards, re-read rather than inferred. */
+  state: VcsMergeState;
 }
 
 export interface VcsStatus {
-    /** Branch name as the author sees it, e.g. `main`. */
-    branch: string;
-    /** Newest commit on this branch. Absent only in a repository with no commits. */
-    head?: RevisionId;
-    /** Monotonic per repository; a cheap topological rank. */
-    revisionNumber: number;
-    /** Set when changes are staged but not yet committed. */
-    stagedRevision?: RevisionId;
-    /** Nothing pending. Derived from `files` so the two can never disagree. */
-    clean: boolean;
-    files: VcsFileChange[];
-    counts: VcsChangeCounts;
-    sync: VcsSyncState;
+  /** Branch name as the author sees it, e.g. `main`. */
+  branch: string;
+  /** Newest commit on this branch. Absent only in a repository with no commits. */
+  head?: RevisionId;
+  /** Monotonic per repository; a cheap topological rank. */
+  revisionNumber: number;
+  /** Set when changes are staged but not yet committed. */
+  stagedRevision?: RevisionId;
+  /** Nothing pending. Derived from `files` so the two can never disagree. */
+  clean: boolean;
+  files: VcsFileChange[];
+  counts: VcsChangeCounts;
+  sync: VcsSyncState;
 }
 
 /**
@@ -1157,10 +1164,10 @@ export interface VcsStatus {
  * not be treated as an empty base - doing so would silently accept one side.
  */
 export interface VcsThreeWayResult {
-    baseRevision?: RevisionId;
-    base?: string;
-    mine: string;
-    theirs: string;
+  baseRevision?: RevisionId;
+  base?: string;
+  mine: string;
+  theirs: string;
 }
 
 /**
@@ -1182,34 +1189,34 @@ export interface VcsThreeWayResult {
  *    cannot read back (docs/version-control.md §4.29).
  */
 export interface VcsRevisionDiffResult {
-    from: RevisionId;
-    to: RevisionId;
-    documents: DocumentDiffEntry[];
-    /**
-     * Changed paths this result stands for, including any `documents` does not carry.
-     *
-     * Equal to `documents.length` whenever `complete` is true. Directories are excluded
-     * where they can be told apart from files, which is everywhere except a comparison
-     * that was cut short before anything was read.
-     */
-    pathCount: number;
-    complete: boolean;
-    readFailure: string | null;
+  from: RevisionId;
+  to: RevisionId;
+  documents: DocumentDiffEntry[];
+  /**
+   * Changed paths this result stands for, including any `documents` does not carry.
+   *
+   * Equal to `documents.length` whenever `complete` is true. Directories are excluded
+   * where they can be told apart from files, which is everywhere except a comparison
+   * that was cut short before anything was read.
+   */
+  pathCount: number;
+  complete: boolean;
+  readFailure: string | null;
 }
 
 export interface VcsWorkingTreeDiffResult {
-    /**
-     * The revision the working tree was compared against.
-     *
-     * Absent in a repository with no revisions yet, where every file is an addition and
-     * nothing was read out of history.
-     */
-    head?: RevisionId;
-    documents: DocumentDiffEntry[];
-    /** Changed files this result stands for. Directories are never counted. */
-    pathCount: number;
-    complete: boolean;
-    readFailure: string | null;
+  /**
+   * The revision the working tree was compared against.
+   *
+   * Absent in a repository with no revisions yet, where every file is an addition and
+   * nothing was read out of history.
+   */
+  head?: RevisionId;
+  documents: DocumentDiffEntry[];
+  /** Changed files this result stands for. Directories are never counted. */
+  pathCount: number;
+  complete: boolean;
+  readFailure: string | null;
 }
 
 /**
@@ -1225,10 +1232,10 @@ export interface VcsWorkingTreeDiffResult {
  * a form.
  */
 export function vcsSignInRequired(message: string): boolean {
-    const said = message.toLowerCase();
-    return (
-        said.includes("no token stored")
-        || said.includes("not authorized to access repository")
-        || said.includes("authorization header required")
-    );
+  const said = message.toLowerCase();
+  return (
+    said.includes("no token stored") ||
+    said.includes("not authorized to access repository") ||
+    said.includes("authorization header required")
+  );
 }

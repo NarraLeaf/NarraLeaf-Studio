@@ -29,7 +29,7 @@
 
 /** How a voice clip ends when its sentence does. Mirrors the engine's own union. */
 export const VOICE_END_MODES = ["stop", "fade", "none"] as const;
-export type VoiceEndMode = typeof VOICE_END_MODES[number];
+export type VoiceEndMode = (typeof VOICE_END_MODES)[number];
 
 /**
  * Every preference key, in the order Project -> Preferences shows them.
@@ -39,55 +39,55 @@ export type VoiceEndMode = typeof VOICE_END_MODES[number];
  * store so that one screen, one persistence key and one set of blueprint nodes cover all of them.
  */
 export const PLAYER_PREFERENCE_KEYS = [
-    "cps",
-    "gameSpeed",
-    "autoForward",
-    "showDialog",
-    "skip",
-    "skipReadText",
-    "skipDelay",
-    "skipInterval",
-    "globalVolume",
-    "bgmVolume",
-    "soundVolume",
-    "voiceVolume",
-    "voiceEndMode",
-    "voiceFadeDuration",
+  "cps",
+  "gameSpeed",
+  "autoForward",
+  "showDialog",
+  "skip",
+  "skipReadText",
+  "skipDelay",
+  "skipInterval",
+  "globalVolume",
+  "bgmVolume",
+  "soundVolume",
+  "voiceVolume",
+  "voiceEndMode",
+  "voiceFadeDuration"
 ] as const;
 
-export type PlayerPreferenceKey = typeof PLAYER_PREFERENCE_KEYS[number];
+export type PlayerPreferenceKey = (typeof PLAYER_PREFERENCE_KEYS)[number];
 
 export type PlayerPreferenceValue = boolean | number | VoiceEndMode;
 
 export type PlayerPreferences = {
-    /** Characters per second the dialogue types at. */
-    cps: number;
-    /** Multiplier over text speed and the auto-forward delay; 1 is the authored pace. */
-    gameSpeed: number;
-    /** Advance on its own once a line has finished displaying. */
-    autoForward: boolean;
-    /** Whether the dialogue box is shown at all. */
-    showDialog: boolean;
-    /** Whether the player may skip. False disables the skip key outright. */
-    skip: boolean;
-    /** Skip stops when it reaches a line the player has not read yet. */
-    skipReadText: boolean;
-    /** Milliseconds the skip key is held before continuous skipping starts. */
-    skipDelay: number;
-    /** Milliseconds between skipped lines while the key is held. */
-    skipInterval: number;
-    /** Master output, 0..1. */
-    globalVolume: number;
-    /** Music bus, 0..1. */
-    bgmVolume: number;
-    /** SFX bus, 0..1. */
-    soundVolume: number;
-    /** Voice bus, 0..1. */
-    voiceVolume: number;
-    /** What happens to a voice clip when its sentence ends. */
-    voiceEndMode: VoiceEndMode;
-    /** Fade length in milliseconds when `voiceEndMode` is `fade`. */
-    voiceFadeDuration: number;
+  /** Characters per second the dialogue types at. */
+  cps: number;
+  /** Multiplier over text speed and the auto-forward delay; 1 is the authored pace. */
+  gameSpeed: number;
+  /** Advance on its own once a line has finished displaying. */
+  autoForward: boolean;
+  /** Whether the dialogue box is shown at all. */
+  showDialog: boolean;
+  /** Whether the player may skip. False disables the skip key outright. */
+  skip: boolean;
+  /** Skip stops when it reaches a line the player has not read yet. */
+  skipReadText: boolean;
+  /** Milliseconds the skip key is held before continuous skipping starts. */
+  skipDelay: number;
+  /** Milliseconds between skipped lines while the key is held. */
+  skipInterval: number;
+  /** Master output, 0..1. */
+  globalVolume: number;
+  /** Music bus, 0..1. */
+  bgmVolume: number;
+  /** SFX bus, 0..1. */
+  soundVolume: number;
+  /** Voice bus, 0..1. */
+  voiceVolume: number;
+  /** What happens to a voice clip when its sentence ends. */
+  voiceEndMode: VoiceEndMode;
+  /** Fade length in milliseconds when `voiceEndMode` is `fade`. */
+  voiceFadeDuration: number;
 };
 
 /**
@@ -98,29 +98,29 @@ export type PlayerPreferences = {
  * field is not a control anyone recognises. `count` values are stored and edited in the same unit.
  */
 export type PlayerPreferenceDisplay =
-    | { unit: "percent"; control: "slider" | "field" }
-    | { unit: "ms" | "cps"; control: "field" };
+  | { unit: "percent"; control: "slider" | "field" }
+  | { unit: "ms" | "cps"; control: "field" };
 
 export type PlayerPreferenceSpec =
-    | {
-        key: PlayerPreferenceKey;
-        kind: "boolean";
-        defaultValue: boolean;
+  | {
+      key: PlayerPreferenceKey;
+      kind: "boolean";
+      defaultValue: boolean;
     }
-    | {
-        key: PlayerPreferenceKey;
-        kind: "number";
-        defaultValue: number;
-        /** Inclusive bounds in **stored** units. */
-        min: number;
-        max: number;
-        display: PlayerPreferenceDisplay;
+  | {
+      key: PlayerPreferenceKey;
+      kind: "number";
+      defaultValue: number;
+      /** Inclusive bounds in **stored** units. */
+      min: number;
+      max: number;
+      display: PlayerPreferenceDisplay;
     }
-    | {
-        key: PlayerPreferenceKey;
-        kind: "enum";
-        defaultValue: VoiceEndMode;
-        options: readonly VoiceEndMode[];
+  | {
+      key: PlayerPreferenceKey;
+      kind: "enum";
+      defaultValue: VoiceEndMode;
+      options: readonly VoiceEndMode[];
     };
 
 /**
@@ -132,22 +132,23 @@ export type PlayerPreferenceSpec =
  * it is a hung one. They are also what the settings page offers, which is why they live here rather
  * than in the section component.
  */
-export const PLAYER_PREFERENCE_SPECS: Readonly<Record<PlayerPreferenceKey, PlayerPreferenceSpec>> = {
+export const PLAYER_PREFERENCE_SPECS: Readonly<Record<PlayerPreferenceKey, PlayerPreferenceSpec>> =
+  {
     cps: {
-        key: "cps",
-        kind: "number",
-        defaultValue: 10,
-        min: 1,
-        max: 200,
-        display: { unit: "cps", control: "field" },
+      key: "cps",
+      kind: "number",
+      defaultValue: 10,
+      min: 1,
+      max: 200,
+      display: { unit: "cps", control: "field" }
     },
     gameSpeed: {
-        key: "gameSpeed",
-        kind: "number",
-        defaultValue: 1,
-        min: 0.1,
-        max: 10,
-        display: { unit: "percent", control: "field" },
+      key: "gameSpeed",
+      kind: "number",
+      defaultValue: 1,
+      min: 0.1,
+      max: 10,
+      display: { unit: "percent", control: "field" }
     },
     autoForward: { key: "autoForward", kind: "boolean", defaultValue: false },
     showDialog: { key: "showDialog", kind: "boolean", defaultValue: true },
@@ -159,87 +160,87 @@ export const PLAYER_PREFERENCE_SPECS: Readonly<Record<PlayerPreferenceKey, Playe
      */
     skipReadText: { key: "skipReadText", kind: "boolean", defaultValue: false },
     skipDelay: {
-        key: "skipDelay",
-        kind: "number",
-        defaultValue: 0,
-        min: 0,
-        max: 5000,
-        display: { unit: "ms", control: "field" },
+      key: "skipDelay",
+      kind: "number",
+      defaultValue: 0,
+      min: 0,
+      max: 5000,
+      display: { unit: "ms", control: "field" }
     },
     skipInterval: {
-        key: "skipInterval",
-        kind: "number",
-        defaultValue: 100,
-        min: 1,
-        max: 5000,
-        display: { unit: "ms", control: "field" },
+      key: "skipInterval",
+      kind: "number",
+      defaultValue: 100,
+      min: 1,
+      max: 5000,
+      display: { unit: "ms", control: "field" }
     },
     globalVolume: {
-        key: "globalVolume",
-        kind: "number",
-        defaultValue: 1,
-        min: 0,
-        max: 1,
-        display: { unit: "percent", control: "slider" },
+      key: "globalVolume",
+      kind: "number",
+      defaultValue: 1,
+      min: 0,
+      max: 1,
+      display: { unit: "percent", control: "slider" }
     },
     bgmVolume: {
-        key: "bgmVolume",
-        kind: "number",
-        defaultValue: 1,
-        min: 0,
-        max: 1,
-        display: { unit: "percent", control: "slider" },
+      key: "bgmVolume",
+      kind: "number",
+      defaultValue: 1,
+      min: 0,
+      max: 1,
+      display: { unit: "percent", control: "slider" }
     },
     soundVolume: {
-        key: "soundVolume",
-        kind: "number",
-        defaultValue: 1,
-        min: 0,
-        max: 1,
-        display: { unit: "percent", control: "slider" },
+      key: "soundVolume",
+      kind: "number",
+      defaultValue: 1,
+      min: 0,
+      max: 1,
+      display: { unit: "percent", control: "slider" }
     },
     voiceVolume: {
-        key: "voiceVolume",
-        kind: "number",
-        defaultValue: 1,
-        min: 0,
-        max: 1,
-        display: { unit: "percent", control: "slider" },
+      key: "voiceVolume",
+      kind: "number",
+      defaultValue: 1,
+      min: 0,
+      max: 1,
+      display: { unit: "percent", control: "slider" }
     },
     voiceEndMode: {
-        key: "voiceEndMode",
-        kind: "enum",
-        defaultValue: "stop",
-        options: VOICE_END_MODES,
+      key: "voiceEndMode",
+      kind: "enum",
+      defaultValue: "stop",
+      options: VOICE_END_MODES
     },
     voiceFadeDuration: {
-        key: "voiceFadeDuration",
-        kind: "number",
-        defaultValue: 0,
-        min: 0,
-        max: 10000,
-        display: { unit: "ms", control: "field" },
-    },
-};
+      key: "voiceFadeDuration",
+      kind: "number",
+      defaultValue: 0,
+      min: 0,
+      max: 10000,
+      display: { unit: "ms", control: "field" }
+    }
+  };
 
 /**
  * The engine's defaults, as a complete set. What a project that never touched the page ships.
  */
 export const DEFAULT_PLAYER_PREFERENCES: PlayerPreferences = {
-    cps: 10,
-    gameSpeed: 1,
-    autoForward: false,
-    showDialog: true,
-    skip: true,
-    skipReadText: false,
-    skipDelay: 0,
-    skipInterval: 100,
-    globalVolume: 1,
-    bgmVolume: 1,
-    soundVolume: 1,
-    voiceVolume: 1,
-    voiceEndMode: "stop",
-    voiceFadeDuration: 0,
+  cps: 10,
+  gameSpeed: 1,
+  autoForward: false,
+  showDialog: true,
+  skip: true,
+  skipReadText: false,
+  skipDelay: 0,
+  skipInterval: 100,
+  globalVolume: 1,
+  bgmVolume: 1,
+  soundVolume: 1,
+  voiceVolume: 1,
+  voiceEndMode: "stop",
+  voiceFadeDuration: 0
 };
 
 /**
@@ -250,23 +251,33 @@ export const DEFAULT_PLAYER_PREFERENCES: PlayerPreferences = {
  * rows below a volume slider.
  */
 export const PLAYER_PREFERENCE_GROUPS: readonly {
-    id: "dialogue" | "skipping" | "audio";
-    keys: readonly PlayerPreferenceKey[];
+  id: "dialogue" | "skipping" | "audio";
+  keys: readonly PlayerPreferenceKey[];
 }[] = [
-    { id: "dialogue", keys: ["cps", "gameSpeed", "autoForward", "showDialog"] },
-    { id: "skipping", keys: ["skip", "skipReadText", "skipDelay", "skipInterval"] },
-    {
-        id: "audio",
-        keys: ["globalVolume", "bgmVolume", "soundVolume", "voiceVolume", "voiceEndMode", "voiceFadeDuration"],
-    },
+  { id: "dialogue", keys: ["cps", "gameSpeed", "autoForward", "showDialog"] },
+  { id: "skipping", keys: ["skip", "skipReadText", "skipDelay", "skipInterval"] },
+  {
+    id: "audio",
+    keys: [
+      "globalVolume",
+      "bgmVolume",
+      "soundVolume",
+      "voiceVolume",
+      "voiceEndMode",
+      "voiceFadeDuration"
+    ]
+  }
 ];
 
-function clampNumber(value: unknown, spec: Extract<PlayerPreferenceSpec, { kind: "number" }>): number {
-    const parsed = typeof value === "number" ? value : Number(value);
-    if (!Number.isFinite(parsed)) {
-        return spec.defaultValue;
-    }
-    return Math.min(spec.max, Math.max(spec.min, parsed));
+function clampNumber(
+  value: unknown,
+  spec: Extract<PlayerPreferenceSpec, { kind: "number" }>
+): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return spec.defaultValue;
+  }
+  return Math.min(spec.max, Math.max(spec.min, parsed));
 }
 
 /**
@@ -277,16 +288,21 @@ function clampNumber(value: unknown, spec: Extract<PlayerPreferenceSpec, { kind:
  * falls back to the engine default rather than propagating `undefined` into `game.preference`,
  * where it would silently mean "0 characters per second".
  */
-export function normalizePlayerPreference(key: PlayerPreferenceKey, value: unknown): PlayerPreferenceValue {
-    const spec = PLAYER_PREFERENCE_SPECS[key];
-    switch (spec.kind) {
-        case "boolean":
-            return typeof value === "boolean" ? value : spec.defaultValue;
-        case "number":
-            return clampNumber(value, spec);
-        case "enum":
-            return spec.options.includes(value as VoiceEndMode) ? value as VoiceEndMode : spec.defaultValue;
-    }
+export function normalizePlayerPreference(
+  key: PlayerPreferenceKey,
+  value: unknown
+): PlayerPreferenceValue {
+  const spec = PLAYER_PREFERENCE_SPECS[key];
+  switch (spec.kind) {
+    case "boolean":
+      return typeof value === "boolean" ? value : spec.defaultValue;
+    case "number":
+      return clampNumber(value, spec);
+    case "enum":
+      return spec.options.includes(value as VoiceEndMode)
+        ? (value as VoiceEndMode)
+        : spec.defaultValue;
+  }
 }
 
 /**
@@ -297,17 +313,17 @@ export function normalizePlayerPreference(key: PlayerPreferenceKey, value: unkno
  * representation of "the author did not choose" is "the engine's default", not a missing key.
  */
 export function normalizePlayerPreferences(value: unknown): PlayerPreferences {
-    const record = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
-    const normalized = {} as Record<PlayerPreferenceKey, PlayerPreferenceValue>;
-    for (const key of PLAYER_PREFERENCE_KEYS) {
-        normalized[key] = normalizePlayerPreference(key, record[key]);
-    }
-    return normalized as PlayerPreferences;
+  const record = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  const normalized = {} as Record<PlayerPreferenceKey, PlayerPreferenceValue>;
+  for (const key of PLAYER_PREFERENCE_KEYS) {
+    normalized[key] = normalizePlayerPreference(key, record[key]);
+  }
+  return normalized as PlayerPreferences;
 }
 
 /** Whether a string names a preference this Studio knows. */
 export function isPlayerPreferenceKey(key: unknown): key is PlayerPreferenceKey {
-    return typeof key === "string" && (PLAYER_PREFERENCE_KEYS as readonly string[]).includes(key);
+  return typeof key === "string" && (PLAYER_PREFERENCE_KEYS as readonly string[]).includes(key);
 }
 
 /**

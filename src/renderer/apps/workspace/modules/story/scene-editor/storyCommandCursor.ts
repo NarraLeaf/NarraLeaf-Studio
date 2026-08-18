@@ -1,8 +1,18 @@
 import { isStoryVisitedCall, type StoryVisitedCall } from "@shared/types/story";
-import { isFlagParam, paramTypes, positionalParams, type StoryCommandDef, type StoryCommandParam } from "./storyCommandGrammar";
+import {
+  isFlagParam,
+  paramTypes,
+  positionalParams,
+  type StoryCommandDef,
+  type StoryCommandParam
+} from "./storyCommandGrammar";
 import { getCommandDef } from "./commands/registry";
 import { findParamLocalized } from "./commands/localizedParams";
-import { tokenizeCommandLine, type StoryCommandSpan, type StoryCommandToken } from "./storyCommandParser";
+import {
+  tokenizeCommandLine,
+  type StoryCommandSpan,
+  type StoryCommandToken
+} from "./storyCommandParser";
 
 /**
  * Where the caret is, and therefore what the slot should offer.
@@ -13,34 +23,46 @@ import { tokenizeCommandLine, type StoryCommandSpan, type StoryCommandToken } fr
  */
 
 export type StoryCommandCursor =
-    | { kind: "none" }
-    /** After `/`, still naming the command. */
-    | { kind: "commandName"; query: string; replace: StoryCommandSpan }
-    /** A positional slot: the image in `/bg …`, the speaker in `/say …`. */
-    | { kind: "positional"; param: StoryCommandParam; query: string; replace: StoryCommandSpan }
-    /**
-     * Between args, naming the next one: the `t=` / `d=` of `/bg forest …`.
-     *
-     * Carries the whole `def` alongside the unfilled `params` because a param's localized spelling is
-     * a property of its command, not of the param alone — the `story.paramHint.*` namespace is shared
-     * across commands, so the alias table has to be resolved per def (`commands/localizedParams.ts`).
-     */
-    | { kind: "paramName"; def: StoryCommandDef; params: readonly StoryCommandParam[]; query: string; replace: StoryCommandSpan }
-    /** After `key=`, giving that param's value. */
-    | { kind: "paramValue"; param: StoryCommandParam; query: string; replace: StoryCommandSpan }
-    /** Inside free text that runs to the end of the line. No candidates, by nature. */
-    | { kind: "greedy" }
-    /**
-     * Inside a greedy expression. `query` is the identifier fragment at the caret, not the whole line.
-     *
-     * `call` is set when that fragment is the argument of a `visited(` / `picked(`, which changes the
-     * vocabulary completely - scenes or choice options instead of variables and functions. It is the
-     * only piece of enclosing syntax this layer tracks, and only because those two calls take an
-     * entity name rather than an expression.
-     */
-    | { kind: "expression"; param: StoryCommandParam; query: string; replace: StoryCommandSpan; call?: StoryVisitedCall }
-    /** After `#`, naming the speaker. */
-    | { kind: "characterName"; query: string; replace: StoryCommandSpan };
+  | { kind: "none" }
+  /** After `/`, still naming the command. */
+  | { kind: "commandName"; query: string; replace: StoryCommandSpan }
+  /** A positional slot: the image in `/bg …`, the speaker in `/say …`. */
+  | { kind: "positional"; param: StoryCommandParam; query: string; replace: StoryCommandSpan }
+  /**
+   * Between args, naming the next one: the `t=` / `d=` of `/bg forest …`.
+   *
+   * Carries the whole `def` alongside the unfilled `params` because a param's localized spelling is
+   * a property of its command, not of the param alone — the `story.paramHint.*` namespace is shared
+   * across commands, so the alias table has to be resolved per def (`commands/localizedParams.ts`).
+   */
+  | {
+      kind: "paramName";
+      def: StoryCommandDef;
+      params: readonly StoryCommandParam[];
+      query: string;
+      replace: StoryCommandSpan;
+    }
+  /** After `key=`, giving that param's value. */
+  | { kind: "paramValue"; param: StoryCommandParam; query: string; replace: StoryCommandSpan }
+  /** Inside free text that runs to the end of the line. No candidates, by nature. */
+  | { kind: "greedy" }
+  /**
+   * Inside a greedy expression. `query` is the identifier fragment at the caret, not the whole line.
+   *
+   * `call` is set when that fragment is the argument of a `visited(` / `picked(`, which changes the
+   * vocabulary completely - scenes or choice options instead of variables and functions. It is the
+   * only piece of enclosing syntax this layer tracks, and only because those two calls take an
+   * entity name rather than an expression.
+   */
+  | {
+      kind: "expression";
+      param: StoryCommandParam;
+      query: string;
+      replace: StoryCommandSpan;
+      call?: StoryVisitedCall;
+    }
+  /** After `#`, naming the speaker. */
+  | { kind: "characterName"; query: string; replace: StoryCommandSpan };
 
 /**
  * Whether the first candidate should be highlighted when the list opens.
@@ -68,175 +90,199 @@ export type StoryCommandCursor =
  * Tab is unaffected: it takes the first candidate whether or not it was highlighted, so completing
  * `/var gold tr` to `true` still costs one key.
  */
-export function defaultHighlights(cursor: StoryCommandCursor, candidates: readonly { free?: true; value?: string }[] = []): boolean {
-    switch (cursor.kind) {
-        case "positional":
-        case "paramValue": {
-            const query = cursor.query.trim();
-            if (query === "" || candidates.length === 0) {
-                return false;
-            }
-            if (candidates[0].free) {
-                return false;
-            }
-            // The author already typed the whole answer: taking the candidate would change nothing,
-            // so Enter must mean submit. Without this, `/var met true` needed a second Enter - the
-            // first one "completed" `true` to `true` and the line looked like a dead keypress.
-            // Same rationale as the free echo above: take-and-submit build the same block.
-            return candidates[0].value?.trim().toLowerCase() !== query.toLowerCase();
-        }
-        case "commandName":
-        case "characterName":
-            return true;
-        case "paramName":
-        case "greedy":
-        // An expression must not default-highlight. The author is writing, not picking: Enter has to
-        // mean "commit this line", or `/set gold gold + 1` would grab whatever variable the menu
-        // happened to be showing instead of submitting. Tab still takes the highlight.
-        case "expression":
-        case "none":
-            return false;
+export function defaultHighlights(
+  cursor: StoryCommandCursor,
+  candidates: readonly { free?: true; value?: string }[] = []
+): boolean {
+  switch (cursor.kind) {
+    case "positional":
+    case "paramValue": {
+      const query = cursor.query.trim();
+      if (query === "" || candidates.length === 0) {
+        return false;
+      }
+      if (candidates[0].free) {
+        return false;
+      }
+      // The author already typed the whole answer: taking the candidate would change nothing,
+      // so Enter must mean submit. Without this, `/var met true` needed a second Enter - the
+      // first one "completed" `true` to `true` and the line looked like a dead keypress.
+      // Same rationale as the free echo above: take-and-submit build the same block.
+      return candidates[0].value?.trim().toLowerCase() !== query.toLowerCase();
     }
+    case "commandName":
+    case "characterName":
+      return true;
+    case "paramName":
+    case "greedy":
+    // An expression must not default-highlight. The author is writing, not picking: Enter has to
+    // mean "commit this line", or `/set gold gold + 1` would grab whatever variable the menu
+    // happened to be showing instead of submitting. Tab still takes the highlight.
+    case "expression":
+    case "none":
+      return false;
+  }
 }
 
 /** The token the caret sits in or against, or null when it sits in whitespace. */
-function tokenAtCaret(tokens: readonly StoryCommandToken[], caret: number): StoryCommandToken | null {
-    return tokens.find(token => caret >= token.span.start && caret <= token.span.end) ?? null;
+function tokenAtCaret(
+  tokens: readonly StoryCommandToken[],
+  caret: number
+): StoryCommandToken | null {
+  return tokens.find((token) => caret >= token.span.start && caret <= token.span.end) ?? null;
 }
 
 /** Index of the first `=` outside quotes of either kind, or -1. Mirrors the parser's own splitting. */
 function firstUnquotedEquals(raw: string): number {
-    let inQuote: "\"" | "'" | null = null;
-    for (let index = 0; index < raw.length; index += 1) {
-        const char = raw[index];
-        if ((char === "\"" || char === "'") && (inQuote === null || inQuote === char)) {
-            inQuote = inQuote === null ? char : null;
-            continue;
-        }
-        if (char === "=" && inQuote === null) {
-            return index;
-        }
+  let inQuote: '"' | "'" | null = null;
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index];
+    if ((char === '"' || char === "'") && (inQuote === null || inQuote === char)) {
+      inQuote = inQuote === null ? char : null;
+      continue;
     }
-    return -1;
+    if (char === "=" && inQuote === null) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 /** Remove the structural quotes of either kind, keeping the other kind's characters as data. Mirrors the parser. */
 function stripQuotes(raw: string): string {
-    let inQuote: "\"" | "'" | null = null;
-    let text = "";
-    for (const char of raw) {
-        if ((char === "\"" || char === "'") && (inQuote === null || inQuote === char)) {
-            inQuote = inQuote === null ? char : null;
-            continue;
-        }
-        text += char;
+  let inQuote: '"' | "'" | null = null;
+  let text = "";
+  for (const char of raw) {
+    if ((char === '"' || char === "'") && (inQuote === null || inQuote === char)) {
+      inQuote = inQuote === null ? char : null;
+      continue;
     }
-    return text;
+    text += char;
+  }
+  return text;
 }
 
 /** Positional params already satisfied by tokens strictly before the caret's own token. A bare flag (`loop`) is a named arg, not a positional. */
-function positionalIndexBefore(def: StoryCommandDef, tokens: readonly StoryCommandToken[], activeStart: number): number {
-    let index = 0;
-    for (const token of tokens.slice(1)) {
-        if (token.span.start >= activeStart) {
-            break;
-        }
-        if (firstUnquotedEquals(token.raw) > 0) {
-            continue;
-        }
-        // Localized, because the parser's bare-flag branch is: it reads `循环` as `loop` and so
-        // consumes no positional slot. Asking the canonical-only question here would have the caret
-        // counting a slot the parser did not fill, and offering completions for the wrong one.
-        const flag = findParamLocalized(def, token.text);
-        if (flag && isFlagParam(flag) && index > 0) {
-            continue;
-        }
-        index += 1;
+function positionalIndexBefore(
+  def: StoryCommandDef,
+  tokens: readonly StoryCommandToken[],
+  activeStart: number
+): number {
+  let index = 0;
+  for (const token of tokens.slice(1)) {
+    if (token.span.start >= activeStart) {
+      break;
     }
-    return index;
+    if (firstUnquotedEquals(token.raw) > 0) {
+      continue;
+    }
+    // Localized, because the parser's bare-flag branch is: it reads `循环` as `loop` and so
+    // consumes no positional slot. Asking the canonical-only question here would have the caret
+    // counting a slot the parser did not fill, and offering completions for the wrong one.
+    const flag = findParamLocalized(def, token.text);
+    if (flag && isFlagParam(flag) && index > 0) {
+      continue;
+    }
+    index += 1;
+  }
+  return index;
 }
 
-function paramsNotYetNamed(def: StoryCommandDef, tokens: readonly StoryCommandToken[], activeStart: number): StoryCommandParam[] {
-    const named = new Set<string>();
-    for (const token of tokens.slice(1)) {
-        if (token.span.start >= activeStart) {
-            continue;
-        }
-        const equals = firstUnquotedEquals(token.raw);
-        if (equals > 0) {
-            // Bank the CANONICAL name, not the spelling that was typed: `at=`, `pos=` and `位置=` all
-            // fill one slot, so any of them has to take it off the list of what is still unnamed.
-            const key = token.raw.slice(0, equals);
-            named.add((findParamLocalized(def, key)?.name ?? key).toLowerCase());
-        }
+function paramsNotYetNamed(
+  def: StoryCommandDef,
+  tokens: readonly StoryCommandToken[],
+  activeStart: number
+): StoryCommandParam[] {
+  const named = new Set<string>();
+  for (const token of tokens.slice(1)) {
+    if (token.span.start >= activeStart) {
+      continue;
     }
-    return def.params.filter(param => !param.positional && !named.has(param.name.toLowerCase()));
+    const equals = firstUnquotedEquals(token.raw);
+    if (equals > 0) {
+      // Bank the CANONICAL name, not the spelling that was typed: `at=`, `pos=` and `位置=` all
+      // fill one slot, so any of them has to take it off the list of what is still unnamed.
+      const key = token.raw.slice(0, equals);
+      named.add((findParamLocalized(def, key)?.name ?? key).toLowerCase());
+    }
+  }
+  return def.params.filter((param) => !param.positional && !named.has(param.name.toLowerCase()));
 }
 
 function commandCursor(source: string, caret: number): StoryCommandCursor {
-    const { tokens } = tokenizeCommandLine(source, 1);
-    const nameToken = tokens[0];
+  const { tokens } = tokenizeCommandLine(source, 1);
+  const nameToken = tokens[0];
 
-    // Still on the command name: no token yet, or the caret is inside the first one.
-    if (!nameToken || caret <= nameToken.span.end) {
-        const span = nameToken ? nameToken.span : { start: 1, end: 1 };
-        return { kind: "commandName", query: nameToken ? nameToken.text.slice(0, caret - nameToken.span.start) : "", replace: span };
-    }
+  // Still on the command name: no token yet, or the caret is inside the first one.
+  if (!nameToken || caret <= nameToken.span.end) {
+    const span = nameToken ? nameToken.span : { start: 1, end: 1 };
+    return {
+      kind: "commandName",
+      query: nameToken ? nameToken.text.slice(0, caret - nameToken.span.start) : "",
+      replace: span
+    };
+  }
 
-    const def = getCommandDef(nameToken.text);
-    if (!def) {
+  const def = getCommandDef(nameToken.text);
+  if (!def) {
+    return { kind: "none" };
+  }
+
+  const active = tokenAtCaret(tokens.slice(1), caret);
+  const activeStart = active ? active.span.start : caret;
+  const replace: StoryCommandSpan = active ? active.span : { start: caret, end: caret };
+
+  // `key=value` - the caret is past the `=`, so it is giving that param's value.
+  if (active) {
+    const equals = firstUnquotedEquals(active.raw);
+    if (equals > 0 && caret > active.span.start + equals) {
+      // Localized lookup, so `位置=|` opens the placement menu the same way `at=|` does. A slot
+      // the author can name has to be a slot the caret can sit in.
+      const param = findParamLocalized(def, active.raw.slice(0, equals));
+      if (!param) {
         return { kind: "none" };
+      }
+      return {
+        kind: "paramValue",
+        param,
+        query: stripQuotes(active.raw.slice(equals + 1, caret - active.span.start)),
+        replace: { start: active.span.start + equals + 1, end: active.span.end }
+      };
     }
+  }
 
-    const active = tokenAtCaret(tokens.slice(1), caret);
-    const activeStart = active ? active.span.start : caret;
-    const replace: StoryCommandSpan = active ? active.span : { start: caret, end: caret };
+  const positionals = positionalParams(def);
+  const index = positionalIndexBefore(def, tokens, activeStart);
 
-    // `key=value` - the caret is past the `=`, so it is giving that param's value.
-    if (active) {
-        const equals = firstUnquotedEquals(active.raw);
-        if (equals > 0 && caret > active.span.start + equals) {
-            // Localized lookup, so `位置=|` opens the placement menu the same way `at=|` does. A slot
-            // the author can name has to be a slot the caret can sit in.
-            const param = findParamLocalized(def, active.raw.slice(0, equals));
-            if (!param) {
-                return { kind: "none" };
-            }
-            return {
-                kind: "paramValue",
-                param,
-                query: stripQuotes(active.raw.slice(equals + 1, caret - active.span.start)),
-                replace: { start: active.span.start + equals + 1, end: active.span.end },
-            };
-        }
+  // A greedy param runs to the end of the line, so everything from where it starts is prose - the
+  // positional counter must stop there rather than reading `hello there` as two more arguments.
+  const greedyIndex = positionals.findIndex((param) => param.greedy);
+  if (greedyIndex >= 0 && index >= greedyIndex) {
+    const greedy = positionals[greedyIndex];
+    // A greedy *expression* is the exception: it runs to the end of the line like prose, but it is
+    // made of names the author should be picking rather than remembering. So instead of giving up
+    // on candidates, narrow the query to the identifier fragment the caret sits in - `/set gold go`
+    // offers `gold`, and completing it replaces `go` rather than the whole expression.
+    if (paramTypes(greedy).some((type) => type.kind === "expression")) {
+      return expressionCursor(greedy, source, caret, tokens[greedyIndex + 1]?.span.start ?? caret);
     }
+    return { kind: "greedy" };
+  }
 
-    const positionals = positionalParams(def);
-    const index = positionalIndexBefore(def, tokens, activeStart);
-
-    // A greedy param runs to the end of the line, so everything from where it starts is prose - the
-    // positional counter must stop there rather than reading `hello there` as two more arguments.
-    const greedyIndex = positionals.findIndex(param => param.greedy);
-    if (greedyIndex >= 0 && index >= greedyIndex) {
-        const greedy = positionals[greedyIndex];
-        // A greedy *expression* is the exception: it runs to the end of the line like prose, but it is
-        // made of names the author should be picking rather than remembering. So instead of giving up
-        // on candidates, narrow the query to the identifier fragment the caret sits in - `/set gold go`
-        // offers `gold`, and completing it replaces `go` rather than the whole expression.
-        if (paramTypes(greedy).some(type => type.kind === "expression")) {
-            return expressionCursor(greedy, source, caret, tokens[greedyIndex + 1]?.span.start ?? caret);
-        }
-        return { kind: "greedy" };
-    }
-
-    const param = positionals[index];
-    if (param) {
-        const query = active ? active.text.slice(0, caret - active.span.start) : "";
-        return { kind: "positional", param, query, replace };
-    }
-
+  const param = positionals[index];
+  if (param) {
     const query = active ? active.text.slice(0, caret - active.span.start) : "";
-    return { kind: "paramName", def, params: paramsNotYetNamed(def, tokens, activeStart), query, replace };
+    return { kind: "positional", param, query, replace };
+  }
+
+  const query = active ? active.text.slice(0, caret - active.span.start) : "";
+  return {
+    kind: "paramName",
+    def,
+    params: paramsNotYetNamed(def, tokens, activeStart),
+    query,
+    replace
+  };
 }
 
 /**
@@ -245,7 +291,7 @@ function commandCursor(source: string, caret: number): StoryCommandCursor {
  * disagree, the fragment the menu replaces is not the fragment the parser reads.
  */
 function isExpressionIdentifierChar(char: string): boolean {
-    return /[A-Za-z0-9_$.]/.test(char) || char.charCodeAt(0) > 0x7f;
+  return /[A-Za-z0-9_$.]/.test(char) || char.charCodeAt(0) > 0x7f;
 }
 
 /**
@@ -256,31 +302,31 @@ function isExpressionIdentifierChar(char: string): boolean {
  * a string, nothing escapes inside a quoted name.
  */
 function quotedNameStart(source: string, caret: number, expressionStart: number): number {
-    let openedAt = -1;
-    let inString = false;
-    for (let index = expressionStart; index < caret && index < source.length; index += 1) {
-        const char = source[index];
-        if (inString) {
-            if (char === "\\") {
-                index += 1;
-            } else if (char === "\"") {
-                inString = false;
-            }
-            continue;
-        }
-        if (openedAt >= 0) {
-            if (char === "'") {
-                openedAt = -1;
-            }
-            continue;
-        }
-        if (char === "\"") {
-            inString = true;
-        } else if (char === "'") {
-            openedAt = index;
-        }
+  let openedAt = -1;
+  let inString = false;
+  for (let index = expressionStart; index < caret && index < source.length; index += 1) {
+    const char = source[index];
+    if (inString) {
+      if (char === "\\") {
+        index += 1;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
     }
-    return openedAt;
+    if (openedAt >= 0) {
+      if (char === "'") {
+        openedAt = -1;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+    } else if (char === "'") {
+      openedAt = index;
+    }
+  }
+  return openedAt;
 }
 
 /**
@@ -296,40 +342,45 @@ function quotedNameStart(source: string, caret: number, expressionStart: number)
  * quote owns everything after it, lexically, so replacing that much is consistent with what the
  * parser would read). A completion then re-quotes as needed, never nests inside the old quotes.
  */
-function expressionCursor(param: StoryCommandParam, source: string, caret: number, expressionStart: number): StoryCommandCursor {
-    const openedAt = quotedNameStart(source, caret, expressionStart);
-    if (openedAt >= 0) {
-        let end = caret;
-        while (end < source.length && source[end] !== "'") {
-            end += 1;
-        }
-        if (end < source.length) {
-            end += 1; // take the closing quote too
-        }
-        return {
-            kind: "expression",
-            param,
-            query: source.slice(openedAt + 1, caret),
-            replace: { start: openedAt, end },
-            ...visitedCallAt(source, openedAt, expressionStart),
-        };
-    }
-
-    let start = caret;
-    while (start > expressionStart && isExpressionIdentifierChar(source[start - 1])) {
-        start -= 1;
-    }
+function expressionCursor(
+  param: StoryCommandParam,
+  source: string,
+  caret: number,
+  expressionStart: number
+): StoryCommandCursor {
+  const openedAt = quotedNameStart(source, caret, expressionStart);
+  if (openedAt >= 0) {
     let end = caret;
-    while (end < source.length && isExpressionIdentifierChar(source[end])) {
-        end += 1;
+    while (end < source.length && source[end] !== "'") {
+      end += 1;
+    }
+    if (end < source.length) {
+      end += 1; // take the closing quote too
     }
     return {
-        kind: "expression",
-        param,
-        query: source.slice(start, caret),
-        replace: { start, end },
-        ...visitedCallAt(source, start, expressionStart),
+      kind: "expression",
+      param,
+      query: source.slice(openedAt + 1, caret),
+      replace: { start: openedAt, end },
+      ...visitedCallAt(source, openedAt, expressionStart)
     };
+  }
+
+  let start = caret;
+  while (start > expressionStart && isExpressionIdentifierChar(source[start - 1])) {
+    start -= 1;
+  }
+  let end = caret;
+  while (end < source.length && isExpressionIdentifierChar(source[end])) {
+    end += 1;
+  }
+  return {
+    kind: "expression",
+    param,
+    query: source.slice(start, caret),
+    replace: { start, end },
+    ...visitedCallAt(source, start, expressionStart)
+  };
 }
 
 /**
@@ -346,31 +397,39 @@ function expressionCursor(param: StoryCommandParam, source: string, caret: numbe
  * looks for is unambiguous by construction: `visited` and `picked` take ONE entity name, so the only
  * legal thing between the caret's fragment and the `(` is whitespace.
  */
-function visitedCallAt(source: string, fragmentStart: number, expressionStart: number): { call?: StoryVisitedCall } {
-    let index = fragmentStart;
-    while (index > expressionStart && /\s/.test(source[index - 1])) {
-        index -= 1;
-    }
-    if (index <= expressionStart || source[index - 1] !== "(") {
-        return {};
-    }
+function visitedCallAt(
+  source: string,
+  fragmentStart: number,
+  expressionStart: number
+): { call?: StoryVisitedCall } {
+  let index = fragmentStart;
+  while (index > expressionStart && /\s/.test(source[index - 1])) {
     index -= 1;
-    let nameEnd = index;
-    while (index > expressionStart && isExpressionIdentifierChar(source[index - 1])) {
-        index -= 1;
-    }
-    const name = source.slice(index, nameEnd);
-    return isStoryVisitedCall(name) ? { call: name } : {};
+  }
+  if (index <= expressionStart || source[index - 1] !== "(") {
+    return {};
+  }
+  index -= 1;
+  let nameEnd = index;
+  while (index > expressionStart && isExpressionIdentifierChar(source[index - 1])) {
+    index -= 1;
+  }
+  const name = source.slice(index, nameEnd);
+  return isStoryVisitedCall(name) ? { call: name } : {};
 }
 
 function characterCursor(source: string, caret: number): StoryCommandCursor {
-    const boundary = source.indexOf(" ");
-    const nameEnd = boundary === -1 ? source.length : boundary;
-    if (caret > nameEnd) {
-        // Past the name is the line of dialogue.
-        return { kind: "greedy" };
-    }
-    return { kind: "characterName", query: source.slice(1, caret), replace: { start: 1, end: nameEnd } };
+  const boundary = source.indexOf(" ");
+  const nameEnd = boundary === -1 ? source.length : boundary;
+  if (caret > nameEnd) {
+    // Past the name is the line of dialogue.
+    return { kind: "greedy" };
+  }
+  return {
+    kind: "characterName",
+    query: source.slice(1, caret),
+    replace: { start: 1, end: nameEnd }
+  };
 }
 
 /**
@@ -379,17 +438,17 @@ function characterCursor(source: string, caret: number): StoryCommandCursor {
  * rule (see `handleInsertValueChange`).
  */
 export function getCommandCursor(source: string, caret: number): StoryCommandCursor {
-    const at = Math.max(0, Math.min(caret, source.length));
-    if (!source) {
-        return { kind: "none" };
-    }
-    if (source.startsWith("/")) {
-        return commandCursor(source, at);
-    }
-    if (source.startsWith("#")) {
-        return characterCursor(source, at);
-    }
+  const at = Math.max(0, Math.min(caret, source.length));
+  if (!source) {
     return { kind: "none" };
+  }
+  if (source.startsWith("/")) {
+    return commandCursor(source, at);
+  }
+  if (source.startsWith("#")) {
+    return characterCursor(source, at);
+  }
+  return { kind: "none" };
 }
 
 /**
@@ -399,10 +458,10 @@ export function getCommandCursor(source: string, caret: number): StoryCommandCur
  * no escape syntax); resolution reads entity slots leniently under either kind.
  */
 export function quoteEntityValue(value: string): string {
-    if (!value.includes(" ")) {
-        return value;
-    }
-    return value.includes("'") ? `"${value}"` : `'${value}'`;
+  if (!value.includes(" ")) {
+    return value;
+  }
+  return value.includes("'") ? `"${value}"` : `'${value}'`;
 }
 
 /**
@@ -412,36 +471,40 @@ export function quoteEntityValue(value: string): string {
  * immediately - the two-stage Tab. Everything else completes to a whole token and a space, ready for
  * the next one. Values with spaces are quoted, or the tokenizer would split them back apart.
  */
-export function completionFor(cursor: StoryCommandCursor, value: string): { text: string; replace: StoryCommandSpan } | null {
-    switch (cursor.kind) {
-        case "commandName":
-            return { text: `${value} `, replace: cursor.replace };
-        case "paramName":
-            return { text: `${value}=`, replace: cursor.replace };
-        case "positional":
-        case "paramValue":
-            return { text: `${quoteEntityValue(value)} `, replace: cursor.replace };
-        case "characterName":
-            return { text: `${value} `, replace: cursor.replace };
-        case "expression":
-            // No trailing space: this replaces one identifier inside a larger expression. `min(`
-            // completes to `min(` with the caret ready for its arguments, and a variable name
-            // completes to just the name so `gold` can be followed by `+ 1`. A name with a space is
-            // single-quoted - the expression language's quoted-identifier spelling - or the lexer
-            // would read it back as two names. The replace span already covers any quotes the author
-            // opened (see expressionCursor), so this never nests quotes.
-            //
-            // A candidate that already carries its own syntax is taken verbatim: a blueprint call
-            // arrives pre-formatted as `'Story Value'()` - name quoted where the lexer needs it, then
-            // the parens - and wrapping that in another pair would produce `''Story Value'()'`.
-            return {
-                text: value.includes(" ") && !value.includes("'") && !value.includes("(")
-                    ? `'${value}'`
-                    : value,
-                replace: cursor.replace,
-            };
-        case "greedy":
-        case "none":
-            return null;
-    }
+export function completionFor(
+  cursor: StoryCommandCursor,
+  value: string
+): { text: string; replace: StoryCommandSpan } | null {
+  switch (cursor.kind) {
+    case "commandName":
+      return { text: `${value} `, replace: cursor.replace };
+    case "paramName":
+      return { text: `${value}=`, replace: cursor.replace };
+    case "positional":
+    case "paramValue":
+      return { text: `${quoteEntityValue(value)} `, replace: cursor.replace };
+    case "characterName":
+      return { text: `${value} `, replace: cursor.replace };
+    case "expression":
+      // No trailing space: this replaces one identifier inside a larger expression. `min(`
+      // completes to `min(` with the caret ready for its arguments, and a variable name
+      // completes to just the name so `gold` can be followed by `+ 1`. A name with a space is
+      // single-quoted - the expression language's quoted-identifier spelling - or the lexer
+      // would read it back as two names. The replace span already covers any quotes the author
+      // opened (see expressionCursor), so this never nests quotes.
+      //
+      // A candidate that already carries its own syntax is taken verbatim: a blueprint call
+      // arrives pre-formatted as `'Story Value'()` - name quoted where the lexer needs it, then
+      // the parens - and wrapping that in another pair would produce `''Story Value'()'`.
+      return {
+        text:
+          value.includes(" ") && !value.includes("'") && !value.includes("(")
+            ? `'${value}'`
+            : value,
+        replace: cursor.replace
+      };
+    case "greedy":
+    case "none":
+      return null;
+  }
 }

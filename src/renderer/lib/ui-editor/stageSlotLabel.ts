@@ -18,26 +18,26 @@ export type TranslateFn = (key: TranslationKey, params?: InterpolationParams) =>
  * `t` they already hold, imperative callers pass `translate`.
  */
 export function getStageSlotLabel(slotId: string, t: TranslateFn): string {
-    // A hand-edited document can name a slot that no longer exists; show the raw id rather than a
-    // blank, which is what the old label lookup did with its `?? slotId` tail.
-    return isUIStageSlotId(slotId) ? t(`uiEditor.stageSlot.${slotId}`) : slotId;
+  // A hand-edited document can name a slot that no longer exists; show the raw id rather than a
+  // blank, which is what the old label lookup did with its `?? slotId` tail.
+  return isUIStageSlotId(slotId) ? t(`uiEditor.stageSlot.${slotId}`) : slotId;
 }
 
 export function getStageSlotDescription(slotId: UIStageSlotId, t: TranslateFn): string {
-    return t(`uiEditor.stageSlotDescription.${slotId}`);
+  return t(`uiEditor.stageSlotDescription.${slotId}`);
 }
 
 export type StageSlotOption = {
-    value: UIStageSlotId;
-    label: string;
-    description: string;
+  value: UIStageSlotId;
+  label: string;
+  description: string;
 };
 
 /** The five slots in stage order, named in the active locale. */
 export function getStageSlotOptions(t: TranslateFn): StageSlotOption[] {
-    return UI_STAGE_SLOT_IDS.map(value => ({
-        value,
-        label: getStageSlotLabel(value, t),
-        description: getStageSlotDescription(value, t),
-    }));
+  return UI_STAGE_SLOT_IDS.map((value) => ({
+    value,
+    label: getStageSlotLabel(value, t),
+    description: getStageSlotDescription(value, t)
+  }));
 }

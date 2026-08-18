@@ -8,26 +8,26 @@ import { FocusArea, FocusContext } from "@/lib/workspace/services/ui/types";
  * Focus state with helper methods
  */
 export interface UseFocusResult {
-    /** Current focus context */
-    focus: FocusContext;
-    /** Whether the specified area is focused */
-    isFocused: (area: FocusArea, targetId?: string) => boolean;
-    /** Whether any editor is focused */
-    isEditorFocused: boolean;
-    /** Whether any panel is focused */
-    isPanelFocused: boolean;
-    /** Set focus to a specific area */
-    setFocus: (area: FocusArea, targetId?: string) => void;
-    /** Set focus to editor area */
-    focusEditor: (tabId: string) => void;
-    /** Set focus to left panel */
-    focusLeftPanel: (panelId: string) => void;
-    /** Set focus to right panel */
-    focusRightPanel: (panelId: string) => void;
-    /** Set focus to bottom panel */
-    focusBottomPanel: (panelId: string) => void;
-    /** Clear focus */
-    clearFocus: () => void;
+  /** Current focus context */
+  focus: FocusContext;
+  /** Whether the specified area is focused */
+  isFocused: (area: FocusArea, targetId?: string) => boolean;
+  /** Whether any editor is focused */
+  isEditorFocused: boolean;
+  /** Whether any panel is focused */
+  isPanelFocused: boolean;
+  /** Set focus to a specific area */
+  setFocus: (area: FocusArea, targetId?: string) => void;
+  /** Set focus to editor area */
+  focusEditor: (tabId: string) => void;
+  /** Set focus to left panel */
+  focusLeftPanel: (panelId: string) => void;
+  /** Set focus to right panel */
+  focusRightPanel: (panelId: string) => void;
+  /** Set focus to bottom panel */
+  focusBottomPanel: (panelId: string) => void;
+  /** Clear focus */
+  clearFocus: () => void;
 }
 
 /**
@@ -46,108 +46,108 @@ export interface UseFocusResult {
  * focusEditor("my-tab-id");
  */
 export function useFocus(): UseFocusResult {
-    const { context } = useWorkspace();
-    const [focus, setFocusState] = useState<FocusContext>({
-        area: FocusArea.None,
-        targetId: undefined,
+  const { context } = useWorkspace();
+  const [focus, setFocusState] = useState<FocusContext>({
+    area: FocusArea.None,
+    targetId: undefined
+  });
+
+  // Get UI service
+  const uiService = useMemo(() => {
+    if (!context) return null;
+    return context.services.get<UIService>(Services.UI);
+  }, [context]);
+
+  // Subscribe to focus changes
+  useEffect(() => {
+    if (!uiService) return;
+
+    // Get initial focus
+    setFocusState(uiService.focus.getFocus());
+
+    // Subscribe to changes
+    const unsubscribe = uiService.focus.onFocusChange((newFocus) => {
+      setFocusState(newFocus);
     });
 
-    // Get UI service
-    const uiService = useMemo(() => {
-        if (!context) return null;
-        return context.services.get<UIService>(Services.UI);
-    }, [context]);
+    return unsubscribe;
+  }, [uiService]);
 
-    // Subscribe to focus changes
-    useEffect(() => {
-        if (!uiService) return;
+  // Check if specific area/target is focused
+  const isFocused = useCallback(
+    (area: FocusArea, targetId?: string): boolean => {
+      if (targetId !== undefined) {
+        return focus.area === area && focus.targetId === targetId;
+      }
+      return focus.area === area;
+    },
+    [focus]
+  );
 
-        // Get initial focus
-        setFocusState(uiService.focus.getFocus());
+  // Computed properties
+  const isEditorFocused = focus.area === FocusArea.Editor;
+  const isPanelFocused =
+    focus.area === FocusArea.LeftPanel ||
+    focus.area === FocusArea.RightPanel ||
+    focus.area === FocusArea.BottomPanel;
 
-        // Subscribe to changes
-        const unsubscribe = uiService.focus.onFocusChange((newFocus) => {
-            setFocusState(newFocus);
-        });
+  // Set focus to specific area
+  const setFocus = useCallback(
+    (area: FocusArea, targetId?: string) => {
+      uiService?.focus.setFocus(area, targetId);
+    },
+    [uiService]
+  );
 
-        return unsubscribe;
-    }, [uiService]);
+  // Focus editor
+  const focusEditor = useCallback(
+    (tabId: string) => {
+      uiService?.focus.setFocus(FocusArea.Editor, tabId);
+    },
+    [uiService]
+  );
 
-    // Check if specific area/target is focused
-    const isFocused = useCallback(
-        (area: FocusArea, targetId?: string): boolean => {
-            if (targetId !== undefined) {
-                return focus.area === area && focus.targetId === targetId;
-            }
-            return focus.area === area;
-        },
-        [focus]
-    );
+  // Focus left panel
+  const focusLeftPanel = useCallback(
+    (panelId: string) => {
+      uiService?.focus.setFocus(FocusArea.LeftPanel, panelId);
+    },
+    [uiService]
+  );
 
-    // Computed properties
-    const isEditorFocused = focus.area === FocusArea.Editor;
-    const isPanelFocused =
-        focus.area === FocusArea.LeftPanel ||
-        focus.area === FocusArea.RightPanel ||
-        focus.area === FocusArea.BottomPanel;
+  // Focus right panel
+  const focusRightPanel = useCallback(
+    (panelId: string) => {
+      uiService?.focus.setFocus(FocusArea.RightPanel, panelId);
+    },
+    [uiService]
+  );
 
-    // Set focus to specific area
-    const setFocus = useCallback(
-        (area: FocusArea, targetId?: string) => {
-            uiService?.focus.setFocus(area, targetId);
-        },
-        [uiService]
-    );
+  // Focus bottom panel
+  const focusBottomPanel = useCallback(
+    (panelId: string) => {
+      uiService?.focus.setFocus(FocusArea.BottomPanel, panelId);
+    },
+    [uiService]
+  );
 
-    // Focus editor
-    const focusEditor = useCallback(
-        (tabId: string) => {
-            uiService?.focus.setFocus(FocusArea.Editor, tabId);
-        },
-        [uiService]
-    );
+  // Clear focus
+  const clearFocus = useCallback(() => {
+    uiService?.focus.clearFocus();
+  }, [uiService]);
 
-    // Focus left panel
-    const focusLeftPanel = useCallback(
-        (panelId: string) => {
-            uiService?.focus.setFocus(FocusArea.LeftPanel, panelId);
-        },
-        [uiService]
-    );
-
-    // Focus right panel
-    const focusRightPanel = useCallback(
-        (panelId: string) => {
-            uiService?.focus.setFocus(FocusArea.RightPanel, panelId);
-        },
-        [uiService]
-    );
-
-    // Focus bottom panel
-    const focusBottomPanel = useCallback(
-        (panelId: string) => {
-            uiService?.focus.setFocus(FocusArea.BottomPanel, panelId);
-        },
-        [uiService]
-    );
-
-    // Clear focus
-    const clearFocus = useCallback(() => {
-        uiService?.focus.clearFocus();
-    }, [uiService]);
-
-    return {
-        focus,
-        isFocused,
-        isEditorFocused,
-        isPanelFocused,
-        setFocus,
-        focusEditor,
-        focusLeftPanel,
-        focusRightPanel,
-        focusBottomPanel,
-        clearFocus,
-    };
+  return {
+    focus,
+    isFocused,
+    isEditorFocused,
+    isPanelFocused,
+    setFocus,
+    focusEditor,
+    focusLeftPanel,
+    focusRightPanel,
+    focusBottomPanel,
+    clearFocus
+  };
 }
 
 /**
@@ -162,11 +162,10 @@ export function useFocus(): UseFocusResult {
  * const isFocused = useIsFocused(FocusArea.Editor, tabId);
  */
 export function useIsFocused(area: FocusArea, targetId?: string): boolean {
-    const { focus } = useFocus();
+  const { focus } = useFocus();
 
-    if (targetId !== undefined) {
-        return focus.area === area && focus.targetId === targetId;
-    }
-    return focus.area === area;
+  if (targetId !== undefined) {
+    return focus.area === area && focus.targetId === targetId;
+  }
+  return focus.area === area;
 }
-

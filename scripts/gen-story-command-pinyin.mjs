@@ -15,27 +15,116 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ZH_CATALOG = resolve(HERE, "../src/shared/i18n/catalog/zh/story.ts");
-const OUT = resolve(HERE, "../src/renderer/apps/workspace/modules/story/scene-editor/storyCommandPinyin.generated.ts");
+const OUT = resolve(
+  HERE,
+  "../src/renderer/apps/workspace/modules/story/scene-editor/storyCommandPinyin.generated.ts"
+);
 
 // Toneless pinyin for exactly the Han characters used in the zh `command.*` labels. Kept beside the
 // generator (not an npm dependency) so producing the table needs nothing installed; each entry is the
 // reading the character carries in its label's context.
 const PINYIN = {
-    背: "bei", 景: "jing", 跳: "tiao", 转: "zhuan", 等: "deng", 待: "dai", 显: "xian", 示: "shi",
-    隐: "yin", 藏: "cang", 移: "yi", 动: "dong", 表: "biao", 情: "qing", 对: "dui", 话: "hua",
-    图: "tu", 片: "pian", 文: "wen", 本: "ben", 视: "shi", 频: "pin", 层: "ceng", 替: "ti",
-    换: "huan", 播: "bo", 放: "fang", 字: "zi", 体: "ti", 音: "yin", 乐: "yue", 效: "xiao",
-    量: "liang", 倍: "bei", 速: "su", 停: "ting", 止: "zhi", 暂: "zan", 声: "sheng", 继: "ji",
-    续: "xu", 静: "jing", 取: "qu", 消: "xiao", 赋: "fu", 值: "zhi", 增: "zeng", 加: "jia",
-    减: "jian", 少: "shao", 翻: "fan", 重: "chong", 置: "zhi", 场: "chang", 变: "bian", 存: "cun",
-    档: "dang", 全: "quan", 局: "ju", 条: "tiao", 件: "jian", 选: "xuan", 项: "xiang", 复: "fu",
-    并: "bing", 行: "xing", 竞: "jing", 顺: "shun", 序: "xu", 代: "dai", 码: "ma", 蓝: "lan",
-    闪: "shan", 屏: "ping", 暗: "an", 角: "jiao", 特: "te", 备: "bei", 注: "zhu",
-    // The vocabulary the retired `actionCommand:` anchor kept this generator from ever reaching:
-    // every label added or renamed while it was throwing on startup.
-    作: "zuo", 参: "can", 数: "shu", 皮: "pi", 肤: "fu", 改: "gai", 名: "ming", 氛: "fen",
-    围: "wei", 进: "jin", 度: "du", 菜: "cai", 单: "dan", 直: "zhi", 到: "dao", 出: "chu",
-    标: "biao", 签: "qian", 镜: "jing", 头: "tou",
+  背: "bei",
+  景: "jing",
+  跳: "tiao",
+  转: "zhuan",
+  等: "deng",
+  待: "dai",
+  显: "xian",
+  示: "shi",
+  隐: "yin",
+  藏: "cang",
+  移: "yi",
+  动: "dong",
+  表: "biao",
+  情: "qing",
+  对: "dui",
+  话: "hua",
+  图: "tu",
+  片: "pian",
+  文: "wen",
+  本: "ben",
+  视: "shi",
+  频: "pin",
+  层: "ceng",
+  替: "ti",
+  换: "huan",
+  播: "bo",
+  放: "fang",
+  字: "zi",
+  体: "ti",
+  音: "yin",
+  乐: "yue",
+  效: "xiao",
+  量: "liang",
+  倍: "bei",
+  速: "su",
+  停: "ting",
+  止: "zhi",
+  暂: "zan",
+  声: "sheng",
+  继: "ji",
+  续: "xu",
+  静: "jing",
+  取: "qu",
+  消: "xiao",
+  赋: "fu",
+  值: "zhi",
+  增: "zeng",
+  加: "jia",
+  减: "jian",
+  少: "shao",
+  翻: "fan",
+  重: "chong",
+  置: "zhi",
+  场: "chang",
+  变: "bian",
+  存: "cun",
+  档: "dang",
+  全: "quan",
+  局: "ju",
+  条: "tiao",
+  件: "jian",
+  选: "xuan",
+  项: "xiang",
+  复: "fu",
+  并: "bing",
+  行: "xing",
+  竞: "jing",
+  顺: "shun",
+  序: "xu",
+  代: "dai",
+  码: "ma",
+  蓝: "lan",
+  闪: "shan",
+  屏: "ping",
+  暗: "an",
+  角: "jiao",
+  特: "te",
+  备: "bei",
+  注: "zhu",
+  // The vocabulary the retired `actionCommand:` anchor kept this generator from ever reaching:
+  // every label added or renamed while it was throwing on startup.
+  作: "zuo",
+  参: "can",
+  数: "shu",
+  皮: "pi",
+  肤: "fu",
+  改: "gai",
+  名: "ming",
+  氛: "fen",
+  围: "wei",
+  进: "jin",
+  度: "du",
+  菜: "cai",
+  单: "dan",
+  直: "zhi",
+  到: "dao",
+  出: "chu",
+  标: "biao",
+  签: "qian",
+  镜: "jing",
+  头: "tou"
 };
 
 /**
@@ -46,49 +135,53 @@ const PINYIN = {
  * `containerHeader:` now, the key that actually follows it.
  */
 function readCommandLabels() {
-    const text = readFileSync(ZH_CATALOG, "utf8");
-    const start = text.indexOf("command: {");
-    const end = text.indexOf("containerHeader:", start);
-    if (start === -1 || end === -1) {
-        throw new Error("Could not locate the `command:` block in the zh catalog.");
-    }
-    const block = text.slice(start, end);
-    const labels = {};
-    const entry = /(\w+):\s*\{\s*label:\s*"([^"]+)"/g;
-    let match;
-    while ((match = entry.exec(block)) !== null) {
-        labels[match[1]] = match[2];
-    }
-    return labels;
+  const text = readFileSync(ZH_CATALOG, "utf8");
+  const start = text.indexOf("command: {");
+  const end = text.indexOf("containerHeader:", start);
+  if (start === -1 || end === -1) {
+    throw new Error("Could not locate the `command:` block in the zh catalog.");
+  }
+  const block = text.slice(start, end);
+  const labels = {};
+  const entry = /(\w+):\s*\{\s*label:\s*"([^"]+)"/g;
+  let match;
+  while ((match = entry.exec(block)) !== null) {
+    labels[match[1]] = match[2];
+  }
+  return labels;
 }
 
 /** Toneless full pinyin + initials for a label, or null when it carries no Han characters (e.g. "NVL"). */
 function pinyinOf(label) {
-    const syllables = [];
-    let sawHan = false;
-    for (const char of label) {
-        if (char >= "一" && char <= "鿿") {
-            sawHan = true;
-            const syllable = PINYIN[char];
-            if (!syllable) {
-                throw new Error(`No pinyin for "${char}" (in "${label}") — add it to PINYIN in ${import.meta.url}.`);
-            }
-            syllables.push(syllable);
-        }
+  const syllables = [];
+  let sawHan = false;
+  for (const char of label) {
+    if (char >= "一" && char <= "鿿") {
+      sawHan = true;
+      const syllable = PINYIN[char];
+      if (!syllable) {
+        throw new Error(
+          `No pinyin for "${char}" (in "${label}") — add it to PINYIN in ${import.meta.url}.`
+        );
+      }
+      syllables.push(syllable);
     }
-    if (!sawHan) {
-        return null;
-    }
-    return { full: syllables.join(""), initials: syllables.map(syllable => syllable[0]).join("") };
+  }
+  if (!sawHan) {
+    return null;
+  }
+  return { full: syllables.join(""), initials: syllables.map((syllable) => syllable[0]).join("") };
 }
 
 const labels = readCommandLabels();
 const rows = [];
 for (const [id, label] of Object.entries(labels)) {
-    const pinyin = pinyinOf(label);
-    if (pinyin) {
-        rows.push(`    ${id}: { full: ${JSON.stringify(pinyin.full)}, initials: ${JSON.stringify(pinyin.initials)} },`);
-    }
+  const pinyin = pinyinOf(label);
+  if (pinyin) {
+    rows.push(
+      `    ${id}: { full: ${JSON.stringify(pinyin.full)}, initials: ${JSON.stringify(pinyin.initials)} },`
+    );
+  }
 }
 
 const out = `// GENERATED by scripts/gen-story-command-pinyin.mjs — do not edit by hand.

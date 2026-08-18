@@ -10,7 +10,7 @@ import { contentClassOfEntry } from "./entrySides";
 
 /** Whether this presenter draws that file. See {@link contentClassOfEntry}. */
 export function isFontEntry(entry: DocumentDiffEntry): boolean {
-    return contentClassOfEntry(entry) === "font";
+  return contentClassOfEntry(entry) === "font";
 }
 
 /**
@@ -38,6 +38,6 @@ let issued = 0;
  * tidying up.
  */
 export function nextFontFamily(): string {
-    issued += 1;
-    return `nl-vcs-specimen-${issued}`;
+  issued += 1;
+  return `nl-vcs-specimen-${issued}`;
 }

@@ -8,8 +8,8 @@ import type { BindingDebugCoalescer } from "./BindingDebugCoalescer";
  * (src/renderer/lib/ui-editor/runtime/app/GameApp.tsx), which also builds host adapters and navigation.
  */
 export type BlueprintRuntimeSession = {
-    surfaceId: string;
-    surfaceState: SurfaceStateStore;
-    debug: DebugBridge;
-    bindingDebugCoalescer: BindingDebugCoalescer;
+  surfaceId: string;
+  surfaceState: SurfaceStateStore;
+  debug: DebugBridge;
+  bindingDebugCoalescer: BindingDebugCoalescer;
 };

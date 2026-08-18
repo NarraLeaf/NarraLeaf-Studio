@@ -1,13 +1,13 @@
 import {
-    useCallback,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
-    type CSSProperties,
-    type Dispatch,
-    type MutableRefObject,
-    type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction
 } from "react";
 import type { DevModeBundle, DevModeStartStoryRequest } from "@shared/types/devMode";
 import type { UIStageSlotId, UIStageSurface } from "@shared/types/ui-editor/document";
@@ -20,12 +20,12 @@ import { GameSurfaceRenderer } from "@/lib/ui-editor/runtime/surface/GameSurface
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import {
-    createDevModeBlueprintHostApi,
-    type BlueprintGameHistoryEntry,
-    type BlueprintGameNotification,
-    type BlueprintGamePreferenceKey,
-    type BlueprintGamePreferenceValue,
-    type DevModeWidgetRuntimePatch,
+  createDevModeBlueprintHostApi,
+  type BlueprintGameHistoryEntry,
+  type BlueprintGameNotification,
+  type BlueprintGamePreferenceKey,
+  type BlueprintGamePreferenceValue,
+  type DevModeWidgetRuntimePatch
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
@@ -36,134 +36,146 @@ import { collectSurfaceFlushElementIds } from "@/lib/ui-editor/runtime/game/surf
 import { SurfaceLifecycleBoundary } from "./SurfaceLifecycleBoundary";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { stageSlotRuntimeScopeId } from "./stageSlots";
-import { staticSurfaceHostAdapter, type OpenSurfaceOptions, type PageProps, type SurfaceStateAccessors } from "./types";
+import {
+  staticSurfaceHostAdapter,
+  type OpenSurfaceOptions,
+  type PageProps,
+  type SurfaceStateAccessors
+} from "./types";
 
 /**
  * Host callbacks shared by every Game UI slot surface. Built once per NLR session in
  * `GameApp.mountNlrSession()` and passed to each slot component factory.
  */
 export type GameUiSlotHostOptions = {
-    sessionId: string;
-    /** The player asked for less motion: the widgets on a slot surface stay put. */
-    reducedMotion?: boolean;
-    core: BlueprintRuntimeCore | null;
-    bundle: DevModeBundle;
-    rendererRegistry: ElementRendererRegistry;
-    lifecycleRef: MutableRefObject<SurfaceLifecycleOrchestrator>;
-    makeStateAccessors: (runtimeScopeId: string) => SurfaceStateAccessors | null;
-    openSurfaceWithTransition: (
-        surfaceId: string,
-        props?: PageProps,
-        options?: OpenSurfaceOptions,
-    ) => Promise<void>;
-    goBackWithTransition: () => Promise<void>;
-    quitApplication: () => Promise<void>;
-    /** Hosts without a real application window (story preview) leave these unset. */
-    getFullscreen?: () => Promise<boolean>;
-    setFullscreen?: (fullscreen: boolean) => Promise<void>;
-    startStoryInGame: (request: DevModeStartStoryRequest) => Promise<void>;
-    writeSaveInGame: (id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>;
-    loadSaveInGame: (id: string) => Promise<void>;
-    deleteSaveInGame: (id: string) => Promise<void>;
-    listSaveIds: () => Promise<string[]>;
-    getSaveMetadata: (id: string) => Promise<unknown>;
-    getSaveTimes: (id: string) => Promise<SaveRecordTimes | null>;
-    getSaveLine: (id: string) => Promise<SaveRecordLine | null>;
-    getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
-    writeAutoSaveInGame: () => Promise<void>;
-    listAutoSaves: () => Promise<AutoSaveEntry[]>;
-    getHistoryInGame: () => BlueprintGameHistoryEntry[];
-    restoreHistoryInGame: (id?: string) => Promise<void>;
-    /**
-     * Carrying a playthrough between two editions of one title, for the Export/Import Progress
-     * nodes. Optional on the same terms as {@link soundTransport}: a host with no shell behind it
-     * (the in-editor story preview) genuinely cannot write the document, and the bridge answers the
-     * node with a refusal the author's graph can hear. It is not optional for a real session - a
-     * title screen is exactly the kind of surface an author builds out of Game UI slots, and
-     * without these both nodes reported "progress cannot be written here" inside a dialogue,
-     * choice or NVL slot while working perfectly one surface above.
-     */
-    exportProgressInGame?: () => Promise<{ outcome: "written" | "failed"; error: string }>;
-    importProgressInGame?: () => Promise<GameProgressImportOutcome>;
-    getCurrentNametag: () => string | null;
-    /**
-     * Invert a dialog-avatar URL back to the asset id it was compiled from. The engine resolves
-     * avatars to URLs; a blueprint pin carries an `ImageAsset`. Absent on hosts with no compiled
-     * story, where there are no avatars to invert.
-     */
-    resolveAvatarAssetId?: (url: string) => string | null;
-    getNotificationsInGame: () => BlueprintGameNotification[];
-    getChoiceCountInGame: () => number;
-    isNvlModeInGame: () => boolean;
-    /** Optional: hosts without a text-read tracker (story preview) fall back to the mirrored state key. */
-    isCurrentTextReadInGame?: () => boolean;
-    /** Optional: hosts without a text-read tracker fall back to wiping the persistence key directly. */
-    clearTextReadInGame?: () => Promise<void>;
-    selectChoiceInGame: (index: number) => Promise<void>;
-    isInGame: () => boolean;
-    quitGame: (surfaceId: string) => Promise<void>;
-    nextInGame: () => Promise<void>;
-    skipInGame: () => Promise<void>;
-    showDialogInGame: () => Promise<void>;
-    hideDialogInGame: () => Promise<void>;
-    toggleDialogDisplayInGame: () => Promise<void>;
-    setSentenceSpeedInGame: (cps: number) => Promise<void>;
-    getGamePreferenceInGame: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
-    setGamePreferenceInGame: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void>;
-    /**
-     * The session's sound transport.
-     *
-     * Optional because a host may back no audio at all (the in-editor story preview), in which case
-     * the sound nodes degrade to their warned no-op exactly as they do on a Page previewed in
-     * Studio. It is *not* optional in the sense of "nice to have": a slot surface without it is the
-     * shipped defect where a button-click sound in a dialogue box, choice or NVL surface silently
-     * did nothing, because this shell built its host API with none of the sound callbacks the
-     * top-level surfaces pass.
-     */
-    soundTransport?: SoundTransport;
-    /** Project audio tracks (from the bundle); resolves the video widget's mixer volume. */
-    audioTracks?: readonly ProjectAudioTrack[];
-    /** Preference stream so a mid-playback volume-slider drag reaches host-owned media elements. */
-    subscribeGamePreferences?: (listener: () => void) => () => void;
-    setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
-    widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
-    widgetRuntimeStore: WidgetRuntimeStateStore;
+  sessionId: string;
+  /** The player asked for less motion: the widgets on a slot surface stay put. */
+  reducedMotion?: boolean;
+  core: BlueprintRuntimeCore | null;
+  bundle: DevModeBundle;
+  rendererRegistry: ElementRendererRegistry;
+  lifecycleRef: MutableRefObject<SurfaceLifecycleOrchestrator>;
+  makeStateAccessors: (runtimeScopeId: string) => SurfaceStateAccessors | null;
+  openSurfaceWithTransition: (
+    surfaceId: string,
+    props?: PageProps,
+    options?: OpenSurfaceOptions
+  ) => Promise<void>;
+  goBackWithTransition: () => Promise<void>;
+  quitApplication: () => Promise<void>;
+  /** Hosts without a real application window (story preview) leave these unset. */
+  getFullscreen?: () => Promise<boolean>;
+  setFullscreen?: (fullscreen: boolean) => Promise<void>;
+  startStoryInGame: (request: DevModeStartStoryRequest) => Promise<void>;
+  writeSaveInGame: (id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>;
+  loadSaveInGame: (id: string) => Promise<void>;
+  deleteSaveInGame: (id: string) => Promise<void>;
+  listSaveIds: () => Promise<string[]>;
+  getSaveMetadata: (id: string) => Promise<unknown>;
+  getSaveTimes: (id: string) => Promise<SaveRecordTimes | null>;
+  getSaveLine: (id: string) => Promise<SaveRecordLine | null>;
+  getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
+  writeAutoSaveInGame: () => Promise<void>;
+  listAutoSaves: () => Promise<AutoSaveEntry[]>;
+  getHistoryInGame: () => BlueprintGameHistoryEntry[];
+  restoreHistoryInGame: (id?: string) => Promise<void>;
+  /**
+   * Carrying a playthrough between two editions of one title, for the Export/Import Progress
+   * nodes. Optional on the same terms as {@link soundTransport}: a host with no shell behind it
+   * (the in-editor story preview) genuinely cannot write the document, and the bridge answers the
+   * node with a refusal the author's graph can hear. It is not optional for a real session - a
+   * title screen is exactly the kind of surface an author builds out of Game UI slots, and
+   * without these both nodes reported "progress cannot be written here" inside a dialogue,
+   * choice or NVL slot while working perfectly one surface above.
+   */
+  exportProgressInGame?: () => Promise<{ outcome: "written" | "failed"; error: string }>;
+  importProgressInGame?: () => Promise<GameProgressImportOutcome>;
+  getCurrentNametag: () => string | null;
+  /**
+   * Invert a dialog-avatar URL back to the asset id it was compiled from. The engine resolves
+   * avatars to URLs; a blueprint pin carries an `ImageAsset`. Absent on hosts with no compiled
+   * story, where there are no avatars to invert.
+   */
+  resolveAvatarAssetId?: (url: string) => string | null;
+  getNotificationsInGame: () => BlueprintGameNotification[];
+  getChoiceCountInGame: () => number;
+  isNvlModeInGame: () => boolean;
+  /** Optional: hosts without a text-read tracker (story preview) fall back to the mirrored state key. */
+  isCurrentTextReadInGame?: () => boolean;
+  /** Optional: hosts without a text-read tracker fall back to wiping the persistence key directly. */
+  clearTextReadInGame?: () => Promise<void>;
+  selectChoiceInGame: (index: number) => Promise<void>;
+  isInGame: () => boolean;
+  quitGame: (surfaceId: string) => Promise<void>;
+  nextInGame: () => Promise<void>;
+  skipInGame: () => Promise<void>;
+  showDialogInGame: () => Promise<void>;
+  hideDialogInGame: () => Promise<void>;
+  toggleDialogDisplayInGame: () => Promise<void>;
+  setSentenceSpeedInGame: (cps: number) => Promise<void>;
+  getGamePreferenceInGame: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
+  setGamePreferenceInGame: (
+    key: BlueprintGamePreferenceKey,
+    value: BlueprintGamePreferenceValue
+  ) => Promise<void>;
+  /**
+   * The session's sound transport.
+   *
+   * Optional because a host may back no audio at all (the in-editor story preview), in which case
+   * the sound nodes degrade to their warned no-op exactly as they do on a Page previewed in
+   * Studio. It is *not* optional in the sense of "nice to have": a slot surface without it is the
+   * shipped defect where a button-click sound in a dialogue box, choice or NVL surface silently
+   * did nothing, because this shell built its host API with none of the sound callbacks the
+   * top-level surfaces pass.
+   */
+  soundTransport?: SoundTransport;
+  /** Project audio tracks (from the bundle); resolves the video widget's mixer volume. */
+  audioTracks?: readonly ProjectAudioTrack[];
+  /** Preference stream so a mid-playback volume-slider drag reaches host-owned media elements. */
+  subscribeGamePreferences?: (listener: () => void) => () => void;
+  setWidgetPatchesByScope: Dispatch<
+    SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>
+  >;
+  widgetPatchesByScopeRef: MutableRefObject<
+    Record<string, Record<string, DevModeWidgetRuntimePatch>>
+  >;
+  widgetRuntimeStore: WidgetRuntimeStateStore;
 };
 
 export type StageSlotSurfaceRuntime = {
-    runtimeScopeId: string;
-    hostAdapter: UIHostAdapter;
-    hostAdapterRef: MutableRefObject<UIHostAdapter | null>;
-    /** Dispatches `flush` to every element of this surface with value bindings or flush logic. */
-    flushSlotElements: () => void;
+  runtimeScopeId: string;
+  hostAdapter: UIHostAdapter;
+  hostAdapterRef: MutableRefObject<UIHostAdapter | null>;
+  /** Dispatches `flush` to every element of this surface with value bindings or flush logic. */
+  flushSlotElements: () => void;
 };
 
 /** Widget-runtime store key for a slot surface element (matches `scopedWidgetRuntimeKey`). */
 export function stageSlotWidgetRuntimeKey(runtimeScopeId: string, elementId: string): string {
-    return `${runtimeScopeId}\0${elementId}`;
+  return `${runtimeScopeId}\0${elementId}`;
 }
 
 /** Collects element ids of the given widget type inside the surface tree (document order). */
 export function collectSurfaceElementIdsByType(
-    document: DevModeBundle["ui"]["uidoc"],
-    surface: UIStageSurface,
-    elementType: string,
+  document: DevModeBundle["ui"]["uidoc"],
+  surface: UIStageSurface,
+  elementType: string
 ): string[] {
-    const out: string[] = [];
-    const visit = (elementId: string) => {
-        const element = document.elements[elementId];
-        if (!element) {
-            return;
-        }
-        if (element.type === elementType) {
-            out.push(elementId);
-        }
-        for (const childId of element.childrenIds ?? []) {
-            visit(childId);
-        }
-    };
-    visit(surface.rootElementId);
-    return out;
+  const out: string[] = [];
+  const visit = (elementId: string) => {
+    const element = document.elements[elementId];
+    if (!element) {
+      return;
+    }
+    if (element.type === elementType) {
+      out.push(elementId);
+    }
+    for (const childId of element.childrenIds ?? []) {
+      visit(childId);
+    }
+  };
+  visit(surface.rootElementId);
+  return out;
 }
 
 /**
@@ -172,173 +184,174 @@ export function collectSurfaceElementIdsByType(
  * surface's value-bound / flush-capable elements.
  */
 export function useStageSlotSurfaceRuntime(input: {
-    options: GameUiSlotHostOptions;
-    surface: UIStageSurface;
-    slotId: UIStageSlotId;
+  options: GameUiSlotHostOptions;
+  surface: UIStageSurface;
+  slotId: UIStageSlotId;
 }): StageSlotSurfaceRuntime {
-    const { options, surface, slotId } = input;
-    const {
-        sessionId,
-        core,
-        bundle,
-        widgetRuntimeStore,
-        setWidgetPatchesByScope,
-        widgetPatchesByScopeRef,
-    } = options;
-    const runtimeScopeId = useMemo(
-        () => stageSlotRuntimeScopeId(sessionId, slotId, surface.id),
-        [sessionId, slotId, surface.id],
-    );
-    const hostAdapterRef = useRef<UIHostAdapter | null>(null);
-    const document = bundle.ui.uidoc;
+  const { options, surface, slotId } = input;
+  const {
+    sessionId,
+    core,
+    bundle,
+    widgetRuntimeStore,
+    setWidgetPatchesByScope,
+    widgetPatchesByScopeRef
+  } = options;
+  const runtimeScopeId = useMemo(
+    () => stageSlotRuntimeScopeId(sessionId, slotId, surface.id),
+    [sessionId, slotId, surface.id]
+  );
+  const hostAdapterRef = useRef<UIHostAdapter | null>(null);
+  const document = bundle.ui.uidoc;
 
-    const hostApi = useMemo(() => {
-        if (!core) {
-            return null;
-        }
-        return createDevModeBlueprintHostApi({
-            document,
-            scope: core.scopeBridge,
-            activeSurfaceId: surface.id,
-            runtimeScopeId,
-            pageProps: {},
-            emit: event => core.debug.emit(event),
-            onOpenSurface: options.openSurfaceWithTransition,
-            onPageBack: options.goBackWithTransition,
-            onQuitApplication: options.quitApplication,
-            onGetFullscreen: options.getFullscreen,
-            onSetFullscreen: options.setFullscreen,
-            onStartStory: options.startStoryInGame,
-            onWriteSave: options.writeSaveInGame,
-            onLoadSave: options.loadSaveInGame,
-            onDeleteSave: options.deleteSaveInGame,
-            onListSaveIds: options.listSaveIds,
-            onGetSaveMetadata: options.getSaveMetadata,
-            onGetSaveTimes: options.getSaveTimes,
-            onGetSaveLine: options.getSaveLine,
-            onGetSavePreview: options.getSavePreview,
-            onWriteAutoSave: options.writeAutoSaveInGame,
-            onListAutoSaves: options.listAutoSaves,
-            onGetHistory: options.getHistoryInGame,
-            onRestoreHistory: options.restoreHistoryInGame,
-            onExportProgress: options.exportProgressInGame,
-            onImportProgress: options.importProgressInGame,
-            onGetNametag: options.getCurrentNametag,
-            onGetNotifications: options.getNotificationsInGame,
-            onGetChoiceCount: options.getChoiceCountInGame,
-            onIsNvlMode: options.isNvlModeInGame,
-            onIsCurrentTextRead: options.isCurrentTextReadInGame,
-            onClearTextRead: options.clearTextReadInGame,
-            onSelectChoice: options.selectChoiceInGame,
-            onIsInGame: options.isInGame,
-            onIsGameOverlay: () => true,
-            onQuitGame: options.quitGame,
-            onNext: options.nextInGame,
-            onSkip: options.skipInGame,
-            onShowDialog: options.showDialogInGame,
-            onHideDialog: options.hideDialogInGame,
-            onToggleDialogDisplay: options.toggleDialogDisplayInGame,
-            onSetSentenceSpeed: options.setSentenceSpeedInGame,
-            onGetGamePreference: options.getGamePreferenceInGame,
-            onSetGamePreference: options.setGamePreferenceInGame,
-            // The same sound callbacks the top-level surfaces pass. Left off, `sound.play` returns null
-            // and every transport node is a silent no-op, so an authored click sound inside a
-            // dialogue box just never happens.
-            onPlaySound: options.soundTransport?.play,
-            onStopSound: options.soundTransport?.stop,
-            onPauseSound: options.soundTransport?.pause,
-            onResumeSound: options.soundTransport?.resume,
-            onSetSoundVolume: options.soundTransport?.setVolume,
-            onSeekSound: options.soundTransport?.seek,
-            onIsSoundPlaying: options.soundTransport?.isPlaying,
-            onGetTrackVolume: options.soundTransport?.getTrackVolume,
-            onSetTrackVolume: options.soundTransport?.setTrackVolume,
-            audioTracks: options.audioTracks,
-            onSubscribeGamePreferences: options.subscribeGamePreferences,
-            onWidgetPatch: (elementId, patch) => {
-                applyWidgetRuntimePatch({
-                    setWidgetPatchesByScope,
-                    widgetPatchesByScopeRef,
-                    runtimeScopeId,
-                    elementId,
-                    patch,
-                });
-            },
-            onElementFlush: (elementId, payload) => {
-                void hostAdapterRef.current?.blueprintRuntime?.dispatchElementBlueprintEvent(
-                    elementId,
-                    "flush",
-                    payload,
-                );
-            },
-            widgetRuntimeStore,
-            localizationConfig: bundle.localization ?? null,
+  const hostApi = useMemo(() => {
+    if (!core) {
+      return null;
+    }
+    return createDevModeBlueprintHostApi({
+      document,
+      scope: core.scopeBridge,
+      activeSurfaceId: surface.id,
+      runtimeScopeId,
+      pageProps: {},
+      emit: (event) => core.debug.emit(event),
+      onOpenSurface: options.openSurfaceWithTransition,
+      onPageBack: options.goBackWithTransition,
+      onQuitApplication: options.quitApplication,
+      onGetFullscreen: options.getFullscreen,
+      onSetFullscreen: options.setFullscreen,
+      onStartStory: options.startStoryInGame,
+      onWriteSave: options.writeSaveInGame,
+      onLoadSave: options.loadSaveInGame,
+      onDeleteSave: options.deleteSaveInGame,
+      onListSaveIds: options.listSaveIds,
+      onGetSaveMetadata: options.getSaveMetadata,
+      onGetSaveTimes: options.getSaveTimes,
+      onGetSaveLine: options.getSaveLine,
+      onGetSavePreview: options.getSavePreview,
+      onWriteAutoSave: options.writeAutoSaveInGame,
+      onListAutoSaves: options.listAutoSaves,
+      onGetHistory: options.getHistoryInGame,
+      onRestoreHistory: options.restoreHistoryInGame,
+      onExportProgress: options.exportProgressInGame,
+      onImportProgress: options.importProgressInGame,
+      onGetNametag: options.getCurrentNametag,
+      onGetNotifications: options.getNotificationsInGame,
+      onGetChoiceCount: options.getChoiceCountInGame,
+      onIsNvlMode: options.isNvlModeInGame,
+      onIsCurrentTextRead: options.isCurrentTextReadInGame,
+      onClearTextRead: options.clearTextReadInGame,
+      onSelectChoice: options.selectChoiceInGame,
+      onIsInGame: options.isInGame,
+      onIsGameOverlay: () => true,
+      onQuitGame: options.quitGame,
+      onNext: options.nextInGame,
+      onSkip: options.skipInGame,
+      onShowDialog: options.showDialogInGame,
+      onHideDialog: options.hideDialogInGame,
+      onToggleDialogDisplay: options.toggleDialogDisplayInGame,
+      onSetSentenceSpeed: options.setSentenceSpeedInGame,
+      onGetGamePreference: options.getGamePreferenceInGame,
+      onSetGamePreference: options.setGamePreferenceInGame,
+      // The same sound callbacks the top-level surfaces pass. Left off, `sound.play` returns null
+      // and every transport node is a silent no-op, so an authored click sound inside a
+      // dialogue box just never happens.
+      onPlaySound: options.soundTransport?.play,
+      onStopSound: options.soundTransport?.stop,
+      onPauseSound: options.soundTransport?.pause,
+      onResumeSound: options.soundTransport?.resume,
+      onSetSoundVolume: options.soundTransport?.setVolume,
+      onSeekSound: options.soundTransport?.seek,
+      onIsSoundPlaying: options.soundTransport?.isPlaying,
+      onGetTrackVolume: options.soundTransport?.getTrackVolume,
+      onSetTrackVolume: options.soundTransport?.setTrackVolume,
+      audioTracks: options.audioTracks,
+      onSubscribeGamePreferences: options.subscribeGamePreferences,
+      onWidgetPatch: (elementId, patch) => {
+        applyWidgetRuntimePatch({
+          setWidgetPatchesByScope,
+          widgetPatchesByScopeRef,
+          runtimeScopeId,
+          elementId,
+          patch
         });
-    }, [
-        core,
-        document,
-        options,
+      },
+      onElementFlush: (elementId, payload) => {
+        void hostAdapterRef.current?.blueprintRuntime?.dispatchElementBlueprintEvent(
+          elementId,
+          "flush",
+          payload
+        );
+      },
+      widgetRuntimeStore,
+      localizationConfig: bundle.localization ?? null
+    });
+  }, [
+    core,
+    document,
+    options,
+    runtimeScopeId,
+    setWidgetPatchesByScope,
+    surface.id,
+    widgetPatchesByScopeRef,
+    widgetRuntimeStore
+  ]);
+
+  const hostAdapter = useMemo((): UIHostAdapter => {
+    if (!core || !hostApi) {
+      return {
+        ...staticSurfaceHostAdapter(surface),
+        gameUiRuntime: { slotId }
+      };
+    }
+    return {
+      ...createDevModeBlueprintHostAdapter({
+        bundle,
+        surface,
         runtimeScopeId,
-        setWidgetPatchesByScope,
-        surface.id,
-        widgetPatchesByScopeRef,
-        widgetRuntimeStore,
-    ]);
+        scopeBridge: core.scopeBridge,
+        debug: core.debug,
+        hostApi,
+        executionManager: core.executionManager
+      }),
+      gameUiRuntime: { slotId }
+    };
+  }, [core, bundle, hostApi, runtimeScopeId, slotId, surface]);
 
-    const hostAdapter = useMemo((): UIHostAdapter => {
-        if (!core || !hostApi) {
-            return {
-                ...staticSurfaceHostAdapter(surface),
-                gameUiRuntime: { slotId },
-            };
+  useEffect(() => {
+    hostAdapterRef.current = hostAdapter;
+  }, [hostAdapter]);
+
+  const flushElementIds = useMemo(
+    () =>
+      collectSurfaceFlushElementIds({
+        document,
+        blueprintDocument: bundle.ui.localBlueprints,
+        surface
+      }),
+    [bundle.ui.localBlueprints, document, surface]
+  );
+  const flushSlotElements = useCallback(() => {
+    for (const elementId of flushElementIds) {
+      const element = document.elements[elementId];
+      if (!element) {
+        continue;
+      }
+      void hostAdapterRef.current?.blueprintRuntime?.dispatchElementBlueprintEvent(
+        elementId,
+        "flush",
+        {
+          element: {
+            surfaceId: surface.id,
+            elementId,
+            elementType: element.type
+          }
         }
-        return {
-            ...createDevModeBlueprintHostAdapter({
-                bundle,
-                surface,
-                runtimeScopeId,
-                scopeBridge: core.scopeBridge,
-                debug: core.debug,
-                hostApi,
-                executionManager: core.executionManager,
-            }),
-            gameUiRuntime: { slotId },
-        };
-    }, [core, bundle, hostApi, runtimeScopeId, slotId, surface]);
+      );
+    }
+  }, [document, flushElementIds, surface.id]);
 
-    useEffect(() => {
-        hostAdapterRef.current = hostAdapter;
-    }, [hostAdapter]);
-
-    const flushElementIds = useMemo(
-        () => collectSurfaceFlushElementIds({
-            document,
-            blueprintDocument: bundle.ui.localBlueprints,
-            surface,
-        }),
-        [bundle.ui.localBlueprints, document, surface],
-    );
-    const flushSlotElements = useCallback(() => {
-        for (const elementId of flushElementIds) {
-            const element = document.elements[elementId];
-            if (!element) {
-                continue;
-            }
-            void hostAdapterRef.current?.blueprintRuntime?.dispatchElementBlueprintEvent(
-                elementId,
-                "flush",
-                {
-                    element: {
-                        surfaceId: surface.id,
-                        elementId,
-                        elementType: element.type,
-                    },
-                },
-            );
-        }
-    }, [document, flushElementIds, surface.id]);
-
-    return { runtimeScopeId, hostAdapter, hostAdapterRef, flushSlotElements };
+  return { runtimeScopeId, hostAdapter, hostAdapterRef, flushSlotElements };
 }
 
 const STATIC_SURFACE_LIFECYCLE_SIGNALS = { beforeSurfaceExit: 0, afterSurfaceEnter: 0 };
@@ -357,81 +370,89 @@ const NO_WIDGET_RUNTIME_PATCHES: Record<string, DevModeWidgetRuntimePatch> = {};
  * (an already-closed scope cancels queued executions).
  */
 export function StageSlotSurfaceBody(props: {
-    options: GameUiSlotHostOptions;
-    surface: UIStageSurface;
-    runtime: StageSlotSurfaceRuntime;
-    /** "none" makes the surface shell click-through (On-Stage overlay). */
-    surfacePointerEvents?: CSSProperties["pointerEvents"];
-    /** Display-only slot: no widget inside takes pointer events (notification toasts). */
-    passive?: boolean;
+  options: GameUiSlotHostOptions;
+  surface: UIStageSurface;
+  runtime: StageSlotSurfaceRuntime;
+  /** "none" makes the surface shell click-through (On-Stage overlay). */
+  surfacePointerEvents?: CSSProperties["pointerEvents"];
+  /** Display-only slot: no widget inside takes pointer events (notification toasts). */
+  passive?: boolean;
 }) {
-    const { options, surface, runtime, surfacePointerEvents, passive } = props;
-    const { core, bundle, rendererRegistry, lifecycleRef, makeStateAccessors, widgetRuntimeStore, widgetPatchesByScopeRef } = options;
-    const document = bundle.ui.uidoc;
-    const { runtimeScopeId, hostAdapter } = runtime;
-    const [subscriptionsReady, setSubscriptionsReady] = useState(false);
-    const handleRuntimeSubscriptionsReady = useCallback(() => setSubscriptionsReady(true), []);
-    const getWidgetRuntimePatches = useCallback(
-        () => widgetPatchesByScopeRef.current[runtimeScopeId] ?? NO_WIDGET_RUNTIME_PATCHES,
-        [runtimeScopeId, widgetPatchesByScopeRef],
-    );
+  const { options, surface, runtime, surfacePointerEvents, passive } = props;
+  const {
+    core,
+    bundle,
+    rendererRegistry,
+    lifecycleRef,
+    makeStateAccessors,
+    widgetRuntimeStore,
+    widgetPatchesByScopeRef
+  } = options;
+  const document = bundle.ui.uidoc;
+  const { runtimeScopeId, hostAdapter } = runtime;
+  const [subscriptionsReady, setSubscriptionsReady] = useState(false);
+  const handleRuntimeSubscriptionsReady = useCallback(() => setSubscriptionsReady(true), []);
+  const getWidgetRuntimePatches = useCallback(
+    () => widgetPatchesByScopeRef.current[runtimeScopeId] ?? NO_WIDGET_RUNTIME_PATCHES,
+    [runtimeScopeId, widgetPatchesByScopeRef]
+  );
 
-    const globalStateReader = useMemo(() => {
-        if (!core) {
-            return undefined;
-        }
-        return {
-            get: (key: string) => core.scopeBridge.globalGet(key),
-            subscribe: (listener: () => void) => core.scopeBridge.subscribeGlobals(listener),
-        };
-    }, [core]);
+  const globalStateReader = useMemo(() => {
+    if (!core) {
+      return undefined;
+    }
+    return {
+      get: (key: string) => core.scopeBridge.globalGet(key),
+      subscribe: (listener: () => void) => core.scopeBridge.subscribeGlobals(listener)
+    };
+  }, [core]);
 
-    const bindingContext = useMemo(() => {
-        if (!core) {
-            return null;
-        }
-        return {
-            blueprintDocument: bundle.ui.localBlueprints,
-            persistentVariables: bundle.ui.persistentVariables,
-            surfaceState: core.scopeBridge.getSurfaceStore(runtimeScopeId),
-            debug: core.debug,
-            coalescer: core.bindingDebugCoalescer,
-            globalState: globalStateReader,
-        };
-    }, [core, bundle.ui.localBlueprints, globalStateReader, runtimeScopeId]);
+  const bindingContext = useMemo(() => {
+    if (!core) {
+      return null;
+    }
+    return {
+      blueprintDocument: bundle.ui.localBlueprints,
+      persistentVariables: bundle.ui.persistentVariables,
+      surfaceState: core.scopeBridge.getSurfaceStore(runtimeScopeId),
+      debug: core.debug,
+      coalescer: core.bindingDebugCoalescer,
+      globalState: globalStateReader
+    };
+  }, [core, bundle.ui.localBlueprints, globalStateReader, runtimeScopeId]);
 
-    return (
-        <SurfaceLifecycleBoundary
-            core={subscriptionsReady ? core : null}
-            blueprintDocument={bundle.ui.localBlueprints}
-            persistentVariables={bundle.ui.persistentVariables}
-            surface={surface}
-            runtimeScopeId={runtimeScopeId}
-            hostAdapter={hostAdapter}
-            lifecycleRef={lifecycleRef}
-            makeStateAccessors={makeStateAccessors}
-        >
-            <WidgetRuntimeStateProvider externalStore={widgetRuntimeStore}>
-                <GameSurfaceRenderer
-                    document={document}
-                    surface={surface}
-                    rendererRegistry={rendererRegistry}
-                    scale={1}
-                    hostAdapter={hostAdapter}
-                    blueprintBindingContext={bindingContext}
-                    getWidgetRuntimePatches={getWidgetRuntimePatches}
-                    surfaceLifecycleSignals={STATIC_SURFACE_LIFECYCLE_SIGNALS}
-                    onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
-                    surfacePointerEvents={surfacePointerEvents}
-                    passive={passive}
-                    // A Game UI slot has no page animation of its own - it appears when the scene
-                    // says so - but the widgets on it can still arrive and leave on their own terms.
-                    elementAnimations
-                    reducedMotion={options.reducedMotion === true}
-                    // The uidoc here is the compiled bundle's; nothing edits it in place.
-                    staticDocument
-                />
-            </WidgetRuntimeStateProvider>
-        </SurfaceLifecycleBoundary>
-    );
+  return (
+    <SurfaceLifecycleBoundary
+      core={subscriptionsReady ? core : null}
+      blueprintDocument={bundle.ui.localBlueprints}
+      persistentVariables={bundle.ui.persistentVariables}
+      surface={surface}
+      runtimeScopeId={runtimeScopeId}
+      hostAdapter={hostAdapter}
+      lifecycleRef={lifecycleRef}
+      makeStateAccessors={makeStateAccessors}
+    >
+      <WidgetRuntimeStateProvider externalStore={widgetRuntimeStore}>
+        <GameSurfaceRenderer
+          document={document}
+          surface={surface}
+          rendererRegistry={rendererRegistry}
+          scale={1}
+          hostAdapter={hostAdapter}
+          blueprintBindingContext={bindingContext}
+          getWidgetRuntimePatches={getWidgetRuntimePatches}
+          surfaceLifecycleSignals={STATIC_SURFACE_LIFECYCLE_SIGNALS}
+          onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
+          surfacePointerEvents={surfacePointerEvents}
+          passive={passive}
+          // A Game UI slot has no page animation of its own - it appears when the scene
+          // says so - but the widgets on it can still arrive and leave on their own terms.
+          elementAnimations
+          reducedMotion={options.reducedMotion === true}
+          // The uidoc here is the compiled bundle's; nothing edits it in place.
+          staticDocument
+        />
+      </WidgetRuntimeStateProvider>
+    </SurfaceLifecycleBoundary>
+  );
 }

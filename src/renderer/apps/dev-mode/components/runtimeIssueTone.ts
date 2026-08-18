@@ -8,18 +8,18 @@
  * Tailwind's alpha channel, so the opacity silently does nothing.
  */
 export const RUNTIME_ISSUE_TONE = {
-    error: {
-        strip: "border-danger/40 bg-danger/15 text-danger",
-        text: "text-danger",
-        button: "border-danger/50 hover:bg-danger/25",
-        ghost: "hover:bg-danger/20",
-    },
-    warning: {
-        strip: "border-warning/40 bg-warning/15 text-warning",
-        text: "text-warning",
-        button: "border-warning/50 hover:bg-warning/25",
-        ghost: "hover:bg-warning/20",
-    },
+  error: {
+    strip: "border-danger/40 bg-danger/15 text-danger",
+    text: "text-danger",
+    button: "border-danger/50 hover:bg-danger/25",
+    ghost: "hover:bg-danger/20"
+  },
+  warning: {
+    strip: "border-warning/40 bg-warning/15 text-warning",
+    text: "text-warning",
+    button: "border-warning/50 hover:bg-warning/25",
+    ghost: "hover:bg-warning/20"
+  }
 } as const;
 
 export type RuntimeIssueTone = (typeof RUNTIME_ISSUE_TONE)[keyof typeof RUNTIME_ISSUE_TONE];

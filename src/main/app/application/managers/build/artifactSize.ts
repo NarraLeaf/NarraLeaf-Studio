@@ -32,10 +32,12 @@ import { Fs } from "@shared/utils/fs";
  * Never rejects.
  */
 export async function measureBuildArtifacts(artifacts: string[]): Promise<GameBuildArtifactSize[]> {
-    return await Promise.all(artifacts.map(async (artifactPath): Promise<GameBuildArtifactSize> => {
-        const bytes = await measureArtifact(artifactPath);
-        return bytes === null ? { path: artifactPath } : { path: artifactPath, bytes };
-    }));
+  return await Promise.all(
+    artifacts.map(async (artifactPath): Promise<GameBuildArtifactSize> => {
+      const bytes = await measureArtifact(artifactPath);
+      return bytes === null ? { path: artifactPath } : { path: artifactPath, bytes };
+    })
+  );
 }
 
 /**
@@ -47,17 +49,17 @@ export async function measureBuildArtifacts(artifacts: string[]): Promise<GameBu
  * about throwing rather than against its behaviour today.
  */
 async function measureArtifact(artifactPath: string): Promise<number | null> {
-    try {
-        // `stat`, not `lstat`: a symlinked artifact should be measured as the thing it points at,
-        // which is what the packaged bytes are.
-        const stats = await fs.stat(artifactPath);
-        if (stats.isDirectory()) {
-            return (await Fs.directorySize(artifactPath)).totalBytes;
-        }
-        return stats.size;
-    } catch {
-        return null;
+  try {
+    // `stat`, not `lstat`: a symlinked artifact should be measured as the thing it points at,
+    // which is what the packaged bytes are.
+    const stats = await fs.stat(artifactPath);
+    if (stats.isDirectory()) {
+      return (await Fs.directorySize(artifactPath)).totalBytes;
     }
+    return stats.size;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -73,22 +75,24 @@ async function measureArtifact(artifactPath: string): Promise<number | null> {
  * "0 B" would be a claim about the build rather than about the reading.
  */
 export function formatArtifactSizeReport(
-    sizes: GameBuildArtifactSize[],
-    projectPath: string,
-    translator: Translator,
+  sizes: GameBuildArtifactSize[],
+  projectPath: string,
+  translator: Translator
 ): string {
-    const lines = sizes.map((size) => {
-        const label = path.relative(projectPath, size.path);
-        return size.bytes === undefined
-            ? `${label} (${translator.t("build.size.unknown")})`
-            : `${label} (${formatBytes(size.bytes)})`;
-    });
-    const measured = sizes.filter((size) => size.bytes !== undefined);
-    if (measured.length > 0) {
-        lines.push(translator.t(
-            measured.length === 1 ? "build.size.totalOne" : "build.size.totalMany",
-            { size: formatBytes(totalGameBuildArtifactBytes(measured)), count: measured.length },
-        ));
-    }
-    return lines.join("\n");
+  const lines = sizes.map((size) => {
+    const label = path.relative(projectPath, size.path);
+    return size.bytes === undefined
+      ? `${label} (${translator.t("build.size.unknown")})`
+      : `${label} (${formatBytes(size.bytes)})`;
+  });
+  const measured = sizes.filter((size) => size.bytes !== undefined);
+  if (measured.length > 0) {
+    lines.push(
+      translator.t(measured.length === 1 ? "build.size.totalOne" : "build.size.totalMany", {
+        size: formatBytes(totalGameBuildArtifactBytes(measured)),
+        count: measured.length
+      })
+    );
+  }
+  return lines.join("\n");
 }

@@ -65,16 +65,16 @@ app.services.tests.protocolVersion: number
 
 ## 4. `TestDefinition`
 
-| Field | Required | Contract |
-|---|---|---|
-| `id: TestId` | yes | `<pluginId>.<slug>`, declared in `contributes.tests`. |
-| `title: TestText` | yes | Row label in the picker and the report tab. |
-| `description?: TestText` | no | One line under the title. |
-| `category?: TestCategory` | no | `integrity` \| `runtime` \| `compatibility` \| `custom`. Omitted means `custom`. |
-| `presentation: TestPresentation` | yes | `headless` \| `windowed`. See §6. |
-| `requires?: readonly TestCapability[]` | no | See §5. Omitted means the test is a pure computation over what it was given. |
-| `checkAvailability?(ctx)` | no | Synchronous, cheap, side-effect free. Runs on **every** picker open. |
-| `run(ctx): Promise<TestVerdict> \| TestVerdict` | yes | See §7. |
+| Field                                           | Required | Contract                                                                         |
+| ----------------------------------------------- | -------- | -------------------------------------------------------------------------------- |
+| `id: TestId`                                    | yes      | `<pluginId>.<slug>`, declared in `contributes.tests`.                            |
+| `title: TestText`                               | yes      | Row label in the picker and the report tab.                                      |
+| `description?: TestText`                        | no       | One line under the title.                                                        |
+| `category?: TestCategory`                       | no       | `integrity` \| `runtime` \| `compatibility` \| `custom`. Omitted means `custom`. |
+| `presentation: TestPresentation`                | yes      | `headless` \| `windowed`. See §6.                                                |
+| `requires?: readonly TestCapability[]`          | no       | See §5. Omitted means the test is a pure computation over what it was given.     |
+| `checkAvailability?(ctx)`                       | no       | Synchronous, cheap, side-effect free. Runs on **every** picker open.             |
+| `run(ctx): Promise<TestVerdict> \| TestVerdict` | yes      | See §7.                                                                          |
 
 `TestText` is either `{ key, params? }` (an i18n key in Studio's own catalogue) or `{ text }` (a
 literal). A plugin has no keys in Studio's catalogue and MUST use `{ text }`, producing the string
@@ -87,17 +87,17 @@ workspace regardless.
 
 ## 5. Capabilities
 
-| Capability | Grants | Handle |
-|---|---|---|
-| `project.read` | Read the project's stories and scenes. | `ctx.project: TestProjectHandle` |
-| `game.launch` | Launch, observe and stop a game process. | `ctx.game: TestGameHandle` |
+| Capability     | Grants                                   | Handle                           |
+| -------------- | ---------------------------------------- | -------------------------------- |
+| `project.read` | Read the project's stories and scenes.   | `ctx.project: TestProjectHandle` |
+| `game.launch`  | Launch, observe and stop a game process. | `ctx.game: TestGameHandle`       |
 
 **Undeclared is absent, not throwing.** `ctx.game` is `undefined` unless `game.launch` was declared;
 `ctx.project` is `undefined` unless `project.read` was. What the picker lists and what the test can
 reach are the same set by construction, and a test MUST read the handle rather than assume it.
 
 `TestProjectHandle` is deliberately thin: `projectPath`, `listStories()`, `listScenes(storyId)`. It
-is the read half of the story catalogue and no more. A test needing the scene *graph* needs a
+is the read half of the story catalogue and no more. A test needing the scene _graph_ needs a
 protocol addition and a version bump (§9) — that is the designated extension point, not something to
 reach around.
 
@@ -125,13 +125,13 @@ A `headless` test that calls `ctx.game.launch()` is a host error, not a silent s
 { status: "skipped"; summary:  TestText }
 ```
 
-and nothing else. `cancelled` and `errored` are verdicts the **host** reaches *about* a test:
+and nothing else. `cancelled` and `errored` are verdicts the **host** reaches _about_ a test:
 
-| Status | Claimed by | Meaning |
-|---|---|---|
-| `passed` / `failed` / `skipped` | the test | Its own conclusion. |
-| `cancelled` | the host | The author aborted the run. |
-| `errored` | the host | `run` threw or rejected. The thrown value is stringified onto the record. |
+| Status                          | Claimed by | Meaning                                                                   |
+| ------------------------------- | ---------- | ------------------------------------------------------------------------- |
+| `passed` / `failed` / `skipped` | the test   | Its own conclusion.                                                       |
+| `cancelled`                     | the host   | The author aborted the run.                                               |
+| `errored`                       | the host   | `run` threw or rejected. The thrown value is stringified onto the record. |
 
 A test that could claim `cancelled` could lie about having been killed, which is why it cannot.
 
@@ -139,7 +139,7 @@ A test that could claim `cancelled` could lie about having been killed, which is
   settles, but its findings are kept — a cancelled run is still evidence. A test whose contract is
   "the author closes the window when satisfied" expresses author-termination by catching the abort
   and returning `failed`.
-- **`skipped`** is for a reason discovered *while running* (no localisation configured, say). A test
+- **`skipped`** is for a reason discovered _while running_ (no localisation configured, say). A test
   that can tell before it starts MUST say so from `checkAvailability` instead, so the picker greys
   it out rather than pretending to run.
 
@@ -168,7 +168,9 @@ Requires `game.launch` and `presentation: "windowed"`.
 
 ```ts
 const session = await ctx.game.launch({ network: "blocked" });
-const off = session.onEvent(event => { /* … */ });
+const off = session.onEvent((event) => {
+  /* … */
+});
 const exit = await session.waitForExit();
 await session.stop();
 ```
@@ -186,24 +188,24 @@ await session.stop();
 Events (`TestGameEvent`), in one ordered stream because the ordering between "the game logged this"
 and "the game then died" is load-bearing evidence:
 
-| `kind` | Payload |
-|---|---|
-| `console` | `level`, `source`, `message` — a line the game logged. |
+| `kind`          | Payload                                                                                             |
+| --------------- | --------------------------------------------------------------------------------------------------- |
+| `console`       | `level`, `source`, `message` — a line the game logged.                                              |
 | `runtime-error` | `scope: "renderer" \| "main"`, `message`, `stack?` — an **uncaught** error inside the running game. |
-| `game-end` | The engine reached an ending. |
-| `exit` | `exit: TestGameExit` — terminal. |
+| `game-end`      | The engine reached an ending.                                                                       |
+| `exit`          | `exit: TestGameExit` — terminal.                                                                    |
 
 ### Exit reasons
 
 `TestGameExit` is `{ reason, code, signal }`. The four reasons are exhaustive and a test SHOULD
 handle each explicitly:
 
-| `reason` | Means |
-|---|---|
-| `closed-by-user` | Closed from inside the game: the window's own close, or the engine quitting itself. |
-| `stopped-by-host` | The host asked — an explicit `stop()`, or the run being cancelled. |
-| `crashed` | Non-zero exit code, a fatal signal, or an uncaught exception in the game's main process. |
-| `failed-to-start` | Never got far enough to run: compile failed, or the runner would not spawn. |
+| `reason`          | Means                                                                                    |
+| ----------------- | ---------------------------------------------------------------------------------------- |
+| `closed-by-user`  | Closed from inside the game: the window's own close, or the engine quitting itself.      |
+| `stopped-by-host` | The host asked — an explicit `stop()`, or the run being cancelled.                       |
+| `crashed`         | Non-zero exit code, a fatal signal, or an uncaught exception in the game's main process. |
+| `failed-to-start` | Never got far enough to run: compile failed, or the runner would not spawn.              |
 
 Do not infer a reason from `code`. `code` and `signal` are diagnostics for the finding message;
 `reason` is the classification, and only the host can make it.
@@ -230,14 +232,14 @@ name them is unaffected.
 
 ```json
 {
-    "manifestVersion": 2,
-    "id": "acme.qa-pack",
-    "name": "QA Pack",
-    "version": "1.0.0",
-    "entries": { "studio": "dist/studio.js" },
-    "contributes": {
-        "tests": ["acme.qa-pack.scene-names", "acme.qa-pack.offline-launch"]
-    }
+  "manifestVersion": 2,
+  "id": "acme.qa-pack",
+  "name": "QA Pack",
+  "version": "1.0.0",
+  "entries": { "studio": "dist/studio.js" },
+  "contributes": {
+    "tests": ["acme.qa-pack.scene-names", "acme.qa-pack.offline-launch"]
+  }
 }
 ```
 
@@ -248,48 +250,48 @@ import { definePlugin, type TestDefinition } from "narraleaf-studio/plugin";
 
 /** Headless: every scene the author can jump to should have a name. */
 const sceneNames: TestDefinition = {
-    id: "acme.qa-pack.scene-names",
-    title: { text: "Scenes are named" },
-    description: { text: "Flags scenes left with a generated name." },
-    category: "integrity",
-    presentation: "headless",
-    requires: ["project.read"],
-    async run(ctx) {
-        const project = ctx.project;
-        if (!project) {
-            // Cannot happen while `requires` lists project.read - but the handle is
-            // optional by construction, so read it rather than assume it.
-            return { status: "skipped", summary: { text: "No project access" } };
+  id: "acme.qa-pack.scene-names",
+  title: { text: "Scenes are named" },
+  description: { text: "Flags scenes left with a generated name." },
+  category: "integrity",
+  presentation: "headless",
+  requires: ["project.read"],
+  async run(ctx) {
+    const project = ctx.project;
+    if (!project) {
+      // Cannot happen while `requires` lists project.read - but the handle is
+      // optional by construction, so read it rather than assume it.
+      return { status: "skipped", summary: { text: "No project access" } };
+    }
+
+    const stories = await project.listStories();
+    let checked = 0;
+    let unnamed = 0;
+
+    for (const story of stories) {
+      if (ctx.signal.aborted) {
+        break;
+      }
+      const scenes = await project.listScenes(story.id);
+      ctx.progress({ completed: ++checked, total: stories.length, label: { text: story.name } });
+
+      for (const scene of scenes) {
+        if (scene.name && scene.name !== scene.id) {
+          continue;
         }
+        unnamed += 1;
+        ctx.report({
+          severity: "warning",
+          message: { text: `Unnamed scene in "${story.name}": ${scene.id}` }
+        });
+      }
+    }
 
-        const stories = await project.listStories();
-        let checked = 0;
-        let unnamed = 0;
-
-        for (const story of stories) {
-            if (ctx.signal.aborted) {
-                break;
-            }
-            const scenes = await project.listScenes(story.id);
-            ctx.progress({ completed: ++checked, total: stories.length, label: { text: story.name } });
-
-            for (const scene of scenes) {
-                if (scene.name && scene.name !== scene.id) {
-                    continue;
-                }
-                unnamed += 1;
-                ctx.report({
-                    severity: "warning",
-                    message: { text: `Unnamed scene in "${story.name}": ${scene.id}` },
-                });
-            }
-        }
-
-        ctx.log("info", { text: `Checked ${checked} stor${checked === 1 ? "y" : "ies"}.` });
-        return unnamed === 0
-            ? { status: "passed" }
-            : { status: "failed", summary: { text: `${unnamed} scene(s) have no name.` } };
-    },
+    ctx.log("info", { text: `Checked ${checked} stor${checked === 1 ? "y" : "ies"}.` });
+    return unnamed === 0
+      ? { status: "passed" }
+      : { status: "failed", summary: { text: `${unnamed} scene(s) have no name.` } };
+  }
 };
 
 /**
@@ -300,69 +302,74 @@ const sceneNames: TestDefinition = {
  * the abort and returning `failed`, because a test may not claim `cancelled` itself.
  */
 const offlineLaunch: TestDefinition = {
-    id: "acme.qa-pack.offline-launch",
-    title: { text: "Plays with no network" },
-    description: { text: "Starts the game offline. Close the window when you are satisfied." },
-    category: "runtime",
-    presentation: "windowed",
-    requires: ["game.launch"],
-    checkAvailability(ctx) {
-        return ctx.frozen
-            ? { available: false, reason: { text: "Unfreeze the project to launch a game." } }
-            : { available: true };
-    },
-    async run(ctx) {
-        const game = ctx.game;
-        if (!game) {
-            return { status: "skipped", summary: { text: "No game access" } };
-        }
+  id: "acme.qa-pack.offline-launch",
+  title: { text: "Plays with no network" },
+  description: { text: "Starts the game offline. Close the window when you are satisfied." },
+  category: "runtime",
+  presentation: "windowed",
+  requires: ["game.launch"],
+  checkAvailability(ctx) {
+    return ctx.frozen
+      ? { available: false, reason: { text: "Unfreeze the project to launch a game." } }
+      : { available: true };
+  },
+  async run(ctx) {
+    const game = ctx.game;
+    if (!game) {
+      return { status: "skipped", summary: { text: "No game access" } };
+    }
 
-        const session = await game.launch({ network: "blocked" });
-        const abort = () => void session.stop();
-        ctx.signal.addEventListener("abort", abort, { once: true });
+    const session = await game.launch({ network: "blocked" });
+    const abort = () => void session.stop();
+    ctx.signal.addEventListener("abort", abort, { once: true });
 
-        let errors = 0;
-        const off = session.onEvent(event => {
-            if (event.kind === "runtime-error") {
-                errors += 1;
-                ctx.report({
-                    severity: "error",
-                    message: { text: `Uncaught ${event.scope} error: ${event.message}` },
-                });
-            } else if (event.kind === "console" && event.level === "error") {
-                ctx.log("error", { text: event.message });
-            }
+    let errors = 0;
+    const off = session.onEvent((event) => {
+      if (event.kind === "runtime-error") {
+        errors += 1;
+        ctx.report({
+          severity: "error",
+          message: { text: `Uncaught ${event.scope} error: ${event.message}` }
         });
+      } else if (event.kind === "console" && event.level === "error") {
+        ctx.log("error", { text: event.message });
+      }
+    });
 
-        try {
-            const exit = await session.waitForExit();
+    try {
+      const exit = await session.waitForExit();
 
-            switch (exit.reason) {
-                case "closed-by-user":
-                    return errors === 0
-                        ? { status: "passed", summary: { text: "Closed cleanly with no network." } }
-                        : { status: "failed", summary: { text: `${errors} uncaught error(s) while offline.` } };
-                case "crashed":
-                    return {
-                        status: "failed",
-                        summary: { text: `Crashed offline (code ${exit.code ?? "?"}, signal ${exit.signal ?? "none"}).` },
-                    };
-                case "failed-to-start":
-                    return { status: "failed", summary: { text: "The game never started." } };
-                case "stopped-by-host":
-                    // The author cancelled, or Studio stopped us. Not a pass: nobody saw it through.
-                    return { status: "failed", summary: { text: "Stopped before the author closed the window." } };
+      switch (exit.reason) {
+        case "closed-by-user":
+          return errors === 0
+            ? { status: "passed", summary: { text: "Closed cleanly with no network." } }
+            : { status: "failed", summary: { text: `${errors} uncaught error(s) while offline.` } };
+        case "crashed":
+          return {
+            status: "failed",
+            summary: {
+              text: `Crashed offline (code ${exit.code ?? "?"}, signal ${exit.signal ?? "none"}).`
             }
-        } finally {
-            off();
-            ctx.signal.removeEventListener("abort", abort);
-        }
-    },
+          };
+        case "failed-to-start":
+          return { status: "failed", summary: { text: "The game never started." } };
+        case "stopped-by-host":
+          // The author cancelled, or Studio stopped us. Not a pass: nobody saw it through.
+          return {
+            status: "failed",
+            summary: { text: "Stopped before the author closed the window." }
+          };
+      }
+    } finally {
+      off();
+      ctx.signal.removeEventListener("abort", abort);
+    }
+  }
 };
 
 export default definePlugin({
-    setup(app) {
-        return app.services.tests.registerMany([sceneNames, offlineLaunch]);
-    },
+  setup(app) {
+    return app.services.tests.registerMany([sceneNames, offlineLaunch]);
+  }
 });
 ```

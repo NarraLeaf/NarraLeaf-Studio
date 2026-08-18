@@ -4,29 +4,29 @@ import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
 import {
-    resolveButtonVisualProps,
-    resolveImageAppearanceTransitions,
-    resolveImageRectangleLike,
+  resolveButtonVisualProps,
+  resolveImageAppearanceTransitions,
+  resolveImageRectangleLike
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import {
-    createInitialButtonAppearance,
-    createInitialImageAppearanceFromProps,
+  createInitialButtonAppearance,
+  createInitialImageAppearanceFromProps
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { ScopeStoreBridge } from "./ScopeStoreBridge";
 import {
-    createDevModeBlueprintHostApi,
-    type BlueprintGamePreferenceKey,
-    type BlueprintGamePreferenceValue,
-    type BlueprintSoundPlayInput,
-    type CreateBlueprintHostApiRuntimeOptions,
-    type DevModeWidgetRuntimePatch,
+  createDevModeBlueprintHostApi,
+  type BlueprintGamePreferenceKey,
+  type BlueprintGamePreferenceValue,
+  type BlueprintSoundPlayInput,
+  type CreateBlueprintHostApiRuntimeOptions,
+  type DevModeWidgetRuntimePatch
 } from "./BlueprintHostApiBridge";
 import {
-    BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
-    BLUEPRINT_GAME_NAMETAG_STATE_KEY,
-    BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY,
-    BLUEPRINT_GAME_TEXT_READ_STATE_KEY,
-    BLUEPRINT_TEXT_READ_PERSISTENCE_KEY,
+  BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
+  BLUEPRINT_GAME_NAMETAG_STATE_KEY,
+  BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY,
+  BLUEPRINT_GAME_TEXT_READ_STATE_KEY,
+  BLUEPRINT_TEXT_READ_PERSISTENCE_KEY
 } from "@shared/types/blueprint/hostApi";
 import { toBlueprintCharacterInfo } from "@shared/types/blueprint/characterInfo";
 import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
@@ -35,1403 +35,1476 @@ import { displayableMotionFromCurrent } from "@/lib/ui-editor/runtime/displayabl
 import { defaultButtonWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/button/types";
 
 function createDocument(): UIDocument {
-    const imageProps = {
-        fillType: "image",
-        imageFill: { mode: "cover" as const, assetId: "old-image" },
-    };
-    return {
-        schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        id: "doc",
-        name: "Doc",
-        surfaces: [
-            {
-                id: "page",
-                name: "Page",
-                host: "app",
-                kind: "appSurface",
-                designSize: { width: 320, height: 180 },
-                rootElementId: "root",
-            },
-            {
-                id: "page-b",
-                name: "Page B",
-                host: "app",
-                kind: "appSurface",
-                designSize: { width: 320, height: 180 },
-                rootElementId: "root-b",
-            },
-        ],
-        elements: {
-            root: {
-                id: "root",
-                type: "nl.root",
-                parentId: null,
-                childrenIds: ["slider", "image", "button", "frame"],
-                layout: { x: 0, y: 0, width: 320, height: 180 },
-            },
-            slider: {
-                id: "slider",
-                type: "nl.slider",
-                parentId: "root",
-                childrenIds: [],
-                layout: { x: 0, y: 0, width: 240, height: 40 },
-                props: {
-                    value: 20,
-                    min: 0,
-                    max: 100,
-                    step: 5,
-                    orientation: "horizontal",
-                    trackElementId: null,
-                    handleElementId: null,
-                },
-            },
-            image: {
-                id: "image",
-                type: "nl.image",
-                parentId: "root",
-                childrenIds: [],
-                layout: { x: 0, y: 48, width: 120, height: 80 },
-                props: {
-                    ...imageProps,
-                    appearance: createInitialImageAppearanceFromProps(imageProps),
-                },
-            },
-            button: {
-                id: "button",
-                type: "nl.button",
-                parentId: "root",
-                childrenIds: [],
-                layout: { x: 132, y: 48, width: 120, height: 40 },
-                props: {
-                    ...defaultButtonWidgetProps,
-                    label: "Go",
-                    appearance: createInitialButtonAppearance(defaultButtonWidgetProps),
-                },
-            },
-            frame: {
-                id: "frame",
-                type: UI_FRAME_ELEMENT_TYPE,
-                parentId: "root",
-                childrenIds: [],
-                layout: { x: 0, y: 132, width: 160, height: 90 },
-                props: {
-                    targetSurfaceId: null,
-                    params: {},
-                    navigationMode: "static",
-                },
-            },
-            "root-b": {
-                id: "root-b",
-                type: "nl.root",
-                parentId: null,
-                childrenIds: [],
-                layout: { x: 0, y: 0, width: 320, height: 180 },
-            },
-        },
-    };
+  const imageProps = {
+    fillType: "image",
+    imageFill: { mode: "cover" as const, assetId: "old-image" }
+  };
+  return {
+    schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+    id: "doc",
+    name: "Doc",
+    surfaces: [
+      {
+        id: "page",
+        name: "Page",
+        host: "app",
+        kind: "appSurface",
+        designSize: { width: 320, height: 180 },
+        rootElementId: "root"
+      },
+      {
+        id: "page-b",
+        name: "Page B",
+        host: "app",
+        kind: "appSurface",
+        designSize: { width: 320, height: 180 },
+        rootElementId: "root-b"
+      }
+    ],
+    elements: {
+      root: {
+        id: "root",
+        type: "nl.root",
+        parentId: null,
+        childrenIds: ["slider", "image", "button", "frame"],
+        layout: { x: 0, y: 0, width: 320, height: 180 }
+      },
+      slider: {
+        id: "slider",
+        type: "nl.slider",
+        parentId: "root",
+        childrenIds: [],
+        layout: { x: 0, y: 0, width: 240, height: 40 },
+        props: {
+          value: 20,
+          min: 0,
+          max: 100,
+          step: 5,
+          orientation: "horizontal",
+          trackElementId: null,
+          handleElementId: null
+        }
+      },
+      image: {
+        id: "image",
+        type: "nl.image",
+        parentId: "root",
+        childrenIds: [],
+        layout: { x: 0, y: 48, width: 120, height: 80 },
+        props: {
+          ...imageProps,
+          appearance: createInitialImageAppearanceFromProps(imageProps)
+        }
+      },
+      button: {
+        id: "button",
+        type: "nl.button",
+        parentId: "root",
+        childrenIds: [],
+        layout: { x: 132, y: 48, width: 120, height: 40 },
+        props: {
+          ...defaultButtonWidgetProps,
+          label: "Go",
+          appearance: createInitialButtonAppearance(defaultButtonWidgetProps)
+        }
+      },
+      frame: {
+        id: "frame",
+        type: UI_FRAME_ELEMENT_TYPE,
+        parentId: "root",
+        childrenIds: [],
+        layout: { x: 0, y: 132, width: 160, height: 90 },
+        props: {
+          targetSurfaceId: null,
+          params: {},
+          navigationMode: "static"
+        }
+      },
+      "root-b": {
+        id: "root-b",
+        type: "nl.root",
+        parentId: null,
+        childrenIds: [],
+        layout: { x: 0, y: 0, width: 320, height: 180 }
+      }
+    }
+  };
 }
 
 function resolvedImageAssetId(document: UIDocument): string | null {
-    const image = document.elements.image;
-    if (!image) {
-        return null;
-    }
-    const appearance = (image.props as { appearance?: AppearanceModel | null } | undefined)?.appearance;
-    return resolveImageRectangleLike(image, appearance, {
-        signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
-    }).imageFill?.assetId ?? null;
+  const image = document.elements.image;
+  if (!image) {
+    return null;
+  }
+  const appearance = (image.props as { appearance?: AppearanceModel | null } | undefined)
+    ?.appearance;
+  return (
+    resolveImageRectangleLike(image, appearance, {
+      signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS
+    }).imageFill?.assetId ?? null
+  );
 }
 
 function createHostApi(options?: {
-    document?: UIDocument;
-    scope?: ScopeStoreBridge;
-    runtimeScopeId?: string;
-    pageProps?: Record<string, unknown>;
-    frameParams?: Record<string, unknown>;
-    onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
-    onOpenSurface?: (surfaceId: string, props?: Record<string, unknown>) => Promise<void> | void;
-    onQuitApplication?: () => Promise<void> | void;
-    onWidgetPatch?: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
-    onWriteSave?: (id: string, metadata: unknown, screenshot?: boolean) => Promise<void> | void;
-    onLoadSave?: (id: string) => Promise<void> | void;
-    onDeleteSave?: (id: string) => Promise<void> | void;
-    onListSaveIds?: () => Promise<string[]> | string[];
-    onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
-    onGetSavePreview?: (id: string) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
-    onGetNametag?: () => string | null;
-    onIsCurrentTextRead?: () => boolean;
-    onClearTextRead?: () => Promise<void> | void;
-    onIsInGame?: () => boolean;
-    onIsGameOverlay?: () => boolean;
-    onQuitGame?: (surfaceId: string) => Promise<void> | void;
-    onNext?: () => Promise<void> | void;
-    onSkip?: () => Promise<void> | void;
-    onShowDialog?: () => Promise<void> | void;
-    onHideDialog?: () => Promise<void> | void;
-    onToggleDialogDisplay?: () => Promise<void> | void;
-    onSetSentenceSpeed?: (cps: number) => Promise<void> | void;
-    onGetGamePreference?: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
-    onSetGamePreference?: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void> | void;
-    onPageBack?: () => Promise<void> | void;
-    widgetRuntimeStore?: WidgetRuntimeStateStore;
-    onPlaySound?: CreateBlueprintHostApiRuntimeOptions["onPlaySound"];
-    onStopSound?: CreateBlueprintHostApiRuntimeOptions["onStopSound"];
-    onSetSoundVolume?: CreateBlueprintHostApiRuntimeOptions["onSetSoundVolume"];
-    onSeekSound?: CreateBlueprintHostApiRuntimeOptions["onSeekSound"];
-    onIsSoundPlaying?: CreateBlueprintHostApiRuntimeOptions["onIsSoundPlaying"];
-    onGetTrackVolume?: CreateBlueprintHostApiRuntimeOptions["onGetTrackVolume"];
-    onSetTrackVolume?: CreateBlueprintHostApiRuntimeOptions["onSetTrackVolume"];
-    audioTracks?: CreateBlueprintHostApiRuntimeOptions["audioTracks"];
-    onSubscribeGamePreferences?: CreateBlueprintHostApiRuntimeOptions["onSubscribeGamePreferences"];
+  document?: UIDocument;
+  scope?: ScopeStoreBridge;
+  runtimeScopeId?: string;
+  pageProps?: Record<string, unknown>;
+  frameParams?: Record<string, unknown>;
+  onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
+  onOpenSurface?: (surfaceId: string, props?: Record<string, unknown>) => Promise<void> | void;
+  onQuitApplication?: () => Promise<void> | void;
+  onWidgetPatch?: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
+  onWriteSave?: (id: string, metadata: unknown, screenshot?: boolean) => Promise<void> | void;
+  onLoadSave?: (id: string) => Promise<void> | void;
+  onDeleteSave?: (id: string) => Promise<void> | void;
+  onListSaveIds?: () => Promise<string[]> | string[];
+  onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
+  onGetSavePreview?: (
+    id: string
+  ) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
+  onGetNametag?: () => string | null;
+  onIsCurrentTextRead?: () => boolean;
+  onClearTextRead?: () => Promise<void> | void;
+  onIsInGame?: () => boolean;
+  onIsGameOverlay?: () => boolean;
+  onQuitGame?: (surfaceId: string) => Promise<void> | void;
+  onNext?: () => Promise<void> | void;
+  onSkip?: () => Promise<void> | void;
+  onShowDialog?: () => Promise<void> | void;
+  onHideDialog?: () => Promise<void> | void;
+  onToggleDialogDisplay?: () => Promise<void> | void;
+  onSetSentenceSpeed?: (cps: number) => Promise<void> | void;
+  onGetGamePreference?: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
+  onSetGamePreference?: (
+    key: BlueprintGamePreferenceKey,
+    value: BlueprintGamePreferenceValue
+  ) => Promise<void> | void;
+  onPageBack?: () => Promise<void> | void;
+  widgetRuntimeStore?: WidgetRuntimeStateStore;
+  onPlaySound?: CreateBlueprintHostApiRuntimeOptions["onPlaySound"];
+  onStopSound?: CreateBlueprintHostApiRuntimeOptions["onStopSound"];
+  onSetSoundVolume?: CreateBlueprintHostApiRuntimeOptions["onSetSoundVolume"];
+  onSeekSound?: CreateBlueprintHostApiRuntimeOptions["onSeekSound"];
+  onIsSoundPlaying?: CreateBlueprintHostApiRuntimeOptions["onIsSoundPlaying"];
+  onGetTrackVolume?: CreateBlueprintHostApiRuntimeOptions["onGetTrackVolume"];
+  onSetTrackVolume?: CreateBlueprintHostApiRuntimeOptions["onSetTrackVolume"];
+  audioTracks?: CreateBlueprintHostApiRuntimeOptions["audioTracks"];
+  onSubscribeGamePreferences?: CreateBlueprintHostApiRuntimeOptions["onSubscribeGamePreferences"];
 }) {
-    return createDevModeBlueprintHostApi({
-        document: options?.document ?? createDocument(),
-        scope: options?.scope ?? new ScopeStoreBridge(),
-        activeSurfaceId: "page",
-        runtimeScopeId: options?.runtimeScopeId,
-        pageProps: options?.pageProps,
-        frameParams: options?.frameParams,
-        onFrameEmit: options?.onFrameEmit,
-        onWriteSave: options?.onWriteSave,
-        onLoadSave: options?.onLoadSave,
-        onDeleteSave: options?.onDeleteSave,
-        onListSaveIds: options?.onListSaveIds,
-        onGetSaveMetadata: options?.onGetSaveMetadata,
-        onGetSavePreview: options?.onGetSavePreview,
-        onGetNametag: options?.onGetNametag,
-        onIsCurrentTextRead: options?.onIsCurrentTextRead,
-        onClearTextRead: options?.onClearTextRead,
-        onIsInGame: options?.onIsInGame,
-        onIsGameOverlay: options?.onIsGameOverlay,
-        onQuitGame: options?.onQuitGame,
-        onNext: options?.onNext,
-        onSkip: options?.onSkip,
-        onShowDialog: options?.onShowDialog,
-        onHideDialog: options?.onHideDialog,
-        onToggleDialogDisplay: options?.onToggleDialogDisplay,
-        onSetSentenceSpeed: options?.onSetSentenceSpeed,
-        onGetGamePreference: options?.onGetGamePreference,
-        onSetGamePreference: options?.onSetGamePreference,
-        onPlaySound: options?.onPlaySound,
-        onStopSound: options?.onStopSound,
-        onSetSoundVolume: options?.onSetSoundVolume,
-        onSeekSound: options?.onSeekSound,
-        onIsSoundPlaying: options?.onIsSoundPlaying,
-        onGetTrackVolume: options?.onGetTrackVolume,
-        onSetTrackVolume: options?.onSetTrackVolume,
-        audioTracks: options?.audioTracks,
-        onSubscribeGamePreferences: options?.onSubscribeGamePreferences,
-        emit: () => undefined,
-        onOpenSurface: options?.onOpenSurface ?? (() => undefined),
-        onPageBack: options?.onPageBack ?? (() => undefined),
-        onQuitApplication: options?.onQuitApplication,
-        onWidgetPatch: options?.onWidgetPatch ?? (() => undefined),
-        widgetRuntimeStore: options?.widgetRuntimeStore ?? new WidgetRuntimeStateStore(),
-    });
+  return createDevModeBlueprintHostApi({
+    document: options?.document ?? createDocument(),
+    scope: options?.scope ?? new ScopeStoreBridge(),
+    activeSurfaceId: "page",
+    runtimeScopeId: options?.runtimeScopeId,
+    pageProps: options?.pageProps,
+    frameParams: options?.frameParams,
+    onFrameEmit: options?.onFrameEmit,
+    onWriteSave: options?.onWriteSave,
+    onLoadSave: options?.onLoadSave,
+    onDeleteSave: options?.onDeleteSave,
+    onListSaveIds: options?.onListSaveIds,
+    onGetSaveMetadata: options?.onGetSaveMetadata,
+    onGetSavePreview: options?.onGetSavePreview,
+    onGetNametag: options?.onGetNametag,
+    onIsCurrentTextRead: options?.onIsCurrentTextRead,
+    onClearTextRead: options?.onClearTextRead,
+    onIsInGame: options?.onIsInGame,
+    onIsGameOverlay: options?.onIsGameOverlay,
+    onQuitGame: options?.onQuitGame,
+    onNext: options?.onNext,
+    onSkip: options?.onSkip,
+    onShowDialog: options?.onShowDialog,
+    onHideDialog: options?.onHideDialog,
+    onToggleDialogDisplay: options?.onToggleDialogDisplay,
+    onSetSentenceSpeed: options?.onSetSentenceSpeed,
+    onGetGamePreference: options?.onGetGamePreference,
+    onSetGamePreference: options?.onSetGamePreference,
+    onPlaySound: options?.onPlaySound,
+    onStopSound: options?.onStopSound,
+    onSetSoundVolume: options?.onSetSoundVolume,
+    onSeekSound: options?.onSeekSound,
+    onIsSoundPlaying: options?.onIsSoundPlaying,
+    onGetTrackVolume: options?.onGetTrackVolume,
+    onSetTrackVolume: options?.onSetTrackVolume,
+    audioTracks: options?.audioTracks,
+    onSubscribeGamePreferences: options?.onSubscribeGamePreferences,
+    emit: () => undefined,
+    onOpenSurface: options?.onOpenSurface ?? (() => undefined),
+    onPageBack: options?.onPageBack ?? (() => undefined),
+    onQuitApplication: options?.onQuitApplication,
+    onWidgetPatch: options?.onWidgetPatch ?? (() => undefined),
+    widgetRuntimeStore: options?.widgetRuntimeStore ?? new WidgetRuntimeStateStore()
+  });
 }
 
 describe("createDevModeBlueprintHostApi frame scope", () => {
-    it("tracks Frame target page changes as runtime patches so None can clear a runtime page", async () => {
-        const onWidgetPatch = vi.fn();
-        const document = createDocument();
-        const hostApi = createHostApi({ document, onWidgetPatch });
+  it("tracks Frame target page changes as runtime patches so None can clear a runtime page", async () => {
+    const onWidgetPatch = vi.fn();
+    const document = createDocument();
+    const hostApi = createHostApi({ document, onWidgetPatch });
 
-        await hostApi.widget.setFrameProperties("frame", { targetSurfaceId: "page-b" });
+    await hostApi.widget.setFrameProperties("frame", { targetSurfaceId: "page-b" });
 
-        expect(hostApi.widget.getFrameProperties("frame").targetSurfaceId).toBe("page-b");
-        expect(onWidgetPatch).toHaveBeenLastCalledWith("frame", expect.objectContaining({
-            frame: expect.objectContaining({ targetSurfaceId: "page-b" }),
-        }));
+    expect(hostApi.widget.getFrameProperties("frame").targetSurfaceId).toBe("page-b");
+    expect(onWidgetPatch).toHaveBeenLastCalledWith(
+      "frame",
+      expect.objectContaining({
+        frame: expect.objectContaining({ targetSurfaceId: "page-b" })
+      })
+    );
 
-        await hostApi.widget.setFrameProperties("frame", { targetSurfaceId: null });
+    await hostApi.widget.setFrameProperties("frame", { targetSurfaceId: null });
 
-        expect(hostApi.widget.getFrameProperties("frame").targetSurfaceId).toBeNull();
-        expect(onWidgetPatch).toHaveBeenLastCalledWith("frame", expect.objectContaining({
-            frame: expect.objectContaining({ targetSurfaceId: null }),
-        }));
+    expect(hostApi.widget.getFrameProperties("frame").targetSurfaceId).toBeNull();
+    expect(onWidgetPatch).toHaveBeenLastCalledWith(
+      "frame",
+      expect.objectContaining({
+        frame: expect.objectContaining({ targetSurfaceId: null })
+      })
+    );
+  });
+
+  it("exposes frame params and emits frame events through the parent callback", async () => {
+    const onFrameEmit = vi.fn();
+    const hostApi = createHostApi({
+      frameParams: { tab: "audio", index: 2 },
+      onFrameEmit
     });
 
-    it("exposes frame params and emits frame events through the parent callback", async () => {
-        const onFrameEmit = vi.fn();
-        const hostApi = createHostApi({
-            frameParams: { tab: "audio", index: 2 },
-            onFrameEmit,
-        });
+    expect(hostApi.frame.getParam("tab")).toBe("audio");
+    expect(hostApi.frame.getParam("index")).toBe(2);
+    expect(hostApi.frame.getParam("missing")).toBeNull();
 
-        expect(hostApi.frame.getParam("tab")).toBe("audio");
-        expect(hostApi.frame.getParam("index")).toBe(2);
-        expect(hostApi.frame.getParam("missing")).toBeNull();
+    await hostApi.frame.emit(" page:selected ", { id: "settings" });
+    await hostApi.frame.emit("   ", { ignored: true });
 
-        await hostApi.frame.emit(" page:selected ", { id: "settings" });
-        await hostApi.frame.emit("   ", { ignored: true });
+    expect(onFrameEmit).toHaveBeenCalledTimes(1);
+    expect(onFrameEmit).toHaveBeenCalledWith("page:selected", { id: "settings" });
+  });
 
-        expect(onFrameEmit).toHaveBeenCalledTimes(1);
-        expect(onFrameEmit).toHaveBeenCalledWith("page:selected", { id: "settings" });
+  it("reads current Page props and passes props through page navigation", async () => {
+    const opened: Array<{ surfaceId: string; props?: Record<string, unknown> }> = [];
+    const closed: boolean[] = [];
+    const quitApplication = vi.fn();
+    const pageProps = { tab: "audio", nested: { muted: true } };
+    const hostApi = createHostApi({
+      pageProps,
+      onQuitApplication: quitApplication,
+      onOpenSurface: (surfaceId, props) => {
+        opened.push({ surfaceId, props });
+      },
+      onPageBack: () => {
+        closed.push(true);
+      }
     });
 
-    it("reads current Page props and passes props through page navigation", async () => {
-        const opened: Array<{ surfaceId: string; props?: Record<string, unknown> }> = [];
-        const closed: boolean[] = [];
-        const quitApplication = vi.fn();
-        const pageProps = { tab: "audio", nested: { muted: true } };
-        const hostApi = createHostApi({
-            pageProps,
-            onQuitApplication: quitApplication,
-            onOpenSurface: (surfaceId, props) => {
-                opened.push({ surfaceId, props });
-            },
-            onPageBack: () => {
-                closed.push(true);
-            },
-        });
+    const currentProps = hostApi.navigation.getPageProps();
+    expect(currentProps).toEqual(pageProps);
+    expect(currentProps).not.toBe(pageProps);
+    expect(hostApi.frame.getParam("tab")).toBe("audio");
 
-        const currentProps = hostApi.navigation.getPageProps();
-        expect(currentProps).toEqual(pageProps);
-        expect(currentProps).not.toBe(pageProps);
-        expect(hostApi.frame.getParam("tab")).toBe("audio");
+    await hostApi.navigation.openSurface("page-b", { tab: "video", index: 2 });
+    await hostApi.navigation.openSurface("page-b");
+    await hostApi.navigation.openSurface("");
 
-        await hostApi.navigation.openSurface("page-b", { tab: "video", index: 2 });
-        await hostApi.navigation.openSurface("page-b");
-        await hostApi.navigation.openSurface("");
+    expect(opened).toEqual([
+      { surfaceId: "page-b", props: { tab: "video", index: 2 } },
+      { surfaceId: "page-b", props: {} }
+    ]);
+    expect(closed).toEqual([true]);
 
-        expect(opened).toEqual([
-            { surfaceId: "page-b", props: { tab: "video", index: 2 } },
-            { surfaceId: "page-b", props: {} },
-        ]);
-        expect(closed).toEqual([true]);
+    await hostApi.navigation.quitApplication();
+    expect(quitApplication).toHaveBeenCalledTimes(1);
+  });
 
-        await hostApi.navigation.quitApplication();
-        expect(quitApplication).toHaveBeenCalledTimes(1);
+  it("uses runtimeScopeId to isolate surface state between Frame instances", () => {
+    const scope = new ScopeStoreBridge();
+    const first = createHostApi({ scope, runtimeScopeId: "page/frame:first" });
+    const second = createHostApi({ scope, runtimeScopeId: "page/frame:second" });
+
+    first.state.set("surface", "count", 1);
+    second.state.set("surface", "count", 2);
+
+    expect(first.state.get("surface", "count")).toBe(1);
+    expect(second.state.get("surface", "count")).toBe(2);
+    expect(scope.getSurfaceStore("page").get("count")).toBeUndefined();
+  });
+
+  it("exposes Dialog game controls and nametag reads", async () => {
+    const next = vi.fn();
+    const skip = vi.fn();
+    const quit = vi.fn();
+    const dialogDisplayCalls: string[] = [];
+    const cpsValues: number[] = [];
+    const preferenceWrites: Array<{
+      key: BlueprintGamePreferenceKey;
+      value: BlueprintGamePreferenceValue;
+    }> = [];
+    const hostApi = createHostApi({
+      onGetNametag: () => "Alice",
+      onIsInGame: () => true,
+      onIsGameOverlay: () => true,
+      onQuitGame: quit,
+      onNext: next,
+      onSkip: skip,
+      onShowDialog: () => {
+        dialogDisplayCalls.push("show");
+      },
+      onHideDialog: () => {
+        dialogDisplayCalls.push("hide");
+      },
+      onToggleDialogDisplay: () => {
+        dialogDisplayCalls.push("toggle");
+      },
+      onSetSentenceSpeed: (cps) => {
+        cpsValues.push(cps);
+      },
+      onGetGamePreference: (key) => {
+        if (key === "cps") {
+          return 24;
+        }
+        if (key === "voiceEndMode") {
+          return "stop";
+        }
+        return key === "autoForward";
+      },
+      onSetGamePreference: (key, value) => {
+        preferenceWrites.push({ key, value });
+      }
     });
 
-    it("uses runtimeScopeId to isolate surface state between Frame instances", () => {
-        const scope = new ScopeStoreBridge();
-        const first = createHostApi({ scope, runtimeScopeId: "page/frame:first" });
-        const second = createHostApi({ scope, runtimeScopeId: "page/frame:second" });
+    expect(hostApi.game.getNametag()).toBe("Alice");
+    expect(hostApi.game.isInGame()).toBe(true);
+    expect(hostApi.game.isGameOverlay()).toBe(true);
+    await hostApi.game.quit(" page-b ");
+    await hostApi.game.next();
+    await hostApi.game.skip();
+    await hostApi.game.showDialog();
+    await hostApi.game.hideDialog();
+    await hostApi.game.toggleDialogDisplay();
+    await hostApi.game.setSentenceSpeed(24);
+    expect(hostApi.game.getPreference("cps")).toBe(24);
+    expect(hostApi.game.getPreference("voiceEndMode")).toBe("stop");
+    expect(hostApi.game.getPreference("autoForward")).toBe(true);
+    await hostApi.game.setPreference("autoForward", true);
+    await hostApi.game.setPreference("voiceVolume", 0.75);
+    await hostApi.game.setPreference("voiceEndMode", "fade");
 
-        first.state.set("surface", "count", 1);
-        second.state.set("surface", "count", 2);
+    expect(quit).toHaveBeenCalledWith("page-b");
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(skip).toHaveBeenCalledTimes(1);
+    expect(dialogDisplayCalls).toEqual(["show", "hide", "toggle"]);
+    expect(cpsValues).toEqual([24]);
+    expect(preferenceWrites).toEqual([
+      { key: "autoForward", value: true },
+      { key: "voiceVolume", value: 0.75 },
+      { key: "voiceEndMode", value: "fade" }
+    ]);
+  });
 
-        expect(first.state.get("surface", "count")).toBe(1);
-        expect(second.state.get("surface", "count")).toBe(2);
-        expect(scope.getSurfaceStore("page").get("count")).toBeUndefined();
+  it("validates game preference keys and values", async () => {
+    const preferenceWrites: Array<{
+      key: BlueprintGamePreferenceKey;
+      value: BlueprintGamePreferenceValue;
+    }> = [];
+    const hostApi = createHostApi({
+      onGetGamePreference: (key) => (key === "voiceEndMode" ? "none" : 1),
+      onSetGamePreference: (key, value) => {
+        preferenceWrites.push({ key, value });
+      }
     });
 
-    it("exposes Dialog game controls and nametag reads", async () => {
-        const next = vi.fn();
-        const skip = vi.fn();
-        const quit = vi.fn();
-        const dialogDisplayCalls: string[] = [];
-        const cpsValues: number[] = [];
-        const preferenceWrites: Array<{ key: BlueprintGamePreferenceKey; value: BlueprintGamePreferenceValue }> = [];
-        const hostApi = createHostApi({
-            onGetNametag: () => "Alice",
-            onIsInGame: () => true,
-            onIsGameOverlay: () => true,
-            onQuitGame: quit,
-            onNext: next,
-            onSkip: skip,
-            onShowDialog: () => {
-                dialogDisplayCalls.push("show");
-            },
-            onHideDialog: () => {
-                dialogDisplayCalls.push("hide");
-            },
-            onToggleDialogDisplay: () => {
-                dialogDisplayCalls.push("toggle");
-            },
-            onSetSentenceSpeed: cps => {
-                cpsValues.push(cps);
-            },
-            onGetGamePreference: key => {
-                if (key === "cps") {
-                    return 24;
-                }
-                if (key === "voiceEndMode") {
-                    return "stop";
-                }
-                return key === "autoForward";
-            },
-            onSetGamePreference: (key, value) => {
-                preferenceWrites.push({ key, value });
-            },
-        });
+    await hostApi.game.setPreference("skipDelay", 0);
+    expect(hostApi.game.getPreference("voiceEndMode")).toBe("none");
 
-        expect(hostApi.game.getNametag()).toBe("Alice");
-        expect(hostApi.game.isInGame()).toBe(true);
-        expect(hostApi.game.isGameOverlay()).toBe(true);
-        await hostApi.game.quit(" page-b ");
-        await hostApi.game.next();
-        await hostApi.game.skip();
-        await hostApi.game.showDialog();
-        await hostApi.game.hideDialog();
-        await hostApi.game.toggleDialogDisplay();
-        await hostApi.game.setSentenceSpeed(24);
-        expect(hostApi.game.getPreference("cps")).toBe(24);
-        expect(hostApi.game.getPreference("voiceEndMode")).toBe("stop");
-        expect(hostApi.game.getPreference("autoForward")).toBe(true);
-        await hostApi.game.setPreference("autoForward", true);
-        await hostApi.game.setPreference("voiceVolume", 0.75);
-        await hostApi.game.setPreference("voiceEndMode", "fade");
+    await expect(
+      hostApi.game.setPreference("voiceEndMode", "hold" as BlueprintGamePreferenceValue)
+    ).rejects.toThrow(/voiceEndMode/);
+    await expect(hostApi.game.setPreference("skipInterval", 0)).rejects.toThrow(/skipInterval/);
+    await expect(
+      hostApi.game.setPreference("autoForward", 1 as BlueprintGamePreferenceValue)
+    ).rejects.toThrow(/autoForward/);
+    expect(() => hostApi.game.getPreference("unknown" as BlueprintGamePreferenceKey)).toThrow(
+      /not supported/
+    );
+    expect(preferenceWrites).toEqual([{ key: "skipDelay", value: 0 }]);
+  });
 
-        expect(quit).toHaveBeenCalledWith("page-b");
-        expect(next).toHaveBeenCalledTimes(1);
-        expect(skip).toHaveBeenCalledTimes(1);
-        expect(dialogDisplayCalls).toEqual(["show", "hide", "toggle"]);
-        expect(cpsValues).toEqual([24]);
-        expect(preferenceWrites).toEqual([
-            { key: "autoForward", value: true },
-            { key: "voiceVolume", value: 0.75 },
-            { key: "voiceEndMode", value: "fade" },
-        ]);
+  it("routes game save operations through callbacks with normalized ids", async () => {
+    const writtenIds: string[] = [];
+    const writtenMetadata: unknown[] = [];
+    const writtenScreenshots: boolean[] = [];
+    const loadedIds: string[] = [];
+    const deletedIds: string[] = [];
+    const metadata = ["route", { id: "a" }];
+    const preview = { kind: "imageAsset" as const, assetId: "dev-mode-save-preview:slot-a" };
+    const hostApi = createHostApi({
+      onWriteSave: (id, value, screenshot) => {
+        writtenIds.push(id);
+        writtenMetadata.push(value);
+        writtenScreenshots.push(screenshot === true);
+      },
+      onLoadSave: (id) => {
+        loadedIds.push(id);
+      },
+      onDeleteSave: (id) => {
+        deletedIds.push(id);
+      },
+      onListSaveIds: () => ["slot-b", "slot-a"],
+      onGetSaveMetadata: (id) => (id === "slot-a" ? metadata : null),
+      onGetSavePreview: (id) => (id === "slot-a" ? preview : null)
     });
 
-    it("validates game preference keys and values", async () => {
-        const preferenceWrites: Array<{ key: BlueprintGamePreferenceKey; value: BlueprintGamePreferenceValue }> = [];
-        const hostApi = createHostApi({
-            onGetGamePreference: key => key === "voiceEndMode" ? "none" : 1,
-            onSetGamePreference: (key, value) => {
-                preferenceWrites.push({ key, value });
-            },
-        });
+    await hostApi.game.writeSave(" slot-a ", metadata, true);
+    await hostApi.game.loadSave(" slot-b ");
+    await hostApi.game.deleteSave(" slot-a ");
 
-        await hostApi.game.setPreference("skipDelay", 0);
-        expect(hostApi.game.getPreference("voiceEndMode")).toBe("none");
+    expect(writtenIds).toEqual(["slot-a"]);
+    expect(writtenMetadata).toEqual([metadata]);
+    expect(writtenScreenshots).toEqual([true]);
+    expect(loadedIds).toEqual(["slot-b"]);
+    expect(deletedIds).toEqual(["slot-a"]);
+    expect(await hostApi.game.listSaveIds()).toEqual(["slot-b", "slot-a"]);
+    expect(await hostApi.game.getSaveMetadata(" slot-a ")).toEqual(metadata);
+    expect(await hostApi.game.getSavePreview(" slot-a ")).toEqual(preview);
+  });
 
-        await expect(hostApi.game.setPreference("voiceEndMode", "hold" as BlueprintGamePreferenceValue)).rejects.toThrow(/voiceEndMode/);
-        await expect(hostApi.game.setPreference("skipInterval", 0)).rejects.toThrow(/skipInterval/);
-        await expect(hostApi.game.setPreference("autoForward", 1 as BlueprintGamePreferenceValue)).rejects.toThrow(/autoForward/);
-        expect(() => hostApi.game.getPreference("unknown" as BlueprintGamePreferenceKey)).toThrow(/not supported/);
-        expect(preferenceWrites).toEqual([{ key: "skipDelay", value: 0 }]);
+  it("falls back to global nametag state when no dialog callback is installed", () => {
+    const scope = new ScopeStoreBridge();
+    scope.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, "Narrator");
+    const hostApi = createHostApi({ scope });
+
+    expect(hostApi.game.getNametag()).toBe("Narrator");
+    expect(hostApi.game.isInGame()).toBe(false);
+    expect(hostApi.game.isGameOverlay()).toBe(false);
+  });
+
+  it("reads current text read state from the callback or the mirrored global state", () => {
+    expect(createHostApi().game.isCurrentTextRead()).toBe(false);
+    expect(createHostApi({ onIsCurrentTextRead: () => true }).game.isCurrentTextRead()).toBe(true);
+
+    const scope = new ScopeStoreBridge();
+    const hostApi = createHostApi({ scope });
+    expect(hostApi.game.isCurrentTextRead()).toBe(false);
+    scope.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, true);
+    expect(hostApi.game.isCurrentTextRead()).toBe(true);
+  });
+
+  it("clears text read via the callback, or wipes persistence directly without one", async () => {
+    const cleared: boolean[] = [];
+    await createHostApi({
+      onClearTextRead: () => {
+        cleared.push(true);
+      }
+    }).game.clearTextRead();
+    expect(cleared).toEqual([true]);
+
+    const scope = new ScopeStoreBridge();
+    scope.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, true);
+    const hostApi = createHostApi({ scope });
+    await hostApi.game.clearTextRead();
+    expect(await scope.persistenceGetAsync(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY)).toEqual([]);
+    expect(hostApi.game.isCurrentTextRead()).toBe(false);
+  });
+
+  it("returns null for missing Dialog nametag values", () => {
+    expect(createHostApi().game.getNametag()).toBeNull();
+    expect(createHostApi({ onGetNametag: () => null }).game.getNametag()).toBeNull();
+    expect(createHostApi({ onGetNametag: () => "" }).game.getNametag()).toBeNull();
+    expect(createHostApi({ onGetNametag: () => "   " }).game.getNametag()).toBeNull();
+  });
+
+  it("routes persistence get/set through the async store adapter", async () => {
+    const scope = new ScopeStoreBridge();
+    const store: Record<string, unknown> = { theme: "dark" };
+    scope.setPersistenceAdapter({
+      getAll: async () => ({ ...store }),
+      getValue: async (key) => store[key],
+      setValue: async (key, value) => {
+        store[key] = value;
+      }
+    });
+    const hostApi = createHostApi({ scope });
+
+    expect(await hostApi.persistence.get("theme")).toBe("dark");
+
+    await hostApi.persistence.set("theme", "light");
+
+    expect(store.theme).toBe("light");
+    expect(scope.getPersistenceSnapshot().get("theme")).toBe("light");
+  });
+
+  it("stores Slider value and range changes in runtime state without mutating the UI document", async () => {
+    const document = createDocument();
+    const hostApi = createHostApi({ document });
+
+    expect(hostApi.widget.getSliderProperties("slider")).toMatchObject({
+      value: 20,
+      min: 0,
+      max: 100,
+      step: 5,
+      normalizedValue: 0.2
     });
 
-    it("routes game save operations through callbacks with normalized ids", async () => {
-        const writtenIds: string[] = [];
-        const writtenMetadata: unknown[] = [];
-        const writtenScreenshots: boolean[] = [];
-        const loadedIds: string[] = [];
-        const deletedIds: string[] = [];
-        const metadata = ["route", { id: "a" }];
-        const preview = { kind: "imageAsset" as const, assetId: "dev-mode-save-preview:slot-a" };
-        const hostApi = createHostApi({
-            onWriteSave: (id, value, screenshot) => {
-                writtenIds.push(id);
-                writtenMetadata.push(value);
-                writtenScreenshots.push(screenshot === true);
-            },
-            onLoadSave: id => {
-                loadedIds.push(id);
-            },
-            onDeleteSave: id => {
-                deletedIds.push(id);
-            },
-            onListSaveIds: () => ["slot-b", "slot-a"],
-            onGetSaveMetadata: id => id === "slot-a" ? metadata : null,
-            onGetSavePreview: id => id === "slot-a" ? preview : null,
-        });
+    await hostApi.widget.setSliderProperties("slider", { value: 88 });
 
-        await hostApi.game.writeSave(" slot-a ", metadata, true);
-        await hostApi.game.loadSave(" slot-b ");
-        await hostApi.game.deleteSave(" slot-a ");
+    expect(hostApi.widget.getSliderProperties("slider")).toMatchObject({
+      value: 90,
+      normalizedValue: 0.9
+    });
+    expect((document.elements.slider?.props as Record<string, unknown>).value).toBe(20);
 
-        expect(writtenIds).toEqual(["slot-a"]);
-        expect(writtenMetadata).toEqual([metadata]);
-        expect(writtenScreenshots).toEqual([true]);
-        expect(loadedIds).toEqual(["slot-b"]);
-        expect(deletedIds).toEqual(["slot-a"]);
-        expect(await hostApi.game.listSaveIds()).toEqual(["slot-b", "slot-a"]);
-        expect(await hostApi.game.getSaveMetadata(" slot-a ")).toEqual(metadata);
-        expect(await hostApi.game.getSavePreview(" slot-a ")).toEqual(preview);
+    await hostApi.widget.setSliderProperties("slider", { min: -10, max: 10, step: 4 });
+
+    expect(hostApi.widget.getSliderProperties("slider")).toMatchObject({
+      min: -10,
+      max: 10,
+      step: 4,
+      value: 10,
+      normalizedValue: 1
+    });
+  });
+
+  it("writes Button pointer changes through the default appearance cursor", async () => {
+    const document = createDocument();
+    const hostApi = createHostApi({ document });
+
+    expect(hostApi.widget.getButtonProperties("button").cursor).toBe("auto");
+
+    await hostApi.widget.setButtonProperties("button", { cursor: "crosshair" });
+
+    const button = document.elements.button!;
+    const appearance = (button.props as { appearance: AppearanceModel }).appearance;
+    const cursorGroup = appearance.variants[0]?.propertyGroups.find(
+      (group) => group.key === "cursor"
+    );
+    expect(hostApi.widget.getButtonProperties("button").cursor).toBe("crosshair");
+    expect(cursorGroup?.rows[0]?.value).toBe("crosshair");
+    expect(
+      resolveButtonVisualProps(button, appearance, {
+        signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS
+      }).cursor
+    ).toBe("crosshair");
+  });
+
+  it("reads and writes ImageAsset values while accepting legacy assetId patches", async () => {
+    const document = createDocument();
+    const hostApi = createHostApi({ document });
+
+    expect(hostApi.widget.getImageProperties("image").asset).toEqual({
+      kind: "imageAsset",
+      assetId: "old-image"
+    });
+    expect(hostApi.widget.getImageProperties("image")).toMatchObject({
+      fitMode: "cover",
+      cropRect: { leftPct: 0, topPct: 0, widthPct: 100, heightPct: 100 },
+      flipX: false,
+      flipY: false
     });
 
-    it("falls back to global nametag state when no dialog callback is installed", () => {
-        const scope = new ScopeStoreBridge();
-        scope.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, "Narrator");
-        const hostApi = createHostApi({ scope });
+    await hostApi.widget.setImageProperties("image", {
+      asset: { kind: "imageAsset", assetId: "new-image" }
+    });
+    expect((document.elements.image?.props?.imageFill as Record<string, unknown>).assetId).toBe(
+      "new-image"
+    );
+    expect(resolvedImageAssetId(document)).toBe("new-image");
 
-        expect(hostApi.game.getNametag()).toBe("Narrator");
-        expect(hostApi.game.isInGame()).toBe(false);
-        expect(hostApi.game.isGameOverlay()).toBe(false);
+    await hostApi.widget.setImageProperties("image", {
+      fitMode: "contain",
+      cropRect: { leftPct: 5, topPct: 6, widthPct: 70, heightPct: 80 },
+      flipX: true,
+      flipY: true
+    });
+    expect(document.elements.image?.props?.imageFill).toMatchObject({
+      mode: "contain",
+      cropPlacement: { leftPct: 5, topPct: 6, widthPct: 70, heightPct: 80 }
+    });
+    expect(document.elements.image?.props?.imageFlipX).toBe(true);
+    expect(document.elements.image?.props?.imageFlipY).toBe(true);
+    expect(hostApi.widget.getImageProperties("image")).toMatchObject({
+      fitMode: "contain",
+      cropRect: { leftPct: 5, topPct: 6, widthPct: 70, heightPct: 80 },
+      flipX: true,
+      flipY: true
     });
 
-    it("reads current text read state from the callback or the mirrored global state", () => {
-        expect(createHostApi().game.isCurrentTextRead()).toBe(false);
-        expect(createHostApi({ onIsCurrentTextRead: () => true }).game.isCurrentTextRead()).toBe(true);
+    await hostApi.widget.setImageProperties("image", { asset: null });
+    expect(
+      (document.elements.image?.props?.imageFill as Record<string, unknown>).assetId
+    ).toBeNull();
+    expect(resolvedImageAssetId(document)).toBeNull();
 
-        const scope = new ScopeStoreBridge();
-        const hostApi = createHostApi({ scope });
-        expect(hostApi.game.isCurrentTextRead()).toBe(false);
-        scope.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, true);
-        expect(hostApi.game.isCurrentTextRead()).toBe(true);
+    await hostApi.widget.setImageProperties("image", { assetId: "legacy-image" });
+    expect(hostApi.widget.getImageProperties("image").asset).toEqual({
+      kind: "imageAsset",
+      assetId: "legacy-image"
     });
+    expect(resolvedImageAssetId(document)).toBe("legacy-image");
+  });
 
-    it("clears text read via the callback, or wipes persistence directly without one", async () => {
-        const cleared: boolean[] = [];
-        await createHostApi({ onClearTextRead: () => { cleared.push(true); } }).game.clearTextRead();
-        expect(cleared).toEqual([true]);
+  it("supports Image appearance variant overrides", async () => {
+    const store = new WidgetRuntimeStateStore();
+    const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+    const defaultVariantId = hostApi.widget.getCommonProperties("image").variantId;
 
-        const scope = new ScopeStoreBridge();
-        scope.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, true);
-        const hostApi = createHostApi({ scope });
-        await hostApi.game.clearTextRead();
-        expect(await scope.persistenceGetAsync(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY)).toEqual([]);
-        expect(hostApi.game.isCurrentTextRead()).toBe(false);
-    });
+    expect(defaultVariantId).toBeTruthy();
 
-    it("returns null for missing Dialog nametag values", () => {
-        expect(createHostApi().game.getNametag()).toBeNull();
-        expect(createHostApi({ onGetNametag: () => null }).game.getNametag()).toBeNull();
-        expect(createHostApi({ onGetNametag: () => "" }).game.getNametag()).toBeNull();
-        expect(createHostApi({ onGetNametag: () => "   " }).game.getNametag()).toBeNull();
-    });
+    await hostApi.widget.setVariant("image", defaultVariantId);
+    expect(store.getVariantOverride("scope\0image")).toBe(defaultVariantId);
 
-    it("routes persistence get/set through the async store adapter", async () => {
-        const scope = new ScopeStoreBridge();
-        const store: Record<string, unknown> = { theme: "dark" };
-        scope.setPersistenceAdapter({
-            getAll: async () => ({ ...store }),
-            getValue: async key => store[key],
-            setValue: async (key, value) => {
-                store[key] = value;
-            },
-        });
-        const hostApi = createHostApi({ scope });
+    await hostApi.widget.setVariant("image", null);
+    expect(store.getVariantOverride("scope\0image")).toBeNull();
+  });
 
-        expect(await hostApi.persistence.get("theme")).toBe("dark");
+  it("keeps authored layout opacity as the default Displayable opacity", () => {
+    const document = createDocument();
+    document.elements.image!.layout.opacity = 0.4;
+    const hostApi = createHostApi({ document });
 
-        await hostApi.persistence.set("theme", "light");
+    expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(0.4);
+  });
 
-        expect(store.theme).toBe("light");
-        expect(scope.getPersistenceSnapshot().get("theme")).toBe("light");
-    });
-
-    it("stores Slider value and range changes in runtime state without mutating the UI document", async () => {
-        const document = createDocument();
-        const hostApi = createHostApi({ document });
-
-        expect(hostApi.widget.getSliderProperties("slider")).toMatchObject({
-            value: 20,
-            min: 0,
-            max: 100,
-            step: 5,
-            normalizedValue: 0.2,
-        });
-
-        await hostApi.widget.setSliderProperties("slider", { value: 88 });
-
-        expect(hostApi.widget.getSliderProperties("slider")).toMatchObject({
-            value: 90,
-            normalizedValue: 0.9,
-        });
-        expect((document.elements.slider?.props as Record<string, unknown>).value).toBe(20);
-
-        await hostApi.widget.setSliderProperties("slider", { min: -10, max: 10, step: 4 });
-
-        expect(hostApi.widget.getSliderProperties("slider")).toMatchObject({
-            min: -10,
-            max: 10,
-            step: 4,
-            value: 10,
-            normalizedValue: 1,
-        });
-    });
-
-    it("writes Button pointer changes through the default appearance cursor", async () => {
-        const document = createDocument();
-        const hostApi = createHostApi({ document });
-
-        expect(hostApi.widget.getButtonProperties("button").cursor).toBe("auto");
-
-        await hostApi.widget.setButtonProperties("button", { cursor: "crosshair" });
-
-        const button = document.elements.button!;
-        const appearance = (button.props as { appearance: AppearanceModel }).appearance;
-        const cursorGroup = appearance.variants[0]?.propertyGroups.find(group => group.key === "cursor");
-        expect(hostApi.widget.getButtonProperties("button").cursor).toBe("crosshair");
-        expect(cursorGroup?.rows[0]?.value).toBe("crosshair");
-        expect(resolveButtonVisualProps(button, appearance, {
-            signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
-        }).cursor).toBe("crosshair");
-    });
-
-    it("reads and writes ImageAsset values while accepting legacy assetId patches", async () => {
-        const document = createDocument();
-        const hostApi = createHostApi({ document });
-
-        expect(hostApi.widget.getImageProperties("image").asset).toEqual({
-            kind: "imageAsset",
-            assetId: "old-image",
-        });
-        expect(hostApi.widget.getImageProperties("image")).toMatchObject({
-            fitMode: "cover",
-            cropRect: { leftPct: 0, topPct: 0, widthPct: 100, heightPct: 100 },
-            flipX: false,
-            flipY: false,
-        });
-
-        await hostApi.widget.setImageProperties("image", {
-            asset: { kind: "imageAsset", assetId: "new-image" },
-        });
-        expect((document.elements.image?.props?.imageFill as Record<string, unknown>).assetId).toBe("new-image");
-        expect(resolvedImageAssetId(document)).toBe("new-image");
-
-        await hostApi.widget.setImageProperties("image", {
-            fitMode: "contain",
-            cropRect: { leftPct: 5, topPct: 6, widthPct: 70, heightPct: 80 },
-            flipX: true,
-            flipY: true,
-        });
-        expect(document.elements.image?.props?.imageFill).toMatchObject({
-            mode: "contain",
-            cropPlacement: { leftPct: 5, topPct: 6, widthPct: 70, heightPct: 80 },
-        });
-        expect(document.elements.image?.props?.imageFlipX).toBe(true);
-        expect(document.elements.image?.props?.imageFlipY).toBe(true);
-        expect(hostApi.widget.getImageProperties("image")).toMatchObject({
-            fitMode: "contain",
-            cropRect: { leftPct: 5, topPct: 6, widthPct: 70, heightPct: 80 },
-            flipX: true,
-            flipY: true,
-        });
-
-        await hostApi.widget.setImageProperties("image", { asset: null });
-        expect((document.elements.image?.props?.imageFill as Record<string, unknown>).assetId).toBeNull();
-        expect(resolvedImageAssetId(document)).toBeNull();
-
-        await hostApi.widget.setImageProperties("image", { assetId: "legacy-image" });
-        expect(hostApi.widget.getImageProperties("image").asset).toEqual({
-            kind: "imageAsset",
-            assetId: "legacy-image",
-        });
-        expect(resolvedImageAssetId(document)).toBe("legacy-image");
-    });
-
-    it("supports Image appearance variant overrides", async () => {
-        const store = new WidgetRuntimeStateStore();
-        const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
-        const defaultVariantId = hostApi.widget.getCommonProperties("image").variantId;
-
-        expect(defaultVariantId).toBeTruthy();
-
-        await hostApi.widget.setVariant("image", defaultVariantId);
-        expect(store.getVariantOverride("scope\0image")).toBe(defaultVariantId);
-
-        await hostApi.widget.setVariant("image", null);
-        expect(store.getVariantOverride("scope\0image")).toBeNull();
-    });
-
-    it("keeps authored layout opacity as the default Displayable opacity", () => {
-        const document = createDocument();
-        document.elements.image!.layout.opacity = 0.4;
-        const hostApi = createHostApi({ document });
-
-        expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(0.4);
-    });
-
-    it("uses one effective Displayable opacity for Variant opacity and waits when requested", async () => {
-        vi.useFakeTimers();
-        try {
-            const document = createDocument();
-            const image = document.elements.image!;
-            const appearance = (image.props as { appearance: AppearanceModel }).appearance;
-            const defaultVariant = appearance.variants[0]!;
-            const transparentVariant = {
-                ...defaultVariant,
-                id: "transparent",
-                name: "Transparent",
-                propertyGroups: defaultVariant.propertyGroups.map(group =>
-                    group.key === "transformOpacity"
-                        ? {
-                              ...group,
-                              rows: [{ conditions: null, value: 0 }],
-                              transition: {
-                                  type: "tween" as const,
-                                  durationMs: 25,
-                                  delayMs: 5,
-                                  easing: "linear" as const,
-                              },
-                          }
-                        : group,
-                ),
-            };
-            appearance.variants = [...appearance.variants, transparentVariant];
-            const store = new WidgetRuntimeStateStore();
-            const onWidgetPatch = vi.fn();
-            const hostApi = createHostApi({
-                document,
-                widgetRuntimeStore: store,
-                runtimeScopeId: "scope",
-                onWidgetPatch,
-            });
-
-            expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(1);
-
-            const pending = hostApi.widget.setVariant("image", "transparent", { waitForTransition: true });
-            expect(store.getVariantOverride("scope\0image")).toBe("transparent");
-            expect(onWidgetPatch).not.toHaveBeenCalled();
-            expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(0);
-            expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
-                target: { opacity: [1, 0] },
+  it("uses one effective Displayable opacity for Variant opacity and waits when requested", async () => {
+    vi.useFakeTimers();
+    try {
+      const document = createDocument();
+      const image = document.elements.image!;
+      const appearance = (image.props as { appearance: AppearanceModel }).appearance;
+      const defaultVariant = appearance.variants[0]!;
+      const transparentVariant = {
+        ...defaultVariant,
+        id: "transparent",
+        name: "Transparent",
+        propertyGroups: defaultVariant.propertyGroups.map((group) =>
+          group.key === "transformOpacity"
+            ? {
+                ...group,
+                rows: [{ conditions: null, value: 0 }],
                 transition: {
-                    type: "tween",
-                    durationMs: 25,
-                    delayMs: 5,
-                    easing: "linear",
-                },
-                resetOnComplete: true,
-            });
+                  type: "tween" as const,
+                  durationMs: 25,
+                  delayMs: 5,
+                  easing: "linear" as const
+                }
+              }
+            : group
+        )
+      };
+      appearance.variants = [...appearance.variants, transparentVariant];
+      const store = new WidgetRuntimeStateStore();
+      const onWidgetPatch = vi.fn();
+      const hostApi = createHostApi({
+        document,
+        widgetRuntimeStore: store,
+        runtimeScopeId: "scope",
+        onWidgetPatch
+      });
 
-            await vi.advanceTimersByTimeAsync(30);
-            await pending;
-        } finally {
-            vi.useRealTimers();
-        }
+      expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(1);
+
+      const pending = hostApi.widget.setVariant("image", "transparent", {
+        waitForTransition: true
+      });
+      expect(store.getVariantOverride("scope\0image")).toBe("transparent");
+      expect(onWidgetPatch).not.toHaveBeenCalled();
+      expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(0);
+      expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
+        target: { opacity: [1, 0] },
+        transition: {
+          type: "tween",
+          durationMs: 25,
+          delayMs: 5,
+          easing: "linear"
+        },
+        resetOnComplete: true
+      });
+
+      await vi.advanceTimersByTimeAsync(30);
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lets a held opacity animation replace a transparent Variant opacity", async () => {
+    const document = createDocument();
+    const image = document.elements.image!;
+    const appearance = (image.props as { appearance: AppearanceModel }).appearance;
+    const defaultVariant = appearance.variants[0]!;
+    const transparentVariant = {
+      ...defaultVariant,
+      id: "transparent",
+      name: "Transparent",
+      propertyGroups: defaultVariant.propertyGroups.map((group) =>
+        group.key === "transformOpacity"
+          ? {
+              ...group,
+              rows: [{ conditions: null, value: 0 }]
+            }
+          : group
+      )
+    };
+    appearance.variants = [...appearance.variants, transparentVariant];
+    const store = new WidgetRuntimeStateStore();
+    const onWidgetPatch = vi.fn();
+    const hostApi = createHostApi({
+      document,
+      widgetRuntimeStore: store,
+      runtimeScopeId: "scope",
+      onWidgetPatch
     });
 
-    it("lets a held opacity animation replace a transparent Variant opacity", async () => {
-        const document = createDocument();
-        const image = document.elements.image!;
-        const appearance = (image.props as { appearance: AppearanceModel }).appearance;
-        const defaultVariant = appearance.variants[0]!;
-        const transparentVariant = {
-            ...defaultVariant,
-            id: "transparent",
-            name: "Transparent",
-            propertyGroups: defaultVariant.propertyGroups.map(group =>
-                group.key === "transformOpacity"
-                    ? {
-                          ...group,
-                          rows: [{ conditions: null, value: 0 }],
-                      }
-                    : group,
-            ),
-        };
-        appearance.variants = [...appearance.variants, transparentVariant];
-        const store = new WidgetRuntimeStateStore();
-        const onWidgetPatch = vi.fn();
-        const hostApi = createHostApi({
-            document,
-            widgetRuntimeStore: store,
-            runtimeScopeId: "scope",
-            onWidgetPatch,
-        });
+    await hostApi.widget.setDisplayableProperties("image", { opacity: 0.75 });
+    expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(0.75);
+    onWidgetPatch.mockClear();
 
-        await hostApi.widget.setDisplayableProperties("image", { opacity: 0.75 });
-        expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(0.75);
-        onWidgetPatch.mockClear();
+    await hostApi.widget.setVariant("image", "transparent");
 
-        await hostApi.widget.setVariant("image", "transparent");
-
-        expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(0);
-        expect(onWidgetPatch).toHaveBeenLastCalledWith("image", {
-            layout: {},
-        });
-
-        await hostApi.widget.animateDisplayable("image", {
-            target: { opacity: displayableMotionFromCurrent(1) },
-            transition: { type: "tween", durationMs: 0, easing: "easeOut" },
-            resetOnComplete: false,
-        });
-
-        expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(1);
-        expect(onWidgetPatch).toHaveBeenLastCalledWith("image", {
-            layout: { opacity: 1 },
-        });
-        // Held motions commit into the layout patch and release the one-shot motion slot.
-        expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+    expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(0);
+    expect(onWidgetPatch).toHaveBeenLastCalledWith("image", {
+      layout: {}
     });
 
-    it("commits held Displayable opacity only after natural animation completion", async () => {
-        vi.useFakeTimers();
-        try {
-            const store = new WidgetRuntimeStateStore();
-            const onWidgetPatch = vi.fn();
-            const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope", onWidgetPatch });
-            await hostApi.widget.setDisplayableProperties("image", { opacity: 0 });
-            onWidgetPatch.mockClear();
-
-            const animation = hostApi.widget.animateDisplayable("image", {
-                target: { opacity: [0, 1] },
-                transition: { type: "tween", durationMs: 100, delayMs: 0, easing: "linear" },
-                resetOnComplete: false,
-            });
-
-            await vi.advanceTimersByTimeAsync(16);
-            expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
-                target: { opacity: [0, 1] },
-            });
-            expect(onWidgetPatch).not.toHaveBeenCalled();
-
-            await vi.advanceTimersByTimeAsync(83);
-            expect(onWidgetPatch).not.toHaveBeenCalled();
-
-            await vi.advanceTimersByTimeAsync(1);
-            await expect(animation).resolves.toMatchObject({
-                target: { opacity: [0, 1] },
-            });
-            expect(onWidgetPatch).toHaveBeenLastCalledWith("image", {
-                layout: { opacity: 1 },
-            });
-            expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(1);
-        } finally {
-            vi.useRealTimers();
-        }
+    await hostApi.widget.animateDisplayable("image", {
+      target: { opacity: displayableMotionFromCurrent(1) },
+      transition: { type: "tween", durationMs: 0, easing: "easeOut" },
+      resetOnComplete: false
     });
 
-    it("treats Image Variant fill opacity as Displayable opacity without hiding the inner image fill", async () => {
-        const document = createDocument();
-        const image = document.elements.image!;
-        const appearance = (image.props as { appearance: AppearanceModel }).appearance;
-        const defaultVariant = appearance.variants[0]!;
-        const transparentVariant = {
-            ...defaultVariant,
-            id: "transparent-fill",
-            name: "Transparent Fill",
-            propertyGroups: defaultVariant.propertyGroups.map(group =>
-                group.key === "fillOpacity"
-                    ? {
-                          ...group,
-                          rows: [{ conditions: null, value: 0 }],
-                          transition: {
-                              type: "tween" as const,
-                              durationMs: 120,
-                              delayMs: 0,
-                              easing: "linear" as const,
-                          },
-                      }
-                    : group,
-            ),
-        };
-        appearance.variants = [...appearance.variants, transparentVariant];
-        const store = new WidgetRuntimeStateStore();
-        const onWidgetPatch = vi.fn();
-        const hostApi = createHostApi({
-            document,
-            widgetRuntimeStore: store,
-            runtimeScopeId: "scope",
-            onWidgetPatch,
-        });
+    expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(1);
+    expect(onWidgetPatch).toHaveBeenLastCalledWith("image", {
+      layout: { opacity: 1 }
+    });
+    // Held motions commit into the layout patch and release the one-shot motion slot.
+    expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+  });
 
-        expect(
-            resolveImageRectangleLike(image, appearance, {
-                variantOverrideId: "transparent-fill",
-                signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
-            }).fillOpacity,
-        ).toBe(1);
-        expect(
-            resolveImageAppearanceTransitions(appearance, {
-                variantOverrideId: "transparent-fill",
-                signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
-            }).fillOpacity,
-        ).toBeUndefined();
+  it("commits held Displayable opacity only after natural animation completion", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new WidgetRuntimeStateStore();
+      const onWidgetPatch = vi.fn();
+      const hostApi = createHostApi({
+        widgetRuntimeStore: store,
+        runtimeScopeId: "scope",
+        onWidgetPatch
+      });
+      await hostApi.widget.setDisplayableProperties("image", { opacity: 0 });
+      onWidgetPatch.mockClear();
 
-        await hostApi.widget.setVariant("image", "transparent-fill");
+      const animation = hostApi.widget.animateDisplayable("image", {
+        target: { opacity: [0, 1] },
+        transition: { type: "tween", durationMs: 100, delayMs: 0, easing: "linear" },
+        resetOnComplete: false
+      });
 
-        expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(0);
-        expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
-            target: { opacity: [1, 0] },
-            transition: {
-                type: "tween",
+      await vi.advanceTimersByTimeAsync(16);
+      expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
+        target: { opacity: [0, 1] }
+      });
+      expect(onWidgetPatch).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(83);
+      expect(onWidgetPatch).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(animation).resolves.toMatchObject({
+        target: { opacity: [0, 1] }
+      });
+      expect(onWidgetPatch).toHaveBeenLastCalledWith("image", {
+        layout: { opacity: 1 }
+      });
+      expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("treats Image Variant fill opacity as Displayable opacity without hiding the inner image fill", async () => {
+    const document = createDocument();
+    const image = document.elements.image!;
+    const appearance = (image.props as { appearance: AppearanceModel }).appearance;
+    const defaultVariant = appearance.variants[0]!;
+    const transparentVariant = {
+      ...defaultVariant,
+      id: "transparent-fill",
+      name: "Transparent Fill",
+      propertyGroups: defaultVariant.propertyGroups.map((group) =>
+        group.key === "fillOpacity"
+          ? {
+              ...group,
+              rows: [{ conditions: null, value: 0 }],
+              transition: {
+                type: "tween" as const,
                 durationMs: 120,
                 delayMs: 0,
-                easing: "linear",
-            },
-            resetOnComplete: true,
-        });
-
-        await hostApi.widget.animateDisplayable("image", {
-            target: { opacity: [0, 1] },
-            transition: { type: "tween", durationMs: 0, easing: "easeOut" },
-            resetOnComplete: false,
-        });
-
-        expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(1);
-        expect(onWidgetPatch).toHaveBeenLastCalledWith("image", {
-            layout: { opacity: 1 },
-        });
-    });
-
-    it("treats Image color fill opacity as chrome background opacity", async () => {
-        const document = createDocument();
-        const image = document.elements.image!;
-        const colorImageProps = {
-            backgroundColor: "#ff0000",
-            fillType: "color",
-            fillOpacity: 1,
-            fillVisible: true,
-            imageFill: { mode: "cover" as const, assetId: null },
-        };
-        image.props = {
-            ...image.props,
-            ...colorImageProps,
-            appearance: createInitialImageAppearanceFromProps(colorImageProps),
-        };
-        const appearance = (image.props as { appearance: AppearanceModel }).appearance;
-        const defaultVariant = appearance.variants[0]!;
-        const transparentColorVariant = {
-            ...defaultVariant,
-            id: "transparent-color",
-            name: "Transparent Color",
-            propertyGroups: defaultVariant.propertyGroups.map(group => {
-                if (group.key === "fillType") {
-                    return { ...group, rows: [{ conditions: null, value: "color" }] };
-                }
-                if (group.key === "fillOpacity") {
-                    return {
-                        ...group,
-                        rows: [{ conditions: null, value: 0.25 }],
-                        transition: {
-                            type: "tween" as const,
-                            durationMs: 120,
-                            delayMs: 0,
-                            easing: "linear" as const,
-                        },
-                    };
-                }
-                return group;
-            }),
-        };
-        appearance.variants = [...appearance.variants, transparentColorVariant];
-
-        const resolved = resolveImageRectangleLike(image, appearance, {
-            variantOverrideId: "transparent-color",
-            signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
-        });
-
-        expect(resolved.fillType).toBe("color");
-        expect(resolved.fillOpacity).toBe(0.25);
-        expect(
-            resolveImageAppearanceTransitions(
-                appearance,
-                {
-                    variantOverrideId: "transparent-color",
-                    signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
-                },
-                resolved,
-            ).fillOpacity,
-        ).toMatchObject({ durationMs: 120 });
-
-        const store = new WidgetRuntimeStateStore();
-        const hostApi = createHostApi({
-            document,
-            widgetRuntimeStore: store,
-            runtimeScopeId: "scope",
-        });
-
-        await hostApi.widget.setVariant("image", "transparent-color");
-
-        expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(1);
-        expect(store.getDisplayableMotion("scope\0image")).toBeNull();
-    });
-
-    it("keeps Image Variant from overriding the Default image fill mode", () => {
-        const document = createDocument();
-        const image = document.elements.image!;
-        const appearance = (image.props as { appearance: AppearanceModel }).appearance;
-        const defaultVariant = appearance.variants[0]!;
-        defaultVariant.propertyGroups = defaultVariant.propertyGroups.map(group =>
-            group.key === "imageFill"
-                ? {
-                      ...group,
-                      rows: [
-                          {
-                              conditions: null,
-                              value: {
-                                  mode: "contain",
-                                  assetId: "asset-1",
-                              },
-                          },
-                      ],
-                  }
-                : group,
-        );
-        const cropVariant = {
-            ...defaultVariant,
-            id: "transparent-with-stale-crop",
-            name: "Transparent With Stale Crop",
-            propertyGroups: defaultVariant.propertyGroups.map(group =>
-                group.key === "imageFill"
-                    ? {
-                          ...group,
-                          rows: [
-                              {
-                                  conditions: null,
-                                  value: {
-                                      mode: "crop",
-                                      assetId: "asset-1",
-                                      cropPlacement: {
-                                          leftPct: 0,
-                                          topPct: 0,
-                                          widthPct: 100,
-                                          heightPct: 100,
-                                      },
-                                  },
-                              },
-                          ],
-                      }
-                    : group,
-            ),
-        };
-        appearance.variants = [defaultVariant, cropVariant];
-
-        expect(
-            resolveImageRectangleLike(image, appearance, {
-                variantOverrideId: "transparent-with-stale-crop",
-                signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
-            }).imageFill,
-        ).toMatchObject({
-            mode: "contain",
-            assetId: "asset-1",
-        });
-    });
-
-    it("stores Displayable property changes as runtime patches", async () => {
-        const document = createDocument();
-        const onWidgetPatch = vi.fn();
-        const store = new WidgetRuntimeStateStore();
-        const hostApi = createHostApi({ document, onWidgetPatch, widgetRuntimeStore: store, runtimeScopeId: "scope" });
-
-        expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
-            position: { x: 0, y: 48 },
-            offset: { x: 0, y: 0 },
-            size: { width: 120, height: 80 },
-            rotation: 0,
-            opacity: 1,
-            display: true,
-            visible: true,
-        });
-
-        await hostApi.widget.setDisplayableProperties("image", {
-            x: 12,
-            width: 160,
-            rotation: 15,
-            opacity: 0.5,
-            display: false,
-            visible: false,
-        });
-
-        expect(document.elements.image?.layout).toMatchObject({ x: 0, y: 48, width: 120, height: 80 });
-        expect(onWidgetPatch).toHaveBeenCalledWith("image", {
-            layout: { x: 12, width: 160, rotation: 15, opacity: 0.5 },
-            display: false,
-            visible: false,
-        });
-        expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
-            position: { x: 12, y: 48 },
-            size: { width: 160, height: 80 },
-            bounds: { x: 12, y: 48, width: 160, height: 80 },
-            rotation: 15,
-            opacity: 0.5,
-            display: false,
-            visible: false,
-        });
-
-        await hostApi.widget.setDisplayableProperties("image", {
-            offsetX: 24,
-            offsetY: -12,
-        });
-
-        // Persistent offsets live in the base transform, not the one-shot motion slot.
-        expect(store.getDisplayableMotion("scope\0image")).toBeNull();
-        expect(store.getDisplayableBaseTransform("scope\0image")).toMatchObject({
-            offsetX: 24,
-            offsetY: -12,
-        });
-        expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
-            position: { x: 12, y: 48 },
-            offset: { x: 24, y: -12 },
-        });
-    });
-
-    it("reads and writes nested Displayable x/y in surface coordinates", async () => {
-        const document = createDocument();
-        document.elements.root!.childrenIds = ["slider", "panel", "frame"];
-        document.elements.panel = {
-            id: "panel",
-            type: "nl.container",
-            parentId: "root",
-            childrenIds: ["image"],
-            layout: { x: 30, y: 20, width: 200, height: 100 },
-        };
-        document.elements.image!.parentId = "panel";
-        document.elements.image!.layout = { x: 5, y: 7, width: 120, height: 80 };
-        const onWidgetPatch = vi.fn();
-        const hostApi = createHostApi({ document, onWidgetPatch });
-
-        expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
-            position: { x: 35, y: 27 },
-            bounds: { x: 35, y: 27, width: 120, height: 80 },
-        });
-
-        await hostApi.widget.setDisplayableProperties("image", { x: 80, y: 90 });
-
-        expect(onWidgetPatch).toHaveBeenLastCalledWith("image", {
-            layout: { x: 50, y: 70 },
-        });
-        expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
-            position: { x: 80, y: 90 },
-            bounds: { x: 80, y: 90, width: 120, height: 80 },
-        });
-
-        await hostApi.widget.setDisplayableProperties("panel", { x: 42, y: 24 });
-
-        expect(onWidgetPatch).toHaveBeenLastCalledWith("panel", {
-            layout: { x: 42, y: 24 },
-        });
-        expect(hostApi.widget.getDisplayableProperties("image").position).toEqual({ x: 92, y: 94 });
-    });
-
-    it("notifies runtime patch subscribers when Displayable properties change", async () => {
-        const store = new WidgetRuntimeStateStore();
-        const onRuntimePatch = vi.fn();
-        store.subscribeRuntimePatches(onRuntimePatch);
-        const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
-
-        await hostApi.widget.setDisplayableProperties("image", { display: false });
-
-        expect(onRuntimePatch).toHaveBeenCalledTimes(1);
-    });
-
-    it("resolves Displayable properties for component definition elements", async () => {
-        const document = createDocument();
-        document.components = [
-            {
-                id: "component",
-                name: "Component",
-                rootElementId: "component-container",
-                elements: {
-                    "component-container": {
-                        id: "component-container",
-                        type: "nl.container",
-                        parentId: null,
-                        childrenIds: [],
-                        layout: { x: 4, y: 8, width: 160, height: 80 },
-                    },
-                },
-            },
-        ];
-        const onWidgetPatch = vi.fn();
-        const hostApi = createHostApi({ document, onWidgetPatch });
-
-        expect(hostApi.widget.getDisplayableProperties("component-container").position).toEqual({ x: 4, y: 8 });
-
-        await hostApi.widget.setDisplayableProperties("component-container", { display: false });
-
-        expect(onWidgetPatch).toHaveBeenLastCalledWith("component-container", expect.objectContaining({
-            display: false,
-        }));
-        expect(hostApi.widget.getDisplayableProperties("component-container").display).toBe(false);
-    });
-
-    it("stores and clears Displayable animation requests in runtime state", async () => {
-        const store = new WidgetRuntimeStateStore();
-        const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
-
-        const motion = await hostApi.widget.animateDisplayable("image", {
-            target: { opacity: [0, 1] },
-            transition: { type: "tween", durationMs: 0, easing: "linear" },
-            resetOnComplete: true,
-        });
-
-        expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
-            target: { opacity: [0, 1] },
-            transition: { type: "tween", durationMs: 0, easing: "linear" },
-            resetOnComplete: true,
-        });
-
-        await hostApi.widget.stopDisplayableAnimation(motion.id);
-
-        expect(store.getDisplayableMotion("scope\0image")).toBeNull();
-    });
-
-    it("registers explicit Displayable keyframes before waiting for the animation start frame", async () => {
-        vi.useFakeTimers();
-        const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
-        const rafCallbacks: Array<(time: number) => void> = [];
-        Object.defineProperty(globalThis, "window", {
-            configurable: true,
-            value: {
-                requestAnimationFrame: (callback: (time: number) => void) => {
-                    rafCallbacks.push(callback);
-                    return rafCallbacks.length;
-                },
-            },
-        });
-        try {
-            const store = new WidgetRuntimeStateStore();
-            const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
-
-            const animation = hostApi.widget.animateDisplayable("image", {
-                id: "animation:prepaint",
-                target: { x: [-500, 0] },
-                transition: { type: "tween", durationMs: 100, delayMs: 0, easing: "linear" },
-                resetOnComplete: true,
-            });
-
-            expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
-                id: "animation:prepaint",
-                target: { x: [-500, 0] },
-            });
-            expect(rafCallbacks).toHaveLength(1);
-
-            rafCallbacks.shift()?.(0);
-            expect(rafCallbacks).toHaveLength(1);
-            rafCallbacks.shift()?.(16);
-            await Promise.resolve();
-            await vi.advanceTimersByTimeAsync(200);
-
-            await expect(animation).resolves.toMatchObject({ id: "animation:prepaint" });
-        } finally {
-            if (originalWindowDescriptor) {
-                Object.defineProperty(globalThis, "window", originalWindowDescriptor);
-            } else {
-                delete (globalThis as { window?: unknown }).window;
+                easing: "linear" as const
+              }
             }
-            vi.useRealTimers();
-        }
+          : group
+      )
+    };
+    appearance.variants = [...appearance.variants, transparentVariant];
+    const store = new WidgetRuntimeStateStore();
+    const onWidgetPatch = vi.fn();
+    const hostApi = createHostApi({
+      document,
+      widgetRuntimeStore: store,
+      runtimeScopeId: "scope",
+      onWidgetPatch
     });
 
-    it("waits for Displayable animation duration before resolving", async () => {
-        vi.useFakeTimers();
-        try {
-            const store = new WidgetRuntimeStateStore();
-            const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
-            let resolved = false;
-            const animation = hostApi.widget.animateDisplayable("image", {
-                target: { opacity: [0, 1] },
-                transition: { type: "tween", durationMs: 120, delayMs: 30, easing: "linear" },
-                resetOnComplete: true,
-            }).then(result => {
-                resolved = true;
-                return result;
-            });
+    expect(
+      resolveImageRectangleLike(image, appearance, {
+        variantOverrideId: "transparent-fill",
+        signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS
+      }).fillOpacity
+    ).toBe(1);
+    expect(
+      resolveImageAppearanceTransitions(appearance, {
+        variantOverrideId: "transparent-fill",
+        signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS
+      }).fillOpacity
+    ).toBeUndefined();
 
-            await vi.advanceTimersByTimeAsync(16);
-            expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
-                target: { opacity: [0, 1] },
-                transition: { type: "tween", durationMs: 120, delayMs: 30, easing: "linear" },
-            });
-            await vi.advanceTimersByTimeAsync(283);
-            expect(resolved).toBe(false);
-            await vi.advanceTimersByTimeAsync(1);
-            await expect(animation).resolves.toMatchObject({
-                target: { opacity: [0, 1] },
-            });
-            expect(resolved).toBe(true);
-        } finally {
-            vi.useRealTimers();
-        }
+    await hostApi.widget.setVariant("image", "transparent-fill");
+
+    expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(0);
+    expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
+      target: { opacity: [1, 0] },
+      transition: {
+        type: "tween",
+        durationMs: 120,
+        delayMs: 0,
+        easing: "linear"
+      },
+      resetOnComplete: true
     });
 
-    it("commits held Displayable x layout after natural animation completion", async () => {
-        vi.useFakeTimers();
-        try {
-            const store = new WidgetRuntimeStateStore();
-            const onWidgetPatch = vi.fn();
-            const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope", onWidgetPatch });
-            const animation = hostApi.widget.animateDisplayable("image", {
-                target: { x: [0, 100] },
-                transition: { type: "tween", durationMs: 100, delayMs: 0, easing: "linear" },
-                resetOnComplete: false,
-                commitLayoutOnComplete: { x: 100 },
-            });
-
-            await vi.advanceTimersByTimeAsync(16);
-            expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
-                target: { x: [0, 100] },
-            });
-            expect(onWidgetPatch).not.toHaveBeenCalled();
-
-            await vi.advanceTimersByTimeAsync(100);
-            await expect(animation).resolves.toMatchObject({
-                target: { x: [0, 100] },
-            });
-
-            expect(store.getDisplayableMotion("scope\0image")).toBeNull();
-            expect(onWidgetPatch).toHaveBeenLastCalledWith("image", {
-                layout: { x: 100 },
-            });
-            expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
-                position: { x: 100, y: 48 },
-                offset: { x: 0, y: 0 },
-            });
-        } finally {
-            vi.useRealTimers();
-        }
+    await hostApi.widget.animateDisplayable("image", {
+      target: { opacity: [0, 1] },
+      transition: { type: "tween", durationMs: 0, easing: "easeOut" },
+      resetOnComplete: false
     });
 
-    it("does not commit held Displayable x layout when the animation is stopped", async () => {
-        vi.useFakeTimers();
-        try {
-            const store = new WidgetRuntimeStateStore();
-            const onWidgetPatch = vi.fn();
-            const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope", onWidgetPatch });
-            const animation = hostApi.widget.animateDisplayable("image", {
-                id: "animation:x",
-                target: { x: [0, 100] },
-                transition: { type: "tween", durationMs: 1000, delayMs: 0, easing: "linear" },
-                resetOnComplete: false,
-                commitLayoutOnComplete: { x: 100 },
-            });
+    expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(1);
+    expect(onWidgetPatch).toHaveBeenLastCalledWith("image", {
+      layout: { opacity: 1 }
+    });
+  });
 
-            await vi.advanceTimersByTimeAsync(100);
-            await hostApi.widget.stopDisplayableAnimation("animation:x");
-            await expect(animation).resolves.toMatchObject({ id: "animation:x" });
-
-            expect(store.getDisplayableMotion("scope\0image")).toBeNull();
-            expect(onWidgetPatch).not.toHaveBeenCalled();
-            expect(hostApi.widget.getDisplayableProperties("image").position.x).toBe(0);
-        } finally {
-            vi.useRealTimers();
+  it("treats Image color fill opacity as chrome background opacity", async () => {
+    const document = createDocument();
+    const image = document.elements.image!;
+    const colorImageProps = {
+      backgroundColor: "#ff0000",
+      fillType: "color",
+      fillOpacity: 1,
+      fillVisible: true,
+      imageFill: { mode: "cover" as const, assetId: null }
+    };
+    image.props = {
+      ...image.props,
+      ...colorImageProps,
+      appearance: createInitialImageAppearanceFromProps(colorImageProps)
+    };
+    const appearance = (image.props as { appearance: AppearanceModel }).appearance;
+    const defaultVariant = appearance.variants[0]!;
+    const transparentColorVariant = {
+      ...defaultVariant,
+      id: "transparent-color",
+      name: "Transparent Color",
+      propertyGroups: defaultVariant.propertyGroups.map((group) => {
+        if (group.key === "fillType") {
+          return { ...group, rows: [{ conditions: null, value: "color" }] };
         }
+        if (group.key === "fillOpacity") {
+          return {
+            ...group,
+            rows: [{ conditions: null, value: 0.25 }],
+            transition: {
+              type: "tween" as const,
+              durationMs: 120,
+              delayMs: 0,
+              easing: "linear" as const
+            }
+          };
+        }
+        return group;
+      })
+    };
+    appearance.variants = [...appearance.variants, transparentColorVariant];
+
+    const resolved = resolveImageRectangleLike(image, appearance, {
+      variantOverrideId: "transparent-color",
+      signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS
     });
 
-    it("keeps persistent Displayable offsets when a Variant opacity transition runs", async () => {
-        vi.useFakeTimers();
-        try {
-            const document = createDocument();
-            const image = document.elements.image!;
-            const appearance = (image.props as { appearance: AppearanceModel }).appearance;
-            const defaultVariant = appearance.variants[0]!;
-            const transparentVariant = {
-                ...defaultVariant,
-                id: "transparent",
-                name: "Transparent",
-                propertyGroups: defaultVariant.propertyGroups.map(group =>
-                    group.key === "transformOpacity"
-                        ? {
-                              ...group,
-                              rows: [{ conditions: null, value: 0 }],
-                              transition: {
-                                  type: "tween" as const,
-                                  durationMs: 25,
-                                  delayMs: 0,
-                                  easing: "linear" as const,
-                              },
-                          }
-                        : group,
-                ),
-            };
-            appearance.variants = [...appearance.variants, transparentVariant];
-            const store = new WidgetRuntimeStateStore();
-            const hostApi = createHostApi({ document, widgetRuntimeStore: store, runtimeScopeId: "scope" });
+    expect(resolved.fillType).toBe("color");
+    expect(resolved.fillOpacity).toBe(0.25);
+    expect(
+      resolveImageAppearanceTransitions(
+        appearance,
+        {
+          variantOverrideId: "transparent-color",
+          signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS
+        },
+        resolved
+      ).fillOpacity
+    ).toMatchObject({ durationMs: 120 });
 
-            await hostApi.widget.setDisplayableProperties("image", { offsetX: 24, offsetY: -12 });
-            expect(store.getDisplayableMotion("scope\0image")).toBeNull();
-
-            const pending = hostApi.widget.setVariant("image", "transparent", { waitForTransition: true });
-
-            // The variant opacity transition occupies the one-shot motion slot without
-            // evicting the persistent offset (it used to replace the offset motion and
-            // reset the widget to its un-offset origin on completion).
-            expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
-                target: { opacity: [1, 0] },
-                resetOnComplete: true,
-            });
-            expect(store.getDisplayableBaseTransform("scope\0image")).toMatchObject({
-                offsetX: 24,
-                offsetY: -12,
-            });
-            expect(hostApi.widget.getDisplayableProperties("image").offset).toEqual({ x: 24, y: -12 });
-
-            await vi.advanceTimersByTimeAsync(30);
-            await pending;
-
-            expect(hostApi.widget.getDisplayableProperties("image").offset).toEqual({ x: 24, y: -12 });
-        } finally {
-            vi.useRealTimers();
-        }
+    const store = new WidgetRuntimeStateStore();
+    const hostApi = createHostApi({
+      document,
+      widgetRuntimeStore: store,
+      runtimeScopeId: "scope"
     });
 
-    it("folds held Displayable offset animations into the base transform on completion", async () => {
-        vi.useFakeTimers();
-        try {
-            const store = new WidgetRuntimeStateStore();
-            const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
-            const animation = hostApi.widget.animateDisplayable("image", {
-                target: { x: [0, 100] },
-                transition: { type: "tween", durationMs: 100, delayMs: 0, easing: "linear" },
-                resetOnComplete: false,
-            });
+    await hostApi.widget.setVariant("image", "transparent-color");
 
-            await vi.advanceTimersByTimeAsync(16);
-            expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
-                target: { x: [0, 100] },
-            });
+    expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(1);
+    expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+  });
 
-            await vi.advanceTimersByTimeAsync(100);
-            await expect(animation).resolves.toMatchObject({
-                target: { x: [0, 100] },
-            });
+  it("keeps Image Variant from overriding the Default image fill mode", () => {
+    const document = createDocument();
+    const image = document.elements.image!;
+    const appearance = (image.props as { appearance: AppearanceModel }).appearance;
+    const defaultVariant = appearance.variants[0]!;
+    defaultVariant.propertyGroups = defaultVariant.propertyGroups.map((group) =>
+      group.key === "imageFill"
+        ? {
+            ...group,
+            rows: [
+              {
+                conditions: null,
+                value: {
+                  mode: "contain",
+                  assetId: "asset-1"
+                }
+              }
+            ]
+          }
+        : group
+    );
+    const cropVariant = {
+      ...defaultVariant,
+      id: "transparent-with-stale-crop",
+      name: "Transparent With Stale Crop",
+      propertyGroups: defaultVariant.propertyGroups.map((group) =>
+        group.key === "imageFill"
+          ? {
+              ...group,
+              rows: [
+                {
+                  conditions: null,
+                  value: {
+                    mode: "crop",
+                    assetId: "asset-1",
+                    cropPlacement: {
+                      leftPct: 0,
+                      topPct: 0,
+                      widthPct: 100,
+                      heightPct: 100
+                    }
+                  }
+                }
+              ]
+            }
+          : group
+      )
+    };
+    appearance.variants = [defaultVariant, cropVariant];
 
-            // Held offsets become the new persistent base and the motion slot is released,
-            // so a later motion cannot evict the held pose and reads stay consistent.
-            expect(store.getDisplayableMotion("scope\0image")).toBeNull();
-            expect(store.getDisplayableBaseTransform("scope\0image")).toMatchObject({ offsetX: 100 });
-            expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
-                position: { x: 0, y: 48 },
-                offset: { x: 100, y: 0 },
-            });
-        } finally {
-            vi.useRealTimers();
-        }
+    expect(
+      resolveImageRectangleLike(image, appearance, {
+        variantOverrideId: "transparent-with-stale-crop",
+        signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS
+      }).imageFill
+    ).toMatchObject({
+      mode: "contain",
+      assetId: "asset-1"
+    });
+  });
+
+  it("stores Displayable property changes as runtime patches", async () => {
+    const document = createDocument();
+    const onWidgetPatch = vi.fn();
+    const store = new WidgetRuntimeStateStore();
+    const hostApi = createHostApi({
+      document,
+      onWidgetPatch,
+      widgetRuntimeStore: store,
+      runtimeScopeId: "scope"
     });
 
-    it("resets to the persistent offset base when a held animation is stopped mid-flight", async () => {
-        vi.useFakeTimers();
-        try {
-            const store = new WidgetRuntimeStateStore();
-            const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
-            await hostApi.widget.setDisplayableProperties("image", { offsetX: 24 });
-            const animation = hostApi.widget.animateDisplayable("image", {
-                id: "animation:offset",
-                target: { x: [24, 100] },
-                transition: { type: "tween", durationMs: 1000, delayMs: 0, easing: "linear" },
-                resetOnComplete: false,
-            });
-
-            await vi.advanceTimersByTimeAsync(100);
-            await hostApi.widget.stopDisplayableAnimation("animation:offset");
-            await expect(animation).resolves.toMatchObject({ id: "animation:offset" });
-
-            // Stop = cancel: nothing is committed and reads report the pre-animation base pose.
-            expect(store.getDisplayableMotion("scope\0image")).toBeNull();
-            expect(store.getDisplayableBaseTransform("scope\0image")).toMatchObject({ offsetX: 24 });
-            expect(hostApi.widget.getDisplayableProperties("image").offset).toEqual({ x: 24, y: 0 });
-        } finally {
-            vi.useRealTimers();
-        }
+    expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
+      position: { x: 0, y: 48 },
+      offset: { x: 0, y: 0 },
+      size: { width: 120, height: 80 },
+      rotation: 0,
+      opacity: 1,
+      display: true,
+      visible: true
     });
 
-    it("stops Displayable animations by animation id and resolves pending waits", async () => {
-        vi.useFakeTimers();
-        try {
-            const store = new WidgetRuntimeStateStore();
-            const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
-            let resolved = false;
-            const animation = hostApi.widget.animateDisplayable("image", {
-                id: "animation:test",
-                target: { opacity: [0, 1] },
-                transition: { type: "tween", durationMs: 1000, delayMs: 0, easing: "linear" },
-                resetOnComplete: true,
-            }).then(result => {
-                resolved = true;
-                return result;
-            });
-
-            await vi.advanceTimersByTimeAsync(100);
-            expect(resolved).toBe(false);
-            expect(store.getDisplayableMotion("scope\0image")).toMatchObject({ id: "animation:test" });
-
-            await hostApi.widget.stopDisplayableAnimation("animation:test");
-
-            await expect(animation).resolves.toMatchObject({ id: "animation:test" });
-            expect(resolved).toBe(true);
-            expect(store.getDisplayableMotion("scope\0image")).toBeNull();
-        } finally {
-            vi.useRealTimers();
-        }
+    await hostApi.widget.setDisplayableProperties("image", {
+      x: 12,
+      width: 160,
+      rotation: 15,
+      opacity: 0.5,
+      display: false,
+      visible: false
     });
+
+    expect(document.elements.image?.layout).toMatchObject({ x: 0, y: 48, width: 120, height: 80 });
+    expect(onWidgetPatch).toHaveBeenCalledWith("image", {
+      layout: { x: 12, width: 160, rotation: 15, opacity: 0.5 },
+      display: false,
+      visible: false
+    });
+    expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
+      position: { x: 12, y: 48 },
+      size: { width: 160, height: 80 },
+      bounds: { x: 12, y: 48, width: 160, height: 80 },
+      rotation: 15,
+      opacity: 0.5,
+      display: false,
+      visible: false
+    });
+
+    await hostApi.widget.setDisplayableProperties("image", {
+      offsetX: 24,
+      offsetY: -12
+    });
+
+    // Persistent offsets live in the base transform, not the one-shot motion slot.
+    expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+    expect(store.getDisplayableBaseTransform("scope\0image")).toMatchObject({
+      offsetX: 24,
+      offsetY: -12
+    });
+    expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
+      position: { x: 12, y: 48 },
+      offset: { x: 24, y: -12 }
+    });
+  });
+
+  it("reads and writes nested Displayable x/y in surface coordinates", async () => {
+    const document = createDocument();
+    document.elements.root!.childrenIds = ["slider", "panel", "frame"];
+    document.elements.panel = {
+      id: "panel",
+      type: "nl.container",
+      parentId: "root",
+      childrenIds: ["image"],
+      layout: { x: 30, y: 20, width: 200, height: 100 }
+    };
+    document.elements.image!.parentId = "panel";
+    document.elements.image!.layout = { x: 5, y: 7, width: 120, height: 80 };
+    const onWidgetPatch = vi.fn();
+    const hostApi = createHostApi({ document, onWidgetPatch });
+
+    expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
+      position: { x: 35, y: 27 },
+      bounds: { x: 35, y: 27, width: 120, height: 80 }
+    });
+
+    await hostApi.widget.setDisplayableProperties("image", { x: 80, y: 90 });
+
+    expect(onWidgetPatch).toHaveBeenLastCalledWith("image", {
+      layout: { x: 50, y: 70 }
+    });
+    expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
+      position: { x: 80, y: 90 },
+      bounds: { x: 80, y: 90, width: 120, height: 80 }
+    });
+
+    await hostApi.widget.setDisplayableProperties("panel", { x: 42, y: 24 });
+
+    expect(onWidgetPatch).toHaveBeenLastCalledWith("panel", {
+      layout: { x: 42, y: 24 }
+    });
+    expect(hostApi.widget.getDisplayableProperties("image").position).toEqual({ x: 92, y: 94 });
+  });
+
+  it("notifies runtime patch subscribers when Displayable properties change", async () => {
+    const store = new WidgetRuntimeStateStore();
+    const onRuntimePatch = vi.fn();
+    store.subscribeRuntimePatches(onRuntimePatch);
+    const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+
+    await hostApi.widget.setDisplayableProperties("image", { display: false });
+
+    expect(onRuntimePatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves Displayable properties for component definition elements", async () => {
+    const document = createDocument();
+    document.components = [
+      {
+        id: "component",
+        name: "Component",
+        rootElementId: "component-container",
+        elements: {
+          "component-container": {
+            id: "component-container",
+            type: "nl.container",
+            parentId: null,
+            childrenIds: [],
+            layout: { x: 4, y: 8, width: 160, height: 80 }
+          }
+        }
+      }
+    ];
+    const onWidgetPatch = vi.fn();
+    const hostApi = createHostApi({ document, onWidgetPatch });
+
+    expect(hostApi.widget.getDisplayableProperties("component-container").position).toEqual({
+      x: 4,
+      y: 8
+    });
+
+    await hostApi.widget.setDisplayableProperties("component-container", { display: false });
+
+    expect(onWidgetPatch).toHaveBeenLastCalledWith(
+      "component-container",
+      expect.objectContaining({
+        display: false
+      })
+    );
+    expect(hostApi.widget.getDisplayableProperties("component-container").display).toBe(false);
+  });
+
+  it("stores and clears Displayable animation requests in runtime state", async () => {
+    const store = new WidgetRuntimeStateStore();
+    const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+
+    const motion = await hostApi.widget.animateDisplayable("image", {
+      target: { opacity: [0, 1] },
+      transition: { type: "tween", durationMs: 0, easing: "linear" },
+      resetOnComplete: true
+    });
+
+    expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
+      target: { opacity: [0, 1] },
+      transition: { type: "tween", durationMs: 0, easing: "linear" },
+      resetOnComplete: true
+    });
+
+    await hostApi.widget.stopDisplayableAnimation(motion.id);
+
+    expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+  });
+
+  it("registers explicit Displayable keyframes before waiting for the animation start frame", async () => {
+    vi.useFakeTimers();
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+    const rafCallbacks: Array<(time: number) => void> = [];
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        requestAnimationFrame: (callback: (time: number) => void) => {
+          rafCallbacks.push(callback);
+          return rafCallbacks.length;
+        }
+      }
+    });
+    try {
+      const store = new WidgetRuntimeStateStore();
+      const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+
+      const animation = hostApi.widget.animateDisplayable("image", {
+        id: "animation:prepaint",
+        target: { x: [-500, 0] },
+        transition: { type: "tween", durationMs: 100, delayMs: 0, easing: "linear" },
+        resetOnComplete: true
+      });
+
+      expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
+        id: "animation:prepaint",
+        target: { x: [-500, 0] }
+      });
+      expect(rafCallbacks).toHaveLength(1);
+
+      rafCallbacks.shift()?.(0);
+      expect(rafCallbacks).toHaveLength(1);
+      rafCallbacks.shift()?.(16);
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(200);
+
+      await expect(animation).resolves.toMatchObject({ id: "animation:prepaint" });
+    } finally {
+      if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, "window", originalWindowDescriptor);
+      } else {
+        delete (globalThis as { window?: unknown }).window;
+      }
+      vi.useRealTimers();
+    }
+  });
+
+  it("waits for Displayable animation duration before resolving", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new WidgetRuntimeStateStore();
+      const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+      let resolved = false;
+      const animation = hostApi.widget
+        .animateDisplayable("image", {
+          target: { opacity: [0, 1] },
+          transition: { type: "tween", durationMs: 120, delayMs: 30, easing: "linear" },
+          resetOnComplete: true
+        })
+        .then((result) => {
+          resolved = true;
+          return result;
+        });
+
+      await vi.advanceTimersByTimeAsync(16);
+      expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
+        target: { opacity: [0, 1] },
+        transition: { type: "tween", durationMs: 120, delayMs: 30, easing: "linear" }
+      });
+      await vi.advanceTimersByTimeAsync(283);
+      expect(resolved).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(animation).resolves.toMatchObject({
+        target: { opacity: [0, 1] }
+      });
+      expect(resolved).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("commits held Displayable x layout after natural animation completion", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new WidgetRuntimeStateStore();
+      const onWidgetPatch = vi.fn();
+      const hostApi = createHostApi({
+        widgetRuntimeStore: store,
+        runtimeScopeId: "scope",
+        onWidgetPatch
+      });
+      const animation = hostApi.widget.animateDisplayable("image", {
+        target: { x: [0, 100] },
+        transition: { type: "tween", durationMs: 100, delayMs: 0, easing: "linear" },
+        resetOnComplete: false,
+        commitLayoutOnComplete: { x: 100 }
+      });
+
+      await vi.advanceTimersByTimeAsync(16);
+      expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
+        target: { x: [0, 100] }
+      });
+      expect(onWidgetPatch).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(animation).resolves.toMatchObject({
+        target: { x: [0, 100] }
+      });
+
+      expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+      expect(onWidgetPatch).toHaveBeenLastCalledWith("image", {
+        layout: { x: 100 }
+      });
+      expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
+        position: { x: 100, y: 48 },
+        offset: { x: 0, y: 0 }
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not commit held Displayable x layout when the animation is stopped", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new WidgetRuntimeStateStore();
+      const onWidgetPatch = vi.fn();
+      const hostApi = createHostApi({
+        widgetRuntimeStore: store,
+        runtimeScopeId: "scope",
+        onWidgetPatch
+      });
+      const animation = hostApi.widget.animateDisplayable("image", {
+        id: "animation:x",
+        target: { x: [0, 100] },
+        transition: { type: "tween", durationMs: 1000, delayMs: 0, easing: "linear" },
+        resetOnComplete: false,
+        commitLayoutOnComplete: { x: 100 }
+      });
+
+      await vi.advanceTimersByTimeAsync(100);
+      await hostApi.widget.stopDisplayableAnimation("animation:x");
+      await expect(animation).resolves.toMatchObject({ id: "animation:x" });
+
+      expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+      expect(onWidgetPatch).not.toHaveBeenCalled();
+      expect(hostApi.widget.getDisplayableProperties("image").position.x).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps persistent Displayable offsets when a Variant opacity transition runs", async () => {
+    vi.useFakeTimers();
+    try {
+      const document = createDocument();
+      const image = document.elements.image!;
+      const appearance = (image.props as { appearance: AppearanceModel }).appearance;
+      const defaultVariant = appearance.variants[0]!;
+      const transparentVariant = {
+        ...defaultVariant,
+        id: "transparent",
+        name: "Transparent",
+        propertyGroups: defaultVariant.propertyGroups.map((group) =>
+          group.key === "transformOpacity"
+            ? {
+                ...group,
+                rows: [{ conditions: null, value: 0 }],
+                transition: {
+                  type: "tween" as const,
+                  durationMs: 25,
+                  delayMs: 0,
+                  easing: "linear" as const
+                }
+              }
+            : group
+        )
+      };
+      appearance.variants = [...appearance.variants, transparentVariant];
+      const store = new WidgetRuntimeStateStore();
+      const hostApi = createHostApi({
+        document,
+        widgetRuntimeStore: store,
+        runtimeScopeId: "scope"
+      });
+
+      await hostApi.widget.setDisplayableProperties("image", { offsetX: 24, offsetY: -12 });
+      expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+
+      const pending = hostApi.widget.setVariant("image", "transparent", {
+        waitForTransition: true
+      });
+
+      // The variant opacity transition occupies the one-shot motion slot without
+      // evicting the persistent offset (it used to replace the offset motion and
+      // reset the widget to its un-offset origin on completion).
+      expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
+        target: { opacity: [1, 0] },
+        resetOnComplete: true
+      });
+      expect(store.getDisplayableBaseTransform("scope\0image")).toMatchObject({
+        offsetX: 24,
+        offsetY: -12
+      });
+      expect(hostApi.widget.getDisplayableProperties("image").offset).toEqual({ x: 24, y: -12 });
+
+      await vi.advanceTimersByTimeAsync(30);
+      await pending;
+
+      expect(hostApi.widget.getDisplayableProperties("image").offset).toEqual({ x: 24, y: -12 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("folds held Displayable offset animations into the base transform on completion", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new WidgetRuntimeStateStore();
+      const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+      const animation = hostApi.widget.animateDisplayable("image", {
+        target: { x: [0, 100] },
+        transition: { type: "tween", durationMs: 100, delayMs: 0, easing: "linear" },
+        resetOnComplete: false
+      });
+
+      await vi.advanceTimersByTimeAsync(16);
+      expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
+        target: { x: [0, 100] }
+      });
+
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(animation).resolves.toMatchObject({
+        target: { x: [0, 100] }
+      });
+
+      // Held offsets become the new persistent base and the motion slot is released,
+      // so a later motion cannot evict the held pose and reads stay consistent.
+      expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+      expect(store.getDisplayableBaseTransform("scope\0image")).toMatchObject({ offsetX: 100 });
+      expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
+        position: { x: 0, y: 48 },
+        offset: { x: 100, y: 0 }
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("resets to the persistent offset base when a held animation is stopped mid-flight", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new WidgetRuntimeStateStore();
+      const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+      await hostApi.widget.setDisplayableProperties("image", { offsetX: 24 });
+      const animation = hostApi.widget.animateDisplayable("image", {
+        id: "animation:offset",
+        target: { x: [24, 100] },
+        transition: { type: "tween", durationMs: 1000, delayMs: 0, easing: "linear" },
+        resetOnComplete: false
+      });
+
+      await vi.advanceTimersByTimeAsync(100);
+      await hostApi.widget.stopDisplayableAnimation("animation:offset");
+      await expect(animation).resolves.toMatchObject({ id: "animation:offset" });
+
+      // Stop = cancel: nothing is committed and reads report the pre-animation base pose.
+      expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+      expect(store.getDisplayableBaseTransform("scope\0image")).toMatchObject({ offsetX: 24 });
+      expect(hostApi.widget.getDisplayableProperties("image").offset).toEqual({ x: 24, y: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops Displayable animations by animation id and resolves pending waits", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = new WidgetRuntimeStateStore();
+      const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+      let resolved = false;
+      const animation = hostApi.widget
+        .animateDisplayable("image", {
+          id: "animation:test",
+          target: { opacity: [0, 1] },
+          transition: { type: "tween", durationMs: 1000, delayMs: 0, easing: "linear" },
+          resetOnComplete: true
+        })
+        .then((result) => {
+          resolved = true;
+          return result;
+        });
+
+      await vi.advanceTimersByTimeAsync(100);
+      expect(resolved).toBe(false);
+      expect(store.getDisplayableMotion("scope\0image")).toMatchObject({ id: "animation:test" });
+
+      await hostApi.widget.stopDisplayableAnimation("animation:test");
+
+      await expect(animation).resolves.toMatchObject({ id: "animation:test" });
+      expect(resolved).toBe(true);
+      expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 /**
@@ -1439,57 +1512,73 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
  * duration are the two things a bad slider binding would break.
  */
 describe("createDevModeBlueprintHostApi sound transport", () => {
-    it("clamps the volume and passes the fade through", async () => {
-        const calls: unknown[] = [];
-        const hostApi = createHostApi({
-            onSetSoundVolume: (handle, volume, fadeMs) => void calls.push({ id: handle.id, volume, fadeMs }),
-        });
-
-        await hostApi.sound.setVolume({ kind: "soundHandle", id: "s1" }, 2, 800);
-        await hostApi.sound.setVolume({ kind: "soundHandle", id: "s1" }, -1);
-
-        // 2 from a slider bound to the wrong range means "as loud as it goes"; a dead control is the
-        // worse answer, so this clamps rather than throws.
-        expect(calls).toEqual([
-            { id: "s1", volume: 1, fadeMs: 800 },
-            { id: "s1", volume: 0, fadeMs: 0 },
-        ]);
+  it("clamps the volume and passes the fade through", async () => {
+    const calls: unknown[] = [];
+    const hostApi = createHostApi({
+      onSetSoundVolume: (handle, volume, fadeMs) =>
+        void calls.push({ id: handle.id, volume, fadeMs })
     });
 
-    it("floors a negative seek at the start of the clip", async () => {
-        const calls: unknown[] = [];
-        const hostApi = createHostApi({ onSeekSound: (handle, timeMs) => void calls.push({ id: handle.id, timeMs }) });
+    await hostApi.sound.setVolume({ kind: "soundHandle", id: "s1" }, 2, 800);
+    await hostApi.sound.setVolume({ kind: "soundHandle", id: "s1" }, -1);
 
-        await hostApi.sound.seek({ kind: "soundHandle", id: "s1" }, -5);
-        await hostApi.sound.seek({ kind: "soundHandle", id: "s1" }, 30_000);
+    // 2 from a slider bound to the wrong range means "as loud as it goes"; a dead control is the
+    // worse answer, so this clamps rather than throws.
+    expect(calls).toEqual([
+      { id: "s1", volume: 1, fadeMs: 800 },
+      { id: "s1", volume: 0, fadeMs: 0 }
+    ]);
+  });
 
-        expect(calls).toEqual([{ id: "s1", timeMs: 0 }, { id: "s1", timeMs: 30_000 }]);
+  it("floors a negative seek at the start of the clip", async () => {
+    const calls: unknown[] = [];
+    const hostApi = createHostApi({
+      onSeekSound: (handle, timeMs) => void calls.push({ id: handle.id, timeMs })
     });
 
-    it("stays silent rather than throwing when the host backs no audio", async () => {
-        const hostApi = createHostApi({});
+    await hostApi.sound.seek({ kind: "soundHandle", id: "s1" }, -5);
+    await hostApi.sound.seek({ kind: "soundHandle", id: "s1" }, 30_000);
 
-        // The editor's surface preview. A graph built there has to run end to end.
-        await expect(hostApi.sound.play({ assetId: "a1", channel: "bgm", loop: true, volume: 1 }))
-            .resolves.toBeNull();
-        await expect(hostApi.sound.setVolume({ kind: "soundHandle", id: "s1" }, 0.5)).resolves.toBeUndefined();
-        await expect(hostApi.sound.seek({ kind: "soundHandle", id: "s1" }, 1000)).resolves.toBeUndefined();
+    expect(calls).toEqual([
+      { id: "s1", timeMs: 0 },
+      { id: "s1", timeMs: 30_000 }
+    ]);
+  });
+
+  it("stays silent rather than throwing when the host backs no audio", async () => {
+    const hostApi = createHostApi({});
+
+    // The editor's surface preview. A graph built there has to run end to end.
+    await expect(
+      hostApi.sound.play({ assetId: "a1", channel: "bgm", loop: true, volume: 1 })
+    ).resolves.toBeNull();
+    await expect(
+      hostApi.sound.setVolume({ kind: "soundHandle", id: "s1" }, 0.5)
+    ).resolves.toBeUndefined();
+    await expect(
+      hostApi.sound.seek({ kind: "soundHandle", id: "s1" }, 1000)
+    ).resolves.toBeUndefined();
+  });
+
+  it("hands the play request through untouched", async () => {
+    const seen: BlueprintSoundPlayInput[] = [];
+    const hostApi = createHostApi({
+      onPlaySound: (input) => {
+        seen.push(input);
+        return { kind: "soundHandle", id: "s7" };
+      }
     });
 
-    it("hands the play request through untouched", async () => {
-        const seen: BlueprintSoundPlayInput[] = [];
-        const hostApi = createHostApi({
-            onPlaySound: input => {
-                seen.push(input);
-                return { kind: "soundHandle", id: "s7" };
-            },
-        });
-
-        const handle = await hostApi.sound.play({ assetId: "a1", channel: "bgm", loop: true, volume: 0.4 });
-
-        expect(handle).toEqual({ kind: "soundHandle", id: "s7" });
-        expect(seen[0]).toEqual({ assetId: "a1", channel: "bgm", loop: true, volume: 0.4 });
+    const handle = await hostApi.sound.play({
+      assetId: "a1",
+      channel: "bgm",
+      loop: true,
+      volume: 0.4
     });
+
+    expect(handle).toEqual({ kind: "soundHandle", id: "s7" });
+    expect(seen[0]).toEqual({ assetId: "a1", channel: "bgm", loop: true, volume: 0.4 });
+  });
 });
 
 /**
@@ -1500,50 +1589,51 @@ describe("createDevModeBlueprintHostApi sound transport", () => {
  * exactly like a project with no characters.
  */
 describe("createDevModeBlueprintHostApi character reads", () => {
-    const ALICE = toBlueprintCharacterInfo({
-        id: "char-alice",
-        name: "Alice",
-        color: "#40a8c4",
-        avatarAssetId: "asset-alice",
-    })!;
+  const ALICE = toBlueprintCharacterInfo({
+    id: "char-alice",
+    name: "Alice",
+    color: "#40a8c4",
+    avatarAssetId: "asset-alice"
+  })!;
 
-    it("answers getCharacter from the mirrored table", () => {
-        const scope = new ScopeStoreBridge();
-        scope.globalSet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY, [ALICE]);
-        const hostApi = createHostApi({ scope });
+  it("answers getCharacter from the mirrored table", () => {
+    const scope = new ScopeStoreBridge();
+    scope.globalSet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY, [ALICE]);
+    const hostApi = createHostApi({ scope });
 
-        expect(hostApi.game.getCharacter("char-alice")).toEqual({
-            id: "char-alice",
-            name: "Alice",
-            color: { r: 64, g: 168, b: 196, a: 1 },
-            avatar: { kind: "imageAsset", assetId: "asset-alice" },
-        });
-        // An id that is not in the table, and no id at all, are both "no character" - neither is an
-        // error, because a graph authored against a since-deleted character must still run.
-        expect(hostApi.game.getCharacter("char-gone")).toBeNull();
-        expect(hostApi.game.getCharacter("")).toBeNull();
+    expect(hostApi.game.getCharacter("char-alice")).toEqual({
+      id: "char-alice",
+      name: "Alice",
+      color: { r: 64, g: 168, b: 196, a: 1 },
+      avatar: { kind: "imageAsset", assetId: "asset-alice" }
     });
+    // An id that is not in the table, and no id at all, are both "no character" - neither is an
+    // error, because a graph authored against a since-deleted character must still run.
+    expect(hostApi.game.getCharacter("char-gone")).toBeNull();
+    expect(hostApi.game.getCharacter("")).toBeNull();
+  });
 
-    it("answers getCharacter with null before any mirror is written", () => {
-        expect(createHostApi({}).game.getCharacter("char-alice")).toBeNull();
-    });
+  it("answers getCharacter with null before any mirror is written", () => {
+    expect(createHostApi({}).game.getCharacter("char-alice")).toBeNull();
+  });
 
-    it("normalizes the speaker colour, defaulting to opaque white", () => {
-        const scope = new ScopeStoreBridge();
-        const hostApi = createHostApi({ scope });
+  it("normalizes the speaker colour, defaulting to opaque white", () => {
+    const scope = new ScopeStoreBridge();
+    const hostApi = createHostApi({ scope });
 
-        // Nothing mirrored yet: the pin is a non-nullable RGBAColor, so there is no "absent".
-        expect(hostApi.game.getSpeakerColor()).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+    // Nothing mirrored yet: the pin is a non-nullable RGBAColor, so there is no "absent".
+    expect(hostApi.game.getSpeakerColor()).toEqual({ r: 255, g: 255, b: 255, a: 1 });
 
-        scope.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, { r: 64, g: 168, b: 196, a: 1 });
-        expect(hostApi.game.getSpeakerColor()).toEqual({ r: 64, g: 168, b: 196, a: 1 });
+    scope.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, { r: 64, g: 168, b: 196, a: 1 });
+    expect(hostApi.game.getSpeakerColor()).toEqual({ r: 64, g: 168, b: 196, a: 1 });
 
-        // A host that mirrored the raw profile hex instead of the parsed record still resolves.
-        scope.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, "#40a8c4");
-        expect(hostApi.game.getSpeakerColor()).toEqual({ r: 64, g: 168, b: 196, a: 1 });
+    // A host that mirrored the raw profile hex instead of the parsed record still resolves.
+    scope.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, "#40a8c4");
+    expect(hostApi.game.getSpeakerColor()).toEqual({ r: 64, g: 168, b: 196, a: 1 });
 
-        scope.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, null);
-        expect(hostApi.game.getSpeakerColor()).toEqual({ r: 255, g: 255, b: 255, a: 1 });    });
+    scope.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, null);
+    expect(hostApi.game.getSpeakerColor()).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+  });
 });
 
 /**
@@ -1559,116 +1649,131 @@ describe("createDevModeBlueprintHostApi character reads", () => {
  * channels - would leave every bus the author invented inaudible to the element.
  */
 describe("createDevModeBlueprintHostApi element volume", () => {
-    const TRACKS = [
-        { id: "bgm", name: "Music", parentId: null, volume: 1, loop: true },
-        { id: "sound", name: "SFX", parentId: null, volume: 1, loop: false },
-        { id: "voice", name: "Voice", parentId: null, volume: 1, loop: false },
-        { id: "quiet", name: "Quiet", parentId: "bgm", volume: 0.5, loop: false },
-    ];
+  const TRACKS = [
+    { id: "bgm", name: "Music", parentId: null, volume: 1, loop: true },
+    { id: "sound", name: "SFX", parentId: null, volume: 1, loop: false },
+    { id: "voice", name: "Voice", parentId: null, volume: 1, loop: false },
+    { id: "quiet", name: "Quiet", parentId: "bgm", volume: 0.5, loop: false }
+  ];
 
-    function preferences(values: Partial<Record<string, number>>) {
-        return (key: BlueprintGamePreferenceKey) => (values[key] ?? 1) as BlueprintGamePreferenceValue;
-    }
+  function preferences(values: Partial<Record<string, number>>) {
+    return (key: BlueprintGamePreferenceKey) => (values[key] ?? 1) as BlueprintGamePreferenceValue;
+  }
 
-    it("multiplies the authored volume by every bus in the chain, its slider and the master", () => {
-        const hostApi = createHostApi({
-            audioTracks: TRACKS,
-            onGetGamePreference: preferences({ globalVolume: 0.5, bgmVolume: 0.4, soundVolume: 1 }),
-        });
-
-        // 0.8 authored * 0.5 `quiet` * 1 `bgm` * 0.4 BGM slider * 0.5 master
-        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "quiet", volume: 0.8 })).toBeCloseTo(0.08);
-        // A different chain means a different slider governs it.
-        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "sound", volume: 1 })).toBeCloseTo(0.5);
+  it("multiplies the authored volume by every bus in the chain, its slider and the master", () => {
+    const hostApi = createHostApi({
+      audioTracks: TRACKS,
+      onGetGamePreference: preferences({ globalVolume: 0.5, bgmVolume: 0.4, soundVolume: 1 })
     });
 
-    it("reaches zero when the player mutes the game", () => {
-        const hostApi = createHostApi({
-            audioTracks: TRACKS,
-            onGetGamePreference: preferences({ globalVolume: 0 }),
-        });
+    // 0.8 authored * 0.5 `quiet` * 1 `bgm` * 0.4 BGM slider * 0.5 master
+    expect(hostApi.sound.resolveElementVolume({ audioTrackId: "quiet", volume: 0.8 })).toBeCloseTo(
+      0.08
+    );
+    // A different chain means a different slider governs it.
+    expect(hostApi.sound.resolveElementVolume({ audioTrackId: "sound", volume: 1 })).toBeCloseTo(
+      0.5
+    );
+  });
 
-        // The whole defect in one assertion: this used to be 1.
-        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "bgm", volume: 1 })).toBe(0);
+  it("reaches zero when the player mutes the game", () => {
+    const hostApi = createHostApi({
+      audioTracks: TRACKS,
+      onGetGamePreference: preferences({ globalVolume: 0 })
     });
 
-    it("governs a nested track by the seeded bus its chain runs through", () => {
-        const hostApi = createHostApi({
-            audioTracks: TRACKS,
-            onGetGamePreference: preferences({ bgmVolume: 0.5, soundVolume: 1 }),
-        });
+    // The whole defect in one assertion: this used to be 1.
+    expect(hostApi.sound.resolveElementVolume({ audioTrackId: "bgm", volume: 1 })).toBe(0);
+  });
 
-        // `quiet` names no channel of its own; it is BGM because its chain passes through `bgm`.
-        // 1 authored * 0.5 `quiet` * 0.5 BGM slider.
-        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "quiet", volume: 1 })).toBeCloseTo(0.25);
+  it("governs a nested track by the seeded bus its chain runs through", () => {
+    const hostApi = createHostApi({
+      audioTracks: TRACKS,
+      onGetGamePreference: preferences({ bgmVolume: 0.5, soundVolume: 1 })
     });
 
-    it("falls back to the SFX bus for an unset or dangling id", () => {
-        const hostApi = createHostApi({
-            audioTracks: TRACKS,
-            onGetGamePreference: preferences({ soundVolume: 0.25, bgmVolume: 1 }),
-        });
+    // `quiet` names no channel of its own; it is BGM because its chain passes through `bgm`.
+    // 1 authored * 0.5 `quiet` * 0.5 BGM slider.
+    expect(hostApi.sound.resolveElementVolume({ audioTrackId: "quiet", volume: 1 })).toBeCloseTo(
+      0.25
+    );
+  });
 
-        expect(hostApi.sound.resolveElementVolume({ audioTrackId: null, volume: 1 })).toBeCloseTo(0.25);
-        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "deleted", volume: 1 })).toBeCloseTo(0.25);
+  it("falls back to the SFX bus for an unset or dangling id", () => {
+    const hostApi = createHostApi({
+      audioTracks: TRACKS,
+      onGetGamePreference: preferences({ soundVolume: 0.25, bgmVolume: 1 })
     });
 
-    it("plays at the authored level rather than silence when no game is running", () => {
-        // `onGetGamePreference` is backed by `requireLiveGame`, which throws before the game boots.
-        // A video on a title screen must still be audible.
-        const hostApi = createHostApi({
-            audioTracks: TRACKS,
-            onGetGamePreference: () => {
-                throw new Error("game runtime is not available");
-            },
-        });
+    expect(hostApi.sound.resolveElementVolume({ audioTrackId: null, volume: 1 })).toBeCloseTo(0.25);
+    expect(hostApi.sound.resolveElementVolume({ audioTrackId: "deleted", volume: 1 })).toBeCloseTo(
+      0.25
+    );
+  });
 
-        expect(hostApi.sound.resolveElementVolume({ audioTrackId: "bgm", volume: 0.6 })).toBeCloseTo(0.6);
+  it("plays at the authored level rather than silence when no game is running", () => {
+    // `onGetGamePreference` is backed by `requireLiveGame`, which throws before the game boots.
+    // A video on a title screen must still be audible.
+    const hostApi = createHostApi({
+      audioTracks: TRACKS,
+      onGetGamePreference: () => {
+        throw new Error("game runtime is not available");
+      }
     });
 
-    it("hands mixer subscribers to the host and returns a no-op disposer without one", () => {
-        const listeners: Array<() => void> = [];
-        const hostApi = createHostApi({
-            onSubscribeGamePreferences: listener => {
-                listeners.push(listener);
-                return () => void listeners.splice(listeners.indexOf(listener), 1);
-            },
-        });
+    expect(hostApi.sound.resolveElementVolume({ audioTrackId: "bgm", volume: 0.6 })).toBeCloseTo(
+      0.6
+    );
+  });
 
-        const dispose = hostApi.sound.subscribeMixerChanges(() => undefined);
-        expect(listeners).toHaveLength(1);
-        dispose();
-        expect(listeners).toHaveLength(0);
-
-        // A host with no preference stream (the editor preview) must not make this throw.
-        expect(() => createHostApi({}).sound.subscribeMixerChanges(() => undefined)()).not.toThrow();    });
-
-    /**
-     * The per-bus volume seam, which is what `Get/Set Track Volume` runs on.
-     *
-     * Distinct from `sound.setVolume` above: that one addresses a playing clip by handle and dies
-     * with it, this one moves a fader that applies to everything under the bus and is persisted.
-     */
-    it("forwards track volume to the host and clamps the write", async () => {
-        const writes: Array<[string, number]> = [];
-        const hostApi = createHostApi({
-            onGetTrackVolume: trackId => (trackId === "alice" ? 0.3 : 1),
-            onSetTrackVolume: (trackId, volume) => void writes.push([trackId, volume]),
-        });
-
-        expect(hostApi.sound.getTrackVolume("alice")).toBeCloseTo(0.3);
-        await hostApi.sound.setTrackVolume("alice", 1.4);
-        await hostApi.sound.setTrackVolume("alice", -2);
-        await hostApi.sound.setTrackVolume("alice", Number.NaN);
-        expect(writes).toEqual([["alice", 1], ["alice", 0], ["alice", 1]]);
+  it("hands mixer subscribers to the host and returns a no-op disposer without one", () => {
+    const listeners: Array<() => void> = [];
+    const hostApi = createHostApi({
+      onSubscribeGamePreferences: (listener) => {
+        listeners.push(listener);
+        return () => void listeners.splice(listeners.indexOf(listener), 1);
+      }
     });
 
-    it("reads unity and swallows the write when the host backs no mixer", async () => {
-        // The editor preview. Unity rather than zero, so a slider bound on the canvas sits at the
-        // top instead of reading to the author as a muted bus.
-        const hostApi = createHostApi({});
+    const dispose = hostApi.sound.subscribeMixerChanges(() => undefined);
+    expect(listeners).toHaveLength(1);
+    dispose();
+    expect(listeners).toHaveLength(0);
 
-        expect(hostApi.sound.getTrackVolume("alice")).toBe(1);
-        await expect(hostApi.sound.setTrackVolume("alice", 0.5)).resolves.toBeUndefined();
+    // A host with no preference stream (the editor preview) must not make this throw.
+    expect(() => createHostApi({}).sound.subscribeMixerChanges(() => undefined)()).not.toThrow();
+  });
+
+  /**
+   * The per-bus volume seam, which is what `Get/Set Track Volume` runs on.
+   *
+   * Distinct from `sound.setVolume` above: that one addresses a playing clip by handle and dies
+   * with it, this one moves a fader that applies to everything under the bus and is persisted.
+   */
+  it("forwards track volume to the host and clamps the write", async () => {
+    const writes: Array<[string, number]> = [];
+    const hostApi = createHostApi({
+      onGetTrackVolume: (trackId) => (trackId === "alice" ? 0.3 : 1),
+      onSetTrackVolume: (trackId, volume) => void writes.push([trackId, volume])
     });
+
+    expect(hostApi.sound.getTrackVolume("alice")).toBeCloseTo(0.3);
+    await hostApi.sound.setTrackVolume("alice", 1.4);
+    await hostApi.sound.setTrackVolume("alice", -2);
+    await hostApi.sound.setTrackVolume("alice", Number.NaN);
+    expect(writes).toEqual([
+      ["alice", 1],
+      ["alice", 0],
+      ["alice", 1]
+    ]);
+  });
+
+  it("reads unity and swallows the write when the host backs no mixer", async () => {
+    // The editor preview. Unity rather than zero, so a slider bound on the canvas sits at the
+    // top instead of reading to the author as a muted bus.
+    const hostApi = createHostApi({});
+
+    expect(hostApi.sound.getTrackVolume("alice")).toBe(1);
+    await expect(hostApi.sound.setTrackVolume("alice", 0.5)).resolves.toBeUndefined();
+  });
 });

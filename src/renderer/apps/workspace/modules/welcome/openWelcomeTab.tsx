@@ -16,17 +16,17 @@ export const WELCOME_SHOWN_KEY = "welcome.shown";
  * restore, so a restored welcome tab is identical to a freshly opened one.
  */
 export function createWelcomeTab(): EditorTabDefinition {
-    return {
-        id: welcomeModule.metadata.id,
-        title: welcomeModule.metadata.title,
-        icon: welcomeModule.metadata.icon,
-        component: welcomeModule.component as EditorTabDefinition["component"],
-        closable: welcomeModule.metadata.closable,
-    };
+  return {
+    id: welcomeModule.metadata.id,
+    title: welcomeModule.metadata.title,
+    icon: welcomeModule.metadata.icon,
+    component: welcomeModule.component as EditorTabDefinition["component"],
+    closable: welcomeModule.metadata.closable
+  };
 }
 
 /** Open the welcome screen, or focus it if it is already open. */
 export function openWelcomeTab(ctx: WorkspaceContext, options?: { activate?: boolean }): void {
-    const uiService = ctx.services.get<UIService>(Services.UI);
-    uiService.editor.open(createWelcomeTab(), undefined, options);
+  const uiService = ctx.services.get<UIService>(Services.UI);
+  uiService.editor.open(createWelcomeTab(), undefined, options);
 }

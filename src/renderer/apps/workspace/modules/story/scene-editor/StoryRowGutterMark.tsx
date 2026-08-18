@@ -2,9 +2,9 @@ import { Quote, type LucideIcon } from "lucide-react";
 import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/components/HeadThumbnail";
 import type { NormalizedCrop } from "@/lib/utils/headCrop";
 import {
-    storySpeakerInitial,
-    storySpeakerPaint,
-    type StorySpeakerIdentity,
+  storySpeakerInitial,
+  storySpeakerPaint,
+  type StorySpeakerIdentity
 } from "./storySpeakerIdentity";
 
 /**
@@ -118,42 +118,44 @@ const PORTRAIT_STROKE_PX = 2;
  * rows it drew a circle floating in the middle of a line with nothing in it.
  */
 export function StoryGutterCell(props: {
-    children: React.ReactNode;
-    /** Draw the state backdrop: the pointer is on this row, or it is the active one. */
-    active?: boolean;
-    /** Read by assistive tech as decoration when the row's words already say who is speaking. */
-    decorative?: boolean;
-    /** Let the content fill the row's height instead of sitting on its first line. */
-    stretch?: boolean;
+  children: React.ReactNode;
+  /** Draw the state backdrop: the pointer is on this row, or it is the active one. */
+  active?: boolean;
+  /** Read by assistive tech as decoration when the row's words already say who is speaking. */
+  decorative?: boolean;
+  /** Let the content fill the row's height instead of sitting on its first line. */
+  stretch?: boolean;
 }) {
-    return (
+  return (
+    <span
+      aria-hidden={props.decorative}
+      className="relative flex shrink-0 flex-col items-center self-stretch"
+      style={{ width: STORY_MARK_PX, minHeight: "var(--nl-story-row-box)" }}
+    >
+      {props.active && !props.stretch ? (
         <span
-            aria-hidden={props.decorative}
-            className="relative flex shrink-0 flex-col items-center self-stretch"
-            style={{ width: STORY_MARK_PX, minHeight: "var(--nl-story-row-box)" }}
+          aria-hidden
+          className="pointer-events-none absolute left-0 rounded-full bg-fill-subtle"
+          style={{
+            width: STORY_MARK_PX,
+            height: STORY_MARK_PX,
+            // Centred on the first line, exactly where the mark it sits behind is.
+            top: `calc((var(--nl-story-row-box) - ${STORY_MARK_PX}px) / 2)`
+          }}
+        />
+      ) : null}
+      {props.stretch ? (
+        props.children
+      ) : (
+        <span
+          className="relative flex w-full shrink-0 items-center justify-center"
+          style={{ height: "var(--nl-story-row-box)" }}
         >
-            {props.active && !props.stretch ? (
-                <span
-                    aria-hidden
-                    className="pointer-events-none absolute left-0 rounded-full bg-fill-subtle"
-                    style={{
-                        width: STORY_MARK_PX,
-                        height: STORY_MARK_PX,
-                        // Centred on the first line, exactly where the mark it sits behind is.
-                        top: `calc((var(--nl-story-row-box) - ${STORY_MARK_PX}px) / 2)`,
-                    }}
-                />
-            ) : null}
-            {props.stretch ? props.children : (
-                <span
-                    className="relative flex w-full shrink-0 items-center justify-center"
-                    style={{ height: "var(--nl-story-row-box)" }}
-                >
-                    {props.children}
-                </span>
-            )}
+          {props.children}
         </span>
-    );
+      )}
+    </span>
+  );
 }
 
 /**
@@ -174,28 +176,39 @@ export function StoryGutterCell(props: {
  * is instead means a portrait too small to recognise still identifies its speaker, and it puts the
  * one row type that had no colour anywhere on it back into the scheme.
  */
-export function StorySpeakerPortraitMark(props: { identity: StorySpeakerIdentity; url: string; frame?: NormalizedCrop; showingSprite: boolean }) {
-    const paint = storySpeakerPaint(props.identity.paint);
-    return (
-        <span
-            className={`${paint.className} block shrink-0 overflow-hidden rounded-full bg-fill-subtle`}
-            style={{
-                ...paint.style,
-                width: STORY_MARK_PX,
-                height: STORY_MARK_PX,
-                borderWidth: PORTRAIT_STROKE_PX,
-                borderStyle: "solid",
-                borderColor: "var(--nl-speaker-disc)",
-            }}
-            data-tip={props.identity.name}
-        >
-            {props.showingSprite ? (
-                <HeadThumbnail url={props.url} alt="" frame={props.frame} className="h-full w-full" iconClassName="h-3 w-3" />
-            ) : (
-                <img src={props.url} alt="" className="h-full w-full object-cover" draggable={false} />
-            )}
-        </span>
-    );
+export function StorySpeakerPortraitMark(props: {
+  identity: StorySpeakerIdentity;
+  url: string;
+  frame?: NormalizedCrop;
+  showingSprite: boolean;
+}) {
+  const paint = storySpeakerPaint(props.identity.paint);
+  return (
+    <span
+      className={`${paint.className} block shrink-0 overflow-hidden rounded-full bg-fill-subtle`}
+      style={{
+        ...paint.style,
+        width: STORY_MARK_PX,
+        height: STORY_MARK_PX,
+        borderWidth: PORTRAIT_STROKE_PX,
+        borderStyle: "solid",
+        borderColor: "var(--nl-speaker-disc)"
+      }}
+      data-tip={props.identity.name}
+    >
+      {props.showingSprite ? (
+        <HeadThumbnail
+          url={props.url}
+          alt=""
+          frame={props.frame}
+          className="h-full w-full"
+          iconClassName="h-3 w-3"
+        />
+      ) : (
+        <img src={props.url} alt="" className="h-full w-full object-cover" draggable={false} />
+      )}
+    </span>
+  );
 }
 
 /**
@@ -210,26 +223,26 @@ export function StorySpeakerPortraitMark(props: { identity: StorySpeakerIdentity
  * pale, and white ink on a pale disc is a smudge.
  */
 export function StorySpeakerDiscMark(props: { identity: StorySpeakerIdentity }) {
-    const { identity } = props;
-    const paint = storySpeakerPaint(identity.paint);
-    return (
-        <span
-            className={`${paint.className} flex shrink-0 select-none items-center justify-center rounded-full font-medium leading-none`}
-            style={{
-                ...paint.style,
-                width: STORY_MARK_PX,
-                height: STORY_MARK_PX,
-                // A hair under half the disc, which is where one CJK glyph and two Latin letters both
-                // sit inside the circle rather than against it.
-                fontSize: 12.5,
-                backgroundColor: "var(--nl-speaker-disc)",
-                color: "var(--nl-speaker-ink)",
-            }}
-            data-tip={identity.name}
-        >
-            {storySpeakerInitial(identity.name)}
-        </span>
-    );
+  const { identity } = props;
+  const paint = storySpeakerPaint(identity.paint);
+  return (
+    <span
+      className={`${paint.className} flex shrink-0 select-none items-center justify-center rounded-full font-medium leading-none`}
+      style={{
+        ...paint.style,
+        width: STORY_MARK_PX,
+        height: STORY_MARK_PX,
+        // A hair under half the disc, which is where one CJK glyph and two Latin letters both
+        // sit inside the circle rather than against it.
+        fontSize: 12.5,
+        backgroundColor: "var(--nl-speaker-disc)",
+        color: "var(--nl-speaker-ink)"
+      }}
+      data-tip={identity.name}
+    >
+      {storySpeakerInitial(identity.name)}
+    </span>
+  );
 }
 
 /**
@@ -271,24 +284,28 @@ const NARRATOR_GLYPH_PX = 11;
  * the one thing here that should still be type.
  */
 export function StoryNarratorRingMark(props: { glyph?: string; label: string }) {
-    return (
-        <span
-            className="flex shrink-0 select-none items-center justify-center rounded-full border border-edge-strong text-fg-muted"
-            style={{ width: STORY_MARK_PX, height: STORY_MARK_PX }}
-            data-tip={props.label}
-        >
-            {props.glyph ? (
-                <span className="text-[12.5px] leading-none">{props.glyph}</span>
-            ) : (
-                <Quote
-                    aria-hidden
-                    className="shrink-0"
-                    style={{ width: NARRATOR_GLYPH_PX, height: NARRATOR_GLYPH_PX, transform: "rotate(180deg)" }}
-                    strokeWidth={COMMAND_STROKE}
-                />
-            )}
-        </span>
-    );
+  return (
+    <span
+      className="flex shrink-0 select-none items-center justify-center rounded-full border border-edge-strong text-fg-muted"
+      style={{ width: STORY_MARK_PX, height: STORY_MARK_PX }}
+      data-tip={props.label}
+    >
+      {props.glyph ? (
+        <span className="text-[12.5px] leading-none">{props.glyph}</span>
+      ) : (
+        <Quote
+          aria-hidden
+          className="shrink-0"
+          style={{
+            width: NARRATOR_GLYPH_PX,
+            height: NARRATOR_GLYPH_PX,
+            transform: "rotate(180deg)"
+          }}
+          strokeWidth={COMMAND_STROKE}
+        />
+      )}
+    </span>
+  );
 }
 
 /**
@@ -314,15 +331,15 @@ export function StoryNarratorRingMark(props: { glyph?: string; label: string }) 
  * next year is automatically the same drawing as the ones here.
  */
 export function StoryCommandGlyphMark(props: { icon: LucideIcon; label: string; color: string }) {
-    const Icon = props.icon;
-    return (
-        <Icon
-            className="shrink-0"
-            style={{ width: COMMAND_GLYPH_PX, height: COMMAND_GLYPH_PX, color: props.color }}
-            strokeWidth={COMMAND_STROKE}
-            aria-label={props.label}
-        />
-    );
+  const Icon = props.icon;
+  return (
+    <Icon
+      className="shrink-0"
+      style={{ width: COMMAND_GLYPH_PX, height: COMMAND_GLYPH_PX, color: props.color }}
+      strokeWidth={COMMAND_STROKE}
+      aria-label={props.label}
+    />
+  );
 }
 
 /**
@@ -344,24 +361,24 @@ export function StoryCommandGlyphMark(props: { icon: LucideIcon; label: string; 
  * it is cancelling — no absolute positioning, and no number that has to be kept in step by hand.
  */
 export function StoryContinuationRule(props: { identity: StorySpeakerIdentity }) {
-    const paint = storySpeakerPaint(props.identity.paint);
-    return (
-        <span
-            aria-hidden
-            className={`${paint.className} flex-1`}
-            style={{
-                ...paint.style,
-                width: CONTINUATION_RULE_PX,
-                marginTop: -STORY_ROW_CONTENT_PAD_PX,
-                marginBottom: -STORY_ROW_CONTENT_PAD_PX,
-                minHeight: STORY_MARK_PX,
-                backgroundColor: "var(--nl-speaker-disc)",
-                // The rule is an aside about a line the eye has already read: present enough to join
-                // the run, quiet enough that a page of dialogue is not a page of coloured bars.
-                opacity: 0.55,
-            }}
-        />
-    );
+  const paint = storySpeakerPaint(props.identity.paint);
+  return (
+    <span
+      aria-hidden
+      className={`${paint.className} flex-1`}
+      style={{
+        ...paint.style,
+        width: CONTINUATION_RULE_PX,
+        marginTop: -STORY_ROW_CONTENT_PAD_PX,
+        marginBottom: -STORY_ROW_CONTENT_PAD_PX,
+        minHeight: STORY_MARK_PX,
+        backgroundColor: "var(--nl-speaker-disc)",
+        // The rule is an aside about a line the eye has already read: present enough to join
+        // the run, quiet enough that a page of dialogue is not a page of coloured bars.
+        opacity: 0.55
+      }}
+    />
+  );
 }
 
 /**
@@ -371,14 +388,19 @@ export function StoryContinuationRule(props: { identity: StorySpeakerIdentity })
  * sentence — 「Anyo：大家好啊」 is one utterance read left to right, not a label filed beside a
  * quotation.
  */
-export function StorySpeakerName(props: { identity: StorySpeakerIdentity; children?: React.ReactNode; className?: string; style?: React.CSSProperties }) {
-    const paint = storySpeakerPaint(props.identity.paint);
-    return (
-        <span
-            className={`${paint.className} ${props.className ?? ""}`}
-            style={{ ...paint.style, color: "var(--nl-speaker-name)", ...props.style }}
-        >
-            {props.children ?? props.identity.name}
-        </span>
-    );
+export function StorySpeakerName(props: {
+  identity: StorySpeakerIdentity;
+  children?: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  const paint = storySpeakerPaint(props.identity.paint);
+  return (
+    <span
+      className={`${paint.className} ${props.className ?? ""}`}
+      style={{ ...paint.style, color: "var(--nl-speaker-name)", ...props.style }}
+    >
+      {props.children ?? props.identity.name}
+    </span>
+  );
 }

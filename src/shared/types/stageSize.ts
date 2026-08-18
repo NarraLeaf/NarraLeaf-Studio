@@ -12,8 +12,8 @@
  */
 
 export type StageSize = {
-    width: number;
-    height: number;
+  width: number;
+  height: number;
 };
 
 /**
@@ -34,59 +34,59 @@ export const STAGE_SIZE_MAX = 3840;
  * simply not creatable before, since every preset here was 16:9.
  */
 export const STAGE_SIZE_PRESETS: readonly StageSize[] = [
-    { width: 1280, height: 720 },
-    { width: 1920, height: 1080 },
-    { width: 2560, height: 1440 },
-    { width: 3840, height: 2160 },
-    { width: 1920, height: 1200 },
-    { width: 1024, height: 768 },
-    { width: 720, height: 1280 },
-    { width: 1080, height: 1920 },
-    { width: 1536, height: 2048 },
+  { width: 1280, height: 720 },
+  { width: 1920, height: 1080 },
+  { width: 2560, height: 1440 },
+  { width: 3840, height: 2160 },
+  { width: 1920, height: 1200 },
+  { width: 1024, height: 768 },
+  { width: 720, height: 1280 },
+  { width: 1080, height: 1920 },
+  { width: 1536, height: 2048 }
 ];
 
 /** How a size is written where it is persisted and where it is used as an option value. */
 export function stageSizeValue(size: StageSize): string {
-    return `${size.width}x${size.height}`;
+  return `${size.width}x${size.height}`;
 }
 
 /** How a size is written to a reader. */
 export function formatStageSize(size: StageSize): string {
-    return `${size.width} × ${size.height}`;
+  return `${size.width} × ${size.height}`;
 }
 
 /** Read back a persisted `WxH`, or null when it is not one. */
 export function parseStageSize(value: string): StageSize | null {
-    const match = /^(\d+)x(\d+)$/.exec(value.trim());
-    if (!match) {
-        return null;
-    }
-    const width = Number(match[1]);
-    const height = Number(match[2]);
-    if (!isStageSizeUsable({ width, height })) {
-        return null;
-    }
-    return { width, height };
+  const match = /^(\d+)x(\d+)$/.exec(value.trim());
+  if (!match) {
+    return null;
+  }
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!isStageSizeUsable({ width, height })) {
+    return null;
+  }
+  return { width, height };
 }
 
 /** Whole numbers, inside the bounds. */
 export function isStageSizeUsable(size: StageSize): boolean {
-    return [size.width, size.height].every(
-        side => Number.isInteger(side) && side >= STAGE_SIZE_MIN && side <= STAGE_SIZE_MAX,
-    );
+  return [size.width, size.height].every(
+    (side) => Number.isInteger(side) && side >= STAGE_SIZE_MIN && side <= STAGE_SIZE_MAX
+  );
 }
 
 export function stageSizesEqual(a: StageSize, b: StageSize): boolean {
-    return a.width === b.width && a.height === b.height;
+  return a.width === b.width && a.height === b.height;
 }
 
 /** Landscape covers square, because a square stage locks a phone the same way a wide one does. */
 export function stageOrientation(size: StageSize): "landscape" | "portrait" {
-    return size.height > size.width ? "portrait" : "landscape";
+  return size.height > size.width ? "portrait" : "landscape";
 }
 
 function greatestCommonDivisor(a: number, b: number): number {
-    return b === 0 ? a : greatestCommonDivisor(b, a % b);
+  return b === 0 ? a : greatestCommonDivisor(b, a % b);
 }
 
 /**
@@ -97,8 +97,8 @@ function greatestCommonDivisor(a: number, b: number): number {
  * uses reads as a bug in the readback.
  */
 const ASPECT_RATIO_ALIASES: Record<string, string> = {
-    "8:5": "16:10",
-    "5:8": "10:16",
+  "8:5": "16:10",
+  "5:8": "10:16"
 };
 
 /**
@@ -109,15 +109,15 @@ const ASPECT_RATIO_ALIASES: Record<string, string> = {
  * readback beside the numbers, never a value anything is keyed on.
  */
 export function formatStageAspectRatio(size: StageSize): string {
-    if (size.width <= 0 || size.height <= 0) {
-        return "";
-    }
-    const divisor = greatestCommonDivisor(size.width, size.height);
-    const width = size.width / divisor;
-    const height = size.height / divisor;
-    if (width <= 64 && height <= 64) {
-        const reduced = `${width}:${height}`;
-        return ASPECT_RATIO_ALIASES[reduced] ?? reduced;
-    }
-    return `${(size.width / size.height).toFixed(2)}:1`;
+  if (size.width <= 0 || size.height <= 0) {
+    return "";
+  }
+  const divisor = greatestCommonDivisor(size.width, size.height);
+  const width = size.width / divisor;
+  const height = size.height / divisor;
+  if (width <= 64 && height <= 64) {
+    const reduced = `${width}:${height}`;
+    return ASPECT_RATIO_ALIASES[reduced] ?? reduced;
+  }
+  return `${(size.width / size.height).toFixed(2)}:1`;
 }

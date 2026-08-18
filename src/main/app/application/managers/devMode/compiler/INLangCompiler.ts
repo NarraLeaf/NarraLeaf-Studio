@@ -1,20 +1,20 @@
 export type NLangCompileResult = {
-    ok: boolean;
-    errors?: string[];
-    artifacts?: Record<string, unknown>;
-    diagnostics?: Record<string, unknown>;
+  ok: boolean;
+  errors?: string[];
+  artifacts?: Record<string, unknown>;
+  diagnostics?: Record<string, unknown>;
 };
 
 export type NLangCompileContext = {
-    projectPath: string;
+  projectPath: string;
 };
 
 export interface INLangCompiler {
-    compile(context: NLangCompileContext): Promise<NLangCompileResult>;
+  compile(context: NLangCompileContext): Promise<NLangCompileResult>;
 }
 
 export class NullNLangCompiler implements INLangCompiler {
-    async compile(): Promise<NLangCompileResult> {
-        return { ok: true };
-    }
+  async compile(): Promise<NLangCompileResult> {
+    return { ok: true };
+  }
 }

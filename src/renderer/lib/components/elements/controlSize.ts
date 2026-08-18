@@ -37,9 +37,9 @@ export type ControlSize = "sm" | "md" | "lg";
  * single-line control, it only keeps wrapped text off the edges.
  */
 export const CONTROL_SIZE_CLASS: Record<ControlSize, string> = {
-    sm: "min-h-7 px-2 py-1 text-xs",
-    md: "min-h-9 px-3 py-1 text-sm",
-    lg: "min-h-10 px-4 py-1 text-base",
+  sm: "min-h-7 px-2 py-1 text-xs",
+  md: "min-h-9 px-3 py-1 text-sm",
+  lg: "min-h-10 px-4 py-1 text-base"
 };
 
 /**
@@ -47,14 +47,14 @@ export const CONTROL_SIZE_CLASS: Record<ControlSize, string> = {
  * sits next to, and as wide as it is tall.
  */
 export const CONTROL_SQUARE_CLASS: Record<ControlSize, string> = {
-    sm: "h-7 w-7",
-    md: "h-9 w-9",
-    lg: "h-10 w-10",
+  sm: "h-7 w-7",
+  md: "h-9 w-9",
+  lg: "h-10 w-10"
 };
 
 /** Height floor alone, for a hand-rolled control that brings its own padding. */
 export const CONTROL_HEIGHT_CLASS: Record<ControlSize, string> = {
-    sm: "min-h-7",
-    md: "min-h-9",
-    lg: "min-h-10",
+  sm: "min-h-7",
+  md: "min-h-9",
+  lg: "min-h-10"
 };

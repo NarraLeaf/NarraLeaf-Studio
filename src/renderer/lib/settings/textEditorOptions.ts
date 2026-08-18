@@ -14,16 +14,16 @@ export const EDITOR_LINE_NUMBERS_DEFAULT = true;
 export const EDITOR_SOFT_WRAP_DEFAULT = false;
 
 export type TextEditorViewOptions = {
-    lineNumbers: boolean;
-    softWrap: boolean;
+  lineNumbers: boolean;
+  softWrap: boolean;
 };
 
 export const TEXT_EDITOR_VIEW_DEFAULTS: TextEditorViewOptions = {
-    lineNumbers: EDITOR_LINE_NUMBERS_DEFAULT,
-    softWrap: EDITOR_SOFT_WRAP_DEFAULT,
+  lineNumbers: EDITOR_LINE_NUMBERS_DEFAULT,
+  softWrap: EDITOR_SOFT_WRAP_DEFAULT
 };
 
 /** Persisted values are untrusted: anything that is not a boolean falls back to the default. */
 export function resolveBooleanSetting(value: unknown, fallback: boolean): boolean {
-    return typeof value === "boolean" ? value : fallback;
+  return typeof value === "boolean" ? value : fallback;
 }

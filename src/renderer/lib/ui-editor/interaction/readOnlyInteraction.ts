@@ -26,10 +26,10 @@ import type { DockerBarItem, FloatingToolbarItem } from "@/lib/ui-editor/widget-
  *    write.
  */
 export type UIEditorReadOnly = {
-    /** Whether every write gesture on this surface is inert right now. */
-    readonly active: boolean;
-    /** Hover text for the controls this state disables. The workspace passes the freeze reason. */
-    readonly reason?: string;
+  /** Whether every write gesture on this surface is inert right now. */
+  readonly active: boolean;
+  /** Hover text for the controls this state disables. The workspace passes the freeze reason. */
+  readonly reason?: string;
 };
 
 /** The writable default, so a surface that never opts in behaves exactly as before. */
@@ -42,47 +42,50 @@ export const UI_EDITOR_WRITABLE: UIEditorReadOnly = { active: false };
  * decisions someone made, not a predicate that has to be re-derived at each call site.
  */
 export type SurfaceGesture =
-    /** Click, shift-click and marquee selection on the canvas or in the outline. */
-    | "select"
-    /** Double-click that walks the selection into a container. Moves selection, not the document. */
-    | "containerDrill"
-    /** Pan tool / middle-drag. */
-    | "pan"
-    /** Wheel and pinch zoom. */
-    | "zoom"
-    /** Expanding and collapsing an outline branch - editor state, not project data. */
-    | "outlineCollapse"
-    /** Moveable drag / resize / rotate. */
-    | "transform"
-    /** Insert-tool drag that draws a new element onto the canvas. */
-    | "insertDraw"
-    /** Double-click into a `contenteditable` on the canvas. */
-    | "inlineTextEdit"
-    /** Double-click into the image crop overlay. */
-    | "imageCrop"
-    /** Dragging an outline row to reparent or reorder it. */
-    | "outlineReorder"
-    /** Double-click an outline row to rename the element. */
-    | "outlineRename"
-    /** The outline's eye toggle, which writes `layout.visible`. */
-    | "outlineVisibility";
+  /** Click, shift-click and marquee selection on the canvas or in the outline. */
+  | "select"
+  /** Double-click that walks the selection into a container. Moves selection, not the document. */
+  | "containerDrill"
+  /** Pan tool / middle-drag. */
+  | "pan"
+  /** Wheel and pinch zoom. */
+  | "zoom"
+  /** Expanding and collapsing an outline branch - editor state, not project data. */
+  | "outlineCollapse"
+  /** Moveable drag / resize / rotate. */
+  | "transform"
+  /** Insert-tool drag that draws a new element onto the canvas. */
+  | "insertDraw"
+  /** Double-click into a `contenteditable` on the canvas. */
+  | "inlineTextEdit"
+  /** Double-click into the image crop overlay. */
+  | "imageCrop"
+  /** Dragging an outline row to reparent or reorder it. */
+  | "outlineReorder"
+  /** Double-click an outline row to rename the element. */
+  | "outlineRename"
+  /** The outline's eye toggle, which writes `layout.visible`. */
+  | "outlineVisibility";
 
 const READ_ONLY_SURFACE_GESTURES: ReadonlySet<SurfaceGesture> = new Set<SurfaceGesture>([
-    "select",
-    "containerDrill",
-    "pan",
-    "zoom",
-    "outlineCollapse",
+  "select",
+  "containerDrill",
+  "pan",
+  "zoom",
+  "outlineCollapse"
 ]);
 
 /** Whether `gesture` writes nothing, and so keeps working on a read-only surface. */
 export function isSurfaceGestureReadOnlySafe(gesture: SurfaceGesture): boolean {
-    return READ_ONLY_SURFACE_GESTURES.has(gesture);
+  return READ_ONLY_SURFACE_GESTURES.has(gesture);
 }
 
 /** Whether `gesture` may run right now. The single question every call site asks. */
-export function isSurfaceGestureEnabled(gesture: SurfaceGesture, readOnly: UIEditorReadOnly): boolean {
-    return !readOnly.active || isSurfaceGestureReadOnlySafe(gesture);
+export function isSurfaceGestureEnabled(
+  gesture: SurfaceGesture,
+  readOnly: UIEditorReadOnly
+): boolean {
+  return !readOnly.active || isSurfaceGestureReadOnlySafe(gesture);
 }
 
 /**
@@ -106,21 +109,21 @@ const READ_ONLY_MOVEABLE_KEPT_PROPS = ["zoom", "origin"] as const;
  * the clicks and hovers that selection is built on.
  */
 export function toReadOnlyMoveableProps(props: Partial<MoveableProps>): Partial<MoveableProps> {
-    const kept: Record<string, unknown> = {};
-    for (const key of READ_ONLY_MOVEABLE_KEPT_PROPS) {
-        if (props[key] !== undefined) {
-            kept[key] = props[key];
-        }
+  const kept: Record<string, unknown> = {};
+  for (const key of READ_ONLY_MOVEABLE_KEPT_PROPS) {
+    if (props[key] !== undefined) {
+      kept[key] = props[key];
     }
-    return {
-        ...(kept as Partial<MoveableProps>),
-        // Stated rather than merely omitted: these three are what the editor already flips off while
-        // inline text editing, so an author reading this file finds the same three names twice.
-        draggable: false,
-        resizable: false,
-        rotatable: false,
-        clickable: false,
-    };
+  }
+  return {
+    ...(kept as Partial<MoveableProps>),
+    // Stated rather than merely omitted: these three are what the editor already flips off while
+    // inline text editing, so an author reading this file finds the same three names twice.
+    draggable: false,
+    resizable: false,
+    rotatable: false,
+    clickable: false
+  };
 }
 
 /**
@@ -130,27 +133,27 @@ export function toReadOnlyMoveableProps(props: Partial<MoveableProps>): Partial<
  * the top bar's plugin actions - a row this file has never heard of is disabled, not trusted.
  */
 const READ_ONLY_FLOATING_TOOLBAR_IDS: ReadonlySet<string> = new Set([
-    "open-linked-component",
-    // The Frame's "Open <page>" arrow opens the page the frame points at in another tab. On a frozen
-    // project it was greyed out, so the one way to follow a frame to its target - reading, and the
-    // whole point of looking at a past version - was gone. Opening a tab writes nothing.
-    "frame.open-target-page",
+  "open-linked-component",
+  // The Frame's "Open <page>" arrow opens the page the frame points at in another tab. On a frozen
+  // project it was greyed out, so the one way to follow a frame to its target - reading, and the
+  // whole point of looking at a past version - was gone. Opening a tab writes nothing.
+  "frame.open-target-page"
 ]);
 
 /** Grey out every floating-toolbar row that edits, with `reason` on hover. */
 export function toReadOnlyFloatingToolbarItems(
-    items: FloatingToolbarItem[],
-    readOnly: UIEditorReadOnly,
+  items: FloatingToolbarItem[],
+  readOnly: UIEditorReadOnly
 ): FloatingToolbarItem[] {
-    if (!readOnly.active) {
-        return items;
+  if (!readOnly.active) {
+    return items;
+  }
+  return items.map((item) => {
+    if (READ_ONLY_FLOATING_TOOLBAR_IDS.has(item.id)) {
+      return item;
     }
-    return items.map(item => {
-        if (READ_ONLY_FLOATING_TOOLBAR_IDS.has(item.id)) {
-            return item;
-        }
-        return { ...item, disabled: true, tooltip: readOnly.reason ?? item.tooltip };
-    });
+    return { ...item, disabled: true, tooltip: readOnly.reason ?? item.tooltip };
+  });
 }
 
 /**
@@ -165,8 +168,8 @@ export function toReadOnlyFloatingToolbarItems(
  * watch the video they had opened the past version to see.
  */
 const READ_ONLY_DOCKER_BAR_IDS: ReadonlySet<string> = new Set([
-    "docker-video-preview-toggle",
-    "docker-video-preview-restart",
+  "docker-video-preview-toggle",
+  "docker-video-preview-restart"
 ]);
 
 /**
@@ -177,23 +180,31 @@ const READ_ONLY_DOCKER_BAR_IDS: ReadonlySet<string> = new Set([
  * prop on each button. Separators pass through so the bar does not visibly rearrange itself when a
  * workspace freezes.
  */
-export function toReadOnlyDockerBarItems(items: DockerBarItem[], readOnly: UIEditorReadOnly): DockerBarItem[] {
-    if (!readOnly.active) {
-        return items;
+export function toReadOnlyDockerBarItems(
+  items: DockerBarItem[],
+  readOnly: UIEditorReadOnly
+): DockerBarItem[] {
+  if (!readOnly.active) {
+    return items;
+  }
+  return items.map((item) => {
+    if (READ_ONLY_DOCKER_BAR_IDS.has(item.id)) {
+      return item;
     }
-    return items.map(item => {
-        if (READ_ONLY_DOCKER_BAR_IDS.has(item.id)) {
-            return item;
-        }
-        switch (item.kind) {
-            case "separator":
-                return item;
-            case "number":
-                // `readOnly` as well as `disabled`: a disabled number input still accepts a programmatic
-                // commit from the deferred-input timer if it was mid-edit when the freeze landed.
-                return { ...item, disabled: true, readOnly: true, tooltip: readOnly.reason ?? item.tooltip };
-            default:
-                return { ...item, disabled: true, tooltip: readOnly.reason ?? item.tooltip };
-        }
-    });
+    switch (item.kind) {
+      case "separator":
+        return item;
+      case "number":
+        // `readOnly` as well as `disabled`: a disabled number input still accepts a programmatic
+        // commit from the deferred-input timer if it was mid-edit when the freeze landed.
+        return {
+          ...item,
+          disabled: true,
+          readOnly: true,
+          tooltip: readOnly.reason ?? item.tooltip
+        };
+      default:
+        return { ...item, disabled: true, tooltip: readOnly.reason ?? item.tooltip };
+    }
+  });
 }

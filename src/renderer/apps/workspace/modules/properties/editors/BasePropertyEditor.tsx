@@ -13,185 +13,186 @@ import { FIELD_INPUT_CLASS, FIELD_TEXTAREA_CLASS } from "../fieldControlClass";
  * Can be extended by specific asset type editors
  */
 export interface BasePropertyEditorProps<T extends AssetType> extends PropertyEditorProps<T> {
-    children?: React.ReactNode;
+  children?: React.ReactNode;
 }
 
-export function BasePropertyEditor<T extends AssetType>({ asset, onChange, children }: BasePropertyEditorProps<T>) {
-    const { t } = useTranslation();
-    const { context } = useWorkspace();
-    const [name, setName] = useState(asset.name);
-    const [tags, setTags] = useState<string[]>(asset.tags);
-    const [description, setDescription] = useState(asset.description);
-    const [newTag, setNewTag] = useState("");
-    const [saving, setSaving] = useState(false);
-    const tagInputRef = useRef<HTMLInputElement>(null);
+export function BasePropertyEditor<T extends AssetType>({
+  asset,
+  onChange,
+  children
+}: BasePropertyEditorProps<T>) {
+  const { t } = useTranslation();
+  const { context } = useWorkspace();
+  const [name, setName] = useState(asset.name);
+  const [tags, setTags] = useState<string[]>(asset.tags);
+  const [description, setDescription] = useState(asset.description);
+  const [newTag, setNewTag] = useState("");
+  const [saving, setSaving] = useState(false);
+  const tagInputRef = useRef<HTMLInputElement>(null);
 
-    // Sync local state when asset reference changes
-    useEffect(() => {
-        setName(asset.name);
-        setTags(asset.tags);
-        setDescription(asset.description);
-    }, [asset]);
+  // Sync local state when asset reference changes
+  useEffect(() => {
+    setName(asset.name);
+    setTags(asset.tags);
+    setDescription(asset.description);
+  }, [asset]);
 
-    // Keep focus on tag input after adding a tag
-    useEffect(() => {
-        if (newTag === "") {
-            // Small delay to ensure DOM has updated
-            const timer = setTimeout(() => {
-                tagInputRef.current?.focus();
-            }, 10);
-            return () => clearTimeout(timer);
+  // Keep focus on tag input after adding a tag
+  useEffect(() => {
+    if (newTag === "") {
+      // Small delay to ensure DOM has updated
+      const timer = setTimeout(() => {
+        tagInputRef.current?.focus();
+      }, 10);
+      return () => clearTimeout(timer);
+    }
+  }, [newTag]);
+
+  // Debounced save
+  const saveChanges = useCallback(
+    async (field: "name" | "tags" | "description", value: any) => {
+      if (!context) return;
+
+      setSaving(true);
+      try {
+        const assetsService = context.services.get<AssetsService>(Services.Assets);
+
+        switch (field) {
+          case "name":
+            await assetsService.renameAsset(asset, value);
+            break;
+          case "tags":
+            await assetsService.updateAssetTags(asset, value);
+            break;
+          case "description":
+            await assetsService.updateAssetDescription(asset, value);
+            break;
         }
-    }, [newTag]);
 
-    // Debounced save
-    const saveChanges = useCallback(async (field: 'name' | 'tags' | 'description', value: any) => {
-        if (!context) return;
+        onChange?.({ ...asset, [field]: value });
+      } catch (err) {
+        console.error(`Failed to update ${field}:`, err);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [context, asset, onChange]
+  );
 
-        setSaving(true);
-        try {
-            const assetsService = context.services.get<AssetsService>(Services.Assets);
+  const handleNameBlur = () => {
+    if (name !== asset.name) {
+      saveChanges("name", name);
+    }
+  };
 
-            switch (field) {
-                case 'name':
-                    await assetsService.renameAsset(asset, value);
-                    break;
-                case 'tags':
-                    await assetsService.updateAssetTags(asset, value);
-                    break;
-                case 'description':
-                    await assetsService.updateAssetDescription(asset, value);
-                    break;
-            }
+  const handleAddTag = () => {
+    if (newTag.trim() && !tags.includes(newTag.trim())) {
+      const newTags = [...tags, newTag.trim()];
+      setTags(newTags);
+      setNewTag("");
+      saveChanges("tags", newTags);
+    }
+  };
 
-            onChange?.({ ...asset, [field]: value });
-        } catch (err) {
-            console.error(`Failed to update ${field}:`, err);
-        } finally {
-            setSaving(false);
-        }
-    }, [context, asset, onChange]);
+  const handleRemoveTag = (tag: string) => {
+    const newTags = tags.filter((t) => t !== tag);
+    setTags(newTags);
+    saveChanges("tags", newTags);
+  };
 
-    const handleNameBlur = () => {
-        if (name !== asset.name) {
-            saveChanges('name', name);
-        }
-    };
+  const handleDescriptionBlur = () => {
+    if (description !== asset.description) {
+      saveChanges("description", description);
+    }
+  };
 
-    const handleAddTag = () => {
-        if (newTag.trim() && !tags.includes(newTag.trim())) {
-            const newTags = [...tags, newTag.trim()];
-            setTags(newTags);
-            setNewTag("");
-            saveChanges('tags', newTags);
-        }
-    };
+  return (
+    <div className="p-4 space-y-4">
+      {/* Additional content (e.g., previews, metadata) */}
+      {children}
 
-    const handleRemoveTag = (tag: string) => {
-        const newTags = tags.filter(t => t !== tag);
-        setTags(newTags);
-        saveChanges('tags', newTags);
-    };
+      {/* Name */}
+      <div>
+        <label className="block text-xs font-medium text-fg-muted mb-1">{t("common.name")}</label>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={handleNameBlur}
+          className={`w-full ${FIELD_INPUT_CLASS}`}
+          disabled={saving}
+        />
+      </div>
 
-    const handleDescriptionBlur = () => {
-        if (description !== asset.description) {
-            saveChanges('description', description);
-        }
-    };
-
-    return (
-        <div className="p-4 space-y-4">
-            {/* Additional content (e.g., previews, metadata) */}
-            {children}
-
-            {/* Name */}
-            <div>
-                <label className="block text-xs font-medium text-fg-muted mb-1">
-                    {t("common.name")}
-                </label>
-                <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    onBlur={handleNameBlur}
-                    className={`w-full ${FIELD_INPUT_CLASS}`}
-                    disabled={saving}
-                />
-            </div>
-
-            {/* Tags */}
-            <div>
-                <label className="block text-xs font-medium text-fg-muted mb-1">
-                    {t("properties.tags.label")}
-                </label>
-                <div className="flex flex-wrap gap-1 mb-2">
-                    {tags.map((tag) => (
-                        <span
-                            key={tag}
-                            className="inline-flex items-center gap-1 px-2 py-1 bg-primary/20 text-primary text-xs rounded-md"
-                        >
-                            {tag}
-                            <button
-                                onClick={() => handleRemoveTag(tag)}
-                                className="hover:text-primary cursor-default"
-                                disabled={saving}
-                                data-tip={t("properties.tags.remove")}
-                                aria-label={t("properties.tags.removeAria", { tag })}
-                            >
-                                <X className="w-3 h-3" />
-                            </button>
-                        </span>
-                    ))}
-                </div>
-                <div className="flex gap-1">
-                    <input
-                        ref={tagInputRef}
-                        type="text"
-                        value={newTag}
-                        onChange={(e) => setNewTag(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleAddTag();
-                            }
-                        }}
-                        placeholder={t("properties.tags.addPlaceholder")}
-                        className={`flex-1 ${FIELD_INPUT_CLASS}`}
-                        disabled={saving}
-                    />
-                    <button
-                        onClick={handleAddTag}
-                        disabled={!newTag.trim() || saving}
-                        data-tip={t("properties.tags.add")}
-                        aria-label={t("properties.tags.add")}
-                        className="grid h-9 w-9 place-items-center bg-primary/20 hover:bg-primary/30 text-primary rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-default"
-                    >
-                        <Plus className="w-4 h-4" />
-                    </button>
-                </div>
-            </div>
-
-            {/* Description */}
-            <div>
-                <label className="block text-xs font-medium text-fg-muted mb-1">
-                    {t("common.description")}
-                </label>
-                <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    onBlur={handleDescriptionBlur}
-                    rows={4}
-                    className={`w-full ${FIELD_TEXTAREA_CLASS} resize-none`}
-                    placeholder={t("properties.asset.descriptionPlaceholder")}
-                    disabled={saving}
-                />
-            </div>
-
-            {saving && (
-                <div className="text-xs text-fg-muted text-center">
-                    {t("properties.saving")}
-                </div>
-            )}
+      {/* Tags */}
+      <div>
+        <label className="block text-xs font-medium text-fg-muted mb-1">
+          {t("properties.tags.label")}
+        </label>
+        <div className="flex flex-wrap gap-1 mb-2">
+          {tags.map((tag) => (
+            <span
+              key={tag}
+              className="inline-flex items-center gap-1 px-2 py-1 bg-primary/20 text-primary text-xs rounded-md"
+            >
+              {tag}
+              <button
+                onClick={() => handleRemoveTag(tag)}
+                className="hover:text-primary cursor-default"
+                disabled={saving}
+                data-tip={t("properties.tags.remove")}
+                aria-label={t("properties.tags.removeAria", { tag })}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
         </div>
-    );
+        <div className="flex gap-1">
+          <input
+            ref={tagInputRef}
+            type="text"
+            value={newTag}
+            onChange={(e) => setNewTag(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleAddTag();
+              }
+            }}
+            placeholder={t("properties.tags.addPlaceholder")}
+            className={`flex-1 ${FIELD_INPUT_CLASS}`}
+            disabled={saving}
+          />
+          <button
+            onClick={handleAddTag}
+            disabled={!newTag.trim() || saving}
+            data-tip={t("properties.tags.add")}
+            aria-label={t("properties.tags.add")}
+            className="grid h-9 w-9 place-items-center bg-primary/20 hover:bg-primary/30 text-primary rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-default"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Description */}
+      <div>
+        <label className="block text-xs font-medium text-fg-muted mb-1">
+          {t("common.description")}
+        </label>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          onBlur={handleDescriptionBlur}
+          rows={4}
+          className={`w-full ${FIELD_TEXTAREA_CLASS} resize-none`}
+          placeholder={t("properties.asset.descriptionPlaceholder")}
+          disabled={saving}
+        />
+      </div>
+
+      {saving && <div className="text-xs text-fg-muted text-center">{t("properties.saving")}</div>}
+    </div>
+  );
 }

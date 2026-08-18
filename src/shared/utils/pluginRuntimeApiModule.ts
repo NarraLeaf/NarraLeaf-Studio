@@ -111,8 +111,8 @@ export const jsxDEV = runtime.jsxDEV;
 
 /** Shim sources keyed by the plugin-api path they are served under. */
 export const PLUGIN_REACT_MODULE_SOURCES: Record<string, string> = {
-    "/react.js": PLUGIN_REACT_MODULE,
-    "/react-dom.js": PLUGIN_REACT_DOM_MODULE,
-    "/react-jsx-runtime.js": PLUGIN_REACT_JSX_RUNTIME_MODULE,
-    "/react-jsx-dev-runtime.js": PLUGIN_REACT_JSX_DEV_RUNTIME_MODULE,
+  "/react.js": PLUGIN_REACT_MODULE,
+  "/react-dom.js": PLUGIN_REACT_DOM_MODULE,
+  "/react-jsx-runtime.js": PLUGIN_REACT_JSX_RUNTIME_MODULE,
+  "/react-jsx-dev-runtime.js": PLUGIN_REACT_JSX_DEV_RUNTIME_MODULE
 };

@@ -33,8 +33,8 @@ export type PluginTextEditorEncodingId = TextEncodingId;
  * way into `monaco.languages.setMonarchTokensProvider`.
  */
 export type PluginTextEditorMonarchGrammar = {
-    tokenizer: Record<string, unknown>;
-    [key: string]: unknown;
+  tokenizer: Record<string, unknown>;
+  [key: string]: unknown;
 };
 
 /** A monaco `languages.LanguageConfiguration` (comments, brackets, auto-closing pairs, folding). */
@@ -49,13 +49,13 @@ export type PluginTextEditorLanguageConfiguration = Record<string, unknown>;
  * startup for every workspace, whether or not a text file is ever opened.
  */
 export type PluginTextEditorLanguageDef = {
-    /** Monaco language id. Must be prefixed with the plugin id. */
-    id: string;
-    /** File extensions, with or without the leading dot; matched case-insensitively. */
-    extensions: string[];
-    aliases?: string[];
-    monarch?: PluginTextEditorMonarchGrammar;
-    configuration?: PluginTextEditorLanguageConfiguration;
+  /** Monaco language id. Must be prefixed with the plugin id. */
+  id: string;
+  /** File extensions, with or without the leading dot; matched case-insensitively. */
+  extensions: string[];
+  aliases?: string[];
+  monarch?: PluginTextEditorMonarchGrammar;
+  configuration?: PluginTextEditorLanguageConfiguration;
 };
 
 /**
@@ -66,11 +66,11 @@ export type PluginTextEditorLanguageDef = {
  * that animates or polls can stand down while its tab is in the background.
  */
 export type PluginTextEditorPreviewProps = {
-    text: string;
-    encoding: PluginTextEditorEncodingId;
-    fileName: string;
-    assetId: string;
-    active: boolean;
+  text: string;
+  encoding: PluginTextEditorEncodingId;
+  fileName: string;
+  assetId: string;
+  active: boolean;
 };
 
 /**
@@ -80,15 +80,15 @@ export type PluginTextEditorPreviewProps = {
  * extension matches - so a project with no such plugin has no preview control anywhere.
  */
 export type PluginTextEditorPreviewDef = {
-    /** Must be prefixed with the plugin id. */
-    id: string;
-    /** File extensions this preview can render, with or without the leading dot. */
-    extensions: string[];
-    title: string;
-    /** i18n key for the title; resolved at render, so it follows a live language switch. */
-    titleKey?: TranslationKey;
-    icon?: ReactNode;
-    component: ComponentType<PluginTextEditorPreviewProps>;
+  /** Must be prefixed with the plugin id. */
+  id: string;
+  /** File extensions this preview can render, with or without the leading dot. */
+  extensions: string[];
+  title: string;
+  /** i18n key for the title; resolved at render, so it follows a live language switch. */
+  titleKey?: TranslationKey;
+  icon?: ReactNode;
+  component: ComponentType<PluginTextEditorPreviewProps>;
 };
 
 /**
@@ -97,11 +97,11 @@ export type PluginTextEditorPreviewDef = {
  * action never has to know how a text asset is persisted.
  */
 export type PluginTextEditorActionContext = {
-    assetId: string;
-    fileName: string;
-    encoding: PluginTextEditorEncodingId;
-    getText(): string;
-    setText(text: string): void;
+  assetId: string;
+  fileName: string;
+  encoding: PluginTextEditorEncodingId;
+  getText(): string;
+  setText(text: string): void;
 };
 
 /**
@@ -111,15 +111,15 @@ export type PluginTextEditorActionContext = {
  * action's control exists only while at least one action matches the open document.
  */
 export type PluginTextEditorActionDef = {
-    /** Must be prefixed with the plugin id. */
-    id: string;
-    title: string;
-    /** i18n key for the title; resolved at render, so it follows a live language switch. */
-    titleKey?: TranslationKey;
-    icon?: ReactNode;
-    /** Restrict to these extensions; omit to offer the action on every text document. */
-    extensions?: string[];
-    run(ctx: PluginTextEditorActionContext): void | Promise<void>;
+  /** Must be prefixed with the plugin id. */
+  id: string;
+  title: string;
+  /** i18n key for the title; resolved at render, so it follows a live language switch. */
+  titleKey?: TranslationKey;
+  icon?: ReactNode;
+  /** Restrict to these extensions; omit to offer the action on every text document. */
+  extensions?: string[];
+  run(ctx: PluginTextEditorActionContext): void | Promise<void>;
 };
 
 /**
@@ -130,7 +130,7 @@ export type PluginTextEditorActionDef = {
  * last - a registry that quietly matched only one of them would leave the other silently dead.
  */
 export function normalizeTextEditorExtension(extension: string): string {
-    return extension.trim().replace(/^\.+/, "").toLowerCase();
+  return extension.trim().replace(/^\.+/, "").toLowerCase();
 }
 
 /**
@@ -140,15 +140,15 @@ export function normalizeTextEditorExtension(extension: string): string {
  * previews are meaningless without one.
  */
 export function textEditorContributionMatches(
-    extensions: readonly string[] | undefined,
-    extension: string,
+  extensions: readonly string[] | undefined,
+  extension: string
 ): boolean {
-    if (!extensions) {
-        return true;
-    }
-    const wanted = normalizeTextEditorExtension(extension);
-    if (!wanted) {
-        return false;
-    }
-    return extensions.some(candidate => normalizeTextEditorExtension(candidate) === wanted);
+  if (!extensions) {
+    return true;
+  }
+  const wanted = normalizeTextEditorExtension(extension);
+  if (!wanted) {
+    return false;
+  }
+  return extensions.some((candidate) => normalizeTextEditorExtension(candidate) === wanted);
 }

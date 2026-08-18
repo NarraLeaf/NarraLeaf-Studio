@@ -7,66 +7,88 @@ import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
 export class ProjectWizardLaunchHandler extends IPCHandler<IPCEventType.projectWizardLaunch> {
-    readonly name = IPCEventType.projectWizardLaunch;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.projectWizardLaunch;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<{created: boolean; projectPath: string} | null>> {
-        const wizardWindow = await window.getApp().launchProjectWizard(window, {}, {
-            parent: window.win,
-            resizable: false,
-            // Wider than it is tall, unlike the 600x800 this used to be. The first page is now two
-            // columns - the three origins beside the template list - and the pages that follow are
-            // a step rail beside a form; both are horizontal shapes, and the tall window spent its
-            // extra height on a progress header that no longer exists.
-            width: 760,
-            height: 620,
-            center: true,
-            x: undefined,
-            y: undefined,
-        });
+  public async handle(
+    window: AppWindow
+  ): Promise<RequestStatus<{ created: boolean; projectPath: string } | null>> {
+    const wizardWindow = await window.getApp().launchProjectWizard(
+      window,
+      {},
+      {
+        parent: window.win,
+        resizable: false,
+        // Wider than it is tall, unlike the 600x800 this used to be. The first page is now two
+        // columns - the three origins beside the template list - and the pages that follow are
+        // a step rail beside a form; both are horizontal shapes, and the tall window spent its
+        // extra height on a progress header that no longer exists.
+        width: 760,
+        height: 620,
+        center: true,
+        x: undefined,
+        y: undefined
+      }
+    );
 
-        // Establish parent-child relationship
-        window.addChild(wizardWindow);
+    // Establish parent-child relationship
+    window.addChild(wizardWindow);
 
-        // Wait for the wizard window to close and get the result
-        return new Promise<RequestStatus<{created: boolean; projectPath: string} | null>>((resolve) => {
-            // Set up resolver that will be called when window closes
-            // This handles both cases: closeWith was called or window was closed directly
-            wizardWindow.setCloseResultResolver((result: WindowCloseResults[WindowAppType.ProjectWizard]) => {
-                // If result is provided and has created property, return it
-                // Otherwise return null (user cancelled or closed without result)
-                if (result && typeof result === 'object' && 'created' in result && 'projectPath' in result) {
-                    resolve(this.success({ created: result.created, projectPath: result.projectPath }));
-                } else {
-                    resolve(this.success(null));
-                }
-            });
-        });
-    }
+    // Wait for the wizard window to close and get the result
+    return new Promise<RequestStatus<{ created: boolean; projectPath: string } | null>>(
+      (resolve) => {
+        // Set up resolver that will be called when window closes
+        // This handles both cases: closeWith was called or window was closed directly
+        wizardWindow.setCloseResultResolver(
+          (result: WindowCloseResults[WindowAppType.ProjectWizard]) => {
+            // If result is provided and has created property, return it
+            // Otherwise return null (user cancelled or closed without result)
+            if (
+              result &&
+              typeof result === "object" &&
+              "created" in result &&
+              "projectPath" in result
+            ) {
+              resolve(this.success({ created: result.created, projectPath: result.projectPath }));
+            } else {
+              resolve(this.success(null));
+            }
+          }
+        );
+      }
+    );
+  }
 }
 
 export class ProjectWizardSelectDirectoryHandler extends IPCHandler<IPCEventType.projectWizardSelectDirectory> {
-    readonly name = IPCEventType.projectWizardSelectDirectory;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.projectWizardSelectDirectory;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<{ dest: string | null }>> {
-        const result = await dialog.showOpenDialog(window.win, {
-            properties: ['openDirectory', 'createDirectory'],
-            title: 'Select Project Directory',
-            securityScopedBookmarks: true,
-        });
+  public async handle(window: AppWindow): Promise<RequestStatus<{ dest: string | null }>> {
+    const result = await dialog.showOpenDialog(window.win, {
+      properties: ["openDirectory", "createDirectory"],
+      title: "Select Project Directory",
+      securityScopedBookmarks: true
+    });
 
-        if (result.canceled || result.filePaths.length === 0) {
-            return this.success({ dest: null });
-        }
-
-        const selectedPath = result.filePaths[0] || null;
-        if (selectedPath) {
-            window.app.storageManager.grantFileSystemAccess(window, selectedPath, "readwrite", true, result.bookmarks?.[0], "session");
-        }
-
-        return this.success({ dest: selectedPath });
+    if (result.canceled || result.filePaths.length === 0) {
+      return this.success({ dest: null });
     }
+
+    const selectedPath = result.filePaths[0] || null;
+    if (selectedPath) {
+      window.app.storageManager.grantFileSystemAccess(
+        window,
+        selectedPath,
+        "readwrite",
+        true,
+        result.bookmarks?.[0],
+        "session"
+      );
+    }
+
+    return this.success({ dest: selectedPath });
+  }
 }
 
 /**
@@ -74,36 +96,36 @@ export class ProjectWizardSelectDirectoryHandler extends IPCHandler<IPCEventType
  * This replaces the hard-coded "C:\Projects" path with platform-appropriate directories
  */
 export class ProjectWizardGetDefaultDirectoryHandler extends IPCHandler<IPCEventType.projectWizardGetDefaultDirectory> {
-    readonly name = IPCEventType.projectWizardGetDefaultDirectory;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.projectWizardGetDefaultDirectory;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<{ dir: string }>> {
-        // Get platform-specific default directory using Electron's app.getPath()
-        const platform = process.platform;
-        let defaultDir: string;
+  public async handle(window: AppWindow): Promise<RequestStatus<{ dir: string }>> {
+    // Get platform-specific default directory using Electron's app.getPath()
+    const platform = process.platform;
+    let defaultDir: string;
 
-        switch (platform) {
-            case 'win32':
-                // Windows: Use Documents/Projects instead of hard-coded C:\Projects
-                // This puts projects in the user's personal Documents folder
-                defaultDir = path.join(app.getPath('documents'), 'Projects');
-                break;
-            case 'darwin':
-                // macOS: Use ~/Projects (user's home directory)
-                defaultDir = path.join(app.getPath('home'), 'Projects');
-                break;
-            case 'linux':
-                // Linux: Use ~/Projects (user's home directory)
-                defaultDir = path.join(app.getPath('home'), 'Projects');
-                break;
-            default:
-                // Fallback to home directory for unknown platforms
-                defaultDir = path.join(app.getPath('home'), 'Projects');
-                break;
-        }
-
-        window.app.storageManager.grantFileSystemAccess(window, defaultDir);
-
-        return this.success({ dir: defaultDir });
+    switch (platform) {
+      case "win32":
+        // Windows: Use Documents/Projects instead of hard-coded C:\Projects
+        // This puts projects in the user's personal Documents folder
+        defaultDir = path.join(app.getPath("documents"), "Projects");
+        break;
+      case "darwin":
+        // macOS: Use ~/Projects (user's home directory)
+        defaultDir = path.join(app.getPath("home"), "Projects");
+        break;
+      case "linux":
+        // Linux: Use ~/Projects (user's home directory)
+        defaultDir = path.join(app.getPath("home"), "Projects");
+        break;
+      default:
+        // Fallback to home directory for unknown platforms
+        defaultDir = path.join(app.getPath("home"), "Projects");
+        break;
     }
+
+    window.app.storageManager.grantFileSystemAccess(window, defaultDir);
+
+    return this.success({ dir: defaultDir });
+  }
 }

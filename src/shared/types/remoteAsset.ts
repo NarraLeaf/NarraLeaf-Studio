@@ -8,8 +8,8 @@
 
 /** What the server said about the snapshot the caller already holds. */
 export interface RemoteAssetValidators {
-    etag?: string;
-    lastModified?: string;
+  etag?: string;
+  lastModified?: string;
 }
 
 /**
@@ -18,17 +18,17 @@ export interface RemoteAssetValidators {
  * `bytes` crosses the IPC boundary, so it must survive structured clone - a `Uint8Array` does.
  */
 export interface RemoteAssetBytes {
-    kind: "ok";
-    bytes: Uint8Array;
-    etag?: string;
-    lastModified?: string;
-    /** Diagnostic only; the format gate reads the bytes rather than believing this. */
-    contentType?: string;
+  kind: "ok";
+  bytes: Uint8Array;
+  etag?: string;
+  lastModified?: string;
+  /** Diagnostic only; the format gate reads the bytes rather than believing this. */
+  contentType?: string;
 }
 
 /** The server answered 304: the caller's snapshot is still what the URL serves. */
 export interface RemoteAssetNotModified {
-    kind: "not-modified";
+  kind: "not-modified";
 }
 
 export type RemoteAssetFetchResult = RemoteAssetBytes | RemoteAssetNotModified;

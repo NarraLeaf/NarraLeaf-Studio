@@ -44,18 +44,18 @@ export const BRAND_LINK_SCHEME = "nlbrand:";
 const BRAND_LINK_BODY = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)?)(?:\/(\d+(?:\.\d+)?|\.\d+))?$/;
 
 export type BrandLink = {
-    id: string;
-    /** 0..1. A link with no alpha segment means 1, i.e. the palette colour as it is. */
-    alpha: number;
-    /**
-     * Whether a `/<alpha>` segment was actually written.
-     *
-     * `alpha` on its own cannot say so - `nlbrand:primary` and `nlbrand:primary/1` both read as 1 -
-     * and the resolver has to tell the two apart, because a written segment *replaces* the opacity
-     * of the literal the chain ends at while an absent one leaves it standing. See
-     * `BrandPalette.resolveValueCss` for why that is the rule.
-     */
-    alphaExplicit: boolean;
+  id: string;
+  /** 0..1. A link with no alpha segment means 1, i.e. the palette colour as it is. */
+  alpha: number;
+  /**
+   * Whether a `/<alpha>` segment was actually written.
+   *
+   * `alpha` on its own cannot say so - `nlbrand:primary` and `nlbrand:primary/1` both read as 1 -
+   * and the resolver has to tell the two apart, because a written segment *replaces* the opacity
+   * of the literal the chain ends at while an absent one leaves it standing. See
+   * `BrandPalette.resolveValueCss` for why that is the rule.
+   */
+  alphaExplicit: boolean;
 };
 
 /**
@@ -69,30 +69,30 @@ export type BrandLink = {
  * the author can see and fix.
  */
 export function parseBrandLink(raw: string | null | undefined): BrandLink | null {
-    if (typeof raw !== "string") {
-        return null;
-    }
-    const trimmed = raw.trim();
-    if (!trimmed.startsWith(BRAND_LINK_SCHEME)) {
-        return null;
-    }
-    const match = BRAND_LINK_BODY.exec(trimmed.slice(BRAND_LINK_SCHEME.length));
-    if (!match) {
-        return null;
-    }
-    const [, id, rawAlpha] = match;
-    if (rawAlpha === undefined) {
-        return {id, alpha: 1, alphaExplicit: false};
-    }
-    const alpha = Number(rawAlpha);
-    if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) {
-        return null;
-    }
-    return {id, alpha, alphaExplicit: true};
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith(BRAND_LINK_SCHEME)) {
+    return null;
+  }
+  const match = BRAND_LINK_BODY.exec(trimmed.slice(BRAND_LINK_SCHEME.length));
+  if (!match) {
+    return null;
+  }
+  const [, id, rawAlpha] = match;
+  if (rawAlpha === undefined) {
+    return { id, alpha: 1, alphaExplicit: false };
+  }
+  const alpha = Number(rawAlpha);
+  if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) {
+    return null;
+  }
+  return { id, alpha, alphaExplicit: true };
 }
 
 export function isBrandLink(raw: string | null | undefined): boolean {
-    return parseBrandLink(raw) !== null;
+  return parseBrandLink(raw) !== null;
 }
 
 /**
@@ -113,16 +113,16 @@ export function isBrandLink(raw: string | null | undefined): boolean {
  * rather than a rule in here.
  */
 export function formatBrandLink(
-    id: string,
-    alpha?: number,
-    options?: {writeOpaqueSegment?: boolean},
+  id: string,
+  alpha?: number,
+  options?: { writeOpaqueSegment?: boolean }
 ): string {
-    if (alpha === undefined || !Number.isFinite(alpha)) {
-        return `${BRAND_LINK_SCHEME}${id}`;
-    }
-    const rounded = Math.round(Math.min(1, Math.max(0, alpha)) * 100) / 100;
-    if (rounded >= 1 && !options?.writeOpaqueSegment) {
-        return `${BRAND_LINK_SCHEME}${id}`;
-    }
-    return `${BRAND_LINK_SCHEME}${id}/${rounded}`;
+  if (alpha === undefined || !Number.isFinite(alpha)) {
+    return `${BRAND_LINK_SCHEME}${id}`;
+  }
+  const rounded = Math.round(Math.min(1, Math.max(0, alpha)) * 100) / 100;
+  if (rounded >= 1 && !options?.writeOpaqueSegment) {
+    return `${BRAND_LINK_SCHEME}${id}`;
+  }
+  return `${BRAND_LINK_SCHEME}${id}/${rounded}`;
 }

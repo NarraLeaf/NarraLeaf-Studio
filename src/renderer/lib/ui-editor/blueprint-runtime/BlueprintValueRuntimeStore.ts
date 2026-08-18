@@ -2,10 +2,10 @@ import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 import type {
-    UIDocument,
-    UIElement,
-    UIElementValueBindingValueType,
-    UISurface,
+  UIDocument,
+  UIElement,
+  UIElementValueBindingValueType,
+  UISurface
 } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import { clampSliderValue, normalizeSliderProps } from "@shared/types/ui-editor/slider";
@@ -15,487 +15,511 @@ import type { BlueprintValueDependency } from "@/lib/ui-editor/behavior-graph/Be
 import { evaluateBlueprintValue } from "./BlueprintValueEvaluator";
 
 type ActiveBindingInput = {
-    key: string;
-    document: UIDocument;
-    surfaceId: string;
-    runtimeScopeId?: string;
-    elementId: string;
-    propPath: string;
-    blueprintId: string;
-    valueType: UIElementValueBindingValueType;
-    blueprintDocument: BlueprintDocument;
-    persistentVariables: PersistentVariableRuntimeTable;
-    hostAdapter: UIHostAdapter;
-    listItemScope?: UIListItemScope | null;
-    instanceKey?: string;
+  key: string;
+  document: UIDocument;
+  surfaceId: string;
+  runtimeScopeId?: string;
+  elementId: string;
+  propPath: string;
+  blueprintId: string;
+  valueType: UIElementValueBindingValueType;
+  blueprintDocument: BlueprintDocument;
+  persistentVariables: PersistentVariableRuntimeTable;
+  hostAdapter: UIHostAdapter;
+  listItemScope?: UIListItemScope | null;
+  instanceKey?: string;
 };
 
 type BindingRuntimeEntry = {
-    input: ActiveBindingInput;
-    started: boolean;
-    running: boolean;
-    pendingEvaluate: boolean;
-    hasResolved: boolean;
-    resolvedValue: unknown;
-    blueprintDocumentRef: BlueprintDocument;
-    dependencies: BlueprintValueDependency[];
-    dependencySnapshotKey: string;
-    listItemSnapshotKey: string;
+  input: ActiveBindingInput;
+  started: boolean;
+  running: boolean;
+  pendingEvaluate: boolean;
+  hasResolved: boolean;
+  resolvedValue: unknown;
+  blueprintDocumentRef: BlueprintDocument;
+  dependencies: BlueprintValueDependency[];
+  dependencySnapshotKey: string;
+  listItemSnapshotKey: string;
 };
 
 export type BlueprintValueResolved = {
-    hasResolved: boolean;
-    value: unknown;
+  hasResolved: boolean;
+  value: unknown;
 };
 
 type ValueRuntimeSyncContext = {
+  document: UIDocument;
+  surface: UISurface;
+  blueprintDocument: BlueprintDocument;
+  persistentVariables: PersistentVariableRuntimeTable;
+  hostAdapter: UIHostAdapter;
+  runtimeScopeId: string;
+};
+
+function valueBindingKey(
+  surfaceId: string,
+  elementId: string,
+  propPath: string,
+  blueprintId: string,
+  instanceKey?: string
+): string {
+  return `${surfaceId}\0${elementId}\0${propPath}\0${blueprintId}\0${instanceKey ?? ""}`;
+}
+
+function collectSurfaceElements(document: UIDocument, surface: UISurface): UIElement[] {
+  const out: UIElement[] = [];
+  const visit = (elementId: string) => {
+    const element = document.elements[elementId];
+    if (!element) {
+      return;
+    }
+    out.push(element);
+    for (const childId of element.childrenIds ?? []) {
+      visit(childId);
+    }
+  };
+  visit(surface.rootElementId);
+  return out;
+}
+
+function coerceValue(value: unknown, valueType: ActiveBindingInput["valueType"]): unknown {
+  if (valueType === "string") {
+    return value == null ? "" : String(value);
+  }
+  if (valueType === "float") {
+    const n = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  if (valueType === "boolean") {
+    // `undefined` is this store's word for "nothing usable came back", so "the graph returned
+    // nothing" must not be spelled the same way as "the graph returned false": `undefined` and
+    // `null` pass straight through, exactly as an unusable number does on the float branch.
+    //
+    // Everything else is decided here, and deliberately narrowly: on is `true`, the string
+    // "true", or the number 1 - the three shapes a boolean literal, a stringified preference and
+    // a 0/1 flag actually arrive in. Anything else is off: 0, "", an object, and above all the
+    // string "false", which plain truthiness would have read as on - the one wrong answer an
+    // author would never think to check for.
+    if (value == null) {
+      return undefined;
+    }
+    return value === true || value === "true" || value === 1;
+  }
+  return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringifyDependencyValue(value: unknown): string {
+  if (value === undefined) {
+    return "undefined";
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function stringifyListItemScope(scope: UIListItemScope | null | undefined): string {
+  if (!scope) {
+    return "";
+  }
+  return stringifyDependencyValue({
+    item: scope.item,
+    index: scope.index,
+    count: scope.count,
+    key: scope.key
+  });
+}
+
+function readNestedRecordPath(value: unknown, path: string): unknown {
+  if (!path) {
+    return value;
+  }
+  let current: unknown = value;
+  for (const part of path.split(".")) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
+}
+
+function readDependencyValue(document: UIDocument, dependency: BlueprintValueDependency): unknown {
+  const element = document.elements[dependency.elementId];
+  if (!element) {
+    return { missing: true };
+  }
+  if (dependency.propPath.startsWith("props.")) {
+    return readNestedRecordPath(element.props, dependency.propPath.slice("props.".length));
+  }
+  if (dependency.propPath.startsWith("layout.")) {
+    return readNestedRecordPath(element.layout, dependency.propPath.slice("layout.".length));
+  }
+  return undefined;
+}
+
+function buildDependencySnapshotKey(
+  document: UIDocument,
+  dependencies: readonly BlueprintValueDependency[]
+): string {
+  return dependencies
+    .map((dependency) => {
+      const key = `${dependency.surfaceId}\0${dependency.elementId}\0${dependency.propPath}`;
+      return `${key}\0${stringifyDependencyValue(readDependencyValue(document, dependency))}`;
+    })
+    .sort()
+    .join("\x1e");
+}
+
+const SUPPORTED_VALUE_TARGETS: Array<{
+  elementType: string;
+  propPath: string;
+  valueType: UIElementValueBindingValueType;
+  normalize?: (value: unknown, element: UIElement) => unknown;
+}> = [
+  { elementType: "nl.text", propPath: "text", valueType: "string" },
+  { elementType: "nl.button", propPath: "label", valueType: "string" },
+  {
+    elementType: UI_FRAME_ELEMENT_TYPE,
+    propPath: "params",
+    valueType: "json",
+    normalize: (value) => (isRecord(value) ? value : {})
+  },
+  {
+    elementType: "nl.slider",
+    propPath: "value",
+    valueType: "float",
+    normalize: (value, element) => {
+      const props = normalizeSliderProps(element.props);
+      return value === undefined ? props.value : clampSliderValue(value, props);
+    }
+  },
+  // No `normalize`: the slider needs one to clamp into its range, and the switch has no range.
+  // `normalizeSwitchProps` already reads anything that is not `true` as off, so the merged value
+  // needs no second gate on the way in.
+  { elementType: UI_SWITCH_ELEMENT_TYPE, propPath: "checked", valueType: "boolean" }
+];
+
+export class BlueprintValueRuntimeStore {
+  private readonly entries = new Map<string, BindingRuntimeEntry>();
+  private disposed = false;
+  private lastSyncContext: ValueRuntimeSyncContext | null = null;
+  private changeAnnounced = false;
+
+  public constructor(private readonly onChange: () => void) {}
+
+  /**
+   * Announce "some value on this surface resolved" at most once per microtask checkpoint.
+   *
+   * Every entry evaluates behind its own `await`, so a page with sixteen value-bound widgets used
+   * to announce sixteen separate changes - and the subscriber's answer to a change is to rebuild
+   * the entire element tree. Nothing renders between two microtasks, so the sixteen rebuilds all
+   * produced frames no one could see; only the last one was ever painted.
+   *
+   * Deliberately a microtask and not a frame: the batch still lands before the browser can paint,
+   * so this collapses redundant work without deferring anything an author could observe.
+   */
+  private announceChange(): void {
+    if (this.changeAnnounced) {
+      return;
+    }
+    this.changeAnnounced = true;
+    queueMicrotask(() => {
+      this.changeAnnounced = false;
+      if (this.disposed) {
+        return;
+      }
+      this.onChange();
+    });
+  }
+
+  /**
+   * Terminal. A disposed store answers `sync` / `ensureElementValue` / `refreshAll` with an early
+   * return forever, so whoever owns the instance has to build a new one to start resolving again
+   * (see `SurfaceValueRuntimeBoundary`, which is why the store lives in state and not a memo).
+   */
+  public dispose(): void {
+    this.disposed = true;
+    this.entries.clear();
+  }
+
+  public sync(input: {
     document: UIDocument;
     surface: UISurface;
     blueprintDocument: BlueprintDocument;
     persistentVariables: PersistentVariableRuntimeTable;
     hostAdapter: UIHostAdapter;
-    runtimeScopeId: string;
-};
-
-function valueBindingKey(surfaceId: string, elementId: string, propPath: string, blueprintId: string, instanceKey?: string): string {
-    return `${surfaceId}\0${elementId}\0${propPath}\0${blueprintId}\0${instanceKey ?? ""}`;
-}
-
-function collectSurfaceElements(document: UIDocument, surface: UISurface): UIElement[] {
-    const out: UIElement[] = [];
-    const visit = (elementId: string) => {
-        const element = document.elements[elementId];
-        if (!element) {
-            return;
-        }
-        out.push(element);
-        for (const childId of element.childrenIds ?? []) {
-            visit(childId);
-        }
+  }): void {
+    if (this.disposed) {
+      return;
+    }
+    this.lastSyncContext = {
+      ...input,
+      runtimeScopeId: input.hostAdapter.blueprintRuntime?.runtimeScopeId ?? input.surface.id
     };
-    visit(surface.rootElementId);
-    return out;
-}
-
-function coerceValue(value: unknown, valueType: ActiveBindingInput["valueType"]): unknown {
-    if (valueType === "string") {
-        return value == null ? "" : String(value);
-    }
-    if (valueType === "float") {
-        const n = typeof value === "number" ? value : Number(value);
-        return Number.isFinite(n) ? n : undefined;
-    }
-    if (valueType === "boolean") {
-        // `undefined` is this store's word for "nothing usable came back", so "the graph returned
-        // nothing" must not be spelled the same way as "the graph returned false": `undefined` and
-        // `null` pass straight through, exactly as an unusable number does on the float branch.
-        //
-        // Everything else is decided here, and deliberately narrowly: on is `true`, the string
-        // "true", or the number 1 - the three shapes a boolean literal, a stringified preference and
-        // a 0/1 flag actually arrive in. Anything else is off: 0, "", an object, and above all the
-        // string "false", which plain truthiness would have read as on - the one wrong answer an
-        // author would never think to check for.
-        if (value == null) {
-            return undefined;
-        }
-        return value === true || value === "true" || value === 1;
-    }
-    return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function stringifyDependencyValue(value: unknown): string {
-    if (value === undefined) {
-        return "undefined";
-    }
-    try {
-        return JSON.stringify(value);
-    } catch {
-        return String(value);
-    }
-}
-
-function stringifyListItemScope(scope: UIListItemScope | null | undefined): string {
-    if (!scope) {
-        return "";
-    }
-    return stringifyDependencyValue({
-        item: scope.item,
-        index: scope.index,
-        count: scope.count,
-        key: scope.key,
-    });
-}
-
-function readNestedRecordPath(value: unknown, path: string): unknown {
-    if (!path) {
-        return value;
-    }
-    let current: unknown = value;
-    for (const part of path.split(".")) {
-        if (!current || typeof current !== "object" || Array.isArray(current)) {
-            return undefined;
-        }
-        current = (current as Record<string, unknown>)[part];
-    }
-    return current;
-}
-
-function readDependencyValue(document: UIDocument, dependency: BlueprintValueDependency): unknown {
-    const element = document.elements[dependency.elementId];
-    if (!element) {
-        return { missing: true };
-    }
-    if (dependency.propPath.startsWith("props.")) {
-        return readNestedRecordPath(element.props, dependency.propPath.slice("props.".length));
-    }
-    if (dependency.propPath.startsWith("layout.")) {
-        return readNestedRecordPath(element.layout, dependency.propPath.slice("layout.".length));
-    }
-    return undefined;
-}
-
-function buildDependencySnapshotKey(document: UIDocument, dependencies: readonly BlueprintValueDependency[]): string {
-    return dependencies
-        .map(dependency => {
-            const key = `${dependency.surfaceId}\0${dependency.elementId}\0${dependency.propPath}`;
-            return `${key}\0${stringifyDependencyValue(readDependencyValue(document, dependency))}`;
-        })
-        .sort()
-        .join("\x1e");
-}
-
-const SUPPORTED_VALUE_TARGETS: Array<{
-    elementType: string;
-    propPath: string;
-    valueType: UIElementValueBindingValueType;
-    normalize?: (value: unknown, element: UIElement) => unknown;
-}> = [
-    { elementType: "nl.text", propPath: "text", valueType: "string" },
-    { elementType: "nl.button", propPath: "label", valueType: "string" },
-    {
-        elementType: UI_FRAME_ELEMENT_TYPE,
-        propPath: "params",
-        valueType: "json",
-        normalize: value => (isRecord(value) ? value : {}),
-    },
-    {
-        elementType: "nl.slider",
-        propPath: "value",
-        valueType: "float",
-        normalize: (value, element) => {
-            const props = normalizeSliderProps(element.props);
-            return value === undefined ? props.value : clampSliderValue(value, props);
-        },
-    },
-    // No `normalize`: the slider needs one to clamp into its range, and the switch has no range.
-    // `normalizeSwitchProps` already reads anything that is not `true` as off, so the merged value
-    // needs no second gate on the way in.
-    { elementType: UI_SWITCH_ELEMENT_TYPE, propPath: "checked", valueType: "boolean" },
-];
-
-export class BlueprintValueRuntimeStore {
-    private readonly entries = new Map<string, BindingRuntimeEntry>();
-    private disposed = false;
-    private lastSyncContext: ValueRuntimeSyncContext | null = null;
-    private changeAnnounced = false;
-
-    public constructor(private readonly onChange: () => void) {}
-
-    /**
-     * Announce "some value on this surface resolved" at most once per microtask checkpoint.
-     *
-     * Every entry evaluates behind its own `await`, so a page with sixteen value-bound widgets used
-     * to announce sixteen separate changes - and the subscriber's answer to a change is to rebuild
-     * the entire element tree. Nothing renders between two microtasks, so the sixteen rebuilds all
-     * produced frames no one could see; only the last one was ever painted.
-     *
-     * Deliberately a microtask and not a frame: the batch still lands before the browser can paint,
-     * so this collapses redundant work without deferring anything an author could observe.
-     */
-    private announceChange(): void {
-        if (this.changeAnnounced) {
-            return;
-        }
-        this.changeAnnounced = true;
-        queueMicrotask(() => {
-            this.changeAnnounced = false;
-            if (this.disposed) {
-                return;
-            }
-            this.onChange();
-        });
-    }
-
-    /**
-     * Terminal. A disposed store answers `sync` / `ensureElementValue` / `refreshAll` with an early
-     * return forever, so whoever owns the instance has to build a new one to start resolving again
-     * (see `SurfaceValueRuntimeBoundary`, which is why the store lives in state and not a memo).
-     */
-    public dispose(): void {
-        this.disposed = true;
-        this.entries.clear();
-    }
-
-    public sync(input: {
-        document: UIDocument;
-        surface: UISurface;
-        blueprintDocument: BlueprintDocument;
-        persistentVariables: PersistentVariableRuntimeTable;
-        hostAdapter: UIHostAdapter;
-    }): void {
-        if (this.disposed) {
-            return;
-        }
-        this.lastSyncContext = {
-            ...input,
-            runtimeScopeId: input.hostAdapter.blueprintRuntime?.runtimeScopeId ?? input.surface.id,
-        };
-        const activeKeys = new Set<string>();
-        const runtimeScopeId = this.lastSyncContext.runtimeScopeId;
-        for (const element of collectSurfaceElements(input.document, input.surface)) {
-            for (const [propPath, binding] of Object.entries(element.valueBindings ?? {})) {
-                const key = valueBindingKey(input.surface.id, element.id, propPath, binding.blueprintId);
-                activeKeys.add(key);
-                const nextInput: ActiveBindingInput = {
-                    key,
-                    document: input.document,
-                    surfaceId: input.surface.id,
-                    runtimeScopeId,
-                    elementId: element.id,
-                    propPath,
-                    blueprintId: binding.blueprintId,
-                    valueType: binding.valueType,
-                    blueprintDocument: input.blueprintDocument,
-                    persistentVariables: input.persistentVariables,
-                    hostAdapter: input.hostAdapter,
-                    listItemScope: null,
-                    instanceKey: undefined,
-                };
-                let entry = this.entries.get(key);
-                if (!entry) {
-                    entry = {
-                        input: nextInput,
-                        started: false,
-                        running: false,
-                        pendingEvaluate: false,
-                        hasResolved: false,
-                        resolvedValue: undefined,
-                        blueprintDocumentRef: input.blueprintDocument,
-                        dependencies: [],
-                        dependencySnapshotKey: "",
-                        listItemSnapshotKey: "",
-                    };
-                    this.entries.set(key, entry);
-                    this.startInitial(entry);
-                    continue;
-                }
-                const blueprintChanged = entry.blueprintDocumentRef !== input.blueprintDocument;
-                const dependencyChanged = entry.dependencies.length > 0 &&
-                    buildDependencySnapshotKey(input.document, entry.dependencies) !== entry.dependencySnapshotKey;
-                entry.input = nextInput;
-                entry.blueprintDocumentRef = input.blueprintDocument;
-                if (entry.started && (blueprintChanged || dependencyChanged)) {
-                    this.queueEvaluate(entry);
-                }
-            }
-        }
-        for (const key of [...this.entries.keys()]) {
-            const entry = this.entries.get(key);
-            if (!activeKeys.has(key) && !entry?.input.instanceKey) {
-                this.entries.delete(key);
-            }
-        }
-    }
-
-    public ensureElementValue(input: {
-        element: UIElement;
-        surfaceId: string;
-        propPath: string;
-        blueprintId: string;
-        valueType: UIElementValueBindingValueType;
-        listItemScope?: UIListItemScope | null;
-        instanceKey?: string;
-    }): void {
-        if (this.disposed || !this.lastSyncContext) {
-            return;
-        }
-        const key = valueBindingKey(input.surfaceId, input.element.id, input.propPath, input.blueprintId, input.instanceKey);
+    const activeKeys = new Set<string>();
+    const runtimeScopeId = this.lastSyncContext.runtimeScopeId;
+    for (const element of collectSurfaceElements(input.document, input.surface)) {
+      for (const [propPath, binding] of Object.entries(element.valueBindings ?? {})) {
+        const key = valueBindingKey(input.surface.id, element.id, propPath, binding.blueprintId);
+        activeKeys.add(key);
         const nextInput: ActiveBindingInput = {
-            key,
-            document: this.lastSyncContext.document,
-            surfaceId: input.surfaceId,
-            runtimeScopeId: this.lastSyncContext.runtimeScopeId,
-            elementId: input.element.id,
-            propPath: input.propPath,
-            blueprintId: input.blueprintId,
-            valueType: input.valueType,
-            blueprintDocument: this.lastSyncContext.blueprintDocument,
-            persistentVariables: this.lastSyncContext.persistentVariables,
-            hostAdapter: this.lastSyncContext.hostAdapter,
-            listItemScope: input.listItemScope ?? null,
-            instanceKey: input.instanceKey,
+          key,
+          document: input.document,
+          surfaceId: input.surface.id,
+          runtimeScopeId,
+          elementId: element.id,
+          propPath,
+          blueprintId: binding.blueprintId,
+          valueType: binding.valueType,
+          blueprintDocument: input.blueprintDocument,
+          persistentVariables: input.persistentVariables,
+          hostAdapter: input.hostAdapter,
+          listItemScope: null,
+          instanceKey: undefined
         };
-        const listItemSnapshotKey = stringifyListItemScope(nextInput.listItemScope);
         let entry = this.entries.get(key);
         if (!entry) {
-            entry = {
-                input: nextInput,
-                started: false,
-                running: false,
-                pendingEvaluate: false,
-                hasResolved: false,
-                resolvedValue: undefined,
-                blueprintDocumentRef: nextInput.blueprintDocument,
-                dependencies: [],
-                dependencySnapshotKey: "",
-                listItemSnapshotKey,
-            };
-            this.entries.set(key, entry);
-            this.startInitial(entry);
-            return;
+          entry = {
+            input: nextInput,
+            started: false,
+            running: false,
+            pendingEvaluate: false,
+            hasResolved: false,
+            resolvedValue: undefined,
+            blueprintDocumentRef: input.blueprintDocument,
+            dependencies: [],
+            dependencySnapshotKey: "",
+            listItemSnapshotKey: ""
+          };
+          this.entries.set(key, entry);
+          this.startInitial(entry);
+          continue;
         }
-        const blueprintChanged = entry.blueprintDocumentRef !== nextInput.blueprintDocument;
-        const listItemChanged = entry.listItemSnapshotKey !== listItemSnapshotKey;
-        const dependencyChanged = entry.dependencies.length > 0 &&
-            buildDependencySnapshotKey(nextInput.document, entry.dependencies) !== entry.dependencySnapshotKey;
+        const blueprintChanged = entry.blueprintDocumentRef !== input.blueprintDocument;
+        const dependencyChanged =
+          entry.dependencies.length > 0 &&
+          buildDependencySnapshotKey(input.document, entry.dependencies) !==
+            entry.dependencySnapshotKey;
         entry.input = nextInput;
-        entry.blueprintDocumentRef = nextInput.blueprintDocument;
-        entry.listItemSnapshotKey = listItemSnapshotKey;
-        if (entry.started && (blueprintChanged || listItemChanged || dependencyChanged)) {
-            this.queueEvaluate(entry);
+        entry.blueprintDocumentRef = input.blueprintDocument;
+        if (entry.started && (blueprintChanged || dependencyChanged)) {
+          this.queueEvaluate(entry);
         }
+      }
     }
-
-    public getResolvedValue(
-        surfaceId: string,
-        elementId: string,
-        propPath: string,
-        blueprintId: string,
-        instanceKey?: string,
-    ): BlueprintValueResolved {
-        const entry = this.entries.get(valueBindingKey(surfaceId, elementId, propPath, blueprintId, instanceKey));
-        return {
-            hasResolved: entry?.hasResolved === true,
-            value: entry?.resolvedValue,
-        };
+    for (const key of [...this.entries.keys()]) {
+      const entry = this.entries.get(key);
+      if (!activeKeys.has(key) && !entry?.input.instanceKey) {
+        this.entries.delete(key);
+      }
     }
+  }
 
-    public refreshAll(): void {
-        if (this.disposed) {
-            return;
-        }
-        for (const entry of this.entries.values()) {
-            if (entry.started) {
-                this.queueEvaluate(entry);
-            }
-        }
+  public ensureElementValue(input: {
+    element: UIElement;
+    surfaceId: string;
+    propPath: string;
+    blueprintId: string;
+    valueType: UIElementValueBindingValueType;
+    listItemScope?: UIListItemScope | null;
+    instanceKey?: string;
+  }): void {
+    if (this.disposed || !this.lastSyncContext) {
+      return;
     }
+    const key = valueBindingKey(
+      input.surfaceId,
+      input.element.id,
+      input.propPath,
+      input.blueprintId,
+      input.instanceKey
+    );
+    const nextInput: ActiveBindingInput = {
+      key,
+      document: this.lastSyncContext.document,
+      surfaceId: input.surfaceId,
+      runtimeScopeId: this.lastSyncContext.runtimeScopeId,
+      elementId: input.element.id,
+      propPath: input.propPath,
+      blueprintId: input.blueprintId,
+      valueType: input.valueType,
+      blueprintDocument: this.lastSyncContext.blueprintDocument,
+      persistentVariables: this.lastSyncContext.persistentVariables,
+      hostAdapter: this.lastSyncContext.hostAdapter,
+      listItemScope: input.listItemScope ?? null,
+      instanceKey: input.instanceKey
+    };
+    const listItemSnapshotKey = stringifyListItemScope(nextInput.listItemScope);
+    let entry = this.entries.get(key);
+    if (!entry) {
+      entry = {
+        input: nextInput,
+        started: false,
+        running: false,
+        pendingEvaluate: false,
+        hasResolved: false,
+        resolvedValue: undefined,
+        blueprintDocumentRef: nextInput.blueprintDocument,
+        dependencies: [],
+        dependencySnapshotKey: "",
+        listItemSnapshotKey
+      };
+      this.entries.set(key, entry);
+      this.startInitial(entry);
+      return;
+    }
+    const blueprintChanged = entry.blueprintDocumentRef !== nextInput.blueprintDocument;
+    const listItemChanged = entry.listItemSnapshotKey !== listItemSnapshotKey;
+    const dependencyChanged =
+      entry.dependencies.length > 0 &&
+      buildDependencySnapshotKey(nextInput.document, entry.dependencies) !==
+        entry.dependencySnapshotKey;
+    entry.input = nextInput;
+    entry.blueprintDocumentRef = nextInput.blueprintDocument;
+    entry.listItemSnapshotKey = listItemSnapshotKey;
+    if (entry.started && (blueprintChanged || listItemChanged || dependencyChanged)) {
+      this.queueEvaluate(entry);
+    }
+  }
 
-    private startInitial(entry: BindingRuntimeEntry): void {
-        if (entry.started || entry.running) {
-            return;
-        }
-        entry.started = true;
+  public getResolvedValue(
+    surfaceId: string,
+    elementId: string,
+    propPath: string,
+    blueprintId: string,
+    instanceKey?: string
+  ): BlueprintValueResolved {
+    const entry = this.entries.get(
+      valueBindingKey(surfaceId, elementId, propPath, blueprintId, instanceKey)
+    );
+    return {
+      hasResolved: entry?.hasResolved === true,
+      value: entry?.resolvedValue
+    };
+  }
+
+  public refreshAll(): void {
+    if (this.disposed) {
+      return;
+    }
+    for (const entry of this.entries.values()) {
+      if (entry.started) {
+        this.queueEvaluate(entry);
+      }
+    }
+  }
+
+  private startInitial(entry: BindingRuntimeEntry): void {
+    if (entry.started || entry.running) {
+      return;
+    }
+    entry.started = true;
+    void this.runEvaluate(entry);
+  }
+
+  private queueEvaluate(entry: BindingRuntimeEntry): void {
+    if (entry.running) {
+      entry.pendingEvaluate = true;
+      return;
+    }
+    void this.runEvaluate(entry);
+  }
+
+  private async runEvaluate(entry: BindingRuntimeEntry): Promise<void> {
+    entry.running = true;
+    try {
+      await this.evaluate(entry);
+    } finally {
+      entry.running = false;
+      if (entry.pendingEvaluate && this.entries.get(entry.input.key) === entry) {
+        entry.pendingEvaluate = false;
         void this.runEvaluate(entry);
+      }
     }
+  }
 
-    private queueEvaluate(entry: BindingRuntimeEntry): void {
-        if (entry.running) {
-            entry.pendingEvaluate = true;
-            return;
-        }
-        void this.runEvaluate(entry);
+  private async evaluate(entry: BindingRuntimeEntry): Promise<void> {
+    try {
+      const result = await evaluateBlueprintValue({
+        blueprintDocument: entry.input.blueprintDocument,
+        persistentVariables: entry.input.persistentVariables,
+        blueprintId: entry.input.blueprintId,
+        surfaceId: entry.input.surfaceId,
+        runtimeScopeId: entry.input.runtimeScopeId,
+        elementId: entry.input.elementId,
+        listItemScope: entry.input.listItemScope ?? null,
+        instanceKey: entry.input.instanceKey,
+        hostAdapter: entry.input.hostAdapter
+      });
+      entry.dependencies = result.dependencies;
+      entry.dependencySnapshotKey = buildDependencySnapshotKey(
+        entry.input.document,
+        result.dependencies
+      );
+      if (!result.returned) {
+        return;
+      }
+      entry.hasResolved = true;
+      entry.resolvedValue = coerceValue(result.value, entry.input.valueType);
+      if (!this.disposed && this.entries.get(entry.input.key) === entry) {
+        this.announceChange();
+      }
+    } catch (err) {
+      console.warn("[BlueprintValueRuntime] evaluation skipped", err);
     }
-
-    private async runEvaluate(entry: BindingRuntimeEntry): Promise<void> {
-        entry.running = true;
-        try {
-            await this.evaluate(entry);
-        } finally {
-            entry.running = false;
-            if (entry.pendingEvaluate && this.entries.get(entry.input.key) === entry) {
-                entry.pendingEvaluate = false;
-                void this.runEvaluate(entry);
-            }
-        }
-    }
-
-    private async evaluate(entry: BindingRuntimeEntry): Promise<void> {
-        try {
-            const result = await evaluateBlueprintValue({
-                blueprintDocument: entry.input.blueprintDocument,
-                persistentVariables: entry.input.persistentVariables,
-                blueprintId: entry.input.blueprintId,
-                surfaceId: entry.input.surfaceId,
-                runtimeScopeId: entry.input.runtimeScopeId,
-                elementId: entry.input.elementId,
-                listItemScope: entry.input.listItemScope ?? null,
-                instanceKey: entry.input.instanceKey,
-                hostAdapter: entry.input.hostAdapter,
-            });
-            entry.dependencies = result.dependencies;
-            entry.dependencySnapshotKey = buildDependencySnapshotKey(entry.input.document, result.dependencies);
-            if (!result.returned) {
-                return;
-            }
-            entry.hasResolved = true;
-            entry.resolvedValue = coerceValue(result.value, entry.input.valueType);
-            if (!this.disposed && this.entries.get(entry.input.key) === entry) {
-                this.announceChange();
-            }
-        } catch (err) {
-            console.warn("[BlueprintValueRuntime] evaluation skipped", err);
-        }
-    }
+  }
 }
 
 export function mergeElementWithBlueprintValues(
-    element: UIElement,
-    surfaceId: string,
-    valueRuntime: BlueprintValueRuntimeStore | null,
-    listItemScope: UIListItemScope | null = null,
-    instanceKey = "",
+  element: UIElement,
+  surfaceId: string,
+  valueRuntime: BlueprintValueRuntimeStore | null,
+  listItemScope: UIListItemScope | null = null,
+  instanceKey = ""
 ): UIElement {
-    if (!valueRuntime) {
-        return element;
+  if (!valueRuntime) {
+    return element;
+  }
+  const target = SUPPORTED_VALUE_TARGETS.find((item) => item.elementType === element.type);
+  if (!target) {
+    return element;
+  }
+  const binding = element.valueBindings?.[target.propPath];
+  if (!binding || binding.valueType !== target.valueType) {
+    return element;
+  }
+  valueRuntime.ensureElementValue({
+    element,
+    surfaceId,
+    propPath: target.propPath,
+    blueprintId: binding.blueprintId,
+    valueType: binding.valueType,
+    listItemScope,
+    instanceKey: listItemScope ? instanceKey : undefined
+  });
+  const resolved = valueRuntime.getResolvedValue(
+    surfaceId,
+    element.id,
+    target.propPath,
+    binding.blueprintId,
+    listItemScope ? instanceKey : undefined
+  );
+  if (!resolved.hasResolved) {
+    return element;
+  }
+  const value = target.normalize ? target.normalize(resolved.value, element) : resolved.value;
+  return {
+    ...element,
+    props: {
+      ...(element.props ?? {}),
+      [target.propPath]: value
     }
-    const target = SUPPORTED_VALUE_TARGETS.find(item => item.elementType === element.type);
-    if (!target) {
-        return element;
-    }
-    const binding = element.valueBindings?.[target.propPath];
-    if (!binding || binding.valueType !== target.valueType) {
-        return element;
-    }
-    valueRuntime.ensureElementValue({
-        element,
-        surfaceId,
-        propPath: target.propPath,
-        blueprintId: binding.blueprintId,
-        valueType: binding.valueType,
-        listItemScope,
-        instanceKey: listItemScope ? instanceKey : undefined,
-    });
-    const resolved = valueRuntime.getResolvedValue(
-        surfaceId,
-        element.id,
-        target.propPath,
-        binding.blueprintId,
-        listItemScope ? instanceKey : undefined,
-    );
-    if (!resolved.hasResolved) {
-        return element;
-    }
-    const value = target.normalize ? target.normalize(resolved.value, element) : resolved.value;
-    return {
-        ...element,
-        props: {
-            ...(element.props ?? {}),
-            [target.propPath]: value,
-        },
-    };
+  };
 }

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-    resolveStoryRowHighlight,
-    STORY_ROW_HIGHLIGHT_DEFAULT,
-    STORY_ROW_HIGHLIGHT_OPTIONS,
+  resolveStoryRowHighlight,
+  STORY_ROW_HIGHLIGHT_DEFAULT,
+  STORY_ROW_HIGHLIGHT_OPTIONS
 } from "./storyRowHighlightOptions";
 
 /**
@@ -12,24 +12,26 @@ import {
  * reach the row and paint nothing while the settings page still showed a choice.
  */
 describe("resolveStoryRowHighlight", () => {
-    it("keeps every value the settings page can produce", () => {
-        for (const option of STORY_ROW_HIGHLIGHT_OPTIONS) {
-            expect(resolveStoryRowHighlight(option), option).toBe(option);
-        }
-    });
+  it("keeps every value the settings page can produce", () => {
+    for (const option of STORY_ROW_HIGHLIGHT_OPTIONS) {
+      expect(resolveStoryRowHighlight(option), option).toBe(option);
+    }
+  });
 
-    it("falls back to the default for anything it does not recognise", () => {
-        for (const stored of [undefined, null, "", "dialogue", "commands", true, 1, {}, []]) {
-            expect(resolveStoryRowHighlight(stored), JSON.stringify(stored)).toBe(STORY_ROW_HIGHLIGHT_DEFAULT);
-        }
-    });
+  it("falls back to the default for anything it does not recognise", () => {
+    for (const stored of [undefined, null, "", "dialogue", "commands", true, 1, {}, []]) {
+      expect(resolveStoryRowHighlight(stored), JSON.stringify(stored)).toBe(
+        STORY_ROW_HIGHLIGHT_DEFAULT
+      );
+    }
+  });
 
-    /**
-     * Not merely "some default" — specifically none. The tint repeats what the gutter mark already
-     * says, so a document an author has never expressed an opinion about is left unpainted.
-     */
-    it("defaults to painting neither layer", () => {
-        expect(STORY_ROW_HIGHLIGHT_DEFAULT).toBe("none");
-        expect(STORY_ROW_HIGHLIGHT_OPTIONS).toEqual(["none", "script", "command"]);
-    });
+  /**
+   * Not merely "some default" — specifically none. The tint repeats what the gutter mark already
+   * says, so a document an author has never expressed an opinion about is left unpainted.
+   */
+  it("defaults to painting neither layer", () => {
+    expect(STORY_ROW_HIGHLIGHT_DEFAULT).toBe("none");
+    expect(STORY_ROW_HIGHLIGHT_OPTIONS).toEqual(["none", "script", "command"]);
+  });
 });

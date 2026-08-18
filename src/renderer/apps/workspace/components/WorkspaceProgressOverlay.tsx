@@ -23,18 +23,18 @@ export const QUIET_WAIT_MS = 250;
  * (see {@link CARD_REVEAL_STYLE}).
  */
 export function useSettledWait(active: boolean): boolean {
-    const [settled, setSettled] = useState(false);
+  const [settled, setSettled] = useState(false);
 
-    useEffect(() => {
-        if (!active) {
-            setSettled(false);
-            return;
-        }
-        const timer = window.setTimeout(() => setSettled(true), QUIET_WAIT_MS);
-        return () => window.clearTimeout(timer);
-    }, [active]);
+  useEffect(() => {
+    if (!active) {
+      setSettled(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setSettled(true), QUIET_WAIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [active]);
 
-    return settled;
+  return settled;
 }
 
 /**
@@ -49,9 +49,9 @@ export function useSettledWait(active: boolean): boolean {
  * overlay stuck transparent over a window that looks hung.
  */
 export const CARD_REVEAL_STYLE: React.CSSProperties = {
-    animationDelay: `${QUIET_WAIT_MS}ms`,
-    animationFillMode: "both",
-    willChange: "opacity",
+  animationDelay: `${QUIET_WAIT_MS}ms`,
+  animationFillMode: "both",
+  willChange: "opacity"
 };
 
 /**
@@ -70,24 +70,28 @@ export const CARD_REVEAL_STYLE: React.CSSProperties = {
  * the main thread is busy - which is exactly when these are on screen, and the reason the message
  * below it can go a while without changing.
  */
-export function WorkspaceProgressCard({ title, message, style }: {
-    title: string;
-    message: string;
-    /** Extra styling for the card itself - {@link CARD_REVEAL_STYLE} for waits that block the thread. */
-    style?: React.CSSProperties;
+export function WorkspaceProgressCard({
+  title,
+  message,
+  style
+}: {
+  title: string;
+  message: string;
+  /** Extra styling for the card itself - {@link CARD_REVEAL_STYLE} for waits that block the thread. */
+  style?: React.CSSProperties;
 }) {
-    return (
-        <div
-            role="status"
-            aria-live="polite"
-            style={style}
-            className="relative w-[340px] max-w-full bg-surface-overlay border border-edge rounded-lg shadow-2xl px-5 py-4 animate-fade-in"
-        >
-            <p className="text-sm font-medium text-fg">{title}</p>
-            <div className="mt-2 flex items-start gap-3">
-                <Loader2 className="mt-0.5 h-4 w-4 flex-shrink-0 animate-spin text-primary" />
-                <p className="text-sm text-fg-muted">{message}</p>
-            </div>
-        </div>
-    );
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={style}
+      className="relative w-[340px] max-w-full bg-surface-overlay border border-edge rounded-lg shadow-2xl px-5 py-4 animate-fade-in"
+    >
+      <p className="text-sm font-medium text-fg">{title}</p>
+      <div className="mt-2 flex items-start gap-3">
+        <Loader2 className="mt-0.5 h-4 w-4 flex-shrink-0 animate-spin text-primary" />
+        <p className="text-sm text-fg-muted">{message}</p>
+      </div>
+    </div>
+  );
 }

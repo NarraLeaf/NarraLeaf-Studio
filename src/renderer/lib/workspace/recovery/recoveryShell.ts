@@ -30,25 +30,25 @@ import { reportWorkspaceAnomaly } from "./anomalyLog";
  * this mode exists to load one piece at a time.
  */
 export const RECOVERY_SHELL_SERVICES: readonly Services[] = [
-    Services.FileSystem,
-    Services.Uuid,
-    Services.Project,
-    Services.GlobalSettings,
-    Services.ServiceAssets,
-    Services.Assets,
-    Services.UI,
-    Services.PanelState,
-    Services.Command,
-    Services.DevMode,
-    Services.Preview,
-    Services.Build,
-    Services.ProjectDependency,
-    Services.Console,
-    Services.SaveStatus,
-    Services.WorkspaceReload,
-    Services.WorkspaceFreeze,
-    Services.VersionControl,
-    Services.Recovery,
+  Services.FileSystem,
+  Services.Uuid,
+  Services.Project,
+  Services.GlobalSettings,
+  Services.ServiceAssets,
+  Services.Assets,
+  Services.UI,
+  Services.PanelState,
+  Services.Command,
+  Services.DevMode,
+  Services.Preview,
+  Services.Build,
+  Services.ProjectDependency,
+  Services.Console,
+  Services.SaveStatus,
+  Services.WorkspaceReload,
+  Services.WorkspaceFreeze,
+  Services.VersionControl,
+  Services.Recovery
 ];
 
 /**
@@ -66,53 +66,53 @@ export const RECOVERY_SHELL_SERVICES: readonly Services[] = [
  * without this the panel would show a tick over its own report of the failure.
  */
 export async function startRecoveryShell(ctx: WorkspaceContext): Promise<ServiceInitFailure[]> {
-    const projectPath = ctx.project.getConfig().projectPath;
-    freezeProjectWrites({ projectPath, reason: { kind: "recovery" } });
-    // Told to main as well, because the renderer's latch only guards the renderer's own writes. A
-    // build or a Dev Mode launch runs entirely in the main process, and one started from a recovery
-    // window would compile a project whose services never loaded - producing a game missing most of
-    // its content rather than failing. `WorkspaceFreezeService` normally reports this, and it is not
-    // one of the services this mode starts.
-    getInterface().workspace.reportWriteFreeze("recovery");
+  const projectPath = ctx.project.getConfig().projectPath;
+  freezeProjectWrites({ projectPath, reason: { kind: "recovery" } });
+  // Told to main as well, because the renderer's latch only guards the renderer's own writes. A
+  // build or a Dev Mode launch runs entirely in the main process, and one started from a recovery
+  // window would compile a project whose services never loaded - producing a game missing most of
+  // its content rather than failing. `WorkspaceFreezeService` normally reports this, and it is not
+  // one of the services this mode starts.
+  getInterface().workspace.reportWriteFreeze("recovery");
 
-    const failures = await Service.initializeTolerant(
-        ctx,
-        RECOVERY_SHELL_SERVICES.map(service => ctx.services.get(service)),
-    );
+  const failures = await Service.initializeTolerant(
+    ctx,
+    RECOVERY_SHELL_SERVICES.map((service) => ctx.services.get(service))
+  );
 
-    for (const failure of failures) {
-        reportWorkspaceAnomaly({
-            source: "startup",
-            operationKey: "workspace.recovery.operations.shellService",
-            path: failure.service.constructor.name,
-            error: failure.error,
-            // Not `fatal`: in this mode nothing was. That is the distinction being drawn - the same
-            // error that ends an ordinary boot is survivable here, and calling it fatal would say
-            // the window failed to open while the author is reading it in the window.
-            severity: "degraded",
-        });
+  for (const failure of failures) {
+    reportWorkspaceAnomaly({
+      source: "startup",
+      operationKey: "workspace.recovery.operations.shellService",
+      path: failure.service.constructor.name,
+      error: failure.error,
+      // Not `fatal`: in this mode nothing was. That is the distinction being drawn - the same
+      // error that ends an ordinary boot is survivable here, and calling it fatal would say
+      // the window failed to open while the author is reading it in the window.
+      severity: "degraded"
+    });
+  }
+
+  // Activated like an ordinary boot does. The status bar and action bar read Dev Mode, Preview and
+  // Build for their first paint, and those only start polling here; a shell that skipped this
+  // would draw a chrome permanently stuck on "unknown".
+  for (const service of RECOVERY_SHELL_SERVICES.map((id) => ctx.services.get(id))) {
+    if (!service.isInitialized(ctx)) {
+      continue;
     }
-
-    // Activated like an ordinary boot does. The status bar and action bar read Dev Mode, Preview and
-    // Build for their first paint, and those only start polling here; a shell that skipped this
-    // would draw a chrome permanently stuck on "unknown".
-    for (const service of RECOVERY_SHELL_SERVICES.map(id => ctx.services.get(id))) {
-        if (!service.isInitialized(ctx)) {
-            continue;
-        }
-        try {
-            await service.activate(ctx);
-        } catch (error) {
-            reportWorkspaceAnomaly({
-                source: "startup",
-                operationKey: "workspace.recovery.operations.shellService",
-                path: service.constructor.name,
-                error,
-                severity: "degraded",
-            });
-        }
+    try {
+      await service.activate(ctx);
+    } catch (error) {
+      reportWorkspaceAnomaly({
+        source: "startup",
+        operationKey: "workspace.recovery.operations.shellService",
+        path: service.constructor.name,
+        error,
+        severity: "degraded"
+      });
     }
+  }
 
-    ctx.services.get<RecoveryService>(Services.Recovery).seedFromBoot(failures, ctx);
-    return failures;
+  ctx.services.get<RecoveryService>(Services.Recovery).seedFromBoot(failures, ctx);
+  return failures;
 }

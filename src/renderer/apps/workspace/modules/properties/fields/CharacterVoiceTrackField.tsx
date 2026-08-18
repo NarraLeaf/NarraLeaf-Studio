@@ -1,5 +1,9 @@
 import { useMemo, useState } from "react";
-import { AUDIO_TRACK_ID_VOICE, audioTrackDescendantIds, resolveAudioTrack } from "@shared/types/audioTrack";
+import {
+  AUDIO_TRACK_ID_VOICE,
+  audioTrackDescendantIds,
+  resolveAudioTrack
+} from "@shared/types/audioTrack";
 import { Select } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
@@ -29,51 +33,60 @@ import type { CharacterEditorContext } from "../schemas/characterSchema";
  * produce a second, so that is the one moment a pointer earns its line.
  */
 export function CharacterVoiceTrackField({ data }: CustomFieldProps<CharacterEditorContext>) {
-    const { t } = useTranslation();
-    const profile = data.character.profile;
-    const tracks = useProjectAudioTracks();
-    // Local so the select answers the click immediately, but tagged with whose value it is: the
-    // panel reuses one mounted field across characters, so plain `useState` would show the previous
-    // character's bus until something else re-rendered.
-    const characterId = profile.getId();
-    const [draft, setDraft] = useState(() => ({ characterId, trackId: profile.getVoiceTrackId() ?? "" }));
-    const trackId = draft.characterId === characterId ? draft.trackId : profile.getVoiceTrackId() ?? "";
+  const { t } = useTranslation();
+  const profile = data.character.profile;
+  const tracks = useProjectAudioTracks();
+  // Local so the select answers the click immediately, but tagged with whose value it is: the
+  // panel reuses one mounted field across characters, so plain `useState` would show the previous
+  // character's bus until something else re-rendered.
+  const characterId = profile.getId();
+  const [draft, setDraft] = useState(() => ({
+    characterId,
+    trackId: profile.getVoiceTrackId() ?? ""
+  }));
+  const trackId =
+    draft.characterId === characterId ? draft.trackId : (profile.getVoiceTrackId() ?? "");
 
-    const buses = useMemo(() => {
-        const descendants = audioTrackDescendantIds(tracks, AUDIO_TRACK_ID_VOICE);
-        return tracks.filter(track => descendants.has(track.id));
-    }, [tracks]);
+  const buses = useMemo(() => {
+    const descendants = audioTrackDescendantIds(tracks, AUDIO_TRACK_ID_VOICE);
+    return tracks.filter((track) => descendants.has(track.id));
+  }, [tracks]);
 
-    const options = useMemo<SelectOption[]>(() => {
-        // The seeded voice bus is the empty value, not an id: "unset" and "pointed at `voice`" are
-        // the same playback, and storing the id would make a character that was never touched look
-        // different in the document from one that was set back to the default.
-        const voiceBus = resolveAudioTrack(tracks, undefined, AUDIO_TRACK_ID_VOICE);
-        const entries: SelectOption[] = [
-            { value: "", label: voiceBus.name },
-            ...buses.map(track => ({ value: track.id, label: track.name })),
-        ];
-        // A stored id that is neither `voice` nor beneath it - the bus was deleted, or re-parented
-        // out of the voice subtree. Shown as itself rather than dropped: a select that silently
-        // displayed "Voice" would tell the author their character is on the default bus, which is
-        // where it PLAYS but not what the document says, so they would never think to fix it.
-        if (trackId && !entries.some(entry => entry.value === trackId)) {
-            entries.push({ value: trackId, label: t("characters.properties.voiceTrackMissing") });
-        }
-        return entries;
-    }, [buses, t, trackId, tracks]);
+  const options = useMemo<SelectOption[]>(() => {
+    // The seeded voice bus is the empty value, not an id: "unset" and "pointed at `voice`" are
+    // the same playback, and storing the id would make a character that was never touched look
+    // different in the document from one that was set back to the default.
+    const voiceBus = resolveAudioTrack(tracks, undefined, AUDIO_TRACK_ID_VOICE);
+    const entries: SelectOption[] = [
+      { value: "", label: voiceBus.name },
+      ...buses.map((track) => ({ value: track.id, label: track.name }))
+    ];
+    // A stored id that is neither `voice` nor beneath it - the bus was deleted, or re-parented
+    // out of the voice subtree. Shown as itself rather than dropped: a select that silently
+    // displayed "Voice" would tell the author their character is on the default bus, which is
+    // where it PLAYS but not what the document says, so they would never think to fix it.
+    if (trackId && !entries.some((entry) => entry.value === trackId)) {
+      entries.push({ value: trackId, label: t("characters.properties.voiceTrackMissing") });
+    }
+    return entries;
+  }, [buses, t, trackId, tracks]);
 
-    const commit = (next: string): void => {
-        setDraft({ characterId, trackId: next });
-        profile.setVoiceTrackId(next || null);
-    };
+  const commit = (next: string): void => {
+    setDraft({ characterId, trackId: next });
+    profile.setVoiceTrackId(next || null);
+  };
 
-    return (
-        <div className="min-w-0">
-            <Select fullWidth options={options} value={trackId} onChange={value => commit(String(value))} />
-            {buses.length === 0 && (
-                <p className="mt-1 text-xs text-fg-subtle">{t("characters.properties.voiceTrackEmpty")}</p>
-            )}
-        </div>
-    );
+  return (
+    <div className="min-w-0">
+      <Select
+        fullWidth
+        options={options}
+        value={trackId}
+        onChange={(value) => commit(String(value))}
+      />
+      {buses.length === 0 && (
+        <p className="mt-1 text-xs text-fg-subtle">{t("characters.properties.voiceTrackEmpty")}</p>
+      )}
+    </div>
+  );
 }

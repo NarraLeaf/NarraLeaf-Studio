@@ -1,8 +1,8 @@
 import { editorDropZonePreviewRect, type EditorDropZone } from "./editorDropZones";
 
 interface EditorGroupDropOverlayProps {
-    /** The zone under the pointer, or null when nothing is hovering this group. */
-    zone: EditorDropZone | null;
+  /** The zone under the pointer, or null when nothing is hovering this group. */
+  zone: EditorDropZone | null;
 }
 
 /**
@@ -11,17 +11,17 @@ interface EditorGroupDropOverlayProps {
  * plain tab drop — so no label is needed.
  */
 export function EditorGroupDropOverlay({ zone }: EditorGroupDropOverlayProps) {
-    if (!zone) {
-        return null;
-    }
+  if (!zone) {
+    return null;
+  }
 
-    return (
-        <div className="pointer-events-none absolute inset-0 z-20" aria-hidden>
-            <div className="absolute inset-0 bg-primary/5" />
-            <div
-                className="absolute bg-primary/20 ring-1 ring-inset ring-primary/60 transition-all duration-100"
-                style={editorDropZonePreviewRect(zone)}
-            />
-        </div>
-    );
+  return (
+    <div className="pointer-events-none absolute inset-0 z-20" aria-hidden>
+      <div className="absolute inset-0 bg-primary/5" />
+      <div
+        className="absolute bg-primary/20 ring-1 ring-inset ring-primary/60 transition-all duration-100"
+        style={editorDropZonePreviewRect(zone)}
+      />
+    </div>
+  );
 }

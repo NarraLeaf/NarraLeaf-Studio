@@ -28,32 +28,32 @@ import type { StoryBlock, StoryBlockId, StoryDocument, StorySceneId, StoryScene 
  * corrupt document is one Studio still has to open to repair - would otherwise hang the editor.
  */
 export function listSceneBlocksInDocumentOrder(
-    scene: StoryScene | null | undefined,
-    options?: { skipSubtree?: (block: StoryBlock) => boolean },
+  scene: StoryScene | null | undefined,
+  options?: { skipSubtree?: (block: StoryBlock) => boolean }
 ): StoryBlock[] {
-    if (!scene) {
-        return [];
+  if (!scene) {
+    return [];
+  }
+  const ordered: StoryBlock[] = [];
+  const seen = new Set<StoryBlockId>();
+  const visit = (blockId: StoryBlockId) => {
+    if (seen.has(blockId)) {
+      return;
     }
-    const ordered: StoryBlock[] = [];
-    const seen = new Set<StoryBlockId>();
-    const visit = (blockId: StoryBlockId) => {
-        if (seen.has(blockId)) {
-            return;
-        }
-        seen.add(blockId);
-        const block = scene.blocks[blockId];
-        if (!block || options?.skipSubtree?.(block)) {
-            return;
-        }
-        ordered.push(block);
-        for (const childId of block.childrenIds) {
-            visit(childId);
-        }
-    };
-    for (const rootId of scene.rootBlockIds) {
-        visit(rootId);
+    seen.add(blockId);
+    const block = scene.blocks[blockId];
+    if (!block || options?.skipSubtree?.(block)) {
+      return;
     }
-    return ordered;
+    ordered.push(block);
+    for (const childId of block.childrenIds) {
+      visit(childId);
+    }
+  };
+  for (const rootId of scene.rootBlockIds) {
+    visit(rootId);
+  }
+  return ordered;
 }
 
 /**
@@ -69,35 +69,35 @@ export function listSceneBlocksInDocumentOrder(
  * for reads to be right; `normalizeStoryDocument` clears it on the next load.
  */
 export function listSceneIdsInDocumentOrder(document: StoryDocument): StorySceneId[] {
-    const ordered: StorySceneId[] = [];
-    const seen = new Set<StorySceneId>();
-    const take = (sceneId: StorySceneId) => {
-        if (seen.has(sceneId) || !document.scenes[sceneId]) {
-            return;
-        }
-        seen.add(sceneId);
-        ordered.push(sceneId);
-    };
-    // `chapters` is typed required, but this sits under the variable scans, which run against
-    // documents assembled by callers rather than read from disk (bundles forwarded over IPC, an
-    // inspector's partial view). A story with no chapter list still has scenes worth listing.
-    for (const chapter of document.chapters ?? []) {
-        for (const sceneId of chapter.sceneIds ?? []) {
-            take(sceneId);
-        }
+  const ordered: StorySceneId[] = [];
+  const seen = new Set<StorySceneId>();
+  const take = (sceneId: StorySceneId) => {
+    if (seen.has(sceneId) || !document.scenes[sceneId]) {
+      return;
     }
-    for (const sceneId of document.unassignedSceneIds ?? []) {
-        take(sceneId);
+    seen.add(sceneId);
+    ordered.push(sceneId);
+  };
+  // `chapters` is typed required, but this sits under the variable scans, which run against
+  // documents assembled by callers rather than read from disk (bundles forwarded over IPC, an
+  // inspector's partial view). A story with no chapter list still has scenes worth listing.
+  for (const chapter of document.chapters ?? []) {
+    for (const sceneId of chapter.sceneIds ?? []) {
+      take(sceneId);
     }
-    for (const sceneId of Object.keys(document.scenes)) {
-        take(sceneId);
-    }
-    return ordered;
+  }
+  for (const sceneId of document.unassignedSceneIds ?? []) {
+    take(sceneId);
+  }
+  for (const sceneId of Object.keys(document.scenes)) {
+    take(sceneId);
+  }
+  return ordered;
 }
 
 /** {@link listSceneIdsInDocumentOrder}, resolved to the scenes themselves. */
 export function listScenesInDocumentOrder(document: StoryDocument): StoryScene[] {
-    return listSceneIdsInDocumentOrder(document).map(sceneId => document.scenes[sceneId]);
+  return listSceneIdsInDocumentOrder(document).map((sceneId) => document.scenes[sceneId]);
 }
 
 /**
@@ -110,11 +110,11 @@ export function listScenesInDocumentOrder(document: StoryDocument): StoryScene[]
  * scenes it never mentioned fall back to key order.
  */
 export function deriveUnassignedSceneIds(document: StoryDocument): StorySceneId[] {
-    const claimed = new Set<StorySceneId>();
-    for (const chapter of document.chapters ?? []) {
-        for (const sceneId of chapter.sceneIds ?? []) {
-            claimed.add(sceneId);
-        }
+  const claimed = new Set<StorySceneId>();
+  for (const chapter of document.chapters ?? []) {
+    for (const sceneId of chapter.sceneIds ?? []) {
+      claimed.add(sceneId);
     }
-    return listSceneIdsInDocumentOrder(document).filter(sceneId => !claimed.has(sceneId));
+  }
+  return listSceneIdsInDocumentOrder(document).filter((sceneId) => !claimed.has(sceneId));
 }

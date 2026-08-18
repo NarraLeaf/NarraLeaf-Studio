@@ -18,33 +18,37 @@
  * mis-scoped call site look like it worked.
  */
 
-import type { StoryLiteralValue, StorySavedVariableDefinition, StoryVariableValueType } from "../types/story/document";
+import type {
+  StoryLiteralValue,
+  StorySavedVariableDefinition,
+  StoryVariableValueType
+} from "../types/story/document";
 import type { VariableRegistryEntry } from "../types/variables/registry";
 
 export type MergedPersistentSource = "registry" | "story";
 
 export type MergedPersistentEntry = {
-    /** Host-persistence key: the identity persistent refs resolve against, stable across rename. */
-    storageKey: string;
-    name: string;
-    valueType: StoryVariableValueType;
-    defaultValue?: StoryLiteralValue;
-    source: MergedPersistentSource;
-    /** Registry entry id (registry) or declaration block id (story) - for jump-to-source. */
-    id: string;
+  /** Host-persistence key: the identity persistent refs resolve against, stable across rename. */
+  storageKey: string;
+  name: string;
+  valueType: StoryVariableValueType;
+  defaultValue?: StoryLiteralValue;
+  source: MergedPersistentSource;
+  /** Registry entry id (registry) or declaration block id (story) - for jump-to-source. */
+  id: string;
 };
 
 export type MergedPersistentNameCollision = {
-    /** The display name declared in both surfaces. */
-    name: string;
-    /** The distinct storage keys that share this name. */
-    storageKeys: string[];
+  /** The display name declared in both surfaces. */
+  name: string;
+  /** The distinct storage keys that share this name. */
+  storageKeys: string[];
 };
 
 export type MergedPersistentView = {
-    entries: MergedPersistentEntry[];
-    /** Names declared in both the registry and a story row - ambiguous; each becomes a compile diagnostic. */
-    nameCollisions: MergedPersistentNameCollision[];
+  entries: MergedPersistentEntry[];
+  /** Names declared in both the registry and a story row - ambiguous; each becomes a compile diagnostic. */
+  nameCollisions: MergedPersistentNameCollision[];
 };
 
 /**
@@ -55,51 +59,51 @@ export type MergedPersistentView = {
  * `StorySavedVariableDefinition` shape, which is why one implementation covers them.
  */
 export function buildMergedVariableView(
-    registryEntries: readonly VariableRegistryEntry[],
-    storyDefs: readonly StorySavedVariableDefinition[],
+  registryEntries: readonly VariableRegistryEntry[],
+  storyDefs: readonly StorySavedVariableDefinition[]
 ): MergedPersistentView {
-    const entries: MergedPersistentEntry[] = [];
-    for (const e of registryEntries) {
-        entries.push({
-            storageKey: e.storageKey,
-            name: e.name,
-            valueType: e.valueType,
-            defaultValue: e.defaultValue,
-            source: "registry",
-            id: e.id,
-        });
-    }
-    for (const d of storyDefs) {
-        entries.push({
-            storageKey: d.storageKey,
-            name: d.name,
-            valueType: d.valueType,
-            defaultValue: d.defaultValue,
-            source: "story",
-            id: d.id,
-        });
-    }
+  const entries: MergedPersistentEntry[] = [];
+  for (const e of registryEntries) {
+    entries.push({
+      storageKey: e.storageKey,
+      name: e.name,
+      valueType: e.valueType,
+      defaultValue: e.defaultValue,
+      source: "registry",
+      id: e.id
+    });
+  }
+  for (const d of storyDefs) {
+    entries.push({
+      storageKey: d.storageKey,
+      name: d.name,
+      valueType: d.valueType,
+      defaultValue: d.defaultValue,
+      source: "story",
+      id: d.id
+    });
+  }
 
-    const byName = new Map<string, MergedPersistentEntry[]>();
-    for (const entry of entries) {
-        const list = byName.get(entry.name);
-        if (list) {
-            list.push(entry);
-        } else {
-            byName.set(entry.name, [entry]);
-        }
+  const byName = new Map<string, MergedPersistentEntry[]>();
+  for (const entry of entries) {
+    const list = byName.get(entry.name);
+    if (list) {
+      list.push(entry);
+    } else {
+      byName.set(entry.name, [entry]);
     }
-    const nameCollisions: MergedPersistentNameCollision[] = [];
-    for (const [name, list] of byName) {
-        // A collision requires the name to span BOTH surfaces (registry vs declaration row). Two rows
-        // of the same source that share a name are that surface's own concern, not a cross-surface clash.
-        const sources = new Set(list.map(entry => entry.source));
-        if (sources.size > 1) {
-            const storageKeys = [...new Set(list.map(entry => entry.storageKey))].sort();
-            nameCollisions.push({ name, storageKeys });
-        }
+  }
+  const nameCollisions: MergedPersistentNameCollision[] = [];
+  for (const [name, list] of byName) {
+    // A collision requires the name to span BOTH surfaces (registry vs declaration row). Two rows
+    // of the same source that share a name are that surface's own concern, not a cross-surface clash.
+    const sources = new Set(list.map((entry) => entry.source));
+    if (sources.size > 1) {
+      const storageKeys = [...new Set(list.map((entry) => entry.storageKey))].sort();
+      nameCollisions.push({ name, storageKeys });
     }
-    return { entries, nameCollisions };
+  }
+  return { entries, nameCollisions };
 }
 
 /**
@@ -107,13 +111,13 @@ export function buildMergedVariableView(
  * and because "persistent" is the scope a reader of those call sites expects to see spelled out.
  */
 export function buildMergedPersistentView(
-    registryEntries: readonly VariableRegistryEntry[],
-    storyDefs: readonly StorySavedVariableDefinition[],
+  registryEntries: readonly VariableRegistryEntry[],
+  storyDefs: readonly StorySavedVariableDefinition[]
 ): MergedPersistentView {
-    return buildMergedVariableView(registryEntries, storyDefs);
+  return buildMergedVariableView(registryEntries, storyDefs);
 }
 
 /** The set of persistent storage keys the compiler validates references against. */
 export function mergedPersistentStorageKeys(view: MergedPersistentView): Set<string> {
-    return new Set(view.entries.map(entry => entry.storageKey));
+  return new Set(view.entries.map((entry) => entry.storageKey));
 }

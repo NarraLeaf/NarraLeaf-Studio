@@ -24,15 +24,19 @@ import { resolvePreferredLocale, type LocaleCode } from "@shared/i18n";
  * get.
  */
 export function deviceLanguageTags(): string[] {
-    if (typeof navigator === "undefined") {
-        return [];
-    }
-    return [...(navigator.languages ?? []), navigator.language]
-        .map(raw => String(raw ?? "").toLowerCase().replace(/_/g, "-"))
-        .filter(tag => tag.length > 0);
+  if (typeof navigator === "undefined") {
+    return [];
+  }
+  return [...(navigator.languages ?? []), navigator.language]
+    .map((raw) =>
+      String(raw ?? "")
+        .toLowerCase()
+        .replace(/_/g, "-")
+    )
+    .filter((tag) => tag.length > 0);
 }
 
 /** The language to use, and to preselect in first-run setup, when none has ever been chosen. */
 export function deviceDefaultLocale(): LocaleCode {
-    return resolvePreferredLocale(deviceLanguageTags());
+  return resolvePreferredLocale(deviceLanguageTags());
 }

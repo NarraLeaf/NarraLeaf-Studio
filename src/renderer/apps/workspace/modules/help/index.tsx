@@ -10,15 +10,15 @@ export type { HelpEditorPayload } from "./HelpEditor";
 
 /** The help browser's editor module. One tab, reopened rather than stacked (see `openHelpTab`). */
 export const helpModule: EditorModule<HelpEditorPayload> = {
-    metadata: {
-        id: "narraleaf-studio:help",
-        // Resolved lazily on read (module registration runs before i18n has necessarily settled).
-        titleKey: "help.ui.title",
-        get title() {
-            return translate("help.ui.title");
-        },
-        icon: <CircleQuestionMark className="w-4 h-4" />,
-        closable: true,
+  metadata: {
+    id: "narraleaf-studio:help",
+    // Resolved lazily on read (module registration runs before i18n has necessarily settled).
+    titleKey: "help.ui.title",
+    get title() {
+      return translate("help.ui.title");
     },
-    component: HelpEditor,
+    icon: <CircleQuestionMark className="w-4 h-4" />,
+    closable: true
+  },
+  component: HelpEditor
 };

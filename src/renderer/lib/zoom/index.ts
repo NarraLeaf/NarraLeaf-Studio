@@ -17,25 +17,25 @@ import { zoomPercentToFactor } from "@shared/constants/zoom";
 let subscribed = false;
 
 function apply(percent: unknown): void {
-    document.documentElement.style.setProperty("--nl-zoom", String(zoomPercentToFactor(percent)));
+  document.documentElement.style.setProperty("--nl-zoom", String(zoomPercentToFactor(percent)));
 }
 
 export async function initZoom(): Promise<void> {
-    try {
-        const result = await getInterface().app.state.getGlobalState("ui.zoomPercent");
-        if (result.success) {
-            apply(result.data.value);
-        }
-    } catch (error) {
-        console.warn("[zoom] Failed to load the zoom preference; using 100%.", error);
+  try {
+    const result = await getInterface().app.state.getGlobalState("ui.zoomPercent");
+    if (result.success) {
+      apply(result.data.value);
     }
+  } catch (error) {
+    console.warn("[zoom] Failed to load the zoom preference; using 100%.", error);
+  }
 
-    if (!subscribed) {
-        subscribed = true;
-        getInterface().app.state.onGlobalStateChanged?.((change) => {
-            if (change.key === "ui.zoomPercent") {
-                apply(change.value);
-            }
-        });
-    }
+  if (!subscribed) {
+    subscribed = true;
+    getInterface().app.state.onGlobalStateChanged?.((change) => {
+      if (change.key === "ui.zoomPercent") {
+        apply(change.value);
+      }
+    });
+  }
 }

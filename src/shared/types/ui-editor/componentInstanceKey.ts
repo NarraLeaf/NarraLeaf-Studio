@@ -16,9 +16,12 @@ const SEGMENT_PREFIX = "component:";
 const SEPARATOR = "\0";
 
 /** `outer` is the key of the component this one sits inside, or empty at the top level. */
-export function buildUIComponentInstanceKey(outer: string | undefined, instanceElementId: string): string {
-    const segment = `${SEGMENT_PREFIX}${instanceElementId}`;
-    return outer ? `${outer}${SEPARATOR}${segment}` : segment;
+export function buildUIComponentInstanceKey(
+  outer: string | undefined,
+  instanceElementId: string
+): string {
+  const segment = `${SEGMENT_PREFIX}${instanceElementId}`;
+  return outer ? `${outer}${SEPARATOR}${segment}` : segment;
 }
 
 /**
@@ -28,16 +31,16 @@ export function buildUIComponentInstanceKey(outer: string | undefined, instanceE
  * placed inside another takes its own params, not its host's.
  */
 export function readUIComponentInstanceElementId(instanceKey: string | undefined): string | null {
-    if (!instanceKey) {
-        return null;
-    }
-    const segments = instanceKey.split(SEPARATOR);
-    for (let i = segments.length - 1; i >= 0; i--) {
-        const segment = segments[i]!;
-        if (segment.startsWith(SEGMENT_PREFIX)) {
-            const id = segment.slice(SEGMENT_PREFIX.length);
-            return id.length > 0 ? id : null;
-        }
-    }
+  if (!instanceKey) {
     return null;
+  }
+  const segments = instanceKey.split(SEPARATOR);
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const segment = segments[i]!;
+    if (segment.startsWith(SEGMENT_PREFIX)) {
+      const id = segment.slice(SEGMENT_PREFIX.length);
+      return id.length > 0 ? id : null;
+    }
+  }
+  return null;
 }

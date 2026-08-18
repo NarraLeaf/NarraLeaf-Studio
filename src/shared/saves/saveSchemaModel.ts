@@ -6,48 +6,48 @@
 
 import type { LiteralValue } from "../types/blueprint/document";
 import {
-    SAVE_SCHEMA_FIELD_TYPES,
-    SAVE_SCHEMA_VERSION,
-    type SaveSchema,
-    type SaveSchemaField,
-    type SaveSchemaFieldType,
-    type SaveSchemaRuntimeTable,
+  SAVE_SCHEMA_FIELD_TYPES,
+  SAVE_SCHEMA_VERSION,
+  type SaveSchema,
+  type SaveSchemaField,
+  type SaveSchemaFieldType,
+  type SaveSchemaRuntimeTable
 } from "../types/saveSchema";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** The closed type set, with `string` as the fallback for anything unreadable. */
 export function normalizeSaveSchemaFieldType(valueType: unknown): SaveSchemaFieldType {
-    return SAVE_SCHEMA_FIELD_TYPES.includes(valueType as SaveSchemaFieldType)
-        ? (valueType as SaveSchemaFieldType)
-        : "string";
+  return SAVE_SCHEMA_FIELD_TYPES.includes(valueType as SaveSchemaFieldType)
+    ? (valueType as SaveSchemaFieldType)
+    : "string";
 }
 
 /** What a field of each type reads as when a slot carries no value for it and none was configured. */
 export function defaultValueForSaveSchemaFieldType(valueType: SaveSchemaFieldType): LiteralValue {
-    switch (valueType) {
-        case "boolean":
-            return false;
-        case "integer":
-        case "float":
-            return 0;
-        case "json":
-            return {};
-        case "array":
-            return [];
-        default:
-            return "";
-    }
+  switch (valueType) {
+    case "boolean":
+      return false;
+    case "integer":
+    case "float":
+      return 0;
+    case "json":
+      return {};
+    case "array":
+      return [];
+    default:
+      return "";
+  }
 }
 
 export function createEmptySaveSchema(now?: string): SaveSchema {
-    return {
-        schemaVersion: SAVE_SCHEMA_VERSION,
-        fields: {},
-        ...(now ? { meta: { createdAt: now, updatedAt: now } } : {}),
-    };
+  return {
+    schemaVersion: SAVE_SCHEMA_VERSION,
+    fields: {},
+    ...(now ? { meta: { createdAt: now, updatedAt: now } } : {})
+  };
 }
 
 /**
@@ -62,41 +62,48 @@ export function createEmptySaveSchema(now?: string): SaveSchema {
  * name in a script this slug cannot represent) - a key is required, and an unreadable one still
  * works.
  */
-export function deriveSaveSchemaStorageKey(name: string, fallbackId: string, taken: Iterable<string>): string {
-    const base = name
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "_")
-        .replace(/^_+|_+$/g, "");
-    const seed = base || fallbackId;
-    const used = new Set(taken);
-    if (!used.has(seed)) {
-        return seed;
+export function deriveSaveSchemaStorageKey(
+  name: string,
+  fallbackId: string,
+  taken: Iterable<string>
+): string {
+  const base = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  const seed = base || fallbackId;
+  const used = new Set(taken);
+  if (!used.has(seed)) {
+    return seed;
+  }
+  for (let n = 2; ; n += 1) {
+    const candidate = `${seed}_${n}`;
+    if (!used.has(candidate)) {
+      return candidate;
     }
-    for (let n = 2; ; n += 1) {
-        const candidate = `${seed}_${n}`;
-        if (!used.has(candidate)) {
-            return candidate;
-        }
-    }
+  }
 }
 
 function normalizeField(raw: unknown, id: string, order: number): SaveSchemaField | null {
-    if (!isRecord(raw)) {
-        return null;
-    }
-    const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : id;
-    const valueType = normalizeSaveSchemaFieldType(raw.valueType);
-    const storageKey = typeof raw.storageKey === "string" && raw.storageKey.trim() ? raw.storageKey.trim() : id;
-    return {
-        id,
-        name,
-        valueType,
-        storageKey,
-        order: typeof raw.order === "number" && Number.isFinite(raw.order) ? raw.order : order,
-        ...(raw.defaultValue === undefined ? {} : { defaultValue: raw.defaultValue as LiteralValue }),
-        ...(typeof raw.description === "string" && raw.description ? { description: raw.description } : {}),
-    };
+  if (!isRecord(raw)) {
+    return null;
+  }
+  const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : id;
+  const valueType = normalizeSaveSchemaFieldType(raw.valueType);
+  const storageKey =
+    typeof raw.storageKey === "string" && raw.storageKey.trim() ? raw.storageKey.trim() : id;
+  return {
+    id,
+    name,
+    valueType,
+    storageKey,
+    order: typeof raw.order === "number" && Number.isFinite(raw.order) ? raw.order : order,
+    ...(raw.defaultValue === undefined ? {} : { defaultValue: raw.defaultValue as LiteralValue }),
+    ...(typeof raw.description === "string" && raw.description
+      ? { description: raw.description }
+      : {})
+  };
 }
 
 /**
@@ -106,24 +113,24 @@ function normalizeField(raw: unknown, id: string, order: number): SaveSchemaFiel
  * because the alternative is adding one later to a format that already has files in the wild.
  */
 export function migrateSaveSchemaToLatest(raw: unknown): SaveSchema {
-    if (!isRecord(raw)) {
-        return createEmptySaveSchema();
+  if (!isRecord(raw)) {
+    return createEmptySaveSchema();
+  }
+  const fieldsRaw = isRecord(raw.fields) ? raw.fields : {};
+  const fields: Record<string, SaveSchemaField> = {};
+  let order = 0;
+  for (const [id, value] of Object.entries(fieldsRaw)) {
+    const field = normalizeField(value, id, order);
+    if (field) {
+      fields[id] = field;
+      order += 1;
     }
-    const fieldsRaw = isRecord(raw.fields) ? raw.fields : {};
-    const fields: Record<string, SaveSchemaField> = {};
-    let order = 0;
-    for (const [id, value] of Object.entries(fieldsRaw)) {
-        const field = normalizeField(value, id, order);
-        if (field) {
-            fields[id] = field;
-            order += 1;
-        }
-    }
-    return {
-        schemaVersion: SAVE_SCHEMA_VERSION,
-        fields,
-        ...(isRecord(raw.meta) ? { meta: raw.meta as SaveSchema["meta"] } : {}),
-    };
+  }
+  return {
+    schemaVersion: SAVE_SCHEMA_VERSION,
+    fields,
+    ...(isRecord(raw.meta) ? { meta: raw.meta as SaveSchema["meta"] } : {})
+  };
 }
 
 /**
@@ -133,11 +140,13 @@ export function migrateSaveSchemaToLatest(raw: unknown): SaveSchema {
  * cannot disagree about which pin comes first. `order` decides; the id breaks ties so the sequence
  * is stable across reloads rather than dependent on key insertion.
  */
-export function listSaveSchemaFields(schema: SaveSchema | null | undefined): SaveSchemaRuntimeTable {
-    if (!schema) {
-        return [];
-    }
-    return Object.values(schema.fields).sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id));
+export function listSaveSchemaFields(
+  schema: SaveSchema | null | undefined
+): SaveSchemaRuntimeTable {
+  if (!schema) {
+    return [];
+  }
+  return Object.values(schema.fields).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
 }
 
 /**
@@ -147,9 +156,9 @@ export function listSaveSchemaFields(schema: SaveSchema | null | undefined): Sav
  * because a pin that resolves to nothing is what this whole schema exists to remove.
  */
 export function saveSchemaFieldFallback(field: SaveSchemaField): LiteralValue {
-    return field.defaultValue === undefined
-        ? defaultValueForSaveSchemaFieldType(field.valueType)
-        : field.defaultValue;
+  return field.defaultValue === undefined
+    ? defaultValueForSaveSchemaFieldType(field.valueType)
+    : field.defaultValue;
 }
 
 /**
@@ -161,15 +170,15 @@ export function saveSchemaFieldFallback(field: SaveSchemaField): LiteralValue {
  * treat "the field is missing" as a schema change rather than as a per-slot accident.
  */
 export function buildSaveMetadataFromFields(
-    fields: SaveSchemaRuntimeTable,
-    valuesByFieldId: Record<string, unknown>,
+  fields: SaveSchemaRuntimeTable,
+  valuesByFieldId: Record<string, unknown>
 ): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
-    for (const field of fields) {
-        const value = valuesByFieldId[field.id];
-        out[field.storageKey] = value === undefined ? saveSchemaFieldFallback(field) : value;
-    }
-    return out;
+  const out: Record<string, unknown> = {};
+  for (const field of fields) {
+    const value = valuesByFieldId[field.id];
+    out[field.storageKey] = value === undefined ? saveSchemaFieldFallback(field) : value;
+  }
+  return out;
 }
 
 /**
@@ -180,14 +189,14 @@ export function buildSaveMetadataFromFields(
  * answers with its default rather than with nothing.
  */
 export function readSaveMetadataFields(
-    fields: SaveSchemaRuntimeTable,
-    metadata: unknown,
+  fields: SaveSchemaRuntimeTable,
+  metadata: unknown
 ): Record<string, LiteralValue> {
-    const stored = isRecord(metadata) ? metadata : {};
-    const out: Record<string, LiteralValue> = {};
-    for (const field of fields) {
-        const value = stored[field.storageKey];
-        out[field.id] = value === undefined ? saveSchemaFieldFallback(field) : (value as LiteralValue);
-    }
-    return out;
+  const stored = isRecord(metadata) ? metadata : {};
+  const out: Record<string, LiteralValue> = {};
+  for (const field of fields) {
+    const value = stored[field.storageKey];
+    out[field.id] = value === undefined ? saveSchemaFieldFallback(field) : (value as LiteralValue);
+  }
+  return out;
 }

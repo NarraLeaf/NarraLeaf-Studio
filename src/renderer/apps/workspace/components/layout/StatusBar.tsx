@@ -3,11 +3,11 @@ import { useStatusBarItems } from "../../hooks/useUIService";
 import { useTranslation } from "@/lib/i18n";
 import { StatusBarAlignment, type StatusBarItem } from "@/lib/workspace/services/ui/types";
 import {
-    builtInStatusBarEntries,
-    StatusEntry,
-    StatusBarEntryIdContext,
-    StatusBarRunningContext,
-    useActiveRunMode,
+  builtInStatusBarEntries,
+  StatusEntry,
+  StatusBarEntryIdContext,
+  StatusBarRunningContext,
+  useActiveRunMode
 } from "../../modules/status-bar";
 import type { StatusBarEntryModule } from "../../modules/types";
 import { orderStatusBarEntries } from "./statusBarEntryOrder";
@@ -29,8 +29,8 @@ const STATUS_BAR_EDGE_GAP = 6;
  * what lets ordering and the toggle menu treat both kinds identically.
  */
 type ResolvedEntry =
-    | { kind: "module"; id: string; alignment: StatusBarAlignment; module: StatusBarEntryModule }
-    | { kind: "service"; id: string; alignment: StatusBarAlignment; item: StatusBarItem };
+  | { kind: "module"; id: string; alignment: StatusBarAlignment; module: StatusBarEntryModule }
+  | { kind: "service"; id: string; alignment: StatusBarAlignment; item: StatusBarItem };
 
 /**
  * The workspace status bar: one quiet strip along the bottom, driven entirely by the entry
@@ -42,103 +42,99 @@ type ResolvedEntry =
  * individual entries on and off. See `orderStatusBarEntries` and `useStatusBarContextMenu`.
  */
 export function StatusBar() {
-    const { t } = useTranslation();
-    const serviceItems = useStatusBarItems();
-    // While any mode runs the whole strip switches to the theme colour; cells read this through
-    // StatusBarRunningContext and flip to on-primary ink. The wash IS the "running" signal — there
-    // is no separate status dot.
-    const running = useActiveRunMode() !== null;
+  const { t } = useTranslation();
+  const serviceItems = useStatusBarItems();
+  // While any mode runs the whole strip switches to the theme colour; cells read this through
+  // StatusBarRunningContext and flip to on-primary ink. The wash IS the "running" signal — there
+  // is no separate status dot.
+  const running = useActiveRunMode() !== null;
 
-    // Built-ins first, then runtime registrations — so plugin entries pack closest to the centre.
-    const entries: ResolvedEntry[] = useMemo(
-        () => [
-            ...builtInStatusBarEntries.map(
-                (module): ResolvedEntry => ({
-                    kind: "module",
-                    id: module.id,
-                    alignment: module.alignment,
-                    module,
-                }),
-            ),
-            ...serviceItems.map(
-                (item): ResolvedEntry => ({
-                    kind: "service",
-                    id: item.id,
-                    alignment: item.alignment,
-                    item,
-                }),
-            ),
-        ],
-        [serviceItems],
-    );
+  // Built-ins first, then runtime registrations — so plugin entries pack closest to the centre.
+  const entries: ResolvedEntry[] = useMemo(
+    () => [
+      ...builtInStatusBarEntries.map((module): ResolvedEntry => ({
+        kind: "module",
+        id: module.id,
+        alignment: module.alignment,
+        module
+      })),
+      ...serviceItems.map((item): ResolvedEntry => ({
+        kind: "service",
+        id: item.id,
+        alignment: item.alignment,
+        item
+      }))
+    ],
+    [serviceItems]
+  );
 
-    // Every registered entry is listed in the menu, including ones currently rendering nothing —
-    // the checklist describes the registry, not what happens to be on screen this second.
-    const menuEntries = useMemo(
-        () =>
-            entries.map(entry => ({
-                id: entry.id,
-                label: entry.kind === "module" ? t(entry.module.labelKey) : entry.item.text,
-            })),
-        [entries, t],
-    );
-    const { hiddenIds, openMenu, menu } = useStatusBarContextMenu(menuEntries);
+  // Every registered entry is listed in the menu, including ones currently rendering nothing —
+  // the checklist describes the registry, not what happens to be on screen this second.
+  const menuEntries = useMemo(
+    () =>
+      entries.map((entry) => ({
+        id: entry.id,
+        label: entry.kind === "module" ? t(entry.module.labelKey) : entry.item.text
+      })),
+    [entries, t]
+  );
+  const { hiddenIds, openMenu, menu } = useStatusBarContextMenu(menuEntries);
 
-    // Every cell that actually draws something carries its registry id, the same way tabs carry
-    // `data-editor-tab-id` and asset sections carry `data-asset-category`. It names a cell whose
-    // visible text is often a bare value ("LF", "UTF-8", "120%") and would otherwise only be
-    // findable by guessing at that text. The id rides a context down onto `StatusEntry` rather than
-    // sitting on the wrapper here, so an entry that is currently rendering `null` - which is most of
-    // them, most of the time - leaves no element behind claiming to be a cell.
-    const renderEntry = (entry: ResolvedEntry) => {
-        const onContextMenu = (event: React.MouseEvent) => openMenu(event, entry.id);
-        if (entry.kind === "module") {
-            const Component = entry.module.component;
-            return (
-                <StatusBarEntryIdContext.Provider key={entry.id} value={entry.id}>
-                    <div className="flex items-stretch" onContextMenu={onContextMenu}>
-                        <Component />
-                    </div>
-                </StatusBarEntryIdContext.Provider>
-            );
-        }
-        const { item } = entry;
-        if (item.visible === false) {
-            return null;
-        }
-        return (
-            <StatusBarEntryIdContext.Provider key={entry.id} value={entry.id}>
-                <div className="flex min-w-0 items-stretch" onContextMenu={onContextMenu}>
-                    <StatusEntry onClick={item.command} tooltip={item.tooltip}>
-                        {item.icon}
-                        <span className="truncate">{item.text}</span>
-                    </StatusEntry>
-                </div>
-            </StatusBarEntryIdContext.Provider>
-        );
-    };
-
-    const renderSide = (alignment: StatusBarAlignment) =>
-        orderStatusBarEntries(entries, alignment, hiddenIds).map(renderEntry);
-
+  // Every cell that actually draws something carries its registry id, the same way tabs carry
+  // `data-editor-tab-id` and asset sections carry `data-asset-category`. It names a cell whose
+  // visible text is often a bare value ("LF", "UTF-8", "120%") and would otherwise only be
+  // findable by guessing at that text. The id rides a context down onto `StatusEntry` rather than
+  // sitting on the wrapper here, so an entry that is currently rendering `null` - which is most of
+  // them, most of the time - leaves no element behind claiming to be a cell.
+  const renderEntry = (entry: ResolvedEntry) => {
+    const onContextMenu = (event: React.MouseEvent) => openMenu(event, entry.id);
+    if (entry.kind === "module") {
+      const Component = entry.module.component;
+      return (
+        <StatusBarEntryIdContext.Provider key={entry.id} value={entry.id}>
+          <div className="flex items-stretch" onContextMenu={onContextMenu}>
+            <Component />
+          </div>
+        </StatusBarEntryIdContext.Provider>
+      );
+    }
+    const { item } = entry;
+    if (item.visible === false) {
+      return null;
+    }
     return (
-        <StatusBarRunningContext.Provider value={running}>
-            <div
-                data-status-bar
-                className={`flex shrink-0 items-stretch justify-between overflow-hidden border-t transition-colors duration-300 ${
-                    running ? "border-primary bg-primary" : "border-edge bg-surface-sunken"
-                }`}
-                style={{
-                    height: STATUS_BAR_HEIGHT,
-                    paddingLeft: STATUS_BAR_EDGE_GAP,
-                    paddingRight: STATUS_BAR_EDGE_GAP,
-                }}
-                onContextMenu={event => openMenu(event)}
-            >
-                <div className="flex min-w-0 items-stretch">{renderSide(StatusBarAlignment.Left)}</div>
-                <div className="flex min-w-0 items-stretch">{renderSide(StatusBarAlignment.Right)}</div>
-                {menu}
-            </div>
-        </StatusBarRunningContext.Provider>
+      <StatusBarEntryIdContext.Provider key={entry.id} value={entry.id}>
+        <div className="flex min-w-0 items-stretch" onContextMenu={onContextMenu}>
+          <StatusEntry onClick={item.command} tooltip={item.tooltip}>
+            {item.icon}
+            <span className="truncate">{item.text}</span>
+          </StatusEntry>
+        </div>
+      </StatusBarEntryIdContext.Provider>
     );
+  };
+
+  const renderSide = (alignment: StatusBarAlignment) =>
+    orderStatusBarEntries(entries, alignment, hiddenIds).map(renderEntry);
+
+  return (
+    <StatusBarRunningContext.Provider value={running}>
+      <div
+        data-status-bar
+        className={`flex shrink-0 items-stretch justify-between overflow-hidden border-t transition-colors duration-300 ${
+          running ? "border-primary bg-primary" : "border-edge bg-surface-sunken"
+        }`}
+        style={{
+          height: STATUS_BAR_HEIGHT,
+          paddingLeft: STATUS_BAR_EDGE_GAP,
+          paddingRight: STATUS_BAR_EDGE_GAP
+        }}
+        onContextMenu={(event) => openMenu(event)}
+      >
+        <div className="flex min-w-0 items-stretch">{renderSide(StatusBarAlignment.Left)}</div>
+        <div className="flex min-w-0 items-stretch">{renderSide(StatusBarAlignment.Right)}</div>
+        {menu}
+      </div>
+    </StatusBarRunningContext.Provider>
+  );
 }

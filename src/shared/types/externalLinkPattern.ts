@@ -37,15 +37,15 @@
  * for those two questions cannot honestly be the same sentence.
  */
 export const EXTERNAL_LINK_PATTERN_DENIED_SCHEMES: readonly string[] = [
-    "javascript:",
-    "data:",
-    "vbscript:",
-    "file:",
+  "javascript:",
+  "data:",
+  "vbscript:",
+  "file:"
 ];
 
 /** Whether a parsed `protocol` (`"https:"`) is one this never opens. Case-insensitive. */
 export function isDeniedExternalLinkScheme(protocol: string): boolean {
-    return EXTERNAL_LINK_PATTERN_DENIED_SCHEMES.includes(String(protocol ?? "").toLowerCase());
+  return EXTERNAL_LINK_PATTERN_DENIED_SCHEMES.includes(String(protocol ?? "").toLowerCase());
 }
 
 /**
@@ -55,25 +55,25 @@ export function isDeniedExternalLinkScheme(protocol: string): boolean {
  * carrying credentials, or one whose host wears a `*` somewhere a wildcard is not a wildcard.
  */
 type ParsedExternalLinkPattern = {
-    /** Lowercased, with the colon: `"https:"`, `"steam:"`. */
-    scheme: string;
-    /** Lowercased hostname. `"*"` for the whole-authority wildcard, `""` for an opaque URL. */
-    host: string;
-    /** As `URL` reports it, so a default port is already gone (`https://x:443` -> `""`). */
-    port: string;
-    /** As `URL` reports it. Hierarchical paths start with `/`; opaque ones (`mailto:`) do not. */
-    path: string;
-    search: string;
-    hash: string;
-    /**
-     * `scheme://*` and nothing else - the one form that constrains nothing below the scheme.
-     *
-     * It has to exist. `steam://run/480`, `steam://rungameid/480` and `steam://store/480` are
-     * different *hosts* under one scheme, so an author who means "hand `steam:` addresses to Steam"
-     * has no other way to say it. It is deliberately the only case where the path goes unchecked,
-     * and it is legible at a glance in the install prompt, which is where it has to be understood.
-     */
-    wholeScheme: boolean;
+  /** Lowercased, with the colon: `"https:"`, `"steam:"`. */
+  scheme: string;
+  /** Lowercased hostname. `"*"` for the whole-authority wildcard, `""` for an opaque URL. */
+  host: string;
+  /** As `URL` reports it, so a default port is already gone (`https://x:443` -> `""`). */
+  port: string;
+  /** As `URL` reports it. Hierarchical paths start with `/`; opaque ones (`mailto:`) do not. */
+  path: string;
+  search: string;
+  hash: string;
+  /**
+   * `scheme://*` and nothing else - the one form that constrains nothing below the scheme.
+   *
+   * It has to exist. `steam://run/480`, `steam://rungameid/480` and `steam://store/480` are
+   * different *hosts* under one scheme, so an author who means "hand `steam:` addresses to Steam"
+   * has no other way to say it. It is deliberately the only case where the path goes unchecked,
+   * and it is legible at a glance in the install prompt, which is where it has to be understood.
+   */
+  wholeScheme: boolean;
 };
 
 /**
@@ -85,57 +85,58 @@ type ParsedExternalLinkPattern = {
  * grants nothing.
  */
 function splitWildcardHost(host: string): { wildcard: boolean; labels: string[] } | null {
-    const labels = host.split(".");
-    const wildcardCount = labels.filter(label => label.includes("*")).length;
-    if (wildcardCount === 0) {
-        return { wildcard: false, labels };
-    }
-    if (wildcardCount > 1 || labels[0] !== "*") {
-        return null;
-    }
-    return { wildcard: true, labels: labels.slice(1) };
+  const labels = host.split(".");
+  const wildcardCount = labels.filter((label) => label.includes("*")).length;
+  if (wildcardCount === 0) {
+    return { wildcard: false, labels };
+  }
+  if (wildcardCount > 1 || labels[0] !== "*") {
+    return null;
+  }
+  return { wildcard: true, labels: labels.slice(1) };
 }
 
 function parseExternalLinkPattern(raw: unknown): ParsedExternalLinkPattern | null {
-    if (typeof raw !== "string" || !raw.trim()) {
-        return null;
-    }
-    let parsed: URL;
-    try {
-        parsed = new URL(raw.trim());
-    } catch {
-        // Anything without a scheme lands here, which is what "must parse into a scheme" means:
-        // `store.example.com/*` is a string somebody hoped would be a pattern.
-        return null;
-    }
-    if (isDeniedExternalLinkScheme(parsed.protocol)) {
-        return null;
-    }
-    // Credentials in a declaration are refused for the same reason they are refused in a request
-    // below: `https://store.example.com@evil.test/` reads as the store and goes to the attacker,
-    // and there is no legitimate address a game hands a browser that carries a password.
-    if (parsed.username || parsed.password) {
-        return null;
-    }
-    const host = parsed.hostname.toLowerCase();
-    if (host && !splitWildcardHost(host)) {
-        return null;
-    }
-    const path = parsed.pathname;
-    const wholeScheme = host === "*"
-        && parsed.port === ""
-        && (path === "" || path === "/")
-        && parsed.search === ""
-        && parsed.hash === "";
-    return {
-        scheme: parsed.protocol.toLowerCase(),
-        host,
-        port: parsed.port,
-        path,
-        search: parsed.search,
-        hash: parsed.hash,
-        wholeScheme,
-    };
+  if (typeof raw !== "string" || !raw.trim()) {
+    return null;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(raw.trim());
+  } catch {
+    // Anything without a scheme lands here, which is what "must parse into a scheme" means:
+    // `store.example.com/*` is a string somebody hoped would be a pattern.
+    return null;
+  }
+  if (isDeniedExternalLinkScheme(parsed.protocol)) {
+    return null;
+  }
+  // Credentials in a declaration are refused for the same reason they are refused in a request
+  // below: `https://store.example.com@evil.test/` reads as the store and goes to the attacker,
+  // and there is no legitimate address a game hands a browser that carries a password.
+  if (parsed.username || parsed.password) {
+    return null;
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (host && !splitWildcardHost(host)) {
+    return null;
+  }
+  const path = parsed.pathname;
+  const wholeScheme =
+    host === "*" &&
+    parsed.port === "" &&
+    (path === "" || path === "/") &&
+    parsed.search === "" &&
+    parsed.hash === "";
+  return {
+    scheme: parsed.protocol.toLowerCase(),
+    host,
+    port: parsed.port,
+    path,
+    search: parsed.search,
+    hash: parsed.hash,
+    wholeScheme
+  };
 }
 
 /**
@@ -146,27 +147,25 @@ function parseExternalLinkPattern(raw: unknown): ParsedExternalLinkPattern | nul
  * and rewriting a permission before showing it to the person approving it is its own small lie.
  */
 export function externalLinkPatternKey(pattern: unknown): string | null {
-    const parsed = parseExternalLinkPattern(pattern);
-    if (!parsed) {
-        return null;
-    }
-    if (parsed.wholeScheme) {
-        return `${parsed.scheme}//*`;
-    }
-    const authority = parsed.host
-        ? `//${parsed.host}${parsed.port ? `:${parsed.port}` : ""}`
-        : "";
-    return `${parsed.scheme}${authority}${parsed.path}${parsed.search}${parsed.hash}`;
+  const parsed = parseExternalLinkPattern(pattern);
+  if (!parsed) {
+    return null;
+  }
+  if (parsed.wholeScheme) {
+    return `${parsed.scheme}//*`;
+  }
+  const authority = parsed.host ? `//${parsed.host}${parsed.port ? `:${parsed.port}` : ""}` : "";
+  return `${parsed.scheme}${authority}${parsed.path}${parsed.search}${parsed.hash}`;
 }
 
 /** Whether a string can be declared as a pattern at all. See {@link externalLinkPatternKey}. */
 export function isValidExternalLinkPattern(pattern: unknown): boolean {
-    return externalLinkPatternKey(pattern) !== null;
+  return externalLinkPatternKey(pattern) !== null;
 }
 
 /** Path segments, empties dropped, so `/a//b/` and `/a/b` compare the same. */
 function pathSegments(path: string): string[] {
-    return path.split("/").filter(Boolean);
+  return path.split("/").filter(Boolean);
 }
 
 /**
@@ -183,24 +182,26 @@ function pathSegments(path: string): string[] {
  *    label, so the candidate must be strictly longer; `a.b` is a subdomain of `b`, `b` is not.
  */
 function hostMatches(pattern: string, candidate: string): boolean {
-    if (pattern === "*") {
-        return true;
-    }
-    const split = splitWildcardHost(pattern);
-    if (!split) {
-        return false;
-    }
-    const candidateLabels = candidate.split(".");
-    if (!split.wildcard) {
-        return split.labels.length === candidateLabels.length
-            && split.labels.every((label, index) => label === candidateLabels[index]);
-    }
-    const suffix = split.labels;
-    if (candidateLabels.length <= suffix.length) {
-        return false;
-    }
-    const offset = candidateLabels.length - suffix.length;
-    return suffix.every((label, index) => label === candidateLabels[offset + index]);
+  if (pattern === "*") {
+    return true;
+  }
+  const split = splitWildcardHost(pattern);
+  if (!split) {
+    return false;
+  }
+  const candidateLabels = candidate.split(".");
+  if (!split.wildcard) {
+    return (
+      split.labels.length === candidateLabels.length &&
+      split.labels.every((label, index) => label === candidateLabels[index])
+    );
+  }
+  const suffix = split.labels;
+  if (candidateLabels.length <= suffix.length) {
+    return false;
+  }
+  const offset = candidateLabels.length - suffix.length;
+  return suffix.every((label, index) => label === candidateLabels[offset + index]);
 }
 
 /**
@@ -219,13 +220,14 @@ function hostMatches(pattern: string, candidate: string): boolean {
  * so it is compared whole, `*` and all.
  */
 function pathMatches(pattern: string, candidate: string): boolean {
-    if (pattern.startsWith("/") && pattern.endsWith("*")) {
-        const prefix = pathSegments(pattern.slice(0, -1));
-        const actual = pathSegments(candidate);
-        return actual.length >= prefix.length
-            && prefix.every((segment, index) => segment === actual[index]);
-    }
-    return pattern === candidate;
+  if (pattern.startsWith("/") && pattern.endsWith("*")) {
+    const prefix = pathSegments(pattern.slice(0, -1));
+    const actual = pathSegments(candidate);
+    return (
+      actual.length >= prefix.length && prefix.every((segment, index) => segment === actual[index])
+    );
+  }
+  return pattern === candidate;
 }
 
 /**
@@ -253,41 +255,41 @@ function pathMatches(pattern: string, candidate: string): boolean {
  * would be a decision nobody made.
  */
 export function matchesExternalLinkPattern(pattern: string, url: string): boolean {
-    const declared = parseExternalLinkPattern(pattern);
-    if (!declared) {
-        return false;
-    }
-    let candidate: URL;
-    try {
-        candidate = new URL(String(url ?? "").trim());
-    } catch {
-        return false;
-    }
-    if (isDeniedExternalLinkScheme(candidate.protocol) || candidate.username || candidate.password) {
-        return false;
-    }
-    if (declared.scheme !== candidate.protocol.toLowerCase()) {
-        return false;
-    }
-    if (declared.wholeScheme) {
-        return true;
-    }
-    if (!hostMatches(declared.host, candidate.hostname.toLowerCase())) {
-        return false;
-    }
-    if (declared.port !== candidate.port) {
-        return false;
-    }
-    if (!pathMatches(declared.path, candidate.pathname)) {
-        return false;
-    }
-    if (declared.search && declared.search !== candidate.search) {
-        return false;
-    }
-    if (declared.hash && declared.hash !== candidate.hash) {
-        return false;
-    }
+  const declared = parseExternalLinkPattern(pattern);
+  if (!declared) {
+    return false;
+  }
+  let candidate: URL;
+  try {
+    candidate = new URL(String(url ?? "").trim());
+  } catch {
+    return false;
+  }
+  if (isDeniedExternalLinkScheme(candidate.protocol) || candidate.username || candidate.password) {
+    return false;
+  }
+  if (declared.scheme !== candidate.protocol.toLowerCase()) {
+    return false;
+  }
+  if (declared.wholeScheme) {
     return true;
+  }
+  if (!hostMatches(declared.host, candidate.hostname.toLowerCase())) {
+    return false;
+  }
+  if (declared.port !== candidate.port) {
+    return false;
+  }
+  if (!pathMatches(declared.path, candidate.pathname)) {
+    return false;
+  }
+  if (declared.search && declared.search !== candidate.search) {
+    return false;
+  }
+  if (declared.hash && declared.hash !== candidate.hash) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -299,11 +301,11 @@ export function matchesExternalLinkPattern(pattern: string, url: string): boolea
  * another plugin's.
  */
 export function isExternalLinkPatternDeclared(
-    patterns: readonly string[] | undefined,
-    url: string,
+  patterns: readonly string[] | undefined,
+  url: string
 ): boolean {
-    if (!patterns || patterns.length === 0) {
-        return false;
-    }
-    return patterns.some(pattern => matchesExternalLinkPattern(pattern, url));
+  if (!patterns || patterns.length === 0) {
+    return false;
+  }
+  return patterns.some((pattern) => matchesExternalLinkPattern(pattern, url));
 }

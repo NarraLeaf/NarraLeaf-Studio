@@ -8,12 +8,13 @@ import { ImagePreviewEditor } from "./ImagePreviewEditor";
  * Opens images in a preview editor with zoom and pan controls
  */
 export const imagePreviewModule: EditorModule = {
-    metadata: {
-        id: "narraleaf-studio:image-preview",
-        get title() { return translate("placeholders.moduleTitles.imagePreview"); },
-        icon: <Image className="w-4 h-4" />,
-        closable: true,
+  metadata: {
+    id: "narraleaf-studio:image-preview",
+    get title() {
+      return translate("placeholders.moduleTitles.imagePreview");
     },
-    component: ImagePreviewEditor,
+    icon: <Image className="w-4 h-4" />,
+    closable: true
+  },
+  component: ImagePreviewEditor
 };
-

@@ -23,15 +23,15 @@ import { createContext, useContext, useLayoutEffect } from "react";
  * The mark goes away on its own. It says "here", and a border that stays says "wrong".
  */
 export interface SettingsHighlightState {
-    /** Whether the mark is up right now. False once its timer has run out. */
-    readonly highlighted: boolean;
-    /**
-     * Called by the panel that reads this state; the returned function releases it.
-     *
-     * The explorer cannot see whether a panel put the ring anywhere, and it must not draw a
-     * second one around the block if it did.
-     */
-    claim(): () => void;
+  /** Whether the mark is up right now. False once its timer has run out. */
+  readonly highlighted: boolean;
+  /**
+   * Called by the panel that reads this state; the returned function releases it.
+   *
+   * The explorer cannot see whether a panel put the ring anywhere, and it must not draw a
+   * second one around the block if it did.
+   */
+  claim(): () => void;
 }
 
 /** Present only around the panel the highlight named, so no other panel can claim it. */
@@ -57,8 +57,8 @@ export const SETTINGS_HIGHLIGHT_RING = "ring-2 ring-primary";
  * an effect that runs after it would let the block's ring appear for a frame and then move.
  */
 export function useSettingsHighlight(): boolean {
-    const state = useContext(SettingsHighlightContext);
-    const claim = state?.claim;
-    useLayoutEffect(() => claim?.(), [claim]);
-    return state?.highlighted ?? false;
+  const state = useContext(SettingsHighlightContext);
+  const claim = state?.claim;
+  useLayoutEffect(() => claim?.(), [claim]);
+  return state?.highlighted ?? false;
 }

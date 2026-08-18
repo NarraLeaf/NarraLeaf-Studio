@@ -2,10 +2,10 @@ import { getAllAppSettings } from "@/lib/settings/registry";
 import { SettingValueType } from "@/lib/settings/types";
 import type { AppSettingDefinition } from "@/lib/settings/models";
 import {
-    isProtectedStateKey,
-    isWorkspaceLayoutKey,
-    NON_REGISTRY_PREFERENCE_KEYS,
-    UNEXPORTED_PREFERENCE_KEYS,
+  isProtectedStateKey,
+  isWorkspaceLayoutKey,
+  NON_REGISTRY_PREFERENCE_KEYS,
+  UNEXPORTED_PREFERENCE_KEYS
 } from "@shared/constants/settingsScopes";
 import type { SettingsValueSpec } from "@shared/utils/settingsDocument";
 
@@ -20,7 +20,7 @@ import type { SettingsValueSpec } from "@shared/utils/settingsDocument";
 
 /** Entries that store a value. Actions and panels own their storage or have none. */
 function isStored(setting: AppSettingDefinition): boolean {
-    return setting.type !== SettingValueType.Action && setting.type !== SettingValueType.Custom;
+  return setting.type !== SettingValueType.Action && setting.type !== SettingValueType.Custom;
 }
 
 /**
@@ -31,19 +31,19 @@ function isStored(setting: AppSettingDefinition): boolean {
  * table would be surprising in exactly the way a reset must not be.
  */
 export function preferenceKeys(): string[] {
-    const keys = new Set<string>();
-    for (const setting of getAllAppSettings()) {
-        if (setting.type === SettingValueType.Action) {
-            continue;
-        }
-        keys.add(setting.key);
+  const keys = new Set<string>();
+  for (const setting of getAllAppSettings()) {
+    if (setting.type === SettingValueType.Action) {
+      continue;
     }
-    for (const key of NON_REGISTRY_PREFERENCE_KEYS) {
-        keys.add(key);
-    }
-    // Belt and braces with the host's own refusal: nothing here should be protected, and if a
-    // future key is both, the host's list wins and this keeps the UI from offering it.
-    return [...keys].filter(key => !isProtectedStateKey(key));
+    keys.add(setting.key);
+  }
+  for (const key of NON_REGISTRY_PREFERENCE_KEYS) {
+    keys.add(key);
+  }
+  // Belt and braces with the host's own refusal: nothing here should be protected, and if a
+  // future key is both, the host's list wins and this keeps the UI from offering it.
+  return [...keys].filter((key) => !isProtectedStateKey(key));
 }
 
 /**
@@ -54,16 +54,16 @@ export function preferenceKeys(): string[] {
  * governing what goes into it would be a second settings system serving one question.
  */
 export function exportablePreferenceKeys(): string[] {
-    const excluded = new Set(UNEXPORTED_PREFERENCE_KEYS);
-    return preferenceKeys().filter(key => !excluded.has(key));
+  const excluded = new Set(UNEXPORTED_PREFERENCE_KEYS);
+  return preferenceKeys().filter((key) => !excluded.has(key));
 }
 
 /** Preference keys in one settings category, for the per-category reset. */
 export function preferenceKeysInCategory(category: string): string[] {
-    return getAllAppSettings()
-        .filter(setting => setting.category === category && setting.type !== SettingValueType.Action)
-        .map(setting => setting.key)
-        .filter(key => !isProtectedStateKey(key));
+  return getAllAppSettings()
+    .filter((setting) => setting.category === category && setting.type !== SettingValueType.Action)
+    .map((setting) => setting.key)
+    .filter((key) => !isProtectedStateKey(key));
 }
 
 /**
@@ -73,40 +73,42 @@ export function preferenceKeysInCategory(category: string): string[] {
  * (`ui.editor.session.project.<id>`) and there is no list of them anywhere but the store itself.
  */
 export function workspaceLayoutKeys(stored: Record<string, unknown>): string[] {
-    return Object.keys(stored).filter(key => isWorkspaceLayoutKey(key) && !isProtectedStateKey(key));
+  return Object.keys(stored).filter(
+    (key) => isWorkspaceLayoutKey(key) && !isProtectedStateKey(key)
+  );
 }
 
 /** Map a registry entry's type onto what an import can check a value against. */
 function specForSetting(setting: AppSettingDefinition): SettingsValueSpec {
-    const base = { key: setting.key };
-    switch (setting.type) {
-        case SettingValueType.Boolean:
-            return { ...base, kind: "boolean" };
-        case SettingValueType.Number:
-        case SettingValueType.Integer:
-        case SettingValueType.Slider:
-            return {
-                ...base,
-                kind: "number",
-                ...(setting.min !== undefined ? { min: setting.min } : {}),
-                ...(setting.max !== undefined ? { max: setting.max } : {}),
-            };
-        case SettingValueType.Enum:
-            return { ...base, kind: "enum", ...(setting.options ? { options: setting.options } : {}) };
-        case SettingValueType.Color:
-            // Not `enum`: the presets are ids, but `allowCustomColor` stores a hex that is in no
-            // option list, so checking membership would reject a value the picker itself wrote.
-            return { ...base, kind: "string" };
-        case SettingValueType.Font:
-            // Same reason, one step further: the option list holds only the presets, and the
-            // families beside them are whatever the EXPORTING machine had installed. Membership
-            // would reject every one of them, which is most of what this setting can hold.
-            return { ...base, kind: "string" };
-        case SettingValueType.String:
-            return { ...base, kind: "string" };
-        default:
-            return { ...base, kind: "json" };
-    }
+  const base = { key: setting.key };
+  switch (setting.type) {
+    case SettingValueType.Boolean:
+      return { ...base, kind: "boolean" };
+    case SettingValueType.Number:
+    case SettingValueType.Integer:
+    case SettingValueType.Slider:
+      return {
+        ...base,
+        kind: "number",
+        ...(setting.min !== undefined ? { min: setting.min } : {}),
+        ...(setting.max !== undefined ? { max: setting.max } : {})
+      };
+    case SettingValueType.Enum:
+      return { ...base, kind: "enum", ...(setting.options ? { options: setting.options } : {}) };
+    case SettingValueType.Color:
+      // Not `enum`: the presets are ids, but `allowCustomColor` stores a hex that is in no
+      // option list, so checking membership would reject a value the picker itself wrote.
+      return { ...base, kind: "string" };
+    case SettingValueType.Font:
+      // Same reason, one step further: the option list holds only the presets, and the
+      // families beside them are whatever the EXPORTING machine had installed. Membership
+      // would reject every one of them, which is most of what this setting can hold.
+      return { ...base, kind: "string" };
+    case SettingValueType.String:
+      return { ...base, kind: "string" };
+    default:
+      return { ...base, kind: "json" };
+  }
 }
 
 /**
@@ -115,18 +117,15 @@ function specForSetting(setting: AppSettingDefinition): SettingsValueSpec {
  * Keys outside this list are reported and skipped - see `planSettingsImport`.
  */
 export function settingsValueSpecs(): SettingsValueSpec[] {
-    const specs = getAllAppSettings()
-        .filter(isStored)
-        .map(specForSetting);
-    // The panel-backed and gesture-set keys hold shapes the registry does not describe. Their own
-    // readers normalize whatever they find (`normalizeRewriteRules`, `sanitizeKeybindingOverrides`,
-    // `readBackgroundSettings`), which is what makes accepting them safe.
-    const described = new Set(specs.map(spec => spec.key));
-    for (const key of preferenceKeys()) {
-        if (!described.has(key)) {
-            specs.push({ key, kind: "json" });
-        }
+  const specs = getAllAppSettings().filter(isStored).map(specForSetting);
+  // The panel-backed and gesture-set keys hold shapes the registry does not describe. Their own
+  // readers normalize whatever they find (`normalizeRewriteRules`, `sanitizeKeybindingOverrides`,
+  // `readBackgroundSettings`), which is what makes accepting them safe.
+  const described = new Set(specs.map((spec) => spec.key));
+  for (const key of preferenceKeys()) {
+    if (!described.has(key)) {
+      specs.push({ key, kind: "json" });
     }
-    return specs;
+  }
+  return specs;
 }
-

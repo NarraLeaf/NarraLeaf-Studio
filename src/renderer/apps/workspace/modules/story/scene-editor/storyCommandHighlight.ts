@@ -22,24 +22,24 @@ import { parseCommandLine, type StoryCommandSpan } from "./storyCommandParser";
  */
 
 export type StoryCommandRole =
-    /** The command word. The anchor — the eye should land here first. */
-    | "verb"
-    /** The thing being acted on: a character, a stage object, a scene, a variable. */
-    | "target"
-    /** A value: an enum word, a number, a colour, a quoted string. Same role whether `fade` or `1`. */
-    | "value"
-    /**
-     * Everything holding the sentence together: the trigger, the binders, the param keys, the units.
-     * Muted, and the param keys most of all — a Chinese key (`转场`, `秒数`) is two full-width glyphs
-     * and will out-shout the value it introduces if it keeps a colour of its own.
-     */
-    | "scaffold";
+  /** The command word. The anchor — the eye should land here first. */
+  | "verb"
+  /** The thing being acted on: a character, a stage object, a scene, a variable. */
+  | "target"
+  /** A value: an enum word, a number, a colour, a quoted string. Same role whether `fade` or `1`. */
+  | "value"
+  /**
+   * Everything holding the sentence together: the trigger, the binders, the param keys, the units.
+   * Muted, and the param keys most of all — a Chinese key (`转场`, `秒数`) is two full-width glyphs
+   * and will out-shout the value it introduces if it keeps a colour of its own.
+   */
+  | "scaffold";
 
 export type StoryCommandHighlight = {
-    span: StoryCommandSpan;
-    role: StoryCommandRole;
-    /** This stretch is a param key and its binder — see {@link StoryCommandSegment.paramKey}. */
-    paramKey?: true;
+  span: StoryCommandSpan;
+  role: StoryCommandRole;
+  /** This stretch is a param key and its binder — see {@link StoryCommandSegment.paramKey}. */
+  paramKey?: true;
 };
 
 /**
@@ -51,7 +51,14 @@ export type StoryCommandHighlight = {
  * have gone on being wrong for every command that names its object after what it is.
  */
 const ENTITY_KINDS: ReadonlySet<string> = new Set([
-    "asset", "character", "scene", "audioTrack", "variable", "label", "appTag", "target",
+  "asset",
+  "character",
+  "scene",
+  "audioTrack",
+  "variable",
+  "label",
+  "appTag",
+  "target"
 ]);
 
 /**
@@ -62,9 +69,8 @@ const ENTITY_KINDS: ReadonlySet<string> = new Set([
  * lead with a value, which is what they are, while `/jump 'Scene Name'` leads with its object.
  */
 function isTargetParam(param: StoryCommandParam | null): boolean {
-    return param !== null && paramTypes(param).some(type => ENTITY_KINDS.has(type.kind));
+  return param !== null && paramTypes(param).some((type) => ENTITY_KINDS.has(type.kind));
 }
-
 
 /**
  * The roles of a command line, in source order and non-overlapping.
@@ -76,62 +82,66 @@ function isTargetParam(param: StoryCommandParam | null): boolean {
  * the cursor see, so the spans line up with what the author has on screen character for character.
  */
 export function getCommandHighlights(source: string): readonly StoryCommandHighlight[] {
-    const line = parseCommandLine(source);
-    if (line.kind !== "command") {
-        return [];
+  const line = parseCommandLine(source);
+  if (line.kind !== "command") {
+    return [];
+  }
+  const highlights: StoryCommandHighlight[] = [];
+  // The verb, even when it names no command: a word being typed is still the verb slot, and having
+  // it go dark on every intermediate keystroke would make the line flicker as it is written.
+  if (line.tokenSpan.end > line.tokenSpan.start) {
+    highlights.push({ span: line.tokenSpan, role: "verb" });
+  }
+  for (const arg of line.args) {
+    if (arg.valueSpan.end <= arg.valueSpan.start) {
+      continue;
     }
-    const highlights: StoryCommandHighlight[] = [];
-    // The verb, even when it names no command: a word being typed is still the verb slot, and having
-    // it go dark on every intermediate keystroke would make the line flicker as it is written.
-    if (line.tokenSpan.end > line.tokenSpan.start) {
-        highlights.push({ span: line.tokenSpan, role: "verb" });
+    // The key and its binder are scaffold either way. They are recorded as a span of their own —
+    // rather than left to fall through together with the space in front of them — so that a
+    // surface can DROP them: that is the whole of "show only the values" (`t=fade` printed as
+    // `fade`), and the separating space, which is not part of the key, has to stay behind or the
+    // tokens run together.
+    //
+    // Only when the key really introduces a value that follows it. A bare flag (`/bgm battle
+    // loop`) parses with its key and value on the SAME span, so this comes out empty and the flag
+    // survives — dropping it would erase the arg rather than shorten it. An unrecognized key is
+    // kept too: it is the evidence for the `unknownParam` issue sitting under it.
+    if (arg.param && arg.keySpan && arg.keySpan.start < arg.valueSpan.start) {
+      highlights.push({
+        span: { start: arg.keySpan.start, end: arg.valueSpan.start },
+        role: "scaffold",
+        paramKey: true
+      });
     }
-    for (const arg of line.args) {
-        if (arg.valueSpan.end <= arg.valueSpan.start) {
-            continue;
-        }
-        // The key and its binder are scaffold either way. They are recorded as a span of their own —
-        // rather than left to fall through together with the space in front of them — so that a
-        // surface can DROP them: that is the whole of "show only the values" (`t=fade` printed as
-        // `fade`), and the separating space, which is not part of the key, has to stay behind or the
-        // tokens run together.
-        //
-        // Only when the key really introduces a value that follows it. A bare flag (`/bgm battle
-        // loop`) parses with its key and value on the SAME span, so this comes out empty and the flag
-        // survives — dropping it would erase the arg rather than shorten it. An unrecognized key is
-        // kept too: it is the evidence for the `unknownParam` issue sitting under it.
-        if (arg.param && arg.keySpan && arg.keySpan.start < arg.valueSpan.start) {
-            highlights.push({ span: { start: arg.keySpan.start, end: arg.valueSpan.start }, role: "scaffold", paramKey: true });
-        }
-        const isPositional = arg.key === null;
-        const role: StoryCommandRole = isPositional && isTargetParam(arg.param) ? "target" : "value";
-        // The unit is not part of the value: `1s` is one second, and the `s` (or `秒`) says which
-        // *kind* of one it is — the same job the param key does. Left out of the span, it falls
-        // through to scaffold. Measured by the same reader the parser uses, so a spelling that was
-        // accepted is a spelling that recedes.
-        //
-        // Only on an unquoted token, where the span and the text line up character for character. A
-        // quoted `d="1s"` would otherwise shed its closing quote instead of its unit.
-        const quoted = arg.valueSpan.end - arg.valueSpan.start !== arg.value.length;
-        const unit = quoted ? 0 : unitSuffixLength(arg.param, arg.value);
-        highlights.push({ span: { ...arg.valueSpan, end: arg.valueSpan.end - unit }, role });
-    }
-    return highlights.sort((a, b) => a.span.start - b.span.start);
+    const isPositional = arg.key === null;
+    const role: StoryCommandRole = isPositional && isTargetParam(arg.param) ? "target" : "value";
+    // The unit is not part of the value: `1s` is one second, and the `s` (or `秒`) says which
+    // *kind* of one it is — the same job the param key does. Left out of the span, it falls
+    // through to scaffold. Measured by the same reader the parser uses, so a spelling that was
+    // accepted is a spelling that recedes.
+    //
+    // Only on an unquoted token, where the span and the text line up character for character. A
+    // quoted `d="1s"` would otherwise shed its closing quote instead of its unit.
+    const quoted = arg.valueSpan.end - arg.valueSpan.start !== arg.value.length;
+    const unit = quoted ? 0 : unitSuffixLength(arg.param, arg.value);
+    highlights.push({ span: { ...arg.valueSpan, end: arg.valueSpan.end - unit }, role });
+  }
+  return highlights.sort((a, b) => a.span.start - b.span.start);
 }
 
 /** One stretch of the rendered line: the text, and the role that colours it. */
 export type StoryCommandSegment = {
-    text: string;
-    role: StoryCommandRole;
-    /**
-     * This segment is a param key with its `=` (`t=`, `转场=`) and nothing else — the one stretch of a
-     * line a surface may leave out and still show every word the author gave.
-     *
-     * A flag beside `role` rather than a fifth role, because it is not a fifth *colour*: a key is
-     * scaffold, and painting it any other way is exactly what the role vocabulary above rules out. What
-     * this adds is an identity, which colour cannot carry.
-     */
-    paramKey?: true;
+  text: string;
+  role: StoryCommandRole;
+  /**
+   * This segment is a param key with its `=` (`t=`, `转场=`) and nothing else — the one stretch of a
+   * line a surface may leave out and still show every word the author gave.
+   *
+   * A flag beside `role` rather than a fifth role, because it is not a fifth *colour*: a key is
+   * scaffold, and painting it any other way is exactly what the role vocabulary above rules out. What
+   * this adds is an identity, which colour cannot carry.
+   */
+  paramKey?: true;
 };
 
 /**
@@ -142,21 +152,25 @@ export type StoryCommandSegment = {
  * width, character for character, or the caret and the colours drift apart as the line grows.
  */
 export function getCommandSegments(source: string): readonly StoryCommandSegment[] {
-    const segments: StoryCommandSegment[] = [];
-    let at = 0;
-    const push = (text: string, role: StoryCommandRole, paramKey?: true) => {
-        if (text !== "") {
-            segments.push(paramKey ? { text, role, paramKey } : { text, role });
-        }
-    };
-    for (const highlight of getCommandHighlights(source)) {
-        if (highlight.span.start < at) {
-            continue;
-        }
-        push(source.slice(at, highlight.span.start), "scaffold");
-        push(source.slice(highlight.span.start, highlight.span.end), highlight.role, highlight.paramKey);
-        at = highlight.span.end;
+  const segments: StoryCommandSegment[] = [];
+  let at = 0;
+  const push = (text: string, role: StoryCommandRole, paramKey?: true) => {
+    if (text !== "") {
+      segments.push(paramKey ? { text, role, paramKey } : { text, role });
     }
-    push(source.slice(at), "scaffold");
-    return segments;
+  };
+  for (const highlight of getCommandHighlights(source)) {
+    if (highlight.span.start < at) {
+      continue;
+    }
+    push(source.slice(at, highlight.span.start), "scaffold");
+    push(
+      source.slice(highlight.span.start, highlight.span.end),
+      highlight.role,
+      highlight.paramKey
+    );
+    at = highlight.span.end;
+  }
+  push(source.slice(at), "scaffold");
+  return segments;
 }

@@ -17,9 +17,9 @@ export const MAX_ACTIVE_EDITORS_DEFAULT = 8;
 
 /** Clamp a raw/persisted value to the supported range, falling back to the default. */
 export function clampMaxActiveEditors(value: unknown): number {
-    const parsed = typeof value === "number" ? value : Number(value);
-    if (!Number.isFinite(parsed)) {
-        return MAX_ACTIVE_EDITORS_DEFAULT;
-    }
-    return Math.min(MAX_ACTIVE_EDITORS_MAX, Math.max(MAX_ACTIVE_EDITORS_MIN, Math.floor(parsed)));
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return MAX_ACTIVE_EDITORS_DEFAULT;
+  }
+  return Math.min(MAX_ACTIVE_EDITORS_MAX, Math.max(MAX_ACTIVE_EDITORS_MIN, Math.floor(parsed)));
 }

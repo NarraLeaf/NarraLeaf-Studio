@@ -2091,580 +2091,293 @@
   "prototypes": {
     "LoreEventCallbackFunction": {
       "returns": "void",
-      "args": [
-        "uint8_t*",
-        "uint64_t"
-      ]
+      "args": ["uint8_t*", "uint64_t"]
     }
   },
   "functions": {
     "lore_auth_user_info": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreAuthUserInfoArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreAuthUserInfoArgs*", "LoreEventCallbackConfig"]
     },
     "lore_auth_login_with_token": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreAuthLoginWithTokenArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreAuthLoginWithTokenArgs*", "LoreEventCallbackConfig"]
     },
     "lore_auth_list": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreAuthListArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreAuthListArgs*", "LoreEventCallbackConfig"]
     },
     "lore_auth_logout": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreAuthLogoutArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreAuthLogoutArgs*", "LoreEventCallbackConfig"]
     },
     "lore_auth_clear": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreAuthClearArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreAuthClearArgs*", "LoreEventCallbackConfig"]
     },
     "lore_auth_local_user_info": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreAuthLocalUserInfoArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreAuthLocalUserInfoArgs*", "LoreEventCallbackConfig"]
     },
     "lore_auth_login_interactive": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreAuthLoginInteractiveArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreAuthLoginInteractiveArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_create": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchCreateArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchCreateArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_info": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchInfoArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchInfoArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_diff": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchDiffArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchDiffArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_protect": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchProtectArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchProtectArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_unprotect": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchUnprotectArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchUnprotectArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_archive": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchArchiveArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchArchiveArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_list": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchListArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchListArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_merge_abort": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchMergeAbortArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchMergeAbortArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_merge_unresolve": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchMergeUnresolveArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchMergeUnresolveArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_merge_into": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchMergeIntoArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchMergeIntoArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_merge_resolve": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchMergeResolveArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchMergeResolveArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_merge_resolve_mine": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchMergeResolveMineArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchMergeResolveMineArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_merge_resolve_theirs": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchMergeResolveTheirsArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchMergeResolveTheirsArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_merge_restart": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchMergeRestartArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchMergeRestartArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_merge_start": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchMergeStartArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchMergeStartArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_switch": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchSwitchArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchSwitchArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_reset": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchResetArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchResetArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_push": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchPushArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchPushArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_metadata_get": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchMetadataGetArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchMetadataGetArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_metadata_set": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchMetadataSetArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchMetadataSetArgs*", "LoreEventCallbackConfig"]
     },
     "lore_branch_metadata_clear": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreBranchMetadataClearArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreBranchMetadataClearArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_info": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileInfoArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileInfoArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_diff": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileDiffArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileDiffArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_hash": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileHashArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileHashArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_history": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileHistoryArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileHistoryArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_metadata_clear": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileMetadataClearArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileMetadataClearArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_metadata_get": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileMetadataGetArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileMetadataGetArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_metadata_list": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileMetadataListArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileMetadataListArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_metadata_set": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileMetadataSetArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileMetadataSetArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_reset": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileResetArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileResetArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_reset_to_last_merged": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileResetToLastMergedArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileResetToLastMergedArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_stage": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileStageArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileStageArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_stage_merge": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileStageMergeArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileStageMergeArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_stage_move": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileStageMoveArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileStageMoveArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_dirty": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileDirtyArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileDirtyArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_dirty_move": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileDirtyMoveArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileDirtyMoveArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_dirty_copy": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileDirtyCopyArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileDirtyCopyArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_unstage": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileUnstageArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileUnstageArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_write": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileWriteArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileWriteArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_obliterate": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileObliterateArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileObliterateArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_dump": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileDumpArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileDumpArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_dependency_add": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileDependencyAddArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileDependencyAddArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_dependency_remove": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileDependencyRemoveArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileDependencyRemoveArgs*", "LoreEventCallbackConfig"]
     },
     "lore_file_dependency_list": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreFileDependencyListArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreFileDependencyListArgs*", "LoreEventCallbackConfig"]
     },
     "lore_lock_file_acquire": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreLockFileAcquireArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreLockFileAcquireArgs*", "LoreEventCallbackConfig"]
     },
     "lore_lock_file_status": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreLockFileStatusArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreLockFileStatusArgs*", "LoreEventCallbackConfig"]
     },
     "lore_lock_file_query": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreLockFileQueryArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreLockFileQueryArgs*", "LoreEventCallbackConfig"]
     },
     "lore_lock_file_release": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreLockFileReleaseArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreLockFileReleaseArgs*", "LoreEventCallbackConfig"]
     },
     "lore_link_add": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreLinkAddArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreLinkAddArgs*", "LoreEventCallbackConfig"]
     },
     "lore_link_remove": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreLinkRemoveArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreLinkRemoveArgs*", "LoreEventCallbackConfig"]
     },
     "lore_link_list": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreLinkListArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreLinkListArgs*", "LoreEventCallbackConfig"]
     },
     "lore_link_update": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreLinkUpdateArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreLinkUpdateArgs*", "LoreEventCallbackConfig"]
     },
     "lore_repository_clone": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRepositoryCloneArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRepositoryCloneArgs*", "LoreEventCallbackConfig"]
     },
     "lore_repository_info": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRepositoryInfoArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRepositoryInfoArgs*", "LoreEventCallbackConfig"]
     },
     "lore_repository_dump": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRepositoryDumpArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRepositoryDumpArgs*", "LoreEventCallbackConfig"]
     },
     "lore_repository_create": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRepositoryCreateArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRepositoryCreateArgs*", "LoreEventCallbackConfig"]
     },
     "lore_repository_flush": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRepositoryFlushArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRepositoryFlushArgs*", "LoreEventCallbackConfig"]
     },
     "lore_repository_gc": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRepositoryGcArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRepositoryGcArgs*", "LoreEventCallbackConfig"]
     },
     "lore_repository_release": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRepositoryReleaseArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRepositoryReleaseArgs*", "LoreEventCallbackConfig"]
     },
     "lore_layer_add": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreLayerAddArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreLayerAddArgs*", "LoreEventCallbackConfig"]
     },
     "lore_layer_remove": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreLayerRemoveArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreLayerRemoveArgs*", "LoreEventCallbackConfig"]
     },
     "lore_layer_list": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreLayerListArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreLayerListArgs*", "LoreEventCallbackConfig"]
     },
     "lore_repository_list": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRepositoryListArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRepositoryListArgs*", "LoreEventCallbackConfig"]
     },
     "lore_repository_status": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRepositoryStatusArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRepositoryStatusArgs*", "LoreEventCallbackConfig"]
     },
     "lore_repository_store_immutable_query": {
       "returns": "int32_t",
@@ -2676,179 +2389,91 @@
     },
     "lore_repository_verify_state": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRepositoryVerifyStateArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRepositoryVerifyStateArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_commit": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionCommitArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionCommitArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_amend": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionAmendArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionAmendArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_info": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionInfoArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionInfoArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_diff": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionDiffArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionDiffArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_find": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionFindArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionFindArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_history": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionHistoryArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionHistoryArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_restore": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionRestoreArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionRestoreArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_metadata_clear": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionMetadataClearArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionMetadataClearArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_metadata_get": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionMetadataGetArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionMetadataGetArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_metadata_list": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionMetadataListArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionMetadataListArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_metadata_set": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionMetadataSetArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionMetadataSetArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_sync": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionSyncArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionSyncArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_revert": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionRevertArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionRevertArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_revert_abort": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionRevertAbortArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionRevertAbortArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_revert_unresolve": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionRevertUnresolveArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionRevertUnresolveArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_revert_restart": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionRevertRestartArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionRevertRestartArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_revert_resolve": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionRevertResolveArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionRevertResolveArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_revert_resolve_mine": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionRevertResolveMineArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionRevertResolveMineArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_revert_resolve_theirs": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionRevertResolveTheirsArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionRevertResolveTheirsArgs*", "LoreEventCallbackConfig"]
     },
     "lore_shared_store_create": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreSharedStoreCreateArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreSharedStoreCreateArgs*", "LoreEventCallbackConfig"]
     },
     "lore_shared_store_info": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreSharedStoreInfoArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreSharedStoreInfoArgs*", "LoreEventCallbackConfig"]
     },
     "lore_shared_store_set_use_automatically": {
       "returns": "int32_t",
@@ -2860,75 +2485,39 @@
     },
     "lore_storage_open": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreStorageOpenArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreStorageOpenArgs*", "LoreEventCallbackConfig"]
     },
     "lore_storage_put": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreStoragePutArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreStoragePutArgs*", "LoreEventCallbackConfig"]
     },
     "lore_storage_get": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreStorageGetArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreStorageGetArgs*", "LoreEventCallbackConfig"]
     },
     "lore_storage_close": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreStorageCloseArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreStorageCloseArgs*", "LoreEventCallbackConfig"]
     },
     "lore_storage_flush": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreStorageFlushArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreStorageFlushArgs*", "LoreEventCallbackConfig"]
     },
     "lore_storage_get_metadata": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreStorageGetMetadataArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreStorageGetMetadataArgs*", "LoreEventCallbackConfig"]
     },
     "lore_storage_obliterate": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreStorageObliterateArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreStorageObliterateArgs*", "LoreEventCallbackConfig"]
     },
     "lore_storage_mutable_load": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreStorageMutableLoadArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreStorageMutableLoadArgs*", "LoreEventCallbackConfig"]
     },
     "lore_storage_mutable_store": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreStorageMutableStoreArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreStorageMutableStoreArgs*", "LoreEventCallbackConfig"]
     },
     "lore_storage_mutable_compare_and_swap": {
       "returns": "int32_t",
@@ -2940,193 +2529,99 @@
     },
     "lore_storage_mutable_list": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreStorageMutableListArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreStorageMutableListArgs*", "LoreEventCallbackConfig"]
     },
     "lore_storage_copy": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreStorageCopyArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreStorageCopyArgs*", "LoreEventCallbackConfig"]
     },
     "lore_storage_put_file": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreStoragePutFileArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreStoragePutFileArgs*", "LoreEventCallbackConfig"]
     },
     "lore_storage_get_file": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreStorageGetFileArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreStorageGetFileArgs*", "LoreEventCallbackConfig"]
     },
     "lore_storage_upload": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreStorageUploadArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreStorageUploadArgs*", "LoreEventCallbackConfig"]
     },
     "lore_service_start": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreServiceStartArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreServiceStartArgs*", "LoreEventCallbackConfig"]
     },
     "lore_service_stop": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreServiceStopArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreServiceStopArgs*", "LoreEventCallbackConfig"]
     },
     "lore_notification_subscribe": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreNotificationSubscribeArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreNotificationSubscribeArgs*", "LoreEventCallbackConfig"]
     },
     "lore_notification_unsubscribe": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreNotificationUnsubscribeArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreNotificationUnsubscribeArgs*", "LoreEventCallbackConfig"]
     },
     "lore_repository_metadata_get": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRepositoryMetadataGetArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRepositoryMetadataGetArgs*", "LoreEventCallbackConfig"]
     },
     "lore_repository_metadata_set": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRepositoryMetadataSetArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRepositoryMetadataSetArgs*", "LoreEventCallbackConfig"]
     },
     "lore_repository_metadata_clear": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRepositoryMetadataClearArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRepositoryMetadataClearArgs*", "LoreEventCallbackConfig"]
     },
     "lore_repository_instance_list": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRepositoryInstanceListArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRepositoryInstanceListArgs*", "LoreEventCallbackConfig"]
     },
     "lore_repository_instance_prune": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRepositoryInstancePruneArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRepositoryInstancePruneArgs*", "LoreEventCallbackConfig"]
     },
     "lore_repository_update_path": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRepositoryUpdatePathArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRepositoryUpdatePathArgs*", "LoreEventCallbackConfig"]
     },
     "lore_repository_config_get": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRepositoryConfigGetArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRepositoryConfigGetArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_tree_load": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionTreeLoadArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionTreeLoadArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_tree_close": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionTreeCloseArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionTreeCloseArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_tree_resolve_path": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionTreeResolvePathArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionTreeResolvePathArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_tree_list_children": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionTreeListChildrenArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionTreeListChildrenArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_tree_node_info": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionTreeNodeInfoArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionTreeNodeInfoArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_tree_info": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionTreeInfoArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionTreeInfoArgs*", "LoreEventCallbackConfig"]
     },
     "lore_revision_tree_node_path": {
       "returns": "int32_t",
-      "args": [
-        "LoreGlobalArgs*",
-        "LoreRevisionTreeNodePathArgs*",
-        "LoreEventCallbackConfig"
-      ]
+      "args": ["LoreGlobalArgs*", "LoreRevisionTreeNodePathArgs*", "LoreEventCallbackConfig"]
     },
     "lore_log_configure": {
       "returns": "int32_t",
-      "args": [
-        "LoreLogConfig*"
-      ]
+      "args": ["LoreLogConfig*"]
     },
     "lore_shutdown": {
       "returns": "int32_t",
@@ -3134,9 +2629,7 @@
     },
     "lore_set_thread_limit": {
       "returns": "int32_t",
-      "args": [
-        "uintptr_t"
-      ]
+      "args": ["uintptr_t"]
     }
   },
   "enums": {

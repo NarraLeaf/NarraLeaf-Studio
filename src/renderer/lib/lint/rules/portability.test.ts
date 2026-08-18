@@ -13,254 +13,263 @@ import { PORTABILITY_LINT_RULES } from "./portability";
  */
 
 function runRule(id: LintRuleId, ctx: LintContext): Promise<LintFinding[]> {
-    const rule = PORTABILITY_LINT_RULES.find(entry => entry.id === id);
-    if (!rule) {
-        throw new Error(`no such rule: ${id}`);
-    }
-    return Promise.resolve(rule.run(ctx, {}));
+  const rule = PORTABILITY_LINT_RULES.find((entry) => entry.id === id);
+  if (!rule) {
+    throw new Error(`no such rule: ${id}`);
+  }
+  return Promise.resolve(rule.run(ctx, {}));
 }
 
 function asset(id: string, name: string, overrides: Partial<LintAssetEntry> = {}): LintAssetEntry {
-    return { id, type: AssetType.Image, name, ext: "png", meta: {}, ...overrides };
+  return { id, type: AssetType.Image, name, ext: "png", meta: {}, ...overrides };
 }
 
 async function flaggedNames(assets: readonly LintAssetEntry[]): Promise<string[]> {
-    const findings = await runRule("portability/asset-name", createTestLintContext({ assets }));
-    return findings.map(finding => String(finding.messageParams?.asset));
+  const findings = await runRule("portability/asset-name", createTestLintContext({ assets }));
+  return findings.map((finding) => String(finding.messageParams?.asset));
 }
 
 describe("portability/asset-name", () => {
-    it("flags a reserved DOS device name even with an extension", async () => {
-        expect(await flaggedNames([asset("a", "CON.png"), asset("b", "nul.png"), asset("c", "com1.png")])).toEqual([
-            "CON.png",
-            "nul.png",
-            "com1.png",
-        ]);
-    });
+  it("flags a reserved DOS device name even with an extension", async () => {
+    expect(
+      await flaggedNames([asset("a", "CON.png"), asset("b", "nul.png"), asset("c", "com1.png")])
+    ).toEqual(["CON.png", "nul.png", "com1.png"]);
+  });
 
-    it("flags trailing whitespace and a trailing dot", async () => {
-        const assets = [
-            asset("a", "trailing ", { ext: undefined }),
-            asset("b", "trailing.", { ext: undefined }),
-            asset("c", " leading", { ext: undefined }),
-        ];
+  it("flags trailing whitespace and a trailing dot", async () => {
+    const assets = [
+      asset("a", "trailing ", { ext: undefined }),
+      asset("b", "trailing.", { ext: undefined }),
+      asset("c", " leading", { ext: undefined })
+    ];
 
-        expect(await flaggedNames(assets)).toEqual(["trailing ", "trailing.", " leading"]);
-    });
+    expect(await flaggedNames(assets)).toEqual(["trailing ", "trailing.", " leading"]);
+  });
 
-    it("flags characters Windows refuses", async () => {
-        const assets = [
-            asset("a", "who?.png"),
-            asset("b", "a:b.png"),
-            asset("c", "star*.png"),
-            asset("d", "pipe|.png"),
-            asset("e", 'quote".png'),
-            asset("f", "angle<>.png"),
-            asset("g", "tab\tname.png"),
-        ];
+  it("flags characters Windows refuses", async () => {
+    const assets = [
+      asset("a", "who?.png"),
+      asset("b", "a:b.png"),
+      asset("c", "star*.png"),
+      asset("d", "pipe|.png"),
+      asset("e", 'quote".png'),
+      asset("f", "angle<>.png"),
+      asset("g", "tab\tname.png")
+    ];
 
-        expect(await flaggedNames(assets)).toHaveLength(assets.length);
-    });
+    expect(await flaggedNames(assets)).toHaveLength(assets.length);
+  });
 
-    it("does not flag a non-ASCII name", async () => {
-        const assets = [asset("a", "角色立绘.png"), asset("b", "bg_room-01.png"), asset("c", "Ártemis.png")];
+  it("does not flag a non-ASCII name", async () => {
+    const assets = [
+      asset("a", "角色立绘.png"),
+      asset("b", "bg_room-01.png"),
+      asset("c", "Ártemis.png")
+    ];
 
-        expect(await flaggedNames(assets)).toEqual([]);
-    });
+    expect(await flaggedNames(assets)).toEqual([]);
+  });
 
-    it("locates the finding on the asset", async () => {
-        const findings = await runRule(
-            "portability/asset-name",
-            createTestLintContext({ assets: [asset("a", "CON.png")] }),
-        );
+  it("locates the finding on the asset", async () => {
+    const findings = await runRule(
+      "portability/asset-name",
+      createTestLintContext({ assets: [asset("a", "CON.png")] })
+    );
 
-        expect(findings[0].messageKey).toBe("lint.rule.portabilityAssetName.message");
-        expect(findings[0].location).toEqual({ kind: "asset", assetId: "a", assetName: "CON.png" });
-        expect(findings[0].target).toEqual({ kind: "asset", assetId: "a", assetType: AssetType.Image });
-    });
+    expect(findings[0].messageKey).toBe("lint.rule.portabilityAssetName.message");
+    expect(findings[0].location).toEqual({ kind: "asset", assetId: "a", assetName: "CON.png" });
+    expect(findings[0].target).toEqual({ kind: "asset", assetId: "a", assetType: AssetType.Image });
+  });
 });
 
 describe("portability/case-collision", () => {
-    it("flags names differing only by case, once per member past the first", async () => {
-        const ctx = createTestLintContext({ assets: [asset("a", "Bg.png"), asset("b", "bg.png")] });
+  it("flags names differing only by case, once per member past the first", async () => {
+    const ctx = createTestLintContext({ assets: [asset("a", "Bg.png"), asset("b", "bg.png")] });
 
-        const findings = await runRule("portability/case-collision", ctx);
+    const findings = await runRule("portability/case-collision", ctx);
 
-        expect(findings).toHaveLength(1);
-        expect(findings[0].messageKey).toBe("lint.rule.portabilityCaseCollision.message");
-        expect(findings[0].messageParams).toEqual({ asset: "bg.png", other: "Bg.png" });
-        expect(findings[0].location).toEqual({ kind: "asset", assetId: "b", assetName: "bg.png" });
+    expect(findings).toHaveLength(1);
+    expect(findings[0].messageKey).toBe("lint.rule.portabilityCaseCollision.message");
+    expect(findings[0].messageParams).toEqual({ asset: "bg.png", other: "Bg.png" });
+    expect(findings[0].location).toEqual({ kind: "asset", assetId: "b", assetName: "bg.png" });
+  });
+
+  it("names the first member as the incumbent for every later one", async () => {
+    const ctx = createTestLintContext({
+      assets: [asset("a", "Bg.png"), asset("b", "bg.png"), asset("c", "BG.png")]
     });
 
-    it("names the first member as the incumbent for every later one", async () => {
-        const ctx = createTestLintContext({
-            assets: [asset("a", "Bg.png"), asset("b", "bg.png"), asset("c", "BG.png")],
-        });
+    const findings = await runRule("portability/case-collision", ctx);
 
-        const findings = await runRule("portability/case-collision", ctx);
+    expect(findings).toHaveLength(2);
+    expect(findings.map((finding) => finding.messageParams?.asset)).toEqual(["bg.png", "BG.png"]);
+    expect(new Set(findings.map((finding) => finding.messageParams?.other))).toEqual(
+      new Set(["Bg.png"])
+    );
+  });
 
-        expect(findings).toHaveLength(2);
-        expect(findings.map(finding => finding.messageParams?.asset)).toEqual(["bg.png", "BG.png"]);
-        expect(new Set(findings.map(finding => finding.messageParams?.other))).toEqual(new Set(["Bg.png"]));
+  it("stays silent for names that differ by more than case", async () => {
+    const ctx = createTestLintContext({
+      assets: [asset("a", "bg.png"), asset("b", "bg2.png"), asset("c", "bg.jpg", { ext: "jpg" })]
     });
 
-    it("stays silent for names that differ by more than case", async () => {
-        const ctx = createTestLintContext({
-            assets: [asset("a", "bg.png"), asset("b", "bg2.png"), asset("c", "bg.jpg", { ext: "jpg" })],
-        });
-
-        expect(await runRule("portability/case-collision", ctx)).toEqual([]);
-    });
+    expect(await runRule("portability/case-collision", ctx)).toEqual([]);
+  });
 });
 
 describe("portability/media-format", () => {
-    const oggAssets = [asset("bgm", "theme.ogg", { type: AssetType.Audio, ext: "ogg" })];
+  const oggAssets = [asset("bgm", "theme.ogg", { type: AssetType.Audio, ext: "ogg" })];
 
-    /**
-     * Taken from the shared table for the same reason the rule takes it from there: "every platform"
-     * has to keep meaning every platform after the union grows, or the exhaustiveness these tests
-     * claim to check quietly becomes a check of six hard-coded names.
-     */
-    const EVERY_PLATFORM = Object.keys(GAME_BUILD_FORMATS_BY_PLATFORM) as GameBuildPlatform[];
+  /**
+   * Taken from the shared table for the same reason the rule takes it from there: "every platform"
+   * has to keep meaning every platform after the union grows, or the exhaustiveness these tests
+   * claim to check quietly becomes a check of six hard-coded names.
+   */
+  const EVERY_PLATFORM = Object.keys(GAME_BUILD_FORMATS_BY_PLATFORM) as GameBuildPlatform[];
 
-    it("says nothing when the project has never declared a build target", async () => {
-        const ctx = createTestLintContext({ assets: oggAssets, buildPlatforms: [] });
+  it("says nothing when the project has never declared a build target", async () => {
+    const ctx = createTestLintContext({ assets: oggAssets, buildPlatforms: [] });
 
-        expect(await runRule("portability/media-format", ctx)).toEqual([]);
+    expect(await runRule("portability/media-format", ctx)).toEqual([]);
+  });
+
+  it("fires for a platform the project actually builds for", async () => {
+    const ctx = createTestLintContext({ assets: oggAssets, buildPlatforms: ["ios"] });
+
+    const findings = await runRule("portability/media-format", ctx);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0].messageKey).toBe("lint.rule.portabilityMediaFormat.message");
+    expect(findings[0].messageParams).toEqual({ asset: "theme.ogg", platform: "ios" });
+    expect(findings[0].location).toEqual({ kind: "asset", assetId: "bgm", assetName: "theme.ogg" });
+  });
+
+  it("stays silent for a windows-only project", async () => {
+    const ctx = createTestLintContext({ assets: oggAssets, buildPlatforms: ["windows"] });
+
+    expect(await runRule("portability/media-format", ctx)).toEqual([]);
+  });
+
+  it("lists only the selected platforms that cannot play it", async () => {
+    const ctx = createTestLintContext({
+      assets: [asset("bgm", "theme.ogg", { type: AssetType.Audio, ext: "ogg" })],
+      buildPlatforms: ["windows", "web", "ios", "android"]
     });
 
-    it("fires for a platform the project actually builds for", async () => {
-        const ctx = createTestLintContext({ assets: oggAssets, buildPlatforms: ["ios"] });
+    const findings = await runRule("portability/media-format", ctx);
 
-        const findings = await runRule("portability/media-format", ctx);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].messageParams).toEqual({ asset: "theme.ogg", platform: "web, ios" });
+  });
 
-        expect(findings).toHaveLength(1);
-        expect(findings[0].messageKey).toBe("lint.rule.portabilityMediaFormat.message");
-        expect(findings[0].messageParams).toEqual({ asset: "theme.ogg", platform: "ios" });
-        expect(findings[0].location).toEqual({ kind: "asset", assetId: "bgm", assetName: "theme.ogg" });
+  it("covers every Ogg audio spelling, on the Safari-engine targets and nowhere else", async () => {
+    const oggAudio = [
+      asset("a1", "theme.ogg", { type: AssetType.Audio, ext: "ogg" }),
+      asset("a2", "voice.oga", { type: AssetType.Audio, ext: "oga" }),
+      asset("a3", "sting.opus", { type: AssetType.Audio, ext: "opus" })
+    ];
+
+    const safari = await runRule(
+      "portability/media-format",
+      createTestLintContext({ assets: oggAudio, buildPlatforms: ["web", "ios"] })
+    );
+
+    expect(safari.map((entry) => entry.messageParams)).toEqual([
+      { asset: "theme.ogg", platform: "web, ios" },
+      { asset: "voice.oga", platform: "web, ios" },
+      { asset: "sting.opus", platform: "web, ios" }
+    ]);
+
+    // Every Chromium target demuxes Ogg; only the 18.4 container gap is being reported.
+    const chromium = await runRule(
+      "portability/media-format",
+      createTestLintContext({
+        assets: oggAudio,
+        buildPlatforms: ["windows", "macos", "linux", "android"]
+      })
+    );
+
+    expect(chromium).toEqual([]);
+  });
+
+  it("flags Ogg video on every build target, Chromium ones included", async () => {
+    const reported: Record<string, string | undefined> = {};
+    for (const platform of EVERY_PLATFORM) {
+      const findings = await runRule(
+        "portability/media-format",
+        createTestLintContext({
+          assets: [asset("v1", "cut.ogv", { type: AssetType.Video, ext: "ogv" })],
+          buildPlatforms: [platform]
+        })
+      );
+      reported[platform] = findings[0]?.messageParams?.platform as string | undefined;
+    }
+
+    expect(reported).toEqual(
+      Object.fromEntries(EVERY_PLATFORM.map((platform) => [platform, platform]))
+    );
+  });
+
+  it("treats .ogm and .ogx as the same container as .ogv", async () => {
+    const ctx = createTestLintContext({
+      assets: [
+        asset("v2", "cut2.ogm", { type: AssetType.Video, ext: "ogm" }),
+        asset("v3", "cut3.ogx", { type: AssetType.Video, ext: "ogx" })
+      ],
+      buildPlatforms: EVERY_PLATFORM
     });
 
-    it("stays silent for a windows-only project", async () => {
-        const ctx = createTestLintContext({ assets: oggAssets, buildPlatforms: ["windows"] });
+    const findings = await runRule("portability/media-format", ctx);
 
-        expect(await runRule("portability/media-format", ctx)).toEqual([]);
+    expect(findings.map((entry) => entry.messageParams)).toEqual([
+      { asset: "cut2.ogm", platform: EVERY_PLATFORM.join(", ") },
+      { asset: "cut3.ogx", platform: EVERY_PLATFORM.join(", ") }
+    ]);
+  });
+
+  it("says nothing about WebM: Safari 17.4 plays it everywhere, and 17.4 is the floor", async () => {
+    const ctx = createTestLintContext({
+      assets: [
+        asset("clip", "intro.webm", { type: AssetType.Video, ext: "webm" }),
+        asset("loop", "loop.weba", { type: AssetType.Audio, ext: "weba" })
+      ],
+      buildPlatforms: EVERY_PLATFORM
     });
 
-    it("lists only the selected platforms that cannot play it", async () => {
-        const ctx = createTestLintContext({
-            assets: [asset("bgm", "theme.ogg", { type: AssetType.Audio, ext: "ogg" })],
-            buildPlatforms: ["windows", "web", "ios", "android"],
-        });
+    expect(await runRule("portability/media-format", ctx)).toEqual([]);
+  });
 
-        const findings = await runRule("portability/media-format", ctx);
-
-        expect(findings).toHaveLength(1);
-        expect(findings[0].messageParams).toEqual({ asset: "theme.ogg", platform: "web, ios" });
+  it("stays silent for a container every target plays", async () => {
+    const ctx = createTestLintContext({
+      assets: [
+        asset("bgm", "theme.mp3", { type: AssetType.Audio, ext: "mp3" }),
+        asset("clip", "intro.mp4", { type: AssetType.Video, ext: "mp4" })
+      ],
+      buildPlatforms: ["web", "ios"]
     });
 
-    it("covers every Ogg audio spelling, on the Safari-engine targets and nowhere else", async () => {
-        const oggAudio = [
-            asset("a1", "theme.ogg", { type: AssetType.Audio, ext: "ogg" }),
-            asset("a2", "voice.oga", { type: AssetType.Audio, ext: "oga" }),
-            asset("a3", "sting.opus", { type: AssetType.Audio, ext: "opus" }),
-        ];
+    expect(await runRule("portability/media-format", ctx)).toEqual([]);
+  });
 
-        const safari = await runRule(
-            "portability/media-format",
-            createTestLintContext({ assets: oggAudio, buildPlatforms: ["web", "ios"] }),
-        );
-
-        expect(safari.map(entry => entry.messageParams)).toEqual([
-            { asset: "theme.ogg", platform: "web, ios" },
-            { asset: "voice.oga", platform: "web, ios" },
-            { asset: "sting.opus", platform: "web, ios" },
-        ]);
-
-        // Every Chromium target demuxes Ogg; only the 18.4 container gap is being reported.
-        const chromium = await runRule(
-            "portability/media-format",
-            createTestLintContext({ assets: oggAudio, buildPlatforms: ["windows", "macos", "linux", "android"] }),
-        );
-
-        expect(chromium).toEqual([]);
+  it("only judges media assets", async () => {
+    const ctx = createTestLintContext({
+      // An SVG font could be named `.ogg` and still not be something anyone plays.
+      assets: [asset("odd", "notes.ogg", { type: AssetType.Other, ext: "ogg" })],
+      buildPlatforms: ["web", "ios"]
     });
 
-    it("flags Ogg video on every build target, Chromium ones included", async () => {
-        const reported: Record<string, string | undefined> = {};
-        for (const platform of EVERY_PLATFORM) {
-            const findings = await runRule(
-                "portability/media-format",
-                createTestLintContext({
-                    assets: [asset("v1", "cut.ogv", { type: AssetType.Video, ext: "ogv" })],
-                    buildPlatforms: [platform],
-                }),
-            );
-            reported[platform] = findings[0]?.messageParams?.platform as string | undefined;
-        }
+    expect(await runRule("portability/media-format", ctx)).toEqual([]);
+  });
 
-        expect(reported).toEqual(Object.fromEntries(EVERY_PLATFORM.map(platform => [platform, platform])));
+  it("falls back to the name when the record carries no extension", async () => {
+    const ctx = createTestLintContext({
+      assets: [asset("bgm", "theme.OGG", { type: AssetType.Audio, ext: undefined })],
+      buildPlatforms: ["web"]
     });
 
-    it("treats .ogm and .ogx as the same container as .ogv", async () => {
-        const ctx = createTestLintContext({
-            assets: [
-                asset("v2", "cut2.ogm", { type: AssetType.Video, ext: "ogm" }),
-                asset("v3", "cut3.ogx", { type: AssetType.Video, ext: "ogx" }),
-            ],
-            buildPlatforms: EVERY_PLATFORM,
-        });
+    const findings = await runRule("portability/media-format", ctx);
 
-        const findings = await runRule("portability/media-format", ctx);
-
-        expect(findings.map(entry => entry.messageParams)).toEqual([
-            { asset: "cut2.ogm", platform: EVERY_PLATFORM.join(", ") },
-            { asset: "cut3.ogx", platform: EVERY_PLATFORM.join(", ") },
-        ]);
-    });
-
-    it("says nothing about WebM: Safari 17.4 plays it everywhere, and 17.4 is the floor", async () => {
-        const ctx = createTestLintContext({
-            assets: [
-                asset("clip", "intro.webm", { type: AssetType.Video, ext: "webm" }),
-                asset("loop", "loop.weba", { type: AssetType.Audio, ext: "weba" }),
-            ],
-            buildPlatforms: EVERY_PLATFORM,
-        });
-
-        expect(await runRule("portability/media-format", ctx)).toEqual([]);
-    });
-
-    it("stays silent for a container every target plays", async () => {
-        const ctx = createTestLintContext({
-            assets: [
-                asset("bgm", "theme.mp3", { type: AssetType.Audio, ext: "mp3" }),
-                asset("clip", "intro.mp4", { type: AssetType.Video, ext: "mp4" }),
-            ],
-            buildPlatforms: ["web", "ios"],
-        });
-
-        expect(await runRule("portability/media-format", ctx)).toEqual([]);
-    });
-
-    it("only judges media assets", async () => {
-        const ctx = createTestLintContext({
-            // An SVG font could be named `.ogg` and still not be something anyone plays.
-            assets: [asset("odd", "notes.ogg", { type: AssetType.Other, ext: "ogg" })],
-            buildPlatforms: ["web", "ios"],
-        });
-
-        expect(await runRule("portability/media-format", ctx)).toEqual([]);
-    });
-
-    it("falls back to the name when the record carries no extension", async () => {
-        const ctx = createTestLintContext({
-            assets: [asset("bgm", "theme.OGG", { type: AssetType.Audio, ext: undefined })],
-            buildPlatforms: ["web"],
-        });
-
-        const findings = await runRule("portability/media-format", ctx);
-
-        expect(findings).toHaveLength(1);
-        expect(findings[0].messageParams).toEqual({ asset: "theme.OGG", platform: "web" });
-    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0].messageParams).toEqual({ asset: "theme.OGG", platform: "web" });
+  });
 });

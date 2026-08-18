@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
-    getBuiltinEditorFontCssFamily,
-    isBuiltinEditorFontAssetId,
+  getBuiltinEditorFontCssFamily,
+  isBuiltinEditorFontAssetId
 } from "@/lib/ui-editor/fonts/builtinVirtualEditorFonts";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
@@ -10,13 +10,13 @@ import { getInterface } from "@/lib/app/bridge";
 import { resolveGameRuntimeAssetUrl } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
 
 export type EditorFontFamilyState = {
-    cssFamily: string | null;
-    loading: boolean;
-    error: string | null;
+  cssFamily: string | null;
+  loading: boolean;
+  error: string | null;
 };
 
 function devModeCssFamilyForAssetId(assetId: string): string {
-    return `nlDevFont_${assetId.replace(/[^a-zA-Z0-9]/g, "_")}`;
+  return `nlDevFont_${assetId.replace(/[^a-zA-Z0-9]/g, "_")}`;
 }
 
 const devModeFontCache = new Map<string, { cssFamily: string; fontFace: FontFace }>();
@@ -26,130 +26,130 @@ const devModeFontCache = new Map<string, { cssFamily: string; fontFace: FontFace
  * In Dev Mode (no workspace context), falls back to resolving fonts via IPC.
  */
 export function useEditorFontFamily(assetId: string | null): EditorFontFamilyState {
-    let workspace: ReturnType<typeof useWorkspace> | null = null;
-    try {
-        workspace = useWorkspace();
-    } catch {
-        workspace = null;
+  let workspace: ReturnType<typeof useWorkspace> | null = null;
+  try {
+    workspace = useWorkspace();
+  } catch {
+    workspace = null;
+  }
+  const context = workspace?.context ?? null;
+
+  const [state, setState] = useState<EditorFontFamilyState>({
+    cssFamily: null,
+    loading: false,
+    error: null
+  });
+  const acquiredRef = useRef(false);
+
+  useEffect(() => {
+    acquiredRef.current = false;
+    if (!assetId) {
+      setState({ cssFamily: null, loading: false, error: null });
+      return;
     }
-    const context = workspace?.context ?? null;
 
-    const [state, setState] = useState<EditorFontFamilyState>({
-        cssFamily: null,
-        loading: false,
-        error: null,
-    });
-    const acquiredRef = useRef(false);
-
-    useEffect(() => {
-        acquiredRef.current = false;
-        if (!assetId) {
-            setState({ cssFamily: null, loading: false, error: null });
-            return;
-        }
-
-        if (isBuiltinEditorFontAssetId(assetId)) {
-            const css = getBuiltinEditorFontCssFamily(assetId);
-            if (css) {
-                setState({ cssFamily: css, loading: false, error: null });
-            } else {
-                setState({
-                    cssFamily: null,
-                    loading: false,
-                    error: "Unknown built-in font",
-                });
-            }
-            return;
-        }
-
-        if (!context) {
-            if (workspace) {
-                setState({
-                    cssFamily: null,
-                    loading: false,
-                    error: "Workspace not ready",
-                });
-                return;
-            }
-
-            const gameRuntimeUrl = resolveGameRuntimeAssetUrl(assetId);
-            const cached = devModeFontCache.get(assetId);
-            if (cached) {
-                setState({ cssFamily: cached.cssFamily, loading: false, error: null });
-                return;
-            }
-
-            let cancelled = false;
-            setState(prev => ({ ...prev, loading: true, error: null }));
-
-            (async () => {
-                try {
-                    const url = gameRuntimeUrl ?? await resolveDevModeFontUrl(assetId);
-                    const cssFamily = devModeCssFamilyForAssetId(assetId);
-                    const fontFace = new FontFace(cssFamily, `url(${url})`);
-                    await fontFace.load();
-                    if (cancelled) {
-                        return;
-                    }
-                    document.fonts.add(fontFace);
-                    devModeFontCache.set(assetId, { cssFamily, fontFace });
-                    setState({ cssFamily, loading: false, error: null });
-                } catch (err) {
-                    if (cancelled) {
-                        return;
-                    }
-                    setState({
-                        cssFamily: null,
-                        loading: false,
-                        error: err instanceof Error ? err.message : String(err),
-                    });
-                }
-            })();
-
-            return () => {
-                cancelled = true;
-            };
-        }
-
-        const svc = context.services.get<UIEditorFontFaceService>(Services.UIEditorFontFace);
-        let cancelled = false;
-        setState({ cssFamily: null, loading: true, error: null });
-
-        void svc.acquire(assetId).then(result => {
-            if (cancelled) {
-                if (result.ok) {
-                    svc.release(assetId);
-                }
-                return;
-            }
-            if (result.ok) {
-                acquiredRef.current = true;
-                setState({ cssFamily: result.cssFamily, loading: false, error: null });
-            } else {
-                setState({
-                    cssFamily: null,
-                    loading: false,
-                    error: result.error,
-                });
-            }
+    if (isBuiltinEditorFontAssetId(assetId)) {
+      const css = getBuiltinEditorFontCssFamily(assetId);
+      if (css) {
+        setState({ cssFamily: css, loading: false, error: null });
+      } else {
+        setState({
+          cssFamily: null,
+          loading: false,
+          error: "Unknown built-in font"
         });
+      }
+      return;
+    }
 
-        return () => {
-            cancelled = true;
-            if (acquiredRef.current) {
-                svc.release(assetId);
-                acquiredRef.current = false;
-            }
-        };
-    }, [assetId, context]);
+    if (!context) {
+      if (workspace) {
+        setState({
+          cssFamily: null,
+          loading: false,
+          error: "Workspace not ready"
+        });
+        return;
+      }
 
-    return state;
+      const gameRuntimeUrl = resolveGameRuntimeAssetUrl(assetId);
+      const cached = devModeFontCache.get(assetId);
+      if (cached) {
+        setState({ cssFamily: cached.cssFamily, loading: false, error: null });
+        return;
+      }
+
+      let cancelled = false;
+      setState((prev) => ({ ...prev, loading: true, error: null }));
+
+      (async () => {
+        try {
+          const url = gameRuntimeUrl ?? (await resolveDevModeFontUrl(assetId));
+          const cssFamily = devModeCssFamilyForAssetId(assetId);
+          const fontFace = new FontFace(cssFamily, `url(${url})`);
+          await fontFace.load();
+          if (cancelled) {
+            return;
+          }
+          document.fonts.add(fontFace);
+          devModeFontCache.set(assetId, { cssFamily, fontFace });
+          setState({ cssFamily, loading: false, error: null });
+        } catch (err) {
+          if (cancelled) {
+            return;
+          }
+          setState({
+            cssFamily: null,
+            loading: false,
+            error: err instanceof Error ? err.message : String(err)
+          });
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const svc = context.services.get<UIEditorFontFaceService>(Services.UIEditorFontFace);
+    let cancelled = false;
+    setState({ cssFamily: null, loading: true, error: null });
+
+    void svc.acquire(assetId).then((result) => {
+      if (cancelled) {
+        if (result.ok) {
+          svc.release(assetId);
+        }
+        return;
+      }
+      if (result.ok) {
+        acquiredRef.current = true;
+        setState({ cssFamily: result.cssFamily, loading: false, error: null });
+      } else {
+        setState({
+          cssFamily: null,
+          loading: false,
+          error: result.error
+        });
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      if (acquiredRef.current) {
+        svc.release(assetId);
+        acquiredRef.current = false;
+      }
+    };
+  }, [assetId, context]);
+
+  return state;
 }
 
 async function resolveDevModeFontUrl(assetId: string): Promise<string> {
-    const result = await getInterface().devMode.resolveImageAssetUrl(assetId);
-    if (!result.success || !result.data?.url) {
-        throw new Error(result.error ?? "Font asset not found");
-    }
-    return result.data.url;
+  const result = await getInterface().devMode.resolveImageAssetUrl(assetId);
+  if (!result.success || !result.data?.url) {
+    throw new Error(result.error ?? "Font asset not found");
+  }
+  return result.data.url;
 }

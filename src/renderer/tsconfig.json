@@ -4,8 +4,8 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "baseUrl": ".",
     "outDir": "dist",
+    "rootDir": "..",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -17,17 +17,9 @@
       "@lib/*": ["./lib/*"],
       "@services/*": ["./lib/workspace/services/*"]
     },
-    "typeRoots": [
-      "../../node_modules/@types",
-      "../shared/types"
-    ],
+    "typeRoots": ["../../node_modules/@types", "../shared/types"],
     "types": ["node", "react", "react-dom"]
   },
-  "include": [
-    "./**/*",
-    "../shared/**/*"
-  ],
-  "exclude": [
-    "**/dist/**"
-  ]
+  "include": ["./**/*", "../shared/**/*"],
+  "exclude": ["**/dist/**"]
 }

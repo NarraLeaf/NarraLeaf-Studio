@@ -20,14 +20,17 @@ import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/docum
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 
 function readTemplate(file: string): unknown {
-    return JSON.parse(
-        fs.readFileSync(path.join(process.cwd(), "resources/templates/skeleton/content/editor/ui", file), "utf-8"),
-    );
+  return JSON.parse(
+    fs.readFileSync(
+      path.join(process.cwd(), "resources/templates/skeleton/content/editor/ui", file),
+      "utf-8"
+    )
+  );
 }
 
 const document = readTemplate("uidoc.json") as UIDocument;
-const blueprints = (readTemplate("uigraphs.json") as { blueprintDocument: BlueprintDocument }).blueprintDocument
-    .blueprints;
+const blueprints = (readTemplate("uigraphs.json") as { blueprintDocument: BlueprintDocument })
+  .blueprintDocument.blueprints;
 
 /** One bound value, carrying enough of where it came from that a failure names something openable. */
 type BoundValue = { scope: string; element: UIElement; propPath: string; blueprintId: string };
@@ -38,60 +41,60 @@ type BoundValue = { scope: string; element: UIElement; propPath: string; bluepri
  * them: a binding written there is unreachable, and this is what would say so.
  */
 const scopes: { label: string; elements: Record<string, UIElement> }[] = [
-    { label: "document", elements: document.elements },
-    ...(document.components ?? []).map(component => ({
-        label: `component ${component.name}`,
-        elements: component.elements,
-    })),
+  { label: "document", elements: document.elements },
+  ...(document.components ?? []).map((component) => ({
+    label: `component ${component.name}`,
+    elements: component.elements
+  }))
 ];
 
-const boundValues: BoundValue[] = scopes.flatMap(scope =>
-    Object.values(scope.elements).flatMap(element =>
-        Object.entries(element.valueBindings ?? {}).map(([propPath, binding]) => ({
-            scope: scope.label,
-            element,
-            propPath,
-            blueprintId: binding.blueprintId,
-        })),
-    ),
+const boundValues: BoundValue[] = scopes.flatMap((scope) =>
+  Object.values(scope.elements).flatMap((element) =>
+    Object.entries(element.valueBindings ?? {}).map(([propPath, binding]) => ({
+      scope: scope.label,
+      element,
+      propPath,
+      blueprintId: binding.blueprintId
+    }))
+  )
 );
 
 const describeBound = (bound: BoundValue) =>
-    `${bound.scope}: ${bound.element.type} ${bound.element.id} .${bound.propPath}`;
+  `${bound.scope}: ${bound.element.type} ${bound.element.id} .${bound.propPath}`;
 
 describe("value bindings in the starter template", () => {
-    it("has bindings to sweep at all", () => {
-        // A sweep over an empty list passes for free, which reads exactly like a sweep that works.
-        expect(boundValues.length).toBeGreaterThan(0);
-    });
+  it("has bindings to sweep at all", () => {
+    // A sweep over an empty list passes for free, which reads exactly like a sweep that works.
+    expect(boundValues.length).toBeGreaterThan(0);
+  });
 
-    it("points each one at a blueprint owned by that element and that prop path", () => {
-        const wrong = boundValues.flatMap(bound => {
-            const blueprint: Blueprint | undefined = blueprints[bound.blueprintId];
-            const owner = blueprint?.owner;
-            if (
-                owner?.kind === "widgetValue" &&
-                owner.elementId === bound.element.id &&
-                owner.propPath === bound.propPath
-            ) {
-                return [];
-            }
-            return [
-                `${describeBound(bound)} reads ${bound.blueprintId}, which ${
-                    blueprint ? `answers for ${JSON.stringify(owner)}` : "is not in the document"
-                }`,
-            ];
-        });
-        expect(wrong).toEqual([]);
+  it("points each one at a blueprint owned by that element and that prop path", () => {
+    const wrong = boundValues.flatMap((bound) => {
+      const blueprint: Blueprint | undefined = blueprints[bound.blueprintId];
+      const owner = blueprint?.owner;
+      if (
+        owner?.kind === "widgetValue" &&
+        owner.elementId === bound.element.id &&
+        owner.propPath === bound.propPath
+      ) {
+        return [];
+      }
+      return [
+        `${describeBound(bound)} reads ${bound.blueprintId}, which ${
+          blueprint ? `answers for ${JSON.stringify(owner)}` : "is not in the document"
+        }`
+      ];
     });
+    expect(wrong).toEqual([]);
+  });
 
-    it("leaves no value blueprint that nothing reads", () => {
-        const read = new Set(boundValues.map(bound => bound.blueprintId));
-        // The same mistake seen from the other side: rewiring an element to the wrong id strands the
-        // blueprint drawn for it, which stays correct and unreachable and costs nothing to notice.
-        const stranded = Object.values(blueprints)
-            .filter(blueprint => blueprint.owner.kind === "widgetValue" && !read.has(blueprint.id))
-            .map(blueprint => `${blueprint.id} answers for ${JSON.stringify(blueprint.owner)}`);
-        expect(stranded).toEqual([]);
-    });
+  it("leaves no value blueprint that nothing reads", () => {
+    const read = new Set(boundValues.map((bound) => bound.blueprintId));
+    // The same mistake seen from the other side: rewiring an element to the wrong id strands the
+    // blueprint drawn for it, which stays correct and unreachable and costs nothing to notice.
+    const stranded = Object.values(blueprints)
+      .filter((blueprint) => blueprint.owner.kind === "widgetValue" && !read.has(blueprint.id))
+      .map((blueprint) => `${blueprint.id} answers for ${JSON.stringify(blueprint.owner)}`);
+    expect(stranded).toEqual([]);
+  });
 });

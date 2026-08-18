@@ -3,31 +3,31 @@ import { AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import type { ImportProgress } from "@/lib/workspace/services/assets/mgr/LocalAssetsManager";
 
 export interface ImportQueueFailure {
-    path: string;
-    error?: string;
+  path: string;
+  error?: string;
 }
 
 /** What the last (or current) import run is doing, and what it left behind. */
 export interface ImportQueueState {
-    /**
-     * The run in flight or most recently finished; null before the first import.
-     *
-     * Named by the sidebar section it was started from, not by asset type: one run can cross types
-     * (mp3s and mp4s in one drop), and the retry replays the same section.
-     */
-    run: { category: AssetCategory; groupId?: string; total: number } | null;
-    completed: number;
-    /** File being read right now, absent when idle. */
-    current?: string;
-    running: boolean;
-    /** Files that did not make it, kept so they can be retried rather than re-picked. */
-    failures: ImportQueueFailure[];
+  /**
+   * The run in flight or most recently finished; null before the first import.
+   *
+   * Named by the sidebar section it was started from, not by asset type: one run can cross types
+   * (mp3s and mp4s in one drop), and the retry replays the same section.
+   */
+  run: { category: AssetCategory; groupId?: string; total: number } | null;
+  completed: number;
+  /** File being read right now, absent when idle. */
+  current?: string;
+  running: boolean;
+  /** Files that did not make it, kept so they can be retried rather than re-picked. */
+  failures: ImportQueueFailure[];
 }
 
 export interface ImportQueueController {
-    start(run: { category: AssetCategory; groupId?: string; total: number }): void;
-    progress(progress: ImportProgress): void;
-    finish(failures: ImportQueueFailure[]): void;
+  start(run: { category: AssetCategory; groupId?: string; total: number }): void;
+  progress(progress: ImportProgress): void;
+  finish(failures: ImportQueueFailure[]): void;
 }
 
 const IDLE: ImportQueueState = { run: null, completed: 0, running: false, failures: [] };
@@ -42,26 +42,32 @@ const IDLE: ImportQueueState = { run: null, completed: 0, running: false, failur
  * retry can hand the same paths back to the importer.
  */
 export function useImportQueue() {
-    const [importState, setImportState] = useState<ImportQueueState>(IDLE);
+  const [importState, setImportState] = useState<ImportQueueState>(IDLE);
 
-    const importQueue = useMemo<ImportQueueController>(() => ({
-        start: run => setImportState({ run, completed: 0, current: undefined, running: true, failures: [] }),
-        progress: progress => setImportState(previous => ({
-            ...previous,
-            completed: progress.completed,
-            current: progress.current,
+  const importQueue = useMemo<ImportQueueController>(
+    () => ({
+      start: (run) =>
+        setImportState({ run, completed: 0, current: undefined, running: true, failures: [] }),
+      progress: (progress) =>
+        setImportState((previous) => ({
+          ...previous,
+          completed: progress.completed,
+          current: progress.current
         })),
-        finish: failures => setImportState(previous => ({
-            ...previous,
-            running: false,
-            current: undefined,
-            failures,
-        })),
-    }), []);
+      finish: (failures) =>
+        setImportState((previous) => ({
+          ...previous,
+          running: false,
+          current: undefined,
+          failures
+        }))
+    }),
+    []
+  );
 
-    const dismissImportFailures = useCallback(() => {
-        setImportState(previous => (previous.running ? { ...previous, failures: [] } : IDLE));
-    }, []);
+  const dismissImportFailures = useCallback(() => {
+    setImportState((previous) => (previous.running ? { ...previous, failures: [] } : IDLE));
+  }, []);
 
-    return { importQueue, importState, dismissImportFailures };
+  return { importQueue, importState, dismissImportFailures };
 }

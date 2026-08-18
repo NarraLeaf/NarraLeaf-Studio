@@ -7,55 +7,53 @@ import { MenuTriggerFieldDefinition } from "../types";
 import { FieldLayout } from "./FieldLayout";
 
 interface MenuTriggerFieldProps<TData> {
-    field: MenuTriggerFieldDefinition<TData>;
-    data: TData;
-    onSaving: (saving: boolean) => void;
+  field: MenuTriggerFieldDefinition<TData>;
+  data: TData;
+  onSaving: (saving: boolean) => void;
 }
 
 export function MenuTriggerField<TData>({
-    field,
-    data: _data,
-    onSaving: _onSaving,
+  field,
+  data: _data,
+  onSaving: _onSaving
 }: MenuTriggerFieldProps<TData>) {
-    const { t } = useTranslation();
-    const [visible, setVisible] = useState(false);
-    const [position, setPosition] = useState({ x: 0, y: 0 });
-    const buttonRef = useRef<HTMLButtonElement>(null);
+  const { t } = useTranslation();
+  const [visible, setVisible] = useState(false);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
-    const openMenu = useCallback(() => {
-        if (!buttonRef.current) return;
-        const rect = buttonRef.current.getBoundingClientRect();
-        setPosition({ x: rect.left, y: rect.bottom + 4 });
-        setVisible(true);
-    }, []);
+  const openMenu = useCallback(() => {
+    if (!buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    setPosition({ x: rect.left, y: rect.bottom + 4 });
+    setVisible(true);
+  }, []);
 
-    const closeMenu = useCallback(() => {
-        setVisible(false);
-    }, []);
+  const closeMenu = useCallback(() => {
+    setVisible(false);
+  }, []);
 
-    const handleToggle = useCallback(() => {
-        if (visible) {
-            closeMenu();
-            return;
-        }
-        openMenu();
-    }, [closeMenu, openMenu, visible]);
+  const handleToggle = useCallback(() => {
+    if (visible) {
+      closeMenu();
+      return;
+    }
+    openMenu();
+  }, [closeMenu, openMenu, visible]);
 
-    return (
-        <FieldLayout field={field}>
-            <button
-                ref={buttonRef}
-                type="button"
-                onClick={handleToggle}
-                className={controlButtonClass()}
-                aria-label={field.buttonAriaLabel ?? t("properties.menu.open")}
-            >
-                {field.icon ?? <MoreHorizontal className="w-4 h-4" />}
-            </button>
+  return (
+    <FieldLayout field={field}>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={handleToggle}
+        className={controlButtonClass()}
+        aria-label={field.buttonAriaLabel ?? t("properties.menu.open")}
+      >
+        {field.icon ?? <MoreHorizontal className="w-4 h-4" />}
+      </button>
 
-            {visible && (
-                <ContextMenu items={field.menu} position={position} onClose={closeMenu} />
-            )}
-        </FieldLayout>
-    );
+      {visible && <ContextMenu items={field.menu} position={position} onClose={closeMenu} />}
+    </FieldLayout>
+  );
 }

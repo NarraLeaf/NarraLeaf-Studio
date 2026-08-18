@@ -38,21 +38,21 @@ export type RunVariantSettingsReader = { get(key: string): unknown };
  * direction is a run that silently withholds content.
  */
 export async function resolveRunVariant(
-    settings: RunVariantSettingsReader,
-    projectPath: string,
+  settings: RunVariantSettingsReader,
+  projectPath: string
 ): Promise<ProjectAppTag | null> {
-    const stored = settings.get(RUN_VARIANT_SETTINGS_KEY);
-    if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
-        return null;
-    }
-    const tagId = (stored as Record<string, unknown>)[normalizeProjectPath(projectPath)];
-    if (typeof tagId !== "string" || !tagId.trim()) {
-        return null;
-    }
-    const tags = await readProjectAppTagsFromDir(projectPath).catch(() => [] as ProjectAppTag[]);
-    const tag = resolveAppTag(tags, tagId.trim());
-    // `resolveAppTag` answers the release tag for an id nothing matches, which is exactly the
-    // fallback wanted - but the caller wants to know it is running the whole game, so say null
-    // rather than hand back a tag that would make the assembly think a variant was chosen.
-    return tags.some(candidate => candidate.id === tag.id) ? tag : null;
+  const stored = settings.get(RUN_VARIANT_SETTINGS_KEY);
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
+    return null;
+  }
+  const tagId = (stored as Record<string, unknown>)[normalizeProjectPath(projectPath)];
+  if (typeof tagId !== "string" || !tagId.trim()) {
+    return null;
+  }
+  const tags = await readProjectAppTagsFromDir(projectPath).catch(() => [] as ProjectAppTag[]);
+  const tag = resolveAppTag(tags, tagId.trim());
+  // `resolveAppTag` answers the release tag for an id nothing matches, which is exactly the
+  // fallback wanted - but the caller wants to know it is running the whole game, so say null
+  // rather than hand back a tag that would make the assembly think a variant was chosen.
+  return tags.some((candidate) => candidate.id === tag.id) ? tag : null;
 }

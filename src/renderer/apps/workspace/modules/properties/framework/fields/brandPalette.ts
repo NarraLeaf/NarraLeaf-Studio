@@ -1,9 +1,9 @@
 import { useCallback, useSyncExternalStore } from "react";
 import {
-    getActiveBrandPalette,
-    getActiveBrandPaletteRevision,
-    subscribeActiveBrandPalette,
-    type BrandPalette,
+  getActiveBrandPalette,
+  getActiveBrandPaletteRevision,
+  subscribeActiveBrandPalette,
+  type BrandPalette
 } from "@shared/brand/brandRegistry";
 import type { TranslationKey } from "@shared/i18n";
 import type { BrandColor } from "@shared/types/brand";
@@ -26,7 +26,11 @@ import { useTranslation } from "@/lib/i18n";
 
 /** The live palette. Re-renders whenever a host publishes a different one. */
 export function useBrandPalette(): BrandPalette {
-    return useSyncExternalStore(subscribeActiveBrandPalette, getActiveBrandPalette, getActiveBrandPalette);
+  return useSyncExternalStore(
+    subscribeActiveBrandPalette,
+    getActiveBrandPalette,
+    getActiveBrandPalette
+  );
 }
 
 /**
@@ -37,11 +41,11 @@ export function useBrandPalette(): BrandPalette {
  * makes the memo miss.
  */
 export function useBrandPaletteRevision(): number {
-    return useSyncExternalStore(
-        subscribeActiveBrandPalette,
-        getActiveBrandPaletteRevision,
-        getActiveBrandPaletteRevision,
-    );
+  return useSyncExternalStore(
+    subscribeActiveBrandPalette,
+    getActiveBrandPaletteRevision,
+    getActiveBrandPaletteRevision
+  );
 }
 
 /**
@@ -60,15 +64,15 @@ export function useBrandPaletteRevision(): number {
  * read as something identifiable rather than as an empty swatch.
  */
 export function useBrandColorLabel(): (color: BrandColor) => string {
-    const { t, has } = useTranslation();
-    return useCallback(
-        (color: BrandColor) => {
-            if (color.name) {
-                return color.name;
-            }
-            const key = `brand.presetName.${color.id.replace(/\./g, "-")}`;
-            return has(key) ? t(key as TranslationKey) : color.id;
-        },
-        [t, has],
-    );
+  const { t, has } = useTranslation();
+  return useCallback(
+    (color: BrandColor) => {
+      if (color.name) {
+        return color.name;
+      }
+      const key = `brand.presetName.${color.id.replace(/\./g, "-")}`;
+      return has(key) ? t(key as TranslationKey) : color.id;
+    },
+    [t, has]
+  );
 }

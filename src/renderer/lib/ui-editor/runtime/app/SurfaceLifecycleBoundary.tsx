@@ -6,50 +6,56 @@ import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import { dispatchSurfaceBlueprintEvent } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import {
-    executeLifecycleCommands,
-    type LifecycleCommand,
-    type SurfaceLifecycleOrchestrator,
+  executeLifecycleCommands,
+  type LifecycleCommand,
+  type SurfaceLifecycleOrchestrator
 } from "./lifecycle/surfaceLifecycleOrchestrator";
 import { waitForAnimationFrame } from "./frameTiming";
 import type { SurfaceStateAccessors } from "./types";
 
-
 /** Maps scope-lifecycle commands onto the blueprint execution manager and dispatcher. */
 function executeScopeCommands(input: {
-    commands: readonly LifecycleCommand[];
-    core: BlueprintRuntimeCore;
-    blueprintDocument: BlueprintDocument;
-    persistentVariables: PersistentVariableRuntimeTable;
-    hostAdapter: UIHostAdapter | null;
-    makeStateAccessors: (runtimeScopeId: string) => SurfaceStateAccessors | null;
+  commands: readonly LifecycleCommand[];
+  core: BlueprintRuntimeCore;
+  blueprintDocument: BlueprintDocument;
+  persistentVariables: PersistentVariableRuntimeTable;
+  hostAdapter: UIHostAdapter | null;
+  makeStateAccessors: (runtimeScopeId: string) => SurfaceStateAccessors | null;
 }): void {
-    const { commands, core, blueprintDocument, persistentVariables, hostAdapter, makeStateAccessors } = input;
-    executeLifecycleCommands(commands, {
-        openScope: scopeId => core.executionManager.openScope(scopeId),
-        closeScope: (scopeId, reason) => core.executionManager.closeScope(scopeId, reason),
-        dispatchSurfaceEvent: command => {
-            const acc = makeStateAccessors(command.scopeId);
-            if (!acc || !hostAdapter?.blueprintRuntime) {
-                return;
-            }
-            void dispatchSurfaceBlueprintEvent({
-                blueprintDocument,
-                persistentVariables,
-                surfaceId: command.surfaceId,
-                runtimeScopeId: command.scopeId,
-                eventName: command.eventName,
-                hostAdapter,
-                debug: core.debug,
-                getSurfaceState: acc.get,
-                setSurfaceState: acc.set,
-                executionManager: core.executionManager,
-                ...(command.allowClosedScopeExecution ? { allowClosedScopeExecution: true } : {}),
-            });
-        },
-        setTransitionState: () => undefined,
-        bumpLifecycleSignal: () => undefined,
-        clearInteraction: () => undefined,
-    });
+  const {
+    commands,
+    core,
+    blueprintDocument,
+    persistentVariables,
+    hostAdapter,
+    makeStateAccessors
+  } = input;
+  executeLifecycleCommands(commands, {
+    openScope: (scopeId) => core.executionManager.openScope(scopeId),
+    closeScope: (scopeId, reason) => core.executionManager.closeScope(scopeId, reason),
+    dispatchSurfaceEvent: (command) => {
+      const acc = makeStateAccessors(command.scopeId);
+      if (!acc || !hostAdapter?.blueprintRuntime) {
+        return;
+      }
+      void dispatchSurfaceBlueprintEvent({
+        blueprintDocument,
+        persistentVariables,
+        surfaceId: command.surfaceId,
+        runtimeScopeId: command.scopeId,
+        eventName: command.eventName,
+        hostAdapter,
+        debug: core.debug,
+        getSurfaceState: acc.get,
+        setSurfaceState: acc.set,
+        executionManager: core.executionManager,
+        ...(command.allowClosedScopeExecution ? { allowClosedScopeExecution: true } : {})
+      });
+    },
+    setTransitionState: () => undefined,
+    bumpLifecycleSignal: () => undefined,
+    clearInteraction: () => undefined
+  });
 }
 
 /**
@@ -63,70 +69,96 @@ function executeScopeCommands(input: {
  * execute before init-time state writes are observable.
  */
 export function SurfaceLifecycleBoundary(props: {
-    core: BlueprintRuntimeCore | null;
-    blueprintDocument: BlueprintDocument;
-    persistentVariables: PersistentVariableRuntimeTable;
-    surface: UISurface;
-    runtimeScopeId: string;
-    hostAdapter: UIHostAdapter;
-    lifecycleRef: MutableRefObject<SurfaceLifecycleOrchestrator>;
-    makeStateAccessors: (runtimeScopeId: string) => SurfaceStateAccessors | null;
-    children: ReactNode;
+  core: BlueprintRuntimeCore | null;
+  blueprintDocument: BlueprintDocument;
+  persistentVariables: PersistentVariableRuntimeTable;
+  surface: UISurface;
+  runtimeScopeId: string;
+  hostAdapter: UIHostAdapter;
+  lifecycleRef: MutableRefObject<SurfaceLifecycleOrchestrator>;
+  makeStateAccessors: (runtimeScopeId: string) => SurfaceStateAccessors | null;
+  children: ReactNode;
 }) {
-    const { core, blueprintDocument, persistentVariables, surface, runtimeScopeId, hostAdapter, lifecycleRef, makeStateAccessors, children } = props;
-    const latestRuntimeHostAdapterRef = useRef<UIHostAdapter | null>(
-        hostAdapter.blueprintRuntime ? hostAdapter : null,
-    );
-    const hasBlueprintRuntime = Boolean(hostAdapter.blueprintRuntime);
+  const {
+    core,
+    blueprintDocument,
+    persistentVariables,
+    surface,
+    runtimeScopeId,
+    hostAdapter,
+    lifecycleRef,
+    makeStateAccessors,
+    children
+  } = props;
+  const latestRuntimeHostAdapterRef = useRef<UIHostAdapter | null>(
+    hostAdapter.blueprintRuntime ? hostAdapter : null
+  );
+  const hasBlueprintRuntime = Boolean(hostAdapter.blueprintRuntime);
 
-    useEffect(() => {
-        if (hostAdapter.blueprintRuntime) {
-            latestRuntimeHostAdapterRef.current = hostAdapter;
-        }
-    }, [hostAdapter]);
+  useEffect(() => {
+    if (hostAdapter.blueprintRuntime) {
+      latestRuntimeHostAdapterRef.current = hostAdapter;
+    }
+  }, [hostAdapter]);
 
-    useEffect(() => {
-        const currentHostAdapter = latestRuntimeHostAdapterRef.current;
-        if (!core || !hasBlueprintRuntime || !currentHostAdapter?.blueprintRuntime) {
-            return;
-        }
-        let cancelled = false;
-        void (async () => {
-            await waitForAnimationFrame();
-            if (cancelled) {
-                return;
-            }
-            executeScopeCommands({
-                commands: lifecycleRef.current.surfaceReady(runtimeScopeId, surface.id),
-                core,
-                blueprintDocument,
-                persistentVariables,
-                hostAdapter: currentHostAdapter,
-                makeStateAccessors,
-            });
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [blueprintDocument, core, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
+  useEffect(() => {
+    const currentHostAdapter = latestRuntimeHostAdapterRef.current;
+    if (!core || !hasBlueprintRuntime || !currentHostAdapter?.blueprintRuntime) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      await waitForAnimationFrame();
+      if (cancelled) {
+        return;
+      }
+      executeScopeCommands({
+        commands: lifecycleRef.current.surfaceReady(runtimeScopeId, surface.id),
+        core,
+        blueprintDocument,
+        persistentVariables,
+        hostAdapter: currentHostAdapter,
+        makeStateAccessors
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    blueprintDocument,
+    core,
+    hasBlueprintRuntime,
+    lifecycleRef,
+    makeStateAccessors,
+    runtimeScopeId,
+    surface.id
+  ]);
 
-    useEffect(() => {
-        if (!core || !hasBlueprintRuntime) {
-            return undefined;
-        }
-        const surfaceToUnmount = surface.id;
-        const scopeToUnmount = runtimeScopeId;
-        return () => {
-            executeScopeCommands({
-                commands: lifecycleRef.current.surfaceUnmounted(scopeToUnmount, surfaceToUnmount),
-                core,
-                blueprintDocument,
-                persistentVariables,
-                hostAdapter: latestRuntimeHostAdapterRef.current,
-                makeStateAccessors,
-            });
-        };
-    }, [blueprintDocument, core, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
+  useEffect(() => {
+    if (!core || !hasBlueprintRuntime) {
+      return undefined;
+    }
+    const surfaceToUnmount = surface.id;
+    const scopeToUnmount = runtimeScopeId;
+    return () => {
+      executeScopeCommands({
+        commands: lifecycleRef.current.surfaceUnmounted(scopeToUnmount, surfaceToUnmount),
+        core,
+        blueprintDocument,
+        persistentVariables,
+        hostAdapter: latestRuntimeHostAdapterRef.current,
+        makeStateAccessors
+      });
+    };
+  }, [
+    blueprintDocument,
+    core,
+    hasBlueprintRuntime,
+    lifecycleRef,
+    makeStateAccessors,
+    runtimeScopeId,
+    surface.id
+  ]);
 
-    return <>{children}</>;
+  return <>{children}</>;
 }

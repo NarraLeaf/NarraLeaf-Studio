@@ -9,13 +9,13 @@
  * runs and collision-free in practice for the handful of projects one user opens.
  */
 export function stableKeyHash(value: string): string {
-    let hash = 0xcbf29ce484222325n;
-    const prime = 0x100000001b3n;
-    for (let i = 0; i < value.length; i += 1) {
-        hash ^= BigInt(value.charCodeAt(i));
-        hash = BigInt.asUintN(64, hash * prime);
-    }
-    return hash.toString(36);
+  let hash = 0xcbf29ce484222325n;
+  const prime = 0x100000001b3n;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= BigInt(value.charCodeAt(i));
+    hash = BigInt.asUintN(64, hash * prime);
+  }
+  return hash.toString(36);
 }
 
 /**
@@ -25,11 +25,11 @@ export function stableKeyHash(value: string): string {
  * apart rather than silently inheriting the previous occupant's data.
  */
 export function stableProjectKeyToken(projectRef: {
-    projectPath: string;
-    projectIdentifier?: string | null;
+  projectPath: string;
+  projectIdentifier?: string | null;
 }): string {
-    const normalized = projectRef.projectPath.trim().replace(/\\/g, "/");
-    const projectPath = normalized.length <= 1 ? normalized : normalized.replace(/\/+$/g, "");
-    const projectIdentifier = projectRef.projectIdentifier?.trim() ?? "";
-    return stableKeyHash(`${projectIdentifier}\0${projectPath}`);
+  const normalized = projectRef.projectPath.trim().replace(/\\/g, "/");
+  const projectPath = normalized.length <= 1 ? normalized : normalized.replace(/\/+$/g, "");
+  const projectIdentifier = projectRef.projectIdentifier?.trim() ?? "";
+  return stableKeyHash(`${projectIdentifier}\0${projectPath}`);
 }

@@ -15,10 +15,10 @@ import { countWords } from "./wordCount";
 import type { StoryBlock, StoryBlockId, StoryScene } from "@shared/types/story";
 
 export interface StoryTextStats {
-    /** Author-facing word/字 count across every dialogue and narration line. */
-    words: number;
-    /** Editor lines: one per block, matching the scene-tree "行" count. */
-    lines: number;
+  /** Author-facing word/字 count across every dialogue and narration line. */
+  words: number;
+  /** Editor lines: one per block, matching the scene-tree "行" count. */
+  lines: number;
 }
 
 /**
@@ -31,40 +31,40 @@ export interface StoryTextStats {
  * meaning of every recorded word total: bump `WORD_COUNT_BASIS` in `@shared/types/stats` with it.
  */
 export function countBlockWords(block: StoryBlock): number {
-    if (block.kind !== "nodeAction") {
-        return 0;
-    }
-    const payload = block.payload;
-    switch (payload.action) {
-        case "narration":
-        case "dialogue":
-        case "choiceOption":
-            return countWords(payload.text.value);
-        case "choice":
-            return payload.prompt ? countWords(payload.prompt.value) : 0;
-    }
+  if (block.kind !== "nodeAction") {
     return 0;
+  }
+  const payload = block.payload;
+  switch (payload.action) {
+    case "narration":
+    case "dialogue":
+    case "choiceOption":
+      return countWords(payload.text.value);
+    case "choice":
+      return payload.prompt ? countWords(payload.prompt.value) : 0;
+  }
+  return 0;
 }
 
 export function countSceneTextStats(scene: StoryScene): StoryTextStats {
-    const stats: StoryTextStats = { words: 0, lines: 0 };
-    const visited = new Set<StoryBlockId>();
-    const visit = (blockId: StoryBlockId): void => {
-        const block = scene.blocks[blockId];
-        if (!block || visited.has(blockId)) {
-            return;
-        }
-        visited.add(blockId);
-        // Every block is one projected line — mirrors buildStorySceneTextProjection so the total
-        // agrees with the "N 行" the story panel shows for this scene.
-        stats.lines += 1;
-        stats.words += countBlockWords(block);
-        for (const childId of block.childrenIds) {
-            visit(childId);
-        }
-    };
-    for (const rootId of scene.rootBlockIds) {
-        visit(rootId);
+  const stats: StoryTextStats = { words: 0, lines: 0 };
+  const visited = new Set<StoryBlockId>();
+  const visit = (blockId: StoryBlockId): void => {
+    const block = scene.blocks[blockId];
+    if (!block || visited.has(blockId)) {
+      return;
     }
-    return stats;
+    visited.add(blockId);
+    // Every block is one projected line — mirrors buildStorySceneTextProjection so the total
+    // agrees with the "N 行" the story panel shows for this scene.
+    stats.lines += 1;
+    stats.words += countBlockWords(block);
+    for (const childId of block.childrenIds) {
+      visit(childId);
+    }
+  };
+  for (const rootId of scene.rootBlockIds) {
+    visit(rootId);
+  }
+  return stats;
 }

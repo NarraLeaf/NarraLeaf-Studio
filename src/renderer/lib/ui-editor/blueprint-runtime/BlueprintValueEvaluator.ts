@@ -2,15 +2,18 @@ import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprin
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import { buildBlueprintRunGraphId } from "@shared/blueprint/blueprintRunGraphId";
 import {
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+  BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+  BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT
 } from "@shared/types/blueprint/graph";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { executeGraph } from "@/lib/ui-editor/behavior-graph";
 import type { BlueprintValueDependency } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import { BlueprintGraphExecutionError } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
-import { blueprintNodeRegistry, isBlueprintNodeAllowedInBlueprintValueGraph } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
+import {
+  blueprintNodeRegistry,
+  isBlueprintNodeAllowedInBlueprintValueGraph
+} from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { adaptBlueprintGraphIr } from "./adaptBlueprintGraphIr";
 import { acquireBlueprintExecutionLocals } from "./blueprintWidgetLocals";
@@ -19,115 +22,119 @@ export const BLUEPRINT_VALUE_EVENT_INIT = "init" as const;
 export const BLUEPRINT_VALUE_EVENT_FLUSH = "flush" as const;
 
 export type BlueprintValueEvaluationResult = {
-    returned: boolean;
-    value: unknown;
-    dependencies: BlueprintValueDependency[];
+  returned: boolean;
+  value: unknown;
+  dependencies: BlueprintValueDependency[];
 };
 
 const DEFAULT_VALUE_MAX_STEPS = 512;
 
 export function validateBlueprintValueGraphSafe(ir: BlueprintGraphIr | undefined): string[] {
-    registerCoreBlueprintNodes();
-    const errors: string[] = [];
-    for (const node of Object.values(ir?.nodes ?? {})) {
-        const def = blueprintNodeRegistry.get(node.type);
-        if (!def) {
-            errors.push(`Node ${node.id} uses unknown type ${node.type}`);
-            continue;
-        }
-        if (!isBlueprintNodeAllowedInBlueprintValueGraph(def)) {
-            errors.push(`Node ${node.id} (${def.displayName}) is not allowed in Blueprint Value`);
-        }
+  registerCoreBlueprintNodes();
+  const errors: string[] = [];
+  for (const node of Object.values(ir?.nodes ?? {})) {
+    const def = blueprintNodeRegistry.get(node.type);
+    if (!def) {
+      errors.push(`Node ${node.id} uses unknown type ${node.type}`);
+      continue;
     }
-    return errors;
+    if (!isBlueprintNodeAllowedInBlueprintValueGraph(def)) {
+      errors.push(`Node ${node.id} (${def.displayName}) is not allowed in Blueprint Value`);
+    }
+  }
+  return errors;
 }
 
 function collectValueHeadNodeIds(ir: BlueprintGraphIr | undefined): string[] {
-    return Object.entries(ir?.nodes ?? {})
-        .filter(([, node]) =>
-            node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT ||
-            node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH
-        )
-        .map(([id]) => id)
-        .sort();
+  return Object.entries(ir?.nodes ?? {})
+    .filter(
+      ([, node]) =>
+        node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT ||
+        node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH
+    )
+    .map(([id]) => id)
+    .sort();
 }
 
 export async function evaluateBlueprintValue(input: {
-    blueprintDocument: BlueprintDocument;
-    persistentVariables: PersistentVariableRuntimeTable;
-    blueprintId: string;
-    surfaceId: string;
-    runtimeScopeId?: string;
-    elementId: string;
-    listItemScope?: UIListItemScope | null;
-    instanceKey?: string;
-    hostAdapter: UIHostAdapter;
-    maxSteps?: number;
+  blueprintDocument: BlueprintDocument;
+  persistentVariables: PersistentVariableRuntimeTable;
+  blueprintId: string;
+  surfaceId: string;
+  runtimeScopeId?: string;
+  elementId: string;
+  listItemScope?: UIListItemScope | null;
+  instanceKey?: string;
+  hostAdapter: UIHostAdapter;
+  maxSteps?: number;
 }): Promise<BlueprintValueEvaluationResult> {
-    const bp = input.blueprintDocument.blueprints[input.blueprintId];
-    if (!bp || bp.owner.kind !== "widgetValue" || bp.program.kind !== "graph") {
-        return { returned: false, value: undefined, dependencies: [] };
+  const bp = input.blueprintDocument.blueprints[input.blueprintId];
+  if (!bp || bp.owner.kind !== "widgetValue" || bp.program.kind !== "graph") {
+    return { returned: false, value: undefined, dependencies: [] };
+  }
+
+  const matching = Object.values(bp.program.graphs.events ?? {})
+    .map((eventGraph) => {
+      const headIds = collectValueHeadNodeIds(eventGraph.graph);
+      return headIds.length > 0 ? { eventGraph, headIds } : null;
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+
+  if (matching.length === 0) {
+    return { returned: false, value: undefined, dependencies: [] };
+  }
+
+  const blueprintLocals = acquireBlueprintExecutionLocals({
+    blueprintDocument: input.blueprintDocument,
+    currentBlueprintId: input.blueprintId,
+    surfaceId: input.surfaceId,
+    runtimeScopeId: input.runtimeScopeId,
+    elementId: input.elementId,
+    elementInstanceKey: input.instanceKey
+  });
+
+  let returned = false;
+  let value: unknown;
+  const dependencies = new Map<string, BlueprintValueDependency>();
+  for (const { eventGraph, headIds } of matching) {
+    const safetyErrors = validateBlueprintValueGraphSafe(eventGraph.graph);
+    if (safetyErrors.length > 0) {
+      throw new BlueprintGraphExecutionError(safetyErrors[0]!, headIds[0]);
     }
-
-    const matching = Object.values(bp.program.graphs.events ?? {})
-        .map(eventGraph => {
-            const headIds = collectValueHeadNodeIds(eventGraph.graph);
-            return headIds.length > 0 ? { eventGraph, headIds } : null;
-        })
-        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
-
-    if (matching.length === 0) {
-        return { returned: false, value: undefined, dependencies: [] };
-    }
-
-    const blueprintLocals = acquireBlueprintExecutionLocals({
-        blueprintDocument: input.blueprintDocument,
-        currentBlueprintId: input.blueprintId,
-        surfaceId: input.surfaceId,
-        runtimeScopeId: input.runtimeScopeId,
-        elementId: input.elementId,
-        elementInstanceKey: input.instanceKey,
-    });
-
-    let returned = false;
-    let value: unknown;
-    const dependencies = new Map<string, BlueprintValueDependency>();
-    for (const { eventGraph, headIds } of matching) {
-        const safetyErrors = validateBlueprintValueGraphSafe(eventGraph.graph);
-        if (safetyErrors.length > 0) {
-            throw new BlueprintGraphExecutionError(safetyErrors[0]!, headIds[0]);
+    const graph = adaptBlueprintGraphIr(
+      eventGraph.graph,
+      buildBlueprintRunGraphId("blueprintValue", input.blueprintId, eventGraph.id)
+    );
+    for (const headId of headIds) {
+      const result = await executeGraph({
+        graph,
+        entry: { start: { nodeId: headId, port: "then" } },
+        hostAdapter: input.hostAdapter,
+        blueprintLocals,
+        eventPayload: {},
+        listItemScope: input.listItemScope ?? null,
+        instanceKey: input.instanceKey,
+        executionOwner: {
+          surfaceId: input.surfaceId,
+          elementId: input.elementId,
+          blueprintId: input.blueprintId
+        },
+        persistentVariables: input.persistentVariables,
+        maxSteps: input.maxSteps ?? DEFAULT_VALUE_MAX_STEPS,
+        valueExecution: {
+          trackDependency: (dependency) => {
+            dependencies.set(
+              `${dependency.surfaceId}\0${dependency.elementId}\0${dependency.propPath}`,
+              dependency
+            );
+          }
         }
-        const graph = adaptBlueprintGraphIr(eventGraph.graph, buildBlueprintRunGraphId("blueprintValue", input.blueprintId, eventGraph.id));
-        for (const headId of headIds) {
-            const result = await executeGraph({
-                graph,
-                entry: { start: { nodeId: headId, port: "then" } },
-                hostAdapter: input.hostAdapter,
-                blueprintLocals,
-                eventPayload: {},
-                listItemScope: input.listItemScope ?? null,
-                instanceKey: input.instanceKey,
-                executionOwner: {
-                    surfaceId: input.surfaceId,
-                    elementId: input.elementId,
-                    blueprintId: input.blueprintId,
-                },
-                persistentVariables: input.persistentVariables,
-                maxSteps: input.maxSteps ?? DEFAULT_VALUE_MAX_STEPS,
-                valueExecution: {
-                    trackDependency: dependency => {
-                        dependencies.set(
-                            `${dependency.surfaceId}\0${dependency.elementId}\0${dependency.propPath}`,
-                            dependency,
-                        );
-                    },
-                },
-            });
-            if (result.returnValueSet) {
-                returned = true;
-                value = result.returnValue;
-            }
-        }
+      });
+      if (result.returnValueSet) {
+        returned = true;
+        value = result.returnValue;
+      }
     }
-    return { returned, value, dependencies: [...dependencies.values()] };
+  }
+  return { returned, value, dependencies: [...dependencies.values()] };
 }

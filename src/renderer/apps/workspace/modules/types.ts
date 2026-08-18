@@ -13,20 +13,20 @@ import { NativeMenuSlot } from "@shared/types/menu";
  * Contains common fields for all module types
  */
 export interface ModuleMetadata {
-    /** Unique identifier for the module (should be namespaced, e.g., "narraleaf-studio:assets") */
-    id: string;
-    /** Display title */
-    title: string;
-    /**
-     * i18n key for the title. Preferred over `title` at render, and resolved reactively so the
-     * heading follows a live language switch - unlike `title`, which is captured as a plain string
-     * when the panel is registered and would otherwise freeze in whatever locale was then active.
-     */
-    titleKey?: TranslationKey;
-    /** Icon component or element */
-    icon?: ReactNode;
-    /** Sort order (lower values appear first) */
-    order?: number;
+  /** Unique identifier for the module (should be namespaced, e.g., "narraleaf-studio:assets") */
+  id: string;
+  /** Display title */
+  title: string;
+  /**
+   * i18n key for the title. Preferred over `title` at render, and resolved reactively so the
+   * heading follows a live language switch - unlike `title`, which is captured as a plain string
+   * when the panel is registered and would otherwise freeze in whatever locale was then active.
+   */
+  titleKey?: TranslationKey;
+  /** Icon component or element */
+  icon?: ReactNode;
+  /** Sort order (lower values appear first) */
+  order?: number;
 }
 
 /**
@@ -34,32 +34,32 @@ export interface ModuleMetadata {
  * Can be registered by modules to add UI actions
  */
 export interface ModuleAction {
-    /** Unique identifier for the action */
-    id: string;
-    /** Display label (for menu items) */
-    label?: string;
-    /** i18n key; when set, it overrides `label` at render time (falls back to `label`). */
-    labelKey?: TranslationKey;
-    /** Icon component or element */
-    icon?: ReactNode;
-    /** Tooltip text */
-    tooltip?: string;
-    /** i18n key; when set, it overrides `tooltip` at render time (falls back to `tooltip`). */
-    tooltipKey?: TranslationKey;
-    /** Action handler */
-    onClick: (workspace: Workspace) => void;
-    /** Sort order within group */
-    order?: number;
-    /** Whether the action is disabled */
-    disabled?: boolean;
-    /** Whether the action is visible */
-    visible?: boolean;
-    /** Badge text or count */
-    badge?: string | number;
-    /** When condition - if provided, action only shows when this returns true */
-    when?: (context: FocusContext) => boolean;
-    /** Command-palette category for an action that belongs to no group (see `ActionDefinition`). */
-    paletteCategoryKey?: TranslationKey;
+  /** Unique identifier for the action */
+  id: string;
+  /** Display label (for menu items) */
+  label?: string;
+  /** i18n key; when set, it overrides `label` at render time (falls back to `label`). */
+  labelKey?: TranslationKey;
+  /** Icon component or element */
+  icon?: ReactNode;
+  /** Tooltip text */
+  tooltip?: string;
+  /** i18n key; when set, it overrides `tooltip` at render time (falls back to `tooltip`). */
+  tooltipKey?: TranslationKey;
+  /** Action handler */
+  onClick: (workspace: Workspace) => void;
+  /** Sort order within group */
+  order?: number;
+  /** Whether the action is disabled */
+  disabled?: boolean;
+  /** Whether the action is visible */
+  visible?: boolean;
+  /** Badge text or count */
+  badge?: string | number;
+  /** When condition - if provided, action only shows when this returns true */
+  when?: (context: FocusContext) => boolean;
+  /** Command-palette category for an action that belongs to no group (see `ActionDefinition`). */
+  paletteCategoryKey?: TranslationKey;
 }
 
 /**
@@ -67,20 +67,20 @@ export interface ModuleAction {
  * Groups related actions together
  */
 export interface ModuleActionGroup {
-    /** Unique identifier for the group */
-    id: string;
-    /** Display label */
-    label: string;
-    /** i18n key; when set, it overrides `label` at render time (falls back to `label`). */
-    labelKey?: TranslationKey;
-    /** Icon component or element */
-    icon?: ReactNode;
-    /** Actions in this group */
-    actions: (ModuleAction | ActionSeparator)[];
-    /** Sort order */
-    order?: number;
-    /** Where the group lands on the macOS menu bar; see `ActionGroup.menuSlot`. */
-    menuSlot?: NativeMenuSlot;
+  /** Unique identifier for the group */
+  id: string;
+  /** Display label */
+  label: string;
+  /** i18n key; when set, it overrides `label` at render time (falls back to `label`). */
+  labelKey?: TranslationKey;
+  /** Icon component or element */
+  icon?: ReactNode;
+  /** Actions in this group */
+  actions: (ModuleAction | ActionSeparator)[];
+  /** Sort order */
+  order?: number;
+  /** Where the group lands on the macOS menu bar; see `ActionGroup.menuSlot`. */
+  menuSlot?: NativeMenuSlot;
 }
 
 /**
@@ -88,16 +88,16 @@ export interface ModuleActionGroup {
  * Allows modules to register keyboard shortcuts
  */
 export interface ModuleKeybinding {
-    /** Unique identifier for the keybinding */
-    id: string;
-    /** Key combination (e.g., "ctrl+s", "cmd+shift+p") */
-    key: string;
-    /** Description of what the keybinding does */
-    description?: string;
-    /** Keybinding handler */
-    handler: (context: FocusContext) => void | Promise<void>;
-    /** When condition - if provided, keybinding only active when this returns true */
-    when?: (context: FocusContext) => boolean;
+  /** Unique identifier for the keybinding */
+  id: string;
+  /** Key combination (e.g., "ctrl+s", "cmd+shift+p") */
+  key: string;
+  /** Description of what the keybinding does */
+  description?: string;
+  /** Keybinding handler */
+  handler: (context: FocusContext) => void | Promise<void>;
+  /** When condition - if provided, keybinding only active when this returns true */
+  when?: (context: FocusContext) => boolean;
 }
 
 /**
@@ -105,10 +105,10 @@ export interface ModuleKeybinding {
  * Props passed to panel components when rendered
  */
 export interface PanelComponentProps<TPayload = any> {
-    /** The panel's unique ID */
-    panelId: string;
-    /** Optional payload data */
-    payload?: TPayload;
+  /** The panel's unique ID */
+  panelId: string;
+  /** Optional payload data */
+  payload?: TPayload;
 }
 
 /**
@@ -116,34 +116,34 @@ export interface PanelComponentProps<TPayload = any> {
  * Defines a sidebar or bottom panel
  */
 export interface PanelModule<TPayload = any> {
-    /** Module metadata */
-    metadata: ModuleMetadata & {
-        /** Panel position */
-        position: PanelPosition;
-        /** Whether the panel is visible by default */
-        defaultVisible?: boolean;
-        /** Badge text or count */
-        badge?: string | number;
-        /** Payload data passed to panel component */
-        payload?: TPayload;
-    };
-    /** Panel component; omitted only by rail actions, which have no panel body. */
-    component?: ComponentType<PanelComponentProps<TPayload>>;
-    /**
-     * Turns the rail icon into a button - clicking runs this instead of opening a panel body.
-     * See `PanelDefinition.railAction`. Mutually exclusive with `component`.
-     */
-    railAction?: (workspace: WorkspaceContext) => void;
-    /** Actions that should be registered when this panel is active/focused */
-    actions?: ModuleAction[];
-    /** Action groups that should be registered when this panel is active/focused */
-    actionGroups?: ModuleActionGroup[];
-    /** Keybindings that should be active when this panel is focused */
-    keybindings?: ModuleKeybinding[];
-    /** Optional initialization function called when module loads */
-    onLoad?: () => void | Promise<void>;
-    /** Optional cleanup function called when module unloads */
-    onUnload?: () => void | Promise<void>;
+  /** Module metadata */
+  metadata: ModuleMetadata & {
+    /** Panel position */
+    position: PanelPosition;
+    /** Whether the panel is visible by default */
+    defaultVisible?: boolean;
+    /** Badge text or count */
+    badge?: string | number;
+    /** Payload data passed to panel component */
+    payload?: TPayload;
+  };
+  /** Panel component; omitted only by rail actions, which have no panel body. */
+  component?: ComponentType<PanelComponentProps<TPayload>>;
+  /**
+   * Turns the rail icon into a button - clicking runs this instead of opening a panel body.
+   * See `PanelDefinition.railAction`. Mutually exclusive with `component`.
+   */
+  railAction?: (workspace: WorkspaceContext) => void;
+  /** Actions that should be registered when this panel is active/focused */
+  actions?: ModuleAction[];
+  /** Action groups that should be registered when this panel is active/focused */
+  actionGroups?: ModuleActionGroup[];
+  /** Keybindings that should be active when this panel is focused */
+  keybindings?: ModuleKeybinding[];
+  /** Optional initialization function called when module loads */
+  onLoad?: () => void | Promise<void>;
+  /** Optional cleanup function called when module unloads */
+  onUnload?: () => void | Promise<void>;
 }
 
 /**
@@ -157,14 +157,14 @@ export interface PanelModule<TPayload = any> {
  * from a sort key: users may hide an entry but never move it.
  */
 export interface StatusBarEntryModule {
-    /** Unique identifier, namespaced like every other module id. Also the persisted hide key. */
-    id: string;
-    /** i18n key for the label in the status bar's right-click toggle menu. */
-    labelKey: TranslationKey;
-    /** Which end of the bar the entry belongs to. */
-    alignment: StatusBarAlignment;
-    /** Renders the cell; returns null when the entry currently has nothing to say. */
-    component: ComponentType;
+  /** Unique identifier, namespaced like every other module id. Also the persisted hide key. */
+  id: string;
+  /** i18n key for the label in the status bar's right-click toggle menu. */
+  labelKey: TranslationKey;
+  /** Which end of the bar the entry belongs to. */
+  alignment: StatusBarAlignment;
+  /** Renders the cell; returns null when the entry currently has nothing to say. */
+  component: ComponentType;
 }
 
 /**
@@ -172,16 +172,16 @@ export interface StatusBarEntryModule {
  * Props passed to editor components when rendered
  */
 export interface EditorComponentProps<TPayload = any> {
-    /** The editor tab's unique ID */
-    tabId: string;
-    /** Optional payload data */
-    payload?: TPayload;
-    /**
-     * Whether this tab is the group's visible/focused tab. Kept-alive tabs stay mounted while
-     * hidden (`display:none`); components use this to restore focus/scroll when shown again and to
-     * pause background work (playback, media, global listeners) while hidden.
-     */
-    active: boolean;
+  /** The editor tab's unique ID */
+  tabId: string;
+  /** Optional payload data */
+  payload?: TPayload;
+  /**
+   * Whether this tab is the group's visible/focused tab. Kept-alive tabs stay mounted while
+   * hidden (`display:none`); components use this to restore focus/scroll when shown again and to
+   * pause background work (playback, media, global listeners) while hidden.
+   */
+  active: boolean;
 }
 
 /**
@@ -189,27 +189,27 @@ export interface EditorComponentProps<TPayload = any> {
  * Defines an editor type that can be opened in tabs
  */
 export interface EditorModule<TPayload = any> {
-    /** Module metadata */
-    metadata: ModuleMetadata & {
-        /** Whether the editor tab can be closed */
-        closable?: boolean;
-        /** Whether the editor content is modified */
-        modified?: boolean;
-        /** Badge text or count */
-        badge?: string | number;
-    };
-    /** Editor component */
-    component: ComponentType<EditorComponentProps<TPayload>>;
-    /** Actions that should be registered when this editor is active/focused */
-    actions?: ModuleAction[];
-    /** Action groups that should be registered when this editor is active/focused */
-    actionGroups?: ModuleActionGroup[];
-    /** Keybindings that should be active when this editor is focused */
-    keybindings?: ModuleKeybinding[];
-    /** Optional initialization function called when module loads */
-    onLoad?: () => void | Promise<void>;
-    /** Optional cleanup function called when module unloads */
-    onUnload?: () => void | Promise<void>;
+  /** Module metadata */
+  metadata: ModuleMetadata & {
+    /** Whether the editor tab can be closed */
+    closable?: boolean;
+    /** Whether the editor content is modified */
+    modified?: boolean;
+    /** Badge text or count */
+    badge?: string | number;
+  };
+  /** Editor component */
+  component: ComponentType<EditorComponentProps<TPayload>>;
+  /** Actions that should be registered when this editor is active/focused */
+  actions?: ModuleAction[];
+  /** Action groups that should be registered when this editor is active/focused */
+  actionGroups?: ModuleActionGroup[];
+  /** Keybindings that should be active when this editor is focused */
+  keybindings?: ModuleKeybinding[];
+  /** Optional initialization function called when module loads */
+  onLoad?: () => void | Promise<void>;
+  /** Optional cleanup function called when module unloads */
+  onUnload?: () => void | Promise<void>;
 }
 
 /**
@@ -217,9 +217,8 @@ export interface EditorModule<TPayload = any> {
  * Returned when a module is registered, can be used to unregister
  */
 export interface ModuleRegistration {
-    /** Unique identifier of the registered module */
-    id: string;
-    /** Unregister this module and clean up all its registered actions/keybindings */
-    unregister: () => void;
+  /** Unique identifier of the registered module */
+  id: string;
+  /** Unregister this module and clean up all its registered actions/keybindings */
+  unregister: () => void;
 }
-

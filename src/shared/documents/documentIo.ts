@@ -1,6 +1,6 @@
-import {findCanonicalJsonDefect} from "./canonicalJson";
-import {normalizeDocumentPath} from "./documentPath";
-import {DocumentCorruptError, DocumentParseContext, DocumentSpec} from "./types";
+import { findCanonicalJsonDefect } from "./canonicalJson";
+import { normalizeDocumentPath } from "./documentPath";
+import { DocumentCorruptError, DocumentParseContext, DocumentSpec } from "./types";
 
 /**
  * Reading and writing documents, without knowing what a filesystem is.
@@ -33,16 +33,16 @@ import {DocumentCorruptError, DocumentParseContext, DocumentSpec} from "./types"
  * failing copy would defeat the whole point of quarantining.
  */
 export interface DocumentStorage {
-    /** The file's text, or `null` if it does not exist. Any other failure throws. */
-    read(path: string): Promise<string | null>;
-    write(path: string, text: string): Promise<void>;
-    /**
-     * Byte-for-byte copy. Not read-then-write: a corrupt file may not be valid UTF-8
-     * at all (a truncated write cuts a multi-byte sequence in half), and decoding it
-     * to a string replaces those bytes with U+FFFD. The quarantined copy has to be
-     * the bytes that were actually on disk, or it is worthless as evidence.
-     */
-    copy(fromPath: string, toPath: string): Promise<void>;
+  /** The file's text, or `null` if it does not exist. Any other failure throws. */
+  read(path: string): Promise<string | null>;
+  write(path: string, text: string): Promise<void>;
+  /**
+   * Byte-for-byte copy. Not read-then-write: a corrupt file may not be valid UTF-8
+   * at all (a truncated write cuts a multi-byte sequence in half), and decoding it
+   * to a string replaces those bytes with U+FFFD. The quarantined copy has to be
+   * the bytes that were actually on disk, or it is worthless as evidence.
+   */
+  copy(fromPath: string, toPath: string): Promise<void>;
 }
 
 /**
@@ -52,30 +52,30 @@ export interface DocumentStorage {
 export const QUARANTINE_DIRECTORY = ".nlstudio/quarantine";
 
 export type DocumentLoadResult<T> =
-    | {
-        readonly status: "loaded";
-        readonly document: T;
-        /**
-         * Whether the bytes on disk are already exactly what saving this document
-         * would write. False means either non-canonical bytes or an older schema
-         * version, which is the same answer as far as the normalize-on-open pass is
-         * concerned: this file needs rewriting before the first commit.
-         */
-        readonly normalized: boolean;
+  | {
+      readonly status: "loaded";
+      readonly document: T;
+      /**
+       * Whether the bytes on disk are already exactly what saving this document
+       * would write. False means either non-canonical bytes or an older schema
+       * version, which is the same answer as far as the normalize-on-open pass is
+       * concerned: this file needs rewriting before the first commit.
+       */
+      readonly normalized: boolean;
     }
-    | {readonly status: "missing"}
-    | {
-        readonly status: "corrupt";
-        readonly error: DocumentCorruptError;
-        /** Where the original bytes were set aside, or `null` if that failed too. */
-        readonly quarantinePath: string | null;
-        /** Why quarantine failed. The document is still corrupt either way. */
-        readonly quarantineFailure?: unknown;
+  | { readonly status: "missing" }
+  | {
+      readonly status: "corrupt";
+      readonly error: DocumentCorruptError;
+      /** Where the original bytes were set aside, or `null` if that failed too. */
+      readonly quarantinePath: string | null;
+      /** Why quarantine failed. The document is still corrupt either way. */
+      readonly quarantineFailure?: unknown;
     };
 
 export interface LoadDocumentOptions {
-    /** Injected so the quarantine directory a test asserts on is the one it chose. */
-    now?: () => Date;
+  /** Injected so the quarantine directory a test asserts on is the one it chose. */
+  now?: () => Date;
 }
 
 /**
@@ -88,73 +88,84 @@ export interface LoadDocumentOptions {
  * the failure, and leave the file exactly as it was found.
  */
 export async function loadDocument<T>(
-    spec: DocumentSpec<T>,
-    storage: DocumentStorage,
-    path: string,
-    options: LoadDocumentOptions = {},
+  spec: DocumentSpec<T>,
+  storage: DocumentStorage,
+  path: string,
+  options: LoadDocumentOptions = {}
 ): Promise<DocumentLoadResult<T>> {
-    const documentPath = normalizeDocumentPath(path);
+  const documentPath = normalizeDocumentPath(path);
 
-    // An I/O failure propagates rather than being reported as corruption: a locked or
-    // unreadable file still has its contents, and quarantining it is neither possible
-    // nor desirable.
-    const raw = await storage.read(documentPath);
-    if (raw === null) {
-        return {status: "missing"};
-    }
+  // An I/O failure propagates rather than being reported as corruption: a locked or
+  // unreadable file still has its contents, and quarantining it is neither possible
+  // nor desirable.
+  const raw = await storage.read(documentPath);
+  if (raw === null) {
+    return { status: "missing" };
+  }
 
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(raw) as unknown;
-    } catch (error) {
-        return await quarantine(storage, documentPath, new DocumentCorruptError({
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch (error) {
+    return await quarantine(
+      storage,
+      documentPath,
+      new DocumentCorruptError({
+        kind: spec.kind,
+        path: documentPath,
+        reason: `not valid JSON: ${messageOf(error)}`,
+        text: raw,
+        cause: error
+      }),
+      options
+    );
+  }
+
+  // Before the spec sees it: are these bytes even representable? `JSON.parse` accepts
+  // more than it can give back - `1e400` becomes `Infinity`, which then has no way out
+  // - and without this gate such a value reaches `serialize` below and throws from the
+  // one function that must never throw on contents. Checking `parsed` rather than the
+  // parsed-and-migrated document is what keeps the two failure kinds apart: everything
+  // rejected here came off the disk, so anything `serialize` rejects afterwards was
+  // introduced by the spec and is a bug worth propagating.
+  const defect = findCanonicalJsonDefect(parsed);
+  if (defect) {
+    return await quarantine(
+      storage,
+      documentPath,
+      new DocumentCorruptError({
+        kind: spec.kind,
+        path: documentPath,
+        reason: `holds a value that cannot survive a JSON round trip: ${defect.message}`,
+        text: raw,
+        cause: defect
+      }),
+      options
+    );
+  }
+
+  let document: T;
+  try {
+    document = spec.parse(parsed, createParseContext(spec, documentPath, raw));
+  } catch (error) {
+    const corrupt =
+      error instanceof DocumentCorruptError
+        ? error
+        : new DocumentCorruptError({
             kind: spec.kind,
             path: documentPath,
-            reason: `not valid JSON: ${messageOf(error)}`,
+            reason: messageOf(error),
             text: raw,
-            cause: error,
-        }), options);
-    }
+            cause: error
+          });
+    return await quarantine(storage, documentPath, corrupt, options);
+  }
 
-    // Before the spec sees it: are these bytes even representable? `JSON.parse` accepts
-    // more than it can give back - `1e400` becomes `Infinity`, which then has no way out
-    // - and without this gate such a value reaches `serialize` below and throws from the
-    // one function that must never throw on contents. Checking `parsed` rather than the
-    // parsed-and-migrated document is what keeps the two failure kinds apart: everything
-    // rejected here came off the disk, so anything `serialize` rejects afterwards was
-    // introduced by the spec and is a bug worth propagating.
-    const defect = findCanonicalJsonDefect(parsed);
-    if (defect) {
-        return await quarantine(storage, documentPath, new DocumentCorruptError({
-            kind: spec.kind,
-            path: documentPath,
-            reason: `holds a value that cannot survive a JSON round trip: ${defect.message}`,
-            text: raw,
-            cause: defect,
-        }), options);
-    }
-
-    let document: T;
-    try {
-        document = spec.parse(parsed, createParseContext(spec, documentPath, raw));
-    } catch (error) {
-        const corrupt = error instanceof DocumentCorruptError
-            ? error
-            : new DocumentCorruptError({
-                kind: spec.kind,
-                path: documentPath,
-                reason: messageOf(error),
-                text: raw,
-                cause: error,
-            });
-        return await quarantine(storage, documentPath, corrupt, options);
-    }
-
-    // Deliberately not guarded, and safe to leave unguarded only because of the gate
-    // above: the bytes are known encodable, so a throw here means `parse` produced
-    // something they did not contain. That is a broken spec - the document could never
-    // be saved again - and it has to be loud rather than filed as corruption.
-    return {status: "loaded", document, normalized: spec.serialize(document) === raw};
+  // Deliberately not guarded, and safe to leave unguarded only because of the gate
+  // above: the bytes are known encodable, so a throw here means `parse` produced
+  // something they did not contain. That is a broken spec - the document could never
+  // be saved again - and it has to be loud rather than filed as corruption.
+  return { status: "loaded", document, normalized: spec.serialize(document) === raw };
 }
 
 /**
@@ -165,66 +176,76 @@ export async function loadDocument<T>(
  * belongs to the storage adapter - see `Fs.write`.)
  */
 export async function saveDocument<T>(
-    spec: DocumentSpec<T>,
-    storage: DocumentStorage,
-    path: string,
-    document: T,
+  spec: DocumentSpec<T>,
+  storage: DocumentStorage,
+  path: string,
+  document: T
 ): Promise<void> {
-    const documentPath = normalizeDocumentPath(path);
-    const text = spec.serialize(document);
-    await storage.write(documentPath, text);
+  const documentPath = normalizeDocumentPath(path);
+  const text = spec.serialize(document);
+  await storage.write(documentPath, text);
 }
 
 /** `.nlstudio/quarantine/<timestamp>/<original path>`. */
 export function quarantinePathFor(relativePath: string, at: Date): string {
-    return `${QUARANTINE_DIRECTORY}/${quarantineStamp(at)}/${normalizeDocumentPath(relativePath)}`;
+  return `${QUARANTINE_DIRECTORY}/${quarantineStamp(at)}/${normalizeDocumentPath(relativePath)}`;
 }
 
 function quarantineStamp(at: Date): string {
-    const time = at.getTime();
-    if (Number.isNaN(time)) {
-        throw new Error("Cannot quarantine a document with an invalid timestamp.");
-    }
-    // `:` is illegal in a Windows filename and `.` before the directory separator reads
-    // as an extension, so the ISO form is punctuated with dashes only. Still sorts
-    // lexicographically, which is what makes an old quarantine directory easy to find.
-    return at.toISOString().replace(/[:.]/g, "-");
+  const time = at.getTime();
+  if (Number.isNaN(time)) {
+    throw new Error("Cannot quarantine a document with an invalid timestamp.");
+  }
+  // `:` is illegal in a Windows filename and `.` before the directory separator reads
+  // as an extension, so the ISO form is punctuated with dashes only. Still sorts
+  // lexicographically, which is what makes an old quarantine directory easy to find.
+  return at.toISOString().replace(/[:.]/g, "-");
 }
 
 async function quarantine<T>(
-    storage: DocumentStorage,
-    path: string,
-    error: DocumentCorruptError,
-    options: LoadDocumentOptions,
+  storage: DocumentStorage,
+  path: string,
+  error: DocumentCorruptError,
+  options: LoadDocumentOptions
 ): Promise<DocumentLoadResult<T>> {
-    const now = options.now ?? (() => new Date());
-    let quarantinePath: string;
-    try {
-        quarantinePath = quarantinePathFor(path, now());
-    } catch (failure) {
-        return {status: "corrupt", error, quarantinePath: null, quarantineFailure: failure};
-    }
+  const now = options.now ?? (() => new Date());
+  let quarantinePath: string;
+  try {
+    quarantinePath = quarantinePathFor(path, now());
+  } catch (failure) {
+    return { status: "corrupt", error, quarantinePath: null, quarantineFailure: failure };
+  }
 
-    try {
-        await storage.copy(path, quarantinePath);
-    } catch (failure) {
-        // A failed copy must not swallow the corruption report: the author still needs
-        // to be told their document cannot be read, even if we could not preserve it.
-        return {status: "corrupt", error, quarantinePath: null, quarantineFailure: failure};
-    }
+  try {
+    await storage.copy(path, quarantinePath);
+  } catch (failure) {
+    // A failed copy must not swallow the corruption report: the author still needs
+    // to be told their document cannot be read, even if we could not preserve it.
+    return { status: "corrupt", error, quarantinePath: null, quarantineFailure: failure };
+  }
 
-    return {status: "corrupt", error, quarantinePath};
+  return { status: "corrupt", error, quarantinePath };
 }
 
-function createParseContext<T>(spec: DocumentSpec<T>, path: string, text: string): DocumentParseContext {
-    return {
+function createParseContext<T>(
+  spec: DocumentSpec<T>,
+  path: string,
+  text: string
+): DocumentParseContext {
+  return {
+    path,
+    corrupt(reason: string, options?: { cause?: unknown }): never {
+      throw new DocumentCorruptError({
+        kind: spec.kind,
         path,
-        corrupt(reason: string, options?: {cause?: unknown}): never {
-            throw new DocumentCorruptError({kind: spec.kind, path, reason, text, cause: options?.cause});
-        },
-    };
+        reason,
+        text,
+        cause: options?.cause
+      });
+    }
+  };
 }
 
 function messageOf(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+  return error instanceof Error ? error.message : String(error);
 }

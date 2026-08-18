@@ -8,7 +8,7 @@ import { useWorkspace } from "../../context";
 import type { EditorComponentProps } from "../types";
 
 export interface HelpEditorPayload {
-    topicId?: HelpTopicId;
+  topicId?: HelpTopicId;
 }
 
 /**
@@ -22,26 +22,26 @@ export interface HelpEditorPayload {
  * correctly here; the launcher, which has no such service, falls back to the catalog defaults.
  */
 export function HelpEditor({ payload }: EditorComponentProps<HelpEditorPayload>) {
-    const { context } = useWorkspace();
+  const { context } = useWorkspace();
 
-    const resolveShortcut = useMemo(() => {
-        const keybindings = context?.services.get<UIService>(Services.UI).keybindings;
-        return (catalogId: string): string | undefined => {
-            const entry = getKeybindingCatalogEntry(catalogId);
-            if (!entry) {
-                return undefined;
-            }
-            return keybindings?.getEffectiveKey({ id: entry.id, key: entry.key }) ?? entry.key;
-        };
-    }, [context]);
+  const resolveShortcut = useMemo(() => {
+    const keybindings = context?.services.get<UIService>(Services.UI).keybindings;
+    return (catalogId: string): string | undefined => {
+      const entry = getKeybindingCatalogEntry(catalogId);
+      if (!entry) {
+        return undefined;
+      }
+      return keybindings?.getEffectiveKey({ id: entry.id, key: entry.key }) ?? entry.key;
+    };
+  }, [context]);
 
-    return (
-        <div className="h-full w-full bg-surface">
-            <HelpBrowser
-                initialTopic={payload?.topicId}
-                resources={HELP_RESOURCES}
-                resolveShortcut={resolveShortcut}
-            />
-        </div>
-    );
+  return (
+    <div className="h-full w-full bg-surface">
+      <HelpBrowser
+        initialTopic={payload?.topicId}
+        resources={HELP_RESOURCES}
+        resolveShortcut={resolveShortcut}
+      />
+    </div>
+  );
 }

@@ -51,150 +51,150 @@ let secondNumber: number;
 let restored: VcsRestoreResult;
 
 function write(relative: string, bytes: string | Buffer): void {
-    const absolute = path.join(root, ...relative.split("/"));
-    fs.mkdirSync(path.dirname(absolute), { recursive: true });
-    fs.writeFileSync(absolute, bytes as never);
+  const absolute = path.join(root, ...relative.split("/"));
+  fs.mkdirSync(path.dirname(absolute), { recursive: true });
+  fs.writeFileSync(absolute, bytes as never);
 }
 
 function read(relative: string): string {
-    return fs.readFileSync(path.join(root, ...relative.split("/")), "utf-8");
+  return fs.readFileSync(path.join(root, ...relative.split("/")), "utf-8");
 }
 
 function exists(relative: string): boolean {
-    return fs.existsSync(path.join(root, ...relative.split("/")));
+  return fs.existsSync(path.join(root, ...relative.split("/")));
 }
 
 function fakeApp(): BaseApp {
-    const noop = () => undefined;
-    return {
-        logger: { info: noop, warn: noop, error: noop, debug: noop },
-        getGlobalState: () => ({ get: () => undefined }),
-    } as unknown as BaseApp;
+  const noop = () => undefined;
+  return {
+    logger: { info: noop, warn: noop, error: noop, debug: noop },
+    getGlobalState: () => ({ get: () => undefined })
+  } as unknown as BaseApp;
 }
 
 beforeAll(async () => {
-    if (!supported) return;
+  if (!supported) return;
 
-    root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "nl-restore-")));
-    globals = { repositoryPath: root, offline: true, cache: true };
+  root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "nl-restore-")));
+  globals = { repositoryPath: root, offline: true, cache: true };
 
-    write("project.json", JSON.stringify({ name: "prologue" }));
-    write(STORY, JSON.stringify({ version: 9, scenes: ["FIRST"] }));
-    write(SPRITE, "SPRITE-V1");
-    write(EDITOR_STATE, JSON.stringify({ layout: "mine" }));
-    await initRepository(globals, { identity: "author@narraleaf" });
+  write("project.json", JSON.stringify({ name: "prologue" }));
+  write(STORY, JSON.stringify({ version: 9, scenes: ["FIRST"] }));
+  write(SPRITE, "SPRITE-V1");
+  write(EDITOR_STATE, JSON.stringify({ layout: "mine" }));
+  await initRepository(globals, { identity: "author@narraleaf" });
 
-    manager = new VcsManager(fakeApp());
-    firstRevision = (await manager.getHistory(root))[0].revision;
+  manager = new VcsManager(fakeApp());
+  firstRevision = (await manager.getHistory(root))[0].revision;
 
-    // A second revision that differs in every way a restore has to undo: a changed document, changed
-    // asset BYTES, and a file that did not exist before.
-    write(STORY, JSON.stringify({ version: 9, scenes: ["SECOND"] }));
-    write(SPRITE, "SPRITE-V2");
-    write(ADDED_LATER, JSON.stringify({ version: 9, scenes: ["EPILOGUE"] }));
-    const second = await manager.commit(root, { message: "second" });
-    secondRevision = second.revision;
-    secondNumber = second.number;
+  // A second revision that differs in every way a restore has to undo: a changed document, changed
+  // asset BYTES, and a file that did not exist before.
+  write(STORY, JSON.stringify({ version: 9, scenes: ["SECOND"] }));
+  write(SPRITE, "SPRITE-V2");
+  write(ADDED_LATER, JSON.stringify({ version: 9, scenes: ["EPILOGUE"] }));
+  const second = await manager.commit(root, { message: "second" });
+  secondRevision = second.revision;
+  secondNumber = second.number;
 
-    // Uncommitted work, so the checkpoint has something to protect. Without this the test would pass
-    // just as well against an implementation that never took one.
-    write(STORY, JSON.stringify({ version: 9, scenes: ["UNSAVED"] }));
+  // Uncommitted work, so the checkpoint has something to protect. Without this the test would pass
+  // just as well against an implementation that never took one.
+  write(STORY, JSON.stringify({ version: 9, scenes: ["UNSAVED"] }));
 
-    restored = await manager.restoreRevision(root, firstRevision, { label: "#1" });
+  restored = await manager.restoreRevision(root, firstRevision, { label: "#1" });
 }, 300_000);
 
 afterAll(async () => {
-    if (!supported) return;
-    await manager?.dispose().catch(() => undefined);
-    await flushRepository(globals).catch(() => undefined);
-    await releaseRepository(globals).catch(() => undefined);
-    if (root) {
-        for (let attempt = 0; attempt < 20; attempt++) {
-            try {
-                fs.rmSync(root, { recursive: true, force: true });
-                break;
-            } catch {
-                await new Promise((resolve) => setTimeout(resolve, 100));
-            }
-        }
+  if (!supported) return;
+  await manager?.dispose().catch(() => undefined);
+  await flushRepository(globals).catch(() => undefined);
+  await releaseRepository(globals).catch(() => undefined);
+  if (root) {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      try {
+        fs.rmSync(root, { recursive: true, force: true });
+        break;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
     }
+  }
 }, 120_000);
 
 describe.skipIf(!supported)("restoring the working tree to a revision", () => {
-    it("puts the documents back", () => {
-        expect(JSON.parse(read(STORY)).scenes).toEqual(["FIRST"]);
+  it("puts the documents back", () => {
+    expect(JSON.parse(read(STORY)).scenes).toEqual(["FIRST"]);
+  });
+
+  it("puts the ASSET BYTES back, which is where a restore differs from a Dev Mode snapshot", () => {
+    // The snapshot skips `assets/content/**` because the compile path never opens one and the
+    // Dev Mode window resolves asset URLs through the working tree anyway. A restore that
+    // borrowed that shortcut would hand the author last week's script over this week's art, with
+    // nothing on screen to say so.
+    expect(read(SPRITE)).toBe("SPRITE-V1");
+  });
+
+  it("removes a file that only exists because it was added later", () => {
+    // Without this a restore is a merge nobody asked for: that version, plus everything since.
+    expect(exists(ADDED_LATER)).toBe(false);
+  });
+
+  it("leaves everything outside the working set alone", () => {
+    // Studio's own state is in no revision, so a restore reasoning from "absent at that revision"
+    // rather than from `isVersioned` would take the author's panel layout every time - and the
+    // repository itself with it.
+    expect(JSON.parse(read(EDITOR_STATE)).layout).toBe("mine");
+    expect(exists(".lore")).toBe(true);
+    expect(exists(".loreignore")).toBe(true);
+  });
+
+  it("records the pre-restore work as a checkpoint that can be read back", async () => {
+    expect(restored.checkpoint).not.toBeNull();
+    // The assertion the whole confirmation dialog rests on: not that a checkpoint EXISTS, but
+    // that the author's unsaved sentence is inside it and can be got out again.
+    const held = await manager.readBlob({
+      projectPath: root,
+      revision: restored.checkpoint!.revision,
+      path: STORY
     });
+    expect(JSON.parse(held.toString("utf-8")).scenes).toEqual(["UNSAVED"]);
+  }, 120_000);
 
-    it("puts the ASSET BYTES back, which is where a restore differs from a Dev Mode snapshot", () => {
-        // The snapshot skips `assets/content/**` because the compile path never opens one and the
-        // Dev Mode window resolves asset URLs through the working tree anyway. A restore that
-        // borrowed that shortcut would hand the author last week's script over this week's art, with
-        // nothing on screen to say so.
-        expect(read(SPRITE)).toBe("SPRITE-V1");
-    });
+  it("records the restore as a NEW revision rather than moving the branch back", () => {
+    expect(restored.revision).not.toBeNull();
+    expect(restored.revision!.number).toBeGreaterThan(secondNumber);
+    expect(restored.from).toBe(firstRevision);
+  });
 
-    it("removes a file that only exists because it was added later", () => {
-        // Without this a restore is a merge nobody asked for: that version, plus everything since.
-        expect(exists(ADDED_LATER)).toBe(false);
-    });
+  it("keeps every revision that was already there", async () => {
+    // The one property that makes a regretted restore survivable. A design that rewound the
+    // branch would pass every assertion above and lose the author's week.
+    const history = await manager.getHistory(root);
+    const revisions = history.map((entry) => entry.revision);
+    expect(revisions).toContain(firstRevision);
+    expect(revisions).toContain(secondRevision);
+    expect(revisions).toContain(restored.checkpoint!.revision);
+    expect(revisions[0]).toBe(restored.revision!.revision);
+  }, 120_000);
 
-    it("leaves everything outside the working set alone", () => {
-        // Studio's own state is in no revision, so a restore reasoning from "absent at that revision"
-        // rather than from `isVersioned` would take the author's panel layout every time - and the
-        // repository itself with it.
-        expect(JSON.parse(read(EDITOR_STATE)).layout).toBe("mine");
-        expect(exists(".lore")).toBe(true);
-        expect(exists(".loreignore")).toBe(true);
-    });
+  it("commits everything it wrote, so the tree is clean afterwards", async () => {
+    const status = await manager.getStatus(root);
+    expect(status.files.filter((file) => !file.directory)).toEqual([]);
+  }, 120_000);
 
-    it("records the pre-restore work as a checkpoint that can be read back", async () => {
-        expect(restored.checkpoint).not.toBeNull();
-        // The assertion the whole confirmation dialog rests on: not that a checkpoint EXISTS, but
-        // that the author's unsaved sentence is inside it and can be got out again.
-        const held = await manager.readBlob({
-            projectPath: root,
-            revision: restored.checkpoint!.revision,
-            path: STORY,
-        });
-        expect(JSON.parse(held.toString("utf-8")).scenes).toEqual(["UNSAVED"]);
-    }, 120_000);
+  it("answers a second restore of the same revision with no revision and no checkpoint", async () => {
+    // Restoring to what is already on disk changes nothing, and an empty revision every time
+    // someone pressed the button would make the history unreadable. Neither half is a failure.
+    const again = await manager.restoreRevision(root, firstRevision, { label: "#1" });
+    expect(again.checkpoint).toBeNull();
+    expect(again.revision).toBeNull();
+    expect(again.filesRemoved).toBe(0);
+  }, 120_000);
 
-    it("records the restore as a NEW revision rather than moving the branch back", () => {
-        expect(restored.revision).not.toBeNull();
-        expect(restored.revision!.number).toBeGreaterThan(secondNumber);
-        expect(restored.from).toBe(firstRevision);
-    });
-
-    it("keeps every revision that was already there", async () => {
-        // The one property that makes a regretted restore survivable. A design that rewound the
-        // branch would pass every assertion above and lose the author's week.
-        const history = await manager.getHistory(root);
-        const revisions = history.map((entry) => entry.revision);
-        expect(revisions).toContain(firstRevision);
-        expect(revisions).toContain(secondRevision);
-        expect(revisions).toContain(restored.checkpoint!.revision);
-        expect(revisions[0]).toBe(restored.revision!.revision);
-    }, 120_000);
-
-    it("commits everything it wrote, so the tree is clean afterwards", async () => {
-        const status = await manager.getStatus(root);
-        expect(status.files.filter((file) => !file.directory)).toEqual([]);
-    }, 120_000);
-
-    it("answers a second restore of the same revision with no revision and no checkpoint", async () => {
-        // Restoring to what is already on disk changes nothing, and an empty revision every time
-        // someone pressed the button would make the history unreadable. Neither half is a failure.
-        const again = await manager.restoreRevision(root, firstRevision, { label: "#1" });
-        expect(again.checkpoint).toBeNull();
-        expect(again.revision).toBeNull();
-        expect(again.filesRemoved).toBe(0);
-    }, 120_000);
-
-    it("refuses an unknown revision without leaving a checkpoint behind for it", async () => {
-        // The reason the revision is enumerated BEFORE the checkpoint is taken: a restore that turns
-        // out to be impossible must not have already added a revision to the author's history.
-        const before = (await manager.getHistory(root)).length;
-        await expect(manager.restoreRevision(root, "f".repeat(64))).rejects.toThrow();
-        expect((await manager.getHistory(root)).length).toBe(before);
-    }, 120_000);
+  it("refuses an unknown revision without leaving a checkpoint behind for it", async () => {
+    // The reason the revision is enumerated BEFORE the checkpoint is taken: a restore that turns
+    // out to be impossible must not have already added a revision to the author's history.
+    const before = (await manager.getHistory(root)).length;
+    await expect(manager.restoreRevision(root, "f".repeat(64))).rejects.toThrow();
+    expect((await manager.getHistory(root)).length).toBe(before);
+  }, 120_000);
 });

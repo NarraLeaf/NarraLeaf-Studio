@@ -22,57 +22,59 @@ import type { MediaAssetSupportRecord } from "@/lib/workspace/services/media/med
 const RESCAN_DEBOUNCE_MS = 300;
 
 export function useMediaAssetSupport(): ReadonlyMap<string, MediaAssetSupportRecord> {
-    const { context } = useWorkspace();
-    const [records, setRecords] = useState<ReadonlyMap<string, MediaAssetSupportRecord>>(() => new Map());
+  const { context } = useWorkspace();
+  const [records, setRecords] = useState<ReadonlyMap<string, MediaAssetSupportRecord>>(
+    () => new Map()
+  );
 
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        let media: MediaSupportService;
-        let assets: AssetsService;
-        try {
-            media = context.services.get<MediaSupportService>(Services.MediaSupport);
-            assets = context.services.get<AssetsService>(Services.Assets);
-        } catch {
-            // A workspace that came up without these (recovery mode) simply shows no marks.
-            return;
-        }
+  useEffect(() => {
+    if (!context) {
+      return;
+    }
+    let media: MediaSupportService;
+    let assets: AssetsService;
+    try {
+      media = context.services.get<MediaSupportService>(Services.MediaSupport);
+      assets = context.services.get<AssetsService>(Services.Assets);
+    } catch {
+      // A workspace that came up without these (recovery mode) simply shows no marks.
+      return;
+    }
 
-        let alive = true;
-        let timer: ReturnType<typeof setTimeout> | null = null;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
-        const publish = () => {
-            if (alive) {
-                setRecords(media.getLastScan().records);
-            }
-        };
-        const rescan = () => {
-            if (timer) {
-                clearTimeout(timer);
-            }
-            timer = setTimeout(() => {
-                timer = null;
-                void media.scan();
-            }, RESCAN_DEBOUNCE_MS);
-        };
-
-        publish();
-        const offChanged = media.onChanged(publish);
-        const offUpdated = assets.getEvents().on("updated", rescan);
-        const offDeleted = assets.getEvents().on("deleted", rescan);
+    const publish = () => {
+      if (alive) {
+        setRecords(media.getLastScan().records);
+      }
+    };
+    const rescan = () => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      timer = setTimeout(() => {
+        timer = null;
         void media.scan();
+      }, RESCAN_DEBOUNCE_MS);
+    };
 
-        return () => {
-            alive = false;
-            if (timer) {
-                clearTimeout(timer);
-            }
-            offChanged();
-            offUpdated();
-            offDeleted();
-        };
-    }, [context]);
+    publish();
+    const offChanged = media.onChanged(publish);
+    const offUpdated = assets.getEvents().on("updated", rescan);
+    const offDeleted = assets.getEvents().on("deleted", rescan);
+    void media.scan();
 
-    return records;
+    return () => {
+      alive = false;
+      if (timer) {
+        clearTimeout(timer);
+      }
+      offChanged();
+      offUpdated();
+      offDeleted();
+    };
+  }, [context]);
+
+  return records;
 }

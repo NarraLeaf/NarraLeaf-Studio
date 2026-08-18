@@ -34,27 +34,27 @@
 
 /** One hit, as offsets into the string that was searched. */
 export interface TextRange {
-    start: number;
-    end: number;
+  start: number;
+  end: number;
 }
 
 export interface TextMatchOptions {
-    caseSensitive: boolean;
-    /** Both edges of a hit must sit against a non-word character (or the end of the string). */
-    wholeWord: boolean;
-    /** Read the query as a regular expression rather than as literal text. */
-    regex: boolean;
+  caseSensitive: boolean;
+  /** Both edges of a hit must sit against a non-word character (or the end of the string). */
+  wholeWord: boolean;
+  /** Read the query as a regular expression rather than as literal text. */
+  regex: boolean;
 }
 
 export interface CompiledMatcher {
-    /** Non-overlapping hits in order. Empty query, or an invalid pattern, yields []. */
-    findRanges(text: string): TextRange[];
-    /** Cheap existence check for candidate filtering. */
-    test(text: string): boolean;
-    /** The literal text a hit should be replaced with (expands `$1`..`$9`, `$&`, `$$` in regex mode). */
-    expand(text: string, range: TextRange, replacement: string): string;
-    /** Set when the pattern could not compile; {@link findRanges} then returns []. */
-    error?: string;
+  /** Non-overlapping hits in order. Empty query, or an invalid pattern, yields []. */
+  findRanges(text: string): TextRange[];
+  /** Cheap existence check for candidate filtering. */
+  test(text: string): boolean;
+  /** The literal text a hit should be replaced with (expands `$1`..`$9`, `$&`, `$$` in regex mode). */
+  expand(text: string, range: TextRange, replacement: string): string;
+  /** Set when the pattern could not compile; {@link findRanges} then returns []. */
+  error?: string;
 }
 
 /**
@@ -66,36 +66,36 @@ export interface CompiledMatcher {
 const WORD_CHARACTER = /[\p{L}\p{N}]/u;
 
 export function isWordCharacter(character: string | undefined): boolean {
-    return character !== undefined && WORD_CHARACTER.test(character);
+  return character !== undefined && WORD_CHARACTER.test(character);
 }
 
 /** A hit qualifies when neither side of it touches a word character. String edges count as edges. */
 function isWholeWordAt(text: string, start: number, end: number): boolean {
-    return !isWordCharacter(text[start - 1]) && !isWordCharacter(text[end]);
+  return !isWordCharacter(text[start - 1]) && !isWordCharacter(text[end]);
 }
 
 function escapeLiteral(query: string): string {
-    return query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** `$$`, `$&` and `$1`..`$9` in a replacement template. Anything else stays literal. */
 function expandTemplate(template: string, match: RegExpExecArray): string {
-    return template.replace(/\$([$&1-9])/g, (_whole, token: string) => {
-        if (token === "$") {
-            return "$";
-        }
-        if (token === "&") {
-            return match[0];
-        }
-        return match[Number(token)] ?? "";
-    });
+  return template.replace(/\$([$&1-9])/g, (_whole, token: string) => {
+    if (token === "$") {
+      return "$";
+    }
+    if (token === "&") {
+      return match[0];
+    }
+    return match[Number(token)] ?? "";
+  });
 }
 
 /** The answer for "nothing to look for": no hits, and a replacement that is taken literally. */
 const NO_MATCHES: CompiledMatcher = {
-    findRanges: () => [],
-    test: () => false,
-    expand: (_text, _range, replacement) => replacement,
+  findRanges: () => [],
+  test: () => false,
+  expand: (_text, _range, replacement) => replacement
 };
 
 /**
@@ -106,66 +106,66 @@ const NO_MATCHES: CompiledMatcher = {
  * the danger colour and the row list empty, not throw out of a render.
  */
 export function compileMatcher(query: string, options: TextMatchOptions): CompiledMatcher {
-    if (!query) {
-        return NO_MATCHES;
+  if (!query) {
+    return NO_MATCHES;
+  }
+
+  const source = options.regex ? query : escapeLiteral(query);
+  const caseFlag = options.caseSensitive ? "" : "i";
+
+  let scanner: RegExp;
+  let probe: RegExp;
+  let anchored: RegExp;
+  try {
+    // `g` scans, the bare one tests (no `lastIndex` to carry between calls), `y` re-reads one
+    // known hit so `expand` can see its capture groups. No `u` - see the note at the top.
+    scanner = new RegExp(source, `${caseFlag}g`);
+    probe = new RegExp(source, caseFlag);
+    anchored = new RegExp(source, `${caseFlag}y`);
+  } catch (error) {
+    return { ...NO_MATCHES, error: error instanceof Error ? error.message : String(error) };
+  }
+
+  const findRanges = (text: string): TextRange[] => {
+    const ranges: TextRange[] = [];
+    // Reset rather than trust: the previous call may have returned early, and a matcher that
+    // remembered where it stopped would give different answers for the same string.
+    scanner.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = scanner.exec(text)) !== null) {
+      const start = match.index;
+      const end = start + match[0].length;
+      if (end === start) {
+        // Zero width. Without this the same empty match comes back forever.
+        scanner.lastIndex = start + 1;
+      }
+      if (!options.wholeWord || isWholeWordAt(text, start, end)) {
+        ranges.push({ start, end });
+      }
     }
+    return ranges;
+  };
 
-    const source = options.regex ? query : escapeLiteral(query);
-    const caseFlag = options.caseSensitive ? "" : "i";
-
-    let scanner: RegExp;
-    let probe: RegExp;
-    let anchored: RegExp;
-    try {
-        // `g` scans, the bare one tests (no `lastIndex` to carry between calls), `y` re-reads one
-        // known hit so `expand` can see its capture groups. No `u` - see the note at the top.
-        scanner = new RegExp(source, `${caseFlag}g`);
-        probe = new RegExp(source, caseFlag);
-        anchored = new RegExp(source, `${caseFlag}y`);
-    } catch (error) {
-        return { ...NO_MATCHES, error: error instanceof Error ? error.message : String(error) };
+  return {
+    findRanges,
+    test: (text: string): boolean => {
+      if (!options.wholeWord) {
+        return probe.test(text);
+      }
+      // A pattern can occur without occurring as a whole word, so the cheap probe is not an
+      // answer here - only a scan is.
+      return findRanges(text).length > 0;
+    },
+    expand: (text: string, range: TextRange, replacement: string): string => {
+      if (!options.regex || !replacement.includes("$")) {
+        return replacement;
+      }
+      anchored.lastIndex = range.start;
+      const match = anchored.exec(text);
+      if (!match) {
+        return replacement;
+      }
+      return expandTemplate(replacement, match);
     }
-
-    const findRanges = (text: string): TextRange[] => {
-        const ranges: TextRange[] = [];
-        // Reset rather than trust: the previous call may have returned early, and a matcher that
-        // remembered where it stopped would give different answers for the same string.
-        scanner.lastIndex = 0;
-        let match: RegExpExecArray | null;
-        while ((match = scanner.exec(text)) !== null) {
-            const start = match.index;
-            const end = start + match[0].length;
-            if (end === start) {
-                // Zero width. Without this the same empty match comes back forever.
-                scanner.lastIndex = start + 1;
-            }
-            if (!options.wholeWord || isWholeWordAt(text, start, end)) {
-                ranges.push({ start, end });
-            }
-        }
-        return ranges;
-    };
-
-    return {
-        findRanges,
-        test: (text: string): boolean => {
-            if (!options.wholeWord) {
-                return probe.test(text);
-            }
-            // A pattern can occur without occurring as a whole word, so the cheap probe is not an
-            // answer here - only a scan is.
-            return findRanges(text).length > 0;
-        },
-        expand: (text: string, range: TextRange, replacement: string): string => {
-            if (!options.regex || !replacement.includes("$")) {
-                return replacement;
-            }
-            anchored.lastIndex = range.start;
-            const match = anchored.exec(text);
-            if (!match) {
-                return replacement;
-            }
-            return expandTemplate(replacement, match);
-        },
-    };
+  };
 }

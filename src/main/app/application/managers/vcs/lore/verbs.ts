@@ -1,54 +1,54 @@
 import { LORE_METADATA_TYPES } from "./abi/definitions";
 import { invoke, type InvokeOptions, type LoreGlobals } from "./call";
 import {
-    LoreTag,
-    type LoreAuthIdentityPayload,
-    type LoreBranchCreatePayload,
-    type LoreBranchEntryPayload,
-    type LoreBranchInfoPayload,
-    type LoreBranchPushPayload,
-    type LoreCloneBeginPayload,
-    type LoreCloneCountPayload,
-    type LoreCloneEndPayload,
-    type LoreCloneProgressPayload,
-    type LoreConfigPayload,
-    type LoreSyncProgressPayload,
-    type LoreSyncRevisionPayload,
-    type LoreSyncTargetPayload,
-    type LoreCommitRevisionPayload,
-    type LoreDiffFilePayload,
-    type LoreHistoryEntryPayload,
-    type LoreHistoryPayload,
-    type LoreMergeAbortBeginPayload,
-    type LoreMergeConflictFilePayload,
-    type LoreMergeResolveFilePayload,
-    type LoreMergeResolveRevisionPayload,
-    type LoreMergeStartBeginPayload,
-    type LoreMergeStartEndPayload,
-    type LoreMergeUnresolveFilePayload,
-    type LoreMetadataPayload,
-    type LoreRepositoryCreatePayload,
-    type LoreRevisionInfoPayload,
-    type LoreStageEndPayload,
-    type LoreStageFilePayload,
-    type LoreStatusFilePayload,
-    type LoreStatusRevisionPayload,
-    type LoreStatusSummaryPayload,
-    type LoreStorageDataPayload,
-    type LoreStorageOpenedPayload,
-    type LoreTreeChildPayload,
-    type LoreTreeLoadedPayload,
-    type LoreTreeNodeInfoPayload,
-    type LoreTreeResolvePayload,
+  LoreTag,
+  type LoreAuthIdentityPayload,
+  type LoreBranchCreatePayload,
+  type LoreBranchEntryPayload,
+  type LoreBranchInfoPayload,
+  type LoreBranchPushPayload,
+  type LoreCloneBeginPayload,
+  type LoreCloneCountPayload,
+  type LoreCloneEndPayload,
+  type LoreCloneProgressPayload,
+  type LoreConfigPayload,
+  type LoreSyncProgressPayload,
+  type LoreSyncRevisionPayload,
+  type LoreSyncTargetPayload,
+  type LoreCommitRevisionPayload,
+  type LoreDiffFilePayload,
+  type LoreHistoryEntryPayload,
+  type LoreHistoryPayload,
+  type LoreMergeAbortBeginPayload,
+  type LoreMergeConflictFilePayload,
+  type LoreMergeResolveFilePayload,
+  type LoreMergeResolveRevisionPayload,
+  type LoreMergeStartBeginPayload,
+  type LoreMergeStartEndPayload,
+  type LoreMergeUnresolveFilePayload,
+  type LoreMetadataPayload,
+  type LoreRepositoryCreatePayload,
+  type LoreRevisionInfoPayload,
+  type LoreStageEndPayload,
+  type LoreStageFilePayload,
+  type LoreStatusFilePayload,
+  type LoreStatusRevisionPayload,
+  type LoreStatusSummaryPayload,
+  type LoreStorageDataPayload,
+  type LoreStorageOpenedPayload,
+  type LoreTreeChildPayload,
+  type LoreTreeLoadedPayload,
+  type LoreTreeNodeInfoPayload,
+  type LoreTreeResolvePayload
 } from "./events";
 import {
-    contextBytes,
-    loreMetadataTypeArray,
-    loreString,
-    loreStringArray,
-    partitionBytes,
-    revisionBytes,
-    type LoreHex,
+  contextBytes,
+  loreMetadataTypeArray,
+  loreString,
+  loreStringArray,
+  partitionBytes,
+  revisionBytes,
+  type LoreHex
 } from "./values";
 
 /**
@@ -63,8 +63,12 @@ import {
  * `uint64` ids so a store handle cannot be passed where a tree handle belongs.
  */
 
-export interface StoreHandle { readonly handleId: number }
-export interface TreeHandle { readonly handleId: number }
+export interface StoreHandle {
+  readonly handleId: number;
+}
+export interface TreeHandle {
+  readonly handleId: number;
+}
 
 /** Lore fills unset hash fields with zeroes; that is "absent", not a revision. */
 const ZERO_HASH = "0".repeat(64);
@@ -72,29 +76,29 @@ const ZERO_HASH = "0".repeat(64);
 // -- repository -------------------------------------------------------------
 
 export interface CreateRepositoryOptions {
-    /**
-     * Mandatory even for a fully offline repository - `repository_create` fails
-     * without it (`lore-revision/src/repository/create.rs`). Nothing dials it until
-     * a remote is actually configured, so a placeholder is fine for a local project.
-     */
-    repositoryUrl: string;
-    description?: string;
-    /** Explicit repository id; Lore generates one when empty. */
-    id?: string;
+  /**
+   * Mandatory even for a fully offline repository - `repository_create` fails
+   * without it (`lore-revision/src/repository/create.rs`). Nothing dials it until
+   * a remote is actually configured, so a placeholder is fine for a local project.
+   */
+  repositoryUrl: string;
+  description?: string;
+  /** Explicit repository id; Lore generates one when empty. */
+  id?: string;
 }
 
 export async function createRepository(
-    globals: LoreGlobals,
-    options: CreateRepositoryOptions,
+  globals: LoreGlobals,
+  options: CreateRepositoryOptions
 ): Promise<LoreRepositoryCreatePayload> {
-    const result = await invoke("repositoryCreate", globals, {
-        repositoryUrl: scopeString(options.repositoryUrl),
-        description: scopeString(options.description),
-        id: scopeString(options.id),
-        useSharedStore: 0,
-        sharedStorePath: scopeString(undefined),
-    });
-    return result.one<LoreRepositoryCreatePayload>(LoreTag.REPOSITORY_CREATE);
+  const result = await invoke("repositoryCreate", globals, {
+    repositoryUrl: scopeString(options.repositoryUrl),
+    description: scopeString(options.description),
+    id: scopeString(options.id),
+    useSharedStore: 0,
+    sharedStorePath: scopeString(undefined)
+  });
+  return result.one<LoreRepositoryCreatePayload>(LoreTag.REPOSITORY_CREATE);
 }
 
 /**
@@ -108,58 +112,63 @@ export async function createRepository(
  * not a stable failure, which makes it worse.
  */
 export async function flushRepository(globals: LoreGlobals): Promise<void> {
-    await invoke("repositoryFlush", globals, { unused: 0 });
+  await invoke("repositoryFlush", globals, { unused: 0 });
 }
 
 /** Release Lore's exclusive repository lock. Other processes BLOCK on it, not fail. */
 export async function releaseRepository(globals: LoreGlobals): Promise<void> {
-    await invoke("repositoryRelease", globals, { unused: 0 });
+  await invoke("repositoryRelease", globals, { unused: 0 });
 }
 
 export interface RepositoryStatus {
-    revision: LoreStatusRevisionPayload | undefined;
-    files: LoreStatusFilePayload[];
-    summary: LoreStatusSummaryPayload | undefined;
+  revision: LoreStatusRevisionPayload | undefined;
+  files: LoreStatusFilePayload[];
+  summary: LoreStatusSummaryPayload | undefined;
 }
 
 export interface StatusOptions {
-    /** Walk the working tree for changes. Off means "report staged state only". */
-    scan?: boolean;
-    /** Compare content, not just metadata. Slower, and the only way to catch a touched-but-identical file. */
-    checkDirty?: boolean;
-    /** Limit to these repository-absolute paths. */
-    paths?: readonly string[];
-    /** Skip the per-file events; just the branch/revision header. */
-    revisionOnly?: boolean;
+  /** Walk the working tree for changes. Off means "report staged state only". */
+  scan?: boolean;
+  /** Compare content, not just metadata. Slower, and the only way to catch a touched-but-identical file. */
+  checkDirty?: boolean;
+  /** Limit to these repository-absolute paths. */
+  paths?: readonly string[];
+  /** Skip the per-file events; just the branch/revision header. */
+  revisionOnly?: boolean;
 }
 
 export async function repositoryStatus(
-    globals: LoreGlobals,
-    options: StatusOptions = {},
+  globals: LoreGlobals,
+  options: StatusOptions = {}
 ): Promise<RepositoryStatus> {
-    const result = await invoke("repositoryStatus", globals, {
-        staged: 0,
-        scan: options.scan === false ? 0 : 1,
-        checkDirty: options.checkDirty ? 1 : 0,
-        reset: 0,
-        syncPoint: 0,
-        revisionOnly: options.revisionOnly ? 1 : 0,
-        count: 0,
-        paths: scopeStringArray(options.paths),
-    }, { allowIgnoredPaths: true });
+  const result = await invoke(
+    "repositoryStatus",
+    globals,
+    {
+      staged: 0,
+      scan: options.scan === false ? 0 : 1,
+      checkDirty: options.checkDirty ? 1 : 0,
+      reset: 0,
+      syncPoint: 0,
+      revisionOnly: options.revisionOnly ? 1 : 0,
+      count: 0,
+      paths: scopeStringArray(options.paths)
+    },
+    { allowIgnoredPaths: true }
+  );
 
-    return {
-        revision: result.first<LoreStatusRevisionPayload>(LoreTag.REPOSITORY_STATUS_REVISION),
-        files: result.of<LoreStatusFilePayload>(LoreTag.REPOSITORY_STATUS_FILE),
-        summary: result.first<LoreStatusSummaryPayload>(LoreTag.REPOSITORY_STATUS_SUMMARY),
-    };
+  return {
+    revision: result.first<LoreStatusRevisionPayload>(LoreTag.REPOSITORY_STATUS_REVISION),
+    files: result.of<LoreStatusFilePayload>(LoreTag.REPOSITORY_STATUS_FILE),
+    summary: result.first<LoreStatusSummaryPayload>(LoreTag.REPOSITORY_STATUS_SUMMARY)
+  };
 }
 
 // -- staging and commit -----------------------------------------------------
 
 export interface StageResult {
-    files: LoreStageFilePayload[];
-    counts: LoreStageEndPayload | undefined;
+  files: LoreStageFilePayload[];
+  counts: LoreStageEndPayload | undefined;
 }
 
 /**
@@ -171,24 +180,29 @@ export interface StageResult {
  * mistyped path does not silently drop an asset out of version control.
  */
 export async function stage(
-    globals: LoreGlobals,
-    paths: readonly string[],
-    options: InvokeOptions = {},
+  globals: LoreGlobals,
+  paths: readonly string[],
+  options: InvokeOptions = {}
 ): Promise<StageResult> {
-    const result = await invoke("fileStage", globals, {
-        paths: scopeStringArray(paths),
-        caseChange: 0,
-        // Recurse into directories rather than requiring a fully expanded file list.
-        scan: 1,
-    }, options);
-    return {
-        files: result.of<LoreStageFilePayload>(LoreTag.FILE_STAGE_FILE),
-        counts: result.first<LoreStageEndPayload>(LoreTag.FILE_STAGE_END),
-    };
+  const result = await invoke(
+    "fileStage",
+    globals,
+    {
+      paths: scopeStringArray(paths),
+      caseChange: 0,
+      // Recurse into directories rather than requiring a fully expanded file list.
+      scan: 1
+    },
+    options
+  );
+  return {
+    files: result.of<LoreStageFilePayload>(LoreTag.FILE_STAGE_FILE),
+    counts: result.first<LoreStageEndPayload>(LoreTag.FILE_STAGE_END)
+  };
 }
 
 export async function unstage(globals: LoreGlobals, paths: readonly string[]): Promise<void> {
-    await invoke("fileUnstage", globals, { paths: scopeStringArray(paths) });
+  await invoke("fileUnstage", globals, { paths: scopeStringArray(paths) });
 }
 
 /**
@@ -199,34 +213,37 @@ export async function unstage(globals: LoreGlobals, paths: readonly string[]): P
  * flush, and hiding it here would make the requirement invisible at the call sites
  * that actually decide when a write is durable.
  */
-export async function commit(globals: LoreGlobals, message: string): Promise<LoreCommitRevisionPayload> {
-    const result = await invoke("revisionCommit", globals, {
-        message: scopeString(message),
-        link: scopeString(undefined),
-        linkPaths: scopeStringArray(undefined),
-        linkMessages: scopeStringArray(undefined),
-        layer: scopeString(undefined),
-        layerPaths: scopeStringArray(undefined),
-        layerMessages: scopeStringArray(undefined),
-        stats: 0,
-    });
-    return result.one<LoreCommitRevisionPayload>(LoreTag.REVISION_COMMIT_REVISION);
+export async function commit(
+  globals: LoreGlobals,
+  message: string
+): Promise<LoreCommitRevisionPayload> {
+  const result = await invoke("revisionCommit", globals, {
+    message: scopeString(message),
+    link: scopeString(undefined),
+    linkPaths: scopeStringArray(undefined),
+    linkMessages: scopeStringArray(undefined),
+    layer: scopeString(undefined),
+    layerPaths: scopeStringArray(undefined),
+    layerMessages: scopeStringArray(undefined),
+    stats: 0
+  });
+  return result.one<LoreCommitRevisionPayload>(LoreTag.REVISION_COMMIT_REVISION);
 }
 
 // -- history ----------------------------------------------------------------
 
 export interface RevisionNode {
-    revision: LoreHex;
-    /** Monotonic per repository; a cheap topological rank. */
-    number: number;
-    /** Direct parent first, the second parent of a merge second. */
-    parents: LoreHex[];
+  revision: LoreHex;
+  /** Monotonic per repository; a cheap topological rank. */
+  number: number;
+  /** Direct parent first, the second parent of a merge second. */
+  parents: LoreHex[];
 }
 
 export interface HistoryResult {
-    /** Repository and branch the history belongs to, from the header event. */
-    header: LoreHistoryPayload | undefined;
-    nodes: Map<LoreHex, RevisionNode>;
+  /** Repository and branch the history belongs to, from the header event. */
+  header: LoreHistoryPayload | undefined;
+  nodes: Map<LoreHex, RevisionNode>;
 }
 
 /**
@@ -237,35 +254,38 @@ export interface HistoryResult {
  * `offline: true` and blocks until the socket times out.
  */
 export async function history(
-    globals: LoreGlobals,
-    options: { revision?: LoreHex; branch?: string; limit?: number } = {},
+  globals: LoreGlobals,
+  options: { revision?: LoreHex; branch?: string; limit?: number } = {}
 ): Promise<HistoryResult> {
-    const result = await invoke("revisionHistory", globals, {
-        revision: scopeString(options.revision),
-        branch: scopeString(options.branch),
-        date: 0,
-        length: options.limit ?? 0,
-        onlyBranch: 0,
-    });
+  const result = await invoke("revisionHistory", globals, {
+    revision: scopeString(options.revision),
+    branch: scopeString(options.branch),
+    date: 0,
+    length: options.limit ?? 0,
+    onlyBranch: 0
+  });
 
-    const nodes = new Map<LoreHex, RevisionNode>();
-    for (const entry of result.of<LoreHistoryEntryPayload>(LoreTag.REVISION_HISTORY_ENTRY)) {
-        nodes.set(entry.revision, {
-            revision: entry.revision,
-            number: entry.revisionNumber,
-            parents: entry.parents,
-        });
-    }
-    return { header: result.first<LoreHistoryPayload>(LoreTag.REVISION_HISTORY), nodes };
+  const nodes = new Map<LoreHex, RevisionNode>();
+  for (const entry of result.of<LoreHistoryEntryPayload>(LoreTag.REVISION_HISTORY_ENTRY)) {
+    nodes.set(entry.revision, {
+      revision: entry.revision,
+      number: entry.revisionNumber,
+      parents: entry.parents
+    });
+  }
+  return { header: result.first<LoreHistoryPayload>(LoreTag.REVISION_HISTORY), nodes };
 }
 
-export async function revisionInfo(globals: LoreGlobals, revision: LoreHex): Promise<LoreRevisionInfoPayload> {
-    const result = await invoke("revisionInfo", globals, {
-        revision: scopeString(revision),
-        delta: 0,
-        metadata: 0,
-    });
-    return result.one<LoreRevisionInfoPayload>(LoreTag.REVISION_INFO);
+export async function revisionInfo(
+  globals: LoreGlobals,
+  revision: LoreHex
+): Promise<LoreRevisionInfoPayload> {
+  const result = await invoke("revisionInfo", globals, {
+    revision: scopeString(revision),
+    delta: 0,
+    metadata: 0
+  });
+  return result.one<LoreRevisionInfoPayload>(LoreTag.REVISION_INFO);
 }
 
 /**
@@ -276,17 +296,22 @@ export async function revisionInfo(globals: LoreGlobals, revision: LoreHex): Pro
  * files moved is exactly what the diff engine needs as input.
  */
 export async function changedPaths(
-    globals: LoreGlobals,
-    from: LoreHex,
-    to: LoreHex,
-    paths?: readonly string[],
+  globals: LoreGlobals,
+  from: LoreHex,
+  to: LoreHex,
+  paths?: readonly string[]
 ): Promise<LoreDiffFilePayload[]> {
-    const result = await invoke("revisionDiff", globals, {
-        revisionSource: scopeString(from),
-        revisionTarget: scopeString(to),
-        paths: scopeStringArray(paths),
-    }, { allowIgnoredPaths: true });
-    return result.of<LoreDiffFilePayload>(LoreTag.REVISION_DIFF_FILE);
+  const result = await invoke(
+    "revisionDiff",
+    globals,
+    {
+      revisionSource: scopeString(from),
+      revisionTarget: scopeString(to),
+      paths: scopeStringArray(paths)
+    },
+    { allowIgnoredPaths: true }
+  );
+  return result.of<LoreDiffFilePayload>(LoreTag.REVISION_DIFF_FILE);
 }
 
 // -- revision metadata ------------------------------------------------------
@@ -304,18 +329,18 @@ export async function changedPaths(
  * value unreadable to a client that expected the text back verbatim.
  */
 export async function setRevisionMetadata(
-    globals: LoreGlobals,
-    entries: Readonly<Record<string, string>>,
+  globals: LoreGlobals,
+  entries: Readonly<Record<string, string>>
 ): Promise<void> {
-    const keys = Object.keys(entries);
-    if (keys.length === 0) return;
-    await invoke("revisionMetadataSet", globals, {
-        keys: scopeStringArray(keys),
-        values: scopeStringArray(keys.map((key) => entries[key])),
-        // One format per entry, read by index. Same length as the other two arrays by
-        // construction rather than by agreement between call sites.
-        formats: loreMetadataTypeArray(keys.map(() => LORE_METADATA_TYPES.STRING)),
-    });
+  const keys = Object.keys(entries);
+  if (keys.length === 0) return;
+  await invoke("revisionMetadataSet", globals, {
+    keys: scopeStringArray(keys),
+    values: scopeStringArray(keys.map((key) => entries[key])),
+    // One format per entry, read by index. Same length as the other two arrays by
+    // construction rather than by agreement between call sites.
+    formats: loreMetadataTypeArray(keys.map(() => LORE_METADATA_TYPES.STRING))
+  });
 }
 
 /**
@@ -325,24 +350,24 @@ export async function setRevisionMetadata(
  * metadata, and every revision written before Studio started labelling them has none.
  */
 export async function getRevisionMetadata(
-    globals: LoreGlobals,
-    revision: LoreHex,
-    key: string,
+  globals: LoreGlobals,
+  revision: LoreHex,
+  key: string
 ): Promise<LoreMetadataPayload | undefined> {
-    const result = await invoke("revisionMetadataGet", globals, {
-        key: scopeString(key),
-        revision: scopeString(revision),
-    });
-    return result.of<LoreMetadataPayload>(LoreTag.METADATA).find((entry) => entry.key === key);
+  const result = await invoke("revisionMetadataGet", globals, {
+    key: scopeString(key),
+    revision: scopeString(revision)
+  });
+  return result.of<LoreMetadataPayload>(LoreTag.METADATA).find((entry) => entry.key === key);
 }
 
 /** Every metadata key on one revision. */
 export async function listRevisionMetadata(
-    globals: LoreGlobals,
-    revision: LoreHex,
+  globals: LoreGlobals,
+  revision: LoreHex
 ): Promise<LoreMetadataPayload[]> {
-    const result = await invoke("revisionMetadataList", globals, { revision: scopeString(revision) });
-    return result.of<LoreMetadataPayload>(LoreTag.METADATA);
+  const result = await invoke("revisionMetadataList", globals, { revision: scopeString(revision) });
+  return result.of<LoreMetadataPayload>(LoreTag.METADATA);
 }
 
 // -- content ----------------------------------------------------------------
@@ -361,23 +386,23 @@ export async function listRevisionMetadata(
  * the path of opening a project.
  */
 export async function openStore(
-    globals: LoreGlobals,
-    repositoryPath: string,
-    options: { remoteUrl?: string } = {},
+  globals: LoreGlobals,
+  repositoryPath: string,
+  options: { remoteUrl?: string } = {}
 ): Promise<StoreHandle> {
-    const result = await invoke("storageOpen", globals, {
-        repositoryPath: scopeString(repositoryPath),
-        inMemory: 0,
-        remoteConfig: { remoteUrl: scopeString(options.remoteUrl) },
-        hasRemoteConfig: options.remoteUrl ? 1 : 0,
-        cacheTargetBytes: 0,
-        cacheTargetFragments: 0,
-    });
-    return { handleId: result.one<LoreStorageOpenedPayload>(LoreTag.STORAGE_OPENED).handleId };
+  const result = await invoke("storageOpen", globals, {
+    repositoryPath: scopeString(repositoryPath),
+    inMemory: 0,
+    remoteConfig: { remoteUrl: scopeString(options.remoteUrl) },
+    hasRemoteConfig: options.remoteUrl ? 1 : 0,
+    cacheTargetBytes: 0,
+    cacheTargetFragments: 0
+  });
+  return { handleId: result.one<LoreStorageOpenedPayload>(LoreTag.STORAGE_OPENED).handleId };
 }
 
 export async function closeStore(globals: LoreGlobals, handle: StoreHandle): Promise<void> {
-    await invoke("storageClose", globals, { handle: { handleId: handle.handleId } });
+  await invoke("storageClose", globals, { handle: { handleId: handle.handleId } });
 }
 
 /**
@@ -390,42 +415,42 @@ export async function closeStore(globals: LoreGlobals, handle: StoreHandle): Pro
  * against a repository that does not exist.
  */
 export async function loadTree(
-    globals: LoreGlobals,
-    store: StoreHandle,
-    repository: LoreHex,
-    revision: LoreHex,
+  globals: LoreGlobals,
+  store: StoreHandle,
+  repository: LoreHex,
+  revision: LoreHex
 ): Promise<TreeHandle> {
-    const result = await invoke("revisionTreeLoad", globals, {
-        store: { handleId: store.handleId },
-        repository: partitionBytes(repository),
-        revisionHash: revisionBytes(revision),
-    });
-    return { handleId: result.one<LoreTreeLoadedPayload>(LoreTag.REVISION_TREE_LOADED).handleId };
+  const result = await invoke("revisionTreeLoad", globals, {
+    store: { handleId: store.handleId },
+    repository: partitionBytes(repository),
+    revisionHash: revisionBytes(revision)
+  });
+  return { handleId: result.one<LoreTreeLoadedPayload>(LoreTag.REVISION_TREE_LOADED).handleId };
 }
 
 export async function closeTree(globals: LoreGlobals, handle: TreeHandle): Promise<void> {
-    await invoke("revisionTreeClose", globals, { id: 1, handle: { handleId: handle.handleId } });
+  await invoke("revisionTreeClose", globals, { id: 1, handle: { handleId: handle.handleId } });
 }
 
 /** Resolve a repository-relative path in a loaded tree to its node metadata. */
 export async function treeNode(
-    globals: LoreGlobals,
-    handle: TreeHandle,
-    repositoryRelativePath: string,
+  globals: LoreGlobals,
+  handle: TreeHandle,
+  repositoryRelativePath: string
 ): Promise<LoreTreeNodeInfoPayload> {
-    const resolved = await invoke("revisionTreeResolvePath", globals, {
-        id: 1,
-        handle: { handleId: handle.handleId },
-        path: scopeString(repositoryRelativePath),
-    });
-    const node = resolved.one<LoreTreeResolvePayload>(LoreTag.REVISION_TREE_RESOLVE_PATH_COMPLETE);
+  const resolved = await invoke("revisionTreeResolvePath", globals, {
+    id: 1,
+    handle: { handleId: handle.handleId },
+    path: scopeString(repositoryRelativePath)
+  });
+  const node = resolved.one<LoreTreeResolvePayload>(LoreTag.REVISION_TREE_RESOLVE_PATH_COMPLETE);
 
-    const info = await invoke("revisionTreeNodeInfo", globals, {
-        id: 1,
-        handle: { handleId: handle.handleId },
-        nodeId: node.nodeId,
-    });
-    return info.one<LoreTreeNodeInfoPayload>(LoreTag.REVISION_TREE_NODE_INFO);
+  const info = await invoke("revisionTreeNodeInfo", globals, {
+    id: 1,
+    handle: { handleId: handle.handleId },
+    nodeId: node.nodeId
+  });
+  return info.one<LoreTreeNodeInfoPayload>(LoreTag.REVISION_TREE_NODE_INFO);
 }
 
 /**
@@ -442,16 +467,16 @@ export async function treeNode(
  * `revisionReader.integration.test.ts`.
  */
 export async function listTreeChildren(
-    globals: LoreGlobals,
-    handle: TreeHandle,
-    parentNodeId: number,
+  globals: LoreGlobals,
+  handle: TreeHandle,
+  parentNodeId: number
 ): Promise<LoreTreeChildPayload[]> {
-    const result = await invoke("revisionTreeListChildren", globals, {
-        id: 1,
-        handle: { handleId: handle.handleId },
-        parentNodeId,
-    });
-    return result.of<LoreTreeChildPayload>(LoreTag.REVISION_TREE_CHILD);
+  const result = await invoke("revisionTreeListChildren", globals, {
+    id: 1,
+    handle: { handleId: handle.handleId },
+    parentNodeId
+  });
+  return result.of<LoreTreeChildPayload>(LoreTag.REVISION_TREE_CHILD);
 }
 
 /** The node id of a tree's root, which is where {@link listTreeChildren} starts. */
@@ -468,62 +493,72 @@ export const LORE_NODE_TYPE = { DIRECTORY: 0, FILE: 1, LINK: 2 } as const;
  * the remote every single time.
  */
 export async function readAddress(
-    globals: LoreGlobals,
-    store: StoreHandle,
-    repository: LoreHex,
-    address: { hash: LoreHex; context: LoreHex },
+  globals: LoreGlobals,
+  store: StoreHandle,
+  repository: LoreHex,
+  address: { hash: LoreHex; context: LoreHex }
 ): Promise<Buffer> {
-    if (!address.hash || address.hash === ZERO_HASH) return Buffer.alloc(0);
+  if (!address.hash || address.hash === ZERO_HASH) return Buffer.alloc(0);
 
-    const result = await invoke("storageGet", globals, {
-        handle: { handleId: store.handleId },
-        items: {
-            ptr: [{
-                id: 1,
-                partition: partitionBytes(repository),
-                address: {
-                    hash: revisionBytes(address.hash, "address.hash"),
-                    context: contextBytes(address.context, "address.context"),
-                },
-                streaming: 0,
-                localCache: 1,
-            }],
-            count: 1,
-        },
-    });
+  const result = await invoke("storageGet", globals, {
+    handle: { handleId: store.handleId },
+    items: {
+      ptr: [
+        {
+          id: 1,
+          partition: partitionBytes(repository),
+          address: {
+            hash: revisionBytes(address.hash, "address.hash"),
+            context: contextBytes(address.context, "address.context")
+          },
+          streaming: 0,
+          localCache: 1
+        }
+      ],
+      count: 1
+    }
+  });
 
-    const chunks = result.of<LoreStorageDataPayload>(LoreTag.STORAGE_GET_DATA);
-    // Non-streaming reads arrive in order today, but ordering by offset costs
-    // nothing and makes the result independent of that.
-    return Buffer.concat(chunks.slice().sort((a, b) => a.offset - b.offset).map((chunk) => chunk.bytes));
+  const chunks = result.of<LoreStorageDataPayload>(LoreTag.STORAGE_GET_DATA);
+  // Non-streaming reads arrive in order today, but ordering by offset costs
+  // nothing and makes the result independent of that.
+  return Buffer.concat(
+    chunks
+      .slice()
+      .sort((a, b) => a.offset - b.offset)
+      .map((chunk) => chunk.bytes)
+  );
 }
 
 // -- branches ---------------------------------------------------------------
 
 export async function listBranches(
-    globals: LoreGlobals,
-    options: { archived?: boolean } = {},
+  globals: LoreGlobals,
+  options: { archived?: boolean } = {}
 ): Promise<LoreBranchEntryPayload[]> {
-    const result = await invoke("branchList", globals, { archived: options.archived ? 1 : 0 });
-    return result.of<LoreBranchEntryPayload>(LoreTag.BRANCH_LIST_ENTRY);
+  const result = await invoke("branchList", globals, { archived: options.archived ? 1 : 0 });
+  return result.of<LoreBranchEntryPayload>(LoreTag.BRANCH_LIST_ENTRY);
 }
 
-export async function branchInfo(globals: LoreGlobals, branch: string): Promise<LoreBranchInfoPayload> {
-    const result = await invoke("branchInfo", globals, { branch: scopeString(branch) });
-    return result.one<LoreBranchInfoPayload>(LoreTag.BRANCH_INFO);
+export async function branchInfo(
+  globals: LoreGlobals,
+  branch: string
+): Promise<LoreBranchInfoPayload> {
+  const result = await invoke("branchInfo", globals, { branch: scopeString(branch) });
+  return result.one<LoreBranchInfoPayload>(LoreTag.BRANCH_INFO);
 }
 
 export async function createBranch(
-    globals: LoreGlobals,
-    branch: string,
-    options: { category?: string; id?: string } = {},
+  globals: LoreGlobals,
+  branch: string,
+  options: { category?: string; id?: string } = {}
 ): Promise<LoreBranchCreatePayload> {
-    const result = await invoke("branchCreate", globals, {
-        branch: scopeString(branch),
-        category: scopeString(options.category),
-        id: scopeString(options.id),
-    });
-    return result.one<LoreBranchCreatePayload>(LoreTag.BRANCH_CREATE);
+  const result = await invoke("branchCreate", globals, {
+    branch: scopeString(branch),
+    category: scopeString(options.category),
+    id: scopeString(options.id)
+  });
+  return result.one<LoreBranchCreatePayload>(LoreTag.BRANCH_CREATE);
 }
 
 /**
@@ -534,15 +569,15 @@ export async function createBranch(
  * nothing on disk.
  */
 export async function switchBranch(
-    globals: LoreGlobals,
-    options: { branch?: string; revision?: LoreHex; reset?: boolean },
+  globals: LoreGlobals,
+  options: { branch?: string; revision?: LoreHex; reset?: boolean }
 ): Promise<void> {
-    await invoke("branchSwitch", globals, {
-        branch: scopeString(options.branch),
-        revision: scopeString(options.revision),
-        reset: options.reset ? 1 : 0,
-        bare: 0,
-    });
+  await invoke("branchSwitch", globals, {
+    branch: scopeString(options.branch),
+    revision: scopeString(options.revision),
+    reset: options.reset ? 1 : 0,
+    bare: 0
+  });
 }
 
 // -- merge ------------------------------------------------------------------
@@ -567,11 +602,11 @@ export async function switchBranch(
  */
 
 export interface MergeStartResult {
-    begin: LoreMergeStartBeginPayload | undefined;
-    /** Absent when the call reported no end event, which is not the same as "no conflicts". */
-    end: LoreMergeStartEndPayload | undefined;
-    /** Repository-relative paths, one per conflict event. */
-    conflicts: string[];
+  begin: LoreMergeStartBeginPayload | undefined;
+  /** Absent when the call reported no end event, which is not the same as "no conflicts". */
+  end: LoreMergeStartEndPayload | undefined;
+  /** Repository-relative paths, one per conflict event. */
+  conflicts: string[];
 }
 
 /**
@@ -583,31 +618,32 @@ export interface MergeStartResult {
  * asking for rather than discovering it from the result.
  */
 export async function branchMergeStart(
-    globals: LoreGlobals,
-    options: { branch: string; message?: string; noCommit?: boolean },
+  globals: LoreGlobals,
+  options: { branch: string; message?: string; noCommit?: boolean }
 ): Promise<MergeStartResult> {
-    const result = await invoke("branchMergeStart", globals, {
-        branch: scopeString(options.branch),
-        message: scopeString(options.message),
-        noCommit: options.noCommit ? 1 : 0,
-        // Links are Lore's cross-repository composition feature. Studio has no interface
-        // for them, so a merge is never asked to reason about one.
-        link: scopeString(undefined),
-        ignoreLinks: 0,
-    });
-    return {
-        begin: result.first<LoreMergeStartBeginPayload>(LoreTag.BRANCH_MERGE_START_BEGIN),
-        end: result.first<LoreMergeStartEndPayload>(LoreTag.BRANCH_MERGE_START_END),
-        conflicts: result.of<LoreMergeConflictFilePayload>(LoreTag.BRANCH_MERGE_CONFLICT_FILE)
-            .map((event) => event.path),
-    };
+  const result = await invoke("branchMergeStart", globals, {
+    branch: scopeString(options.branch),
+    message: scopeString(options.message),
+    noCommit: options.noCommit ? 1 : 0,
+    // Links are Lore's cross-repository composition feature. Studio has no interface
+    // for them, so a merge is never asked to reason about one.
+    link: scopeString(undefined),
+    ignoreLinks: 0
+  });
+  return {
+    begin: result.first<LoreMergeStartBeginPayload>(LoreTag.BRANCH_MERGE_START_BEGIN),
+    end: result.first<LoreMergeStartEndPayload>(LoreTag.BRANCH_MERGE_START_END),
+    conflicts: result
+      .of<LoreMergeConflictFilePayload>(LoreTag.BRANCH_MERGE_CONFLICT_FILE)
+      .map((event) => event.path)
+  };
 }
 
 export interface MergeResolveResult {
-    /** Paths Lore acknowledged as resolved. */
-    files: string[];
-    /** Present when settling these paths finished the merge and produced a revision. */
-    revision: LoreMergeResolveRevisionPayload | undefined;
+  /** Paths Lore acknowledged as resolved. */
+  files: string[];
+  /** Present when settling these paths finished the merge and produced a revision. */
+  revision: LoreMergeResolveRevisionPayload | undefined;
 }
 
 /**
@@ -619,59 +655,68 @@ export interface MergeResolveResult {
  * it is settled.
  */
 export async function branchMergeResolve(
-    globals: LoreGlobals,
-    absolutePaths: readonly string[],
+  globals: LoreGlobals,
+  absolutePaths: readonly string[]
 ): Promise<MergeResolveResult> {
-    return collectResolve(await invoke("branchMergeResolve", globals, {
-        paths: scopeStringArray(absolutePaths),
-    }));
+  return collectResolve(
+    await invoke("branchMergeResolve", globals, {
+      paths: scopeStringArray(absolutePaths)
+    })
+  );
 }
 
 /** Settle paths by taking this side's bytes wholesale. */
 export async function branchMergeResolveMine(
-    globals: LoreGlobals,
-    absolutePaths: readonly string[],
+  globals: LoreGlobals,
+  absolutePaths: readonly string[]
 ): Promise<MergeResolveResult> {
-    return collectResolve(await invoke("branchMergeResolveMine", globals, {
-        paths: scopeStringArray(absolutePaths),
-    }));
+  return collectResolve(
+    await invoke("branchMergeResolveMine", globals, {
+      paths: scopeStringArray(absolutePaths)
+    })
+  );
 }
 
 /** Settle paths by taking the incoming side's bytes wholesale. */
 export async function branchMergeResolveTheirs(
-    globals: LoreGlobals,
-    absolutePaths: readonly string[],
+  globals: LoreGlobals,
+  absolutePaths: readonly string[]
 ): Promise<MergeResolveResult> {
-    return collectResolve(await invoke("branchMergeResolveTheirs", globals, {
-        paths: scopeStringArray(absolutePaths),
-    }));
+  return collectResolve(
+    await invoke("branchMergeResolveTheirs", globals, {
+      paths: scopeStringArray(absolutePaths)
+    })
+  );
 }
 
 function collectResolve(result: Awaited<ReturnType<typeof invoke>>): MergeResolveResult {
-    return {
-        files: result.of<LoreMergeResolveFilePayload>(LoreTag.BRANCH_MERGE_RESOLVE_FILE)
-            .map((event) => event.path),
-        revision: result.first<LoreMergeResolveRevisionPayload>(LoreTag.BRANCH_MERGE_RESOLVE_REVISION),
-    };
+  return {
+    files: result
+      .of<LoreMergeResolveFilePayload>(LoreTag.BRANCH_MERGE_RESOLVE_FILE)
+      .map((event) => event.path),
+    revision: result.first<LoreMergeResolveRevisionPayload>(LoreTag.BRANCH_MERGE_RESOLVE_REVISION)
+  };
 }
 
 /** Put paths back into the unresolved state, undoing a resolve decision. */
 export async function branchMergeUnresolve(
-    globals: LoreGlobals,
-    absolutePaths: readonly string[],
+  globals: LoreGlobals,
+  absolutePaths: readonly string[]
 ): Promise<string[]> {
-    const result = await invoke("branchMergeUnresolve", globals, {
-        paths: scopeStringArray(absolutePaths),
-    });
-    return result.of<LoreMergeUnresolveFilePayload>(LoreTag.BRANCH_MERGE_UNRESOLVE_FILE).map((event) => event.path);
+  const result = await invoke("branchMergeUnresolve", globals, {
+    paths: scopeStringArray(absolutePaths)
+  });
+  return result
+    .of<LoreMergeUnresolveFilePayload>(LoreTag.BRANCH_MERGE_UNRESOLVE_FILE)
+    .map((event) => event.path);
 }
 
 /** Redo the automatic merge for paths, discarding whatever is in the working tree for them. */
 export async function branchMergeRestart(
-    globals: LoreGlobals,
-    absolutePaths: readonly string[],
+  globals: LoreGlobals,
+  absolutePaths: readonly string[]
 ): Promise<void> {
-    await invoke("branchMergeRestart", globals, { paths: scopeStringArray(absolutePaths) });
+  await invoke("branchMergeRestart", globals, { paths: scopeStringArray(absolutePaths) });
 }
 
 /**
@@ -681,12 +726,14 @@ export async function branchMergeRestart(
  * NOT established - it is E5 of the spike - and until it is, nothing above this may
  * offer it as a "cancel" the author can trust.
  */
-export async function branchMergeAbort(globals: LoreGlobals): Promise<LoreMergeAbortBeginPayload | undefined> {
-    const result = await invoke("branchMergeAbort", globals, {
-        link: scopeString(undefined),
-        ignoreLinks: 0,
-    });
-    return result.first<LoreMergeAbortBeginPayload>(LoreTag.BRANCH_MERGE_ABORT_BEGIN);
+export async function branchMergeAbort(
+  globals: LoreGlobals
+): Promise<LoreMergeAbortBeginPayload | undefined> {
+  const result = await invoke("branchMergeAbort", globals, {
+    link: scopeString(undefined),
+    ignoreLinks: 0
+  });
+  return result.first<LoreMergeAbortBeginPayload>(LoreTag.BRANCH_MERGE_ABORT_BEGIN);
 }
 
 /**
@@ -698,14 +745,16 @@ export async function branchMergeAbort(globals: LoreGlobals): Promise<LoreMergeA
  * reports nothing is an empty answer rather than a throw.
  */
 export async function stageMerge(
-    globals: LoreGlobals,
-    absolutePaths: readonly string[],
+  globals: LoreGlobals,
+  absolutePaths: readonly string[]
 ): Promise<StageResult> {
-    const result = await invoke("fileStageMerge", globals, { paths: scopeStringArray(absolutePaths) });
-    return {
-        files: result.of<LoreStageFilePayload>(LoreTag.FILE_STAGE_FILE),
-        counts: result.first<LoreStageEndPayload>(LoreTag.FILE_STAGE_END),
-    };
+  const result = await invoke("fileStageMerge", globals, {
+    paths: scopeStringArray(absolutePaths)
+  });
+  return {
+    files: result.of<LoreStageFilePayload>(LoreTag.FILE_STAGE_FILE),
+    counts: result.first<LoreStageEndPayload>(LoreTag.FILE_STAGE_END)
+  };
 }
 
 // -- remote -----------------------------------------------------------------
@@ -722,26 +771,29 @@ export async function stageMerge(
  */
 
 /** One repository config value, or undefined when the key is not set. */
-export async function repositoryConfig(globals: LoreGlobals, key: string): Promise<string | undefined> {
-    const result = await invoke("repositoryConfigGet", globals, { key: scopeString(key) });
-    return result.first<LoreConfigPayload>(LoreTag.REPOSITORY_CONFIG_GET)?.value || undefined;
+export async function repositoryConfig(
+  globals: LoreGlobals,
+  key: string
+): Promise<string | undefined> {
+  const result = await invoke("repositoryConfigGet", globals, { key: scopeString(key) });
+  return result.first<LoreConfigPayload>(LoreTag.REPOSITORY_CONFIG_GET)?.value || undefined;
 }
 
 /** The config key Lore stores a repository's remote under. Its spelling is Lore's, not ours. */
 export const LORE_REMOTE_URL_KEY = "remote_url";
 
 export interface PushResult {
-    remote: string;
-    branch: string;
-    /**
-     * The remote already had this branch tip, so nothing was transferred.
-     *
-     * A SUCCESS, not a failure. Pressing push twice is an ordinary thing to do and the
-     * second press has to read as "already there" rather than as an error.
-     */
-    alreadyPushed: boolean;
-    localRevision?: LoreHex;
-    remoteRevision?: LoreHex;
+  remote: string;
+  branch: string;
+  /**
+   * The remote already had this branch tip, so nothing was transferred.
+   *
+   * A SUCCESS, not a failure. Pressing push twice is an ordinary thing to do and the
+   * second press has to read as "already there" rather than as an error.
+   */
+  alreadyPushed: boolean;
+  localRevision?: LoreHex;
+  remoteRevision?: LoreHex;
 }
 
 /**
@@ -753,49 +805,49 @@ export interface PushResult {
  * refused above this layer instead, with a sentence the author can act on.
  */
 export async function pushBranch(
-    globals: LoreGlobals,
-    options: { branch?: string } = {},
+  globals: LoreGlobals,
+  options: { branch?: string } = {}
 ): Promise<PushResult> {
-    const result = await invoke("branchPush", globals, {
-        branch: scopeString(options.branch),
-        fastForwardMerge: 0,
-    });
-    const pushed = result.one<LoreBranchPushPayload>(LoreTag.BRANCH_PUSH);
-    return {
-        remote: pushed.remote,
-        branch: pushed.branchName,
-        alreadyPushed: pushed.alreadyPushed,
-        localRevision: pushed.localRevision,
-        remoteRevision: pushed.remoteRevision,
-    };
+  const result = await invoke("branchPush", globals, {
+    branch: scopeString(options.branch),
+    fastForwardMerge: 0
+  });
+  const pushed = result.one<LoreBranchPushPayload>(LoreTag.BRANCH_PUSH);
+  return {
+    remote: pushed.remote,
+    branch: pushed.branchName,
+    alreadyPushed: pushed.alreadyPushed,
+    localRevision: pushed.localRevision,
+    remoteRevision: pushed.remoteRevision
+  };
 }
 
 export interface SyncResult {
-    target: LoreSyncTargetPayload | undefined;
-    /**
-     * Files the sync wrote or removed in the working tree.
-     *
-     * **Their conflict flags are all false and always will be** - the sync file struct
-     * has no such fields, so the decoder fills them in as `false` (see `events.ts`).
-     * Filtering this list for conflicts finds nothing no matter how many there were;
-     * {@link conflicts} is where they are named.
-     */
-    files: LoreStatusFilePayload[];
-    revisions: LoreSyncRevisionPayload[];
-    /** The last progress report, which carries the automerge and conflict counters. */
-    progress: LoreSyncProgressPayload | undefined;
-    /**
-     * Repository-relative paths the sync's automerge could not settle.
-     *
-     * From `BRANCH_MERGE_CONFLICT_FILE` - the same event a branch merge emits, which is
-     * the measured evidence that a sync merge and a branch merge are one mechanism
-     * rather than two (docs/version-control.md §4.24). **This is the only place a
-     * conflicted path is ever named**: `repositoryStatus` reports an empty file list in
-     * every one of its four forms once the merge has recorded itself as the staged
-     * revision, so nothing after the fact can recover this list from the repository.
-     * Whatever the caller does not keep here has to be reconstructed off disk.
-     */
-    conflicts: string[];
+  target: LoreSyncTargetPayload | undefined;
+  /**
+   * Files the sync wrote or removed in the working tree.
+   *
+   * **Their conflict flags are all false and always will be** - the sync file struct
+   * has no such fields, so the decoder fills them in as `false` (see `events.ts`).
+   * Filtering this list for conflicts finds nothing no matter how many there were;
+   * {@link conflicts} is where they are named.
+   */
+  files: LoreStatusFilePayload[];
+  revisions: LoreSyncRevisionPayload[];
+  /** The last progress report, which carries the automerge and conflict counters. */
+  progress: LoreSyncProgressPayload | undefined;
+  /**
+   * Repository-relative paths the sync's automerge could not settle.
+   *
+   * From `BRANCH_MERGE_CONFLICT_FILE` - the same event a branch merge emits, which is
+   * the measured evidence that a sync merge and a branch merge are one mechanism
+   * rather than two (docs/version-control.md §4.24). **This is the only place a
+   * conflicted path is ever named**: `repositoryStatus` reports an empty file list in
+   * every one of its four forms once the merge has recorded itself as the staged
+   * revision, so nothing after the fact can recover this list from the repository.
+   * Whatever the caller does not keep here has to be reconstructed off disk.
+   */
+  conflicts: string[];
 }
 
 /**
@@ -809,44 +861,50 @@ export interface SyncResult {
  * reason: it is the flag that turns this into a merge.
  */
 export async function syncRevision(
-    globals: LoreGlobals,
-    options: { revision?: string; onProgress?: (progress: LoreSyncProgressPayload) => void } = {},
+  globals: LoreGlobals,
+  options: { revision?: string; onProgress?: (progress: LoreSyncProgressPayload) => void } = {}
 ): Promise<SyncResult> {
-    const result = await invoke("revisionSync", globals, {
-        revision: scopeString(options.revision),
-        forwardChanges: 0,
-        reset: 0,
-        rootFiles: scopeStringArray(undefined),
-        dependencyTags: scopeStringArray(undefined),
-        dependencyRecursive: 0,
-        dependencyDepthLimit: 0,
-    }, {
-        onEvent: options.onProgress
-            ? (event) => {
-                if (event.tag === LoreTag.REVISION_SYNC_PROGRESS) {
-                    options.onProgress?.(event.data as LoreSyncProgressPayload);
-                }
+  const result = await invoke(
+    "revisionSync",
+    globals,
+    {
+      revision: scopeString(options.revision),
+      forwardChanges: 0,
+      reset: 0,
+      rootFiles: scopeStringArray(undefined),
+      dependencyTags: scopeStringArray(undefined),
+      dependencyRecursive: 0,
+      dependencyDepthLimit: 0
+    },
+    {
+      onEvent: options.onProgress
+        ? (event) => {
+            if (event.tag === LoreTag.REVISION_SYNC_PROGRESS) {
+              options.onProgress?.(event.data as LoreSyncProgressPayload);
             }
-            : undefined,
-    });
+          }
+        : undefined
+    }
+  );
 
-    return {
-        target: result.first<LoreSyncTargetPayload>(LoreTag.REVISION_SYNC_TARGET),
-        files: result.of<LoreStatusFilePayload>(LoreTag.REVISION_SYNC_FILE),
-        revisions: result.of<LoreSyncRevisionPayload>(LoreTag.REVISION_SYNC_REVISION),
-        progress: result.of<LoreSyncProgressPayload>(LoreTag.REVISION_SYNC_PROGRESS).at(-1),
-        // Read off the SAME event a branch merge uses, not off the sync file events -
-        // see the field's own note for why the obvious place has nothing in it.
-        conflicts: result.of<LoreMergeConflictFilePayload>(LoreTag.BRANCH_MERGE_CONFLICT_FILE)
-            .map((event) => event.path),
-    };
+  return {
+    target: result.first<LoreSyncTargetPayload>(LoreTag.REVISION_SYNC_TARGET),
+    files: result.of<LoreStatusFilePayload>(LoreTag.REVISION_SYNC_FILE),
+    revisions: result.of<LoreSyncRevisionPayload>(LoreTag.REVISION_SYNC_REVISION),
+    progress: result.of<LoreSyncProgressPayload>(LoreTag.REVISION_SYNC_PROGRESS).at(-1),
+    // Read off the SAME event a branch merge uses, not off the sync file events -
+    // see the field's own note for why the obvious place has nothing in it.
+    conflicts: result
+      .of<LoreMergeConflictFilePayload>(LoreTag.BRANCH_MERGE_CONFLICT_FILE)
+      .map((event) => event.path)
+  };
 }
 
 export interface CloneResult {
-    branch: string;
-    revision?: LoreHex;
-    fileCount: number;
-    bytesTransferred: number;
+  branch: string;
+  revision?: LoreHex;
+  fileCount: number;
+  bytesTransferred: number;
 }
 
 /**
@@ -857,45 +915,50 @@ export interface CloneResult {
  * Guarding that is the caller's job.
  */
 export async function cloneRepository(
-    globals: LoreGlobals,
-    options: { repositoryUrl: string; onProgress?: (count: LoreCloneCountPayload) => void },
+  globals: LoreGlobals,
+  options: { repositoryUrl: string; onProgress?: (count: LoreCloneCountPayload) => void }
 ): Promise<CloneResult> {
-    const result = await invoke("repositoryClone", globals, {
-        repositoryUrl: scopeString(options.repositoryUrl),
-        revision: scopeString(undefined),
-        view: scopeString(undefined),
-        bare: 0,
-        virtually: 0,
-        directFileWrite: 0,
-        directFileIo: 0,
-        layer: scopeString(undefined),
-        layerMetadata: scopeString(undefined),
-        prefetch: scopeString(undefined),
-        useSharedStore: 0,
-        sharedStorePath: scopeString(undefined),
-        noTracking: 0,
-        rootFiles: scopeStringArray(undefined),
-        dependencyTags: scopeStringArray(undefined),
-        dependencyRecursive: 0,
-        dependencyDepthLimit: 0,
-    }, {
-        onEvent: options.onProgress
-            ? (event) => {
-                if (event.tag === LoreTag.REPOSITORY_CLONE_PROGRESS) {
-                    options.onProgress?.((event.data as LoreCloneProgressPayload).count);
-                }
+  const result = await invoke(
+    "repositoryClone",
+    globals,
+    {
+      repositoryUrl: scopeString(options.repositoryUrl),
+      revision: scopeString(undefined),
+      view: scopeString(undefined),
+      bare: 0,
+      virtually: 0,
+      directFileWrite: 0,
+      directFileIo: 0,
+      layer: scopeString(undefined),
+      layerMetadata: scopeString(undefined),
+      prefetch: scopeString(undefined),
+      useSharedStore: 0,
+      sharedStorePath: scopeString(undefined),
+      noTracking: 0,
+      rootFiles: scopeStringArray(undefined),
+      dependencyTags: scopeStringArray(undefined),
+      dependencyRecursive: 0,
+      dependencyDepthLimit: 0
+    },
+    {
+      onEvent: options.onProgress
+        ? (event) => {
+            if (event.tag === LoreTag.REPOSITORY_CLONE_PROGRESS) {
+              options.onProgress?.((event.data as LoreCloneProgressPayload).count);
             }
-            : undefined,
-    });
+          }
+        : undefined
+    }
+  );
 
-    const end = result.first<LoreCloneEndPayload>(LoreTag.REPOSITORY_CLONE_END);
-    const begin = result.first<LoreCloneBeginPayload>(LoreTag.REPOSITORY_CLONE_BEGIN);
-    return {
-        branch: end?.branch || begin?.branch || "",
-        revision: end?.revision ?? begin?.revision,
-        fileCount: end?.count.fileCount ?? 0,
-        bytesTransferred: end?.count.bytesTransferred ?? 0,
-    };
+  const end = result.first<LoreCloneEndPayload>(LoreTag.REPOSITORY_CLONE_END);
+  const begin = result.first<LoreCloneBeginPayload>(LoreTag.REPOSITORY_CLONE_BEGIN);
+  return {
+    branch: end?.branch || begin?.branch || "",
+    revision: end?.revision ?? begin?.revision,
+    fileCount: end?.count.fileCount ?? 0,
+    bytesTransferred: end?.count.bytesTransferred ?? 0
+  };
 }
 
 /**
@@ -910,16 +973,16 @@ export async function cloneRepository(
  * against one that does not.
  */
 export async function loginWithToken(
-    globals: LoreGlobals,
-    options: { remoteUrl: string; token: string; tokenType?: string; authUrl?: string },
+  globals: LoreGlobals,
+  options: { remoteUrl: string; token: string; tokenType?: string; authUrl?: string }
 ): Promise<LoreAuthIdentityPayload | undefined> {
-    const result = await invoke("authLoginWithToken", globals, {
-        remoteUrl: scopeString(options.remoteUrl),
-        token: scopeString(options.token),
-        tokenType: scopeString(options.tokenType),
-        authUrl: scopeString(options.authUrl),
-    });
-    return result.first<LoreAuthIdentityPayload>(LoreTag.AUTH_IDENTITY);
+  const result = await invoke("authLoginWithToken", globals, {
+    remoteUrl: scopeString(options.remoteUrl),
+    token: scopeString(options.token),
+    tokenType: scopeString(options.tokenType),
+    authUrl: scopeString(options.authUrl)
+  });
+  return result.first<LoreAuthIdentityPayload>(LoreTag.AUTH_IDENTITY);
 }
 
 /**
@@ -936,8 +999,8 @@ export async function loginWithToken(
  * Purely local - no socket - so it is safe to ask while a panel is opening.
  */
 export async function listAuthSessions(globals: LoreGlobals): Promise<LoreAuthIdentityPayload[]> {
-    const result = await invoke("authList", globals, { withToken: 0 });
-    return result.of<LoreAuthIdentityPayload>(LoreTag.AUTH_IDENTITY);
+  const result = await invoke("authList", globals, { withToken: 0 });
+  return result.of<LoreAuthIdentityPayload>(LoreTag.AUTH_IDENTITY);
 }
 
 /**
@@ -950,14 +1013,14 @@ export async function listAuthSessions(globals: LoreGlobals): Promise<LoreAuthId
  * why {@link listAuthSessions} is what a caller should iterate rather than guessing.
  */
 export async function logoutFromRemote(
-    globals: LoreGlobals,
-    options: { authUrl: string; resource: string; userId: string },
+  globals: LoreGlobals,
+  options: { authUrl: string; resource: string; userId: string }
 ): Promise<void> {
-    await invoke("authLogout", globals, {
-        authUrl: scopeString(options.authUrl),
-        resource: scopeString(options.resource),
-        userId: scopeString(options.userId),
-    });
+  await invoke("authLogout", globals, {
+    authUrl: scopeString(options.authUrl),
+    resource: scopeString(options.resource),
+    userId: scopeString(options.userId)
+  });
 }
 
 // -- argument helpers -------------------------------------------------------

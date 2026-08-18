@@ -35,12 +35,12 @@ export type { LocaleCode };
  * than failing, and a project with no localization behaves exactly as it did before.
  */
 export function voiceLineText(
-    localization: LocalizationDocument | undefined,
-    unitId: string,
-    sourceText: string,
+  localization: LocalizationDocument | undefined,
+  unitId: string,
+  sourceText: string
 ): string {
-    const target = localization?.units[unitId]?.target;
-    return target && target.trim() ? target : sourceText;
+  const target = localization?.units[unitId]?.target;
+  return target && target.trim() ? target : sourceText;
 }
 
 export const VOICE_DOCUMENT_SCHEMA_VERSION = 1 as const;
@@ -63,26 +63,26 @@ export const VOICE_LOCALE_STORAGE_KEY = "nls.voiceLocale";
  * up for the project.
  */
 export type VoiceConfiguration = {
-    voicedLocales: VoiceLocaleEntry[];
-    /**
-     * Filename convention for the recording-script export and audio batch
-     * import (see shared/utils/voiceNaming). The recording script also carries
-     * each line's authoritative unit id, so a drifted filename never loses the
-     * link - the pattern is for humans in the booth.
-     */
-    namingPattern: string;
-    /**
-     * Casting: the voice actor for a character, per voice language
-     * (`cast[characterId][localeCode]`). Pure metadata shown alongside a
-     * character's lines in the voice table; never affects playback.
-     */
-    cast: Record<string, Record<string, string>>;
+  voicedLocales: VoiceLocaleEntry[];
+  /**
+   * Filename convention for the recording-script export and audio batch
+   * import (see shared/utils/voiceNaming). The recording script also carries
+   * each line's authoritative unit id, so a drifted filename never loses the
+   * link - the pattern is for humans in the booth.
+   */
+  namingPattern: string;
+  /**
+   * Casting: the voice actor for a character, per voice language
+   * (`cast[characterId][localeCode]`). Pure metadata shown alongside a
+   * character's lines in the voice table; never affects playback.
+   */
+  cast: Record<string, Record<string, string>>;
 };
 
 export type VoiceLocaleEntry = {
-    code: LocaleCode;
-    /** Author-facing autonym shown for this voice language (e.g. "日本語"). */
-    displayName: string;
+  code: LocaleCode;
+  /** Author-facing autonym shown for this voice language (e.g. "日本語"). */
+  displayName: string;
 };
 
 /**
@@ -93,32 +93,32 @@ export type VoiceLocaleEntry = {
 export const DEFAULT_VOICE_NAMING_PATTERN = "{scene}_{index}_{character}";
 
 export const DEFAULT_VOICE_CONFIGURATION: VoiceConfiguration = {
-    voicedLocales: [],
-    namingPattern: DEFAULT_VOICE_NAMING_PATTERN,
-    cast: {},
+  voicedLocales: [],
+  namingPattern: DEFAULT_VOICE_NAMING_PATTERN,
+  cast: {}
 };
 
 /** Coerce an unknown value into the cast map, dropping malformed entries. */
 function normalizeVoiceCast(value: unknown): Record<string, Record<string, string>> {
-    const cast: Record<string, Record<string, string>> = {};
-    if (!value || typeof value !== "object") {
-        return cast;
-    }
-    for (const [characterId, perLocale] of Object.entries(value as Record<string, unknown>)) {
-        if (!characterId || !perLocale || typeof perLocale !== "object") {
-            continue;
-        }
-        const entries: Record<string, string> = {};
-        for (const [code, name] of Object.entries(perLocale as Record<string, unknown>)) {
-            if (isValidLocaleCode(code) && typeof name === "string" && name.trim()) {
-                entries[code] = name.trim();
-            }
-        }
-        if (Object.keys(entries).length > 0) {
-            cast[characterId] = entries;
-        }
-    }
+  const cast: Record<string, Record<string, string>> = {};
+  if (!value || typeof value !== "object") {
     return cast;
+  }
+  for (const [characterId, perLocale] of Object.entries(value as Record<string, unknown>)) {
+    if (!characterId || !perLocale || typeof perLocale !== "object") {
+      continue;
+    }
+    const entries: Record<string, string> = {};
+    for (const [code, name] of Object.entries(perLocale as Record<string, unknown>)) {
+      if (isValidLocaleCode(code) && typeof name === "string" && name.trim()) {
+        entries[code] = name.trim();
+      }
+    }
+    if (Object.keys(entries).length > 0) {
+      cast[characterId] = entries;
+    }
+  }
+  return cast;
 }
 
 /**
@@ -127,39 +127,41 @@ function normalizeVoiceCast(value: unknown): Record<string, Record<string, strin
  * config must not block project load (mirrors localization / network config).
  */
 export function normalizeVoiceConfiguration(value: unknown): VoiceConfiguration {
-    if (!value || typeof value !== "object") {
-        return { voicedLocales: [], namingPattern: DEFAULT_VOICE_NAMING_PATTERN, cast: {} };
+  if (!value || typeof value !== "object") {
+    return { voicedLocales: [], namingPattern: DEFAULT_VOICE_NAMING_PATTERN, cast: {} };
+  }
+  const record = value as Record<string, unknown>;
+  const voicedLocales: VoiceLocaleEntry[] = [];
+  const seen = new Set<string>();
+  if (Array.isArray(record.voicedLocales)) {
+    for (const raw of record.voicedLocales) {
+      if (!raw || typeof raw !== "object") {
+        continue;
+      }
+      const entry = raw as Record<string, unknown>;
+      if (!isValidLocaleCode(entry.code) || seen.has(entry.code)) {
+        continue;
+      }
+      seen.add(entry.code);
+      voicedLocales.push({
+        code: entry.code,
+        displayName:
+          typeof entry.displayName === "string" && entry.displayName.trim()
+            ? entry.displayName.trim()
+            : entry.code
+      });
     }
-    const record = value as Record<string, unknown>;
-    const voicedLocales: VoiceLocaleEntry[] = [];
-    const seen = new Set<string>();
-    if (Array.isArray(record.voicedLocales)) {
-        for (const raw of record.voicedLocales) {
-            if (!raw || typeof raw !== "object") {
-                continue;
-            }
-            const entry = raw as Record<string, unknown>;
-            if (!isValidLocaleCode(entry.code) || seen.has(entry.code)) {
-                continue;
-            }
-            seen.add(entry.code);
-            voicedLocales.push({
-                code: entry.code,
-                displayName: typeof entry.displayName === "string" && entry.displayName.trim()
-                    ? entry.displayName.trim()
-                    : entry.code,
-            });
-        }
-    }
-    const namingPattern = typeof record.namingPattern === "string" && record.namingPattern.trim()
-        ? record.namingPattern.trim()
-        : DEFAULT_VOICE_NAMING_PATTERN;
-    return { voicedLocales, namingPattern, cast: normalizeVoiceCast(record.cast) };
+  }
+  const namingPattern =
+    typeof record.namingPattern === "string" && record.namingPattern.trim()
+      ? record.namingPattern.trim()
+      : DEFAULT_VOICE_NAMING_PATTERN;
+  return { voicedLocales, namingPattern, cast: normalizeVoiceCast(record.cast) };
 }
 
 /** True when the project has at least one voice language configured. */
 export function isVoiceEnabled(config: VoiceConfiguration): boolean {
-    return config.voicedLocales.length > 0;
+  return config.voicedLocales.length > 0;
 }
 
 /**
@@ -175,30 +177,30 @@ export type VoiceUnitStatus = "linked" | "approved";
 
 /** One voice unit inside a per-locale document. Keyed externally by unit id (the story `textId`). */
 export type VoiceUnit = {
-    /** Asset-library id of the imported audio clip. */
-    assetId: string;
-    /** Hash of the line text at import time (see shared/utils/localizationText). */
-    sourceHash: string;
-    status: VoiceUnitStatus;
-    /** Optional clip duration in seconds, if known at import time. */
-    duration?: number;
-    /** Optional direction note carried alongside the take. */
-    note?: string;
+  /** Asset-library id of the imported audio clip. */
+  assetId: string;
+  /** Hash of the line text at import time (see shared/utils/localizationText). */
+  sourceHash: string;
+  status: VoiceUnitStatus;
+  /** Optional clip duration in seconds, if known at import time. */
+  duration?: number;
+  /** Optional direction note carried alongside the take. */
+  note?: string;
 };
 
 /** On-disk per-locale voice document: `editor/voice/<locale>.json`. */
 export type VoiceDocument = {
-    schemaVersion: VoiceDocumentVersion;
-    locale: LocaleCode;
-    units: Record<string, VoiceUnit>;
+  schemaVersion: VoiceDocumentVersion;
+  locale: LocaleCode;
+  units: Record<string, VoiceUnit>;
 };
 
 export function createEmptyVoiceDocument(locale: LocaleCode): VoiceDocument {
-    return {
-        schemaVersion: VOICE_DOCUMENT_SCHEMA_VERSION,
-        locale,
-        units: {},
-    };
+  return {
+    schemaVersion: VOICE_DOCUMENT_SCHEMA_VERSION,
+    locale,
+    units: {}
+  };
 }
 
 /**
@@ -206,31 +208,33 @@ export function createEmptyVoiceDocument(locale: LocaleCode): VoiceDocument {
  * units. Never throws - a broken voice file degrades to empty.
  */
 export function normalizeVoiceDocument(value: unknown, locale: LocaleCode): VoiceDocument {
-    const document = createEmptyVoiceDocument(locale);
-    if (!value || typeof value !== "object") {
-        return document;
-    }
-    const record = value as Record<string, unknown>;
-    if (!record.units || typeof record.units !== "object") {
-        return document;
-    }
-    for (const [unitId, raw] of Object.entries(record.units as Record<string, unknown>)) {
-        if (!unitId || !raw || typeof raw !== "object") {
-            continue;
-        }
-        const unit = raw as Record<string, unknown>;
-        if (typeof unit.assetId !== "string" || !unit.assetId) {
-            continue;
-        }
-        document.units[unitId] = {
-            assetId: unit.assetId,
-            sourceHash: typeof unit.sourceHash === "string" ? unit.sourceHash : "",
-            status: unit.status === "approved" ? "approved" : "linked",
-            ...(typeof unit.duration === "number" && Number.isFinite(unit.duration) ? { duration: unit.duration } : {}),
-            ...(typeof unit.note === "string" && unit.note ? { note: unit.note } : {}),
-        };
-    }
+  const document = createEmptyVoiceDocument(locale);
+  if (!value || typeof value !== "object") {
     return document;
+  }
+  const record = value as Record<string, unknown>;
+  if (!record.units || typeof record.units !== "object") {
+    return document;
+  }
+  for (const [unitId, raw] of Object.entries(record.units as Record<string, unknown>)) {
+    if (!unitId || !raw || typeof raw !== "object") {
+      continue;
+    }
+    const unit = raw as Record<string, unknown>;
+    if (typeof unit.assetId !== "string" || !unit.assetId) {
+      continue;
+    }
+    document.units[unitId] = {
+      assetId: unit.assetId,
+      sourceHash: typeof unit.sourceHash === "string" ? unit.sourceHash : "",
+      status: unit.status === "approved" ? "approved" : "linked",
+      ...(typeof unit.duration === "number" && Number.isFinite(unit.duration)
+        ? { duration: unit.duration }
+        : {}),
+      ...(typeof unit.note === "string" && unit.note ? { note: unit.note } : {})
+    };
+  }
+  return document;
 }
 
 /**
@@ -241,7 +245,7 @@ export function normalizeVoiceDocument(value: unknown, locale: LocaleCode): Voic
  * resolver. Empty units are omitted at assembly time.
  */
 export type GameVoiceBundle = {
-    voicedLocales: VoiceLocaleEntry[];
-    /** locale → (unit id → asset id). */
-    tables: Record<LocaleCode, Record<string, string>>;
+  voicedLocales: VoiceLocaleEntry[];
+  /** locale → (unit id → asset id). */
+  tables: Record<LocaleCode, Record<string, string>>;
 };

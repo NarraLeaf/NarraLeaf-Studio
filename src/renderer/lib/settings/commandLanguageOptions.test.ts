@@ -8,22 +8,22 @@ import { LOCALIZED_COMMANDS_DEFAULT, resolveCommandLocale } from "./commandLangu
  * existed and losing a preference must not silently change what their editor speaks.
  */
 describe("resolveCommandLocale", () => {
-    it("follows the interface language while translation is on", () => {
-        expect(resolveCommandLocale(true, "zh")).toBe("zh");
-        expect(resolveCommandLocale(true, "en")).toBe("en");
-    });
+  it("follows the interface language while translation is on", () => {
+    expect(resolveCommandLocale(true, "zh")).toBe("zh");
+    expect(resolveCommandLocale(true, "en")).toBe("en");
+  });
 
-    it("pins to English while translation is off", () => {
-        // The case the whole switch exists for: Chinese menus, English commands.
-        expect(resolveCommandLocale(false, "zh")).toBe("en");
-        expect(resolveCommandLocale(false, "en")).toBe("en");
-    });
+  it("pins to English while translation is off", () => {
+    // The case the whole switch exists for: Chinese menus, English commands.
+    expect(resolveCommandLocale(false, "zh")).toBe("en");
+    expect(resolveCommandLocale(false, "en")).toBe("en");
+  });
 
-    it("treats an unset or unusable value as on", () => {
-        expect(LOCALIZED_COMMANDS_DEFAULT).toBe(true);
-        expect(resolveCommandLocale(undefined, "zh")).toBe("zh");
-        expect(resolveCommandLocale(null, "zh")).toBe("zh");
-        expect(resolveCommandLocale("false", "zh")).toBe("zh");
-        expect(resolveCommandLocale(0, "zh")).toBe("zh");
-    });
+  it("treats an unset or unusable value as on", () => {
+    expect(LOCALIZED_COMMANDS_DEFAULT).toBe(true);
+    expect(resolveCommandLocale(undefined, "zh")).toBe("zh");
+    expect(resolveCommandLocale(null, "zh")).toBe("zh");
+    expect(resolveCommandLocale("false", "zh")).toBe("zh");
+    expect(resolveCommandLocale(0, "zh")).toBe("zh");
+  });
 });

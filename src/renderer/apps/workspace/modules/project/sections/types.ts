@@ -9,8 +9,8 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
  * in sync.
  */
 export type ProjectSectionProps = {
-    projectService: ProjectService;
-    uiService: UIService | null;
-    config: ProjectConfig;
-    onConfigChange: (next: ProjectConfig) => void;
+  projectService: ProjectService;
+  uiService: UIService | null;
+  config: ProjectConfig;
+  onConfigChange: (next: ProjectConfig) => void;
 };

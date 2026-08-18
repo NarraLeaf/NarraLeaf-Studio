@@ -19,32 +19,32 @@ const playingElementIds = new Set<string>();
 const listeners = new Set<Listener>();
 
 function emit(): void {
-    for (const listener of [...listeners]) {
-        listener();
-    }
+  for (const listener of [...listeners]) {
+    listener();
+  }
 }
 
 export function isVideoPreviewPlaying(elementId: string): boolean {
-    return playingElementIds.has(elementId);
+  return playingElementIds.has(elementId);
 }
 
 export function setVideoPreviewPlaying(elementId: string, playing: boolean): void {
-    const had = playingElementIds.has(elementId);
-    if (had === playing) {
-        return;
-    }
-    if (playing) {
-        playingElementIds.add(elementId);
-    } else {
-        playingElementIds.delete(elementId);
-    }
-    emit();
+  const had = playingElementIds.has(elementId);
+  if (had === playing) {
+    return;
+  }
+  if (playing) {
+    playingElementIds.add(elementId);
+  } else {
+    playingElementIds.delete(elementId);
+  }
+  emit();
 }
 
 export function toggleVideoPreviewPlaying(elementId: string): boolean {
-    const next = !playingElementIds.has(elementId);
-    setVideoPreviewPlaying(elementId, next);
-    return next;
+  const next = !playingElementIds.has(elementId);
+  setVideoPreviewPlaying(elementId, next);
+  return next;
 }
 
 /**
@@ -55,19 +55,19 @@ export function toggleVideoPreviewPlaying(elementId: string): boolean {
 const restartGenerationByElementId = new Map<string, number>();
 
 export function getVideoPreviewRestartGeneration(elementId: string): number {
-    return restartGenerationByElementId.get(elementId) ?? 0;
+  return restartGenerationByElementId.get(elementId) ?? 0;
 }
 
 export function requestVideoPreviewRestart(elementId: string): void {
-    restartGenerationByElementId.set(elementId, getVideoPreviewRestartGeneration(elementId) + 1);
-    emit();
+  restartGenerationByElementId.set(elementId, getVideoPreviewRestartGeneration(elementId) + 1);
+  emit();
 }
 
 export function subscribeVideoPreviewPlayback(listener: Listener): () => void {
-    listeners.add(listener);
-    return () => {
-        listeners.delete(listener);
-    };
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 /**
@@ -85,19 +85,19 @@ export function subscribeVideoPreviewPlayback(listener: Listener): () => void {
  * has had the chance to set.
  */
 export function releaseVideoPreviewPlayback(elementId: string): void {
-    const had = playingElementIds.delete(elementId);
-    const hadGeneration = restartGenerationByElementId.delete(elementId);
-    if (had || hadGeneration) {
-        emit();
-    }
+  const had = playingElementIds.delete(elementId);
+  const hadGeneration = restartGenerationByElementId.delete(elementId);
+  if (had || hadGeneration) {
+    emit();
+  }
 }
 
 /** Test seam only. Production clears per element through {@link releaseVideoPreviewPlayback}. */
 export function resetVideoPreviewPlayback(): void {
-    const had = playingElementIds.size > 0 || restartGenerationByElementId.size > 0;
-    playingElementIds.clear();
-    restartGenerationByElementId.clear();
-    if (had) {
-        emit();
-    }
+  const had = playingElementIds.size > 0 || restartGenerationByElementId.size > 0;
+  playingElementIds.clear();
+  restartGenerationByElementId.clear();
+  if (had) {
+    emit();
+  }
 }

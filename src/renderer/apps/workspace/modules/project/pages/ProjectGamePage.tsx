@@ -13,11 +13,11 @@ import { ProjectAudioSection } from "../sections/ProjectAudioSection";
 import type { ProjectSectionProps } from "../sections/types";
 
 export function ProjectGamePage(props: ProjectSectionProps) {
-    return (
-        <div className="grid gap-3 [&>*]:min-w-0">
-            <ProjectGameSection {...props} />
-            <ProjectPreferencesSection {...props} />
-            <ProjectAudioSection {...props} />
-        </div>
-    );
+  return (
+    <div className="grid gap-3 [&>*]:min-w-0">
+      <ProjectGameSection {...props} />
+      <ProjectPreferencesSection {...props} />
+      <ProjectAudioSection {...props} />
+    </div>
+  );
 }

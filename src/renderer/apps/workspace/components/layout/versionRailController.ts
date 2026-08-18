@@ -17,25 +17,25 @@
  */
 
 export interface VersionRailBridge {
-    /** Open the panel. Idempotent: already-open is a no-op, not a toggle. */
-    open: () => void;
-    /**
-     * Close it: back to the 48px strip while the workspace is frozen, to nothing at HEAD - the rail is
-     * a persistent column only while it has a temporary state to express (`resolveVersionRailPresence`).
-     */
-    collapse: () => void;
+  /** Open the panel. Idempotent: already-open is a no-op, not a toggle. */
+  open: () => void;
+  /**
+   * Close it: back to the 48px strip while the workspace is frozen, to nothing at HEAD - the rail is
+   * a persistent column only while it has a temporary state to express (`resolveVersionRailPresence`).
+   */
+  collapse: () => void;
 }
 
 let bridge: VersionRailBridge | null = null;
 
 /** Called by the mounted rail; returns an unregister disposer. */
 export function registerVersionRailBridge(next: VersionRailBridge): () => void {
-    bridge = next;
-    return () => {
-        if (bridge === next) {
-            bridge = null;
-        }
-    };
+  bridge = next;
+  return () => {
+    if (bridge === next) {
+      bridge = null;
+    }
+  };
 }
 
 /**
@@ -45,11 +45,11 @@ export function registerVersionRailBridge(next: VersionRailBridge): () => void {
  * does not register a bridge there, so a stale caller cannot conjure a column that must not exist.
  */
 export function openVersionRail(): void {
-    bridge?.open();
+  bridge?.open();
 }
 
 export function collapseVersionRail(): void {
-    bridge?.collapse();
+  bridge?.collapse();
 }
 
 /**
@@ -60,7 +60,7 @@ export function collapseVersionRail(): void {
  * project (`isVersionSurfaceVisible`), which is the same answer one round trip earlier.
  */
 export function isVersionRailReachable(): boolean {
-    return bridge !== null;
+  return bridge !== null;
 }
 
 /**
@@ -72,12 +72,10 @@ export function isVersionRailReachable(): boolean {
  * being open is the right place to have left the author anyway.
  */
 export function openVersionRailForCommit(): void {
-    bridge?.open();
-    requestAnimationFrame(() => {
-        document.querySelector<HTMLTextAreaElement>(
-            `[${VERSION_COMMIT_MESSAGE_ATTRIBUTE}]`,
-        )?.focus();
-    });
+  bridge?.open();
+  requestAnimationFrame(() => {
+    document.querySelector<HTMLTextAreaElement>(`[${VERSION_COMMIT_MESSAGE_ATTRIBUTE}]`)?.focus();
+  });
 }
 
 /**

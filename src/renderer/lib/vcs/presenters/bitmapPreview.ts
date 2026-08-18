@@ -12,15 +12,15 @@ import { contentClassOfEntry } from "./entrySides";
 
 /** Pixels, as an image reports them once decoded. */
 export interface PixelSize {
-    readonly width: number;
-    readonly height: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 export type CompareMode = "side-by-side" | "swipe" | "difference";
 
 /** Whether this presenter draws that file. See {@link contentClassOfEntry}. */
 export function isBitmapEntry(entry: DocumentDiffEntry): boolean {
-    return contentClassOfEntry(entry) === "bitmap";
+  return contentClassOfEntry(entry) === "bitmap";
 }
 
 /**
@@ -35,35 +35,51 @@ export function isBitmapEntry(entry: DocumentDiffEntry): boolean {
  * HEIF stills are deliberately absent, because Chromium has no decoder for either.
  */
 export function bitmapMediaType(bytes: Uint8Array): string | null {
-    if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
-        // APNG too: it is a PNG with extra chunks, and the type is the same.
-        return "image/png";
-    }
-    if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
-        return "image/jpeg";
-    }
-    if (ascii(bytes, 0, 6) === "GIF87a" || ascii(bytes, 0, 6) === "GIF89a") {
-        return "image/gif";
-    }
-    if (ascii(bytes, 0, 4) === "RIFF" && ascii(bytes, 8, 4) === "WEBP") {
-        return "image/webp";
-    }
-    // "BM" is two bytes and two bytes are not evidence, so the four reserved bytes of the file
-    // header come too - the same test `contentClassOfBytes` makes, for the same reason.
-    if (ascii(bytes, 0, 2) === "BM" && bytes.length >= 10
-        && bytes[6] === 0 && bytes[7] === 0 && bytes[8] === 0 && bytes[9] === 0) {
-        return "image/bmp";
-    }
-    if (ascii(bytes, 4, 4) === "ftyp" && (ascii(bytes, 8, 4) === "avif" || ascii(bytes, 8, 4) === "avis")) {
-        return "image/avif";
-    }
-    // A Windows icon or cursor: the type field between two pairs of zeroes, with a count that is
-    // never zero.
-    if (bytes.length >= 6 && bytes[0] === 0 && bytes[1] === 0 && (bytes[2] === 1 || bytes[2] === 2)
-        && bytes[3] === 0 && bytes[4] > 0 && bytes[5] === 0) {
-        return "image/x-icon";
-    }
-    return null;
+  if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
+    // APNG too: it is a PNG with extra chunks, and the type is the same.
+    return "image/png";
+  }
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (ascii(bytes, 0, 6) === "GIF87a" || ascii(bytes, 0, 6) === "GIF89a") {
+    return "image/gif";
+  }
+  if (ascii(bytes, 0, 4) === "RIFF" && ascii(bytes, 8, 4) === "WEBP") {
+    return "image/webp";
+  }
+  // "BM" is two bytes and two bytes are not evidence, so the four reserved bytes of the file
+  // header come too - the same test `contentClassOfBytes` makes, for the same reason.
+  if (
+    ascii(bytes, 0, 2) === "BM" &&
+    bytes.length >= 10 &&
+    bytes[6] === 0 &&
+    bytes[7] === 0 &&
+    bytes[8] === 0 &&
+    bytes[9] === 0
+  ) {
+    return "image/bmp";
+  }
+  if (
+    ascii(bytes, 4, 4) === "ftyp" &&
+    (ascii(bytes, 8, 4) === "avif" || ascii(bytes, 8, 4) === "avis")
+  ) {
+    return "image/avif";
+  }
+  // A Windows icon or cursor: the type field between two pairs of zeroes, with a count that is
+  // never zero.
+  if (
+    bytes.length >= 6 &&
+    bytes[0] === 0 &&
+    bytes[1] === 0 &&
+    (bytes[2] === 1 || bytes[2] === 2) &&
+    bytes[3] === 0 &&
+    bytes[4] > 0 &&
+    bytes[5] === 0
+  ) {
+    return "image/x-icon";
+  }
+  return null;
 }
 
 /**
@@ -76,12 +92,15 @@ export function bitmapMediaType(bytes: Uint8Array): string | null {
  * onto one frame differ almost everywhere, so the mode would light up the whole picture and mean
  * nothing; the honest answer is that this pair cannot be compared that way, and it is left out.
  */
-export function comparableModes(before: PixelSize | null, after: PixelSize | null): readonly CompareMode[] {
-    if (!before || !after) {
-        return [];
-    }
-    const alignable = before.width === after.width && before.height === after.height;
-    return alignable ? ["side-by-side", "swipe", "difference"] : ["side-by-side", "swipe"];
+export function comparableModes(
+  before: PixelSize | null,
+  after: PixelSize | null
+): readonly CompareMode[] {
+  if (!before || !after) {
+    return [];
+  }
+  const alignable = before.width === after.width && before.height === after.height;
+  return alignable ? ["side-by-side", "swipe", "difference"] : ["side-by-side", "swipe"];
 }
 
 /**
@@ -92,12 +111,12 @@ export function comparableModes(before: PixelSize | null, after: PixelSize | nul
  * layout is invisible; scaled against one box, the smaller one is smaller.
  */
 export function unionBox(before: PixelSize | null, after: PixelSize | null): PixelSize | null {
-    if (!before) return after;
-    if (!after) return before;
-    return {
-        width: Math.max(before.width, after.width),
-        height: Math.max(before.height, after.height),
-    };
+  if (!before) return after;
+  if (!after) return before;
+  return {
+    width: Math.max(before.width, after.width),
+    height: Math.max(before.height, after.height)
+  };
 }
 
 /**
@@ -108,14 +127,14 @@ export function unionBox(before: PixelSize | null, after: PixelSize | null): Pix
  * scale factor in both directions and the same one for both images.
  */
 export function framedImageStyle(size: PixelSize, box: PixelSize): CSSProperties {
-    return {
-        position: "absolute",
-        left: "50%",
-        top: "50%",
-        transform: "translate(-50%, -50%)",
-        width: `${(size.width / box.width) * 100}%`,
-        height: `${(size.height / box.height) * 100}%`,
-    };
+  return {
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    transform: "translate(-50%, -50%)",
+    width: `${(size.width / box.width) * 100}%`,
+    height: `${(size.height / box.height) * 100}%`
+  };
 }
 
 /**
@@ -136,10 +155,10 @@ export const FRAME_MAX_HEIGHT = 420;
  * box, so they share the cap, and the scale stays common to them.
  */
 export function frameStyle(box: PixelSize): CSSProperties {
-    return {
-        aspectRatio: `${box.width} / ${box.height}`,
-        maxWidth: `${Math.round((box.width / box.height) * FRAME_MAX_HEIGHT)}px`,
-    };
+  return {
+    aspectRatio: `${box.width} / ${box.height}`,
+    maxWidth: `${Math.round((box.width / box.height) * FRAME_MAX_HEIGHT)}px`
+  };
 }
 
 /**
@@ -150,22 +169,24 @@ export function frameStyle(box: PixelSize): CSSProperties {
  * lost a limb. Built from the fill tokens, so it follows the theme like everything else.
  */
 export const TRANSPARENCY_BACKDROP: CSSProperties = {
-    backgroundColor: "rgb(var(--nl-surface-sunken))",
-    backgroundImage: "repeating-conic-gradient(var(--nl-fill) 0% 25%, transparent 0% 50%)",
-    backgroundSize: "16px 16px",
+  backgroundColor: "rgb(var(--nl-surface-sunken))",
+  backgroundImage: "repeating-conic-gradient(var(--nl-fill) 0% 25%, transparent 0% 50%)",
+  backgroundSize: "16px 16px"
 };
 
 function startsWith(bytes: Uint8Array, signature: readonly number[]): boolean {
-    return bytes.length >= signature.length && signature.every((byte, index) => bytes[index] === byte);
+  return (
+    bytes.length >= signature.length && signature.every((byte, index) => bytes[index] === byte)
+  );
 }
 
 function ascii(bytes: Uint8Array, offset: number, length: number): string {
-    if (offset + length > bytes.length) {
-        return "";
-    }
-    let out = "";
-    for (let index = 0; index < length; index += 1) {
-        out += String.fromCharCode(bytes[offset + index]);
-    }
-    return out;
+  if (offset + length > bytes.length) {
+    return "";
+  }
+  let out = "";
+  for (let index = 0; index < length; index += 1) {
+    out += String.fromCharCode(bytes[offset + index]);
+  }
+  return out;
 }

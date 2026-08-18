@@ -40,8 +40,8 @@ import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 
 /** The slice of the blueprint host API this needs; kept structural so tests can hand in a stub. */
 export type VideoMixerHost = {
-    resolveElementVolume: (input: { audioTrackId?: string | null; volume?: number | null }) => number;
-    subscribeMixerChanges: (listener: () => void) => () => void;
+  resolveElementVolume: (input: { audioTrackId?: string | null; volume?: number | null }) => number;
+  subscribeMixerChanges: (listener: () => void) => () => void;
 };
 
 /**
@@ -52,8 +52,8 @@ export type VideoMixerHost = {
  * predates the method, where falling back to the authored volume is the right answer.
  */
 export function resolveVideoMixerHost(hostAdapter: UIHostAdapter): VideoMixerHost | null {
-    const sound = hostAdapter.blueprintRuntime?.hostApi?.sound;
-    return sound && typeof sound.resolveElementVolume === "function" ? sound : null;
+  const sound = hostAdapter.blueprintRuntime?.hostApi?.sound;
+  return sound && typeof sound.resolveElementVolume === "function" ? sound : null;
 }
 
 /**
@@ -64,25 +64,27 @@ export function resolveVideoMixerHost(hostAdapter: UIHostAdapter): VideoMixerHos
  * typed rather than what some absent player's sliders would do to it.
  */
 export function useVideoElementVolume(
-    host: VideoMixerHost | null,
-    audioTrackId: string | null,
-    authoredVolume: number,
+  host: VideoMixerHost | null,
+  audioTrackId: string | null,
+  authoredVolume: number
 ): number {
-    const [resolved, setResolved] = useState(() =>
-        host ? host.resolveElementVolume({ audioTrackId, volume: authoredVolume }) : authoredVolume);
+  const [resolved, setResolved] = useState(() =>
+    host ? host.resolveElementVolume({ audioTrackId, volume: authoredVolume }) : authoredVolume
+  );
 
-    useEffect(() => {
-        if (!host) {
-            setResolved(authoredVolume);
-            return;
-        }
-        const read = () => setResolved(host.resolveElementVolume({ audioTrackId, volume: authoredVolume }));
-        // Read once on (re)subscribe as well as on every change: a preference the player set before
-        // this widget mounted produces no event, and without this the clip would start at the wrong
-        // level and only correct itself the next time a slider moved.
-        read();
-        return host.subscribeMixerChanges(read);
-    }, [host, audioTrackId, authoredVolume]);
+  useEffect(() => {
+    if (!host) {
+      setResolved(authoredVolume);
+      return;
+    }
+    const read = () =>
+      setResolved(host.resolveElementVolume({ audioTrackId, volume: authoredVolume }));
+    // Read once on (re)subscribe as well as on every change: a preference the player set before
+    // this widget mounted produces no event, and without this the clip would start at the wrong
+    // level and only correct itself the next time a slider moved.
+    read();
+    return host.subscribeMixerChanges(read);
+  }, [host, audioTrackId, authoredVolume]);
 
-    return resolved;
+  return resolved;
 }

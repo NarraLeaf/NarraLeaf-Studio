@@ -39,13 +39,13 @@ export const BLUEPRINT_NETWORK_MAX_LIVE_BODIES = 32;
 export const BLUEPRINT_NETWORK_ALLOWED_PROTOCOLS: readonly string[] = ["http:", "https:"];
 
 export type BlueprintNetworkFetchRequest = {
-    url: string;
-    method: BlueprintNetworkMethod;
-    /** Header name -> value. Null and `{}` both mean "send none". */
-    headers: Record<string, string> | null;
-    /** Request body, for the methods that carry one. */
-    body: string | null;
-    timeoutMs: number;
+  url: string;
+  method: BlueprintNetworkMethod;
+  /** Header name -> value. Null and `{}` both mean "send none". */
+  headers: Record<string, string> | null;
+  /** Request body, for the methods that carry one. */
+  body: string | null;
+  timeoutMs: number;
 };
 
 /**
@@ -59,21 +59,21 @@ export type BlueprintNetworkFetchRequest = {
 export type BlueprintNetworkFetchOutcome = "success" | "httpError" | "networkError" | "timeout";
 
 export type BlueprintNetworkFetchResult = {
-    outcome: BlueprintNetworkFetchOutcome;
-    /** HTTP status, or 0 when no response was received. */
-    status: number;
-    /** Response body text, present whenever a response arrived. */
-    body: string | null;
-    /** Human-readable failure reason, null on success. */
-    error: string | null;
+  outcome: BlueprintNetworkFetchOutcome;
+  /** HTTP status, or 0 when no response was received. */
+  status: number;
+  /** Response body text, present whenever a response arrived. */
+  body: string | null;
+  /** Human-readable failure reason, null on success. */
+  error: string | null;
 };
 
 /** Cap, clamp and default the authored timeout in one place, so all three shells agree. */
 export function normalizeBlueprintNetworkTimeout(timeoutMs: number | null | undefined): number {
-    if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-        return BLUEPRINT_NETWORK_DEFAULT_TIMEOUT_MS;
-    }
-    return Math.min(Math.round(timeoutMs), BLUEPRINT_NETWORK_MAX_TIMEOUT_MS);
+  if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return BLUEPRINT_NETWORK_DEFAULT_TIMEOUT_MS;
+  }
+  return Math.min(Math.round(timeoutMs), BLUEPRINT_NETWORK_MAX_TIMEOUT_MS);
 }
 
 /**
@@ -84,13 +84,13 @@ export function normalizeBlueprintNetworkTimeout(timeoutMs: number | null | unde
  * parse at all is refused here too, so no shell has to decide what a malformed URL means.
  */
 export function isBlueprintNetworkUrlAllowed(url: string): boolean {
-    let parsed: URL;
-    try {
-        parsed = new URL(url);
-    } catch {
-        return false;
-    }
-    return BLUEPRINT_NETWORK_ALLOWED_PROTOCOLS.includes(parsed.protocol);
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return BLUEPRINT_NETWORK_ALLOWED_PROTOCOLS.includes(parsed.protocol);
 }
 
 /**
@@ -101,22 +101,22 @@ export function isBlueprintNetworkUrlAllowed(url: string): boolean {
  * Nested objects and arrays are dropped: there is no header they could correctly become.
  */
 export function normalizeBlueprintNetworkHeaders(value: unknown): Record<string, string> | null {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-        return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const headers: Record<string, string> = {};
+  for (const [name, raw] of Object.entries(value as Record<string, unknown>)) {
+    const key = name.trim();
+    if (!key) {
+      continue;
     }
-    const headers: Record<string, string> = {};
-    for (const [name, raw] of Object.entries(value as Record<string, unknown>)) {
-        const key = name.trim();
-        if (!key) {
-            continue;
-        }
-        if (typeof raw === "string") {
-            headers[key] = raw;
-        } else if (typeof raw === "number" && Number.isFinite(raw)) {
-            headers[key] = String(raw);
-        } else if (typeof raw === "boolean") {
-            headers[key] = String(raw);
-        }
+    if (typeof raw === "string") {
+      headers[key] = raw;
+    } else if (typeof raw === "number" && Number.isFinite(raw)) {
+      headers[key] = String(raw);
+    } else if (typeof raw === "boolean") {
+      headers[key] = String(raw);
     }
-    return Object.keys(headers).length > 0 ? headers : null;
+  }
+  return Object.keys(headers).length > 0 ? headers : null;
 }

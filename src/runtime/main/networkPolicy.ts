@@ -1,9 +1,9 @@
 import type { Session } from "electron";
 import { GAME_RUNTIME_PROTOCOL } from "@shared/types/gameRuntime";
 import {
-    isNetworkAddressAllowed,
-    networkAllowlistCspSources,
-    type NetworkAllowlist,
+  isNetworkAddressAllowed,
+  networkAllowlistCspSources,
+  type NetworkAllowlist
 } from "@shared/types/networkAllowlist";
 
 /**
@@ -30,11 +30,11 @@ import {
  * rather than cancelling the lot - see {@link isNetworkBlockedUrl}.
  */
 const BLOCKED_REMOTE_URL_PATTERNS = [
-    "http://*/*",
-    "https://*/*",
-    "ws://*/*",
-    "wss://*/*",
-    "ftp://*/*",
+  "http://*/*",
+  "https://*/*",
+  "ws://*/*",
+  "wss://*/*",
+  "ftp://*/*"
 ];
 
 /**
@@ -46,12 +46,12 @@ const BLOCKED_REMOTE_URL_PATTERNS = [
  * `data:`/`blob:`/`about:` are the renderer talking to itself.
  */
 const LOCAL_URL_SCHEMES = new Set([
-    `${GAME_RUNTIME_PROTOCOL}:`,
-    "file:",
-    "devtools:",
-    "data:",
-    "blob:",
-    "about:",
+  `${GAME_RUNTIME_PROTOCOL}:`,
+  "file:",
+  "devtools:",
+  "data:",
+  "blob:",
+  "about:"
 ]);
 
 /**
@@ -63,14 +63,16 @@ const LOCAL_URL_SCHEMES = new Set([
  * happens to start with the word and is blocked like any other.
  */
 function isLoopbackHost(hostname: string): boolean {
-    // `new URL("http://[::1]/").hostname` keeps the brackets; strip them so the
-    // literal compares like any other host.
-    const host = hostname.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
-    return host === "localhost"
-        || host.endsWith(".localhost")
-        || host === "::1"
-        // The whole 127.0.0.0/8 block is loopback, not just 127.0.0.1.
-        || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+  // `new URL("http://[::1]/").hostname` keeps the brackets; strip them so the
+  // literal compares like any other host.
+  const host = hostname.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
+  return (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "::1" ||
+    // The whole 127.0.0.0/8 block is loopback, not just 127.0.0.1.
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)
+  );
 }
 
 /**
@@ -81,16 +83,16 @@ function isLoopbackHost(hostname: string): boolean {
  * for, and letting it through would make the blocked-network verdict a guess.
  */
 export function isNetworkBlockedUrl(url: string): boolean {
-    let parsed: URL;
-    try {
-        parsed = new URL(url);
-    } catch {
-        return true;
-    }
-    if (LOCAL_URL_SCHEMES.has(parsed.protocol)) {
-        return false;
-    }
-    return !isLoopbackHost(parsed.hostname);
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return true;
+  }
+  if (LOCAL_URL_SCHEMES.has(parsed.protocol)) {
+    return false;
+  }
+  return !isLoopbackHost(parsed.hostname);
 }
 
 /**
@@ -110,28 +112,30 @@ export function isNetworkBlockedUrl(url: string): boolean {
  * states a list and the list is empty".
  */
 export function buildRuntimeCsp(allowHttp: boolean, allowlist?: NetworkAllowlist): string {
-    const scheme = `${GAME_RUNTIME_PROTOCOL}:`;
-    const sources = allowHttp ? networkAllowlistCspSources(allowlist) : [];
-    // `null` is the wide policy: the schemes themselves, which is what every build shipped with
-    // before a list could be stated.
-    const remote = !allowHttp
-        ? ""
-        : sources === null
-            ? " http: https: ws: wss:"
-            : sources.length > 0 ? ` ${sources.join(" ")}` : "";
-    return [
-        `default-src 'self' ${scheme} data: blob:${remote}`,
-        `script-src 'self' ${scheme}`,
-        `style-src 'self' ${scheme} 'unsafe-inline'`,
-        `img-src 'self' ${scheme} data: blob:${remote}`,
-        `media-src 'self' ${scheme} data: blob:${remote}`,
-        `font-src 'self' ${scheme} data: blob:${remote}`,
-        `connect-src 'self' ${scheme} data: blob:${remote}`,
-        `worker-src 'self' ${scheme} blob:`,
-        "object-src 'none'",
-        `base-uri 'self' ${scheme}`,
-        "form-action 'none'",
-    ].join("; ");
+  const scheme = `${GAME_RUNTIME_PROTOCOL}:`;
+  const sources = allowHttp ? networkAllowlistCspSources(allowlist) : [];
+  // `null` is the wide policy: the schemes themselves, which is what every build shipped with
+  // before a list could be stated.
+  const remote = !allowHttp
+    ? ""
+    : sources === null
+      ? " http: https: ws: wss:"
+      : sources.length > 0
+        ? ` ${sources.join(" ")}`
+        : "";
+  return [
+    `default-src 'self' ${scheme} data: blob:${remote}`,
+    `script-src 'self' ${scheme}`,
+    `style-src 'self' ${scheme} 'unsafe-inline'`,
+    `img-src 'self' ${scheme} data: blob:${remote}`,
+    `media-src 'self' ${scheme} data: blob:${remote}`,
+    `font-src 'self' ${scheme} data: blob:${remote}`,
+    `connect-src 'self' ${scheme} data: blob:${remote}`,
+    `worker-src 'self' ${scheme} blob:`,
+    "object-src 'none'",
+    `base-uri 'self' ${scheme}`,
+    "form-action 'none'"
+  ].join("; ");
 }
 
 /**
@@ -139,25 +143,29 @@ export function buildRuntimeCsp(allowHttp: boolean, allowlist?: NetworkAllowlist
  * meta tag (rather than a response header) so it is honored regardless of how
  * the custom `nlgame:` scheme is treated.
  */
-export function injectRuntimeCsp(html: string, allowHttp: boolean, allowlist?: NetworkAllowlist): string {
-    const meta = `<meta http-equiv="Content-Security-Policy" content="${buildRuntimeCsp(allowHttp, allowlist)}" />`;
-    return html.replace(/<head(\s[^>]*)?>/i, match => `${match}\n    ${meta}`);
+export function injectRuntimeCsp(
+  html: string,
+  allowHttp: boolean,
+  allowlist?: NetworkAllowlist
+): string {
+  const meta = `<meta http-equiv="Content-Security-Policy" content="${buildRuntimeCsp(allowHttp, allowlist)}" />`;
+  return html.replace(/<head(\s[^>]*)?>/i, (match) => `${match}\n    ${meta}`);
 }
 
 export type RuntimeNetworkPolicyOptions = {
-    /** The project's Allow HTTP flag, from `pack.network.allowHttp`. */
-    allowHttp: boolean;
-    /**
-     * The project's allowlist, from the same block. Absent, or stating the wide policy, leaves this
-     * layer deciding only whether remote requests happen at all.
-     */
-    allowlist?: NetworkAllowlist;
-    /**
-     * Test network blocking (`NARRALEAF_TEST_NETWORK=blocked`). Overrides
-     * `allowHttp`: the point of the test is to see what a game does when the
-     * network is gone, so a project that opted into HTTP must still lose it.
-     */
-    blockAll: boolean;
+  /** The project's Allow HTTP flag, from `pack.network.allowHttp`. */
+  allowHttp: boolean;
+  /**
+   * The project's allowlist, from the same block. Absent, or stating the wide policy, leaves this
+   * layer deciding only whether remote requests happen at all.
+   */
+  allowlist?: NetworkAllowlist;
+  /**
+   * Test network blocking (`NARRALEAF_TEST_NETWORK=blocked`). Overrides
+   * `allowHttp`: the point of the test is to see what a game does when the
+   * network is gone, so a project that opted into HTTP must still lose it.
+   */
+  blockAll: boolean;
 };
 
 /**
@@ -173,29 +181,32 @@ export type RuntimeNetworkPolicyOptions = {
  * network. Which is why the three questions are answered inside one callback
  * rather than by three listeners that would take turns being the only one.
  */
-export function installRuntimeNetworkPolicy(session: Session, options: RuntimeNetworkPolicyOptions): void {
-    const { allowHttp, allowlist, blockAll } = options;
-    const narrowed = networkAllowlistCspSources(allowlist) !== null;
-    if (allowHttp && !narrowed && !blockAll) {
-        return;
+export function installRuntimeNetworkPolicy(
+  session: Session,
+  options: RuntimeNetworkPolicyOptions
+): void {
+  const { allowHttp, allowlist, blockAll } = options;
+  const narrowed = networkAllowlistCspSources(allowlist) !== null;
+  if (allowHttp && !narrowed && !blockAll) {
+    return;
+  }
+  session.webRequest.onBeforeRequest({ urls: BLOCKED_REMOTE_URL_PATTERNS }, (details, callback) => {
+    // Without allowHttp the game is confined to `nlgame:` and every pattern
+    // above is cancelled outright - unchanged shipped behaviour, loopback
+    // included. Test blocking is the wider net (it also bites when the
+    // project DID allow HTTP) and the narrower veto: it spares loopback, or
+    // the game could not be inspected while it ran.
+    if (!allowHttp) {
+      callback({ cancel: true });
+      return;
     }
-    session.webRequest.onBeforeRequest({ urls: BLOCKED_REMOTE_URL_PATTERNS }, (details, callback) => {
-        // Without allowHttp the game is confined to `nlgame:` and every pattern
-        // above is cancelled outright - unchanged shipped behaviour, loopback
-        // included. Test blocking is the wider net (it also bites when the
-        // project DID allow HTTP) and the narrower veto: it spares loopback, or
-        // the game could not be inspected while it ran.
-        if (!allowHttp) {
-            callback({ cancel: true });
-            return;
-        }
-        if (blockAll) {
-            callback({ cancel: isNetworkBlockedUrl(details.url) });
-            return;
-        }
-        // The allowlist. Second of the two layers over the same list - the CSP is the first - because
-        // a `connect-src` governs what the page's own script may ask for and this governs the
-        // session, which is what catches a subresource load the page never wrote down.
-        callback({ cancel: !isNetworkAddressAllowed(details.url, allowlist) });
-    });
+    if (blockAll) {
+      callback({ cancel: isNetworkBlockedUrl(details.url) });
+      return;
+    }
+    // The allowlist. Second of the two layers over the same list - the CSP is the first - because
+    // a `connect-src` governs what the page's own script may ask for and this governs the
+    // session, which is what catches a subresource load the page never wrote down.
+    callback({ cancel: !isNetworkAddressAllowed(details.url, allowlist) });
+  });
 }

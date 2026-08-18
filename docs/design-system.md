@@ -28,13 +28,13 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer
 
 > ⚠️ **已知取舍**:`text-primary` 在亮色主题下对比度约 **2.4:1**(品牌青压在浅底上),低于 AA。因为品牌锚点不可更改、且 `primary` 在 tailwind config 里是字面 hex(不是通道变量,见 Phase 0 决策),此处未动。如需修正,要么给亮色主题单独派生一个更深的 `primary`(需把它改成通道变量并处理 `--narraleaf-accent` 的 `theme()` 依赖),要么新增一个 `primary-text` token。`bg-primary` + `text-white`(2.76:1)是两个主题共有的既有状况,与本次改动无关。
 
-| Token | 值 | HSL | 用途 |
-|---|---|---|---|
-| `primary` | `#40a8c4` | H193 S53 L51 | 品牌主色、选中态、焦点、链接 |
+| Token     | 值        | HSL          | 用途                                 |
+| --------- | --------- | ------------ | ------------------------------------ |
+| `primary` | `#40a8c4` | H193 S53 L51 | 品牌主色、选中态、焦点、链接         |
 | `binding` | `#7e70c2` | H250 S40 L60 | blueprint 绑定态语义色(与选中态区分) |
-| `danger` | `#da6958` | H8 S64 L60 | 错误 / 删除 / 破坏性操作 |
-| `success` | `#6db094` | H155 S30 L56 | 成功 / 有效状态 |
-| `warning` | `#ccaa5c` | H42 S52 L58 | 警告 / 需注意 |
+| `danger`  | `#da6958` | H8 S64 L60   | 错误 / 删除 / 破坏性操作             |
+| `success` | `#6db094` | H155 S30 L56 | 成功 / 有效状态                      |
+| `warning` | `#ccaa5c` | H42 S52 L58  | 警告 / 需注意                        |
 
 信息态(info)复用 `primary`,不单列。带透明度用斜杠语法：`bg-primary/20`、`border-danger/40`、`text-success`。
 
@@ -42,29 +42,29 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer
 
 从深到浅,越"浮起"的层越亮：
 
-| Token | 值 | 用途 |
-|---|---|---|
-| `surface-canvas` | `#05060a` | 最深底(ui-editor 画布等) |
-| `surface-sunken` | `#0b0d12` | 下沉区、标题栏、未激活 tab |
-| `surface` | `#0f1115` | app / 面板默认背景 |
-| `surface-raised` | `#1e1f22` | 卡片、输入框、菜单 |
-| `surface-overlay` | `#22242a` | 弹出层、dropdown、popover |
+| Token             | 值        | 用途                       |
+| ----------------- | --------- | -------------------------- |
+| `surface-canvas`  | `#05060a` | 最深底(ui-editor 画布等)   |
+| `surface-sunken`  | `#0b0d12` | 下沉区、标题栏、未激活 tab |
+| `surface`         | `#0f1115` | app / 面板默认背景         |
+| `surface-raised`  | `#1e1f22` | 卡片、输入框、菜单         |
+| `surface-overlay` | `#22242a` | 弹出层、dropdown、popover  |
 
 用法：`bg-surface`、`bg-surface-raised`。
 
 ### 文字与边框
 
-| Token | 值(暗色) | 用途 |
-|---|---|---|
-| `fg` | `#eef1f5` | 主文字 |
-| `fg-muted` | `#9aa3ae` | 次要文字 |
-| `fg-subtle` | `#6b7480` | 辅助 / 占位符 |
-| `edge` | `white/10` | 默认边框 |
-| `edge-subtle` | `white/5` | 弱分隔线 |
-| `edge-strong` | `white/20` | 强调 / hover 边框 |
-| `fill` | `white/10` | 半透明**填充**(按钮次要态、hover 底) |
-| `fill-strong` | `white/20` | 强填充 |
-| `fill-subtle` | `white/5` | 弱填充(输入框底、卡片底) |
+| Token         | 值(暗色)   | 用途                                 |
+| ------------- | ---------- | ------------------------------------ |
+| `fg`          | `#eef1f5`  | 主文字                               |
+| `fg-muted`    | `#9aa3ae`  | 次要文字                             |
+| `fg-subtle`   | `#6b7480`  | 辅助 / 占位符                        |
+| `edge`        | `white/10` | 默认边框                             |
+| `edge-subtle` | `white/5`  | 弱分隔线                             |
+| `edge-strong` | `white/20` | 强调 / hover 边框                    |
+| `fill`        | `white/10` | 半透明**填充**(按钮次要态、hover 底) |
+| `fill-strong` | `white/20` | 强填充                               |
+| `fill-subtle` | `white/5`  | 弱填充(输入框底、卡片底)             |
 
 用法：`text-fg-muted`、`border-edge`、`divide-edge`、`bg-fill`、`hover:bg-fill`。
 
@@ -74,11 +74,11 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer
 
 ## 2. 圆角
 
-| 场景 | 类 |
-|---|---|
-| 控件（按钮 / 输入 / 菜单项 / badge） | `rounded-md` |
-| 容器（卡片 / 面板 / 弹层） | `rounded-lg` |
-| pill / 开关 / 头像 | `rounded-full` |
+| 场景                                 | 类             |
+| ------------------------------------ | -------------- |
+| 控件（按钮 / 输入 / 菜单项 / badge） | `rounded-md`   |
+| 容器（卡片 / 面板 / 弹层）           | `rounded-lg`   |
+| pill / 开关 / 头像                   | `rounded-full` |
 
 **禁用裸 `rounded`（不带尺寸）与任意值 `rounded-[Npx]`。**
 
@@ -90,11 +90,11 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer
 
 **同一 `size` 的按钮、输入框、下拉框,高度必须相同。** 刻度只有一处来源——[`lib/components/elements/controlSize.ts`](../src/renderer/lib/components/elements/controlSize.ts),组件不再各自从 padding 里推。
 
-| size | 高度 | 用在哪 |
-|---|---|---|
-| `sm` | 28px（`min-h-7`） | 面板、工具条、检查器行——Studio 的常用档 |
-| `md` | 36px（`min-h-9`） | 对话框与表单（也是组件默认值） |
-| `lg` | 40px（`min-h-10`） | 少数占满一行的主操作 |
+| size | 高度               | 用在哪                                  |
+| ---- | ------------------ | --------------------------------------- |
+| `sm` | 28px（`min-h-7`）  | 面板、工具条、检查器行——Studio 的常用档 |
+| `md` | 36px（`min-h-9`）  | 对话框与表单（也是组件默认值）          |
+| `lg` | 40px（`min-h-10`） | 少数占满一行的主操作                    |
 
 `ToolbarButton` / `IconButton` 的 `sm`/`md`/`lg` 是同一刻度的**正方形**;`ToolbarButton` 另有一个更密的 `xs`（24px），是刻度之外的一档。
 
@@ -132,16 +132,16 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer
 
 Phase 2 新增(用来替换各处手写模式):
 
-| 组件 | 替换的手写模式 |
-|---|---|
-| `ToolbarButton` | 工具栏方形图标按钮(`grid place-items-center …`,原 20+ 处;size xs/sm/md/lg + `active`/`bordered`) |
-| `TabStrip` | tab 条 + 下划线(原 4 套实现) |
-| `Badge` | 状态 pill(tone: neutral/primary/binding/danger/success/warning) |
-| `EmptyState` | 居中空状态占位 |
-| `FieldLabel` | eyebrow 小标签(原 `FIELD_LABEL_CLASS` 复制) |
-| `SectionCard` | 带边框的区块卡片 |
-| `PanelHeader` | 面板 / 编辑器头部行(size sm/md/lg) |
-| `Tooltip` | 给取不到属性的目标用的包裹式提示（首选属性写法,见 §7.1） |
+| 组件            | 替换的手写模式                                                                                                                   |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `ToolbarButton` | 工具栏方形图标按钮(`grid place-items-center …`,原 20+ 处;size xs/sm/md/lg + `active`/`bordered`)                                 |
+| `TabStrip`      | tab 条 + 下划线(原 4 套实现)                                                                                                     |
+| `Badge`         | 状态 pill(tone: neutral/primary/binding/danger/success/warning)                                                                  |
+| `EmptyState`    | 居中空状态占位                                                                                                                   |
+| `FieldLabel`    | eyebrow 小标签(原 `FIELD_LABEL_CLASS` 复制)                                                                                      |
+| `SectionCard`   | 带边框的区块卡片                                                                                                                 |
+| `PanelHeader`   | 面板 / 编辑器头部行(size sm/md/lg)                                                                                               |
+| `Tooltip`       | 给取不到属性的目标用的包裹式提示（首选属性写法,见 §7.1）                                                                         |
 | `AnchoredPanel` | 手写的「portal 到 body + fixed 定位 + 躲开视口边缘」浮层（`HintPopover` 与拼写建议面板共用它;对话框仍走 `Modal` / overlay host） |
 
 ## 7.1 提示（tooltip）
@@ -160,16 +160,5 @@ Phase 2 新增(用来替换各处手写模式):
 
 ## 8. 防回归
 
-[scripts/style-ratchet.mjs](../scripts/style-ratchet.mjs) 统计任意 hex、裸调色板、任意 px 字号、裸圆角等"债务"计数,基线存在 `scripts/style-ratchet.baseline.json`。**CI 的 `verify` job 会跑 `yarn style:ratchet`**（[.github/workflows/ci.yml](../.github/workflows/ci.yml)),本地同样命令——计数只准降不准升。修完一批后跑 `yarn style:ratchet --save` 收紧基线。
-
-扫描范围见 [scripts/style-scan.mjs](../scripts/style-scan.mjs)：**只数字符串字面量,跳过测试文件、注释内容与标识符**。这不是图省事——组件库的 JSDoc 里写着它取代的手写模式（`Badge` 的注释就含 `rounded px-1.5 …`）,把注释算进债务等于让组件库为它消灭的债务背锅,唯一"修法"是删文档。标识符同理：类名只有进了字符串才到得了 DOM,所以一个**以类名命名的声明**不输出任何 CSS。`PluginInstallPermissions` 有个开关 `rounded-md` 的 `rounded?: boolean` prop,把它的每次出现都算成裸圆角债务,等于让门禁要求为迁就正则而改 prop 名。
-
-**三个指标有"合法地板",不可能降到 0**,升了要按 §0 逐条核对是不是真的属于这些豁免：
-
-| 指标 | 地板来自 |
-|---|---|
-| `raw-white-black-alpha` | 模态 / 浮层背板、媒体缩略图遮罩、阴影、游戏舞台留黑与预览 |
-| `raw-accent` | `var(--narraleaf-accent, #40a8c4)` 这类 CSS 变量兜底、canvas 读色兜底、调色板与角色颜色等用户数据 |
-| `arbitrary-hex` | 长尾近黑舞台色（判断密集,[scripts/style-codemod.mjs](../scripts/style-codemod.mjs) 有意不自动化） |
-
-⚠️ 每加一个模态背板,`raw-white-black-alpha` 就会 +1 并让 ratchet 变红。这是**设计如此**：它逼你确认这一笔真的属于 §0 豁免,而不是顺手写的裸 `bg-black/40`。确认了就带理由 `--save`。
+代码质量由仓库级 Oxlint 与 Oxfmt 负责：本地运行 `yarn lint` 检查代码、运行 `yarn format:check` 检查格式；需要自动修复时使用 `yarn lint:fix` 或 `yarn format`。两项检查都读取仓库根目录的 `.oxlintrc.json` 与 `.oxfmtrc.json`，CI 的 `verify` job 也会运行它们。
+这些工具替代了旧的 `style-ratchet`/`style-scan` 门禁。设计规范中的语义 token、主题例外和组件复用规则仍然是人工评审依据；Oxlint/Oxfmt 不负责衡量字符串字面量中的样式债务。

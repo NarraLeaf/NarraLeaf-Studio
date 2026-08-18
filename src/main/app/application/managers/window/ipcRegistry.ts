@@ -16,77 +16,82 @@ import type { AppWindow } from "./appWindow";
  * hanging or throwing.
  */
 export class IPCRegistry {
-    private readonly ipc: IPCHost;
-    private initialized = false;
+  private readonly ipc: IPCHost;
+  private initialized = false;
 
-    constructor(
-        namespace: Namespace,
-        private readonly resolveWindow: (sender: Electron.WebContents) => AppWindow | undefined,
-    ) {
-        this.ipc = new IPCHost(namespace);
+  constructor(
+    namespace: Namespace,
+    private readonly resolveWindow: (sender: Electron.WebContents) => AppWindow | undefined
+  ) {
+    this.ipc = new IPCHost(namespace);
+  }
+
+  /** Register all handlers globally. Call once at app startup. */
+  public initialize(handlers: IPCHandler<IPCEventType>[]): void {
+    if (this.initialized) {
+      throw new Error("IPCRegistry is already initialized");
     }
+    this.initialized = true;
 
-    /** Register all handlers globally. Call once at app startup. */
-    public initialize(handlers: IPCHandler<IPCEventType>[]): void {
-        if (this.initialized) {
-            throw new Error("IPCRegistry is already initialized");
+    const seen = new Set<IPCEventType>();
+    for (const handler of handlers) {
+      if (seen.has(handler.name)) {
+        throw new Error(`Duplicate IPC handler for event: ${handler.name}`);
+      }
+      seen.add(handler.name);
+
+      if (handler.type === IPCMessageType.request) {
+        this.registerRequest(handler);
+      } else {
+        this.registerMessage(handler);
+      }
+    }
+  }
+
+  private registerRequest(handler: IPCHandler<IPCEventType>): void {
+    this.ipc.handleGlobal(
+      handler.name as never,
+      async (sender, data): Promise<RequestStatus<unknown>> => {
+        const window = this.resolveLiveWindow(sender);
+        if (!window) {
+          return this.ipc.failed(new Error(`No live window for IPC request: ${handler.name}`));
         }
-        this.initialized = true;
-
-        const seen = new Set<IPCEventType>();
-        for (const handler of handlers) {
-            if (seen.has(handler.name)) {
-                throw new Error(`Duplicate IPC handler for event: ${handler.name}`);
-            }
-            seen.add(handler.name);
-
-            if (handler.type === IPCMessageType.request) {
-                this.registerRequest(handler);
-            } else {
-                this.registerMessage(handler);
-            }
+        const deniedCapability = getDeniedApiCapability(window, handler.requiredApiCapabilities);
+        if (deniedCapability) {
+          return this.ipc.failed(new Error(`API permission denied: ${deniedCapability}`));
         }
-    }
-
-    private registerRequest(handler: IPCHandler<IPCEventType>): void {
-        this.ipc.handleGlobal(handler.name as never, async (sender, data): Promise<RequestStatus<unknown>> => {
-            const window = this.resolveLiveWindow(sender);
-            if (!window) {
-                return this.ipc.failed(new Error(`No live window for IPC request: ${handler.name}`));
-            }
-            const deniedCapability = getDeniedApiCapability(window, handler.requiredApiCapabilities);
-            if (deniedCapability) {
-                return this.ipc.failed(new Error(`API permission denied: ${deniedCapability}`));
-            }
-            try {
-                return await handler.handle(window, data);
-            } catch (error) {
-                return this.ipc.failed(error);
-            }
-        });
-    }
-
-    private registerMessage(handler: IPCHandler<IPCEventType>): void {
-        this.ipc.onMessageGlobal(handler.name as never, (sender, data) => {
-            const window = this.resolveLiveWindow(sender);
-            if (!window) {
-                console.warn(`Dropped IPC message ${handler.name}: no live window for sender`);
-                return;
-            }
-            const deniedCapability = getDeniedApiCapability(window, handler.requiredApiCapabilities);
-            if (deniedCapability) {
-                console.warn(`Blocked IPC message ${handler.name}: API permission denied: ${deniedCapability}`);
-                return;
-            }
-            void handler.handle(window, data);
-        });
-    }
-
-    private resolveLiveWindow(sender: Electron.WebContents): AppWindow | undefined {
-        const window = this.resolveWindow(sender);
-        if (!window || window.isDestroyed()) {
-            return undefined;
+        try {
+          return await handler.handle(window, data);
+        } catch (error) {
+          return this.ipc.failed(error);
         }
-        return window;
+      }
+    );
+  }
+
+  private registerMessage(handler: IPCHandler<IPCEventType>): void {
+    this.ipc.onMessageGlobal(handler.name as never, (sender, data) => {
+      const window = this.resolveLiveWindow(sender);
+      if (!window) {
+        console.warn(`Dropped IPC message ${handler.name}: no live window for sender`);
+        return;
+      }
+      const deniedCapability = getDeniedApiCapability(window, handler.requiredApiCapabilities);
+      if (deniedCapability) {
+        console.warn(
+          `Blocked IPC message ${handler.name}: API permission denied: ${deniedCapability}`
+        );
+        return;
+      }
+      void handler.handle(window, data);
+    });
+  }
+
+  private resolveLiveWindow(sender: Electron.WebContents): AppWindow | undefined {
+    const window = this.resolveWindow(sender);
+    if (!window || window.isDestroyed()) {
+      return undefined;
     }
+    return window;
+  }
 }

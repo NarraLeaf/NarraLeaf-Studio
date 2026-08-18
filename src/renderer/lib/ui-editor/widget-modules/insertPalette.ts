@@ -5,15 +5,15 @@ import type { UIStageSlotId, UISurface, UISurfaceKind } from "@shared/types/ui-e
 export type InsertPalettePlacement = "primary" | "overflow";
 
 export type InsertPaletteConfigEntry = {
-    readonly type: string;
-    readonly placement?: InsertPalettePlacement;
-    readonly surfaceKinds?: readonly UISurfaceKind[];
-    readonly stageSlots?: readonly UIStageSlotId[];
+  readonly type: string;
+  readonly placement?: InsertPalettePlacement;
+  readonly surfaceKinds?: readonly UISurfaceKind[];
+  readonly stageSlots?: readonly UIStageSlotId[];
 };
 
 export type InsertPaletteEntry = {
-    readonly module: UIWidgetModule;
-    readonly placement: InsertPalettePlacement;
+  readonly module: UIWidgetModule;
+  readonly placement: InsertPalettePlacement;
 };
 
 /**
@@ -21,62 +21,73 @@ export type InsertPaletteEntry = {
  * Internal-only modules (e.g. `nl.root`) are omitted here.
  */
 export const DEFAULT_INSERT_PALETTE_CONFIG = [
-    { type: "nl.container" },
-    { type: "nl.text" },
-    { type: "nl.dialog.sentence", surfaceKinds: ["stageSurface"], stageSlots: ["dialog"] },
-    { type: "nl.notification.list", surfaceKinds: ["stageSurface"], stageSlots: ["notification"] },
-    { type: "nl.choice.list", surfaceKinds: ["stageSurface"], stageSlots: ["choice"] },
-    { type: "nl.nvl.list", surfaceKinds: ["stageSurface"], stageSlots: ["nvl"] },
-    { type: "nl.nvl.texts", surfaceKinds: ["stageSurface"], stageSlots: ["nvl"] },
-    { type: "nl.image" },
-    { type: "nl.button" },
-    { type: "nl.textInput", placement: "overflow" },
-    { type: "nl.switch", placement: "overflow" },
-    { type: "nl.video", placement: "overflow" },
-    { type: "nl.puppet", placement: "overflow" },
-    { type: "nl.slider", placement: "overflow" },
-    { type: "nl.list", placement: "overflow" },
-    { type: "nl.frame", placement: "overflow", surfaceKinds: ["appSurface"] },
+  { type: "nl.container" },
+  { type: "nl.text" },
+  { type: "nl.dialog.sentence", surfaceKinds: ["stageSurface"], stageSlots: ["dialog"] },
+  { type: "nl.notification.list", surfaceKinds: ["stageSurface"], stageSlots: ["notification"] },
+  { type: "nl.choice.list", surfaceKinds: ["stageSurface"], stageSlots: ["choice"] },
+  { type: "nl.nvl.list", surfaceKinds: ["stageSurface"], stageSlots: ["nvl"] },
+  { type: "nl.nvl.texts", surfaceKinds: ["stageSurface"], stageSlots: ["nvl"] },
+  { type: "nl.image" },
+  { type: "nl.button" },
+  { type: "nl.textInput", placement: "overflow" },
+  { type: "nl.switch", placement: "overflow" },
+  { type: "nl.video", placement: "overflow" },
+  { type: "nl.puppet", placement: "overflow" },
+  { type: "nl.slider", placement: "overflow" },
+  { type: "nl.list", placement: "overflow" },
+  { type: "nl.frame", placement: "overflow", surfaceKinds: ["appSurface"] }
 ] as const satisfies readonly InsertPaletteConfigEntry[];
 
 export type InsertPaletteSurfaceFilter = UISurfaceKind | UISurface | null | undefined;
 
 function surfaceKindForFilter(surface: InsertPaletteSurfaceFilter): UISurfaceKind | undefined {
-    return typeof surface === "string" ? surface : surface?.kind;
+  return typeof surface === "string" ? surface : surface?.kind;
 }
 
 function stageSlotForFilter(surface: InsertPaletteSurfaceFilter): UIStageSlotId | undefined {
-    return typeof surface === "string" || !surface || surface.kind !== "stageSurface"
-        ? undefined
-        : surface.mount.slotId;
+  return typeof surface === "string" || !surface || surface.kind !== "stageSurface"
+    ? undefined
+    : surface.mount.slotId;
 }
 
 export function resolveInsertPaletteEntries(
-    config: readonly InsertPaletteConfigEntry[],
-    resolveModule: (type: string) => UIWidgetModule | undefined = type => widgetModuleRegistry.get(type),
-    surface?: InsertPaletteSurfaceFilter,
+  config: readonly InsertPaletteConfigEntry[],
+  resolveModule: (type: string) => UIWidgetModule | undefined = (type) =>
+    widgetModuleRegistry.get(type),
+  surface?: InsertPaletteSurfaceFilter
 ): InsertPaletteEntry[] {
-    const surfaceKind = surfaceKindForFilter(surface);
-    const stageSlot = stageSlotForFilter(surface);
-    return config
-        .filter(entry => !surfaceKind || !entry.surfaceKinds || entry.surfaceKinds.includes(surfaceKind))
-        .filter(entry => !entry.stageSlots || (surfaceKind === "stageSurface" && stageSlot != null && entry.stageSlots.includes(stageSlot)))
-        .map(entry => {
-            const mod = resolveModule(entry.type);
-            if (!mod) {
-                throw new Error(`[insertPalette] Missing widget module for palette type: ${entry.type}`);
-            }
-            return {
-                module: mod,
-                placement: entry.placement ?? "primary",
-            };
-        });
+  const surfaceKind = surfaceKindForFilter(surface);
+  const stageSlot = stageSlotForFilter(surface);
+  return config
+    .filter(
+      (entry) => !surfaceKind || !entry.surfaceKinds || entry.surfaceKinds.includes(surfaceKind)
+    )
+    .filter(
+      (entry) =>
+        !entry.stageSlots ||
+        (surfaceKind === "stageSurface" &&
+          stageSlot != null &&
+          entry.stageSlots.includes(stageSlot))
+    )
+    .map((entry) => {
+      const mod = resolveModule(entry.type);
+      if (!mod) {
+        throw new Error(`[insertPalette] Missing widget module for palette type: ${entry.type}`);
+      }
+      return {
+        module: mod,
+        placement: entry.placement ?? "primary"
+      };
+    });
 }
 
-export function listInsertPaletteEntries(surface?: InsertPaletteSurfaceFilter): InsertPaletteEntry[] {
-    return resolveInsertPaletteEntries(DEFAULT_INSERT_PALETTE_CONFIG, undefined, surface);
+export function listInsertPaletteEntries(
+  surface?: InsertPaletteSurfaceFilter
+): InsertPaletteEntry[] {
+  return resolveInsertPaletteEntries(DEFAULT_INSERT_PALETTE_CONFIG, undefined, surface);
 }
 
 export function listInsertPaletteModules(surface?: InsertPaletteSurfaceFilter): UIWidgetModule[] {
-    return listInsertPaletteEntries(surface).map(entry => entry.module);
+  return listInsertPaletteEntries(surface).map((entry) => entry.module);
 }

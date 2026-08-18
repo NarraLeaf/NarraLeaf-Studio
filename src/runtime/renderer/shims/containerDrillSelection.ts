@@ -1,3 +1,3 @@
 export function consumeSuppressNextCanvasWidgetDoubleClick(): false {
-    return false;
+  return false;
 }

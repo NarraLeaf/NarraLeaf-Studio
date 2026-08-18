@@ -1,8 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RequestStatus } from "@shared/types/ipcEvents";
 import type { VcsAvailability, VcsCommitResult, VcsStatus } from "@shared/types/vcs";
-import { freezeProjectWrites, getProjectWriteFreeze, thawProjectWrites } from "@/lib/app/writeFreeze";
-import { CheckpointScheduler, VersionControlService, type CheckpointSchedulerDeps } from "./VersionControlService";
+import {
+  freezeProjectWrites,
+  getProjectWriteFreeze,
+  thawProjectWrites
+} from "@/lib/app/writeFreeze";
+import {
+  CheckpointScheduler,
+  VersionControlService,
+  type CheckpointSchedulerDeps
+} from "./VersionControlService";
 import { Services, type WorkspaceContext } from "../services";
 
 /**
@@ -16,21 +24,21 @@ import { Services, type WorkspaceContext } from "../services";
  */
 
 const vcs = vi.hoisted(() => ({
-    getAvailability: vi.fn(),
-    isRepository: vi.fn(),
-    getInfo: vi.fn(),
-    initRepository: vi.fn(),
-    commit: vi.fn(),
-    checkpoint: vi.fn(),
-    getStatus: vi.fn(),
-    getHistory: vi.fn(),
-    readBlob: vi.fn(),
-    getChangedPaths: vi.fn(),
-    restoreRevision: vi.fn(),
+  getAvailability: vi.fn(),
+  isRepository: vi.fn(),
+  getInfo: vi.fn(),
+  initRepository: vi.fn(),
+  commit: vi.fn(),
+  checkpoint: vi.fn(),
+  getStatus: vi.fn(),
+  getHistory: vi.fn(),
+  readBlob: vi.fn(),
+  getChangedPaths: vi.fn(),
+  restoreRevision: vi.fn()
 }));
 
 vi.mock("@/lib/app/bridge", () => ({
-    getInterface: () => ({ vcs }),
+  getInterface: () => ({ vcs })
 }));
 
 /**
@@ -45,268 +53,287 @@ vi.mock("@/lib/app/bridge", () => ({
 const writeObservers = vi.hoisted(() => new Set<(write: { path: string; ok: boolean }) => void>());
 
 vi.mock("./FileSystem", () => ({
-    BaseFileSystemService: {
-        observeWrites: (observer: (write: { path: string; ok: boolean }) => void) => {
-            writeObservers.add(observer);
-            return () => {
-                writeObservers.delete(observer);
-            };
-        },
-    },
+  BaseFileSystemService: {
+    observeWrites: (observer: (write: { path: string; ok: boolean }) => void) => {
+      writeObservers.add(observer);
+      return () => {
+        writeObservers.delete(observer);
+      };
+    }
+  }
 }));
 
 function reportWrite(path: string, ok = true): void {
-    for (const observer of writeObservers) observer({ path, ok });
+  for (const observer of writeObservers) observer({ path, ok });
 }
 
 const PROJECT = "D:/projects/demo";
 
 function ok<T>(data: T): Promise<RequestStatus<T>> {
-    return Promise.resolve({ success: true, data });
+  return Promise.resolve({ success: true, data });
 }
 
 function createContext(): WorkspaceContext {
-    return {
-        project: { getConfig: () => ({ projectPath: PROJECT }) },
-        services: {
-            get: () => {
-                throw new Error("Unexpected service lookup in test");
-            },
-        },
-    } as unknown as WorkspaceContext;
+  return {
+    project: { getConfig: () => ({ projectPath: PROJECT }) },
+    services: {
+      get: () => {
+        throw new Error("Unexpected service lookup in test");
+      }
+    }
+  } as unknown as WorkspaceContext;
 }
 
-async function createService(availability: VcsAvailability = { available: true }): Promise<VersionControlService> {
-    vcs.getAvailability.mockResolvedValue({ success: true, data: availability });
-    const service = new VersionControlService();
-    await service.initialize(createContext(), async () => undefined);
-    return service;
+async function createService(
+  availability: VcsAvailability = { available: true }
+): Promise<VersionControlService> {
+  vcs.getAvailability.mockResolvedValue({ success: true, data: availability });
+  const service = new VersionControlService();
+  await service.initialize(createContext(), async () => undefined);
+  return service;
 }
 
 function status(overrides: Partial<VcsStatus> = {}): VcsStatus {
-    return {
-        branch: "main",
-        head: "aa",
-        revisionNumber: 3,
-        clean: false,
-        files: [],
-        counts: { added: 0, modified: 0, deleted: 0, moved: 0, copied: 0 },
-        sync: {
-            remoteAvailable: false,
-            remoteAuthorized: false,
-            remoteBranchExists: false,
-            localAhead: false,
-            remoteAhead: false,
-        },
-        ...overrides,
-    };
+  return {
+    branch: "main",
+    head: "aa",
+    revisionNumber: 3,
+    clean: false,
+    files: [],
+    counts: { added: 0, modified: 0, deleted: 0, moved: 0, copied: 0 },
+    sync: {
+      remoteAvailable: false,
+      remoteAuthorized: false,
+      remoteBranchExists: false,
+      localAhead: false,
+      remoteAhead: false
+    },
+    ...overrides
+  };
 }
 
 function commitResult(overrides: Partial<VcsCommitResult> = {}): VcsCommitResult {
-    return { revision: "cc", number: 4, kind: "commit", fileCount: 2, ...overrides };
+  return { revision: "cc", number: 4, kind: "commit", fileCount: 2, ...overrides };
 }
 
 beforeEach(() => {
-    for (const fn of Object.values(vcs)) fn.mockReset();
-    writeObservers.clear();
+  for (const fn of Object.values(vcs)) fn.mockReset();
+  writeObservers.clear();
 });
 
 afterEach(() => {
-    // A freeze is module-level state; leaking one would silence every later test's
-    // checkpoint without saying so.
-    thawProjectWrites();
+  // A freeze is module-level state; leaking one would silence every later test's
+  // checkpoint without saying so.
+  thawProjectWrites();
 });
 
 describe("VersionControlService availability", () => {
-    it("probes once and reuses the answer, including for concurrent callers", async () => {
-        const service = await createService();
+  it("probes once and reuses the answer, including for concurrent callers", async () => {
+    const service = await createService();
 
-        const [first, second] = await Promise.all([service.getAvailability(), service.getAvailability()]);
-        const third = await service.getAvailability();
+    const [first, second] = await Promise.all([
+      service.getAvailability(),
+      service.getAvailability()
+    ]);
+    const third = await service.getAvailability();
 
-        expect(first).toEqual({ available: true });
-        expect(second).toEqual({ available: true });
-        expect(third).toEqual({ available: true });
-        expect(vcs.getAvailability).toHaveBeenCalledTimes(1);
+    expect(first).toEqual({ available: true });
+    expect(second).toEqual({ available: true });
+    expect(third).toEqual({ available: true });
+    expect(vcs.getAvailability).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads a failed probe as an unavailable installation, not as an exception", async () => {
+    vcs.getAvailability.mockResolvedValue({ success: false, error: "host exploded" });
+    const service = new VersionControlService();
+    await service.initialize(createContext(), async () => undefined);
+
+    await expect(service.getAvailability()).resolves.toEqual({
+      available: false,
+      reason: "backend-load-failed",
+      detail: "host exploded"
+    });
+  });
+
+  it("answers a rejected channel without caching it, so the feature can come back", async () => {
+    vcs.getAvailability.mockRejectedValueOnce(new Error("no handler registered"));
+    const service = new VersionControlService();
+    await service.initialize(createContext(), async () => undefined);
+
+    // Not a throw: every read on this service waits on this answer and promises to
+    // degrade rather than throw, so a rejection here would break all of them at once.
+    await expect(service.getAvailability()).resolves.toEqual({
+      available: false,
+      reason: "backend-load-failed",
+      detail: "no handler registered"
     });
 
-    it("reads a failed probe as an unavailable installation, not as an exception", async () => {
-        vcs.getAvailability.mockResolvedValue({ success: false, error: "host exploded" });
-        const service = new VersionControlService();
-        await service.initialize(createContext(), async () => undefined);
+    vcs.getAvailability.mockResolvedValue({ success: true, data: { available: true } });
+    await expect(service.getAvailability()).resolves.toEqual({ available: true });
+    expect(vcs.getAvailability).toHaveBeenCalledTimes(2);
+  });
 
-        await expect(service.getAvailability()).resolves.toEqual({
-            available: false,
-            reason: "backend-load-failed",
-            detail: "host exploded",
-        });
-    });
+  it("re-probes for a new workspace context after teardown", async () => {
+    const service = await createService();
+    await service.getAvailability();
+    await service.teardown(service.getContext());
 
-    it("answers a rejected channel without caching it, so the feature can come back", async () => {
-        vcs.getAvailability.mockRejectedValueOnce(new Error("no handler registered"));
-        const service = new VersionControlService();
-        await service.initialize(createContext(), async () => undefined);
+    await service.initialize(createContext(), async () => undefined);
+    await service.getAvailability();
 
-        // Not a throw: every read on this service waits on this answer and promises to
-        // degrade rather than throw, so a rejection here would break all of them at once.
-        await expect(service.getAvailability()).resolves.toEqual({
-            available: false,
-            reason: "backend-load-failed",
-            detail: "no handler registered",
-        });
-
-        vcs.getAvailability.mockResolvedValue({ success: true, data: { available: true } });
-        await expect(service.getAvailability()).resolves.toEqual({ available: true });
-        expect(vcs.getAvailability).toHaveBeenCalledTimes(2);
-    });
-
-    it("re-probes for a new workspace context after teardown", async () => {
-        const service = await createService();
-        await service.getAvailability();
-        await service.teardown(service.getContext());
-
-        await service.initialize(createContext(), async () => undefined);
-        await service.getAvailability();
-
-        expect(vcs.getAvailability).toHaveBeenCalledTimes(2);
-    });
+    expect(vcs.getAvailability).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("VersionControlService on a host without a backend", () => {
-    const unavailable: VcsAvailability = { available: false, reason: "unsupported-platform" };
+  const unavailable: VcsAvailability = { available: false, reason: "unsupported-platform" };
 
-    it("answers empty without reaching the host at all", async () => {
-        const service = await createService(unavailable);
+  it("answers empty without reaching the host at all", async () => {
+    const service = await createService(unavailable);
 
-        await expect(service.isRepository()).resolves.toBe(false);
-        await expect(service.getInfo()).resolves.toBeNull();
-        await expect(service.getHistory()).resolves.toEqual([]);
-        await expect(service.getChangedPaths("a", "b")).resolves.toEqual([]);
-        await expect(service.refreshStatus()).resolves.toBeNull();
-        expect(service.getStatus()).toBeNull();
-        expect(service.getChangedFiles()).toEqual([]);
+    await expect(service.isRepository()).resolves.toBe(false);
+    await expect(service.getInfo()).resolves.toBeNull();
+    await expect(service.getHistory()).resolves.toEqual([]);
+    await expect(service.getChangedPaths("a", "b")).resolves.toEqual([]);
+    await expect(service.refreshStatus()).resolves.toBeNull();
+    expect(service.getStatus()).toBeNull();
+    expect(service.getChangedFiles()).toEqual([]);
 
-        expect(vcs.isRepository).not.toHaveBeenCalled();
-        expect(vcs.getInfo).not.toHaveBeenCalled();
-        expect(vcs.getHistory).not.toHaveBeenCalled();
-        expect(vcs.getChangedPaths).not.toHaveBeenCalled();
-        // The one that matters most: no scan, so no staged state written on a host
-        // that cannot do anything with it anyway.
-        expect(vcs.getStatus).not.toHaveBeenCalled();
-    });
+    expect(vcs.isRepository).not.toHaveBeenCalled();
+    expect(vcs.getInfo).not.toHaveBeenCalled();
+    expect(vcs.getHistory).not.toHaveBeenCalled();
+    expect(vcs.getChangedPaths).not.toHaveBeenCalled();
+    // The one that matters most: no scan, so no staged state written on a host
+    // that cannot do anything with it anyway.
+    expect(vcs.getStatus).not.toHaveBeenCalled();
+  });
 
-    it("throws when asked to create a repository it cannot create", async () => {
-        const service = await createService(unavailable);
+  it("throws when asked to create a repository it cannot create", async () => {
+    const service = await createService(unavailable);
 
-        // Enabling version control is the author's explicit act. Resolving quietly
-        // would leave them believing their work is being recorded.
-        await expect(service.initRepository()).rejects.toThrow("unsupported-platform");
-        expect(vcs.initRepository).not.toHaveBeenCalled();
-    });
+    // Enabling version control is the author's explicit act. Resolving quietly
+    // would leave them believing their work is being recorded.
+    await expect(service.initRepository()).rejects.toThrow("unsupported-platform");
+    expect(vcs.initRepository).not.toHaveBeenCalled();
+  });
 });
 
 describe("VersionControlService status", () => {
-    it("scans only when asked, and serves the snapshot without scanning", async () => {
-        const service = await createService();
-        vcs.getStatus.mockImplementation(() => ok(status()));
+  it("scans only when asked, and serves the snapshot without scanning", async () => {
+    const service = await createService();
+    vcs.getStatus.mockImplementation(() => ok(status()));
 
-        // Nothing has scanned yet - which is not the same as "clean".
-        expect(service.getStatus()).toBeNull();
-        expect(vcs.getStatus).not.toHaveBeenCalled();
+    // Nothing has scanned yet - which is not the same as "clean".
+    expect(service.getStatus()).toBeNull();
+    expect(vcs.getStatus).not.toHaveBeenCalled();
 
-        const scanned = await service.refreshStatus();
-        expect(scanned).toEqual(status());
-        expect(vcs.getStatus).toHaveBeenCalledTimes(1);
+    const scanned = await service.refreshStatus();
+    expect(scanned).toEqual(status());
+    expect(vcs.getStatus).toHaveBeenCalledTimes(1);
 
-        // Reading it back any number of times must not scan again: every scan can
-        // record a newly discovered directory into staged state.
-        expect(service.getStatus()).toEqual(status());
-        expect(service.getStatus()).toEqual(status());
-        expect(vcs.getStatus).toHaveBeenCalledTimes(1);
+    // Reading it back any number of times must not scan again: every scan can
+    // record a newly discovered directory into staged state.
+    expect(service.getStatus()).toEqual(status());
+    expect(service.getStatus()).toEqual(status());
+    expect(vcs.getStatus).toHaveBeenCalledTimes(1);
 
-        await service.refreshStatus();
-        expect(vcs.getStatus).toHaveBeenCalledTimes(2);
+    await service.refreshStatus();
+    expect(vcs.getStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("notifies subscribers on every refresh", async () => {
+    const service = await createService();
+    const seen: (VcsStatus | null)[] = [];
+    const unsubscribe = service.onStatusChanged((next) => seen.push(next));
+
+    vcs.getStatus.mockImplementation(() => ok(status({ clean: true })));
+    await service.refreshStatus();
+    vcs.getStatus.mockImplementation(() =>
+      Promise.resolve({ success: false, error: "not a repository" })
+    );
+    await service.refreshStatus();
+
+    expect(seen).toEqual([status({ clean: true }), null]);
+    unsubscribe();
+    await service.refreshStatus();
+    expect(seen).toHaveLength(2);
+  });
+
+  it("filters directories out of the file view while leaving the backend's counts alone", async () => {
+    const service = await createService();
+    const backend = status({
+      files: [
+        {
+          path: "editor/story",
+          kind: "added",
+          directory: true,
+          size: 0,
+          staged: false,
+          dirty: true,
+          conflicted: false,
+          conflictUnresolved: false
+        },
+        {
+          path: "editor/story/index.json",
+          kind: "modified",
+          directory: false,
+          size: 120,
+          staged: false,
+          dirty: true,
+          conflicted: false,
+          conflictUnresolved: false
+        }
+      ],
+      // Two entries, and the summary counts both - the directory is a change in
+      // its own right. Re-deriving these from the filtered list would give the
+      // author a second opinion that disagrees with the repository.
+      counts: { added: 1, modified: 1, deleted: 0, moved: 0, copied: 0 }
     });
+    vcs.getStatus.mockImplementation(() => ok(backend));
 
-    it("notifies subscribers on every refresh", async () => {
-        const service = await createService();
-        const seen: (VcsStatus | null)[] = [];
-        const unsubscribe = service.onStatusChanged((next) => seen.push(next));
+    await service.refreshStatus();
 
-        vcs.getStatus.mockImplementation(() => ok(status({ clean: true })));
-        await service.refreshStatus();
-        vcs.getStatus.mockImplementation(() => Promise.resolve({ success: false, error: "not a repository" }));
-        await service.refreshStatus();
-
-        expect(seen).toEqual([status({ clean: true }), null]);
-        unsubscribe();
-        await service.refreshStatus();
-        expect(seen).toHaveLength(2);
+    expect(service.getStatus()?.files).toHaveLength(2);
+    expect(service.getChangedFiles().map((file) => file.path)).toEqual(["editor/story/index.json"]);
+    expect(service.getStatus()?.counts).toEqual({
+      added: 1,
+      modified: 1,
+      deleted: 0,
+      moved: 0,
+      copied: 0
     });
+  });
 
-    it("filters directories out of the file view while leaving the backend's counts alone", async () => {
-        const service = await createService();
-        const backend = status({
-            files: [
-                {
-                    path: "editor/story",
-                    kind: "added",
-                    directory: true,
-                    size: 0,
-                    staged: false,
-                    dirty: true,
-                    conflicted: false,
-                    conflictUnresolved: false,
-                },
-                {
-                    path: "editor/story/index.json",
-                    kind: "modified",
-                    directory: false,
-                    size: 120,
-                    staged: false,
-                    dirty: true,
-                    conflicted: false,
-                    conflictUnresolved: false,
-                },
-            ],
-            // Two entries, and the summary counts both - the directory is a change in
-            // its own right. Re-deriving these from the filtered list would give the
-            // author a second opinion that disagrees with the repository.
-            counts: { added: 1, modified: 1, deleted: 0, moved: 0, copied: 0 },
-        });
-        vcs.getStatus.mockImplementation(() => ok(backend));
+  it("keeps status paths repository-relative, the shape the read side takes", async () => {
+    const service = await createService();
+    vcs.getStatus.mockImplementation(() =>
+      ok(
+        status({
+          files: [
+            {
+              path: "assets/content/ab/cd/sprite.png",
+              kind: "modified",
+              directory: false,
+              size: 10,
+              staged: false,
+              dirty: true,
+              conflicted: false,
+              conflictUnresolved: false
+            }
+          ]
+        })
+      )
+    );
+    vcs.readBlob.mockImplementation(() => ok({ contentBase64: "AAEC" }));
 
-        await service.refreshStatus();
+    await service.refreshStatus();
+    const [change] = service.getChangedFiles();
+    await service.readBlob("rev", change.path);
 
-        expect(service.getStatus()?.files).toHaveLength(2);
-        expect(service.getChangedFiles().map((file) => file.path)).toEqual(["editor/story/index.json"]);
-        expect(service.getStatus()?.counts).toEqual({ added: 1, modified: 1, deleted: 0, moved: 0, copied: 0 });
-    });
-
-    it("keeps status paths repository-relative, the shape the read side takes", async () => {
-        const service = await createService();
-        vcs.getStatus.mockImplementation(() => ok(status({
-            files: [{
-                path: "assets/content/ab/cd/sprite.png",
-                kind: "modified",
-                directory: false,
-                size: 10,
-                staged: false,
-                dirty: true,
-                conflicted: false,
-                conflictUnresolved: false,
-            }],
-        })));
-        vcs.readBlob.mockImplementation(() => ok({ contentBase64: "AAEC" }));
-
-        await service.refreshStatus();
-        const [change] = service.getChangedFiles();
-        await service.readBlob("rev", change.path);
-
-        // Handed straight to a read verb. A write verb would need it made absolute
-        // first, and nothing here does that conversion for a caller.
-        expect(vcs.readBlob).toHaveBeenCalledWith(PROJECT, "rev", "assets/content/ab/cd/sprite.png");
-    });
+    // Handed straight to a read verb. A write verb would need it made absolute
+    // first, and nothing here does that conversion for a caller.
+    expect(vcs.readBlob).toHaveBeenCalledWith(PROJECT, "rev", "assets/content/ab/cd/sprite.png");
+  });
 });
 
 /**
@@ -321,118 +348,127 @@ describe("VersionControlService status", () => {
  * Dropping is not scanning: the snapshot goes back to null and stays there until somebody asks.
  */
 describe("VersionControlService status staleness", () => {
-    it("forgets the last scan when a versioned file is written", async () => {
-        const service = await createService();
-        service.activate(createContext());
-        vcs.getStatus.mockImplementation(() => ok(status({ clean: true })));
-        await service.refreshStatus();
-        expect(service.getStatus()).not.toBeNull();
+  it("forgets the last scan when a versioned file is written", async () => {
+    const service = await createService();
+    service.activate(createContext());
+    vcs.getStatus.mockImplementation(() => ok(status({ clean: true })));
+    await service.refreshStatus();
+    expect(service.getStatus()).not.toBeNull();
 
-        reportWrite(`${PROJECT}/editor/story/index.json`);
+    reportWrite(`${PROJECT}/editor/story/index.json`);
 
-        expect(service.getStatus()).toBeNull();
-        // And it did NOT re-read to find that out - the implicit scan docs section 4.17 forbids.
-        expect(vcs.getStatus).toHaveBeenCalledTimes(1);
-    });
+    expect(service.getStatus()).toBeNull();
+    // And it did NOT re-read to find that out - the implicit scan docs section 4.17 forbids.
+    expect(vcs.getStatus).toHaveBeenCalledTimes(1);
+  });
 
-    it("tells subscribers, so a panel holding the snapshot lets go of it too", async () => {
-        const service = await createService();
-        service.activate(createContext());
-        vcs.getStatus.mockImplementation(() => ok(status({ clean: true })));
-        await service.refreshStatus();
+  it("tells subscribers, so a panel holding the snapshot lets go of it too", async () => {
+    const service = await createService();
+    service.activate(createContext());
+    vcs.getStatus.mockImplementation(() => ok(status({ clean: true })));
+    await service.refreshStatus();
 
-        const seen: (VcsStatus | null)[] = [];
-        const unsubscribe = service.onStatusChanged((next) => seen.push(next));
-        reportWrite(`${PROJECT}/editor/story/index.json`);
-        expect(seen).toEqual([null]);
-        unsubscribe();
-    });
+    const seen: (VcsStatus | null)[] = [];
+    const unsubscribe = service.onStatusChanged((next) => seen.push(next));
+    reportWrite(`${PROJECT}/editor/story/index.json`);
+    expect(seen).toEqual([null]);
+    unsubscribe();
+  });
 
-    it("ignores a write that is not versioned project data", async () => {
-        const service = await createService();
-        service.activate(createContext());
-        vcs.getStatus.mockImplementation(() => ok(status({ clean: true })));
-        await service.refreshStatus();
+  it("ignores a write that is not versioned project data", async () => {
+    const service = await createService();
+    service.activate(createContext());
+    vcs.getStatus.mockImplementation(() => ok(status({ clean: true })));
+    await service.refreshStatus();
 
-        // The panel layout and the thumbnail cache live inside the project directory and are not in
-        // the repository, so writing them changes nothing a scan would have reported.
-        reportWrite(`${PROJECT}/.nlstudio/services/panel_state.json`);
-        reportWrite(`${PROJECT}/editor/cache/thumbnail/ab/cd/asset-1.png`);
-        expect(service.getStatus()).not.toBeNull();
-    });
+    // The panel layout and the thumbnail cache live inside the project directory and are not in
+    // the repository, so writing them changes nothing a scan would have reported.
+    reportWrite(`${PROJECT}/.nlstudio/services/panel_state.json`);
+    reportWrite(`${PROJECT}/editor/cache/thumbnail/ab/cd/asset-1.png`);
+    expect(service.getStatus()).not.toBeNull();
+  });
 
-    it("ignores a write that failed, because nothing reached the disk", async () => {
-        const service = await createService();
-        service.activate(createContext());
-        vcs.getStatus.mockImplementation(() => ok(status({ clean: true })));
-        await service.refreshStatus();
+  it("ignores a write that failed, because nothing reached the disk", async () => {
+    const service = await createService();
+    service.activate(createContext());
+    vcs.getStatus.mockImplementation(() => ok(status({ clean: true })));
+    await service.refreshStatus();
 
-        reportWrite(`${PROJECT}/editor/story/index.json`, false);
-        expect(service.getStatus()).not.toBeNull();
-    });
+    reportWrite(`${PROJECT}/editor/story/index.json`, false);
+    expect(service.getStatus()).not.toBeNull();
+  });
 });
 
 describe("VersionControlService history and blobs", () => {
-    it("caches history per limit and drops a failed read", async () => {
-        const service = await createService();
-        vcs.getHistory.mockImplementation(() => ok({ entries: [{ revision: "aa", number: 1, parents: [] }] }));
+  it("caches history per limit and drops a failed read", async () => {
+    const service = await createService();
+    vcs.getHistory.mockImplementation(() =>
+      ok({ entries: [{ revision: "aa", number: 1, parents: [] }] })
+    );
 
-        await service.getHistory(10);
-        await service.getHistory(10);
-        expect(vcs.getHistory).toHaveBeenCalledTimes(1);
+    await service.getHistory(10);
+    await service.getHistory(10);
+    expect(vcs.getHistory).toHaveBeenCalledTimes(1);
 
-        // A different page is a different question.
-        await service.getHistory(0);
-        expect(vcs.getHistory).toHaveBeenCalledTimes(2);
+    // A different page is a different question.
+    await service.getHistory(0);
+    expect(vcs.getHistory).toHaveBeenCalledTimes(2);
 
-        service.invalidateHistory();
-        await service.getHistory(10);
-        expect(vcs.getHistory).toHaveBeenCalledTimes(3);
-    });
+    service.invalidateHistory();
+    await service.getHistory(10);
+    expect(vcs.getHistory).toHaveBeenCalledTimes(3);
+  });
 
-    it("decodes blob bytes and refuses to fake an empty file", async () => {
-        const service = await createService();
-        vcs.readBlob.mockImplementation(() => ok({ contentBase64: "AAECf/8=" }));
+  it("decodes blob bytes and refuses to fake an empty file", async () => {
+    const service = await createService();
+    vcs.readBlob.mockImplementation(() => ok({ contentBase64: "AAECf/8=" }));
 
-        await expect(service.readBlob("rev", "a.png")).resolves.toEqual(new Uint8Array([0, 1, 2, 127, 255]));
+    await expect(service.readBlob("rev", "a.png")).resolves.toEqual(
+      new Uint8Array([0, 1, 2, 127, 255])
+    );
 
-        vcs.readBlob.mockImplementation(() => Promise.resolve({ success: false, error: "no such revision" }));
-        await expect(service.readBlob("rev", "a.png")).rejects.toThrow("no such revision");
-    });
+    vcs.readBlob.mockImplementation(() =>
+      Promise.resolve({ success: false, error: "no such revision" })
+    );
+    await expect(service.readBlob("rev", "a.png")).rejects.toThrow("no such revision");
+  });
 });
 
 describe("VersionControlService init", () => {
-    it("returns the new repository and drops everything cached from before it existed", async () => {
-        const service = await createService();
-        vcs.getStatus.mockImplementation(() => ok(status()));
-        vcs.getHistory.mockImplementation(() => ok({ entries: [] }));
-        vcs.initRepository.mockImplementation(() => ok({
-            root: PROJECT,
-            repositoryId: "ff",
-            head: "aa",
-            headNumber: 1,
-            branch: "main",
-        }));
+  it("returns the new repository and drops everything cached from before it existed", async () => {
+    const service = await createService();
+    vcs.getStatus.mockImplementation(() => ok(status()));
+    vcs.getHistory.mockImplementation(() => ok({ entries: [] }));
+    vcs.initRepository.mockImplementation(() =>
+      ok({
+        root: PROJECT,
+        repositoryId: "ff",
+        head: "aa",
+        headNumber: 1,
+        branch: "main"
+      })
+    );
 
-        await service.refreshStatus();
-        await service.getHistory(10);
+    await service.refreshStatus();
+    await service.getHistory(10);
 
-        const info = await service.initRepository({ message: "Enable version control" });
+    const info = await service.initRepository({ message: "Enable version control" });
 
-        expect(vcs.initRepository).toHaveBeenCalledWith(PROJECT, { message: "Enable version control" });
-        expect(info.repositoryId).toBe("ff");
-        expect(service.getStatus()).toBeNull();
-        await service.getHistory(10);
-        expect(vcs.getHistory).toHaveBeenCalledTimes(2);
-    });
+    expect(vcs.initRepository).toHaveBeenCalledWith(PROJECT, { message: "Enable version control" });
+    expect(info.repositoryId).toBe("ff");
+    expect(service.getStatus()).toBeNull();
+    await service.getHistory(10);
+    expect(vcs.getHistory).toHaveBeenCalledTimes(2);
+  });
 
-    it("reports a refused init to the caller", async () => {
-        const service = await createService();
-        vcs.initRepository.mockImplementation(() =>
-            Promise.resolve({ success: false, error: `${PROJECT} is already under version control` }));
+  it("reports a refused init to the caller", async () => {
+    const service = await createService();
+    vcs.initRepository.mockImplementation(() =>
+      Promise.resolve({ success: false, error: `${PROJECT} is already under version control` })
+    );
 
-        await expect(service.initRepository()).rejects.toThrow("already under version control");
-    });
+    await expect(service.initRepository()).rejects.toThrow("already under version control");
+  });
 });
 
 /**
@@ -444,229 +480,238 @@ describe("VersionControlService init", () => {
  * waited fifteen real minutes is a test nobody runs.
  */
 describe("CheckpointScheduler", () => {
-    const MINUTE = 60_000;
+  const MINUTE = 60_000;
 
-    function scheduler(overrides: Partial<CheckpointSchedulerDeps> = {}) {
-        const checkpoint = vi.fn(() => Promise.resolve(null));
-        const state = { minutes: 15, frozen: false, time: 1_000_000 };
-        const instance = new CheckpointScheduler({
-            intervalMinutes: () => state.minutes,
-            // The real predicate's shape, spelled out rather than imported: a test that
-            // silently changes meaning when the exclusion table changes is worse than one
-            // that has to be updated with it.
-            counts: (path) => !path.includes("/editor/cache/") && !path.includes("/.nlstudio/"),
-            isFrozen: () => state.frozen,
-            checkpoint,
-            observeWrites: (observer) => {
-                writeObservers.add(observer);
-                return () => {
-                    writeObservers.delete(observer);
-                };
-            },
-            now: () => state.time,
-            // Captured and never fired on its own: a real interval would make these tests
-            // depend on wall-clock time for no gain.
-            heartbeat: () => () => undefined,
-            onError: () => undefined,
-            ...overrides,
-        });
-        instance.start();
-        return { instance, checkpoint, state };
-    }
+  function scheduler(overrides: Partial<CheckpointSchedulerDeps> = {}) {
+    const checkpoint = vi.fn(() => Promise.resolve(null));
+    const state = { minutes: 15, frozen: false, time: 1_000_000 };
+    const instance = new CheckpointScheduler({
+      intervalMinutes: () => state.minutes,
+      // The real predicate's shape, spelled out rather than imported: a test that
+      // silently changes meaning when the exclusion table changes is worse than one
+      // that has to be updated with it.
+      counts: (path) => !path.includes("/editor/cache/") && !path.includes("/.nlstudio/"),
+      isFrozen: () => state.frozen,
+      checkpoint,
+      observeWrites: (observer) => {
+        writeObservers.add(observer);
+        return () => {
+          writeObservers.delete(observer);
+        };
+      },
+      now: () => state.time,
+      // Captured and never fired on its own: a real interval would make these tests
+      // depend on wall-clock time for no gain.
+      heartbeat: () => () => undefined,
+      onError: () => undefined,
+      ...overrides
+    });
+    instance.start();
+    return { instance, checkpoint, state };
+  }
 
-    it("does not fire without a versioned write, however long it waits", async () => {
-        const { instance, checkpoint, state } = scheduler();
+  it("does not fire without a versioned write, however long it waits", async () => {
+    const { instance, checkpoint, state } = scheduler();
 
-        state.time += 60 * MINUTE;
-        await instance.tick();
+    state.time += 60 * MINUTE;
+    await instance.tick();
 
-        // The whole design in one assertion: with no write there is nothing to record,
-        // and the other way of finding out - asking the backend what changed - is a scan,
-        // which records newly discovered directories into staged state and makes a later
-        // tick report deletions the author never made (docs §4.17).
-        expect(checkpoint).not.toHaveBeenCalled();
-        expect(instance.hasUnrecordedChanges()).toBe(false);
+    // The whole design in one assertion: with no write there is nothing to record,
+    // and the other way of finding out - asking the backend what changed - is a scan,
+    // which records newly discovered directories into staged state and makes a later
+    // tick report deletions the author never made (docs §4.17).
+    expect(checkpoint).not.toHaveBeenCalled();
+    expect(instance.hasUnrecordedChanges()).toBe(false);
+  });
+
+  it("fires once the interval has passed since the first unrecorded write", async () => {
+    const { instance, checkpoint, state } = scheduler();
+
+    reportWrite(`${PROJECT}/editor/story/index.json`);
+    expect(instance.hasUnrecordedChanges()).toBe(true);
+
+    // Not yet: the interval is a floor on the gap, so an author who typed a moment
+    // ago is not interrupted a moment later.
+    state.time += 14 * MINUTE;
+    await instance.tick();
+    expect(checkpoint).not.toHaveBeenCalled();
+
+    state.time += 2 * MINUTE;
+    await instance.tick();
+    expect(checkpoint).toHaveBeenCalledTimes(1);
+
+    // And having recorded it, it does not go on recording nothing every interval.
+    state.time += 60 * MINUTE;
+    await instance.tick();
+    expect(checkpoint).toHaveBeenCalledTimes(1);
+    expect(instance.hasUnrecordedChanges()).toBe(false);
+  });
+
+  it("never fires when the interval is 0, which is how an author turns it off", async () => {
+    const { instance, checkpoint, state } = scheduler();
+    state.minutes = 0;
+
+    reportWrite(`${PROJECT}/editor/story/index.json`);
+    state.time += 60 * MINUTE;
+    await instance.tick();
+
+    expect(checkpoint).not.toHaveBeenCalled();
+  });
+
+  it("does not count a write to a path the repository excludes", async () => {
+    const { instance, checkpoint, state } = scheduler();
+
+    // Thumbnails are rewritten constantly while Studio runs. If these counted, the
+    // "only when something changed" rule would be satisfied permanently and every
+    // interval would produce a revision recording nothing the author did.
+    reportWrite(`${PROJECT}/editor/cache/thumbnail/ab/cd/y.png`);
+    reportWrite(`${PROJECT}/.nlstudio/services/panel_state.json`);
+    state.time += 60 * MINUTE;
+    await instance.tick();
+
+    expect(checkpoint).not.toHaveBeenCalled();
+    expect(instance.hasUnrecordedChanges()).toBe(false);
+  });
+
+  it("does not count a write that failed", async () => {
+    const { instance, checkpoint, state } = scheduler();
+
+    reportWrite(`${PROJECT}/editor/story/index.json`, false);
+    state.time += 60 * MINUTE;
+    await instance.tick();
+
+    expect(checkpoint).not.toHaveBeenCalled();
+  });
+
+  it("does not fire while the workspace is frozen, even with a change waiting", async () => {
+    const { instance, checkpoint, state } = scheduler();
+
+    reportWrite(`${PROJECT}/editor/story/index.json`);
+    state.time += 60 * MINUTE;
+    state.frozen = true;
+    await instance.tick();
+
+    // This guard is NOT redundant with the write latch. A frozen workspace cannot
+    // produce a versioned write - the latch refuses it before it is ever reported -
+    // so the flag can only have been set BEFORE the freeze. Without the check, an
+    // author who edits and then opens a past revision gets a checkpoint appended to
+    // their timeline for the act of reading history.
+    expect(checkpoint).not.toHaveBeenCalled();
+    // And the change is still owed, so thawing does not lose it.
+    expect(instance.hasUnrecordedChanges()).toBe(true);
+
+    state.frozen = false;
+    await instance.tick();
+    expect(checkpoint).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the change owed when a checkpoint fails, so the next beat retries", async () => {
+    const failing = vi.fn(() => Promise.reject(new Error("disk full")));
+    const errors: unknown[] = [];
+    const { instance, state } = scheduler({
+      checkpoint: failing,
+      onError: (error) => errors.push(error)
     });
 
-    it("fires once the interval has passed since the first unrecorded write", async () => {
-        const { instance, checkpoint, state } = scheduler();
+    reportWrite(`${PROJECT}/editor/story/index.json`);
+    state.time += 20 * MINUTE;
+    await instance.tick();
 
-        reportWrite(`${PROJECT}/editor/story/index.json`);
-        expect(instance.hasUnrecordedChanges()).toBe(true);
+    expect(failing).toHaveBeenCalledTimes(1);
+    expect(errors).toHaveLength(1);
+    expect(instance.hasUnrecordedChanges()).toBe(true);
+  });
 
-        // Not yet: the interval is a floor on the gap, so an author who typed a moment
-        // ago is not interrupted a moment later.
-        state.time += 14 * MINUTE;
-        await instance.tick();
-        expect(checkpoint).not.toHaveBeenCalled();
+  it("stops noticing writes once stopped", async () => {
+    const { instance, checkpoint, state } = scheduler();
+    instance.stop();
 
-        state.time += 2 * MINUTE;
-        await instance.tick();
-        expect(checkpoint).toHaveBeenCalledTimes(1);
+    reportWrite(`${PROJECT}/editor/story/index.json`);
+    state.time += 60 * MINUTE;
+    await instance.tick();
 
-        // And having recorded it, it does not go on recording nothing every interval.
-        state.time += 60 * MINUTE;
-        await instance.tick();
-        expect(checkpoint).toHaveBeenCalledTimes(1);
-        expect(instance.hasUnrecordedChanges()).toBe(false);
-    });
-
-    it("never fires when the interval is 0, which is how an author turns it off", async () => {
-        const { instance, checkpoint, state } = scheduler();
-        state.minutes = 0;
-
-        reportWrite(`${PROJECT}/editor/story/index.json`);
-        state.time += 60 * MINUTE;
-        await instance.tick();
-
-        expect(checkpoint).not.toHaveBeenCalled();
-    });
-
-    it("does not count a write to a path the repository excludes", async () => {
-        const { instance, checkpoint, state } = scheduler();
-
-        // Thumbnails are rewritten constantly while Studio runs. If these counted, the
-        // "only when something changed" rule would be satisfied permanently and every
-        // interval would produce a revision recording nothing the author did.
-        reportWrite(`${PROJECT}/editor/cache/thumbnail/ab/cd/y.png`);
-        reportWrite(`${PROJECT}/.nlstudio/services/panel_state.json`);
-        state.time += 60 * MINUTE;
-        await instance.tick();
-
-        expect(checkpoint).not.toHaveBeenCalled();
-        expect(instance.hasUnrecordedChanges()).toBe(false);
-    });
-
-    it("does not count a write that failed", async () => {
-        const { instance, checkpoint, state } = scheduler();
-
-        reportWrite(`${PROJECT}/editor/story/index.json`, false);
-        state.time += 60 * MINUTE;
-        await instance.tick();
-
-        expect(checkpoint).not.toHaveBeenCalled();
-    });
-
-    it("does not fire while the workspace is frozen, even with a change waiting", async () => {
-        const { instance, checkpoint, state } = scheduler();
-
-        reportWrite(`${PROJECT}/editor/story/index.json`);
-        state.time += 60 * MINUTE;
-        state.frozen = true;
-        await instance.tick();
-
-        // This guard is NOT redundant with the write latch. A frozen workspace cannot
-        // produce a versioned write - the latch refuses it before it is ever reported -
-        // so the flag can only have been set BEFORE the freeze. Without the check, an
-        // author who edits and then opens a past revision gets a checkpoint appended to
-        // their timeline for the act of reading history.
-        expect(checkpoint).not.toHaveBeenCalled();
-        // And the change is still owed, so thawing does not lose it.
-        expect(instance.hasUnrecordedChanges()).toBe(true);
-
-        state.frozen = false;
-        await instance.tick();
-        expect(checkpoint).toHaveBeenCalledTimes(1);
-    });
-
-    it("keeps the change owed when a checkpoint fails, so the next beat retries", async () => {
-        const failing = vi.fn(() => Promise.reject(new Error("disk full")));
-        const errors: unknown[] = [];
-        const { instance, state } = scheduler({ checkpoint: failing, onError: (error) => errors.push(error) });
-
-        reportWrite(`${PROJECT}/editor/story/index.json`);
-        state.time += 20 * MINUTE;
-        await instance.tick();
-
-        expect(failing).toHaveBeenCalledTimes(1);
-        expect(errors).toHaveLength(1);
-        expect(instance.hasUnrecordedChanges()).toBe(true);
-    });
-
-    it("stops noticing writes once stopped", async () => {
-        const { instance, checkpoint, state } = scheduler();
-        instance.stop();
-
-        reportWrite(`${PROJECT}/editor/story/index.json`);
-        state.time += 60 * MINUTE;
-        await instance.tick();
-
-        expect(checkpoint).not.toHaveBeenCalled();
-    });
+    expect(checkpoint).not.toHaveBeenCalled();
+  });
 });
 
 describe("VersionControlService commit", () => {
-    it("reports the new revision and drops what it made stale", async () => {
-        const service = await createService();
-        vcs.getStatus.mockImplementation(() => ok(status()));
-        vcs.getHistory.mockImplementation(() => ok({ entries: [] }));
-        vcs.commit.mockImplementation(() => ok(commitResult()));
+  it("reports the new revision and drops what it made stale", async () => {
+    const service = await createService();
+    vcs.getStatus.mockImplementation(() => ok(status()));
+    vcs.getHistory.mockImplementation(() => ok({ entries: [] }));
+    vcs.commit.mockImplementation(() => ok(commitResult()));
 
-        await service.refreshStatus();
-        await service.getHistory(10);
+    await service.refreshStatus();
+    await service.getHistory(10);
 
-        const result = await service.commit({ message: "Act one" });
+    const result = await service.commit({ message: "Act one" });
 
-        expect(vcs.commit).toHaveBeenCalledWith(PROJECT, { message: "Act one" });
-        expect(result).toEqual(commitResult());
-        // The snapshot described a tree with uncommitted changes in it, and every cached
-        // page is now one entry short.
-        expect(service.getStatus()).toBeNull();
-        await service.getHistory(10);
-        expect(vcs.getHistory).toHaveBeenCalledTimes(2);
-    });
+    expect(vcs.commit).toHaveBeenCalledWith(PROJECT, { message: "Act one" });
+    expect(result).toEqual(commitResult());
+    // The snapshot described a tree with uncommitted changes in it, and every cached
+    // page is now one entry short.
+    expect(service.getStatus()).toBeNull();
+    await service.getHistory(10);
+    expect(vcs.getHistory).toHaveBeenCalledTimes(2);
+  });
 
-    it("gives the author the failure, including nothing-has-changed", async () => {
-        const service = await createService();
-        vcs.commit.mockImplementation(() =>
-            Promise.resolve({ success: false, error: `Nothing has changed in ${PROJECT} since the last revision` }));
+  it("gives the author the failure, including nothing-has-changed", async () => {
+    const service = await createService();
+    vcs.commit.mockImplementation(() =>
+      Promise.resolve({
+        success: false,
+        error: `Nothing has changed in ${PROJECT} since the last revision`
+      })
+    );
 
-        await expect(service.commit()).rejects.toThrow("Nothing has changed");
-    });
+    await expect(service.commit()).rejects.toThrow("Nothing has changed");
+  });
 
-    it("refuses on a host with no backend instead of resolving quietly", async () => {
-        const service = await createService({ available: false, reason: "unsupported-platform" });
+  it("refuses on a host with no backend instead of resolving quietly", async () => {
+    const service = await createService({ available: false, reason: "unsupported-platform" });
 
-        await expect(service.commit()).rejects.toThrow("unsupported-platform");
-        expect(vcs.commit).not.toHaveBeenCalled();
-    });
+    await expect(service.commit()).rejects.toThrow("unsupported-platform");
+    expect(vcs.commit).not.toHaveBeenCalled();
+  });
 
-    it("treats a checkpoint with nothing to record as a non-event", async () => {
-        const service = await createService();
-        vcs.getHistory.mockImplementation(() => ok({ entries: [{ revision: "aa", number: 1, parents: [] }] }));
-        vcs.checkpoint.mockImplementation(() => ok({ revision: null }));
+  it("treats a checkpoint with nothing to record as a non-event", async () => {
+    const service = await createService();
+    vcs.getHistory.mockImplementation(() =>
+      ok({ entries: [{ revision: "aa", number: 1, parents: [] }] })
+    );
+    vcs.checkpoint.mockImplementation(() => ok({ revision: null }));
 
-        await service.getHistory(5);
-        await expect(service.createCheckpoint("interval")).resolves.toBeNull();
+    await service.getHistory(5);
+    await expect(service.createCheckpoint("interval")).resolves.toBeNull();
 
-        // Nothing was recorded, so nothing cached became wrong - re-reading must not cost
-        // another round trip just because a timer went off.
-        await service.getHistory(5);
-        expect(vcs.getHistory).toHaveBeenCalledTimes(1);
-    });
+    // Nothing was recorded, so nothing cached became wrong - re-reading must not cost
+    // another round trip just because a timer went off.
+    await service.getHistory(5);
+    expect(vcs.getHistory).toHaveBeenCalledTimes(1);
+  });
 
-    it("invalidates history when a checkpoint does record something", async () => {
-        const service = await createService();
-        vcs.getHistory.mockImplementation(() => ok({ entries: [] }));
-        vcs.checkpoint.mockImplementation(() => ok({ revision: commitResult({ kind: "checkpoint" }) }));
+  it("invalidates history when a checkpoint does record something", async () => {
+    const service = await createService();
+    vcs.getHistory.mockImplementation(() => ok({ entries: [] }));
+    vcs.checkpoint.mockImplementation(() => ok({ revision: commitResult({ kind: "checkpoint" }) }));
 
-        await service.getHistory(5);
-        const result = await service.createCheckpoint("build");
+    await service.getHistory(5);
+    const result = await service.createCheckpoint("build");
 
-        expect(result?.kind).toBe("checkpoint");
-        expect(vcs.checkpoint).toHaveBeenCalledWith(PROJECT, "build");
-        await service.getHistory(5);
-        expect(vcs.getHistory).toHaveBeenCalledTimes(2);
-    });
+    expect(result?.kind).toBe("checkpoint");
+    expect(vcs.checkpoint).toHaveBeenCalledWith(PROJECT, "build");
+    await service.getHistory(5);
+    expect(vcs.getHistory).toHaveBeenCalledTimes(2);
+  });
 
-    it("answers null for a checkpoint on a host with no backend, without asking", async () => {
-        const service = await createService({ available: false, reason: "backend-missing" });
+  it("answers null for a checkpoint on a host with no backend, without asking", async () => {
+    const service = await createService({ available: false, reason: "backend-missing" });
 
-        // Automatic, so an unavailable backend is not something to report - it would be
-        // reported every interval for the rest of the session.
-        await expect(service.createCheckpoint("interval")).resolves.toBeNull();
-        expect(vcs.checkpoint).not.toHaveBeenCalled();
-    });
+    // Automatic, so an unavailable backend is not something to report - it would be
+    // reported every interval for the rest of the session.
+    await expect(service.createCheckpoint("interval")).resolves.toBeNull();
+    expect(vcs.checkpoint).not.toHaveBeenCalled();
+  });
 });
 
 /**
@@ -675,136 +720,148 @@ describe("VersionControlService commit", () => {
  * rail left it on `#3` beside a status-bar cell still reading `#2`.
  */
 describe("VersionControlService revision announcements", () => {
-    it("announces every revision, whoever caused it", async () => {
-        const service = await createService();
-        vcs.commit.mockImplementation(() => ok(commitResult()));
-        vcs.checkpoint.mockImplementation(() => ok({ revision: commitResult({ kind: "checkpoint" }) }));
-        vcs.initRepository.mockImplementation(() => ok({
-            root: PROJECT,
-            repositoryId: "ff",
-            head: "aa",
-            headNumber: 1,
-            branch: "main",
-        }));
+  it("announces every revision, whoever caused it", async () => {
+    const service = await createService();
+    vcs.commit.mockImplementation(() => ok(commitResult()));
+    vcs.checkpoint.mockImplementation(() => ok({ revision: commitResult({ kind: "checkpoint" }) }));
+    vcs.initRepository.mockImplementation(() =>
+      ok({
+        root: PROJECT,
+        repositoryId: "ff",
+        head: "aa",
+        headNumber: 1,
+        branch: "main"
+      })
+    );
 
-        const seen: string[] = [];
-        const stop = service.onRevisionRecorded(() => seen.push("recorded"));
+    const seen: string[] = [];
+    const stop = service.onRevisionRecorded(() => seen.push("recorded"));
 
-        await service.initRepository();
-        await service.commit({ message: "Act one" });
-        // The one nobody pressed a button for, and therefore the one with no other moment at
-        // which a surface would think to look.
-        await service.createCheckpoint("interval");
+    await service.initRepository();
+    await service.commit({ message: "Act one" });
+    // The one nobody pressed a button for, and therefore the one with no other moment at
+    // which a surface would think to look.
+    await service.createCheckpoint("interval");
 
-        expect(seen).toHaveLength(3);
-        stop();
-        await service.commit({ message: "Act two" });
-        expect(seen).toHaveLength(3);
+    expect(seen).toHaveLength(3);
+    stop();
+    await service.commit({ message: "Act two" });
+    expect(seen).toHaveLength(3);
+  });
+
+  it("says nothing when a checkpoint had nothing to record", async () => {
+    const service = await createService();
+    vcs.checkpoint.mockImplementation(() => ok({ revision: null }));
+
+    let announced = 0;
+    service.onRevisionRecorded(() => {
+      announced += 1;
     });
+    await service.createCheckpoint("interval");
 
-    it("says nothing when a checkpoint had nothing to record", async () => {
-        const service = await createService();
-        vcs.checkpoint.mockImplementation(() => ok({ revision: null }));
+    // No revision exists that did not before, so every surface is still right and re-reading
+    // the head would be work the interval timer caused for nothing.
+    expect(announced).toBe(0);
+  });
 
-        let announced = 0;
-        service.onRevisionRecorded(() => { announced += 1; });
-        await service.createCheckpoint("interval");
+  it("is not a status signal - it never makes anything scan", async () => {
+    const service = await createService();
+    vcs.commit.mockImplementation(() => ok(commitResult()));
 
-        // No revision exists that did not before, so every surface is still right and re-reading
-        // the head would be work the interval timer caused for nothing.
-        expect(announced).toBe(0);
+    service.onRevisionRecorded(() => {
+      /* a surface re-reading its identity */
     });
+    await service.commit();
 
-    it("is not a status signal - it never makes anything scan", async () => {
-        const service = await createService();
-        vcs.commit.mockImplementation(() => ok(commitResult()));
-
-        service.onRevisionRecorded(() => { /* a surface re-reading its identity */ });
-        await service.commit();
-
-        expect(vcs.getStatus).not.toHaveBeenCalled();
-        // And the snapshot is dropped rather than refreshed: null is "nobody has looked", which
-        // is the honest answer until someone asks (docs/version-control.md §4.17).
-        expect(service.getStatus()).toBeNull();
-    });
+    expect(vcs.getStatus).not.toHaveBeenCalled();
+    // And the snapshot is dropped rather than refreshed: null is "nobody has looked", which
+    // is the honest answer until someone asks (docs/version-control.md §4.17).
+    expect(service.getStatus()).toBeNull();
+  });
 });
 
 describe("VersionControlService history kinds", () => {
-    it("asks for kinds only when told to, and caches the two answers apart", async () => {
-        const service = await createService();
-        vcs.getHistory.mockImplementation((_project: string, _limit: number, includeDetails?: boolean) =>
-            ok({ entries: [{ revision: "aa", number: 1, parents: [], kind: includeDetails ? "commit" : undefined }] }));
+  it("asks for kinds only when told to, and caches the two answers apart", async () => {
+    const service = await createService();
+    vcs.getHistory.mockImplementation(
+      (_project: string, _limit: number, includeDetails?: boolean) =>
+        ok({
+          entries: [
+            { revision: "aa", number: 1, parents: [], kind: includeDetails ? "commit" : undefined }
+          ]
+        })
+    );
 
-        const plain = await service.getHistory(10);
-        expect(plain[0].kind).toBeUndefined();
-        expect(vcs.getHistory).toHaveBeenLastCalledWith(PROJECT, 10, false);
+    const plain = await service.getHistory(10);
+    expect(plain[0].kind).toBeUndefined();
+    expect(vcs.getHistory).toHaveBeenLastCalledWith(PROJECT, 10, false);
 
-        // A different question, not a filter on the same answer: the plain page never read
-        // the kinds, so it cannot be used to answer this one.
-        const kinds = await service.getHistory(10, { includeDetails: true });
-        expect(kinds[0].kind).toBe("commit");
-        expect(vcs.getHistory).toHaveBeenLastCalledWith(PROJECT, 10, true);
-        expect(vcs.getHistory).toHaveBeenCalledTimes(2);
+    // A different question, not a filter on the same answer: the plain page never read
+    // the kinds, so it cannot be used to answer this one.
+    const kinds = await service.getHistory(10, { includeDetails: true });
+    expect(kinds[0].kind).toBe("commit");
+    expect(vcs.getHistory).toHaveBeenLastCalledWith(PROJECT, 10, true);
+    expect(vcs.getHistory).toHaveBeenCalledTimes(2);
 
-        await service.getHistory(10, { includeDetails: true });
-        expect(vcs.getHistory).toHaveBeenCalledTimes(2);
-    });
+    await service.getHistory(10, { includeDetails: true });
+    expect(vcs.getHistory).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("VersionControlService checkpoint wiring", () => {
-    it("counts a project write and ignores an excluded one, using the real predicate", async () => {
-        const service = await createService();
-        service.activate(service.getContext());
+  it("counts a project write and ignores an excluded one, using the real predicate", async () => {
+    const service = await createService();
+    service.activate(service.getContext());
 
-        try {
-            // Not this test's own copy of the policy: it goes through the same
-            // `isVersioned` that the freeze gate and the repository's ignore file are
-            // generated from, so the set of paths that can trigger a checkpoint is the
-            // set a freeze protects.
-            reportWrite(`${PROJECT}/editor/cache/thumbnail/ab/cd/y.png`);
-            reportWrite(`${PROJECT}/.nlstudio/services/panel_state.json`);
-            reportWrite("D:/elsewhere/notes.txt");
-            expect(service.hasUnrecordedChanges()).toBe(false);
+    try {
+      // Not this test's own copy of the policy: it goes through the same
+      // `isVersioned` that the freeze gate and the repository's ignore file are
+      // generated from, so the set of paths that can trigger a checkpoint is the
+      // set a freeze protects.
+      reportWrite(`${PROJECT}/editor/cache/thumbnail/ab/cd/y.png`);
+      reportWrite(`${PROJECT}/.nlstudio/services/panel_state.json`);
+      reportWrite("D:/elsewhere/notes.txt");
+      expect(service.hasUnrecordedChanges()).toBe(false);
 
-            reportWrite(`${PROJECT}/editor/story/index.json`);
-            expect(service.hasUnrecordedChanges()).toBe(true);
-        } finally {
-            await service.teardown(service.getContext());
-        }
-    });
+      reportWrite(`${PROJECT}/editor/story/index.json`);
+      expect(service.hasUnrecordedChanges()).toBe(true);
+    } finally {
+      await service.teardown(service.getContext());
+    }
+  });
 
-    it("stops watching once the workspace is gone", async () => {
-        const service = await createService();
-        service.activate(service.getContext());
-        await service.teardown(service.getContext());
+  it("stops watching once the workspace is gone", async () => {
+    const service = await createService();
+    service.activate(service.getContext());
+    await service.teardown(service.getContext());
 
-        reportWrite(`${PROJECT}/editor/story/index.json`);
-        expect(service.hasUnrecordedChanges()).toBe(false);
-    });
+    reportWrite(`${PROJECT}/editor/story/index.json`);
+    expect(service.hasUnrecordedChanges()).toBe(false);
+  });
 
-    it("is wired to the real freeze latch, not a copy of it", async () => {
-        const service = await createService();
-        service.activate(service.getContext());
+  it("is wired to the real freeze latch, not a copy of it", async () => {
+    const service = await createService();
+    service.activate(service.getContext());
 
-        try {
-            reportWrite(`${PROJECT}/editor/story/index.json`);
-            expect(service.hasUnrecordedChanges()).toBe(true);
+    try {
+      reportWrite(`${PROJECT}/editor/story/index.json`);
+      expect(service.hasUnrecordedChanges()).toBe(true);
 
-            // The scheduler's guard is unit-tested above against an injected predicate;
-            // this is the other half, that what it is wired to is the module-level latch
-            // the rest of the workspace freezes through.
-            freezeProjectWrites({ projectPath: PROJECT, reason: { kind: "manual" } });
-            vcs.checkpoint.mockImplementation(() => ok({ revision: null }));
-            await service.createCheckpoint("interval");
-            // The service call itself is not gated - a deliberate checkpoint before a
-            // restore has to work - so the assertion is on the latch being visible, which
-            // is what the scheduler reads.
-            expect(getProjectWriteFreeze()).not.toBeNull();
-        } finally {
-            thawProjectWrites();
-            await service.teardown(service.getContext());
-        }
-    });
+      // The scheduler's guard is unit-tested above against an injected predicate;
+      // this is the other half, that what it is wired to is the module-level latch
+      // the rest of the workspace freezes through.
+      freezeProjectWrites({ projectPath: PROJECT, reason: { kind: "manual" } });
+      vcs.checkpoint.mockImplementation(() => ok({ revision: null }));
+      await service.createCheckpoint("interval");
+      // The service call itself is not gated - a deliberate checkpoint before a
+      // restore has to work - so the assertion is on the latch being visible, which
+      // is what the scheduler reads.
+      expect(getProjectWriteFreeze()).not.toBeNull();
+    } finally {
+      thawProjectWrites();
+      await service.teardown(service.getContext());
+    }
+  });
 });
 
 /**
@@ -816,115 +873,115 @@ describe("VersionControlService checkpoint wiring", () => {
  * proves neither.
  */
 function createRestoreHarness(options: { frozen: boolean }) {
-    const trace: string[] = [];
-    let holds = 0;
-    let frozen = options.frozen;
-    const freeze = {
-        holdRelease: () => {
-            holds += 1;
-            trace.push("hold");
-            let released = false;
-            return () => {
-                if (released) return;
-                released = true;
-                holds -= 1;
-                trace.push("release");
-            };
-        },
-        isReleaseHeld: () => holds > 0,
-        isFrozen: () => frozen,
-        // Marked rather than merely recorded: the real service REFUSES while held, so a trace with
-        // this in it is a restore that would have left itself stuck in the history view.
-        thaw: () => {
-            trace.push(holds > 0 ? "thaw-WHILE-HELD" : "thaw");
-            frozen = false;
-        },
-    };
-    const reload = {
-        reload: async (cause: string) => {
-            trace.push(holds > 0 ? `reload-WHILE-HELD:${cause}` : `reload:${cause}`);
-        },
-    };
-    const context = {
-        project: { getConfig: () => ({ projectPath: PROJECT }) },
-        services: {
-            get: (id: string) => {
-                if (id === Services.WorkspaceFreeze) return freeze;
-                if (id === Services.WorkspaceReload) return reload;
-                // Settings included: `init` looks it up inside a try/catch and falls back.
-                throw new Error(`Unexpected service lookup in test: ${id}`);
-            },
-        },
-    } as unknown as WorkspaceContext;
-    return { trace, context, isHeld: () => holds > 0 };
+  const trace: string[] = [];
+  let holds = 0;
+  let frozen = options.frozen;
+  const freeze = {
+    holdRelease: () => {
+      holds += 1;
+      trace.push("hold");
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        holds -= 1;
+        trace.push("release");
+      };
+    },
+    isReleaseHeld: () => holds > 0,
+    isFrozen: () => frozen,
+    // Marked rather than merely recorded: the real service REFUSES while held, so a trace with
+    // this in it is a restore that would have left itself stuck in the history view.
+    thaw: () => {
+      trace.push(holds > 0 ? "thaw-WHILE-HELD" : "thaw");
+      frozen = false;
+    }
+  };
+  const reload = {
+    reload: async (cause: string) => {
+      trace.push(holds > 0 ? `reload-WHILE-HELD:${cause}` : `reload:${cause}`);
+    }
+  };
+  const context = {
+    project: { getConfig: () => ({ projectPath: PROJECT }) },
+    services: {
+      get: (id: string) => {
+        if (id === Services.WorkspaceFreeze) return freeze;
+        if (id === Services.WorkspaceReload) return reload;
+        // Settings included: `init` looks it up inside a try/catch and falls back.
+        throw new Error(`Unexpected service lookup in test: ${id}`);
+      }
+    }
+  } as unknown as WorkspaceContext;
+  return { trace, context, isHeld: () => holds > 0 };
 }
 
 async function createServiceWith(context: WorkspaceContext): Promise<VersionControlService> {
-    vcs.getAvailability.mockResolvedValue({ success: true, data: { available: true } });
-    const service = new VersionControlService();
-    await service.initialize(context, async () => undefined);
-    return service;
+  vcs.getAvailability.mockResolvedValue({ success: true, data: { available: true } });
+  const service = new VersionControlService();
+  await service.initialize(context, async () => undefined);
+  return service;
 }
 
 function restoreResult() {
-    return {
-        from: "aa",
-        checkpoint: commitResult({ revision: "bb", kind: "checkpoint" }),
-        revision: commitResult(),
-        recordFailure: null,
-        filesWritten: 3,
-        filesRemoved: 1,
-    };
+  return {
+    from: "aa",
+    checkpoint: commitResult({ revision: "bb", kind: "checkpoint" }),
+    revision: commitResult(),
+    recordFailure: null,
+    filesWritten: 3,
+    filesRemoved: 1
+  };
 }
 
 describe("VersionControlService restore", () => {
-    /**
-     * The hole this closes: while main rewrites the working tree file by file, the command palette
-     * could reach `showWorkingTree` and re-read a half-written tree into the editors - after which
-     * the next save wrote that hybrid back over the restored files. Nothing told the author.
-     *
-     * The rail's two buttons were already disabled for it; the palette was not, and neither is the
-     * project switcher's menu, which reads its own `useVersionSurface` and cannot know a restore is
-     * running at all. Which is why the gate is a hold on the service rather than a third disabled
-     * control.
-     */
-    it("holds the workspace in its view for the whole rewrite, and lets go before leaving it", async () => {
-        const harness = createRestoreHarness({ frozen: true });
-        const service = await createServiceWith(harness.context);
-        vcs.restoreRevision.mockImplementation(async () => {
-            harness.trace.push(harness.isHeld() ? "rewrite-held" : "rewrite-UNHELD");
-            return { success: true, data: restoreResult() };
-        });
-
-        await service.restoreRevision("aa", { label: "#1" });
-
-        // The release BEFORE the thaw is the half that is easy to get backwards, and getting it
-        // backwards leaves the author in a history view whose way out is refused - by the restore's
-        // own hold - on a working tree that is already the old version.
-        expect(harness.trace).toEqual(["hold", "rewrite-held", "release", "thaw"]);
-        expect(harness.isHeld()).toBe(false);
+  /**
+   * The hole this closes: while main rewrites the working tree file by file, the command palette
+   * could reach `showWorkingTree` and re-read a half-written tree into the editors - after which
+   * the next save wrote that hybrid back over the restored files. Nothing told the author.
+   *
+   * The rail's two buttons were already disabled for it; the palette was not, and neither is the
+   * project switcher's menu, which reads its own `useVersionSurface` and cannot know a restore is
+   * running at all. Which is why the gate is a hold on the service rather than a third disabled
+   * control.
+   */
+  it("holds the workspace in its view for the whole rewrite, and lets go before leaving it", async () => {
+    const harness = createRestoreHarness({ frozen: true });
+    const service = await createServiceWith(harness.context);
+    vcs.restoreRevision.mockImplementation(async () => {
+      harness.trace.push(harness.isHeld() ? "rewrite-held" : "rewrite-UNHELD");
+      return { success: true, data: restoreResult() };
     });
 
-    it("re-reads instead of thawing at HEAD, with the hold already released", async () => {
-        const harness = createRestoreHarness({ frozen: false });
-        const service = await createServiceWith(harness.context);
-        vcs.restoreRevision.mockResolvedValue({ success: true, data: restoreResult() });
+    await service.restoreRevision("aa", { label: "#1" });
 
-        await service.restoreRevision("aa");
+    // The release BEFORE the thaw is the half that is easy to get backwards, and getting it
+    // backwards leaves the author in a history view whose way out is refused - by the restore's
+    // own hold - on a working tree that is already the old version.
+    expect(harness.trace).toEqual(["hold", "rewrite-held", "release", "thaw"]);
+    expect(harness.isHeld()).toBe(false);
+  });
 
-        expect(harness.trace).toEqual(["hold", "release", "reload:restore"]);
-    });
+  it("re-reads instead of thawing at HEAD, with the hold already released", async () => {
+    const harness = createRestoreHarness({ frozen: false });
+    const service = await createServiceWith(harness.context);
+    vcs.restoreRevision.mockResolvedValue({ success: true, data: restoreResult() });
 
-    it("releases the hold when the restore fails, so the workspace is not stuck in its view", async () => {
-        const harness = createRestoreHarness({ frozen: true });
-        const service = await createServiceWith(harness.context);
-        vcs.restoreRevision.mockResolvedValue({ success: false, error: "the backend exploded" });
+    await service.restoreRevision("aa");
 
-        await expect(service.restoreRevision("aa")).rejects.toThrow("the backend exploded");
+    expect(harness.trace).toEqual(["hold", "release", "reload:restore"]);
+  });
 
-        // No thaw: nothing was written, so the view the author was in is still the truth. But the
-        // hold is gone, or leaving it by hand would be refused for the rest of the session.
-        expect(harness.trace).toEqual(["hold", "release"]);
-        expect(harness.isHeld()).toBe(false);
-    });
+  it("releases the hold when the restore fails, so the workspace is not stuck in its view", async () => {
+    const harness = createRestoreHarness({ frozen: true });
+    const service = await createServiceWith(harness.context);
+    vcs.restoreRevision.mockResolvedValue({ success: false, error: "the backend exploded" });
+
+    await expect(service.restoreRevision("aa")).rejects.toThrow("the backend exploded");
+
+    // No thaw: nothing was written, so the view the author was in is still the truth. But the
+    // hold is gone, or leaving it by hand would be refused for the rest of the session.
+    expect(harness.trace).toEqual(["hold", "release"]);
+    expect(harness.isHeld()).toBe(false);
+  });
 });

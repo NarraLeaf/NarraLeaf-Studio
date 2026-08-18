@@ -14,39 +14,42 @@ import type { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/glob
  * a rejected write puts the control back where it belongs rather than leaving it lying.
  */
 export function useGlobalPreference<K extends GlobalStateKeys>(
-    key: K,
-    fallback: GlobalStateValue<K>,
+  key: K,
+  fallback: GlobalStateValue<K>
 ): [GlobalStateValue<K>, (next: GlobalStateValue<K>) => void] {
-    const [value, setValue] = useState<GlobalStateValue<K>>(fallback);
+  const [value, setValue] = useState<GlobalStateValue<K>>(fallback);
 
-    useEffect(() => {
-        let alive = true;
-        void getInterface()
-            .app.state.getGlobalState(key)
-            .then(result => {
-                if (alive && result.success && result.data.value !== undefined) {
-                    setValue(result.data.value as GlobalStateValue<K>);
-                }
-            })
-            .catch(() => undefined);
+  useEffect(() => {
+    let alive = true;
+    void getInterface()
+      .app.state.getGlobalState(key)
+      .then((result) => {
+        if (alive && result.success && result.data.value !== undefined) {
+          setValue(result.data.value as GlobalStateValue<K>);
+        }
+      })
+      .catch(() => undefined);
 
-        const token = getInterface().app.state.onGlobalStateChanged?.(change => {
-            if (change.key === key) {
-                // An unset key broadcasts `undefined`; every reader resolves that to its default.
-                setValue((change.value ?? fallback) as GlobalStateValue<K>);
-            }
-        });
+    const token = getInterface().app.state.onGlobalStateChanged?.((change) => {
+      if (change.key === key) {
+        // An unset key broadcasts `undefined`; every reader resolves that to its default.
+        setValue((change.value ?? fallback) as GlobalStateValue<K>);
+      }
+    });
 
-        return () => {
-            alive = false;
-            token?.cancel();
-        };
-    }, [key, fallback]);
+    return () => {
+      alive = false;
+      token?.cancel();
+    };
+  }, [key, fallback]);
 
-    const write = useCallback((next: GlobalStateValue<K>) => {
-        setValue(next);
-        void getInterface().app.state.setGlobalState(key, next);
-    }, [key]);
+  const write = useCallback(
+    (next: GlobalStateValue<K>) => {
+      setValue(next);
+      void getInterface().app.state.setGlobalState(key, next);
+    },
+    [key]
+  );
 
-    return [value, write];
+  return [value, write];
 }

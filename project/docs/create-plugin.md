@@ -72,43 +72,43 @@ my-plugin/
 
 Manifest 字段：
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `manifestVersion` | `2` | 必须是 `2`。 |
-| `id` | `string` | 必须是小写命名空间 ID，例如 `publisher.plugin-name`。 |
-| `name` | `string` | 插件名称。 |
-| `version` | `string` | `x.y.z` 格式，可带 prerelease/build 后缀。 |
-| `publisher` | `string` | 可选。 |
-| `description` | `string` | 可选。 |
-| `entries` | `{ studio?: string; runtime?: string }` | 至少声明一个 target；每个值必须是包内相对路径。未知 key 会被拒绝。 |
-| `contributes` | 见下 | 插件声明的一切。**这是插件能力的唯一真相源**——安装权限从它派生，运行时 API 按它门控。 |
-| `permissions` | `PluginInstallPermission[]` | 可选，默认 `[]`。**只能手写 `filesystem` 与 `api` 两种**（studio 入口的特权控制）；`runtime` / `sidecar` / `buildDependency` 三种由 `contributes` 派生，手写会被判为清单错误。 |
+| 字段              | 类型                                    | 说明                                                                                                                                                                           |
+| ----------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `manifestVersion` | `2`                                     | 必须是 `2`。                                                                                                                                                                   |
+| `id`              | `string`                                | 必须是小写命名空间 ID，例如 `publisher.plugin-name`。                                                                                                                          |
+| `name`            | `string`                                | 插件名称。                                                                                                                                                                     |
+| `version`         | `string`                                | `x.y.z` 格式，可带 prerelease/build 后缀。                                                                                                                                     |
+| `publisher`       | `string`                                | 可选。                                                                                                                                                                         |
+| `description`     | `string`                                | 可选。                                                                                                                                                                         |
+| `entries`         | `{ studio?: string; runtime?: string }` | 至少声明一个 target；每个值必须是包内相对路径。未知 key 会被拒绝。                                                                                                             |
+| `contributes`     | 见下                                    | 插件声明的一切。**这是插件能力的唯一真相源**——安装权限从它派生，运行时 API 按它门控。                                                                                          |
+| `permissions`     | `PluginInstallPermission[]`             | 可选，默认 `[]`。**只能手写 `filesystem` 与 `api` 两种**（studio 入口的特权控制）；`runtime` / `sidecar` / `buildDependency` 三种由 `contributes` 派生，手写会被判为清单错误。 |
 
 `contributes` 的九个键：
 
-| 键 | 类型 | 说明 |
-|---|---|---|
-| `blueprintNodes` | `string[]` | 蓝图节点 type（必须以插件 ID 为前缀）。注册未声明的类型会抛错。 |
-| `widgets` | `string[]` | widget type，同上。 |
-| `runtimeData` | `string[]` | 随游戏发布的插件存储命名空间，runtime 侧 `app.game.data.readJson` 只能读这里列出的。 |
-| `tests` | `string[]` | 插件向 `app.services.tests` 注册的测试 id（必须以插件 ID 为前缀）。注册未声明的 id 会抛错。**不派生安装权限**：测试只在作者从 Run ▸ Test 里挑中并启动时才跑。 |
-| `locales` | `PluginLocaleContribution[]` | Studio 界面语言包。 |
-| `runtimeCapabilities` | `PluginRuntimeCapability[]` | runtime 入口要用的能力域，九选若干：`store` / `events` / `state.read` / `state.write` / `saves.read` / `saves.write` / `ui.overlay` / `assets` / `locale`。**未声明的域在 `app.game` 上不存在**（不是抛错的桩）。 |
-| `sidecars` | `PluginSidecarContribution[]` | 随作者的游戏附带并运行的原生子进程。声明它本身就是权限请求，无需再声明能力。 |
-| `buildDependencies` | `PluginBuildDependencyContribution[]` | 构建时下载/校验/缓存的外部二进制。 |
-| `buildConfig` | `PluginBuildConfigFieldContribution[]` | 构建前需要作者填写的值（如 Steam App ID）。**只能在 manifest 里静态声明，没有运行时注册 API**——构建过程中不执行任何插件代码。**不派生安装权限**：声明一个字段只是多一个待填的空格，插件不会因此获得任何能力。 |
+| 键                    | 类型                                   | 说明                                                                                                                                                                                                              |
+| --------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `blueprintNodes`      | `string[]`                             | 蓝图节点 type（必须以插件 ID 为前缀）。注册未声明的类型会抛错。                                                                                                                                                   |
+| `widgets`             | `string[]`                             | widget type，同上。                                                                                                                                                                                               |
+| `runtimeData`         | `string[]`                             | 随游戏发布的插件存储命名空间，runtime 侧 `app.game.data.readJson` 只能读这里列出的。                                                                                                                              |
+| `tests`               | `string[]`                             | 插件向 `app.services.tests` 注册的测试 id（必须以插件 ID 为前缀）。注册未声明的 id 会抛错。**不派生安装权限**：测试只在作者从 Run ▸ Test 里挑中并启动时才跑。                                                     |
+| `locales`             | `PluginLocaleContribution[]`           | Studio 界面语言包。                                                                                                                                                                                               |
+| `runtimeCapabilities` | `PluginRuntimeCapability[]`            | runtime 入口要用的能力域，九选若干：`store` / `events` / `state.read` / `state.write` / `saves.read` / `saves.write` / `ui.overlay` / `assets` / `locale`。**未声明的域在 `app.game` 上不存在**（不是抛错的桩）。 |
+| `sidecars`            | `PluginSidecarContribution[]`          | 随作者的游戏附带并运行的原生子进程。声明它本身就是权限请求，无需再声明能力。                                                                                                                                      |
+| `buildDependencies`   | `PluginBuildDependencyContribution[]`  | 构建时下载/校验/缓存的外部二进制。                                                                                                                                                                                |
+| `buildConfig`         | `PluginBuildConfigFieldContribution[]` | 构建前需要作者填写的值（如 Steam App ID）。**只能在 manifest 里静态声明，没有运行时注册 API**——构建过程中不执行任何插件代码。**不派生安装权限**：声明一个字段只是多一个待填的空格，插件不会因此获得任何能力。     |
 
 `buildConfig` 每个字段：
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `key` | `string` | 插件内唯一。**不需要**以插件 ID 为前缀（存储本身已按插件分区）。只作存储键，永不显示。 |
-| `label` | `string` | 作者看到的字段名，不能为空。 |
-| `description` | `string` | 可选。一句话说明这个值是干什么的。 |
-| `type` | `"text" \| "secret"` | `text` 存进工程（随版本控制走）；`secret` 不存——工程里存的是一个 handle，值本身封存在填写它的那台机器上。 |
-| `scope` | `"global" \| "variant" \| "platform" \| "variant-platform"` | 哪些构建共用同一个值。`global` / `platform` 只存在工程一级，App Tag 变体不能各说各的。 |
-| `platforms` | `GameBuildPlatform[]` | 可选，缺省表示所有平台。空数组会被判为清单错误。 |
-| `required` | `boolean` | 可选。缺这个值的构建会被拒绝。 |
+| 字段          | 类型                                                        | 说明                                                                                                      |
+| ------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `key`         | `string`                                                    | 插件内唯一。**不需要**以插件 ID 为前缀（存储本身已按插件分区）。只作存储键，永不显示。                    |
+| `label`       | `string`                                                    | 作者看到的字段名，不能为空。                                                                              |
+| `description` | `string`                                                    | 可选。一句话说明这个值是干什么的。                                                                        |
+| `type`        | `"text" \| "secret"`                                        | `text` 存进工程（随版本控制走）；`secret` 不存——工程里存的是一个 handle，值本身封存在填写它的那台机器上。 |
+| `scope`       | `"global" \| "variant" \| "platform" \| "variant-platform"` | 哪些构建共用同一个值。`global` / `platform` 只存在工程一级，App Tag 变体不能各说各的。                    |
+| `platforms`   | `GameBuildPlatform[]`                                       | 可选，缺省表示所有平台。空数组会被判为清单错误。                                                          |
+| `required`    | `boolean`                                                   | 可选。缺这个值的构建会被拒绝。                                                                            |
 
 entry 不能是绝对路径，不能包含 `..`、`.`、空字节、`?` 或 `#`。声明的入口文件必须实际存在。
 
@@ -133,8 +133,8 @@ type PluginInstallPermission =
 
 当前可实际用于插件特权 facade 的 API capability：
 
-| capability | 说明 |
-| --- | --- |
+| capability     | 说明                                          |
+| -------------- | --------------------------------------------- |
 | `bash.execute` | 授权检查已接入；V1 handler 当前仍返回未实现。 |
 
 以下 capability 是 Studio 内部权限窗口和后续能力保留项，不要让普通插件声明：
@@ -158,7 +158,7 @@ import { definePlugin } from "narraleaf-studio/plugin";
 export default definePlugin({
   setup(app) {
     app.services.ui.notifications.info(`${app.manifest.name} loaded`);
-  },
+  }
 });
 ```
 
@@ -175,13 +175,13 @@ export default definePlugin({
       description: "Show plugin greeting",
       handler: () => {
         app.services.ui.notifications.success("Hello from plugin");
-      },
+      }
     });
 
     return () => {
       disposeKeybinding();
     };
-  },
+  }
 });
 ```
 
@@ -221,7 +221,7 @@ export default definePlugin({
     app.services.textEditor.registerLanguage({
       id: `${id}.mermaid`,
       extensions: ["mmd"],
-      monarch: { tokenizer: { root: [[/^graph\b/, "keyword"]] } },
+      monarch: { tokenizer: { root: [[/^graph\b/, "keyword"]] } }
     });
 
     // 预览：组件渲染在编辑器右半边，props 是活的缓冲区内容。
@@ -229,7 +229,7 @@ export default definePlugin({
       id: `${id}.markdown`,
       extensions: ["md", "markdown"],
       title: "Preview",
-      component: ({ text, active }) => renderMarkdown(text, { animate: active }),
+      component: ({ text, active }) => renderMarkdown(text, { animate: active })
     });
 
     // 动作：不写 extensions 就对所有文本文档生效。
@@ -237,21 +237,21 @@ export default definePlugin({
       id: `${id}.format`,
       title: "Format",
       extensions: ["md"],
-      run: ctx => ctx.setText(formatMarkdown(ctx.getText())),
+      run: (ctx) => ctx.setText(formatMarkdown(ctx.getText()))
     });
-  },
+  }
 });
 ```
 
 预览组件拿到的 props（`PluginTextEditorPreviewProps`）：
 
-| 字段 | 含义 |
-|---|---|
-| `text` | **编辑器缓冲区的当前内容**，不是磁盘上的字节。落后于最后一次保存的预览没有意义 |
-| `encoding` | 当前编码 id（`"utf8"` / `"gbk"` / …） |
-| `fileName` | 资产显示名，含扩展名 |
-| `assetId` | 资产 id |
-| `active` | 所在标签页是否是激活的。做动画或轮询的预览应该在它为 false 时停下来 |
+| 字段       | 含义                                                                           |
+| ---------- | ------------------------------------------------------------------------------ |
+| `text`     | **编辑器缓冲区的当前内容**，不是磁盘上的字节。落后于最后一次保存的预览没有意义 |
+| `encoding` | 当前编码 id（`"utf8"` / `"gbk"` / …）                                          |
+| `fileName` | 资产显示名，含扩展名                                                           |
+| `assetId`  | 资产 id                                                                        |
+| `active`   | 所在标签页是否是激活的。做动画或轮询的预览应该在它为 false 时停下来            |
 
 动作拿到的 `PluginTextEditorActionContext` 是 `{ assetId, fileName, encoding, getText(), setText(text) }`。
 `setText` 写进的是活模型，会走正常的内容变更路径——可撤销，并且和敲键盘一样吃那份防抖自动保存，
@@ -278,7 +278,7 @@ export default defineRuntimePlugin({
     app.game.blueprintNodes.registerMany(createNodes());
     app.game.widgets.register({ type: `${app.plugin.id}.badge`, render: BadgeRenderer });
     app.game.log("info", "runtime bindings registered");
-  },
+  }
 });
 ```
 
@@ -323,10 +323,10 @@ export default defineConfig({
     lib: {
       entry: {
         main: "src/main.tsx",
-        runtime: "src/runtime.ts",
+        runtime: "src/runtime.ts"
       },
       formats: ["es"],
-      fileName: (_format, entryName) => `${entryName}.js`,
+      fileName: (_format, entryName) => `${entryName}.js`
     },
     rollupOptions: {
       external: [
@@ -336,10 +336,10 @@ export default defineConfig({
         "react-dom",
         "react-dom/client",
         "react/jsx-runtime",
-        "react/jsx-dev-runtime",
-      ],
-    },
-  },
+        "react/jsx-dev-runtime"
+      ]
+    }
+  }
 });
 ```
 
@@ -380,8 +380,8 @@ export default definePlugin({
         id: `${prefix}.command`,
         key: "cmd+shift+p",
         description: "Run plugin command",
-        handler: () => app.services.ui.notifications.info("Command executed"),
-      },
+        handler: () => app.services.ui.notifications.info("Command executed")
+      }
     ]);
 
     app.services.ui.actions.register({
@@ -389,29 +389,29 @@ export default definePlugin({
       label: "Plugin Action",
       tooltip: "Run plugin action",
       onClick: () => app.services.ui.notifications.success("Action executed"),
-      order: 900,
+      order: 900
     });
 
     return () => {
       disposeKeys();
       app.services.ui.actions.unregister(`${prefix}.action`);
     };
-  },
+  }
 });
 ```
 
 ## 常见失败原因
 
-| 现象 | 检查 |
-| --- | --- |
-| 安装失败 | `manifest.json` 不是合法 JSON，或 `id` / `version` / `entries` 校验失败（`manifestVersion` 必须是 `2`，`entries` 至少声明一个 target，每个入口文件必须存在）。 |
-| 授权后仍不能启用 | `manifest.version` 已变更，需要重新批准当前版本。 |
-| workspace 不加载插件 | 插件不是 `enabled` 状态、没有声明 `entries.studio`，或上次有 `lastError`。 |
-| `import` 失败 | 入口不是 ESM，或打包后仍有未被处理的外部依赖。 |
-| `definePlugin` 不可用 | 插件不在 workspace plugin runtime 中运行，或导入名不是 `narraleaf-studio/plugin`。 |
-| `defineRuntimePlugin` 不可用 | 代码不在游戏执行环境（Dev Mode/Preview/Production）中运行，或导入名不是 `narraleaf-studio/runtime`。 |
-| 蓝图节点/widget 注册抛错 | type 没有以插件 ID 为前缀，或没有在 manifest `contributes.blueprintNodes` / `contributes.widgets` 中声明。 |
-| Preview 启动报 "Plugin validation failed" | 项目用到的插件节点/widget 缺运行时提供方：插件被禁用/未安装、没有 `entries.runtime`、版本与项目记录不兼容，或该 type 未列入 `contributes`。 |
-| widget 在编辑器可见但游戏中不渲染 | runtime 入口没有 `app.game.widgets.register` 该类型的渲染器。 |
-| 文件操作被拒绝 | manifest 权限路径、mode、recursive 或插件版本授权不匹配。 |
-| action/panel/widget 覆盖内建项 | 贡献 ID 没有用插件 ID 前缀。 |
+| 现象                                      | 检查                                                                                                                                                           |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 安装失败                                  | `manifest.json` 不是合法 JSON，或 `id` / `version` / `entries` 校验失败（`manifestVersion` 必须是 `2`，`entries` 至少声明一个 target，每个入口文件必须存在）。 |
+| 授权后仍不能启用                          | `manifest.version` 已变更，需要重新批准当前版本。                                                                                                              |
+| workspace 不加载插件                      | 插件不是 `enabled` 状态、没有声明 `entries.studio`，或上次有 `lastError`。                                                                                     |
+| `import` 失败                             | 入口不是 ESM，或打包后仍有未被处理的外部依赖。                                                                                                                 |
+| `definePlugin` 不可用                     | 插件不在 workspace plugin runtime 中运行，或导入名不是 `narraleaf-studio/plugin`。                                                                             |
+| `defineRuntimePlugin` 不可用              | 代码不在游戏执行环境（Dev Mode/Preview/Production）中运行，或导入名不是 `narraleaf-studio/runtime`。                                                           |
+| 蓝图节点/widget 注册抛错                  | type 没有以插件 ID 为前缀，或没有在 manifest `contributes.blueprintNodes` / `contributes.widgets` 中声明。                                                     |
+| Preview 启动报 "Plugin validation failed" | 项目用到的插件节点/widget 缺运行时提供方：插件被禁用/未安装、没有 `entries.runtime`、版本与项目记录不兼容，或该 type 未列入 `contributes`。                    |
+| widget 在编辑器可见但游戏中不渲染         | runtime 入口没有 `app.game.widgets.register` 该类型的渲染器。                                                                                                  |
+| 文件操作被拒绝                            | manifest 权限路径、mode、recursive 或插件版本授权不匹配。                                                                                                      |
+| action/panel/widget 覆盖内建项            | 贡献 ID 没有用插件 ID 前缀。                                                                                                                                   |

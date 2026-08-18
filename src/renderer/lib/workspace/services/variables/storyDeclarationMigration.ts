@@ -1,7 +1,11 @@
 import { listSceneDeclarationBlocks } from "@shared/types/story/declarations";
 import type { StoryDeclarationBlock, StoryDocument, StoryId } from "@shared/types/story/document";
 import { listScenesInDocumentOrder } from "@shared/types/story/order";
-import type { VariableRegistry, VariableRegistryEntry, VariableRegistryScope } from "@shared/types/variables/registry";
+import type {
+  VariableRegistry,
+  VariableRegistryEntry,
+  VariableRegistryScope
+} from "@shared/types/variables/registry";
 import { normalizePersistentValueType } from "@shared/variables/variableRegistryModel";
 
 /**
@@ -49,16 +53,16 @@ import { normalizePersistentValueType } from "@shared/variables/variableRegistry
 
 /** Enough of `StoryService` to run the pass; narrowed so a test needs no service graph. */
 export type MigrationStoryHost = {
-    listStories(): readonly { readonly id: StoryId }[];
-    loadStory(storyId: StoryId): Promise<StoryDocument>;
-    deleteDeclarationRow(storyId: StoryId, variableId: string): boolean;
+  listStories(): readonly { readonly id: StoryId }[];
+  loadStory(storyId: StoryId): Promise<StoryDocument>;
+  deleteDeclarationRow(storyId: StoryId, variableId: string): boolean;
 };
 
 /** Enough of `VariableRegistryService` to run the pass. */
 export type MigrationRegistryHost = {
-    getRegistry(): VariableRegistry;
-    applyRegistryMutation(mutator: (registry: VariableRegistry) => void): void;
-    save(registry: VariableRegistry): Promise<void>;
+  getRegistry(): VariableRegistry;
+  applyRegistryMutation(mutator: (registry: VariableRegistry) => void): void;
+  save(registry: VariableRegistry): Promise<void>;
 };
 
 /**
@@ -68,15 +72,15 @@ export type MigrationRegistryHost = {
  * is still a command.
  */
 export function listProjectScopedDeclarations(document: StoryDocument): StoryDeclarationBlock[] {
-    const rows: StoryDeclarationBlock[] = [];
-    for (const scene of listScenesInDocumentOrder(document)) {
-        for (const block of listSceneDeclarationBlocks(scene)) {
-            if (block.payload.scope === "saved" || block.payload.scope === "persistent") {
-                rows.push(block);
-            }
-        }
+  const rows: StoryDeclarationBlock[] = [];
+  for (const scene of listScenesInDocumentOrder(document)) {
+    for (const block of listSceneDeclarationBlocks(scene)) {
+      if (block.payload.scope === "saved" || block.payload.scope === "persistent") {
+        rows.push(block);
+      }
     }
-    return rows;
+  }
+  return rows;
 }
 
 /**
@@ -86,23 +90,27 @@ export function listProjectScopedDeclarations(document: StoryDocument): StoryDec
  * but a hand-edited document can be missing the field, and an entry with an empty storage key would
  * read and write the save file under `""`.
  */
-export function registryEntryFromDeclarationRow(block: StoryDeclarationBlock): VariableRegistryEntry | null {
-    const scope = block.payload.scope;
-    if (scope !== "saved" && scope !== "persistent") {
-        return null;
-    }
-    return {
-        id: block.id,
-        name: block.payload.name,
-        scope: scope satisfies VariableRegistryScope,
-        valueType: normalizePersistentValueType(block.payload.valueType),
-        // Conditional spreads, never `defaultValue: payload.defaultValue`. The canonical encoder
-        // refuses a property holding `undefined` by name, so an assigning form would make every
-        // row-without-a-default the thing that stops the registry saving.
-        ...(block.payload.defaultValue !== undefined ? { defaultValue: block.payload.defaultValue } : {}),
-        storageKey: block.payload.storageKey || block.id,
-        ...(block.payload.description ? { description: block.payload.description } : {}),
-    };
+export function registryEntryFromDeclarationRow(
+  block: StoryDeclarationBlock
+): VariableRegistryEntry | null {
+  const scope = block.payload.scope;
+  if (scope !== "saved" && scope !== "persistent") {
+    return null;
+  }
+  return {
+    id: block.id,
+    name: block.payload.name,
+    scope: scope satisfies VariableRegistryScope,
+    valueType: normalizePersistentValueType(block.payload.valueType),
+    // Conditional spreads, never `defaultValue: payload.defaultValue`. The canonical encoder
+    // refuses a property holding `undefined` by name, so an assigning form would make every
+    // row-without-a-default the thing that stops the registry saving.
+    ...(block.payload.defaultValue !== undefined
+      ? { defaultValue: block.payload.defaultValue }
+      : {}),
+    storageKey: block.payload.storageKey || block.id,
+    ...(block.payload.description ? { description: block.payload.description } : {})
+  };
 }
 
 /**
@@ -115,47 +123,50 @@ export function registryEntryFromDeclarationRow(block: StoryDeclarationBlock): V
  * them anywhere.
  */
 export async function migrateProjectScopedDeclarations(
-    stories: MigrationStoryHost,
-    registry: MigrationRegistryHost,
+  stories: MigrationStoryHost,
+  registry: MigrationRegistryHost
 ): Promise<{ converted: number }> {
-    const pending: { storyId: StoryId; entry: VariableRegistryEntry }[] = [];
+  const pending: { storyId: StoryId; entry: VariableRegistryEntry }[] = [];
 
-    for (const story of stories.listStories()) {
-        let document: StoryDocument;
-        try {
-            document = await stories.loadStory(story.id);
-        } catch (error) {
-            // One unreadable story does not stop the others being converted, and it is not recorded
-            // as handled either: with no flag to lie to, it is simply retried on the next open.
-            console.warn(`[variables] could not read story ${story.id} while migrating declarations`, error);
-            continue;
-        }
-        for (const block of listProjectScopedDeclarations(document)) {
-            const entry = registryEntryFromDeclarationRow(block);
-            if (entry) {
-                pending.push({ storyId: story.id, entry });
-            }
-        }
+  for (const story of stories.listStories()) {
+    let document: StoryDocument;
+    try {
+      document = await stories.loadStory(story.id);
+    } catch (error) {
+      // One unreadable story does not stop the others being converted, and it is not recorded
+      // as handled either: with no flag to lie to, it is simply retried on the next open.
+      console.warn(
+        `[variables] could not read story ${story.id} while migrating declarations`,
+        error
+      );
+      continue;
     }
-
-    if (pending.length === 0) {
-        return { converted: 0 };
+    for (const block of listProjectScopedDeclarations(document)) {
+      const entry = registryEntryFromDeclarationRow(block);
+      if (entry) {
+        pending.push({ storyId: story.id, entry });
+      }
     }
+  }
 
-    registry.applyRegistryMutation(current => {
-        for (const { entry } of pending) {
-            // Assignment, not insert-if-absent: a re-run must land on the row's current values, or a
-            // partially-converted project would keep whatever a half-finished earlier pass wrote.
-            current.entries[entry.id] = entry;
-        }
-    });
-    // Throws when `editor/variables.json` is on disk but unreadable, which is exactly when the rows
-    // must be left alone - they are then the only surviving copy of these variables.
-    await registry.save(registry.getRegistry());
+  if (pending.length === 0) {
+    return { converted: 0 };
+  }
 
-    for (const { storyId, entry } of pending) {
-        stories.deleteDeclarationRow(storyId, entry.id);
+  registry.applyRegistryMutation((current) => {
+    for (const { entry } of pending) {
+      // Assignment, not insert-if-absent: a re-run must land on the row's current values, or a
+      // partially-converted project would keep whatever a half-finished earlier pass wrote.
+      current.entries[entry.id] = entry;
     }
+  });
+  // Throws when `editor/variables.json` is on disk but unreadable, which is exactly when the rows
+  // must be left alone - they are then the only surviving copy of these variables.
+  await registry.save(registry.getRegistry());
 
-    return { converted: pending.length };
+  for (const { storyId, entry } of pending) {
+    stories.deleteDeclarationRow(storyId, entry.id);
+  }
+
+  return { converted: pending.length };
 }

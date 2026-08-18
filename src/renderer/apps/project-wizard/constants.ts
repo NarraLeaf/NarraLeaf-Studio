@@ -1,5 +1,11 @@
 import { GitBranch, Package, PencilLine } from "lucide-react";
-import { ProjectFlow, ProjectOrigin, ProjectTemplate, VersionControlOption, WizardStep } from "./types";
+import {
+  ProjectFlow,
+  ProjectOrigin,
+  ProjectTemplate,
+  VersionControlOption,
+  WizardStep
+} from "./types";
 
 /**
  * The pages each origin leads to, in order.
@@ -17,9 +23,9 @@ import { ProjectFlow, ProjectOrigin, ProjectTemplate, VersionControlOption, Wiza
  * fetched until the author is standing on it and presses the button.
  */
 export const WIZARD_FLOW_STEPS: Record<ProjectFlow, WizardStep[]> = {
-    create: ["origin", "project", "stage", "review"],
-    import: ["origin", "import"],
-    clone: ["origin", "source", "clone"],
+  create: ["origin", "project", "stage", "review"],
+  import: ["origin", "import"],
+  clone: ["origin", "source", "clone"]
 };
 
 /**
@@ -30,24 +36,24 @@ export const WIZARD_FLOW_STEPS: Record<ProjectFlow, WizardStep[]> = {
  * Both used to be unlabelled icons in the launcher's toolbar.
  */
 export const projectOrigins: ProjectOrigin[] = [
-    {
-        flow: "create",
-        labelKey: "wizard.origin.create.label",
-        descriptionKey: "wizard.origin.create.description",
-        icon: PencilLine,
-    },
-    {
-        flow: "import",
-        labelKey: "wizard.origin.import.label",
-        descriptionKey: "wizard.origin.import.description",
-        icon: Package,
-    },
-    {
-        flow: "clone",
-        labelKey: "wizard.origin.clone.label",
-        descriptionKey: "wizard.origin.clone.description",
-        icon: GitBranch,
-    },
+  {
+    flow: "create",
+    labelKey: "wizard.origin.create.label",
+    descriptionKey: "wizard.origin.create.description",
+    icon: PencilLine
+  },
+  {
+    flow: "import",
+    labelKey: "wizard.origin.import.label",
+    descriptionKey: "wizard.origin.import.description",
+    icon: Package
+  },
+  {
+    flow: "clone",
+    labelKey: "wizard.origin.clone.label",
+    descriptionKey: "wizard.origin.clone.description",
+    icon: GitBranch
+  }
 ];
 
 /** The id of the entry that scaffolds nothing beyond the generated skeleton. */
@@ -60,12 +66,12 @@ export const BLANK_TEMPLATE_ID = "empty";
  * everything else in the list offers only the sizes its own surfaces were drawn for.
  */
 export const blankTemplate: ProjectTemplate = {
-    id: BLANK_TEMPLATE_ID,
-    name: "Empty",
-    nameKey: "wizard.template.blank.name",
-    description: "Start from a blank project",
-    descriptionKey: "wizard.template.blank.description",
-    stageSizes: [],
+  id: BLANK_TEMPLATE_ID,
+  name: "Empty",
+  nameKey: "wizard.template.blank.name",
+  description: "Start from a blank project",
+  descriptionKey: "wizard.template.blank.description",
+  stageSizes: []
 };
 
 /**
@@ -80,8 +86,8 @@ export const blankTemplate: ProjectTemplate = {
  * Not localized: "Lore" is the backend's name, not a word. `none` keeps `common.none`.
  */
 export const versionControlOptions: VersionControlOption[] = [
-    { value: "lore", label: "Lore" },
-    { value: "none", label: "None", labelKey: "common.none" },
+  { value: "lore", label: "Lore" },
+  { value: "none", label: "None", labelKey: "common.none" }
 ];
 
 /** What a build ships as until the author says otherwise; also what the build preflight demands. */
@@ -91,22 +97,22 @@ export const DEFAULT_PROJECT_VERSION = "1.0.0";
  * Default project data
  */
 export const defaultProjectData = {
-    name: "",
-    description: "",
-    template: "",
-    location: "",
-    author: "",
-    website: "",
-    version: DEFAULT_PROJECT_VERSION,
-    resolution: "1920x1080",
-    appId: "",
-    sourceLocale: "",
-    remoteUrl: "",
-    packagePath: "",
-    // Pre-selected, the way "git" was: a new project is the one moment where turning version
-    // control on costs nothing and turning it on later means the work before that point is
-    // unrecorded. It is still a choice the author sees twice - on this step and on the review -
-    // before anything is written, and the Project step falls back to `none` on a host with no
-    // Lore build rather than offering something that cannot happen.
-    versionControl: "lore",
+  name: "",
+  description: "",
+  template: "",
+  location: "",
+  author: "",
+  website: "",
+  version: DEFAULT_PROJECT_VERSION,
+  resolution: "1920x1080",
+  appId: "",
+  sourceLocale: "",
+  remoteUrl: "",
+  packagePath: "",
+  // Pre-selected, the way "git" was: a new project is the one moment where turning version
+  // control on costs nothing and turning it on later means the work before that point is
+  // unrecorded. It is still a choice the author sees twice - on this step and on the review -
+  // before anything is written, and the Project step falls back to `none` on a host with no
+  // Lore build rather than offering something that cannot happen.
+  versionControl: "lore"
 } as const;

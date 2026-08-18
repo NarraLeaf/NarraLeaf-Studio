@@ -3,8 +3,8 @@ import type { ProjectService } from "@/lib/workspace/services/core/ProjectServic
 import { normalizeMobileConfiguration } from "@/lib/workspace/project/configuration";
 import type { SafeAreaMobileOrientation } from "@/lib/ui-editor/preview/surfacePreviewFrames";
 import {
-    normalizeGameRuntimeViewportConfig,
-    type GameRuntimeViewportConfig,
+  normalizeGameRuntimeViewportConfig,
+  type GameRuntimeViewportConfig
 } from "@shared/types/gameRuntime";
 
 /**
@@ -19,18 +19,18 @@ import {
  * is the same answer a project that has never touched the setting deserves.
  */
 export function readProjectMobileOrientation(
-    context: WorkspaceContext | null | undefined,
+  context: WorkspaceContext | null | undefined
 ): SafeAreaMobileOrientation {
-    if (!context) {
-        return "auto";
-    }
-    try {
-        const config = context.services.get<ProjectService>(Services.Project).getProjectConfig();
-        return normalizeMobileConfiguration(config.app?.mobile).orientation;
-    } catch {
-        // Services can be mid-initialization; a missing orientation is not worth a thrown render.
-        return "auto";
-    }
+  if (!context) {
+    return "auto";
+  }
+  try {
+    const config = context.services.get<ProjectService>(Services.Project).getProjectConfig();
+    return normalizeMobileConfiguration(config.app?.mobile).orientation;
+  } catch {
+    // Services can be mid-initialization; a missing orientation is not worth a thrown render.
+    return "auto";
+  }
 }
 
 /**
@@ -40,17 +40,17 @@ export function readProjectMobileOrientation(
  * at launch, and a cached copy would open a window that crops the way the project used to.
  */
 export function readProjectViewportConfig(
-    context: WorkspaceContext | null | undefined,
+  context: WorkspaceContext | null | undefined
 ): GameRuntimeViewportConfig {
-    if (!context) {
-        return normalizeGameRuntimeViewportConfig(undefined);
-    }
-    try {
-        const config = context.services.get<ProjectService>(Services.Project).getProjectConfig();
-        return normalizeGameRuntimeViewportConfig(config.app?.mobile);
-    } catch {
-        return normalizeGameRuntimeViewportConfig(undefined);
-    }
+  if (!context) {
+    return normalizeGameRuntimeViewportConfig(undefined);
+  }
+  try {
+    const config = context.services.get<ProjectService>(Services.Project).getProjectConfig();
+    return normalizeGameRuntimeViewportConfig(config.app?.mobile);
+  } catch {
+    return normalizeGameRuntimeViewportConfig(undefined);
+  }
 }
 
 /**
@@ -61,7 +61,7 @@ export function readProjectViewportConfig(
  * inset before it reached the content.
  */
 export function readProjectStageFit(
-    context: WorkspaceContext | null | undefined,
+  context: WorkspaceContext | null | undefined
 ): GameRuntimeViewportConfig["fit"] {
-    return readProjectViewportConfig(context).fit;
+  return readProjectViewportConfig(context).fit;
 }

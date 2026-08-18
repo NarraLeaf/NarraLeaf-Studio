@@ -67,9 +67,9 @@ export const NETWORK_POLICY_ALLOWLIST: NetworkAccessPolicy = "allowlist";
 
 /** The three positions in the order a chooser lists them: least reach first. */
 export const NETWORK_ACCESS_POLICIES: readonly NetworkAccessPolicy[] = [
-    NETWORK_POLICY_OFF,
-    NETWORK_POLICY_ALLOWLIST,
-    NETWORK_POLICY_ANY,
+  NETWORK_POLICY_OFF,
+  NETWORK_POLICY_ALLOWLIST,
+  NETWORK_POLICY_ANY
 ];
 
 /**
@@ -80,15 +80,15 @@ export const NETWORK_ACCESS_POLICIES: readonly NetworkAccessPolicy[] = [
  * failure an author notices immediately rather than the one that ships.
  */
 export function normalizeNetworkAccessPolicy(raw: unknown): NetworkAccessPolicy {
-    return NETWORK_ACCESS_POLICIES.includes(raw as NetworkAccessPolicy)
-        ? raw as NetworkAccessPolicy
-        : NETWORK_POLICY_OFF;
+  return NETWORK_ACCESS_POLICIES.includes(raw as NetworkAccessPolicy)
+    ? (raw as NetworkAccessPolicy)
+    : NETWORK_POLICY_OFF;
 }
 
 /** One plugin's declared hosts, kept attributed so a surface can say whose they are. */
 export type NetworkPluginAllowlistEntry = {
-    pluginId: string;
-    patterns: string[];
+  pluginId: string;
+  patterns: string[];
 };
 
 /**
@@ -99,11 +99,11 @@ export type NetworkPluginAllowlistEntry = {
  * could not tell an author which of the two an entry came from.
  */
 export type NetworkAllowlist = {
-    policy?: NetworkAccessPolicy;
-    /** The author's own entries, in the order they were written. */
-    entries?: readonly string[];
-    /** Contributed by installed plugins and approved at install. */
-    plugins?: readonly NetworkPluginAllowlistEntry[];
+  policy?: NetworkAccessPolicy;
+  /** The author's own entries, in the order they were written. */
+  entries?: readonly string[];
+  /** Contributed by installed plugins and approved at install. */
+  plugins?: readonly NetworkPluginAllowlistEntry[];
 };
 
 /**
@@ -127,52 +127,53 @@ export type NetworkAllowlist = {
  * would read like a restriction while being none.
  */
 export function normalizeNetworkAllowlistEntry(raw: unknown): string | null {
-    if (typeof raw !== "string" || !raw.trim()) {
-        return null;
-    }
-    const text = raw.trim();
-    let parsed: URL;
-    try {
-        parsed = new URL(text);
-    } catch {
-        return null;
-    }
-    if (!NETWORK_ALLOWLIST_SCHEMES.includes(parsed.protocol.toLowerCase())) {
-        return null;
-    }
-    if (!parsed.hostname || parsed.hostname === "*") {
-        return null;
-    }
-    // Refused rather than stripped. `https://api.example.com` is what dropping the credentials from
-    // `https://user:pw@api.example.com` produces, so a silent strip would store an entry the author
-    // did not write and never show them that it had changed.
-    if (parsed.username || parsed.password) {
-        return null;
-    }
-    // Rebuilt from the parsed parts rather than appended to what was typed: `https://host?x=1` has
-    // an empty path and a query, and a string append would produce `https://host?x=1/*`, which is a
-    // different address wearing the entry's name.
-    const authority = parsed.port ? `${parsed.hostname}:${parsed.port}` : parsed.hostname;
-    const namesWholeHost = parsed.pathname === "/" && !parsed.search && !parsed.hash;
-    const path = namesWholeHost ? "/*" : parsed.pathname;
-    const canonical = `${parsed.protocol.toLowerCase()}//${authority.toLowerCase()}`
-        + `${path}${parsed.search}${parsed.hash}`;
-    return isValidExternalLinkPattern(canonical) ? canonical : null;
+  if (typeof raw !== "string" || !raw.trim()) {
+    return null;
+  }
+  const text = raw.trim();
+  let parsed: URL;
+  try {
+    parsed = new URL(text);
+  } catch {
+    return null;
+  }
+  if (!NETWORK_ALLOWLIST_SCHEMES.includes(parsed.protocol.toLowerCase())) {
+    return null;
+  }
+  if (!parsed.hostname || parsed.hostname === "*") {
+    return null;
+  }
+  // Refused rather than stripped. `https://api.example.com` is what dropping the credentials from
+  // `https://user:pw@api.example.com` produces, so a silent strip would store an entry the author
+  // did not write and never show them that it had changed.
+  if (parsed.username || parsed.password) {
+    return null;
+  }
+  // Rebuilt from the parsed parts rather than appended to what was typed: `https://host?x=1` has
+  // an empty path and a query, and a string append would produce `https://host?x=1/*`, which is a
+  // different address wearing the entry's name.
+  const authority = parsed.port ? `${parsed.hostname}:${parsed.port}` : parsed.hostname;
+  const namesWholeHost = parsed.pathname === "/" && !parsed.search && !parsed.hash;
+  const path = namesWholeHost ? "/*" : parsed.pathname;
+  const canonical =
+    `${parsed.protocol.toLowerCase()}//${authority.toLowerCase()}` +
+    `${path}${parsed.search}${parsed.hash}`;
+  return isValidExternalLinkPattern(canonical) ? canonical : null;
 }
 
 /** Every usable entry, duplicates dropped, first spelling wins. */
 export function normalizeNetworkAllowlistEntries(raw: unknown): string[] {
-    if (!Array.isArray(raw)) {
-        return [];
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const entries: string[] = [];
+  for (const item of raw) {
+    const entry = normalizeNetworkAllowlistEntry(item);
+    if (entry && !entries.includes(entry)) {
+      entries.push(entry);
     }
-    const entries: string[] = [];
-    for (const item of raw) {
-        const entry = normalizeNetworkAllowlistEntry(item);
-        if (entry && !entries.includes(entry)) {
-            entries.push(entry);
-        }
-    }
-    return entries;
+  }
+  return entries;
 }
 
 /**
@@ -183,25 +184,28 @@ export function normalizeNetworkAllowlistEntries(raw: unknown): string[] {
  * same answer whether or not a list is in force - the list is about which hosts, never about which
  * schemes.
  */
-export function isNetworkAddressAllowed(url: string, allowlist: NetworkAllowlist | undefined): boolean {
-    let parsed: URL;
-    try {
-        parsed = new URL(String(url ?? "").trim());
-    } catch {
-        return false;
-    }
-    if (!NETWORK_ALLOWLIST_SCHEMES.includes(parsed.protocol.toLowerCase())) {
-        return false;
-    }
-    if ((allowlist?.policy ?? NETWORK_POLICY_ANY) !== NETWORK_POLICY_ALLOWLIST) {
-        return true;
-    }
-    if (isExternalLinkPatternDeclared(allowlist?.entries, parsed.href)) {
-        return true;
-    }
-    return (allowlist?.plugins ?? []).some(
-        plugin => isExternalLinkPatternDeclared(plugin.patterns, parsed.href),
-    );
+export function isNetworkAddressAllowed(
+  url: string,
+  allowlist: NetworkAllowlist | undefined
+): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(String(url ?? "").trim());
+  } catch {
+    return false;
+  }
+  if (!NETWORK_ALLOWLIST_SCHEMES.includes(parsed.protocol.toLowerCase())) {
+    return false;
+  }
+  if ((allowlist?.policy ?? NETWORK_POLICY_ANY) !== NETWORK_POLICY_ALLOWLIST) {
+    return true;
+  }
+  if (isExternalLinkPatternDeclared(allowlist?.entries, parsed.href)) {
+    return true;
+  }
+  return (allowlist?.plugins ?? []).some((plugin) =>
+    isExternalLinkPatternDeclared(plugin.patterns, parsed.href)
+  );
 }
 
 /**
@@ -211,7 +215,7 @@ export function isNetworkAddressAllowed(url: string, allowlist: NetworkAllowlist
  * looking at a project whose network is plainly on goes to the wrong setting.
  */
 export function networkAllowlistRefusalMessage(url: string): string {
-    return `${url.trim() || "(none)"} is not on this project's network allowlist.`;
+  return `${url.trim() || "(none)"} is not on this project's network allowlist.`;
 }
 
 /**
@@ -226,22 +230,24 @@ export function networkAllowlistRefusalMessage(url: string): string {
  *
  * Returns null when there is nothing to narrow to, i.e. the policy is not the list.
  */
-export function networkAllowlistCspSources(allowlist: NetworkAllowlist | undefined): string[] | null {
-    if ((allowlist?.policy ?? NETWORK_POLICY_ANY) !== NETWORK_POLICY_ALLOWLIST) {
-        return null;
+export function networkAllowlistCspSources(
+  allowlist: NetworkAllowlist | undefined
+): string[] | null {
+  if ((allowlist?.policy ?? NETWORK_POLICY_ANY) !== NETWORK_POLICY_ALLOWLIST) {
+    return null;
+  }
+  const sources: string[] = [];
+  const all = [
+    ...(allowlist?.entries ?? []),
+    ...(allowlist?.plugins ?? []).flatMap((plugin) => plugin.patterns)
+  ];
+  for (const pattern of all) {
+    const source = cspSourceForPattern(pattern);
+    if (source && !sources.includes(source)) {
+      sources.push(source);
     }
-    const sources: string[] = [];
-    const all = [
-        ...(allowlist?.entries ?? []),
-        ...(allowlist?.plugins ?? []).flatMap(plugin => plugin.patterns),
-    ];
-    for (const pattern of all) {
-        const source = cspSourceForPattern(pattern);
-        if (source && !sources.includes(source)) {
-            sources.push(source);
-        }
-    }
-    return sources;
+  }
+  return sources;
 }
 
 /**
@@ -252,16 +258,16 @@ export function networkAllowlistCspSources(allowlist: NetworkAllowlist | undefin
  * than widened: a source expression nobody can write is not one worth guessing at.
  */
 function cspSourceForPattern(pattern: string): string | null {
-    const text = String(pattern ?? "").trim();
-    const match = /^(https?:)\/\/([^/?#]+)/i.exec(text);
-    if (!match) {
-        return null;
-    }
-    const authority = match[2];
-    if (authority.includes("@")) {
-        return null;
-    }
-    return `${match[1].toLowerCase()}//${authority.toLowerCase()}`;
+  const text = String(pattern ?? "").trim();
+  const match = /^(https?:)\/\/([^/?#]+)/i.exec(text);
+  if (!match) {
+    return null;
+  }
+  const authority = match[2];
+  if (authority.includes("@")) {
+    return null;
+  }
+  return `${match[1].toLowerCase()}//${authority.toLowerCase()}`;
 }
 
 /**
@@ -273,18 +279,23 @@ function cspSourceForPattern(pattern: string): string | null {
  * absences mean the same thing: the wide policy those builds shipped with.
  */
 export type NetworkAllowlistDeclaringPack = {
-    network?: {
-        policy?: NetworkAccessPolicy;
-        allowlist?: string[];
-        pluginAllowlist?: NetworkPluginAllowlistEntry[];
-    };
+  network?: {
+    policy?: NetworkAccessPolicy;
+    allowlist?: string[];
+    pluginAllowlist?: NetworkPluginAllowlistEntry[];
+  };
 };
 
 /** The allowlist a pack states, in the shape every decision in this module takes. */
-export function packNetworkAllowlist(pack: NetworkAllowlistDeclaringPack | undefined): NetworkAllowlist {
-    return {
-        policy: pack?.network?.policy === NETWORK_POLICY_ALLOWLIST ? NETWORK_POLICY_ALLOWLIST : NETWORK_POLICY_ANY,
-        entries: pack?.network?.allowlist ?? [],
-        plugins: pack?.network?.pluginAllowlist ?? [],
-    };
+export function packNetworkAllowlist(
+  pack: NetworkAllowlistDeclaringPack | undefined
+): NetworkAllowlist {
+  return {
+    policy:
+      pack?.network?.policy === NETWORK_POLICY_ALLOWLIST
+        ? NETWORK_POLICY_ALLOWLIST
+        : NETWORK_POLICY_ANY,
+    entries: pack?.network?.allowlist ?? [],
+    plugins: pack?.network?.pluginAllowlist ?? []
+  };
 }

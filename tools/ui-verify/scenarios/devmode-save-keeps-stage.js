@@ -21,8 +21,8 @@
  *   NLS_VERIFY_PORT=<cdp> NLS_VERIFY_PID=<pid> node tools/ui-verify/scenarios/devmode-save-keeps-stage.js
  */
 
-const { withDriver } = require('../drive');
-const A = require('../assert');
+const { withDriver } = require("../drive");
+const A = require("../assert");
 
 const PORT = Number(process.env.NLS_VERIFY_PORT || 9222);
 const PID = process.env.NLS_VERIFY_PID;
@@ -31,14 +31,14 @@ const ROUNDS = Number(process.env.NLS_VERIFY_ROUNDS || 5);
 const run = A.createRun();
 
 function onWindow(target, title, fn) {
-    return withDriver({ target, port: PORT }, async (d) => {
-        const url = String(d.target && d.target.url);
-        if (!url.includes(target)) {
-            throw new Error(`asked for the "${target}" window and got ${url} - that window is not open`);
-        }
-        await A.assertVisible(d, title, PID);
-        return fn(d);
-    });
+  return withDriver({ target, port: PORT }, async (d) => {
+    const url = String(d.target && d.target.url);
+    if (!url.includes(target)) {
+      throw new Error(`asked for the "${target}" window and got ${url} - that window is not open`);
+    }
+    await A.assertVisible(d, title, PID);
+    return fn(d);
+  });
 }
 
 /** How much of the game is actually drawn, and which revision produced it. */
@@ -96,46 +96,55 @@ return Promise.resolve(uidoc.save(uidoc.getDocument())).then(() => ({ ok: true }
 `);
 
 async function main() {
-    const before = await onWindow('dev-mode', A.WINDOWS.devmode, (d) => A.call(d, STAGE));
-    // Setup guard: measuring "still drawn" against a stage that was never drawn passes for free.
-    run.check('D0', 'the running game is drawing something before any save', before.nodes > 2, before);
-    if (before.nodes <= 2) {
-        throw new Error('nothing on the Dev Mode stage to begin with - start Dev Mode on a project with a page');
-    }
+  const before = await onWindow("dev-mode", A.WINDOWS.devmode, (d) => A.call(d, STAGE));
+  // Setup guard: measuring "still drawn" against a stage that was never drawn passes for free.
+  run.check(
+    "D0",
+    "the running game is drawing something before any save",
+    before.nodes > 2,
+    before
+  );
+  if (before.nodes <= 2) {
+    throw new Error(
+      "nothing on the Dev Mode stage to begin with - start Dev Mode on a project with a page"
+    );
+  }
 
-    for (let round = 1; round <= ROUNDS; round += 1) {
-        const saved = await onWindow('workspace', A.WINDOWS.workspace, (d) => A.call(d, SAVE_UNCHANGED));
-        if (!saved.ok) {
-            throw new Error(`save failed: ${saved.why}`);
-        }
-        await A.sleep(5000);
-        const after = await onWindow('dev-mode', A.WINDOWS.devmode, (d) => A.call(d, STAGE));
-        run.check(
-            `D${round}`,
-            `save #${round}: the stage is still drawn`,
-            after.nodes >= before.nodes,
-            after,
-        );
-        run.check(
-            `D${round}r`,
-            `save #${round}: the reload actually happened (revision advanced)`,
-            typeof after.revision === 'number' && after.revision > (before.revision ?? 0),
-            { before: before.revision, after: after.revision },
-        );
+  for (let round = 1; round <= ROUNDS; round += 1) {
+    const saved = await onWindow("workspace", A.WINDOWS.workspace, (d) =>
+      A.call(d, SAVE_UNCHANGED)
+    );
+    if (!saved.ok) {
+      throw new Error(`save failed: ${saved.why}`);
     }
+    await A.sleep(5000);
+    const after = await onWindow("dev-mode", A.WINDOWS.devmode, (d) => A.call(d, STAGE));
+    run.check(
+      `D${round}`,
+      `save #${round}: the stage is still drawn`,
+      after.nodes >= before.nodes,
+      after
+    );
+    run.check(
+      `D${round}r`,
+      `save #${round}: the reload actually happened (revision advanced)`,
+      typeof after.revision === "number" && after.revision > (before.revision ?? 0),
+      { before: before.revision, after: after.revision }
+    );
+  }
 
-    await onWindow('dev-mode', A.WINDOWS.devmode, (d) => d.screenshot('devmode-after-saves'));
+  await onWindow("dev-mode", A.WINDOWS.devmode, (d) => d.screenshot("devmode-after-saves"));
 }
 
 main()
-    .then(() => {
-        const { red } = run.summary();
-        A.releaseWindows();
-        process.exit(red > 0 ? 1 : 0);
-    })
-    .catch((err) => {
-        console.error(err);
-        run.summary();
-        A.releaseWindows();
-        process.exit(1);
-    });
+  .then(() => {
+    const { red } = run.summary();
+    A.releaseWindows();
+    process.exit(red > 0 ? 1 : 0);
+  })
+  .catch((err) => {
+    console.error(err);
+    run.summary();
+    A.releaseWindows();
+    process.exit(1);
+  });

@@ -20,14 +20,14 @@ let preference: unknown = undefined;
  * mounted UI re-localizes and the language picker lists plugin locales.
  */
 async function loadPluginLocales(): Promise<void> {
-    try {
-        const result = await getInterface().plugins?.getLocaleContributions?.();
-        if (result?.success) {
-            setLocaleContributions(result.data.contributions);
-        }
-    } catch (error) {
-        console.warn("[i18n] Failed to load plugin locale contributions.", error);
+  try {
+    const result = await getInterface().plugins?.getLocaleContributions?.();
+    if (result?.success) {
+      setLocaleContributions(result.data.contributions);
     }
+  } catch (error) {
+    console.warn("[i18n] Failed to load plugin locale contributions.", error);
+  }
 }
 
 /**
@@ -41,11 +41,13 @@ async function loadPluginLocales(): Promise<void> {
  * different languages depending on how you got there.
  */
 function applyPreference(): void {
-    // No stored value means nobody has chosen yet, which is a different question from "chose
-    // something this build does not have": the first is answered by the machine's own languages,
-    // the second by the fallback chain inside `normalizeLocale`. Collapsing them is what had
-    // Studio open in English on a device that had already said otherwise.
-    i18nStore.setLocale(preference === undefined ? deviceDefaultLocale() : normalizeLocale(preference));
+  // No stored value means nobody has chosen yet, which is a different question from "chose
+  // something this build does not have": the first is answered by the machine's own languages,
+  // the second by the fallback chain inside `normalizeLocale`. Collapsing them is what had
+  // Studio open in English on a device that had already said otherwise.
+  i18nStore.setLocale(
+    preference === undefined ? deviceDefaultLocale() : normalizeLocale(preference)
+  );
 }
 
 /**
@@ -64,40 +66,43 @@ function applyPreference(): void {
  * language moving is already enough to move it.
  */
 export async function initI18n(): Promise<void> {
-    await loadPluginLocales();
+  await loadPluginLocales();
 
-    try {
-        const result = await getInterface().app.state.getGlobalState("app.language");
-        if (result.success) {
-            preference = result.data.value;
-            applyPreference();
-        }
-    } catch (error) {
-        console.warn("[i18n] Failed to load language preference; using default.", error);
+  try {
+    const result = await getInterface().app.state.getGlobalState("app.language");
+    if (result.success) {
+      preference = result.data.value;
+      applyPreference();
     }
+  } catch (error) {
+    console.warn("[i18n] Failed to load language preference; using default.", error);
+  }
 
-    try {
-        const result = await getInterface().app.state.getGlobalState(LOCALIZED_COMMANDS_KEY);
-        if (result.success) {
-            commandI18nStore.setPreference(result.data.value);
-        }
-    } catch (error) {
-        console.warn("[i18n] Failed to load command language preference; following the interface language.", error);
+  try {
+    const result = await getInterface().app.state.getGlobalState(LOCALIZED_COMMANDS_KEY);
+    if (result.success) {
+      commandI18nStore.setPreference(result.data.value);
     }
+  } catch (error) {
+    console.warn(
+      "[i18n] Failed to load command language preference; following the interface language.",
+      error
+    );
+  }
 
-    if (!subscribed) {
-        subscribed = true;
-        getInterface().app.state.onGlobalStateChanged?.((change) => {
-            if (change.key === "app.language") {
-                preference = change.value;
-                applyPreference();
-            }
-            if (change.key === LOCALIZED_COMMANDS_KEY) {
-                commandI18nStore.setPreference(change.value);
-            }
-        });
-        getInterface().plugins?.onLocalesChanged?.(() => {
-            void loadPluginLocales().then(applyPreference);
-        });
-    }
+  if (!subscribed) {
+    subscribed = true;
+    getInterface().app.state.onGlobalStateChanged?.((change) => {
+      if (change.key === "app.language") {
+        preference = change.value;
+        applyPreference();
+      }
+      if (change.key === LOCALIZED_COMMANDS_KEY) {
+        commandI18nStore.setPreference(change.value);
+      }
+    });
+    getInterface().plugins?.onLocalesChanged?.(() => {
+      void loadPluginLocales().then(applyPreference);
+    });
+  }
 }

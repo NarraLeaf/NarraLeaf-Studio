@@ -6,10 +6,10 @@ runtime entry 的完整 host API。系统协议与加载链路见 [plugin.md](./
 
 runtime entry 在所有游戏执行环境加载，且在游戏 boot（NLR 挂载、首个蓝图执行）之前完成：
 
-| 环境 | 加载来源 |
-| --- | --- |
-| Dev Mode 窗口 | IPC `plugin.runtimeList`（enabled + 声明 runtime entry − 项目依赖 suppression） |
-| Preview / Production | pack `plugins` 段（编译时按项目依赖表挑选并复制） |
+| 环境                 | 加载来源                                                                        |
+| -------------------- | ------------------------------------------------------------------------------- |
+| Dev Mode 窗口        | IPC `plugin.runtimeList`（enabled + 声明 runtime entry − 项目依赖 suppression） |
+| Preview / Production | pack `plugins` 段（编译时按项目依赖表挑选并复制）                               |
 
 它是游戏代码：没有 Studio services、没有 `app.privileged`。网络访问由 pack 网络策略统一管控。宿主提供 React host externals（`react`、`react-dom`、`react/jsx-runtime`、`react/jsx-dev-runtime`）供 widget 渲染器使用；`react-dom/client` 刻意不提供——插件不得在游戏内挂载自己的 React root。
 
@@ -21,7 +21,7 @@ import { defineRuntimePlugin } from "narraleaf-studio/runtime";
 export default defineRuntimePlugin({
   setup(app) {
     // register runtime bindings
-  },
+  }
 });
 ```
 
@@ -34,7 +34,7 @@ export default defineRuntimePlugin({
 
 ```ts
 type RuntimePluginApp = {
-  plugin: PluginIdentity;              // { id, name?, version?, publisher? }
+  plugin: PluginIdentity; // { id, name?, version?, publisher? }
   manifest: NormalizedPluginManifestV2;
   game: {
     blueprintNodes: {
@@ -95,12 +95,12 @@ execute: async ctx => {
 
 ```tsx
 import { defineRuntimePlugin } from "narraleaf-studio/runtime";
-import { BadgeRenderer } from "./badge";   // 与 studio widget module 共享
+import { BadgeRenderer } from "./badge"; // 与 studio widget module 共享
 
 export default defineRuntimePlugin({
   setup(app) {
     app.game.widgets.register({ type: `${app.plugin.id}.badge`, render: BadgeRenderer });
-  },
+  }
 });
 ```
 

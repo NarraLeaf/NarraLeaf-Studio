@@ -23,8 +23,8 @@ directories:
 files:
   - dist/**/*
   - package.json
-  - '!**/*.map'
-  - '!**/{CHANGELOG,README,README.md,docs,CHANGELOG.md}/**'
+  - "!**/*.map"
+  - "!**/{CHANGELOG,README,README.md,docs,CHANGELOG.md}/**"
   # Everything below trims the runtime dependency closure that `asarUnpack` below
   # copies out wholesale. They must live *here* rather than in the per-platform
   # blocks: a `files` key under `win:`/`mac:`/`linux:` makes these global patterns
@@ -43,7 +43,7 @@ files:
   # `loader.config({ monaco })` so its own AMD/CDN loader never runs. The 68 MB on
   # disk — dev/ + esm/ + min/ side by side — is a second copy nobody reads.
   # @monaco-editor/react itself stays.
-  - '!node_modules/monaco-editor{,/**/*}'
+  - "!node_modules/monaco-editor{,/**/*}"
   # app-builder-bin (207 MB) and 7zip-bin (12 MB) each ship one build per platform
   # and arch they could ever run on, and each picks exactly one from
   # process.platform + process.arch (see their index.js). 7zip-bin is in the
@@ -63,8 +63,8 @@ files:
   # package.json) beside their platform dirs, and a bare `!(${os})` matches those
   # too. It leaves the foreign platform dirs behind as empty shells, which is the
   # cheaper mistake.
-  - '!node_modules/app-builder-bin/!(${os})/*{,/**/*}'
-  - '!node_modules/7zip-bin/!(${os})/*{,/**/*}'
+  - "!node_modules/app-builder-bin/!(${os})/*{,/**/*}"
+  - "!node_modules/7zip-bin/!(${os})/*{,/**/*}"
   # Arch-level pruning, Windows only. `win/<arch>/` matches `${arch}` exactly
   # (x64|arm64|ia32), so this follows whatever is being packaged instead of
   # pinning x64; on mac and linux the whole win/ tree is already gone, so it is a
@@ -73,17 +73,17 @@ files:
   # "universal"), linux says `arm` where electron-builder says `armv7l` — both
   # would empty the keep-set silently, and only the in-app game build would
   # notice, long after packaging succeeded.
-  - '!node_modules/app-builder-bin/win/!(${arch}){,/**/*}'
+  - "!node_modules/app-builder-bin/win/!(${arch}){,/**/*}"
   # koffi (the FFI @lore-vcs/sdk loads through) ships 18 prebuilds and loads one
   # by `${process.platform}_${arch}`. The keep-list is the set of hosts Studio is
   # actually built for (see .github/workflows/release.yml) plus musl for glibc-less
   # Linux; an explicit list rather than a macro because koffi's triplets agree with
   # neither ${os} (win32, not win) nor ${arch} (armhf, riscv64d).
-  - '!node_modules/koffi/build/koffi/!(win32_x64|darwin_arm64|linux_x64|musl_x64){,/**/*}'
+  - "!node_modules/koffi/build/koffi/!(win32_x64|darwin_arm64|linux_x64|musl_x64){,/**/*}"
   - from: src/renderer/public
     to: public
     filter:
-      - '**/*'
+      - "**/*"
 extraMetadata:
   main: dist/main/index.js
 
@@ -147,7 +147,7 @@ extraResources:
   - from: ./resources
     to: resources
     filter:
-      - '**/*'
+      - "**/*"
       # The vendored code-signing tools are excluded here and added back per
       # platform below. project/build/prepare-codesign-tools.js stages one
       # native binary per host under resources/codesign/<platform>/, and an
@@ -156,13 +156,13 @@ extraResources:
       # installer. Platform-specific extraResources are appended to these, not
       # substituted for them (app-builder-lib/out/fileMatcher.js:getFileMatchers),
       # so the two blocks compose.
-      - '!codesign{,/**/*}'
+      - "!codesign{,/**/*}"
       # The vendored FFmpeg tools are excluded for exactly the reason the
       # code-signing ones are, and more urgently: project/build/prepare-ffmpeg.js
       # stages ~217 MB of native binaries per host under resources/ffmpeg/<platform>/,
       # so copying the whole tree would both put a Mach-O binary inside the Windows
       # installer and multiply that size by the number of platforms staged.
-      - '!ffmpeg{,/**/*}'
+      - "!ffmpeg{,/**/*}"
 mac:
   target: dmg
   icon: resources/app-icon.icns

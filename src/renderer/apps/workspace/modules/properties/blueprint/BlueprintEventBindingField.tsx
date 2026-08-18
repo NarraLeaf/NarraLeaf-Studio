@@ -7,31 +7,31 @@ import { useBlueprintEventBindingState } from "./useBlueprintEventBindingState";
  * Properties-panel block: wire widget runtime events to blueprint layers (uidoc `blueprintEvent`).
  */
 export function BlueprintEventBindingField(props: CustomFieldProps<UIInspectorData>) {
-    const { t } = useTranslation();
-    const { data } = props;
-    const { rows, hasEvents } = useBlueprintEventBindingState(data);
+  const { t } = useTranslation();
+  const { data } = props;
+  const { rows, hasEvents } = useBlueprintEventBindingState(data);
 
-    if (!hasEvents) {
-        return null;
-    }
+  if (!hasEvents) {
+    return null;
+  }
 
-    return (
-        <div className="mt-2 space-y-2 border-t border-edge-subtle pt-3">
-            <p className="text-2xs tracking-wide text-fg-subtle">{t("properties.events.title")}</p>
-            <div className="flex flex-wrap gap-1.5">
-                {rows.map(row => (
-                    <span
-                        key={row.eventId}
-                        className="rounded-md border border-edge bg-surface-sunken px-2 py-1 text-2xs text-fg"
-                        data-tip={row.description}
-                    >
-                        {row.displayName}
-                    </span>
-                ))}
-            </div>
-            {rows.some(row => row.legacyGraphEventId && row.legacyGraphEventId !== row.eventId) ? (
-                <p className="text-2xs text-warning">{t("properties.events.legacy")}</p>
-            ) : null}
-        </div>
-    );
+  return (
+    <div className="mt-2 space-y-2 border-t border-edge-subtle pt-3">
+      <p className="text-2xs tracking-wide text-fg-subtle">{t("properties.events.title")}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {rows.map((row) => (
+          <span
+            key={row.eventId}
+            className="rounded-md border border-edge bg-surface-sunken px-2 py-1 text-2xs text-fg"
+            data-tip={row.description}
+          >
+            {row.displayName}
+          </span>
+        ))}
+      </div>
+      {rows.some((row) => row.legacyGraphEventId && row.legacyGraphEventId !== row.eventId) ? (
+        <p className="text-2xs text-warning">{t("properties.events.legacy")}</p>
+      ) : null}
+    </div>
+  );
 }

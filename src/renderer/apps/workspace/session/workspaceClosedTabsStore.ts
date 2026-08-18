@@ -19,14 +19,14 @@ import { buildTabDefinition, trySerializeTab } from "./workspaceEditorSession";
  * persisting this stack would only add schema surface for no user-visible gain.
  */
 export interface ClosedTabRecord {
-    entry: SerializedTab;
-    /** Group the tab lived in; reopening falls back to the default group if it is gone. */
-    groupId: string;
-    /**
-     * Position within the group at the moment this tab was removed - not its
-     * position before the batch started. See `recordClosedTabs`.
-     */
-    index: number;
+  entry: SerializedTab;
+  /** Group the tab lived in; reopening falls back to the default group if it is gone. */
+  groupId: string;
+  /**
+   * Position within the group at the moment this tab was removed - not its
+   * position before the batch started. See `recordClosedTabs`.
+   */
+  index: number;
 }
 
 const MAX_CLOSED_TABS = 20;
@@ -52,34 +52,34 @@ let stack: ClosedTabRecord[] = [];
  * removed like any other, it just never comes back.
  */
 export function recordClosedTabs(
-    tabs: readonly { tab: EditorTabDefinition; index: number }[],
-    groupId: string,
+  tabs: readonly { tab: EditorTabDefinition; index: number }[],
+  groupId: string
 ): void {
-    const ordered = [...tabs].sort((a, b) => a.index - b.index);
-    ordered.forEach(({ tab, index }, removedBefore) => {
-        const entry = trySerializeTab(tab);
-        if (!entry) {
-            return;
-        }
-        stack.push({ entry, groupId, index: Math.max(0, index - removedBefore) });
-    });
-    if (stack.length > MAX_CLOSED_TABS) {
-        stack = stack.slice(stack.length - MAX_CLOSED_TABS);
+  const ordered = [...tabs].sort((a, b) => a.index - b.index);
+  ordered.forEach(({ tab, index }, removedBefore) => {
+    const entry = trySerializeTab(tab);
+    if (!entry) {
+      return;
     }
+    stack.push({ entry, groupId, index: Math.max(0, index - removedBefore) });
+  });
+  if (stack.length > MAX_CLOSED_TABS) {
+    stack = stack.slice(stack.length - MAX_CLOSED_TABS);
+  }
 }
 
 /** Most recently closed first. Null when there is nothing to reopen. */
 export function popClosedTab(): ClosedTabRecord | null {
-    return stack.pop() ?? null;
+  return stack.pop() ?? null;
 }
 
 export function hasClosedTabs(): boolean {
-    return stack.length > 0;
+  return stack.length > 0;
 }
 
 /** Test seam + project-switch hygiene. */
 export function clearClosedTabs(): void {
-    stack = [];
+  stack = [];
 }
 
 /**
@@ -91,22 +91,22 @@ export function clearClosedTabs(): void {
  * Returns false when the stack is empty or nothing on it could be rebuilt.
  */
 export function reopenLastClosedTab(ctx: WorkspaceContext, uiService: UIService): boolean {
-    for (let record = popClosedTab(); record; record = popClosedTab()) {
-        const tab = buildTabDefinition(ctx, record.entry);
-        if (!tab) {
-            continue;
-        }
-        const store = uiService.getStore();
-        const layout = store.getEditorLayout();
-        const groupExists = (function find(node: typeof layout): boolean {
-            if ("tabs" in node) {
-                return node.id === record!.groupId;
-            }
-            return find(node.first) || find(node.second);
-        })(layout);
-        store.openEditorTabInGroup(tab, groupExists ? record.groupId : undefined, true, record.index);
-        uiService.focus.setFocus(FocusArea.Editor, tab.id);
-        return true;
+  for (let record = popClosedTab(); record; record = popClosedTab()) {
+    const tab = buildTabDefinition(ctx, record.entry);
+    if (!tab) {
+      continue;
     }
-    return false;
+    const store = uiService.getStore();
+    const layout = store.getEditorLayout();
+    const groupExists = (function find(node: typeof layout): boolean {
+      if ("tabs" in node) {
+        return node.id === record!.groupId;
+      }
+      return find(node.first) || find(node.second);
+    })(layout);
+    store.openEditorTabInGroup(tab, groupExists ? record.groupId : undefined, true, record.index);
+    uiService.focus.setFocus(FocusArea.Editor, tab.id);
+    return true;
+  }
+  return false;
 }

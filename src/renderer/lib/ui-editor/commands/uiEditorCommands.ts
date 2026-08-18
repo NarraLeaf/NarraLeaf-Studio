@@ -5,18 +5,18 @@ import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDoc
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import {
-    buildUiEditorClipboardPayload,
-    clearUiEditorClipboard,
-    getUiEditorClipboard,
-    setUiEditorClipboard,
+  buildUiEditorClipboardPayload,
+  clearUiEditorClipboard,
+  getUiEditorClipboard,
+  setUiEditorClipboard
 } from "./uiEditorClipboard";
 import {
-    filterSelectionToTopLevelMovers,
-    getContainersToUngroup,
-    getMoversToGroupIntoLeaderContainer,
-    getSelectionLeaderId,
-    getSelectionPrimaryId,
-    selectSurfaceForProperties,
+  filterSelectionToTopLevelMovers,
+  getContainersToUngroup,
+  getMoversToGroupIntoLeaderContainer,
+  getSelectionLeaderId,
+  getSelectionPrimaryId,
+  selectSurfaceForProperties
 } from "./uiEditorSelection";
 import { collectSubtreeElementIds } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
@@ -25,332 +25,356 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 export type UIEditorPasteTarget = {
-    parentId: string;
-    beforeChildId: string | null;
+  parentId: string;
+  beforeChildId: string | null;
 };
 
-function getWidgetMainBlueprintSnapshot(localBp: LocalBlueprintService, surfaceId: string, elementId: string): Blueprint | undefined {
-    const bpId = localBp.getWidgetMainBlueprintId(surfaceId, elementId);
-    if (!bpId) {
-        return undefined;
-    }
-    const raw = localBp.getBlueprintDocument().blueprints[bpId];
-    return raw ? (JSON.parse(JSON.stringify(raw)) as Blueprint) : undefined;
+function getWidgetMainBlueprintSnapshot(
+  localBp: LocalBlueprintService,
+  surfaceId: string,
+  elementId: string
+): Blueprint | undefined {
+  const bpId = localBp.getWidgetMainBlueprintId(surfaceId, elementId);
+  if (!bpId) {
+    return undefined;
+  }
+  const raw = localBp.getBlueprintDocument().blueprints[bpId];
+  return raw ? (JSON.parse(JSON.stringify(raw)) as Blueprint) : undefined;
 }
 
 function getWidgetValueBlueprintSnapshot(
-    localBp: LocalBlueprintService,
-    surfaceId: string,
-    elementId: string,
-    propPath: string,
+  localBp: LocalBlueprintService,
+  surfaceId: string,
+  elementId: string,
+  propPath: string
 ): Blueprint | undefined {
-    const bpId = localBp.getWidgetValueBlueprintId(surfaceId, elementId, propPath);
-    if (!bpId) {
-        return undefined;
-    }
-    const raw = localBp.getBlueprintDocument().blueprints[bpId];
-    return raw ? (JSON.parse(JSON.stringify(raw)) as Blueprint) : undefined;
+  const bpId = localBp.getWidgetValueBlueprintId(surfaceId, elementId, propPath);
+  if (!bpId) {
+    return undefined;
+  }
+  const raw = localBp.getBlueprintDocument().blueprints[bpId];
+  return raw ? (JSON.parse(JSON.stringify(raw)) as Blueprint) : undefined;
 }
 
 function isElementInSubtree(document: UIDocument, elementId: string, rootId: string): boolean {
-    let cur: string | null | undefined = elementId;
-    while (cur) {
-        if (cur === rootId) {
-            return true;
-        }
-        cur = document.elements[cur]?.parentId ?? null;
+  let cur: string | null | undefined = elementId;
+  while (cur) {
+    if (cur === rootId) {
+      return true;
     }
-    return false;
+    cur = document.elements[cur]?.parentId ?? null;
+  }
+  return false;
 }
 
 function pickPasteAnchorTopLevelId(
-    document: UIDocument,
-    selection: UIElementSelection,
-    topLevelIds: string[],
+  document: UIDocument,
+  selection: UIElementSelection,
+  topLevelIds: string[]
 ): string | null {
-    const primaryId = getSelectionPrimaryId(selection);
-    if (primaryId) {
-        const primaryTop = topLevelIds.find(topId => isElementInSubtree(document, primaryId, topId));
-        if (primaryTop) {
-            return primaryTop;
-        }
+  const primaryId = getSelectionPrimaryId(selection);
+  if (primaryId) {
+    const primaryTop = topLevelIds.find((topId) => isElementInSubtree(document, primaryId, topId));
+    if (primaryTop) {
+      return primaryTop;
     }
-    return topLevelIds[topLevelIds.length - 1] ?? null;
+  }
+  return topLevelIds[topLevelIds.length - 1] ?? null;
 }
 
 export function resolvePasteTargetAfterSelection(
-    document: UIDocument,
-    surfaceId: string,
-    selection: UIElementSelection | null,
+  document: UIDocument,
+  surfaceId: string,
+  selection: UIElementSelection | null
 ): UIEditorPasteTarget | null {
-    const effectiveRootId = resolveSurfaceRootElementId(document, surfaceId);
-    if (!effectiveRootId) {
-        return null;
-    }
-    if (!selection || selection.surfaceId !== surfaceId || selection.elementIds.length === 0) {
-        return { parentId: effectiveRootId, beforeChildId: null };
-    }
+  const effectiveRootId = resolveSurfaceRootElementId(document, surfaceId);
+  if (!effectiveRootId) {
+    return null;
+  }
+  if (!selection || selection.surfaceId !== surfaceId || selection.elementIds.length === 0) {
+    return { parentId: effectiveRootId, beforeChildId: null };
+  }
 
-    const allowed = collectSubtreeElementIds(document, effectiveRootId);
-    const topLevelIds = filterSelectionToTopLevelMovers(document, selection).filter(id => {
-        const el = document.elements[id];
-        return el != null && el.type !== "nl.root" && !isComponentEditorRootElement(el) && allowed.has(id);
-    });
-    const anchorId = pickPasteAnchorTopLevelId(document, selection, topLevelIds);
-    const anchor = anchorId ? document.elements[anchorId] : null;
-    if (!anchor?.parentId) {
-        return { parentId: effectiveRootId, beforeChildId: null };
-    }
-
-    const parent = document.elements[anchor.parentId];
-    if (!parent || !allowed.has(parent.id)) {
-        return { parentId: effectiveRootId, beforeChildId: null };
-    }
-
-    const sameParentTopIds = new Set(
-        topLevelIds.filter(id => document.elements[id]?.parentId === parent.id),
+  const allowed = collectSubtreeElementIds(document, effectiveRootId);
+  const topLevelIds = filterSelectionToTopLevelMovers(document, selection).filter((id) => {
+    const el = document.elements[id];
+    return (
+      el != null && el.type !== "nl.root" && !isComponentEditorRootElement(el) && allowed.has(id)
     );
-    let insertAfterIndex = -1;
-    parent.childrenIds.forEach((childId, index) => {
-        if (sameParentTopIds.has(childId)) {
-            insertAfterIndex = Math.max(insertAfterIndex, index);
-        }
-    });
-    if (insertAfterIndex < 0) {
-        insertAfterIndex = parent.childrenIds.indexOf(anchor.id);
+  });
+  const anchorId = pickPasteAnchorTopLevelId(document, selection, topLevelIds);
+  const anchor = anchorId ? document.elements[anchorId] : null;
+  if (!anchor?.parentId) {
+    return { parentId: effectiveRootId, beforeChildId: null };
+  }
+
+  const parent = document.elements[anchor.parentId];
+  if (!parent || !allowed.has(parent.id)) {
+    return { parentId: effectiveRootId, beforeChildId: null };
+  }
+
+  const sameParentTopIds = new Set(
+    topLevelIds.filter((id) => document.elements[id]?.parentId === parent.id)
+  );
+  let insertAfterIndex = -1;
+  parent.childrenIds.forEach((childId, index) => {
+    if (sameParentTopIds.has(childId)) {
+      insertAfterIndex = Math.max(insertAfterIndex, index);
     }
+  });
+  if (insertAfterIndex < 0) {
+    insertAfterIndex = parent.childrenIds.indexOf(anchor.id);
+  }
 
-    const beforeChildId =
-        insertAfterIndex >= 0 && insertAfterIndex < parent.childrenIds.length - 1
-            ? parent.childrenIds[insertAfterIndex + 1]
-            : null;
+  const beforeChildId =
+    insertAfterIndex >= 0 && insertAfterIndex < parent.childrenIds.length - 1
+      ? parent.childrenIds[insertAfterIndex + 1]
+      : null;
 
-    return { parentId: parent.id, beforeChildId };
+  return { parentId: parent.id, beforeChildId };
 }
 
 export function uiEditorCopySelection(
-    documentService: UIDocumentService,
-    localBp: LocalBlueprintService,
-    surfaceId: string,
-    selection: UIElementSelection | null,
+  documentService: UIDocumentService,
+  localBp: LocalBlueprintService,
+  surfaceId: string,
+  selection: UIElementSelection | null
 ): boolean {
-    if (!selection || selection.surfaceId !== surfaceId || selection.elementIds.length === 0) {
-        return false;
-    }
-    const doc = documentService.getDocument();
-    const payload = buildUiEditorClipboardPayload({
-        document: doc,
-        surfaceId,
-        selectedElementIds: selection.elementIds,
-        getWidgetMainBlueprint: (sid, eid) => getWidgetMainBlueprintSnapshot(localBp, sid, eid),
-        getWidgetValueBlueprint: (sid, eid, propPath) =>
-            getWidgetValueBlueprintSnapshot(localBp, sid, eid, propPath),
-    });
-    if (!payload) {
-        return false;
-    }
-    setUiEditorClipboard(payload);
-    return true;
+  if (!selection || selection.surfaceId !== surfaceId || selection.elementIds.length === 0) {
+    return false;
+  }
+  const doc = documentService.getDocument();
+  const payload = buildUiEditorClipboardPayload({
+    document: doc,
+    surfaceId,
+    selectedElementIds: selection.elementIds,
+    getWidgetMainBlueprint: (sid, eid) => getWidgetMainBlueprintSnapshot(localBp, sid, eid),
+    getWidgetValueBlueprint: (sid, eid, propPath) =>
+      getWidgetValueBlueprintSnapshot(localBp, sid, eid, propPath)
+  });
+  if (!payload) {
+    return false;
+  }
+  setUiEditorClipboard(payload);
+  return true;
 }
 
 export function uiEditorCutSelection(
-    documentService: UIDocumentService,
-    localBp: LocalBlueprintService,
-    stateService: UIEditorStateService,
-    surfaceId: string,
-    selection: UIElementSelection | null,
-    uiService?: UIService | null,
+  documentService: UIDocumentService,
+  localBp: LocalBlueprintService,
+  stateService: UIEditorStateService,
+  surfaceId: string,
+  selection: UIElementSelection | null,
+  uiService?: UIService | null
 ): boolean {
-    const ok = uiEditorCopySelection(documentService, localBp, surfaceId, selection);
-    if (!ok || !selection || selection.elementIds.length === 0) {
-        return false;
-    }
-    const doc = documentService.getDocument();
-    const tops = filterSelectionToTopLevelMovers(doc, selection);
-    if (tops.length === 0) {
-        return false;
-    }
-    selectSurfaceForProperties(stateService, surfaceId, uiService);
-    documentService.deleteElements(tops);
-    return true;
+  const ok = uiEditorCopySelection(documentService, localBp, surfaceId, selection);
+  if (!ok || !selection || selection.elementIds.length === 0) {
+    return false;
+  }
+  const doc = documentService.getDocument();
+  const tops = filterSelectionToTopLevelMovers(doc, selection);
+  if (tops.length === 0) {
+    return false;
+  }
+  selectSurfaceForProperties(stateService, surfaceId, uiService);
+  documentService.deleteElements(tops);
+  return true;
 }
 
 export function uiEditorPaste(
-    documentService: UIDocumentService,
-    localBp: LocalBlueprintService,
-    stateService: UIEditorStateService,
-    surfaceId: string,
-    input: { hitElementId?: string | null; primaryElementId?: string | null },
+  documentService: UIDocumentService,
+  localBp: LocalBlueprintService,
+  stateService: UIEditorStateService,
+  surfaceId: string,
+  input: { hitElementId?: string | null; primaryElementId?: string | null }
 ): boolean {
-    const payload = getUiEditorClipboard();
-    if (!payload) {
-        return false;
-    }
-    const doc = documentService.getDocument();
-    const resolved = resolveInsertTargetParent(doc, surfaceId, {
-        hitElementId: input.hitElementId,
-        primaryElementId: input.primaryElementId,
-    });
-    if (!resolved) {
-        return false;
-    }
-    const result = documentService.pasteClipboardPayload(surfaceId, resolved.parentId, null, payload);
-    if (!result.ok || result.newRootIds.length === 0) {
-        return false;
-    }
-    const primary = result.newRootIds[result.newRootIds.length - 1];
-    stateService.setUIElementSelection({
-        editor: "ui",
-        surfaceId,
-        elementIds: result.newRootIds,
-        primaryId: primary,
-    });
-    void localBp;
-    return true;
+  const payload = getUiEditorClipboard();
+  if (!payload) {
+    return false;
+  }
+  const doc = documentService.getDocument();
+  const resolved = resolveInsertTargetParent(doc, surfaceId, {
+    hitElementId: input.hitElementId,
+    primaryElementId: input.primaryElementId
+  });
+  if (!resolved) {
+    return false;
+  }
+  const result = documentService.pasteClipboardPayload(surfaceId, resolved.parentId, null, payload);
+  if (!result.ok || result.newRootIds.length === 0) {
+    return false;
+  }
+  const primary = result.newRootIds[result.newRootIds.length - 1];
+  stateService.setUIElementSelection({
+    editor: "ui",
+    surfaceId,
+    elementIds: result.newRootIds,
+    primaryId: primary
+  });
+  void localBp;
+  return true;
 }
 
 export function uiEditorPasteAfterSelection(
-    documentService: UIDocumentService,
-    localBp: LocalBlueprintService,
-    stateService: UIEditorStateService,
-    surfaceId: string,
-    selection: UIElementSelection | null,
+  documentService: UIDocumentService,
+  localBp: LocalBlueprintService,
+  stateService: UIEditorStateService,
+  surfaceId: string,
+  selection: UIElementSelection | null
 ): boolean {
-    const payload = getUiEditorClipboard();
-    if (!payload) {
-        return false;
-    }
-    const doc = documentService.getDocument();
-    const target = resolvePasteTargetAfterSelection(doc, surfaceId, selection);
-    if (!target) {
-        return false;
-    }
-    const result = documentService.pasteClipboardPayload(surfaceId, target.parentId, target.beforeChildId, payload);
-    if (!result.ok || result.newRootIds.length === 0) {
-        return false;
-    }
-    const primary = result.newRootIds[result.newRootIds.length - 1];
-    stateService.setUIElementSelection({
-        editor: "ui",
-        surfaceId,
-        elementIds: result.newRootIds,
-        primaryId: primary,
-    });
-    void localBp;
-    return true;
+  const payload = getUiEditorClipboard();
+  if (!payload) {
+    return false;
+  }
+  const doc = documentService.getDocument();
+  const target = resolvePasteTargetAfterSelection(doc, surfaceId, selection);
+  if (!target) {
+    return false;
+  }
+  const result = documentService.pasteClipboardPayload(
+    surfaceId,
+    target.parentId,
+    target.beforeChildId,
+    payload
+  );
+  if (!result.ok || result.newRootIds.length === 0) {
+    return false;
+  }
+  const primary = result.newRootIds[result.newRootIds.length - 1];
+  stateService.setUIElementSelection({
+    editor: "ui",
+    surfaceId,
+    elementIds: result.newRootIds,
+    primaryId: primary
+  });
+  void localBp;
+  return true;
 }
 
 /** Paste using an explicit parent (e.g. context menu on outline row). */
 export function uiEditorPasteIntoParent(
-    documentService: UIDocumentService,
-    localBp: LocalBlueprintService,
-    stateService: UIEditorStateService,
-    surfaceId: string,
-    targetParentId: string,
-    beforeChildId: string | null = null,
+  documentService: UIDocumentService,
+  localBp: LocalBlueprintService,
+  stateService: UIEditorStateService,
+  surfaceId: string,
+  targetParentId: string,
+  beforeChildId: string | null = null
 ): boolean {
-    const payload = getUiEditorClipboard();
-    if (!payload) {
-        return false;
-    }
-    const result = documentService.pasteClipboardPayload(surfaceId, targetParentId, beforeChildId, payload);
-    if (!result.ok || result.newRootIds.length === 0) {
-        return false;
-    }
-    const primary = result.newRootIds[result.newRootIds.length - 1];
-    stateService.setUIElementSelection({
-        editor: "ui",
-        surfaceId,
-        elementIds: result.newRootIds,
-        primaryId: primary,
-    });
-    void localBp;
-    return true;
+  const payload = getUiEditorClipboard();
+  if (!payload) {
+    return false;
+  }
+  const result = documentService.pasteClipboardPayload(
+    surfaceId,
+    targetParentId,
+    beforeChildId,
+    payload
+  );
+  if (!result.ok || result.newRootIds.length === 0) {
+    return false;
+  }
+  const primary = result.newRootIds[result.newRootIds.length - 1];
+  stateService.setUIElementSelection({
+    editor: "ui",
+    surfaceId,
+    elementIds: result.newRootIds,
+    primaryId: primary
+  });
+  void localBp;
+  return true;
 }
 
 export function uiEditorDuplicateSelection(
-    documentService: UIDocumentService,
-    localBp: LocalBlueprintService,
-    stateService: UIEditorStateService,
-    surfaceId: string,
-    selection: UIElementSelection | null,
+  documentService: UIDocumentService,
+  localBp: LocalBlueprintService,
+  stateService: UIEditorStateService,
+  surfaceId: string,
+  selection: UIElementSelection | null
 ): boolean {
-    if (!selection || selection.surfaceId !== surfaceId || selection.elementIds.length === 0) {
-        return false;
-    }
-    const copied = uiEditorCopySelection(documentService, localBp, surfaceId, selection);
-    if (!copied) {
-        return false;
-    }
-    const doc = documentService.getDocument();
-    const tops = filterSelectionToTopLevelMovers(doc, selection);
-    if (tops.length === 0) {
-        return false;
-    }
-    const first = doc.elements[tops[0]];
-    const parentId = first?.parentId;
-    if (!parentId) {
-        return false;
-    }
-    const parent = doc.elements[parentId];
-    if (!parent) {
-        return false;
-    }
-    const lastTop = tops[tops.length - 1];
-    const idx = parent.childrenIds.indexOf(lastTop);
-    const beforeChildId = idx >= 0 && idx < parent.childrenIds.length - 1 ? parent.childrenIds[idx + 1] : null;
-    return uiEditorPasteIntoParent(documentService, localBp, stateService, surfaceId, parentId, beforeChildId);
+  if (!selection || selection.surfaceId !== surfaceId || selection.elementIds.length === 0) {
+    return false;
+  }
+  const copied = uiEditorCopySelection(documentService, localBp, surfaceId, selection);
+  if (!copied) {
+    return false;
+  }
+  const doc = documentService.getDocument();
+  const tops = filterSelectionToTopLevelMovers(doc, selection);
+  if (tops.length === 0) {
+    return false;
+  }
+  const first = doc.elements[tops[0]];
+  const parentId = first?.parentId;
+  if (!parentId) {
+    return false;
+  }
+  const parent = doc.elements[parentId];
+  if (!parent) {
+    return false;
+  }
+  const lastTop = tops[tops.length - 1];
+  const idx = parent.childrenIds.indexOf(lastTop);
+  const beforeChildId =
+    idx >= 0 && idx < parent.childrenIds.length - 1 ? parent.childrenIds[idx + 1] : null;
+  return uiEditorPasteIntoParent(
+    documentService,
+    localBp,
+    stateService,
+    surfaceId,
+    parentId,
+    beforeChildId
+  );
 }
 
 export function uiEditorDeleteSelection(
-    documentService: UIDocumentService,
-    stateService: UIEditorStateService,
-    surfaceId: string,
-    selection: UIElementSelection | null,
-    uiService?: UIService | null,
+  documentService: UIDocumentService,
+  stateService: UIEditorStateService,
+  surfaceId: string,
+  selection: UIElementSelection | null,
+  uiService?: UIService | null
 ): boolean {
-    if (!selection || selection.surfaceId !== surfaceId || selection.elementIds.length === 0) {
-        return false;
-    }
-    const doc = documentService.getDocument();
-    const tops = filterSelectionToTopLevelMovers(doc, selection);
-    if (tops.length === 0) {
-        return false;
-    }
-    selectSurfaceForProperties(stateService, surfaceId, uiService);
-    documentService.deleteElements(tops);
-    return true;
+  if (!selection || selection.surfaceId !== surfaceId || selection.elementIds.length === 0) {
+    return false;
+  }
+  const doc = documentService.getDocument();
+  const tops = filterSelectionToTopLevelMovers(doc, selection);
+  if (tops.length === 0) {
+    return false;
+  }
+  selectSurfaceForProperties(stateService, surfaceId, uiService);
+  documentService.deleteElements(tops);
+  return true;
 }
 
 export function uiEditorGroupIntoLeaderContainer(
-    documentService: UIDocumentService,
-    stateService: UIEditorStateService,
-    surfaceId: string,
-    selection: UIElementSelection | null,
+  documentService: UIDocumentService,
+  stateService: UIEditorStateService,
+  surfaceId: string,
+  selection: UIElementSelection | null
 ): boolean {
-    if (!selection || selection.surfaceId !== surfaceId) {
-        return false;
-    }
-    const doc = documentService.getDocument();
-    const leader = getSelectionLeaderId(selection);
-    if (!leader) {
-        return false;
-    }
-    const movers = getMoversToGroupIntoLeaderContainer(doc, selection);
-    if (movers.length === 0) {
-        return false;
-    }
-    const result = documentService.moveElementsInSurface(surfaceId, movers, leader, null);
-    if (!result.ok) {
-        return false;
-    }
-    stateService.setUIElementSelection({
-        editor: "ui",
-        surfaceId,
-        elementIds: selection.elementIds,
-        primaryId: getSelectionPrimaryId(selection) ?? leader,
-    });
-    return true;
+  if (!selection || selection.surfaceId !== surfaceId) {
+    return false;
+  }
+  const doc = documentService.getDocument();
+  const leader = getSelectionLeaderId(selection);
+  if (!leader) {
+    return false;
+  }
+  const movers = getMoversToGroupIntoLeaderContainer(doc, selection);
+  if (movers.length === 0) {
+    return false;
+  }
+  const result = documentService.moveElementsInSurface(surfaceId, movers, leader, null);
+  if (!result.ok) {
+    return false;
+  }
+  stateService.setUIElementSelection({
+    editor: "ui",
+    surfaceId,
+    elementIds: selection.elementIds,
+    primaryId: getSelectionPrimaryId(selection) ?? leader
+  });
+  return true;
 }
 
 /**
@@ -362,83 +386,83 @@ export function uiEditorGroupIntoLeaderContainer(
  * empty group leaves nothing to select, so the surface takes the properties panel as after a delete.
  */
 export function uiEditorUngroupSelection(
-    documentService: UIDocumentService,
-    stateService: UIEditorStateService,
-    surfaceId: string,
-    selection: UIElementSelection | null,
-    uiService?: UIService | null,
+  documentService: UIDocumentService,
+  stateService: UIEditorStateService,
+  surfaceId: string,
+  selection: UIElementSelection | null,
+  uiService?: UIService | null
 ): boolean {
-    if (!selection || selection.surfaceId !== surfaceId) {
-        return false;
-    }
-    const containers = getContainersToUngroup(documentService.getDocument(), surfaceId, selection);
-    if (containers.length === 0) {
-        return false;
-    }
-    const dissolved = new Set(containers);
-    const lifted = documentService.ungroupContainers(surfaceId, containers);
+  if (!selection || selection.surfaceId !== surfaceId) {
+    return false;
+  }
+  const containers = getContainersToUngroup(documentService.getDocument(), surfaceId, selection);
+  if (containers.length === 0) {
+    return false;
+  }
+  const dissolved = new Set(containers);
+  const lifted = documentService.ungroupContainers(surfaceId, containers);
 
-    const after = documentService.getDocument();
-    const nextIds = [...new Set([...selection.elementIds.filter(id => !dissolved.has(id)), ...lifted])].filter(
-        id => after.elements[id] != null,
-    );
-    if (nextIds.length === 0) {
-        selectSurfaceForProperties(stateService, surfaceId, uiService);
-        return true;
-    }
-    const previousPrimary = getSelectionPrimaryId(selection);
-    stateService.setUIElementSelection({
-        editor: "ui",
-        surfaceId,
-        elementIds: nextIds,
-        primaryId:
-            previousPrimary && nextIds.includes(previousPrimary)
-                ? previousPrimary
-                : nextIds[nextIds.length - 1],
-    });
+  const after = documentService.getDocument();
+  const nextIds = [
+    ...new Set([...selection.elementIds.filter((id) => !dissolved.has(id)), ...lifted])
+  ].filter((id) => after.elements[id] != null);
+  if (nextIds.length === 0) {
+    selectSurfaceForProperties(stateService, surfaceId, uiService);
     return true;
+  }
+  const previousPrimary = getSelectionPrimaryId(selection);
+  stateService.setUIElementSelection({
+    editor: "ui",
+    surfaceId,
+    elementIds: nextIds,
+    primaryId:
+      previousPrimary && nextIds.includes(previousPrimary)
+        ? previousPrimary
+        : nextIds[nextIds.length - 1]
+  });
+  return true;
 }
 
 export function uiEditorSelectAllInSurface(
-    documentService: UIDocumentService,
-    stateService: UIEditorStateService,
-    surfaceId: string,
-    uiService?: UIService | null,
+  documentService: UIDocumentService,
+  stateService: UIEditorStateService,
+  surfaceId: string,
+  uiService?: UIService | null
 ): void {
-    const doc = documentService.getDocument();
-    const effectiveRootId = resolveSurfaceRootElementId(doc, surfaceId);
-    if (!effectiveRootId) {
-        return;
+  const doc = documentService.getDocument();
+  const effectiveRootId = resolveSurfaceRootElementId(doc, surfaceId);
+  if (!effectiveRootId) {
+    return;
+  }
+  const root = doc.elements[effectiveRootId];
+  if (!root) {
+    return;
+  }
+  const allowed = collectSubtreeElementIds(doc, effectiveRootId);
+  const ids: string[] = [];
+  const walk = (id: string) => {
+    const el = doc.elements[id];
+    if (!el || !allowed.has(id)) {
+      return;
     }
-    const root = doc.elements[effectiveRootId];
-    if (!root) {
-        return;
+    if (el.type !== "nl.root" && !isComponentEditorRootElement(el)) {
+      ids.push(id);
     }
-    const allowed = collectSubtreeElementIds(doc, effectiveRootId);
-    const ids: string[] = [];
-    const walk = (id: string) => {
-        const el = doc.elements[id];
-        if (!el || !allowed.has(id)) {
-            return;
-        }
-        if (el.type !== "nl.root" && !isComponentEditorRootElement(el)) {
-            ids.push(id);
-        }
-        el.childrenIds.forEach(walk);
-    };
-    walk(effectiveRootId);
-    if (ids.length === 0) {
-        selectSurfaceForProperties(stateService, surfaceId, uiService);
-        return;
-    }
-    stateService.setUIElementSelection({
-        editor: "ui",
-        surfaceId,
-        elementIds: ids,
-        primaryId: ids[ids.length - 1],
-    });
+    el.childrenIds.forEach(walk);
+  };
+  walk(effectiveRootId);
+  if (ids.length === 0) {
+    selectSurfaceForProperties(stateService, surfaceId, uiService);
+    return;
+  }
+  stateService.setUIElementSelection({
+    editor: "ui",
+    surfaceId,
+    elementIds: ids,
+    primaryId: ids[ids.length - 1]
+  });
 }
 
 export function uiEditorClearClipboard(): void {
-    clearUiEditorClipboard();
+  clearUiEditorClipboard();
 }

@@ -34,7 +34,14 @@
  */
 
 import { DevTools, Puppet } from "narraleaf-react";
-import type { Game, GameState, IPuppetUserConfig, PuppetBackend, PuppetState, PuppetStatus } from "narraleaf-react";
+import type {
+  Game,
+  GameState,
+  IPuppetUserConfig,
+  PuppetBackend,
+  PuppetState,
+  PuppetStatus
+} from "narraleaf-react";
 
 export type PuppetBackendLogLevel = "info" | "warning" | "error";
 
@@ -44,48 +51,48 @@ export type PuppetBackendLogLevel = "info" | "warning" | "error";
  * description of "a module and where it came from" rather than a filesystem path.
  */
 export type PuppetBackendModuleSource = {
-    /** Stable identifier for diagnostics — conventionally the directory the module came from. */
-    id: string;
-    /** A URL the renderer can `import()`. */
-    url: string;
-    /**
-     * Resolve a file that lives next to the module into a URL the renderer can fetch.
-     *
-     * This exists because the engine cannot provide it. `PuppetMountContext.resolveSrc` resolves a
-     * single source through the image preload cache, which is the right answer for a one-file
-     * asset and no answer at all for the multi-file bundles these runtimes actually consume — a
-     * skeleton plus an atlas plus its texture pages, a model plus its motions and physics. The
-     * backend knows which siblings it needs only after it has parsed the first one, so it needs to
-     * ask, and this is what it asks.
-     *
-     * Rejects when the path escapes the module's own directory or the host cannot serve it.
-     */
-    resolveFile: (relativePath: string) => Promise<string>;
+  /** Stable identifier for diagnostics — conventionally the directory the module came from. */
+  id: string;
+  /** A URL the renderer can `import()`. */
+  url: string;
+  /**
+   * Resolve a file that lives next to the module into a URL the renderer can fetch.
+   *
+   * This exists because the engine cannot provide it. `PuppetMountContext.resolveSrc` resolves a
+   * single source through the image preload cache, which is the right answer for a one-file
+   * asset and no answer at all for the multi-file bundles these runtimes actually consume — a
+   * skeleton plus an atlas plus its texture pages, a model plus its motions and physics. The
+   * backend knows which siblings it needs only after it has parsed the first one, so it needs to
+   * ask, and this is what it asks.
+   *
+   * Rejects when the path escapes the module's own directory or the host cannot serve it.
+   */
+  resolveFile: (relativePath: string) => Promise<string>;
 };
 
 /** What a backend module's factory is handed. */
 export type PuppetBackendHostContext = {
-    /** The game these backends are being registered into. */
-    game: Game;
-    /** See {@link PuppetBackendModuleSource.resolveFile}. */
-    resolveFile: (relativePath: string) => Promise<string>;
-    /** Report progress or trouble to the host's console. */
-    log: (level: PuppetBackendLogLevel, message: string) => void;
+  /** The game these backends are being registered into. */
+  game: Game;
+  /** See {@link PuppetBackendModuleSource.resolveFile}. */
+  resolveFile: (relativePath: string) => Promise<string>;
+  /** Report progress or trouble to the host's console. */
+  log: (level: PuppetBackendLogLevel, message: string) => void;
 };
 
 export type PuppetBackendFactory = (
-    context: PuppetBackendHostContext,
+  context: PuppetBackendHostContext
 ) => PuppetBackend | PuppetBackend[] | Promise<PuppetBackend | PuppetBackend[] | void> | void;
 
 export type PuppetBackendLoadResult =
-    | { moduleId: string; ok: true; backends: string[] }
-    | { moduleId: string; ok: false; error: string };
+  | { moduleId: string; ok: true; backends: string[] }
+  | { moduleId: string; ok: false; error: string };
 
 type PuppetBackendModule = {
-    default?: unknown;
-    puppetBackend?: unknown;
-    puppetBackends?: unknown;
-    createPuppetBackends?: unknown;
+  default?: unknown;
+  puppetBackend?: unknown;
+  puppetBackends?: unknown;
+  createPuppetBackends?: unknown;
 };
 
 /**
@@ -94,13 +101,15 @@ type PuppetBackendModule = {
  * the whole of the engine's contract.
  */
 export function isPuppetBackend(value: unknown): value is PuppetBackend {
-    if (typeof value !== "object" || value === null) {
-        return false;
-    }
-    const candidate = value as { name?: unknown; mount?: unknown };
-    return typeof candidate.name === "string"
-        && candidate.name.trim().length > 0
-        && typeof candidate.mount === "function";
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as { name?: unknown; mount?: unknown };
+  return (
+    typeof candidate.name === "string" &&
+    candidate.name.trim().length > 0 &&
+    typeof candidate.mount === "function"
+  );
 }
 
 /**
@@ -111,39 +120,38 @@ export function isPuppetBackend(value: unknown): value is PuppetBackend {
  * not for it), which is not an error.
  */
 async function resolveModuleExport(
-    value: unknown,
-    context: PuppetBackendHostContext,
+  value: unknown,
+  context: PuppetBackendHostContext
 ): Promise<PuppetBackend[]> {
-    const produced = typeof value === "function"
-        ? await (value as PuppetBackendFactory)(context)
-        : await value;
-    if (produced === undefined || produced === null) {
-        return [];
+  const produced =
+    typeof value === "function" ? await (value as PuppetBackendFactory)(context) : await value;
+  if (produced === undefined || produced === null) {
+    return [];
+  }
+  const candidates = Array.isArray(produced) ? produced : [produced];
+  const backends: PuppetBackend[] = [];
+  for (const candidate of candidates) {
+    if (!isPuppetBackend(candidate)) {
+      throw new Error(
+        "A puppet backend must be an object with a non-empty `name` and a `mount(container, ctx)` method"
+      );
     }
-    const candidates = Array.isArray(produced) ? produced : [produced];
-    const backends: PuppetBackend[] = [];
-    for (const candidate of candidates) {
-        if (!isPuppetBackend(candidate)) {
-            throw new Error(
-                "A puppet backend must be an object with a non-empty `name` and a `mount(container, ctx)` method",
-            );
-        }
-        backends.push(candidate);
-    }
-    return backends;
+    backends.push(candidate);
+  }
+  return backends;
 }
 
 function readModuleExport(module: PuppetBackendModule): unknown {
-    if (module.createPuppetBackends !== undefined) {
-        return module.createPuppetBackends;
-    }
-    if (module.puppetBackends !== undefined) {
-        return module.puppetBackends;
-    }
-    if (module.puppetBackend !== undefined) {
-        return module.puppetBackend;
-    }
-    return module.default;
+  if (module.createPuppetBackends !== undefined) {
+    return module.createPuppetBackends;
+  }
+  if (module.puppetBackends !== undefined) {
+    return module.puppetBackends;
+  }
+  if (module.puppetBackend !== undefined) {
+    return module.puppetBackend;
+  }
+  return module.default;
 }
 
 /**
@@ -159,48 +167,45 @@ function readModuleExport(module: PuppetBackendModule): unknown {
  * component mounts, and a backend that arrives afterwards is not picked up.
  */
 export async function loadPuppetBackends(
-    game: Game,
-    sources: readonly PuppetBackendModuleSource[],
-    options: { log: (level: PuppetBackendLogLevel, message: string) => void },
+  game: Game,
+  sources: readonly PuppetBackendModuleSource[],
+  options: { log: (level: PuppetBackendLogLevel, message: string) => void }
 ): Promise<PuppetBackendLoadResult[]> {
-    const results: PuppetBackendLoadResult[] = [];
-    for (const source of sources) {
-        try {
-            const module = await import(/* @vite-ignore */ source.url) as PuppetBackendModule;
-            const context: PuppetBackendHostContext = {
-                game,
-                resolveFile: source.resolveFile,
-                log: (level, message) => options.log(level, `[puppet:${source.id}] ${message}`),
-            };
-            const backends = await resolveModuleExport(readModuleExport(module), context);
-            const registered: string[] = [];
-            for (const backend of backends) {
-                if (game.getPuppetBackend(backend.name)) {
-                    options.log(
-                        "warning",
-                        `[puppet:${source.id}] a backend named "${backend.name}" is already registered; `
-                        + "the later one replaces it",
-                    );
-                }
-                game.registerPuppetBackend(backend);
-                registered.push(backend.name);
-            }
-            if (registered.length === 0) {
-                options.log(
-                    "warning",
-                    `[puppet:${source.id}] module exported no puppet backend`,
-                );
-            } else {
-                options.log("info", `[puppet:${source.id}] registered: ${registered.join(", ")}`);
-            }
-            results.push({ moduleId: source.id, ok: true, backends: registered });
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            options.log("error", `[puppet:${source.id}] failed to load: ${message}`);
-            results.push({ moduleId: source.id, ok: false, error: message });
+  const results: PuppetBackendLoadResult[] = [];
+  for (const source of sources) {
+    try {
+      const module = (await import(/* @vite-ignore */ source.url)) as PuppetBackendModule;
+      const context: PuppetBackendHostContext = {
+        game,
+        resolveFile: source.resolveFile,
+        log: (level, message) => options.log(level, `[puppet:${source.id}] ${message}`)
+      };
+      const backends = await resolveModuleExport(readModuleExport(module), context);
+      const registered: string[] = [];
+      for (const backend of backends) {
+        if (game.getPuppetBackend(backend.name)) {
+          options.log(
+            "warning",
+            `[puppet:${source.id}] a backend named "${backend.name}" is already registered; ` +
+              "the later one replaces it"
+          );
         }
+        game.registerPuppetBackend(backend);
+        registered.push(backend.name);
+      }
+      if (registered.length === 0) {
+        options.log("warning", `[puppet:${source.id}] module exported no puppet backend`);
+      } else {
+        options.log("info", `[puppet:${source.id}] registered: ${registered.join(", ")}`);
+      }
+      results.push({ moduleId: source.id, ok: true, backends: registered });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      options.log("error", `[puppet:${source.id}] failed to load: ${message}`);
+      results.push({ moduleId: source.id, ok: false, error: message });
     }
-    return results;
+  }
+  return results;
 }
 
 /**
@@ -218,36 +223,39 @@ export async function loadPuppetBackends(
  * type, as the thing an inspector fills its dropdowns from.
  */
 export type PuppetStageHandle = {
-    /** Backend names registered on this game. */
-    backends: () => string[];
-    /**
-     * Put a puppet on the stage at once, in the current scene, on the default layer.
-     *
-     * `id` must be unique: elements registered this way are outside the story's action tree, so
-     * they never receive a generated id and would otherwise collide as React keys.
-     */
-    spawn: (id: string, config: Partial<IPuppetUserConfig> & { backend: string; src: string }) => Puppet;
-    /** Merge a patch into a puppet's state and push it to the backend immediately. */
-    setState: (puppet: Puppet, patch: Partial<PuppetState>) => void;
-    /** Run a backend command and wait for it. */
-    command: (puppet: Puppet, name: string, payload?: unknown) => Promise<void>;
-    /** What the backend says about the model — motions, skins, parameters. Null when it cannot say. */
-    describe: (puppet: Puppet) => Promise<unknown>;
-    status: (puppet: Puppet) => PuppetStatus;
+  /** Backend names registered on this game. */
+  backends: () => string[];
+  /**
+   * Put a puppet on the stage at once, in the current scene, on the default layer.
+   *
+   * `id` must be unique: elements registered this way are outside the story's action tree, so
+   * they never receive a generated id and would otherwise collide as React keys.
+   */
+  spawn: (
+    id: string,
+    config: Partial<IPuppetUserConfig> & { backend: string; src: string }
+  ) => Puppet;
+  /** Merge a patch into a puppet's state and push it to the backend immediately. */
+  setState: (puppet: Puppet, patch: Partial<PuppetState>) => void;
+  /** Run a backend command and wait for it. */
+  command: (puppet: Puppet, name: string, payload?: unknown) => Promise<void>;
+  /** What the backend says about the model — motions, skins, parameters. Null when it cannot say. */
+  describe: (puppet: Puppet) => Promise<unknown>;
+  status: (puppet: Puppet) => PuppetStatus;
 };
 
 export function createPuppetStageHandle(game: Game, gameState: GameState): PuppetStageHandle {
-    return {
-        backends: () => game.listPuppetBackends(),
-        spawn: (id, config) => {
-            const puppet = new Puppet(config);
-            DevTools.setElementId(puppet, id);
-            DevTools.registerDisplayable(gameState, puppet);
-            return puppet;
-        },
-        setState: (puppet, patch) => DevTools.setPuppetState(gameState, puppet, patch),
-        command: (puppet, name, payload) => DevTools.runPuppetCommand(gameState, puppet, name, payload),
-        describe: puppet => DevTools.describePuppet(gameState, puppet),
-        status: puppet => DevTools.getPuppetStatus(puppet),
-    };
+  return {
+    backends: () => game.listPuppetBackends(),
+    spawn: (id, config) => {
+      const puppet = new Puppet(config);
+      DevTools.setElementId(puppet, id);
+      DevTools.registerDisplayable(gameState, puppet);
+      return puppet;
+    },
+    setState: (puppet, patch) => DevTools.setPuppetState(gameState, puppet, patch),
+    command: (puppet, name, payload) => DevTools.runPuppetCommand(gameState, puppet, name, payload),
+    describe: (puppet) => DevTools.describePuppet(gameState, puppet),
+    status: (puppet) => DevTools.getPuppetStatus(puppet)
+  };
 }

@@ -59,32 +59,32 @@ let active: ActiveSource | null = null;
  * the stack ran out.
  */
 export function pushProjectDocumentSource(projectPath: string, source: DocumentSource): () => void {
-    if (source.origin.kind === "working-tree") {
-        return () => undefined;
+  if (source.origin.kind === "working-tree") {
+    return () => undefined;
+  }
+  if (active && active.projectPath === projectPath && active.source === source) {
+    active.depth += 1;
+  } else {
+    // A window is one project (see the multi-project window model), so a source naming
+    // a different project is one left behind by a project that has already closed.
+    active = { projectPath, source, depth: 1 };
+  }
+  let released = false;
+  return () => {
+    if (released || !active) {
+      return;
     }
-    if (active && active.projectPath === projectPath && active.source === source) {
-        active.depth += 1;
-    } else {
-        // A window is one project (see the multi-project window model), so a source naming
-        // a different project is one left behind by a project that has already closed.
-        active = { projectPath, source, depth: 1 };
+    released = true;
+    active.depth -= 1;
+    if (active.depth <= 0) {
+      active = null;
     }
-    let released = false;
-    return () => {
-        if (released || !active) {
-            return;
-        }
-        released = true;
-        active.depth -= 1;
-        if (active.depth <= 0) {
-            active = null;
-        }
-    };
+  };
 }
 
 /** Read project data from disk again, whatever depth the source was held at. */
 export function clearProjectDocumentSource(): void {
-    active = null;
+  active = null;
 }
 
 /**
@@ -95,7 +95,7 @@ export function clearProjectDocumentSource(): void {
  * it. Readers go through {@link readProjectDataFromSource}.
  */
 export function getProjectDocumentSource(): DocumentSource | null {
-    return active?.source ?? null;
+  return active?.source ?? null;
 }
 
 /**
@@ -108,14 +108,16 @@ export function getProjectDocumentSource(): DocumentSource | null {
  * turns it into a named failure the author can see (`WorkspaceReloadService` collects it
  * per participant), and swallowing it would hand every service a default document.
  */
-export async function readProjectDataFromSource(absolutePath: string): Promise<{ text: string | null } | null> {
-    const current = active;
-    if (!current) {
-        return null;
-    }
-    const relative = versionedProjectRelativePath(current.projectPath, absolutePath);
-    if (relative === null) {
-        return null;
-    }
-    return { text: await current.source.read(relative) };
+export async function readProjectDataFromSource(
+  absolutePath: string
+): Promise<{ text: string | null } | null> {
+  const current = active;
+  if (!current) {
+    return null;
+  }
+  const relative = versionedProjectRelativePath(current.projectPath, absolutePath);
+  if (relative === null) {
+    return null;
+  }
+  return { text: await current.source.read(relative) };
 }

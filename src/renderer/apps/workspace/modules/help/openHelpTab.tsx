@@ -12,14 +12,14 @@ export const HELP_TAB_ID = helpModule.metadata.id;
  * topics" and session restore, so a restored help tab is identical to a freshly opened one.
  */
 export function createHelpTab(topicId?: HelpTopicId): EditorTabDefinition<HelpEditorPayload> {
-    return {
-        id: HELP_TAB_ID,
-        title: helpModule.metadata.title,
-        icon: helpModule.metadata.icon,
-        component: helpModule.component as EditorTabDefinition<HelpEditorPayload>["component"],
-        closable: true,
-        payload: topicId ? { topicId } : undefined,
-    };
+  return {
+    id: HELP_TAB_ID,
+    title: helpModule.metadata.title,
+    icon: helpModule.metadata.icon,
+    component: helpModule.component as EditorTabDefinition<HelpEditorPayload>["component"],
+    closable: true,
+    payload: topicId ? { topicId } : undefined
+  };
 }
 
 /**
@@ -29,6 +29,6 @@ export function createHelpTab(topicId?: HelpTopicId): EditorTabDefinition<HelpEd
  * open, which is what "help" means here - one reader, currently showing something.
  */
 export function openHelpTab(ctx: WorkspaceContext, topicId?: HelpTopicId): void {
-    const uiService = ctx.services.get<UIService>(Services.UI);
-    uiService.editor.openOrUpdate(createHelpTab(topicId));
+  const uiService = ctx.services.get<UIService>(Services.UI);
+  uiService.editor.openOrUpdate(createHelpTab(topicId));
 }

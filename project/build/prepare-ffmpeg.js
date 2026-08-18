@@ -133,24 +133,24 @@
  * on Linux, DLLs beside the exes on Windows) that the resolver would have to learn.
  */
 
-const { execFileSync } = require('child_process');
-const { createHash } = require('crypto');
-const fs = require('fs');
-const path = require('path');
-const { path7za } = require('7zip-bin');
-const { rootDir } = require('./utils');
+const { execFileSync } = require("child_process");
+const { createHash } = require("crypto");
+const fs = require("fs");
+const path = require("path");
+const { path7za } = require("7zip-bin");
+const { rootDir } = require("./utils");
 
 /**
  * Prebuilt upstream build we vendor on Windows and Linux. Mirrored by FFMPEG_VERSION in
  * src/main/app/application/managers/media/ffmpegTool.ts. macOS has its own version constant below;
  * it is compiled, not downloaded.
  */
-const FFMPEG_VERSION = 'n8.1.2-34-g9b6c8969e0';
-const BUILD_TAG = 'autobuild-2026-07-31-14-10';
+const FFMPEG_VERSION = "n8.1.2-34-g9b6c8969e0";
+const BUILD_TAG = "autobuild-2026-07-31-14-10";
 const RELEASE_BASE = `https://github.com/BtbN/FFmpeg-Builds/releases/download/${BUILD_TAG}/`;
 
 /** The LGPLv3 text shipped inside both archives. Identical byte-for-byte across platforms. */
-const LICENSE_SHA256 = 'da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768';
+const LICENSE_SHA256 = "da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768";
 
 /**
  * The macOS build is compiled here rather than downloaded, so its "version" is the FFmpeg release
@@ -163,12 +163,12 @@ const LICENSE_SHA256 = 'da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520
  * same way it keys on a downloaded asset - bump one and the next run rebuilds instead of
  * short-circuiting. The two must agree; the script is the one that enforces it against real bytes.
  */
-const FFMPEG_SOURCE_VERSION = '8.1.2';
+const FFMPEG_SOURCE_VERSION = "8.1.2";
 const FFMPEG_SOURCE_ASSET = `ffmpeg-${FFMPEG_SOURCE_VERSION}.tar.xz`;
-const FFMPEG_SOURCE_SHA256 = '464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c';
+const FFMPEG_SOURCE_SHA256 = "464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c";
 const FFMPEG_SOURCE_URL = `https://ffmpeg.org/releases/${FFMPEG_SOURCE_ASSET}`;
 /** Repo-relative, forward-slashed: it is written into the manifest and printed, never joined raw. */
-const MACOS_BUILD_SCRIPT = 'project/build/build-ffmpeg-macos.sh';
+const MACOS_BUILD_SCRIPT = "project/build/build-ffmpeg-macos.sh";
 
 /**
  * Which asset serves which host, keyed by process.platform.
@@ -209,40 +209,40 @@ const MACOS_BUILD_SCRIPT = 'project/build/build-ffmpeg-macos.sh';
  * platform has nothing to stage.
  */
 const ASSETS = {
-    win32: {
-        x64: {
-            asset: `ffmpeg-${FFMPEG_VERSION}-win64-lgpl-8.1.zip`,
-            sha256: '089e4169e93b2b3f3acbfced3c0704d24276a225641bdda04d796d28b07a2a38',
-            dir: `ffmpeg-${FFMPEG_VERSION}-win64-lgpl-8.1`,
-            suffix: '.exe',
-        },
+  win32: {
+    x64: {
+      asset: `ffmpeg-${FFMPEG_VERSION}-win64-lgpl-8.1.zip`,
+      sha256: "089e4169e93b2b3f3acbfced3c0704d24276a225641bdda04d796d28b07a2a38",
+      dir: `ffmpeg-${FFMPEG_VERSION}-win64-lgpl-8.1`,
+      suffix: ".exe"
+    }
+  },
+  linux: {
+    x64: {
+      asset: `ffmpeg-${FFMPEG_VERSION}-linux64-lgpl-8.1.tar.xz`,
+      sha256: "8c8b2897f2a8093ae2d985f7f1867d218451d4c567c1b2437f86a7c73a950b9f",
+      dir: `ffmpeg-${FFMPEG_VERSION}-linux64-lgpl-8.1`,
+      suffix: ""
+    }
+  },
+  darwin: {
+    arm64: {
+      build: "source",
+      // Not an archive we unpack - the build script fetches and verifies it. Recorded here
+      // so `alreadyStaged` has something version-shaped to key on, the way it keys on a
+      // downloaded asset.
+      asset: FFMPEG_SOURCE_ASSET,
+      sha256: FFMPEG_SOURCE_SHA256,
+      suffix: ""
     },
-    linux: {
-        x64: {
-            asset: `ffmpeg-${FFMPEG_VERSION}-linux64-lgpl-8.1.tar.xz`,
-            sha256: '8c8b2897f2a8093ae2d985f7f1867d218451d4c567c1b2437f86a7c73a950b9f',
-            dir: `ffmpeg-${FFMPEG_VERSION}-linux64-lgpl-8.1`,
-            suffix: '',
-        },
-    },
-    darwin: {
-        arm64: {
-            build: 'source',
-            // Not an archive we unpack - the build script fetches and verifies it. Recorded here
-            // so `alreadyStaged` has something version-shaped to key on, the way it keys on a
-            // downloaded asset.
-            asset: FFMPEG_SOURCE_ASSET,
-            sha256: FFMPEG_SOURCE_SHA256,
-            suffix: '',
-        },
-        // Studio does not ship for Intel Macs - see the note above. Recorded rather than omitted
-        // so the skip below can say why.
-        x64: null,
-    },
+    // Studio does not ship for Intel Macs - see the note above. Recorded rather than omitted
+    // so the skip below can say why.
+    x64: null
+  }
 };
 
 /** The binaries we stage. ffplay is in the archive too and is deliberately left behind. */
-const BINARIES = ['ffmpeg', 'ffprobe'];
+const BINARIES = ["ffmpeg", "ffprobe"];
 
 /**
  * What goes in the manifest about *where this build came from and under what terms*.
@@ -256,50 +256,50 @@ const BINARIES = ['ffmpeg', 'ffprobe'];
  * named in `source`.
  */
 function manifestFacts(spec) {
-    if (spec.build === 'source') {
-        return {
-            version: FFMPEG_SOURCE_VERSION,
-            licenseId: 'LGPL-2.1-or-later',
-            provenance: 'from-source',
-            source: FFMPEG_SOURCE_URL,
-            builtBy: MACOS_BUILD_SCRIPT,
-        };
-    }
+  if (spec.build === "source") {
     return {
-        version: FFMPEG_VERSION,
-        licenseId: 'LGPL-3.0-or-later',
-        provenance: 'prebuilt',
-        source: `https://github.com/BtbN/FFmpeg-Builds/releases/tag/${BUILD_TAG}`,
+      version: FFMPEG_SOURCE_VERSION,
+      licenseId: "LGPL-2.1-or-later",
+      provenance: "from-source",
+      source: FFMPEG_SOURCE_URL,
+      builtBy: MACOS_BUILD_SCRIPT
     };
+  }
+  return {
+    version: FFMPEG_VERSION,
+    licenseId: "LGPL-3.0-or-later",
+    provenance: "prebuilt",
+    source: `https://github.com/BtbN/FFmpeg-Builds/releases/tag/${BUILD_TAG}`
+  };
 }
 
 function argValue(name) {
-    const prefix = `--${name}=`;
-    const hit = process.argv.slice(2).find((arg) => arg.startsWith(prefix));
-    return hit === undefined ? null : hit.slice(prefix.length);
+  const prefix = `--${name}=`;
+  const hit = process.argv.slice(2).find((arg) => arg.startsWith(prefix));
+  return hit === undefined ? null : hit.slice(prefix.length);
 }
 
 function sha256(buffer) {
-    return createHash('sha256').update(buffer).digest('hex');
+  return createHash("sha256").update(buffer).digest("hex");
 }
 
 async function download(url, expectedSha256) {
-    const response = await fetch(url);
-    if (!response.ok) {
-        throw new Error(`GET ${url} failed with HTTP ${response.status}`);
-    }
-    const buffer = Buffer.from(await response.arrayBuffer());
-    const actual = sha256(buffer);
-    if (actual !== expectedSha256) {
-        // Loud on purpose: a mismatch means the bytes are not the ones this build was reviewed
-        // against, and unpacking them anyway would ship an unaudited binary inside the installer.
-        // On this upstream it most likely means the pinned tag was pruned and something else now
-        // answers the URL - see "WHY THIS TAG" above.
-        throw new Error(
-            `checksum mismatch for ${url}\n  expected ${expectedSha256}\n  actual   ${actual}`,
-        );
-    }
-    return buffer;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`GET ${url} failed with HTTP ${response.status}`);
+  }
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const actual = sha256(buffer);
+  if (actual !== expectedSha256) {
+    // Loud on purpose: a mismatch means the bytes are not the ones this build was reviewed
+    // against, and unpacking them anyway would ship an unaudited binary inside the installer.
+    // On this upstream it most likely means the pinned tag was pruned and something else now
+    // answers the URL - see "WHY THIS TAG" above.
+    throw new Error(
+      `checksum mismatch for ${url}\n  expected ${expectedSha256}\n  actual   ${actual}`
+    );
+  }
+  return buffer;
 }
 
 /**
@@ -314,22 +314,22 @@ async function download(url, expectedSha256) {
  */
 let ensuredExecutable = false;
 function ensure7zaExecutable() {
-    if (ensuredExecutable || process.platform === 'win32') return;
-    ensuredExecutable = true;
-    try {
-        fs.chmodSync(path7za, 0o755);
-    } catch {
-        // Deliberately ignored - see above.
-    }
+  if (ensuredExecutable || process.platform === "win32") return;
+  ensuredExecutable = true;
+  try {
+    fs.chmodSync(path7za, 0o755);
+  } catch {
+    // Deliberately ignored - see above.
+  }
 }
 
 function run7za(args) {
-    try {
-        execFileSync(path7za, args, { stdio: 'pipe' });
-    } catch (error) {
-        const detail = error.stdout ? error.stdout.toString() : String(error);
-        throw new Error(`7za ${args[0]} failed: ${detail}`);
-    }
+  try {
+    execFileSync(path7za, args, { stdio: "pipe" });
+  } catch (error) {
+    const detail = error.stdout ? error.stdout.toString() : String(error);
+    throw new Error(`7za ${args[0]} failed: ${detail}`);
+  }
 }
 
 /**
@@ -344,36 +344,36 @@ function run7za(args) {
  * itself stores them that way.
  */
 function extractEntries(archive, assetName, entries, outDir) {
-    ensure7zaExecutable();
-    const cleanup = [];
-    let archivePath;
-    if (assetName.endsWith('.zip')) {
-        archivePath = path.join(outDir, '.payload.zip');
-        fs.writeFileSync(archivePath, archive);
-        cleanup.push(archivePath);
-    } else if (assetName.endsWith('.tar.xz')) {
-        const compressed = path.join(outDir, '.payload.tar.xz');
-        fs.writeFileSync(compressed, archive);
-        cleanup.push(compressed);
-        run7za(['x', '-bd', '-y', `-o${outDir}`, compressed]);
-        archivePath = path.join(outDir, '.payload.tar');
-        cleanup.push(archivePath);
-    } else {
-        throw new Error(`unsupported archive type: ${assetName}`);
+  ensure7zaExecutable();
+  const cleanup = [];
+  let archivePath;
+  if (assetName.endsWith(".zip")) {
+    archivePath = path.join(outDir, ".payload.zip");
+    fs.writeFileSync(archivePath, archive);
+    cleanup.push(archivePath);
+  } else if (assetName.endsWith(".tar.xz")) {
+    const compressed = path.join(outDir, ".payload.tar.xz");
+    fs.writeFileSync(compressed, archive);
+    cleanup.push(compressed);
+    run7za(["x", "-bd", "-y", `-o${outDir}`, compressed]);
+    archivePath = path.join(outDir, ".payload.tar");
+    cleanup.push(archivePath);
+  } else {
+    throw new Error(`unsupported archive type: ${assetName}`);
+  }
+  try {
+    run7za(["x", "-bd", "-y", `-o${outDir}`, archivePath, ...entries]);
+  } finally {
+    for (const file of cleanup) {
+      fs.rmSync(file, { force: true });
     }
-    try {
-        run7za(['x', '-bd', '-y', `-o${outDir}`, archivePath, ...entries]);
-    } finally {
-        for (const file of cleanup) {
-            fs.rmSync(file, { force: true });
-        }
+  }
+  for (const entry of entries) {
+    const extracted = path.join(outDir, ...entry.split("/"));
+    if (!fs.existsSync(extracted)) {
+      throw new Error(`"${entry}" is not present in ${assetName}`);
     }
-    for (const entry of entries) {
-        const extracted = path.join(outDir, ...entry.split('/'));
-        if (!fs.existsSync(extracted)) {
-            throw new Error(`"${entry}" is not present in ${assetName}`);
-        }
-    }
+  }
 }
 
 /**
@@ -401,81 +401,81 @@ function extractEntries(archive, assetName, entries, outDir) {
  * manifest's `licenseId` an observation rather than an assumption.
  */
 function assertLgplBuild(binaryPath, extraForbidden = []) {
-    const bytes = fs.readFileSync(binaryPath);
-    const has = (needle) => bytes.includes(Buffer.from(needle, 'latin1'));
-    for (const forbidden of ['--enable-gpl', '--enable-nonfree', ...extraForbidden]) {
-        if (has(forbidden)) {
-            throw new Error(
-                forbidden === '--enable-version3'
-                    ? `${path.basename(binaryPath)} was built with --enable-version3, so it is LGPL `
-                        + 'v3 - but the LGPLv2.1 text is what ships beside it and the manifest says '
-                        + 'LGPL-2.1-or-later. Fix the configure line or fix both of those, not one'
-                    : `${path.basename(binaryPath)} was built with ${forbidden}; only LGPL builds `
-                        + 'may be staged, because bundling a GPL binary relicenses the installer',
-            );
-        }
+  const bytes = fs.readFileSync(binaryPath);
+  const has = (needle) => bytes.includes(Buffer.from(needle, "latin1"));
+  for (const forbidden of ["--enable-gpl", "--enable-nonfree", ...extraForbidden]) {
+    if (has(forbidden)) {
+      throw new Error(
+        forbidden === "--enable-version3"
+          ? `${path.basename(binaryPath)} was built with --enable-version3, so it is LGPL ` +
+              "v3 - but the LGPLv2.1 text is what ships beside it and the manifest says " +
+              "LGPL-2.1-or-later. Fix the configure line or fix both of those, not one"
+          : `${path.basename(binaryPath)} was built with ${forbidden}; only LGPL builds ` +
+              "may be staged, because bundling a GPL binary relicenses the installer"
+      );
     }
-    for (const required of ['--enable-libvpx', '--enable-libvorbis']) {
-        if (!has(required)) {
-            throw new Error(
-                `${path.basename(binaryPath)} was built without ${required}, so it cannot produce `
-                + 'the project\'s VP9 + Vorbis target',
-            );
-        }
+  }
+  for (const required of ["--enable-libvpx", "--enable-libvorbis"]) {
+    if (!has(required)) {
+      throw new Error(
+        `${path.basename(binaryPath)} was built without ${required}, so it cannot produce ` +
+          "the project's VP9 + Vorbis target"
+      );
     }
+  }
 }
 
 /** The manifest of an already-staged tree, or null if there is not a readable one. */
 function stagedManifest(targetDir) {
-    const manifestPath = path.join(targetDir, 'manifest.json');
-    if (!fs.existsSync(manifestPath)) {
-        return null;
-    }
-    try {
-        return JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-    } catch {
-        // Unreadable is treated as absent everywhere: staging replaces the tree wholesale, so there
-        // is nothing to be gained by distinguishing "corrupt" from "missing".
-        return null;
-    }
+  const manifestPath = path.join(targetDir, "manifest.json");
+  if (!fs.existsSync(manifestPath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  } catch {
+    // Unreadable is treated as absent everywhere: staging replaces the tree wholesale, so there
+    // is nothing to be gained by distinguishing "corrupt" from "missing".
+    return null;
+  }
 }
 
 /** True when the staged tree is already exactly what this script would produce. */
 function alreadyStaged(targetDir, spec, platform, arch) {
-    const manifest = stagedManifest(targetDir);
-    if (manifest === null) {
-        return false;
+  const manifest = stagedManifest(targetDir);
+  if (manifest === null) {
+    return false;
+  }
+  const facts = manifestFacts(spec);
+  if (
+    manifest.tool !== "ffmpeg" ||
+    manifest.version !== facts.version ||
+    manifest.platform !== platform ||
+    manifest.arch !== arch ||
+    manifest.asset !== spec.asset ||
+    manifest.assetSha256 !== spec.sha256 ||
+    // A tree staged before the licence split carries no provenance and must be restaged, or a
+    // notices page reading the manifest would find nothing where the licence version lives.
+    manifest.provenance !== facts.provenance ||
+    manifest.licenseId !== facts.licenseId
+  ) {
+    return false;
+  }
+  if (!fs.existsSync(path.join(targetDir, "LICENSE"))) {
+    return false;
+  }
+  // Hash the bytes rather than trusting the manifest's word for them: a truncated or half-written
+  // binary is the failure this guard exists for.
+  for (const binary of BINARIES) {
+    const staged = path.join(targetDir, `${binary}${spec.suffix}`);
+    if (!fs.existsSync(staged)) {
+      return false;
     }
-    const facts = manifestFacts(spec);
-    if (
-        manifest.tool !== 'ffmpeg'
-        || manifest.version !== facts.version
-        || manifest.platform !== platform
-        || manifest.arch !== arch
-        || manifest.asset !== spec.asset
-        || manifest.assetSha256 !== spec.sha256
-        // A tree staged before the licence split carries no provenance and must be restaged, or a
-        // notices page reading the manifest would find nothing where the licence version lives.
-        || manifest.provenance !== facts.provenance
-        || manifest.licenseId !== facts.licenseId
-    ) {
-        return false;
+    if (sha256(fs.readFileSync(staged)) !== manifest.binaries?.[binary]) {
+      return false;
     }
-    if (!fs.existsSync(path.join(targetDir, 'LICENSE'))) {
-        return false;
-    }
-    // Hash the bytes rather than trusting the manifest's word for them: a truncated or half-written
-    // binary is the failure this guard exists for.
-    for (const binary of BINARIES) {
-        const staged = path.join(targetDir, `${binary}${spec.suffix}`);
-        if (!fs.existsSync(staged)) {
-            return false;
-        }
-        if (sha256(fs.readFileSync(staged)) !== manifest.binaries?.[binary]) {
-            return false;
-        }
-    }
-    return true;
+  }
+  return true;
 }
 
 /**
@@ -483,29 +483,29 @@ function alreadyStaged(targetDir, spec, platform, arch) {
  * `<stagingDir>/LICENSE` behind, and nothing else.
  */
 async function stageFromDownload(spec, stagingDir) {
-    console.log(`[ffmpeg] fetching ${spec.asset} (${BUILD_TAG})`);
-    const archive = await download(`${RELEASE_BASE}${spec.asset}`, spec.sha256);
+  console.log(`[ffmpeg] fetching ${spec.asset} (${BUILD_TAG})`);
+  const archive = await download(`${RELEASE_BASE}${spec.asset}`, spec.sha256);
 
-    const licenseEntry = `${spec.dir}/LICENSE.txt`;
-    const binaryEntries = BINARIES.map((binary) => `${spec.dir}/bin/${binary}${spec.suffix}`);
-    extractEntries(archive, spec.asset, [...binaryEntries, licenseEntry], stagingDir);
+  const licenseEntry = `${spec.dir}/LICENSE.txt`;
+  const binaryEntries = BINARIES.map((binary) => `${spec.dir}/bin/${binary}${spec.suffix}`);
+  extractEntries(archive, spec.asset, [...binaryEntries, licenseEntry], stagingDir);
 
-    const license = fs.readFileSync(path.join(stagingDir, spec.dir, 'LICENSE.txt'));
-    if (sha256(license) !== LICENSE_SHA256) {
-        throw new Error(
-            'the archive\'s LICENSE.txt is not the LGPLv3 text this pin was reviewed against; '
-            + 'upstream may have changed the build\'s licensing',
-        );
-    }
-    fs.writeFileSync(path.join(stagingDir, 'LICENSE'), license);
+  const license = fs.readFileSync(path.join(stagingDir, spec.dir, "LICENSE.txt"));
+  if (sha256(license) !== LICENSE_SHA256) {
+    throw new Error(
+      "the archive's LICENSE.txt is not the LGPLv3 text this pin was reviewed against; " +
+        "upstream may have changed the build's licensing"
+    );
+  }
+  fs.writeFileSync(path.join(stagingDir, "LICENSE"), license);
 
-    for (const binary of BINARIES) {
-        fs.renameSync(
-            path.join(stagingDir, spec.dir, 'bin', `${binary}${spec.suffix}`),
-            path.join(stagingDir, `${binary}${spec.suffix}`),
-        );
-    }
-    fs.rmSync(path.join(stagingDir, spec.dir), { recursive: true, force: true });
+  for (const binary of BINARIES) {
+    fs.renameSync(
+      path.join(stagingDir, spec.dir, "bin", `${binary}${spec.suffix}`),
+      path.join(stagingDir, `${binary}${spec.suffix}`)
+    );
+  }
+  fs.rmSync(path.join(stagingDir, spec.dir), { recursive: true, force: true });
 }
 
 /**
@@ -519,17 +519,18 @@ async function stageFromDownload(spec, stagingDir) {
  * failed CI log needs it at least as much as a developer reading it locally.
  */
 function skipOrFail(reason) {
-    const message = `${reason} (point NLS_FFMPEG_DIR at a directory holding ffmpeg and ffprobe to `
-        + 'work around it).';
-    if (process.env.NLS_REQUIRE_FFMPEG === '1') {
-        console.error(
-            `[ffmpeg] ${message}\n[ffmpeg] NLS_REQUIRE_FFMPEG=1, so this is a failure rather than a `
-            + 'skip: the Studio this run would produce reports media conversion as unavailable, and '
-            + 'shipping that silently is what the variable is set to prevent.',
-        );
-        process.exit(1);
-    }
-    console.warn(`[ffmpeg] ${message}`);
+  const message =
+    `${reason} (point NLS_FFMPEG_DIR at a directory holding ffmpeg and ffprobe to ` +
+    "work around it).";
+  if (process.env.NLS_REQUIRE_FFMPEG === "1") {
+    console.error(
+      `[ffmpeg] ${message}\n[ffmpeg] NLS_REQUIRE_FFMPEG=1, so this is a failure rather than a ` +
+        "skip: the Studio this run would produce reports media conversion as unavailable, and " +
+        "shipping that silently is what the variable is set to prevent."
+    );
+    process.exit(1);
+  }
+  console.warn(`[ffmpeg] ${message}`);
 }
 
 /** Exit code build-ffmpeg-macos.sh uses for "this machine cannot build at all". */
@@ -552,181 +553,183 @@ const NO_TOOLCHAIN_EXIT = 3;
  * the operator and a silent multi-minute pause.
  */
 function stageFromSource(stagingDir) {
-    const script = path.join(rootDir, ...MACOS_BUILD_SCRIPT.split('/'));
-    if (!fs.existsSync(script)) {
-        throw new Error(`${MACOS_BUILD_SCRIPT} is missing; it is what produces the macOS binaries`);
-    }
+  const script = path.join(rootDir, ...MACOS_BUILD_SCRIPT.split("/"));
+  if (!fs.existsSync(script)) {
+    throw new Error(`${MACOS_BUILD_SCRIPT} is missing; it is what produces the macOS binaries`);
+  }
 
-    console.log(
-        `[ffmpeg] no prebuilt LGPL FFmpeg exists for macOS, so ${FFMPEG_SOURCE_VERSION} is compiled `
-        + 'here from pinned source. This takes roughly 3-5 minutes on an M1 - it has not hung. '
-        + 'The build\'s own output follows.',
+  console.log(
+    `[ffmpeg] no prebuilt LGPL FFmpeg exists for macOS, so ${FFMPEG_SOURCE_VERSION} is compiled ` +
+      "here from pinned source. This takes roughly 3-5 minutes on an M1 - it has not hung. " +
+      "The build's own output follows."
+  );
+  try {
+    execFileSync("bash", [script, `--out=${stagingDir}`], { stdio: "inherit" });
+  } catch (error) {
+    const status = typeof error?.status === "number" ? error.status : null;
+    if (status === NO_TOOLCHAIN_EXIT) {
+      return "this machine has no Xcode Command Line Tools (run: xcode-select --install)";
+    }
+    return `${MACOS_BUILD_SCRIPT} failed${status === null ? "" : ` with exit code ${status}`}`;
+  }
+
+  // The script exited 0, so it also passed its own licence and functional gates. The one thing
+  // left to check is the notice, and this one does throw rather than skip: binaries with no
+  // licence text beside them is the single outcome that must never be papered over, and it can
+  // only happen if the script itself was edited wrongly.
+  const copying = path.join(stagingDir, "COPYING.LGPLv2.1");
+  if (!fs.existsSync(copying)) {
+    throw new Error(
+      `${MACOS_BUILD_SCRIPT} produced no COPYING.LGPLv2.1; the binaries may not be staged ` +
+        "without the licence text that has to ship beside them"
     );
-    try {
-        execFileSync('bash', [script, `--out=${stagingDir}`], { stdio: 'inherit' });
-    } catch (error) {
-        const status = typeof error?.status === 'number' ? error.status : null;
-        if (status === NO_TOOLCHAIN_EXIT) {
-            return 'this machine has no Xcode Command Line Tools (run: xcode-select --install)';
-        }
-        return `${MACOS_BUILD_SCRIPT} failed${status === null ? '' : ` with exit code ${status}`}`;
-    }
-
-    // The script exited 0, so it also passed its own licence and functional gates. The one thing
-    // left to check is the notice, and this one does throw rather than skip: binaries with no
-    // licence text beside them is the single outcome that must never be papered over, and it can
-    // only happen if the script itself was edited wrongly.
-    const copying = path.join(stagingDir, 'COPYING.LGPLv2.1');
-    if (!fs.existsSync(copying)) {
-        throw new Error(
-            `${MACOS_BUILD_SCRIPT} produced no COPYING.LGPLv2.1; the binaries may not be staged `
-            + 'without the licence text that has to ship beside them',
-        );
-    }
-    fs.renameSync(copying, path.join(stagingDir, 'LICENSE'));
-    return null;
+  }
+  fs.renameSync(copying, path.join(stagingDir, "LICENSE"));
+  return null;
 }
 
 (async () => {
-    if (process.env.NLS_SKIP_FFMPEG === '1') {
-        if (process.env.NLS_REQUIRE_FFMPEG === '1') {
-            // Not a precedence question. One says "do not stage", the other says "a run that does
-            // not stage is a failed run", and guessing which the operator meant would silently do
-            // the opposite of one of them.
-            console.error(
-                '[ffmpeg] NLS_SKIP_FFMPEG=1 and NLS_REQUIRE_FFMPEG=1 are both set, which asks for '
-                + 'a build that both omits FFmpeg and refuses to omit it. Unset one.',
-            );
-            process.exit(1);
-        }
-        console.log('[ffmpeg] NLS_SKIP_FFMPEG=1, skipping; media conversion will report as unavailable');
-        return;
+  if (process.env.NLS_SKIP_FFMPEG === "1") {
+    if (process.env.NLS_REQUIRE_FFMPEG === "1") {
+      // Not a precedence question. One says "do not stage", the other says "a run that does
+      // not stage is a failed run", and guessing which the operator meant would silently do
+      // the opposite of one of them.
+      console.error(
+        "[ffmpeg] NLS_SKIP_FFMPEG=1 and NLS_REQUIRE_FFMPEG=1 are both set, which asks for " +
+          "a build that both omits FFmpeg and refuses to omit it. Unset one."
+      );
+      process.exit(1);
     }
+    console.log(
+      "[ffmpeg] NLS_SKIP_FFMPEG=1, skipping; media conversion will report as unavailable"
+    );
+    return;
+  }
 
-    const platform = argValue('platform') ?? process.platform;
-    const arch = argValue('arch') ?? process.arch;
+  const platform = argValue("platform") ?? process.platform;
+  const arch = argValue("arch") ?? process.arch;
 
-    // electron-builder copies whatever is sitting in resources/ffmpeg/<platform> into the installer
-    // it is building and has no idea what architecture those bytes are for, so a tree staged for a
-    // different arch is discarded here rather than shipped. Nothing downstream notices otherwise.
-    //
-    // No shipped target cross-builds any more - Studio packages one arch per platform, macOS being
-    // Apple Silicon only - so today this fires on a checkout still holding a tree from an older
-    // pin or an older Studio. It stays because the failure it prevents (a Mach-O that cannot
-    // execute where the installer lands) is silent, and it costs one manifest read.
-    const staleDir = path.join(rootDir, 'resources', 'ffmpeg', platform);
-    const stagedArch = stagedManifest(staleDir)?.arch ?? null;
-    if (stagedArch !== null && stagedArch !== arch) {
-        console.warn(
-            `[ffmpeg] discarding the staged ${platform}-${stagedArch} build: this run targets `
-            + `${platform}-${arch}, and shipping the other one would put a binary in the installer `
-            + 'that cannot execute there',
-        );
-        fs.rmSync(staleDir, { recursive: true, force: true });
-    }
+  // electron-builder copies whatever is sitting in resources/ffmpeg/<platform> into the installer
+  // it is building and has no idea what architecture those bytes are for, so a tree staged for a
+  // different arch is discarded here rather than shipped. Nothing downstream notices otherwise.
+  //
+  // No shipped target cross-builds any more - Studio packages one arch per platform, macOS being
+  // Apple Silicon only - so today this fires on a checkout still holding a tree from an older
+  // pin or an older Studio. It stays because the failure it prevents (a Mach-O that cannot
+  // execute where the installer lands) is silent, and it costs one manifest read.
+  const staleDir = path.join(rootDir, "resources", "ffmpeg", platform);
+  const stagedArch = stagedManifest(staleDir)?.arch ?? null;
+  if (stagedArch !== null && stagedArch !== arch) {
+    console.warn(
+      `[ffmpeg] discarding the staged ${platform}-${stagedArch} build: this run targets ` +
+        `${platform}-${arch}, and shipping the other one would put a binary in the installer ` +
+        "that cannot execute there"
+    );
+    fs.rmSync(staleDir, { recursive: true, force: true });
+  }
 
-    const spec = ASSETS[platform]?.[arch] ?? null;
-    if (spec === null) {
-        // Not an error, unless this run is producing an installer. A host with no LGPL build still
-        // produces a working Studio - one that reports conversion as unavailable instead of
-        // shipping a binary it may not redistribute.
-        skipOrFail(
-            `no LGPL FFmpeg build is vendored for ${platform}-${arch}; skipping. The resulting `
-            + 'Studio cannot convert media on this platform',
-        );
-        return;
-    }
+  const spec = ASSETS[platform]?.[arch] ?? null;
+  if (spec === null) {
+    // Not an error, unless this run is producing an installer. A host with no LGPL build still
+    // produces a working Studio - one that reports conversion as unavailable instead of
+    // shipping a binary it may not redistribute.
+    skipOrFail(
+      `no LGPL FFmpeg build is vendored for ${platform}-${arch}; skipping. The resulting ` +
+        "Studio cannot convert media on this platform"
+    );
+    return;
+  }
 
-    const facts = manifestFacts(spec);
+  const facts = manifestFacts(spec);
 
-    // Compiling can only happen on the machine the compiler is for. Checked before any staging
-    // directory is made so that cross-staging macOS from CI reads as a skip with a reason, not as a
-    // build that starts and then dies inside a shell script.
-    if (spec.build === 'source' && (process.platform !== platform || process.arch !== arch)) {
-        skipOrFail(
-            `${platform}-${arch} is compiled from source and cannot be cross-staged from `
-            + `${process.platform}-${process.arch}; skipping. The resulting Studio cannot convert `
-            + `media on ${platform} - build it on a ${platform}-${arch} machine`,
-        );
-        return;
-    }
+  // Compiling can only happen on the machine the compiler is for. Checked before any staging
+  // directory is made so that cross-staging macOS from CI reads as a skip with a reason, not as a
+  // build that starts and then dies inside a shell script.
+  if (spec.build === "source" && (process.platform !== platform || process.arch !== arch)) {
+    skipOrFail(
+      `${platform}-${arch} is compiled from source and cannot be cross-staged from ` +
+        `${process.platform}-${process.arch}; skipping. The resulting Studio cannot convert ` +
+        `media on ${platform} - build it on a ${platform}-${arch} machine`
+    );
+    return;
+  }
 
-    const targetDir = path.join(rootDir, 'resources', 'ffmpeg', platform);
-    if (alreadyStaged(targetDir, spec, platform, arch)) {
-        console.log(`[ffmpeg] ${facts.version} already staged for ${platform}-${arch}, nothing to do`);
-        return;
-    }
+  const targetDir = path.join(rootDir, "resources", "ffmpeg", platform);
+  if (alreadyStaged(targetDir, spec, platform, arch)) {
+    console.log(`[ffmpeg] ${facts.version} already staged for ${platform}-${arch}, nothing to do`);
+    return;
+  }
 
-    const stagingDir = `${targetDir}.staging-${process.pid}`;
-    try {
+  const stagingDir = `${targetDir}.staging-${process.pid}`;
+  try {
+    fs.rmSync(stagingDir, { recursive: true, force: true });
+    fs.mkdirSync(stagingDir, { recursive: true });
+
+    if (spec.build === "source") {
+      const skipReason = stageFromSource(stagingDir);
+      if (skipReason !== null) {
         fs.rmSync(stagingDir, { recursive: true, force: true });
-        fs.mkdirSync(stagingDir, { recursive: true });
-
-        if (spec.build === 'source') {
-            const skipReason = stageFromSource(stagingDir);
-            if (skipReason !== null) {
-                fs.rmSync(stagingDir, { recursive: true, force: true });
-                skipOrFail(
-                    `could not build FFmpeg for ${platform}-${arch}: ${skipReason}. Skipping - the `
-                    + 'resulting Studio reports media conversion as unavailable rather than failing '
-                    + 'to build',
-                );
-                return;
-            }
-        } else {
-            await stageFromDownload(spec, stagingDir);
-        }
-
-        // Both routes converge here: two binaries and a LICENSE, sitting in the staging directory.
-        const binarySha256 = {};
-        for (const binary of BINARIES) {
-            const staged = path.join(stagingDir, `${binary}${spec.suffix}`);
-            // See the note on assertLgplBuild for why version3 is forbidden on one route and
-            // expected on the other.
-            assertLgplBuild(staged, spec.build === 'source' ? ['--enable-version3'] : []);
-            // The archive's mode bits do not reliably survive extraction, and a non-executable
-            // ffprobe fails much later with a confusing EACCES.
-            if (spec.suffix === '') {
-                fs.chmodSync(staged, 0o755);
-            }
-            binarySha256[binary] = sha256(fs.readFileSync(staged));
-        }
-
-        fs.writeFileSync(
-            path.join(stagingDir, 'manifest.json'),
-            `${JSON.stringify(
-                {
-                    tool: 'ffmpeg',
-                    version: facts.version,
-                    platform,
-                    arch,
-                    asset: spec.asset,
-                    assetSha256: spec.sha256,
-                    binaries: binarySha256,
-                    license: 'LICENSE',
-                    licenseId: facts.licenseId,
-                    provenance: facts.provenance,
-                    source: facts.source,
-                    ...(facts.builtBy === undefined ? {} : { builtBy: facts.builtBy }),
-                },
-                null,
-                4,
-            )}\n`,
+        skipOrFail(
+          `could not build FFmpeg for ${platform}-${arch}: ${skipReason}. Skipping - the ` +
+            "resulting Studio reports media conversion as unavailable rather than failing " +
+            "to build"
         );
-
-        // Replace wholesale rather than merge: binaries left behind by an older pin would
-        // otherwise ship inside the installer alongside the new ones.
-        fs.rmSync(targetDir, { recursive: true, force: true });
-        fs.mkdirSync(path.dirname(targetDir), { recursive: true });
-        fs.renameSync(stagingDir, targetDir);
-
-        console.log(
-            `[ffmpeg] Staged ffmpeg + ffprobe ${facts.version} (${platform}-${arch}, `
-            + `${facts.licenseId}) to ${path.relative(rootDir, targetDir)}`,
-        );
-    } catch (error) {
-        fs.rmSync(stagingDir, { recursive: true, force: true });
-        console.error(`[ffmpeg] Failed: ${error instanceof Error ? error.message : String(error)}`);
-        process.exit(1);
+        return;
+      }
+    } else {
+      await stageFromDownload(spec, stagingDir);
     }
+
+    // Both routes converge here: two binaries and a LICENSE, sitting in the staging directory.
+    const binarySha256 = {};
+    for (const binary of BINARIES) {
+      const staged = path.join(stagingDir, `${binary}${spec.suffix}`);
+      // See the note on assertLgplBuild for why version3 is forbidden on one route and
+      // expected on the other.
+      assertLgplBuild(staged, spec.build === "source" ? ["--enable-version3"] : []);
+      // The archive's mode bits do not reliably survive extraction, and a non-executable
+      // ffprobe fails much later with a confusing EACCES.
+      if (spec.suffix === "") {
+        fs.chmodSync(staged, 0o755);
+      }
+      binarySha256[binary] = sha256(fs.readFileSync(staged));
+    }
+
+    fs.writeFileSync(
+      path.join(stagingDir, "manifest.json"),
+      `${JSON.stringify(
+        {
+          tool: "ffmpeg",
+          version: facts.version,
+          platform,
+          arch,
+          asset: spec.asset,
+          assetSha256: spec.sha256,
+          binaries: binarySha256,
+          license: "LICENSE",
+          licenseId: facts.licenseId,
+          provenance: facts.provenance,
+          source: facts.source,
+          ...(facts.builtBy === undefined ? {} : { builtBy: facts.builtBy })
+        },
+        null,
+        4
+      )}\n`
+    );
+
+    // Replace wholesale rather than merge: binaries left behind by an older pin would
+    // otherwise ship inside the installer alongside the new ones.
+    fs.rmSync(targetDir, { recursive: true, force: true });
+    fs.mkdirSync(path.dirname(targetDir), { recursive: true });
+    fs.renameSync(stagingDir, targetDir);
+
+    console.log(
+      `[ffmpeg] Staged ffmpeg + ffprobe ${facts.version} (${platform}-${arch}, ` +
+        `${facts.licenseId}) to ${path.relative(rootDir, targetDir)}`
+    );
+  } catch (error) {
+    fs.rmSync(stagingDir, { recursive: true, force: true });
+    console.error(`[ffmpeg] Failed: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
 })();

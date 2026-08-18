@@ -4,7 +4,6 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "outDir": "dist",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -14,14 +13,9 @@
       "@root/*": ["../../*"],
       "@shared/*": ["../shared/*"]
     },
-    "typeRoots": [
-      "../../node_modules/@types",
-      "../shared/types"
-    ],
+    "typeRoots": ["../../node_modules/@types", "../shared/types"],
     "types": ["node"]
   },
-  "include": [
-    "./**/*",
-    "../shared/**/*"
-  ],
+  "include": ["./**/*", "../shared/**/*"],
+  "exclude": ["**/dist/**"]
 }

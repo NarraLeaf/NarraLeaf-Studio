@@ -1,12 +1,12 @@
 import type { TranslationKey } from "@shared/i18n";
 import { nonRedundantLintLocation } from "@/lib/lint/locationText";
 import {
-    LINT_SEVERITY_ORDER,
-    deriveLintRuleSlug,
-    type LintLocation,
-    type LintReportEntry,
-    type LintRuleId,
-    type LintSeverity,
+  LINT_SEVERITY_ORDER,
+  deriveLintRuleSlug,
+  type LintLocation,
+  type LintReportEntry,
+  type LintRuleId,
+  type LintSeverity
 } from "@/lib/lint";
 
 /**
@@ -39,40 +39,45 @@ export type LintSeverityFilter = LintSeverity | "all";
 
 export const LINT_GROUP_MODES: readonly LintGroupMode[] = ["rule", "location"] as const;
 
-export const LINT_SEVERITY_FILTERS: readonly LintSeverityFilter[] = ["all", "error", "warning", "info"] as const;
+export const LINT_SEVERITY_FILTERS: readonly LintSeverityFilter[] = [
+  "all",
+  "error",
+  "warning",
+  "info"
+] as const;
 
 export type LintEntryGroup = {
-    /** Stable identity of the group within one grouping mode (rule id, or a location key). */
-    key: string;
-    title: string;
-    /** Worst severity in the group; what the group sorts on and what its heading is coloured by. */
-    severity: LintSeverity;
-    /**
-     * Whether the group holds more than one severity.
-     *
-     * Grouped by rule it is almost always false - severity is resolved per rule, so a rule's
-     * findings share one - which is what lets the entry rows drop the severity word entirely and let
-     * the coloured heading say it once. The exception is real (a context finding is forced to
-     * `error` under a rule the project set to `warning`), so the flag exists rather than the
-     * assumption.
-     */
-    mixedSeverity: boolean;
-    entries: LintReportEntry[];
+  /** Stable identity of the group within one grouping mode (rule id, or a location key). */
+  key: string;
+  title: string;
+  /** Worst severity in the group; what the group sorts on and what its heading is coloured by. */
+  severity: LintSeverity;
+  /**
+   * Whether the group holds more than one severity.
+   *
+   * Grouped by rule it is almost always false - severity is resolved per rule, so a rule's
+   * findings share one - which is what lets the entry rows drop the severity word entirely and let
+   * the coloured heading say it once. The exception is real (a context finding is forced to
+   * `error` under a rule the project set to `warning`), so the flag exists rather than the
+   * assumption.
+   */
+  mixedSeverity: boolean;
+  entries: LintReportEntry[];
 };
 
 /** One rendered line: a group heading, or an entry under it. */
 export type LintReportRow =
-    | { kind: "group"; key: string; group: LintEntryGroup }
-    | { kind: "entry"; key: string; group: LintEntryGroup; entry: LintReportEntry };
+  | { kind: "group"; key: string; group: LintEntryGroup }
+  | { kind: "entry"; key: string; group: LintEntryGroup; entry: LintReportEntry };
 
 export type LintGroupLabels = {
-    ruleTitle: (ruleId: LintRuleId) => string;
-    locationLabel: (location: LintLocation) => string;
+  ruleTitle: (ruleId: LintRuleId) => string;
+  locationLabel: (location: LintLocation) => string;
 };
 
 /** `lint.rule.<slug>.title` - the rule's own name, as the settings panel spells it. */
 export function lintRuleTitleKey(ruleId: LintRuleId): TranslationKey {
-    return `lint.rule.${deriveLintRuleSlug(ruleId)}.title` as TranslationKey;
+  return `lint.rule.${deriveLintRuleSlug(ruleId)}.title` as TranslationKey;
 }
 
 /**
@@ -83,11 +88,11 @@ export function lintRuleTitleKey(ruleId: LintRuleId): TranslationKey {
  * report should not have to go and open a settings panel to find out what it means.
  */
 export function lintRuleDescriptionKey(ruleId: LintRuleId): TranslationKey {
-    return `lint.rule.${deriveLintRuleSlug(ruleId)}.description` as TranslationKey;
+  return `lint.rule.${deriveLintRuleSlug(ruleId)}.description` as TranslationKey;
 }
 
 export function lintSeverityLabelKey(severity: LintSeverity): TranslationKey {
-    return `lint.severity.${severity}` as TranslationKey;
+  return `lint.severity.${severity}` as TranslationKey;
 }
 
 /**
@@ -99,24 +104,24 @@ export function lintSeverityLabelKey(severity: LintSeverity): TranslationKey {
  * of a thing.
  */
 export function lintLocationLabel(location: LintLocation, projectName: string): string {
-    switch (location.kind) {
-        case "project":
-            return projectName;
-        case "asset":
-            return location.assetName || location.assetId;
-        case "story":
-            return location.sceneName
-                ? `${location.storyName} / ${location.sceneName}`
-                : location.storyName;
-        case "blueprint":
-            return location.blueprintName || location.blueprintId;
-        case "surface":
-            return location.elementName
-                ? `${location.surfaceName} / ${location.elementName}`
-                : location.surfaceName;
-        case "character":
-            return location.characterName || location.characterId;
-    }
+  switch (location.kind) {
+    case "project":
+      return projectName;
+    case "asset":
+      return location.assetName || location.assetId;
+    case "story":
+      return location.sceneName
+        ? `${location.storyName} / ${location.sceneName}`
+        : location.storyName;
+    case "blueprint":
+      return location.blueprintName || location.blueprintId;
+    case "surface":
+      return location.elementName
+        ? `${location.surfaceName} / ${location.elementName}`
+        : location.surfaceName;
+    case "character":
+      return location.characterName || location.characterId;
+  }
 }
 
 /**
@@ -126,22 +131,22 @@ export function lintLocationLabel(location: LintLocation, projectName: string): 
  * of dialogue, which is a list of one-item groups wearing a grouped list's clothes.
  */
 export function lintLocationKey(location: LintLocation): string {
-    switch (location.kind) {
-        case "project":
-            return "project";
-        case "asset":
-            return `asset:${location.assetId}`;
-        case "story":
-            return `story:${location.storyId}:${location.sceneId ?? ""}`;
-        case "blueprint":
-            return `blueprint:${location.blueprintId}:${location.graphId ?? ""}`;
-        // The page, never the widget on it: keying on the element too would give every unwired
-        // button a heading of its own, which is the one-item-groups failure the story case avoids.
-        case "surface":
-            return `surface:${location.surfaceId}`;
-        case "character":
-            return `character:${location.characterId}`;
-    }
+  switch (location.kind) {
+    case "project":
+      return "project";
+    case "asset":
+      return `asset:${location.assetId}`;
+    case "story":
+      return `story:${location.storyId}:${location.sceneId ?? ""}`;
+    case "blueprint":
+      return `blueprint:${location.blueprintId}:${location.graphId ?? ""}`;
+    // The page, never the widget on it: keying on the element too would give every unwired
+    // button a heading of its own, which is the one-item-groups failure the story case avoids.
+    case "surface":
+      return `surface:${location.surfaceId}`;
+    case "character":
+      return `character:${location.characterId}`;
+  }
 }
 
 /**
@@ -163,35 +168,35 @@ export function lintLocationKey(location: LintLocation): string {
  * location it gets no locator at all - an empty cell, not a placeholder standing in for one.
  */
 export function lintEntryLocator(
-    location: LintLocation,
-    mode: LintGroupMode,
-    locationLabel: (location: LintLocation) => string,
-    message: string,
+  location: LintLocation,
+  mode: LintGroupMode,
+  locationLabel: (location: LintLocation) => string,
+  message: string
 ): { label: string; line: number | null } {
-    return {
-        // Split rather than pre-joined so the row can let the *label* ellipse and keep the number:
-        // "Chapter One / Openi…" is still a place, "Chapter One / Op…" with the row number cut off
-        // is the one part of the locator the reader came for, gone.
-        label: mode === "location" ? "" : nonRedundantLintLocation(locationLabel(location), message),
-        line: lintEntryLine(location),
-    };
+  return {
+    // Split rather than pre-joined so the row can let the *label* ellipse and keep the number:
+    // "Chapter One / Openi…" is still a place, "Chapter One / Op…" with the row number cut off
+    // is the one part of the locator the reader came for, gone.
+    label: mode === "location" ? "" : nonRedundantLintLocation(locationLabel(location), message),
+    line: lintEntryLine(location)
+  };
 }
 
 /** The row number a story finding carries, or null for everything that is not one row of a scene. */
 export function lintEntryLine(location: LintLocation): number | null {
-    return location.kind === "story" && location.line !== undefined ? location.line : null;
+  return location.kind === "story" && location.line !== undefined ? location.line : null;
 }
 
 /** The author's own words on the row, when the engine could take a copy of them. */
 export function lintEntryExcerpt(location: LintLocation): string {
-    return location.kind === "story" ? location.excerpt ?? "" : "";
+  return location.kind === "story" ? (location.excerpt ?? "") : "";
 }
 
 export function filterLintEntries(
-    entries: readonly LintReportEntry[],
-    filter: LintSeverityFilter,
+  entries: readonly LintReportEntry[],
+  filter: LintSeverityFilter
 ): LintReportEntry[] {
-    return filter === "all" ? [...entries] : entries.filter(entry => entry.severity === filter);
+  return filter === "all" ? [...entries] : entries.filter((entry) => entry.severity === filter);
 }
 
 /**
@@ -207,53 +212,53 @@ export function filterLintEntries(
  *    is still on the rule name at the end of every row.
  */
 export function groupLintEntries(
-    entries: readonly LintReportEntry[],
-    mode: LintGroupMode,
-    labels: LintGroupLabels,
+  entries: readonly LintReportEntry[],
+  mode: LintGroupMode,
+  labels: LintGroupLabels
 ): LintEntryGroup[] {
-    const groups = new Map<string, LintEntryGroup>();
+  const groups = new Map<string, LintEntryGroup>();
 
-    for (const entry of entries) {
-        const key = mode === "rule" ? entry.ruleId : lintLocationKey(entry.location);
-        const existing = groups.get(key);
-        if (existing) {
-            existing.entries.push(entry);
-            if (entry.severity !== existing.entries[0].severity) {
-                existing.mixedSeverity = true;
-            }
-            if (LINT_SEVERITY_ORDER[entry.severity] < LINT_SEVERITY_ORDER[existing.severity]) {
-                existing.severity = entry.severity;
-            }
-            continue;
-        }
-        groups.set(key, {
-            key,
-            title:
-                mode === "rule"
-                    ? labels.ruleTitle(entry.ruleId)
-                    : labels.locationLabel(entry.location),
-            severity: entry.severity,
-            mixedSeverity: false,
-            entries: [entry],
-        });
+  for (const entry of entries) {
+    const key = mode === "rule" ? entry.ruleId : lintLocationKey(entry.location);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.entries.push(entry);
+      if (entry.severity !== existing.entries[0].severity) {
+        existing.mixedSeverity = true;
+      }
+      if (LINT_SEVERITY_ORDER[entry.severity] < LINT_SEVERITY_ORDER[existing.severity]) {
+        existing.severity = entry.severity;
+      }
+      continue;
     }
-
-    if (mode === "location") {
-        for (const group of groups.values()) {
-            // A finding about the whole scene names no row and leads it; `sort` is stable, so
-            // everything else keeps the report's order among equals.
-            group.entries.sort((a, b) => (lintEntryLine(a.location) ?? 0) - (lintEntryLine(b.location) ?? 0));
-        }
-    }
-
-    return [...groups.values()].sort((a, b) => {
-        const bySeverity = LINT_SEVERITY_ORDER[a.severity] - LINT_SEVERITY_ORDER[b.severity];
-        if (bySeverity !== 0) {
-            return bySeverity;
-        }
-        const byTitle = a.title.localeCompare(b.title);
-        return byTitle !== 0 ? byTitle : a.key.localeCompare(b.key);
+    groups.set(key, {
+      key,
+      title:
+        mode === "rule" ? labels.ruleTitle(entry.ruleId) : labels.locationLabel(entry.location),
+      severity: entry.severity,
+      mixedSeverity: false,
+      entries: [entry]
     });
+  }
+
+  if (mode === "location") {
+    for (const group of groups.values()) {
+      // A finding about the whole scene names no row and leads it; `sort` is stable, so
+      // everything else keeps the report's order among equals.
+      group.entries.sort(
+        (a, b) => (lintEntryLine(a.location) ?? 0) - (lintEntryLine(b.location) ?? 0)
+      );
+    }
+  }
+
+  return [...groups.values()].sort((a, b) => {
+    const bySeverity = LINT_SEVERITY_ORDER[a.severity] - LINT_SEVERITY_ORDER[b.severity];
+    if (bySeverity !== 0) {
+      return bySeverity;
+    }
+    const byTitle = a.title.localeCompare(b.title);
+    return byTitle !== 0 ? byTitle : a.key.localeCompare(b.key);
+  });
 }
 
 /**
@@ -268,18 +273,18 @@ export function groupLintEntries(
  * folding it away is how the other nine rules become visible at all.
  */
 export function flattenLintGroups(
-    groups: readonly LintEntryGroup[],
-    collapsed?: ReadonlySet<string>,
+  groups: readonly LintEntryGroup[],
+  collapsed?: ReadonlySet<string>
 ): LintReportRow[] {
-    const rows: LintReportRow[] = [];
-    for (const group of groups) {
-        rows.push({ kind: "group", key: `g:${group.key}`, group });
-        if (collapsed?.has(group.key)) {
-            continue;
-        }
-        group.entries.forEach((entry, index) => {
-            rows.push({ kind: "entry", key: `e:${group.key}:${index}`, group, entry });
-        });
+  const rows: LintReportRow[] = [];
+  for (const group of groups) {
+    rows.push({ kind: "group", key: `g:${group.key}`, group });
+    if (collapsed?.has(group.key)) {
+      continue;
     }
-    return rows;
+    group.entries.forEach((entry, index) => {
+      rows.push({ kind: "entry", key: `e:${group.key}:${index}`, group, entry });
+    });
+  }
+  return rows;
 }

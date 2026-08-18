@@ -6,10 +6,10 @@
 
 插件是安装在 Studio `userData/plugins` 下的本地已打包代码块。V2 把"执行环境（target）"作为一等公民：一个插件包最多声明两个入口，各自在不同的世界执行。
 
-| target | 执行位置 | Host API | 职责 |
-| --- | --- | --- | --- |
-| `studio` | workspace 窗口（不在 Launcher、Settings、Project Wizard、Dev Mode 窗口） | `narraleaf-studio/plugin` | 编辑器扩展：边栏、actions、editors、widget、蓝图节点元数据、动态选项源 |
-| `runtime` | 所有游戏执行环境：Dev Mode 窗口、Preview、Production | `narraleaf-studio/runtime` | 游戏逻辑：蓝图节点 `execute` 绑定 |
+| target    | 执行位置                                                                 | Host API                   | 职责                                                                   |
+| --------- | ------------------------------------------------------------------------ | -------------------------- | ---------------------------------------------------------------------- |
+| `studio`  | workspace 窗口（不在 Launcher、Settings、Project Wizard、Dev Mode 窗口） | `narraleaf-studio/plugin`  | 编辑器扩展：边栏、actions、editors、widget、蓝图节点元数据、动态选项源 |
+| `runtime` | 所有游戏执行环境：Dev Mode 窗口、Preview、Production                     | `narraleaf-studio/runtime` | 游戏逻辑：蓝图节点 `execute` 绑定                                      |
 
 每个入口都是预构建的 ESM 文件。Studio 不编译插件源码，也不解析插件依赖树；每个环境只加载 manifest 声明的对应 entry 文件。插件开发者需要提前把依赖打包进入口文件：
 
@@ -60,17 +60,17 @@ runtime entry 的安全模型与 studio entry 不同：它作为游戏代码运�
 
 字段含义：
 
-| 字段 | 必填 | 说明 |
-| --- | --- | --- |
-| `manifestVersion` | 是 | 当前只支持 `2`。V1（单 `entry` 字段）不再被接受。 |
-| `id` | 是 | 命名空间 ID，必须匹配 `publisher.plugin-name` 这类小写点分格式。 |
-| `name` | 是 | Launcher 中展示的插件名称。 |
-| `version` | 是 | semver-ish 版本，例如 `1.0.0`、`1.2.0-beta.1`。 |
-| `publisher` | 否 | 发布者。 |
-| `description` | 否 | 简短介绍。 |
-| `entries` | 是 | 按 target 声明的入口对象；`studio` 和 `runtime` 均可选，但至少声明一个。未知 target key 会被拒绝。 |
-| `contributes` | 否 | 声明式贡献清单。`blueprintNodes` / `widgets` 列出插件提供的蓝图节点与 widget type（必须以插件 ID 为前缀，自动去重）。省略等同空数组。未知 key 会被拒绝。 |
-| `permissions` | 否 | 安装时一次性展示并授予的权限声明。省略时等同空数组。仅作用于 studio entry 的特权请求。 |
+| 字段              | 必填 | 说明                                                                                                                                                     |
+| ----------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `manifestVersion` | 是   | 当前只支持 `2`。V1（单 `entry` 字段）不再被接受。                                                                                                        |
+| `id`              | 是   | 命名空间 ID，必须匹配 `publisher.plugin-name` 这类小写点分格式。                                                                                         |
+| `name`            | 是   | Launcher 中展示的插件名称。                                                                                                                              |
+| `version`         | 是   | semver-ish 版本，例如 `1.0.0`、`1.2.0-beta.1`。                                                                                                          |
+| `publisher`       | 否   | 发布者。                                                                                                                                                 |
+| `description`     | 否   | 简短介绍。                                                                                                                                               |
+| `entries`         | 是   | 按 target 声明的入口对象；`studio` 和 `runtime` 均可选，但至少声明一个。未知 target key 会被拒绝。                                                       |
+| `contributes`     | 否   | 声明式贡献清单。`blueprintNodes` / `widgets` 列出插件提供的蓝图节点与 widget type（必须以插件 ID 为前缀，自动去重）。省略等同空数组。未知 key 会被拒绝。 |
+| `permissions`     | 否   | 安装时一次性展示并授予的权限声明。省略时等同空数组。仅作用于 studio entry 的特权请求。                                                                   |
 
 `contributes` 是静态校验的锚点：两侧注册 API 都强制"注册的节点 type 必须已声明"，因此 Studio 不需要执行插件代码就能回答"这个节点谁提供、随游戏发布时是否可用"。
 
@@ -123,12 +123,12 @@ type PluginInstallRecord = {
 
 Launcher 看到的是 `PluginListItem`，它在 record 基础上增加 `status`：
 
-| 状态 | 条件 |
-| --- | --- |
-| `enabled` | 已启用，且 `grantedManifestVersion === manifest.version`，且没有 `lastError`。 |
-| `disabled` | 未启用，已完成当前版本授权，且没有 `lastError`。 |
-| `needsAuthorization` | 当前 manifest 版本没有授权。 |
-| `error` | 最近一次 workspace 加载失败，错误保存在 `lastError`。 |
+| 状态                 | 条件                                                                           |
+| -------------------- | ------------------------------------------------------------------------------ |
+| `enabled`            | 已启用，且 `grantedManifestVersion === manifest.version`，且没有 `lastError`。 |
+| `disabled`           | 未启用，已完成当前版本授权，且没有 `lastError`。                               |
+| `needsAuthorization` | 当前 manifest 版本没有授权。                                                   |
+| `error`              | 最近一次 workspace 加载失败，错误保存在 `lastError`。                          |
 
 状态优先级是 `error` > `needsAuthorization` > `enabled` > `disabled`。如果插件加载失败，即使 `enabled` 仍为 true，也会以 `error` 展示，并且不会再次进入 workspace descriptor，直到用户重新启用或重新安装使 `lastError` 清空。
 
@@ -228,10 +228,10 @@ workspace 卸载时会执行已收集的 cleanup，并撤销该插件 renderer �
 
 runtime entry 在三个游戏执行环境加载，共用同一个 loader（`src/renderer/lib/ui-editor/runtime/plugins/loadRuntimePlugins.ts`）：
 
-| 环境 | descriptor 来源 | entry URL |
-| --- | --- | --- |
-| Dev Mode 窗口 | IPC `plugin.runtimeList`（仅 Dev Mode 窗口可调用；已启用 + 声明 runtime entry − 项目依赖 suppression） | `app://plugins/{id}/{version}/{runtimeEntry}` |
-| Preview / Production | pack `plugins` 段（编译时按项目依赖表挑选并嵌入） | `nlgame://runtime/plugins/{id}/{runtimeEntry}` |
+| 环境                 | descriptor 来源                                                                                        | entry URL                                      |
+| -------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| Dev Mode 窗口        | IPC `plugin.runtimeList`（仅 Dev Mode 窗口可调用；已启用 + 声明 runtime entry − 项目依赖 suppression） | `app://plugins/{id}/{version}/{runtimeEntry}`  |
+| Preview / Production | pack `plugins` 段（编译时按项目依赖表挑选并嵌入）                                                      | `nlgame://runtime/plugins/{id}/{runtimeEntry}` |
 
 Dev Mode 的 suppression 与 workspace 一致：主进程读取项目 `.nlproj` 的依赖表，用共享的 `resolveDependencies` 解析——hard 依赖缺失或主版本不兼容的插件不会在该项目的 Dev Mode 会话中执行。解析失败不阻断会话（best-effort）。
 
@@ -245,7 +245,7 @@ import { defineRuntimePlugin } from "narraleaf-studio/runtime";
 export default defineRuntimePlugin({
   setup(app) {
     app.game.blueprintNodes.registerMany(nodes);
-  },
+  }
 });
 ```
 
@@ -375,9 +375,9 @@ export default definePlugin({
           <ui.Panel.Header title={app.manifest.name} />
           <ui.Button size="sm">Action</ui.Button>
         </ui.Panel.Root>
-      ),
+      )
     });
-  },
+  }
 });
 ```
 
@@ -410,17 +410,17 @@ type PluginApp = {
 
 ## 执行环境矩阵
 
-| 扩展点 | studio entry（workspace） | runtime entry（Dev Mode / Preview / Production） |
-| --- | --- | --- |
-| 边栏 / actions / editors / keybindings / notifications | ✅ | — |
-| widget 模块 | ✅ 编辑面（module + inspector 等） | ✅ 游戏渲染器（`game.widgets`，须声明于 `contributes.widgets`） |
-| 蓝图节点 | 元数据 + palette + 编辑器预览 execute | 游戏 execute（`game.blueprintNodes`，须声明于 `contributes.blueprintNodes`） |
-| 动态 select 选项源 | ✅ | — |
-| story action | ✅ palette + slash chooser 动作（创建标准故事块） | —（故事级逻辑经 Blueprint 块 + 插件蓝图节点执行） |
-| assets / storage（项目级 JSON） | ✅ | ✅ `game.data`（随包发布的只读副本）+ `game.store`（须声明 `runtimeCapabilities: ["store"]`） |
-| React host externals | react / react-dom / react-dom-client / jsx | react / react-dom / jsx（无 react-dom/client） |
-| privileged（fs/bash/permissions） | ✅ | 永不提供 |
-| transform 字段 / transition 预设 | ⬜（等待核心预设系统，见设计文档决策记录） | ⬜ |
+| 扩展点                                                 | studio entry（workspace）                         | runtime entry（Dev Mode / Preview / Production）                                              |
+| ------------------------------------------------------ | ------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| 边栏 / actions / editors / keybindings / notifications | ✅                                                | —                                                                                             |
+| widget 模块                                            | ✅ 编辑面（module + inspector 等）                | ✅ 游戏渲染器（`game.widgets`，须声明于 `contributes.widgets`）                               |
+| 蓝图节点                                               | 元数据 + palette + 编辑器预览 execute             | 游戏 execute（`game.blueprintNodes`，须声明于 `contributes.blueprintNodes`）                  |
+| 动态 select 选项源                                     | ✅                                                | —                                                                                             |
+| story action                                           | ✅ palette + slash chooser 动作（创建标准故事块） | —（故事级逻辑经 Blueprint 块 + 插件蓝图节点执行）                                             |
+| assets / storage（项目级 JSON）                        | ✅                                                | ✅ `game.data`（随包发布的只读副本）+ `game.store`（须声明 `runtimeCapabilities: ["store"]`） |
+| React host externals                                   | react / react-dom / react-dom-client / jsx        | react / react-dom / jsx（无 react-dom/client）                                                |
+| privileged（fs/bash/permissions）                      | ✅                                                | 永不提供                                                                                      |
+| transform 字段 / transition 预设                       | ⬜（等待核心预设系统，见设计文档决策记录）        | ⬜                                                                                            |
 
 ## Launcher 管理
 
@@ -467,17 +467,17 @@ pack 编译前，`PreviewManager` 用 `selectRuntimePluginsForPack()` 按**项�
 
 Launcher、workspace、Dev Mode 和 preload 之间使用这些 IPC：
 
-| IPC | 说明 |
-| --- | --- |
-| `plugin.list` | Launcher 获取所有已安装插件。 |
-| `plugin.installLocal` | Launcher 打开目录选择器并安装本地插件。 |
-| `plugin.setEnabled` | Launcher 启用或停用插件。 |
-| `plugin.approve` | Launcher 对当前 manifest 版本发起权限批准。 |
-| `plugin.uninstall` | Launcher 卸载非 built-in 插件。 |
-| `plugin.revoke` | Launcher 撤销插件授权并停用。 |
-| `plugin.workspaceList` | workspace 获取 studio entry descriptor；非 workspace 窗口会被拒绝。 |
-| `plugin.runtimeList` | Dev Mode 窗口获取 runtime entry descriptor；非 Dev Mode 窗口会被拒绝。 |
-| `plugin.reportLoadError` | workspace 上报插件加载成功或失败；非 workspace 窗口会被拒绝。 |
+| IPC                      | 说明                                                                   |
+| ------------------------ | ---------------------------------------------------------------------- |
+| `plugin.list`            | Launcher 获取所有已安装插件。                                          |
+| `plugin.installLocal`    | Launcher 打开目录选择器并安装本地插件。                                |
+| `plugin.setEnabled`      | Launcher 启用或停用插件。                                              |
+| `plugin.approve`         | Launcher 对当前 manifest 版本发起权限批准。                            |
+| `plugin.uninstall`       | Launcher 卸载非 built-in 插件。                                        |
+| `plugin.revoke`          | Launcher 撤销插件授权并停用。                                          |
+| `plugin.workspaceList`   | workspace 获取 studio entry descriptor；非 workspace 窗口会被拒绝。    |
+| `plugin.runtimeList`     | Dev Mode 窗口获取 runtime entry descriptor；非 Dev Mode 窗口会被拒绝。 |
+| `plugin.reportLoadError` | workspace 上报插件加载成功或失败；非 workspace 窗口会被拒绝。          |
 
 插件代码本身不应调用这些 IPC。插件只使用 `definePlugin`/`defineRuntimePlugin` 和对应的 app 对象。
 

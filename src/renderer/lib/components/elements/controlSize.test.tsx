@@ -25,74 +25,69 @@ import { CONTROL_SIZE_CLASS, CONTROL_SQUARE_CLASS, type ControlSize } from "./co
 const SIZES: ControlSize[] = ["sm", "md", "lg"];
 /** The `min-h-*` each size is supposed to carry. Spelled out, not derived. */
 const EXPECTED_FLOOR: Record<ControlSize, string> = {
-    sm: "min-h-7",
-    md: "min-h-9",
-    lg: "min-h-10",
+  sm: "min-h-7",
+  md: "min-h-9",
+  lg: "min-h-10"
 };
 
 afterEach(cleanup);
 
 function classesOf(el: Element | null): string[] {
-    return (el?.getAttribute("class") ?? "").split(/\s+/).filter(Boolean);
+  return (el?.getAttribute("class") ?? "").split(/\s+/).filter(Boolean);
 }
 
 describe("control size scale", () => {
-    it.each(SIZES)("%s states one height floor, and it is the documented one", (size) => {
-        expect(CONTROL_SIZE_CLASS[size].split(" ")).toContain(EXPECTED_FLOOR[size]);
-    });
+  it.each(SIZES)("%s states one height floor, and it is the documented one", (size) => {
+    expect(CONTROL_SIZE_CLASS[size].split(" ")).toContain(EXPECTED_FLOOR[size]);
+  });
 
-    it.each(SIZES)("button, input and select agree at %s", (size) => {
-        const { unmount: unmountButton } = render(<Button size={size}>label</Button>);
-        const buttonClasses = classesOf(screen.getByRole("button"));
-        unmountButton();
+  it.each(SIZES)("button, input and select agree at %s", (size) => {
+    const { unmount: unmountButton } = render(<Button size={size}>label</Button>);
+    const buttonClasses = classesOf(screen.getByRole("button"));
+    unmountButton();
 
-        const { unmount: unmountInput } = render(<Input size={size} aria-label="field" />);
-        const inputClasses = classesOf(screen.getByLabelText("field"));
-        unmountInput();
+    const { unmount: unmountInput } = render(<Input size={size} aria-label="field" />);
+    const inputClasses = classesOf(screen.getByLabelText("field"));
+    unmountInput();
 
-        render(
-            <Select
-                size={size}
-                ariaLabel="picker"
-                options={[{ value: "a", label: "a" }]}
-                value="a"
-            />,
-        );
-        const selectClasses = classesOf(screen.getByLabelText("picker"));
+    render(
+      <Select size={size} ariaLabel="picker" options={[{ value: "a", label: "a" }]} value="a" />
+    );
+    const selectClasses = classesOf(screen.getByLabelText("picker"));
 
-        const floor = EXPECTED_FLOOR[size];
-        expect(buttonClasses).toContain(floor);
-        expect(inputClasses).toContain(floor);
-        expect(selectClasses).toContain(floor);
-    });
+    const floor = EXPECTED_FLOOR[size];
+    expect(buttonClasses).toContain(floor);
+    expect(inputClasses).toContain(floor);
+    expect(selectClasses).toContain(floor);
+  });
 
-    it("the select trigger draws the border its variant colours assume", () => {
-        // `border-edge-strong` sets a colour; without a width utility preflight leaves the border at
-        // 0 and the trigger renders as a flat fill - which is exactly how it shipped.
-        render(<Select ariaLabel="picker" options={[{ value: "a", label: "a" }]} value="a" />);
-        const classes = classesOf(screen.getByLabelText("picker"));
-        expect(classes).toContain("border");
-        expect(classes).toContain("border-edge-strong");
-    });
+  it("the select trigger draws the border its variant colours assume", () => {
+    // `border-edge-strong` sets a colour; without a width utility preflight leaves the border at
+    // 0 and the trigger renders as a flat fill - which is exactly how it shipped.
+    render(<Select ariaLabel="picker" options={[{ value: "a", label: "a" }]} value="a" />);
+    const classes = classesOf(screen.getByLabelText("picker"));
+    expect(classes).toContain("border");
+    expect(classes).toContain("border-edge-strong");
+  });
 
-    it("the square controls use the same scale as the text-height ones", () => {
-        for (const size of SIZES) {
-            const height = EXPECTED_FLOOR[size].replace("min-h-", "h-");
-            expect(CONTROL_SQUARE_CLASS[size].split(" ")).toContain(height);
-        }
-    });
+  it("the square controls use the same scale as the text-height ones", () => {
+    for (const size of SIZES) {
+      const height = EXPECTED_FLOOR[size].replace("min-h-", "h-");
+      expect(CONTROL_SQUARE_CLASS[size].split(" ")).toContain(height);
+    }
+  });
 
-    it.each(SIZES)("icon and toolbar buttons are square at %s", (size) => {
-        const { unmount } = render(<IconButton size={size} aria-label="icon" />);
-        const iconClasses = classesOf(screen.getByLabelText("icon"));
-        unmount();
+  it.each(SIZES)("icon and toolbar buttons are square at %s", (size) => {
+    const { unmount } = render(<IconButton size={size} aria-label="icon" />);
+    const iconClasses = classesOf(screen.getByLabelText("icon"));
+    unmount();
 
-        render(<ToolbarButton size={size} aria-label="tool" />);
-        const toolClasses = classesOf(screen.getByLabelText("tool"));
+    render(<ToolbarButton size={size} aria-label="tool" />);
+    const toolClasses = classesOf(screen.getByLabelText("tool"));
 
-        for (const cls of CONTROL_SQUARE_CLASS[size].split(" ")) {
-            expect(iconClasses).toContain(cls);
-            expect(toolClasses).toContain(cls);
-        }
-    });
+    for (const cls of CONTROL_SQUARE_CLASS[size].split(" ")) {
+      expect(iconClasses).toContain(cls);
+      expect(toolClasses).toContain(cls);
+    }
+  });
 });

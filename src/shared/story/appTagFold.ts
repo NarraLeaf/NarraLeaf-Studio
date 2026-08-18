@@ -1,20 +1,20 @@
 import { isBuiltinAppTagId } from "@shared/types/appTag";
 import {
-    isAppTagExpr,
-    isStoryExpressionEvaluable,
-    listSceneBlocksInDocumentOrder,
-    listScenesInDocumentOrder,
-    storyExprChildren,
-    storyExpressionMentionsAppTag,
-    type StoryBlock,
-    type StoryBlockId,
-    type StoryConditionRef,
-    type StoryControlPayload,
-    type StoryDocument,
-    type StoryExpr,
-    type StoryExpression,
-    type StoryScene,
-    type StorySceneId,
+  isAppTagExpr,
+  isStoryExpressionEvaluable,
+  listSceneBlocksInDocumentOrder,
+  listScenesInDocumentOrder,
+  storyExprChildren,
+  storyExpressionMentionsAppTag,
+  type StoryBlock,
+  type StoryBlockId,
+  type StoryConditionRef,
+  type StoryControlPayload,
+  type StoryDocument,
+  type StoryExpr,
+  type StoryExpression,
+  type StoryScene,
+  type StorySceneId
 } from "@shared/types/story";
 import { evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
 import { formatStoryExpr } from "@shared/utils/storyExpressionParser";
@@ -71,33 +71,33 @@ import { reachableSceneIds } from "./storyReachability";
 
 /** What one expression folds against: `AppTag` becomes the variant's name and nothing else. */
 export type AppTagNameOptions = {
-    /** The variant's own name, exactly as the variant list stores it. Release is "main". */
-    tagName: string;
+  /** The variant's own name, exactly as the variant list stores it. Release is "main". */
+  tagName: string;
 };
 
 /** What a whole document folds against: the name expressions read, plus the id cut points name. */
 export type AppTagFoldOptions = AppTagNameOptions & {
-    /**
-     * The variant's own id. Compared with a `/cut` row's `appTagId` exactly; the release id cuts
-     * nothing, which is what makes a written cut point safe to keep after its variant is gone.
-     */
-    tagId: string;
-    /**
-     * Turns on the reachability sweep that drops the scenes the story can no longer get to.
-     *
-     * Absent drops nothing, and that is what every play-time caller passes. Dev Mode, the preview
-     * and "play from this row" all enter a scene the author picked rather than one the story
-     * reaches, so a sweep there would delete the scene about to be played.
-     */
-    sceneReachability?: SceneReachability;
+  /**
+   * The variant's own id. Compared with a `/cut` row's `appTagId` exactly; the release id cuts
+   * nothing, which is what makes a written cut point safe to keep after its variant is gone.
+   */
+  tagId: string;
+  /**
+   * Turns on the reachability sweep that drops the scenes the story can no longer get to.
+   *
+   * Absent drops nothing, and that is what every play-time caller passes. Dev Mode, the preview
+   * and "play from this row" all enter a scene the author picked rather than one the story
+   * reaches, so a sweep there would delete the scene about to be played.
+   */
+  sceneReachability?: SceneReachability;
 };
 
 export type SceneReachability = {
-    /**
-     * Scene ids something outside the document can start this story at - a blueprint's `Start Game`
-     * node. The story's own entry scene is always an entry and does not need listing.
-     */
-    entrySceneIds: readonly StorySceneId[];
+  /**
+   * Scene ids something outside the document can start this story at - a blueprint's `Start Game`
+   * node. The story's own entry scene is always an entry and does not need listing.
+   */
+  entrySceneIds: readonly StorySceneId[];
 };
 
 /**
@@ -108,12 +108,12 @@ export type SceneReachability = {
  * condition reader below needs `mentioned` to keep its hands off ordinary conditions.
  */
 export type AppTagFold = {
-    /** The folded tree. Reference-identical to the input when it mentions no `AppTag`. */
-    ast: StoryExpr;
-    /** Whether the input mentioned `AppTag` anywhere. */
-    mentioned: boolean;
-    /** Whether an expression that named the variant failed to come out a constant. */
-    unfoldable: boolean;
+  /** The folded tree. Reference-identical to the input when it mentions no `AppTag`. */
+  ast: StoryExpr;
+  /** Whether the input mentioned `AppTag` anywhere. */
+  mentioned: boolean;
+  /** Whether an expression that named the variant failed to come out a constant. */
+  unfoldable: boolean;
 };
 
 /** Three-valued, because "the game decides this one" is an answer, not a missing one. */
@@ -121,25 +121,25 @@ export type AppTagStaticTruth = "true" | "false" | "unknown";
 
 /** One place in a story where `AppTag` is compared with something the build cannot know. */
 export type UnfoldableAppTagUse = {
-    storyId: string;
-    storyName: string;
-    sceneId: string;
-    sceneName: string;
-    blockId: StoryBlockId;
-    /** The expression as the author typed it - the text that identifies the mistake. */
-    source: string;
+  storyId: string;
+  storyName: string;
+  sceneId: string;
+  sceneName: string;
+  blockId: StoryBlockId;
+  /** The expression as the author typed it - the text that identifies the mistake. */
+  source: string;
 };
 
 export function foldStoryExpression(expr: StoryExpr, options: AppTagNameOptions): AppTagFold {
-    if (!storyExpressionMentionsAppTag(expr)) {
-        return { ast: expr, mentioned: false, unfoldable: false };
-    }
-    const ast = foldNode(expr, options.tagName);
-    // The rule, whole: an expression that names the variant has to come out a constant. Not "the
-    // `AppTag` node is gone" - substituting the name always removes it, and `"Demo" == gold` would
-    // then pass while meaning the opposite of what it reads: a test performed at play time, in every
-    // package, with the variant-only content sitting in all of them.
-    return { ast, mentioned: true, unfoldable: ast.kind !== "literal" };
+  if (!storyExpressionMentionsAppTag(expr)) {
+    return { ast: expr, mentioned: false, unfoldable: false };
+  }
+  const ast = foldNode(expr, options.tagName);
+  // The rule, whole: an expression that names the variant has to come out a constant. Not "the
+  // `AppTag` node is gone" - substituting the name always removes it, and `"Demo" == gold` would
+  // then pass while meaning the opposite of what it reads: a test performed at play time, in every
+  // package, with the variant-only content sitting in all of them.
+  return { ast, mentioned: true, unfoldable: ast.kind !== "literal" };
 }
 
 /**
@@ -155,17 +155,17 @@ export function foldStoryExpression(expr: StoryExpr, options: AppTagNameOptions)
  * about variants, and deleting it here would remove work the author is in the middle of.
  */
 export function staticConditionValue(
-    condition: StoryConditionRef | undefined,
-    options: AppTagNameOptions,
+  condition: StoryConditionRef | undefined,
+  options: AppTagNameOptions
 ): AppTagStaticTruth {
-    if (!condition || condition.kind !== "expression") {
-        return "unknown";
-    }
-    const fold = foldStoryExpression(condition.expression.ast, options);
-    if (!fold.mentioned || fold.ast.kind !== "literal") {
-        return "unknown";
-    }
-    return isTruthy(fold.ast.value) ? "true" : "false";
+  if (!condition || condition.kind !== "expression") {
+    return "unknown";
+  }
+  const fold = foldStoryExpression(condition.expression.ast, options);
+  if (!fold.mentioned || fold.ast.kind !== "literal") {
+    return "unknown";
+  }
+  return isTruthy(fold.ast.value) ? "true" : "false";
 }
 
 /**
@@ -176,39 +176,41 @@ export function staticConditionValue(
  * no more block a build than it can reach a player.
  */
 export function collectUnfoldableAppTagUses(
-    document: StoryDocument,
-    options: AppTagNameOptions,
+  document: StoryDocument,
+  options: AppTagNameOptions
 ): UnfoldableAppTagUse[] {
-    const found: UnfoldableAppTagUse[] = [];
-    for (const scene of listScenesInDocumentOrder(document)) {
-        const blocks = listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => Boolean(block.disabled) });
-        for (const block of blocks) {
-            for (const expression of collectBlockExpressions(block)) {
-                if (foldStoryExpression(expression.ast, options).unfoldable) {
-                    found.push({
-                        storyId: document.id,
-                        storyName: document.name,
-                        sceneId: scene.id,
-                        sceneName: scene.name,
-                        blockId: block.id,
-                        source: expression.source,
-                    });
-                }
-            }
+  const found: UnfoldableAppTagUse[] = [];
+  for (const scene of listScenesInDocumentOrder(document)) {
+    const blocks = listSceneBlocksInDocumentOrder(scene, {
+      skipSubtree: (block) => Boolean(block.disabled)
+    });
+    for (const block of blocks) {
+      for (const expression of collectBlockExpressions(block)) {
+        if (foldStoryExpression(expression.ast, options).unfoldable) {
+          found.push({
+            storyId: document.id,
+            storyName: document.name,
+            sceneId: scene.id,
+            sceneName: scene.name,
+            blockId: block.id,
+            source: expression.source
+          });
         }
+      }
     }
-    return found;
+  }
+  return found;
 }
 
 /** One `/cut` row that sits inside a condition or a group rather than at the top of its scene. */
 export type NestedCutPoint = {
-    storyId: string;
-    storyName: string;
-    sceneId: string;
-    sceneName: string;
-    blockId: StoryBlockId;
-    /** The variant the row names, so the report can print the word the author typed. */
-    appTagId: string;
+  storyId: string;
+  storyName: string;
+  sceneId: string;
+  sceneName: string;
+  blockId: StoryBlockId;
+  /** The variant the row names, so the report can print the word the author typed. */
+  appTagId: string;
 };
 
 /**
@@ -225,28 +227,30 @@ export type NestedCutPoint = {
  * nothing and can no more block a build than it can reach a player.
  */
 export function collectNestedCutPoints(document: StoryDocument): NestedCutPoint[] {
-    const found: NestedCutPoint[] = [];
-    for (const scene of listScenesInDocumentOrder(document)) {
-        // `rootBlockIds` rather than a null `parentId`: it is the list the compiler walks, so it is
-        // what decides whether a row runs unconditionally when the scene is entered.
-        const roots = new Set<StoryBlockId>(scene.rootBlockIds);
-        const blocks = listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => Boolean(block.disabled) });
-        for (const block of blocks) {
-            const cut = asCutPoint(block);
-            if (!cut || roots.has(cut.id)) {
-                continue;
-            }
-            found.push({
-                storyId: document.id,
-                storyName: document.name,
-                sceneId: scene.id,
-                sceneName: scene.name,
-                blockId: cut.id,
-                appTagId: cut.payload.appTagId,
-            });
-        }
+  const found: NestedCutPoint[] = [];
+  for (const scene of listScenesInDocumentOrder(document)) {
+    // `rootBlockIds` rather than a null `parentId`: it is the list the compiler walks, so it is
+    // what decides whether a row runs unconditionally when the scene is entered.
+    const roots = new Set<StoryBlockId>(scene.rootBlockIds);
+    const blocks = listSceneBlocksInDocumentOrder(scene, {
+      skipSubtree: (block) => Boolean(block.disabled)
+    });
+    for (const block of blocks) {
+      const cut = asCutPoint(block);
+      if (!cut || roots.has(cut.id)) {
+        continue;
+      }
+      found.push({
+        storyId: document.id,
+        storyName: document.name,
+        sceneId: scene.id,
+        sceneName: scene.name,
+        blockId: cut.id,
+        appTagId: cut.payload.appTagId
+      });
     }
-    return found;
+  }
+  return found;
 }
 
 /**
@@ -257,31 +261,31 @@ export function collectNestedCutPoints(document: StoryDocument): NestedCutPoint[
  * row a build refuses is not a row a build can measure.
  */
 export type CutPointSite = {
-    storyId: string;
-    storyName: string;
-    sceneId: StorySceneId;
-    sceneName: string;
-    blockId: StoryBlockId;
-    /** The variant this row names, by id. Exactly as stored; never resolved. */
-    appTagId: string;
-    /**
-     * Whether applying this row would take any shipped content with it.
-     *
-     * False for a cut whose tail holds nothing but other cut points - a row at the very end of a
-     * scene with nothing after it, or one sitting below an unconditional jump. Such a row reads on
-     * the page as an ending and produces a package identical to the one without it, which is the
-     * failure the whole feature exists to prevent: an author believes they cut the story and every
-     * line of it ships.
-     *
-     * Judged on the rows this row removes, deliberately, and not on which scenes survive. A cut on
-     * one branch of a fork removes that branch's rows even where the story converges again further
-     * on and every scene stays reachable - it removed something, so it is doing its job, and saying
-     * otherwise would report the ordinary shape of a branching demo as a mistake.
-     *
-     * A disabled row is not content: the compiler drops it before the package is built, so a cut
-     * whose whole tail is disabled removes nothing that would have shipped.
-     */
-    removes: boolean;
+  storyId: string;
+  storyName: string;
+  sceneId: StorySceneId;
+  sceneName: string;
+  blockId: StoryBlockId;
+  /** The variant this row names, by id. Exactly as stored; never resolved. */
+  appTagId: string;
+  /**
+   * Whether applying this row would take any shipped content with it.
+   *
+   * False for a cut whose tail holds nothing but other cut points - a row at the very end of a
+   * scene with nothing after it, or one sitting below an unconditional jump. Such a row reads on
+   * the page as an ending and produces a package identical to the one without it, which is the
+   * failure the whole feature exists to prevent: an author believes they cut the story and every
+   * line of it ships.
+   *
+   * Judged on the rows this row removes, deliberately, and not on which scenes survive. A cut on
+   * one branch of a fork removes that branch's rows even where the story converges again further
+   * on and every scene stays reachable - it removed something, so it is doing its job, and saying
+   * otherwise would report the ordinary shape of a branching demo as a mistake.
+   *
+   * A disabled row is not content: the compiler drops it before the package is built, so a cut
+   * whose whole tail is disabled removes nothing that would have shipped.
+   */
+  removes: boolean;
 };
 
 /**
@@ -296,33 +300,36 @@ export type CutPointSite = {
  * order and skips a disabled subtree, the two rules the sweeps above follow.
  */
 export function collectCutPoints(document: StoryDocument): CutPointSite[] {
-    const found: CutPointSite[] = [];
-    for (const scene of listScenesInDocumentOrder(document)) {
-        const roots = new Set<StoryBlockId>(scene.rootBlockIds);
-        const live = listSceneBlocksInDocumentOrder(scene, { skipSubtree: entry => Boolean(entry.disabled) });
-        const liveIds = new Set(live.map(block => block.id));
-        for (const block of live) {
-            const cut = asCutPoint(block);
-            if (!cut || !roots.has(cut.id)) {
-                continue;
-            }
-            const tail = new Set<StoryBlockId>();
-            addCutTail(scene, cut.id, tail);
-            const removed = expandToSubtrees(scene, tail);
-            found.push({
-                storyId: document.id,
-                storyName: document.name,
-                sceneId: scene.id,
-                sceneName: scene.name,
-                blockId: cut.id,
-                appTagId: cut.payload.appTagId,
-                removes: [...removed].some(blockId => blockId !== cut.id
-                    && liveIds.has(blockId)
-                    && !asCutPoint(scene.blocks[blockId])),
-            });
-        }
+  const found: CutPointSite[] = [];
+  for (const scene of listScenesInDocumentOrder(document)) {
+    const roots = new Set<StoryBlockId>(scene.rootBlockIds);
+    const live = listSceneBlocksInDocumentOrder(scene, {
+      skipSubtree: (entry) => Boolean(entry.disabled)
+    });
+    const liveIds = new Set(live.map((block) => block.id));
+    for (const block of live) {
+      const cut = asCutPoint(block);
+      if (!cut || !roots.has(cut.id)) {
+        continue;
+      }
+      const tail = new Set<StoryBlockId>();
+      addCutTail(scene, cut.id, tail);
+      const removed = expandToSubtrees(scene, tail);
+      found.push({
+        storyId: document.id,
+        storyName: document.name,
+        sceneId: scene.id,
+        sceneName: scene.name,
+        blockId: cut.id,
+        appTagId: cut.payload.appTagId,
+        removes: [...removed].some(
+          (blockId) =>
+            blockId !== cut.id && liveIds.has(blockId) && !asCutPoint(scene.blocks[blockId])
+        )
+      });
     }
-    return found;
+  }
+  return found;
 }
 
 /**
@@ -343,17 +350,22 @@ export function collectCutPoints(document: StoryDocument): CutPointSite[] {
  *     because which scenes the story can still get to is a property of the whole document and is
  *     only settled once every scene has been cut down to what this variant runs.
  */
-export function applyAppTagToStoryDocument(document: StoryDocument, options: AppTagFoldOptions): StoryDocument {
-    let changed = false;
-    const scenes: Record<string, StoryScene> = {};
-    for (const [sceneId, scene] of Object.entries(document.scenes ?? {})) {
-        const next = pruneScene(scene, options);
-        changed ||= next !== scene;
-        scenes[sceneId] = next;
-    }
-    const pruned = changed ? { ...document, scenes } : document;
-    const folded = foldExpressionsDeep(pruned, options);
-    return options.sceneReachability ? dropUnreachableScenes(folded, options.sceneReachability) : folded;
+export function applyAppTagToStoryDocument(
+  document: StoryDocument,
+  options: AppTagFoldOptions
+): StoryDocument {
+  let changed = false;
+  const scenes: Record<string, StoryScene> = {};
+  for (const [sceneId, scene] of Object.entries(document.scenes ?? {})) {
+    const next = pruneScene(scene, options);
+    changed ||= next !== scene;
+    scenes[sceneId] = next;
+  }
+  const pruned = changed ? { ...document, scenes } : document;
+  const folded = foldExpressionsDeep(pruned, options);
+  return options.sceneReachability
+    ? dropUnreachableScenes(folded, options.sceneReachability)
+    : folded;
 }
 
 // ── Folding one tree ──────────────────────────────────────────────────────────────────────────────
@@ -368,70 +380,77 @@ export function applyAppTagToStoryDocument(document: StoryDocument, options: App
  * story keeps reading a variable.
  */
 function foldNode(expr: StoryExpr, tagName: string): StoryExpr {
-    switch (expr.kind) {
-        case "literal":
-        case "var":
-        case "visited":
-        case "invoke":
-        case "invalid":
-            return expr;
+  switch (expr.kind) {
+    case "literal":
+    case "var":
+    case "visited":
+    case "invoke":
+    case "invalid":
+      return expr;
 
-        case "call":
-            return isAppTagExpr(expr)
-                ? { kind: "literal", value: tagName }
-                : constantFold({ kind: "call", fn: expr.fn, args: expr.args.map(arg => foldNode(arg, tagName)) });
+    case "call":
+      return isAppTagExpr(expr)
+        ? { kind: "literal", value: tagName }
+        : constantFold({
+            kind: "call",
+            fn: expr.fn,
+            args: expr.args.map((arg) => foldNode(arg, tagName))
+          });
 
-        case "unary":
-            return constantFold({ kind: "unary", op: expr.op, operand: foldNode(expr.operand, tagName) });
+    case "unary":
+      return constantFold({ kind: "unary", op: expr.op, operand: foldNode(expr.operand, tagName) });
 
-        case "array":
-            return constantFold({ kind: "array", items: expr.items.map(item => foldNode(item, tagName)) });
+    case "array":
+      return constantFold({
+        kind: "array",
+        items: expr.items.map((item) => foldNode(item, tagName))
+      });
 
-        case "index":
-            return constantFold({
-                kind: "index",
-                target: foldNode(expr.target, tagName),
-                index: foldNode(expr.index, tagName),
-            });
+    case "index":
+      return constantFold({
+        kind: "index",
+        target: foldNode(expr.target, tagName),
+        index: foldNode(expr.index, tagName)
+      });
 
-        case "ternary": {
-            const test = foldNode(expr.test, tagName);
-            const consequent = foldNode(expr.consequent, tagName);
-            const alternate = foldNode(expr.alternate, tagName);
-            // A decided test drops the other arm entirely, constant or not. This is the ternary's
-            // half of the branch elimination: `AppTag == "Demo" ? demoLine : realLine` keeps one.
-            if (test.kind === "literal") {
-                return isTruthy(test.value) ? consequent : alternate;
-            }
-            return { kind: "ternary", test, consequent, alternate };
-        }
-
-        case "binary": {
-            const left = foldNode(expr.left, tagName);
-            const right = foldNode(expr.right, tagName);
-            // Short-circuit exactly where the evaluator does, and only where the answer is settled by
-            // the left operand alone. `true && x` is NOT `x` in this language (`&&` yields a boolean,
-            // not the surviving operand), so it is left to the constant fold below.
-            if (expr.op === "&&" && left.kind === "literal" && !isTruthy(left.value)) {
-                return { kind: "literal", value: false };
-            }
-            if (expr.op === "||" && left.kind === "literal" && isTruthy(left.value)) {
-                return { kind: "literal", value: true };
-            }
-            return constantFold({ kind: "binary", op: expr.op, left, right });
-        }
+    case "ternary": {
+      const test = foldNode(expr.test, tagName);
+      const consequent = foldNode(expr.consequent, tagName);
+      const alternate = foldNode(expr.alternate, tagName);
+      // A decided test drops the other arm entirely, constant or not. This is the ternary's
+      // half of the branch elimination: `AppTag == "Demo" ? demoLine : realLine` keeps one.
+      if (test.kind === "literal") {
+        return isTruthy(test.value) ? consequent : alternate;
+      }
+      return { kind: "ternary", test, consequent, alternate };
     }
+
+    case "binary": {
+      const left = foldNode(expr.left, tagName);
+      const right = foldNode(expr.right, tagName);
+      // Short-circuit exactly where the evaluator does, and only where the answer is settled by
+      // the left operand alone. `true && x` is NOT `x` in this language (`&&` yields a boolean,
+      // not the surviving operand), so it is left to the constant fold below.
+      if (expr.op === "&&" && left.kind === "literal" && !isTruthy(left.value)) {
+        return { kind: "literal", value: false };
+      }
+      if (expr.op === "||" && left.kind === "literal" && isTruthy(left.value)) {
+        return { kind: "literal", value: true };
+      }
+      return constantFold({ kind: "binary", op: expr.op, left, right });
+    }
+  }
 }
 
 /** A node whose value is already decided becomes that value. Anything else passes through. */
 function constantFold(expr: StoryExpr): StoryExpr {
-    if (!isConstantExpr(expr)) {
-        return expr;
-    }
-    // The reader is never called: `isConstantExpr` has already refused every node that reads
-    // anything. Evaluation here is the language's own, so a folded value and a played one can never
-    // be two different answers to the same expression.
-    return { kind: "literal", value: evaluateStoryExpression(expr, { read: () => undefined }) };
+  if (!isConstantExpr(expr)) {
+    return expr;
+  }
+  // The reader is never called: `isConstantExpr` has already refused every node that reads
+  // anything. Evaluation here is the language's own, so a folded value and a played one can never
+  // be two different answers to the same expression.
+  return { kind: "literal", value: evaluateStoryExpression(expr, { read: () => undefined }) };
 }
 
 /**
@@ -442,94 +461,104 @@ function constantFold(expr: StoryExpr): StoryExpr {
  * roll into every play; and an `invalid` subtree never had a value to begin with.
  */
 function isConstantExpr(expr: StoryExpr): boolean {
-    if (!isStoryExpressionEvaluable(expr)) {
+  if (!isStoryExpressionEvaluable(expr)) {
+    return false;
+  }
+  switch (expr.kind) {
+    case "var":
+    case "visited":
+    case "invoke":
+      return false;
+    case "call":
+      if (expr.fn === "random" || expr.fn === "randomInt" || expr.fn === "appTag") {
         return false;
-    }
-    switch (expr.kind) {
-        case "var":
-        case "visited":
-        case "invoke":
-            return false;
-        case "call":
-            if (expr.fn === "random" || expr.fn === "randomInt" || expr.fn === "appTag") {
-                return false;
-            }
-            break;
-        default:
-            break;
-    }
-    return storyExprChildren(expr).every(isConstantExpr);
+      }
+      break;
+    default:
+      break;
+  }
+  return storyExprChildren(expr).every(isConstantExpr);
 }
 
 // ── Elimination ───────────────────────────────────────────────────────────────────────────────────
 
 /** An `if` branch that always runs - what an `else` becomes when it is the only branch left. */
 const ALWAYS: StoryConditionRef = {
-    kind: "expression",
-    expression: { source: "true", ast: { kind: "literal", value: true } },
+  kind: "expression",
+  expression: { source: "true", ast: { kind: "literal", value: true } }
 };
 
-type ConditionBranchBlock = StoryBlock & { kind: "control"; payload: Extract<StoryControlPayload, { control: "conditionBranch" }> };
+type ConditionBranchBlock = StoryBlock & {
+  kind: "control";
+  payload: Extract<StoryControlPayload, { control: "conditionBranch" }>;
+};
 
-type CutPointBlock = StoryBlock & { kind: "control"; payload: Extract<StoryControlPayload, { control: "cut" }> };
+type CutPointBlock = StoryBlock & {
+  kind: "control";
+  payload: Extract<StoryControlPayload, { control: "cut" }>;
+};
 
 function isConditionBlock(block: StoryBlock): boolean {
-    return block.kind === "control" && block.payload.control === "condition";
+  return block.kind === "control" && block.payload.control === "condition";
 }
 
 function asConditionBranch(block: StoryBlock | undefined): ConditionBranchBlock | null {
-    return block?.kind === "control" && block.payload.control === "conditionBranch"
-        ? block as ConditionBranchBlock
-        : null;
+  return block?.kind === "control" && block.payload.control === "conditionBranch"
+    ? (block as ConditionBranchBlock)
+    : null;
 }
 
 function asCutPoint(block: StoryBlock | undefined): CutPointBlock | null {
-    return block?.kind === "control" && block.payload.control === "cut"
-        ? block as CutPointBlock
-        : null;
+  return block?.kind === "control" && block.payload.control === "cut"
+    ? (block as CutPointBlock)
+    : null;
 }
 
 function pruneScene(scene: StoryScene, options: AppTagFoldOptions): StoryScene {
-    const removed = new Set<StoryBlockId>();
-    const rewritten = new Map<StoryBlockId, StoryBlock>();
+  const removed = new Set<StoryBlockId>();
+  const rewritten = new Map<StoryBlockId, StoryBlock>();
 
-    for (const block of Object.values(scene.blocks)) {
-        if (block.kind === "nodeAction"
-            && block.payload.action === "choiceOption"
-            && staticConditionValue(block.payload.hiddenWhen, options) === "true") {
-            // An option that can never appear takes its text with it. Leaving the row and only
-            // hiding it would ship another variant's words inside this one's menu data.
-            removed.add(block.id);
-            continue;
-        }
-        if (asCutPoint(block)) {
-            // Every cut point goes, this variant's included - the one that takes effect adds the
-            // rest of the story below, and the rest carry the id of a variant this edition is not.
-            removed.add(block.id);
-            continue;
-        }
-        if (isConditionBlock(block)) {
-            planCondition(scene, block, options, removed, rewritten);
-        }
+  for (const block of Object.values(scene.blocks)) {
+    if (
+      block.kind === "nodeAction" &&
+      block.payload.action === "choiceOption" &&
+      staticConditionValue(block.payload.hiddenWhen, options) === "true"
+    ) {
+      // An option that can never appear takes its text with it. Leaving the row and only
+      // hiding it would ship another variant's words inside this one's menu data.
+      removed.add(block.id);
+      continue;
     }
-    // The release edition is the whole story, so nothing it is built as can end one early. Checked
-    // once rather than per row, which also keeps the walk below off every release build.
-    if (!isBuiltinAppTagId(options.tagId)) {
-        const live = listSceneBlocksInDocumentOrder(scene, { skipSubtree: entry => Boolean(entry.disabled) });
-        for (const block of live) {
-            const cut = asCutPoint(block);
-            // Exact, and never through `resolveAppTag`: an id no variant answers to must cut nothing,
-            // where resolution would answer release and truncate every release build instead.
-            if (cut && cut.payload.appTagId === options.tagId) {
-                addCutTail(scene, cut.id, removed);
-            }
-        }
+    if (asCutPoint(block)) {
+      // Every cut point goes, this variant's included - the one that takes effect adds the
+      // rest of the story below, and the rest carry the id of a variant this edition is not.
+      removed.add(block.id);
+      continue;
     }
+    if (isConditionBlock(block)) {
+      planCondition(scene, block, options, removed, rewritten);
+    }
+  }
+  // The release edition is the whole story, so nothing it is built as can end one early. Checked
+  // once rather than per row, which also keeps the walk below off every release build.
+  if (!isBuiltinAppTagId(options.tagId)) {
+    const live = listSceneBlocksInDocumentOrder(scene, {
+      skipSubtree: (entry) => Boolean(entry.disabled)
+    });
+    for (const block of live) {
+      const cut = asCutPoint(block);
+      // Exact, and never through `resolveAppTag`: an id no variant answers to must cut nothing,
+      // where resolution would answer release and truncate every release build instead.
+      if (cut && cut.payload.appTagId === options.tagId) {
+        addCutTail(scene, cut.id, removed);
+      }
+    }
+  }
 
-    if (removed.size === 0 && rewritten.size === 0) {
-        return scene;
-    }
-    return rebuildScene(scene, expandToSubtrees(scene, removed), rewritten);
+  if (removed.size === 0 && rewritten.size === 0) {
+    return scene;
+  }
+  return rebuildScene(scene, expandToSubtrees(scene, removed), rewritten);
 }
 
 /**
@@ -542,29 +571,29 @@ function pruneScene(scene: StoryScene, options: AppTagFoldOptions): StoryScene {
  * container are the ones the story still plays on its way to the ending.
  */
 function addCutTail(scene: StoryScene, cutId: StoryBlockId, removed: Set<StoryBlockId>): void {
-    const parents = childToParent(scene);
-    const climbed = new Set<StoryBlockId>();
-    let cursor: StoryBlockId | undefined = cutId;
-    let inclusive = true;
-    while (cursor && !climbed.has(cursor)) {
-        climbed.add(cursor);
-        const parentId = parents.get(cursor);
-        const siblings = parentId ? scene.blocks[parentId]?.childrenIds ?? [] : scene.rootBlockIds;
-        const position = siblings.indexOf(cursor);
-        if (position < 0) {
-            // Neither a root nor listed by any parent - a block only corruption produces. The row
-            // itself still goes; there is no list to read a "rest of the story" out of.
-            if (inclusive) {
-                removed.add(cursor);
-            }
-            return;
-        }
-        for (const siblingId of siblings.slice(inclusive ? position : position + 1)) {
-            removed.add(siblingId);
-        }
-        cursor = parentId;
-        inclusive = false;
+  const parents = childToParent(scene);
+  const climbed = new Set<StoryBlockId>();
+  let cursor: StoryBlockId | undefined = cutId;
+  let inclusive = true;
+  while (cursor && !climbed.has(cursor)) {
+    climbed.add(cursor);
+    const parentId = parents.get(cursor);
+    const siblings = parentId ? (scene.blocks[parentId]?.childrenIds ?? []) : scene.rootBlockIds;
+    const position = siblings.indexOf(cursor);
+    if (position < 0) {
+      // Neither a root nor listed by any parent - a block only corruption produces. The row
+      // itself still goes; there is no list to read a "rest of the story" out of.
+      if (inclusive) {
+        removed.add(cursor);
+      }
+      return;
     }
+    for (const siblingId of siblings.slice(inclusive ? position : position + 1)) {
+      removed.add(siblingId);
+    }
+    cursor = parentId;
+    inclusive = false;
+  }
 }
 
 /**
@@ -573,15 +602,15 @@ function addCutTail(scene: StoryScene, cutId: StoryBlockId, removed: Set<StoryBl
  * point the climb at a container the row is no longer inside.
  */
 function childToParent(scene: StoryScene): Map<StoryBlockId, StoryBlockId> {
-    const parents = new Map<StoryBlockId, StoryBlockId>();
-    for (const block of Object.values(scene.blocks)) {
-        for (const childId of block.childrenIds) {
-            if (!parents.has(childId)) {
-                parents.set(childId, block.id);
-            }
-        }
+  const parents = new Map<StoryBlockId, StoryBlockId>();
+  for (const block of Object.values(scene.blocks)) {
+    for (const childId of block.childrenIds) {
+      if (!parents.has(childId)) {
+        parents.set(childId, block.id);
+      }
     }
-    return parents;
+  }
+  return parents;
 }
 
 /**
@@ -601,103 +630,103 @@ function childToParent(scene: StoryScene): Map<StoryBlockId, StoryBlockId> {
  * treating one as "taken" would keep a branch the runtime never sees and delete the one it does.
  */
 function planCondition(
-    scene: StoryScene,
-    block: StoryBlock,
-    options: AppTagFoldOptions,
-    removed: Set<StoryBlockId>,
-    rewritten: Map<StoryBlockId, StoryBlock>,
+  scene: StoryScene,
+  block: StoryBlock,
+  options: AppTagFoldOptions,
+  removed: Set<StoryBlockId>,
+  rewritten: Map<StoryBlockId, StoryBlock>
 ): void {
-    const branches = block.childrenIds
-        .map(childId => asConditionBranch(scene.blocks[childId]))
-        .filter((branch): branch is ConditionBranchBlock => branch !== null);
+  const branches = block.childrenIds
+    .map((childId) => asConditionBranch(scene.blocks[childId]))
+    .filter((branch): branch is ConditionBranchBlock => branch !== null);
 
-    const kept: ConditionBranchBlock[] = [];
-    let dropped = false;
-    let taken = false;
-    for (const branch of branches) {
-        if (taken) {
-            removed.add(branch.id);
-            dropped = true;
-            continue;
-        }
-        if (branch.disabled) {
-            continue;
-        }
-        const truth = branch.payload.branch === "else"
-            ? "unknown"
-            : staticConditionValue(branch.payload.condition, options);
-        if (truth === "false") {
-            removed.add(branch.id);
-            dropped = true;
-            continue;
-        }
-        kept.push(branch);
-        taken = truth === "true";
+  const kept: ConditionBranchBlock[] = [];
+  let dropped = false;
+  let taken = false;
+  for (const branch of branches) {
+    if (taken) {
+      removed.add(branch.id);
+      dropped = true;
+      continue;
     }
+    if (branch.disabled) {
+      continue;
+    }
+    const truth =
+      branch.payload.branch === "else"
+        ? "unknown"
+        : staticConditionValue(branch.payload.condition, options);
+    if (truth === "false") {
+      removed.add(branch.id);
+      dropped = true;
+      continue;
+    }
+    kept.push(branch);
+    taken = truth === "true";
+  }
 
-    if (!dropped) {
-        return;
+  if (!dropped) {
+    return;
+  }
+  if (kept.length === 0) {
+    // Nothing left to run, and an `if`-less condition is a warning plus no statements at the
+    // compiler anyway - so the whole block goes, taking any disabled branches with it.
+    removed.add(block.id);
+    return;
+  }
+  const head = kept[0];
+  if (head.payload.branch === "if") {
+    return;
+  }
+  // The survivor has to read as the head of the chain. An `else` additionally needs a condition:
+  // an `if` without one compiles to a constant false, which would delete at play time exactly the
+  // branch this fold just proved always runs.
+  rewritten.set(head.id, {
+    ...head,
+    payload: {
+      ...head.payload,
+      branch: "if",
+      condition: head.payload.condition ?? ALWAYS
     }
-    if (kept.length === 0) {
-        // Nothing left to run, and an `if`-less condition is a warning plus no statements at the
-        // compiler anyway - so the whole block goes, taking any disabled branches with it.
-        removed.add(block.id);
-        return;
-    }
-    const head = kept[0];
-    if (head.payload.branch === "if") {
-        return;
-    }
-    // The survivor has to read as the head of the chain. An `else` additionally needs a condition:
-    // an `if` without one compiles to a constant false, which would delete at play time exactly the
-    // branch this fold just proved always runs.
-    rewritten.set(head.id, {
-        ...head,
-        payload: {
-            ...head.payload,
-            branch: "if",
-            condition: head.payload.condition ?? ALWAYS,
-        },
-    });
+  });
 }
 
 /** Every removed block plus everything under it. A branch's rows live in the same flat map it does. */
 function expandToSubtrees(scene: StoryScene, roots: ReadonlySet<StoryBlockId>): Set<StoryBlockId> {
-    const all = new Set<StoryBlockId>();
-    const visit = (blockId: StoryBlockId): void => {
-        if (all.has(blockId)) {
-            return;
-        }
-        all.add(blockId);
-        for (const childId of scene.blocks[blockId]?.childrenIds ?? []) {
-            visit(childId);
-        }
-    };
-    roots.forEach(visit);
-    return all;
+  const all = new Set<StoryBlockId>();
+  const visit = (blockId: StoryBlockId): void => {
+    if (all.has(blockId)) {
+      return;
+    }
+    all.add(blockId);
+    for (const childId of scene.blocks[blockId]?.childrenIds ?? []) {
+      visit(childId);
+    }
+  };
+  roots.forEach(visit);
+  return all;
 }
 
 function rebuildScene(
-    scene: StoryScene,
-    removed: ReadonlySet<StoryBlockId>,
-    rewritten: ReadonlyMap<StoryBlockId, StoryBlock>,
+  scene: StoryScene,
+  removed: ReadonlySet<StoryBlockId>,
+  rewritten: ReadonlyMap<StoryBlockId, StoryBlock>
 ): StoryScene {
-    const blocks: Record<StoryBlockId, StoryBlock> = {};
-    for (const [blockId, block] of Object.entries(scene.blocks)) {
-        if (removed.has(blockId)) {
-            continue;
-        }
-        const source = rewritten.get(blockId) ?? block;
-        const childrenIds = source.childrenIds.filter(childId => !removed.has(childId));
-        blocks[blockId] = childrenIds.length === source.childrenIds.length
-            ? source
-            : { ...source, childrenIds };
+  const blocks: Record<StoryBlockId, StoryBlock> = {};
+  for (const [blockId, block] of Object.entries(scene.blocks)) {
+    if (removed.has(blockId)) {
+      continue;
     }
-    return {
-        ...scene,
-        rootBlockIds: scene.rootBlockIds.filter(blockId => !removed.has(blockId)),
-        blocks,
-    };
+    const source = rewritten.get(blockId) ?? block;
+    const childrenIds = source.childrenIds.filter((childId) => !removed.has(childId));
+    blocks[blockId] =
+      childrenIds.length === source.childrenIds.length ? source : { ...source, childrenIds };
+  }
+  return {
+    ...scene,
+    rootBlockIds: scene.rootBlockIds.filter((blockId) => !removed.has(blockId)),
+    blocks
+  };
 }
 
 // ── Dropping the scenes the story can no longer reach ─────────────────────────────────────────────
@@ -715,38 +744,45 @@ function rebuildScene(
  * only edges it can read; anything it cannot read is the caller's cue not to ask for the sweep at
  * all (see {@link SceneReachability}).
  */
-function dropUnreachableScenes(document: StoryDocument, reachability: SceneReachability): StoryDocument {
-    // `documentOrder`, because this decides bytes: the story's own start is `entrySceneId` when it
-    // names a scene the document has, and otherwise the first scene in authoring order - the same
-    // fallback `resolveDefaultLaunchScene` takes at boot. A project that never marked an entry must
-    // not lose the scene its game opens in.
-    const reachable = reachableSceneIds(document, {
-        entrySceneIds: reachability.entrySceneIds,
-        fallback: "documentOrder",
-    });
-    const entries = Object.entries(document.scenes ?? {});
-    if (entries.every(([sceneId]) => reachable.has(sceneId))) {
-        return document;
+function dropUnreachableScenes(
+  document: StoryDocument,
+  reachability: SceneReachability
+): StoryDocument {
+  // `documentOrder`, because this decides bytes: the story's own start is `entrySceneId` when it
+  // names a scene the document has, and otherwise the first scene in authoring order - the same
+  // fallback `resolveDefaultLaunchScene` takes at boot. A project that never marked an entry must
+  // not lose the scene its game opens in.
+  const reachable = reachableSceneIds(document, {
+    entrySceneIds: reachability.entrySceneIds,
+    fallback: "documentOrder"
+  });
+  const entries = Object.entries(document.scenes ?? {});
+  if (entries.every(([sceneId]) => reachable.has(sceneId))) {
+    return document;
+  }
+  const scenes: Record<StorySceneId, StoryScene> = {};
+  for (const [sceneId, scene] of entries) {
+    if (reachable.has(sceneId)) {
+      scenes[sceneId] = scene;
     }
-    const scenes: Record<StorySceneId, StoryScene> = {};
-    for (const [sceneId, scene] of entries) {
-        if (reachable.has(sceneId)) {
-            scenes[sceneId] = scene;
+  }
+  // The two order lists are pruned with it. A stale id in either is tolerated by every reader, but
+  // it would still state a position for a scene that is not in the package.
+  return {
+    ...document,
+    scenes,
+    chapters: (document.chapters ?? []).map((chapter) => ({
+      ...chapter,
+      sceneIds: (chapter.sceneIds ?? []).filter((sceneId) => reachable.has(sceneId))
+    })),
+    ...(document.unassignedSceneIds
+      ? {
+          unassignedSceneIds: document.unassignedSceneIds.filter((sceneId) =>
+            reachable.has(sceneId)
+          )
         }
-    }
-    // The two order lists are pruned with it. A stale id in either is tolerated by every reader, but
-    // it would still state a position for a scene that is not in the package.
-    return {
-        ...document,
-        scenes,
-        chapters: (document.chapters ?? []).map(chapter => ({
-            ...chapter,
-            sceneIds: (chapter.sceneIds ?? []).filter(sceneId => reachable.has(sceneId)),
-        })),
-        ...(document.unassignedSceneIds
-            ? { unassignedSceneIds: document.unassignedSceneIds.filter(sceneId => reachable.has(sceneId)) }
-            : {}),
-    };
+      : {})
+  };
 }
 
 // ── Folding everything a document holds ───────────────────────────────────────────────────────────
@@ -761,39 +797,41 @@ function dropUnreachableScenes(document: StoryDocument, reachability: SceneReach
  * the one outcome this module exists to make impossible.
  */
 function isStoryExpression(value: unknown): value is StoryExpression {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-    const record = value as { source?: unknown; ast?: unknown };
-    return typeof record.source === "string"
-        && Boolean(record.ast)
-        && typeof record.ast === "object"
-        && typeof (record.ast as { kind?: unknown }).kind === "string";
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as { source?: unknown; ast?: unknown };
+  return (
+    typeof record.source === "string" &&
+    Boolean(record.ast) &&
+    typeof record.ast === "object" &&
+    typeof (record.ast as { kind?: unknown }).kind === "string"
+  );
 }
 
 /** Every expression a block carries, wherever in its payload it sits. */
 export function collectBlockExpressions(block: StoryBlock): StoryExpression[] {
-    const found: StoryExpression[] = [];
-    const walk = (value: unknown, seen: Set<object>): void => {
-        if (!value || typeof value !== "object") {
-            return;
-        }
-        if (isStoryExpression(value)) {
-            found.push(value);
-            return;
-        }
-        if (seen.has(value)) {
-            return;
-        }
-        seen.add(value);
-        for (const child of Array.isArray(value) ? value : Object.values(value)) {
-            walk(child, seen);
-        }
-    };
-    // The payload only: `childrenIds` and `parentId` are ids, and walking them would re-read the
-    // whole scene once per block.
-    walk(block.payload, new Set<object>());
-    return found;
+  const found: StoryExpression[] = [];
+  const walk = (value: unknown, seen: Set<object>): void => {
+    if (!value || typeof value !== "object") {
+      return;
+    }
+    if (isStoryExpression(value)) {
+      found.push(value);
+      return;
+    }
+    if (seen.has(value)) {
+      return;
+    }
+    seen.add(value);
+    for (const child of Array.isArray(value) ? value : Object.values(value)) {
+      walk(child, seen);
+    }
+  };
+  // The payload only: `childrenIds` and `parentId` are ids, and walking them would re-read the
+  // whole scene once per block.
+  walk(block.payload, new Set<object>());
+  return found;
 }
 
 /**
@@ -804,35 +842,35 @@ export function collectBlockExpressions(block: StoryBlock): StoryExpression[] {
  * a save that touched one line.
  */
 function foldExpressionsDeep<T>(value: T, options: AppTagFoldOptions): T {
-    if (!value || typeof value !== "object") {
-        return value;
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  if (isStoryExpression(value)) {
+    const fold = foldStoryExpression(value.ast, options);
+    if (!fold.mentioned || fold.ast === value.ast) {
+      return value;
     }
-    if (isStoryExpression(value)) {
-        const fold = foldStoryExpression(value.ast, options);
-        if (!fold.mentioned || fold.ast === value.ast) {
-            return value;
-        }
-        // The source is re-printed from the folded tree, not kept: it is what the editor and the
-        // diff read back, and a stored `AppTag == "Demo"` beside a tree that says `false` is two
-        // answers to one question. An unfoldable tree still prints, and the build gate is what stops
-        // one from getting this far.
-        return { source: formatStoryExpr(fold.ast), ast: fold.ast } as T;
-    }
-    if (Array.isArray(value)) {
-        let changed = false;
-        const items = value.map(item => {
-            const next = foldExpressionsDeep(item, options);
-            changed ||= next !== item;
-            return next;
-        });
-        return (changed ? items : value) as T;
-    }
+    // The source is re-printed from the folded tree, not kept: it is what the editor and the
+    // diff read back, and a stored `AppTag == "Demo"` beside a tree that says `false` is two
+    // answers to one question. An unfoldable tree still prints, and the build gate is what stops
+    // one from getting this far.
+    return { source: formatStoryExpr(fold.ast), ast: fold.ast } as T;
+  }
+  if (Array.isArray(value)) {
     let changed = false;
-    const record: Record<string, unknown> = {};
-    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-        const next = foldExpressionsDeep(child, options);
-        changed ||= next !== child;
-        record[key] = next;
-    }
-    return (changed ? record : value) as T;
+    const items = value.map((item) => {
+      const next = foldExpressionsDeep(item, options);
+      changed ||= next !== item;
+      return next;
+    });
+    return (changed ? items : value) as T;
+  }
+  let changed = false;
+  const record: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    const next = foldExpressionsDeep(child, options);
+    changed ||= next !== child;
+    record[key] = next;
+  }
+  return (changed ? record : value) as T;
 }

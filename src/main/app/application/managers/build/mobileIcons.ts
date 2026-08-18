@@ -35,28 +35,28 @@ const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0
  * build for any project that configured an app icon.
  */
 export function readPngSize(bytes: Buffer): { width: number; height: number } | null {
-    if (bytes.length < 8 || !bytes.subarray(0, 8).equals(PNG_SIGNATURE)) {
-        return null;
-    }
-    // Chunk layout: length (4) + type (4) + data (length) + CRC (4).
-    for (let offset = 8; offset + 8 <= bytes.length;) {
-        const length = bytes.readUInt32BE(offset);
-        const type = bytes.toString("ascii", offset + 4, offset + 8);
-        if (type === "IHDR") {
-            if (offset + 16 > bytes.length) {
-                return null;
-            }
-            const width = bytes.readUInt32BE(offset + 8);
-            const height = bytes.readUInt32BE(offset + 12);
-            return width > 0 && height > 0 ? { width, height } : null;
-        }
-        // A corrupt length would otherwise loop forever or read past the end.
-        if (length > bytes.length) {
-            return null;
-        }
-        offset += 12 + length;
-    }
+  if (bytes.length < 8 || !bytes.subarray(0, 8).equals(PNG_SIGNATURE)) {
     return null;
+  }
+  // Chunk layout: length (4) + type (4) + data (length) + CRC (4).
+  for (let offset = 8; offset + 8 <= bytes.length;) {
+    const length = bytes.readUInt32BE(offset);
+    const type = bytes.toString("ascii", offset + 4, offset + 8);
+    if (type === "IHDR") {
+      if (offset + 16 > bytes.length) {
+        return null;
+      }
+      const width = bytes.readUInt32BE(offset + 8);
+      const height = bytes.readUInt32BE(offset + 12);
+      return width > 0 && height > 0 ? { width, height } : null;
+    }
+    // A corrupt length would otherwise loop forever or read past the end.
+    if (length > bytes.length) {
+      return null;
+    }
+    offset += 12 + length;
+  }
+  return null;
 }
 
 /**
@@ -65,20 +65,26 @@ export function readPngSize(bytes: Buffer): { width: number; height: number } | 
  * disagree, and shipping the placeholder icon the author tried to replace would
  * be a silent wrong answer. (The repack enforces the same rule on its side.)
  */
-export function readIconSlotSizes(templateZip: Buffer, slots: string[], entryPrefix = ""): MobileIconSlot[] {
-    const index = parseZipIndex(templateZip);
-    const byName = new Map(index.entries.map(entry => [entry.name, entry]));
-    return slots.map(slot => {
-        const entry = byName.get(`${entryPrefix}${slot}`);
-        if (!entry) {
-            throw new Error(`Icon slot "${slot}" is declared by the shell manifest but missing from the template`);
-        }
-        const size = readPngSize(readEntryBytes(templateZip, entry));
-        if (!size) {
-            throw new Error(`Icon slot "${slot}" in the shell template is not a readable PNG`);
-        }
-        return { slot, width: size.width, height: size.height };
-    });
+export function readIconSlotSizes(
+  templateZip: Buffer,
+  slots: string[],
+  entryPrefix = ""
+): MobileIconSlot[] {
+  const index = parseZipIndex(templateZip);
+  const byName = new Map(index.entries.map((entry) => [entry.name, entry]));
+  return slots.map((slot) => {
+    const entry = byName.get(`${entryPrefix}${slot}`);
+    if (!entry) {
+      throw new Error(
+        `Icon slot "${slot}" is declared by the shell manifest but missing from the template`
+      );
+    }
+    const size = readPngSize(readEntryBytes(templateZip, entry));
+    if (!size) {
+      throw new Error(`Icon slot "${slot}" in the shell template is not a readable PNG`);
+    }
+    return { slot, width: size.width, height: size.height };
+  });
 }
 
 /**
@@ -102,38 +108,39 @@ export function readIconSlotSizes(templateZip: Buffer, slots: string[], entryPre
  * square, and one that has not gets the behaviour it had before.
  */
 export async function writeScaledIcons(
-    sourceIconPath: string,
-    slots: MobileIconSlot[],
-    outputDir: string,
-    options: { opaque?: boolean } = {},
+  sourceIconPath: string,
+  slots: MobileIconSlot[],
+  outputDir: string,
+  options: { opaque?: boolean } = {}
 ): Promise<Record<string, string>> {
-    const source = nativeImage.createFromPath(sourceIconPath);
-    if (source.isEmpty()) {
-        throw new Error(`The app icon could not be read: ${sourceIconPath}`);
-    }
-    const sourceSize = source.getSize();
-    await fs.rm(outputDir, { recursive: true, force: true });
-    await fs.mkdir(outputDir, { recursive: true });
-    const written: Record<string, string> = {};
-    for (const [index, { slot, width, height }] of slots.entries()) {
-        const scale = Math.min(width / sourceSize.width, height / sourceSize.height);
-        const drawWidth = Math.max(1, Math.round(sourceSize.width * scale));
-        const drawHeight = Math.max(1, Math.round(sourceSize.height * scale));
-        // "good" is nativeImage's highest-quality resampling - icons are
-        // downscaled a long way (1024 → 48 at mdpi) and this is a one-off cost.
-        const resized = source.resize({ width: drawWidth, height: drawHeight, quality: "good" });
-        const fitted = drawWidth === width && drawHeight === height
-            ? resized
-            : centerOnTransparentCanvas(resized, width, height);
-        const outputPath = path.join(outputDir, `${index}-${path.basename(slot)}`);
-        // nativeImage.toPNG() always encodes RGBA, so an iOS icon that arrived
-        // here alpha-free would leave with an alpha channel again - and be
-        // rejected on upload for carrying one. Strip it back off.
-        const png = options.opaque ? await stripAlphaChannel(fitted.toPNG()) : fitted.toPNG();
-        await fs.writeFile(outputPath, png);
-        written[slot] = outputPath;
-    }
-    return written;
+  const source = nativeImage.createFromPath(sourceIconPath);
+  if (source.isEmpty()) {
+    throw new Error(`The app icon could not be read: ${sourceIconPath}`);
+  }
+  const sourceSize = source.getSize();
+  await fs.rm(outputDir, { recursive: true, force: true });
+  await fs.mkdir(outputDir, { recursive: true });
+  const written: Record<string, string> = {};
+  for (const [index, { slot, width, height }] of slots.entries()) {
+    const scale = Math.min(width / sourceSize.width, height / sourceSize.height);
+    const drawWidth = Math.max(1, Math.round(sourceSize.width * scale));
+    const drawHeight = Math.max(1, Math.round(sourceSize.height * scale));
+    // "good" is nativeImage's highest-quality resampling - icons are
+    // downscaled a long way (1024 → 48 at mdpi) and this is a one-off cost.
+    const resized = source.resize({ width: drawWidth, height: drawHeight, quality: "good" });
+    const fitted =
+      drawWidth === width && drawHeight === height
+        ? resized
+        : centerOnTransparentCanvas(resized, width, height);
+    const outputPath = path.join(outputDir, `${index}-${path.basename(slot)}`);
+    // nativeImage.toPNG() always encodes RGBA, so an iOS icon that arrived
+    // here alpha-free would leave with an alpha channel again - and be
+    // rejected on upload for carrying one. Strip it back off.
+    const png = options.opaque ? await stripAlphaChannel(fitted.toPNG()) : fitted.toPNG();
+    await fs.writeFile(outputPath, png);
+    written[slot] = outputPath;
+  }
+  return written;
 }
 
 /**
@@ -142,17 +149,14 @@ export async function writeScaledIcons(
  * composited, so nothing has to know whether the bitmap was premultiplied.
  */
 export async function stripAlphaChannel(png: Buffer): Promise<Buffer> {
-    if (!pngHasAlphaChannel(png)) {
-        return png;
-    }
-    const decoded = decodePngToRgba(png, data => zlib.inflateSync(data));
-    const encoded = await encodeOpaquePng(
-        decoded.rgba,
-        decoded.width,
-        decoded.height,
-        data => zlib.deflateSync(data),
-    );
-    return Buffer.from(encoded);
+  if (!pngHasAlphaChannel(png)) {
+    return png;
+  }
+  const decoded = decodePngToRgba(png, (data) => zlib.inflateSync(data));
+  const encoded = await encodeOpaquePng(decoded.rgba, decoded.width, decoded.height, (data) =>
+    zlib.deflateSync(data)
+  );
+  return Buffer.from(encoded);
 }
 
 /**
@@ -161,28 +165,28 @@ export async function stripAlphaChannel(png: Buffer): Promise<Buffer> {
  * platform's bitmaps carry premultiplied alpha.
  */
 function centerOnTransparentCanvas(
-    image: Electron.NativeImage,
-    width: number,
-    height: number,
+  image: Electron.NativeImage,
+  width: number,
+  height: number
 ): Electron.NativeImage {
-    const source = image.getSize();
-    // nativeImage bitmaps are 4 bytes per pixel; the channel order does not
-    // matter here because whole pixels are copied verbatim.
-    const bytesPerPixel = 4;
-    const sourceBitmap = image.toBitmap();
-    const canvas = Buffer.alloc(width * height * bytesPerPixel);
-    const offsetX = Math.floor((width - source.width) / 2);
-    const offsetY = Math.floor((height - source.height) / 2);
+  const source = image.getSize();
+  // nativeImage bitmaps are 4 bytes per pixel; the channel order does not
+  // matter here because whole pixels are copied verbatim.
+  const bytesPerPixel = 4;
+  const sourceBitmap = image.toBitmap();
+  const canvas = Buffer.alloc(width * height * bytesPerPixel);
+  const offsetX = Math.floor((width - source.width) / 2);
+  const offsetY = Math.floor((height - source.height) / 2);
 
-    for (let row = 0; row < source.height; row++) {
-        const targetRow = row + offsetY;
-        if (targetRow < 0 || targetRow >= height) {
-            continue;
-        }
-        const sourceStart = row * source.width * bytesPerPixel;
-        const targetStart = (targetRow * width + offsetX) * bytesPerPixel;
-        sourceBitmap.copy(canvas, targetStart, sourceStart, sourceStart + source.width * bytesPerPixel);
+  for (let row = 0; row < source.height; row++) {
+    const targetRow = row + offsetY;
+    if (targetRow < 0 || targetRow >= height) {
+      continue;
     }
+    const sourceStart = row * source.width * bytesPerPixel;
+    const targetStart = (targetRow * width + offsetX) * bytesPerPixel;
+    sourceBitmap.copy(canvas, targetStart, sourceStart, sourceStart + source.width * bytesPerPixel);
+  }
 
-    return nativeImage.createFromBitmap(canvas, { width, height });
+  return nativeImage.createFromBitmap(canvas, { width, height });
 }

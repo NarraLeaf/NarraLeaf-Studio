@@ -1,73 +1,72 @@
-import { useCallback, useRef, useState } from 'react';
-import { Asset, AssetGroup, AssetSource } from '@/lib/workspace/services/assets/types';
-import { REMOTE_ASSET_ALLOWED_PROTOCOLS } from '@shared/constants/remoteAsset';
-import type { RequestStatus } from '@shared/types/ipcEvents';
+import { useCallback, useRef, useState } from "react";
+import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
+import { REMOTE_ASSET_ALLOWED_PROTOCOLS } from "@shared/constants/remoteAsset";
+import type { RequestStatus } from "@shared/types/ipcEvents";
 import {
-    ASSET_CATEGORY_EXTENSIONS,
-    ASSET_CATEGORY_TYPES,
-    AssetCategory,
-    AssetType,
-    isBundleAssetCategory,
-    isBundleAssetType,
-} from '@/lib/workspace/services/assets/assetTypes';
-import { assetTypeMatchesExtension } from '@/lib/workspace/services/assets/importPathExpansion';
-import { runReplaceAssetContentFlow } from '@/lib/workspace/assets/replaceAssetContentFlow';
-import type { ImportQueueController, ImportQueueFailure } from './useImportQueue';
-import { WorkspaceContext } from '@/lib/workspace/services/services';
-import { AssetsService } from '@/lib/workspace/services/core/AssetsService';
-import { UIService } from '@/lib/workspace/services/core/UIService';
-import type { AssetReference } from '@/lib/workspace/services/references/referenceModel';
-import { Services } from '@/lib/workspace/services/services';
-import { InputDialog } from '@/lib/components/dialogs/InputDialog';
-import { ClipboardState } from './useClipboard';
-import { getInterface } from '@/lib/app/bridge';
-import { useTranslation } from '@/lib/i18n';
-import { useFreezeGuard } from '@/apps/workspace/components/ui/freezeGuard';
-import type { Translator } from '@shared/i18n';
+  ASSET_CATEGORY_EXTENSIONS,
+  ASSET_CATEGORY_TYPES,
+  AssetCategory,
+  AssetType,
+  isBundleAssetCategory,
+  isBundleAssetType
+} from "@/lib/workspace/services/assets/assetTypes";
+import { runReplaceAssetContentFlow } from "@/lib/workspace/assets/replaceAssetContentFlow";
+import type { ImportQueueController, ImportQueueFailure } from "./useImportQueue";
+import { WorkspaceContext } from "@/lib/workspace/services/services";
+import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { UIService } from "@/lib/workspace/services/core/UIService";
+import type { AssetReference } from "@/lib/workspace/services/references/referenceModel";
+import { Services } from "@/lib/workspace/services/services";
+import { InputDialog } from "@/lib/components/dialogs/InputDialog";
+import { ClipboardState } from "./useClipboard";
+import { getInterface } from "@/lib/app/bridge";
+import { useTranslation } from "@/lib/i18n";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import type { Translator } from "@shared/i18n";
 import {
-    assetSelectionKey,
-    resolveAssetActionTargets,
-    type AssetActionTarget,
-    type ContextMenuTargetState,
-} from './assetActionTargets';
-import { buildAssetExportPlan } from './assetExportPlan';
+  assetSelectionKey,
+  resolveAssetActionTargets,
+  type AssetActionTarget,
+  type ContextMenuTargetState
+} from "./assetActionTargets";
+import { buildAssetExportPlan } from "./assetExportPlan";
 import {
-    NEW_TEXT_FILE_DEFAULT_EXTENSION,
-    resolveNewTextFileName,
-    validateNewTextFileName,
-} from './newTextFileName';
-import { openAssetPreviewTabsInEditor } from '../dnd/openDraggedAssetsInEditor';
-import type { ModelImportSelection } from '../components/ModelImportWizard';
-import type { MediaImportResolution } from '../components/MediaImportDialog';
+  NEW_TEXT_FILE_DEFAULT_EXTENSION,
+  resolveNewTextFileName,
+  validateNewTextFileName
+} from "./newTextFileName";
+import { openAssetPreviewTabsInEditor } from "../dnd/openDraggedAssetsInEditor";
+import type { ModelImportSelection } from "../components/ModelImportWizard";
+import type { MediaImportResolution } from "../components/MediaImportDialog";
 import {
-    categoryNeedsMediaTriage,
-    planMediaImport,
-    type MediaImportPlan,
-} from './mediaImportTriage';
-import type { MediaSupportService } from '@/lib/workspace/services/media/MediaSupportService';
-import type { MediaAssetSupportRecord } from '@/lib/workspace/services/media/mediaAssetSupport';
-import { platformDefaultLineEnding } from '../editors/text/textEditableFiles';
-import { toPersistedEol } from '../editors/text/textDocumentPreferences';
+  categoryNeedsMediaTriage,
+  planMediaImport,
+  type MediaImportPlan
+} from "./mediaImportTriage";
+import type { MediaSupportService } from "@/lib/workspace/services/media/MediaSupportService";
+import type { MediaAssetSupportRecord } from "@/lib/workspace/services/media/mediaAssetSupport";
+import { platformDefaultLineEnding } from "../editors/text/textEditableFiles";
+import { toPersistedEol } from "../editors/text/textDocumentPreferences";
 
 export type { ContextMenuTargetState };
 
 export interface UseAssetActionsParams {
-    context: WorkspaceContext | null;
-    inputDialog: InputDialog | null;
-    assets: Record<AssetCategory, Asset[]>;
-    groups: Record<AssetCategory, AssetGroup[]>;
-    selectedItems: Set<string>;
-    clipboard: ClipboardState | null;
-    contextMenuTarget: ContextMenuTargetState | null,
-    focusedItemId: string | null;
-    onActionComplete: () => void; // To reload assets, clear selections, etc.
-    setClipboard: (clipboard: ClipboardState | null) => void;
-    /** Notify caller when a long-running action starts/ends */
-    setActionLoading?: (loading: boolean) => void;
-    /** Function to expand a group by its ID */
-    expandGroup?: (groupId: string) => void;
-    /** Receives per-file import progress and the failures the panel offers a retry for. */
-    importQueue?: ImportQueueController;
+  context: WorkspaceContext | null;
+  inputDialog: InputDialog | null;
+  assets: Record<AssetCategory, Asset[]>;
+  groups: Record<AssetCategory, AssetGroup[]>;
+  selectedItems: Set<string>;
+  clipboard: ClipboardState | null;
+  contextMenuTarget: ContextMenuTargetState | null;
+  focusedItemId: string | null;
+  onActionComplete: () => void; // To reload assets, clear selections, etc.
+  setClipboard: (clipboard: ClipboardState | null) => void;
+  /** Notify caller when a long-running action starts/ends */
+  setActionLoading?: (loading: boolean) => void;
+  /** Function to expand a group by its ID */
+  expandGroup?: (groupId: string) => void;
+  /** Receives per-file import progress and the failures the panel offers a retry for. */
+  importQueue?: ImportQueueController;
 }
 
 /** How many reference lines to spell out per asset in the delete warning before collapsing. */
@@ -81,77 +80,80 @@ const REFERENCE_PREVIEW_LIMIT = 5;
  * assets without a word.
  */
 function collectAffectedAssets(
-    targets: readonly AssetActionTarget[],
-    assets: Record<AssetCategory, Asset[]>,
-    groups: Record<AssetCategory, AssetGroup[]>,
+  targets: readonly AssetActionTarget[],
+  assets: Record<AssetCategory, Asset[]>,
+  groups: Record<AssetCategory, AssetGroup[]>
 ): Asset[] {
-    const collected = new Map<string, Asset>();
+  const collected = new Map<string, Asset>();
 
-    for (const target of targets) {
-        if (!target.isGroup) {
-            const asset = target.item as Asset;
-            collected.set(asset.id, asset);
-            continue;
-        }
-
-        const groupIds = new Set<string>([target.item.id]);
-        const candidates = groups[target.category] ?? [];
-        // Descend until no new child group appears; group nesting has no depth bound.
-        let grew = true;
-        while (grew) {
-            grew = false;
-            for (const group of candidates) {
-                if (group.parentGroupId && groupIds.has(group.parentGroupId) && !groupIds.has(group.id)) {
-                    groupIds.add(group.id);
-                    grew = true;
-                }
-            }
-        }
-        for (const asset of assets[target.category] ?? []) {
-            if (asset.groupId && groupIds.has(asset.groupId)) {
-                collected.set(asset.id, asset);
-            }
-        }
+  for (const target of targets) {
+    if (!target.isGroup) {
+      const asset = target.item as Asset;
+      collected.set(asset.id, asset);
+      continue;
     }
 
-    return [...collected.values()];
+    const groupIds = new Set<string>([target.item.id]);
+    const candidates = groups[target.category] ?? [];
+    // Descend until no new child group appears; group nesting has no depth bound.
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const group of candidates) {
+        if (group.parentGroupId && groupIds.has(group.parentGroupId) && !groupIds.has(group.id)) {
+          groupIds.add(group.id);
+          grew = true;
+        }
+      }
+    }
+    for (const asset of assets[target.category] ?? []) {
+      if (asset.groupId && groupIds.has(asset.groupId)) {
+        collected.set(asset.id, asset);
+      }
+    }
+  }
+
+  return [...collected.values()];
 }
 
 function parseFileUriList(dataTransfer?: DataTransfer): string[] {
-    if (!dataTransfer) {
+  if (!dataTransfer) {
+    return [];
+  }
+
+  return dataTransfer
+    .getData("text/uri-list")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"))
+    .flatMap((line) => {
+      try {
+        const url = new URL(line);
+        if (url.protocol !== "file:") {
+          return [];
+        }
+
+        const pathname = decodeURIComponent(url.pathname);
+        return [/^\/[A-Za-z]:\//.test(pathname) ? pathname.slice(1) : pathname];
+      } catch {
         return [];
-    }
-
-    return dataTransfer.getData("text/uri-list")
-        .split(/\r?\n/)
-        .map(line => line.trim())
-        .filter(line => line.length > 0 && !line.startsWith("#"))
-        .flatMap(line => {
-            try {
-                const url = new URL(line);
-                if (url.protocol !== "file:") {
-                    return [];
-                }
-
-                const pathname = decodeURIComponent(url.pathname);
-                return [/^\/[A-Za-z]:\//.test(pathname) ? pathname.slice(1) : pathname];
-            } catch {
-                return [];
-            }
-        });
+      }
+    });
 }
 
 function summarizeImportFailures(errors: Array<string | undefined>, t: Translator["t"]): string {
-    const messages = errors.filter((message): message is string => typeof message === "string" && message.length > 0);
-    if (messages.length === 0) {
-        return t("assets.unknownError");
-    }
+  const messages = errors.filter(
+    (message): message is string => typeof message === "string" && message.length > 0
+  );
+  if (messages.length === 0) {
+    return t("assets.unknownError");
+  }
 
-    const visibleMessages = messages.slice(0, 3);
-    const remaining = messages.length - visibleMessages.length;
-    return remaining > 0
-        ? `${visibleMessages.join("\n")}\n${t("assets.import.moreFailures", { count: remaining })}`
-        : visibleMessages.join("\n");
+  const visibleMessages = messages.slice(0, 3);
+  const remaining = messages.length - visibleMessages.length;
+  return remaining > 0
+    ? `${visibleMessages.join("\n")}\n${t("assets.import.moreFailures", { count: remaining })}`
+    : visibleMessages.join("\n");
 }
 
 /**
@@ -162,1222 +164,1387 @@ function summarizeImportFailures(errors: Array<string | undefined>, t: Translato
  * would report a failure for an import that succeeded.
  */
 async function removeConvertScratch(directories: readonly string[]): Promise<void> {
-    for (const directory of directories) {
-        await getInterface().fs.deleteDir(directory).catch(() => undefined);
-    }
+  for (const directory of directories) {
+    await getInterface()
+      .fs.deleteDir(directory)
+      .catch(() => undefined);
+  }
 }
 
 export function useAssetActions({
-    context,
-    inputDialog,
-    assets,
-    groups,
-    selectedItems,
-    clipboard,
-    contextMenuTarget,
-    focusedItemId,
-    onActionComplete,
-    setClipboard,
-    setActionLoading,
-    expandGroup,
-    importQueue,
+  context,
+  inputDialog,
+  assets,
+  groups,
+  selectedItems,
+  clipboard,
+  contextMenuTarget,
+  focusedItemId,
+  onActionComplete,
+  setClipboard,
+  setActionLoading,
+  expandGroup,
+  importQueue
 }: UseAssetActionsParams) {
-    const { t, tn } = useTranslation();
-    // Import is the one asset write with no control to grey out: files arrive by being dropped on the
-    // panel or on a folder tile. Every other action here hangs off a button or a menu row, and those
-    // are disabled where they are rendered.
-    const freeze = useFreezeGuard();
+  const { t, tn } = useTranslation();
+  // Import is the one asset write with no control to grey out: files arrive by being dropped on the
+  // panel or on a folder tile. Every other action here hangs off a button or a menu row, and those
+  // are disabled where they are rendered.
+  const freeze = useFreezeGuard();
 
-    // Use ref to always have latest context inside callbacks to avoid stale closure issues.
-    const contextRef = useRef(context);
-    contextRef.current = context;
+  // Use ref to always have latest context inside callbacks to avoid stale closure issues.
+  const contextRef = useRef(context);
+  contextRef.current = context;
 
-    // Helper to inform UI about loading state of long operations
-    const notifyLoading = useCallback((loading: boolean) => {
-        if (setActionLoading) {
-            setActionLoading(loading);
-        }
-    }, [setActionLoading]);
+  // Helper to inform UI about loading state of long operations
+  const notifyLoading = useCallback(
+    (loading: boolean) => {
+      if (setActionLoading) {
+        setActionLoading(loading);
+      }
+    },
+    [setActionLoading]
+  );
 
-    const withAssetsService = useCallback(async <T,>(handler: (service: AssetsService) => Promise<T>): Promise<T | undefined> => {
-        const ctx = contextRef.current;
-        if (!ctx) return undefined;
-        const assetsService = ctx.services.get<AssetsService>(Services.Assets);
-        return handler(assetsService);
-    }, []);
+  const withAssetsService = useCallback(
+    async <T>(handler: (service: AssetsService) => Promise<T>): Promise<T | undefined> => {
+      const ctx = contextRef.current;
+      if (!ctx) return undefined;
+      const assetsService = ctx.services.get<AssetsService>(Services.Assets);
+      return handler(assetsService);
+    },
+    []
+  );
 
-    /**
-     * The pending model-import wizard, and the group its result lands in.
-     *
-     * Held here rather than in the panel because the group is decided at the moment the author
-     * clicks Import - on a section header, on a folder row, from the context menu - and by the time
-     * the wizard closes there is nothing left pointing at it.
-     */
-    const [modelImportRequest, setModelImportRequest] = useState<{ groupId?: string } | null>(null);
+  /**
+   * The pending model-import wizard, and the group its result lands in.
+   *
+   * Held here rather than in the panel because the group is decided at the moment the author
+   * clicks Import - on a section header, on a folder row, from the context menu - and by the time
+   * the wizard closes there is nothing left pointing at it.
+   */
+  const [modelImportRequest, setModelImportRequest] = useState<{ groupId?: string } | null>(null);
 
-    /**
-     * The import waiting on an answer about files that will not play, and where it was going.
-     *
-     * Held here for the same reason the model wizard's is: the section and the group are decided at
-     * the moment the author drops or picks, and nothing points at them once the dialog is up.
-     */
-    const [mediaImportRequest, setMediaImportRequest] = useState<{
-        category: AssetCategory;
-        groupId?: string;
-        plan: MediaImportPlan;
-    } | null>(null);
+  /**
+   * The import waiting on an answer about files that will not play, and where it was going.
+   *
+   * Held here for the same reason the model wizard's is: the section and the group are decided at
+   * the moment the author drops or picks, and nothing points at them once the dialog is up.
+   */
+  const [mediaImportRequest, setMediaImportRequest] = useState<{
+    category: AssetCategory;
+    groupId?: string;
+    plan: MediaImportPlan;
+  } | null>(null);
 
-    /**
-     * The asset already in the library whose conversion is being asked about.
-     *
-     * The record travels with the asset rather than being looked up again by the dialog: the answer
-     * was taken from a scan, and re-deriving it inside the dialog would be a second place that can
-     * disagree about what a file needs.
-     */
-    const [mediaConvertRequest, setMediaConvertRequest] = useState<{
-        asset: Asset;
-        record: MediaAssetSupportRecord;
-    } | null>(null);
+  /**
+   * The asset already in the library whose conversion is being asked about.
+   *
+   * The record travels with the asset rather than being looked up again by the dialog: the answer
+   * was taken from a scan, and re-deriving it inside the dialog would be a second place that can
+   * disagree about what a file needs.
+   */
+  const [mediaConvertRequest, setMediaConvertRequest] = useState<{
+    asset: Asset;
+    record: MediaAssetSupportRecord;
+  } | null>(null);
 
-    /**
-     * The rows the next action applies to. Every action shares this so the row the user pointed at
-     * and the row that changes are the same one.
-     */
-    const resolveTargets = useCallback((): AssetActionTarget[] => resolveAssetActionTargets({
+  /**
+   * The rows the next action applies to. Every action shares this so the row the user pointed at
+   * and the row that changes are the same one.
+   */
+  const resolveTargets = useCallback(
+    (): AssetActionTarget[] =>
+      resolveAssetActionTargets({
         selectedItems,
         contextMenuTarget,
         focusedItemId,
         assets,
-        groups,
-    }), [selectedItems, contextMenuTarget, focusedItemId, assets, groups]);
+        groups
+      }),
+    [selectedItems, contextMenuTarget, focusedItemId, assets, groups]
+  );
 
-    const getSelectedAssets = useCallback((): Asset[] => {
-        const ids = Array.from(selectedItems).filter(id => id.startsWith('asset:')).map(id => id.replace('asset:', ''));
-        return Object.values(assets).flat().filter(a => ids.includes(a.id));
-    }, [selectedItems, assets]);
+  const getSelectedAssets = useCallback((): Asset[] => {
+    const ids = Array.from(selectedItems)
+      .filter((id) => id.startsWith("asset:"))
+      .map((id) => id.replace("asset:", ""));
+    return Object.values(assets)
+      .flat()
+      .filter((a) => ids.includes(a.id));
+  }, [selectedItems, assets]);
 
-    /**
-     * Check if an asset belongs to any of the targeted groups (including nested groups).
-     * This is used to avoid duplicating assets that are already inside a targeted group.
-     */
-    const isAssetInSelectedGroups = useCallback((asset: Asset, selectedGroupIds: Set<string>): boolean => {
-        if (!asset.groupId) return false;
-        
-        const allGroups = Object.values(groups).flat();
-        let currentGroupId: string | undefined = asset.groupId;
-        
-        // Walk up the group hierarchy and check if any ancestor is in the selected groups
-        while (currentGroupId) {
-            if (selectedGroupIds.has(currentGroupId)) {
-                return true;
-            }
-            
-            const currentGroup = allGroups.find(g => g.id === currentGroupId);
-            if (!currentGroup) break;
-            
-            currentGroupId = currentGroup.parentGroupId;
+  /**
+   * Check if an asset belongs to any of the targeted groups (including nested groups).
+   * This is used to avoid duplicating assets that are already inside a targeted group.
+   */
+  const isAssetInSelectedGroups = useCallback(
+    (asset: Asset, selectedGroupIds: Set<string>): boolean => {
+      if (!asset.groupId) return false;
+
+      const allGroups = Object.values(groups).flat();
+      let currentGroupId: string | undefined = asset.groupId;
+
+      // Walk up the group hierarchy and check if any ancestor is in the selected groups
+      while (currentGroupId) {
+        if (selectedGroupIds.has(currentGroupId)) {
+          return true;
         }
-        
-        return false;
-    }, [groups]);
 
-    /**
-     * Check if a group is a child of any targeted group (to avoid duplicating nested groups).
-     */
-    const isGroupChildOfSelectedGroups = useCallback((group: AssetGroup, selectedGroupIds: Set<string>): boolean => {
-        if (!group.parentGroupId) return false;
-        
-        const allGroups = Object.values(groups).flat();
-        let currentGroupId: string | undefined = group.parentGroupId;
-        
-        // Walk up the parent hierarchy and check if any ancestor is in the selected groups
-        while (currentGroupId) {
-            if (selectedGroupIds.has(currentGroupId)) {
-                return true;
-            }
-            
-            const currentGroup = allGroups.find(g => g.id === currentGroupId);
-            if (!currentGroup) break;
-            
-            currentGroupId = currentGroup.parentGroupId;
+        const currentGroup = allGroups.find((g) => g.id === currentGroupId);
+        if (!currentGroup) break;
+
+        currentGroupId = currentGroup.parentGroupId;
+      }
+
+      return false;
+    },
+    [groups]
+  );
+
+  /**
+   * Check if a group is a child of any targeted group (to avoid duplicating nested groups).
+   */
+  const isGroupChildOfSelectedGroups = useCallback(
+    (group: AssetGroup, selectedGroupIds: Set<string>): boolean => {
+      if (!group.parentGroupId) return false;
+
+      const allGroups = Object.values(groups).flat();
+      let currentGroupId: string | undefined = group.parentGroupId;
+
+      // Walk up the parent hierarchy and check if any ancestor is in the selected groups
+      while (currentGroupId) {
+        if (selectedGroupIds.has(currentGroupId)) {
+          return true;
         }
-        
-        return false;
-    }, [groups]);
 
-    /**
-     * Import a known list of files, reporting per-file progress and leaving the failures where the
-     * panel can offer a retry.
-     *
-     * Every entry point resolves its paths first and comes through here, so a retry is just this
-     * function again with the paths that did not make it — no second trip through the picker.
-     *
-     * `entryByPath` is the model wizard's arm: it has already read the manifests and knows which
-     * file in each folder is the entry, so it says so rather than leaving the importer's own
-     * detection to reach the same conclusion a second time — which it cannot, for the one case that
-     * matters, a folder holding two models where detection deliberately refuses to guess.
-     *
-     * `preFailures` and `scratchDirs` are the media conversion's arm. A file that failed to convert
-     * never reaches an importer, so it has no per-file result to be turned away by, and it would
-     * otherwise vanish between the dialog closing and the panel redrawing.
-     */
-    const runImport = useCallback(async (
-        category: AssetCategory,
-        paths: string[],
-        groupId?: string,
-        options?: {
-            entryByPath?: Record<string, string>;
-            /** Named in the panel's failure list without ever having been handed to an importer. */
-            preFailures?: readonly ImportQueueFailure[];
-            /** Removed once the importer has copied out of them. */
-            scratchDirs?: readonly string[];
-        },
+        const currentGroup = allGroups.find((g) => g.id === currentGroupId);
+        if (!currentGroup) break;
+
+        currentGroupId = currentGroup.parentGroupId;
+      }
+
+      return false;
+    },
+    [groups]
+  );
+
+  /**
+   * Import a known list of files, reporting per-file progress and leaving the failures where the
+   * panel can offer a retry.
+   *
+   * Every entry point resolves its paths first and comes through here, so a retry is just this
+   * function again with the paths that did not make it — no second trip through the picker.
+   *
+   * `entryByPath` is the model wizard's arm: it has already read the manifests and knows which
+   * file in each folder is the entry, so it says so rather than leaving the importer's own
+   * detection to reach the same conclusion a second time — which it cannot, for the one case that
+   * matters, a folder holding two models where detection deliberately refuses to guess.
+   *
+   * `preFailures` and `scratchDirs` are the media conversion's arm. A file that failed to convert
+   * never reaches an importer, so it has no per-file result to be turned away by, and it would
+   * otherwise vanish between the dialog closing and the panel redrawing.
+   */
+  const runImport = useCallback(
+    async (
+      category: AssetCategory,
+      paths: string[],
+      groupId?: string,
+      options?: {
+        entryByPath?: Record<string, string>;
+        /** Named in the panel's failure list without ever having been handed to an importer. */
+        preFailures?: readonly ImportQueueFailure[];
+        /** Removed once the importer has copied out of them. */
+        scratchDirs?: readonly string[];
+      }
     ) => {
-        const ctx = contextRef.current;
-        if (!ctx) return;
-        const entryByPath = options?.entryByPath;
-        const preFailures = options?.preFailures ?? [];
-        const scratchDirs = options?.scratchDirs ?? [];
+      const ctx = contextRef.current;
+      if (!ctx) return;
+      const entryByPath = options?.entryByPath;
+      const preFailures = options?.preFailures ?? [];
+      const scratchDirs = options?.scratchDirs ?? [];
 
-        // Nothing to hand an importer. Reachable now that a conversion can fail for every file in a
-        // run: the failures still have to be named, and the scratch directory still has to go.
-        if (paths.length === 0) {
-            if (preFailures.length > 0) {
-                importQueue?.start({ category, groupId, total: 0 });
-                importQueue?.finish([...preFailures]);
-            }
-            await removeConvertScratch(scratchDirs);
-            return;
+      // Nothing to hand an importer. Reachable now that a conversion can fail for every file in a
+      // run: the failures still have to be named, and the scratch directory still has to go.
+      if (paths.length === 0) {
+        if (preFailures.length > 0) {
+          importQueue?.start({ category, groupId, total: 0 });
+          importQueue?.finish([...preFailures]);
         }
-        const uiService = ctx.services.get<UIService>(Services.UI);
+        await removeConvertScratch(scratchDirs);
+        return;
+      }
+      const uiService = ctx.services.get<UIService>(Services.UI);
 
-        notifyLoading(true);
-        importQueue?.start({ category, groupId, total: paths.length });
+      notifyLoading(true);
+      importQueue?.start({ category, groupId, total: paths.length });
 
-        // Whether the strip has been handed the per-file verdicts. Read by the catch below, which
-        // must not overwrite them with a blanket failure.
-        let reportedPerFile = false;
+      // Whether the strip has been handed the per-file verdicts. Read by the catch below, which
+      // must not overwrite them with a blanket failure.
+      let reportedPerFile = false;
 
-        try {
-            await withAssetsService(async (assetsService) => {
-                // One category, one or more concrete types. The bucketing reads the ambiguous files
-                // (`.json`, claimed by both JSON and Blueprint) to decide; see
-                // `LocalAssetsManager.bucketPathsByAssetType`.
-                const buckets = await assetsService.bucketPathsByAssetType(category, paths);
-                await assetsService.transaction(async (svc) => {
-                    const failures: { path: string; error?: string }[] = [...preFailures];
-                    const importedAssets: Asset[] = [];
-                    let completed = 0;
+      try {
+        await withAssetsService(async (assetsService) => {
+          // One category, one or more concrete types. The bucketing reads the ambiguous files
+          // (`.json`, claimed by both JSON and Blueprint) to decide; see
+          // `LocalAssetsManager.bucketPathsByAssetType`.
+          const buckets = await assetsService.bucketPathsByAssetType(category, paths);
+          await assetsService.transaction(async (svc) => {
+            const failures: { path: string; error?: string }[] = [...preFailures];
+            const importedAssets: Asset[] = [];
+            let completed = 0;
 
-                    for (const bucket of buckets) {
-                        const result = await svc.importFromPaths(bucket.type, bucket.paths, {
-                            // Progress counts across the whole run, not per bucket: the author dropped
-                            // one pile of files and "3 of 20" has to mean that pile.
-                            onProgress: progress => importQueue?.progress({
-                                completed: completed + progress.completed,
-                                total: paths.length,
-                                current: progress.current,
-                            }),
-                        });
+            for (const bucket of buckets) {
+              const result = await svc.importFromPaths(bucket.type, bucket.paths, {
+                // Progress counts across the whole run, not per bucket: the author dropped
+                // one pile of files and "3 of 20" has to mean that pile.
+                onProgress: (progress) =>
+                  importQueue?.progress({
+                    completed: completed + progress.completed,
+                    total: paths.length,
+                    current: progress.current
+                  })
+              });
 
-                        if (!result.success) {
-                            // This bucket fell over, so every file in it is still outstanding.
-                            failures.push(...bucket.paths.map(path => ({ path, error: result.error })));
-                            uiService.showAlert(t("assets.import.failedTitle"), result.error || t("assets.unknownError"));
-                            completed += bucket.paths.length;
-                            continue;
-                        }
-
-                        // `importFromPaths` answers 1:1 with the paths it was handed, which is what lets
-                        // a failure be named by file rather than by a bare error string.
-                        const perFile = result.data ?? [];
-                        failures.push(...perFile.flatMap((assetResult, index) =>
-                            assetResult.success ? [] : [{ path: bucket.paths[index], error: assetResult.error }]
-                        ));
-                        for (const [index, assetResult] of perFile.entries()) {
-                            if (!assetResult.success || !assetResult.data) {
-                                continue;
-                            }
-                            const asset = assetResult.data as Asset;
-                            importedAssets.push(asset);
-
-                            // Written straight after the copy, while the 1:1 correspondence with the
-                            // source path is still in hand — the asset record itself no longer says
-                            // which folder it came from.
-                            const entry = entryByPath?.[bucket.paths[index]];
-                            if (entry) {
-                                const entryResult = await svc.patchAssetExtras(asset, { modelEntry: entry });
-                                if (!entryResult.success) {
-                                    // Named as a failure of that file. The folder is in the library,
-                                    // but nothing records which file in it draws, and a model that
-                                    // will not draw is not an import that worked.
-                                    failures.push({ path: bucket.paths[index], error: entryResult.error });
-                                }
-                            }
-                        }
-                        completed += bucket.paths.length;
-                    }
-
-                    // Anything the bucketing could not place (dropped onto a section that does not take
-                    // it) never reached an importer, and is reported rather than silently swallowed.
-                    const attempted = new Set(buckets.flatMap(bucket => bucket.paths));
-                    failures.push(...paths
-                        .filter(path => !attempted.has(path))
-                        .map(path => ({ path, error: t("assets.import.noMatchingFiles") })));
-
-                    importQueue?.finish(failures);
-                    reportedPerFile = true;
-
-                    if (groupId) {
-                        // Collected rather than returned on: a failed move used to abandon the rest of
-                        // the run *and* swallow the import-failure summary that had not been shown yet.
-                        const moveErrors: string[] = [];
-                        for (const asset of importedAssets) {
-                            const moveResult = await svc.moveAssetToGroup(asset, groupId);
-                            if (!moveResult.success) {
-                                moveErrors.push(`${asset.name}: ${moveResult.error || t("assets.unknownError")}`);
-                            }
-                        }
-                        if (moveErrors.length > 0) {
-                            uiService.showAlert(t("assets.import.moveFailedTitle"), moveErrors.join("\n"));
-                        }
-                    }
-
-                    // Failures are listed in the panel with a retry; the alert stays only for callers
-                    // that have no strip to read (there is none today, but the summary is cheap to keep).
-                    if (failures.length > 0 && !importQueue) {
-                        uiService.showAlert(
-                            importedAssets.length > 0 ? t("assets.import.someFailedTitle") : t("assets.import.failedTitle"),
-                            summarizeImportFailures(failures.map(failure => failure.error), t)
-                        );
-                    }
-                });
-            });
-
-            await removeConvertScratch(scratchDirs);
-            onActionComplete();
-        } catch (error) {
-            console.error("Failed to import assets", error);
-            const message = error instanceof Error ? error.message : t("assets.unknownError");
-            // Only when no file ever got a verdict of its own. `finish` replaces the strip's list
-            // outright, and the moves, the scratch sweep and `onActionComplete` all run after the
-            // per-file one has already been handed over - so blaming every path from here would
-            // turn an accurate "3 of 20 failed" into "all 20 failed" on the strength of a throw
-            // that happened once the importing was over.
-            if (!reportedPerFile) {
-                // Nothing came back, so every path is still outstanding, and naming them all is what
-                // leaves the strip a retry instead of a progress bar that never moves again. The
-                // files that failed to convert are carried through as well; they never had an
-                // importer to be turned away by.
-                importQueue?.finish([...preFailures, ...paths.map(path => ({ path, error: message }))]);
-            }
-            uiService.showAlert(t("assets.import.failedTitle"), message);
-        } finally {
-            notifyLoading(false);
-        }
-    }, [importQueue, notifyLoading, onActionComplete, t, withAssetsService]);
-
-    const handleImport = useCallback(async (category: AssetCategory, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => {
-        if (!context || freeze.frozen) return;
-        const uiService = context.services.get<UIService>(Services.UI);
-
-        let paths: string[];
-        if (files && files.length > 0) {
-            const fileArray = Array.from(files);
-            const grantResult = await getInterface().fs.grantFileAccessForFiles(fileArray);
-            if (!grantResult.success) {
-                uiService.showAlert(t("assets.import.unableTitle"), grantResult.error || t("assets.import.fileAccessFailed"));
-                return;
-            }
-            if (!grantResult.data.ok) {
-                uiService.showAlert(t("assets.import.unableTitle"), grantResult.data.error.message);
-                return;
-            }
-
-            paths = grantResult.data.data.length > 0
-                ? grantResult.data.data
-                : fileArray
-                .map(f => {
-                    const pathFromProp = (f as any).path;
-                    if (pathFromProp && pathFromProp.length > 0) return pathFromProp;
-
-                    return getInterface().fs.getPathForFile(f);
-                })
-                .filter((p): p is string => typeof p === 'string' && p.length > 0);
-
-            if (paths.length === 0) {
-                const uriPaths = parseFileUriList(dataTransfer);
-                if (uriPaths.length > 0) {
-                    paths.push(...uriPaths);
-                }
-
-                if (paths.length === 0) {
-                    uiService.showAlert(
-                        t("assets.import.unableTitle"),
-                        t("assets.import.filePathParsingFailed")
-                    );
-                    return;
-                }
-            }
-
-            // Dropped folders are expanded to their matching files and everything else is
-            // filtered out; plain files pass through untouched. Expanded against every member type
-            // of the section, so a folder of mp3s and mp4s dropped on Media brings both.
-            const expansion = await withAssetsService(svc => svc.expandCategoryImportPaths(category, paths));
-            if (!expansion || expansion.files.length === 0) {
-                if (expansion?.expandedDirectory) {
-                    uiService.notifications.info(t("assets.import.noMatchingFiles"));
-                }
-                return;
-            }
-            paths = expansion.files;
-        } else if (isBundleAssetCategory(category)) {
-            // A model bundle is authored as a folder and imported as one asset, and which folder
-            // that is is exactly what a bare picker cannot settle: the author has one character's
-            // folder, or its parent, or a library of twelve, and no way to tell which the dialog
-            // wants. So the wizard asks for the kind, searches the tree itself, and comes back
-            // through `completeModelImport` with the folders it found. The drop path above keeps
-            // going straight in - a dropped folder already names itself.
-            setModelImportRequest({ groupId });
-            return;
-        } else {
-            // Picked here rather than inside the importer so the queue knows the file list up front:
-            // it is what "3 of 20" counts against, and what a retry replays. The filter is the
-            // union of the section's member types, so one dialog covers the whole section.
-            const selection = await getInterface().fs.selectFile(ASSET_CATEGORY_EXTENSIONS[category], true);
-            if (!selection.success || !selection.data.ok) {
-                return;
-            }
-            paths = selection.data.data;
-        }
-
-        // Asked before a single byte is copied, so a file that will not play is a question rather
-        // than a refusal reported afterwards about work already done. Files with nothing wrong with
-        // them never appear in the dialog, and a run with no problems never opens one.
-        if (categoryNeedsMediaTriage(category)) {
-            notifyLoading(true);
-            try {
-                const plan = await planMediaImport(paths, async (path) => {
-                    const result = await getInterface().probeMedia(path);
-                    return result.success ? result.data.outcome : null;
-                });
-
-                if (plan.problems.length > 0) {
-                    setMediaImportRequest({ category, groupId, plan });
-                    return;
-                }
-            } catch (error) {
-                console.error("Failed to check the files before importing", error);
+              if (!result.success) {
+                // This bucket fell over, so every file in it is still outstanding.
+                failures.push(...bucket.paths.map((path) => ({ path, error: result.error })));
                 uiService.showAlert(
-                    t("assets.import.unableTitle"),
-                    error instanceof Error ? error.message : t("assets.unknownError"),
+                  t("assets.import.failedTitle"),
+                  result.error || t("assets.unknownError")
                 );
-                return;
-            } finally {
-                notifyLoading(false);
+                completed += bucket.paths.length;
+                continue;
+              }
+
+              // `importFromPaths` answers 1:1 with the paths it was handed, which is what lets
+              // a failure be named by file rather than by a bare error string.
+              const perFile = result.data ?? [];
+              failures.push(
+                ...perFile.flatMap((assetResult, index) =>
+                  assetResult.success
+                    ? []
+                    : [{ path: bucket.paths[index], error: assetResult.error }]
+                )
+              );
+              for (const [index, assetResult] of perFile.entries()) {
+                if (!assetResult.success || !assetResult.data) {
+                  continue;
+                }
+                const asset = assetResult.data as Asset;
+                importedAssets.push(asset);
+
+                // Written straight after the copy, while the 1:1 correspondence with the
+                // source path is still in hand — the asset record itself no longer says
+                // which folder it came from.
+                const entry = entryByPath?.[bucket.paths[index]];
+                if (entry) {
+                  const entryResult = await svc.patchAssetExtras(asset, { modelEntry: entry });
+                  if (!entryResult.success) {
+                    // Named as a failure of that file. The folder is in the library,
+                    // but nothing records which file in it draws, and a model that
+                    // will not draw is not an import that worked.
+                    failures.push({ path: bucket.paths[index], error: entryResult.error });
+                  }
+                }
+              }
+              completed += bucket.paths.length;
             }
+
+            // Anything the bucketing could not place (dropped onto a section that does not take
+            // it) never reached an importer, and is reported rather than silently swallowed.
+            const attempted = new Set(buckets.flatMap((bucket) => bucket.paths));
+            failures.push(
+              ...paths
+                .filter((path) => !attempted.has(path))
+                .map((path) => ({ path, error: t("assets.import.noMatchingFiles") }))
+            );
+
+            importQueue?.finish(failures);
+            reportedPerFile = true;
+
+            if (groupId) {
+              // Collected rather than returned on: a failed move used to abandon the rest of
+              // the run *and* swallow the import-failure summary that had not been shown yet.
+              const moveErrors: string[] = [];
+              for (const asset of importedAssets) {
+                const moveResult = await svc.moveAssetToGroup(asset, groupId);
+                if (!moveResult.success) {
+                  moveErrors.push(`${asset.name}: ${moveResult.error || t("assets.unknownError")}`);
+                }
+              }
+              if (moveErrors.length > 0) {
+                uiService.showAlert(t("assets.import.moveFailedTitle"), moveErrors.join("\n"));
+              }
+            }
+
+            // Failures are listed in the panel with a retry; the alert stays only for callers
+            // that have no strip to read (there is none today, but the summary is cheap to keep).
+            if (failures.length > 0 && !importQueue) {
+              uiService.showAlert(
+                importedAssets.length > 0
+                  ? t("assets.import.someFailedTitle")
+                  : t("assets.import.failedTitle"),
+                summarizeImportFailures(
+                  failures.map((failure) => failure.error),
+                  t
+                )
+              );
+            }
+          });
+        });
+
+        await removeConvertScratch(scratchDirs);
+        onActionComplete();
+      } catch (error) {
+        console.error("Failed to import assets", error);
+        const message = error instanceof Error ? error.message : t("assets.unknownError");
+        // Only when no file ever got a verdict of its own. `finish` replaces the strip's list
+        // outright, and the moves, the scratch sweep and `onActionComplete` all run after the
+        // per-file one has already been handed over - so blaming every path from here would
+        // turn an accurate "3 of 20 failed" into "all 20 failed" on the strength of a throw
+        // that happened once the importing was over.
+        if (!reportedPerFile) {
+          // Nothing came back, so every path is still outstanding, and naming them all is what
+          // leaves the strip a retry instead of a progress bar that never moves again. The
+          // files that failed to convert are carried through as well; they never had an
+          // importer to be turned away by.
+          importQueue?.finish([...preFailures, ...paths.map((path) => ({ path, error: message }))]);
+        }
+        uiService.showAlert(t("assets.import.failedTitle"), message);
+      } finally {
+        notifyLoading(false);
+      }
+    },
+    [importQueue, notifyLoading, onActionComplete, t, withAssetsService]
+  );
+
+  const handleImport = useCallback(
+    async (
+      category: AssetCategory,
+      groupId?: string,
+      files?: FileList,
+      dataTransfer?: DataTransfer
+    ) => {
+      if (!context || freeze.frozen) return;
+      const uiService = context.services.get<UIService>(Services.UI);
+
+      let paths: string[];
+      if (files && files.length > 0) {
+        const fileArray = Array.from(files);
+        const grantResult = await getInterface().fs.grantFileAccessForFiles(fileArray);
+        if (!grantResult.success) {
+          uiService.showAlert(
+            t("assets.import.unableTitle"),
+            grantResult.error || t("assets.import.fileAccessFailed")
+          );
+          return;
+        }
+        if (!grantResult.data.ok) {
+          uiService.showAlert(t("assets.import.unableTitle"), grantResult.data.error.message);
+          return;
         }
 
-        await runImport(category, paths, groupId);
-    }, [context, freeze.frozen, notifyLoading, runImport, t, withAssetsService]);
+        paths =
+          grantResult.data.data.length > 0
+            ? grantResult.data.data
+            : fileArray
+                .map((f) => {
+                  const pathFromProp = (f as any).path;
+                  if (pathFromProp && pathFromProp.length > 0) return pathFromProp;
 
-    /** Re-run the files the last import could not read, into the same group. */
-    const handleRetryImport = useCallback(async (category: AssetCategory, paths: string[], groupId?: string) => {
-        await runImport(category, paths, groupId);
-    }, [runImport]);
+                  return getInterface().fs.getPathForFile(f);
+                })
+                .filter((p): p is string => typeof p === "string" && p.length > 0);
 
-    /**
-     * Import the folders the model wizard settled on, into the group the author started from.
-     *
-     * The freeze is re-checked here and not only at the point the wizard opened: the dialog is a
-     * conversation, and a working-tree re-read can begin while it is on screen. A write let through
-     * on the strength of a check made several clicks ago is the shape of the silent no-op the freeze
-     * latch exists to prevent.
-     */
-    const completeModelImport = useCallback(async (selection: ModelImportSelection[]) => {
-        const request = modelImportRequest;
-        setModelImportRequest(null);
-        if (!request || selection.length === 0 || freeze.frozen) {
+        if (paths.length === 0) {
+          const uriPaths = parseFileUriList(dataTransfer);
+          if (uriPaths.length > 0) {
+            paths.push(...uriPaths);
+          }
+
+          if (paths.length === 0) {
+            uiService.showAlert(
+              t("assets.import.unableTitle"),
+              t("assets.import.filePathParsingFailed")
+            );
             return;
+          }
         }
-        await runImport(
-            AssetCategory.Model,
-            selection.map(entry => entry.rootPath),
-            request.groupId,
-            { entryByPath: Object.fromEntries(selection.map(entry => [entry.rootPath, entry.entry])) },
+
+        // Dropped folders are expanded to their matching files and everything else is
+        // filtered out; plain files pass through untouched. Expanded against every member type
+        // of the section, so a folder of mp3s and mp4s dropped on Media brings both.
+        const expansion = await withAssetsService((svc) =>
+          svc.expandCategoryImportPaths(category, paths)
         );
-    }, [freeze.frozen, modelImportRequest, runImport]);
-
-    const cancelModelImport = useCallback(() => setModelImportRequest(null), []);
-
-    /**
-     * Carry out whatever the media dialog's author decided.
-     *
-     * The freeze is re-checked here as well as on the dialog's own buttons, for the reason the model
-     * wizard states: the dialog is a conversation, and a working-tree re-read can begin while it is
-     * on screen. Anything already converted is still cleaned up, so a refusal does not leave the
-     * scratch directory behind.
-     */
-    const completeMediaImport = useCallback(async (resolution: MediaImportResolution) => {
-        const request = mediaImportRequest;
-        setMediaImportRequest(null);
-        if (!request) {
-            return;
+        if (!expansion || expansion.files.length === 0) {
+          if (expansion?.expandedDirectory) {
+            uiService.notifications.info(t("assets.import.noMatchingFiles"));
+          }
+          return;
         }
-        if (freeze.frozen) {
-            await removeConvertScratch(resolution.scratchDirs);
-            return;
-        }
-        await runImport(request.category, resolution.paths, request.groupId, {
-            preFailures: resolution.failures,
-            scratchDirs: resolution.scratchDirs,
-        });
-    }, [freeze.frozen, mediaImportRequest, runImport]);
-
-    const cancelMediaImport = useCallback(() => setMediaImportRequest(null), []);
-
-    /**
-     * Import a URL as a pinned asset: Studio fetches it now and keeps the bytes with the project.
-     *
-     * Reported through the import strip rather than a bare spinner, because this really is a
-     * download - it can take a while, and it can fail for reasons the author has to see (the host is
-     * unreachable, the URL serves a login page, the file is too big). A one-item run reuses the
-     * strip's retry, so a failure keeps the URL instead of asking for it again.
-     */
-    const handleImportRemote = useCallback(async (category: AssetCategory, groupId?: string) => {
-        if (!context || !inputDialog || freeze.frozen) return;
-
-        const url = await inputDialog.show({
-            title: t("assets.import.remoteTitle"),
-            placeholder: "https://example.com/asset.png",
-            description: t("assets.import.remoteDescription"),
-            required: true,
-            validation: (value) => {
-                let parsed: URL;
-                try {
-                    parsed = new URL(value.trim());
-                } catch {
-                    return t("assets.import.remoteInvalidUrl");
-                }
-                // Checked here as well as in main, so a `file:` or `data:` address is refused while
-                // the author is still looking at the field they typed it into.
-                return REMOTE_ASSET_ALLOWED_PROTOCOLS.includes(parsed.protocol)
-                    ? null
-                    : t("assets.import.remoteUnsupportedScheme");
-            },
-            // The section's first member type: enough for the dialog's own accent. Which member the
-            // asset really is gets decided from the bytes, once they are here.
-            assetType: ASSET_CATEGORY_TYPES[category][0],
-        });
-
-        if (!url) {
-            return;
-        }
-
-        const trimmed = url.trim();
-        notifyLoading(true);
-        importQueue?.start({ category, groupId, total: 1 });
-        importQueue?.progress({ completed: 0, total: 1, current: trimmed });
-
-        // Same guard as `runImport`: the download can have finished, succeeded and been reported
-        // before something after it throws, and marking the URL failed then would put a download
-        // that worked in the retry list.
-        let reportedVerdict = false;
-
-        try {
-            await withAssetsService(async (assetsService) => {
-                let result: RequestStatus<Asset<AssetType, AssetSource.Remote>> = {
-                    success: false,
-                    error: t("assets.unknownError"),
-                };
-                await assetsService.transaction(async (svc) => {
-                    result = await svc.importRemoteAsset(category, trimmed, groupId);
-                });
-                importQueue?.progress({ completed: 1, total: 1 });
-                importQueue?.finish(result.success ? [] : [{ path: trimmed, error: result.error }]);
-                reportedVerdict = true;
-
-                if (!result.success && !importQueue) {
-                    context.services.get<UIService>(Services.UI).showAlert(
-                        t("assets.import.remoteFailedTitle"),
-                        result.error || t("assets.unknownError")
-                    );
-                }
-            });
-
-            onActionComplete();
-        } catch (error) {
-            console.error("Failed to import remote asset", error);
-            const message = error instanceof Error ? error.message : t("assets.unknownError");
-            // Only if the run never reached a verdict. Then the strip is told the URL is outstanding,
-            // and it keeps the address, which is the only thing standing between a failure and
-            // typing it back in.
-            if (!reportedVerdict) {
-                importQueue?.finish([{ path: trimmed, error: message }]);
-            }
-            context.services.get<UIService>(Services.UI).showAlert(t("assets.import.remoteFailedTitle"), message);
-        } finally {
-            notifyLoading(false);
-        }
-    }, [context, freeze.frozen, importQueue, inputDialog, withAssetsService, onActionComplete, notifyLoading, t]);
-
-    // Support drag-in files directly to a group
-    const handleImportToGroup = useCallback(async (category: AssetCategory, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => {
-        notifyLoading(true);
-        try {
-            await handleImport(category, groupId, files, dataTransfer);
-        } finally {
-            notifyLoading(false);
-        }
-    }, [handleImport, notifyLoading]);
-
-    const handleCreateGroup = useCallback(async (category: AssetCategory, parentGroupId?: string) => {
-        notifyLoading(true);
-        try {
-            const groupName = inputDialog ? await inputDialog.showCreateGroupDialog(category, parentGroupId) : null;
-            if (!groupName) return;
-
-            await withAssetsService(async (assetsService) => {
-                const result = await assetsService.createGroup(category, groupName, parentGroupId);
-                if (result.success) {
-                    return;
-                }
-                // Names the action and nothing else. The write that failed here raises the workspace's
-                // own save failure too, which is already on screen with the file and a retry, so the
-                // reason is covered; what it cannot say is which action was lost. The row is drawn from
-                // memory whether or not the write landed, so without this the author is looking at a
-                // group that is not on disk.
-                contextRef.current?.services.get<UIService>(Services.UI).showNotification(
-                    t("assets.createGroup.failed"),
-                    "error",
-                );
-            });
-            onActionComplete();
-        } catch (error) {
-            console.error("Failed to create asset group", error);
-            // Same sentence as the refusal above, for the same reason: whichever way it ended, the
-            // group the author is looking at is not there.
-            contextRef.current?.services.get<UIService>(Services.UI).showNotification(
-                t("assets.createGroup.failed"),
-                "error",
-            );
-        } finally {
-            notifyLoading(false);
-        }
-    }, [inputDialog, withAssetsService, onActionComplete, notifyLoading, t]);
-
-    /**
-     * Create an empty text file under Other and open it.
-     *
-     * The only asset an author *makes* rather than imports, so it is also the only creation path
-     * with no file on disk to start from — see `AssetsService.createLocalAssetFromBytes`. The tab
-     * is opened through the same helper a click on the row uses, so a file created here and a file
-     * opened later land in the same editor with the same id.
-     *
-     * `groupId` is the group the menu was opened on; from the category header there is none and the
-     * file lands loose in the section.
-     */
-    const handleCreateTextFile = useCallback(async (groupId?: string) => {
-        const ctx = contextRef.current;
-        // Frozen is refused here as well as greyed out in the menu: the row is one of several ways
-        // in, and a create that reached the service would write into a project the author froze.
-        if (!ctx || !inputDialog || freeze.frozen) return;
-
-        const typed = await inputDialog.show({
-            title: t("assets.newTextFile.title"),
-            description: t("assets.newTextFile.prompt"),
-            placeholder: t("assets.newTextFile.placeholder"),
-            // Already carrying the extension, so accepting the default is one keystroke and the
-            // author can see what they are getting.
-            initialValue: `${t("assets.newTextFile.defaultName")}.${NEW_TEXT_FILE_DEFAULT_EXTENSION}`,
-            required: true,
-            maxLength: 100,
-            validation: (value) => {
-                const problem = validateNewTextFileName(value);
-                if (problem === "empty") return t("assets.newTextFile.empty");
-                if (problem === "illegalChars") return t("assets.newTextFile.illegalChars");
-                return null;
-            },
-        });
-        if (!typed) return;
-
-        notifyLoading(true);
-        // A name collision inside the group is not this function's problem: the manager runs
-        // `resolveUniqueAssetName` over whatever it is handed.
-        const name = resolveNewTextFileName(typed);
-        let created: Asset | null | undefined;
-        try {
-            created = await withAssetsService(async (assetsService) => {
-                const result = await assetsService.createLocalAssetFromBytes(
-                    AssetType.Other,
-                    name,
-                    new Uint8Array(0),
-                    groupId,
-                );
-                if (!result.success || !result.data) {
-                    ctx.services.get<UIService>(Services.UI).showAlert(
-                        t("assets.newTextFile.failedTitle"),
-                        result.error || t("assets.unknownError"),
-                    );
-                    return null;
-                }
-                // The line ending is recorded here and only here, because a new file is zero bytes:
-                // there is nothing in the content to detect it from, and the OS that made the file is
-                // the only thing that can answer. Once the file has lines in it, the lines win - see
-                // `resolveLineEnding`. Failure is not surfaced: the file exists and opens, and the
-                // fallback (the same platform default, recomputed) is the value this would have written.
-                await assetsService.patchAssetExtras(result.data, {
-                    textEol: toPersistedEol(platformDefaultLineEnding()),
-                });
-                return result.data as Asset;
-            });
-
-            onActionComplete();
-        } catch (error) {
-            console.error("Failed to create the text file", error);
-            ctx.services.get<UIService>(Services.UI).showAlert(
-                t("assets.newTextFile.failedTitle"),
-                error instanceof Error ? error.message : t("assets.unknownError"),
-            );
-        } finally {
-            notifyLoading(false);
-        }
-
-        if (created) {
-            if (groupId && expandGroup) {
-                // Otherwise the row the author just made is behind a collapsed folder.
-                expandGroup(groupId);
-            }
-            openAssetPreviewTabsInEditor(ctx, [created]);
-        }
-    }, [expandGroup, freeze.frozen, inputDialog, notifyLoading, onActionComplete, t, withAssetsService]);
-
-    // ... other actions like handleImport, handleImportToGroup
-
-    const writeClipboard = useCallback((type: ClipboardState['type']) => {
-        const targets = resolveTargets();
-        const targetGroups = targets.filter(target => target.isGroup).map(target => target.item as AssetGroup);
-        const targetGroupIds = new Set(targetGroups.map(group => group.id));
-
-        // Filter out groups that are children of other targeted groups
-        const groupsToWrite = targetGroups.filter(
-            group => !isGroupChildOfSelectedGroups(group, targetGroupIds)
+        paths = expansion.files;
+      } else if (isBundleAssetCategory(category)) {
+        // A model bundle is authored as a folder and imported as one asset, and which folder
+        // that is is exactly what a bare picker cannot settle: the author has one character's
+        // folder, or its parent, or a library of twelve, and no way to tell which the dialog
+        // wants. So the wizard asks for the kind, searches the tree itself, and comes back
+        // through `completeModelImport` with the folders it found. The drop path above keeps
+        // going straight in - a dropped folder already names itself.
+        setModelImportRequest({ groupId });
+        return;
+      } else {
+        // Picked here rather than inside the importer so the queue knows the file list up front:
+        // it is what "3 of 20" counts against, and what a retry replays. The filter is the
+        // union of the section's member types, so one dialog covers the whole section.
+        const selection = await getInterface().fs.selectFile(
+          ASSET_CATEGORY_EXTENSIONS[category],
+          true
         );
-
-        // Filter out assets that are inside targeted groups to avoid duplication
-        const assetsToWrite = targets
-            .filter(target => !target.isGroup)
-            .map(target => target.item as Asset)
-            .filter(asset => !isAssetInSelectedGroups(asset, targetGroupIds));
-
-        if (assetsToWrite.length > 0 || groupsToWrite.length > 0) {
-            setClipboard({ type, assets: assetsToWrite, groups: groupsToWrite });
+        if (!selection.success || !selection.data.ok) {
+          return;
         }
-    }, [resolveTargets, isAssetInSelectedGroups, isGroupChildOfSelectedGroups, setClipboard]);
+        paths = selection.data.data;
+      }
 
-    const handleCopy = useCallback(() => writeClipboard('copy'), [writeClipboard]);
-
-    const handleCut = useCallback(() => writeClipboard('cut'), [writeClipboard]);
-
-    const handlePaste = useCallback(async () => {
-        if (!context || !clipboard) return;
+      // Asked before a single byte is copied, so a file that will not play is a question rather
+      // than a refusal reported afterwards about work already done. Files with nothing wrong with
+      // them never appear in the dialog, and a run with no problems never opens one.
+      if (categoryNeedsMediaTriage(category)) {
         notifyLoading(true);
-
-        let targetGroupId: string | undefined;
-        if (contextMenuTarget) {
-            targetGroupId = contextMenuTarget.isGroup ? (contextMenuTarget.item as AssetGroup)?.id : (contextMenuTarget.item as Asset)?.groupId;
-        } else if (focusedItemId) {
-            if (focusedItemId.startsWith('group:')) {
-                targetGroupId = focusedItemId.replace('group:', '');
-            } else if (focusedItemId.startsWith('asset:')) {
-                const assetId = focusedItemId.replace('asset:', '');
-                const asset = Object.values(assets).flat().find(a => a.id === assetId);
-                targetGroupId = asset?.groupId;
-            }
-        }
-
-        // Named per row rather than counted: a paste of a dozen rows where three did not arrive is
-        // read by looking for the three, and the list re-renders looking almost right either way.
-        const pasteFailures: string[] = [];
-        let pastedCount = 0;
-        const noteFailure = (name: string, error?: string) => {
-            pasteFailures.push(`${name}: ${error || t("assets.unknownError")}`);
-        };
-
         try {
-            await withAssetsService(async (assetsService) => {
-                await assetsService.transaction(async (svc) => {
-                    if (clipboard.type === 'cut') {
-                        // Move assets
-                        for (const a of clipboard.assets) {
-                            const moveResult = await svc.moveAssetToGroup(a, targetGroupId);
-                            if (moveResult.success) {
-                                pastedCount += 1;
-                            } else {
-                                noteFailure(a.name, moveResult.error);
-                            }
-                        }
-                        // Move groups
-                        for (const g of clipboard.groups) {
-                            const moveResult = await svc.moveGroupToParent(g.category, g.id, targetGroupId);
-                            if (moveResult.success) {
-                                pastedCount += 1;
-                            } else {
-                                noteFailure(g.name, moveResult.error);
-                            }
-                        }
-                        setClipboard(null);
-                    } else if (clipboard.type === 'copy') {
-                        // Duplicate assets
-                        for (const a of clipboard.assets) {
-                            const dupResult = await svc.duplicateAsset(a);
-                            if (!dupResult.success || !dupResult.data) {
-                                noteFailure(a.name, dupResult.error);
-                                continue;
-                            }
-                            // A copy that was made but not moved is still a row the author cannot find
-                            // where they pasted, so it is named too.
-                            const moveResult = await svc.moveAssetToGroup(dupResult.data, targetGroupId);
-                            if (moveResult.success) {
-                                pastedCount += 1;
-                            } else {
-                                noteFailure(a.name, moveResult.error);
-                            }
-                        }
-                        // Duplicate groups (recursively copies all assets and child groups)
-                        for (const g of clipboard.groups) {
-                            const dupResult = await svc.duplicateGroup(g.category, g.id, targetGroupId);
-                            if (dupResult.success) {
-                                pastedCount += 1;
-                            } else {
-                                noteFailure(g.name, dupResult.error);
-                            }
-                        }
-                    }
-                });
-            });
+          const plan = await planMediaImport(paths, async (path) => {
+            const result = await getInterface().probeMedia(path);
+            return result.success ? result.data.outcome : null;
+          });
 
-            if (pasteFailures.length > 0) {
-                context.services.get<UIService>(Services.UI).showAlert(
-                    pastedCount > 0 ? t("assets.paste.someFailedTitle") : t("assets.paste.failedTitle"),
-                    pasteFailures.join("\n"),
-                );
-            }
-
-            // Expand the target group if pasting into a group
-            if (targetGroupId && expandGroup) {
-                expandGroup(targetGroupId);
-            }
-
-            onActionComplete();
+          if (plan.problems.length > 0) {
+            setMediaImportRequest({ category, groupId, plan });
+            return;
+          }
         } catch (error) {
-            console.error("Failed to paste assets", error);
-            // The run stopped where it stopped, so the count still says whether anything arrived;
-            // the rows it stopped before are the ones the author will not find.
-            context.services.get<UIService>(Services.UI).showAlert(
-                pastedCount > 0 ? t("assets.paste.someFailedTitle") : t("assets.paste.failedTitle"),
-                error instanceof Error ? error.message : t("assets.unknownError"),
-            );
+          console.error("Failed to check the files before importing", error);
+          uiService.showAlert(
+            t("assets.import.unableTitle"),
+            error instanceof Error ? error.message : t("assets.unknownError")
+          );
+          return;
         } finally {
-            notifyLoading(false);
+          notifyLoading(false);
         }
-    }, [clipboard, context, contextMenuTarget, focusedItemId, assets, onActionComplete, withAssetsService, setClipboard, notifyLoading, expandGroup, t]);
-    
-    const handleRename = useCallback(async () => {
-        if (!context || !inputDialog) return;
+      }
 
-        // Renaming has one name to change, so it needs exactly one row. When the shared resolution
-        // lands on several (F2 with a multi-selection), fall back to the focused one.
-        const targets = resolveTargets();
-        const target = targets.length === 1
-            ? targets[0]
-            : targets.find(candidate => assetSelectionKey(candidate.item.id, candidate.isGroup) === focusedItemId);
+      await runImport(category, paths, groupId);
+    },
+    [context, freeze.frozen, notifyLoading, runImport, t, withAssetsService]
+  );
 
-        if (!target) return;
+  /** Re-run the files the last import could not read, into the same group. */
+  const handleRetryImport = useCallback(
+    async (category: AssetCategory, paths: string[], groupId?: string) => {
+      await runImport(category, paths, groupId);
+    },
+    [runImport]
+  );
 
-        const initialName = (target.item as Asset | AssetGroup).name;
-        const newName = await inputDialog.showRenameDialog(initialName, target.isGroup ? 'group' : 'asset');
-        if (!newName) return;
+  /**
+   * Import the folders the model wizard settled on, into the group the author started from.
+   *
+   * The freeze is re-checked here and not only at the point the wizard opened: the dialog is a
+   * conversation, and a working-tree re-read can begin while it is on screen. A write let through
+   * on the strength of a check made several clicks ago is the shape of the silent no-op the freeze
+   * latch exists to prevent.
+   */
+  const completeModelImport = useCallback(
+    async (selection: ModelImportSelection[]) => {
+      const request = modelImportRequest;
+      setModelImportRequest(null);
+      if (!request || selection.length === 0 || freeze.frozen) {
+        return;
+      }
+      await runImport(
+        AssetCategory.Model,
+        selection.map((entry) => entry.rootPath),
+        request.groupId,
+        { entryByPath: Object.fromEntries(selection.map((entry) => [entry.rootPath, entry.entry])) }
+      );
+    },
+    [freeze.frozen, modelImportRequest, runImport]
+  );
+
+  const cancelModelImport = useCallback(() => setModelImportRequest(null), []);
+
+  /**
+   * Carry out whatever the media dialog's author decided.
+   *
+   * The freeze is re-checked here as well as on the dialog's own buttons, for the reason the model
+   * wizard states: the dialog is a conversation, and a working-tree re-read can begin while it is
+   * on screen. Anything already converted is still cleaned up, so a refusal does not leave the
+   * scratch directory behind.
+   */
+  const completeMediaImport = useCallback(
+    async (resolution: MediaImportResolution) => {
+      const request = mediaImportRequest;
+      setMediaImportRequest(null);
+      if (!request) {
+        return;
+      }
+      if (freeze.frozen) {
+        await removeConvertScratch(resolution.scratchDirs);
+        return;
+      }
+      await runImport(request.category, resolution.paths, request.groupId, {
+        preFailures: resolution.failures,
+        scratchDirs: resolution.scratchDirs
+      });
+    },
+    [freeze.frozen, mediaImportRequest, runImport]
+  );
+
+  const cancelMediaImport = useCallback(() => setMediaImportRequest(null), []);
+
+  /**
+   * Import a URL as a pinned asset: Studio fetches it now and keeps the bytes with the project.
+   *
+   * Reported through the import strip rather than a bare spinner, because this really is a
+   * download - it can take a while, and it can fail for reasons the author has to see (the host is
+   * unreachable, the URL serves a login page, the file is too big). A one-item run reuses the
+   * strip's retry, so a failure keeps the URL instead of asking for it again.
+   */
+  const handleImportRemote = useCallback(
+    async (category: AssetCategory, groupId?: string) => {
+      if (!context || !inputDialog || freeze.frozen) return;
+
+      const url = await inputDialog.show({
+        title: t("assets.import.remoteTitle"),
+        placeholder: "https://example.com/asset.png",
+        description: t("assets.import.remoteDescription"),
+        required: true,
+        validation: (value) => {
+          let parsed: URL;
+          try {
+            parsed = new URL(value.trim());
+          } catch {
+            return t("assets.import.remoteInvalidUrl");
+          }
+          // Checked here as well as in main, so a `file:` or `data:` address is refused while
+          // the author is still looking at the field they typed it into.
+          return REMOTE_ASSET_ALLOWED_PROTOCOLS.includes(parsed.protocol)
+            ? null
+            : t("assets.import.remoteUnsupportedScheme");
+        },
+        // The section's first member type: enough for the dialog's own accent. Which member the
+        // asset really is gets decided from the bytes, once they are here.
+        assetType: ASSET_CATEGORY_TYPES[category][0]
+      });
+
+      if (!url) {
+        return;
+      }
+
+      const trimmed = url.trim();
+      notifyLoading(true);
+      importQueue?.start({ category, groupId, total: 1 });
+      importQueue?.progress({ completed: 0, total: 1, current: trimmed });
+
+      // Same guard as `runImport`: the download can have finished, succeeded and been reported
+      // before something after it throws, and marking the URL failed then would put a download
+      // that worked in the retry list.
+      let reportedVerdict = false;
+
+      try {
+        await withAssetsService(async (assetsService) => {
+          let result: RequestStatus<Asset<AssetType, AssetSource.Remote>> = {
+            success: false,
+            error: t("assets.unknownError")
+          };
+          await assetsService.transaction(async (svc) => {
+            result = await svc.importRemoteAsset(category, trimmed, groupId);
+          });
+          importQueue?.progress({ completed: 1, total: 1 });
+          importQueue?.finish(result.success ? [] : [{ path: trimmed, error: result.error }]);
+          reportedVerdict = true;
+
+          if (!result.success && !importQueue) {
+            context.services
+              .get<UIService>(Services.UI)
+              .showAlert(
+                t("assets.import.remoteFailedTitle"),
+                result.error || t("assets.unknownError")
+              );
+          }
+        });
+
+        onActionComplete();
+      } catch (error) {
+        console.error("Failed to import remote asset", error);
+        const message = error instanceof Error ? error.message : t("assets.unknownError");
+        // Only if the run never reached a verdict. Then the strip is told the URL is outstanding,
+        // and it keeps the address, which is the only thing standing between a failure and
+        // typing it back in.
+        if (!reportedVerdict) {
+          importQueue?.finish([{ path: trimmed, error: message }]);
+        }
+        context.services
+          .get<UIService>(Services.UI)
+          .showAlert(t("assets.import.remoteFailedTitle"), message);
+      } finally {
+        notifyLoading(false);
+      }
+    },
+    [
+      context,
+      freeze.frozen,
+      importQueue,
+      inputDialog,
+      withAssetsService,
+      onActionComplete,
+      notifyLoading,
+      t
+    ]
+  );
+
+  // Support drag-in files directly to a group
+  const handleImportToGroup = useCallback(
+    async (
+      category: AssetCategory,
+      groupId?: string,
+      files?: FileList,
+      dataTransfer?: DataTransfer
+    ) => {
+      notifyLoading(true);
+      try {
+        await handleImport(category, groupId, files, dataTransfer);
+      } finally {
+        notifyLoading(false);
+      }
+    },
+    [handleImport, notifyLoading]
+  );
+
+  const handleCreateGroup = useCallback(
+    async (category: AssetCategory, parentGroupId?: string) => {
+      notifyLoading(true);
+      try {
+        const groupName = inputDialog
+          ? await inputDialog.showCreateGroupDialog(category, parentGroupId)
+          : null;
+        if (!groupName) return;
 
         await withAssetsService(async (assetsService) => {
-            const result = target.isGroup
-                ? await assetsService.renameGroup(target.category, (target.item as AssetGroup).id, newName)
-                : await assetsService.renameAsset(target.item as Asset, newName);
-            if (result.success) {
-                return;
-            }
-            // Names the row and nothing else. A rename is only refused when the write fails, and
-            // that already puts the workspace's own save failure on screen with the file and a
-            // retry, so carrying the reason here would print the same sentence twice.
-            //
-            // The name is the one the author started from: `renameGroup` puts the record back when
-            // the write fails, so that is what the row still says.
-            context.services.get<UIService>(Services.UI).showNotification(
-                t("assets.rename.failed", { name: initialName }),
-                "error",
-            );
+          const result = await assetsService.createGroup(category, groupName, parentGroupId);
+          if (result.success) {
+            return;
+          }
+          // Names the action and nothing else. The write that failed here raises the workspace's
+          // own save failure too, which is already on screen with the file and a retry, so the
+          // reason is covered; what it cannot say is which action was lost. The row is drawn from
+          // memory whether or not the write landed, so without this the author is looking at a
+          // group that is not on disk.
+          contextRef.current?.services
+            .get<UIService>(Services.UI)
+            .showNotification(t("assets.createGroup.failed"), "error");
+        });
+        onActionComplete();
+      } catch (error) {
+        console.error("Failed to create asset group", error);
+        // Same sentence as the refusal above, for the same reason: whichever way it ended, the
+        // group the author is looking at is not there.
+        contextRef.current?.services
+          .get<UIService>(Services.UI)
+          .showNotification(t("assets.createGroup.failed"), "error");
+      } finally {
+        notifyLoading(false);
+      }
+    },
+    [inputDialog, withAssetsService, onActionComplete, notifyLoading, t]
+  );
+
+  /**
+   * Create an empty text file under Other and open it.
+   *
+   * The only asset an author *makes* rather than imports, so it is also the only creation path
+   * with no file on disk to start from — see `AssetsService.createLocalAssetFromBytes`. The tab
+   * is opened through the same helper a click on the row uses, so a file created here and a file
+   * opened later land in the same editor with the same id.
+   *
+   * `groupId` is the group the menu was opened on; from the category header there is none and the
+   * file lands loose in the section.
+   */
+  const handleCreateTextFile = useCallback(
+    async (groupId?: string) => {
+      const ctx = contextRef.current;
+      // Frozen is refused here as well as greyed out in the menu: the row is one of several ways
+      // in, and a create that reached the service would write into a project the author froze.
+      if (!ctx || !inputDialog || freeze.frozen) return;
+
+      const typed = await inputDialog.show({
+        title: t("assets.newTextFile.title"),
+        description: t("assets.newTextFile.prompt"),
+        placeholder: t("assets.newTextFile.placeholder"),
+        // Already carrying the extension, so accepting the default is one keystroke and the
+        // author can see what they are getting.
+        initialValue: `${t("assets.newTextFile.defaultName")}.${NEW_TEXT_FILE_DEFAULT_EXTENSION}`,
+        required: true,
+        maxLength: 100,
+        validation: (value) => {
+          const problem = validateNewTextFileName(value);
+          if (problem === "empty") return t("assets.newTextFile.empty");
+          if (problem === "illegalChars") return t("assets.newTextFile.illegalChars");
+          return null;
+        }
+      });
+      if (!typed) return;
+
+      notifyLoading(true);
+      // A name collision inside the group is not this function's problem: the manager runs
+      // `resolveUniqueAssetName` over whatever it is handed.
+      const name = resolveNewTextFileName(typed);
+      let created: Asset | null | undefined;
+      try {
+        created = await withAssetsService(async (assetsService) => {
+          const result = await assetsService.createLocalAssetFromBytes(
+            AssetType.Other,
+            name,
+            new Uint8Array(0),
+            groupId
+          );
+          if (!result.success || !result.data) {
+            ctx.services
+              .get<UIService>(Services.UI)
+              .showAlert(
+                t("assets.newTextFile.failedTitle"),
+                result.error || t("assets.unknownError")
+              );
+            return null;
+          }
+          // The line ending is recorded here and only here, because a new file is zero bytes:
+          // there is nothing in the content to detect it from, and the OS that made the file is
+          // the only thing that can answer. Once the file has lines in it, the lines win - see
+          // `resolveLineEnding`. Failure is not surfaced: the file exists and opens, and the
+          // fallback (the same platform default, recomputed) is the value this would have written.
+          await assetsService.patchAssetExtras(result.data, {
+            textEol: toPersistedEol(platformDefaultLineEnding())
+          });
+          return result.data as Asset;
         });
 
         onActionComplete();
-    }, [context, resolveTargets, focusedItemId, inputDialog, onActionComplete, withAssetsService, t]);
+      } catch (error) {
+        console.error("Failed to create the text file", error);
+        ctx.services
+          .get<UIService>(Services.UI)
+          .showAlert(
+            t("assets.newTextFile.failedTitle"),
+            error instanceof Error ? error.message : t("assets.unknownError")
+          );
+      } finally {
+        notifyLoading(false);
+      }
 
-    /**
-     * The one asset the single-subject actions act on, in the same priority order rename uses:
-     * right-clicked row, then a lone selection, then the focused row. Groups resolve to nothing —
-     * replacing contents is per file, and there is deliberately no batch version.
-     */
-    const resolveSingleAsset = useCallback((): Asset | null => {
-        if (contextMenuTarget?.item) {
-            return contextMenuTarget.isGroup ? null : (contextMenuTarget.item as Asset);
+      if (created) {
+        if (groupId && expandGroup) {
+          // Otherwise the row the author just made is behind a collapsed folder.
+          expandGroup(groupId);
         }
+        openAssetPreviewTabsInEditor(ctx, [created]);
+      }
+    },
+    [expandGroup, freeze.frozen, inputDialog, notifyLoading, onActionComplete, t, withAssetsService]
+  );
 
-        const candidateId = selectedItems.size === 1 ? Array.from(selectedItems)[0] : focusedItemId;
-        if (!candidateId || !candidateId.startsWith('asset:')) {
-            return null;
-        }
-        const assetId = candidateId.replace('asset:', '');
-        return Object.values(assets).flat().find(a => a.id === assetId) ?? null;
-    }, [assets, contextMenuTarget, focusedItemId, selectedItems]);
+  // ... other actions like handleImport, handleImportToGroup
 
-    /**
-     * Swap the file behind an asset while keeping its id, so every place already pointing at it
-     * renders the new file instead of needing to be relinked one by one.
-     *
-     * `target` lets a caller outside the panel (the inspector) name the asset directly; the panel's
-     * own entry points resolve it from the selection.
-     */
-    const handleReplaceContent = useCallback(async (target?: Asset) => {
-        const ctx = contextRef.current;
-        if (!ctx) return;
+  const writeClipboard = useCallback(
+    (type: ClipboardState["type"]) => {
+      const targets = resolveTargets();
+      const targetGroups = targets
+        .filter((target) => target.isGroup)
+        .map((target) => target.item as AssetGroup);
+      const targetGroupIds = new Set(targetGroups.map((group) => group.id));
 
-        const asset = target ?? resolveSingleAsset();
-        if (!asset) return;
+      // Filter out groups that are children of other targeted groups
+      const groupsToWrite = targetGroups.filter(
+        (group) => !isGroupChildOfSelectedGroups(group, targetGroupIds)
+      );
 
-        notifyLoading(true);
-        try {
-            const outcome = await runReplaceAssetContentFlow(ctx, asset, t);
-            if (outcome === "replaced") {
-                onActionComplete();
-            }
-        } catch (error) {
-            console.error("Failed to replace asset contents", error);
-            // The same title the flow raises its own refusals under, so a swap that fell over and a
-            // swap that was refused read as one thing.
-            ctx.services.get<UIService>(Services.UI).showAlert(
-                t("assets.replace.failedTitle"),
-                error instanceof Error ? error.message : t("assets.unknownError"),
-            );
-        } finally {
-            notifyLoading(false);
-        }
-    }, [notifyLoading, onActionComplete, resolveSingleAsset, t]);
+      // Filter out assets that are inside targeted groups to avoid duplication
+      const assetsToWrite = targets
+        .filter((target) => !target.isGroup)
+        .map((target) => target.item as Asset)
+        .filter((asset) => !isAssetInSelectedGroups(asset, targetGroupIds));
 
-    /**
-     * Open the conversion for an asset the scan marked as unplayable.
-     *
-     * Local assets only. A remote asset is a *pinned reference* whose bytes are a snapshot of what
-     * a server served, and replacing them in place would leave a record claiming provenance for
-     * bytes that never came from that URL. Nothing is offered rather than something dishonest; the
-     * way out for those is to import the converted file as a new asset.
-     */
-    const handleConvertMedia = useCallback(async (target?: Asset) => {
-        const ctx = contextRef.current;
-        if (!ctx || freeze.frozen) return;
+      if (assetsToWrite.length > 0 || groupsToWrite.length > 0) {
+        setClipboard({ type, assets: assetsToWrite, groups: groupsToWrite });
+      }
+    },
+    [resolveTargets, isAssetInSelectedGroups, isGroupChildOfSelectedGroups, setClipboard]
+  );
 
-        const asset = target ?? resolveSingleAsset();
-        if (!asset || asset.source !== AssetSource.Local) return;
+  const handleCopy = useCallback(() => writeClipboard("copy"), [writeClipboard]);
 
-        const record = ctx.services.get<MediaSupportService>(Services.MediaSupport).peek(asset.id);
-        if (!record || record.state !== "convertible" || !record.target) return;
+  const handleCut = useCallback(() => writeClipboard("cut"), [writeClipboard]);
 
-        setMediaConvertRequest({ asset, record });
-    }, [freeze.frozen, resolveSingleAsset]);
+  const handlePaste = useCallback(async () => {
+    if (!context || !clipboard) return;
+    notifyLoading(true);
 
-    const finishMediaConvert = useCallback(() => {
-        setMediaConvertRequest(null);
-        onActionComplete();
-    }, [onActionComplete]);
+    let targetGroupId: string | undefined;
+    if (contextMenuTarget) {
+      targetGroupId = contextMenuTarget.isGroup
+        ? (contextMenuTarget.item as AssetGroup)?.id
+        : (contextMenuTarget.item as Asset)?.groupId;
+    } else if (focusedItemId) {
+      if (focusedItemId.startsWith("group:")) {
+        targetGroupId = focusedItemId.replace("group:", "");
+      } else if (focusedItemId.startsWith("asset:")) {
+        const assetId = focusedItemId.replace("asset:", "");
+        const asset = Object.values(assets)
+          .flat()
+          .find((a) => a.id === assetId);
+        targetGroupId = asset?.groupId;
+      }
+    }
 
-    const cancelMediaConvert = useCallback(() => setMediaConvertRequest(null), []);
-
-    const handleDelete = useCallback(async () => {
-        notifyLoading(true);
-        try {
-            const ctx = contextRef.current;
-            if (!ctx) return;
-            const uiService = ctx.services.get<UIService>(Services.UI);
-            const assetsService = ctx.services.get<AssetsService>(Services.Assets);
-            
-            const targets = resolveTargets();
-            if (targets.length === 0) return;
-
-            // Every asset the delete would actually remove — including the contents of any selected
-            // group. Deleting a group cascades to its assets, so checking only the bare asset
-            // targets let a whole folder of referenced material through without a warning.
-            const affectedAssets = collectAffectedAssets(targets, assets, groups);
-
-            // The same reading the service's guard enforces — asked through the service rather than
-            // looked up here, so the list the author is shown and the list the delete is checked
-            // against cannot drift apart. "No references found" and "could not look for references"
-            // stay different answers: an empty index reports every asset as unused.
-            const { checked: referencesChecked, references: referencesByAsset } =
-                (await withAssetsService(assetsService => assetsService.findAssetReferences(
-                    affectedAssets.map(asset => asset.id),
-                    affectedAssets.map(asset => asset.type),
-                )))
-                ?? { checked: false, references: new Map<string, AssetReference[]>() };
-
-            if (!referencesChecked) {
-                const proceedUnverified = await uiService.showDestructiveConfirm(
-                    t("assets.delete.unverifiedTitle"),
-                    t("assets.delete.unverifiedMessage"),
-                    t("assets.delete.action"),
-                );
-                if (!proceedUnverified) {
-                    return;
-                }
-            }
-
-            if (referencesByAsset.size > 0) {
-                const details = affectedAssets
-                    .map(asset => ({ asset, references: referencesByAsset.get(asset.id) ?? [] }))
-                    .filter(entry => entry.references.length > 0)
-                    .map(({ asset, references }) => {
-                        const shown = references.slice(0, REFERENCE_PREVIEW_LIMIT).map(reference => {
-                            const where = reference.detail ? `${reference.label} - ${reference.detail}` : reference.label;
-                            return `  ${where}${reference.dormant ? ` (${t("properties.references.dormant")})` : ""}`;
-                        });
-                        const remaining = references.length - shown.length;
-                        if (remaining > 0) {
-                            shown.push(`  ${t("assets.delete.moreReferences", { count: remaining })}`);
-                        }
-                        return `- ${asset.name}:\n${shown.join("\n")}`;
-                    })
-                    .join("\n");
-
-                // Warn, do not block: sometimes deleting the referenced file is exactly the intent.
-                // The hierarchy is what expresses the risk — Cancel is the default and the keyboard
-                // target, the delete is a danger-coloured secondary.
-                const forceConfirmed = await uiService.showDestructiveConfirm(
-                    t("assets.delete.inUseTitle"),
-                    `${t("assets.delete.inUseMessage")}\n\n${details}`,
-                    t("assets.delete.action"),
-                );
-                if (!forceConfirmed) {
-                    return;
-                }
-            }
-
-            const confirmed = await uiService.showDestructiveConfirm(
-                tn("assets.delete.confirmTitle", targets.length),
-                t("assets.delete.confirmMessage"),
-                t("assets.delete.action"),
-            );
-            if (!confirmed) {
-                return;
-            }
-
-            // Remove duplicate targets by id to avoid double deletion
-            const uniqueTargets = Array.from(new Map(targets.map(t => [t.item.id, t])).values());
-
-            // The author has now seen the reference list and said go ahead, so this is the one place
-            // allowed through the service guard. Every other caller — a group cascade, anything
-            // programmatic — is refused by default.
-            const deleteFailures: string[] = [];
-            await withAssetsService(async (assetsService) => {
-                await assetsService.transaction(async (svc) => {
-                    await Promise.all(uniqueTargets.map(async (t) => {
-                        const result = t.isGroup
-                            ? await svc.deleteGroup(t.category, (t.item as AssetGroup).id, true, { allowReferenced: true })
-                            : await svc.deleteAsset(t.item as Asset, { allowReferenced: true });
-                        if (!result.success && result.error) {
-                            deleteFailures.push(result.error);
-                        }
-                    }));
-                });
-            });
-            if (deleteFailures.length > 0) {
-                uiService.showAlert(t("assets.delete.failedTitle"), deleteFailures.join("\n"));
-            }
-            onActionComplete();
-        } catch (error) {
-            console.error("Failed to delete asset", error);
-            // The whole run fell over, so there is no per-row list to read and one line is the
-            // answer. Resolved again here because the service handle above is inside the `try`.
-            contextRef.current?.services.get<UIService>(Services.UI).showNotification(
-                t("assets.delete.failed", { error: error instanceof Error ? error.message : t("assets.unknownError") }),
-                "error",
-            );
-        } finally {
-            notifyLoading(false);
-        }
-    }, [resolveTargets, assets, groups, onActionComplete, withAssetsService, notifyLoading, context, t, tn]);
-
-    /**
-     * Copy the marked rows out to a folder the author picks.
-     *
-     * A read, so it is offered on a frozen library and asks for no confirmation. The picker and the
-     * copying both live in main: a folder chosen from the renderer is granted read access only, and
-     * the shard paths handed over are checked against the window's grants there before anything is
-     * read. Nothing here touches the project, so `onActionComplete` is deliberately not called.
-     */
-    const handleExport = useCallback(async () => {
-        const ctx = contextRef.current;
-        if (!ctx) return;
-
-        const uiService = ctx.services.get<UIService>(Services.UI);
-        const plan = buildAssetExportPlan({ targets: resolveTargets(), assets, groups });
-        if (plan.length === 0) {
-            // Reachable from a folder with nothing in it, which looks like a working command until
-            // the chosen folder turns out empty afterwards.
-            uiService.showNotification(t("assets.export.empty"), "info");
-            return;
-        }
-
-        notifyLoading(true);
-        try {
-            const assetsService = ctx.services.get<AssetsService>(Services.Assets);
-            const localAssets = assetsService.getLocalAssetsManager();
-            const result = await getInterface().assets.exportToFolder(plan.map(entry => ({
-                sourcePath: localAssets.getLocalAssetPath(entry.asset.id),
-                relativePath: entry.relativePath,
-                isDirectory: isBundleAssetType(entry.asset.type),
-            })));
-
-            if (!result.success) {
-                uiService.showNotification(t("assets.export.failed", { error: result.error ?? t("assets.unknownError") }), "error");
-                return;
-            }
-            if (result.data.canceled) {
-                return;
-            }
-
-            const exported = result.data.exportedCount ?? 0;
-            const failures = result.data.failures ?? [];
-            if (failures.length === 0) {
-                uiService.showNotification(tn("assets.export.success", exported), "success");
-                return;
-            }
-
-            // The count leads and the reasons follow in an alert: a run that half worked has to say
-            // which files are not in that folder, and a toast is not a place to list them.
-            uiService.showNotification(
-                t("assets.export.partial", { exported, failed: failures.length }),
-                "warning",
-            );
-            uiService.showAlert(
-                t("assets.export.partialTitle"),
-                failures.map(failure => `- ${failure.relativePath}: ${failure.reason}`).join("\n"),
-            );
-        } catch (error) {
-            console.error("Failed to export assets", error);
-            uiService.showNotification(
-                t("assets.export.failed", { error: error instanceof Error ? error.message : t("assets.unknownError") }),
-                "error",
-            );
-        } finally {
-            notifyLoading(false);
-        }
-    }, [resolveTargets, assets, groups, notifyLoading, t, tn]);
-
-
-    const handleCreateMagicTags = useCallback(async () => {
-        const selectedAssets = getSelectedAssets();
-        if (selectedAssets.length === 0) return null;
-
-        const ctx = contextRef.current;
-        if (!ctx) return null;
-
-        const assetsService = ctx.services.get<AssetsService>(Services.Assets);
-        
-        // Extract filenames from selected assets
-        const filenames = selectedAssets.map(asset => asset.name);
-        
-        try {
-            // Analyze filenames and generate template
-            const template = assetsService.analyzeMagicTags(filenames);
-            return { template, assets: selectedAssets };
-        } catch (error) {
-            const uiService = ctx.services.get<UIService>(Services.UI);
-            uiService.showAlert(
-                t("assets.magicTag.parseFailedTitle"),
-                error instanceof Error ? error.message : t("assets.unknownError")
-            );
-            return null;
-        }
-    }, [getSelectedAssets]);
-
-    const handleApplyMagicTags = useCallback(async (
-        selectedAssets: Asset[],
-        template: any,
-        categoryMapping: Record<number, string>
-    ) => {
-        const ctx = contextRef.current;
-        if (!ctx) return;
-
-        notifyLoading(true);
-        
-        try {
-            const assetsService = ctx.services.get<AssetsService>(Services.Assets);
-            
-            // Generate preview to get the tags for each file
-            const previews = assetsService.generateMagicTagPreview(template, categoryMapping);
-            
-            // Apply tags to each asset
-            await assetsService.transaction(async (svc) => {
-                for (let i = 0; i < selectedAssets.length; i++) {
-                    const asset = selectedAssets[i];
-                    const preview = previews[i];
-                    
-                    if (preview && preview.tags.length > 0) {
-                        // Merge with existing tags
-                        const existingTags = asset.tags || [];
-                        const newTags = Array.from(new Set([...existingTags, ...preview.tags]));
-                        await svc.updateAssetTags(asset, newTags);
-                    }
-                }
-            });
-
-            onActionComplete();
-        } catch (error) {
-            const uiService = ctx.services.get<UIService>(Services.UI);
-            uiService.showAlert(
-                t("assets.magicTag.applyFailedTitle"),
-                error instanceof Error ? error.message : t("assets.unknownError")
-            );
-        } finally {
-            notifyLoading(false);
-        }
-    }, [onActionComplete, notifyLoading]);
-
-    return {
-        handleCreateGroup,
-        handleCreateTextFile,
-        handleImport,
-        handleRetryImport,
-        handleImportToGroup,
-        handleImportRemote,
-        handleCopy,
-        handleCut,
-        handlePaste,
-        handleRename,
-        handleReplaceContent,
-        handleDelete,
-        handleExport,
-        handleCreateMagicTags,
-        handleApplyMagicTags,
-        /** Non-null while the model import wizard is on screen. */
-        modelImportRequest,
-        completeModelImport,
-        cancelModelImport,
-        /** Non-null while the import is waiting on an answer about files that will not play. */
-        mediaImportRequest,
-        completeMediaImport,
-        cancelMediaImport,
-        /** Non-null while the conversion for one library asset is on screen. */
-        mediaConvertRequest,
-        handleConvertMedia,
-        finishMediaConvert,
-        cancelMediaConvert,
+    // Named per row rather than counted: a paste of a dozen rows where three did not arrive is
+    // read by looking for the three, and the list re-renders looking almost right either way.
+    const pasteFailures: string[] = [];
+    let pastedCount = 0;
+    const noteFailure = (name: string, error?: string) => {
+      pasteFailures.push(`${name}: ${error || t("assets.unknownError")}`);
     };
+
+    try {
+      await withAssetsService(async (assetsService) => {
+        await assetsService.transaction(async (svc) => {
+          if (clipboard.type === "cut") {
+            // Move assets
+            for (const a of clipboard.assets) {
+              const moveResult = await svc.moveAssetToGroup(a, targetGroupId);
+              if (moveResult.success) {
+                pastedCount += 1;
+              } else {
+                noteFailure(a.name, moveResult.error);
+              }
+            }
+            // Move groups
+            for (const g of clipboard.groups) {
+              const moveResult = await svc.moveGroupToParent(g.category, g.id, targetGroupId);
+              if (moveResult.success) {
+                pastedCount += 1;
+              } else {
+                noteFailure(g.name, moveResult.error);
+              }
+            }
+            setClipboard(null);
+          } else if (clipboard.type === "copy") {
+            // Duplicate assets
+            for (const a of clipboard.assets) {
+              const dupResult = await svc.duplicateAsset(a);
+              if (!dupResult.success || !dupResult.data) {
+                noteFailure(a.name, dupResult.error);
+                continue;
+              }
+              // A copy that was made but not moved is still a row the author cannot find
+              // where they pasted, so it is named too.
+              const moveResult = await svc.moveAssetToGroup(dupResult.data, targetGroupId);
+              if (moveResult.success) {
+                pastedCount += 1;
+              } else {
+                noteFailure(a.name, moveResult.error);
+              }
+            }
+            // Duplicate groups (recursively copies all assets and child groups)
+            for (const g of clipboard.groups) {
+              const dupResult = await svc.duplicateGroup(g.category, g.id, targetGroupId);
+              if (dupResult.success) {
+                pastedCount += 1;
+              } else {
+                noteFailure(g.name, dupResult.error);
+              }
+            }
+          }
+        });
+      });
+
+      if (pasteFailures.length > 0) {
+        context.services
+          .get<UIService>(Services.UI)
+          .showAlert(
+            pastedCount > 0 ? t("assets.paste.someFailedTitle") : t("assets.paste.failedTitle"),
+            pasteFailures.join("\n")
+          );
+      }
+
+      // Expand the target group if pasting into a group
+      if (targetGroupId && expandGroup) {
+        expandGroup(targetGroupId);
+      }
+
+      onActionComplete();
+    } catch (error) {
+      console.error("Failed to paste assets", error);
+      // The run stopped where it stopped, so the count still says whether anything arrived;
+      // the rows it stopped before are the ones the author will not find.
+      context.services
+        .get<UIService>(Services.UI)
+        .showAlert(
+          pastedCount > 0 ? t("assets.paste.someFailedTitle") : t("assets.paste.failedTitle"),
+          error instanceof Error ? error.message : t("assets.unknownError")
+        );
+    } finally {
+      notifyLoading(false);
+    }
+  }, [
+    clipboard,
+    context,
+    contextMenuTarget,
+    focusedItemId,
+    assets,
+    onActionComplete,
+    withAssetsService,
+    setClipboard,
+    notifyLoading,
+    expandGroup,
+    t
+  ]);
+
+  const handleRename = useCallback(async () => {
+    if (!context || !inputDialog) return;
+
+    // Renaming has one name to change, so it needs exactly one row. When the shared resolution
+    // lands on several (F2 with a multi-selection), fall back to the focused one.
+    const targets = resolveTargets();
+    const target =
+      targets.length === 1
+        ? targets[0]
+        : targets.find(
+            (candidate) => assetSelectionKey(candidate.item.id, candidate.isGroup) === focusedItemId
+          );
+
+    if (!target) return;
+
+    const initialName = (target.item as Asset | AssetGroup).name;
+    const newName = await inputDialog.showRenameDialog(
+      initialName,
+      target.isGroup ? "group" : "asset"
+    );
+    if (!newName) return;
+
+    await withAssetsService(async (assetsService) => {
+      const result = target.isGroup
+        ? await assetsService.renameGroup(target.category, (target.item as AssetGroup).id, newName)
+        : await assetsService.renameAsset(target.item as Asset, newName);
+      if (result.success) {
+        return;
+      }
+      // Names the row and nothing else. A rename is only refused when the write fails, and
+      // that already puts the workspace's own save failure on screen with the file and a
+      // retry, so carrying the reason here would print the same sentence twice.
+      //
+      // The name is the one the author started from: `renameGroup` puts the record back when
+      // the write fails, so that is what the row still says.
+      context.services
+        .get<UIService>(Services.UI)
+        .showNotification(t("assets.rename.failed", { name: initialName }), "error");
+    });
+
+    onActionComplete();
+  }, [context, resolveTargets, focusedItemId, inputDialog, onActionComplete, withAssetsService, t]);
+
+  /**
+   * The one asset the single-subject actions act on, in the same priority order rename uses:
+   * right-clicked row, then a lone selection, then the focused row. Groups resolve to nothing —
+   * replacing contents is per file, and there is deliberately no batch version.
+   */
+  const resolveSingleAsset = useCallback((): Asset | null => {
+    if (contextMenuTarget?.item) {
+      return contextMenuTarget.isGroup ? null : (contextMenuTarget.item as Asset);
+    }
+
+    const candidateId = selectedItems.size === 1 ? Array.from(selectedItems)[0] : focusedItemId;
+    if (!candidateId || !candidateId.startsWith("asset:")) {
+      return null;
+    }
+    const assetId = candidateId.replace("asset:", "");
+    return (
+      Object.values(assets)
+        .flat()
+        .find((a) => a.id === assetId) ?? null
+    );
+  }, [assets, contextMenuTarget, focusedItemId, selectedItems]);
+
+  /**
+   * Swap the file behind an asset while keeping its id, so every place already pointing at it
+   * renders the new file instead of needing to be relinked one by one.
+   *
+   * `target` lets a caller outside the panel (the inspector) name the asset directly; the panel's
+   * own entry points resolve it from the selection.
+   */
+  const handleReplaceContent = useCallback(
+    async (target?: Asset) => {
+      const ctx = contextRef.current;
+      if (!ctx) return;
+
+      const asset = target ?? resolveSingleAsset();
+      if (!asset) return;
+
+      notifyLoading(true);
+      try {
+        const outcome = await runReplaceAssetContentFlow(ctx, asset, t);
+        if (outcome === "replaced") {
+          onActionComplete();
+        }
+      } catch (error) {
+        console.error("Failed to replace asset contents", error);
+        // The same title the flow raises its own refusals under, so a swap that fell over and a
+        // swap that was refused read as one thing.
+        ctx.services
+          .get<UIService>(Services.UI)
+          .showAlert(
+            t("assets.replace.failedTitle"),
+            error instanceof Error ? error.message : t("assets.unknownError")
+          );
+      } finally {
+        notifyLoading(false);
+      }
+    },
+    [notifyLoading, onActionComplete, resolveSingleAsset, t]
+  );
+
+  /**
+   * Open the conversion for an asset the scan marked as unplayable.
+   *
+   * Local assets only. A remote asset is a *pinned reference* whose bytes are a snapshot of what
+   * a server served, and replacing them in place would leave a record claiming provenance for
+   * bytes that never came from that URL. Nothing is offered rather than something dishonest; the
+   * way out for those is to import the converted file as a new asset.
+   */
+  const handleConvertMedia = useCallback(
+    async (target?: Asset) => {
+      const ctx = contextRef.current;
+      if (!ctx || freeze.frozen) return;
+
+      const asset = target ?? resolveSingleAsset();
+      if (!asset || asset.source !== AssetSource.Local) return;
+
+      const record = ctx.services.get<MediaSupportService>(Services.MediaSupport).peek(asset.id);
+      if (!record || record.state !== "convertible" || !record.target) return;
+
+      setMediaConvertRequest({ asset, record });
+    },
+    [freeze.frozen, resolveSingleAsset]
+  );
+
+  const finishMediaConvert = useCallback(() => {
+    setMediaConvertRequest(null);
+    onActionComplete();
+  }, [onActionComplete]);
+
+  const cancelMediaConvert = useCallback(() => setMediaConvertRequest(null), []);
+
+  const handleDelete = useCallback(async () => {
+    notifyLoading(true);
+    try {
+      const ctx = contextRef.current;
+      if (!ctx) return;
+      const uiService = ctx.services.get<UIService>(Services.UI);
+
+      const targets = resolveTargets();
+      if (targets.length === 0) return;
+
+      // Every asset the delete would actually remove — including the contents of any selected
+      // group. Deleting a group cascades to its assets, so checking only the bare asset
+      // targets let a whole folder of referenced material through without a warning.
+      const affectedAssets = collectAffectedAssets(targets, assets, groups);
+
+      // The same reading the service's guard enforces — asked through the service rather than
+      // looked up here, so the list the author is shown and the list the delete is checked
+      // against cannot drift apart. "No references found" and "could not look for references"
+      // stay different answers: an empty index reports every asset as unused.
+      const { checked: referencesChecked, references: referencesByAsset } =
+        (await withAssetsService((assetsService) =>
+          assetsService.findAssetReferences(
+            affectedAssets.map((asset) => asset.id),
+            affectedAssets.map((asset) => asset.type)
+          )
+        )) ?? { checked: false, references: new Map<string, AssetReference[]>() };
+
+      if (!referencesChecked) {
+        const proceedUnverified = await uiService.showDestructiveConfirm(
+          t("assets.delete.unverifiedTitle"),
+          t("assets.delete.unverifiedMessage"),
+          t("assets.delete.action")
+        );
+        if (!proceedUnverified) {
+          return;
+        }
+      }
+
+      if (referencesByAsset.size > 0) {
+        const details = affectedAssets
+          .map((asset) => ({ asset, references: referencesByAsset.get(asset.id) ?? [] }))
+          .filter((entry) => entry.references.length > 0)
+          .map(({ asset, references }) => {
+            const shown = references.slice(0, REFERENCE_PREVIEW_LIMIT).map((reference) => {
+              const where = reference.detail
+                ? `${reference.label} - ${reference.detail}`
+                : reference.label;
+              return `  ${where}${reference.dormant ? ` (${t("properties.references.dormant")})` : ""}`;
+            });
+            const remaining = references.length - shown.length;
+            if (remaining > 0) {
+              shown.push(`  ${t("assets.delete.moreReferences", { count: remaining })}`);
+            }
+            return `- ${asset.name}:\n${shown.join("\n")}`;
+          })
+          .join("\n");
+
+        // Warn, do not block: sometimes deleting the referenced file is exactly the intent.
+        // The hierarchy is what expresses the risk — Cancel is the default and the keyboard
+        // target, the delete is a danger-coloured secondary.
+        const forceConfirmed = await uiService.showDestructiveConfirm(
+          t("assets.delete.inUseTitle"),
+          `${t("assets.delete.inUseMessage")}\n\n${details}`,
+          t("assets.delete.action")
+        );
+        if (!forceConfirmed) {
+          return;
+        }
+      }
+
+      const confirmed = await uiService.showDestructiveConfirm(
+        tn("assets.delete.confirmTitle", targets.length),
+        t("assets.delete.confirmMessage"),
+        t("assets.delete.action")
+      );
+      if (!confirmed) {
+        return;
+      }
+
+      // Remove duplicate targets by id to avoid double deletion
+      const uniqueTargets = Array.from(new Map(targets.map((t) => [t.item.id, t])).values());
+
+      // The author has now seen the reference list and said go ahead, so this is the one place
+      // allowed through the service guard. Every other caller — a group cascade, anything
+      // programmatic — is refused by default.
+      const deleteFailures: string[] = [];
+      await withAssetsService(async (assetsService) => {
+        await assetsService.transaction(async (svc) => {
+          await Promise.all(
+            uniqueTargets.map(async (t) => {
+              const result = t.isGroup
+                ? await svc.deleteGroup(t.category, (t.item as AssetGroup).id, true, {
+                    allowReferenced: true
+                  })
+                : await svc.deleteAsset(t.item as Asset, { allowReferenced: true });
+              if (!result.success && result.error) {
+                deleteFailures.push(result.error);
+              }
+            })
+          );
+        });
+      });
+      if (deleteFailures.length > 0) {
+        uiService.showAlert(t("assets.delete.failedTitle"), deleteFailures.join("\n"));
+      }
+      onActionComplete();
+    } catch (error) {
+      console.error("Failed to delete asset", error);
+      // The whole run fell over, so there is no per-row list to read and one line is the
+      // answer. Resolved again here because the service handle above is inside the `try`.
+      contextRef.current?.services.get<UIService>(Services.UI).showNotification(
+        t("assets.delete.failed", {
+          error: error instanceof Error ? error.message : t("assets.unknownError")
+        }),
+        "error"
+      );
+    } finally {
+      notifyLoading(false);
+    }
+  }, [
+    resolveTargets,
+    assets,
+    groups,
+    onActionComplete,
+    withAssetsService,
+    notifyLoading,
+    context,
+    t,
+    tn
+  ]);
+
+  /**
+   * Copy the marked rows out to a folder the author picks.
+   *
+   * A read, so it is offered on a frozen library and asks for no confirmation. The picker and the
+   * copying both live in main: a folder chosen from the renderer is granted read access only, and
+   * the shard paths handed over are checked against the window's grants there before anything is
+   * read. Nothing here touches the project, so `onActionComplete` is deliberately not called.
+   */
+  const handleExport = useCallback(async () => {
+    const ctx = contextRef.current;
+    if (!ctx) return;
+
+    const uiService = ctx.services.get<UIService>(Services.UI);
+    const plan = buildAssetExportPlan({ targets: resolveTargets(), assets, groups });
+    if (plan.length === 0) {
+      // Reachable from a folder with nothing in it, which looks like a working command until
+      // the chosen folder turns out empty afterwards.
+      uiService.showNotification(t("assets.export.empty"), "info");
+      return;
+    }
+
+    notifyLoading(true);
+    try {
+      const assetsService = ctx.services.get<AssetsService>(Services.Assets);
+      const localAssets = assetsService.getLocalAssetsManager();
+      const result = await getInterface().assets.exportToFolder(
+        plan.map((entry) => ({
+          sourcePath: localAssets.getLocalAssetPath(entry.asset.id),
+          relativePath: entry.relativePath,
+          isDirectory: isBundleAssetType(entry.asset.type)
+        }))
+      );
+
+      if (!result.success) {
+        uiService.showNotification(
+          t("assets.export.failed", { error: result.error ?? t("assets.unknownError") }),
+          "error"
+        );
+        return;
+      }
+      if (result.data.canceled) {
+        return;
+      }
+
+      const exported = result.data.exportedCount ?? 0;
+      const failures = result.data.failures ?? [];
+      if (failures.length === 0) {
+        uiService.showNotification(tn("assets.export.success", exported), "success");
+        return;
+      }
+
+      // The count leads and the reasons follow in an alert: a run that half worked has to say
+      // which files are not in that folder, and a toast is not a place to list them.
+      uiService.showNotification(
+        t("assets.export.partial", { exported, failed: failures.length }),
+        "warning"
+      );
+      uiService.showAlert(
+        t("assets.export.partialTitle"),
+        failures.map((failure) => `- ${failure.relativePath}: ${failure.reason}`).join("\n")
+      );
+    } catch (error) {
+      console.error("Failed to export assets", error);
+      uiService.showNotification(
+        t("assets.export.failed", {
+          error: error instanceof Error ? error.message : t("assets.unknownError")
+        }),
+        "error"
+      );
+    } finally {
+      notifyLoading(false);
+    }
+  }, [resolveTargets, assets, groups, notifyLoading, t, tn]);
+
+  const handleCreateMagicTags = useCallback(async () => {
+    const selectedAssets = getSelectedAssets();
+    if (selectedAssets.length === 0) return null;
+
+    const ctx = contextRef.current;
+    if (!ctx) return null;
+
+    const assetsService = ctx.services.get<AssetsService>(Services.Assets);
+
+    // Extract filenames from selected assets
+    const filenames = selectedAssets.map((asset) => asset.name);
+
+    try {
+      // Analyze filenames and generate template
+      const template = assetsService.analyzeMagicTags(filenames);
+      return { template, assets: selectedAssets };
+    } catch (error) {
+      const uiService = ctx.services.get<UIService>(Services.UI);
+      uiService.showAlert(
+        t("assets.magicTag.parseFailedTitle"),
+        error instanceof Error ? error.message : t("assets.unknownError")
+      );
+      return null;
+    }
+  }, [getSelectedAssets]);
+
+  const handleApplyMagicTags = useCallback(
+    async (selectedAssets: Asset[], template: any, categoryMapping: Record<number, string>) => {
+      const ctx = contextRef.current;
+      if (!ctx) return;
+
+      notifyLoading(true);
+
+      try {
+        const assetsService = ctx.services.get<AssetsService>(Services.Assets);
+
+        // Generate preview to get the tags for each file
+        const previews = assetsService.generateMagicTagPreview(template, categoryMapping);
+
+        // Apply tags to each asset
+        await assetsService.transaction(async (svc) => {
+          for (let i = 0; i < selectedAssets.length; i++) {
+            const asset = selectedAssets[i];
+            const preview = previews[i];
+
+            if (preview && preview.tags.length > 0) {
+              // Merge with existing tags
+              const existingTags = asset.tags || [];
+              const newTags = Array.from(new Set([...existingTags, ...preview.tags]));
+              await svc.updateAssetTags(asset, newTags);
+            }
+          }
+        });
+
+        onActionComplete();
+      } catch (error) {
+        const uiService = ctx.services.get<UIService>(Services.UI);
+        uiService.showAlert(
+          t("assets.magicTag.applyFailedTitle"),
+          error instanceof Error ? error.message : t("assets.unknownError")
+        );
+      } finally {
+        notifyLoading(false);
+      }
+    },
+    [onActionComplete, notifyLoading]
+  );
+
+  return {
+    handleCreateGroup,
+    handleCreateTextFile,
+    handleImport,
+    handleRetryImport,
+    handleImportToGroup,
+    handleImportRemote,
+    handleCopy,
+    handleCut,
+    handlePaste,
+    handleRename,
+    handleReplaceContent,
+    handleDelete,
+    handleExport,
+    handleCreateMagicTags,
+    handleApplyMagicTags,
+    /** Non-null while the model import wizard is on screen. */
+    modelImportRequest,
+    completeModelImport,
+    cancelModelImport,
+    /** Non-null while the import is waiting on an answer about files that will not play. */
+    mediaImportRequest,
+    completeMediaImport,
+    cancelMediaImport,
+    /** Non-null while the conversion for one library asset is on screen. */
+    mediaConvertRequest,
+    handleConvertMedia,
+    finishMediaConvert,
+    cancelMediaConvert
+  };
 }

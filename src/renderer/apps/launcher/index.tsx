@@ -5,7 +5,7 @@ import { installServerTrustDevHook } from "@lib/app/serverTrustPrompt";
 // renderer bridge is revoked once this window has painted. `__NLS_STUDIO_DEV__` is an
 // esbuild define, so this whole branch is dropped from production bundles.
 if (__NLS_STUDIO_DEV__) {
-    installServerTrustDevHook();
+  installServerTrustDevHook();
 }
 
 render(import("./LauncherApp"));

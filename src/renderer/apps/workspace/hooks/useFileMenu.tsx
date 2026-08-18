@@ -23,61 +23,66 @@ const OPEN_RECENT_SUBMENU_ID = "narraleaf-studio:file-open-recent";
  * and this only keeps the actions dispatchable.
  */
 export function useFileMenu(): void {
-    const { registerActionGroup, unregisterActionGroup } = useRegistry();
-    const recentProjects = useRecentProjects();
-    const openRecentProject = useOpenRecentProject();
+  const { registerActionGroup, unregisterActionGroup } = useRegistry();
+  const recentProjects = useRecentProjects();
+  const openRecentProject = useOpenRecentProject();
 
-    useEffect(() => {
-        const recentItems: ActionMenuItem[] = recentProjects.length === 0
-            ? [{
-                id: `${OPEN_RECENT_SUBMENU_ID}:empty`,
-                labelKey: "menu.file.noRecent",
-                disabled: true,
-                onClick: () => {},
-            }]
-            : recentProjects.map<ActionDefinition>(project => ({
-                id: `${OPEN_RECENT_SUBMENU_ID}:${project.path}`,
-                label: formatRecentProjectLabel(project),
-                // A folder with a clock rather than the plain folder Open wears. The palette
-                // flattens this submenu into one row per recent project sitting right beside Open,
-                // where the only thing separating them is that these are the remembered ones.
-                icon: <FolderClock className="w-4 h-4" />,
-                // A switch: this window goes once the chosen project is up. Unlike the title-bar
-                // switcher, which opens the project alongside - this is the File menu's "leave for
-                // another project" entry, and it sits beside Close. Picking the project this window
-                // already holds only focuses it - the list does not hide the current project, and
-                // main refuses to retire a window into itself.
-                onClick: () => { void openRecentProject(project.path, { replaceCurrentWindow: true }); },
-            }));
-
-        const openRecentSubmenu: ActionSubmenu = {
-            id: OPEN_RECENT_SUBMENU_ID,
-            label: "Open Recent",
-            labelKey: "menu.file.openRecent",
-            items: recentItems,
-        };
-
-        // Splice the recent submenu in right after "Open", keeping the group's own ordering.
-        const items: ActionMenuItem[] = [];
-        for (const action of fileActionGroup.actions ?? []) {
-            items.push(action as ActionMenuItem);
-            if ("id" in action && action.id === OPEN_ACTION_ID) {
-                items.push(openRecentSubmenu);
+  useEffect(() => {
+    const recentItems: ActionMenuItem[] =
+      recentProjects.length === 0
+        ? [
+            {
+              id: `${OPEN_RECENT_SUBMENU_ID}:empty`,
+              labelKey: "menu.file.noRecent",
+              disabled: true,
+              onClick: () => {}
             }
-        }
+          ]
+        : recentProjects.map<ActionDefinition>((project) => ({
+            id: `${OPEN_RECENT_SUBMENU_ID}:${project.path}`,
+            label: formatRecentProjectLabel(project),
+            // A folder with a clock rather than the plain folder Open wears. The palette
+            // flattens this submenu into one row per recent project sitting right beside Open,
+            // where the only thing separating them is that these are the remembered ones.
+            icon: <FolderClock className="w-4 h-4" />,
+            // A switch: this window goes once the chosen project is up. Unlike the title-bar
+            // switcher, which opens the project alongside - this is the File menu's "leave for
+            // another project" entry, and it sits beside Close. Picking the project this window
+            // already holds only focuses it - the list does not hide the current project, and
+            // main refuses to retire a window into itself.
+            onClick: () => {
+              void openRecentProject(project.path, { replaceCurrentWindow: true });
+            }
+          }));
 
-        registerActionGroup({
-            id: FILE_GROUP_ID,
-            label: fileActionGroup.label,
-            labelKey: fileActionGroup.labelKey,
-            icon: fileActionGroup.icon,
-            order: fileActionGroup.order,
-            menuSlot: fileActionGroup.menuSlot,
-            items,
-        });
-    }, [recentProjects, openRecentProject, registerActionGroup]);
+    const openRecentSubmenu: ActionSubmenu = {
+      id: OPEN_RECENT_SUBMENU_ID,
+      label: "Open Recent",
+      labelKey: "menu.file.openRecent",
+      items: recentItems
+    };
 
-    useEffect(() => {
-        return () => unregisterActionGroup(FILE_GROUP_ID);
-    }, [unregisterActionGroup]);
+    // Splice the recent submenu in right after "Open", keeping the group's own ordering.
+    const items: ActionMenuItem[] = [];
+    for (const action of fileActionGroup.actions ?? []) {
+      items.push(action as ActionMenuItem);
+      if ("id" in action && action.id === OPEN_ACTION_ID) {
+        items.push(openRecentSubmenu);
+      }
+    }
+
+    registerActionGroup({
+      id: FILE_GROUP_ID,
+      label: fileActionGroup.label,
+      labelKey: fileActionGroup.labelKey,
+      icon: fileActionGroup.icon,
+      order: fileActionGroup.order,
+      menuSlot: fileActionGroup.menuSlot,
+      items
+    });
+  }, [recentProjects, openRecentProject, registerActionGroup]);
+
+  useEffect(() => {
+    return () => unregisterActionGroup(FILE_GROUP_ID);
+  }, [unregisterActionGroup]);
 }

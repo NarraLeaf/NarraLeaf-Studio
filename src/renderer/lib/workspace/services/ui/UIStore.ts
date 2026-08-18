@@ -4,30 +4,29 @@ import { KeybindingService } from "./KeybindingService";
 import { Keybinding } from "./types";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import {
-    Notification,
-    ActionBarItem,
-    PanelDefinition,
-    PanelPosition,
-    EditorTab,
-    Dialog,
-    StatusBarItem,
-    FocusContext,
+  Notification,
+  ActionBarItem,
+  PanelDefinition,
+  PanelPosition,
+  EditorTab,
+  Dialog,
+  StatusBarItem
 } from "./types";
 import {
-    ActionDefinition,
-    ActionGroup,
-    ActionMenuItem,
-    ActionSubmenu,
-    EditorLayout,
-    EditorGroup,
-    EditorSplit,
-    EditorTabDefinition,
-    ActionSeparator,
+  ActionDefinition,
+  ActionGroup,
+  ActionMenuItem,
+  ActionSubmenu,
+  EditorLayout,
+  EditorGroup,
+  EditorSplit,
+  EditorTabDefinition,
+  ActionSeparator
 } from "@/apps/workspace/registry/types";
 import type {
-    PluginTextEditorActionDef,
-    PluginTextEditorLanguageDef,
-    PluginTextEditorPreviewDef,
+  PluginTextEditorActionDef,
+  PluginTextEditorLanguageDef,
+  PluginTextEditorPreviewDef
 } from "./textEditorContributions";
 
 /**
@@ -45,1502 +44,1558 @@ export const EDITOR_SPLIT_RATIO_EPSILON = 0.02;
  * member compiles everywhere and changes nothing — the dispatch sites have to be found by hand.
  */
 export interface SelectionState {
-    type: "asset" | "character" | "element" | "scene" | "storyMotionKeyframe" | "storyBlock" | null;
-    data: any | UIElementSelection | null;
+  type: "asset" | "character" | "element" | "scene" | "storyMotionKeyframe" | "storyBlock" | null;
+  data: any | UIElementSelection | null;
 }
 
-export function isUIElementSelection(selection: SelectionState): selection is { type: "element"; data: UIElementSelection } {
-    return selection.type === "element" && Boolean(selection.data) && (selection.data as UIElementSelection).editor === "ui";
+export function isUIElementSelection(
+  selection: SelectionState
+): selection is { type: "element"; data: UIElementSelection } {
+  return (
+    selection.type === "element" &&
+    Boolean(selection.data) &&
+    (selection.data as UIElementSelection).editor === "ui"
+  );
 }
 
 /**
  * UI state
  */
 export interface UIState {
-    notifications: Notification[];
-    actionBarItems: ActionBarItem[];
-    panels: PanelDefinition[];
-    /** User-defined panel ordering per position (panel ids). Overrides the static `order` field. */
-    panelOrder: Record<string, string[]>;
-    /** Panel ids folded into a dock's collapse group, per position (see sidebarPanelGroup.ts). */
-    collapsedPanels: Record<string, string[]>;
-    panelVisibility: Record<string, boolean>;
-    editorTabs: EditorTab[];
-    activeEditorTabId: string | null;
-    dialogs: Dialog[];
-    statusBarItems: StatusBarItem[];
-    activeDialogId: string | null;
-    actions: ActionDefinition[];
-    actionGroups: ActionGroup[];
-    editorLayout: EditorLayout;
-    selection: SelectionState;
-    /** Plugin contributions to the built-in text editor; see `textEditorContributions`. */
-    textEditorLanguages: PluginTextEditorLanguageDef[];
-    textEditorPreviews: PluginTextEditorPreviewDef[];
-    textEditorActions: PluginTextEditorActionDef[];
+  notifications: Notification[];
+  actionBarItems: ActionBarItem[];
+  panels: PanelDefinition[];
+  /** User-defined panel ordering per position (panel ids). Overrides the static `order` field. */
+  panelOrder: Record<string, string[]>;
+  /** Panel ids folded into a dock's collapse group, per position (see sidebarPanelGroup.ts). */
+  collapsedPanels: Record<string, string[]>;
+  panelVisibility: Record<string, boolean>;
+  editorTabs: EditorTab[];
+  activeEditorTabId: string | null;
+  dialogs: Dialog[];
+  statusBarItems: StatusBarItem[];
+  activeDialogId: string | null;
+  actions: ActionDefinition[];
+  actionGroups: ActionGroup[];
+  editorLayout: EditorLayout;
+  selection: SelectionState;
+  /** Plugin contributions to the built-in text editor; see `textEditorContributions`. */
+  textEditorLanguages: PluginTextEditorLanguageDef[];
+  textEditorPreviews: PluginTextEditorPreviewDef[];
+  textEditorActions: PluginTextEditorActionDef[];
 }
 
 /**
  * UI state change events
  */
 export interface UIStateEvents {
-    notificationAdded: Notification;
-    notificationRemoved: string; // notification id
-    notificationUpdated: Notification;
-    
-    actionBarItemAdded: ActionBarItem;
-    actionBarItemRemoved: string; // item id
-    actionBarItemUpdated: ActionBarItem;
-    
-    panelRegistered: PanelDefinition;
-    panelUnregistered: string; // panel id
-    panelVisibilityChanged: { panelId: string; visible: boolean };
-    panelOrderChanged: { position: string; order: string[] };
-    collapsedPanelsChanged: { position: string; collapsed: string[] };
-    
-    editorTabOpened: EditorTab;
-    editorTabClosed: string; // tab id
-    editorTabActivated: string; // tab id
-    editorTabUpdated: EditorTab;
-    
-    dialogOpened: Dialog;
-    dialogClosed: string; // dialog id
-    
-    statusBarItemAdded: StatusBarItem;
-    statusBarItemRemoved: string; // item id
-    statusBarItemUpdated: StatusBarItem;
-    
-    // Action and ActionGroup events
-    actionRegistered: ActionDefinition;
-    actionUnregistered: string; // action id
-    actionUpdated: ActionDefinition;
-    
-    actionGroupRegistered: ActionGroup;
-    actionGroupUnregistered: string; // group id
-    actionGroupUpdated: ActionGroup;
-    
-    // EditorLayout events
-    editorLayoutChanged: EditorLayout;
-    editorTabOpenedInGroup: { tab: EditorTabDefinition; groupId: string; activated: boolean };
-    editorTabClosedInGroup: { tabId: string; groupId: string };
-    editorTabActivatedInGroup: { tabId: string; groupId: string };
-    
-    stateChanged: Partial<UIState>;
-    selectionChanged: SelectionState;
+  notificationAdded: Notification;
+  notificationRemoved: string; // notification id
+  notificationUpdated: Notification;
+
+  actionBarItemAdded: ActionBarItem;
+  actionBarItemRemoved: string; // item id
+  actionBarItemUpdated: ActionBarItem;
+
+  panelRegistered: PanelDefinition;
+  panelUnregistered: string; // panel id
+  panelVisibilityChanged: { panelId: string; visible: boolean };
+  panelOrderChanged: { position: string; order: string[] };
+  collapsedPanelsChanged: { position: string; collapsed: string[] };
+
+  editorTabOpened: EditorTab;
+  editorTabClosed: string; // tab id
+  editorTabActivated: string; // tab id
+  editorTabUpdated: EditorTab;
+
+  dialogOpened: Dialog;
+  dialogClosed: string; // dialog id
+
+  statusBarItemAdded: StatusBarItem;
+  statusBarItemRemoved: string; // item id
+  statusBarItemUpdated: StatusBarItem;
+
+  // Action and ActionGroup events
+  actionRegistered: ActionDefinition;
+  actionUnregistered: string; // action id
+  actionUpdated: ActionDefinition;
+
+  actionGroupRegistered: ActionGroup;
+  actionGroupUnregistered: string; // group id
+  actionGroupUpdated: ActionGroup;
+
+  // EditorLayout events
+  editorLayoutChanged: EditorLayout;
+  editorTabOpenedInGroup: { tab: EditorTabDefinition; groupId: string; activated: boolean };
+  editorTabClosedInGroup: { tabId: string; groupId: string };
+  editorTabActivatedInGroup: { tabId: string; groupId: string };
+
+  stateChanged: Partial<UIState>;
+  selectionChanged: SelectionState;
 }
 
 export interface EditorTabFocusTarget {
-    tabId: string;
-    groupId: string;
+  tabId: string;
+  groupId: string;
 }
 
 interface EditorTabFocusEntry extends EditorTabFocusTarget {
-    key: string;
+  key: string;
 }
 
 /**
  * Central UI state store with event emission
  */
 export class UIStore {
-    private state: UIState;
-    private events: EventEmitter<UIStateEvents>;
-    private keybindingService?: KeybindingService;
-    private kbDisposers: Map<string, () => void> = new Map();
-    private editorTabFocusHistory: string[] = [];
+  private state: UIState;
+  private events: EventEmitter<UIStateEvents>;
+  private keybindingService?: KeybindingService;
+  private kbDisposers: Map<string, () => void> = new Map();
+  private editorTabFocusHistory: string[] = [];
 
-    constructor() {
-        this.state = {
-            notifications: [],
-            actionBarItems: [],
-            panels: [],
-            panelOrder: {},
-            collapsedPanels: {},
-            panelVisibility: {},
-            editorTabs: [],
-            activeEditorTabId: null,
-            dialogs: [],
-            statusBarItems: [],
-            activeDialogId: null,
-            actions: [],
-            actionGroups: [],
-            editorLayout: {
-                id: "main",
-                tabs: [],
-                focus: null,
-            },
-            selection: { type: null, data: null },
-            textEditorLanguages: [],
-            textEditorPreviews: [],
-            textEditorActions: [],
-        };
-        this.events = new EventEmitter<UIStateEvents>();
+  constructor() {
+    this.state = {
+      notifications: [],
+      actionBarItems: [],
+      panels: [],
+      panelOrder: {},
+      collapsedPanels: {},
+      panelVisibility: {},
+      editorTabs: [],
+      activeEditorTabId: null,
+      dialogs: [],
+      statusBarItems: [],
+      activeDialogId: null,
+      actions: [],
+      actionGroups: [],
+      editorLayout: {
+        id: "main",
+        tabs: [],
+        focus: null
+      },
+      selection: { type: null, data: null },
+      textEditorLanguages: [],
+      textEditorPreviews: [],
+      textEditorActions: []
+    };
+    this.events = new EventEmitter<UIStateEvents>();
+  }
+
+  /** Inject KeybindingService (called by UIService after construction) */
+  public setKeybindingService(kb: KeybindingService) {
+    this.keybindingService = kb;
+  }
+
+  /**
+   * Get event emitter
+   */
+  public getEvents(): EventEmitter<UIStateEvents> {
+    return this.events;
+  }
+
+  /**
+   * Get current state (immutable snapshot)
+   */
+  public getState(): Readonly<UIState> {
+    return { ...this.state };
+  }
+
+  // === Selection ===
+  public setSelection(selection: SelectionState): void {
+    this.state.selection = selection;
+    this.events.emit("selectionChanged", selection);
+    this.events.emit("stateChanged", { selection });
+  }
+
+  public getSelection(): SelectionState {
+    return this.state.selection;
+  }
+
+  // === Notifications ===
+
+  public addNotification(notification: Notification): void {
+    this.state.notifications.push(notification);
+    this.events.emit("notificationAdded", notification);
+    this.events.emit("stateChanged", { notifications: [...this.state.notifications] });
+  }
+
+  public removeNotification(id: string): void {
+    this.state.notifications = this.state.notifications.filter((n) => n.id !== id);
+    this.events.emit("notificationRemoved", id);
+    this.events.emit("stateChanged", { notifications: [...this.state.notifications] });
+  }
+
+  public updateNotification(notification: Notification): void {
+    const index = this.state.notifications.findIndex((n) => n.id === notification.id);
+    if (index >= 0) {
+      this.state.notifications[index] = notification;
+      this.events.emit("notificationUpdated", notification);
+      this.events.emit("stateChanged", { notifications: [...this.state.notifications] });
     }
+  }
 
-    /** Inject KeybindingService (called by UIService after construction) */
-    public setKeybindingService(kb: KeybindingService) {
-        this.keybindingService = kb;
+  public getNotifications(): Notification[] {
+    return [...this.state.notifications];
+  }
+
+  // === Action Bar Items ===
+
+  public addActionBarItem(item: ActionBarItem): void {
+    // Remove existing item with same id
+    this.state.actionBarItems = this.state.actionBarItems.filter((i) => i.id !== item.id);
+    this.state.actionBarItems.push(item);
+    // Sort by order
+    this.state.actionBarItems.sort(
+      (a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER)
+    );
+    this.events.emit("actionBarItemAdded", item);
+    this.events.emit("stateChanged", { actionBarItems: [...this.state.actionBarItems] });
+  }
+
+  public removeActionBarItem(id: string): void {
+    this.state.actionBarItems = this.state.actionBarItems.filter((i) => i.id !== id);
+    this.events.emit("actionBarItemRemoved", id);
+    this.events.emit("stateChanged", { actionBarItems: [...this.state.actionBarItems] });
+  }
+
+  public updateActionBarItem(item: ActionBarItem): void {
+    const index = this.state.actionBarItems.findIndex((i) => i.id === item.id);
+    if (index >= 0) {
+      this.state.actionBarItems[index] = item;
+      this.state.actionBarItems.sort(
+        (a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER)
+      );
+      this.events.emit("actionBarItemUpdated", item);
+      this.events.emit("stateChanged", { actionBarItems: [...this.state.actionBarItems] });
     }
+  }
 
-    /**
-     * Get event emitter
-     */
-    public getEvents(): EventEmitter<UIStateEvents> {
-        return this.events;
+  public getActionBarItems(): ActionBarItem[] {
+    return [...this.state.actionBarItems];
+  }
+
+  // === Panels ===
+
+  public registerPanel<TPayload = any>(panel: PanelDefinition<TPayload>): void {
+    // Remove existing panel with same id
+    this.state.panels = this.state.panels.filter((p) => p.id !== panel.id);
+    this.state.panels.push(panel as PanelDefinition<any>);
+    // Sort by user-defined order (if any), falling back to the static `order` field
+    this.sortPanels();
+    // Set default visibility
+    if (panel.defaultVisible !== false && !(panel.id in this.state.panelVisibility)) {
+      this.state.panelVisibility[panel.id] = true;
     }
+    this.events.emit("panelRegistered", panel as PanelDefinition<any>);
+    this.events.emit("stateChanged", { panels: [...this.state.panels] });
+  }
 
-    /**
-     * Get current state (immutable snapshot)
-     */
-    public getState(): Readonly<UIState> {
-        return { ...this.state };
+  public unregisterPanel(id: string): void {
+    this.state.panels = this.state.panels.filter((p) => p.id !== id);
+    delete this.state.panelVisibility[id];
+    this.events.emit("panelUnregistered", id);
+    this.events.emit("stateChanged", { panels: [...this.state.panels] });
+  }
+
+  public updatePanelPayload<TPayload = any>(panelId: string, payload: TPayload): void {
+    const panel = this.state.panels.find((p) => p.id === panelId);
+    if (panel) {
+      panel.payload = payload;
+      this.events.emit("stateChanged", { panels: [...this.state.panels] });
     }
+  }
 
-    // === Selection ===
-    public setSelection(selection: SelectionState): void {
-        this.state.selection = selection;
-        this.events.emit("selectionChanged", selection);
-        this.events.emit("stateChanged", { selection });
-    }
+  public setPanelVisibility(panelId: string, visible: boolean): void {
+    this.state.panelVisibility[panelId] = visible;
+    this.events.emit("panelVisibilityChanged", { panelId, visible });
+    this.events.emit("stateChanged", { panelVisibility: { ...this.state.panelVisibility } });
+  }
 
-    public getSelection(): SelectionState {
-        return this.state.selection;
-    }
+  public togglePanelVisibility(panelId: string): void {
+    const visible = !this.state.panelVisibility[panelId];
+    this.setPanelVisibility(panelId, visible);
+  }
 
-    // === Notifications ===
+  public getPanels(): PanelDefinition[] {
+    return [...this.state.panels];
+  }
 
-    public addNotification(notification: Notification): void {
-        this.state.notifications.push(notification);
-        this.events.emit("notificationAdded", notification);
-        this.events.emit("stateChanged", { notifications: [...this.state.notifications] });
-    }
+  public getPanelVisibility(): Record<string, boolean> {
+    return { ...this.state.panelVisibility };
+  }
 
-    public removeNotification(id: string): void {
-        this.state.notifications = this.state.notifications.filter(n => n.id !== id);
-        this.events.emit("notificationRemoved", id);
-        this.events.emit("stateChanged", { notifications: [...this.state.notifications] });
-    }
+  /** Fixed grouping of positions so `state.panels` stays partitioned by dock area. */
+  private static readonly POSITION_RANK: Record<string, number> = {
+    [PanelPosition.Left]: 0,
+    [PanelPosition.Right]: 1,
+    [PanelPosition.Bottom]: 2
+  };
 
-    public updateNotification(notification: Notification): void {
-        const index = this.state.notifications.findIndex(n => n.id === notification.id);
-        if (index >= 0) {
-            this.state.notifications[index] = notification;
-            this.events.emit("notificationUpdated", notification);
-            this.events.emit("stateChanged", { notifications: [...this.state.notifications] });
+  /**
+   * Sort `state.panels` in place: grouped by position, then by the user-defined order override
+   * for that position (if present), falling back to the static `order` field. Panels not listed
+   * in an override are appended after the listed ones, keeping their `order`-based sequence.
+   */
+  private sortPanels(): void {
+    const rank = (position: string) => UIStore.POSITION_RANK[position] ?? Number.MAX_SAFE_INTEGER;
+    this.state.panels.sort((a, b) => {
+      const ra = rank(a.position);
+      const rb = rank(b.position);
+      if (ra !== rb) {
+        return ra - rb;
+      }
+      const override = this.state.panelOrder[a.position];
+      if (override) {
+        const ia = override.indexOf(a.id);
+        const ib = override.indexOf(b.id);
+        const oa = ia === -1 ? Number.MAX_SAFE_INTEGER : ia;
+        const ob = ib === -1 ? Number.MAX_SAFE_INTEGER : ib;
+        if (oa !== ob) {
+          return oa - ob;
         }
+      }
+      return (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER);
+    });
+  }
+
+  /**
+   * Set the user-defined ordering for a dock area (list of panel ids, first shown first).
+   * Reorders the panels and notifies subscribers.
+   */
+  public setPanelOrder(position: PanelPosition, orderedIds: string[]): void {
+    this.state.panelOrder = { ...this.state.panelOrder, [position]: [...orderedIds] };
+    this.sortPanels();
+    this.events.emit("panelOrderChanged", { position, order: [...orderedIds] });
+    this.events.emit("stateChanged", { panels: [...this.state.panels] });
+  }
+
+  public getPanelOrder(): Record<string, string[]> {
+    const copy: Record<string, string[]> = {};
+    for (const [position, ids] of Object.entries(this.state.panelOrder)) {
+      copy[position] = [...ids];
+    }
+    return copy;
+  }
+
+  /**
+   * Fold a set of panels into a dock's collapse group (list of panel ids). Membership is
+   * independent of visibility and of the order override: a collapsed panel keeps its slot in the
+   * order, it is just rendered inside the group's flyout instead of directly on the rail.
+   */
+  public setCollapsedPanels(position: PanelPosition, panelIds: string[]): void {
+    this.state.collapsedPanels = { ...this.state.collapsedPanels, [position]: [...panelIds] };
+    this.events.emit("collapsedPanelsChanged", { position, collapsed: [...panelIds] });
+    this.events.emit("stateChanged", { collapsedPanels: { ...this.state.collapsedPanels } });
+  }
+
+  public getCollapsedPanels(): Record<string, string[]> {
+    const copy: Record<string, string[]> = {};
+    for (const [position, ids] of Object.entries(this.state.collapsedPanels)) {
+      copy[position] = [...ids];
+    }
+    return copy;
+  }
+
+  // === Text editor contributions ===
+  //
+  // Three flat, id-keyed lists, deliberately as dumb as the panel list above: every mutation goes
+  // out on `stateChanged`, so the open text tabs pick it up through the same hook mechanism every
+  // other UI registry uses.
+  //
+  // The order is registration order, and it carries meaning:
+  // `TextEditorContributionService.languageForExtension` resolves a contested extension by taking
+  // the first entry that claims it. Re-registering an id does not replace it in place - it drops
+  // the old entry and appends the new one - so a plugin that re-registers moves itself behind
+  // everyone else and hands a contested extension to whoever is now in front.
+
+  public registerTextEditorLanguage(def: PluginTextEditorLanguageDef): void {
+    this.state.textEditorLanguages = [
+      ...this.state.textEditorLanguages.filter((entry) => entry.id !== def.id),
+      def
+    ];
+    this.events.emit("stateChanged", { textEditorLanguages: [...this.state.textEditorLanguages] });
+  }
+
+  public unregisterTextEditorLanguage(id: string): void {
+    this.state.textEditorLanguages = this.state.textEditorLanguages.filter(
+      (entry) => entry.id !== id
+    );
+    this.events.emit("stateChanged", { textEditorLanguages: [...this.state.textEditorLanguages] });
+  }
+
+  public getTextEditorLanguages(): PluginTextEditorLanguageDef[] {
+    return [...this.state.textEditorLanguages];
+  }
+
+  public registerTextEditorPreview(def: PluginTextEditorPreviewDef): void {
+    this.state.textEditorPreviews = [
+      ...this.state.textEditorPreviews.filter((entry) => entry.id !== def.id),
+      def
+    ];
+    this.events.emit("stateChanged", { textEditorPreviews: [...this.state.textEditorPreviews] });
+  }
+
+  public unregisterTextEditorPreview(id: string): void {
+    this.state.textEditorPreviews = this.state.textEditorPreviews.filter(
+      (entry) => entry.id !== id
+    );
+    this.events.emit("stateChanged", { textEditorPreviews: [...this.state.textEditorPreviews] });
+  }
+
+  public getTextEditorPreviews(): PluginTextEditorPreviewDef[] {
+    return [...this.state.textEditorPreviews];
+  }
+
+  public registerTextEditorAction(def: PluginTextEditorActionDef): void {
+    this.state.textEditorActions = [
+      ...this.state.textEditorActions.filter((entry) => entry.id !== def.id),
+      def
+    ];
+    this.events.emit("stateChanged", { textEditorActions: [...this.state.textEditorActions] });
+  }
+
+  public unregisterTextEditorAction(id: string): void {
+    this.state.textEditorActions = this.state.textEditorActions.filter((entry) => entry.id !== id);
+    this.events.emit("stateChanged", { textEditorActions: [...this.state.textEditorActions] });
+  }
+
+  public getTextEditorActions(): PluginTextEditorActionDef[] {
+    return [...this.state.textEditorActions];
+  }
+
+  // === Editor Tabs ===
+
+  public openEditorTab(tab: EditorTab): void {
+    // Check if tab already exists
+    const index = this.state.editorTabs.findIndex((t) => t.id === tab.id);
+    if (index >= 0) {
+      // Update existing tab
+      this.state.editorTabs[index] = tab;
+      this.events.emit("editorTabUpdated", tab);
+    } else {
+      // Add new tab
+      this.state.editorTabs.push(tab);
+      this.events.emit("editorTabOpened", tab);
+    }
+    // Activate the tab
+    this.state.activeEditorTabId = tab.id;
+    this.events.emit("editorTabActivated", tab.id);
+    this.events.emit("stateChanged", {
+      editorTabs: [...this.state.editorTabs],
+      activeEditorTabId: this.state.activeEditorTabId
+    });
+  }
+
+  public closeEditorTab(tabId: string): void {
+    this.state.editorTabs = this.state.editorTabs.filter((t) => t.id !== tabId);
+    // If closed tab was active, activate another
+    if (this.state.activeEditorTabId === tabId) {
+      this.state.activeEditorTabId =
+        this.state.editorTabs.length > 0
+          ? this.state.editorTabs[this.state.editorTabs.length - 1].id
+          : null;
+    }
+    this.events.emit("editorTabClosed", tabId);
+    this.events.emit("stateChanged", {
+      editorTabs: [...this.state.editorTabs],
+      activeEditorTabId: this.state.activeEditorTabId
+    });
+  }
+
+  public setActiveEditorTab(tabId: string): void {
+    if (this.state.editorTabs.some((t) => t.id === tabId)) {
+      this.state.activeEditorTabId = tabId;
+      this.events.emit("editorTabActivated", tabId);
+      this.events.emit("stateChanged", { activeEditorTabId: tabId });
+    }
+  }
+
+  public updateEditorTab(tab: EditorTab): void {
+    const index = this.state.editorTabs.findIndex((t) => t.id === tab.id);
+    if (index >= 0) {
+      this.state.editorTabs[index] = tab;
+      this.events.emit("editorTabUpdated", tab);
+      this.events.emit("stateChanged", { editorTabs: [...this.state.editorTabs] });
+    }
+  }
+
+  public getEditorTabs(): EditorTab[] {
+    return [...this.state.editorTabs];
+  }
+
+  public getActiveEditorTabId(): string | null {
+    return this.state.activeEditorTabId;
+  }
+
+  // === Dialogs ===
+
+  public openDialog(dialog: Dialog): void {
+    // Remove existing dialog with same id
+    this.state.dialogs = this.state.dialogs.filter((d) => d.id !== dialog.id);
+    this.state.dialogs.push(dialog);
+    this.state.activeDialogId = dialog.id;
+    this.events.emit("dialogOpened", dialog);
+    this.events.emit("stateChanged", {
+      dialogs: [...this.state.dialogs],
+      activeDialogId: this.state.activeDialogId
+    });
+  }
+
+  public closeDialog(id: string): void {
+    const dialog = this.state.dialogs.find((d) => d.id === id);
+    this.state.dialogs = this.state.dialogs.filter((d) => d.id !== id);
+    if (this.state.activeDialogId === id) {
+      this.state.activeDialogId =
+        this.state.dialogs.length > 0 ? this.state.dialogs[this.state.dialogs.length - 1].id : null;
+    }
+    this.events.emit("dialogClosed", id);
+    this.events.emit("stateChanged", {
+      dialogs: [...this.state.dialogs],
+      activeDialogId: this.state.activeDialogId
+    });
+
+    // Call onClose callback
+    if (dialog?.onClose) {
+      dialog.onClose();
+    }
+  }
+
+  public getDialogs(): Dialog[] {
+    return [...this.state.dialogs];
+  }
+
+  public getActiveDialogId(): string | null {
+    return this.state.activeDialogId;
+  }
+
+  // === Status Bar Items ===
+
+  public addStatusBarItem(item: StatusBarItem): void {
+    // Remove existing item with same id
+    this.state.statusBarItems = this.state.statusBarItems.filter((i) => i.id !== item.id);
+    this.state.statusBarItems.push(item);
+    // Sort by priority
+    this.state.statusBarItems.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+    this.events.emit("statusBarItemAdded", item);
+    this.events.emit("stateChanged", { statusBarItems: [...this.state.statusBarItems] });
+  }
+
+  public removeStatusBarItem(id: string): void {
+    this.state.statusBarItems = this.state.statusBarItems.filter((i) => i.id !== id);
+    this.events.emit("statusBarItemRemoved", id);
+    this.events.emit("stateChanged", { statusBarItems: [...this.state.statusBarItems] });
+  }
+
+  public updateStatusBarItem(item: StatusBarItem): void {
+    const index = this.state.statusBarItems.findIndex((i) => i.id === item.id);
+    if (index >= 0) {
+      this.state.statusBarItems[index] = item;
+      this.state.statusBarItems.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+      this.events.emit("statusBarItemUpdated", item);
+      this.events.emit("stateChanged", { statusBarItems: [...this.state.statusBarItems] });
+    }
+  }
+
+  public getStatusBarItems(): StatusBarItem[] {
+    return [...this.state.statusBarItems];
+  }
+
+  // === Actions ===
+
+  public registerAction(action: ActionDefinition): void {
+    // Remove existing action with same id
+    this.state.actions = this.state.actions.filter((a) => a.id !== action.id);
+    this.state.actions.push(action);
+    // Sort by order
+    this.state.actions.sort(
+      (a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER)
+    );
+    // Auto keybinding registration
+    this.registerKeybindingForAction(action);
+    this.events.emit("actionRegistered", action);
+    this.events.emit("stateChanged", { actions: [...this.state.actions] });
+  }
+
+  public unregisterAction(id: string): void {
+    this.state.actions = this.state.actions.filter((a) => a.id !== id);
+    this.events.emit("actionUnregistered", id);
+    this.events.emit("stateChanged", { actions: [...this.state.actions] });
+    // Dispose keybinding if exists
+    const d = this.kbDisposers.get(id);
+    if (d) {
+      d();
+      this.kbDisposers.delete(id);
+    }
+  }
+
+  public updateAction(action: ActionDefinition): void {
+    const index = this.state.actions.findIndex((a) => a.id === action.id);
+    if (index >= 0) {
+      this.state.actions[index] = action;
+      this.state.actions.sort(
+        (a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER)
+      );
+      this.registerKeybindingForAction(action);
+      this.events.emit("actionUpdated", action);
+      this.events.emit("stateChanged", { actions: [...this.state.actions] });
+    }
+  }
+
+  public getActions(): ActionDefinition[] {
+    return [...this.state.actions];
+  }
+
+  // === Action Groups ===
+
+  public registerActionGroup(group: ActionGroup): void {
+    // Remove existing group with same id
+    this.state.actionGroups = this.state.actionGroups.filter((g) => g.id !== group.id);
+    this.state.actionGroups.push(group);
+    // Sort by order
+    this.state.actionGroups.sort(
+      (a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER)
+    );
+
+    // === Auto keybinding registration for group actions ===
+    for (const action of UIStore.flattenGroupActions(group)) {
+      if ("separator" in action) continue;
+      this.registerKeybindingForAction(action, group.id);
     }
 
-    public getNotifications(): Notification[] {
-        return [...this.state.notifications];
+    this.events.emit("actionGroupRegistered", group);
+    this.events.emit("stateChanged", { actionGroups: [...this.state.actionGroups] });
+  }
+
+  public unregisterActionGroup(id: string): void {
+    this.state.actionGroups = this.state.actionGroups.filter((g) => g.id !== id);
+    this.events.emit("actionGroupUnregistered", id);
+    this.events.emit("stateChanged", { actionGroups: [...this.state.actionGroups] });
+    for (const aid of Array.from(this.kbDisposers.keys())) {
+      if (aid.startsWith(`${id}-`)) {
+        const dispose = this.kbDisposers.get(aid);
+        dispose?.();
+        this.kbDisposers.delete(aid);
+      }
+    }
+  }
+
+  public updateActionGroup(group: ActionGroup): void {
+    const index = this.state.actionGroups.findIndex((g) => g.id === group.id);
+    if (index >= 0) {
+      this.state.actionGroups[index] = group;
+      this.state.actionGroups.sort(
+        (a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER)
+      );
+      this.events.emit("actionGroupUpdated", group);
+      this.events.emit("stateChanged", { actionGroups: [...this.state.actionGroups] });
+    }
+  }
+
+  public getActionGroups(): ActionGroup[] {
+    return [...this.state.actionGroups];
+  }
+
+  // === Editor Layout ===
+
+  /** Replace the group node with the given id by an arbitrary layout subtree. */
+  private replaceGroupNode(
+    layout: EditorLayout,
+    groupId: string,
+    replacement: (group: EditorGroup) => EditorLayout
+  ): EditorLayout {
+    if ("tabs" in layout) {
+      return layout.id === groupId ? replacement(layout) : layout;
+    }
+    return {
+      ...layout,
+      first: this.replaceGroupNode(layout.first, groupId, replacement),
+      second: this.replaceGroupNode(layout.second, groupId, replacement)
+    };
+  }
+
+  /** All groups in the layout, first/left before second/right. */
+  private collectGroups(layout: EditorLayout = this.state.editorLayout): EditorGroup[] {
+    if ("tabs" in layout) {
+      return [layout];
+    }
+    return [...this.collectGroups(layout.first), ...this.collectGroups(layout.second)];
+  }
+
+  /** A group/split id not used anywhere in the current layout. */
+  private nextLayoutNodeId(prefix: string): string {
+    const used = new Set<string>();
+    const visit = (layout: EditorLayout) => {
+      used.add(layout.id);
+      if (!("tabs" in layout)) {
+        visit(layout.first);
+        visit(layout.second);
+      }
+    };
+    visit(this.state.editorLayout);
+    for (let index = 1; ; index++) {
+      const candidate = `${prefix}-${index}`;
+      if (!used.has(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  /**
+   * Split a group: its active tab moves into a fresh group placed beside it ("horizontal" puts
+   * the new group to the right, "vertical" below). The moved tab keeps focus, now in the new
+   * group.
+   *
+   * Needs two tabs to be meaningful: splitting a single-tab group would move the only tab out
+   * and leave an empty pane sitting on half the editor area - exactly the state
+   * {@link pruneEmptyEditorGroups} exists to undo. Enforced here rather than only at the call
+   * sites so the chord, the palette command and the tab menu cannot disagree.
+   */
+  public splitEditorGroup(
+    groupId: string,
+    direction: "horizontal" | "vertical",
+    tabId?: string
+  ): boolean {
+    const group = this.findGroup(this.state.editorLayout, groupId);
+    if (!group || group.tabs.length < 2) {
+      return false;
+    }
+    // `tabId` is the tab a context menu was opened on; commands and chords have no click
+    // target and split the focused tab instead.
+    const movedTab =
+      (tabId ? group.tabs.find((tab) => tab.id === tabId) : undefined) ??
+      group.tabs.find((tab) => tab.id === group.focus) ??
+      group.tabs[group.tabs.length - 1];
+    const newGroupId = this.nextLayoutNodeId("group");
+    const splitId = this.nextLayoutNodeId("split");
+
+    this.state.editorLayout = this.replaceGroupNode(this.state.editorLayout, groupId, (target) => {
+      const remaining = target.tabs.filter((tab) => tab.id !== movedTab.id);
+      return {
+        id: splitId,
+        direction,
+        ratio: 0.5,
+        first: {
+          ...target,
+          tabs: remaining,
+          // Keep the source pane on its own tab when that tab stayed behind; when the
+          // active tab is the one being split off, ensureEditorGroupHasValidFocus below
+          // falls the pane back to the tab it most recently showed.
+          focus: remaining.some((tab) => tab.id === target.focus) ? target.focus : null
+        },
+        second: { id: newGroupId, tabs: [movedTab], focus: movedTab.id }
+      };
+    });
+
+    this.ensureEditorGroupHasValidFocus(groupId);
+    this.recordEditorTabFocus(newGroupId, movedTab.id);
+    this.events.emit("editorLayoutChanged", this.state.editorLayout);
+    this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+    return true;
+  }
+
+  /**
+   * Insert a fresh empty group beside `targetGroupId`, returning its id. "before" puts the new
+   * group left/above the target, "after" right/below.
+   *
+   * Does not emit - the caller is mid-operation and emits once its own work is done. The caller
+   * MUST also put something in the returned group: an empty pane renders as half the editor area
+   * showing nothing, and {@link pruneEmptyEditorGroups} only runs on close.
+   */
+  private insertEmptyGroupBeside(
+    targetGroupId: string,
+    direction: "horizontal" | "vertical",
+    side: "before" | "after"
+  ): string | null {
+    if (!this.findGroup(this.state.editorLayout, targetGroupId)) {
+      return null;
+    }
+    const newGroupId = this.nextLayoutNodeId("group");
+    const splitId = this.nextLayoutNodeId("split");
+    const created: EditorGroup = { id: newGroupId, tabs: [], focus: null };
+
+    this.state.editorLayout = this.replaceGroupNode(
+      this.state.editorLayout,
+      targetGroupId,
+      (group) => ({
+        id: splitId,
+        direction,
+        ratio: 0.5,
+        first: side === "before" ? created : group,
+        second: side === "before" ? group : created
+      })
+    );
+
+    return newGroupId;
+  }
+
+  /**
+   * Split a group to receive dropped content, returning the new empty group's id.
+   *
+   * Unlike {@link splitEditorGroup} there is no two-tab requirement: the content lands from
+   * outside (the assets panel), so the target group never gives a tab up. The caller must open
+   * something in the returned group - see {@link insertEmptyGroupBeside}.
+   */
+  public splitEditorGroupForDrop(
+    targetGroupId: string,
+    direction: "horizontal" | "vertical",
+    side: "before" | "after"
+  ): string | null {
+    const newGroupId = this.insertEmptyGroupBeside(targetGroupId, direction, side);
+    if (!newGroupId) {
+      return null;
+    }
+    this.events.emit("editorLayoutChanged", this.state.editorLayout);
+    this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+    return newGroupId;
+  }
+
+  /**
+   * Move a tab to `toGroupId` at `index` (appended when omitted). Same-group moves reorder.
+   *
+   * The tab object travels as-is, so its payload and modified flag survive; the React subtree is
+   * still remounted, since the tab lands under a different group component.
+   */
+  public moveEditorTabToGroup(
+    tabId: string,
+    fromGroupId: string,
+    toGroupId: string,
+    index?: number
+  ): boolean {
+    const from = this.findGroup(this.state.editorLayout, fromGroupId);
+    if (!from) {
+      return false;
+    }
+    const currentIndex = from.tabs.findIndex((tab) => tab.id === tabId);
+    if (currentIndex < 0) {
+      return false;
+    }
+    if (fromGroupId === toGroupId) {
+      // Dropping a tab onto either side of where it already sits is a no-op. Bailing keeps
+      // an accidental nudge from remounting the editor for an identical layout.
+      const insertAt = index ?? from.tabs.length;
+      if (insertAt === currentIndex || insertAt === currentIndex + 1) {
+        return false;
+      }
+    }
+    return this.relocateEditorTab(tabId, fromGroupId, toGroupId, index);
+  }
+
+  /**
+   * Move a tab into a new pane split off `targetGroupId` - the drag-to-split landing.
+   *
+   * Splitting a group's *own* only tab off itself is rejected for the same reason
+   * {@link splitEditorGroup} needs two tabs: the source would empty out and immediately collapse
+   * back, so the whole gesture would be an expensive no-op.
+   */
+  public moveEditorTabToNewSplit(
+    tabId: string,
+    fromGroupId: string,
+    targetGroupId: string,
+    direction: "horizontal" | "vertical",
+    side: "before" | "after"
+  ): boolean {
+    const from = this.findGroup(this.state.editorLayout, fromGroupId);
+    if (!from?.tabs.some((tab) => tab.id === tabId)) {
+      return false;
+    }
+    if (fromGroupId === targetGroupId && from.tabs.length < 2) {
+      return false;
+    }
+    const newGroupId = this.insertEmptyGroupBeside(targetGroupId, direction, side);
+    if (!newGroupId) {
+      return false;
+    }
+    return this.relocateEditorTab(tabId, fromGroupId, newGroupId, undefined);
+  }
+
+  /** Detach a tab from one group and re-attach it to another, focused. Emits on success. */
+  private relocateEditorTab(
+    tabId: string,
+    fromGroupId: string,
+    toGroupId: string,
+    index: number | undefined
+  ): boolean {
+    const from = this.findGroup(this.state.editorLayout, fromGroupId);
+    const moved = from?.tabs.find((tab) => tab.id === tabId);
+    if (!from || !moved || !this.findGroup(this.state.editorLayout, toGroupId)) {
+      return false;
     }
 
-    // === Action Bar Items ===
+    // A same-group index was measured against the list *including* the dragged tab, so once the
+    // tab is pulled out every position past it shifts down by one.
+    const currentIndex = from.tabs.findIndex((tab) => tab.id === tabId);
+    const insertAt =
+      index !== undefined && fromGroupId === toGroupId && index > currentIndex ? index - 1 : index;
 
-    public addActionBarItem(item: ActionBarItem): void {
-        // Remove existing item with same id
-        this.state.actionBarItems = this.state.actionBarItems.filter(i => i.id !== item.id);
-        this.state.actionBarItems.push(item);
-        // Sort by order
-        this.state.actionBarItems.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
-        this.events.emit("actionBarItemAdded", item);
-        this.events.emit("stateChanged", { actionBarItems: [...this.state.actionBarItems] });
+    this.state.editorLayout = this.updateGroup(this.state.editorLayout, fromGroupId, (group) => ({
+      ...group,
+      tabs: group.tabs.filter((tab) => tab.id !== tabId),
+      focus: group.focus === tabId ? null : group.focus
+    }));
+
+    this.state.editorLayout = this.updateGroup(this.state.editorLayout, toGroupId, (group) => {
+      // Filter again: the same tab id can be open in two groups, and a move must merge into
+      // the destination's copy rather than duplicate it.
+      const tabs = group.tabs.filter((tab) => tab.id !== tabId);
+      const at =
+        insertAt === undefined ? tabs.length : Math.max(0, Math.min(insertAt, tabs.length));
+      tabs.splice(at, 0, moved);
+      return { ...group, tabs, focus: tabId };
+    });
+
+    this.pruneEmptyEditorGroups();
+    this.ensureEditorGroupHasValidFocus(fromGroupId);
+    this.recordEditorTabFocus(toGroupId, tabId);
+
+    this.events.emit("editorLayoutChanged", this.state.editorLayout);
+    this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+    return true;
+  }
+
+  /**
+   * Collapse the layout to a single group: every other group's tabs append into the kept group
+   * (nothing is closed - "close other groups" merges, it does not discard work).
+   */
+  public closeOtherEditorGroups(keepGroupId: string): boolean {
+    const keep = this.findGroup(this.state.editorLayout, keepGroupId);
+    if (!keep) {
+      return false;
+    }
+    const groups = this.collectGroups();
+    if (groups.length < 2) {
+      return false;
     }
 
-    public removeActionBarItem(id: string): void {
-        this.state.actionBarItems = this.state.actionBarItems.filter(i => i.id !== id);
-        this.events.emit("actionBarItemRemoved", id);
-        this.events.emit("stateChanged", { actionBarItems: [...this.state.actionBarItems] });
-    }
-
-    public updateActionBarItem(item: ActionBarItem): void {
-        const index = this.state.actionBarItems.findIndex(i => i.id === item.id);
-        if (index >= 0) {
-            this.state.actionBarItems[index] = item;
-            this.state.actionBarItems.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
-            this.events.emit("actionBarItemUpdated", item);
-            this.events.emit("stateChanged", { actionBarItems: [...this.state.actionBarItems] });
+    const merged: EditorGroup = { ...keep, tabs: [...keep.tabs] };
+    const knownIds = new Set(merged.tabs.map((tab) => tab.id));
+    for (const group of groups) {
+      if (group.id === keepGroupId) {
+        continue;
+      }
+      for (const tab of group.tabs) {
+        if (!knownIds.has(tab.id)) {
+          knownIds.add(tab.id);
+          merged.tabs.push(tab);
         }
+      }
+    }
+    if (!merged.focus || !merged.tabs.some((tab) => tab.id === merged.focus)) {
+      merged.focus = merged.tabs[merged.tabs.length - 1]?.id ?? null;
     }
 
-    public getActionBarItems(): ActionBarItem[] {
-        return [...this.state.actionBarItems];
+    this.state.editorLayout = merged;
+    this.pruneEditorTabFocusHistory();
+    if (merged.focus) {
+      this.recordEditorTabFocus(merged.id, merged.focus);
     }
+    this.events.emit("editorLayoutChanged", this.state.editorLayout);
+    this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+    return true;
+  }
 
-    // === Panels ===
+  /**
+   * Drop split panes that no longer hold an editor. Closing the last tab of one side of a split
+   * would otherwise leave an empty pane with a bare tab strip sitting on half the editor area;
+   * the split exists to show two editors, so it collapses back to the surviving side. The root
+   * group is kept even when empty - that is the "no tabs open" drop zone.
+   */
+  private pruneEmptyEditorGroups(): void {
+    const prune = (layout: EditorLayout): EditorLayout => {
+      if ("tabs" in layout) {
+        return layout;
+      }
+      const first = prune(layout.first);
+      const second = prune(layout.second);
+      const isEmptyGroup = (node: EditorLayout) => "tabs" in node && node.tabs.length === 0;
+      if (isEmptyGroup(first)) {
+        return second;
+      }
+      if (isEmptyGroup(second)) {
+        return first;
+      }
+      return first === layout.first && second === layout.second
+        ? layout
+        : { ...layout, first, second };
+    };
+    this.state.editorLayout = prune(this.state.editorLayout);
+  }
 
-    public registerPanel<TPayload = any>(panel: PanelDefinition<TPayload>): void {
-        // Remove existing panel with same id
-        this.state.panels = this.state.panels.filter(p => p.id !== panel.id);
-        this.state.panels.push(panel as PanelDefinition<any>);
-        // Sort by user-defined order (if any), falling back to the static `order` field
-        this.sortPanels();
-        // Set default visibility
-        if (panel.defaultVisible !== false && !(panel.id in this.state.panelVisibility)) {
-            this.state.panelVisibility[panel.id] = true;
+  private findGroup(layout: EditorLayout, groupId?: string): EditorGroup | null {
+    if ("tabs" in layout) {
+      return !groupId || layout.id === groupId ? layout : null;
+    }
+    return this.findGroup(layout.first, groupId) || this.findGroup(layout.second, groupId);
+  }
+
+  /**
+   * A group id that definitely exists: the named one, else the first group in the layout.
+   *
+   * Callers hold group ids across time (a restored session, a queued open, a pane that has since
+   * been closed), so a stale id must land somewhere real rather than address a group that is
+   * gone - reading `.id` off a split root yields `undefined`, and every update then silently
+   * matches nothing.
+   */
+  private resolveGroupId(groupId?: string): string {
+    const named = this.findGroup(this.state.editorLayout, groupId);
+    if (named) {
+      return named.id;
+    }
+    const first = this.findGroup(this.state.editorLayout);
+    return first?.id ?? (this.state.editorLayout as EditorGroup).id;
+  }
+
+  /** Update the split node with the given id, leaving the rest of the tree alone. */
+  private updateSplit(
+    layout: EditorLayout,
+    splitId: string,
+    updater: (split: EditorSplit) => EditorSplit
+  ): EditorLayout {
+    if ("tabs" in layout) {
+      return layout;
+    }
+    if (layout.id === splitId) {
+      return updater(layout);
+    }
+    return {
+      ...layout,
+      first: this.updateSplit(layout.first, splitId, updater),
+      second: this.updateSplit(layout.second, splitId, updater)
+    };
+  }
+
+  /**
+   * Resize a split. `ratio` is the first/left/top side's share of the axis.
+   *
+   * The bound here is deliberately loose - it exists only to stop a pane reaching literal zero,
+   * where it would render a tab strip too thin to grab and drag back. The *meaningful* minimum is
+   * a pixel one and belongs to the sash, which is the only caller that knows how wide the
+   * container actually is. Tightening this to something like 10% would silently override that:
+   * on a 2560px editor area it would forbid any pane under 256px, which is not a limit anyone
+   * asked for. See EDITOR_MIN_PANE_PX in editorSplitResize.ts for the real constraint.
+   */
+  public setEditorSplitRatio(splitId: string, ratio: number): boolean {
+    if (!Number.isFinite(ratio)) {
+      return false;
+    }
+    const clamped = Math.min(
+      1 - EDITOR_SPLIT_RATIO_EPSILON,
+      Math.max(EDITOR_SPLIT_RATIO_EPSILON, ratio)
+    );
+    let changed = false;
+
+    this.state.editorLayout = this.updateSplit(this.state.editorLayout, splitId, (split) => {
+      if (split.ratio === clamped) {
+        return split;
+      }
+      changed = true;
+      return { ...split, ratio: clamped };
+    });
+
+    if (!changed) {
+      return false;
+    }
+    this.events.emit("editorLayoutChanged", this.state.editorLayout);
+    this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+    return true;
+  }
+
+  /**
+   * Install a whole layout tree - the session restore path, and the only caller that should use
+   * it. Everything else mutates through the targeted operations above so the focus history and
+   * empty-pane invariants stay intact; this rebuilds them from scratch instead.
+   */
+  public restoreEditorLayout(layout: EditorLayout): void {
+    this.state.editorLayout = layout;
+    this.pruneEmptyEditorGroups();
+    for (const group of this.collectGroups()) {
+      this.ensureEditorGroupHasValidFocus(group.id);
+    }
+    this.editorTabFocusHistory = [];
+    for (const group of this.collectGroups()) {
+      if (group.focus) {
+        this.recordEditorTabFocus(group.id, group.focus);
+      }
+    }
+    this.events.emit("editorLayoutChanged", this.state.editorLayout);
+    this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+  }
+
+  private updateGroup(
+    layout: EditorLayout,
+    groupId: string,
+    updater: (group: EditorGroup) => EditorGroup
+  ): EditorLayout {
+    if ("tabs" in layout) {
+      return layout.id === groupId ? updater(layout) : layout;
+    }
+    return {
+      ...layout,
+      first: this.updateGroup(layout.first, groupId, updater),
+      second: this.updateGroup(layout.second, groupId, updater)
+    };
+  }
+
+  private getEditorTabFocusKey(groupId: string, tabId: string): string {
+    return `${groupId}:${tabId}`;
+  }
+
+  private collectEditorTabFocusEntries(
+    layout: EditorLayout = this.state.editorLayout
+  ): EditorTabFocusEntry[] {
+    const entries: EditorTabFocusEntry[] = [];
+
+    const visit = (node: EditorLayout) => {
+      if ("tabs" in node) {
+        for (const tab of node.tabs) {
+          entries.push({
+            key: this.getEditorTabFocusKey(node.id, tab.id),
+            tabId: tab.id,
+            groupId: node.id
+          });
         }
-        this.events.emit("panelRegistered", panel as PanelDefinition<any>);
-        this.events.emit("stateChanged", { panels: [...this.state.panels] });
-    }
+        return;
+      }
 
-    public unregisterPanel(id: string): void {
-        this.state.panels = this.state.panels.filter(p => p.id !== id);
-        delete this.state.panelVisibility[id];
-        this.events.emit("panelUnregistered", id);
-        this.events.emit("stateChanged", { panels: [...this.state.panels] });
-    }
-
-    public updatePanelPayload<TPayload = any>(panelId: string, payload: TPayload): void {
-        const panel = this.state.panels.find(p => p.id === panelId);
-        if (panel) {
-            panel.payload = payload;
-            this.events.emit("stateChanged", { panels: [...this.state.panels] });
-        }
-    }
-
-    public setPanelVisibility(panelId: string, visible: boolean): void {
-        this.state.panelVisibility[panelId] = visible;
-        this.events.emit("panelVisibilityChanged", { panelId, visible });
-        this.events.emit("stateChanged", { panelVisibility: { ...this.state.panelVisibility } });
-    }
-
-    public togglePanelVisibility(panelId: string): void {
-        const visible = !this.state.panelVisibility[panelId];
-        this.setPanelVisibility(panelId, visible);
-    }
-
-    public getPanels(): PanelDefinition[] {
-        return [...this.state.panels];
-    }
-
-    public getPanelVisibility(): Record<string, boolean> {
-        return { ...this.state.panelVisibility };
-    }
-
-    /** Fixed grouping of positions so `state.panels` stays partitioned by dock area. */
-    private static readonly POSITION_RANK: Record<string, number> = {
-        [PanelPosition.Left]: 0,
-        [PanelPosition.Right]: 1,
-        [PanelPosition.Bottom]: 2,
+      visit(node.first);
+      visit(node.second);
     };
 
-    /**
-     * Sort `state.panels` in place: grouped by position, then by the user-defined order override
-     * for that position (if present), falling back to the static `order` field. Panels not listed
-     * in an override are appended after the listed ones, keeping their `order`-based sequence.
-     */
-    private sortPanels(): void {
-        const rank = (position: string) => UIStore.POSITION_RANK[position] ?? Number.MAX_SAFE_INTEGER;
-        this.state.panels.sort((a, b) => {
-            const ra = rank(a.position);
-            const rb = rank(b.position);
-            if (ra !== rb) {
-                return ra - rb;
-            }
-            const override = this.state.panelOrder[a.position];
-            if (override) {
-                const ia = override.indexOf(a.id);
-                const ib = override.indexOf(b.id);
-                const oa = ia === -1 ? Number.MAX_SAFE_INTEGER : ia;
-                const ob = ib === -1 ? Number.MAX_SAFE_INTEGER : ib;
-                if (oa !== ob) {
-                    return oa - ob;
-                }
-            }
-            return (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER);
-        });
+    visit(layout);
+    return entries;
+  }
+
+  private pruneEditorTabFocusHistory(
+    entries: readonly EditorTabFocusEntry[] = this.collectEditorTabFocusEntries()
+  ): void {
+    const validKeys = new Set(entries.map((entry) => entry.key));
+    const seen = new Set<string>();
+    const pruned: string[] = [];
+
+    for (const key of this.editorTabFocusHistory) {
+      if (!validKeys.has(key) || seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      pruned.push(key);
     }
 
-    /**
-     * Set the user-defined ordering for a dock area (list of panel ids, first shown first).
-     * Reorders the panels and notifies subscribers.
-     */
-    public setPanelOrder(position: PanelPosition, orderedIds: string[]): void {
-        this.state.panelOrder = { ...this.state.panelOrder, [position]: [...orderedIds] };
-        this.sortPanels();
-        this.events.emit("panelOrderChanged", { position, order: [...orderedIds] });
-        this.events.emit("stateChanged", { panels: [...this.state.panels] });
+    this.editorTabFocusHistory = pruned;
+  }
+
+  private recordEditorTabFocus(groupId: string, tabId: string): void {
+    const entries = this.collectEditorTabFocusEntries();
+    const key = this.getEditorTabFocusKey(groupId, tabId);
+
+    if (!entries.some((entry) => entry.key === key)) {
+      this.pruneEditorTabFocusHistory(entries);
+      return;
     }
 
-    public getPanelOrder(): Record<string, string[]> {
-        const copy: Record<string, string[]> = {};
-        for (const [position, ids] of Object.entries(this.state.panelOrder)) {
-            copy[position] = [...ids];
+    this.editorTabFocusHistory = [
+      key,
+      ...this.editorTabFocusHistory.filter((existingKey) => existingKey !== key)
+    ];
+    this.pruneEditorTabFocusHistory(entries);
+  }
+
+  private getPreferredEditorTabFocusTarget(
+    entries: readonly EditorTabFocusEntry[] = this.collectEditorTabFocusEntries()
+  ): EditorTabFocusTarget | null {
+    this.pruneEditorTabFocusHistory(entries);
+    const byKey = new Map(entries.map((entry) => [entry.key, entry]));
+    const entry = this.editorTabFocusHistory
+      .map((key) => byKey.get(key))
+      .find((candidate): candidate is EditorTabFocusEntry => Boolean(candidate));
+
+    return entry ? { tabId: entry.tabId, groupId: entry.groupId } : null;
+  }
+
+  /**
+   * The tab a given group most recently showed and still holds, or null when none of that
+   * group's tabs is in the focus history. Unlike {@link getPreferredEditorTabFocusTarget} the
+   * result is confined to one group - the caller wants the pane's *own* last tab, not whichever
+   * tab happens to be globally most recent.
+   */
+  private getPreferredTabIdInGroup(
+    groupId: string,
+    entries: readonly EditorTabFocusEntry[] = this.collectEditorTabFocusEntries()
+  ): string | null {
+    this.pruneEditorTabFocusHistory(entries);
+    const byKey = new Map(entries.map((entry) => [entry.key, entry]));
+    for (const key of this.editorTabFocusHistory) {
+      const entry = byKey.get(key);
+      if (entry && entry.groupId === groupId) {
+        return entry.tabId;
+      }
+    }
+    return null;
+  }
+
+  private setEditorGroupFocus(target: EditorTabFocusTarget): boolean {
+    let didSetFocus = false;
+
+    this.state.editorLayout = this.updateGroup(this.state.editorLayout, target.groupId, (group) => {
+      if (!group.tabs.some((tab) => tab.id === target.tabId)) {
+        return group;
+      }
+
+      didSetFocus = true;
+      return { ...group, focus: target.tabId };
+    });
+
+    return didSetFocus;
+  }
+
+  private ensureEditorGroupHasValidFocus(groupId: string): void {
+    this.state.editorLayout = this.updateGroup(this.state.editorLayout, groupId, (group) => {
+      if (group.focus && group.tabs.some((tab) => tab.id === group.focus)) {
+        return group;
+      }
+      if (group.tabs.length === 0) {
+        return { ...group, focus: null };
+      }
+
+      // Prefer the tab this pane most recently showed - so moving or closing the active tab
+      // reveals the last one the user was on here, not whichever tab sits at the end of the
+      // strip. Falls back to that last tab when nothing in this pane is in the history.
+      const preferred = this.getPreferredTabIdInGroup(groupId);
+      const focus =
+        preferred && group.tabs.some((tab) => tab.id === preferred)
+          ? preferred
+          : group.tabs[group.tabs.length - 1].id;
+      return { ...group, focus };
+    });
+  }
+
+  public getEditorTabFocusHistoryKeys(): string[] {
+    this.pruneEditorTabFocusHistory();
+    return [...this.editorTabFocusHistory];
+  }
+
+  public openEditorTabInGroup<TPayload = any>(
+    tab: EditorTabDefinition<TPayload>,
+    groupId?: string,
+    activate: boolean = true,
+    index?: number
+  ): void {
+    const targetId = this.resolveGroupId(groupId);
+
+    this.state.editorLayout = this.updateGroup(this.state.editorLayout, targetId, (group) => {
+      // Check if tab already exists
+      const existingIndex = group.tabs.findIndex((t) => t.id === tab.id);
+      if (existingIndex >= 0) {
+        // Update existing tab with new payload
+        const updatedTabs = [...group.tabs];
+        updatedTabs[existingIndex] = tab as EditorTabDefinition<any>;
+        return { ...group, tabs: updatedTabs, focus: activate ? tab.id : group.focus };
+      }
+      // Add new tab - at `index` when given (reopening a closed tab puts it
+      // back where it was), appended otherwise.
+      const updatedTabs = [...group.tabs];
+      const insertAt =
+        index === undefined ? updatedTabs.length : Math.max(0, Math.min(index, updatedTabs.length));
+      updatedTabs.splice(insertAt, 0, tab as EditorTabDefinition<any>);
+      const newGroup = { ...group, tabs: updatedTabs };
+      return activate ? { ...newGroup, focus: tab.id } : newGroup;
+    });
+
+    if (activate) {
+      this.recordEditorTabFocus(targetId, tab.id);
+    } else {
+      this.pruneEditorTabFocusHistory();
+    }
+
+    this.events.emit("editorTabOpenedInGroup", {
+      tab: tab as EditorTabDefinition<any>,
+      groupId: targetId,
+      activated: activate
+    });
+    this.events.emit("editorLayoutChanged", this.state.editorLayout);
+    this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+  }
+
+  public updateEditorTabPayload<TPayload = any>(
+    tabId: string,
+    payload: TPayload,
+    groupId?: string
+  ): void {
+    const targetId = this.resolveGroupId(groupId);
+
+    this.state.editorLayout = this.updateGroup(this.state.editorLayout, targetId, (group) => {
+      const tabIndex = group.tabs.findIndex((t) => t.id === tabId);
+      if (tabIndex >= 0) {
+        const updatedTabs = [...group.tabs];
+        updatedTabs[tabIndex] = { ...updatedTabs[tabIndex], payload };
+        return { ...group, tabs: updatedTabs };
+      }
+      return group;
+    });
+
+    this.events.emit("editorLayoutChanged", this.state.editorLayout);
+    this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+  }
+
+  public closeEditorTabInGroup(tabId: string, groupId?: string): EditorTabFocusTarget | null {
+    const targetGroup = this.findGroup(this.state.editorLayout, groupId);
+    const targetId = this.resolveGroupId(groupId);
+    const closedActiveTab = targetGroup?.focus === tabId;
+
+    this.state.editorLayout = this.updateGroup(this.state.editorLayout, targetId, (group) => {
+      const tabs = group.tabs.filter((t) => t.id !== tabId);
+      let activeTabId = group.focus;
+
+      // Active replacement is selected after MRU pruning so it can span groups.
+      if (activeTabId === tabId) {
+        activeTabId = null;
+      }
+
+      return { ...group, tabs, focus: activeTabId };
+    });
+    this.pruneEmptyEditorGroups();
+
+    const entriesAfterClose = this.collectEditorTabFocusEntries();
+    this.pruneEditorTabFocusHistory(entriesAfterClose);
+    let focusTarget: EditorTabFocusTarget | null = null;
+
+    if (closedActiveTab) {
+      focusTarget = this.getPreferredEditorTabFocusTarget(entriesAfterClose);
+      if (!focusTarget) {
+        const groupAfterClose = this.findGroup(this.state.editorLayout, targetId);
+        const fallbackTab = groupAfterClose?.tabs[groupAfterClose.tabs.length - 1];
+        focusTarget = fallbackTab ? { tabId: fallbackTab.id, groupId: targetId } : null;
+      }
+
+      if (focusTarget) {
+        if (focusTarget.groupId !== targetId) {
+          this.ensureEditorGroupHasValidFocus(targetId);
         }
-        return copy;
-    }
-
-    /**
-     * Fold a set of panels into a dock's collapse group (list of panel ids). Membership is
-     * independent of visibility and of the order override: a collapsed panel keeps its slot in the
-     * order, it is just rendered inside the group's flyout instead of directly on the rail.
-     */
-    public setCollapsedPanels(position: PanelPosition, panelIds: string[]): void {
-        this.state.collapsedPanels = { ...this.state.collapsedPanels, [position]: [...panelIds] };
-        this.events.emit("collapsedPanelsChanged", { position, collapsed: [...panelIds] });
-        this.events.emit("stateChanged", { collapsedPanels: { ...this.state.collapsedPanels } });
-    }
-
-    public getCollapsedPanels(): Record<string, string[]> {
-        const copy: Record<string, string[]> = {};
-        for (const [position, ids] of Object.entries(this.state.collapsedPanels)) {
-            copy[position] = [...ids];
+        if (this.setEditorGroupFocus(focusTarget)) {
+          this.recordEditorTabFocus(focusTarget.groupId, focusTarget.tabId);
         }
-        return copy;
+      }
+    } else {
+      this.ensureEditorGroupHasValidFocus(targetId);
     }
 
-    // === Text editor contributions ===
-    //
-    // Three flat, id-keyed lists, deliberately as dumb as the panel list above: every mutation goes
-    // out on `stateChanged`, so the open text tabs pick it up through the same hook mechanism every
-    // other UI registry uses.
-    //
-    // The order is registration order, and it carries meaning:
-    // `TextEditorContributionService.languageForExtension` resolves a contested extension by taking
-    // the first entry that claims it. Re-registering an id does not replace it in place - it drops
-    // the old entry and appends the new one - so a plugin that re-registers moves itself behind
-    // everyone else and hands a contested extension to whoever is now in front.
+    this.events.emit("editorTabClosedInGroup", { tabId, groupId: targetId });
+    this.events.emit("editorLayoutChanged", this.state.editorLayout);
+    this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
 
-    public registerTextEditorLanguage(def: PluginTextEditorLanguageDef): void {
-        this.state.textEditorLanguages = [
-            ...this.state.textEditorLanguages.filter(entry => entry.id !== def.id),
-            def,
-        ];
-        this.events.emit("stateChanged", { textEditorLanguages: [...this.state.textEditorLanguages] });
+    return focusTarget;
+  }
+
+  /**
+   * Close multiple tabs in one layout update. Emits one layout change and one close event per removed tab.
+   */
+  public closeEditorTabsInGroup(
+    tabIds: readonly string[],
+    groupId?: string
+  ): EditorTabFocusTarget | null {
+    const idSet = new Set(tabIds);
+    if (idSet.size === 0) {
+      return null;
     }
 
-    public unregisterTextEditorLanguage(id: string): void {
-        this.state.textEditorLanguages = this.state.textEditorLanguages.filter(entry => entry.id !== id);
-        this.events.emit("stateChanged", { textEditorLanguages: [...this.state.textEditorLanguages] });
+    const targetGroup = this.findGroup(this.state.editorLayout, groupId);
+    const targetId = this.resolveGroupId(groupId);
+    const groupSnapshot = targetGroup ?? (this.state.editorLayout as EditorGroup);
+    const closedIds = groupSnapshot.tabs.filter((t) => idSet.has(t.id)).map((t) => t.id);
+    if (closedIds.length === 0) {
+      return null;
     }
+    const closedActiveTab = Boolean(groupSnapshot.focus && idSet.has(groupSnapshot.focus));
 
-    public getTextEditorLanguages(): PluginTextEditorLanguageDef[] {
-        return [...this.state.textEditorLanguages];
-    }
+    this.state.editorLayout = this.updateGroup(this.state.editorLayout, targetId, (group) => {
+      const tabs = group.tabs.filter((t) => !idSet.has(t.id));
+      let activeTabId = group.focus;
 
-    public registerTextEditorPreview(def: PluginTextEditorPreviewDef): void {
-        this.state.textEditorPreviews = [
-            ...this.state.textEditorPreviews.filter(entry => entry.id !== def.id),
-            def,
-        ];
-        this.events.emit("stateChanged", { textEditorPreviews: [...this.state.textEditorPreviews] });
-    }
+      if (activeTabId && idSet.has(activeTabId)) {
+        activeTabId = null;
+      } else if (activeTabId && !tabs.some((t) => t.id === activeTabId)) {
+        activeTabId = null;
+      }
 
-    public unregisterTextEditorPreview(id: string): void {
-        this.state.textEditorPreviews = this.state.textEditorPreviews.filter(entry => entry.id !== id);
-        this.events.emit("stateChanged", { textEditorPreviews: [...this.state.textEditorPreviews] });
-    }
+      return { ...group, tabs, focus: activeTabId };
+    });
+    this.pruneEmptyEditorGroups();
 
-    public getTextEditorPreviews(): PluginTextEditorPreviewDef[] {
-        return [...this.state.textEditorPreviews];
-    }
+    const entriesAfterClose = this.collectEditorTabFocusEntries();
+    this.pruneEditorTabFocusHistory(entriesAfterClose);
+    let focusTarget: EditorTabFocusTarget | null = null;
 
-    public registerTextEditorAction(def: PluginTextEditorActionDef): void {
-        this.state.textEditorActions = [
-            ...this.state.textEditorActions.filter(entry => entry.id !== def.id),
-            def,
-        ];
-        this.events.emit("stateChanged", { textEditorActions: [...this.state.textEditorActions] });
-    }
+    if (closedActiveTab) {
+      focusTarget = this.getPreferredEditorTabFocusTarget(entriesAfterClose);
+      if (!focusTarget) {
+        const groupAfterClose = this.findGroup(this.state.editorLayout, targetId);
+        const fallbackTab = groupAfterClose?.tabs[groupAfterClose.tabs.length - 1];
+        focusTarget = fallbackTab ? { tabId: fallbackTab.id, groupId: targetId } : null;
+      }
 
-    public unregisterTextEditorAction(id: string): void {
-        this.state.textEditorActions = this.state.textEditorActions.filter(entry => entry.id !== id);
-        this.events.emit("stateChanged", { textEditorActions: [...this.state.textEditorActions] });
-    }
-
-    public getTextEditorActions(): PluginTextEditorActionDef[] {
-        return [...this.state.textEditorActions];
-    }
-
-    // === Editor Tabs ===
-
-    public openEditorTab(tab: EditorTab): void {
-        // Check if tab already exists
-        const index = this.state.editorTabs.findIndex(t => t.id === tab.id);
-        if (index >= 0) {
-            // Update existing tab
-            this.state.editorTabs[index] = tab;
-            this.events.emit("editorTabUpdated", tab);
-        } else {
-            // Add new tab
-            this.state.editorTabs.push(tab);
-            this.events.emit("editorTabOpened", tab);
+      if (focusTarget) {
+        if (focusTarget.groupId !== targetId) {
+          this.ensureEditorGroupHasValidFocus(targetId);
         }
-        // Activate the tab
-        this.state.activeEditorTabId = tab.id;
-        this.events.emit("editorTabActivated", tab.id);
-        this.events.emit("stateChanged", {
-            editorTabs: [...this.state.editorTabs],
-            activeEditorTabId: this.state.activeEditorTabId,
-        });
-    }
-
-    public closeEditorTab(tabId: string): void {
-        this.state.editorTabs = this.state.editorTabs.filter(t => t.id !== tabId);
-        // If closed tab was active, activate another
-        if (this.state.activeEditorTabId === tabId) {
-            this.state.activeEditorTabId = this.state.editorTabs.length > 0
-                ? this.state.editorTabs[this.state.editorTabs.length - 1].id
-                : null;
+        if (this.setEditorGroupFocus(focusTarget)) {
+          this.recordEditorTabFocus(focusTarget.groupId, focusTarget.tabId);
         }
-        this.events.emit("editorTabClosed", tabId);
-        this.events.emit("stateChanged", {
-            editorTabs: [...this.state.editorTabs],
-            activeEditorTabId: this.state.activeEditorTabId,
-        });
+      }
+    } else {
+      this.ensureEditorGroupHasValidFocus(targetId);
     }
 
-    public setActiveEditorTab(tabId: string): void {
-        if (this.state.editorTabs.some(t => t.id === tabId)) {
-            this.state.activeEditorTabId = tabId;
-            this.events.emit("editorTabActivated", tabId);
-            this.events.emit("stateChanged", { activeEditorTabId: tabId });
+    for (const tabId of closedIds) {
+      this.events.emit("editorTabClosedInGroup", { tabId, groupId: targetId });
+    }
+    this.events.emit("editorLayoutChanged", this.state.editorLayout);
+    this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+
+    return focusTarget;
+  }
+
+  public setActiveEditorTabInGroup(tabId: string, groupId: string): void {
+    this.state.editorLayout = this.updateGroup(this.state.editorLayout, groupId, (group) => ({
+      ...group,
+      focus: tabId
+    }));
+
+    this.recordEditorTabFocus(groupId, tabId);
+    this.events.emit("editorTabActivatedInGroup", { tabId, groupId });
+    this.events.emit("editorLayoutChanged", this.state.editorLayout);
+    this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+  }
+
+  public getEditorLayout(): Readonly<EditorLayout> {
+    return this.state.editorLayout;
+  }
+
+  /**
+   * Every open editor tab, ordered most-recently-focused first, across all split groups. Resolves
+   * through the layout's own per-group focus history (the focus keys embed colon-bearing tab ids,
+   * so they can only be resolved in here where the structured entries live). Tabs not yet in the
+   * focus history - e.g. right after a layout restore - are appended in layout order so the list
+   * is always complete.
+   */
+  public getEditorTabsByRecency(): EditorTab[] {
+    const groups = this.collectGroups();
+    const entriesByKey = new Map(
+      this.collectEditorTabFocusEntries().map((entry) => [entry.key, entry])
+    );
+    const findTab = (groupId: string, tabId: string): EditorTab | undefined =>
+      groups.find((group) => group.id === groupId)?.tabs.find((tab) => tab.id === tabId);
+
+    const ordered: EditorTab[] = [];
+    const seen = new Set<string>();
+    for (const key of this.getEditorTabFocusHistoryKeys()) {
+      const entry = entriesByKey.get(key);
+      const tab = entry && findTab(entry.groupId, entry.tabId);
+      if (tab && !seen.has(tab.id)) {
+        ordered.push(tab);
+        seen.add(tab.id);
+      }
+    }
+    for (const group of groups) {
+      for (const tab of group.tabs) {
+        if (!seen.has(tab.id)) {
+          ordered.push(tab);
+          seen.add(tab.id);
         }
+      }
+    }
+    return ordered;
+  }
+
+  /**
+   * Flatten all ActionDefinition objects contained in an ActionGroup (recursively).
+   */
+  private static flattenGroupActions(group: ActionGroup): (ModuleAction | ActionSeparator)[] {
+    const collected: (ModuleAction | ActionSeparator)[] = [];
+
+    // Helper to recursively walk through menu items
+    const walk = (item: ActionMenuItem | ActionDefinition): void => {
+      // Skip separators
+      if ((item as any).separator) {
+        return;
+      }
+
+      // If submenu -> recurse
+      if ("items" in item && Array.isArray((item as any).items)) {
+        (item as ActionSubmenu).items.forEach(walk);
+        return;
+      }
+
+      // Finally, it should be an ActionDefinition
+      collected.push(item as ActionDefinition);
+    };
+
+    // Old flat list API
+    if (group.actions) {
+      group.actions.forEach((a) => collected.push(a));
     }
 
-    public updateEditorTab(tab: EditorTab): void {
-        const index = this.state.editorTabs.findIndex(t => t.id === tab.id);
-        if (index >= 0) {
-            this.state.editorTabs[index] = tab;
-            this.events.emit("editorTabUpdated", tab);
-            this.events.emit("stateChanged", { editorTabs: [...this.state.editorTabs] });
-        }
+    // Hierarchical API
+    if (group.items) {
+      group.items.forEach(walk);
     }
 
-    public getEditorTabs(): EditorTab[] {
-        return [...this.state.editorTabs];
+    return collected;
+  }
+
+  /**
+   * Register (or refresh) keybinding for an ActionDefinition
+   * @param action the action definition
+   * @param ownerPrefix optional prefix (e.g., group id) to make keybinding ids unique
+   */
+  private registerKeybindingForAction(action: ActionDefinition, ownerPrefix?: string) {
+    if (!this.keybindingService || !action.shortcut) {
+      return;
     }
 
-    public getActiveEditorTabId(): string | null {
-        return this.state.activeEditorTabId;
-    }
-
-    // === Dialogs ===
-
-    public openDialog(dialog: Dialog): void {
-        // Remove existing dialog with same id
-        this.state.dialogs = this.state.dialogs.filter(d => d.id !== dialog.id);
-        this.state.dialogs.push(dialog);
-        this.state.activeDialogId = dialog.id;
-        this.events.emit("dialogOpened", dialog);
-        this.events.emit("stateChanged", {
-            dialogs: [...this.state.dialogs],
-            activeDialogId: this.state.activeDialogId,
-        });
-    }
-
-    public closeDialog(id: string): void {
-        const dialog = this.state.dialogs.find(d => d.id === id);
-        this.state.dialogs = this.state.dialogs.filter(d => d.id !== id);
-        if (this.state.activeDialogId === id) {
-            this.state.activeDialogId = this.state.dialogs.length > 0
-                ? this.state.dialogs[this.state.dialogs.length - 1].id
-                : null;
-        }
-        this.events.emit("dialogClosed", id);
-        this.events.emit("stateChanged", {
-            dialogs: [...this.state.dialogs],
-            activeDialogId: this.state.activeDialogId,
-        });
-        
-        // Call onClose callback
-        if (dialog?.onClose) {
-            dialog.onClose();
-        }
-    }
-
-    public getDialogs(): Dialog[] {
-        return [...this.state.dialogs];
-    }
-
-    public getActiveDialogId(): string | null {
-        return this.state.activeDialogId;
-    }
-
-    // === Status Bar Items ===
-
-    public addStatusBarItem(item: StatusBarItem): void {
-        // Remove existing item with same id
-        this.state.statusBarItems = this.state.statusBarItems.filter(i => i.id !== item.id);
-        this.state.statusBarItems.push(item);
-        // Sort by priority
-        this.state.statusBarItems.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-        this.events.emit("statusBarItemAdded", item);
-        this.events.emit("stateChanged", { statusBarItems: [...this.state.statusBarItems] });
-    }
-
-    public removeStatusBarItem(id: string): void {
-        this.state.statusBarItems = this.state.statusBarItems.filter(i => i.id !== id);
-        this.events.emit("statusBarItemRemoved", id);
-        this.events.emit("stateChanged", { statusBarItems: [...this.state.statusBarItems] });
-    }
-
-    public updateStatusBarItem(item: StatusBarItem): void {
-        const index = this.state.statusBarItems.findIndex(i => i.id === item.id);
-        if (index >= 0) {
-            this.state.statusBarItems[index] = item;
-            this.state.statusBarItems.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-            this.events.emit("statusBarItemUpdated", item);
-            this.events.emit("stateChanged", { statusBarItems: [...this.state.statusBarItems] });
-        }
-    }
-
-    public getStatusBarItems(): StatusBarItem[] {
-        return [...this.state.statusBarItems];
-    }
-
-    // === Actions ===
-
-    public registerAction(action: ActionDefinition): void {
-        // Remove existing action with same id
-        this.state.actions = this.state.actions.filter(a => a.id !== action.id);
-        this.state.actions.push(action);
-        // Sort by order
-        this.state.actions.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
-        // Auto keybinding registration
-        this.registerKeybindingForAction(action);
-        this.events.emit("actionRegistered", action);
-        this.events.emit("stateChanged", { actions: [...this.state.actions] });
-    }
-
-    public unregisterAction(id: string): void {
-        this.state.actions = this.state.actions.filter(a => a.id !== id);
-        this.events.emit("actionUnregistered", id);
-        this.events.emit("stateChanged", { actions: [...this.state.actions] });
-        // Dispose keybinding if exists
-        const d = this.kbDisposers.get(id);
-        if (d) {
-            d();
-            this.kbDisposers.delete(id);
-        }
-    }
-
-    public updateAction(action: ActionDefinition): void {
-        const index = this.state.actions.findIndex(a => a.id === action.id);
-        if (index >= 0) {
-            this.state.actions[index] = action;
-            this.state.actions.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
-            this.registerKeybindingForAction(action);
-            this.events.emit("actionUpdated", action);
-            this.events.emit("stateChanged", { actions: [...this.state.actions] });
-        }
-    }
-
-    public getActions(): ActionDefinition[] {
-        return [...this.state.actions];
-    }
-
-    // === Action Groups ===
-
-    public registerActionGroup(group: ActionGroup): void {
-        // Remove existing group with same id
-        this.state.actionGroups = this.state.actionGroups.filter(g => g.id !== group.id);
-        this.state.actionGroups.push(group);
-        // Sort by order
-        this.state.actionGroups.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
-
-        // === Auto keybinding registration for group actions ===
-        for (const action of UIStore.flattenGroupActions(group)) {
-            if ("separator" in action) continue;
-            this.registerKeybindingForAction(action, group.id);
-        }
-
-        this.events.emit("actionGroupRegistered", group);
-        this.events.emit("stateChanged", { actionGroups: [...this.state.actionGroups] });
-    }
-
-    public unregisterActionGroup(id: string): void {
-        this.state.actionGroups = this.state.actionGroups.filter(g => g.id !== id);
-        this.events.emit("actionGroupUnregistered", id);
-        this.events.emit("stateChanged", { actionGroups: [...this.state.actionGroups] });
-        for (const aid of Array.from(this.kbDisposers.keys())) {
-            if (aid.startsWith(`${id}-`)) {
-                const dispose = this.kbDisposers.get(aid);
-                dispose?.();
-                this.kbDisposers.delete(aid);
-            }
-        }
-    }
-
-    public updateActionGroup(group: ActionGroup): void {
-        const index = this.state.actionGroups.findIndex(g => g.id === group.id);
-        if (index >= 0) {
-            this.state.actionGroups[index] = group;
-            this.state.actionGroups.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
-            this.events.emit("actionGroupUpdated", group);
-            this.events.emit("stateChanged", { actionGroups: [...this.state.actionGroups] });
-        }
-    }
-
-    public getActionGroups(): ActionGroup[] {
-        return [...this.state.actionGroups];
-    }
-
-    // === Editor Layout ===
-
-    /** Replace the group node with the given id by an arbitrary layout subtree. */
-    private replaceGroupNode(
-        layout: EditorLayout,
-        groupId: string,
-        replacement: (group: EditorGroup) => EditorLayout,
-    ): EditorLayout {
-        if ("tabs" in layout) {
-            return layout.id === groupId ? replacement(layout) : layout;
-        }
-        return {
-            ...layout,
-            first: this.replaceGroupNode(layout.first, groupId, replacement),
-            second: this.replaceGroupNode(layout.second, groupId, replacement),
-        };
-    }
-
-    /** All groups in the layout, first/left before second/right. */
-    private collectGroups(layout: EditorLayout = this.state.editorLayout): EditorGroup[] {
-        if ("tabs" in layout) {
-            return [layout];
-        }
-        return [...this.collectGroups(layout.first), ...this.collectGroups(layout.second)];
-    }
-
-    /** A group/split id not used anywhere in the current layout. */
-    private nextLayoutNodeId(prefix: string): string {
-        const used = new Set<string>();
-        const visit = (layout: EditorLayout) => {
-            used.add(layout.id);
-            if (!("tabs" in layout)) {
-                visit(layout.first);
-                visit(layout.second);
-            }
-        };
-        visit(this.state.editorLayout);
-        for (let index = 1; ; index++) {
-            const candidate = `${prefix}-${index}`;
-            if (!used.has(candidate)) {
-                return candidate;
-            }
-        }
-    }
-
-    /**
-     * Split a group: its active tab moves into a fresh group placed beside it ("horizontal" puts
-     * the new group to the right, "vertical" below). The moved tab keeps focus, now in the new
-     * group.
-     *
-     * Needs two tabs to be meaningful: splitting a single-tab group would move the only tab out
-     * and leave an empty pane sitting on half the editor area - exactly the state
-     * {@link pruneEmptyEditorGroups} exists to undo. Enforced here rather than only at the call
-     * sites so the chord, the palette command and the tab menu cannot disagree.
-     */
-    public splitEditorGroup(groupId: string, direction: "horizontal" | "vertical", tabId?: string): boolean {
-        const group = this.findGroup(this.state.editorLayout, groupId);
-        if (!group || group.tabs.length < 2) {
-            return false;
-        }
-        // `tabId` is the tab a context menu was opened on; commands and chords have no click
-        // target and split the focused tab instead.
-        const movedTab =
-            (tabId ? group.tabs.find((tab) => tab.id === tabId) : undefined) ??
-            group.tabs.find((tab) => tab.id === group.focus) ??
-            group.tabs[group.tabs.length - 1];
-        const newGroupId = this.nextLayoutNodeId("group");
-        const splitId = this.nextLayoutNodeId("split");
-
-        this.state.editorLayout = this.replaceGroupNode(this.state.editorLayout, groupId, (target) => {
-            const remaining = target.tabs.filter((tab) => tab.id !== movedTab.id);
-            return {
-                id: splitId,
-                direction,
-                ratio: 0.5,
-                first: {
-                    ...target,
-                    tabs: remaining,
-                    // Keep the source pane on its own tab when that tab stayed behind; when the
-                    // active tab is the one being split off, ensureEditorGroupHasValidFocus below
-                    // falls the pane back to the tab it most recently showed.
-                    focus: remaining.some((tab) => tab.id === target.focus) ? target.focus : null,
-                },
-                second: { id: newGroupId, tabs: [movedTab], focus: movedTab.id },
-            };
-        });
-
-        this.ensureEditorGroupHasValidFocus(groupId);
-        this.recordEditorTabFocus(newGroupId, movedTab.id);
-        this.events.emit("editorLayoutChanged", this.state.editorLayout);
-        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
-        return true;
-    }
-
-    /**
-     * Insert a fresh empty group beside `targetGroupId`, returning its id. "before" puts the new
-     * group left/above the target, "after" right/below.
-     *
-     * Does not emit - the caller is mid-operation and emits once its own work is done. The caller
-     * MUST also put something in the returned group: an empty pane renders as half the editor area
-     * showing nothing, and {@link pruneEmptyEditorGroups} only runs on close.
-     */
-    private insertEmptyGroupBeside(
-        targetGroupId: string,
-        direction: "horizontal" | "vertical",
-        side: "before" | "after",
-    ): string | null {
-        if (!this.findGroup(this.state.editorLayout, targetGroupId)) {
-            return null;
-        }
-        const newGroupId = this.nextLayoutNodeId("group");
-        const splitId = this.nextLayoutNodeId("split");
-        const created: EditorGroup = { id: newGroupId, tabs: [], focus: null };
-
-        this.state.editorLayout = this.replaceGroupNode(this.state.editorLayout, targetGroupId, (group) => ({
-            id: splitId,
-            direction,
-            ratio: 0.5,
-            first: side === "before" ? created : group,
-            second: side === "before" ? group : created,
-        }));
-
-        return newGroupId;
-    }
-
-    /**
-     * Split a group to receive dropped content, returning the new empty group's id.
-     *
-     * Unlike {@link splitEditorGroup} there is no two-tab requirement: the content lands from
-     * outside (the assets panel), so the target group never gives a tab up. The caller must open
-     * something in the returned group - see {@link insertEmptyGroupBeside}.
-     */
-    public splitEditorGroupForDrop(
-        targetGroupId: string,
-        direction: "horizontal" | "vertical",
-        side: "before" | "after",
-    ): string | null {
-        const newGroupId = this.insertEmptyGroupBeside(targetGroupId, direction, side);
-        if (!newGroupId) {
-            return null;
-        }
-        this.events.emit("editorLayoutChanged", this.state.editorLayout);
-        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
-        return newGroupId;
-    }
-
-    /**
-     * Move a tab to `toGroupId` at `index` (appended when omitted). Same-group moves reorder.
-     *
-     * The tab object travels as-is, so its payload and modified flag survive; the React subtree is
-     * still remounted, since the tab lands under a different group component.
-     */
-    public moveEditorTabToGroup(
-        tabId: string,
-        fromGroupId: string,
-        toGroupId: string,
-        index?: number,
-    ): boolean {
-        const from = this.findGroup(this.state.editorLayout, fromGroupId);
-        if (!from) {
-            return false;
-        }
-        const currentIndex = from.tabs.findIndex((tab) => tab.id === tabId);
-        if (currentIndex < 0) {
-            return false;
-        }
-        if (fromGroupId === toGroupId) {
-            // Dropping a tab onto either side of where it already sits is a no-op. Bailing keeps
-            // an accidental nudge from remounting the editor for an identical layout.
-            const insertAt = index ?? from.tabs.length;
-            if (insertAt === currentIndex || insertAt === currentIndex + 1) {
-                return false;
-            }
-        }
-        return this.relocateEditorTab(tabId, fromGroupId, toGroupId, index);
-    }
-
-    /**
-     * Move a tab into a new pane split off `targetGroupId` - the drag-to-split landing.
-     *
-     * Splitting a group's *own* only tab off itself is rejected for the same reason
-     * {@link splitEditorGroup} needs two tabs: the source would empty out and immediately collapse
-     * back, so the whole gesture would be an expensive no-op.
-     */
-    public moveEditorTabToNewSplit(
-        tabId: string,
-        fromGroupId: string,
-        targetGroupId: string,
-        direction: "horizontal" | "vertical",
-        side: "before" | "after",
-    ): boolean {
-        const from = this.findGroup(this.state.editorLayout, fromGroupId);
-        if (!from?.tabs.some((tab) => tab.id === tabId)) {
-            return false;
-        }
-        if (fromGroupId === targetGroupId && from.tabs.length < 2) {
-            return false;
-        }
-        const newGroupId = this.insertEmptyGroupBeside(targetGroupId, direction, side);
-        if (!newGroupId) {
-            return false;
-        }
-        return this.relocateEditorTab(tabId, fromGroupId, newGroupId, undefined);
-    }
-
-    /** Detach a tab from one group and re-attach it to another, focused. Emits on success. */
-    private relocateEditorTab(
-        tabId: string,
-        fromGroupId: string,
-        toGroupId: string,
-        index: number | undefined,
-    ): boolean {
-        const from = this.findGroup(this.state.editorLayout, fromGroupId);
-        const moved = from?.tabs.find((tab) => tab.id === tabId);
-        if (!from || !moved || !this.findGroup(this.state.editorLayout, toGroupId)) {
-            return false;
-        }
-
-        // A same-group index was measured against the list *including* the dragged tab, so once the
-        // tab is pulled out every position past it shifts down by one.
-        const currentIndex = from.tabs.findIndex((tab) => tab.id === tabId);
-        const insertAt =
-            index !== undefined && fromGroupId === toGroupId && index > currentIndex ? index - 1 : index;
-
-        this.state.editorLayout = this.updateGroup(this.state.editorLayout, fromGroupId, (group) => ({
-            ...group,
-            tabs: group.tabs.filter((tab) => tab.id !== tabId),
-            focus: group.focus === tabId ? null : group.focus,
-        }));
-
-        this.state.editorLayout = this.updateGroup(this.state.editorLayout, toGroupId, (group) => {
-            // Filter again: the same tab id can be open in two groups, and a move must merge into
-            // the destination's copy rather than duplicate it.
-            const tabs = group.tabs.filter((tab) => tab.id !== tabId);
-            const at = insertAt === undefined ? tabs.length : Math.max(0, Math.min(insertAt, tabs.length));
-            tabs.splice(at, 0, moved);
-            return { ...group, tabs, focus: tabId };
-        });
-
-        this.pruneEmptyEditorGroups();
-        this.ensureEditorGroupHasValidFocus(fromGroupId);
-        this.recordEditorTabFocus(toGroupId, tabId);
-
-        this.events.emit("editorLayoutChanged", this.state.editorLayout);
-        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
-        return true;
-    }
-
-    /**
-     * Collapse the layout to a single group: every other group's tabs append into the kept group
-     * (nothing is closed - "close other groups" merges, it does not discard work).
-     */
-    public closeOtherEditorGroups(keepGroupId: string): boolean {
-        const keep = this.findGroup(this.state.editorLayout, keepGroupId);
-        if (!keep) {
-            return false;
-        }
-        const groups = this.collectGroups();
-        if (groups.length < 2) {
-            return false;
-        }
-
-        const merged: EditorGroup = { ...keep, tabs: [...keep.tabs] };
-        const knownIds = new Set(merged.tabs.map((tab) => tab.id));
-        for (const group of groups) {
-            if (group.id === keepGroupId) {
-                continue;
-            }
-            for (const tab of group.tabs) {
-                if (!knownIds.has(tab.id)) {
-                    knownIds.add(tab.id);
-                    merged.tabs.push(tab);
-                }
-            }
-        }
-        if (!merged.focus || !merged.tabs.some((tab) => tab.id === merged.focus)) {
-            merged.focus = merged.tabs[merged.tabs.length - 1]?.id ?? null;
-        }
-
-        this.state.editorLayout = merged;
-        this.pruneEditorTabFocusHistory();
-        if (merged.focus) {
-            this.recordEditorTabFocus(merged.id, merged.focus);
-        }
-        this.events.emit("editorLayoutChanged", this.state.editorLayout);
-        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
-        return true;
-    }
-
-    /**
-     * Drop split panes that no longer hold an editor. Closing the last tab of one side of a split
-     * would otherwise leave an empty pane with a bare tab strip sitting on half the editor area;
-     * the split exists to show two editors, so it collapses back to the surviving side. The root
-     * group is kept even when empty - that is the "no tabs open" drop zone.
-     */
-    private pruneEmptyEditorGroups(): void {
-        const prune = (layout: EditorLayout): EditorLayout => {
-            if ("tabs" in layout) {
-                return layout;
-            }
-            const first = prune(layout.first);
-            const second = prune(layout.second);
-            const isEmptyGroup = (node: EditorLayout) => "tabs" in node && node.tabs.length === 0;
-            if (isEmptyGroup(first)) {
-                return second;
-            }
-            if (isEmptyGroup(second)) {
-                return first;
-            }
-            return first === layout.first && second === layout.second ? layout : { ...layout, first, second };
-        };
-        this.state.editorLayout = prune(this.state.editorLayout);
-    }
-
-    private findGroup(layout: EditorLayout, groupId?: string): EditorGroup | null {
-        if ("tabs" in layout) {
-            return !groupId || layout.id === groupId ? layout : null;
-        }
-        return this.findGroup(layout.first, groupId) || this.findGroup(layout.second, groupId);
-    }
-
-    /**
-     * A group id that definitely exists: the named one, else the first group in the layout.
-     *
-     * Callers hold group ids across time (a restored session, a queued open, a pane that has since
-     * been closed), so a stale id must land somewhere real rather than address a group that is
-     * gone - reading `.id` off a split root yields `undefined`, and every update then silently
-     * matches nothing.
-     */
-    private resolveGroupId(groupId?: string): string {
-        const named = this.findGroup(this.state.editorLayout, groupId);
-        if (named) {
-            return named.id;
-        }
-        const first = this.findGroup(this.state.editorLayout);
-        return first?.id ?? (this.state.editorLayout as EditorGroup).id;
-    }
-
-    /** Update the split node with the given id, leaving the rest of the tree alone. */
-    private updateSplit(
-        layout: EditorLayout,
-        splitId: string,
-        updater: (split: EditorSplit) => EditorSplit,
-    ): EditorLayout {
-        if ("tabs" in layout) {
-            return layout;
-        }
-        if (layout.id === splitId) {
-            return updater(layout);
-        }
-        return {
-            ...layout,
-            first: this.updateSplit(layout.first, splitId, updater),
-            second: this.updateSplit(layout.second, splitId, updater),
-        };
-    }
-
-    /**
-     * Resize a split. `ratio` is the first/left/top side's share of the axis.
-     *
-     * The bound here is deliberately loose - it exists only to stop a pane reaching literal zero,
-     * where it would render a tab strip too thin to grab and drag back. The *meaningful* minimum is
-     * a pixel one and belongs to the sash, which is the only caller that knows how wide the
-     * container actually is. Tightening this to something like 10% would silently override that:
-     * on a 2560px editor area it would forbid any pane under 256px, which is not a limit anyone
-     * asked for. See EDITOR_MIN_PANE_PX in editorSplitResize.ts for the real constraint.
-     */
-    public setEditorSplitRatio(splitId: string, ratio: number): boolean {
-        if (!Number.isFinite(ratio)) {
-            return false;
-        }
-        const clamped = Math.min(1 - EDITOR_SPLIT_RATIO_EPSILON, Math.max(EDITOR_SPLIT_RATIO_EPSILON, ratio));
-        let changed = false;
-
-        this.state.editorLayout = this.updateSplit(this.state.editorLayout, splitId, (split) => {
-            if (split.ratio === clamped) {
-                return split;
-            }
-            changed = true;
-            return { ...split, ratio: clamped };
-        });
-
-        if (!changed) {
-            return false;
-        }
-        this.events.emit("editorLayoutChanged", this.state.editorLayout);
-        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
-        return true;
-    }
-
-    /**
-     * Install a whole layout tree - the session restore path, and the only caller that should use
-     * it. Everything else mutates through the targeted operations above so the focus history and
-     * empty-pane invariants stay intact; this rebuilds them from scratch instead.
-     */
-    public restoreEditorLayout(layout: EditorLayout): void {
-        this.state.editorLayout = layout;
-        this.pruneEmptyEditorGroups();
-        for (const group of this.collectGroups()) {
-            this.ensureEditorGroupHasValidFocus(group.id);
-        }
-        this.editorTabFocusHistory = [];
-        for (const group of this.collectGroups()) {
-            if (group.focus) {
-                this.recordEditorTabFocus(group.id, group.focus);
-            }
-        }
-        this.events.emit("editorLayoutChanged", this.state.editorLayout);
-        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
-    }
-
-    private updateGroup(
-        layout: EditorLayout,
-        groupId: string,
-        updater: (group: EditorGroup) => EditorGroup
-    ): EditorLayout {
-        if ("tabs" in layout) {
-            return layout.id === groupId ? updater(layout) : layout;
-        }
-        return {
-            ...layout,
-            first: this.updateGroup(layout.first, groupId, updater),
-            second: this.updateGroup(layout.second, groupId, updater),
-        };
-    }
-
-    private getEditorTabFocusKey(groupId: string, tabId: string): string {
-        return `${groupId}:${tabId}`;
-    }
-
-    private collectEditorTabFocusEntries(layout: EditorLayout = this.state.editorLayout): EditorTabFocusEntry[] {
-        const entries: EditorTabFocusEntry[] = [];
-
-        const visit = (node: EditorLayout) => {
-            if ("tabs" in node) {
-                for (const tab of node.tabs) {
-                    entries.push({
-                        key: this.getEditorTabFocusKey(node.id, tab.id),
-                        tabId: tab.id,
-                        groupId: node.id,
-                    });
-                }
-                return;
-            }
-
-            visit(node.first);
-            visit(node.second);
-        };
-
-        visit(layout);
-        return entries;
-    }
-
-    private pruneEditorTabFocusHistory(entries: readonly EditorTabFocusEntry[] = this.collectEditorTabFocusEntries()): void {
-        const validKeys = new Set(entries.map((entry) => entry.key));
-        const seen = new Set<string>();
-        const pruned: string[] = [];
-
-        for (const key of this.editorTabFocusHistory) {
-            if (!validKeys.has(key) || seen.has(key)) {
-                continue;
-            }
-            seen.add(key);
-            pruned.push(key);
-        }
-
-        this.editorTabFocusHistory = pruned;
-    }
-
-    private recordEditorTabFocus(groupId: string, tabId: string): void {
-        const entries = this.collectEditorTabFocusEntries();
-        const key = this.getEditorTabFocusKey(groupId, tabId);
-
-        if (!entries.some((entry) => entry.key === key)) {
-            this.pruneEditorTabFocusHistory(entries);
-            return;
-        }
-
-        this.editorTabFocusHistory = [
-            key,
-            ...this.editorTabFocusHistory.filter((existingKey) => existingKey !== key),
-        ];
-        this.pruneEditorTabFocusHistory(entries);
-    }
-
-    private getPreferredEditorTabFocusTarget(
-        entries: readonly EditorTabFocusEntry[] = this.collectEditorTabFocusEntries()
-    ): EditorTabFocusTarget | null {
-        this.pruneEditorTabFocusHistory(entries);
-        const byKey = new Map(entries.map((entry) => [entry.key, entry]));
-        const entry = this.editorTabFocusHistory
-            .map((key) => byKey.get(key))
-            .find((candidate): candidate is EditorTabFocusEntry => Boolean(candidate));
-
-        return entry ? { tabId: entry.tabId, groupId: entry.groupId } : null;
-    }
-
-    /**
-     * The tab a given group most recently showed and still holds, or null when none of that
-     * group's tabs is in the focus history. Unlike {@link getPreferredEditorTabFocusTarget} the
-     * result is confined to one group - the caller wants the pane's *own* last tab, not whichever
-     * tab happens to be globally most recent.
-     */
-    private getPreferredTabIdInGroup(
-        groupId: string,
-        entries: readonly EditorTabFocusEntry[] = this.collectEditorTabFocusEntries()
-    ): string | null {
-        this.pruneEditorTabFocusHistory(entries);
-        const byKey = new Map(entries.map((entry) => [entry.key, entry]));
-        for (const key of this.editorTabFocusHistory) {
-            const entry = byKey.get(key);
-            if (entry && entry.groupId === groupId) {
-                return entry.tabId;
-            }
-        }
-        return null;
-    }
-
-    private setEditorGroupFocus(target: EditorTabFocusTarget): boolean {
-        let didSetFocus = false;
-
-        this.state.editorLayout = this.updateGroup(this.state.editorLayout, target.groupId, (group) => {
-            if (!group.tabs.some((tab) => tab.id === target.tabId)) {
-                return group;
-            }
-
-            didSetFocus = true;
-            return { ...group, focus: target.tabId };
-        });
-
-        return didSetFocus;
-    }
-
-    private ensureEditorGroupHasValidFocus(groupId: string): void {
-        this.state.editorLayout = this.updateGroup(this.state.editorLayout, groupId, (group) => {
-            if (group.focus && group.tabs.some((tab) => tab.id === group.focus)) {
-                return group;
-            }
-            if (group.tabs.length === 0) {
-                return { ...group, focus: null };
-            }
-
-            // Prefer the tab this pane most recently showed - so moving or closing the active tab
-            // reveals the last one the user was on here, not whichever tab sits at the end of the
-            // strip. Falls back to that last tab when nothing in this pane is in the history.
-            const preferred = this.getPreferredTabIdInGroup(groupId);
-            const focus =
-                preferred && group.tabs.some((tab) => tab.id === preferred)
-                    ? preferred
-                    : group.tabs[group.tabs.length - 1].id;
-            return { ...group, focus };
-        });
-    }
-
-    public getEditorTabFocusHistoryKeys(): string[] {
-        this.pruneEditorTabFocusHistory();
-        return [...this.editorTabFocusHistory];
-    }
-
-    public openEditorTabInGroup<TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string, activate: boolean = true, index?: number): void {
-        const targetGroup = this.findGroup(this.state.editorLayout, groupId);
-        const targetId = this.resolveGroupId(groupId);
-
-        this.state.editorLayout = this.updateGroup(this.state.editorLayout, targetId, (group) => {
-            // Check if tab already exists
-            const existingIndex = group.tabs.findIndex((t) => t.id === tab.id);
-            if (existingIndex >= 0) {
-                // Update existing tab with new payload
-                const updatedTabs = [...group.tabs];
-                updatedTabs[existingIndex] = tab as EditorTabDefinition<any>;
-                return { ...group, tabs: updatedTabs, focus: activate ? tab.id : group.focus };
-            }
-            // Add new tab - at `index` when given (reopening a closed tab puts it
-            // back where it was), appended otherwise.
-            const updatedTabs = [...group.tabs];
-            const insertAt = index === undefined ? updatedTabs.length : Math.max(0, Math.min(index, updatedTabs.length));
-            updatedTabs.splice(insertAt, 0, tab as EditorTabDefinition<any>);
-            const newGroup = { ...group, tabs: updatedTabs };
-            return activate ? { ...newGroup, focus: tab.id } : newGroup;
-        });
-
-        if (activate) {
-            this.recordEditorTabFocus(targetId, tab.id);
-        } else {
-            this.pruneEditorTabFocusHistory();
-        }
-
-        this.events.emit("editorTabOpenedInGroup", { tab: tab as EditorTabDefinition<any>, groupId: targetId, activated: activate });
-        this.events.emit("editorLayoutChanged", this.state.editorLayout);
-        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
-    }
-
-    public updateEditorTabPayload<TPayload = any>(tabId: string, payload: TPayload, groupId?: string): void {
-        const targetGroup = this.findGroup(this.state.editorLayout, groupId);
-        const targetId = this.resolveGroupId(groupId);
-
-        this.state.editorLayout = this.updateGroup(this.state.editorLayout, targetId, (group) => {
-            const tabIndex = group.tabs.findIndex((t) => t.id === tabId);
-            if (tabIndex >= 0) {
-                const updatedTabs = [...group.tabs];
-                updatedTabs[tabIndex] = { ...updatedTabs[tabIndex], payload };
-                return { ...group, tabs: updatedTabs };
-            }
-            return group;
-        });
-
-        this.events.emit("editorLayoutChanged", this.state.editorLayout);
-        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
-    }
-
-    public closeEditorTabInGroup(tabId: string, groupId?: string): EditorTabFocusTarget | null {
-        const targetGroup = this.findGroup(this.state.editorLayout, groupId);
-        const targetId = this.resolveGroupId(groupId);
-        const closedActiveTab = targetGroup?.focus === tabId;
-
-        this.state.editorLayout = this.updateGroup(this.state.editorLayout, targetId, (group) => {
-            const tabs = group.tabs.filter((t) => t.id !== tabId);
-            let activeTabId = group.focus;
-
-            // Active replacement is selected after MRU pruning so it can span groups.
-            if (activeTabId === tabId) {
-                activeTabId = null;
-            }
-
-            return { ...group, tabs, focus: activeTabId };
-        });
-        this.pruneEmptyEditorGroups();
-
-        const entriesAfterClose = this.collectEditorTabFocusEntries();
-        this.pruneEditorTabFocusHistory(entriesAfterClose);
-        let focusTarget: EditorTabFocusTarget | null = null;
-
-        if (closedActiveTab) {
-            focusTarget = this.getPreferredEditorTabFocusTarget(entriesAfterClose);
-            if (!focusTarget) {
-                const groupAfterClose = this.findGroup(this.state.editorLayout, targetId);
-                const fallbackTab = groupAfterClose?.tabs[groupAfterClose.tabs.length - 1];
-                focusTarget = fallbackTab ? { tabId: fallbackTab.id, groupId: targetId } : null;
-            }
-
-            if (focusTarget) {
-                if (focusTarget.groupId !== targetId) {
-                    this.ensureEditorGroupHasValidFocus(targetId);
-                }
-                if (this.setEditorGroupFocus(focusTarget)) {
-                    this.recordEditorTabFocus(focusTarget.groupId, focusTarget.tabId);
-                }
-            }
-        } else {
-            this.ensureEditorGroupHasValidFocus(targetId);
-        }
-
-        this.events.emit("editorTabClosedInGroup", { tabId, groupId: targetId });
-        this.events.emit("editorLayoutChanged", this.state.editorLayout);
-        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
-
-        return focusTarget;
-    }
-
-    /**
-     * Close multiple tabs in one layout update. Emits one layout change and one close event per removed tab.
-     */
-    public closeEditorTabsInGroup(tabIds: readonly string[], groupId?: string): EditorTabFocusTarget | null {
-        const idSet = new Set(tabIds);
-        if (idSet.size === 0) {
-            return null;
-        }
-
-        const targetGroup = this.findGroup(this.state.editorLayout, groupId);
-        const targetId = this.resolveGroupId(groupId);
-        const groupSnapshot =
-            targetGroup ?? (this.state.editorLayout as EditorGroup);
-        const closedIds = groupSnapshot.tabs.filter((t) => idSet.has(t.id)).map((t) => t.id);
-        if (closedIds.length === 0) {
-            return null;
-        }
-        const closedActiveTab = Boolean(groupSnapshot.focus && idSet.has(groupSnapshot.focus));
-
-        this.state.editorLayout = this.updateGroup(this.state.editorLayout, targetId, (group) => {
-            const tabs = group.tabs.filter((t) => !idSet.has(t.id));
-            let activeTabId = group.focus;
-
-            if (activeTabId && idSet.has(activeTabId)) {
-                activeTabId = null;
-            } else if (activeTabId && !tabs.some((t) => t.id === activeTabId)) {
-                activeTabId = null;
-            }
-
-            return { ...group, tabs, focus: activeTabId };
-        });
-        this.pruneEmptyEditorGroups();
-
-        const entriesAfterClose = this.collectEditorTabFocusEntries();
-        this.pruneEditorTabFocusHistory(entriesAfterClose);
-        let focusTarget: EditorTabFocusTarget | null = null;
-
-        if (closedActiveTab) {
-            focusTarget = this.getPreferredEditorTabFocusTarget(entriesAfterClose);
-            if (!focusTarget) {
-                const groupAfterClose = this.findGroup(this.state.editorLayout, targetId);
-                const fallbackTab = groupAfterClose?.tabs[groupAfterClose.tabs.length - 1];
-                focusTarget = fallbackTab ? { tabId: fallbackTab.id, groupId: targetId } : null;
-            }
-
-            if (focusTarget) {
-                if (focusTarget.groupId !== targetId) {
-                    this.ensureEditorGroupHasValidFocus(targetId);
-                }
-                if (this.setEditorGroupFocus(focusTarget)) {
-                    this.recordEditorTabFocus(focusTarget.groupId, focusTarget.tabId);
-                }
-            }
-        } else {
-            this.ensureEditorGroupHasValidFocus(targetId);
-        }
-
-        for (const tabId of closedIds) {
-            this.events.emit("editorTabClosedInGroup", { tabId, groupId: targetId });
-        }
-        this.events.emit("editorLayoutChanged", this.state.editorLayout);
-        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
-
-        return focusTarget;
-    }
-
-    public setActiveEditorTabInGroup(tabId: string, groupId: string): void {
-        this.state.editorLayout = this.updateGroup(this.state.editorLayout, groupId, (group) => ({
-            ...group,
-            focus: tabId,
-        }));
-
-        this.recordEditorTabFocus(groupId, tabId);
-        this.events.emit("editorTabActivatedInGroup", { tabId, groupId });
-        this.events.emit("editorLayoutChanged", this.state.editorLayout);
-        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
-    }
-
-    public getEditorLayout(): Readonly<EditorLayout> {
-        return this.state.editorLayout;
-    }
-
-    /**
-     * Every open editor tab, ordered most-recently-focused first, across all split groups. Resolves
-     * through the layout's own per-group focus history (the focus keys embed colon-bearing tab ids,
-     * so they can only be resolved in here where the structured entries live). Tabs not yet in the
-     * focus history - e.g. right after a layout restore - are appended in layout order so the list
-     * is always complete.
-     */
-    public getEditorTabsByRecency(): EditorTab[] {
-        const groups = this.collectGroups();
-        const entriesByKey = new Map(this.collectEditorTabFocusEntries().map((entry) => [entry.key, entry]));
-        const findTab = (groupId: string, tabId: string): EditorTab | undefined =>
-            groups.find((group) => group.id === groupId)?.tabs.find((tab) => tab.id === tabId);
-
-        const ordered: EditorTab[] = [];
-        const seen = new Set<string>();
-        for (const key of this.getEditorTabFocusHistoryKeys()) {
-            const entry = entriesByKey.get(key);
-            const tab = entry && findTab(entry.groupId, entry.tabId);
-            if (tab && !seen.has(tab.id)) {
-                ordered.push(tab);
-                seen.add(tab.id);
-            }
-        }
-        for (const group of groups) {
-            for (const tab of group.tabs) {
-                if (!seen.has(tab.id)) {
-                    ordered.push(tab);
-                    seen.add(tab.id);
-                }
-            }
-        }
-        return ordered;
-    }
-
-    /**
-     * Flatten all ActionDefinition objects contained in an ActionGroup (recursively).
-     */
-    private static flattenGroupActions(group: ActionGroup): (ModuleAction | ActionSeparator)[] {
-        const collected: (ModuleAction | ActionSeparator)[] = [];
-
-        // Helper to recursively walk through menu items
-        const walk = (item: ActionMenuItem | ActionDefinition): void => {
-            // Skip separators
-            if ((item as any).separator) {
-                return;
-            }
-
-            // If submenu -> recurse
-            if ("items" in item && Array.isArray((item as any).items)) {
-                (item as ActionSubmenu).items.forEach(walk);
-                return;
-            }
-
-            // Finally, it should be an ActionDefinition
-            collected.push(item as ActionDefinition);
-        };
-
-        // Old flat list API
-        if (group.actions) {
-            group.actions.forEach((a) => collected.push(a));
-        }
-
-        // Hierarchical API
-        if (group.items) {
-            group.items.forEach(walk);
-        }
-
-        return collected;
-    }
-
-    /**
-     * Register (or refresh) keybinding for an ActionDefinition
-     * @param action the action definition
-     * @param ownerPrefix optional prefix (e.g., group id) to make keybinding ids unique
-     */
-    private registerKeybindingForAction(action: ActionDefinition, ownerPrefix?: string) {
-        if (!this.keybindingService || !action.shortcut) {
-            return;
-        }
-
-        const kbKey = ownerPrefix ? `${ownerPrefix}-${action.id}` : action.id;
-
-        // dispose previous if exist so we can refresh
-        this.kbDisposers.get(kbKey)?.();
-
-        const kb: Keybinding = {
-            id: `action:${kbKey}`,
-            key: action.shortcut,
-            description: action.tooltip ?? action.label ?? action.id,
-            handler: () => action.onClick(null as any),
-            when: action.when,
-            allowInEditable: action.allowInEditable,
-        };
-        const dispose = this.keybindingService.register(kb);
-        this.kbDisposers.set(kbKey, dispose);
-    }
-
-    /**
-     * Clear all state
-     */
-    public clear(): void {
-        this.state = {
-            notifications: [],
-            actionBarItems: [],
-            panels: [],
-            panelOrder: {},
-            collapsedPanels: {},
-            panelVisibility: {},
-            editorTabs: [],
-            activeEditorTabId: null,
-            dialogs: [],
-            statusBarItems: [],
-            activeDialogId: null,
-            actions: [],
-            actionGroups: [],
-            editorLayout: {
-                id: "main",
-                tabs: [],
-                focus: null,
-            },
-            selection: { type: null, data: null },
-            textEditorLanguages: [],
-            textEditorPreviews: [],
-            textEditorActions: [],
-        };
-        this.editorTabFocusHistory = [];
-        this.events.clear();
-    }
+    const kbKey = ownerPrefix ? `${ownerPrefix}-${action.id}` : action.id;
+
+    // dispose previous if exist so we can refresh
+    this.kbDisposers.get(kbKey)?.();
+
+    const kb: Keybinding = {
+      id: `action:${kbKey}`,
+      key: action.shortcut,
+      description: action.tooltip ?? action.label ?? action.id,
+      handler: () => action.onClick(null as any),
+      when: action.when,
+      allowInEditable: action.allowInEditable
+    };
+    const dispose = this.keybindingService.register(kb);
+    this.kbDisposers.set(kbKey, dispose);
+  }
+
+  /**
+   * Clear all state
+   */
+  public clear(): void {
+    this.state = {
+      notifications: [],
+      actionBarItems: [],
+      panels: [],
+      panelOrder: {},
+      collapsedPanels: {},
+      panelVisibility: {},
+      editorTabs: [],
+      activeEditorTabId: null,
+      dialogs: [],
+      statusBarItems: [],
+      activeDialogId: null,
+      actions: [],
+      actionGroups: [],
+      editorLayout: {
+        id: "main",
+        tabs: [],
+        focus: null
+      },
+      selection: { type: null, data: null },
+      textEditorLanguages: [],
+      textEditorPreviews: [],
+      textEditorActions: []
+    };
+    this.editorTabFocusHistory = [];
+    this.events.clear();
+  }
 }

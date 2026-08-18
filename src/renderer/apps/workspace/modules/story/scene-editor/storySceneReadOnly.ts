@@ -20,35 +20,37 @@ import type { StoryRowActions } from "./storyRowActions";
  * one level down instead, in the controller, so that they still open the inspector and no longer open
  * the line editor or an insert slot.
  */
-const READ_ONLY_STORY_ROW_ACTIONS: ReadonlySet<keyof StoryRowActions> = new Set<keyof StoryRowActions>([
-    // Selection, in all the shapes a row offers it.
-    "select",
-    "mouseDown",
-    "mouseEnter",
-    // The menu itself is gated row by row through `freeze.menuRow()`, so opening it shows the author
-    // what exists and what is unavailable - which is the point of disabled-not-hidden.
-    "contextMenu",
-    // Folding a container and its staging lens are view state. They live in `PanelStateService`, which
-    // `shared/vcs/serviceStores` classifies as Studio state and keeps out of the repository entirely.
-    "toggleCollapsed",
-    // Caret bookkeeping for vertical arrow navigation; touches nothing but the goal column.
-    "goalColumnInvalidated",
-    // Reading a row's fields is the entire point of a frozen workspace. The write branches inside
-    // `activateBlockForInspectorOrOp` (re-open an invalid line, add a line to a container) are refused
-    // by the controller.
-    "openInspector",
-    // Panel visibility, and nothing else. Reading a row's fields on a frozen workspace is worth
-    // nothing if the rail holding them is collapsed and the gesture that opens it has been switched
-    // off.
-    "revealInspectorPanel",
-    // Dev Mode from a row. Not a project-data write; running a frozen version is a separate concern and is
-    // gated in the main process, not here.
-    "playFromRow",
+const READ_ONLY_STORY_ROW_ACTIONS: ReadonlySet<keyof StoryRowActions> = new Set<
+  keyof StoryRowActions
+>([
+  // Selection, in all the shapes a row offers it.
+  "select",
+  "mouseDown",
+  "mouseEnter",
+  // The menu itself is gated row by row through `freeze.menuRow()`, so opening it shows the author
+  // what exists and what is unavailable - which is the point of disabled-not-hidden.
+  "contextMenu",
+  // Folding a container and its staging lens are view state. They live in `PanelStateService`, which
+  // `shared/vcs/serviceStores` classifies as Studio state and keeps out of the repository entirely.
+  "toggleCollapsed",
+  // Caret bookkeeping for vertical arrow navigation; touches nothing but the goal column.
+  "goalColumnInvalidated",
+  // Reading a row's fields is the entire point of a frozen workspace. The write branches inside
+  // `activateBlockForInspectorOrOp` (re-open an invalid line, add a line to a container) are refused
+  // by the controller.
+  "openInspector",
+  // Panel visibility, and nothing else. Reading a row's fields on a frozen workspace is worth
+  // nothing if the rail holding them is collapsed and the gesture that opens it has been switched
+  // off.
+  "revealInspectorPanel",
+  // Dev Mode from a row. Not a project-data write; running a frozen version is a separate concern and is
+  // gated in the main process, not here.
+  "playFromRow"
 ]);
 
 /** Whether this row action writes nothing, and so keeps working while frozen. */
 export function isStoryRowActionReadOnlySafe(action: keyof StoryRowActions): boolean {
-    return READ_ONLY_STORY_ROW_ACTIONS.has(action);
+  return READ_ONLY_STORY_ROW_ACTIONS.has(action);
 }
 
 /**
@@ -59,15 +61,18 @@ export function isStoryRowActionReadOnlySafe(action: keyof StoryRowActions): boo
  * that changes identity re-renders every row and undoes the `memo` that keeps typing cheap. Wrapping
  * it costs exactly one such re-render per freeze transition, and none in between.
  */
-export function toReadOnlyStoryRowActions(actions: StoryRowActions, frozen: boolean): StoryRowActions {
-    if (!frozen) {
-        return actions;
-    }
-    const readOnly = {} as Record<string, unknown>;
-    for (const key of Object.keys(actions) as Array<keyof StoryRowActions>) {
-        readOnly[key] = isStoryRowActionReadOnlySafe(key) ? actions[key] : () => undefined;
-    }
-    return readOnly as StoryRowActions;
+export function toReadOnlyStoryRowActions(
+  actions: StoryRowActions,
+  frozen: boolean
+): StoryRowActions {
+  if (!frozen) {
+    return actions;
+  }
+  const readOnly = {} as Record<string, unknown>;
+  for (const key of Object.keys(actions) as Array<keyof StoryRowActions>) {
+    readOnly[key] = isStoryRowActionReadOnlySafe(key) ? actions[key] : () => undefined;
+  }
+  return readOnly as StoryRowActions;
 }
 
 /**
@@ -79,25 +84,25 @@ export function toReadOnlyStoryRowActions(actions: StoryRowActions, frozen: bool
  * insert, indent/outdent, duplicate, move row - edits the scene.
  */
 const READ_ONLY_STORY_KEYBINDING_IDS: ReadonlySet<string> = new Set([
-    "find",
-    "close-inspector",
-    "edit-active",
-    "select-all",
-    "move-selection-down",
-    "move-selection-up",
-    "extend-selection-down",
-    "extend-selection-up",
-    "select-first",
-    "select-last",
-    "select-first-mod",
-    "select-last-mod",
-    "page-down",
-    "page-up",
+  "find",
+  "close-inspector",
+  "edit-active",
+  "select-all",
+  "move-selection-down",
+  "move-selection-up",
+  "extend-selection-down",
+  "extend-selection-up",
+  "select-first",
+  "select-last",
+  "select-first-mod",
+  "select-last-mod",
+  "page-down",
+  "page-up"
 ]);
 
 /** Whether this keybinding writes nothing, and so keeps working while frozen. */
 export function isStoryKeybindingReadOnlySafe(id: string): boolean {
-    return READ_ONLY_STORY_KEYBINDING_IDS.has(id);
+  return READ_ONLY_STORY_KEYBINDING_IDS.has(id);
 }
 
 /**
@@ -117,7 +122,7 @@ export function isStoryKeybindingReadOnlySafe(id: string): boolean {
  * Both call this, so there is one answer rather than two that can drift.
  */
 export function isRowTextEditable(frozen: boolean): boolean {
-    return !frozen;
+  return !frozen;
 }
 
 /**
@@ -130,15 +135,13 @@ export function isRowTextEditable(frozen: boolean): boolean {
  * unchanged and Mod+Z does not fall through to some other editor's undo.
  */
 export function toReadOnlyStoryKeybindings(
-    keybindings: KeybindingDefinition[],
-    frozen: boolean,
+  keybindings: KeybindingDefinition[],
+  frozen: boolean
 ): KeybindingDefinition[] {
-    if (!frozen) {
-        return keybindings;
-    }
-    return keybindings.map(binding =>
-        isStoryKeybindingReadOnlySafe(binding.id)
-            ? binding
-            : { ...binding, handler: () => undefined },
-    );
+  if (!frozen) {
+    return keybindings;
+  }
+  return keybindings.map((binding) =>
+    isStoryKeybindingReadOnlySafe(binding.id) ? binding : { ...binding, handler: () => undefined }
+  );
 }

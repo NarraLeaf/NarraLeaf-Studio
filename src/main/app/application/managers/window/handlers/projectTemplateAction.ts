@@ -17,26 +17,30 @@ import { IPCHandler } from "./IPCHandler";
  */
 
 export class ProjectTemplateListHandler extends IPCHandler<IPCEventType.projectTemplateList> {
-    readonly name = IPCEventType.projectTemplateList;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.projectTemplateList;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<ProjectTemplateDescriptor[]>> {
-        return this.tryUse(() => listProjectTemplates(window.app.resolveResource(PROJECT_TEMPLATES_DIR)));
-    }
+  public async handle(window: AppWindow): Promise<RequestStatus<ProjectTemplateDescriptor[]>> {
+    return this.tryUse(() =>
+      listProjectTemplates(window.app.resolveResource(PROJECT_TEMPLATES_DIR))
+    );
+  }
 }
 
 export class ProjectTemplateScaffoldHandler extends IPCHandler<IPCEventType.projectTemplateScaffold> {
-    readonly name = IPCEventType.projectTemplateScaffold;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.projectTemplateScaffold;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        data: IPCEvents[IPCEventType.projectTemplateScaffold]["data"],
-    ): Promise<RequestStatus<{ filesCopied: number }>> {
-        return this.tryUse(() => scaffoldProjectFromTemplate(
-            window.app.resolveResource(PROJECT_TEMPLATES_DIR),
-            data.templateId,
-            data.projectPath,
-        ));
-    }
+  public async handle(
+    window: AppWindow,
+    data: IPCEvents[IPCEventType.projectTemplateScaffold]["data"]
+  ): Promise<RequestStatus<{ filesCopied: number }>> {
+    return this.tryUse(() =>
+      scaffoldProjectFromTemplate(
+        window.app.resolveResource(PROJECT_TEMPLATES_DIR),
+        data.templateId,
+        data.projectPath
+      )
+    );
+  }
 }

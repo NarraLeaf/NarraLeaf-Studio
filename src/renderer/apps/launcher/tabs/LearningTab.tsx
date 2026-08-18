@@ -1,12 +1,12 @@
 import { HELP_RESOURCES, HelpBrowser, type HelpTopicId } from "@/lib/help";
 
 export interface LearningTabProps {
-    /**
-     * Topic to land on; the list's first otherwise. Set when the tab was opened on the author's
-     * behalf - first-run setup ends on three links into it - and left unset when they picked the
-     * tab themselves, because then they have not asked for a particular topic.
-     */
-    initialTopic?: HelpTopicId;
+  /**
+   * Topic to land on; the list's first otherwise. Set when the tab was opened on the author's
+   * behalf - first-run setup ends on three links into it - and left unset when they picked the
+   * tab themselves, because then they have not asked for a particular topic.
+   */
+  initialTopic?: HelpTopicId;
 }
 
 /**
@@ -21,9 +21,9 @@ export interface LearningTabProps {
  * for a launcher page that starts with its content.
  */
 export function LearningTab({ initialTopic }: LearningTabProps) {
-    return (
-        <div className="h-full w-full text-fg">
-            <HelpBrowser resources={HELP_RESOURCES} initialTopic={initialTopic} />
-        </div>
-    );
+  return (
+    <div className="h-full w-full text-fg">
+      <HelpBrowser resources={HELP_RESOURCES} initialTopic={initialTopic} />
+    </div>
+  );
 }

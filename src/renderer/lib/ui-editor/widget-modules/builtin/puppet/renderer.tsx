@@ -6,7 +6,12 @@ import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
 import { useSurfacePuppetSession } from "@/lib/workspace/hooks/useSurfacePuppetSession";
 import { useSurfacePuppetContextLease } from "@/lib/ui-editor/runtime/game/surfacePuppetContextBudget";
-import { getPuppetProps, puppetWidgetRequest, puppetWidgetSize, puppetWidgetState } from "./helpers";
+import {
+  getPuppetProps,
+  puppetWidgetRequest,
+  puppetWidgetSize,
+  puppetWidgetState
+} from "./helpers";
 
 /**
  * The model's box. Absolute inside the chrome so corner radius, border, fill and opacity are the
@@ -14,11 +19,11 @@ import { getPuppetProps, puppetWidgetRequest, puppetWidgetSize, puppetWidgetStat
  * that and would drift from the rest of the Surface.
  */
 const MOUNT_STYLE: CSSProperties = {
-    position: "absolute",
-    inset: 0,
-    borderRadius: "inherit",
-    // The model is a picture, not a control. Phase two's interaction nodes can lift this.
-    pointerEvents: "none",
+  position: "absolute",
+  inset: 0,
+  borderRadius: "inherit",
+  // The model is a picture, not a control. Phase two's interaction nodes can lift this.
+  pointerEvents: "none"
 };
 
 /**
@@ -38,27 +43,31 @@ const PREMOUNT_MARGIN = "100%";
  * scroll container several levels up. Both are "not visible" and neither moves the canvas's scroll.
  */
 function useNearViewport(node: HTMLElement | null): boolean {
-    const [near, setNear] = useState(false);
+  const [near, setNear] = useState(false);
 
-    useEffect(() => {
-        if (!node) {
-            setNear(false);
-            return;
-        }
-        if (typeof IntersectionObserver === "undefined") {
-            // A host with no observer (jsdom) must not be a host where nothing ever draws.
-            setNear(true);
-            return;
-        }
-        const observer = new IntersectionObserver(
-            entries => { setNear(entries.some(entry => entry.isIntersecting)); },
-            { rootMargin: PREMOUNT_MARGIN },
-        );
-        observer.observe(node);
-        return () => { observer.disconnect(); };
-    }, [node]);
+  useEffect(() => {
+    if (!node) {
+      setNear(false);
+      return;
+    }
+    if (typeof IntersectionObserver === "undefined") {
+      // A host with no observer (jsdom) must not be a host where nothing ever draws.
+      setNear(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setNear(entries.some((entry) => entry.isIntersecting));
+      },
+      { rootMargin: PREMOUNT_MARGIN }
+    );
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+    };
+  }, [node]);
 
-    return near;
+  return near;
 }
 
 /**
@@ -69,33 +78,33 @@ function useNearViewport(node: HTMLElement | null): boolean {
  * runtime at all is the normal case and must not look like a fault.
  */
 function placeholderKey(input: {
-    configured: boolean;
-    denied: boolean;
-    status: string;
-    reason: string | null;
+  configured: boolean;
+  denied: boolean;
+  status: string;
+  reason: string | null;
 }): TranslationKey | null {
-    if (!input.configured) {
-        return "widgets.puppet.placeholderUnconfigured";
-    }
-    if (input.denied) {
-        return "widgets.puppet.placeholderBudget";
-    }
-    switch (input.status) {
-        case "loading":
-            return "widgets.puppet.placeholderLoading";
-        case "error":
-            return "widgets.puppet.placeholderError";
-        case "missing-backend":
-            return input.reason === "no-model"
-                ? "widgets.puppet.placeholderNoModel"
-                : "widgets.puppet.placeholderBackendMissing";
-        case "ready":
-            return null;
-        default:
-            // `unmounted` - off screen, or hidden. Deliberately silent: the box cannot be seen, and a
-            // label there would only ever be read as an error by someone scrolling past.
-            return null;
-    }
+  if (!input.configured) {
+    return "widgets.puppet.placeholderUnconfigured";
+  }
+  if (input.denied) {
+    return "widgets.puppet.placeholderBudget";
+  }
+  switch (input.status) {
+    case "loading":
+      return "widgets.puppet.placeholderLoading";
+    case "error":
+      return "widgets.puppet.placeholderError";
+    case "missing-backend":
+      return input.reason === "no-model"
+        ? "widgets.puppet.placeholderNoModel"
+        : "widgets.puppet.placeholderBackendMissing";
+    case "ready":
+      return null;
+    default:
+      // `unmounted` - off screen, or hidden. Deliberately silent: the box cannot be seen, and a
+      // label there would only ever be read as an error by someone scrolling past.
+      return null;
+  }
 }
 
 /**
@@ -105,105 +114,105 @@ function placeholderKey(input: {
  * is something else and repeating the legal note would bury it.
  */
 const RUNTIME_NOTE_KEYS: ReadonlySet<string> = new Set([
-    "widgets.puppet.placeholderUnconfigured",
-    "widgets.puppet.placeholderBackendMissing",
+  "widgets.puppet.placeholderUnconfigured",
+  "widgets.puppet.placeholderBackendMissing"
 ]);
 
 export function PuppetRenderer(props: WidgetRendererProps): ReactElement {
-    const { element, hostAdapter } = props;
-    const { t } = useTranslation();
-    const puppetProps = getPuppetProps(element);
-    const [box, setBox] = useState<HTMLDivElement | null>(null);
+  const { element, hostAdapter } = props;
+  const { t } = useTranslation();
+  const puppetProps = getPuppetProps(element);
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
 
-    /**
-     * `blueprintRuntime` is what tells the two hosts apart - the packaged game and Dev Mode install
-     * one, the editor canvas never does. The same signal `video/renderer.tsx` and `slider/renderer.tsx`
-     * use.
-     */
-    const isLiveHost = Boolean(hostAdapter.blueprintRuntime);
+  /**
+   * `blueprintRuntime` is what tells the two hosts apart - the packaged game and Dev Mode install
+   * one, the editor canvas never does. The same signal `video/renderer.tsx` and `slider/renderer.tsx`
+   * use.
+   */
+  const isLiveHost = Boolean(hostAdapter.blueprintRuntime);
 
-    const request = puppetWidgetRequest(puppetProps);
-    const configured = request !== null;
+  const request = puppetWidgetRequest(puppetProps);
+  const configured = request !== null;
 
-    const nearViewport = useNearViewport(box);
-    const visible = element.layout.visible !== false;
-    const wantsContext = configured && visible && nearViewport;
-    /**
-     * The lease is this *instance's*, and the hook keys it that way itself - not by element id.
-     * The element-keyed version was a real defect: two renderer instances of one element (the canvas
-     * plus a Surface panel preview) shared one claim, and the first to unmount revoked the survivor's
-     * lease, which then never came back. See `surfacePuppetContextBudget.ts`.
-     */
-    const lease = useSurfacePuppetContextLease(wantsContext);
-    const denied = wantsContext && !lease.granted;
+  const nearViewport = useNearViewport(box);
+  const visible = element.layout.visible !== false;
+  const wantsContext = configured && visible && nearViewport;
+  /**
+   * The lease is this *instance's*, and the hook keys it that way itself - not by element id.
+   * The element-keyed version was a real defect: two renderer instances of one element (the canvas
+   * plus a Surface panel preview) shared one claim, and the first to unmount revoked the survivor's
+   * lease, which then never came back. See `surfacePuppetContextBudget.ts`.
+   */
+  const lease = useSurfacePuppetContextLease(wantsContext);
+  const denied = wantsContext && !lease.granted;
 
-    const size = puppetWidgetSize(element);
-    const stateKey = encodeStableJson(puppetWidgetState(puppetProps));
-    /**
-     * Keyed on the encoding rather than on the five fields, because the normalizer rebuilds `params`
-     * and `slots` on every render - a reference dependency would re-`apply()` the pose on every
-     * keystroke anywhere in the inspector. Safe against staleness by construction: the state is a pure
-     * function of the key, so an object kept from an earlier render is an equal object.
-     */
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by value; see above
-    const state = useMemo(() => puppetWidgetState(puppetProps), [stateKey]);
+  const size = puppetWidgetSize(element);
+  const stateKey = encodeStableJson(puppetWidgetState(puppetProps));
+  /**
+   * Keyed on the encoding rather than on the five fields, because the normalizer rebuilds `params`
+   * and `slots` on every render - a reference dependency would re-`apply()` the pose on every
+   * keystroke anywhere in the inspector. Safe against staleness by construction: the state is a pure
+   * function of the key, so an object kept from an earlier render is an equal object.
+   */
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by value; see above
+  const state = useMemo(() => puppetWidgetState(puppetProps), [stateKey]);
 
-    const puppet = useSurfacePuppetSession({
-        host: box,
-        enabled: lease.granted,
-        request,
-        state,
-        size,
-    });
+  const puppet = useSurfacePuppetSession({
+    host: box,
+    enabled: lease.granted,
+    request,
+    state,
+    size
+  });
 
-    const key = placeholderKey({
-        configured,
-        denied,
-        status: puppet.status,
-        reason: puppet.reason,
-    });
+  const key = placeholderKey({
+    configured,
+    denied,
+    status: puppet.status,
+    reason: puppet.reason
+  });
 
-    /**
-     * The placeholder is authoring furniture and never ships.
-     *
-     * A player must never read "choose a model bundle" - in a shipped game an unconfigured or
-     * unresolvable puppet draws nothing at all, which is the engine's own degradation contract for a
-     * stage puppet whose backend nobody answers to.
-     */
-    const showPlaceholder = !isLiveHost && key !== null;
+  /**
+   * The placeholder is authoring furniture and never ships.
+   *
+   * A player must never read "choose a model bundle" - in a shipped game an unconfigured or
+   * unresolvable puppet draws nothing at all, which is the engine's own degradation contract for a
+   * stage puppet whose backend nobody answers to.
+   */
+  const showPlaceholder = !isLiveHost && key !== null;
 
-    return (
-        <RectangleChromeRenderer {...props}>
-            <div
-                ref={setBox}
-                style={MOUNT_STYLE}
-                data-ui-puppet="true"
-                data-ui-puppet-status={puppet.status}
-                data-ui-puppet-backend={puppetProps.backend}
-            />
-            {showPlaceholder ? (
-                <div
-                    className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1 px-3 text-center"
-                    data-ui-puppet-placeholder="true"
-                >
-                    <span className="text-2xs leading-snug text-fg-subtle">
-                        {t(key, {
-                            backend: puppetProps.backend,
-                            error: puppet.error ?? "",
-                            // The live count, never the constant: the first time those two disagreed,
-                            // the box told the author eight models were drawn while one was.
-                            drawn: lease.drawn,
-                        })}
-                    </span>
-                    {/* Repeated on the box, because "supply your own renderer" is the single thing an
+  return (
+    <RectangleChromeRenderer {...props}>
+      <div
+        ref={setBox}
+        style={MOUNT_STYLE}
+        data-ui-puppet="true"
+        data-ui-puppet-status={puppet.status}
+        data-ui-puppet-backend={puppetProps.backend}
+      />
+      {showPlaceholder ? (
+        <div
+          className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1 px-3 text-center"
+          data-ui-puppet-placeholder="true"
+        >
+          <span className="text-2xs leading-snug text-fg-subtle">
+            {t(key, {
+              backend: puppetProps.backend,
+              error: puppet.error ?? "",
+              // The live count, never the constant: the first time those two disagreed,
+              // the box told the author eight models were drawn while one was.
+              drawn: lease.drawn
+            })}
+          </span>
+          {/* Repeated on the box, because "supply your own renderer" is the single thing an
                         author has to know about this widget and the inspector may not be open. */}
-                    {RUNTIME_NOTE_KEYS.has(key) ? (
-                        <span className="text-2xs leading-snug text-fg-subtle/70">
-                            {t("widgets.puppet.placeholderRuntimeNote")}
-                        </span>
-                    ) : null}
-                </div>
-            ) : null}
-        </RectangleChromeRenderer>
-    );
+          {RUNTIME_NOTE_KEYS.has(key) ? (
+            <span className="text-2xs leading-snug text-fg-subtle/70">
+              {t("widgets.puppet.placeholderRuntimeNote")}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+    </RectangleChromeRenderer>
+  );
 }

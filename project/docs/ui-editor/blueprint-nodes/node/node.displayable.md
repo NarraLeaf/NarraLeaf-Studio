@@ -19,6 +19,7 @@ Displayable Element 派生节点使用 `blueprint.element.displayable.*`，创�
 Element 派生版：`blueprint.element.displayable.getDisplay` - `Get Element Display`。
 
 输出：
+
 - `display` - boolean，当前运行时 `display` 状态
 
 `display` 默认为 `true`。当运行时 `display` 为 `false` 时，元素仍保留在 SurfaceElementTree 中，并通过 CSS `display: none` 隐藏元素自身和子树。
@@ -30,6 +31,7 @@ Element 派生版：`blueprint.element.displayable.getDisplay` - `Get Element Di
 Element 派生版：`blueprint.element.displayable.setDisplay` - `Set Element Display`，额外带 `element` 输入并作用于该 Element 引用。
 
 输入：
+
 - `display` - boolean，目标运行时 `display` 状态
 
 写入发生在运行时 patch 层，不修改 authored UI document。`display = false` 表示对元素应用 CSS `display: none`，但不卸载元素；`display = true` 恢复显示。它不同于 `visible`：`visible` 仍是布局/可见性属性，保留给 `Get Property visible` / `Set Property visible` 以及旧的 Visible 节点语义。
@@ -41,18 +43,21 @@ Element 派生版：`blueprint.element.displayable.setDisplay` - `Set Element Di
 通过节点卡片的 `Property` 下拉选择要读取的属性。该节点取代旧的多个固定 get 节点，是新图中推荐的 Displayable 读取入口。
 
 卡片参数：
+
 - `property` - `position`、`size`、`bounds`、`x`、`y`、`offsetX`、`offsetY`、`width`、`height`、`rotation`、`opacity`、`visible`
 
 输出：
+
 - `value` - 所选属性值
 
 属性语义：
+
 - `position` 返回 `{ x, y }`
 - `size` 返回 `{ width, height }`
 - `bounds` 返回 `{ x, y, width, height }`
 - `x` / `y` / `offsetX` / `offsetY` / `width` / `height` / `rotation` / `opacity` 返回 number
 - `visible` 返回 boolean
-兼容说明：旧节点 `Get Position`、`Get Size`、`Get Bounds`、`Get Rotation`、`Get Opacity`、`Get Visible`、`Get Variant` 仍注册以支持旧蓝图，但在创建浮窗中隐藏。新图应使用 `Get Property`。
+  兼容说明：旧节点 `Get Position`、`Get Size`、`Get Bounds`、`Get Rotation`、`Get Opacity`、`Get Visible`、`Get Variant` 仍注册以支持旧蓝图，但在创建浮窗中隐藏。新图应使用 `Get Property`。
 
 ## Set Property
 
@@ -61,6 +66,7 @@ Element 派生版：`blueprint.element.displayable.setDisplay` - `Set Element Di
 通过节点卡片选择一个可写 Displayable 属性并填写值。写入发生在运行时 patch 层，不直接改 authored UI document；值变化会触发目标元素 flush。
 
 卡片参数：
+
 - `property` - `x`、`y`、`offsetX`、`offsetY`、`width`、`height`、`rotation`、`opacity`、`visible`
 - `value` - 属性值；`visible` 使用 Visible / Hidden 下拉，`opacity` 按百分比 `0..100` 输入，其它属性使用 number 输入
 
@@ -79,6 +85,7 @@ Element 派生版：`blueprint.element.displayable.setDisplay` - `Set Element Di
 设置目标元素的运行时 Variant 覆盖。Self 版默认绑定当前蓝图所属元素，只有支持 Appearance Variant 的控件会显示该节点；Element 派生版通过 `element` 输入引用目标元素。节点卡片的 `Variant` 字段会在能静态推断目标元素时显示该元素已有 Variants 的下拉列表；`Wait For Animation` 下拉选择是否等待目标 Variant 的 Appearance transition 完成后再继续执行 `Next`。
 
 卡片参数：
+
 - `variantId` - 隐藏持久化值，只能由 Variant 下拉写入
 - `waitForTransition` - `continue` 立即继续，`wait` 等待目标 Variant 上最长的字段 transition；没有 transition 时不会额外等待
 
@@ -93,6 +100,7 @@ Variant 的内部 UUID 只作为隐藏持久化值保存。节点没有 `variant
 通过节点卡片选择一个属性并填写动画参数。第一版是属性驱动的基础节点，不内建 Fade / Shake / Pulse 等动画序列；这些序列之后可以作为更高层节点或宏基于本节点构建。
 
 卡片参数：
+
 - `property` - 要动画化的属性：`opacity`、`offsetX`、`offsetY`、`x`、`y`、`scale`、`rotation`
 - `from` - 可选起始值；留空时 Motion 从元素当前运行时状态开始，`opacity` 按百分比输入；`x` / `y` 如需从坐标 0 开始，必须在卡片中显式填写 `0`
 - `to` - 目标值；`opacity` 按百分比输入
@@ -102,6 +110,7 @@ Variant 的内部 UUID 只作为隐藏持久化值保存。节点没有 `variant
 - `after` - 完成后行为：`hold` 保持最终值，`reset` 回到 authored layout/appearance
 
 输出：
+
 - `animation` - 当前动画 token，类型为 `AnimationToken`，可保存到 `Var` 并传给 `Stop Animation` / `Stop Element Animation`
 
 节点启动动画时会先写出 `animation` token；执行链仍在动画自然完成或被停止节点跳过后进入 `Next`。
@@ -111,6 +120,7 @@ Variant 的内部 UUID 只作为隐藏持久化值保存。节点没有 `variant
 数字输入采用草稿编辑：输入时不立即写回节点参数，失去输入/节点/窗口焦点或按 Enter 时提交，按 Esc 放弃本次编辑。
 
 属性语义：
+
 - `opacity` 使用元素透明度，卡片显示/输入为百分比 `0..100`，运行时归一化为 `0..1`；`after = hold` 会把最终 opacity 持久到运行时 patch，旧图中已经保存的 `0..1` 值仍兼容
 - `offsetX` / `offsetY` 是相对 authored layout 的视觉位移，单位为设计坐标 px
 - `x` / `y` 是布局位置动画，单位为设计坐标 px；`after = hold` 会先把最终位置写回运行时 layout patch，再用 motion offset 过渡到该位置，动画结束后清理残留 offset；`after = reset` 会在动画结束后回到当前运行时布局位置
@@ -122,6 +132,7 @@ Variant 的内部 UUID 只作为隐藏持久化值保存。节点没有 `variant
 `blueprint.displayable.stopAnimation` - 停止指定 Displayable 动画
 
 输入：
+
 - `animation` - `Animate Property` / `Animate Element Property` 输出的 `AnimationToken`
 
 该节点只停止 token 对应的 runtime animation，并让正在等待该动画完成的 `Animate Property` / `Animate Element Property` 提前进入 `Next`。传入缺失值、非 `AnimationToken`、非 `animation:` token，或已不再 pending 的 token 时静默 no-op 并继续执行。`Stop Element Animation` 与 Self 版使用同一个 `animation` 输入，不再按元素清除全部动画。

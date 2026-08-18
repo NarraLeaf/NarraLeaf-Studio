@@ -41,8 +41,8 @@ export type WorkspaceFrozenOperation = "production build" | "preview";
  * `devMode/revisionLaunchSource.ts`) - never to fall back to the working tree.
  */
 export interface WorkspaceFrozenState {
-    kind: WorkspaceFreezeKind;
-    revision?: RevisionId;
+  kind: WorkspaceFreezeKind;
+  revision?: RevisionId;
 }
 
 /**
@@ -58,7 +58,7 @@ const frozenProjects = new Map<string, WorkspaceFrozenState>();
  * guard silently fail open, which is the one failure mode nobody would notice.
  */
 function projectKey(projectPath: string): string {
-    return path.resolve(projectPath);
+  return path.resolve(projectPath);
 }
 
 /**
@@ -71,26 +71,26 @@ function projectKey(projectPath: string): string {
  * why.
  */
 export function reportWorkspaceFreeze(
-    projectPath: string,
-    reason: WorkspaceFreezeKind | null,
-    revision?: RevisionId,
+  projectPath: string,
+  reason: WorkspaceFreezeKind | null,
+  revision?: RevisionId
 ): void {
-    if (reason === null) {
-        frozenProjects.delete(projectKey(projectPath));
-        return;
-    }
-    // Only a revision freeze keeps one. A manual freeze that inherited the id of the last revision
-    // browsed would make Dev Mode run history while the author believes they are on their own files -
-    // the working tree IS what is on disk during a manual freeze, so running it is the correct answer.
-    frozenProjects.set(projectKey(projectPath), {
-        kind: reason,
-        ...(reason === "revision" && revision ? { revision } : {}),
-    });
+  if (reason === null) {
+    frozenProjects.delete(projectKey(projectPath));
+    return;
+  }
+  // Only a revision freeze keeps one. A manual freeze that inherited the id of the last revision
+  // browsed would make Dev Mode run history while the author believes they are on their own files -
+  // the working tree IS what is on disk during a manual freeze, so running it is the correct answer.
+  frozenProjects.set(projectKey(projectPath), {
+    kind: reason,
+    ...(reason === "revision" && revision ? { revision } : {})
+  });
 }
 
 /** Why this project's workspace is frozen, or null when it is not - which is the default. */
 export function getWorkspaceFreeze(projectPath: string): WorkspaceFreezeKind | null {
-    return frozenProjects.get(projectKey(projectPath))?.kind ?? null;
+  return frozenProjects.get(projectKey(projectPath))?.kind ?? null;
 }
 
 /**
@@ -102,7 +102,7 @@ export function getWorkspaceFreeze(projectPath: string): WorkspaceFreezeKind | n
  * missing.
  */
 export function getWorkspaceFreezeState(projectPath: string): WorkspaceFrozenState | null {
-    return frozenProjects.get(projectKey(projectPath)) ?? null;
+  return frozenProjects.get(projectKey(projectPath)) ?? null;
 }
 
 /**
@@ -112,27 +112,33 @@ export function getWorkspaceFreezeState(projectPath: string): WorkspaceFrozenSta
  * later would inherit a freeze nobody could see and its builds would refuse forever.
  */
 export function forgetWorkspaceFreeze(projectPath: string): void {
-    frozenProjects.delete(projectKey(projectPath));
+  frozenProjects.delete(projectKey(projectPath));
 }
 
 /**
  * What the author is told. Written for a person, because it is the only explanation they get: the
  * refusal reaches them through the workspace console and the build dialog, not a log file.
  */
-export function workspaceFrozenMessage(reason: WorkspaceFreezeKind, operation: WorkspaceFrozenOperation): string {
-    const remedy = reason === "revision"
-        ? "Leave the revision you are looking at, or unfreeze the workspace, and try again."
-        // A merge has no "unfreeze": the working tree holds two sides at once, and what a build
+export function workspaceFrozenMessage(
+  reason: WorkspaceFreezeKind,
+  operation: WorkspaceFrozenOperation
+): string {
+  const remedy =
+    reason === "revision"
+      ? "Leave the revision you are looking at, or unfreeze the workspace, and try again."
+      : // A merge has no "unfreeze": the working tree holds two sides at once, and what a build
         // produced from it is something nobody wrote. Finishing the merge is the only way out, and
         // naming it is the difference between a refusal and a dead end.
-        : reason === "merge"
-            ? "Finish the merge in the version panel - choose which side to keep for each file - and try again."
-            // Recovery mode has no "unfreeze" either, and refusing here is not merely consistency:
-            // the shell starts almost none of the services a build reads from, so what it produced
-            // would be a game missing most of the project rather than a build of it.
-            : reason === "recovery"
-                ? "Leave recovery mode - this window reopens as a normal workspace - and try again."
-                : "Unfreeze the workspace and try again.";
-    return `The ${operation} is unavailable while this workspace is frozen: what it produced would `
-        + `not be what you are looking at. ${remedy}`;
+        reason === "merge"
+        ? "Finish the merge in the version panel - choose which side to keep for each file - and try again."
+        : // Recovery mode has no "unfreeze" either, and refusing here is not merely consistency:
+          // the shell starts almost none of the services a build reads from, so what it produced
+          // would be a game missing most of the project rather than a build of it.
+          reason === "recovery"
+          ? "Leave recovery mode - this window reopens as a normal workspace - and try again."
+          : "Unfreeze the workspace and try again.";
+  return (
+    `The ${operation} is unavailable while this workspace is frozen: what it produced would ` +
+    `not be what you are looking at. ${remedy}`
+  );
 }

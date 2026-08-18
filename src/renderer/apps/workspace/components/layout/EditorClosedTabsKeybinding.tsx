@@ -12,21 +12,21 @@ import { reopenLastClosedTab } from "../../session/workspaceClosedTabsStore";
  * is needed most.
  */
 export function EditorClosedTabsKeybinding() {
-    const { context } = useWorkspace();
+  const { context } = useWorkspace();
 
-    useKeybinding({
-        id: "workspace-reopen-closed-tab",
-        key: "mod+shift+t",
-        description: "Reopen the most recently closed editor tab",
-        handler: () => {
-            if (!context) {
-                return;
-            }
-            const uiService = context.services.get<UIService>(Services.UI);
-            reopenLastClosedTab(context, uiService);
-        },
-        allowInEditable: true,
-    });
+  useKeybinding({
+    id: "workspace-reopen-closed-tab",
+    key: "mod+shift+t",
+    description: "Reopen the most recently closed editor tab",
+    handler: () => {
+      if (!context) {
+        return;
+      }
+      const uiService = context.services.get<UIService>(Services.UI);
+      reopenLastClosedTab(context, uiService);
+    },
+    allowInEditable: true
+  });
 
-    return null;
+  return null;
 }

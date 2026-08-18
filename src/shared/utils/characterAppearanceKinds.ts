@@ -28,7 +28,11 @@
  */
 export type PuppetAppearanceKind = "puppet" | "live2d" | "spine";
 
-export const PUPPET_APPEARANCE_KINDS = ["puppet", "live2d", "spine"] as const satisfies readonly PuppetAppearanceKind[];
+export const PUPPET_APPEARANCE_KINDS = [
+  "puppet",
+  "live2d",
+  "spine"
+] as const satisfies readonly PuppetAppearanceKind[];
 
 /**
  * How a character's sprite is built. Chosen when the character is created; changing it is a cold
@@ -55,16 +59,16 @@ export type CharacterAppearanceKind = "preset" | "layered" | PuppetAppearanceKin
  * `characterAppearanceKinds.test.ts`, which fails when the union grows past this list.
  */
 export const CHARACTER_APPEARANCE_KINDS = [
-    "preset",
-    "layered",
-    ...PUPPET_APPEARANCE_KINDS,
+  "preset",
+  "layered",
+  ...PUPPET_APPEARANCE_KINDS
 ] as const satisfies readonly CharacterAppearanceKind[];
 
 export function isCharacterAppearanceKind(value: unknown): value is CharacterAppearanceKind {
-    return CHARACTER_APPEARANCE_KINDS.includes(value as CharacterAppearanceKind);
+  return CHARACTER_APPEARANCE_KINDS.includes(value as CharacterAppearanceKind);
 }
 
 /** Whether this kind is drawn by an author-supplied runtime — the discriminant for the puppet arm. */
 export function isPuppetAppearanceKind(value: unknown): value is PuppetAppearanceKind {
-    return PUPPET_APPEARANCE_KINDS.includes(value as PuppetAppearanceKind);
+  return PUPPET_APPEARANCE_KINDS.includes(value as PuppetAppearanceKind);
 }

@@ -12,7 +12,7 @@ import { contentClassOfEntry } from "./entrySides";
 
 /** Whether this presenter draws that file. See {@link contentClassOfEntry}. */
 export function isAudioEntry(entry: DocumentDiffEntry): boolean {
-    return contentClassOfEntry(entry) === "audio";
+  return contentClassOfEntry(entry) === "audio";
 }
 
 /**
@@ -31,27 +31,27 @@ export function isAudioEntry(entry: DocumentDiffEntry): boolean {
  * @returns each side's share of the timeline, from 0 to 1.
  */
 export function timelineShares(
-    before: number | null,
-    after: number | null,
+  before: number | null,
+  after: number | null
 ): { before: number; after: number } {
-    const longest = Math.max(before ?? 0, after ?? 0);
-    if (longest <= 0) {
-        // Nothing to be a share of. A present side still fills the timeline, because a track drawn
-        // at zero width would read as a file that failed to load rather than as an empty one.
-        return { before: before === null ? 0 : 1, after: after === null ? 0 : 1 };
-    }
-    return {
-        before: before === null ? 0 : before / longest,
-        after: after === null ? 0 : after / longest,
-    };
+  const longest = Math.max(before ?? 0, after ?? 0);
+  if (longest <= 0) {
+    // Nothing to be a share of. A present side still fills the timeline, because a track drawn
+    // at zero width would read as a file that failed to load rather than as an empty one.
+    return { before: before === null ? 0 : 1, after: after === null ? 0 : 1 };
+  }
+  return {
+    before: before === null ? 0 : before / longest,
+    after: after === null ? 0 : after / longest
+  };
 }
 
 /** The extremes of one bucket of samples, which is what a waveform is drawn from. */
 export interface WaveformPeaks {
-    /** Lowest sample in each bucket, from -1 to 0. */
-    readonly min: Float32Array;
-    /** Highest sample in each bucket, from 0 to 1. */
-    readonly max: Float32Array;
+  /** Lowest sample in each bucket, from -1 to 0. */
+  readonly min: Float32Array;
+  /** Highest sample in each bucket, from 0 to 1. */
+  readonly max: Float32Array;
 }
 
 /**
@@ -66,32 +66,32 @@ export interface WaveformPeaks {
  * channel with the right one hidden behind it.
  */
 export function peaksOf(channels: readonly Float32Array[], buckets: number): WaveformPeaks {
-    const columns = Math.max(1, Math.floor(buckets));
-    const min = new Float32Array(columns);
-    const max = new Float32Array(columns);
-    const length = channels.reduce((longest, channel) => Math.max(longest, channel.length), 0);
-    if (length === 0 || channels.length === 0) {
-        return { min, max };
-    }
-
-    for (let column = 0; column < columns; column += 1) {
-        const from = Math.floor((column * length) / columns);
-        // At least one sample per column: a file shorter than the waveform is wide would
-        // otherwise leave empty columns scattered through it, which reads as dropouts.
-        const to = Math.max(from + 1, Math.floor(((column + 1) * length) / columns));
-        let low = 0;
-        let high = 0;
-        for (const channel of channels) {
-            for (let index = from; index < to && index < channel.length; index += 1) {
-                const sample = channel[index];
-                if (sample < low) low = sample;
-                if (sample > high) high = sample;
-            }
-        }
-        min[column] = low;
-        max[column] = high;
-    }
+  const columns = Math.max(1, Math.floor(buckets));
+  const min = new Float32Array(columns);
+  const max = new Float32Array(columns);
+  const length = channels.reduce((longest, channel) => Math.max(longest, channel.length), 0);
+  if (length === 0 || channels.length === 0) {
     return { min, max };
+  }
+
+  for (let column = 0; column < columns; column += 1) {
+    const from = Math.floor((column * length) / columns);
+    // At least one sample per column: a file shorter than the waveform is wide would
+    // otherwise leave empty columns scattered through it, which reads as dropouts.
+    const to = Math.max(from + 1, Math.floor(((column + 1) * length) / columns));
+    let low = 0;
+    let high = 0;
+    for (const channel of channels) {
+      for (let index = from; index < to && index < channel.length; index += 1) {
+        const sample = channel[index];
+        if (sample < low) low = sample;
+        if (sample > high) high = sample;
+      }
+    }
+    min[column] = low;
+    max[column] = high;
+  }
+  return { min, max };
 }
 
 /**
@@ -102,15 +102,15 @@ export function peaksOf(channels: readonly Float32Array[], buckets: number): Wav
  * than it was is a cue that now overlaps the next one.
  */
 export function formatClock(milliseconds: number): string {
-    const total = Math.max(0, milliseconds) / 1000;
-    const minutes = Math.floor(total / 60);
-    const seconds = total - minutes * 60;
-    return `${minutes}:${seconds < 10 ? "0" : ""}${seconds.toFixed(1)}`;
+  const total = Math.max(0, milliseconds) / 1000;
+  const minutes = Math.floor(total / 60);
+  const seconds = total - minutes * 60;
+  return `${minutes}:${seconds < 10 ? "0" : ""}${seconds.toFixed(1)}`;
 }
 
 /** A sample rate as it is written on a file's properties, rather than as five digits. */
 export function formatSampleRate(hertz: number): string {
-    return `${Math.round(hertz / 100) / 10} kHz`;
+  return `${Math.round(hertz / 100) / 10} kHz`;
 }
 
 /**
@@ -136,17 +136,17 @@ export const AUDIO_DECODE_BYTE_BUDGET = 64 * 1024 * 1024;
  * to say, which is an ordinary answer for a variable bitrate file with no seek table.
  */
 export function estimateDecodedBytes(
-    header: { durationMs?: number; sampleRate?: number; channels?: number } | null,
+  header: { durationMs?: number; sampleRate?: number; channels?: number } | null
 ): number | null {
-    const durationMs = header?.durationMs;
-    const sampleRate = header?.sampleRate;
-    if (!durationMs || !sampleRate || durationMs <= 0 || sampleRate <= 0) {
-        return null;
-    }
-    // Channels default to two rather than one: guessing low here would let exactly the files this
-    // guards against through, which is the failure it exists to prevent.
-    const channels = header?.channels && header.channels > 0 ? header.channels : 2;
-    return Math.round((durationMs / 1000) * sampleRate * channels * 4);
+  const durationMs = header?.durationMs;
+  const sampleRate = header?.sampleRate;
+  if (!durationMs || !sampleRate || durationMs <= 0 || sampleRate <= 0) {
+    return null;
+  }
+  // Channels default to two rather than one: guessing low here would let exactly the files this
+  // guards against through, which is the failure it exists to prevent.
+  const channels = header?.channels && header.channels > 0 ? header.channels : 2;
+  return Math.round((durationMs / 1000) * sampleRate * channels * 4);
 }
 
 /**
@@ -157,9 +157,9 @@ export function estimateDecodedBytes(
  * the backstop for those.
  */
 export function withinDecodeBudget(
-    header: { durationMs?: number; sampleRate?: number; channels?: number } | null,
-    budget: number = AUDIO_DECODE_BYTE_BUDGET,
+  header: { durationMs?: number; sampleRate?: number; channels?: number } | null,
+  budget: number = AUDIO_DECODE_BYTE_BUDGET
 ): boolean {
-    const estimated = estimateDecodedBytes(header);
-    return estimated === null || estimated <= budget;
+  const estimated = estimateDecodedBytes(header);
+  return estimated === null || estimated <= budget;
 }

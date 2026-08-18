@@ -20,8 +20,8 @@
  *   NLS_VERIFY_PORT=<cdp> NLS_VERIFY_PID=<pid> node tools/ui-verify/scenarios/audio-loop-probe.js
  */
 
-const D = require('./_drive');
-const A = require('../assert');
+const D = require("./_drive");
+const A = require("../assert");
 
 const INSTALL = `(() => {
     if (window.__audioProbe) return "already";
@@ -54,51 +54,51 @@ const READ = `(() => {
 })()`;
 
 async function install(d) {
-    const r = await d.evaluate(INSTALL);
-    console.log('probe:', r);
+  const r = await d.evaluate(INSTALL);
+  console.log("probe:", r);
 }
 
 async function read(d) {
-    const raw = await d.evaluate(READ);
-    return JSON.parse(typeof raw === 'string' ? raw : JSON.stringify(raw));
+  const raw = await d.evaluate(READ);
+  return JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
 }
 
 /** A real mouse press on the stage — keyboard activation does not resume an AudioContext. */
 async function activate(d) {
-    const box = await d.evaluate(`(() => {
+  const box = await d.evaluate(`(() => {
         const el = document.querySelector('canvas, [data-nl-stage], #root');
         if (!el) return null;
         const r = el.getBoundingClientRect();
         return JSON.stringify({ x: r.x + r.width / 2, y: r.y + r.height / 2 });
     })()`);
-    if (!box) throw new Error('no stage element to click for user activation');
-    const { x, y } = JSON.parse(typeof box === 'string' ? box : JSON.stringify(box));
-    await d.click(x, y);
+  if (!box) throw new Error("no stage element to click for user activation");
+  const { x, y } = JSON.parse(typeof box === "string" ? box : JSON.stringify(box));
+  await d.click(x, y);
 }
 
 module.exports = { install, read, activate };
 
 if (require.main === module) {
-    (async () => {
-        await D.onWindow('dev-mode', 'Dev Mode', async (d) => {
-            // Fail loudly rather than silently measuring the wrong window: `--target` falls back to
-            // targets[0] when it matches nothing, and a closed dev-mode window then yields the
-            // workspace page with every probe "passing".
-            const url = await d.evaluate('location.pathname');
-            if (!String(url).includes('dev-mode')) {
-                throw new Error(`not the dev-mode window: ${url}`);
-            }
-            await install(d);
-            await activate(d);
-            await A.sleep(2500);
-            const first = await read(d);
-            console.log('after 2.5s:', JSON.stringify(first, null, 2));
-            await A.sleep(8000);
-            const later = await read(d);
-            console.log('after 10.5s:', JSON.stringify(later, null, 2));
-        });
-    })().catch((e) => {
-        console.error('\nSCRIPT FAIL:', e.message);
-        process.exit(1);
+  (async () => {
+    await D.onWindow("dev-mode", "Dev Mode", async (d) => {
+      // Fail loudly rather than silently measuring the wrong window: `--target` falls back to
+      // targets[0] when it matches nothing, and a closed dev-mode window then yields the
+      // workspace page with every probe "passing".
+      const url = await d.evaluate("location.pathname");
+      if (!String(url).includes("dev-mode")) {
+        throw new Error(`not the dev-mode window: ${url}`);
+      }
+      await install(d);
+      await activate(d);
+      await A.sleep(2500);
+      const first = await read(d);
+      console.log("after 2.5s:", JSON.stringify(first, null, 2));
+      await A.sleep(8000);
+      const later = await read(d);
+      console.log("after 10.5s:", JSON.stringify(later, null, 2));
     });
+  })().catch((e) => {
+    console.error("\nSCRIPT FAIL:", e.message);
+    process.exit(1);
+  });
 }

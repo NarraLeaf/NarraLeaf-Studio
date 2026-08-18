@@ -19,21 +19,24 @@ import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrac
  * Comments in English per project convention.
  */
 export function useProjectAudioTracks(): ProjectAudioTrack[] {
-    const { context, isInitialized } = useWorkspace();
-    const service = useMemo(
-        () => (context && isInitialized ? context.services.get<AudioTrackService>(Services.AudioTracks) : null),
-        [context, isInitialized],
-    );
-    const [tracks, setTracks] = useState<ProjectAudioTrack[]>(() => [...BUILTIN_AUDIO_TRACKS]);
+  const { context, isInitialized } = useWorkspace();
+  const service = useMemo(
+    () =>
+      context && isInitialized
+        ? context.services.get<AudioTrackService>(Services.AudioTracks)
+        : null,
+    [context, isInitialized]
+  );
+  const [tracks, setTracks] = useState<ProjectAudioTrack[]>(() => [...BUILTIN_AUDIO_TRACKS]);
 
-    useEffect(() => {
-        if (!service) {
-            setTracks([...BUILTIN_AUDIO_TRACKS]);
-            return;
-        }
-        setTracks(service.listTracks());
-        return service.onTracksChanged(setTracks);
-    }, [service]);
+  useEffect(() => {
+    if (!service) {
+      setTracks([...BUILTIN_AUDIO_TRACKS]);
+      return;
+    }
+    setTracks(service.listTracks());
+    return service.onTracksChanged(setTracks);
+  }, [service]);
 
-    return tracks;
+  return tracks;
 }

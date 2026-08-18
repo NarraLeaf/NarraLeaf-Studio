@@ -572,9 +572,7 @@
           "type": "nl.container",
           "name": "Page tab",
           "parentId": null,
-          "childrenIds": [
-            "cace414d-023c-4773-85ec-f9e6601be2dd"
-          ],
+          "childrenIds": ["cace414d-023c-4773-85ec-f9e6601be2dd"],
           "layout": {
             "x": 0,
             "y": 0,
@@ -651,9 +649,7 @@
           "type": "nl.container",
           "name": "Quick menu button",
           "parentId": null,
-          "childrenIds": [
-            "6d5e0f25-e455-4a56-a46e-b0a53f9a18c8"
-          ],
+          "childrenIds": ["6d5e0f25-e455-4a56-a46e-b0a53f9a18c8"],
           "layout": {
             "x": 0,
             "y": 0,
@@ -1412,9 +1408,7 @@
           "type": "nl.container",
           "name": "Title menu entry",
           "parentId": null,
-          "childrenIds": [
-            "b015aeef-3676-478b-9a5a-6d8836867564"
-          ],
+          "childrenIds": ["b015aeef-3676-478b-9a5a-6d8836867564"],
           "layout": {
             "x": 0,
             "y": 0,
@@ -1488,9 +1482,7 @@
       "type": "nl.root",
       "name": "Root",
       "parentId": null,
-      "childrenIds": [
-        "b674b641-fd04-4871-b47c-0888c71eabe9"
-      ],
+      "childrenIds": ["b674b641-fd04-4871-b47c-0888c71eabe9"],
       "layout": {
         "x": 0,
         "y": 0,
@@ -1505,9 +1497,7 @@
       "type": "nl.root",
       "name": "Root",
       "parentId": null,
-      "childrenIds": [
-        "ccd57b37-cc28-465e-8e13-e002e9f8dbe2"
-      ],
+      "childrenIds": ["ccd57b37-cc28-465e-8e13-e002e9f8dbe2"],
       "layout": {
         "x": 0,
         "y": 0,
@@ -3768,9 +3758,7 @@
       "type": "nl.list",
       "name": "Entries",
       "parentId": "ccd57b37-cc28-465e-8e13-e002e9f8dbe2",
-      "childrenIds": [
-        "e1e45cc5-f9bf-48da-b126-555dcc1abcf6"
-      ],
+      "childrenIds": ["e1e45cc5-f9bf-48da-b126-555dcc1abcf6"],
       "layout": {
         "x": 360,
         "y": 190,
@@ -4995,9 +4983,7 @@
       "type": "nl.root",
       "name": "Root",
       "parentId": null,
-      "childrenIds": [
-        "4be62494-e5de-4955-896c-d26c28b2addd"
-      ],
+      "childrenIds": ["4be62494-e5de-4955-896c-d26c28b2addd"],
       "layout": {
         "x": 0,
         "y": 0,
@@ -19998,9 +19984,7 @@
       "type": "nl.root",
       "name": "Root",
       "parentId": null,
-      "childrenIds": [
-        "fc17c8c1-0dcf-489d-853b-fcb368b9d267"
-      ],
+      "childrenIds": ["fc17c8c1-0dcf-489d-853b-fcb368b9d267"],
       "layout": {
         "x": 0,
         "y": 0,
@@ -26240,9 +26224,7 @@
       "type": "nl.root",
       "name": "Root",
       "parentId": null,
-      "childrenIds": [
-        "914f08b7-e465-4769-b44b-19938a6e02df"
-      ],
+      "childrenIds": ["914f08b7-e465-4769-b44b-19938a6e02df"],
       "layout": {
         "x": 0,
         "y": 0,
@@ -39482,9 +39464,7 @@
       "type": "nl.root",
       "name": "Root",
       "parentId": null,
-      "childrenIds": [
-        "ded9d54d-8973-4a96-bc26-fc41693ffde3"
-      ],
+      "childrenIds": ["ded9d54d-8973-4a96-bc26-fc41693ffde3"],
       "layout": {
         "x": 0,
         "y": 0,
@@ -39499,9 +39479,7 @@
       "type": "nl.choice.list",
       "name": "Choice list",
       "parentId": "9f32ca71-d0b7-46ee-bdd0-eed4a771b27b",
-      "childrenIds": [
-        "39358c7e-403f-4248-b9a4-975e0f8a31ae"
-      ],
+      "childrenIds": ["39358c7e-403f-4248-b9a4-975e0f8a31ae"],
       "layout": {
         "x": 460,
         "y": 330,
@@ -42417,9 +42395,7 @@
       "type": "nl.root",
       "name": "Root",
       "parentId": null,
-      "childrenIds": [
-        "c77a795f-b895-4681-bfe7-e5597f8c55e5"
-      ],
+      "childrenIds": ["c77a795f-b895-4681-bfe7-e5597f8c55e5"],
       "layout": {
         "x": 0,
         "y": 0,
@@ -42434,9 +42410,7 @@
       "type": "nl.notification.list",
       "name": "Notification list",
       "parentId": "0202c5e6-64e1-4484-b426-9bed2de419f5",
-      "childrenIds": [
-        "0e33b3a5-ce67-49fe-8746-d778d07812fd"
-      ],
+      "childrenIds": ["0e33b3a5-ce67-49fe-8746-d778d07812fd"],
       "layout": {
         "x": 1420,
         "y": 56,
@@ -43453,9 +43427,7 @@
       "type": "nl.root",
       "name": "Root",
       "parentId": null,
-      "childrenIds": [
-        "b290232d-b132-493c-97a3-fff8a375a105"
-      ],
+      "childrenIds": ["b290232d-b132-493c-97a3-fff8a375a105"],
       "layout": {
         "x": 0,
         "y": 0,
@@ -45657,9 +45629,7 @@
       "type": "nl.root",
       "name": "Root",
       "parentId": null,
-      "childrenIds": [
-        "57479b08-44a4-485c-be6c-2ee90357db8c"
-      ],
+      "childrenIds": ["57479b08-44a4-485c-be6c-2ee90357db8c"],
       "layout": {
         "x": 0,
         "y": 0,
@@ -63760,9 +63730,7 @@
       "type": "nl.root",
       "name": "Root",
       "parentId": null,
-      "childrenIds": [
-        "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e72"
-      ],
+      "childrenIds": ["b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e72"],
       "layout": {
         "x": 0,
         "y": 0,
@@ -64346,9 +64314,7 @@
       "type": "nl.list",
       "name": "Buttons",
       "parentId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e72",
-      "childrenIds": [
-        "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e75"
-      ],
+      "childrenIds": ["b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e75"],
       "layout": {
         "x": 150,
         "y": 180,
@@ -64427,9 +64393,7 @@
       "type": "nl.container",
       "name": "Button",
       "parentId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e74",
-      "childrenIds": [
-        "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e76"
-      ],
+      "childrenIds": ["b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e76"],
       "layout": {
         "x": 0,
         "y": 0,

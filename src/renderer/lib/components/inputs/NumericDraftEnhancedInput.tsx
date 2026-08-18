@@ -4,14 +4,14 @@ import { EnhancedInput, type EnhancedInputProps } from "./EnhancedInput";
 type Passthrough = Omit<EnhancedInputProps, "value" | "onChange">;
 
 export interface NumericDraftEnhancedInputProps extends Passthrough {
-    /** Serialized committed value shown when not editing a draft */
-    committedDisplay: string;
-    /** Called only when the raw string parses to a finite number */
-    onFiniteNumber: (n: number) => void;
-    /** Called when the raw string is emptied */
-    onEmpty?: () => void;
-    /** When this changes (e.g. selected element id), clear any in-progress draft */
-    draftResetKey?: string;
+  /** Serialized committed value shown when not editing a draft */
+  committedDisplay: string;
+  /** Called only when the raw string parses to a finite number */
+  onFiniteNumber: (n: number) => void;
+  /** Called when the raw string is emptied */
+  onEmpty?: () => void;
+  /** When this changes (e.g. selected element id), clear any in-progress draft */
+  draftResetKey?: string;
 }
 
 /**
@@ -20,56 +20,56 @@ export interface NumericDraftEnhancedInputProps extends Passthrough {
  * Maps `type="number"` → `type="text"` for empty-safe controlled values; default popover threshold stays usable for narrow inspector columns after that layout shift.
  */
 export function NumericDraftEnhancedInput({
-    committedDisplay,
-    onFiniteNumber,
-    onEmpty,
-    draftResetKey,
-    onBlur,
-    popoverWhenNarrow = true,
-    popoverThreshold = 200,
-    type,
-    ...rest
+  committedDisplay,
+  onFiniteNumber,
+  onEmpty,
+  draftResetKey,
+  onBlur,
+  popoverWhenNarrow = true,
+  popoverThreshold = 200,
+  type,
+  ...rest
 }: NumericDraftEnhancedInputProps) {
-    const [draft, setDraft] = useState<string | null>(null);
+  const [draft, setDraft] = useState<string | null>(null);
 
-    useEffect(() => {
-        setDraft(null);
-    }, [draftResetKey]);
+  useEffect(() => {
+    setDraft(null);
+  }, [draftResetKey]);
 
-    const shown = draft !== null ? draft : committedDisplay;
+  const shown = draft !== null ? draft : committedDisplay;
 
-    const handleChange = useCallback(
-        (next: string) => {
-            setDraft(next);
-            if (next.trim() === "") {
-                onEmpty?.();
-                return;
-            }
-            const n = Number.parseFloat(next);
-            if (Number.isFinite(n)) {
-                onFiniteNumber(n);
-            }
-        },
-        [onEmpty, onFiniteNumber]
-    );
+  const handleChange = useCallback(
+    (next: string) => {
+      setDraft(next);
+      if (next.trim() === "") {
+        onEmpty?.();
+        return;
+      }
+      const n = Number.parseFloat(next);
+      if (Number.isFinite(n)) {
+        onFiniteNumber(n);
+      }
+    },
+    [onEmpty, onFiniteNumber]
+  );
 
-    const handleBlur = useCallback(
-        (event: FocusEvent<HTMLInputElement>) => {
-            setDraft(null);
-            onBlur?.(event);
-        },
-        [onBlur]
-    );
+  const handleBlur = useCallback(
+    (event: FocusEvent<HTMLInputElement>) => {
+      setDraft(null);
+      onBlur?.(event);
+    },
+    [onBlur]
+  );
 
-    return (
-        <EnhancedInput
-            {...rest}
-            type={type === "number" ? "text" : type}
-            value={shown}
-            onChange={handleChange}
-            onBlur={handleBlur}
-            popoverWhenNarrow={popoverWhenNarrow}
-            popoverThreshold={popoverThreshold}
-        />
-    );
+  return (
+    <EnhancedInput
+      {...rest}
+      type={type === "number" ? "text" : type}
+      value={shown}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      popoverWhenNarrow={popoverWhenNarrow}
+      popoverThreshold={popoverThreshold}
+    />
+  );
 }

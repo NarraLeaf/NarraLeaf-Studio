@@ -1,10 +1,9 @@
-
 export type RecentlyOpenedProject = {
-    name: string;
-    path: string;
-    icon?: string;
-    openedAt: number;
-    securityScopedBookmark?: string;
+  name: string;
+  path: string;
+  icon?: string;
+  openedAt: number;
+  securityScopedBookmark?: string;
 };
 
 /**
@@ -15,14 +14,14 @@ export type RecentlyOpenedProject = {
  * look at is worse than letting the user open it and find out.
  */
 export type RecentProjectMissingReason =
-    /** Nothing at that path anymore - moved, renamed, or deleted. */
-    | "folder-missing"
-    /** The folder is there, but its project config is gone, so it is no longer a project. */
-    | "not-a-project";
+  /** Nothing at that path anymore - moved, renamed, or deleted. */
+  | "folder-missing"
+  /** The folder is there, but its project config is gone, so it is no longer a project. */
+  | "not-a-project";
 
 /** A recent-list entry that failed the existence sweep, with enough to name it in a prompt. */
 export type MissingRecentProject = {
-    name: string;
-    path: string;
-    reason: RecentProjectMissingReason;
+  name: string;
+  path: string;
+  reason: RecentProjectMissingReason;
 };

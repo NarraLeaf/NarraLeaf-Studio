@@ -37,12 +37,12 @@ import type { VcsServerAuthority } from "@shared/types/vcs";
 
 /** How this platform is asked to trust a certificate. */
 export interface AuthorityInstallPlan {
-    /** Whether Studio can carry it out, or can only say what to run. */
-    canInstall: boolean;
-    /** The command, as a person would type it. */
-    command: string;
-    /** The program and its arguments, for the platforms it runs on. */
-    argv: readonly string[];
+  /** Whether Studio can carry it out, or can only say what to run. */
+  canInstall: boolean;
+  /** The command, as a person would type it. */
+  command: string;
+  /** The program and its arguments, for the platforms it runs on. */
+  argv: readonly string[];
 }
 
 /** The file name the certificate is copied to where a path has to be typed. */
@@ -58,50 +58,50 @@ const KEEP_MS = 30 * 24 * 60 * 60 * 1000;
  * quotes; a POSIX shell wants single ones.
  */
 function quote(target: string): string {
-    if (process.platform === "win32") {
-        return target.includes(" ") ? `"${target}"` : target;
-    }
-    return /^[A-Za-z0-9_@%+=:,./-]+$/.test(target) ? target : `'${target.replaceAll("'", `'\\''`)}'`;
+  if (process.platform === "win32") {
+    return target.includes(" ") ? `"${target}"` : target;
+  }
+  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(target) ? target : `'${target.replaceAll("'", `'\\''`)}'`;
 }
 
 /** What this platform does about a certificate at `certificatePath`. */
 export function authorityInstallPlan(certificatePath: string): AuthorityInstallPlan {
-    switch (process.platform) {
-        case "win32":
-            // `-user` is the whole of the difference between this and an installation
-            // every account on the machine inherits. `Root` is the store a chain is
-            // built to; anywhere else installs a certificate trusted for nothing.
-            return {
-                canInstall: true,
-                command: `certutil -user -addstore Root ${quote(certificatePath)}`,
-                argv: ["certutil", "-user", "-addstore", "Root", certificatePath],
-            };
-        case "darwin":
-            // Without `-d` this is the login keychain, which is the current user's.
-            // `-r trustRoot` is what makes it a trusted root rather than a certificate
-            // the system merely holds a copy of.
-            return {
-                canInstall: true,
-                command: `security add-trusted-cert -r trustRoot ${quote(certificatePath)}`,
-                argv: ["security", "add-trusted-cert", "-r", "trustRoot", certificatePath],
-            };
-        default:
-            // Linux and anything else. The per-user NSS database Firefox and Chrome
-            // read is not what other programs use, so a certificate installed there
-            // would be trusted by browsers and by nothing else.
-            return {
-                canInstall: false,
-                command:
-                    `sudo cp ${quote(certificatePath)} /usr/local/share/ca-certificates/${LINUX_FILE_NAME}`
-                    + " && sudo update-ca-certificates",
-                argv: [],
-            };
-    }
+  switch (process.platform) {
+    case "win32":
+      // `-user` is the whole of the difference between this and an installation
+      // every account on the machine inherits. `Root` is the store a chain is
+      // built to; anywhere else installs a certificate trusted for nothing.
+      return {
+        canInstall: true,
+        command: `certutil -user -addstore Root ${quote(certificatePath)}`,
+        argv: ["certutil", "-user", "-addstore", "Root", certificatePath]
+      };
+    case "darwin":
+      // Without `-d` this is the login keychain, which is the current user's.
+      // `-r trustRoot` is what makes it a trusted root rather than a certificate
+      // the system merely holds a copy of.
+      return {
+        canInstall: true,
+        command: `security add-trusted-cert -r trustRoot ${quote(certificatePath)}`,
+        argv: ["security", "add-trusted-cert", "-r", "trustRoot", certificatePath]
+      };
+    default:
+      // Linux and anything else. The per-user NSS database Firefox and Chrome
+      // read is not what other programs use, so a certificate installed there
+      // would be trusted by browsers and by nothing else.
+      return {
+        canInstall: false,
+        command:
+          `sudo cp ${quote(certificatePath)} /usr/local/share/ca-certificates/${LINUX_FILE_NAME}` +
+          " && sudo update-ca-certificates",
+        argv: []
+      };
+  }
 }
 
 /** Where written certificates live, under Studio's own data directory. */
 export function authorityDirectory(userDataDir: string): string {
-    return path.join(userDataDir, "vcs-authorities");
+  return path.join(userDataDir, "vcs-authorities");
 }
 
 /**
@@ -116,16 +116,16 @@ export function authorityDirectory(userDataDir: string): string {
  * by hand, possibly after a restart.
  */
 export async function writeAuthorityCertificate(
-    userDataDir: string,
-    fingerprint: string,
-    pem: string,
+  userDataDir: string,
+  fingerprint: string,
+  pem: string
 ): Promise<string> {
-    const directory = authorityDirectory(userDataDir);
-    await fs.mkdir(directory, { recursive: true });
-    await sweep(directory);
-    const target = path.join(directory, `${fingerprint.replaceAll(":", "").toLowerCase()}.crt`);
-    await fs.writeFile(target, pem, "utf-8");
-    return target;
+  const directory = authorityDirectory(userDataDir);
+  await fs.mkdir(directory, { recursive: true });
+  await sweep(directory);
+  const target = path.join(directory, `${fingerprint.replaceAll(":", "").toLowerCase()}.crt`);
+  await fs.writeFile(target, pem, "utf-8");
+  return target;
 }
 
 /**
@@ -137,23 +137,23 @@ export async function writeAuthorityCertificate(
  * authority IS trusted costs nothing: the trust lives in the store, not here.
  */
 async function sweep(directory: string): Promise<void> {
-    const entries = await fs.readdir(directory).catch(() => [] as string[]);
-    const cutoff = Date.now() - KEEP_MS;
-    await Promise.all(
-        entries.map(async (entry) => {
-            if (!entry.endsWith(".crt")) return;
-            const target = path.join(directory, entry);
-            const stat = await fs.stat(target).catch(() => null);
-            if (stat && stat.mtimeMs < cutoff) await fs.rm(target, { force: true });
-        }),
-    );
+  const entries = await fs.readdir(directory).catch(() => [] as string[]);
+  const cutoff = Date.now() - KEEP_MS;
+  await Promise.all(
+    entries.map(async (entry) => {
+      if (!entry.endsWith(".crt")) return;
+      const target = path.join(directory, entry);
+      const stat = await fs.stat(target).catch(() => null);
+      if (stat && stat.mtimeMs < cutoff) await fs.rm(target, { force: true });
+    })
+  );
 }
 
 /** What an install command came to. */
 export interface AuthorityInstallOutcome {
-    installed: boolean;
-    /** What the command printed, both streams, for a failure that has to be shown. */
-    output: string;
+  installed: boolean;
+  /** What the command printed, both streams, for a failure that has to be shown. */
+  output: string;
 }
 
 /**
@@ -165,27 +165,33 @@ export interface AuthorityInstallOutcome {
  *
  * Nothing is retried and nothing is escalated. A refusal here is an answer.
  */
-export async function runAuthorityInstall(plan: AuthorityInstallPlan): Promise<AuthorityInstallOutcome> {
-    if (!plan.canInstall || plan.argv.length === 0) {
-        return { installed: false, output: "" };
-    }
-    const [command, ...args] = plan.argv;
-    return await new Promise<AuthorityInstallOutcome>((resolve) => {
-        let output = "";
-        // `shell: false`: every argument here is passed as one, so a certificate path
-        // holding a space or an ampersand is a path rather than something the shell
-        // takes apart. The printed command is quoted for a human; this one is not a
-        // string at all.
-        const child = spawn(command, args, { windowsHide: true, shell: false });
-        child.stdout?.on("data", (chunk: Buffer) => { output += chunk.toString("utf-8"); });
-        child.stderr?.on("data", (chunk: Buffer) => { output += chunk.toString("utf-8"); });
-        child.on("error", (error: Error) => {
-            resolve({ installed: false, output: `${output}${error.message}`.trim() });
-        });
-        child.on("close", (code: number | null) => {
-            resolve({ installed: code === 0, output: output.trim() });
-        });
+export async function runAuthorityInstall(
+  plan: AuthorityInstallPlan
+): Promise<AuthorityInstallOutcome> {
+  if (!plan.canInstall || plan.argv.length === 0) {
+    return { installed: false, output: "" };
+  }
+  const [command, ...args] = plan.argv;
+  return await new Promise<AuthorityInstallOutcome>((resolve) => {
+    let output = "";
+    // `shell: false`: every argument here is passed as one, so a certificate path
+    // holding a space or an ampersand is a path rather than something the shell
+    // takes apart. The printed command is quoted for a human; this one is not a
+    // string at all.
+    const child = spawn(command, args, { windowsHide: true, shell: false });
+    child.stdout?.on("data", (chunk: Buffer) => {
+      output += chunk.toString("utf-8");
     });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      output += chunk.toString("utf-8");
+    });
+    child.on("error", (error: Error) => {
+      resolve({ installed: false, output: `${output}${error.message}`.trim() });
+    });
+    child.on("close", (code: number | null) => {
+      resolve({ installed: code === 0, output: output.trim() });
+    });
+  });
 }
 
 /**
@@ -196,20 +202,20 @@ export async function runAuthorityInstall(plan: AuthorityInstallPlan): Promise<A
  * interface makes it too - it decides between a button and a warning.
  */
 export function describeAuthority(options: {
-    fingerprint: string;
-    expected: string;
-    subject: string;
-    expiresAt: string;
-    certificatePath: string;
+  fingerprint: string;
+  expected: string;
+  subject: string;
+  expiresAt: string;
+  certificatePath: string;
 }): VcsServerAuthority {
-    const plan = authorityInstallPlan(options.certificatePath);
-    return {
-        fingerprint: options.fingerprint,
-        expected: options.expected,
-        subject: options.subject,
-        expiresAt: options.expiresAt,
-        path: options.certificatePath,
-        canInstall: plan.canInstall,
-        command: plan.command,
-    };
+  const plan = authorityInstallPlan(options.certificatePath);
+  return {
+    fingerprint: options.fingerprint,
+    expected: options.expected,
+    subject: options.subject,
+    expiresAt: options.expiresAt,
+    path: options.certificatePath,
+    canInstall: plan.canInstall,
+    command: plan.command
+  };
 }

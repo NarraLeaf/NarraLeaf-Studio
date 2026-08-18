@@ -2,11 +2,11 @@ import { useSyncExternalStore } from "react";
 import type { StoryBlockId, StorySceneId } from "@shared/types/story";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import {
-    normalizeStoryRowFacets,
-    normalizeStoryRowSpeakers,
-    STORY_ROW_NARRATIVE_FACETS,
-    type StoryRowFacetId,
-    type StoryRowSpeakerKey,
+  normalizeStoryRowFacets,
+  normalizeStoryRowSpeakers,
+  STORY_ROW_NARRATIVE_FACETS,
+  type StoryRowFacetId,
+  type StoryRowSpeakerKey
 } from "./storyRowFilter";
 
 /**
@@ -19,34 +19,34 @@ let richToolbarExpanded = false;
 const listeners = new Set<() => void>();
 
 function emit(): void {
-    for (const listener of listeners) {
-        listener();
-    }
+  for (const listener of listeners) {
+    listener();
+  }
 }
 
 function subscribe(listener: () => void): () => void {
-    listeners.add(listener);
-    return () => {
-        listeners.delete(listener);
-    };
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export function getRichToolbarExpanded(): boolean {
-    return richToolbarExpanded;
+  return richToolbarExpanded;
 }
 
 export function setRichToolbarExpanded(next: boolean): void {
-    if (richToolbarExpanded === next) {
-        return;
-    }
-    richToolbarExpanded = next;
-    emit();
+  if (richToolbarExpanded === next) {
+    return;
+  }
+  richToolbarExpanded = next;
+  emit();
 }
 
 /** Reactive accessor for the session-shared "rich text toolbar expanded" flag. */
 export function useRichToolbarExpanded(): [boolean, (next: boolean) => void] {
-    const value = useSyncExternalStore(subscribe, getRichToolbarExpanded, getRichToolbarExpanded);
-    return [value, setRichToolbarExpanded];
+  const value = useSyncExternalStore(subscribe, getRichToolbarExpanded, getRichToolbarExpanded);
+  return [value, setRichToolbarExpanded];
 }
 
 /**
@@ -57,12 +57,12 @@ export function useRichToolbarExpanded(): [boolean, (next: boolean) => void] {
  * that same row back at the same spot regardless of how the content above it re-laid out.
  */
 export type StoryEditorScrollAnchor = {
-    /** Block id of the top-most visible story row when captured; null when the scene had no rows. */
-    blockId: StoryBlockId | null;
-    /** The anchor row's top edge relative to the scroll viewport top, in px (may be negative). */
-    offset: number;
-    /** Raw scrollTop, used as a fallback when the anchor row can't be resolved on restore. */
-    scrollTop: number;
+  /** Block id of the top-most visible story row when captured; null when the scene had no rows. */
+  blockId: StoryBlockId | null;
+  /** The anchor row's top edge relative to the scroll viewport top, in px (may be negative). */
+  offset: number;
+  /** Raw scrollTop, used as a fallback when the anchor row can't be resolved on restore. */
+  scrollTop: number;
 };
 
 /**
@@ -77,18 +77,18 @@ export type StoryEditorScrollAnchor = {
  * render, so the synchronous restore below always sees the persisted value.
  */
 export type StoryEditorViewState = {
-    /** The focused/active row, restored as both active and selected on reopen. */
-    activeBlockId: StoryBlockId | null;
-    /** Full row selection to restore alongside the active row. */
-    selectedBlockIds: StoryBlockId[];
-    /** Focus-anchored scroll position; absent until the author scrolls. */
-    scroll?: StoryEditorScrollAnchor;
-    /**
-     * Whether the scene-overview block (name / description / default background) is collapsed. Absent
-     * until the author toggles it manually: with no stored preference the editor falls back to a
-     * config-derived default (expanded while the scene is still unconfigured, collapsed once set up).
-     */
-    overviewCollapsed?: boolean;
+  /** The focused/active row, restored as both active and selected on reopen. */
+  activeBlockId: StoryBlockId | null;
+  /** Full row selection to restore alongside the active row. */
+  selectedBlockIds: StoryBlockId[];
+  /** Focus-anchored scroll position; absent until the author scrolls. */
+  scroll?: StoryEditorScrollAnchor;
+  /**
+   * Whether the scene-overview block (name / description / default background) is collapsed. Absent
+   * until the author toggles it manually: with no stored preference the editor falls back to a
+   * config-derived default (expanded while the scene is still unconfigured, collapsed once set up).
+   */
+  overviewCollapsed?: boolean;
 };
 
 /**
@@ -99,11 +99,17 @@ export type StoryEditorViewState = {
  */
 export type StoryEditorDensity = "compact" | "standard" | "comfortable";
 
-export const STORY_EDITOR_DENSITIES: readonly StoryEditorDensity[] = ["compact", "standard", "comfortable"];
+export const STORY_EDITOR_DENSITIES: readonly StoryEditorDensity[] = [
+  "compact",
+  "standard",
+  "comfortable"
+];
 
 /** A stored value from an older build (or a hand-edited state file) falls back to the status quo. */
 function normalizeDensity(value: unknown): StoryEditorDensity {
-    return STORY_EDITOR_DENSITIES.includes(value as StoryEditorDensity) ? value as StoryEditorDensity : "compact";
+  return STORY_EDITOR_DENSITIES.includes(value as StoryEditorDensity)
+    ? (value as StoryEditorDensity)
+    : "compact";
 }
 
 /**
@@ -112,44 +118,54 @@ function normalizeDensity(value: unknown): StoryEditorDensity {
  * and restarts. Editor-wide, not per-scene, so they live under their own key rather than the scene map.
  */
 export type StoryEditorViewPrefs = {
-    density: StoryEditorDensity;
-    /**
-     * The row kinds the author picked out. Stored as the SELECTED set, matching the panel: `[]` is
-     * the unfiltered editor, and anything else is the whole of what the page shows.
-     *
-     * It supersedes the `narrativeOnly` boolean this key used to hold — that flag was exactly one
-     * point in this space (the four prose kinds), and is read back below so an author who left the
-     * filter on finds it still on after the upgrade.
-     */
-    selectedRowFacets: StoryRowFacetId[];
-    /** The cast the author picked out, as `storyRowFilter` keys. Same selected-set reading as above. */
-    selectedRowSpeakers: StoryRowSpeakerKey[];
+  density: StoryEditorDensity;
+  /**
+   * The row kinds the author picked out. Stored as the SELECTED set, matching the panel: `[]` is
+   * the unfiltered editor, and anything else is the whole of what the page shows.
+   *
+   * It supersedes the `narrativeOnly` boolean this key used to hold — that flag was exactly one
+   * point in this space (the four prose kinds), and is read back below so an author who left the
+   * filter on finds it still on after the upgrade.
+   */
+  selectedRowFacets: StoryRowFacetId[];
+  /** The cast the author picked out, as `storyRowFilter` keys. Same selected-set reading as above. */
+  selectedRowSpeakers: StoryRowSpeakerKey[];
 };
 
 /** The pre-filter shape of the key, still on disk for anyone who set it. Read once, on the way in. */
 type LegacyStoryEditorViewPrefs = { narrativeOnly?: boolean };
 
 const STORY_EDITOR_VIEW_PREFS_KEY = "story:editor:view-prefs";
-const DEFAULT_STORY_EDITOR_VIEW_PREFS: StoryEditorViewPrefs = { density: "compact", selectedRowFacets: [], selectedRowSpeakers: [] };
+const DEFAULT_STORY_EDITOR_VIEW_PREFS: StoryEditorViewPrefs = {
+  density: "compact",
+  selectedRowFacets: [],
+  selectedRowSpeakers: []
+};
 
 export function getStoryEditorViewPrefs(panelState: PanelStateService): StoryEditorViewPrefs {
-    const raw = panelState.getPanelState<Partial<StoryEditorViewPrefs> & LegacyStoryEditorViewPrefs>(STORY_EDITOR_VIEW_PREFS_KEY);
-    // The old boolean only speaks when the new key has never been written: once the author touches the
-    // filter, `selectedRowFacets` is the whole truth — including the empty array that means "show all".
-    const selectedRowFacets = raw && "selectedRowFacets" in raw
-        ? normalizeStoryRowFacets(raw.selectedRowFacets)
-        : raw?.narrativeOnly
-            ? [...STORY_ROW_NARRATIVE_FACETS]
-            : [...DEFAULT_STORY_EDITOR_VIEW_PREFS.selectedRowFacets];
-    return {
-        density: normalizeDensity(raw?.density),
-        selectedRowFacets,
-        selectedRowSpeakers: normalizeStoryRowSpeakers(raw?.selectedRowSpeakers),
-    };
+  const raw = panelState.getPanelState<Partial<StoryEditorViewPrefs> & LegacyStoryEditorViewPrefs>(
+    STORY_EDITOR_VIEW_PREFS_KEY
+  );
+  // The old boolean only speaks when the new key has never been written: once the author touches the
+  // filter, `selectedRowFacets` is the whole truth — including the empty array that means "show all".
+  const selectedRowFacets =
+    raw && "selectedRowFacets" in raw
+      ? normalizeStoryRowFacets(raw.selectedRowFacets)
+      : raw?.narrativeOnly
+        ? [...STORY_ROW_NARRATIVE_FACETS]
+        : [...DEFAULT_STORY_EDITOR_VIEW_PREFS.selectedRowFacets];
+  return {
+    density: normalizeDensity(raw?.density),
+    selectedRowFacets,
+    selectedRowSpeakers: normalizeStoryRowSpeakers(raw?.selectedRowSpeakers)
+  };
 }
 
-export function patchStoryEditorViewPrefs(panelState: PanelStateService, patch: Partial<StoryEditorViewPrefs>): void {
-    panelState.setPanelState<StoryEditorViewPrefs>(STORY_EDITOR_VIEW_PREFS_KEY, patch);
+export function patchStoryEditorViewPrefs(
+  panelState: PanelStateService,
+  patch: Partial<StoryEditorViewPrefs>
+): void {
+  panelState.setPanelState<StoryEditorViewPrefs>(STORY_EDITOR_VIEW_PREFS_KEY, patch);
 }
 
 /**
@@ -163,21 +179,27 @@ const STORY_EDITOR_LENS_STATE_KEY = "story:editor:lens-state";
 type StoryEditorLensStore = Record<StoryBlockId, boolean>;
 
 export function getStoryEditorLensContainerIds(panelState: PanelStateService): Set<StoryBlockId> {
-    const store = panelState.getPanelState<StoryEditorLensStore>(STORY_EDITOR_LENS_STATE_KEY);
-    const ids = new Set<StoryBlockId>();
-    if (store) {
-        for (const [id, on] of Object.entries(store)) {
-            if (on) {
-                ids.add(id);
-            }
-        }
+  const store = panelState.getPanelState<StoryEditorLensStore>(STORY_EDITOR_LENS_STATE_KEY);
+  const ids = new Set<StoryBlockId>();
+  if (store) {
+    for (const [id, on] of Object.entries(store)) {
+      if (on) {
+        ids.add(id);
+      }
     }
-    return ids;
+  }
+  return ids;
 }
 
 /** Flip one container's lens view on or off, touching only its own entry in the store. */
-export function setStoryEditorLensContainer(panelState: PanelStateService, containerId: StoryBlockId, on: boolean): void {
-    panelState.setPanelState<StoryEditorLensStore>(STORY_EDITOR_LENS_STATE_KEY, { [containerId]: on });
+export function setStoryEditorLensContainer(
+  panelState: PanelStateService,
+  containerId: StoryBlockId,
+  on: boolean
+): void {
+  panelState.setPanelState<StoryEditorLensStore>(STORY_EDITOR_LENS_STATE_KEY, {
+    [containerId]: on
+  });
 }
 
 const ROW_SELECTOR = "[data-story-row-block-id]";
@@ -186,48 +208,64 @@ const ROW_SELECTOR = "[data-story-row-block-id]";
 const STORY_EDITOR_VIEW_STATE_KEY = "story:editor:view-state";
 type StoryEditorViewStateStore = Record<StorySceneId, StoryEditorViewState>;
 
-export function getStoryEditorViewState(panelState: PanelStateService, sceneId: StorySceneId): StoryEditorViewState | undefined {
-    return panelState.getPanelState<StoryEditorViewStateStore>(STORY_EDITOR_VIEW_STATE_KEY)?.[sceneId];
+export function getStoryEditorViewState(
+  panelState: PanelStateService,
+  sceneId: StorySceneId
+): StoryEditorViewState | undefined {
+  return panelState.getPanelState<StoryEditorViewStateStore>(STORY_EDITOR_VIEW_STATE_KEY)?.[
+    sceneId
+  ];
 }
 
 /** Merge a partial update into a scene's persisted view state (focus, selection, and/or scroll). */
-export function patchStoryEditorViewState(panelState: PanelStateService, sceneId: StorySceneId, patch: Partial<StoryEditorViewState>): void {
-    const prev = getStoryEditorViewState(panelState, sceneId) ?? { activeBlockId: null, selectedBlockIds: [] };
-    // setPanelState shallow-merges this partial into the store, so only the touched scene's entry changes.
-    panelState.setPanelState<StoryEditorViewStateStore>(STORY_EDITOR_VIEW_STATE_KEY, { [sceneId]: { ...prev, ...patch } });
+export function patchStoryEditorViewState(
+  panelState: PanelStateService,
+  sceneId: StorySceneId,
+  patch: Partial<StoryEditorViewState>
+): void {
+  const prev = getStoryEditorViewState(panelState, sceneId) ?? {
+    activeBlockId: null,
+    selectedBlockIds: []
+  };
+  // setPanelState shallow-merges this partial into the store, so only the touched scene's entry changes.
+  panelState.setPanelState<StoryEditorViewStateStore>(STORY_EDITOR_VIEW_STATE_KEY, {
+    [sceneId]: { ...prev, ...patch }
+  });
 }
 
 /** Capture the current focus-anchored scroll position from a scene editor scroll container. */
 export function captureStoryEditorScrollAnchor(container: HTMLElement): StoryEditorScrollAnchor {
-    const containerTop = container.getBoundingClientRect().top;
-    const rows = container.querySelectorAll<HTMLElement>(ROW_SELECTOR);
-    for (const row of rows) {
-        const rect = row.getBoundingClientRect();
-        // First row whose bottom is still below the viewport top is the top-most (partially) visible row.
-        if (rect.bottom > containerTop + 1) {
-            return {
-                blockId: row.dataset.storyRowBlockId ?? null,
-                offset: rect.top - containerTop,
-                scrollTop: container.scrollTop,
-            };
-        }
+  const containerTop = container.getBoundingClientRect().top;
+  const rows = container.querySelectorAll<HTMLElement>(ROW_SELECTOR);
+  for (const row of rows) {
+    const rect = row.getBoundingClientRect();
+    // First row whose bottom is still below the viewport top is the top-most (partially) visible row.
+    if (rect.bottom > containerTop + 1) {
+      return {
+        blockId: row.dataset.storyRowBlockId ?? null,
+        offset: rect.top - containerTop,
+        scrollTop: container.scrollTop
+      };
     }
-    return { blockId: null, offset: 0, scrollTop: container.scrollTop };
+  }
+  return { blockId: null, offset: 0, scrollTop: container.scrollTop };
 }
 
 /** Content-coordinate top of a story row within its scroll container (invariant to scrollTop). */
 function rowContentTop(container: HTMLElement, row: HTMLElement): number {
-    return container.scrollTop + (row.getBoundingClientRect().top - container.getBoundingClientRect().top);
+  return (
+    container.scrollTop + (row.getBoundingClientRect().top - container.getBoundingClientRect().top)
+  );
 }
 
 function findRow(container: HTMLElement, blockId: StoryBlockId): HTMLElement | null {
-    const rows = container.querySelectorAll<HTMLElement>(ROW_SELECTOR);
-    for (const row of rows) {
-        if (row.dataset.storyRowBlockId === blockId) {
-            return row;
-        }
+  const rows = container.querySelectorAll<HTMLElement>(ROW_SELECTOR);
+  for (const row of rows) {
+    if (row.dataset.storyRowBlockId === blockId) {
+      return row;
     }
-    return null;
+  }
+  return null;
 }
 
 /**
@@ -239,22 +277,25 @@ function findRow(container: HTMLElement, blockId: StoryBlockId): HTMLElement | n
  * the DOM yet - the caller retries across frames until the value stabilizes (content reaches full
  * height post-mount).
  */
-export function resolveStoryEditorRestoreScrollTop(container: HTMLElement, view: StoryEditorViewState): number | null {
-    const anchor = view.scroll;
-    if (anchor) {
-        if (anchor.blockId) {
-            const row = findRow(container, anchor.blockId);
-            if (row) {
-                return Math.max(0, rowContentTop(container, row) - anchor.offset);
-            }
-        }
-        return Math.max(0, anchor.scrollTop);
+export function resolveStoryEditorRestoreScrollTop(
+  container: HTMLElement,
+  view: StoryEditorViewState
+): number | null {
+  const anchor = view.scroll;
+  if (anchor) {
+    if (anchor.blockId) {
+      const row = findRow(container, anchor.blockId);
+      if (row) {
+        return Math.max(0, rowContentTop(container, row) - anchor.offset);
+      }
     }
-    if (view.activeBlockId) {
-        const row = findRow(container, view.activeBlockId);
-        if (row) {
-            return Math.max(0, rowContentTop(container, row) - container.clientHeight * 0.25);
-        }
+    return Math.max(0, anchor.scrollTop);
+  }
+  if (view.activeBlockId) {
+    const row = findRow(container, view.activeBlockId);
+    if (row) {
+      return Math.max(0, rowContentTop(container, row) - container.clientHeight * 0.25);
     }
-    return null;
+  }
+  return null;
 }

@@ -21,12 +21,12 @@ import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { FieldLabel, Select, Slider, type SelectOption } from "@/lib/components/elements";
 import {
-    PLAYER_PREFERENCE_GROUPS,
-    PLAYER_PREFERENCE_SPECS,
-    normalizePlayerPreferences,
-    type PlayerPreferenceKey,
-    type PlayerPreferenceSpec,
-    type PlayerPreferences,
+  PLAYER_PREFERENCE_GROUPS,
+  PLAYER_PREFERENCE_SPECS,
+  normalizePlayerPreferences,
+  type PlayerPreferenceKey,
+  type PlayerPreferenceSpec,
+  type PlayerPreferences
 } from "@/lib/workspace/project/configuration";
 import { SettingRow, SettingShell, SettingStack } from "./settingRows";
 import { NumberField } from "./NumberField";
@@ -41,163 +41,174 @@ import type { ProjectSectionProps } from "./types";
  * `0.72` is a value the author has to translate before they can judge it.
  */
 function toPercent(value: number): number {
-    return Math.round(value * 100);
+  return Math.round(value * 100);
 }
 
 function fromPercent(percent: number): number {
-    // Two decimals is exactly the granularity the field offers, and rounding here keeps the stored
-    // number free of the 0.7200000000000001 that percent/100 otherwise produces.
-    return Math.round(percent) / 100;
+  // Two decimals is exactly the granularity the field offers, and rounding here keeps the stored
+  // number free of the 0.7200000000000001 that percent/100 otherwise produces.
+  return Math.round(percent) / 100;
 }
 
-export function ProjectPreferencesSection({ projectService, uiService, config, onConfigChange }: ProjectSectionProps) {
-    const { t } = useTranslation();
-    const [preferences, setPreferences] = useState<PlayerPreferences>(
-        () => normalizePlayerPreferences(config.app?.preferences),
-    );
-    const [saving, setSaving] = useState<PlayerPreferenceKey | null>(null);
+export function ProjectPreferencesSection({
+  projectService,
+  uiService,
+  config,
+  onConfigChange
+}: ProjectSectionProps) {
+  const { t } = useTranslation();
+  const [preferences, setPreferences] = useState<PlayerPreferences>(() =>
+    normalizePlayerPreferences(config.app?.preferences)
+  );
+  const [saving, setSaving] = useState<PlayerPreferenceKey | null>(null);
 
-    // The panel is keep-alive and the config can be replaced underneath it (a VCS restore, another
-    // surface writing the same file), so the stored value stays the source of truth for the rows.
-    useEffect(() => {
-        setPreferences(normalizePlayerPreferences(config.app?.preferences));
-    }, [config]);
+  // The panel is keep-alive and the config can be replaced underneath it (a VCS restore, another
+  // surface writing the same file), so the stored value stays the source of truth for the rows.
+  useEffect(() => {
+    setPreferences(normalizePlayerPreferences(config.app?.preferences));
+  }, [config]);
 
-    const commit = useCallback(async (key: PlayerPreferenceKey, value: PlayerPreferences[PlayerPreferenceKey]) => {
-        if (saving) {
-            return;
-        }
-        const previous = preferences;
-        setSaving(key);
-        setPreferences(current => ({ ...current, [key]: value }));
-        try {
-            const updated = await projectService.updatePlayerPreferences({ [key]: value });
-            setPreferences(normalizePlayerPreferences(updated.app?.preferences));
-            onConfigChange(updated);
-        } catch (error) {
-            setPreferences(previous);
-            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
-        } finally {
-            setSaving(null);
-        }
-    }, [onConfigChange, preferences, projectService, saving, uiService]);
+  const commit = useCallback(
+    async (key: PlayerPreferenceKey, value: PlayerPreferences[PlayerPreferenceKey]) => {
+      if (saving) {
+        return;
+      }
+      const previous = preferences;
+      setSaving(key);
+      setPreferences((current) => ({ ...current, [key]: value }));
+      try {
+        const updated = await projectService.updatePlayerPreferences({ [key]: value });
+        setPreferences(normalizePlayerPreferences(updated.app?.preferences));
+        onConfigChange(updated);
+      } catch (error) {
+        setPreferences(previous);
+        uiService?.showNotification(
+          error instanceof Error ? error.message : String(error),
+          "error"
+        );
+      } finally {
+        setSaving(null);
+      }
+    },
+    [onConfigChange, preferences, projectService, saving, uiService]
+  );
 
-    return (
-        // The one line that used to be a paragraph at the top of a page of its own. It is the
-        // group's expectation now, on the heading, because "starts at" is the whole reason these
-        // rows are not the player's settings screen.
-        <SettingsGroup
-            title={t("project.group.playerDefaults")}
-            description={t("project.preferences.intro")}
-        >
-            {/* Wider than the gap between the rows inside a group, or the eyebrow that starts a
+  return (
+    // The one line that used to be a paragraph at the top of a page of its own. It is the
+    // group's expectation now, on the heading, because "starts at" is the whole reason these
+    // rows are not the player's settings screen.
+    <SettingsGroup
+      title={t("project.group.playerDefaults")}
+      description={t("project.preferences.intro")}
+    >
+      {/* Wider than the gap between the rows inside a group, or the eyebrow that starts a
                 group would read as belonging to the row above it. */}
-            <div className="grid gap-4 [&>*]:min-w-0">
-                {PLAYER_PREFERENCE_GROUPS.map(group => (
-                    <section key={group.id} className="grid gap-2 [&>*]:min-w-0">
-                        <FieldLabel as="div" className="mb-0">
-                            {t(`project.preferences.group.${group.id}`)}
-                        </FieldLabel>
-                        <div className="grid gap-3 [&>*]:min-w-0">
-                            {group.keys.map(key => (
-                                <PreferenceRow
-                                    key={key}
-                                    spec={PLAYER_PREFERENCE_SPECS[key]}
-                                    preferences={preferences}
-                                    saving={saving === key}
-                                    onCommit={value => void commit(key, value)}
-                                />
-                            ))}
-                        </div>
-                    </section>
-                ))}
+      <div className="grid gap-4 [&>*]:min-w-0">
+        {PLAYER_PREFERENCE_GROUPS.map((group) => (
+          <section key={group.id} className="grid gap-2 [&>*]:min-w-0">
+            <FieldLabel as="div" className="mb-0">
+              {t(`project.preferences.group.${group.id}`)}
+            </FieldLabel>
+            <div className="grid gap-3 [&>*]:min-w-0">
+              {group.keys.map((key) => (
+                <PreferenceRow
+                  key={key}
+                  spec={PLAYER_PREFERENCE_SPECS[key]}
+                  preferences={preferences}
+                  saving={saving === key}
+                  onCommit={(value) => void commit(key, value)}
+                />
+              ))}
             </div>
-        </SettingsGroup>
-    );
+          </section>
+        ))}
+      </div>
+    </SettingsGroup>
+  );
 }
 
 function PreferenceRow({
-    spec,
-    preferences,
-    saving,
-    onCommit,
+  spec,
+  preferences,
+  saving,
+  onCommit
 }: {
-    spec: PlayerPreferenceSpec;
-    preferences: PlayerPreferences;
-    saving: boolean;
-    onCommit: (value: PlayerPreferences[PlayerPreferenceKey]) => void;
+  spec: PlayerPreferenceSpec;
+  preferences: PlayerPreferences;
+  saving: boolean;
+  onCommit: (value: PlayerPreferences[PlayerPreferenceKey]) => void;
 }) {
-    const { t } = useTranslation();
-    // `SettingRow` reads the freeze itself; the fields below sit in bare shells and need their own.
-    const freeze = useFreezeGuard();
-    const title = t(`project.preferences.${spec.key}.title`);
-    const description = t(`project.preferences.${spec.key}.description`);
+  const { t } = useTranslation();
+  // `SettingRow` reads the freeze itself; the fields below sit in bare shells and need their own.
+  const freeze = useFreezeGuard();
+  const title = t(`project.preferences.${spec.key}.title`);
+  const description = t(`project.preferences.${spec.key}.description`);
 
-    if (spec.kind === "boolean") {
-        return (
-            <SettingRow
-                title={title}
-                description={description}
-                checked={preferences[spec.key] as boolean}
-                loading={saving}
-                onChange={onCommit}
-            />
-        );
-    }
-
-    if (spec.kind === "enum") {
-        const options: SelectOption[] = spec.options.map(option => ({
-            value: option,
-            label: t(`project.preferences.voiceEndMode.option.${option}`),
-        }));
-        return (
-            <SettingStack title={title} description={description} tooltip={freeze.writes()["data-tip"]}>
-                <Select
-                    size="sm"
-                    fullWidth
-                    portalMenu
-                    className="min-w-0"
-                    options={options}
-                    value={preferences[spec.key] as string}
-                    disabled={freeze.writes(saving).disabled}
-                    ariaLabel={title}
-                    onChange={value => onCommit(String(value) as PlayerPreferences[PlayerPreferenceKey])}
-                />
-            </SettingStack>
-        );
-    }
-
-    const stored = preferences[spec.key] as number;
-
-    if (spec.display.control === "slider") {
-        return (
-            <PercentSlider
-                title={title}
-                description={description}
-                stored={stored}
-                min={toPercent(spec.min)}
-                max={toPercent(spec.max)}
-                disabled={freeze.writes(saving).disabled}
-                tooltip={freeze.writes()["data-tip"]}
-                onCommit={percent => onCommit(fromPercent(percent))}
-            />
-        );
-    }
-
-    const percentEdited = spec.display.unit === "percent";
+  if (spec.kind === "boolean") {
     return (
-        <SettingShell title={title} description={description} tooltip={freeze.writes()["data-tip"]}>
-            <NumberField
-                value={percentEdited ? toPercent(stored) : Math.round(stored)}
-                min={percentEdited ? toPercent(spec.min) : spec.min}
-                max={percentEdited ? toPercent(spec.max) : spec.max}
-                unit={t(`project.preferences.unit.${spec.display.unit}`)}
-                disabled={freeze.writes(saving).disabled}
-                ariaLabel={title}
-                onCommit={value => onCommit(percentEdited ? fromPercent(value) : value)}
-            />
-        </SettingShell>
+      <SettingRow
+        title={title}
+        description={description}
+        checked={preferences[spec.key] as boolean}
+        loading={saving}
+        onChange={onCommit}
+      />
     );
+  }
+
+  if (spec.kind === "enum") {
+    const options: SelectOption[] = spec.options.map((option) => ({
+      value: option,
+      label: t(`project.preferences.voiceEndMode.option.${option}`)
+    }));
+    return (
+      <SettingStack title={title} description={description} tooltip={freeze.writes()["data-tip"]}>
+        <Select
+          size="sm"
+          fullWidth
+          portalMenu
+          className="min-w-0"
+          options={options}
+          value={preferences[spec.key] as string}
+          disabled={freeze.writes(saving).disabled}
+          ariaLabel={title}
+          onChange={(value) => onCommit(String(value) as PlayerPreferences[PlayerPreferenceKey])}
+        />
+      </SettingStack>
+    );
+  }
+
+  const stored = preferences[spec.key] as number;
+
+  if (spec.display.control === "slider") {
+    return (
+      <PercentSlider
+        title={title}
+        description={description}
+        stored={stored}
+        min={toPercent(spec.min)}
+        max={toPercent(spec.max)}
+        disabled={freeze.writes(saving).disabled}
+        tooltip={freeze.writes()["data-tip"]}
+        onCommit={(percent) => onCommit(fromPercent(percent))}
+      />
+    );
+  }
+
+  const percentEdited = spec.display.unit === "percent";
+  return (
+    <SettingShell title={title} description={description} tooltip={freeze.writes()["data-tip"]}>
+      <NumberField
+        value={percentEdited ? toPercent(stored) : Math.round(stored)}
+        min={percentEdited ? toPercent(spec.min) : spec.min}
+        max={percentEdited ? toPercent(spec.max) : spec.max}
+        unit={t(`project.preferences.unit.${spec.display.unit}`)}
+        disabled={freeze.writes(saving).disabled}
+        ariaLabel={title}
+        onCommit={(value) => onCommit(percentEdited ? fromPercent(value) : value)}
+      />
+    </SettingShell>
+  );
 }
 
 /**
@@ -208,51 +219,52 @@ function PreferenceRow({
  * sixty document revisions. `onValueCommit` fires once, when the drag settles.
  */
 function PercentSlider({
-    title,
-    description,
-    stored,
-    min,
-    max,
-    disabled,
-    tooltip,
-    onCommit,
+  title,
+  description,
+  stored,
+  min,
+  max,
+  disabled,
+  tooltip,
+  onCommit
 }: {
-    title: string;
-    description: string;
-    stored: number;
-    min: number;
-    max: number;
-    disabled: boolean;
-    tooltip?: string;
-    onCommit: (percent: number) => void;
+  title: string;
+  description: string;
+  stored: number;
+  min: number;
+  max: number;
+  disabled: boolean;
+  tooltip?: string;
+  onCommit: (percent: number) => void;
 }) {
-    const { t } = useTranslation();
-    const storedPercent = toPercent(stored);
-    const [draft, setDraft] = useState(storedPercent);
+  const { t } = useTranslation();
+  const storedPercent = toPercent(stored);
+  const [draft, setDraft] = useState(storedPercent);
 
-    useEffect(() => {
-        setDraft(storedPercent);
-    }, [storedPercent]);
+  useEffect(() => {
+    setDraft(storedPercent);
+  }, [storedPercent]);
 
-    return (
-        <SettingStack title={title} description={description} tooltip={tooltip}>
-            <div className="flex min-w-0 items-center gap-2">
-                <Slider
-                    className="min-w-0 flex-1"
-                    value={draft}
-                    min={min}
-                    max={max}
-                    step={1}
-                    disabled={disabled}
-                    data-tip={tooltip}
-                    aria-label={title}
-                    onValueChange={setDraft}
-                    onValueCommit={onCommit}
-                />
-                <span className="w-9 shrink-0 text-right tabular-nums text-2xs text-fg-muted">
-                    {draft}{t("project.preferences.unit.percent")}
-                </span>
-            </div>
-        </SettingStack>
-    );
+  return (
+    <SettingStack title={title} description={description} tooltip={tooltip}>
+      <div className="flex min-w-0 items-center gap-2">
+        <Slider
+          className="min-w-0 flex-1"
+          value={draft}
+          min={min}
+          max={max}
+          step={1}
+          disabled={disabled}
+          data-tip={tooltip}
+          aria-label={title}
+          onValueChange={setDraft}
+          onValueCommit={onCommit}
+        />
+        <span className="w-9 shrink-0 text-right tabular-nums text-2xs text-fg-muted">
+          {draft}
+          {t("project.preferences.unit.percent")}
+        </span>
+      </div>
+    </SettingStack>
+  );
 }

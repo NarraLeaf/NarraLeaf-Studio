@@ -1,20 +1,27 @@
-import {
-  Droplets,
-  Eye,
-  EyeOff,
-  Maximize2,
-  Square,
-} from "lucide-react";
+import { Droplets, Eye, EyeOff, Maximize2, Square } from "lucide-react";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { Select } from "@/lib/components/elements/Select";
 import { translate } from "@/lib/i18n";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
-import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
-import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
-import type { ColorValue, InlineRowItemContext } from "@/apps/workspace/modules/properties/framework/types";
+import {
+  parseColorValue,
+  serializeColorValue
+} from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import {
+  createPropertyEditorSchema,
+  defineField
+} from "@/apps/workspace/modules/properties/framework";
+import type {
+  ColorValue,
+  InlineRowItemContext
+} from "@/apps/workspace/modules/properties/framework/types";
 import type { UIElement } from "@shared/types/ui-editor/document";
-import type { UIInspectorData, InspectorContext, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
+import type {
+  UIInspectorData,
+  InspectorContext,
+  WidgetRendererProps
+} from "@/lib/ui-editor/widget-modules/types";
 import type { RectangleLikeProps, StrokeJoin } from "@shared/types/ui-editor/rectangleLike";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import { getRectangleLikeProps, normalizeImageFill } from "./rectangleHelpers";
@@ -26,7 +33,7 @@ import {
   FILL_TYPE_OPTIONS,
   STROKE_ALIGN_OPTIONS,
   STROKE_JOIN_OPTIONS,
-  STROKE_SIDE_OPTIONS,
+  STROKE_SIDE_OPTIONS
 } from "./constants";
 import { InlineMenuTriggerButton } from "./InlineMenuTriggerButton";
 
@@ -40,7 +47,10 @@ export type RectangleInspectorOptions = {
   leadingPropertyFields?: unknown[];
 };
 
-export function createRectangleInspector(ctx: InspectorContext, options?: RectangleInspectorOptions) {
+export function createRectangleInspector(
+  ctx: InspectorContext,
+  options?: RectangleInspectorOptions
+) {
   const { element, documentService } = ctx;
   const resolveProps = options?.getProps ?? getRectangleLikeProps;
   const titleFallback = options?.titleFallback ?? translate("widgets.container.title");
@@ -49,7 +59,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
   const patchProps = (patch: Partial<RectangleLikeProps>) => {
     documentService.updateElementProps(element.id, {
       ...element.props,
-      ...patch,
+      ...patch
     });
   };
 
@@ -59,33 +69,33 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
 
   const formatPercentDisplay = (value: number) => String(Math.round(value * 10000) / 100);
 
-  const buildStrokeMenu = (props: RectangleLikeProps): ContextMenuDef => [
+  const buildStrokeMenu = (_props: RectangleLikeProps): ContextMenuDef => [
     {
       id: "stroke-style",
       label: translate("widgets.rectangleInspector.borderStyle"),
-      submenu: BORDER_STYLE_OPTIONS.map(option => ({
+      submenu: BORDER_STYLE_OPTIONS.map((option) => ({
         id: `stroke-style-${option.value}`,
         label: translate(option.labelKey),
         icon: option.icon,
-        onClick: () => patchProps({ borderStyle: option.value }),
-      })),
+        onClick: () => patchProps({ borderStyle: option.value })
+      }))
     },
     {
       separator: true,
-      id: "stroke-style-separator",
+      id: "stroke-style-separator"
     },
     {
       id: "stroke-join",
       label: translate("widgets.rectangleInspector.cornerJoin"),
-      submenu: STROKE_JOIN_OPTIONS.map(option => ({
+      submenu: STROKE_JOIN_OPTIONS.map((option) => ({
         id: `stroke-join-${option.value}`,
         label: translate(option.labelKey),
         onClick: () =>
           patchProps({
-            borderJoin: option.value as StrokeJoin,
-          }),
-      })),
-    },
+            borderJoin: option.value as StrokeJoin
+          })
+      }))
+    }
   ];
 
   type D = UIInspectorData;
@@ -122,13 +132,12 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                         current.borderRadiusTL === current.borderRadiusTR &&
                         current.borderRadiusTL === current.borderRadiusBL &&
                         current.borderRadiusTL === current.borderRadiusBR;
-                      const showUniformPlaceholder =
-                        current.cornerAdvanced && !allCornersEqual;
+                      const showUniformPlaceholder = current.cornerAdvanced && !allCornersEqual;
                       const uniformValue = showUniformPlaceholder
                         ? ""
                         : String(
-                          current.cornerAdvanced ? current.borderRadiusTL : current.borderRadius
-                        );
+                            current.cornerAdvanced ? current.borderRadiusTL : current.borderRadius
+                          );
                       const uniformPlaceholder = showUniformPlaceholder ? "-" : undefined;
 
                       return (
@@ -139,7 +148,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                             onSaving(true);
                             try {
                               const patch: Partial<RectangleLikeProps> = {
-                                borderRadius: radius,
+                                borderRadius: radius
                               };
                               if (current.borderRadiusLinked) {
                                 patch.borderRadiusTL = radius;
@@ -163,7 +172,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           selectAllOnFocus
                         />
                       );
-                    },
+                    }
                   },
                   {
                     id: "props.cornerRadiusToggle",
@@ -176,7 +185,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           const next = !current.cornerAdvanced;
                           const patch: Partial<RectangleLikeProps> = {
                             cornerAdvanced: next,
-                            borderRadiusLinked: !next,
+                            borderRadiusLinked: !next
                           };
                           if (!next) {
                             const uniform = current.borderRadiusTL;
@@ -202,9 +211,9 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           <Maximize2 className="w-4 h-4" />
                         </button>
                       );
-                    },
-                  },
-                ],
+                    }
+                  }
+                ]
               }),
               defineField<D, any>({
                 id: "props.cornerRadiusTopRow",
@@ -225,7 +234,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                       const value = Number.parseFloat(raw);
                       if (!Number.isFinite(value)) return;
                       patchProps({ borderRadiusTL: value });
-                    },
+                    }
                   },
                   {
                     id: "props.borderRadiusTR",
@@ -237,9 +246,9 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                       const value = Number.parseFloat(raw);
                       if (!Number.isFinite(value)) return;
                       patchProps({ borderRadiusTR: value });
-                    },
-                  },
-                ],
+                    }
+                  }
+                ]
               }),
               defineField<D, any>({
                 id: "props.cornerRadiusBottomRow",
@@ -260,7 +269,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                       const value = Number.parseFloat(raw);
                       if (!Number.isFinite(value)) return;
                       patchProps({ borderRadiusBL: value });
-                    },
+                    }
                   },
                   {
                     id: "props.borderRadiusBR",
@@ -272,11 +281,11 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                       const value = Number.parseFloat(raw);
                       if (!Number.isFinite(value)) return;
                       patchProps({ borderRadiusBR: value });
-                    },
-                  },
-                ],
-              }),
-            ],
+                    }
+                  }
+                ]
+              })
+            ]
           }),
           defineField<D, any>({
             id: "section.layer",
@@ -318,7 +327,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           className="w-full min-w-0"
                         />
                       );
-                    },
+                    }
                   },
                   {
                     id: "layout.layerVisible",
@@ -345,11 +354,11 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                         </button>
                       );
-                    },
-                  },
-                ],
-              }),
-            ],
+                    }
+                  }
+                ]
+              })
+            ]
           }),
           defineField<D, any>({
             id: "section.fill",
@@ -364,8 +373,8 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                 getValue: (data: D) => resolveProps(data.element).fillType,
                 setValue: (_data: D, value: string | number) =>
                   patchProps({
-                    fillType: String(value) as RectangleLikeProps["fillType"],
-                  }),
+                    fillType: String(value) as RectangleLikeProps["fillType"]
+                  })
               }),
               defineField<D, any>({
                 id: "props.fillColorRow",
@@ -384,7 +393,10 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                       // `parseColorValue` (the raw string used to go in as `hex`, which meant any
                       // spelling but `#rrggbb` opened the panel on white) and written back through
                       // `serializeColorValue` at full alpha, so a brand link round-trips as the link.
-                      const stored = parseColorValue(current.backgroundColor, { hex: "#FFFFFF", alpha: 1 });
+                      const stored = parseColorValue(current.backgroundColor, {
+                        hex: "#FFFFFF",
+                        alpha: 1
+                      });
                       const handleColor = (next: ColorValue) => {
                         onSaving(true);
                         try {
@@ -392,9 +404,9 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                             backgroundColor: serializeColorValue({
                               hex: next.hex,
                               alpha: 1,
-                              ...(next.link ? { link: next.link } : {}),
+                              ...(next.link ? { link: next.link } : {})
                             }),
-                            fillOpacity: next.alpha ?? current.fillOpacity,
+                            fillOpacity: next.alpha ?? current.fillOpacity
                           });
                         } finally {
                           onSaving(false);
@@ -406,7 +418,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           value={{
                             hex: stored.hex,
                             alpha: current.fillOpacity,
-                            ...(stored.link ? { link: stored.link } : {}),
+                            ...(stored.link ? { link: stored.link } : {})
                           }}
                           displayMode="icon"
                           brandPalette
@@ -414,7 +426,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           onChange={handleColor}
                         />
                       );
-                    },
+                    }
                   },
                   {
                     id: "props.fillOpacityRow",
@@ -431,7 +443,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                             onSaving(true);
                             try {
                               patchProps({
-                                fillOpacity: clamped / 100,
+                                fillOpacity: clamped / 100
                               });
                             } finally {
                               onSaving(false);
@@ -445,7 +457,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                         />
                       );
-                    },
+                    }
                   },
                   {
                     id: "props.fillVisibleToggle",
@@ -456,7 +468,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                         onSaving(true);
                         try {
                           patchProps({
-                            fillVisible: !visible,
+                            fillVisible: !visible
                           });
                         } finally {
                           onSaving(false);
@@ -474,9 +486,9 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                         </button>
                       );
-                    },
-                  },
-                ],
+                    }
+                  }
+                ]
               }),
               defineField<D, any>({
                 id: "props.imageFill",
@@ -487,8 +499,8 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                 setValue: (_data: D, value: RectangleLikeProps["imageFill"]) =>
                   patchProps({
                     fillType: "image",
-                    imageFill: value,
-                  }),
+                    imageFill: value
+                  })
               }),
               defineField<D, any>({
                 id: "props.fillImageControls",
@@ -513,7 +525,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                             onSaving(true);
                             try {
                               patchProps({
-                                fillOpacity: clamped / 100,
+                                fillOpacity: clamped / 100
                               });
                             } finally {
                               onSaving(false);
@@ -527,7 +539,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
                         />
                       );
-                    },
+                    }
                   },
                   {
                     id: "props.fillImageVisible",
@@ -538,7 +550,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                         onSaving(true);
                         try {
                           patchProps({
-                            fillVisible: !visible,
+                            fillVisible: !visible
                           });
                         } finally {
                           onSaving(false);
@@ -556,11 +568,11 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                         </button>
                       );
-                    },
-                  },
-                ],
-              }),
-            ],
+                    }
+                  }
+                ]
+              })
+            ]
           }),
           defineField<D, any>({
             id: "section.stroke",
@@ -587,12 +599,12 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           fullWidth
                           onChange={(value) =>
                             patchProps({
-                              strokeAlign: String(value) as RectangleLikeProps["strokeAlign"],
+                              strokeAlign: String(value) as RectangleLikeProps["strokeAlign"]
                             })
                           }
                         />
                       );
-                    },
+                    }
                   },
                   {
                     id: "props.strokeWidth",
@@ -624,7 +636,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           className="w-full min-w-0"
                         />
                       );
-                    },
+                    }
                   },
                   {
                     id: "props.strokeMore",
@@ -638,9 +650,9 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           className="z-10"
                         />
                       );
-                    },
-                  },
-                ],
+                    }
+                  }
+                ]
               }),
               defineField<D, any>({
                 id: "props.strokeSideGroup",
@@ -652,14 +664,15 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                 density: "compact",
                 className: "mt-2",
                 options: STROKE_SIDE_OPTIONS,
-                getValue: (data: D) => strokeSideSelectedIds(String(resolveProps(data.element).strokeSide ?? "all")),
+                getValue: (data: D) =>
+                  strokeSideSelectedIds(String(resolveProps(data.element).strokeSide ?? "all")),
                 setValue: (_data: D, value: unknown) => {
                   if (Array.isArray(value)) {
                     patchProps({
-                      strokeSide: strokeSideSpecFromSelectedIds(value as string[]),
+                      strokeSide: strokeSideSpecFromSelectedIds(value as string[])
                     });
                   }
-                },
+                }
               }),
               defineField<D, any>({
                 id: "props.strokeColorRow",
@@ -676,7 +689,10 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                       const strokeVisible = current.strokeVisible;
                       // Same split as the fill row above: `strokeOpacity` owns the alpha, this owns
                       // the colour, and the link travels with the colour.
-                      const stored = parseColorValue(current.borderColor, { hex: "#FFFFFF", alpha: 1 });
+                      const stored = parseColorValue(current.borderColor, {
+                        hex: "#FFFFFF",
+                        alpha: 1
+                      });
                       const handleChange = (next: ColorValue) => {
                         onSaving(true);
                         try {
@@ -684,8 +700,8 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                             borderColor: serializeColorValue({
                               hex: next.hex,
                               alpha: 1,
-                              ...(next.link ? { link: next.link } : {}),
-                            }),
+                              ...(next.link ? { link: next.link } : {})
+                            })
                           });
                         } finally {
                           onSaving(false);
@@ -697,7 +713,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           value={{
                             hex: stored.hex,
                             alpha: current.strokeOpacity,
-                            ...(stored.link ? { link: stored.link } : {}),
+                            ...(stored.link ? { link: stored.link } : {})
                           }}
                           displayMode="icon"
                           brandPalette
@@ -706,7 +722,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           onChange={handleChange}
                         />
                       );
-                    },
+                    }
                   },
                   {
                     id: "props.strokeOpacity",
@@ -725,7 +741,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                             onSaving(true);
                             try {
                               patchProps({
-                                strokeOpacity: clamped / 100,
+                                strokeOpacity: clamped / 100
                               });
                             } finally {
                               onSaving(false);
@@ -741,7 +757,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           className="w-full min-w-0"
                         />
                       );
-                    },
+                    }
                   },
                   {
                     id: "props.strokeVisible",
@@ -752,7 +768,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                         onSaving(true);
                         try {
                           patchProps({
-                            strokeVisible: !visible,
+                            strokeVisible: !visible
                           });
                         } finally {
                           onSaving(false);
@@ -764,19 +780,21 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           type="button"
                           onClick={toggle}
                           aria-pressed={visible}
-                          aria-label={translate("widgets.rectangleInspector.toggleBorderVisibility")}
+                          aria-label={translate(
+                            "widgets.rectangleInspector.toggleBorderVisibility"
+                          )}
                           className={controlButtonClass(visible)}
                         >
                           {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                         </button>
                       );
-                    },
-                  },
-                ],
-              }),
-            ],
-          }),
-        ],
+                    }
+                  }
+                ]
+              })
+            ]
+          })
+        ]
       },
       {
         id: "interaction",
@@ -786,10 +804,10 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
             id: "interaction.blueprint.deferred",
             type: "custom",
             label: translate("widgets.blueprint.controlLabel"),
-            component: ReadonlyBlueprintSection,
-          }),
-        ],
-      },
-    ],
+            component: ReadonlyBlueprintSection
+          })
+        ]
+      }
+    ]
   });
 }

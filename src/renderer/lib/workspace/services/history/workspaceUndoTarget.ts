@@ -18,10 +18,10 @@ import type { HistoryService } from "./HistoryService";
  * inspector.
  */
 export function isEditorOwnedFocus(focus: FocusContext, tabId?: string): boolean {
-    if (focus.area === FocusArea.Editor) {
-        return tabId === undefined || focus.targetId === tabId;
-    }
-    return focus.area === FocusArea.RightPanel && focus.targetId === PROPERTIES_PANEL_ID;
+  if (focus.area === FocusArea.Editor) {
+    return tabId === undefined || focus.targetId === tabId;
+  }
+  return focus.area === FocusArea.RightPanel && focus.targetId === PROPERTIES_PANEL_ID;
 }
 
 /**
@@ -37,9 +37,12 @@ export function isEditorOwnedFocus(focus: FocusContext, tabId?: string): boolean
  * in the assets panel rewrites a scene the author is not looking at. "Nothing to undo here" is the
  * correct answer to that keystroke.
  */
-export function resolveWorkspaceUndoScope(history: HistoryService, focus: FocusContext): HistoryScopeId {
-    if (isEditorOwnedFocus(focus)) {
-        return history.getActiveScopeId() ?? projectHistoryScope();
-    }
-    return projectHistoryScope();
+export function resolveWorkspaceUndoScope(
+  history: HistoryService,
+  focus: FocusContext
+): HistoryScopeId {
+  if (isEditorOwnedFocus(focus)) {
+    return history.getActiveScopeId() ?? projectHistoryScope();
+  }
+  return projectHistoryScope();
 }

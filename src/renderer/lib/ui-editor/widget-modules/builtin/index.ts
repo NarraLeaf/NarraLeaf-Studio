@@ -22,28 +22,28 @@ import { NvlTextsWidgetModule } from "./nvl";
  * User insert palette order is `listInsertPaletteModules()` in `insertPalette.ts`.
  */
 export const BuiltinWidgetModules: UIWidgetModule[] = [
-    RootWidgetModule,
-    ContainerWidgetModule,
-    TextWidgetModule,
-    ImageWidgetModule,
-    VideoWidgetModule,
-    PuppetWidgetModule,
-    ButtonWidgetModule,
-    TextInputWidgetModule,
-    SliderWidgetModule,
-    SwitchWidgetModule,
-    ListWidgetModule,
-    FrameWidgetModule,
-    DialogSentenceWidgetModule,
-    NotificationListWidgetModule,
-    ChoiceListWidgetModule,
-    NvlListWidgetModule,
-    NvlTextsWidgetModule,
+  RootWidgetModule,
+  ContainerWidgetModule,
+  TextWidgetModule,
+  ImageWidgetModule,
+  VideoWidgetModule,
+  PuppetWidgetModule,
+  ButtonWidgetModule,
+  TextInputWidgetModule,
+  SliderWidgetModule,
+  SwitchWidgetModule,
+  ListWidgetModule,
+  FrameWidgetModule,
+  DialogSentenceWidgetModule,
+  NotificationListWidgetModule,
+  ChoiceListWidgetModule,
+  NvlListWidgetModule,
+  NvlTextsWidgetModule
 ];
 
 /** Runs optional `registerBlueprintNodes` on each built-in module (idempotent per module). */
 export function registerBuiltinWidgetBlueprintNodes(): void {
-    for (const m of BuiltinWidgetModules) {
-        m.registerBlueprintNodes?.();
-    }
+  for (const m of BuiltinWidgetModules) {
+    m.registerBlueprintNodes?.();
+  }
 }

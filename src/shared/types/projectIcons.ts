@@ -18,43 +18,49 @@ import { fnv1aHex } from "@shared/utils/contentHash";
 /** A build target that shows an app icon. Every target Studio can build does. */
 export type ProjectIconTarget = "macos" | "windows" | "linux" | "android" | "ios" | "web";
 
-export const PROJECT_ICON_TARGETS: readonly ProjectIconTarget[] =
-    ["macos", "windows", "linux", "android", "ios", "web"] as const;
+export const PROJECT_ICON_TARGETS: readonly ProjectIconTarget[] = [
+  "macos",
+  "windows",
+  "linux",
+  "android",
+  "ios",
+  "web"
+] as const;
 
 /** An image the author supplied, stored under `resources/icons/source/`. */
 export type ProjectIconSource = {
-    /** Project-relative, forward slashes. */
-    path: string;
-    /** The file name the author picked it from. Display only. */
-    sourceName: string;
-    mediaType: string;
-    /** Display only - deliberately excluded from the bake fingerprint. */
-    updatedAt: string;
+  /** Project-relative, forward slashes. */
+  path: string;
+  /** The file name the author picked it from. Display only. */
+  sourceName: string;
+  mediaType: string;
+  /** Display only - deliberately excluded from the bake fingerprint. */
+  updatedAt: string;
 };
 
 /** How one target fits the master. Three knobs, and the defaults are correct. */
 export type ProjectIconSpec = {
-    /** Non-null only when this target needs different artwork from the master. */
-    override: ProjectIconSource | null;
-    /** Fraction of the canvas edge left empty around the artwork, 0 to {@link MAX_ICON_INSET}. */
-    inset: number;
-    /** `#RRGGBB` painted under the artwork, or null to keep transparency. */
-    background: string | null;
+  /** Non-null only when this target needs different artwork from the master. */
+  override: ProjectIconSource | null;
+  /** Fraction of the canvas edge left empty around the artwork, 0 to {@link MAX_ICON_INSET}. */
+  inset: number;
+  /** `#RRGGBB` painted under the artwork, or null to keep transparency. */
+  background: string | null;
 };
 
 /** A baked PNG plus the fingerprint of the inputs that produced it. */
 export type ProjectIconBake = {
-    /** Project-relative, forward slashes. */
-    path: string;
-    fingerprint: string;
+  /** Project-relative, forward slashes. */
+  path: string;
+  fingerprint: string;
 };
 
 export type ProjectIconSet = {
-    version: 2;
-    master: ProjectIconSource | null;
-    specs: Record<ProjectIconTarget, ProjectIconSpec>;
-    /** Keyed by {@link ProjectIconOutputId}. Absent entries have not been baked. */
-    baked: Partial<Record<ProjectIconOutputId, ProjectIconBake>>;
+  version: 2;
+  master: ProjectIconSource | null;
+  specs: Record<ProjectIconTarget, ProjectIconSpec>;
+  /** Keyed by {@link ProjectIconOutputId}. Absent entries have not been baked. */
+  baked: Partial<Record<ProjectIconOutputId, ProjectIconBake>>;
 };
 
 /**
@@ -62,23 +68,28 @@ export type ProjectIconSet = {
  * fixed sizes because the names are referenced from the generated index.html.
  */
 export type ProjectIconOutputId =
-    | "macos" | "windows" | "linux" | "android" | "ios"
-    | "web-favicon" | "web-apple-touch";
+  | "macos"
+  | "windows"
+  | "linux"
+  | "android"
+  | "ios"
+  | "web-favicon"
+  | "web-apple-touch";
 
 export type ProjectIconOutput = {
-    id: ProjectIconOutputId;
-    target: ProjectIconTarget;
-    /** Edge length of the baked square, in pixels. */
-    size: number;
-    /** File name under `resources/icons/derived/`. */
-    fileName: string;
-    /**
-     * Alpha is not allowed in this output, so a spec that keeps transparency
-     * falls back to {@link DEFAULT_OPAQUE_BACKGROUND}. True for iOS (the App
-     * Store rejects icons with an alpha channel) and for apple-touch-icon,
-     * which Safari composites onto black when it has one.
-     */
-    opaque: boolean;
+  id: ProjectIconOutputId;
+  target: ProjectIconTarget;
+  /** Edge length of the baked square, in pixels. */
+  size: number;
+  /** File name under `resources/icons/derived/`. */
+  fileName: string;
+  /**
+   * Alpha is not allowed in this output, so a spec that keeps transparency
+   * falls back to {@link DEFAULT_OPAQUE_BACKGROUND}. True for iOS (the App
+   * Store rejects icons with an alpha channel) and for apple-touch-icon,
+   * which Safari composites onto black when it has one.
+   */
+  opaque: boolean;
 };
 
 /**
@@ -87,13 +98,13 @@ export type ProjectIconOutput = {
  * shell template declares. The web sizes are the ones browsers actually ask for.
  */
 export const PROJECT_ICON_OUTPUTS: readonly ProjectIconOutput[] = [
-    { id: "macos", target: "macos", size: 1024, fileName: "macos.png", opaque: false },
-    { id: "windows", target: "windows", size: 1024, fileName: "windows.png", opaque: false },
-    { id: "linux", target: "linux", size: 1024, fileName: "linux.png", opaque: false },
-    { id: "android", target: "android", size: 1024, fileName: "android.png", opaque: false },
-    { id: "ios", target: "ios", size: 1024, fileName: "ios.png", opaque: true },
-    { id: "web-favicon", target: "web", size: 32, fileName: "web-favicon.png", opaque: false },
-    { id: "web-apple-touch", target: "web", size: 180, fileName: "web-apple-touch.png", opaque: true },
+  { id: "macos", target: "macos", size: 1024, fileName: "macos.png", opaque: false },
+  { id: "windows", target: "windows", size: 1024, fileName: "windows.png", opaque: false },
+  { id: "linux", target: "linux", size: 1024, fileName: "linux.png", opaque: false },
+  { id: "android", target: "android", size: 1024, fileName: "android.png", opaque: false },
+  { id: "ios", target: "ios", size: 1024, fileName: "ios.png", opaque: true },
+  { id: "web-favicon", target: "web", size: 32, fileName: "web-favicon.png", opaque: false },
+  { id: "web-apple-touch", target: "web", size: 180, fileName: "web-apple-touch.png", opaque: true }
 ] as const;
 
 /** Largest inset the panel offers. Past a quarter of the canvas an icon reads as a dot. */
@@ -123,13 +134,15 @@ export const DEFAULT_OPAQUE_BACKGROUND = "#FFFFFF";
  * legacy `ic_launcher` PNG to a circle or squircle and clip whatever touches
  * the edge. iOS is full-bleed - the system rounds it - but opaque.
  */
-export const PROJECT_ICON_TARGET_DEFAULTS: Readonly<Record<ProjectIconTarget, { inset: number; background: string | null }>> = {
-    macos: { inset: 0.1, background: null },
-    windows: { inset: 0, background: null },
-    linux: { inset: 0, background: null },
-    android: { inset: 0.08, background: null },
-    ios: { inset: 0, background: DEFAULT_OPAQUE_BACKGROUND },
-    web: { inset: 0, background: null },
+export const PROJECT_ICON_TARGET_DEFAULTS: Readonly<
+  Record<ProjectIconTarget, { inset: number; background: string | null }>
+> = {
+  macos: { inset: 0.1, background: null },
+  windows: { inset: 0, background: null },
+  linux: { inset: 0, background: null },
+  android: { inset: 0.08, background: null },
+  ios: { inset: 0, background: DEFAULT_OPAQUE_BACKGROUND },
+  web: { inset: 0, background: null }
 };
 
 /** The five per-platform slots the pre-master model stored. */
@@ -140,11 +153,16 @@ export type ProjectIconLegacyPlatform = "macos" | "windows" | "linux" | "android
  * an author who only set one icon almost always set it, and because the desktop
  * slots accepted the widest range of source formats.
  */
-const LEGACY_PROMOTION_ORDER: readonly ProjectIconLegacyPlatform[] =
-    ["windows", "macos", "linux", "android", "ios"] as const;
+const LEGACY_PROMOTION_ORDER: readonly ProjectIconLegacyPlatform[] = [
+  "windows",
+  "macos",
+  "linux",
+  "android",
+  "ios"
+] as const;
 
 export function createProjectIconSet(): ProjectIconSet {
-    return { version: 2, master: null, specs: defaultSpecs(), baked: {} };
+  return { version: 2, master: null, specs: defaultSpecs(), baked: {} };
 }
 
 /**
@@ -154,11 +172,11 @@ export function createProjectIconSet(): ProjectIconSet {
  * the panel and preflight both already handle.
  */
 export function normalizeProjectIconSet(value: unknown): ProjectIconSet {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-        return createProjectIconSet();
-    }
-    const record = value as Record<string, unknown>;
-    return record.version === 2 ? normalizeV2(record) : migrateLegacyIconSet(record);
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return createProjectIconSet();
+  }
+  const record = value as Record<string, unknown>;
+  return record.version === 2 ? normalizeV2(record) : migrateLegacyIconSet(record);
 }
 
 /**
@@ -169,45 +187,50 @@ export function normalizeProjectIconSet(value: unknown): ProjectIconSet {
  * there was a defect, not a behaviour worth preserving.)
  */
 export function migrateLegacyIconSet(value: Record<string, unknown>): ProjectIconSet {
-    const configured = new Map<ProjectIconLegacyPlatform, ProjectIconSource>();
-    for (const platform of LEGACY_PROMOTION_ORDER) {
-        const source = normalizeSource(value[platform]);
-        if (source) {
-            configured.set(platform, source);
-        }
+  const configured = new Map<ProjectIconLegacyPlatform, ProjectIconSource>();
+  for (const platform of LEGACY_PROMOTION_ORDER) {
+    const source = normalizeSource(value[platform]);
+    if (source) {
+      configured.set(platform, source);
     }
+  }
 
-    const masterPlatform = LEGACY_PROMOTION_ORDER.find(platform => configured.has(platform));
-    if (!masterPlatform) {
-        return createProjectIconSet();
-    }
+  const masterPlatform = LEGACY_PROMOTION_ORDER.find((platform) => configured.has(platform));
+  if (!masterPlatform) {
+    return createProjectIconSet();
+  }
 
-    const specs = defaultSpecs();
-    for (const target of PROJECT_ICON_TARGETS) {
-        specs[target] = {
-            override: null,
-            inset: 0,
-            background: PROJECT_ICON_TARGET_DEFAULTS[target].background,
-        };
+  const specs = defaultSpecs();
+  for (const target of PROJECT_ICON_TARGETS) {
+    specs[target] = {
+      override: null,
+      inset: 0,
+      background: PROJECT_ICON_TARGET_DEFAULTS[target].background
+    };
+  }
+  for (const [platform, source] of configured) {
+    if (platform !== masterPlatform) {
+      specs[platform].override = source;
     }
-    for (const [platform, source] of configured) {
-        if (platform !== masterPlatform) {
-            specs[platform].override = source;
-        }
-    }
+  }
 
-    return { version: 2, master: configured.get(masterPlatform)!, specs, baked: {} };
+  return { version: 2, master: configured.get(masterPlatform)!, specs, baked: {} };
 }
 
 /** The image a target bakes from: its own override, else the master. */
-export function resolveIconSource(set: ProjectIconSet, target: ProjectIconTarget): ProjectIconSource | null {
-    return set.specs[target].override ?? set.master;
+export function resolveIconSource(
+  set: ProjectIconSet,
+  target: ProjectIconTarget
+): ProjectIconSource | null {
+  return set.specs[target].override ?? set.master;
 }
 
 /** The one reader for `metadata.icons`, wherever the config came from. */
-export function readProjectIconSet(projectConfig: { metadata?: unknown } | null | undefined): ProjectIconSet {
-    const metadata = projectConfig?.metadata;
-    return normalizeProjectIconSet(isRecord(metadata) ? metadata.icons : undefined);
+export function readProjectIconSet(
+  projectConfig: { metadata?: unknown } | null | undefined
+): ProjectIconSet {
+  const metadata = projectConfig?.metadata;
+  return normalizeProjectIconSet(isRecord(metadata) ? metadata.icons : undefined);
 }
 
 /**
@@ -220,23 +243,26 @@ export function readProjectIconSet(projectConfig: { metadata?: unknown } | null 
  * refuse an icon it can plainly see.
  */
 export function resolveIconFile(
-    set: ProjectIconSet,
-    outputId: ProjectIconOutputId,
+  set: ProjectIconSet,
+  outputId: ProjectIconOutputId
 ): { path: string; baked: boolean } | null {
-    const baked = set.baked[outputId];
-    if (baked?.path) {
-        return { path: baked.path, baked: true };
-    }
-    const source = resolveIconSource(set, findProjectIconOutput(outputId).target);
-    return source ? { path: source.path, baked: false } : null;
+  const baked = set.baked[outputId];
+  if (baked?.path) {
+    return { path: baked.path, baked: true };
+  }
+  const source = resolveIconSource(set, findProjectIconOutput(outputId).target);
+  return source ? { path: source.path, baked: false } : null;
 }
 
 /** The colour an output paints under the artwork, honouring its alpha rule. */
-export function resolveIconBackground(spec: ProjectIconSpec, output: ProjectIconOutput): string | null {
-    if (spec.background) {
-        return spec.background;
-    }
-    return output.opaque ? DEFAULT_OPAQUE_BACKGROUND : null;
+export function resolveIconBackground(
+  spec: ProjectIconSpec,
+  output: ProjectIconOutput
+): string | null {
+  if (spec.background) {
+    return spec.background;
+  }
+  return output.opaque ? DEFAULT_OPAQUE_BACKGROUND : null;
 }
 
 /**
@@ -246,108 +272,117 @@ export function resolveIconBackground(spec: ProjectIconSpec, output: ProjectIcon
  * every project open look like an edit in version control.
  */
 export function projectIconFingerprint(input: {
-    sourceHash: string;
-    spec: ProjectIconSpec;
-    output: ProjectIconOutput;
+  sourceHash: string;
+  spec: ProjectIconSpec;
+  output: ProjectIconOutput;
 }): string {
-    const { sourceHash, spec, output } = input;
-    const recipe = [
-        `v${PROJECT_ICON_BAKE_FORMAT}`,
-        output.id,
-        output.size,
-        output.opaque ? "opaque" : "alpha",
-        spec.inset.toFixed(4),
-        resolveIconBackground(spec, output) ?? "none",
-    ].join("|");
-    return `${sourceHash}-${fnv1aHex(recipe)}`;
+  const { sourceHash, spec, output } = input;
+  const recipe = [
+    `v${PROJECT_ICON_BAKE_FORMAT}`,
+    output.id,
+    output.size,
+    output.opaque ? "opaque" : "alpha",
+    spec.inset.toFixed(4),
+    resolveIconBackground(spec, output) ?? "none"
+  ].join("|");
+  return `${sourceHash}-${fnv1aHex(recipe)}`;
 }
 
 export function findProjectIconOutput(id: ProjectIconOutputId): ProjectIconOutput {
-    const output = PROJECT_ICON_OUTPUTS.find(candidate => candidate.id === id);
-    if (!output) {
-        throw new Error(`Unknown project icon output: ${id}`);
-    }
-    return output;
+  const output = PROJECT_ICON_OUTPUTS.find((candidate) => candidate.id === id);
+  if (!output) {
+    throw new Error(`Unknown project icon output: ${id}`);
+  }
+  return output;
 }
 
 /** The outputs a target owns, in declaration order. */
 export function outputsForTarget(target: ProjectIconTarget): ProjectIconOutput[] {
-    return PROJECT_ICON_OUTPUTS.filter(output => output.target === target);
+  return PROJECT_ICON_OUTPUTS.filter((output) => output.target === target);
 }
 
 function defaultSpecs(): Record<ProjectIconTarget, ProjectIconSpec> {
-    const specs = {} as Record<ProjectIconTarget, ProjectIconSpec>;
-    for (const target of PROJECT_ICON_TARGETS) {
-        const defaults = PROJECT_ICON_TARGET_DEFAULTS[target];
-        specs[target] = { override: null, inset: defaults.inset, background: defaults.background };
-    }
-    return specs;
+  const specs = {} as Record<ProjectIconTarget, ProjectIconSpec>;
+  for (const target of PROJECT_ICON_TARGETS) {
+    const defaults = PROJECT_ICON_TARGET_DEFAULTS[target];
+    specs[target] = { override: null, inset: defaults.inset, background: defaults.background };
+  }
+  return specs;
 }
 
 function normalizeV2(record: Record<string, unknown>): ProjectIconSet {
-    const rawSpecs = isRecord(record.specs) ? record.specs : {};
-    const specs = defaultSpecs();
-    for (const target of PROJECT_ICON_TARGETS) {
-        const raw = isRecord(rawSpecs[target]) ? rawSpecs[target] as Record<string, unknown> : {};
-        specs[target] = {
-            override: normalizeSource(raw.override),
-            inset: normalizeInset(raw.inset, PROJECT_ICON_TARGET_DEFAULTS[target].inset),
-            background: normalizeBackground(raw.background, PROJECT_ICON_TARGET_DEFAULTS[target].background),
-        };
-    }
+  const rawSpecs = isRecord(record.specs) ? record.specs : {};
+  const specs = defaultSpecs();
+  for (const target of PROJECT_ICON_TARGETS) {
+    const raw = isRecord(rawSpecs[target]) ? (rawSpecs[target] as Record<string, unknown>) : {};
+    specs[target] = {
+      override: normalizeSource(raw.override),
+      inset: normalizeInset(raw.inset, PROJECT_ICON_TARGET_DEFAULTS[target].inset),
+      background: normalizeBackground(
+        raw.background,
+        PROJECT_ICON_TARGET_DEFAULTS[target].background
+      )
+    };
+  }
 
-    const rawBaked = isRecord(record.baked) ? record.baked : {};
-    const baked: ProjectIconSet["baked"] = {};
-    for (const output of PROJECT_ICON_OUTPUTS) {
-        const raw = isRecord(rawBaked[output.id]) ? rawBaked[output.id] as Record<string, unknown> : null;
-        const bakePath = raw && typeof raw.path === "string" ? raw.path.trim() : "";
-        const fingerprint = raw && typeof raw.fingerprint === "string" ? raw.fingerprint.trim() : "";
-        if (bakePath && fingerprint) {
-            baked[output.id] = { path: bakePath, fingerprint };
-        }
+  const rawBaked = isRecord(record.baked) ? record.baked : {};
+  const baked: ProjectIconSet["baked"] = {};
+  for (const output of PROJECT_ICON_OUTPUTS) {
+    const raw = isRecord(rawBaked[output.id])
+      ? (rawBaked[output.id] as Record<string, unknown>)
+      : null;
+    const bakePath = raw && typeof raw.path === "string" ? raw.path.trim() : "";
+    const fingerprint = raw && typeof raw.fingerprint === "string" ? raw.fingerprint.trim() : "";
+    if (bakePath && fingerprint) {
+      baked[output.id] = { path: bakePath, fingerprint };
     }
+  }
 
-    return { version: 2, master: normalizeSource(record.master), specs, baked };
+  return { version: 2, master: normalizeSource(record.master), specs, baked };
 }
 
 function normalizeSource(value: unknown): ProjectIconSource | null {
-    if (!isRecord(value) || typeof value.path !== "string" || !value.path.trim()) {
-        return null;
-    }
-    const path = value.path.trim().replace(/\\/g, "/");
-    return {
-        path,
-        sourceName: typeof value.sourceName === "string" && value.sourceName ? value.sourceName : basename(path),
-        mediaType: typeof value.mediaType === "string" && value.mediaType ? value.mediaType : "application/octet-stream",
-        updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : "",
-    };
+  if (!isRecord(value) || typeof value.path !== "string" || !value.path.trim()) {
+    return null;
+  }
+  const path = value.path.trim().replace(/\\/g, "/");
+  return {
+    path,
+    sourceName:
+      typeof value.sourceName === "string" && value.sourceName ? value.sourceName : basename(path),
+    mediaType:
+      typeof value.mediaType === "string" && value.mediaType
+        ? value.mediaType
+        : "application/octet-stream",
+    updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : ""
+  };
 }
 
 function normalizeInset(value: unknown, fallback: number): number {
-    if (typeof value !== "number" || !Number.isFinite(value)) {
-        return fallback;
-    }
-    // Rounded to the panel's step so a float artefact cannot re-fingerprint a
-    // spec that nobody edited.
-    return Math.round(Math.min(Math.max(value, 0), MAX_ICON_INSET) * 100) / 100;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+  // Rounded to the panel's step so a float artefact cannot re-fingerprint a
+  // spec that nobody edited.
+  return Math.round(Math.min(Math.max(value, 0), MAX_ICON_INSET) * 100) / 100;
 }
 
 function normalizeBackground(value: unknown, fallback: string | null): string | null {
-    if (value === null) {
-        return null;
-    }
-    if (typeof value !== "string") {
-        return fallback;
-    }
-    const trimmed = value.trim().toUpperCase();
-    return /^#[0-9A-F]{6}$/.test(trimmed) ? trimmed : fallback;
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== "string") {
+    return fallback;
+  }
+  const trimmed = value.trim().toUpperCase();
+  return /^#[0-9A-F]{6}$/.test(trimmed) ? trimmed : fallback;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-    return !!value && typeof value === "object" && !Array.isArray(value);
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 function basename(path: string): string {
-    const index = path.lastIndexOf("/");
-    return index >= 0 ? path.slice(index + 1) : path;
+  const index = path.lastIndexOf("/");
+  return index >= 0 ? path.slice(index + 1) : path;
 }

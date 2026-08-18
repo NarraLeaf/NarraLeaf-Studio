@@ -10,14 +10,14 @@ import { getInterface } from "./bridge";
  * whether to go on.
  */
 export async function promptServerTrust(props: ServerTrustPromptProps): Promise<boolean> {
-    const result = await getInterface().app.promptServerTrust(props);
-    return result.success && result.data.trusted;
+  const result = await getInterface().app.promptServerTrust(props);
+  return result.success && result.data.trusted;
 }
 
 declare global {
-    interface Window {
-        __NLS_SERVER_TRUST__?: (props: ServerTrustPromptProps) => Promise<boolean>;
-    }
+  interface Window {
+    __NLS_SERVER_TRUST__?: (props: ServerTrustPromptProps) => Promise<boolean>;
+  }
 }
 
 /**
@@ -31,8 +31,8 @@ declare global {
  * site, so it is dropped from production bundles.
  */
 export function installServerTrustDevHook(): void {
-    if (typeof window === "undefined" || window.__NLS_SERVER_TRUST__) {
-        return;
-    }
-    window.__NLS_SERVER_TRUST__ = promptServerTrust;
+  if (typeof window === "undefined" || window.__NLS_SERVER_TRUST__) {
+    return;
+  }
+  window.__NLS_SERVER_TRUST__ = promptServerTrust;
 }

@@ -1,6 +1,12 @@
 import type { UIStageSlotId } from "./document";
 
-export const UI_STAGE_SLOT_IDS = ["onStage", "dialog", "notification", "choice", "nvl"] as const satisfies readonly UIStageSlotId[];
+export const UI_STAGE_SLOT_IDS = [
+  "onStage",
+  "dialog",
+  "notification",
+  "choice",
+  "nvl"
+] as const satisfies readonly UIStageSlotId[];
 
 export const DEFAULT_UI_STAGE_SLOT_ID: UIStageSlotId = "onStage";
 
@@ -9,12 +15,12 @@ export const DEFAULT_UI_STAGE_SLOT_ID: UIStageSlotId = "onStage";
 // name cannot be shown to an author without passing through the active locale.
 
 export function isUIStageSlotId(value: unknown): value is UIStageSlotId {
-    return typeof value === "string" && (UI_STAGE_SLOT_IDS as readonly string[]).includes(value);
+  return typeof value === "string" && (UI_STAGE_SLOT_IDS as readonly string[]).includes(value);
 }
 
 export function normalizeUIStageSlotId(value: unknown): UIStageSlotId {
-    if (value === "menu") {
-        return "choice";
-    }
-    return isUIStageSlotId(value) ? value : DEFAULT_UI_STAGE_SLOT_ID;
+  if (value === "menu") {
+    return "choice";
+  }
+  return isUIStageSlotId(value) ? value : DEFAULT_UI_STAGE_SLOT_ID;
 }

@@ -31,10 +31,10 @@ import { parse } from "./path";
  * this module to any of them.
  */
 export interface SplitFileEntry {
-    /** Filename with the extension stripped off (`path.parse(name).name`). */
-    name: string;
-    /** Extension including the leading dot, or `null`/`""` when there is none. */
-    ext: string | null;
+  /** Filename with the extension stripped off (`path.parse(name).name`). */
+  name: string;
+  /** Extension including the leading dot, or `null`/`""` when there is none. */
+  ext: string | null;
 }
 
 /**
@@ -45,13 +45,13 @@ export interface SplitFileEntry {
  * are falsy and a stem with nothing appended is the right answer either way.
  */
 export function entryFileName(entry: SplitFileEntry): string {
-    return entry.ext ? `${entry.name}${entry.ext}` : entry.name;
+  return entry.ext ? `${entry.name}${entry.ext}` : entry.name;
 }
 
 /** The split representation of a filename, with the whole filename kept alongside its two halves. */
 export interface FileNameParts extends SplitFileEntry {
-    /** The complete filename that was split, so a listing entry can carry it without rejoining. */
-    fileName: string;
+  /** The complete filename that was split, so a listing entry can carry it without rejoining. */
+  fileName: string;
 }
 
 /**
@@ -64,10 +64,10 @@ export interface FileNameParts extends SplitFileEntry {
  * because there is only one.
  */
 export function splitFileEntry(fileName: string): FileNameParts {
-    const parsed = parse(fileName);
-    return {
-        name: parsed.name,
-        ext: parsed.ext || null,
-        fileName,
-    };
+  const parsed = parse(fileName);
+  return {
+    name: parsed.name,
+    ext: parsed.ext || null,
+    fileName
+  };
 }

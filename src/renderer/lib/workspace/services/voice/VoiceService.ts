@@ -13,21 +13,25 @@ import { loadDocument, saveDocument, type DocumentStorage } from "@shared/docume
 import { voiceDocumentSpec } from "@shared/documents/specs";
 import { RendererError } from "@shared/utils/error";
 import {
-    VoiceConfiguration,
-    VoiceDocument,
-    VoiceLocaleEntry,
-    VoiceUnit,
-    VoiceUnitStatus,
-    createEmptyVoiceDocument,
-    isValidLocaleCode,
-    voiceLineText,
+  VoiceConfiguration,
+  VoiceDocument,
+  VoiceLocaleEntry,
+  VoiceUnit,
+  VoiceUnitStatus,
+  createEmptyVoiceDocument,
+  isValidLocaleCode,
+  voiceLineText
 } from "@shared/types/voice";
 import { hashSourceText } from "@shared/utils/localizationText";
 import type { VoiceCsvRow } from "@shared/utils/voiceCsv";
 import type { StoryDocument } from "@shared/types/story";
 import { Service } from "../Service";
 import { IVoiceService, Services, WorkspaceContext } from "../services";
-import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver } from "../autosave/DebouncedSaver";
+import {
+  DEFAULT_AUTOSAVE_DELAY_MS,
+  DEFAULT_AUTOSAVE_MAX_WAIT_MS,
+  DebouncedSaver
+} from "../autosave/DebouncedSaver";
 import { registerAutoSaver, reportUnreadableDocument } from "../autosave/SaveStatusService";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { FileSystemService } from "../core/FileSystem";
@@ -38,385 +42,423 @@ import type { TranslatableUnitRef, StoryTranslationRow } from "../localization/l
 import { VoiceProgress, computeVoiceProgress, extractVoiceableRows } from "./voiceModel";
 
 type VoiceServiceEvents = {
-    configChanged: VoiceConfiguration;
-    documentChanged: { locale: string; document: VoiceDocument };
+  configChanged: VoiceConfiguration;
+  documentChanged: { locale: string; document: VoiceDocument };
 };
 
 /** What a recording-script import did, per row. `unknown` = a line with no take to annotate. */
 export type VoiceImportSummary = {
-    applied: number;
-    unchanged: number;
-    unknown: number;
+  applied: number;
+  unchanged: number;
+  unknown: number;
 };
 
 export type VoiceUnitPatch = {
-    /** Asset-library id of the imported clip. Passing this (re-)links the line and re-stamps its hash. */
-    assetId?: string;
-    status?: VoiceUnitStatus;
-    duration?: number;
-    note?: string;
+  /** Asset-library id of the imported clip. Passing this (re-)links the line and re-stamps its hash. */
+  assetId?: string;
+  status?: VoiceUnitStatus;
+  duration?: number;
+  note?: string;
 };
 
 export class VoiceService extends Service<VoiceService> implements IVoiceService {
-    private readonly documents = new Map<string, VoiceDocument>();
-    private readonly dirtyLocales = new Set<string>();
-    private readonly events = new EventEmitter<VoiceServiceEvents>();
-    private readonly autoSaver = new DebouncedSaver({
-        delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
-        maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
-        save: () => this.writeDirtyDocuments(),
-        onError: err => console.warn("[VoiceService] auto-save failed", err),
+  private readonly documents = new Map<string, VoiceDocument>();
+  private readonly dirtyLocales = new Set<string>();
+  private readonly events = new EventEmitter<VoiceServiceEvents>();
+  private readonly autoSaver = new DebouncedSaver({
+    delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
+    maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
+    save: () => this.writeDirtyDocuments(),
+    onError: (err) => console.warn("[VoiceService] auto-save failed", err)
+  });
+
+  protected async init(
+    ctx: WorkspaceContext,
+    depend: (services: Service[]) => Promise<void>
+  ): Promise<void> {
+    const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
+    const projectService = ctx.services.get<ProjectService>(Services.Project);
+    const localizationService = ctx.services.get<LocalizationService>(Services.Localization);
+    // Localization is a dependency because a dub is a recording of the *translated* line - see
+    // `voiceLineText`. One-directional: localization knows nothing about voice.
+    await depend([filesystemService, projectService, localizationService]);
+    await registerAutoSaver(
+      ctx,
+      depend,
+      "voice",
+      "workspace.shell.save.stores.voice",
+      this.autoSaver
+    );
+  }
+
+  public async dispose(): Promise<void> {
+    await this.flushPendingChanges();
+    this.documents.clear();
+    this.dirtyLocales.clear();
+  }
+
+  // --- Configuration (`.nlproj` → app.voice) ---
+
+  public getConfiguration(): VoiceConfiguration {
+    return this.getProjectService().getVoiceConfiguration();
+  }
+
+  public onConfigChanged(handler: (config: VoiceConfiguration) => void): () => void {
+    return this.events.on("configChanged", handler);
+  }
+
+  public async updateConfiguration(
+    updater: (current: VoiceConfiguration) => VoiceConfiguration
+  ): Promise<VoiceConfiguration> {
+    const next = await this.getProjectService().updateVoiceConfiguration(updater);
+    this.events.emit("configChanged", next);
+    return next;
+  }
+
+  public async addLocale(entry: VoiceLocaleEntry): Promise<VoiceConfiguration> {
+    if (!isValidLocaleCode(entry.code)) {
+      throw new RendererError(`Invalid locale code: ${entry.code}`);
+    }
+    return this.updateConfiguration((config) => {
+      if (config.voicedLocales.some((locale) => locale.code === entry.code)) {
+        throw new RendererError(`Voice language already exists: ${entry.code}`);
+      }
+      const displayName = entry.displayName.trim() || entry.code;
+      return { ...config, voicedLocales: [...config.voicedLocales, { ...entry, displayName }] };
     });
+  }
 
-    protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
-        const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
-        const projectService = ctx.services.get<ProjectService>(Services.Project);
-        const localizationService = ctx.services.get<LocalizationService>(Services.Localization);
-        // Localization is a dependency because a dub is a recording of the *translated* line - see
-        // `voiceLineText`. One-directional: localization knows nothing about voice.
-        await depend([filesystemService, projectService, localizationService]);
-        await registerAutoSaver(ctx, depend, "voice", "workspace.shell.save.stores.voice", this.autoSaver);
+  /**
+   * Remove a voice language from the configuration. The voice file on disk is
+   * intentionally kept (non-destructive) - re-adding the language restores its
+   * clip assignments.
+   */
+  public async removeLocale(code: string): Promise<VoiceConfiguration> {
+    const config = await this.updateConfiguration((config) => ({
+      ...config,
+      voicedLocales: config.voicedLocales.filter((locale) => locale.code !== code)
+    }));
+    this.documents.delete(code);
+    this.dirtyLocales.delete(code);
+    return config;
+  }
+
+  // --- Casting (per-character voice actor, per language) ---
+
+  public getCastName(characterId: string, locale: string): string {
+    return this.getConfiguration().cast[characterId]?.[locale] ?? "";
+  }
+
+  public async setCastName(
+    characterId: string,
+    locale: string,
+    name: string
+  ): Promise<VoiceConfiguration> {
+    const trimmed = name.trim();
+    return this.updateConfiguration((config) => {
+      const cast = { ...config.cast };
+      const perLocale = { ...(cast[characterId] ?? {}) };
+      if (trimmed) {
+        perLocale[locale] = trimmed;
+      } else {
+        delete perLocale[locale];
+      }
+      if (Object.keys(perLocale).length > 0) {
+        cast[characterId] = perLocale;
+      } else {
+        delete cast[characterId];
+      }
+      return { ...config, cast };
+    });
+  }
+
+  // --- The text a take is a recording of ---
+
+  /**
+   * Make sure {@link getLineText} can answer for this voice language: pull in its translation table
+   * when the project also translates into it. A voice language the project never translated into
+   * needs nothing loaded - the source text is what the actor reads.
+   */
+  public async loadLineTexts(locale: string): Promise<void> {
+    const localization = this.getLocalizationService();
+    if (!localization.getConfiguration().locales.some((entry) => entry.code === locale)) {
+      return;
+    }
+    await localization.loadDocument(locale).catch(() => undefined);
+  }
+
+  /**
+   * The line as the actor for this voice language reads it. Every voice surface goes through here so
+   * the table, the recording script, and the staleness hash agree on one text per language.
+   * Synchronous, so callers must have run {@link loadLineTexts} first (it falls back to the source
+   * text, never throws, so a missed preload degrades instead of breaking).
+   */
+  public getLineText(locale: string, unitId: string, sourceText: string): string {
+    return voiceLineText(
+      this.getLocalizationService().getDocumentIfLoaded(locale),
+      unitId,
+      sourceText
+    );
+  }
+
+  // --- Voice documents (one per locale) ---
+
+  public async loadDocument(locale: string): Promise<VoiceDocument> {
+    this.assertKnownLocale(locale);
+    const cached = this.documents.get(locale);
+    if (cached) {
+      return cached;
+    }
+    const result = await loadDocument(
+      voiceDocumentSpec,
+      this.storage(),
+      this.getDocumentPath(locale)
+    );
+
+    // A present-but-unreadable file throws instead of degrading to empty, and - the part that
+    // matters - is not cached: an "empty" document in the cache is one edit away from being
+    // auto-saved over the file nobody could read. The caller sees the failure; the file is
+    // untouched and a copy of it has been quarantined.
+    if (result.status === "corrupt") {
+      reportUnreadableDocument(this.getContext(), result);
+      throw new RendererError(`Failed to read voice library ${locale}: ${result.error.reason}`);
     }
 
-    public async dispose(): Promise<void> {
-        await this.flushPendingChanges();
-        this.documents.clear();
-        this.dirtyLocales.clear();
-    }
+    // First time this language is opened - start empty, created on first save.
+    const document =
+      result.status === "missing" ? createEmptyVoiceDocument(locale) : result.document;
+    this.documents.set(locale, document);
+    return document;
+  }
 
-    // --- Configuration (`.nlproj` → app.voice) ---
+  public getDocumentIfLoaded(locale: string): VoiceDocument | undefined {
+    return this.documents.get(locale);
+  }
 
-    public getConfiguration(): VoiceConfiguration {
-        return this.getProjectService().getVoiceConfiguration();
-    }
+  public onDocumentChanged(
+    handler: (event: { locale: string; document: VoiceDocument }) => void
+  ): () => void {
+    return this.events.on("documentChanged", handler);
+  }
 
-    public onConfigChanged(handler: (config: VoiceConfiguration) => void): () => void {
-        return this.events.on("configChanged", handler);
-    }
-
-    public async updateConfiguration(
-        updater: (current: VoiceConfiguration) => VoiceConfiguration,
-    ): Promise<VoiceConfiguration> {
-        const next = await this.getProjectService().updateVoiceConfiguration(updater);
-        this.events.emit("configChanged", next);
-        return next;
-    }
-
-    public async addLocale(entry: VoiceLocaleEntry): Promise<VoiceConfiguration> {
-        if (!isValidLocaleCode(entry.code)) {
-            throw new RendererError(`Invalid locale code: ${entry.code}`);
-        }
-        return this.updateConfiguration(config => {
-            if (config.voicedLocales.some(locale => locale.code === entry.code)) {
-                throw new RendererError(`Voice language already exists: ${entry.code}`);
-            }
-            const displayName = entry.displayName.trim() || entry.code;
-            return { ...config, voicedLocales: [...config.voicedLocales, { ...entry, displayName }] };
-        });
-    }
-
-    /**
-     * Remove a voice language from the configuration. The voice file on disk is
-     * intentionally kept (non-destructive) - re-adding the language restores its
-     * clip assignments.
-     */
-    public async removeLocale(code: string): Promise<VoiceConfiguration> {
-        const config = await this.updateConfiguration(config => ({
-            ...config,
-            voicedLocales: config.voicedLocales.filter(locale => locale.code !== code),
-        }));
-        this.documents.delete(code);
-        this.dirtyLocales.delete(code);
-        return config;
-    }
-
-    // --- Casting (per-character voice actor, per language) ---
-
-    public getCastName(characterId: string, locale: string): string {
-        return this.getConfiguration().cast[characterId]?.[locale] ?? "";
-    }
-
-    public async setCastName(characterId: string, locale: string, name: string): Promise<VoiceConfiguration> {
-        const trimmed = name.trim();
-        return this.updateConfiguration(config => {
-            const cast = { ...config.cast };
-            const perLocale = { ...(cast[characterId] ?? {}) };
-            if (trimmed) {
-                perLocale[locale] = trimmed;
-            } else {
-                delete perLocale[locale];
-            }
-            if (Object.keys(perLocale).length > 0) {
-                cast[characterId] = perLocale;
-            } else {
-                delete cast[characterId];
-            }
-            return { ...config, cast };
-        });
-    }
-
-    // --- The text a take is a recording of ---
-
-    /**
-     * Make sure {@link getLineText} can answer for this voice language: pull in its translation table
-     * when the project also translates into it. A voice language the project never translated into
-     * needs nothing loaded - the source text is what the actor reads.
-     */
-    public async loadLineTexts(locale: string): Promise<void> {
-        const localization = this.getLocalizationService();
-        if (!localization.getConfiguration().locales.some(entry => entry.code === locale)) {
-            return;
-        }
-        await localization.loadDocument(locale).catch(() => undefined);
-    }
-
-    /**
-     * The line as the actor for this voice language reads it. Every voice surface goes through here so
-     * the table, the recording script, and the staleness hash agree on one text per language.
-     * Synchronous, so callers must have run {@link loadLineTexts} first (it falls back to the source
-     * text, never throws, so a missed preload degrades instead of breaking).
-     */
-    public getLineText(locale: string, unitId: string, sourceText: string): string {
-        return voiceLineText(this.getLocalizationService().getDocumentIfLoaded(locale), unitId, sourceText);
-    }
-
-    // --- Voice documents (one per locale) ---
-
-    public async loadDocument(locale: string): Promise<VoiceDocument> {
-        this.assertKnownLocale(locale);
-        const cached = this.documents.get(locale);
-        if (cached) {
-            return cached;
-        }
-        const result = await loadDocument(voiceDocumentSpec, this.storage(), this.getDocumentPath(locale));
-
-        // A present-but-unreadable file throws instead of degrading to empty, and - the part that
-        // matters - is not cached: an "empty" document in the cache is one edit away from being
-        // auto-saved over the file nobody could read. The caller sees the failure; the file is
-        // untouched and a copy of it has been quarantined.
-        if (result.status === "corrupt") {
-            reportUnreadableDocument(this.getContext(), result);
-            throw new RendererError(`Failed to read voice library ${locale}: ${result.error.reason}`);
-        }
-
-        // First time this language is opened - start empty, created on first save.
-        const document = result.status === "missing" ? createEmptyVoiceDocument(locale) : result.document;
-        this.documents.set(locale, document);
+  /**
+   * Link, re-link, approve, or unlink a line's voice for a locale. Passing
+   * `assetId` (re-)links the line and re-stamps the source hash - a new take
+   * resets the unit to "linked" (needs re-approval) unless the patch says
+   * otherwise. Passing an empty `assetId` unlinks the line. Status/note/
+   * duration-only patches never touch the source hash, so approving cannot
+   * silently un-stale a line whose text changed after the take was imported.
+   */
+  public updateUnit(
+    locale: string,
+    unitId: string,
+    sourceText: string,
+    patch: VoiceUnitPatch
+  ): VoiceDocument {
+    const document = this.requireLoadedDocument(locale);
+    const existing = document.units[unitId];
+    const relinking = patch.assetId !== undefined;
+    const assetId = relinking ? patch.assetId! : (existing?.assetId ?? "");
+    const units = { ...document.units };
+    if (!assetId) {
+      if (!existing) {
         return document;
+      }
+      delete units[unitId];
+    } else {
+      const note =
+        patch.note !== undefined ? (patch.note.trim() ? patch.note : undefined) : existing?.note;
+      const duration = patch.duration !== undefined ? patch.duration : existing?.duration;
+      const status: VoiceUnitStatus =
+        patch.status ?? (relinking ? "linked" : (existing?.status ?? "linked"));
+      const unit: VoiceUnit = {
+        assetId,
+        sourceHash: relinking
+          ? hashSourceText(sourceText)
+          : (existing?.sourceHash ?? hashSourceText(sourceText)),
+        status,
+        ...(duration !== undefined ? { duration } : {}),
+        ...(note ? { note } : {})
+      };
+      units[unitId] = unit;
+    }
+    const next: VoiceDocument = { ...document, units };
+    this.documents.set(locale, next);
+    this.dirtyLocales.add(locale);
+    this.scheduleAutoSave();
+    this.events.emit("documentChanged", { locale, document: next });
+    return next;
+  }
+
+  /**
+   * Fold a recording script the booth filled in back into the voice library.
+   *
+   * The export half has existed since the module shipped and the parser was written alongside it,
+   * but nothing ever called the parser - so every note and every approval a director wrote in the
+   * spreadsheet had no way home. Only the two columns a human edits are read: `note`, and `status`
+   * when it says approved or linked. Everything else in the file is derived state that this project
+   * owns (a clip is linked by importing audio, not by typing a filename), so a row cannot invent a
+   * take or re-point one.
+   */
+  public applyImportedRows(locale: string, rows: readonly VoiceCsvRow[]): VoiceImportSummary {
+    const document = this.requireLoadedDocument(locale);
+    const summary: VoiceImportSummary = { applied: 0, unchanged: 0, unknown: 0 };
+    const units = { ...document.units };
+    for (const row of rows) {
+      const existing = units[row.unitId];
+      if (!existing) {
+        // No take for this line, so there is nothing for a note or an approval to be about.
+        summary.unknown += 1;
+        continue;
+      }
+      const note = row.note.trim();
+      const declared = row.status.trim().toLowerCase();
+      const status: VoiceUnitStatus =
+        declared === "approved"
+          ? "approved"
+          : declared === "linked" || declared === "voiced"
+            ? "linked"
+            : existing.status;
+      const next: VoiceUnit = {
+        ...existing,
+        status,
+        ...(note ? { note } : {})
+      };
+      if (!note) {
+        delete next.note;
+      }
+      if (next.status === existing.status && (next.note ?? "") === (existing.note ?? "")) {
+        summary.unchanged += 1;
+        continue;
+      }
+      units[row.unitId] = next;
+      summary.applied += 1;
+    }
+    if (summary.applied > 0) {
+      const nextDocument: VoiceDocument = { ...document, units };
+      this.documents.set(locale, nextDocument);
+      this.dirtyLocales.add(locale);
+      this.scheduleAutoSave();
+      this.events.emit("documentChanged", { locale, document: nextDocument });
+    }
+    return summary;
+  }
+
+  public async flushPendingChanges(): Promise<void> {
+    await this.autoSaver.flush();
+  }
+
+  /**
+   * Throw away the cached voice libraries and read back whatever was open. The mirror of
+   * `LocalizationService.reloadFromDisk`, for the same reason: `loadDocument` answers from the
+   * cache, so a locale opened before the working tree changed would keep - and later write back -
+   * the clip assignments it already had.
+   */
+  public async reloadFromDisk(): Promise<void> {
+    const previouslyLoaded = [...this.documents.keys()];
+    this.documents.clear();
+    this.dirtyLocales.clear();
+
+    const failures: string[] = [];
+    for (const locale of previouslyLoaded) {
+      // A voice language dropped from the configuration while the tree changed is not an error.
+      if (!this.getConfiguration().voicedLocales.some((entry) => entry.code === locale)) {
+        continue;
+      }
+      try {
+        const document = await this.loadDocument(locale);
+        this.events.emit("documentChanged", { locale, document });
+      } catch (error) {
+        failures.push(`${locale} (${error instanceof Error ? error.message : String(error)})`);
+      }
     }
 
-    public getDocumentIfLoaded(locale: string): VoiceDocument | undefined {
-        return this.documents.get(locale);
+    if (failures.length > 0) {
+      throw new RendererError(
+        `Could not re-read ${failures.length} voice library/libraries: ${failures.join("; ")}`
+      );
     }
+  }
 
-    public onDocumentChanged(handler: (event: { locale: string; document: VoiceDocument }) => void): () => void {
-        return this.events.on("documentChanged", handler);
+  /**
+   * The write itself. Only ever reached through {@link autoSaver}, which serialises it.
+   *
+   * See `LocalizationService.writeDirtyDocuments`: the dirty flag is cleared after the write
+   * lands, so a rejected write leaves something to retry.
+   */
+  private async writeDirtyDocuments(): Promise<void> {
+    for (const locale of [...this.dirtyLocales]) {
+      const document = this.documents.get(locale);
+      if (document) {
+        await this.writeDocument(document);
+      }
+      this.dirtyLocales.delete(locale);
     }
+  }
 
-    /**
-     * Link, re-link, approve, or unlink a line's voice for a locale. Passing
-     * `assetId` (re-)links the line and re-stamps the source hash - a new take
-     * resets the unit to "linked" (needs re-approval) unless the patch says
-     * otherwise. Passing an empty `assetId` unlinks the line. Status/note/
-     * duration-only patches never touch the source hash, so approving cannot
-     * silently un-stale a line whose text changed after the take was imported.
-     */
-    public updateUnit(locale: string, unitId: string, sourceText: string, patch: VoiceUnitPatch): VoiceDocument {
-        const document = this.requireLoadedDocument(locale);
-        const existing = document.units[unitId];
-        const relinking = patch.assetId !== undefined;
-        const assetId = relinking ? patch.assetId! : existing?.assetId ?? "";
-        const units = { ...document.units };
-        if (!assetId) {
-            if (!existing) {
-                return document;
-            }
-            delete units[unitId];
-        } else {
-            const note = patch.note !== undefined ? (patch.note.trim() ? patch.note : undefined) : existing?.note;
-            const duration = patch.duration !== undefined ? patch.duration : existing?.duration;
-            const status: VoiceUnitStatus = patch.status
-                ?? (relinking ? "linked" : existing?.status ?? "linked");
-            const unit: VoiceUnit = {
-                assetId,
-                sourceHash: relinking ? hashSourceText(sourceText) : existing?.sourceHash ?? hashSourceText(sourceText),
-                status,
-                ...(duration !== undefined ? { duration } : {}),
-                ...(note ? { note } : {}),
-            };
-            units[unitId] = unit;
-        }
-        const next: VoiceDocument = { ...document, units };
-        this.documents.set(locale, next);
-        this.dirtyLocales.add(locale);
-        this.scheduleAutoSave();
-        this.events.emit("documentChanged", { locale, document: next });
-        return next;
+  // --- Row extraction + coverage (reuse localization's narrative-order rows) ---
+
+  public extractRows(document: StoryDocument): StoryTranslationRow[] {
+    return extractVoiceableRows(document);
+  }
+
+  public computeProgress(rows: readonly TranslatableUnitRef[], locale: string): VoiceProgress {
+    return computeVoiceProgress(rows, this.documents.get(locale), (unitId, sourceText) =>
+      this.getLineText(locale, unitId, sourceText)
+    );
+  }
+
+  private assertKnownLocale(locale: string): void {
+    if (!isValidLocaleCode(locale)) {
+      throw new RendererError(`Invalid locale code: ${locale}`);
     }
-
-    /**
-     * Fold a recording script the booth filled in back into the voice library.
-     *
-     * The export half has existed since the module shipped and the parser was written alongside it,
-     * but nothing ever called the parser - so every note and every approval a director wrote in the
-     * spreadsheet had no way home. Only the two columns a human edits are read: `note`, and `status`
-     * when it says approved or linked. Everything else in the file is derived state that this project
-     * owns (a clip is linked by importing audio, not by typing a filename), so a row cannot invent a
-     * take or re-point one.
-     */
-    public applyImportedRows(locale: string, rows: readonly VoiceCsvRow[]): VoiceImportSummary {
-        const document = this.requireLoadedDocument(locale);
-        const summary: VoiceImportSummary = { applied: 0, unchanged: 0, unknown: 0 };
-        const units = { ...document.units };
-        for (const row of rows) {
-            const existing = units[row.unitId];
-            if (!existing) {
-                // No take for this line, so there is nothing for a note or an approval to be about.
-                summary.unknown += 1;
-                continue;
-            }
-            const note = row.note.trim();
-            const declared = row.status.trim().toLowerCase();
-            const status: VoiceUnitStatus = declared === "approved"
-                ? "approved"
-                : declared === "linked" || declared === "voiced"
-                    ? "linked"
-                    : existing.status;
-            const next: VoiceUnit = {
-                ...existing,
-                status,
-                ...(note ? { note } : {}),
-            };
-            if (!note) {
-                delete next.note;
-            }
-            if (next.status === existing.status && (next.note ?? "") === (existing.note ?? "")) {
-                summary.unchanged += 1;
-                continue;
-            }
-            units[row.unitId] = next;
-            summary.applied += 1;
-        }
-        if (summary.applied > 0) {
-            const nextDocument: VoiceDocument = { ...document, units };
-            this.documents.set(locale, nextDocument);
-            this.dirtyLocales.add(locale);
-            this.scheduleAutoSave();
-            this.events.emit("documentChanged", { locale, document: nextDocument });
-        }
-        return summary;
+    if (!this.getConfiguration().voicedLocales.some((entry) => entry.code === locale)) {
+      throw new RendererError(`Unknown voice language: ${locale}`);
     }
+  }
 
-    public async flushPendingChanges(): Promise<void> {
-        await this.autoSaver.flush();
+  private requireLoadedDocument(locale: string): VoiceDocument {
+    const document = this.documents.get(locale);
+    if (!document) {
+      throw new RendererError(`Voice library not loaded: ${locale}`);
     }
+    return document;
+  }
 
-    /**
-     * Throw away the cached voice libraries and read back whatever was open. The mirror of
-     * `LocalizationService.reloadFromDisk`, for the same reason: `loadDocument` answers from the
-     * cache, so a locale opened before the working tree changed would keep - and later write back -
-     * the clip assignments it already had.
-     */
-    public async reloadFromDisk(): Promise<void> {
-        const previouslyLoaded = [...this.documents.keys()];
-        this.documents.clear();
-        this.dirtyLocales.clear();
+  private scheduleAutoSave(): void {
+    this.autoSaver.schedule();
+  }
 
-        const failures: string[] = [];
-        for (const locale of previouslyLoaded) {
-            // A voice language dropped from the configuration while the tree changed is not an error.
-            if (!this.getConfiguration().voicedLocales.some(entry => entry.code === locale)) {
-                continue;
-            }
-            try {
-                const document = await this.loadDocument(locale);
-                this.events.emit("documentChanged", { locale, document });
-            } catch (error) {
-                failures.push(`${locale} (${error instanceof Error ? error.message : String(error)})`);
-            }
-        }
+  private async writeDocument(document: VoiceDocument): Promise<void> {
+    await saveDocument(
+      voiceDocumentSpec,
+      this.storage(),
+      this.getDocumentPath(document.locale),
+      document
+    );
+  }
 
-        if (failures.length > 0) {
-            throw new RendererError(`Could not re-read ${failures.length} voice library/libraries: ${failures.join("; ")}`);
-        }
+  /**
+   * Project-relative, and built by the spec rather than by `ProjectNameConvention`, so the path a
+   * document is saved to is the same path the document registry resolves back to a spec. Two
+   * spellings of one location is how a file ends up written where nothing looks for it.
+   */
+  private getDocumentPath(locale: string): string {
+    if (!isValidLocaleCode(locale)) {
+      throw new RendererError(`Invalid locale code: ${locale}`);
     }
+    return voiceDocumentSpec.pathFor({ locale });
+  }
 
-    /**
-     * The write itself. Only ever reached through {@link autoSaver}, which serialises it.
-     *
-     * See `LocalizationService.writeDirtyDocuments`: the dirty flag is cleared after the write
-     * lands, so a rejected write leaves something to retry.
-     */
-    private async writeDirtyDocuments(): Promise<void> {
-        for (const locale of [...this.dirtyLocales]) {
-            const document = this.documents.get(locale);
-            if (document) {
-                await this.writeDocument(document);
-            }
-            this.dirtyLocales.delete(locale);
-        }
-    }
+  private storage(): DocumentStorage {
+    return createProjectDocumentStorage(this.getContext());
+  }
 
-    // --- Row extraction + coverage (reuse localization's narrative-order rows) ---
+  private getProjectService(): ProjectService {
+    return this.getContext().services.get<ProjectService>(Services.Project);
+  }
 
-    public extractRows(document: StoryDocument): StoryTranslationRow[] {
-        return extractVoiceableRows(document);
-    }
-
-    public computeProgress(rows: readonly TranslatableUnitRef[], locale: string): VoiceProgress {
-        return computeVoiceProgress(
-            rows,
-            this.documents.get(locale),
-            (unitId, sourceText) => this.getLineText(locale, unitId, sourceText),
-        );
-    }
-
-    private assertKnownLocale(locale: string): void {
-        if (!isValidLocaleCode(locale)) {
-            throw new RendererError(`Invalid locale code: ${locale}`);
-        }
-        if (!this.getConfiguration().voicedLocales.some(entry => entry.code === locale)) {
-            throw new RendererError(`Unknown voice language: ${locale}`);
-        }
-    }
-
-    private requireLoadedDocument(locale: string): VoiceDocument {
-        const document = this.documents.get(locale);
-        if (!document) {
-            throw new RendererError(`Voice library not loaded: ${locale}`);
-        }
-        return document;
-    }
-
-    private scheduleAutoSave(): void {
-        this.autoSaver.schedule();
-    }
-
-    private async writeDocument(document: VoiceDocument): Promise<void> {
-        await saveDocument(voiceDocumentSpec, this.storage(), this.getDocumentPath(document.locale), document);
-    }
-
-    /**
-     * Project-relative, and built by the spec rather than by `ProjectNameConvention`, so the path a
-     * document is saved to is the same path the document registry resolves back to a spec. Two
-     * spellings of one location is how a file ends up written where nothing looks for it.
-     */
-    private getDocumentPath(locale: string): string {
-        if (!isValidLocaleCode(locale)) {
-            throw new RendererError(`Invalid locale code: ${locale}`);
-        }
-        return voiceDocumentSpec.pathFor({ locale });
-    }
-
-    private storage(): DocumentStorage {
-        return createProjectDocumentStorage(this.getContext());
-    }
-
-    private getProjectService(): ProjectService {
-        return this.getContext().services.get<ProjectService>(Services.Project);
-    }
-
-    private getLocalizationService(): LocalizationService {
-        return this.getContext().services.get<LocalizationService>(Services.Localization);
-    }
+  private getLocalizationService(): LocalizationService {
+    return this.getContext().services.get<LocalizationService>(Services.Localization);
+  }
 }

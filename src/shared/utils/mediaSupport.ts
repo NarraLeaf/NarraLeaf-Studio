@@ -50,21 +50,21 @@ export type MediaSupportTier = "accept" | "remux" | "reencode" | "refuse";
 
 /** Why, in one machine-readable token. UI copy is the caller's business. */
 export type MediaSupportReason =
-    /** Container demuxes, every codec decodes. */
-    | "playable"
-    /** Every codec decodes; the container does not demux. */
-    | "container-unsupported"
-    /** At least one stream's codec does not decode. */
-    | "codec-unsupported"
-    /** The container demuxes but carries no audio and no video. */
-    | "no-streams"
-    /** The file name says this is not decodable media (playlist, DRM wrapper, MIDI). */
-    | "not-media"
-    /**
-     * Every codec decodes and the container does not, but no container this project is willing to
-     * write can legally carry the combination. Falls through to `reencode`.
-     */
-    | "no-remux-container";
+  /** Container demuxes, every codec decodes. */
+  | "playable"
+  /** Every codec decodes; the container does not demux. */
+  | "container-unsupported"
+  /** At least one stream's codec does not decode. */
+  | "codec-unsupported"
+  /** The container demuxes but carries no audio and no video. */
+  | "no-streams"
+  /** The file name says this is not decodable media (playlist, DRM wrapper, MIDI). */
+  | "not-media"
+  /**
+   * Every codec decodes and the container does not, but no container this project is willing to
+   * write can legally carry the combination. Falls through to `reencode`.
+   */
+  | "no-remux-container";
 
 /* -------------------------------------------------------------------------------------------- */
 /* Containers                                                                                     */
@@ -80,17 +80,23 @@ export type MediaSupportReason =
  * {@link containerNames} for why the whole family is listed rather than the string matched.
  */
 const DEMUXABLE_CONTAINERS: ReadonlySet<string> = new Set([
-    // ISO-BMFF family. ffprobe names the demuxer, and the demuxer answers to all of these.
-    "mov", "mp4", "m4a", "3gp", "3g2", "mj2",
-    // Matroska and WebM are also one demuxer. Chromium's Matroska support is *not* restricted to
-    // the WebM codec set: MP3, FLAC and PCM in `.mkv` all decoded in the measurement.
-    "matroska", "webm",
-    "ogg",
-    "mp3",
-    "wav",
-    "flac",
-    // ADTS AAC. Raw elementary stream, no container framing beyond the sync words.
-    "aac",
+  // ISO-BMFF family. ffprobe names the demuxer, and the demuxer answers to all of these.
+  "mov",
+  "mp4",
+  "m4a",
+  "3gp",
+  "3g2",
+  "mj2",
+  // Matroska and WebM are also one demuxer. Chromium's Matroska support is *not* restricted to
+  // the WebM codec set: MP3, FLAC and PCM in `.mkv` all decoded in the measurement.
+  "matroska",
+  "webm",
+  "ogg",
+  "mp3",
+  "wav",
+  "flac",
+  // ADTS AAC. Raw elementary stream, no container framing beyond the sync words.
+  "aac"
 ]);
 
 /**
@@ -108,15 +114,15 @@ const DEMUXABLE_CONTAINERS: ReadonlySet<string> = new Set([
  * row is a lie waiting to be believed.
  */
 const KNOWN_UNDEMUXABLE_CONTAINERS: ReadonlySet<string> = new Set([
-    "avi",
-    // Windows Media. ffprobe reports `asf` for both `.wmv` and `.wma`.
-    "asf",
-    "flv",
-    // MPEG program stream.
-    "mpeg",
-    // MPEG transport stream.
-    "mpegts",
-    "aiff",
+  "avi",
+  // Windows Media. ffprobe reports `asf` for both `.wmv` and `.wma`.
+  "asf",
+  "flv",
+  // MPEG program stream.
+  "mpeg",
+  // MPEG transport stream.
+  "mpegts",
+  "aiff"
 ]);
 
 /* -------------------------------------------------------------------------------------------- */
@@ -131,12 +137,7 @@ const KNOWN_UNDEMUXABLE_CONTAINERS: ReadonlySet<string> = new Set([
  *
  * **AV1 decodes but must never be chosen as an encode target** — see {@link TRANSCODE_TARGET}.
  */
-const DECODABLE_VIDEO_CODECS: ReadonlySet<string> = new Set([
-    "h264",
-    "vp8",
-    "vp9",
-    "av1",
-]);
+const DECODABLE_VIDEO_CODECS: ReadonlySet<string> = new Set(["h264", "vp8", "vp9", "av1"]);
 
 /**
  * Video codecs measured as *not* decodable: the container opened, the stream was found, and
@@ -146,13 +147,13 @@ const DECODABLE_VIDEO_CODECS: ReadonlySet<string> = new Set([
  * this is the row most authors will meet.
  */
 const KNOWN_UNDECODABLE_VIDEO_CODECS: ReadonlySet<string> = new Set([
-    "hevc",
-    "mpeg2video",
-    // MPEG-4 Part 2 (DivX/Xvid). Not to be confused with H.264, which is MPEG-4 Part 10.
-    "mpeg4",
-    "prores",
-    "theora",
-    "wmv2",
+  "hevc",
+  "mpeg2video",
+  // MPEG-4 Part 2 (DivX/Xvid). Not to be confused with H.264, which is MPEG-4 Part 10.
+  "mpeg4",
+  "prores",
+  "theora",
+  "wmv2"
 ]);
 
 /**
@@ -166,26 +167,26 @@ const KNOWN_UNDECODABLE_VIDEO_CODECS: ReadonlySet<string> = new Set([
  * `reencode`, which merely wastes a few seconds.
  */
 const DECODABLE_AUDIO_CODECS: ReadonlySet<string> = new Set([
-    "aac",
-    "mp3",
-    "opus",
-    "vorbis",
-    "flac",
-    "pcm_s16le",
-    "pcm_u8",
-    "pcm_s24le",
-    "pcm_s32le",
-    "pcm_f32le",
-    "pcm_alaw",
-    "pcm_mulaw",
+  "aac",
+  "mp3",
+  "opus",
+  "vorbis",
+  "flac",
+  "pcm_s16le",
+  "pcm_u8",
+  "pcm_s24le",
+  "pcm_s32le",
+  "pcm_f32le",
+  "pcm_alaw",
+  "pcm_mulaw"
 ]);
 
 /** Audio codecs measured as not decodable. Same evidence-vs-ignorance distinction as the video list. */
 const KNOWN_UNDECODABLE_AUDIO_CODECS: ReadonlySet<string> = new Set([
-    "ac3",
-    // Apple Lossless. Decoded by Safari, not by Chromium — an easy one to assume works.
-    "alac",
-    "wmav2",
+  "ac3",
+  // Apple Lossless. Decoded by Safari, not by Chromium — an easy one to assume works.
+  "alac",
+  "wmav2"
 ]);
 
 /* -------------------------------------------------------------------------------------------- */
@@ -206,12 +207,12 @@ const KNOWN_UNDECODABLE_AUDIO_CODECS: ReadonlySet<string> = new Set([
  * by name keeps that path from existing.
  */
 const REFUSED_EXTENSIONS: ReadonlySet<string> = new Set([
-    "m3u",
-    "m3u8",
-    "pls",
-    "m4p",
-    "mid",
-    "midi",
+  "m3u",
+  "m3u8",
+  "pls",
+  "m4p",
+  "mid",
+  "midi"
 ]);
 
 /**
@@ -220,12 +221,12 @@ const REFUSED_EXTENSIONS: ReadonlySet<string> = new Set([
  * Accepts a full path or a bare name.
  */
 export function isRefusedMediaFileName(fileName: string): boolean {
-    const base = fileName.replace(/\\/g, "/").split("/").pop() ?? "";
-    const dot = base.lastIndexOf(".");
-    if (dot <= 0) {
-        return false;
-    }
-    return REFUSED_EXTENSIONS.has(base.slice(dot + 1).toLowerCase());
+  const base = fileName.replace(/\\/g, "/").split("/").pop() ?? "";
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0) {
+    return false;
+  }
+  return REFUSED_EXTENSIONS.has(base.slice(dot + 1).toLowerCase());
 }
 
 /* -------------------------------------------------------------------------------------------- */
@@ -234,29 +235,29 @@ export function isRefusedMediaFileName(fileName: string): boolean {
 
 /** One stream as ffprobe reports it. Field names are ffprobe's, so a report can be handed over raw. */
 export type ProbeStream = {
-    index?: number;
-    codec_type?: string;
-    codec_name?: string;
-    /** ffprobe's disposition bag. Only `attached_pic` is read; the rest is carried along untouched. */
-    disposition?: Record<string, number | undefined>;
+  index?: number;
+  codec_type?: string;
+  codec_name?: string;
+  /** ffprobe's disposition bag. Only `attached_pic` is read; the rest is carried along untouched. */
+  disposition?: Record<string, number | undefined>;
 };
 
 /** The subset of `ffprobe -show_format -show_streams` output this module reads. */
 export type ProbeReport = {
-    format?: {
-        /** Comma-separated **list** of demuxer aliases, e.g. `mov,mp4,m4a,3gp,3g2,mj2`. */
-        format_name?: string;
-        /**
-         * Seconds, as ffprobe's decimal *string* — `"5.024000"`, or `"N/A"` when it cannot tell.
-         *
-         * Not part of the playability verdict; carried because it is the only number that turns a
-         * transcoder's "how far along am I" into a percentage, and re-probing for it later would be
-         * a second process for a value the first one already printed. Read it through
-         * {@link probeDurationUs}, which knows what the absent cases look like.
-         */
-        duration?: string;
-    };
-    streams?: ProbeStream[];
+  format?: {
+    /** Comma-separated **list** of demuxer aliases, e.g. `mov,mp4,m4a,3gp,3g2,mj2`. */
+    format_name?: string;
+    /**
+     * Seconds, as ffprobe's decimal *string* — `"5.024000"`, or `"N/A"` when it cannot tell.
+     *
+     * Not part of the playability verdict; carried because it is the only number that turns a
+     * transcoder's "how far along am I" into a percentage, and re-probing for it later would be
+     * a second process for a value the first one already printed. Read it through
+     * {@link probeDurationUs}, which knows what the absent cases look like.
+     */
+    duration?: string;
+  };
+  streams?: ProbeStream[];
 };
 
 /**
@@ -270,16 +271,16 @@ export type ProbeReport = {
  * progress display that invents a percentage for them is worse than one that shows none.
  */
 export function probeDurationUs(report: ProbeReport): number | null {
-    const raw = report.format?.duration;
-    if (typeof raw !== "string") {
-        return null;
-    }
-    const seconds = Number.parseFloat(raw);
-    // Covers "N/A" (NaN) and the negative sentinel some demuxers print.
-    if (!Number.isFinite(seconds) || seconds <= 0) {
-        return null;
-    }
-    return Math.round(seconds * 1_000_000);
+  const raw = report.format?.duration;
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const seconds = Number.parseFloat(raw);
+  // Covers "N/A" (NaN) and the negative sentinel some demuxers print.
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return null;
+  }
+  return Math.round(seconds * 1_000_000);
 }
 
 /**
@@ -293,10 +294,10 @@ export function probeDurationUs(report: ProbeReport): number | null {
  * FFmpeg 8 and was not on older builds. Splitting is the only thing that survives that.
  */
 export function containerNames(report: ProbeReport): string[] {
-    return (report.format?.format_name ?? "")
-        .split(",")
-        .map(name => name.trim().toLowerCase())
-        .filter(name => name.length > 0);
+  return (report.format?.format_name ?? "")
+    .split(",")
+    .map((name) => name.trim().toLowerCase())
+    .filter((name) => name.length > 0);
 }
 
 /**
@@ -310,7 +311,7 @@ export function containerNames(report: ProbeReport): string[] {
  * file's `jpeg2000` stream is not decodable.
  */
 export function isDemuxableContainer(names: readonly string[]): boolean {
-    return names.some(name => DEMUXABLE_CONTAINERS.has(name));
+  return names.some((name) => DEMUXABLE_CONTAINERS.has(name));
 }
 
 /* -------------------------------------------------------------------------------------------- */
@@ -321,13 +322,13 @@ export type MediaStreamKind = "video" | "audio";
 
 /** One stream, reduced to the two facts the verdict turns on. */
 export type ClassifiedStream = {
-    /** ffprobe's stream index, or the array position when the report omits it. */
-    index: number;
-    kind: MediaStreamKind;
-    /** ffprobe's `codec_name`, lowercased. Empty string when the report omits it. */
-    codec: string;
-    /** Whether Chromium decodes it. Unknown codecs are `false` — see {@link isDecodableCodec}. */
-    decodable: boolean;
+  /** ffprobe's stream index, or the array position when the report omits it. */
+  index: number;
+  kind: MediaStreamKind;
+  /** ffprobe's `codec_name`, lowercased. Empty string when the report omits it. */
+  codec: string;
+  /** Whether Chromium decodes it. Unknown codecs are `false` — see {@link isDecodableCodec}. */
+  decodable: boolean;
 };
 
 /**
@@ -345,25 +346,25 @@ export type ClassifiedStream = {
  *     fine. Measured: `ffprobe` on an MP3 with a cover reports exactly this.
  */
 export function classifyStreams(report: ProbeReport): ClassifiedStream[] {
-    const streams = report.streams ?? [];
-    const out: ClassifiedStream[] = [];
-    streams.forEach((stream, position) => {
-        const type = (stream.codec_type ?? "").toLowerCase();
-        if (type !== "video" && type !== "audio") {
-            return;
-        }
-        if (type === "video" && stream.disposition?.attached_pic === 1) {
-            return;
-        }
-        const codec = (stream.codec_name ?? "").toLowerCase();
-        out.push({
-            index: typeof stream.index === "number" ? stream.index : position,
-            kind: type,
-            codec,
-            decodable: isDecodableCodec(type, codec),
-        });
+  const streams = report.streams ?? [];
+  const out: ClassifiedStream[] = [];
+  streams.forEach((stream, position) => {
+    const type = (stream.codec_type ?? "").toLowerCase();
+    if (type !== "video" && type !== "audio") {
+      return;
+    }
+    if (type === "video" && stream.disposition?.attached_pic === 1) {
+      return;
+    }
+    const codec = (stream.codec_name ?? "").toLowerCase();
+    out.push({
+      index: typeof stream.index === "number" ? stream.index : position,
+      kind: type,
+      codec,
+      decodable: isDecodableCodec(type, codec)
     });
-    return out;
+  });
+  return out;
 }
 
 /**
@@ -374,10 +375,8 @@ export function classifyStreams(report: ProbeReport): ClassifiedStream[] {
  * costs one unnecessary re-encode. Only one of those is recoverable.
  */
 export function isDecodableCodec(kind: MediaStreamKind, codec: string): boolean {
-    const name = codec.toLowerCase();
-    return kind === "video"
-        ? DECODABLE_VIDEO_CODECS.has(name)
-        : DECODABLE_AUDIO_CODECS.has(name);
+  const name = codec.toLowerCase();
+  return kind === "video" ? DECODABLE_VIDEO_CODECS.has(name) : DECODABLE_AUDIO_CODECS.has(name);
 }
 
 /**
@@ -388,15 +387,15 @@ export function isDecodableCodec(kind: MediaStreamKind, codec: string): boolean 
  * tables can be checked against what was actually observed.
  */
 export function isKnownUndecodableCodec(kind: MediaStreamKind, codec: string): boolean {
-    const name = codec.toLowerCase();
-    return kind === "video"
-        ? KNOWN_UNDECODABLE_VIDEO_CODECS.has(name)
-        : KNOWN_UNDECODABLE_AUDIO_CODECS.has(name);
+  const name = codec.toLowerCase();
+  return kind === "video"
+    ? KNOWN_UNDECODABLE_VIDEO_CODECS.has(name)
+    : KNOWN_UNDECODABLE_AUDIO_CODECS.has(name);
 }
 
 /** Whether this container is on the measured failure list, rather than merely unrecognised. */
 export function isKnownUndemuxableContainer(names: readonly string[]): boolean {
-    return names.some(name => KNOWN_UNDEMUXABLE_CONTAINERS.has(name));
+  return names.some((name) => KNOWN_UNDEMUXABLE_CONTAINERS.has(name));
 }
 
 /* -------------------------------------------------------------------------------------------- */
@@ -449,51 +448,54 @@ export type TranscodeAudioCodec = "vorbis" | "aac";
  * iOS there has ever been.
  */
 export const TRANSCODE_TARGET = {
-    /** For anything carrying a video stream. */
-    withVideo: {
-        container: "webm",
-        video: "vp9",
-        audio: "vorbis",
-    },
-    /** For a file with audio and no video. Written with an `.m4a` extension — see {@link TranscodeContainer}. */
-    audioOnly: {
-        container: "mp4",
-        video: null,
-        audio: "aac",
-    },
-} as const satisfies Record<string, {
+  /** For anything carrying a video stream. */
+  withVideo: {
+    container: "webm",
+    video: "vp9",
+    audio: "vorbis"
+  },
+  /** For a file with audio and no video. Written with an `.m4a` extension — see {@link TranscodeContainer}. */
+  audioOnly: {
+    container: "mp4",
+    video: null,
+    audio: "aac"
+  }
+} as const satisfies Record<
+  string,
+  {
     container: TranscodeContainer;
     video: TranscodeVideoCodec | null;
     audio: TranscodeAudioCodec;
-}>;
+  }
+>;
 
 /** What the caller should do about the file. `null` when there is nothing to do or nothing to be done. */
 export type MediaSupportTarget =
-    | {
-        kind: "remux";
-        /**
-         * Container to `-c copy` into. Only video and audio streams should be mapped across:
-         * subtitle and data tracks may not be legal in the destination and are not played anyway.
-         */
-        container: TranscodeContainer;
-        /**
-         * No video streams, so the result is a sound file however its container is spelled.
-         *
-         * This exists to pick the file's extension, which on iOS decides its media type and
-         * therefore whether it plays at all: the shell's scheme handler maps `.mp4` to
-         * `video/mp4`, and a sound file announced as video is not a thing WebKit will play. An
-         * audio-only MP4 has to be written `.m4a`. The re-encode branch knows this from `video`
-         * being null; a remux target carries no stream list, so it has to be told.
-         */
-        audioOnly: boolean;
+  | {
+      kind: "remux";
+      /**
+       * Container to `-c copy` into. Only video and audio streams should be mapped across:
+       * subtitle and data tracks may not be legal in the destination and are not played anyway.
+       */
+      container: TranscodeContainer;
+      /**
+       * No video streams, so the result is a sound file however its container is spelled.
+       *
+       * This exists to pick the file's extension, which on iOS decides its media type and
+       * therefore whether it plays at all: the shell's scheme handler maps `.mp4` to
+       * `video/mp4`, and a sound file announced as video is not a thing WebKit will play. An
+       * audio-only MP4 has to be written `.m4a`. The re-encode branch knows this from `video`
+       * being null; a remux target carries no stream list, so it has to be told.
+       */
+      audioOnly: boolean;
     }
-    | {
-        kind: "reencode";
-        container: TranscodeContainer;
-        /** `null` when the source has no video streams, so no video encoder should be configured. */
-        video: TranscodeVideoCodec | null;
-        /** `null` when the source has no audio streams. */
-        audio: TranscodeAudioCodec | null;
+  | {
+      kind: "reencode";
+      container: TranscodeContainer;
+      /** `null` when the source has no video streams, so no video encoder should be configured. */
+      video: TranscodeVideoCodec | null;
+      /** `null` when the source has no audio streams. */
+      audio: TranscodeAudioCodec | null;
     };
 
 /** Codecs WebM may legally carry. Both lists are the format's, not Chromium's. */
@@ -518,19 +520,22 @@ const MP4_AUDIO_CODECS: ReadonlySet<string> = new Set(["aac", "mp3"]);
  * becomes a `.wav`, not a `.webm` with one audio track. It also covers the two codecs neither
  * WebM nor MP4 will take — FLAC and PCM — which would otherwise be re-encoded for no reason.
  */
-const AUDIO_ONLY_CONTAINERS: ReadonlyMap<string, TranscodeContainer> = new Map<string, TranscodeContainer>([
-    ["flac", "flac"],
-    ["mp3", "mp3"],
-    ["aac", "aac"],
-    ["vorbis", "ogg"],
-    ["opus", "ogg"],
-    ["pcm_s16le", "wav"],
-    ["pcm_u8", "wav"],
-    ["pcm_s24le", "wav"],
-    ["pcm_s32le", "wav"],
-    ["pcm_f32le", "wav"],
-    ["pcm_alaw", "wav"],
-    ["pcm_mulaw", "wav"],
+const AUDIO_ONLY_CONTAINERS: ReadonlyMap<string, TranscodeContainer> = new Map<
+  string,
+  TranscodeContainer
+>([
+  ["flac", "flac"],
+  ["mp3", "mp3"],
+  ["aac", "aac"],
+  ["vorbis", "ogg"],
+  ["opus", "ogg"],
+  ["pcm_s16le", "wav"],
+  ["pcm_u8", "wav"],
+  ["pcm_s24le", "wav"],
+  ["pcm_s32le", "wav"],
+  ["pcm_f32le", "wav"],
+  ["pcm_alaw", "wav"],
+  ["pcm_mulaw", "wav"]
 ]);
 
 /**
@@ -543,28 +548,28 @@ const AUDIO_ONLY_CONTAINERS: ReadonlyMap<string, TranscodeContainer> = new Map<s
  * rather than a guess.
  */
 export function remuxContainerFor(streams: readonly ClassifiedStream[]): TranscodeContainer | null {
-    const video = streams.filter(stream => stream.kind === "video");
-    const audio = streams.filter(stream => stream.kind === "audio");
+  const video = streams.filter((stream) => stream.kind === "video");
+  const audio = streams.filter((stream) => stream.kind === "audio");
 
-    if (video.length === 0 && audio.length === 1) {
-        const native = AUDIO_ONLY_CONTAINERS.get(audio[0].codec);
-        if (native) {
-            return native;
-        }
+  if (video.length === 0 && audio.length === 1) {
+    const native = AUDIO_ONLY_CONTAINERS.get(audio[0].codec);
+    if (native) {
+      return native;
     }
-    if (
-        video.every(stream => WEBM_VIDEO_CODECS.has(stream.codec))
-        && audio.every(stream => WEBM_AUDIO_CODECS.has(stream.codec))
-    ) {
-        return "webm";
-    }
-    if (
-        video.every(stream => MP4_VIDEO_CODECS.has(stream.codec))
-        && audio.every(stream => MP4_AUDIO_CODECS.has(stream.codec))
-    ) {
-        return "mp4";
-    }
-    return null;
+  }
+  if (
+    video.every((stream) => WEBM_VIDEO_CODECS.has(stream.codec)) &&
+    audio.every((stream) => WEBM_AUDIO_CODECS.has(stream.codec))
+  ) {
+    return "webm";
+  }
+  if (
+    video.every((stream) => MP4_VIDEO_CODECS.has(stream.codec)) &&
+    audio.every((stream) => MP4_AUDIO_CODECS.has(stream.codec))
+  ) {
+    return "mp4";
+  }
+  return null;
 }
 
 /* -------------------------------------------------------------------------------------------- */
@@ -572,21 +577,21 @@ export function remuxContainerFor(streams: readonly ClassifiedStream[]): Transco
 /* -------------------------------------------------------------------------------------------- */
 
 export type MediaSupportVerdict = {
-    tier: MediaSupportTier;
-    reason: MediaSupportReason;
-    container: {
-        /** The demuxer alias tokens, as split from `format_name`. Empty when the report had none. */
-        names: string[];
-        demuxable: boolean;
-        /** True when the container is on the measured failure list rather than merely unrecognised. */
-        knownUnsupported: boolean;
-    };
-    /** Video and audio streams only; cover art, subtitles and data tracks are already gone. */
-    streams: ClassifiedStream[];
-    /** Codec names, deduplicated, that sent this file to `reencode`. Empty otherwise. */
-    unsupportedCodecs: string[];
-    /** What to do. `null` for `accept` (nothing to do) and `refuse` (nothing to be done). */
-    target: MediaSupportTarget | null;
+  tier: MediaSupportTier;
+  reason: MediaSupportReason;
+  container: {
+    /** The demuxer alias tokens, as split from `format_name`. Empty when the report had none. */
+    names: string[];
+    demuxable: boolean;
+    /** True when the container is on the measured failure list rather than merely unrecognised. */
+    knownUnsupported: boolean;
+  };
+  /** Video and audio streams only; cover art, subtitles and data tracks are already gone. */
+  streams: ClassifiedStream[];
+  /** Codec names, deduplicated, that sent this file to `reencode`. Empty otherwise. */
+  unsupportedCodecs: string[];
+  /** What to do. `null` for `accept` (nothing to do) and `refuse` (nothing to be done). */
+  target: MediaSupportTarget | null;
 };
 
 /**
@@ -596,70 +601,91 @@ export type MediaSupportVerdict = {
  * {@link isRefusedMediaFileName} before probing can omit it.
  */
 export function classifyMediaSupport(report: ProbeReport, fileName?: string): MediaSupportVerdict {
-    const names = containerNames(report);
-    const demuxable = isDemuxableContainer(names);
-    const knownUnsupported = isKnownUndemuxableContainer(names);
-    const streams = classifyStreams(report);
-    const container = { names, demuxable, knownUnsupported };
+  const names = containerNames(report);
+  const demuxable = isDemuxableContainer(names);
+  const knownUnsupported = isKnownUndemuxableContainer(names);
+  const streams = classifyStreams(report);
+  const container = { names, demuxable, knownUnsupported };
 
-    if (fileName !== undefined && isRefusedMediaFileName(fileName)) {
-        return { tier: "refuse", reason: "not-media", container, streams, unsupportedCodecs: [], target: null };
-    }
-
-    // No audio and no video. Either the file is not media, or it is a container holding only
-    // subtitles or attachments — nothing the engine could ever play, and nothing a transcode
-    // could conjure into existence.
-    if (streams.length === 0) {
-        return { tier: "refuse", reason: "no-streams", container, streams, unsupportedCodecs: [], target: null };
-    }
-
-    const unsupportedCodecs = [
-        ...new Set(streams.filter(stream => !stream.decodable).map(stream => stream.codec)),
-    ];
-
-    if (unsupportedCodecs.length > 0) {
-        // The codec axis wins outright. A container swap would leave the offending bytes exactly
-        // where they are, so there is no cheaper path than re-encoding.
-        return {
-            tier: "reencode",
-            reason: "codec-unsupported",
-            container,
-            streams,
-            unsupportedCodecs,
-            target: reencodeTarget(streams),
-        };
-    }
-
-    if (demuxable) {
-        return { tier: "accept", reason: "playable", container, streams, unsupportedCodecs: [], target: null };
-    }
-
-    const remuxTo = remuxContainerFor(streams);
-    if (remuxTo === null) {
-        // Every codec decodes, and still nothing we are willing to write can hold them together.
-        // Re-encoding is the honest answer; the reason field keeps it from looking like a codec
-        // problem to whoever reads the report.
-        return {
-            tier: "reencode",
-            reason: "no-remux-container",
-            container,
-            streams,
-            unsupportedCodecs: [],
-            target: reencodeTarget(streams),
-        };
-    }
+  if (fileName !== undefined && isRefusedMediaFileName(fileName)) {
     return {
-        tier: "remux",
-        reason: "container-unsupported",
-        container,
-        streams,
-        unsupportedCodecs: [],
-        target: {
-            kind: "remux",
-            container: remuxTo,
-            audioOnly: streams.every(stream => stream.kind !== "video"),
-        },
+      tier: "refuse",
+      reason: "not-media",
+      container,
+      streams,
+      unsupportedCodecs: [],
+      target: null
     };
+  }
+
+  // No audio and no video. Either the file is not media, or it is a container holding only
+  // subtitles or attachments — nothing the engine could ever play, and nothing a transcode
+  // could conjure into existence.
+  if (streams.length === 0) {
+    return {
+      tier: "refuse",
+      reason: "no-streams",
+      container,
+      streams,
+      unsupportedCodecs: [],
+      target: null
+    };
+  }
+
+  const unsupportedCodecs = [
+    ...new Set(streams.filter((stream) => !stream.decodable).map((stream) => stream.codec))
+  ];
+
+  if (unsupportedCodecs.length > 0) {
+    // The codec axis wins outright. A container swap would leave the offending bytes exactly
+    // where they are, so there is no cheaper path than re-encoding.
+    return {
+      tier: "reencode",
+      reason: "codec-unsupported",
+      container,
+      streams,
+      unsupportedCodecs,
+      target: reencodeTarget(streams)
+    };
+  }
+
+  if (demuxable) {
+    return {
+      tier: "accept",
+      reason: "playable",
+      container,
+      streams,
+      unsupportedCodecs: [],
+      target: null
+    };
+  }
+
+  const remuxTo = remuxContainerFor(streams);
+  if (remuxTo === null) {
+    // Every codec decodes, and still nothing we are willing to write can hold them together.
+    // Re-encoding is the honest answer; the reason field keeps it from looking like a codec
+    // problem to whoever reads the report.
+    return {
+      tier: "reencode",
+      reason: "no-remux-container",
+      container,
+      streams,
+      unsupportedCodecs: [],
+      target: reencodeTarget(streams)
+    };
+  }
+  return {
+    tier: "remux",
+    reason: "container-unsupported",
+    container,
+    streams,
+    unsupportedCodecs: [],
+    target: {
+      kind: "remux",
+      container: remuxTo,
+      audioOnly: streams.every((stream) => stream.kind !== "video")
+    }
+  };
 }
 
 /**
@@ -675,22 +701,24 @@ export function classifyMediaSupport(report: ProbeReport, fileName?: string): Me
  * build the command line.
  */
 function reencodeTarget(streams: readonly ClassifiedStream[]): MediaSupportTarget {
-    if (!streams.some(stream => stream.kind === "video")) {
-        // Audio only. AAC in MP4, because the iOS shell has no MIME type for audio-only WebM and
-        // would serve it as a byte stream that never plays.
-        return {
-            kind: "reencode",
-            container: TRANSCODE_TARGET.audioOnly.container,
-            video: null,
-            audio: TRANSCODE_TARGET.audioOnly.audio,
-        };
-    }
+  if (!streams.some((stream) => stream.kind === "video")) {
+    // Audio only. AAC in MP4, because the iOS shell has no MIME type for audio-only WebM and
+    // would serve it as a byte stream that never plays.
     return {
-        kind: "reencode",
-        container: TRANSCODE_TARGET.withVideo.container,
-        video: TRANSCODE_TARGET.withVideo.video,
-        audio: streams.some(stream => stream.kind === "audio") ? TRANSCODE_TARGET.withVideo.audio : null,
+      kind: "reencode",
+      container: TRANSCODE_TARGET.audioOnly.container,
+      video: null,
+      audio: TRANSCODE_TARGET.audioOnly.audio
     };
+  }
+  return {
+    kind: "reencode",
+    container: TRANSCODE_TARGET.withVideo.container,
+    video: TRANSCODE_TARGET.withVideo.video,
+    audio: streams.some((stream) => stream.kind === "audio")
+      ? TRANSCODE_TARGET.withVideo.audio
+      : null
+  };
 }
 
 /**
@@ -702,33 +730,37 @@ function reencodeTarget(streams: readonly ClassifiedStream[]): MediaSupportTarge
  * no streams, and {@link classifyMediaSupport} refuses it for having no streams.
  */
 export function parseProbeOutput(stdout: string): ProbeReport | null {
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(stdout);
-    } catch {
-        return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return null;
+  }
+  const record = parsed as { format?: unknown; streams?: unknown };
+  const report: ProbeReport = {};
+  if (
+    typeof record.format === "object" &&
+    record.format !== null &&
+    !Array.isArray(record.format)
+  ) {
+    const format = record.format as { format_name?: unknown; duration?: unknown };
+    report.format = {};
+    if (typeof format.format_name === "string") {
+      report.format.format_name = format.format_name;
     }
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-        return null;
+    // ffprobe prints this as a string, including the literal "N/A". Kept verbatim rather than
+    // parsed here so the one place that interprets it is `probeDurationUs`.
+    if (typeof format.duration === "string") {
+      report.format.duration = format.duration;
     }
-    const record = parsed as { format?: unknown; streams?: unknown };
-    const report: ProbeReport = {};
-    if (typeof record.format === "object" && record.format !== null && !Array.isArray(record.format)) {
-        const format = record.format as { format_name?: unknown; duration?: unknown };
-        report.format = {};
-        if (typeof format.format_name === "string") {
-            report.format.format_name = format.format_name;
-        }
-        // ffprobe prints this as a string, including the literal "N/A". Kept verbatim rather than
-        // parsed here so the one place that interprets it is `probeDurationUs`.
-        if (typeof format.duration === "string") {
-            report.format.duration = format.duration;
-        }
-    }
-    if (Array.isArray(record.streams)) {
-        report.streams = record.streams.filter(
-            (stream): stream is ProbeStream => typeof stream === "object" && stream !== null,
-        );
-    }
-    return report;
+  }
+  if (Array.isArray(record.streams)) {
+    report.streams = record.streams.filter(
+      (stream): stream is ProbeStream => typeof stream === "object" && stream !== null
+    );
+  }
+  return report;
 }

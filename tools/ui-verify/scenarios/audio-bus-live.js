@@ -11,10 +11,10 @@
  *   D3 the change is ramped, not a bare assignment (the slider zipper fix)
  */
 
-const { connect } = require('../drive');
+const { connect } = require("../drive");
 
 const PORT = Number(process.env.NLS_VERIFY_PORT || 9333);
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Walk the fiber tree to the AudioManager and stash it, then report the bus graph + tokens. */
 const FIND = `(function () {
@@ -83,39 +83,44 @@ const setBus = (id, v) => `(function () {
 })()`;
 
 (async () => {
-    const d = await connect({ target: 'dev-mode', port: PORT });
-    try {
-        const path = await d.evaluate('location.pathname');
-        if (!String(path).includes('dev-mode')) throw new Error(`wrong window: ${path}`);
-        if (await d.evaluate('document.hidden')) throw new Error('dev-mode window is hidden');
-        await d.click(700, 450);           // real mouse press: unlocks the AudioContext
-        await sleep(1500);
+  const d = await connect({ target: "dev-mode", port: PORT });
+  try {
+    const path = await d.evaluate("location.pathname");
+    if (!String(path).includes("dev-mode")) throw new Error(`wrong window: ${path}`);
+    if (await d.evaluate("document.hidden")) throw new Error("dev-mode window is hidden");
+    await d.click(700, 450); // real mouse press: unlocks the AudioContext
+    await sleep(1500);
 
-        const read = async label => {
-            const r = JSON.parse(await d.evaluate(FIND));
-            console.log(`\n--- ${label} ---`);
-            console.log(JSON.stringify(r, null, 1));
-            return r;
-        };
+    const read = async (label) => {
+      const r = JSON.parse(await d.evaluate(FIND));
+      console.log(`\n--- ${label} ---`);
+      console.log(JSON.stringify(r, null, 1));
+      return r;
+    };
 
-        await read('baseline');
+    await read("baseline");
 
-        const bus = process.env.NLS_VERIFY_BUS;
-        if (!bus) throw new Error('set NLS_VERIFY_BUS to the child bus id');
+    const bus = process.env.NLS_VERIFY_BUS;
+    if (!bus) throw new Error("set NLS_VERIFY_BUS to the child bus id");
 
-        console.log('\n' + await d.evaluate(setBus(bus, 0.25)));
-        await sleep(60);
-        const mid = JSON.parse(await d.evaluate(FIND));
-        const midGain = (mid.buses.find(b => b.id === bus) || {}).gain;
-        console.log(`D3 ramp: gain 60ms after set = ${midGain} (a bare assignment would already be exactly 0.25)`);
-        await sleep(600);
-        await read('D1 after child bus -> 0.25');
+    console.log("\n" + (await d.evaluate(setBus(bus, 0.25))));
+    await sleep(60);
+    const mid = JSON.parse(await d.evaluate(FIND));
+    const midGain = (mid.buses.find((b) => b.id === bus) || {}).gain;
+    console.log(
+      `D3 ramp: gain 60ms after set = ${midGain} (a bare assignment would already be exactly 0.25)`
+    );
+    await sleep(600);
+    await read("D1 after child bus -> 0.25");
 
-        console.log('\n' + await d.evaluate(setBus('voice', 0.5)));
-        console.log(await d.evaluate(setBus(bus, 0.5)));
-        await sleep(700);
-        await read('D2 child 0.5 under parent 0.5');
-    } finally {
-        d.close();
-    }
-})().catch(e => { console.error('\nSCRIPT FAIL:', e.message); process.exit(1); });
+    console.log("\n" + (await d.evaluate(setBus("voice", 0.5))));
+    console.log(await d.evaluate(setBus(bus, 0.5)));
+    await sleep(700);
+    await read("D2 child 0.5 under parent 0.5");
+  } finally {
+    d.close();
+  }
+})().catch((e) => {
+  console.error("\nSCRIPT FAIL:", e.message);
+  process.exit(1);
+});

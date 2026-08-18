@@ -22,32 +22,33 @@ type OnboardingStep = (typeof STEPS)[number];
  * paragraph, and "one line beside the control" is the rule this flow has to hold to (see
  * docs/help-system.md §1 - anything longer is a help topic wearing a screen's clothes).
  */
-const SCREEN_TEXT: Record<OnboardingStep, { title: TranslationKey; expectation: TranslationKey }> = {
+const SCREEN_TEXT: Record<OnboardingStep, { title: TranslationKey; expectation: TranslationKey }> =
+  {
     language: {
-        title: "onboarding.language.title",
-        expectation: "onboarding.language.expectation",
+      title: "onboarding.language.title",
+      expectation: "onboarding.language.expectation"
     },
     appearance: {
-        title: "onboarding.appearance.title",
-        expectation: "onboarding.appearance.expectation",
+      title: "onboarding.appearance.title",
+      expectation: "onboarding.appearance.expectation"
     },
     done: {
-        title: "onboarding.done.title",
-        expectation: "onboarding.done.expectation",
-    },
-};
+      title: "onboarding.done.title",
+      expectation: "onboarding.done.expectation"
+    }
+  };
 
 export interface OnboardingFlowProps {
-    /**
-     * Leave setup for good - reached by finishing and by skipping, which mean the same thing to
-     * the marker. See `useOnboardingMode`.
-     *
-     * The optional topic is the last screen's three links: leaving is leaving either way, and the
-     * topic only says where to put the author down. Every call site that is a plain exit passes
-     * nothing, so a click handler must never be wired to this directly - a `MouseEvent` would
-     * arrive as the topic.
-     */
-    onFinish: (topic?: HelpTopicId) => void;
+  /**
+   * Leave setup for good - reached by finishing and by skipping, which mean the same thing to
+   * the marker. See `useOnboardingMode`.
+   *
+   * The optional topic is the last screen's three links: leaving is leaving either way, and the
+   * topic only says where to put the author down. Every call site that is a plain exit passes
+   * nothing, so a click handler must never be wired to this directly - a `MouseEvent` would
+   * arrive as the topic.
+   */
+  onFinish: (topic?: HelpTopicId) => void;
 }
 
 /**
@@ -63,62 +64,65 @@ export interface OnboardingFlowProps {
  * rather than making the app unusable.
  */
 export function OnboardingFlow({ onFinish }: OnboardingFlowProps) {
-    const { t } = useTranslation();
-    const [index, setIndex] = useState(0);
+  const { t } = useTranslation();
+  const [index, setIndex] = useState(0);
 
-    const step = STEPS[index];
-    const isLast = index === STEPS.length - 1;
+  const step = STEPS[index];
+  const isLast = index === STEPS.length - 1;
 
-    const back = useCallback(() => setIndex(current => Math.max(0, current - 1)), []);
-    const next = useCallback(() => setIndex(current => Math.min(STEPS.length - 1, current + 1)), []);
+  const back = useCallback(() => setIndex((current) => Math.max(0, current - 1)), []);
+  const next = useCallback(
+    () => setIndex((current) => Math.min(STEPS.length - 1, current + 1)),
+    []
+  );
 
-    return (
-        <AppLayout
-            title={t("onboarding.windowTitle", { name: APP_DISPLAY_NAME })}
-            iconSrc=""
-            windowControlPolicy={WindowControlPolicy.Standard}
-        >
-            <div className="flex h-full min-h-0 flex-col">
-                <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-10 py-8">
-                    <div className="w-full max-w-md">
-                        <h1 className="text-base font-medium text-fg">{t(SCREEN_TEXT[step].title)}</h1>
-                        <p className="mt-1 text-sm text-fg-muted">{t(SCREEN_TEXT[step].expectation)}</p>
-                        <div className="mt-6 empty:mt-0">
-                            {step === "language" && <LanguageStep />}
-                            {step === "appearance" && <AppearanceStep />}
-                            {step === "done" && <DoneStep onOpenTopic={onFinish} />}
-                        </div>
-                    </div>
-                </div>
+  return (
+    <AppLayout
+      title={t("onboarding.windowTitle", { name: APP_DISPLAY_NAME })}
+      iconSrc=""
+      windowControlPolicy={WindowControlPolicy.Standard}
+    >
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-10 py-8">
+          <div className="w-full max-w-md">
+            <h1 className="text-base font-medium text-fg">{t(SCREEN_TEXT[step].title)}</h1>
+            <p className="mt-1 text-sm text-fg-muted">{t(SCREEN_TEXT[step].expectation)}</p>
+            <div className="mt-6 empty:mt-0">
+              {step === "language" && <LanguageStep />}
+              {step === "appearance" && <AppearanceStep />}
+              {step === "done" && <DoneStep onOpenTopic={onFinish} />}
+            </div>
+          </div>
+        </div>
 
-                {/* Back on the left, the way onward on the right - the shape the project wizard's
+        {/* Back on the left, the way onward on the right - the shape the project wizard's
                     footer already has, so the two flows in this product do not disagree about
                     where a Back button lives. */}
-                <div className="flex items-center justify-between border-t border-edge px-6 py-4">
-                    <Button variant="ghost" onClick={back} disabled={index === 0}>
-                        <ChevronLeft className="h-4 w-4" />
-                        {t("common.back")}
-                    </Button>
+        <div className="flex items-center justify-between border-t border-edge px-6 py-4">
+          <Button variant="ghost" onClick={back} disabled={index === 0}>
+            <ChevronLeft className="h-4 w-4" />
+            {t("common.back")}
+          </Button>
 
-                    <div className="flex items-center gap-2">
-                        {!isLast && (
-                            <Button variant="ghost" onClick={() => onFinish()}>
-                                {t("onboarding.nav.skip")}
-                            </Button>
-                        )}
-                        {isLast ? (
-                            <Button variant="primary" onClick={() => onFinish()}>
-                                {t("onboarding.nav.finish")}
-                            </Button>
-                        ) : (
-                            <Button variant="primary" onClick={next}>
-                                {t("common.next")}
-                                <ChevronRight className="h-4 w-4" />
-                            </Button>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </AppLayout>
-    );
+          <div className="flex items-center gap-2">
+            {!isLast && (
+              <Button variant="ghost" onClick={() => onFinish()}>
+                {t("onboarding.nav.skip")}
+              </Button>
+            )}
+            {isLast ? (
+              <Button variant="primary" onClick={() => onFinish()}>
+                {t("onboarding.nav.finish")}
+              </Button>
+            ) : (
+              <Button variant="primary" onClick={next}>
+                {t("common.next")}
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </AppLayout>
+  );
 }

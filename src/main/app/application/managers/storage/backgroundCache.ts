@@ -19,12 +19,12 @@ export const BACKGROUND_CACHE_LIMIT = 8;
 
 /** Takes userData rather than reading it off `electronApp`, so the cache stays testable without Electron. */
 export function backgroundCacheDirectory(userDataDir: string): string {
-    return path.join(userDataDir, UserDataNamespace.Backgrounds);
+  return path.join(userDataDir, UserDataNamespace.Backgrounds);
 }
 
 /** The cache name a picture's bytes map to. Half a SHA-256 keeps a handful of pictures apart with room to spare. */
 export function backgroundCacheName(bytes: Uint8Array, extension: string): string {
-    return `${createHash("sha256").update(bytes).digest("hex").slice(0, 16)}${extension}`;
+  return `${createHash("sha256").update(bytes).digest("hex").slice(0, 16)}${extension}`;
 }
 
 /**
@@ -34,21 +34,21 @@ export function backgroundCacheName(bytes: Uint8Array, extension: string): strin
  * most recently used for `pruneBackgroundCache`.
  */
 export async function cacheBackgroundImage(
-    directory: string,
-    bytes: Uint8Array,
-    extension: string,
+  directory: string,
+  bytes: Uint8Array,
+  extension: string
 ): Promise<string> {
-    const fileName = backgroundCacheName(bytes, extension);
-    await fs.mkdir(directory, { recursive: true });
-    const target = path.join(directory, fileName);
-    try {
-        await fs.access(target);
-        const now = new Date();
-        await fs.utimes(target, now, now);
-    } catch {
-        await fs.writeFile(target, bytes);
-    }
-    return fileName;
+  const fileName = backgroundCacheName(bytes, extension);
+  await fs.mkdir(directory, { recursive: true });
+  const target = path.join(directory, fileName);
+  try {
+    await fs.access(target);
+    const now = new Date();
+    await fs.utimes(target, now, now);
+  } catch {
+    await fs.writeFile(target, bytes);
+  }
+  return fileName;
 }
 
 /**
@@ -57,13 +57,16 @@ export async function cacheBackgroundImage(
  * losing it would leave the setting pointing at nothing.
  */
 export async function pruneBackgroundCache(directory: string, keep: string): Promise<void> {
-    const names = await fs.readdir(directory);
-    const entries = await Promise.all(
-        names.map(async name => ({ name, mtime: (await fs.stat(path.join(directory, name))).mtimeMs })),
-    );
-    const stale = entries
-        .sort((a, b) => b.mtime - a.mtime)
-        .slice(BACKGROUND_CACHE_LIMIT)
-        .filter(entry => entry.name !== keep);
-    await Promise.all(stale.map(entry => fs.unlink(path.join(directory, entry.name))));
+  const names = await fs.readdir(directory);
+  const entries = await Promise.all(
+    names.map(async (name) => ({
+      name,
+      mtime: (await fs.stat(path.join(directory, name))).mtimeMs
+    }))
+  );
+  const stale = entries
+    .sort((a, b) => b.mtime - a.mtime)
+    .slice(BACKGROUND_CACHE_LIMIT)
+    .filter((entry) => entry.name !== keep);
+  await Promise.all(stale.map((entry) => fs.unlink(path.join(directory, entry.name))));
 }

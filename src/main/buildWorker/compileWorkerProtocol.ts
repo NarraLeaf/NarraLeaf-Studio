@@ -1,6 +1,6 @@
 import type {
-    GameRuntimeArtifactCompileInput,
-    GameRuntimeArtifactCompileResult,
+  GameRuntimeArtifactCompileInput,
+  GameRuntimeArtifactCompileResult
 } from "@/app/application/managers/preview/compiler/gameRuntimeArtifactCompiler";
 
 /**
@@ -14,8 +14,8 @@ import type {
  */
 
 export type CompileWorkerStartMessage = {
-    type: "compile";
-    input: GameRuntimeArtifactCompileInput;
+  type: "compile";
+  input: GameRuntimeArtifactCompileInput;
 };
 
 /**
@@ -27,30 +27,28 @@ export type CompileWorkerStartMessage = {
  * audit's own tests, which assert against this contract.
  */
 export type ShippedContentAuditReport = {
-    checkedAssetCount: number;
-    failures: {
-        assetId: string;
-        origin: string;
-        reason: "missing" | "unreadable";
-        detail?: string;
-    }[];
-    storyErrors: { story: string; message: string }[];
+  checkedAssetCount: number;
+  failures: {
+    assetId: string;
+    origin: string;
+    reason: "missing" | "unreadable";
+    detail?: string;
+  }[];
+  storyErrors: { story: string; message: string }[];
 };
 
 export type CompileWorkerDoneMessage = {
-    type: "done";
-    result: GameRuntimeArtifactCompileResult;
-    /** Present only for an edition that removes content; every other build has nothing to audit. */
-    audit?: ShippedContentAuditReport;
+  type: "done";
+  result: GameRuntimeArtifactCompileResult;
+  /** Present only for an edition that removes content; every other build has nothing to audit. */
+  audit?: ShippedContentAuditReport;
 };
 
 export type CompileWorkerErrorMessage = {
-    type: "error";
-    message: string;
+  type: "error";
+  message: string;
 };
 
 export type CompileWorkerInboundMessage = CompileWorkerStartMessage;
 
-export type CompileWorkerOutboundMessage =
-    | CompileWorkerDoneMessage
-    | CompileWorkerErrorMessage;
+export type CompileWorkerOutboundMessage = CompileWorkerDoneMessage | CompileWorkerErrorMessage;

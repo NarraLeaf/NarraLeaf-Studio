@@ -16,7 +16,7 @@
  */
 export const EDITOR_FONT_FAMILY_PRESETS = ["Default", "Sans Serif", "Serif", "Monospace"] as const;
 
-export type EditorFontFamilyPreset = typeof EDITOR_FONT_FAMILY_PRESETS[number];
+export type EditorFontFamilyPreset = (typeof EDITOR_FONT_FAMILY_PRESETS)[number];
 
 /**
  * What a stored value may be: one of the presets above, or the name of a font family installed on
@@ -35,10 +35,10 @@ export const EDITOR_FONT_FAMILY_DEFAULT: EditorFontFamilyPreset = "Default";
  * bundles no dedicated editor typeface, so inheriting is the honest baseline).
  */
 export const EDITOR_FONT_PRESET_STACKS: Record<EditorFontFamilyPreset, string> = {
-    "Default": "inherit",
-    "Sans Serif": "ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
-    "Serif": "ui-serif, Georgia, \"Times New Roman\", serif",
-    "Monospace": "ui-monospace, \"SF Mono\", \"Cascadia Code\", \"Fira Code\", Menlo, monospace",
+  Default: "inherit",
+  "Sans Serif": 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  Serif: 'ui-serif, Georgia, "Times New Roman", serif',
+  Monospace: 'ui-monospace, "SF Mono", "Cascadia Code", "Fira Code", Menlo, monospace'
 };
 
 /**
@@ -52,7 +52,9 @@ export const EDITOR_FONT_PRESET_STACKS: Record<EditorFontFamilyPreset, string> =
 export const EDITOR_FONT_FALLBACK_STACK = EDITOR_FONT_PRESET_STACKS["Sans Serif"];
 
 export function isEditorFontPreset(value: unknown): value is EditorFontFamilyPreset {
-    return typeof value === "string" && (EDITOR_FONT_FAMILY_PRESETS as readonly string[]).includes(value);
+  return (
+    typeof value === "string" && (EDITOR_FONT_FAMILY_PRESETS as readonly string[]).includes(value)
+  );
 }
 
 /**
@@ -66,16 +68,18 @@ export function isEditorFontPreset(value: unknown): value is EditorFontFamilyPre
  * Returns "" for anything that is not usable as a name at all.
  */
 export function sanitizeFontFamilyName(value: unknown): string {
-    if (typeof value !== "string") {
-        return "";
-    }
-    return value
-        .replace(/["'\\;{}()<>]/g, " ")
-        // eslint-disable-next-line no-control-regex
-        .replace(/[\u0000-\u001f\u007f]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 120);
+  if (typeof value !== "string") {
+    return "";
+  }
+  return (
+    value
+      .replace(/["'\\;{}()<>]/g, " ")
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u001f\u007f]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 120)
+  );
 }
 
 /**
@@ -85,12 +89,12 @@ export function sanitizeFontFamilyName(value: unknown): string {
  * lands on the default rather than on nothing, so the editor is never left with an empty family.
  */
 export function editorFontCssFamily(value: unknown): string {
-    if (isEditorFontPreset(value)) {
-        return EDITOR_FONT_PRESET_STACKS[value];
-    }
-    const family = sanitizeFontFamilyName(value);
-    if (family) {
-        return `"${family}", ${EDITOR_FONT_FALLBACK_STACK}`;
-    }
-    return EDITOR_FONT_PRESET_STACKS[EDITOR_FONT_FAMILY_DEFAULT];
+  if (isEditorFontPreset(value)) {
+    return EDITOR_FONT_PRESET_STACKS[value];
+  }
+  const family = sanitizeFontFamilyName(value);
+  if (family) {
+    return `"${family}", ${EDITOR_FONT_FALLBACK_STACK}`;
+  }
+  return EDITOR_FONT_PRESET_STACKS[EDITOR_FONT_FAMILY_DEFAULT];
 }

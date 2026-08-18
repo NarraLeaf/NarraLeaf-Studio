@@ -10,33 +10,33 @@ import { createFrameFloatingToolbarItems } from "./frame/floatingToolbar";
 import { createFrameLayoutSizeField } from "./frame/layoutInspector";
 
 export const FrameWidgetModule: UIWidgetModule = {
+  type: UI_FRAME_ELEMENT_TYPE,
+  logicApi: getWidgetLogicApi(UI_FRAME_ELEMENT_TYPE),
+  get displayName() {
+    return translate("widgets.defaults.frame.name");
+  },
+  icon: PanelTop,
+
+  createDefaultElement: () => ({
     type: UI_FRAME_ELEMENT_TYPE,
-    logicApi: getWidgetLogicApi(UI_FRAME_ELEMENT_TYPE),
-    get displayName() {
-        return translate("widgets.defaults.frame.name");
+    name: translate("widgets.defaults.frame.name"),
+    layout: {
+      x: 0,
+      y: 0,
+      width: 320,
+      height: 180,
+      opacity: 1,
+      visible: true,
+      lockAspectRatio: true
     },
-    icon: PanelTop,
+    props: createDefaultFrameProps()
+  }),
 
-    createDefaultElement: () => ({
-        type: UI_FRAME_ELEMENT_TYPE,
-        name: translate("widgets.defaults.frame.name"),
-        layout: {
-            x: 0,
-            y: 0,
-            width: 320,
-            height: 180,
-            opacity: 1,
-            visible: true,
-            lockAspectRatio: true,
-        },
-        props: createDefaultFrameProps(),
-    }),
+  render: (props: WidgetRendererProps) => <FrameRenderer {...props} />,
 
-    render: (props: WidgetRendererProps) => <FrameRenderer {...props} />,
+  createInspector: createFrameInspector,
 
-    createInspector: createFrameInspector,
+  createFloatingToolbarItems: createFrameFloatingToolbarItems,
 
-    createFloatingToolbarItems: createFrameFloatingToolbarItems,
-
-    createLayoutSizeField: createFrameLayoutSizeField,
+  createLayoutSizeField: createFrameLayoutSizeField
 };

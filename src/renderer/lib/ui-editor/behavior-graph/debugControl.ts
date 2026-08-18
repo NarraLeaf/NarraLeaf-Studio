@@ -27,51 +27,51 @@ import type { BehaviorNodeExecutionContext } from "./BehaviorNodeRegistry";
 
 /** What the executor knows about a graph invocation at the moment it starts. */
 export type BlueprintDebugFrameInfo = {
-    /** Built by `buildBlueprintRunGraphId` - carries kind, blueprint id and graph id. */
-    runGraphId: string;
-    entryNodeId: string;
-    /** Nesting depth of blueprint fn invocations; 0 (or absent) for an event graph. */
-    fnCallDepth?: number;
-    /** Shared by every frame of one dispatch, including the fns it calls. Absent on untraced runs. */
-    executionId?: string;
-    /**
-     * The execution's cancellation signal, which a fn call inherits from its caller.
-     *
-     * It is the fallback identity for grouping frames into one call stack when no `executionId`
-     * was supplied - story action graphs run untraced, and their fn calls pass the caller's signal
-     * straight through, so signal identity is what makes their stack come out right.
-     */
-    signal?: AbortSignal;
-    blueprintId?: string;
-    eventName?: string;
-    /** Live reference, not a copy: the debugger reads current values when it pauses. */
-    blueprintLocals?: Record<string, unknown>;
-    eventPayload?: Record<string, unknown>;
+  /** Built by `buildBlueprintRunGraphId` - carries kind, blueprint id and graph id. */
+  runGraphId: string;
+  entryNodeId: string;
+  /** Nesting depth of blueprint fn invocations; 0 (or absent) for an event graph. */
+  fnCallDepth?: number;
+  /** Shared by every frame of one dispatch, including the fns it calls. Absent on untraced runs. */
+  executionId?: string;
+  /**
+   * The execution's cancellation signal, which a fn call inherits from its caller.
+   *
+   * It is the fallback identity for grouping frames into one call stack when no `executionId`
+   * was supplied - story action graphs run untraced, and their fn calls pass the caller's signal
+   * straight through, so signal identity is what makes their stack come out right.
+   */
+  signal?: AbortSignal;
+  blueprintId?: string;
+  eventName?: string;
+  /** Live reference, not a copy: the debugger reads current values when it pauses. */
+  blueprintLocals?: Record<string, unknown>;
+  eventPayload?: Record<string, unknown>;
 };
 
 /** Opaque handle identifying one frame for the lifetime of its `executeGraph` call. */
 export type BlueprintDebugFrameToken = { readonly frameId: number };
 
 export interface BlueprintExecutionDebugController {
-    enterFrame(info: BlueprintDebugFrameInfo): BlueprintDebugFrameToken;
-    exitFrame(token: BlueprintDebugFrameToken): void;
-    /**
-     * Called before every node executes. Return nothing to let it run, or a promise to suspend
-     * until the author resumes. See the two rules above.
-     */
-    beforeNode(
-        token: BlueprintDebugFrameToken,
-        node: UIGraphNode,
-        context: BehaviorNodeExecutionContext,
-    ): void | Promise<void>;
+  enterFrame(info: BlueprintDebugFrameInfo): BlueprintDebugFrameToken;
+  exitFrame(token: BlueprintDebugFrameToken): void;
+  /**
+   * Called before every node executes. Return nothing to let it run, or a promise to suspend
+   * until the author resumes. See the two rules above.
+   */
+  beforeNode(
+    token: BlueprintDebugFrameToken,
+    node: UIGraphNode,
+    context: BehaviorNodeExecutionContext
+  ): void | Promise<void>;
 }
 
 let controller: BlueprintExecutionDebugController | null = null;
 
 export function setBlueprintDebugController(next: BlueprintExecutionDebugController | null): void {
-    controller = next;
+  controller = next;
 }
 
 export function getBlueprintDebugController(): BlueprintExecutionDebugController | null {
-    return controller;
+  return controller;
 }

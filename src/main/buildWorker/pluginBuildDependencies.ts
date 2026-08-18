@@ -5,7 +5,12 @@ import path from "path";
 import type { PluginBuildDependencyTargetContribution } from "@shared/types/plugins";
 import type { DownloadRewriteRule } from "@shared/types/downloadSource";
 import { describeRewrite, rewriteDownloadUrl } from "@shared/utils/downloadSource";
-import { parseZipIndex, readEntryBytes, type ZipIndex, type ZipIndexEntry } from "./mobile/zipModel";
+import {
+  parseZipIndex,
+  readEntryBytes,
+  type ZipIndex,
+  type ZipIndexEntry
+} from "./mobile/zipModel";
 
 /**
  * Fetches, verifies and caches the external binaries a plugin declares in
@@ -41,24 +46,24 @@ import { parseZipIndex, readEntryBytes, type ZipIndex, type ZipIndexEntry } from
 export type BuildDependencyLog = (level: "info" | "warning" | "error", message: string) => void;
 
 export type PluginBuildDependencyRequest = {
-    /** Electron's userData directory, passed in so this module stays main-process-free. */
-    userDataDir: string;
-    /** `contributes.buildDependencies[].id`; only used to name the thing in errors and logs. */
-    dependencyId: string;
-    /** The platform key this target was declared under, likewise for messages. */
-    platformKey: string;
-    target: PluginBuildDependencyTargetContribution;
-    /**
-     * The author's download rewrites, handed over rather than read - this runs in the build
-     * worker, which has no Electron and no global state (same reason `userDataDir` is a
-     * parameter). Absent means no rewriting, which is what every existing caller gets.
-     *
-     * This is the safest place in Studio for a rewrite: the bytes are pinned to a declared
-     * sha256 and a mismatch caches nothing, so a mirror can only serve the declared archive or
-     * fail loudly.
-     */
-    rewrites?: readonly DownloadRewriteRule[];
-    log?: BuildDependencyLog;
+  /** Electron's userData directory, passed in so this module stays main-process-free. */
+  userDataDir: string;
+  /** `contributes.buildDependencies[].id`; only used to name the thing in errors and logs. */
+  dependencyId: string;
+  /** The platform key this target was declared under, likewise for messages. */
+  platformKey: string;
+  target: PluginBuildDependencyTargetContribution;
+  /**
+   * The author's download rewrites, handed over rather than read - this runs in the build
+   * worker, which has no Electron and no global state (same reason `userDataDir` is a
+   * parameter). Absent means no rewriting, which is what every existing caller gets.
+   *
+   * This is the safest place in Studio for a rewrite: the bytes are pinned to a declared
+   * sha256 and a mismatch caches nothing, so a mirror can only serve the declared archive or
+   * fail loudly.
+   */
+  rewrites?: readonly DownloadRewriteRule[];
+  log?: BuildDependencyLog;
 };
 
 const CACHE_DIR_NAME = "cache";
@@ -79,12 +84,12 @@ const PROBE_TIMEOUT_MS = 5000;
 let stagingSequence = 0;
 
 export function buildDependencyCacheRoot(userDataDir: string): string {
-    return path.join(userDataDir, CACHE_DIR_NAME, CACHE_BUCKET_NAME);
+  return path.join(userDataDir, CACHE_DIR_NAME, CACHE_BUCKET_NAME);
 }
 
 /** Everything cached for one set of bytes, whatever plugin or URL asked for them. */
 export function buildDependencyCacheDir(userDataDir: string, sha256: string): string {
-    return path.join(buildDependencyCacheRoot(userDataDir), sha256.trim().toLowerCase());
+  return path.join(buildDependencyCacheRoot(userDataDir), sha256.trim().toLowerCase());
 }
 
 /**
@@ -93,7 +98,7 @@ export function buildDependencyCacheDir(userDataDir: string, sha256: string): st
  * digest, so a wrong file fails loudly instead of shipping.
  */
 export function buildDependencySourcePath(userDataDir: string, sha256: string): string {
-    return path.join(buildDependencyCacheDir(userDataDir, sha256), SOURCE_FILE_NAME);
+  return path.join(buildDependencyCacheDir(userDataDir, sha256), SOURCE_FILE_NAME);
 }
 
 /**
@@ -102,14 +107,16 @@ export function buildDependencySourcePath(userDataDir: string, sha256: string): 
  * outside the cache.
  */
 export function resolveBuildDependencyFile(dependencyDir: string, relativePath: string): string {
-    const root = path.resolve(dependencyDir);
-    const segments = normalizeArchivePath(relativePath).split("/").filter(segment => segment.length > 0);
-    const resolved = path.resolve(root, ...segments);
-    const relative = path.relative(root, resolved);
-    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
-        throw new Error(`Build dependency path escapes its directory: ${relativePath}`);
-    }
-    return resolved;
+  const root = path.resolve(dependencyDir);
+  const segments = normalizeArchivePath(relativePath)
+    .split("/")
+    .filter((segment) => segment.length > 0);
+  const resolved = path.resolve(root, ...segments);
+  const relative = path.relative(root, resolved);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(`Build dependency path escapes its directory: ${relativePath}`);
+  }
+  return resolved;
 }
 
 /**
@@ -123,59 +130,62 @@ export function resolveBuildDependencyFile(dependencyDir: string, relativePath: 
  * time for exactly that reason (see `resolveSidecarInclude`); pinning the
  * archive says nothing about what is in the directory it was unpacked into.
  */
-export async function ensurePluginBuildDependency(input: PluginBuildDependencyRequest): Promise<string> {
-    const { userDataDir, target, log } = input;
-    const where = describeTarget(input);
-    const dependencyDir = buildDependencyCacheDir(userDataDir, target.sha256);
-    const artifactDir = path.join(dependencyDir, ARTIFACT_DIR_NAME, layoutKey(target));
-    const recordPath = `${artifactDir}${ARTIFACT_RECORD_SUFFIX}`;
+export async function ensurePluginBuildDependency(
+  input: PluginBuildDependencyRequest
+): Promise<string> {
+  const { userDataDir, target, log } = input;
+  const where = describeTarget(input);
+  const dependencyDir = buildDependencyCacheDir(userDataDir, target.sha256);
+  const artifactDir = path.join(dependencyDir, ARTIFACT_DIR_NAME, layoutKey(target));
+  const recordPath = `${artifactDir}${ARTIFACT_RECORD_SUFFIX}`;
 
-    const recorded = await readArtifactRecord(recordPath);
-    if (recorded) {
-        const verdict = await verifyArtifactDir(artifactDir, recorded);
-        if (verdict.status === "verified") {
-            return artifactDir;
-        }
-        // Not a build failure, deliberately: `source` beside it is pinned to the
-        // declared digest, so extracting again yields bytes this build knows,
-        // and refusing would only ask an author to delete a folder the build can
-        // rebuild itself. Worth saying out loud all the same - a directory that
-        // stopped matching is either a half-written cache or something writing
-        // where nothing should, and neither is silent-worthy.
-        log?.(
-            "warning",
-            `${where}: ${artifactDir} is no longer what was extracted into it (${verdict.reason}); `
-                + "re-extracting it from the verified source",
-        );
+  const recorded = await readArtifactRecord(recordPath);
+  if (recorded) {
+    const verdict = await verifyArtifactDir(artifactDir, recorded);
+    if (verdict.status === "verified") {
+      return artifactDir;
     }
+    // Not a build failure, deliberately: `source` beside it is pinned to the
+    // declared digest, so extracting again yields bytes this build knows,
+    // and refusing would only ask an author to delete a folder the build can
+    // rebuild itself. Worth saying out loud all the same - a directory that
+    // stopped matching is either a half-written cache or something writing
+    // where nothing should, and neither is silent-worthy.
+    log?.(
+      "warning",
+      `${where}: ${artifactDir} is no longer what was extracted into it (${verdict.reason}); ` +
+        "re-extracting it from the verified source"
+    );
+  }
 
-    const source = await readCachedSource(dependencyDir, target.sha256, where)
-        ?? await downloadSource(input, dependencyDir, where);
+  const source =
+    (await readCachedSource(dependencyDir, target.sha256, where)) ??
+    (await downloadSource(input, dependencyDir, where));
 
-    const stagingDir = `${dependencyDir}.out-staging-${process.pid}-${stagingSequence++}`;
-    try {
-        await fs.mkdir(stagingDir, { recursive: true });
-        const digests: ArtifactDigests = {};
-        if (target.archive === "none") {
-            await writeArtifactFile(stagingDir, target.fileName, source, digests);
-        } else {
-            await extractMappedEntries(source, target.files, stagingDir, where, digests);
-        }
-        await installArtifactDir({ stagingDir, artifactDir, digests, where });
-        await writeArtifactRecord(recordPath, digests);
-        log?.("info", `${where} ready at ${artifactDir}`);
-        return artifactDir;
-    } finally {
-        await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => undefined);
+  const stagingDir = `${dependencyDir}.out-staging-${process.pid}-${stagingSequence++}`;
+  try {
+    await fs.mkdir(stagingDir, { recursive: true });
+    const digests: ArtifactDigests = {};
+    if (target.archive === "none") {
+      await writeArtifactFile(stagingDir, target.fileName, source, digests);
+    } else {
+      await extractMappedEntries(source, target.files, stagingDir, where, digests);
     }
+    await installArtifactDir({ stagingDir, artifactDir, digests, where });
+    await writeArtifactRecord(recordPath, digests);
+    log?.("info", `${where} ready at ${artifactDir}`);
+    return artifactDir;
+  } finally {
+    await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => undefined);
+  }
 }
 
 export type BuildDependencyAvailability =
-    /** Already on disk: the build needs no network for it. */
-    | { status: "cached" }
-    /** Not cached, but the host answered - the build can fetch it. */
-    | { status: "reachable" }
-    | { status: "unavailable"; reason: string };
+  /** Already on disk: the build needs no network for it. */
+  | { status: "cached" }
+  /** Not cached, but the host answered - the build can fetch it. */
+  | { status: "reachable" }
+  | { status: "unavailable"; reason: string };
 
 /**
  * Whether a build could obtain this dependency, cheaply enough to run while the
@@ -188,38 +198,40 @@ export type BuildDependencyAvailability =
  * the bytes exist, and guessing "unavailable" from it would cry wolf.
  */
 export async function probePluginBuildDependency(input: {
-    userDataDir: string;
-    target: PluginBuildDependencyTargetContribution;
-    /** Same rules the download will use, so the dialog probes the host a build would reach. */
-    rewrites?: readonly DownloadRewriteRule[];
-    timeoutMs?: number;
+  userDataDir: string;
+  target: PluginBuildDependencyTargetContribution;
+  /** Same rules the download will use, so the dialog probes the host a build would reach. */
+  rewrites?: readonly DownloadRewriteRule[];
+  timeoutMs?: number;
 }): Promise<BuildDependencyAvailability> {
-    const { userDataDir, target } = input;
-    const dependencyDir = buildDependencyCacheDir(userDataDir, target.sha256);
-    if (await exists(path.join(dependencyDir, ARTIFACT_DIR_NAME, layoutKey(target)))) {
-        return { status: "cached" };
+  const { userDataDir, target } = input;
+  const dependencyDir = buildDependencyCacheDir(userDataDir, target.sha256);
+  if (await exists(path.join(dependencyDir, ARTIFACT_DIR_NAME, layoutKey(target)))) {
+    return { status: "cached" };
+  }
+  if (await exists(path.join(dependencyDir, SOURCE_FILE_NAME))) {
+    return { status: "cached" };
+  }
+  try {
+    const response = await fetch(rewriteDownloadUrl(target.url, input.rewrites ?? []).url, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(input.timeoutMs ?? PROBE_TIMEOUT_MS)
+    });
+    if (response.status === 404 || response.status === 410) {
+      return { status: "unavailable", reason: `HTTP ${response.status}` };
     }
-    if (await exists(path.join(dependencyDir, SOURCE_FILE_NAME))) {
-        return { status: "cached" };
-    }
-    try {
-        const response = await fetch(rewriteDownloadUrl(target.url, input.rewrites ?? []).url, {
-            method: "HEAD",
-            signal: AbortSignal.timeout(input.timeoutMs ?? PROBE_TIMEOUT_MS),
-        });
-        if (response.status === 404 || response.status === 410) {
-            return { status: "unavailable", reason: `HTTP ${response.status}` };
-        }
-        return { status: "reachable" };
-    } catch (error) {
-        return { status: "unavailable", reason: messageOf(error) };
-    }
+    return { status: "reachable" };
+  } catch (error) {
+    return { status: "unavailable", reason: messageOf(error) };
+  }
 }
 
 /* --------------------------------------------------------------- internals */
 
-function describeTarget(input: Pick<PluginBuildDependencyRequest, "dependencyId" | "platformKey">): string {
-    return `Build dependency "${input.dependencyId}" (${input.platformKey})`;
+function describeTarget(
+  input: Pick<PluginBuildDependencyRequest, "dependencyId" | "platformKey">
+): string {
+  return `Build dependency "${input.dependencyId}" (${input.platformKey})`;
 }
 
 /**
@@ -227,107 +239,112 @@ function describeTarget(input: Pick<PluginBuildDependencyRequest, "dependencyId"
  * of bytes get one download and a produced directory each.
  */
 function layoutKey(target: PluginBuildDependencyTargetContribution): string {
-    const canonical = target.archive === "none"
-        ? JSON.stringify(["none", target.fileName])
-        : JSON.stringify([
-            "zip",
-            Object.entries(target.files).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+  const canonical =
+    target.archive === "none"
+      ? JSON.stringify(["none", target.fileName])
+      : JSON.stringify([
+          "zip",
+          Object.entries(target.files).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
         ]);
-    return createHash("sha256").update(canonical).digest("hex").slice(0, 16);
+  return createHash("sha256").update(canonical).digest("hex").slice(0, 16);
 }
 
 async function exists(target: string): Promise<boolean> {
-    try {
-        await fs.access(target);
-        return true;
-    } catch {
-        return false;
-    }
+  try {
+    await fs.access(target);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function messageOf(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**
  * The cached bytes, re-verified. A manually placed file is untrusted input like
  * any download, and a build that silently accepted the wrong one would ship it.
  */
-async function readCachedSource(dependencyDir: string, sha256: string, where: string): Promise<Buffer | null> {
-    const sourcePath = path.join(dependencyDir, SOURCE_FILE_NAME);
-    let buffer: Buffer;
-    try {
-        buffer = await fs.readFile(sourcePath);
-    } catch {
-        return null;
-    }
-    const digest = createHash("sha256").update(buffer).digest("hex");
-    if (digest !== sha256.trim().toLowerCase()) {
-        throw new Error(
-            `${where}: the cached file at ${sourcePath} has sha256 ${digest}, not the declared `
-                + `${sha256.trim().toLowerCase()}; delete it and let the build fetch it again`,
-        );
-    }
-    return buffer;
+async function readCachedSource(
+  dependencyDir: string,
+  sha256: string,
+  where: string
+): Promise<Buffer | null> {
+  const sourcePath = path.join(dependencyDir, SOURCE_FILE_NAME);
+  let buffer: Buffer;
+  try {
+    buffer = await fs.readFile(sourcePath);
+  } catch {
+    return null;
+  }
+  const digest = createHash("sha256").update(buffer).digest("hex");
+  if (digest !== sha256.trim().toLowerCase()) {
+    throw new Error(
+      `${where}: the cached file at ${sourcePath} has sha256 ${digest}, not the declared ` +
+        `${sha256.trim().toLowerCase()}; delete it and let the build fetch it again`
+    );
+  }
+  return buffer;
 }
 
 async function downloadSource(
-    input: PluginBuildDependencyRequest,
-    dependencyDir: string,
-    where: string,
+  input: PluginBuildDependencyRequest,
+  dependencyDir: string,
+  where: string
 ): Promise<Buffer> {
-    const { target, log } = input;
-    // Errors keep naming the DECLARED url, not the rewritten one: that is the address the
-    // plugin author published and the one the reader can look up. The rewrite is stated on its
-    // own line instead, so a mirror serving the wrong thing is still traceable.
-    const outcome = rewriteDownloadUrl(target.url, input.rewrites ?? []);
-    const rewriteLine = describeRewrite(target.url, outcome);
-    log?.("info", `${where}: downloading ${target.url}`);
-    if (rewriteLine) {
-        log?.("info", `${where}: ${rewriteLine}`);
-    }
-    const response = await fetch(outcome.url).catch((error: unknown) => {
-        throw new Error(`${where}: could not download ${target.url} (${messageOf(error)})`);
-    });
-    if (!response.ok) {
-        throw new Error(`${where}: download of ${target.url} failed with HTTP ${response.status}`);
-    }
-    const buffer = Buffer.from(await response.arrayBuffer());
-    const digest = createHash("sha256").update(buffer).digest("hex");
-    const expected = target.sha256.trim().toLowerCase();
-    if (digest !== expected) {
-        // Nothing under the cache key has been created yet, so there is no
-        // half-written directory for the next build to trust.
-        throw new Error(
-            `${where}: ${target.url} has sha256 ${digest}, not the declared ${expected}; nothing was cached`,
-        );
-    }
+  const { target, log } = input;
+  // Errors keep naming the DECLARED url, not the rewritten one: that is the address the
+  // plugin author published and the one the reader can look up. The rewrite is stated on its
+  // own line instead, so a mirror serving the wrong thing is still traceable.
+  const outcome = rewriteDownloadUrl(target.url, input.rewrites ?? []);
+  const rewriteLine = describeRewrite(target.url, outcome);
+  log?.("info", `${where}: downloading ${target.url}`);
+  if (rewriteLine) {
+    log?.("info", `${where}: ${rewriteLine}`);
+  }
+  const response = await fetch(outcome.url).catch((error: unknown) => {
+    throw new Error(`${where}: could not download ${target.url} (${messageOf(error)})`);
+  });
+  if (!response.ok) {
+    throw new Error(`${where}: download of ${target.url} failed with HTTP ${response.status}`);
+  }
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const digest = createHash("sha256").update(buffer).digest("hex");
+  const expected = target.sha256.trim().toLowerCase();
+  if (digest !== expected) {
+    // Nothing under the cache key has been created yet, so there is no
+    // half-written directory for the next build to trust.
+    throw new Error(
+      `${where}: ${target.url} has sha256 ${digest}, not the declared ${expected}; nothing was cached`
+    );
+  }
 
-    const stagingPath = `${dependencyDir}.source-staging-${process.pid}-${stagingSequence++}`;
+  const stagingPath = `${dependencyDir}.source-staging-${process.pid}-${stagingSequence++}`;
+  try {
+    await fs.mkdir(path.dirname(dependencyDir), { recursive: true });
+    await fs.writeFile(stagingPath, buffer);
+    await fs.mkdir(dependencyDir, { recursive: true });
     try {
-        await fs.mkdir(path.dirname(dependencyDir), { recursive: true });
-        await fs.writeFile(stagingPath, buffer);
-        await fs.mkdir(dependencyDir, { recursive: true });
-        try {
-            await fs.rename(stagingPath, path.join(dependencyDir, SOURCE_FILE_NAME));
-        } catch (error) {
-            if (!(await exists(path.join(dependencyDir, SOURCE_FILE_NAME)))) {
-                throw error;
-            }
-        }
-    } finally {
-        await fs.rm(stagingPath, { force: true }).catch(() => undefined);
+      await fs.rename(stagingPath, path.join(dependencyDir, SOURCE_FILE_NAME));
+    } catch (error) {
+      if (!(await exists(path.join(dependencyDir, SOURCE_FILE_NAME)))) {
+        throw error;
+      }
     }
-    return buffer;
+  } finally {
+    await fs.rm(stagingPath, { force: true }).catch(() => undefined);
+  }
+  return buffer;
 }
 
 /** Every file one extraction produced, keyed by its path inside the artifact directory. */
 type ArtifactDigests = Record<string, string>;
 
 type ArtifactVerdict =
-    | { status: "verified" }
-    /** Says which file and how, because the log line is all an author will see. */
-    | { status: "changed"; reason: string };
+  | { status: "verified" }
+  /** Says which file and how, because the log line is all an author will see. */
+  | { status: "changed"; reason: string };
 
 /**
  * Whether an artifact directory still holds exactly what was extracted into it.
@@ -346,78 +363,91 @@ type ArtifactVerdict =
  * to the mapping's outputs, so a file that was never extracted here is a file
  * this cache cannot vouch for.
  */
-async function verifyArtifactDir(artifactDir: string, recorded: ArtifactDigests): Promise<ArtifactVerdict> {
-    const found = new Set<string>();
-    const pending = [""];
-    while (pending.length > 0) {
-        const relative = pending.pop() as string;
-        let entries: Dirent[];
-        try {
-            entries = await fs.readdir(path.join(artifactDir, relative), { withFileTypes: true });
-        } catch (error) {
-            // Also how a lost race reads from here: a concurrent build renaming
-            // its own directory into place makes this vanish for an instant.
-            // "Cannot vouch for it" is the honest answer either way, and it
-            // costs an extraction rather than a build.
-            return { status: "changed", reason: `${relative || "."} could not be read (${messageOf(error)})` };
-        }
-        for (const entry of entries) {
-            const child = relative ? `${relative}/${entry.name}` : entry.name;
-            if (entry.isDirectory()) {
-                pending.push(child);
-            } else if (entry.isFile()) {
-                found.add(child);
-            } else {
-                // A symlink's bytes would hash to whatever it points at today.
-                return { status: "changed", reason: `${child} is not a regular file` };
-            }
-        }
+async function verifyArtifactDir(
+  artifactDir: string,
+  recorded: ArtifactDigests
+): Promise<ArtifactVerdict> {
+  const found = new Set<string>();
+  const pending = [""];
+  while (pending.length > 0) {
+    const relative = pending.pop() as string;
+    let entries: Dirent[];
+    try {
+      entries = await fs.readdir(path.join(artifactDir, relative), { withFileTypes: true });
+    } catch (error) {
+      // Also how a lost race reads from here: a concurrent build renaming
+      // its own directory into place makes this vanish for an instant.
+      // "Cannot vouch for it" is the honest answer either way, and it
+      // costs an extraction rather than a build.
+      return {
+        status: "changed",
+        reason: `${relative || "."} could not be read (${messageOf(error)})`
+      };
     }
-    for (const relative of found) {
-        if (!(relative in recorded)) {
-            return { status: "changed", reason: `${relative} was added after it was extracted` };
-        }
+    for (const entry of entries) {
+      const child = relative ? `${relative}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        pending.push(child);
+      } else if (entry.isFile()) {
+        found.add(child);
+      } else {
+        // A symlink's bytes would hash to whatever it points at today.
+        return { status: "changed", reason: `${child} is not a regular file` };
+      }
     }
-    for (const [relative, expected] of Object.entries(recorded)) {
-        if (!found.has(relative)) {
-            return { status: "changed", reason: `${relative} is missing` };
-        }
-        let bytes: Buffer;
-        try {
-            bytes = await fs.readFile(path.join(artifactDir, ...relative.split("/")));
-        } catch (error) {
-            return { status: "changed", reason: `${relative} could not be read (${messageOf(error)})` };
-        }
-        const digest = createHash("sha256").update(bytes).digest("hex");
-        if (digest !== expected) {
-            return { status: "changed", reason: `${relative} has sha256 ${digest}, not the extracted ${expected}` };
-        }
+  }
+  for (const relative of found) {
+    if (!(relative in recorded)) {
+      return { status: "changed", reason: `${relative} was added after it was extracted` };
     }
-    return { status: "verified" };
+  }
+  for (const [relative, expected] of Object.entries(recorded)) {
+    if (!found.has(relative)) {
+      return { status: "changed", reason: `${relative} is missing` };
+    }
+    let bytes: Buffer;
+    try {
+      bytes = await fs.readFile(path.join(artifactDir, ...relative.split("/")));
+    } catch (error) {
+      return { status: "changed", reason: `${relative} could not be read (${messageOf(error)})` };
+    }
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    if (digest !== expected) {
+      return {
+        status: "changed",
+        reason: `${relative} has sha256 ${digest}, not the extracted ${expected}`
+      };
+    }
+  }
+  return { status: "verified" };
 }
 
 async function readArtifactRecord(recordPath: string): Promise<ArtifactDigests | null> {
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(await fs.readFile(recordPath, "utf-8"));
-    } catch {
-        return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await fs.readFile(recordPath, "utf-8"));
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+  const record = parsed as { version?: unknown; files?: unknown };
+  if (
+    record.version !== ARTIFACT_RECORD_VERSION ||
+    !record.files ||
+    typeof record.files !== "object"
+  ) {
+    return null;
+  }
+  const digests: ArtifactDigests = {};
+  for (const [relative, digest] of Object.entries(record.files as Record<string, unknown>)) {
+    if (typeof digest !== "string") {
+      return null;
     }
-    if (!parsed || typeof parsed !== "object") {
-        return null;
-    }
-    const record = parsed as { version?: unknown; files?: unknown };
-    if (record.version !== ARTIFACT_RECORD_VERSION || !record.files || typeof record.files !== "object") {
-        return null;
-    }
-    const digests: ArtifactDigests = {};
-    for (const [relative, digest] of Object.entries(record.files as Record<string, unknown>)) {
-        if (typeof digest !== "string") {
-            return null;
-        }
-        digests[relative] = digest;
-    }
-    return digests;
+    digests[relative] = digest;
+  }
+  return digests;
 }
 
 /**
@@ -426,13 +456,16 @@ async function readArtifactRecord(recordPath: string): Promise<ArtifactDigests |
  * a staging file so a reader never parses half of one.
  */
 async function writeArtifactRecord(recordPath: string, digests: ArtifactDigests): Promise<void> {
-    const stagingPath = `${recordPath}.staging-${process.pid}-${stagingSequence++}`;
-    try {
-        await fs.writeFile(stagingPath, `${JSON.stringify({ version: ARTIFACT_RECORD_VERSION, files: digests })}\n`);
-        await fs.rename(stagingPath, recordPath);
-    } catch {
-        await fs.rm(stagingPath, { force: true }).catch(() => undefined);
-    }
+  const stagingPath = `${recordPath}.staging-${process.pid}-${stagingSequence++}`;
+  try {
+    await fs.writeFile(
+      stagingPath,
+      `${JSON.stringify({ version: ARTIFACT_RECORD_VERSION, files: digests })}\n`
+    );
+    await fs.rename(stagingPath, recordPath);
+  } catch {
+    await fs.rm(stagingPath, { force: true }).catch(() => undefined);
+  }
 }
 
 /**
@@ -446,98 +479,103 @@ async function writeArtifactRecord(recordPath: string, digests: ArtifactDigests)
  * against ours and is kept.
  */
 async function installArtifactDir(input: {
-    stagingDir: string;
-    artifactDir: string;
-    digests: ArtifactDigests;
-    where: string;
+  stagingDir: string;
+  artifactDir: string;
+  digests: ArtifactDigests;
+  where: string;
 }): Promise<void> {
-    const { stagingDir, artifactDir, digests, where } = input;
-    await fs.mkdir(path.dirname(artifactDir), { recursive: true });
-    try {
-        await fs.rename(stagingDir, artifactDir);
-        return;
-    } catch (error) {
-        if (!(await exists(artifactDir))) {
-            throw error;
-        }
+  const { stagingDir, artifactDir, digests, where } = input;
+  await fs.mkdir(path.dirname(artifactDir), { recursive: true });
+  try {
+    await fs.rename(stagingDir, artifactDir);
+    return;
+  } catch (error) {
+    if (!(await exists(artifactDir))) {
+      throw error;
     }
-    if ((await verifyArtifactDir(artifactDir, digests)).status === "verified") {
-        return;
-    }
-    // Renaming onto a non-empty directory is an error on every platform, so the
-    // stale one moves aside first. It is discarded rather than kept: it holds
-    // bytes no one can account for.
-    const discardDir = `${artifactDir}.stale-${process.pid}-${stagingSequence++}`;
-    let swapError: unknown;
-    try {
-        await fs.rename(artifactDir, discardDir);
-        await fs.rename(stagingDir, artifactDir);
-    } catch (error) {
-        swapError = error;
-    }
-    await fs.rm(discardDir, { recursive: true, force: true }).catch(() => undefined);
-    if (!swapError) {
-        return;
-    }
-    // A build that lost the race mid-swap can still be right; anything else
-    // leaves bytes at this path that nothing has vouched for, and those must not
-    // reach a game.
-    if ((await verifyArtifactDir(artifactDir, digests)).status === "verified") {
-        return;
-    }
-    throw new Error(
-        `${where}: ${artifactDir} holds files that are not the ones extracted from the declared archive, `
-            + `and it could not be replaced (${messageOf(swapError)}); delete that directory and build again`,
-    );
+  }
+  if ((await verifyArtifactDir(artifactDir, digests)).status === "verified") {
+    return;
+  }
+  // Renaming onto a non-empty directory is an error on every platform, so the
+  // stale one moves aside first. It is discarded rather than kept: it holds
+  // bytes no one can account for.
+  const discardDir = `${artifactDir}.stale-${process.pid}-${stagingSequence++}`;
+  let swapError: unknown;
+  try {
+    await fs.rename(artifactDir, discardDir);
+    await fs.rename(stagingDir, artifactDir);
+  } catch (error) {
+    swapError = error;
+  }
+  await fs.rm(discardDir, { recursive: true, force: true }).catch(() => undefined);
+  if (!swapError) {
+    return;
+  }
+  // A build that lost the race mid-swap can still be right; anything else
+  // leaves bytes at this path that nothing has vouched for, and those must not
+  // reach a game.
+  if ((await verifyArtifactDir(artifactDir, digests)).status === "verified") {
+    return;
+  }
+  throw new Error(
+    `${where}: ${artifactDir} holds files that are not the ones extracted from the declared archive, ` +
+      `and it could not be replaced (${messageOf(swapError)}); delete that directory and build again`
+  );
 }
 
 async function writeArtifactFile(
-    root: string,
-    relativePath: string,
-    bytes: Buffer,
-    digests: ArtifactDigests,
+  root: string,
+  relativePath: string,
+  bytes: Buffer,
+  digests: ArtifactDigests
 ): Promise<void> {
-    const target = resolveBuildDependencyFile(root, relativePath);
-    await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, bytes);
-    // Keyed by where the file landed rather than by what was declared: the two
-    // differ whenever a mapping spells a path with `.` or a backslash, and the
-    // verification walk can only see the former.
-    digests[path.relative(root, target).split(path.sep).join("/")] = createHash("sha256").update(bytes).digest("hex");
+  const target = resolveBuildDependencyFile(root, relativePath);
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  await fs.writeFile(target, bytes);
+  // Keyed by where the file landed rather than by what was declared: the two
+  // differ whenever a mapping spells a path with `.` or a backslash, and the
+  // verification walk can only see the former.
+  digests[path.relative(root, target).split(path.sep).join("/")] = createHash("sha256")
+    .update(bytes)
+    .digest("hex");
 }
 
 async function extractMappedEntries(
-    archive: Buffer,
-    files: Record<string, string>,
-    root: string,
-    where: string,
-    digests: ArtifactDigests,
+  archive: Buffer,
+  files: Record<string, string>,
+  root: string,
+  where: string,
+  digests: ArtifactDigests
 ): Promise<void> {
-    let index: ZipIndex;
-    try {
-        index = parseZipIndex(archive);
-    } catch (error) {
-        throw new Error(`${where}: the downloaded file is not a readable zip (${messageOf(error)})`);
+  let index: ZipIndex;
+  try {
+    index = parseZipIndex(archive);
+  } catch (error) {
+    throw new Error(`${where}: the downloaded file is not a readable zip (${messageOf(error)})`);
+  }
+  const byName = new Map<string, ZipIndexEntry>();
+  for (const entry of index.entries) {
+    if (!entry.isDirectory) {
+      byName.set(normalizeArchivePath(entry.name), entry);
     }
-    const byName = new Map<string, ZipIndexEntry>();
-    for (const entry of index.entries) {
-        if (!entry.isDirectory) {
-            byName.set(normalizeArchivePath(entry.name), entry);
-        }
+  }
+  for (const [inner, output] of Object.entries(files)) {
+    const key = normalizeArchivePath(inner);
+    const entry = byName.get(key);
+    if (!entry) {
+      throw new Error(describeMissingEntry(where, inner, key, index.entries));
     }
-    for (const [inner, output] of Object.entries(files)) {
-        const key = normalizeArchivePath(inner);
-        const entry = byName.get(key);
-        if (!entry) {
-            throw new Error(describeMissingEntry(where, inner, key, index.entries));
-        }
-        await writeArtifactFile(root, output, readEntryBytes(archive, entry), digests);
-    }
+    await writeArtifactFile(root, output, readEntryBytes(archive, entry), digests);
+  }
 }
 
 /** Zip stores forward slashes, but authors copy paths off a Windows shell. */
 function normalizeArchivePath(value: string): string {
-    return value.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").replace(/^\/+/, "");
+  return value
+    .replace(/\\/g, "/")
+    .replace(/^(?:\.\/)+/, "")
+    .replace(/^\/+/, "");
 }
 
 /**
@@ -545,26 +583,27 @@ function normalizeArchivePath(value: string): string {
  * to fix it is to know what the archive actually holds - so say so.
  */
 function describeMissingEntry(
-    where: string,
-    inner: string,
-    key: string,
-    entries: ZipIndexEntry[],
+  where: string,
+  inner: string,
+  key: string,
+  entries: ZipIndexEntry[]
 ): string {
-    const prefix = `${key}/`;
-    if (entries.some(entry => normalizeArchivePath(entry.name).startsWith(prefix))) {
-        return `${where}: "${inner}" is a directory in the archive; map the files inside it individually`;
+  const prefix = `${key}/`;
+  if (entries.some((entry) => normalizeArchivePath(entry.name).startsWith(prefix))) {
+    return `${where}: "${inner}" is a directory in the archive; map the files inside it individually`;
+  }
+  const topLevel = new Set<string>();
+  for (const entry of entries) {
+    const normalized = normalizeArchivePath(entry.name);
+    if (!normalized) {
+      continue;
     }
-    const topLevel = new Set<string>();
-    for (const entry of entries) {
-        const normalized = normalizeArchivePath(entry.name);
-        if (!normalized) {
-            continue;
-        }
-        const separator = normalized.indexOf("/");
-        topLevel.add(separator === -1 ? normalized : `${normalized.slice(0, separator)}/`);
-    }
-    const listed = [...topLevel].sort();
-    const shown = listed.slice(0, MAX_LISTED_ARCHIVE_ENTRIES).join(", ");
-    const suffix = listed.length > MAX_LISTED_ARCHIVE_ENTRIES ? `, … (${listed.length} in total)` : "";
-    return `${where}: the archive has no entry "${inner}"; its top-level entries are: ${shown || "(none)"}${suffix}`;
+    const separator = normalized.indexOf("/");
+    topLevel.add(separator === -1 ? normalized : `${normalized.slice(0, separator)}/`);
+  }
+  const listed = [...topLevel].sort();
+  const shown = listed.slice(0, MAX_LISTED_ARCHIVE_ENTRIES).join(", ");
+  const suffix =
+    listed.length > MAX_LISTED_ARCHIVE_ENTRIES ? `, … (${listed.length} in total)` : "";
+  return `${where}: the archive has no entry "${inner}"; its top-level entries are: ${shown || "(none)"}${suffix}`;
 }

@@ -1,9 +1,9 @@
 import type { Configuration } from "electron-builder";
 import type {
-    GameBuildWorkerMacSigning,
-    GameBuildWorkerNotarization,
-    GameBuildWorkerTarget,
-    GameBuildWorkerWindowsSigning,
+  GameBuildWorkerMacSigning,
+  GameBuildWorkerNotarization,
+  GameBuildWorkerTarget,
+  GameBuildWorkerWindowsSigning
 } from "./protocol";
 
 /**
@@ -29,58 +29,62 @@ type MacConfiguration = NonNullable<Configuration["mac"]>;
  * should fail loudly rather than produce a config section nobody meant.
  */
 export function isMacSigning(
-    signing: GameBuildWorkerWindowsSigning | GameBuildWorkerMacSigning,
+  signing: GameBuildWorkerWindowsSigning | GameBuildWorkerMacSigning
 ): signing is GameBuildWorkerMacSigning {
-    return signing.source === "keychain" || signing.source === "p12";
+  return signing.source === "keychain" || signing.source === "p12";
 }
 
 /**
  * The `win` block for a signed Windows target. Never merges the two option
  * groups; `source` selects one.
  */
-export function windowsSigningConfiguration(signing: GameBuildWorkerWindowsSigning): { win: WindowsConfiguration } {
-    if (signing.source === "azure") {
-        return {
-            win: {
-                azureSignOptions: {
-                    endpoint: signing.endpoint,
-                    codeSigningAccountName: signing.codeSigningAccountName,
-                    certificateProfileName: signing.certificateProfileName,
-                    publisherName: signing.publisherName,
-                },
-            },
-        };
-    }
-    const common = {
-        // electron-builder defaults to dual sha1+sha256 signing. SHA-1
-        // Authenticode has not been trusted by Windows for years, and the
-        // legacy pass costs a second (non-RFC3161) timestamp round trip that
-        // can fail on its own; sha256 alone is what a modern signature is.
-        signingHashAlgorithms: ["sha256"] as Array<"sha1" | "sha256">,
-        ...(signing.rfc3161TimeStampServer
-            ? { rfc3161TimeStampServer: signing.rfc3161TimeStampServer }
-            : {}),
-    };
-    if (signing.source === "pfx") {
-        return {
-            win: {
-                signtoolOptions: {
-                    certificateFile: signing.certificateFile,
-                    certificatePassword: signing.certificatePassword,
-                    ...common,
-                },
-            },
-        };
-    }
+export function windowsSigningConfiguration(signing: GameBuildWorkerWindowsSigning): {
+  win: WindowsConfiguration;
+} {
+  if (signing.source === "azure") {
     return {
-        win: {
-            signtoolOptions: {
-                ...(signing.certificateSubjectName ? { certificateSubjectName: signing.certificateSubjectName } : {}),
-                ...(signing.certificateSha1 ? { certificateSha1: signing.certificateSha1 } : {}),
-                ...common,
-            },
-        },
+      win: {
+        azureSignOptions: {
+          endpoint: signing.endpoint,
+          codeSigningAccountName: signing.codeSigningAccountName,
+          certificateProfileName: signing.certificateProfileName,
+          publisherName: signing.publisherName
+        }
+      }
     };
+  }
+  const common = {
+    // electron-builder defaults to dual sha1+sha256 signing. SHA-1
+    // Authenticode has not been trusted by Windows for years, and the
+    // legacy pass costs a second (non-RFC3161) timestamp round trip that
+    // can fail on its own; sha256 alone is what a modern signature is.
+    signingHashAlgorithms: ["sha256"] as Array<"sha1" | "sha256">,
+    ...(signing.rfc3161TimeStampServer
+      ? { rfc3161TimeStampServer: signing.rfc3161TimeStampServer }
+      : {})
+  };
+  if (signing.source === "pfx") {
+    return {
+      win: {
+        signtoolOptions: {
+          certificateFile: signing.certificateFile,
+          certificatePassword: signing.certificatePassword,
+          ...common
+        }
+      }
+    };
+  }
+  return {
+    win: {
+      signtoolOptions: {
+        ...(signing.certificateSubjectName
+          ? { certificateSubjectName: signing.certificateSubjectName }
+          : {}),
+        ...(signing.certificateSha1 ? { certificateSha1: signing.certificateSha1 } : {}),
+        ...common
+      }
+    }
+  };
 }
 
 /**
@@ -89,15 +93,16 @@ export function windowsSigningConfiguration(signing: GameBuildWorkerWindowsSigni
  * and into saved logs.
  */
 export function describeWindowsSigning(signing: GameBuildWorkerWindowsSigning): string {
-    switch (signing.source) {
-        case "pfx":
-            return "signing with a certificate file";
-        case "certificate-store":
-            return `signing with a certificate from the Windows store (${
-                signing.certificateSubjectName ?? signing.certificateSha1 ?? "unspecified"})`;
-        case "azure":
-            return `signing with Azure Trusted Signing (${signing.certificateProfileName})`;
-    }
+  switch (signing.source) {
+    case "pfx":
+      return "signing with a certificate file";
+    case "certificate-store":
+      return `signing with a certificate from the Windows store (${
+        signing.certificateSubjectName ?? signing.certificateSha1 ?? "unspecified"
+      })`;
+    case "azure":
+      return `signing with Azure Trusted Signing (${signing.certificateProfileName})`;
+  }
 }
 
 /**
@@ -116,35 +121,38 @@ export function describeWindowsSigning(signing: GameBuildWorkerWindowsSigning): 
  * with `APPLE_ID` exported for their own tooling would otherwise have every
  * build reach Apple's service uninvited.
  */
-export function macSigningConfiguration(signing: GameBuildWorkerMacSigning | null): { mac: MacConfiguration } {
-    if (signing === null) {
-        return { mac: { identity: null, notarize: false } };
+export function macSigningConfiguration(signing: GameBuildWorkerMacSigning | null): {
+  mac: MacConfiguration;
+} {
+  if (signing === null) {
+    return { mac: { identity: null, notarize: false } };
+  }
+  const notarize = { notarize: Boolean(signing.notarization) };
+  if (signing.source === "keychain") {
+    return { mac: { identity: signing.identity, ...notarize } };
+  }
+  // cscLink takes the path directly; electron-builder imports it into a
+  // throwaway keychain for the build and removes it afterwards. `identity` is
+  // left unset on purpose - the imported certificate is the only one in that
+  // keychain, so naming it again could only disagree with it.
+  return {
+    mac: {
+      cscLink: signing.certificateFile,
+      cscKeyPassword: signing.certificatePassword,
+      ...notarize
     }
-    const notarize = { notarize: Boolean(signing.notarization) };
-    if (signing.source === "keychain") {
-        return { mac: { identity: signing.identity, ...notarize } };
-    }
-    // cscLink takes the path directly; electron-builder imports it into a
-    // throwaway keychain for the build and removes it afterwards. `identity` is
-    // left unset on purpose - the imported certificate is the only one in that
-    // keychain, so naming it again could only disagree with it.
-    return {
-        mac: {
-            cscLink: signing.certificateFile,
-            cscKeyPassword: signing.certificatePassword,
-            ...notarize,
-        },
-    };
+  };
 }
 
 /** What to say about a macOS target's signature in the build log. Never the password. */
 export function describeMacSigning(signing: GameBuildWorkerMacSigning): string {
-    const how = signing.source === "keychain"
-        ? `signing with the keychain identity ${signing.identity}`
-        : "signing with a certificate file";
-    return signing.notarization
-        ? `${how}, then notarizing with Apple (this reaches the network and can take several minutes)`
-        : `${how}; not notarizing, so macOS Gatekeeper will still warn on first launch`;
+  const how =
+    signing.source === "keychain"
+      ? `signing with the keychain identity ${signing.identity}`
+      : "signing with a certificate file";
+  return signing.notarization
+    ? `${how}, then notarizing with Apple (this reaches the network and can take several minutes)`
+    : `${how}; not notarizing, so macOS Gatekeeper will still warn on first launch`;
 }
 
 /**
@@ -155,14 +163,16 @@ export function describeMacSigning(signing: GameBuildWorkerMacSigning): string {
  * Only one macOS target can exist in a build anyway - `hostCanBuildTarget` keeps
  * macOS to macOS hosts and each platform appears once.
  */
-export function notarizationForTargets(targets: GameBuildWorkerTarget[]): GameBuildWorkerNotarization | null {
-    for (const target of targets) {
-        const signing = target.signing;
-        if (target.platform === "macos" && signing && isMacSigning(signing) && signing.notarization) {
-            return signing.notarization;
-        }
+export function notarizationForTargets(
+  targets: GameBuildWorkerTarget[]
+): GameBuildWorkerNotarization | null {
+  for (const target of targets) {
+    const signing = target.signing;
+    if (target.platform === "macos" && signing && isMacSigning(signing) && signing.notarization) {
+      return signing.notarization;
     }
-    return null;
+  }
+  return null;
 }
 
 /**
@@ -180,43 +190,43 @@ export function notarizationForTargets(targets: GameBuildWorkerTarget[]): GameBu
  * is what keeps that case from notarizing at all.
  */
 export async function withNotarizationEnv<T>(
-    notarization: GameBuildWorkerNotarization | null,
-    body: () => Promise<T>,
+  notarization: GameBuildWorkerNotarization | null,
+  body: () => Promise<T>
 ): Promise<T> {
-    if (!notarization) {
-        return body();
-    }
-    const managed = {
-        APPLE_API_KEY: notarization.keyFile,
-        APPLE_API_KEY_ID: notarization.keyId,
-        APPLE_API_ISSUER: notarization.issuerId,
-        APPLE_ID: undefined,
-        APPLE_APP_SPECIFIC_PASSWORD: undefined,
-        APPLE_TEAM_ID: undefined,
-        APPLE_KEYCHAIN: undefined,
-        APPLE_KEYCHAIN_PROFILE: undefined,
-    } satisfies Record<string, string | undefined>;
+  if (!notarization) {
+    return body();
+  }
+  const managed = {
+    APPLE_API_KEY: notarization.keyFile,
+    APPLE_API_KEY_ID: notarization.keyId,
+    APPLE_API_ISSUER: notarization.issuerId,
+    APPLE_ID: undefined,
+    APPLE_APP_SPECIFIC_PASSWORD: undefined,
+    APPLE_TEAM_ID: undefined,
+    APPLE_KEYCHAIN: undefined,
+    APPLE_KEYCHAIN_PROFILE: undefined
+  } satisfies Record<string, string | undefined>;
 
-    const previous = new Map<string, string | undefined>();
-    for (const [name, value] of Object.entries(managed)) {
-        previous.set(name, process.env[name]);
-        if (value === undefined) {
-            delete process.env[name];
-        } else {
-            process.env[name] = value;
-        }
+  const previous = new Map<string, string | undefined>();
+  for (const [name, value] of Object.entries(managed)) {
+    previous.set(name, process.env[name]);
+    if (value === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = value;
     }
-    try {
-        return await body();
-    } finally {
-        for (const [name, value] of previous) {
-            if (value === undefined) {
-                delete process.env[name];
-            } else {
-                process.env[name] = value;
-            }
-        }
+  }
+  try {
+    return await body();
+  } finally {
+    for (const [name, value] of previous) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
     }
+  }
 }
 
 /**
@@ -228,16 +238,16 @@ export async function withNotarizationEnv<T>(
  * so its arm carries no path.
  */
 export function signtoolPathForTargets(targets: GameBuildWorkerTarget[]): string | null {
-    for (const target of targets) {
-        const signing = target.signing;
-        if (!signing || isMacSigning(signing) || signing.source === "azure") {
-            continue;
-        }
-        if (signing.signtoolPath) {
-            return signing.signtoolPath;
-        }
+  for (const target of targets) {
+    const signing = target.signing;
+    if (!signing || isMacSigning(signing) || signing.source === "azure") {
+      continue;
     }
-    return null;
+    if (signing.signtoolPath) {
+      return signing.signtoolPath;
+    }
+  }
+  return null;
 }
 
 /**
@@ -246,19 +256,22 @@ export function signtoolPathForTargets(targets: GameBuildWorkerTarget[]): string
  * including an author's own `SIGNTOOL_PATH`, which the discovery already
  * honoured and which must not be erased by a build that found nothing.
  */
-export async function withSigntoolPath<T>(signtoolPath: string | null, body: () => Promise<T>): Promise<T> {
-    if (!signtoolPath) {
-        return body();
+export async function withSigntoolPath<T>(
+  signtoolPath: string | null,
+  body: () => Promise<T>
+): Promise<T> {
+  if (!signtoolPath) {
+    return body();
+  }
+  const previous = process.env.SIGNTOOL_PATH;
+  process.env.SIGNTOOL_PATH = signtoolPath;
+  try {
+    return await body();
+  } finally {
+    if (previous === undefined) {
+      delete process.env.SIGNTOOL_PATH;
+    } else {
+      process.env.SIGNTOOL_PATH = previous;
     }
-    const previous = process.env.SIGNTOOL_PATH;
-    process.env.SIGNTOOL_PATH = signtoolPath;
-    try {
-        return await body();
-    } finally {
-        if (previous === undefined) {
-            delete process.env.SIGNTOOL_PATH;
-        } else {
-            process.env.SIGNTOOL_PATH = previous;
-        }
-    }
+  }
 }

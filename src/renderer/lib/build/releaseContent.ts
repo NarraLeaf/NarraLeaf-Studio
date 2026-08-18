@@ -1,22 +1,32 @@
 import { applyAppTagToStoryDocument } from "@shared/story/appTagFold";
 import {
-    blueprintGraphCarriers,
-    scanStoryEntryPoints,
-    traceReachableScenes,
-    type StorySceneReach,
+  blueprintGraphCarriers,
+  scanStoryEntryPoints,
+  traceReachableScenes,
+  type StorySceneReach
 } from "@shared/story/storyReachability";
 import {
-    appTagMechanismKey,
-    isBuiltinAppTagId,
-    resolveAppTagReachableScenes,
-    type AppTagMechanismRef,
-    type AppTagReachableScenes,
-    type ProjectAppTag,
+  appTagMechanismKey,
+  isBuiltinAppTagId,
+  resolveAppTagReachableScenes,
+  type AppTagMechanismRef,
+  type AppTagReachableScenes,
+  type ProjectAppTag
 } from "@shared/types/appTag";
 import type { Blueprint } from "@shared/types/blueprint/document";
-import { runtimeCapabilitiesCanStartStory, type PluginRuntimeCapability } from "@shared/types/pluginPermissions";
-import { listScenesInDocumentOrder, type StoryDocument, type StorySceneId } from "@shared/types/story";
-import type { AssetReference, ReferenceSiteKind } from "../workspace/services/references/referenceModel";
+import {
+  runtimeCapabilitiesCanStartStory,
+  type PluginRuntimeCapability
+} from "@shared/types/pluginPermissions";
+import {
+  listScenesInDocumentOrder,
+  type StoryDocument,
+  type StorySceneId
+} from "@shared/types/story";
+import type {
+  AssetReference,
+  ReferenceSiteKind
+} from "../workspace/services/references/referenceModel";
 
 /**
  * What a package under one variant contains, and why each member is in it.
@@ -52,33 +62,33 @@ import type { AssetReference, ReferenceSiteKind } from "../workspace/services/re
 
 /** One story as the solver reads it. `document` is the authored document, before any folding. */
 export type ReleaseContentStory = {
-    id: string;
-    name: string;
-    document: StoryDocument;
+  id: string;
+  name: string;
+  document: StoryDocument;
 };
 
 /** One plugin that ships inside the game. Only the declaration matters here; see the capability list. */
 export type ReleaseContentPlugin = {
-    id: string;
-    name: string;
-    runtimeCapabilities: readonly PluginRuntimeCapability[];
+  id: string;
+  name: string;
+  runtimeCapabilities: readonly PluginRuntimeCapability[];
 };
 
 export type ReleaseContentInput = {
-    /** The variant being answered about. The release tag is a legitimate subject; it removes nothing. */
-    appTag: ProjectAppTag;
-    /** The project's own scene declarations - the document root, which every variant inherits. */
-    projectDeclaredScenes: AppTagReachableScenes;
-    stories: readonly ReleaseContentStory[];
-    /** Every blueprint the project runs, loaded: the project's own plus every shared blueprint asset. */
-    blueprints: readonly Blueprint[];
-    surfaces: readonly { id: string; name: string }[];
-    assets: readonly { id: string; name: string }[];
-    /** `assetId -> where it is referenced`, as `ReferenceService` indexes it. */
-    assetReferences: ReadonlyMap<string, readonly AssetReference[]>;
-    /** Named localization keys the project declares. */
-    localizationKeys: readonly string[];
-    plugins: readonly ReleaseContentPlugin[];
+  /** The variant being answered about. The release tag is a legitimate subject; it removes nothing. */
+  appTag: ProjectAppTag;
+  /** The project's own scene declarations - the document root, which every variant inherits. */
+  projectDeclaredScenes: AppTagReachableScenes;
+  stories: readonly ReleaseContentStory[];
+  /** Every blueprint the project runs, loaded: the project's own plus every shared blueprint asset. */
+  blueprints: readonly Blueprint[];
+  surfaces: readonly { id: string; name: string }[];
+  assets: readonly { id: string; name: string }[];
+  /** `assetId -> where it is referenced`, as `ReferenceService` indexes it. */
+  assetReferences: ReadonlyMap<string, readonly AssetReference[]>;
+  /** Named localization keys the project declares. */
+  localizationKeys: readonly string[];
+  plugins: readonly ReleaseContentPlugin[];
 };
 
 export type ReleaseContentMemberKind = "scene" | "surface" | "asset" | "localizationKey" | "plugin";
@@ -97,61 +107,67 @@ export type ReleaseContentMemberKind = "scene" | "surface" | "asset" | "localiza
  * thing is on.
  */
 export type ReleaseContentProvenance =
-    /** The scene the author marked as this story's entry. */
-    | { kind: "storyEntryScene" }
-    /** The first scene in document order, which is what the game boots when nothing is marked. */
-    | { kind: "documentOrderEntry" }
-    /** A `Start Story` node names it. */
-    | { kind: "startStoryNode"; blueprintId: string; blueprintName?: string; graphId: string; nodeId: string }
-    /** An author's declaration for a mechanism the build cannot read names it. */
-    | { kind: "declaredScene"; mechanism: AppTagMechanismRef }
-    /** A jump from a scene that is itself in. */
-    | { kind: "storyJump"; storyId: string; sceneId: string; blockId: string }
-    /** A retained story row references it. */
-    | { kind: "storyRow"; storyId: string; sceneId: string; blockId: string }
-    /** A retained scene's own settings reference it - a default background, a scene's music. */
-    | { kind: "storyScene"; storyId: string; sceneId: string }
-    /** Something outside the stories references it. `label` is what the author calls that thing. */
-    | { kind: "referenceSite"; siteKind: ReferenceSiteKind; label: string; field: string }
-    /** Nothing trims this kind. It is in because every package has it. */
-    | { kind: "shipsWithEveryVariant" };
+  /** The scene the author marked as this story's entry. */
+  | { kind: "storyEntryScene" }
+  /** The first scene in document order, which is what the game boots when nothing is marked. */
+  | { kind: "documentOrderEntry" }
+  /** A `Start Story` node names it. */
+  | {
+      kind: "startStoryNode";
+      blueprintId: string;
+      blueprintName?: string;
+      graphId: string;
+      nodeId: string;
+    }
+  /** An author's declaration for a mechanism the build cannot read names it. */
+  | { kind: "declaredScene"; mechanism: AppTagMechanismRef }
+  /** A jump from a scene that is itself in. */
+  | { kind: "storyJump"; storyId: string; sceneId: string; blockId: string }
+  /** A retained story row references it. */
+  | { kind: "storyRow"; storyId: string; sceneId: string; blockId: string }
+  /** A retained scene's own settings reference it - a default background, a scene's music. */
+  | { kind: "storyScene"; storyId: string; sceneId: string }
+  /** Something outside the stories references it. `label` is what the author calls that thing. */
+  | { kind: "referenceSite"; siteKind: ReferenceSiteKind; label: string; field: string }
+  /** Nothing trims this kind. It is in because every package has it. */
+  | { kind: "shipsWithEveryVariant" };
 
 export type ReleaseContentMember = {
-    kind: ReleaseContentMemberKind;
-    id: string;
-    /** What the author calls it. Every surface shows this; the id is for lookup, never for display. */
-    name: string;
-    /** Present on a scene: which story it belongs to, since scene ids are only unique within one. */
-    storyId?: string;
-    provenance: ReleaseContentProvenance;
+  kind: ReleaseContentMemberKind;
+  id: string;
+  /** What the author calls it. Every surface shows this; the id is for lookup, never for display. */
+  name: string;
+  /** Present on a scene: which story it belongs to, since scene ids are only unique within one. */
+  storyId?: string;
+  provenance: ReleaseContentProvenance;
 };
 
 /** A scene this variant removes. Named, because an author reads scene names and never scene ids. */
 export type RemovedScene = {
-    storyId: string;
-    storyName: string;
-    sceneId: string;
-    sceneName: string;
+  storyId: string;
+  storyName: string;
+  sceneId: string;
+  sceneName: string;
 };
 
 /** Why a mechanism stops the build. The remedy is stated by the surface that reports it. */
 export type ReleaseContentBlockerReason =
-    /** A `Start Story` node whose story or scene is blank, or wired and so decided while the game runs. */
-    | "unreadableStartStoryTarget"
-    /** A blueprint written in TypeScript, which can call `game.startStory` with anything it computes. */
-    | "scriptBlueprint"
-    /** A plugin whose declared capabilities let it start a story. */
-    | "storyStartingPlugin";
+  /** A `Start Story` node whose story or scene is blank, or wired and so decided while the game runs. */
+  | "unreadableStartStoryTarget"
+  /** A blueprint written in TypeScript, which can call `game.startStory` with anything it computes. */
+  | "scriptBlueprint"
+  /** A plugin whose declared capabilities let it start a story. */
+  | "storyStartingPlugin";
 
 export type ReleaseContentBlocker = {
-    reason: ReleaseContentBlockerReason;
-    mechanism: AppTagMechanismRef;
-    /** Where a declaration for this mechanism is filed. What the editing surface writes under. */
-    mechanismKey: string;
-    /** What the author calls the thing to go and look at. A blueprint's name, a plugin's name. */
-    location: string;
-    /** For `unreadableStartStoryTarget`: which of the node's two targets could not be read. */
-    missing?: ("storyId" | "sceneId")[];
+  reason: ReleaseContentBlockerReason;
+  mechanism: AppTagMechanismRef;
+  /** Where a declaration for this mechanism is filed. What the editing surface writes under. */
+  mechanismKey: string;
+  /** What the author calls the thing to go and look at. A blueprint's name, a plugin's name. */
+  location: string;
+  /** For `unreadableStartStoryTarget`: which of the node's two targets could not be read. */
+  missing?: ("storyId" | "sceneId")[];
 };
 
 /**
@@ -161,14 +177,14 @@ export type ReleaseContentBlocker = {
  * already answered too, or a declaration could never be revisited once it was made.
  */
 export type UnreadableMechanism = {
-    reason: ReleaseContentBlockerReason;
-    mechanism: AppTagMechanismRef;
-    /** Where a declaration for this mechanism is filed. */
-    mechanismKey: string;
-    /** What the author calls the thing to go and look at. */
-    location: string;
-    /** For `unreadableStartStoryTarget`: which of the node's two targets could not be read. */
-    missing?: ("storyId" | "sceneId")[];
+  reason: ReleaseContentBlockerReason;
+  mechanism: AppTagMechanismRef;
+  /** Where a declaration for this mechanism is filed. */
+  mechanismKey: string;
+  /** What the author calls the thing to go and look at. */
+  location: string;
+  /** For `unreadableStartStoryTarget`: which of the node's two targets could not be read. */
+  missing?: ("storyId" | "sceneId")[];
 };
 
 /**
@@ -179,213 +195,225 @@ export type UnreadableMechanism = {
  * with, or - worse - miss the one it refuses over.
  */
 export function listUnreadableMechanisms(input: {
-    blueprints: readonly Blueprint[];
-    plugins: readonly ReleaseContentPlugin[];
+  blueprints: readonly Blueprint[];
+  plugins: readonly ReleaseContentPlugin[];
 }): UnreadableMechanism[] {
-    const found: UnreadableMechanism[] = [];
-    const scan = scanStoryEntryPoints(blueprintGraphCarriers(input.blueprints), () => true);
-    for (const entry of scan.undecidable) {
-        const mechanism: AppTagMechanismRef = {
-            kind: "startStoryNode",
-            blueprintId: entry.blueprintId,
-            graphKind: entry.graphKind,
-            graphId: entry.graphId,
-            nodeId: entry.nodeId,
-        };
-        found.push({
-            reason: "unreadableStartStoryTarget",
-            mechanism,
-            mechanismKey: appTagMechanismKey(mechanism),
-            location: entry.blueprintName ?? entry.blueprintId,
-            missing: entry.missing,
-        });
+  const found: UnreadableMechanism[] = [];
+  const scan = scanStoryEntryPoints(blueprintGraphCarriers(input.blueprints), () => true);
+  for (const entry of scan.undecidable) {
+    const mechanism: AppTagMechanismRef = {
+      kind: "startStoryNode",
+      blueprintId: entry.blueprintId,
+      graphKind: entry.graphKind,
+      graphId: entry.graphId,
+      nodeId: entry.nodeId
+    };
+    found.push({
+      reason: "unreadableStartStoryTarget",
+      mechanism,
+      mechanismKey: appTagMechanismKey(mechanism),
+      location: entry.blueprintName ?? entry.blueprintId,
+      missing: entry.missing
+    });
+  }
+  for (const blueprint of input.blueprints) {
+    if (blueprint.program?.kind !== "graph") {
+      const mechanism: AppTagMechanismRef = { kind: "scriptBlueprint", blueprintId: blueprint.id };
+      found.push({
+        reason: "scriptBlueprint",
+        mechanism,
+        mechanismKey: appTagMechanismKey(mechanism),
+        location: blueprint.name
+      });
     }
-    for (const blueprint of input.blueprints) {
-        if (blueprint.program?.kind !== "graph") {
-            const mechanism: AppTagMechanismRef = { kind: "scriptBlueprint", blueprintId: blueprint.id };
-            found.push({
-                reason: "scriptBlueprint",
-                mechanism,
-                mechanismKey: appTagMechanismKey(mechanism),
-                location: blueprint.name,
-            });
-        }
+  }
+  for (const plugin of input.plugins) {
+    if (runtimeCapabilitiesCanStartStory(plugin.runtimeCapabilities)) {
+      const mechanism: AppTagMechanismRef = { kind: "plugin", pluginId: plugin.id };
+      found.push({
+        reason: "storyStartingPlugin",
+        mechanism,
+        mechanismKey: appTagMechanismKey(mechanism),
+        location: plugin.name
+      });
     }
-    for (const plugin of input.plugins) {
-        if (runtimeCapabilitiesCanStartStory(plugin.runtimeCapabilities)) {
-            const mechanism: AppTagMechanismRef = { kind: "plugin", pluginId: plugin.id };
-            found.push({
-                reason: "storyStartingPlugin",
-                mechanism,
-                mechanismKey: appTagMechanismKey(mechanism),
-                location: plugin.name,
-            });
-        }
-    }
-    return found;
+  }
+  return found;
 }
 
 /** A declaration naming a scene the project no longer has. Reported, never silently dropped. */
 export type StaleSceneDeclaration = {
-    mechanismKey: string;
-    /** What the author calls the mechanism this was declared for. The scene itself has no name left. */
-    location: string;
-    storyId: string;
-    sceneId: string;
+  mechanismKey: string;
+  /** What the author calls the mechanism this was declared for. The scene itself has no name left. */
+  location: string;
+  storyId: string;
+  sceneId: string;
 };
 
 export type ReleaseContentAnswer = {
-    appTagId: string;
-    /** The variant's name as stored. What every line about this answer says out loud. */
-    appTagName: string;
-    /** Everything the package contains, each with the one reason it is in. */
-    members: ReleaseContentMember[];
-    /** The scenes this variant removes. Empty means the package is the whole project. */
-    removedScenes: RemovedScene[];
-    /**
-     * Assets no retained content references any more.
-     *
-     * They still ship. Nothing trims assets, and this is here so a report can say a file is being
-     * carried for content the variant does not contain - not so anything can delete it.
-     */
-    unreferencedAssetIds: string[];
-    /**
-     * Non-empty means the build must not start.
-     *
-     * Always empty when {@link removedScenes} is empty. A project that removes nothing has nothing to
-     * get wrong: the package is the whole story either way, so a mechanism nobody can read cannot
-     * name a scene that is missing from it. This is what keeps a release build - which cuts nothing
-     * by construction - from suddenly refusing over a wired node it has always had.
-     */
-    blockers: ReleaseContentBlocker[];
-    /** Declarations pointing at scenes the project no longer has. */
-    staleDeclarations: StaleSceneDeclaration[];
+  appTagId: string;
+  /** The variant's name as stored. What every line about this answer says out loud. */
+  appTagName: string;
+  /** Everything the package contains, each with the one reason it is in. */
+  members: ReleaseContentMember[];
+  /** The scenes this variant removes. Empty means the package is the whole project. */
+  removedScenes: RemovedScene[];
+  /**
+   * Assets no retained content references any more.
+   *
+   * They still ship. Nothing trims assets, and this is here so a report can say a file is being
+   * carried for content the variant does not contain - not so anything can delete it.
+   */
+  unreferencedAssetIds: string[];
+  /**
+   * Non-empty means the build must not start.
+   *
+   * Always empty when {@link removedScenes} is empty. A project that removes nothing has nothing to
+   * get wrong: the package is the whole story either way, so a mechanism nobody can read cannot
+   * name a scene that is missing from it. This is what keeps a release build - which cuts nothing
+   * by construction - from suddenly refusing over a wired node it has always had.
+   */
+  blockers: ReleaseContentBlocker[];
+  /** Declarations pointing at scenes the project no longer has. */
+  staleDeclarations: StaleSceneDeclaration[];
 };
 
 export function solveReleaseContent(input: ReleaseContentInput): ReleaseContentAnswer {
-    const declared = resolveAppTagReachableScenes(input.appTag, input.projectDeclaredScenes);
-    // Whether the package drops anything at all, mirroring `planSceneDrop`'s first line. The release
-    // build never sweeps - it is the whole project by definition, and Dev Mode, the preview and
-    // "play from this row" all enter a scene the author picked rather than one the story reaches.
-    // An answer that swept here would call a scene dropped that the release package still carries.
-    const sweeps = !isBuiltinAppTagId(input.appTag.id);
+  const declared = resolveAppTagReachableScenes(input.appTag, input.projectDeclaredScenes);
+  // Whether the package drops anything at all, mirroring `planSceneDrop`'s first line. The release
+  // build never sweeps - it is the whole project by definition, and Dev Mode, the preview and
+  // "play from this row" all enter a scene the author picked rather than one the story reaches.
+  // An answer that swept here would call a scene dropped that the release package still carries.
+  const sweeps = !isBuiltinAppTagId(input.appTag.id);
 
-    // The fold first, because which scenes the story can still reach is a property of the document
-    // *after* this variant's branches and cut points are gone. Asked before it, Path South still
-    // jumps to Chapter Two and the demo ships the whole book.
-    const folded = new Map<string, StoryDocument>();
-    for (const story of input.stories) {
-        folded.set(story.id, applyAppTagToStoryDocument(story.document, {
-            tagName: input.appTag.name,
-            tagId: input.appTag.id,
-            // Deliberately no `sceneReachability`: that option makes the fold drop the scenes itself,
-            // and this answer needs the whole folded document so it can say which ones went and why.
-            // The sweep below is the same one that option runs.
-        }));
-    }
+  // The fold first, because which scenes the story can still reach is a property of the document
+  // *after* this variant's branches and cut points are gone. Asked before it, Path South still
+  // jumps to Chapter Two and the demo ships the whole book.
+  const folded = new Map<string, StoryDocument>();
+  for (const story of input.stories) {
+    folded.set(
+      story.id,
+      applyAppTagToStoryDocument(story.document, {
+        tagName: input.appTag.name,
+        tagId: input.appTag.id
+        // Deliberately no `sceneReachability`: that option makes the fold drop the scenes itself,
+        // and this answer needs the whole folded document so it can say which ones went and why.
+        // The sweep below is the same one that option runs.
+      })
+    );
+  }
 
-    const scan = scanStoryEntryPoints(
-        blueprintGraphCarriers(input.blueprints),
-        (storyId, sceneId) => Boolean(folded.get(storyId)?.scenes[sceneId]),
+  const scan = scanStoryEntryPoints(blueprintGraphCarriers(input.blueprints), (storyId, sceneId) =>
+    Boolean(folded.get(storyId)?.scenes[sceneId])
+  );
+
+  const { blockers, entriesFromDeclarations, staleDeclarations, declaredBy } = readMechanisms(
+    input,
+    declared,
+    folded
+  );
+
+  // What put each externally-named scene in, so the walk's bare "seeded from outside" can be
+  // reported as the node or the declaration an author can go and open. Declarations first so a
+  // node naming the same scene overwrites them: the node is a thing in the project.
+  const seededBy = new Map<string, ReleaseContentProvenance>(declaredBy);
+  for (const site of scan.sites) {
+    seededBy.set(seedKey(site.storyId, site.sceneId), {
+      kind: "startStoryNode",
+      blueprintId: site.blueprintId,
+      ...(site.blueprintName === undefined ? {} : { blueprintName: site.blueprintName }),
+      graphId: site.graphId,
+      nodeId: site.nodeId
+    });
+  }
+
+  const members: ReleaseContentMember[] = [];
+  const removedScenes: RemovedScene[] = [];
+  const retainedScenes = new Map<string, Set<StorySceneId>>();
+
+  for (const story of input.stories) {
+    const document = folded.get(story.id) ?? story.document;
+    const entries = [
+      ...(scan.byStory.get(story.id) ?? []),
+      ...(entriesFromDeclarations.get(story.id) ?? [])
+    ];
+    // `documentOrder`, matching `dropUnreachableScenes` exactly. A project that never marked an
+    // entry must not lose the scene its game opens in, and an answer that used the other policy
+    // would call that scene dropped while the package kept it.
+    const reached = traceReachableScenes(document, {
+      entrySceneIds: entries,
+      fallback: "documentOrder"
+    });
+    const scenes = listScenesInDocumentOrder(document);
+    retainedScenes.set(
+      story.id,
+      new Set(sweeps ? reached.keys() : scenes.map((scene) => scene.id))
     );
 
-    const { blockers, entriesFromDeclarations, staleDeclarations, declaredBy } = readMechanisms(input, declared, folded);
-
-    // What put each externally-named scene in, so the walk's bare "seeded from outside" can be
-    // reported as the node or the declaration an author can go and open. Declarations first so a
-    // node naming the same scene overwrites them: the node is a thing in the project.
-    const seededBy = new Map<string, ReleaseContentProvenance>(declaredBy);
-    for (const site of scan.sites) {
-        seededBy.set(seedKey(site.storyId, site.sceneId), {
-            kind: "startStoryNode",
-            blueprintId: site.blueprintId,
-            ...(site.blueprintName === undefined ? {} : { blueprintName: site.blueprintName }),
-            graphId: site.graphId,
-            nodeId: site.nodeId,
+    for (const scene of scenes) {
+      const reach = reached.get(scene.id);
+      if (!reach && sweeps) {
+        removedScenes.push({
+          storyId: story.id,
+          storyName: story.name,
+          sceneId: scene.id,
+          sceneName: scene.name
         });
+        continue;
+      }
+      members.push({
+        kind: "scene",
+        id: scene.id,
+        name: scene.name,
+        storyId: story.id,
+        // A scene nothing reaches can only be here in a build that does not sweep, and there
+        // it is in for the same reason a surface is: the package carries everything.
+        provenance: reach
+          ? sceneProvenance(reach, story.id, scene.id, seededBy)
+          : { kind: "shipsWithEveryVariant" }
+      });
     }
+  }
 
-    const members: ReleaseContentMember[] = [];
-    const removedScenes: RemovedScene[] = [];
-    const retainedScenes = new Map<string, Set<StorySceneId>>();
+  for (const surface of input.surfaces) {
+    members.push({ kind: "surface", ...surface, provenance: { kind: "shipsWithEveryVariant" } });
+  }
+  for (const key of input.localizationKeys) {
+    members.push({
+      kind: "localizationKey",
+      id: key,
+      // A named key is addressed by its name, so the two are the same string. Carried as both
+      // rather than special-cased, so a reader of a member never has to know which kinds differ.
+      name: key,
+      provenance: { kind: "shipsWithEveryVariant" }
+    });
+  }
+  for (const plugin of input.plugins) {
+    members.push({ kind: "plugin", ...plugin, provenance: { kind: "shipsWithEveryVariant" } });
+  }
 
-    for (const story of input.stories) {
-        const document = folded.get(story.id) ?? story.document;
-        const entries = [
-            ...(scan.byStory.get(story.id) ?? []),
-            ...(entriesFromDeclarations.get(story.id) ?? []),
-        ];
-        // `documentOrder`, matching `dropUnreachableScenes` exactly. A project that never marked an
-        // entry must not lose the scene its game opens in, and an answer that used the other policy
-        // would call that scene dropped while the package kept it.
-        const reached = traceReachableScenes(document, { entrySceneIds: entries, fallback: "documentOrder" });
-        const scenes = listScenesInDocumentOrder(document);
-        retainedScenes.set(story.id, new Set(sweeps ? reached.keys() : scenes.map(scene => scene.id)));
-
-        for (const scene of scenes) {
-            const reach = reached.get(scene.id);
-            if (!reach && sweeps) {
-                removedScenes.push({
-                    storyId: story.id,
-                    storyName: story.name,
-                    sceneId: scene.id,
-                    sceneName: scene.name,
-                });
-                continue;
-            }
-            members.push({
-                kind: "scene",
-                id: scene.id,
-                name: scene.name,
-                storyId: story.id,
-                // A scene nothing reaches can only be here in a build that does not sweep, and there
-                // it is in for the same reason a surface is: the package carries everything.
-                provenance: reach
-                    ? sceneProvenance(reach, story.id, scene.id, seededBy)
-                    : { kind: "shipsWithEveryVariant" },
-            });
-        }
+  const unreferencedAssetIds: string[] = [];
+  for (const asset of input.assets) {
+    const provenance = assetProvenance(input.assetReferences.get(asset.id) ?? [], retainedScenes);
+    if (provenance) {
+      members.push({ kind: "asset", ...asset, provenance });
+    } else {
+      unreferencedAssetIds.push(asset.id);
     }
+  }
 
-    for (const surface of input.surfaces) {
-        members.push({ kind: "surface", ...surface, provenance: { kind: "shipsWithEveryVariant" } });
-    }
-    for (const key of input.localizationKeys) {
-        members.push({
-            kind: "localizationKey",
-            id: key,
-            // A named key is addressed by its name, so the two are the same string. Carried as both
-            // rather than special-cased, so a reader of a member never has to know which kinds differ.
-            name: key,
-            provenance: { kind: "shipsWithEveryVariant" },
-        });
-    }
-    for (const plugin of input.plugins) {
-        members.push({ kind: "plugin", ...plugin, provenance: { kind: "shipsWithEveryVariant" } });
-    }
-
-    const unreferencedAssetIds: string[] = [];
-    for (const asset of input.assets) {
-        const provenance = assetProvenance(input.assetReferences.get(asset.id) ?? [], retainedScenes);
-        if (provenance) {
-            members.push({ kind: "asset", ...asset, provenance });
-        } else {
-            unreferencedAssetIds.push(asset.id);
-        }
-    }
-
-    return {
-        appTagId: input.appTag.id,
-        appTagName: input.appTag.name,
-        members,
-        removedScenes,
-        unreferencedAssetIds,
-        // The condition, stated once and on purpose rather than left to fall out of the release
-        // check. A variant that removes nothing is the whole project however unreadable its
-        // mechanisms are, so there is no answer for one of them to make wrong.
-        blockers: removedScenes.length > 0 ? blockers : [],
-        staleDeclarations,
-    };
+  return {
+    appTagId: input.appTag.id,
+    appTagName: input.appTag.name,
+    members,
+    removedScenes,
+    unreferencedAssetIds,
+    // The condition, stated once and on purpose rather than left to fall out of the release
+    // check. A variant that removes nothing is the whole project however unreadable its
+    // mechanisms are, so there is no answer for one of them to make wrong.
+    blockers: removedScenes.length > 0 ? blockers : [],
+    staleDeclarations
+  };
 }
 
 /**
@@ -397,50 +425,60 @@ export function solveReleaseContent(input: ReleaseContentInput): ReleaseContentA
  * rather than one refusal per build.
  */
 function readMechanisms(
-    input: ReleaseContentInput,
-    declared: AppTagReachableScenes,
-    folded: ReadonlyMap<string, StoryDocument>,
+  input: ReleaseContentInput,
+  declared: AppTagReachableScenes,
+  folded: ReadonlyMap<string, StoryDocument>
 ): {
-    blockers: ReleaseContentBlocker[];
-    entriesFromDeclarations: Map<string, StorySceneId[]>;
-    staleDeclarations: StaleSceneDeclaration[];
-    declaredBy: Map<string, ReleaseContentProvenance>;
+  blockers: ReleaseContentBlocker[];
+  entriesFromDeclarations: Map<string, StorySceneId[]>;
+  staleDeclarations: StaleSceneDeclaration[];
+  declaredBy: Map<string, ReleaseContentProvenance>;
 } {
-    const blockers: ReleaseContentBlocker[] = [];
-    const entriesFromDeclarations = new Map<string, StorySceneId[]>();
-    const staleDeclarations: StaleSceneDeclaration[] = [];
-    const declaredBy = new Map<string, ReleaseContentProvenance>();
+  const blockers: ReleaseContentBlocker[] = [];
+  const entriesFromDeclarations = new Map<string, StorySceneId[]>();
+  const staleDeclarations: StaleSceneDeclaration[] = [];
+  const declaredBy = new Map<string, ReleaseContentProvenance>();
 
-    const take = (mechanism: AppTagMechanismRef, reason: ReleaseContentBlockerReason, location: string, missing?: ("storyId" | "sceneId")[]): void => {
-        const mechanismKey = appTagMechanismKey(mechanism);
-        const scenes = declared[mechanismKey];
-        if (!scenes) {
-            blockers.push({ reason, mechanism, mechanismKey, location, ...(missing ? { missing } : {}) });
-            return;
-        }
-        for (const scene of scenes) {
-            if (!folded.get(scene.storyId)?.scenes[scene.sceneId]) {
-                // A declared scene the project no longer has. Reported rather than treated as an
-                // entry: a scene id that resolves to nothing would silently narrow what the
-                // declaration protects, which is the failure the declaration exists to prevent.
-                staleDeclarations.push({ mechanismKey, location, storyId: scene.storyId, sceneId: scene.sceneId });
-                continue;
-            }
-            const forStory = entriesFromDeclarations.get(scene.storyId);
-            if (forStory) {
-                forStory.push(scene.sceneId);
-            } else {
-                entriesFromDeclarations.set(scene.storyId, [scene.sceneId]);
-            }
-            declaredBy.set(seedKey(scene.storyId, scene.sceneId), { kind: "declaredScene", mechanism });
-        }
-    };
-
-    for (const found of listUnreadableMechanisms(input)) {
-        take(found.mechanism, found.reason, found.location, found.missing);
+  const take = (
+    mechanism: AppTagMechanismRef,
+    reason: ReleaseContentBlockerReason,
+    location: string,
+    missing?: ("storyId" | "sceneId")[]
+  ): void => {
+    const mechanismKey = appTagMechanismKey(mechanism);
+    const scenes = declared[mechanismKey];
+    if (!scenes) {
+      blockers.push({ reason, mechanism, mechanismKey, location, ...(missing ? { missing } : {}) });
+      return;
     }
+    for (const scene of scenes) {
+      if (!folded.get(scene.storyId)?.scenes[scene.sceneId]) {
+        // A declared scene the project no longer has. Reported rather than treated as an
+        // entry: a scene id that resolves to nothing would silently narrow what the
+        // declaration protects, which is the failure the declaration exists to prevent.
+        staleDeclarations.push({
+          mechanismKey,
+          location,
+          storyId: scene.storyId,
+          sceneId: scene.sceneId
+        });
+        continue;
+      }
+      const forStory = entriesFromDeclarations.get(scene.storyId);
+      if (forStory) {
+        forStory.push(scene.sceneId);
+      } else {
+        entriesFromDeclarations.set(scene.storyId, [scene.sceneId]);
+      }
+      declaredBy.set(seedKey(scene.storyId, scene.sceneId), { kind: "declaredScene", mechanism });
+    }
+  };
 
-    return { blockers, entriesFromDeclarations, staleDeclarations, declaredBy };
+  for (const found of listUnreadableMechanisms(input)) {
+    take(found.mechanism, found.reason, found.location, found.missing);
+  }
+
+  return { blockers, entriesFromDeclarations, staleDeclarations, declaredBy };
 }
 
 /**
@@ -452,27 +490,27 @@ function readMechanisms(
  * about it.
  */
 function sceneProvenance(
-    reach: StorySceneReach,
-    storyId: string,
-    sceneId: StorySceneId,
-    seededBy: ReadonlyMap<string, ReleaseContentProvenance>,
+  reach: StorySceneReach,
+  storyId: string,
+  sceneId: StorySceneId,
+  seededBy: ReadonlyMap<string, ReleaseContentProvenance>
 ): ReleaseContentProvenance {
-    switch (reach.kind) {
-        case "entryScene":
-            return { kind: "storyEntryScene" };
-        case "documentOrder":
-            return { kind: "documentOrderEntry" };
-        case "jump":
-            return { kind: "storyJump", storyId, sceneId: reach.fromSceneId, blockId: reach.blockId };
-        case "external":
-            // The fallback covers a seed whose source has since gone - it cannot happen from the
-            // solver's own inputs, and answering "the entry" beats answering nothing.
-            return seededBy.get(seedKey(storyId, sceneId)) ?? { kind: "storyEntryScene" };
-    }
+  switch (reach.kind) {
+    case "entryScene":
+      return { kind: "storyEntryScene" };
+    case "documentOrder":
+      return { kind: "documentOrderEntry" };
+    case "jump":
+      return { kind: "storyJump", storyId, sceneId: reach.fromSceneId, blockId: reach.blockId };
+    case "external":
+      // The fallback covers a seed whose source has since gone - it cannot happen from the
+      // solver's own inputs, and answering "the entry" beats answering nothing.
+      return seededBy.get(seedKey(storyId, sceneId)) ?? { kind: "storyEntryScene" };
+  }
 }
 
 function seedKey(storyId: string, sceneId: string): string {
-    return `${storyId}:${sceneId}`;
+  return `${storyId}:${sceneId}`;
 }
 
 /**
@@ -484,34 +522,44 @@ function seedKey(storyId: string, sceneId: string): string {
  * still a reference: it names an asset the package carries.
  */
 function assetProvenance(
-    references: readonly AssetReference[],
-    retainedScenes: ReadonlyMap<string, ReadonlySet<StorySceneId>>,
+  references: readonly AssetReference[],
+  retainedScenes: ReadonlyMap<string, ReadonlySet<StorySceneId>>
 ): ReleaseContentProvenance | null {
-    for (const reference of references) {
-        if (reference.kind !== "story") {
-            return {
-                kind: "referenceSite",
-                siteKind: reference.kind,
-                label: reference.label,
-                field: reference.field,
-            };
-        }
-        const target = reference.target;
-        if (target?.kind === "storyBlock") {
-            if (retainedScenes.get(target.storyId)?.has(target.sceneId)) {
-                return { kind: "storyRow", storyId: target.storyId, sceneId: target.sceneId, blockId: target.blockId };
-            }
-            continue;
-        }
-        if (target?.kind === "storyScene") {
-            if (retainedScenes.get(target.storyId)?.has(target.sceneId)) {
-                return { kind: "storyScene", storyId: target.storyId, sceneId: target.sceneId };
-            }
-            continue;
-        }
-        // A story reference with no jump target - a story animation's preview image is the one that
-        // exists today. It belongs to no scene, so no scene drop can take it away.
-        return { kind: "referenceSite", siteKind: reference.kind, label: reference.label, field: reference.field };
+  for (const reference of references) {
+    if (reference.kind !== "story") {
+      return {
+        kind: "referenceSite",
+        siteKind: reference.kind,
+        label: reference.label,
+        field: reference.field
+      };
     }
-    return null;
+    const target = reference.target;
+    if (target?.kind === "storyBlock") {
+      if (retainedScenes.get(target.storyId)?.has(target.sceneId)) {
+        return {
+          kind: "storyRow",
+          storyId: target.storyId,
+          sceneId: target.sceneId,
+          blockId: target.blockId
+        };
+      }
+      continue;
+    }
+    if (target?.kind === "storyScene") {
+      if (retainedScenes.get(target.storyId)?.has(target.sceneId)) {
+        return { kind: "storyScene", storyId: target.storyId, sceneId: target.sceneId };
+      }
+      continue;
+    }
+    // A story reference with no jump target - a story animation's preview image is the one that
+    // exists today. It belongs to no scene, so no scene drop can take it away.
+    return {
+      kind: "referenceSite",
+      siteKind: reference.kind,
+      label: reference.label,
+      field: reference.field
+    };
+  }
+  return null;
 }

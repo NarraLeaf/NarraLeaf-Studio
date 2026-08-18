@@ -17,11 +17,11 @@ import { STORY_VARIABLES_PANEL_ID } from "./storyVariablesPanelId";
  */
 
 vi.mock("@/apps/workspace/context", () => ({
-    useWorkspace: () => ({ context: null, isInitialized: false }),
+  useWorkspace: () => ({ context: null, isInitialized: false })
 }));
 
 vi.mock("@/apps/workspace/registry", () => ({
-    useRegistry: () => ({ openEditorTab: () => undefined, setPanelVisibility: () => undefined }),
+  useRegistry: () => ({ openEditorTab: () => undefined, setPanelVisibility: () => undefined })
 }));
 
 /**
@@ -37,27 +37,30 @@ vi.mock("@/apps/workspace/registry", () => ({
  */
 
 const markupOf = (name: string) =>
-    renderToStaticMarkup(<VariableJumpRow name={name} valueType="number" onJump={() => undefined} />);
+  renderToStaticMarkup(<VariableJumpRow name={name} valueType="number" onJump={() => undefined} />);
 
 describe("the read-only variable row", () => {
-    it("is a button, so it is reachable and carries the pointer cursor", () => {
-        const markup = markupOf("gold");
-        expect(markup).toMatch(/^<button/);
-        expect(markup).toContain("cursor-pointer");
-    });
+  it("is a button, so it is reachable and carries the pointer cursor", () => {
+    const markup = markupOf("gold");
+    expect(markup).toMatch(/^<button/);
+    expect(markup).toContain("cursor-pointer");
+  });
 
-    it("changes on hover, which is what makes a static row read as a target", () => {
-        // Three at once - fill behind it, the name to full contrast, the border from subtle to solid.
-        const markup = markupOf("gold");
-        expect(markup).toContain("hover:bg-fill");
-        expect(markup).toContain("hover:text-fg");
-        expect(markup).toContain("hover:border-edge");
-    });
+  it("changes on hover, which is what makes a static row read as a target", () => {
+    // Three at once - fill behind it, the name to full contrast, the border from subtle to solid.
+    const markup = markupOf("gold");
+    expect(markup).toContain("hover:bg-fill");
+    expect(markup).toContain("hover:text-fg");
+    expect(markup).toContain("hover:border-edge");
+  });
 
-    it("says the variable and its type, and nothing else", () => {
-        const text = markupOf("gold").replace(/<[^>]*>/g, "|").split("|").filter(Boolean);
-        expect(text).toEqual(["gold", "Number"]);
-    });
+  it("says the variable and its type, and nothing else", () => {
+    const text = markupOf("gold")
+      .replace(/<[^>]*>/g, "|")
+      .split("|")
+      .filter(Boolean);
+    expect(text).toEqual(["gold", "Number"]);
+  });
 });
 
 /**
@@ -68,43 +71,47 @@ describe("the read-only variable row", () => {
  */
 
 const withPayload = (payload?: { storyId: StoryId; sceneId: StorySceneId }) =>
-    renderToStaticMarkup(<StoryVariablesPanel panelId={STORY_VARIABLES_PANEL_ID} payload={payload} />);
+  renderToStaticMarkup(
+    <StoryVariablesPanel panelId={STORY_VARIABLES_PANEL_ID} payload={payload} />
+  );
 
 const A_SCENE = {
-    storyId: "story-1" as StoryId,
-    sceneId: "scene-1" as StorySceneId,
+  storyId: "story-1" as StoryId,
+  sceneId: "scene-1" as StorySceneId
 };
 
 describe("the variables panel with no story focused", () => {
-    it("still offers both project scopes, which is why it is a static module", () => {
-        const markup = withPayload();
-        expect(markup).toContain(enStoryVars.saved.title);
-        expect(markup).toContain(enStoryVars.persistent.title);
-    });
+  it("still offers both project scopes, which is why it is a static module", () => {
+    const markup = withPayload();
+    expect(markup).toContain(enStoryVars.saved.title);
+    expect(markup).toContain(enStoryVars.persistent.title);
+  });
 
-    it("omits the scene section rather than explaining its absence", () => {
-        const markup = withPayload();
-        expect(markup).not.toContain(enStoryVars.scene.title);
-        // And no stand-in for it either: the panel must not grow a line about there being no scene.
-        expect(markup).not.toContain(enStoryVars.scene.hint);
-    });
+  it("omits the scene section rather than explaining its absence", () => {
+    const markup = withPayload();
+    expect(markup).not.toContain(enStoryVars.scene.title);
+    // And no stand-in for it either: the panel must not grow a line about there being no scene.
+    expect(markup).not.toContain(enStoryVars.scene.hint);
+  });
 });
 
 describe("the variables panel with a story scene focused", () => {
-    it("adds the scene section, keeping the project scopes it already had", () => {
-        const markup = withPayload(A_SCENE);
-        expect(markup).toContain(enStoryVars.saved.title);
-        expect(markup).toContain(enStoryVars.persistent.title);
-        expect(markup).toContain(enStoryVars.scene.title);
-    });
+  it("adds the scene section, keeping the project scopes it already had", () => {
+    const markup = withPayload(A_SCENE);
+    expect(markup).toContain(enStoryVars.saved.title);
+    expect(markup).toContain(enStoryVars.persistent.title);
+    expect(markup).toContain(enStoryVars.scene.title);
+  });
 
-    it("puts the scene scope last, after the two this panel authors", () => {
-        // Ownership order, not alphabetical or chronological: what the panel writes comes before
-        // what it only mirrors.
-        const markup = withPayload(A_SCENE);
-        expect(markup.indexOf(enStoryVars.saved.title))
-            .toBeLessThan(markup.indexOf(enStoryVars.persistent.title));
-        expect(markup.indexOf(enStoryVars.persistent.title))
-            .toBeLessThan(markup.indexOf(enStoryVars.scene.title));
-    });
+  it("puts the scene scope last, after the two this panel authors", () => {
+    // Ownership order, not alphabetical or chronological: what the panel writes comes before
+    // what it only mirrors.
+    const markup = withPayload(A_SCENE);
+    expect(markup.indexOf(enStoryVars.saved.title)).toBeLessThan(
+      markup.indexOf(enStoryVars.persistent.title)
+    );
+    expect(markup.indexOf(enStoryVars.persistent.title)).toBeLessThan(
+      markup.indexOf(enStoryVars.scene.title)
+    );
+  });
 });

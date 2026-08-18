@@ -2,8 +2,8 @@ import { StatusBarAlignment } from "@/lib/workspace/services/ui/types";
 
 /** The minimum an entry needs for placement; both built-in modules and service items satisfy it. */
 export interface OrderableStatusBarEntry {
-    id: string;
-    alignment: StatusBarAlignment;
+  id: string;
+  alignment: StatusBarAlignment;
 }
 
 /**
@@ -17,10 +17,10 @@ export interface OrderableStatusBarEntry {
  * their edge, which is why hiding one never shifts the others away from the side they belong to.
  */
 export function orderStatusBarEntries<T extends OrderableStatusBarEntry>(
-    entries: T[],
-    alignment: StatusBarAlignment,
-    hiddenIds: ReadonlySet<string>,
+  entries: T[],
+  alignment: StatusBarAlignment,
+  hiddenIds: ReadonlySet<string>
 ): T[] {
-    const side = entries.filter(entry => entry.alignment === alignment && !hiddenIds.has(entry.id));
-    return alignment === StatusBarAlignment.Right ? side.reverse() : side;
+  const side = entries.filter((entry) => entry.alignment === alignment && !hiddenIds.has(entry.id));
+  return alignment === StatusBarAlignment.Right ? side.reverse() : side;
 }

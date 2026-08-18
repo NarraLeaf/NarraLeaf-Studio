@@ -13,96 +13,98 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
  * Allows editing name, tags, and description for font assets
  */
 export function FontPropertyEditor({ asset, onChange }: PropertyEditorProps<AssetType.Font>) {
-    const { t } = useTranslation();
-    const { context } = useWorkspace();
-    const [fontData, setFontData] = useState<AssetData<AssetType.Font> | null>(null);
+  const { t } = useTranslation();
+  const { context } = useWorkspace();
+  const [fontData, setFontData] = useState<AssetData<AssetType.Font> | null>(null);
 
-    // Load font metadata
-    useEffect(() => {
-        if (!context) return;
+  // Load font metadata
+  useEffect(() => {
+    if (!context) return;
 
-        const loadMetadata = async () => {
-            try {
-                const assetsService = context.services.get<AssetsService>(Services.Assets);
-                const result = await assetsService.fetch(asset);
+    const loadMetadata = async () => {
+      try {
+        const assetsService = context.services.get<AssetsService>(Services.Assets);
+        const result = await assetsService.fetch(asset);
 
-                if (result.success) {
-                    setFontData(result.data);
-                }
-            } catch (err) {
-                console.error("Failed to load font metadata:", err);
-            }
-        };
+        if (result.success) {
+          setFontData(result.data);
+        }
+      } catch (err) {
+        console.error("Failed to load font metadata:", err);
+      }
+    };
 
-        loadMetadata();
-    }, [context, asset]);
+    loadMetadata();
+  }, [context, asset]);
 
-    return (
-        <BasePropertyEditor asset={asset} onChange={onChange}>
-            {/* Preview */}
-            {fontData && (
-                <div className="bg-surface-raised rounded-md p-3 border border-edge">
-                    <div className="flex items-center gap-2 mb-2">
-                        <Type className="w-4 h-4 text-fg-muted" />
-                        <span className="text-sm font-medium text-fg-muted">{t("properties.asset.font.preview")}</span>
-                    </div>
-                    <div className="flex items-center justify-center bg-surface rounded-md p-3">
-                        <div
-                            className="text-sm text-center text-fg-muted"
-                            style={{
-                                fontFamily: fontData.metadata.family || 'serif',
-                                fontStyle: fontData.metadata.style || 'normal',
-                                fontWeight: fontData.metadata.weight || 'normal'
-                            }}
-                        >
-                            {fontData.metadata.family || t("properties.asset.font.sampleText")}
-                            <br />
-                            <span className="text-xs text-fg-subtle">Aa Bb Cc 123</span>
-                        </div>
-                    </div>
-                </div>
+  return (
+    <BasePropertyEditor asset={asset} onChange={onChange}>
+      {/* Preview */}
+      {fontData && (
+        <div className="bg-surface-raised rounded-md p-3 border border-edge">
+          <div className="flex items-center gap-2 mb-2">
+            <Type className="w-4 h-4 text-fg-muted" />
+            <span className="text-sm font-medium text-fg-muted">
+              {t("properties.asset.font.preview")}
+            </span>
+          </div>
+          <div className="flex items-center justify-center bg-surface rounded-md p-3">
+            <div
+              className="text-sm text-center text-fg-muted"
+              style={{
+                fontFamily: fontData.metadata.family || "serif",
+                fontStyle: fontData.metadata.style || "normal",
+                fontWeight: fontData.metadata.weight || "normal"
+              }}
+            >
+              {fontData.metadata.family || t("properties.asset.font.sampleText")}
+              <br />
+              <span className="text-xs text-fg-subtle">Aa Bb Cc 123</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Technical Info (Read-only) */}
+      {fontData && (
+        <div>
+          <label className="block text-xs font-medium text-fg-muted mb-1">
+            {t("properties.asset.font.info")}
+          </label>
+          <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-1">
+            {fontData.metadata.family && (
+              <div className="flex justify-between text-xs">
+                <span className="text-fg-muted">{t("properties.asset.info.family")}:</span>
+                <span className="text-fg-muted">{fontData.metadata.family}</span>
+              </div>
             )}
-
-            {/* Technical Info (Read-only) */}
-            {fontData && (
-                <div>
-                    <label className="block text-xs font-medium text-fg-muted mb-1">
-                        {t("properties.asset.font.info")}
-                    </label>
-                    <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-1">
-                        {fontData.metadata.family && (
-                            <div className="flex justify-between text-xs">
-                                <span className="text-fg-muted">{t("properties.asset.info.family")}:</span>
-                                <span className="text-fg-muted">{fontData.metadata.family}</span>
-                            </div>
-                        )}
-                        {fontData.metadata.style && (
-                            <div className="flex justify-between text-xs">
-                                <span className="text-fg-muted">{t("properties.asset.info.style")}:</span>
-                                <span className="text-fg-muted">{fontData.metadata.style}</span>
-                            </div>
-                        )}
-                        {fontData.metadata.weight && (
-                            <div className="flex justify-between text-xs">
-                                <span className="text-fg-muted">{t("properties.asset.info.weight")}:</span>
-                                <span className="text-fg-muted">{fontData.metadata.weight}</span>
-                            </div>
-                        )}
-                        <div className="flex justify-between text-xs">
-                            <span className="text-fg-muted">{t("properties.asset.info.format")}:</span>
-                            <span className="text-fg-muted">{fontData.metadata.format.toUpperCase()}</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                            <span className="text-fg-muted">{t("properties.asset.info.size")}:</span>
-                            <span className="text-fg-muted">{(fontData.metadata.size / 1024).toFixed(1)} KB</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                            <span className="text-fg-muted">{t("properties.asset.info.hash")}:</span>
-                            <span className="text-fg-muted font-mono text-2xs">{asset.hash.slice(0, 16)}...</span>
-                        </div>
-                    </div>
-                </div>
+            {fontData.metadata.style && (
+              <div className="flex justify-between text-xs">
+                <span className="text-fg-muted">{t("properties.asset.info.style")}:</span>
+                <span className="text-fg-muted">{fontData.metadata.style}</span>
+              </div>
             )}
-        </BasePropertyEditor>
-    );
+            {fontData.metadata.weight && (
+              <div className="flex justify-between text-xs">
+                <span className="text-fg-muted">{t("properties.asset.info.weight")}:</span>
+                <span className="text-fg-muted">{fontData.metadata.weight}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-xs">
+              <span className="text-fg-muted">{t("properties.asset.info.format")}:</span>
+              <span className="text-fg-muted">{fontData.metadata.format.toUpperCase()}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-fg-muted">{t("properties.asset.info.size")}:</span>
+              <span className="text-fg-muted">{(fontData.metadata.size / 1024).toFixed(1)} KB</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-fg-muted">{t("properties.asset.info.hash")}:</span>
+              <span className="text-fg-muted font-mono text-2xs">{asset.hash.slice(0, 16)}...</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </BasePropertyEditor>
+  );
 }

@@ -8,14 +8,16 @@
 export type GamePreferenceChangeToken = { cancel(): void };
 
 type NlrPreferenceApi = {
-    getPreferences?: () => Record<string, unknown>;
-    onPreferenceChange: (listener: (key: string, value: unknown) => void) => GamePreferenceChangeToken;
+  getPreferences?: () => Record<string, unknown>;
+  onPreferenceChange: (
+    listener: (key: string, value: unknown) => void
+  ) => GamePreferenceChangeToken;
 };
 
 type LiveGameLike = {
-    game?: {
-        preference?: NlrPreferenceApi;
-    };
+  game?: {
+    preference?: NlrPreferenceApi;
+  };
 };
 
 /**
@@ -28,28 +30,30 @@ type LiveGameLike = {
  * simply gets no preference-change events.
  */
 export function subscribeGamePreferenceChanges(
-    liveGame: unknown,
-    snapshotRef: { current: Record<string, unknown> },
-    onChange: (key: string, value: unknown, previousValue: unknown) => void,
+  liveGame: unknown,
+  snapshotRef: { current: Record<string, unknown> },
+  onChange: (key: string, value: unknown, previousValue: unknown) => void
 ): GamePreferenceChangeToken | null {
-    const preference = (liveGame as LiveGameLike | null)?.game?.preference;
-    if (!preference || typeof preference.onPreferenceChange !== "function") {
-        return null;
-    }
-    try {
-        snapshotRef.current = { ...(preference.getPreferences?.() ?? {}) };
-    } catch {
-        snapshotRef.current = {};
-    }
-    try {
-        return preference.onPreferenceChange((rawKey, value) => {
-            const key = String(rawKey);
-            const snapshot = snapshotRef.current;
-            const previousValue = Object.prototype.hasOwnProperty.call(snapshot, key) ? snapshot[key] : null;
-            snapshot[key] = value;
-            onChange(key, value, previousValue);
-        });
-    } catch {
-        return null;
-    }
+  const preference = (liveGame as LiveGameLike | null)?.game?.preference;
+  if (!preference || typeof preference.onPreferenceChange !== "function") {
+    return null;
+  }
+  try {
+    snapshotRef.current = { ...(preference.getPreferences?.() ?? {}) };
+  } catch {
+    snapshotRef.current = {};
+  }
+  try {
+    return preference.onPreferenceChange((rawKey, value) => {
+      const key = String(rawKey);
+      const snapshot = snapshotRef.current;
+      const previousValue = Object.prototype.hasOwnProperty.call(snapshot, key)
+        ? snapshot[key]
+        : null;
+      snapshot[key] = value;
+      onChange(key, value, previousValue);
+    });
+  } catch {
+    return null;
+  }
 }

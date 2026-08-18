@@ -15,6 +15,7 @@
 - `nl.container`
 
 `Container` 元素是一个容器，可以包含其他元素。默认拥有以下节点组：
+
 - Displayable
 - Container
 - Broadcast
@@ -24,6 +25,7 @@
 - `nl.text`
 
 `Text` 元素是一个文本，可以显示文本内容。默认拥有以下节点组：
+
 - Displayable
 - Text
 - Broadcast
@@ -33,6 +35,7 @@
 - `nl.image`
 
 `Image` 元素是一个图片，可以显示图片内容。默认拥有以下节点组：
+
 - Displayable
 - Image
 - Broadcast
@@ -42,6 +45,7 @@
 - `nl.button`
 
 `Button` 元素是一个按钮，可以点击。默认拥有以下节点组：
+
 - Displayable
 - Button
 - Broadcast
@@ -51,6 +55,7 @@
 - `nl.list`
 
 `List` 元素是一个列表，可以显示列表内容。默认拥有以下节点组：
+
 - Displayable
 - List
 - Broadcast
@@ -60,6 +65,7 @@
 - `nl.notification.list`
 
 `Notification List` 是 Notification slot 的私有包装控件，由 `nl.list` 机制驱动；运行时 items（`{id, message}`）由 Notification slot bridge 注入。默认拥有以下节点组：
+
 - Displayable
 - List
 - Broadcast
@@ -69,6 +75,7 @@
 - `nl.choice.list`
 
 `Choice List` 是 Choice slot 的私有包装控件，由 `nl.list` 机制驱动；运行时 items（`{text, index, disabled}`，hidden 已过滤）由 Choice slot bridge 注入，`Item Click` 事件默认接 Game `Select Choice`。默认拥有以下节点组：
+
 - Displayable
 - List
 - Broadcast
@@ -78,6 +85,7 @@
 - `nl.nvl.list`
 
 `NVL List` 是 NVL slot 的私有包装控件，由 `nl.list` 机制驱动；运行时 items（`{nametag, isActive, index}`）由 NVL slot bridge 注入，条目增加时自动滚动到底。默认拥有以下节点组：
+
 - Displayable
 - List
 - Broadcast
@@ -87,6 +95,7 @@
 - `nl.nvl.texts`
 
 `NVL Texts` 是 NVL slot 的私有叶子控件，在 item 模板内通过当前条目渲染 NarraLeaf React `<Texts />` 打字效果（引擎耦合，用户无法用普通 Text 实现）。编辑器中回退为普通文本占位。默认拥有以下节点组：
+
 - Displayable
 - Text
 - Broadcast
@@ -96,6 +105,7 @@
 - `nl.slider`
 
 `Slider` 元素是一个数值映射滑块。默认拥有以下节点组：
+
 - Displayable
 - Slider
 - Broadcast
@@ -105,6 +115,7 @@
 - `nl.frame`
 
 `Page` 元素用于在当前 Page 中嵌入另一个 Page。默认拥有以下节点组：
+
 - Displayable
 - Frame
 - Page

@@ -36,74 +36,77 @@ export const FAVORITES_SETTING_KEY = "story.actionCreator.starredActionIds";
  * carrying one has to be recognised rather than kept as an unknown plugin action.
  */
 export const LEGACY_FAVORITE_TO_SPEC_ID: Readonly<
-    Record<ActionCommandId | "conditionIf" | "code" | "declareSavedVariable" | "declarePersistentVariable", string | null>
+  Record<
+    ActionCommandId | "conditionIf" | "code" | "declareSavedVariable" | "declarePersistentVariable",
+    string | null
+  >
 > = {
-    narration: null,
-    conditionIf: null,
-    code: null,
-    declareSavedVariable: null,
-    declarePersistentVariable: null,
+  narration: null,
+  conditionIf: null,
+  code: null,
+  declareSavedVariable: null,
+  declarePersistentVariable: null,
 
-    dialogue: "say",
-    choice: "menu",
-    choiceOption: "menu",
-    condition: "if",
-    conditionBranch: "if",
-    repeat: "repeat",
-    parallel: "parallel",
-    race: "race",
-    sequence: "sequence",
-    background: "background",
-    jump: "jump",
-    nvl: "nvl",
-    waitDuration: "wait",
-    waitClick: "wait",
+  dialogue: "say",
+  choice: "menu",
+  choiceOption: "menu",
+  condition: "if",
+  conditionBranch: "if",
+  repeat: "repeat",
+  parallel: "parallel",
+  race: "race",
+  sequence: "sequence",
+  background: "background",
+  jump: "jump",
+  nvl: "nvl",
+  waitDuration: "wait",
+  waitClick: "wait",
 
-    characterEnter: "show",
-    characterExit: "hide",
-    characterMove: "move",
-    characterExpression: "face",
+  characterEnter: "show",
+  characterExit: "hide",
+  characterMove: "move",
+  characterExpression: "face",
 
-    imageCreate: "image",
-    imageSetSource: "swap",
-    imageShow: "show",
-    imageHide: "hide",
-    textCreate: "text",
-    textSet: "swap",
-    textShow: "show",
-    textHide: "hide",
-    textFont: "font",
-    layerCreate: "layer",
-    layerZIndex: "layer",
-    videoCreate: "video",
-    videoShow: "show",
-    videoHide: "hide",
-    videoPlay: "play",
-    displayableShow: "show",
-    displayableHide: "hide",
-    displayableTransform: "transform",
-    displayableEffect: "fx",
-    screenBlink: "blink",
-    screenVignette: "vignette",
+  imageCreate: "image",
+  imageSetSource: "swap",
+  imageShow: "show",
+  imageHide: "hide",
+  textCreate: "text",
+  textSet: "swap",
+  textShow: "show",
+  textHide: "hide",
+  textFont: "font",
+  layerCreate: "layer",
+  layerZIndex: "layer",
+  videoCreate: "video",
+  videoShow: "show",
+  videoHide: "hide",
+  videoPlay: "play",
+  displayableShow: "show",
+  displayableHide: "hide",
+  displayableTransform: "transform",
+  displayableEffect: "fx",
+  screenBlink: "blink",
+  screenVignette: "vignette",
 
-    bgm: "bgm",
-    sound: "sound",
-    stopSound: "stop",
-    pauseSound: "pause",
-    resumeSound: "resume",
-    soundVolume: "volume",
-    soundRate: "rate",
-    muteSound: "mute",
-    seekSound: "seek",
+  bgm: "bgm",
+  sound: "sound",
+  stopSound: "stop",
+  pauseSound: "pause",
+  resumeSound: "resume",
+  soundVolume: "volume",
+  soundRate: "rate",
+  muteSound: "mute",
+  seekSound: "seek",
 
-    setVariable: "set",
-    incrementVariable: "inc",
-    decrementVariable: "dec",
-    toggleVariable: "toggle",
-    resetVariable: "reset",
-    declareSceneVariable: "declareLocal",
-    executeScript: "blueprint",
-    note: "note",
+  setVariable: "set",
+  incrementVariable: "inc",
+  decrementVariable: "dec",
+  toggleVariable: "toggle",
+  resetVariable: "reset",
+  declareSceneVariable: "declareLocal",
+  executeScript: "blueprint",
+  note: "note"
 };
 
 /**
@@ -111,19 +114,21 @@ export const LEGACY_FAVORITE_TO_SPEC_ID: Readonly<
  * `show` entries are one starred `/show`), unknown ids kept.
  */
 export function migrateStarredActionIds(stored: readonly string[]): string[] {
-    const migrated: string[] = [];
-    for (const id of stored) {
-        if (typeof id !== "string" || !id) {
-            continue;
-        }
-        // A live spec id is already migrated - checked first so a legacy id that happens to spell a
-        // spec id (`note`, `jump`, `bgm`…) cannot be rewritten twice or dropped on a second pass.
-        const next = getCommandSpec(id) ? id : id in LEGACY_FAVORITE_TO_SPEC_ID
-            ? LEGACY_FAVORITE_TO_SPEC_ID[id as keyof typeof LEGACY_FAVORITE_TO_SPEC_ID]
-            : id;
-        if (next && !migrated.includes(next)) {
-            migrated.push(next);
-        }
+  const migrated: string[] = [];
+  for (const id of stored) {
+    if (typeof id !== "string" || !id) {
+      continue;
     }
-    return migrated;
+    // A live spec id is already migrated - checked first so a legacy id that happens to spell a
+    // spec id (`note`, `jump`, `bgm`…) cannot be rewritten twice or dropped on a second pass.
+    const next = getCommandSpec(id)
+      ? id
+      : id in LEGACY_FAVORITE_TO_SPEC_ID
+        ? LEGACY_FAVORITE_TO_SPEC_ID[id as keyof typeof LEGACY_FAVORITE_TO_SPEC_ID]
+        : id;
+    if (next && !migrated.includes(next)) {
+      migrated.push(next);
+    }
+  }
+  return migrated;
 }

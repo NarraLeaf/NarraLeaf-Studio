@@ -6,75 +6,74 @@ import { ActionBarItem } from "./types";
  * Manages action bar items in the title bar
  */
 export class ActionBarService {
-    private store: UIStore;
+  private store: UIStore;
 
-    constructor(store: UIStore) {
-        this.store = store;
-    }
+  constructor(store: UIStore) {
+    this.store = store;
+  }
 
-    /**
-     * Register an action bar item
-     */
-    public register(item: ActionBarItem): () => void {
-        this.store.addActionBarItem(item);
-        
-        // Return disposer function
-        return () => this.unregister(item.id);
-    }
+  /**
+   * Register an action bar item
+   */
+  public register(item: ActionBarItem): () => void {
+    this.store.addActionBarItem(item);
 
-    /**
-     * Unregister an action bar item
-     */
-    public unregister(id: string): void {
-        this.store.removeActionBarItem(id);
-    }
+    // Return disposer function
+    return () => this.unregister(item.id);
+  }
 
-    /**
-     * Update an action bar item
-     */
-    public update(id: string, updates: Partial<Omit<ActionBarItem, "id">>): void {
-        const item = this.store.getActionBarItems().find(i => i.id === id);
-        if (item) {
-            this.store.updateActionBarItem({
-                ...item,
-                ...updates,
-            });
-        }
-    }
+  /**
+   * Unregister an action bar item
+   */
+  public unregister(id: string): void {
+    this.store.removeActionBarItem(id);
+  }
 
-    /**
-     * Set item visibility
-     */
-    public setVisible(id: string, visible: boolean): void {
-        this.update(id, { visible });
+  /**
+   * Update an action bar item
+   */
+  public update(id: string, updates: Partial<Omit<ActionBarItem, "id">>): void {
+    const item = this.store.getActionBarItems().find((i) => i.id === id);
+    if (item) {
+      this.store.updateActionBarItem({
+        ...item,
+        ...updates
+      });
     }
+  }
 
-    /**
-     * Set item enabled state
-     */
-    public setEnabled(id: string, enabled: boolean): void {
-        this.update(id, { disabled: !enabled });
-    }
+  /**
+   * Set item visibility
+   */
+  public setVisible(id: string, visible: boolean): void {
+    this.update(id, { visible });
+  }
 
-    /**
-     * Set item badge
-     */
-    public setBadge(id: string, badge: string | number | undefined): void {
-        this.update(id, { badge });
-    }
+  /**
+   * Set item enabled state
+   */
+  public setEnabled(id: string, enabled: boolean): void {
+    this.update(id, { disabled: !enabled });
+  }
 
-    /**
-     * Get all action bar items
-     */
-    public getAll(): ActionBarItem[] {
-        return this.store.getActionBarItems();
-    }
+  /**
+   * Set item badge
+   */
+  public setBadge(id: string, badge: string | number | undefined): void {
+    this.update(id, { badge });
+  }
 
-    /**
-     * Get an action bar item by id
-     */
-    public get(id: string): ActionBarItem | undefined {
-        return this.store.getActionBarItems().find(i => i.id === id);
-    }
+  /**
+   * Get all action bar items
+   */
+  public getAll(): ActionBarItem[] {
+    return this.store.getActionBarItems();
+  }
+
+  /**
+   * Get an action bar item by id
+   */
+  public get(id: string): ActionBarItem | undefined {
+    return this.store.getActionBarItems().find((i) => i.id === id);
+  }
 }
-

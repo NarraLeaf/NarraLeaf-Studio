@@ -8,12 +8,12 @@ each file came from, so a later maintainer can re-verify rather than re-search.
 
 ## Backgrounds — CC0 (public domain dedication)
 
-| Asset | Source | Author |
-|---|---|---|
+| Asset       | Source                                                                       | Author                     |
+| ----------- | ---------------------------------------------------------------------------- | -------------------------- |
 | `classroom` | [OpenGameArt · Classroom 002](https://opengameart.org/content/classroom-002) | midnight68 / MedicineStorm |
-| `corridor` | same submission (`lockers_0.jpg`) | midnight68 / MedicineStorm |
-| `room-warm` | same submission (`classroom4.png`) | midnight68 / MedicineStorm |
-| `washroom` | [OpenGameArt · Bathroom01](https://opengameart.org/content/bathroom01) | midnight68 / MedicineStorm |
+| `corridor`  | same submission (`lockers_0.jpg`)                                            | midnight68 / MedicineStorm |
+| `room-warm` | same submission (`classroom4.png`)                                           | midnight68 / MedicineStorm |
+| `washroom`  | [OpenGameArt · Bathroom01](https://opengameart.org/content/bathroom01)       | midnight68 / MedicineStorm |
 
 `corridor` was cropped to 1074×604 — 16:9, so it fills a 1920×1080 stage instead
 of letterboxing it. The other three ship at their original sizes.
@@ -22,10 +22,10 @@ CC0 requires no attribution. The table is here anyway, for provenance.
 
 ## Audio — CC0
 
-| Asset | Source | Note |
-|---|---|---|
-| `bgm-daily` | [OpenGameArt · Catmint](https://opengameart.org/content/catmint) | the submission's own pre-cut loop |
-| `bgm-quiet` | [OpenGameArt · Forget Me Not](https://opengameart.org/content/forget-me-not) | the submission's own pre-cut loop |
+| Asset                               | Source                                                                                                               | Note                                                                                 |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `bgm-daily`                         | [OpenGameArt · Catmint](https://opengameart.org/content/catmint)                                                     | the submission's own pre-cut loop                                                    |
+| `bgm-quiet`                         | [OpenGameArt · Forget Me Not](https://opengameart.org/content/forget-me-not)                                         | the submission's own pre-cut loop                                                    |
 | `ui-confirm`, `ui-hover`, `ui-back` | [OpenGameArt · 51 UI sound effects](https://opengameart.org/content/51-ui-sound-effects-buttons-switches-and-clicks) | three clips of the 51; the pack's own readme credits **Kenney Vleugels (kenney.nl)** |
 
 Both music files are the loop variants their authors published, which is what

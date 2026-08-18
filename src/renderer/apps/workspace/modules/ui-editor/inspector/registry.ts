@@ -11,12 +11,12 @@ export type { UIInspectorData };
  * Delegates to the widget module's `createInspector` method.
  */
 export function getElementInspector(
-    element: UIElement,
-    documentService: UIDocumentService
+  element: UIElement,
+  documentService: UIDocumentService
 ): PropertyEditorSchema<UIInspectorData> | undefined {
-    const mod = widgetModuleRegistry.get(element.type);
-    if (!mod?.createInspector) {
-        return undefined;
-    }
-    return mod.createInspector({ element, documentService });
+  const mod = widgetModuleRegistry.get(element.type);
+  if (!mod?.createInspector) {
+    return undefined;
+  }
+  return mod.createInspector({ element, documentService });
 }

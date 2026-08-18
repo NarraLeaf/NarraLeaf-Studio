@@ -21,37 +21,37 @@ const VCS_CHANGES_TAB_PREFIX = "narraleaf-studio:vcs-changes";
  * mishandled case - which is how this one was added.
  */
 export type VcsChangesPayload =
-    /**
-     * The author's uncommitted work against the last version. Never cached; it scans (docs §4.17).
-     *
-     * `headLabel` is what the opener was already calling the version being compared against (`#36`),
-     * and it exists because without it this tab was the one surface in the feature that named a
-     * version by its hash - "Changes since 3ddbc20" beside a rail, a status cell and a menu that all
-     * said `#36`. Optional because the tab can be restored from a persisted layout with no opener to
-     * ask, and then the hash is the honest fallback rather than a number invented here.
-     */
-    | { readonly mode: "working-tree"; readonly headLabel?: string }
-    /**
-     * Two revisions. `fromLabel` / `toLabel` are how the author was already naming them (`#12`);
-     * absent falls back to a short hash, because a comparison entered from somewhere that did not
-     * pass a label still has to say which two versions it is between.
-     */
-    | {
-        readonly mode: "between";
-        readonly from: RevisionId;
-        readonly to: RevisionId;
-        readonly fromLabel?: string;
-        readonly toLabel?: string;
+  /**
+   * The author's uncommitted work against the last version. Never cached; it scans (docs §4.17).
+   *
+   * `headLabel` is what the opener was already calling the version being compared against (`#36`),
+   * and it exists because without it this tab was the one surface in the feature that named a
+   * version by its hash - "Changes since 3ddbc20" beside a rail, a status cell and a menu that all
+   * said `#36`. Optional because the tab can be restored from a persisted layout with no opener to
+   * ask, and then the hash is the honest fallback rather than a number invented here.
+   */
+  | { readonly mode: "working-tree"; readonly headLabel?: string }
+  /**
+   * Two revisions. `fromLabel` / `toLabel` are how the author was already naming them (`#12`);
+   * absent falls back to a short hash, because a comparison entered from somewhere that did not
+   * pass a label still has to say which two versions it is between.
+   */
+  | {
+      readonly mode: "between";
+      readonly from: RevisionId;
+      readonly to: RevisionId;
+      readonly fromLabel?: string;
+      readonly toLabel?: string;
     }
-    /**
-     * The open merge: one row per path it could not settle, each taken whole from one side.
-     *
-     * **Carries no paths.** They are re-read from the repository when the tab renders, because a
-     * merge outlives this window and a list captured when the tab was opened would be a list from
-     * before the author last touched it. It carries nothing at all, in fact - there is only ever
-     * one merge open in a project.
-     */
-    | { readonly mode: "resolve" };
+  /**
+   * The open merge: one row per path it could not settle, each taken whole from one side.
+   *
+   * **Carries no paths.** They are re-read from the repository when the tab renders, because a
+   * merge outlives this window and a list captured when the tab was opened would be a list from
+   * before the author last touched it. It carries nothing at all, in fact - there is only ever
+   * one merge open in a project.
+   */
+  | { readonly mode: "resolve" };
 
 /**
  * The tab id for one comparison.
@@ -62,15 +62,15 @@ export type VcsChangesPayload =
  * collapsing them would make opening the second silently replace the first.
  */
 export function vcsChangesTabId(payload: VcsChangesPayload): string {
-    switch (payload.mode) {
-        case "working-tree":
-            return `${VCS_CHANGES_TAB_PREFIX}:working-tree`;
-        case "between":
-            return `${VCS_CHANGES_TAB_PREFIX}:${payload.from}..${payload.to}`;
-        case "resolve":
-            // One id, like the working tree and for a stronger reason: a project has at most one
-            // open merge, so a second tab for it would be a second view of the same decisions with
-            // no way to tell which one the author acted in.
-            return `${VCS_CHANGES_TAB_PREFIX}:resolve`;
-    }
+  switch (payload.mode) {
+    case "working-tree":
+      return `${VCS_CHANGES_TAB_PREFIX}:working-tree`;
+    case "between":
+      return `${VCS_CHANGES_TAB_PREFIX}:${payload.from}..${payload.to}`;
+    case "resolve":
+      // One id, like the working tree and for a stronger reason: a project has at most one
+      // open merge, so a second tab for it would be a second view of the same decisions with
+      // no way to tell which one the author acted in.
+      return `${VCS_CHANGES_TAB_PREFIX}:resolve`;
+  }
 }

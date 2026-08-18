@@ -8,11 +8,11 @@ import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import type { FocusContext } from "@/lib/workspace/services/ui/types";
 import {
-    closableOtherTabIds,
-    closableTabIds,
-    closableTabIdsToRight,
-    findActiveEditorTarget,
-    type ActiveEditorTarget,
+  closableOtherTabIds,
+  closableTabIds,
+  closableTabIdsToRight,
+  findActiveEditorTarget,
+  type ActiveEditorTarget
 } from "./editorCommandsModel";
 
 /**
@@ -27,159 +27,162 @@ import {
  * directly — so palette-closed tabs are still recorded for "reopen closed tab".
  */
 export function EditorCommands() {
-    const { context } = useWorkspace();
-    const { editorLayout, closeEditorTab, closeEditorTabs } = useRegistry();
+  const { context } = useWorkspace();
+  const { editorLayout, closeEditorTab, closeEditorTabs } = useRegistry();
 
-    // The commands are registered once; their `when`/`run` read the latest layout and close
-    // functions through this ref instead of re-registering on every editor change.
-    const stateRef = useRef({ editorLayout, closeEditorTab, closeEditorTabs });
-    stateRef.current = { editorLayout, closeEditorTab, closeEditorTabs };
+  // The commands are registered once; their `when`/`run` read the latest layout and close
+  // functions through this ref instead of re-registering on every editor change.
+  const stateRef = useRef({ editorLayout, closeEditorTab, closeEditorTabs });
+  stateRef.current = { editorLayout, closeEditorTab, closeEditorTabs };
 
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const commandService = context.services.get<CommandService>(Services.Command);
-        const uiService = context.services.get<UIService>(Services.UI);
+  useEffect(() => {
+    if (!context) {
+      return;
+    }
+    const commandService = context.services.get<CommandService>(Services.Command);
+    const uiService = context.services.get<UIService>(Services.UI);
 
-        // `focus` is supplied by the palette's `when` check; `run` reads live focus at click time.
-        const activeTarget = (focus?: FocusContext | null): ActiveEditorTarget | null =>
-            findActiveEditorTarget(stateRef.current.editorLayout, focus ?? uiService.focus.getFocus());
+    // `focus` is supplied by the palette's `when` check; `run` reads live focus at click time.
+    const activeTarget = (focus?: FocusContext | null): ActiveEditorTarget | null =>
+      findActiveEditorTarget(stateRef.current.editorLayout, focus ?? uiService.focus.getFocus());
 
-        const closeTabs = (ids: string[], groupId: string) => {
-            if (ids.length > 0) {
-                stateRef.current.closeEditorTabs(ids, groupId);
-            }
-        };
-
-        const groupCount = (): number => {
-            const count = (layout: typeof stateRef.current.editorLayout): number =>
-                "tabs" in layout ? 1 : count(layout.first) + count(layout.second);
-            return count(stateRef.current.editorLayout);
-        };
-
-        return commandService.registerMany([
-            {
-                id: "editor:close-other-groups",
-                titleKey: "workspace.shell.commandPalette.editor.closeOtherGroups",
-                categoryKey: "workspace.shell.commandPalette.categoryEditor",
-                // The five below are one act at five scopes, so they read as one family and differ
-                // only in how much they take: one tab, the rest, everything rightwards, all of them,
-                // and - the odd one out - the split back down to a single group.
-                icon: <Minimize2 className="w-4 h-4" />,
-                when: focus => !!activeTarget(focus) && groupCount() > 1,
-                run: () => {
-                    const target = activeTarget();
-                    if (target) {
-                        uiService.getStore().closeOtherEditorGroups(target.group.id);
-                    }
-                },
-            },
-            {
-                id: "editor:close-tab",
-                titleKey: "workspace.shell.commandPalette.editor.closeTab",
-                categoryKey: "workspace.shell.commandPalette.categoryEditor",
-                icon: <X className="w-4 h-4" />,
-                // Claiming the chord is what keeps this off the list twice: EditorGroup registers
-                // the same close on `mod+w` per group, and without a claim here the palette listed
-                // both — one "Close Tab" under Editor and another under General.
-                keybinding: "mod+w",
-                when: focus => {
-                    const target = activeTarget(focus);
-                    return !!target && target.tab.closable !== false;
-                },
-                run: () => {
-                    const target = activeTarget();
-                    if (target && target.tab.closable !== false) {
-                        stateRef.current.closeEditorTab(target.tab.id, target.group.id);
-                    }
-                },
-            },
-            {
-                id: "editor:close-others",
-                titleKey: "workspace.shell.commandPalette.editor.closeOthers",
-                categoryKey: "workspace.shell.commandPalette.categoryEditor",
-                icon: <SquareX className="w-4 h-4" />,
-                when: focus => {
-                    const target = activeTarget(focus);
-                    return !!target && closableOtherTabIds(target.group, target.index).length > 0;
-                },
-                run: () => {
-                    const target = activeTarget();
-                    if (target) {
-                        closeTabs(closableOtherTabIds(target.group, target.index), target.group.id);
-                    }
-                },
-            },
-            {
-                id: "editor:close-to-right",
-                titleKey: "workspace.shell.commandPalette.editor.closeToRight",
-                categoryKey: "workspace.shell.commandPalette.categoryEditor",
-                icon: <ArrowRightFromLine className="w-4 h-4" />,
-                when: focus => {
-                    const target = activeTarget(focus);
-                    return !!target && closableTabIdsToRight(target.group, target.index).length > 0;
-                },
-                run: () => {
-                    const target = activeTarget();
-                    if (target) {
-                        closeTabs(closableTabIdsToRight(target.group, target.index), target.group.id);
-                    }
-                },
-            },
-            {
-                id: "editor:close-all",
-                titleKey: "workspace.shell.commandPalette.editor.closeAll",
-                categoryKey: "workspace.shell.commandPalette.categoryEditor",
-                icon: <CircleX className="w-4 h-4" />,
-                when: focus => {
-                    const target = activeTarget(focus);
-                    return !!target && closableTabIds(target.group.tabs).length > 0;
-                },
-                run: () => {
-                    const target = activeTarget();
-                    if (target) {
-                        closeTabs(closableTabIds(target.group.tabs), target.group.id);
-                    }
-                },
-            },
-        ]);
-    }, [context]);
-
-    // Splitting is registered *only* as a keybinding. The palette picks it up from there and
-    // resolves its name and chord through the keybinding catalog, so a rebind shows up everywhere
-    // at once — registering it as a command as well would mean a second, hand-synced copy of the
-    // chord that goes stale the moment the user changes it.
-    const splitTarget = () => {
-        if (!context) {
-            return null;
-        }
-        const uiService = context.services.get<UIService>(Services.UI);
-        const target = findActiveEditorTarget(stateRef.current.editorLayout, uiService.focus.getFocus());
-        // A group needs a tab to keep behind; see UIStore.splitEditorGroup.
-        return target && target.group.tabs.length >= 2 ? { uiService, target } : null;
-    };
-    const splitTargetRef = useRef(splitTarget);
-    splitTargetRef.current = splitTarget;
-
-    const runSplit = (direction: "horizontal" | "vertical") => {
-        const resolved = splitTargetRef.current();
-        resolved?.uiService.getStore().splitEditorGroup(resolved.target.group.id, direction);
+    const closeTabs = (ids: string[], groupId: string) => {
+      if (ids.length > 0) {
+        stateRef.current.closeEditorTabs(ids, groupId);
+      }
     };
 
-    useKeybinding({
-        id: "editor-split-right",
-        key: "mod+\\",
-        when: () => splitTargetRef.current() !== null,
-        handler: () => runSplit("horizontal"),
-    });
+    const groupCount = (): number => {
+      const count = (layout: typeof stateRef.current.editorLayout): number =>
+        "tabs" in layout ? 1 : count(layout.first) + count(layout.second);
+      return count(stateRef.current.editorLayout);
+    };
 
-    useKeybinding({
-        id: "editor-split-down",
-        key: "mod+alt+\\",
-        when: () => splitTargetRef.current() !== null,
-        handler: () => runSplit("vertical"),
-    });
+    return commandService.registerMany([
+      {
+        id: "editor:close-other-groups",
+        titleKey: "workspace.shell.commandPalette.editor.closeOtherGroups",
+        categoryKey: "workspace.shell.commandPalette.categoryEditor",
+        // The five below are one act at five scopes, so they read as one family and differ
+        // only in how much they take: one tab, the rest, everything rightwards, all of them,
+        // and - the odd one out - the split back down to a single group.
+        icon: <Minimize2 className="w-4 h-4" />,
+        when: (focus) => !!activeTarget(focus) && groupCount() > 1,
+        run: () => {
+          const target = activeTarget();
+          if (target) {
+            uiService.getStore().closeOtherEditorGroups(target.group.id);
+          }
+        }
+      },
+      {
+        id: "editor:close-tab",
+        titleKey: "workspace.shell.commandPalette.editor.closeTab",
+        categoryKey: "workspace.shell.commandPalette.categoryEditor",
+        icon: <X className="w-4 h-4" />,
+        // Claiming the chord is what keeps this off the list twice: EditorGroup registers
+        // the same close on `mod+w` per group, and without a claim here the palette listed
+        // both — one "Close Tab" under Editor and another under General.
+        keybinding: "mod+w",
+        when: (focus) => {
+          const target = activeTarget(focus);
+          return !!target && target.tab.closable !== false;
+        },
+        run: () => {
+          const target = activeTarget();
+          if (target && target.tab.closable !== false) {
+            stateRef.current.closeEditorTab(target.tab.id, target.group.id);
+          }
+        }
+      },
+      {
+        id: "editor:close-others",
+        titleKey: "workspace.shell.commandPalette.editor.closeOthers",
+        categoryKey: "workspace.shell.commandPalette.categoryEditor",
+        icon: <SquareX className="w-4 h-4" />,
+        when: (focus) => {
+          const target = activeTarget(focus);
+          return !!target && closableOtherTabIds(target.group, target.index).length > 0;
+        },
+        run: () => {
+          const target = activeTarget();
+          if (target) {
+            closeTabs(closableOtherTabIds(target.group, target.index), target.group.id);
+          }
+        }
+      },
+      {
+        id: "editor:close-to-right",
+        titleKey: "workspace.shell.commandPalette.editor.closeToRight",
+        categoryKey: "workspace.shell.commandPalette.categoryEditor",
+        icon: <ArrowRightFromLine className="w-4 h-4" />,
+        when: (focus) => {
+          const target = activeTarget(focus);
+          return !!target && closableTabIdsToRight(target.group, target.index).length > 0;
+        },
+        run: () => {
+          const target = activeTarget();
+          if (target) {
+            closeTabs(closableTabIdsToRight(target.group, target.index), target.group.id);
+          }
+        }
+      },
+      {
+        id: "editor:close-all",
+        titleKey: "workspace.shell.commandPalette.editor.closeAll",
+        categoryKey: "workspace.shell.commandPalette.categoryEditor",
+        icon: <CircleX className="w-4 h-4" />,
+        when: (focus) => {
+          const target = activeTarget(focus);
+          return !!target && closableTabIds(target.group.tabs).length > 0;
+        },
+        run: () => {
+          const target = activeTarget();
+          if (target) {
+            closeTabs(closableTabIds(target.group.tabs), target.group.id);
+          }
+        }
+      }
+    ]);
+  }, [context]);
 
-    return null;
+  // Splitting is registered *only* as a keybinding. The palette picks it up from there and
+  // resolves its name and chord through the keybinding catalog, so a rebind shows up everywhere
+  // at once — registering it as a command as well would mean a second, hand-synced copy of the
+  // chord that goes stale the moment the user changes it.
+  const splitTarget = () => {
+    if (!context) {
+      return null;
+    }
+    const uiService = context.services.get<UIService>(Services.UI);
+    const target = findActiveEditorTarget(
+      stateRef.current.editorLayout,
+      uiService.focus.getFocus()
+    );
+    // A group needs a tab to keep behind; see UIStore.splitEditorGroup.
+    return target && target.group.tabs.length >= 2 ? { uiService, target } : null;
+  };
+  const splitTargetRef = useRef(splitTarget);
+  splitTargetRef.current = splitTarget;
+
+  const runSplit = (direction: "horizontal" | "vertical") => {
+    const resolved = splitTargetRef.current();
+    resolved?.uiService.getStore().splitEditorGroup(resolved.target.group.id, direction);
+  };
+
+  useKeybinding({
+    id: "editor-split-right",
+    key: "mod+\\",
+    when: () => splitTargetRef.current() !== null,
+    handler: () => runSplit("horizontal")
+  });
+
+  useKeybinding({
+    id: "editor-split-down",
+    key: "mod+alt+\\",
+    when: () => splitTargetRef.current() !== null,
+    handler: () => runSplit("vertical")
+  });
+
+  return null;
 }

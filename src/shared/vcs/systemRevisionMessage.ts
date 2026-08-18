@@ -60,10 +60,10 @@ export const VCS_DEFAULT_MERGE_MESSAGE = "Merge";
  * that records an empty message.
  */
 export const VCS_CHECKPOINT_MESSAGES: Readonly<Record<VcsCheckpointReason, string>> = {
-    interval: "Checkpoint",
-    "project-close": "Checkpoint before closing the project",
-    build: "Checkpoint before build",
-    restore: "Checkpoint before restore",
+  interval: "Checkpoint",
+  "project-close": "Checkpoint before closing the project",
+  build: "Checkpoint before build",
+  restore: "Checkpoint before restore"
 };
 
 /** The fixed half of what a restore records. The version it went back to follows it. */
@@ -76,12 +76,12 @@ const RESTORE_MESSAGE_PREFIX = "Restore version ";
  * the one system message that carries a parameter rather than being a constant.
  */
 export function composeRestoreMessage(label: string): string {
-    return `${RESTORE_MESSAGE_PREFIX}${label}`;
+  return `${RESTORE_MESSAGE_PREFIX}${label}`;
 }
 
 export interface SystemRevisionMessage {
-    key: TranslationKey;
-    params?: Readonly<Record<string, string>>;
+  key: TranslationKey;
+  params?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -93,14 +93,20 @@ export interface SystemRevisionMessage {
  * here, and the constant is imported by whoever writes it rather than typed out there.
  */
 export const VCS_SYSTEM_MESSAGES: ReadonlyArray<readonly [string, TranslationKey]> = [
-    [VCS_INITIAL_MESSAGE, "workspace.shell.versionControl.systemMessage.enabled"],
-    [VCS_PROJECT_CREATED_MESSAGE, "workspace.shell.versionControl.systemMessage.created"],
-    [VCS_DEFAULT_COMMIT_MESSAGE, "workspace.shell.versionControl.systemMessage.unnamed"],
-    [VCS_DEFAULT_MERGE_MESSAGE, "workspace.shell.versionControl.systemMessage.merge"],
-    [VCS_CHECKPOINT_MESSAGES.interval, "workspace.shell.versionControl.systemMessage.checkpoint"],
-    [VCS_CHECKPOINT_MESSAGES["project-close"], "workspace.shell.versionControl.systemMessage.checkpointClose"],
-    [VCS_CHECKPOINT_MESSAGES.build, "workspace.shell.versionControl.systemMessage.checkpointBuild"],
-    [VCS_CHECKPOINT_MESSAGES.restore, "workspace.shell.versionControl.systemMessage.checkpointRestore"],
+  [VCS_INITIAL_MESSAGE, "workspace.shell.versionControl.systemMessage.enabled"],
+  [VCS_PROJECT_CREATED_MESSAGE, "workspace.shell.versionControl.systemMessage.created"],
+  [VCS_DEFAULT_COMMIT_MESSAGE, "workspace.shell.versionControl.systemMessage.unnamed"],
+  [VCS_DEFAULT_MERGE_MESSAGE, "workspace.shell.versionControl.systemMessage.merge"],
+  [VCS_CHECKPOINT_MESSAGES.interval, "workspace.shell.versionControl.systemMessage.checkpoint"],
+  [
+    VCS_CHECKPOINT_MESSAGES["project-close"],
+    "workspace.shell.versionControl.systemMessage.checkpointClose"
+  ],
+  [VCS_CHECKPOINT_MESSAGES.build, "workspace.shell.versionControl.systemMessage.checkpointBuild"],
+  [
+    VCS_CHECKPOINT_MESSAGES.restore,
+    "workspace.shell.versionControl.systemMessage.checkpointRestore"
+  ]
 ];
 
 /** The same table as a lookup. A `Map` so a sentence cannot collide with `Object.prototype`. */
@@ -118,18 +124,18 @@ const FIXED_MESSAGES: ReadonlyMap<string, TranslationKey> = new Map(VCS_SYSTEM_M
  * words.
  */
 export function recogniseSystemRevisionMessage(message: string): SystemRevisionMessage | null {
-    const trimmed = message.trim();
-    const fixed = FIXED_MESSAGES.get(trimmed);
-    if (fixed) {
-        return { key: fixed };
+  const trimmed = message.trim();
+  const fixed = FIXED_MESSAGES.get(trimmed);
+  if (fixed) {
+    return { key: fixed };
+  }
+  if (trimmed.startsWith(RESTORE_MESSAGE_PREFIX)) {
+    const version = trimmed.slice(RESTORE_MESSAGE_PREFIX.length).trim();
+    // A bare `Restore version ` with nothing after it is not one of ours: the composer is never
+    // called without a label, and translating it would leave a sentence with a hole in it.
+    if (version) {
+      return { key: "workspace.shell.versionControl.systemMessage.restored", params: { version } };
     }
-    if (trimmed.startsWith(RESTORE_MESSAGE_PREFIX)) {
-        const version = trimmed.slice(RESTORE_MESSAGE_PREFIX.length).trim();
-        // A bare `Restore version ` with nothing after it is not one of ours: the composer is never
-        // called without a label, and translating it would leave a sentence with a hole in it.
-        if (version) {
-            return { key: "workspace.shell.versionControl.systemMessage.restored", params: { version } };
-        }
-    }
-    return null;
+  }
+  return null;
 }

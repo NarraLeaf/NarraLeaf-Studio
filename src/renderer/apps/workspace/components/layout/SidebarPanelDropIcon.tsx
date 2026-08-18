@@ -10,24 +10,24 @@ import { setWorkspaceSelectionToPrimaryAsset } from "@/apps/workspace/modules/as
  * `@dnd-kit/sortable` item; when absent the icon renders as a plain (non-draggable) button.
  */
 export interface SidebarPanelSortable {
-    setNodeRef: (element: HTMLElement | null) => void;
-    style: CSSProperties;
-    attributes: DraggableAttributes;
-    listeners: Record<string, unknown> | undefined;
-    isDragging: boolean;
+  setNodeRef: (element: HTMLElement | null) => void;
+  style: CSSProperties;
+  attributes: DraggableAttributes;
+  listeners: Record<string, unknown> | undefined;
+  isDragging: boolean;
 }
 
 interface SidebarPanelDropIconProps {
-    panel: PanelDefinition;
-    active: boolean;
-    sidebarVisible: boolean;
-    onPanelClick: (event: MouseEvent<HTMLElement>) => void;
-    /** Show sidebar, select panel, and move workspace focus (for drag-drop). */
-    onActivateForDrop: () => void;
-    /** Right-click on this icon (opens the rail's visibility context menu). */
-    onContextMenu?: (event: MouseEvent) => void;
-    /** Optional sortable bindings from the enclosing rail (enables drag-to-reorder). */
-    sortable?: SidebarPanelSortable;
+  panel: PanelDefinition;
+  active: boolean;
+  sidebarVisible: boolean;
+  onPanelClick: (event: MouseEvent<HTMLElement>) => void;
+  /** Show sidebar, select panel, and move workspace focus (for drag-drop). */
+  onActivateForDrop: () => void;
+  /** Right-click on this icon (opens the rail's visibility context menu). */
+  onContextMenu?: (event: MouseEvent) => void;
+  /** Optional sortable bindings from the enclosing rail (enables drag-to-reorder). */
+  sortable?: SidebarPanelSortable;
 }
 
 /**
@@ -35,56 +35,56 @@ interface SidebarPanelDropIconProps {
  * Optionally participates in drag-to-reorder when the enclosing rail provides `sortable`.
  */
 export function SidebarPanelDropIcon({
-    panel,
-    active,
-    sidebarVisible,
-    onPanelClick,
-    onActivateForDrop,
-    onContextMenu,
-    sortable,
+  panel,
+  active,
+  sidebarVisible,
+  onPanelClick,
+  onActivateForDrop,
+  onContextMenu,
+  sortable
 }: SidebarPanelDropIconProps) {
-    const { context } = useWorkspace();
+  const { context } = useWorkspace();
 
-    const { dropTargetProps, overlayClassName } = useAssetDropTarget({
-        onDrop: ({ wire, resolved }) => {
-            if (!context || resolved.length === 0) {
-                return;
-            }
-            onActivateForDrop();
-            const primary = resolved.find(a => a.id === wire.p) ?? resolved[0];
-            setWorkspaceSelectionToPrimaryAsset(context, primary);
-        },
-    });
+  const { dropTargetProps, overlayClassName } = useAssetDropTarget({
+    onDrop: ({ wire, resolved }) => {
+      if (!context || resolved.length === 0) {
+        return;
+      }
+      onActivateForDrop();
+      const primary = resolved.find((a) => a.id === wire.p) ?? resolved[0];
+      setWorkspaceSelectionToPrimaryAsset(context, primary);
+    }
+  });
 
-    // A rail action (and the collapse group) has no panel body, so there is nowhere to drop an
-    // asset *into*: accepting one would activate the sidebar onto an empty panel. Those read as
-    // plain buttons instead.
-    const acceptsAssetDrop = Boolean(panel.component);
+  // A rail action (and the collapse group) has no panel body, so there is nowhere to drop an
+  // asset *into*: accepting one would activate the sidebar onto an empty panel. Those read as
+  // plain buttons instead.
+  const acceptsAssetDrop = Boolean(panel.component);
 
-    return (
-        <button
-            type="button"
-            ref={sortable?.setNodeRef}
-            style={sortable?.style}
-            {...(acceptsAssetDrop ? dropTargetProps : {})}
-            {...sortable?.attributes}
-            {...sortable?.listeners}
-            className={`
+  return (
+    <button
+      type="button"
+      ref={sortable?.setNodeRef}
+      style={sortable?.style}
+      {...(acceptsAssetDrop ? dropTargetProps : {})}
+      {...sortable?.attributes}
+      {...sortable?.listeners}
+      className={`
                 w-10 h-10 rounded-md flex items-center justify-center transition-colors cursor-default
                 ${
-                    active && sidebarVisible
-                        ? "bg-fill-strong text-fg"
-                        : "text-fg-muted hover:bg-fill hover:text-fg"
+                  active && sidebarVisible
+                    ? "bg-fill-strong text-fg"
+                    : "text-fg-muted hover:bg-fill hover:text-fg"
                 }
                 ${sortable?.isDragging ? "opacity-50 ring-2 ring-primary/60" : ""}
                 ${acceptsAssetDrop ? overlayClassName : ""}
             `}
-            onClick={onPanelClick}
-            onContextMenu={onContextMenu}
-            data-tip={panel.title}
-            aria-label={panel.title}
-        >
-            {panel.icon}
-        </button>
-    );
+      onClick={onPanelClick}
+      onContextMenu={onContextMenu}
+      data-tip={panel.title}
+      aria-label={panel.title}
+    >
+      {panel.icon}
+    </button>
+  );
 }

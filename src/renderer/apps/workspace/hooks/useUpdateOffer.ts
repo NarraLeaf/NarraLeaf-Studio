@@ -22,48 +22,48 @@ import { useWorkspace } from "../context";
 let offered = false;
 
 export function useUpdateOffer() {
-    const { context, recovery } = useWorkspace();
+  const { context, recovery } = useWorkspace();
 
-    useEffect(() => {
-        // A workspace that is in recovery has a more urgent thing to say, and the shell itself has
-        // no notification surface at all.
-        if (!context || recovery) {
-            return;
-        }
+  useEffect(() => {
+    // A workspace that is in recovery has a more urgent thing to say, and the shell itself has
+    // no notification surface at all.
+    if (!context || recovery) {
+      return;
+    }
 
-        const ui = context.services.get<UIService>(Services.UI);
-        const token = getInterface().app.update.onStateChanged(state => {
-            if (offered) {
-                return;
+    const ui = context.services.get<UIService>(Services.UI);
+    const token = getInterface().app.update.onStateChanged((state) => {
+      if (offered) {
+        return;
+      }
+      // "ready" is not announced here: an installer already on disk got there because the
+      // author pressed Download, so they have seen the panel and do not need telling.
+      if (state.status !== "available" && state.status !== "manual") {
+        return;
+      }
+      if (!state.availableVersion) {
+        return;
+      }
+      offered = true;
+
+      ui.notifications.showSticky({
+        type: NotificationType.Info,
+        message: translate("update.notification.message", { version: state.availableVersion }),
+        detail: translate("update.notification.detail", { current: state.currentVersion }),
+        actions: [
+          {
+            label: translate("update.notification.action"),
+            primary: true,
+            onClick: () => {
+              void getInterface().app.launchSettings({ highlight: UPDATE_PANEL_SETTING_KEY });
             }
-            // "ready" is not announced here: an installer already on disk got there because the
-            // author pressed Download, so they have seen the panel and do not need telling.
-            if (state.status !== "available" && state.status !== "manual") {
-                return;
-            }
-            if (!state.availableVersion) {
-                return;
-            }
-            offered = true;
+          }
+        ]
+      });
+    });
 
-            ui.notifications.showSticky({
-                type: NotificationType.Info,
-                message: translate("update.notification.message", { version: state.availableVersion }),
-                detail: translate("update.notification.detail", { current: state.currentVersion }),
-                actions: [
-                    {
-                        label: translate("update.notification.action"),
-                        primary: true,
-                        onClick: () => {
-                            void getInterface().app.launchSettings({ highlight: UPDATE_PANEL_SETTING_KEY });
-                        },
-                    },
-                ],
-            });
-        });
-
-        return () => {
-            token?.cancel();
-        };
-    }, [context, recovery]);
+    return () => {
+      token?.cancel();
+    };
+  }, [context, recovery]);
 }

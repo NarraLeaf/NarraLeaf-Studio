@@ -3,47 +3,49 @@ export const EDITOR_TAB_DRAG_MIME = "application/x-narraleaf-editor-tab+json";
 
 /** Wire format v1 - short keys, mirroring the asset drag contract. */
 export interface EditorTabDragWirePayloadV1 {
-    v: 1;
-    /** Dragged tab id. */
-    t: string;
-    /** Group the tab is being dragged out of. */
-    g: string;
+  v: 1;
+  /** Dragged tab id. */
+  t: string;
+  /** Group the tab is being dragged out of. */
+  g: string;
 }
 
 export function encodeEditorTabDragPayload(tabId: string, groupId: string): string {
-    const payload: EditorTabDragWirePayloadV1 = { v: 1, t: tabId, g: groupId };
-    return JSON.stringify(payload);
+  const payload: EditorTabDragWirePayloadV1 = { v: 1, t: tabId, g: groupId };
+  return JSON.stringify(payload);
 }
 
-export function decodeEditorTabDragPayload(raw: string | null | undefined): EditorTabDragWirePayloadV1 | null {
-    if (!raw || typeof raw !== "string") {
-        return null;
+export function decodeEditorTabDragPayload(
+  raw: string | null | undefined
+): EditorTabDragWirePayloadV1 | null {
+  if (!raw || typeof raw !== "string") {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      return null;
     }
-    try {
-        const parsed = JSON.parse(raw) as unknown;
-        if (!parsed || typeof parsed !== "object") {
-            return null;
-        }
-        const o = parsed as Record<string, unknown>;
-        if (o.v !== 1 || typeof o.t !== "string" || typeof o.g !== "string" || !o.t || !o.g) {
-            return null;
-        }
-        return { v: 1, t: o.t, g: o.g };
-    } catch {
-        return null;
+    const o = parsed as Record<string, unknown>;
+    if (o.v !== 1 || typeof o.t !== "string" || typeof o.g !== "string" || !o.t || !o.g) {
+      return null;
     }
+    return { v: 1, t: o.t, g: o.g };
+  } catch {
+    return null;
+  }
 }
 
 export function isEditorTabDragEvent(dt: DataTransfer | null | undefined): boolean {
-    if (!dt) {
-        return false;
-    }
-    return Array.from(dt.types).includes(EDITOR_TAB_DRAG_MIME);
+  if (!dt) {
+    return false;
+  }
+  return Array.from(dt.types).includes(EDITOR_TAB_DRAG_MIME);
 }
 
 export interface EditorTabDragSession {
-    tabId: string;
-    groupId: string;
+  tabId: string;
+  groupId: string;
 }
 
 /**
@@ -58,13 +60,13 @@ export interface EditorTabDragSession {
 let activeSession: EditorTabDragSession | null = null;
 
 export function beginEditorTabDrag(session: EditorTabDragSession): void {
-    activeSession = session;
+  activeSession = session;
 }
 
 export function endEditorTabDrag(): void {
-    activeSession = null;
+  activeSession = null;
 }
 
 export function getActiveEditorTabDrag(): EditorTabDragSession | null {
-    return activeSession;
+  return activeSession;
 }

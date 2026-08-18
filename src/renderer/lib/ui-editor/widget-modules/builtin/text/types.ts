@@ -11,50 +11,50 @@ import type { ElementEffectValues } from "@shared/types/ui-editor/effects";
 import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
 
 export type TextWidgetProps = {
-    text: string;
-    /** Game-localization opt-in: registers the implicit translation unit `ui:<elementId>.text`. */
-    localizable?: boolean;
-    /** Named localization key reference; takes precedence over the implicit unit. */
-    localizationKey?: string;
-    fontSize: number;
-    color: string;
-    fontWeight: "normal" | "bold" | "600";
-    fontStyle: "normal" | "italic";
-    textAlign: TextAlign;
-    textVerticalAlign: TextVerticalAlign;
-    lineHeight: number;
-    /** Project font asset id when using a custom typeface in the editor; null inherits canvas default */
-    fontAssetId: string | null;
-    textWrapMode: TextWrapMode;
+  text: string;
+  /** Game-localization opt-in: registers the implicit translation unit `ui:<elementId>.text`. */
+  localizable?: boolean;
+  /** Named localization key reference; takes precedence over the implicit unit. */
+  localizationKey?: string;
+  fontSize: number;
+  color: string;
+  fontWeight: "normal" | "bold" | "600";
+  fontStyle: "normal" | "italic";
+  textAlign: TextAlign;
+  textVerticalAlign: TextVerticalAlign;
+  lineHeight: number;
+  /** Project font asset id when using a custom typeface in the editor; null inherits canvas default */
+  fontAssetId: string | null;
+  textWrapMode: TextWrapMode;
 
-    transformOffsetX: number;
-    transformOffsetY: number;
-    transformScale: number;
-    transformRotation: number;
-    transformOpacity: number;
+  transformOffsetX: number;
+  transformOffsetY: number;
+  transformScale: number;
+  transformRotation: number;
+  transformOpacity: number;
 
-    /** Static baseline effects; appearance overlays may override per variant / state. */
-    effects: ElementEffectValues;
+  /** Static baseline effects; appearance overlays may override per variant / state. */
+  effects: ElementEffectValues;
 
-    /** Optional variant + conditional row visuals; when absent, flat props are the sole source. */
-    appearance?: AppearanceModel | null;
+  /** Optional variant + conditional row visuals; when absent, flat props are the sole source. */
+  appearance?: AppearanceModel | null;
 };
 
 export const defaultTextWidgetProps: TextWidgetProps = {
-    text: "Text",
-    fontSize: 16,
-    color: "#e5e7eb",
-    fontWeight: "normal",
-    fontStyle: "normal",
-    textAlign: "left",
-    textVerticalAlign: "start",
-    lineHeight: 1.4,
-    fontAssetId: null,
-    textWrapMode: "word",
-    transformOffsetX: 0,
-    transformOffsetY: 0,
-    transformScale: 1,
-    transformRotation: 0,
-    transformOpacity: 1,
-    effects: { ...DEFAULT_ELEMENT_EFFECT_VALUES },
+  text: "Text",
+  fontSize: 16,
+  color: "#e5e7eb",
+  fontWeight: "normal",
+  fontStyle: "normal",
+  textAlign: "left",
+  textVerticalAlign: "start",
+  lineHeight: 1.4,
+  fontAssetId: null,
+  textWrapMode: "word",
+  transformOffsetX: 0,
+  transformOffsetY: 0,
+  transformScale: 1,
+  transformRotation: 0,
+  transformOpacity: 1,
+  effects: { ...DEFAULT_ELEMENT_EFFECT_VALUES }
 };

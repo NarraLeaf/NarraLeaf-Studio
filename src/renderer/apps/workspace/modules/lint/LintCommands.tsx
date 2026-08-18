@@ -25,31 +25,31 @@ import { openLintReportTab } from "./openLintReportTab";
  * would be pressed twice. Progress is on the `lint` console channel meanwhile.
  */
 export function LintCommands() {
-    const { context } = useWorkspace();
+  const { context } = useWorkspace();
 
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const commandService = context.services.get<CommandService>(Services.Command);
+  useEffect(() => {
+    if (!context) {
+      return;
+    }
+    const commandService = context.services.get<CommandService>(Services.Command);
 
-        return commandService.register({
-            id: LINT_PROJECT_COMMAND_ID,
-            titleKey: "lint.command.runProject",
-            categoryKey: "lint.command.category",
-            // The report tab's own glyph (`openLintReportTab`): one sweep, one mark for it.
-            icon: <ListChecks className="w-4 h-4" />,
-            run: () => {
-                openLintReportTab(context);
-                void runProjectLint(context).catch(error => {
-                    // A sweep that cannot even assemble its context has nothing to report *into* -
-                    // the tab is open and stays on whatever it had. Logged rather than raised: the
-                    // one message an author needs about a broken project is the report itself.
-                    console.warn("[LintCommands] project lint failed", error);
-                });
-            },
+    return commandService.register({
+      id: LINT_PROJECT_COMMAND_ID,
+      titleKey: "lint.command.runProject",
+      categoryKey: "lint.command.category",
+      // The report tab's own glyph (`openLintReportTab`): one sweep, one mark for it.
+      icon: <ListChecks className="w-4 h-4" />,
+      run: () => {
+        openLintReportTab(context);
+        void runProjectLint(context).catch((error) => {
+          // A sweep that cannot even assemble its context has nothing to report *into* -
+          // the tab is open and stays on whatever it had. Logged rather than raised: the
+          // one message an author needs about a broken project is the report itself.
+          console.warn("[LintCommands] project lint failed", error);
         });
-    }, [context]);
+      }
+    });
+  }, [context]);
 
-    return null;
+  return null;
 }

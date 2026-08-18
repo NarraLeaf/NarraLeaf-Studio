@@ -1,10 +1,13 @@
 import {
-    DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG,
-    WEB_SHELL_VARIANT_META,
-    type GameRuntimePackV1,
-    type GameRuntimeViewportConfig,
+  DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG,
+  WEB_SHELL_VARIANT_META,
+  type GameRuntimePackV1,
+  type GameRuntimeViewportConfig
 } from "@shared/types/gameRuntime";
-import type { StageCropAnchor, StageViewportFit } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
+import type {
+  StageCropAnchor,
+  StageViewportFit
+} from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 
 /**
  * Whether this document was served by one of the mobile shells.
@@ -15,21 +18,21 @@ import type { StageCropAnchor, StageViewportFit } from "@/lib/ui-editor/runtime/
  * would otherwise watch the game eat its own edges.
  */
 export function isMobileShellDocument(): boolean {
-    if (typeof document === "undefined") {
-        return false;
-    }
-    const meta = document.querySelector(`meta[name="${WEB_SHELL_VARIANT_META}"]`);
-    return meta?.getAttribute("content") === "mobile";
+  if (typeof document === "undefined") {
+    return false;
+  }
+  const meta = document.querySelector(`meta[name="${WEB_SHELL_VARIANT_META}"]`);
+  return meta?.getAttribute("content") === "mobile";
 }
 
 export type ResolvedStageViewport = {
-    fit: StageViewportFit;
-    cropAnchor: StageCropAnchor;
+  fit: StageViewportFit;
+  cropAnchor: StageCropAnchor;
 };
 
 const LETTERBOXED: ResolvedStageViewport = {
-    fit: "contain",
-    cropAnchor: { x: "center", y: "center" },
+  fit: "contain",
+  cropAnchor: { x: "center", y: "center" }
 };
 
 /**
@@ -41,16 +44,16 @@ const LETTERBOXED: ResolvedStageViewport = {
  * player owns the window size there and no anchor can make cropping predictable.
  */
 export function resolveStageViewport(input: {
-    viewport?: GameRuntimeViewportConfig;
-    mode: GameRuntimePackV1["mode"];
-    isMobileShell: boolean;
+  viewport?: GameRuntimeViewportConfig;
+  mode: GameRuntimePackV1["mode"];
+  isMobileShell: boolean;
 }): ResolvedStageViewport {
-    if (!input.isMobileShell && input.mode !== "preview") {
-        return LETTERBOXED;
-    }
-    const config = input.viewport ?? DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG;
-    return {
-        fit: config.fit,
-        cropAnchor: { x: config.cropAnchorX, y: config.cropAnchorY },
-    };
+  if (!input.isMobileShell && input.mode !== "preview") {
+    return LETTERBOXED;
+  }
+  const config = input.viewport ?? DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG;
+  return {
+    fit: config.fit,
+    cropAnchor: { x: config.cropAnchorX, y: config.cropAnchorY }
+  };
 }

@@ -7,7 +7,7 @@ const HEX_STORAGE_ID_PATTERN = /^[0-9a-f]{64}$/i;
  * controlled identifiers from becoming path traversal segments.
  */
 export function isValidAssetStorageId(id: unknown): id is string {
-    return typeof id === "string" && (UUID_PATTERN.test(id) || HEX_STORAGE_ID_PATTERN.test(id));
+  return typeof id === "string" && (UUID_PATTERN.test(id) || HEX_STORAGE_ID_PATTERN.test(id));
 }
 
 /**
@@ -16,10 +16,10 @@ export function isValidAssetStorageId(id: unknown): id is string {
  * Hash format: 64 hex characters
  */
 export function splitAssetStorageId(id: string): [string, string, string] {
-    if (!isValidAssetStorageId(id)) {
-        throw new Error(`Invalid asset storage id: ${id}`);
-    }
+  if (!isValidAssetStorageId(id)) {
+    throw new Error(`Invalid asset storage id: ${id}`);
+  }
 
-    const cleanId = id.replace(/-/g, "");
-    return [cleanId.slice(0, 2), cleanId.slice(2, 4), cleanId.slice(4)];
+  const cleanId = id.replace(/-/g, "");
+  return [cleanId.slice(0, 2), cleanId.slice(2, 4), cleanId.slice(4)];
 }

@@ -39,14 +39,14 @@ export const PUPPET_PREVIEW_MAX_HEIGHT = 560;
 type CharacterInspectorState = { width: number; puppetPreviewHeight: number };
 
 export function getCharacterInspectorWidth(panelState: PanelStateService): number {
-    const stored = panelState.getPanelState<Partial<CharacterInspectorState>>(INSPECTOR_STATE_KEY);
-    return typeof stored?.width === "number" && Number.isFinite(stored.width)
-        ? Math.max(CHARACTER_INSPECTOR_MIN_WIDTH, stored.width)
-        : CHARACTER_INSPECTOR_DEFAULT_WIDTH;
+  const stored = panelState.getPanelState<Partial<CharacterInspectorState>>(INSPECTOR_STATE_KEY);
+  return typeof stored?.width === "number" && Number.isFinite(stored.width)
+    ? Math.max(CHARACTER_INSPECTOR_MIN_WIDTH, stored.width)
+    : CHARACTER_INSPECTOR_DEFAULT_WIDTH;
 }
 
 export function setCharacterInspectorWidth(panelState: PanelStateService, width: number): void {
-    panelState.setPanelState<CharacterInspectorState>(INSPECTOR_STATE_KEY, { width });
+  panelState.setPanelState<CharacterInspectorState>(INSPECTOR_STATE_KEY, { width });
 }
 
 /**
@@ -58,37 +58,39 @@ export function setCharacterInspectorWidth(panelState: PanelStateService, width:
  * under.
  */
 export function getPuppetPreviewHeight(panelState: PanelStateService): number {
-    const stored = panelState.getPanelState<Partial<CharacterInspectorState>>(INSPECTOR_STATE_KEY);
-    const height = stored?.puppetPreviewHeight;
-    return typeof height === "number" && Number.isFinite(height)
-        ? Math.min(PUPPET_PREVIEW_MAX_HEIGHT, Math.max(PUPPET_PREVIEW_MIN_HEIGHT, height))
-        : PUPPET_PREVIEW_DEFAULT_HEIGHT;
+  const stored = panelState.getPanelState<Partial<CharacterInspectorState>>(INSPECTOR_STATE_KEY);
+  const height = stored?.puppetPreviewHeight;
+  return typeof height === "number" && Number.isFinite(height)
+    ? Math.min(PUPPET_PREVIEW_MAX_HEIGHT, Math.max(PUPPET_PREVIEW_MIN_HEIGHT, height))
+    : PUPPET_PREVIEW_DEFAULT_HEIGHT;
 }
 
 export function setPuppetPreviewHeight(panelState: PanelStateService, height: number): void {
-    panelState.setPanelState<CharacterInspectorState>(INSPECTOR_STATE_KEY, { puppetPreviewHeight: height });
+  panelState.setPanelState<CharacterInspectorState>(INSPECTOR_STATE_KEY, {
+    puppetPreviewHeight: height
+  });
 }
 
 export type CharacterEditorViewState = {
-    /** Layered: which tag each axis is previewing. Never stored on the character. */
-    previewTags: CharacterTagSelection;
-    onionAxisId: string | null;
-    /**
-     * What was selected. For a preset character this is also which pose the big preview shows — the
-     * two are one idea, which is why previewing a pose does not need (and must not have) a second
-     * piece of state that could disagree with the selection a diagnostic row jumps to.
-     */
-    focus: CharacterDiagnosticTarget | null;
+  /** Layered: which tag each axis is previewing. Never stored on the character. */
+  previewTags: CharacterTagSelection;
+  onionAxisId: string | null;
+  /**
+   * What was selected. For a preset character this is also which pose the big preview shows — the
+   * two are one idea, which is why previewing a pose does not need (and must not have) a second
+   * piece of state that could disagree with the selection a diagnostic row jumps to.
+   */
+  focus: CharacterDiagnosticTarget | null;
 };
 
 export const EMPTY_CHARACTER_EDITOR_VIEW_STATE: CharacterEditorViewState = {
-    previewTags: {},
-    onionAxisId: null,
-    focus: null,
+  previewTags: {},
+  onionAxisId: null,
+  focus: null
 };
 
 function viewStateKey(characterId: string): string {
-    return `character:editor:view:${characterId}`;
+  return `character:editor:view:${characterId}`;
 }
 
 /**
@@ -99,38 +101,44 @@ function viewStateKey(characterId: string): string {
  * to the default instead of blanking the pane.
  */
 export function getCharacterEditorViewState(
-    panelState: PanelStateService,
-    characterId: string,
+  panelState: PanelStateService,
+  characterId: string
 ): CharacterEditorViewState {
-    const stored = panelState.getPanelState<Partial<CharacterEditorViewState>>(viewStateKey(characterId));
-    if (!stored) {
-        return EMPTY_CHARACTER_EDITOR_VIEW_STATE;
+  const stored = panelState.getPanelState<Partial<CharacterEditorViewState>>(
+    viewStateKey(characterId)
+  );
+  if (!stored) {
+    return EMPTY_CHARACTER_EDITOR_VIEW_STATE;
+  }
+  const tags: CharacterTagSelection = {};
+  for (const [axisId, tagId] of Object.entries(stored.previewTags ?? {})) {
+    if (typeof axisId === "string" && typeof tagId === "string") {
+      tags[axisId] = tagId;
     }
-    const tags: CharacterTagSelection = {};
-    for (const [axisId, tagId] of Object.entries(stored.previewTags ?? {})) {
-        if (typeof axisId === "string" && typeof tagId === "string") {
-            tags[axisId] = tagId;
-        }
-    }
-    const focus = stored.focus;
-    // The selection's `tags` are deliberately dropped on the way back in: `previewTags` above is the
-    // authority on what is being looked at, and a selection carrying a second, stale copy of it would
-    // be a second answer to the same question the next time something read the focus.
-    return {
-        previewTags: tags,
-        onionAxisId: typeof stored.onionAxisId === "string" ? stored.onionAxisId : null,
-        focus: focus && typeof focus.id === "string"
-            && (focus.kind === "layer" || focus.kind === "axis" || focus.kind === "pose"
-                || focus.kind === "combination")
-            ? { kind: focus.kind, id: focus.id }
-            : null,
-    };
+  }
+  const focus = stored.focus;
+  // The selection's `tags` are deliberately dropped on the way back in: `previewTags` above is the
+  // authority on what is being looked at, and a selection carrying a second, stale copy of it would
+  // be a second answer to the same question the next time something read the focus.
+  return {
+    previewTags: tags,
+    onionAxisId: typeof stored.onionAxisId === "string" ? stored.onionAxisId : null,
+    focus:
+      focus &&
+      typeof focus.id === "string" &&
+      (focus.kind === "layer" ||
+        focus.kind === "axis" ||
+        focus.kind === "pose" ||
+        focus.kind === "combination")
+        ? { kind: focus.kind, id: focus.id }
+        : null
+  };
 }
 
 export function patchCharacterEditorViewState(
-    panelState: PanelStateService,
-    characterId: string,
-    patch: Partial<CharacterEditorViewState>,
+  panelState: PanelStateService,
+  characterId: string,
+  patch: Partial<CharacterEditorViewState>
 ): void {
-    panelState.setPanelState<Partial<CharacterEditorViewState>>(viewStateKey(characterId), patch);
+  panelState.setPanelState<Partial<CharacterEditorViewState>>(viewStateKey(characterId), patch);
 }

@@ -7,9 +7,9 @@ top of them.
 ## The four rules
 
 1. **Escape is one exit ladder, one rung per press. It never commits and never destroys.**
-   Candidates first, then the slot; an open property editor is its own rung. Leaving an *edit* saves
-   (it goes through history, so `Mod+Z` undoes it); leaving an *uncommitted slot* creates nothing;
-   closing an *inspector* keeps the row selected.
+   Candidates first, then the slot; an open property editor is its own rung. Leaving an _edit_ saves
+   (it goes through history, so `Mod+Z` undoes it); leaving an _uncommitted slot_ creates nothing;
+   closing an _inspector_ keeps the row selected.
 2. **The highlight is Enter's pointer.** Wherever a candidate is highlighted, Tab and Enter both take
    it — deliberately the same key. Where nothing is highlighted, Enter commits the line. This is why
    "must pick one" positions (command name, speaker name) highlight by default and "optional next
@@ -21,21 +21,21 @@ top of them.
 
 ## Key map
 
-| | idle | text edit | insert slot |
-|---|---|---|---|
-| `Esc` | close inspector, if open | commit + exit | ① dismiss candidates, keep text ② discard slot |
-| `Enter` | text row → edit; action row → inspector (or its card-less op) | commit + new same-kind row (carries speaker); **narration → insert slot** | take highlight; else resolve line |
-| `Tab` | indent | style strip: open it, else step into it | take highlight |
-| `Shift+Enter` | blank row after last selected | commit + blank row after | `#` line → invalid row; else resolve line |
-| `Shift+Tab` | outdent | style strip, entered from its far end | — |
-| `Backspace` | one leaf action row → blank line, caret in it; anything else → delete | at an empty line: dialogue → insert slot, else delete + step back | empty slot → dismiss, step back |
-| double-click | enter edit, native word selection preserved | — | — |
+|               | idle                                                                  | text edit                                                                 | insert slot                                    |
+| ------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------- |
+| `Esc`         | close inspector, if open                                              | commit + exit                                                             | ① dismiss candidates, keep text ② discard slot |
+| `Enter`       | text row → edit; action row → inspector (or its card-less op)         | commit + new same-kind row (carries speaker); **narration → insert slot** | take highlight; else resolve line              |
+| `Tab`         | indent                                                                | style strip: open it, else step into it                                   | take highlight                                 |
+| `Shift+Enter` | blank row after last selected                                         | commit + blank row after                                                  | `#` line → invalid row; else resolve line      |
+| `Shift+Tab`   | outdent                                                               | style strip, entered from its far end                                     | —                                              |
+| `Backspace`   | one leaf action row → blank line, caret in it; anything else → delete | at an empty line: dialogue → insert slot, else delete + step back         | empty slot → dismiss, step back                |
+| double-click  | enter edit, native word selection preserved                           | —                                                                         | —                                              |
 
 `Mod+Enter` was removed: it did exactly what `Shift+Enter` does, had no UI path, and was silently
 downgraded to plain `Enter` inside the slot.
 
 **The style strip is the "within a row" that rule 3 promises.** From a line being edited, `Tab` opens
-the rich-text strip if it is collapsed — and *only* opens it, leaving the caret in the sentence; one
+the rich-text strip if it is collapsed — and _only_ opens it, leaving the caret in the sentence; one
 keystroke, one effect. Pressed again it steps in, landing on the first control that is not the
 collapse chevron, because arriving on the way out of a thing you just asked to open is a trap.
 `Tab`/`Shift+Tab` then cycle the controls in both directions, wrapping; the chevron stays in the
@@ -45,7 +45,7 @@ then the next `Escape` is the ordinary commit-and-exit. Nothing on that path com
 
 Two things this costs, both load-bearing. Focus inside the strip has to hold `Tab`, `Escape`,
 `Enter` and `Space` back from the global keybinding service — its `window` listener only stands
-aside for *editable* targets, and a focused button is not one, so otherwise `Tab` re-nests the row
+aside for _editable_ targets, and a focused button is not one, so otherwise `Tab` re-nests the row
 and `Enter` is `preventDefault`ed before the browser can turn it into a press. And every command
 re-focuses the field internally (a mark needs a live selection), so each one has to hand focus back
 to the control afterwards, or the strip works exactly once per visit.
@@ -67,11 +67,11 @@ opens a card either (`isInspectorFirstCommand` excludes them).
 
 ## The Backspace ladder
 
-`Backspace` walks a row *down* one rung per press, the way it walks a character off a line: an action
+`Backspace` walks a row _down_ one rung per press, the way it walks a character off a line: an action
 row becomes a blank line, and a blank line becomes nothing.
 
 1. A selected row that is not being edited is **replaced in place** by an empty narration row, caret in
-   it. The row count does not change — it is a replacement, not a delete — and the swap is *one*
+   it. The row count does not change — it is a replacement, not a delete — and the swap is _one_
    history entry, so a single `Mod+Z` brings the action row back with its payload. `Escape` out of the
    fresh line keeps it (Escape never destroys), and blurring commits the empty narration row it already
    is.
@@ -90,7 +90,7 @@ The two keys stay two paths.
 
 ## Editing in place
 
-A row and the same row *being edited* are one surface: no border, no sunken box, no shift in x or
+A row and the same row _being edited_ are one surface: no border, no sunken box, no shift in x or
 height. The active/selected row highlight is the only "you are here" signal — the field carries none of
 its own — so entering and leaving an edit never makes the text jump (the VS Code feel). The insert
 slot is that same surface, indented to its future depth with a badge-sized spacer and its line number
@@ -115,11 +115,11 @@ dialogue's text is indented past its nametag).
 The column lives until the author states a new one. **Every key except a vertical arrow ends the run**
 — a horizontal arrow, a click in the text, a keystroke — which is the standard editor rule and the
 only one that behaves: `ArrowLeft` inside a row never reaches the row-boundary handler, so a run that
-only ended on arrow-*out* would drag a stale column across the next `ArrowDown`.
+only ended on arrow-_out_ would drag a stale column across the next `ArrowDown`.
 
 ## Selection
 
-A press on a row's own text is a press *into that text* — the row is a line, and clicking a line
+A press on a row's own text is a press _into that text_ — the row is a line, and clicking a line
 edits it (the VS Code rule), so the browser's selection at mouseup carries straight in:
 
 - Click (collapsed) → enter edit, caret where the pointer landed (the blank tail lands it at line end).
@@ -128,7 +128,7 @@ edits it (the VS Code rule), so the browser's selection at mouseup carries strai
   `user-select` for the rest of the gesture.
 
 **Selecting a row without editing** — for delete / move / indent / multi-select — comes from the parts
-that are *not* text: the line-number / grip gutter, a modified click (`Shift` / `Mod` for range /
+that are _not_ text: the line-number / grip gutter, a modified click (`Shift` / `Mod` for range /
 toggle), a drag that crosses rows, or `Escape` out of an edit (which leaves the row selected). Empty
 text rows are a click-to-edit surface too (the caret just clamps to 0 in the empty editor); only action
 rows — which have no text — select on click and open their inspector on double-click / `Enter`.

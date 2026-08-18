@@ -18,10 +18,10 @@
  * never creates.
  */
 export function describeWindowSubject(projectPath: unknown): string | null {
-    if (typeof projectPath !== "string" || projectPath.length === 0) {
-        return null;
-    }
-    const segments = projectPath.split(/[\\/]/).filter((segment) => segment.length > 0);
-    const name = segments.at(-1);
-    return name !== undefined && name.length > 0 ? name : null;
+  if (typeof projectPath !== "string" || projectPath.length === 0) {
+    return null;
+  }
+  const segments = projectPath.split(/[\\/]/).filter((segment) => segment.length > 0);
+  const name = segments.at(-1);
+  return name !== undefined && name.length > 0 ? name : null;
 }

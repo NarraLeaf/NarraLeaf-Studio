@@ -1,986 +1,987 @@
 import type { LocaleNamespace } from "../types";
 
 export const story = {
-    panel: {
-        storiesCount: "故事（{count}）",
-        newStory: "新建故事",
-        emptyStories: "此项目中还没有故事",
-        storyActions: "故事操作",
-        setDefault: "设为默认",
-        outline: "大纲",
-        newChapter: "新建章节",
-        newSceneInChapter: "在章节中新建场景",
-        loadingStory: "正在加载故事…",
-        chapterTitle: "{name}（{count}）",
-        emptyScenes: "暂无场景",
-        lineCount: {
-            one: "{count} 行",
-            other: "{count} 行",
-        },
-        sceneActions: "场景操作",
-        chapterActions: "章节操作",
-        setEntryScene: "设为入口场景",
-        documentUnavailable: "故事文档不可用",
-        newStoryPlaceholder: "输入故事名称",
-        newChapterPlaceholder: "输入章节名称",
-        newSceneTitle: "新建场景",
-        newScenePlaceholder: "输入场景名称",
-        deleteStoryConfirm: "删除故事“{name}”？",
-        deleteStoryDetail: "此操作将从工程中移除该故事文档",
-        deleteChapterConfirm: "删除章节“{name}”？",
-        deleteChapterDetail: {
-            one: "章节里的 {count} 个场景会一并删除",
-            other: "章节里的 {count} 个场景会一并删除",
-        },
-        deleteSceneConfirm: "删除场景“{name}”？",
-        deleteSceneDetail: "该场景及其全部区块会被移除，跳转到它的行将失去目标",
+  panel: {
+    storiesCount: "故事（{count}）",
+    newStory: "新建故事",
+    emptyStories: "此项目中还没有故事",
+    storyActions: "故事操作",
+    setDefault: "设为默认",
+    outline: "大纲",
+    newChapter: "新建章节",
+    newSceneInChapter: "在章节中新建场景",
+    loadingStory: "正在加载故事…",
+    chapterTitle: "{name}（{count}）",
+    emptyScenes: "暂无场景",
+    lineCount: {
+      one: "{count} 行",
+      other: "{count} 行"
     },
-    script: {
-        exportScene: "导出为脚本…",
-        exportStory: "将故事导出为脚本…",
-        import: "导入脚本…",
-        exportTitle: "导出为脚本",
-        exportAction: "导出",
-        mode: {
-            roundtrip: "可回导",
-            roundtripDetail: "附带场景数据，文件可以再导入回来",
-            review: "纯审阅",
-            reviewDetail: "只有正文，便于阅读与比对，但无法导入",
-        },
-        exported: "已导出到 {path}",
-        importTitle: "导入脚本",
-        importAction: "导入",
-        imported: {
-            one: "已导入 {count} 个场景",
-            other: "已导入 {count} 个场景",
-        },
-        nothingToImport: "此文件不含任何场景",
-        storyMismatch: "此文件导出自另一个故事",
-        stale: "导出之后该场景已被修改，导入会覆盖这些改动",
-        sceneMissing: "该场景已不在此故事中，将被跳过",
-        noUndo: "从这里导入无法撤销",
-        noUndoSome: {
-            other: "导入后其中 {count} 个场景无法撤销",
-        },
-        planFailed: "无法为导入准备此脚本，未做任何改动",
-        importFailed: "导入在「{scene}」处中断：共 {total} 个场景，已写入 {applied} 个，其余保持原样",
-        line: "第 {line} 行",
-        stat: {
-            unchanged: "未变 {count}",
-            edited: "已改 {count}",
-            added: "新增 {count}",
-            removed: "删除 {count}",
-            cloned: "复制 {count}",
-            moved: "移动 {count}",
-        },
-        parseError: {
-            notAScript: "此文件不是故事脚本",
-            unsupportedVersion: "此脚本由更新版本的 Studio 写出",
-            dataMissing: "此脚本不含场景数据，无法导入；纯审阅导出是只读的",
-            dataCorrupt: "此脚本的场景数据已损坏，无法读取",
-            malformed: "无法读取此脚本",
-        },
-        diag: {
-            opaqueWithoutAnchor: "某个动作行丢失了标记，该动作无法还原",
-            unknownAnchor: "某个标记指向此脚本中不存在的行",
-            shapeMismatchAction: "某个动作行被改写成了正文；动作被保留，改写被丢弃",
-            shapeMismatchText: "某个正文行被改写成了动作行；正文被保留，改写被丢弃",
-            duplicateAnchor: "某一行被复制过；副本已获得新的身份",
-            unknownRun: "某个格式标记指向此脚本中不存在的格式",
-            unplaceableLine: "新增的这一行在此处无处安放",
-            speakerUnresolved: "这一行没有绑定角色，说话人名字保持原样，正文的修改仍然生效",
-        },
+    sceneActions: "场景操作",
+    chapterActions: "章节操作",
+    setEntryScene: "设为入口场景",
+    documentUnavailable: "故事文档不可用",
+    newStoryPlaceholder: "输入故事名称",
+    newChapterPlaceholder: "输入章节名称",
+    newSceneTitle: "新建场景",
+    newScenePlaceholder: "输入场景名称",
+    deleteStoryConfirm: "删除故事“{name}”？",
+    deleteStoryDetail: "此操作将从工程中移除该故事文档",
+    deleteChapterConfirm: "删除章节“{name}”？",
+    deleteChapterDetail: {
+      one: "章节里的 {count} 个场景会一并删除",
+      other: "章节里的 {count} 个场景会一并删除"
     },
-    paste: {
-        title: "粘贴为行",
-        action: "粘贴",
-        totals: "对白 {dialogue} · 旁白 {narration} · 新建角色 {created}",
-        lineCount: {
-            other: "{count} 行",
-        },
-        moreRows: {
-            other: "…还有 {count} 行",
-        },
-        noSpeakers: "没有识别到说话人，全部作为旁白",
-        targetFor: "{label} 对应谁",
-        willBeCreated: "将会新建",
-        separator: {
-            none: "没有说话人",
-            colon: "名字: 正文",
-            fullwidthColon: "名字：正文",
-            dash: "名字 — 正文",
-            lenticular: "【名字】正文",
-            cornerBracket: "「名字」正文",
-            tab: "名字 ⇥ 正文",
-            regex: "自定义",
-        },
-        regexPlaceholder: "^(?<speaker>[^：]+)：\\s*(?<text>.+)$",
-        problem: {
-            invalidRegex: "这个表达式还不完整",
-            missingGroups: "表达式需要同时含有 (?<speaker>…) 和 (?<text>…) 两个命名分组",
-        },
-        presetNamePlaceholder: "给这个分隔方式起个名字",
-        savePreset: "保存",
-        forgetPreset: "删除此预设",
-        target: {
-            tempSpeaker: "只用名字",
-            createCharacter: "新建角色",
-            notASpeaker: "不是说话人",
-            existing: "已有角色",
-        },
-        bulkConfirm: {
-            other: "粘贴 {count} 行？",
-        },
-        bulkConfirmDetail: "这些行会加在当前行下方，算作一次撤销",
-        scriptFile: "这是故事脚本文件，请用「导入脚本」把它导回来",
+    deleteSceneConfirm: "删除场景“{name}”？",
+    deleteSceneDetail: "该场景及其全部区块会被移除，跳转到它的行将失去目标"
+  },
+  script: {
+    exportScene: "导出为脚本…",
+    exportStory: "将故事导出为脚本…",
+    import: "导入脚本…",
+    exportTitle: "导出为脚本",
+    exportAction: "导出",
+    mode: {
+      roundtrip: "可回导",
+      roundtripDetail: "附带场景数据，文件可以再导入回来",
+      review: "纯审阅",
+      reviewDetail: "只有正文，便于阅读与比对，但无法导入"
     },
-    flow: {
-        tabTitle: "场景流程",
-        tabTitleNamed: "场景流程：{name}",
-        node: {
-            blocks: {
-                other: "{count} 个块",
-            },
+    exported: "已导出到 {path}",
+    importTitle: "导入脚本",
+    importAction: "导入",
+    imported: {
+      one: "已导入 {count} 个场景",
+      other: "已导入 {count} 个场景"
+    },
+    nothingToImport: "此文件不含任何场景",
+    storyMismatch: "此文件导出自另一个故事",
+    stale: "导出之后该场景已被修改，导入会覆盖这些改动",
+    sceneMissing: "该场景已不在此故事中，将被跳过",
+    noUndo: "从这里导入无法撤销",
+    noUndoSome: {
+      other: "导入后其中 {count} 个场景无法撤销"
+    },
+    planFailed: "无法为导入准备此脚本，未做任何改动",
+    importFailed: "导入在「{scene}」处中断：共 {total} 个场景，已写入 {applied} 个，其余保持原样",
+    line: "第 {line} 行",
+    stat: {
+      unchanged: "未变 {count}",
+      edited: "已改 {count}",
+      added: "新增 {count}",
+      removed: "删除 {count}",
+      cloned: "复制 {count}",
+      moved: "移动 {count}"
+    },
+    parseError: {
+      notAScript: "此文件不是故事脚本",
+      unsupportedVersion: "此脚本由更新版本的 Studio 写出",
+      dataMissing: "此脚本不含场景数据，无法导入；纯审阅导出是只读的",
+      dataCorrupt: "此脚本的场景数据已损坏，无法读取",
+      malformed: "无法读取此脚本"
+    },
+    diag: {
+      opaqueWithoutAnchor: "某个动作行丢失了标记，该动作无法还原",
+      unknownAnchor: "某个标记指向此脚本中不存在的行",
+      shapeMismatchAction: "某个动作行被改写成了正文；动作被保留，改写被丢弃",
+      shapeMismatchText: "某个正文行被改写成了动作行；正文被保留，改写被丢弃",
+      duplicateAnchor: "某一行被复制过；副本已获得新的身份",
+      unknownRun: "某个格式标记指向此脚本中不存在的格式",
+      unplaceableLine: "新增的这一行在此处无处安放",
+      speakerUnresolved: "这一行没有绑定角色，说话人名字保持原样，正文的修改仍然生效"
+    }
+  },
+  paste: {
+    title: "粘贴为行",
+    action: "粘贴",
+    totals: "对白 {dialogue} · 旁白 {narration} · 新建角色 {created}",
+    lineCount: {
+      other: "{count} 行"
+    },
+    moreRows: {
+      other: "…还有 {count} 行"
+    },
+    noSpeakers: "没有识别到说话人，全部作为旁白",
+    targetFor: "{label} 对应谁",
+    willBeCreated: "将会新建",
+    separator: {
+      none: "没有说话人",
+      colon: "名字: 正文",
+      fullwidthColon: "名字：正文",
+      dash: "名字 — 正文",
+      lenticular: "【名字】正文",
+      cornerBracket: "「名字」正文",
+      tab: "名字 ⇥ 正文",
+      regex: "自定义"
+    },
+    regexPlaceholder: "^(?<speaker>[^：]+)：\\s*(?<text>.+)$",
+    problem: {
+      invalidRegex: "这个表达式还不完整",
+      missingGroups: "表达式需要同时含有 (?<speaker>…) 和 (?<text>…) 两个命名分组"
+    },
+    presetNamePlaceholder: "给这个分隔方式起个名字",
+    savePreset: "保存",
+    forgetPreset: "删除此预设",
+    target: {
+      tempSpeaker: "只用名字",
+      createCharacter: "新建角色",
+      notASpeaker: "不是说话人",
+      existing: "已有角色"
+    },
+    bulkConfirm: {
+      other: "粘贴 {count} 行？"
+    },
+    bulkConfirmDetail: "这些行会加在当前行下方，算作一次撤销",
+    scriptFile: "这是故事脚本文件，请用「导入脚本」把它导回来"
+  },
+  flow: {
+    tabTitle: "场景流程",
+    tabTitleNamed: "场景流程：{name}",
+    node: {
+      blocks: {
+        other: "{count} 个块"
+      }
+    },
+    badge: {
+      entry: "入口场景",
+      unreachable: "无法从入口场景到达",
+      selfJump: {
+        other: "{count} 处跳回本场景"
+      },
+      dangling: {
+        other: "{count} 处跳转没有有效目标"
+      }
+    },
+    branch: {
+      forkChoice: "选择",
+      forkCondition: "条件",
+      fallsThrough: "继续",
+      fallsThroughTitle: "此分支自身没有跳转，流程会继续执行分叉之后的内容",
+      forkCount: {
+        other: "{count} 个分支"
+      },
+      expand: "展开分支",
+      collapse: "收起分支"
+    },
+    route: {
+      title: "路线",
+      show: "显示路线",
+      hide: "隐藏路线",
+      count: {
+        other: "{count} 条路线"
+      },
+      countTruncated: "{count}+ 条路线",
+      truncated: "已达 {count} 条路线上限，下方的计数与统计仅覆盖已列出的路线",
+      noEntryScene: "未设置入口场景，无法列出路线",
+      noRoutes: "没有路线",
+      noDecisions: "没有分支选择",
+      stopsHere: "在此中断",
+      stopsHereTitle:
+        "路径在此终止，但这里不是结局：它回到了已经过的场景，或者某个分支没有后续内容",
+      diagnostics: {
+        unreachableEndings: {
+          other: "{count} 个结局没有路线到达"
         },
-        badge: {
-            entry: "入口场景",
-            unreachable: "无法从入口场景到达",
-            selfJump: {
-                other: "{count} 处跳回本场景",
-            },
-            dangling: {
-                other: "{count} 处跳转没有有效目标",
-            },
-        },
-        branch: {
-            forkChoice: "选择",
-            forkCondition: "条件",
-            fallsThrough: "继续",
-            fallsThroughTitle: "此分支自身没有跳转，流程会继续执行分叉之后的内容",
-            forkCount: {
-                other: "{count} 个分支",
-            },
-            expand: "展开分支",
-            collapse: "收起分支",
-        },
-        route: {
-            title: "路线",
-            show: "显示路线",
-            hide: "隐藏路线",
-            count: {
-                other: "{count} 条路线",
-            },
-            countTruncated: "{count}+ 条路线",
-            truncated: "已达 {count} 条路线上限，下方的计数与统计仅覆盖已列出的路线",
-            noEntryScene: "未设置入口场景，无法列出路线",
-            noRoutes: "没有路线",
-            noDecisions: "没有分支选择",
-            stopsHere: "在此中断",
-            stopsHereTitle: "路径在此终止，但这里不是结局：它回到了已经过的场景，或者某个分支没有后续内容",
-            diagnostics: {
-                unreachableEndings: {
-                    other: "{count} 个结局没有路线到达",
-                },
-                deadBranches: {
-                    other: "{count} 个分支不在任何路线上",
-                },
-            },
-        },
-        variable: {
-            none: "不聚焦变量",
-            hintArrival: "场景上的数值为到达时的取值",
-            arrivalTitle: "到达该场景时的取值，不含该场景自身的改动",
-            finalTitle: "该路线结束时的取值",
-            rangeChip: "{name} {min}-{max}",
-            valueChip: "{name} {value}",
-            unknownChip: "{name} ?",
-        },
-        summary: {
-            scenes: {
-                other: "{count} 个场景",
-            },
-            jumps: {
-                other: "{count} 条跳转",
-            },
-            dangling: {
-                other: "{count} 条断开的跳转",
-            },
-            unreachable: {
-                other: "{count} 个不可达",
-            },
-        },
-        hint: {
-            openScene: "双击场景可打开",
-            connect: "在场景之间拖拽以写入跳转",
-        },
-        edge: {
-            reveal: "查看这些跳转",
-            disconnect: "删除连接",
-            // 中文没有单复数形式，所以措辞要在 1 条和多条时都读得通：「全部 1 条」很别扭，
-            // 而「这条连接对应的」既涵盖两种情况，也说清了删除的范围是整条线。
-            confirmRemove: {
-                other: "删除《{source}》→《{target}》的 {count} 条跳转？",
-            },
-            confirmRemoveDetail: {
-                other: "这条连接对应的 {count} 条跳转会从《{source}》中删除，可在剧情编辑器里撤销",
-            },
-            confirmRemoveAction: "删除跳转",
-        },
-        action: {
-            resetLayout: "重置布局",
-            openFlow: "打开场景流程",
-        },
-        empty: {
-            noStory: "没有可展示的故事",
-            noScenes: "该故事还没有场景",
-        },
+        deadBranches: {
+          other: "{count} 个分支不在任何路线上"
+        }
+      }
     },
-    stage: {
-        notOnStage: "不在舞台上",
-        builtin: "内置",
+    variable: {
+      none: "不聚焦变量",
+      hintArrival: "场景上的数值为到达时的取值",
+      arrivalTitle: "到达该场景时的取值，不含该场景自身的改动",
+      finalTitle: "该路线结束时的取值",
+      rangeChip: "{name} {min}-{max}",
+      valueChip: "{name} {value}",
+      unknownChip: "{name} ?"
     },
-    targetField: {
-        label: "目标",
-        notOnStageTitle: "未在此场景中提前创建，请选择一个已有的可显示对象",
-        placeholder: "选择可显示对象…",
-        search: "搜索舞台可显示对象",
-        noMatch: "无匹配项",
-        kind: {
-            character: "角色",
-            image: "图片",
-            text: "文本",
-            layer: "图层",
-        },
+    summary: {
+      scenes: {
+        other: "{count} 个场景"
+      },
+      jumps: {
+        other: "{count} 条跳转"
+      },
+      dangling: {
+        other: "{count} 条断开的跳转"
+      },
+      unreachable: {
+        other: "{count} 个不可达"
+      }
     },
-    layerField: {
-        label: "图层",
-        defaultName: "可显示图层",
-        notOnStageTitle: "未在此场景中提前声明同名图层，请选择一个已有图层",
-        hint: "图层",
-        createNew: "新建图层",
+    hint: {
+      openScene: "双击场景可打开",
+      connect: "在场景之间拖拽以写入跳转"
     },
-    appearance: {
-        noPoses: "该角色还没有姿态",
-        noAxes: "该角色还没有分层轴",
-        unchanged: "不改动",
-        appearance: "外观",
-        default: "默认",
-        preview: "预览",
+    edge: {
+      reveal: "查看这些跳转",
+      disconnect: "删除连接",
+      // 中文没有单复数形式，所以措辞要在 1 条和多条时都读得通：「全部 1 条」很别扭，
+      // 而「这条连接对应的」既涵盖两种情况，也说清了删除的范围是整条线。
+      confirmRemove: {
+        other: "删除《{source}》→《{target}》的 {count} 条跳转？"
+      },
+      confirmRemoveDetail: {
+        other: "这条连接对应的 {count} 条跳转会从《{source}》中删除，可在剧情编辑器里撤销"
+      },
+      confirmRemoveAction: "删除跳转"
     },
-    pause: {
-        title: "暂停",
-        clickToProceed: "点击继续",
-        waitFor: "等待",
-        seconds: "秒",
-        clickHint: "等待玩家点击后继续",
-        remove: "移除暂停",
+    action: {
+      resetLayout: "重置布局",
+      openFlow: "打开场景流程"
     },
-    ruby: {
-        title: "注音",
-        placeholder: "读音",
-        remove: "移除注音",
-    },
-    /**
-     * 右键点击被标记的词时弹出的面板。
-     *
-     * `addToDictionary` 指的是工程词典，不是本机的：词随仓库一起走，所以写同一份剧本的人拼写一致。
-     */
-    spellcheck: {
-        checking: "正在找替换建议…",
-        noSuggestions: "没有建议",
-        addToDictionary: "加入工程词典",
-    },
-    interpolation: {
-        title: "插入值",
-        kindVariable: "变量",
-        kindBlueprint: "蓝图",
-        selectVariable: "选择一个变量…",
-        noVariables: "未声明任何变量",
-        storyValueTitle: "故事值",
-    },
-    richText: {
-        collapse: "折叠富文本工具",
-        bold: "加粗",
-        italic: "斜体",
-        textColor: "文字颜色 {color}",
-        moreColors: "从项目调色板选择更多颜色",
-        insertPause: "插入暂停（等待点击）",
-        insertValue: "插入内联值",
-        insertValueHint: "插入内联值（变量或蓝图）",
-        insertExpression: "插入表情切换",
-        ruby: "注音",
-        rubyHint: "注音（先选中要注音的文字）",
-        tools: "富文本工具",
-        pauseClick: "暂停（等待点击）",
-        pauseSeconds: "暂停 {seconds} 秒",
-        insertedValue: "已插入的值：{name}",
-        valueFallback: "值",
-        expressionEvent: "表情切换",
-        soundEvent: "音效",
-    },
-    inlineEvent: {
-        title: "行内事件",
-        noCharacter: "该行没有角色",
-        sound: "音效",
-    },
-    actionCreator: {
-        starred: "已收藏",
-        searchPlaceholder: "搜索动作",
-        noActions: "未找到动作",
-        scopedTo: "{name} 可用的动作",
-        addStarred: "添加到收藏",
-        removeStarred: "从收藏中移除",
-    },
-    music: {
-        missingAudio: "音频缺失",
-        none: "无音乐",
-    },
-    background: {
-        missingImage: "图片缺失",
-        none: "无背景",
-        unassigned: "未指定",
-    },
-    paramHint: {
-        variableName: "变量名",
-        variable: "变量",
-        // 「初始值」而非「默认值」：这个词现在既是提示，也是声明行上写出来的键（`初始值=false`）。
-        // 说的是同一件事，但「初始」点明了它只在变量诞生的那一刻起作用——之后是谁把它改成别的，是剧本
-        // 自己的事，而「默认」听上去像是随时会回落到的那个值。
-        defaultValue: "初始值",
-        valueType: "类型",
-        description: "说明",
-        expressionValue: "值或表达式",
-        condition: "条件",
-        amount: "数量",
-        times: "次数",
-        character: "角色",
-        speaker: "说话人",
-        form: "表情",
-        motion: "动作",
-        skin: "皮肤",
-        puppetParam: "参数",
-        puppetParamValue: "数值",
-        imageAsset: "图片",
-        imageOrColor: "图片或颜色",
-        videoAsset: "视频",
-        audioAsset: "音频",
-        objectName: "名称",
-        content: "内容",
-        target: "目标",
-        lineText: "文本",
-        labelName: "标签",
-        scene: "场景",
-        track: "音轨",
-        appTag: "变体",
-        displayName: "显示名",
-        seekTime: "秒数",
-        cameraOperation: "平移 / 缩放 / 旋转 / 压暗 / 运镜 / 复位",
-        cameraAmount: "数值或位置",
-        // 这个词会同时出现在三处：候选菜单的左栏、行内提示 `<持续时间>`、以及作者可以直接敲的键
-        // （`持续时间=1` 与 `d=1` 等价）。所以它必须是一个不含空格、在同一条指令里不重名的词。
-        duration: "持续时间",
-        transition: "转场",
-        reveal: "显隐动画",
-        placement: "位置",
-        waitFor: "秒数或 click",
-        fade: "淡入淡出秒数",
-        loop: "循环",
-        vol: "音量",
-        volume: "音量",
-        rate: "速度",
-        muted: "静音",
-        color: "颜色",
-        hold: "保持秒数",
-        opacity: "不透明度",
-        size: "字号",
-        z: "层级",
-    },
+    empty: {
+      noStory: "没有可展示的故事",
+      noScenes: "该故事还没有场景"
+    }
+  },
+  stage: {
+    notOnStage: "不在舞台上",
+    builtin: "内置"
+  },
+  targetField: {
+    label: "目标",
+    notOnStageTitle: "未在此场景中提前创建，请选择一个已有的可显示对象",
+    placeholder: "选择可显示对象…",
+    search: "搜索舞台可显示对象",
+    noMatch: "无匹配项",
+    kind: {
+      character: "角色",
+      image: "图片",
+      text: "文本",
+      layer: "图层"
+    }
+  },
+  layerField: {
+    label: "图层",
+    defaultName: "可显示图层",
+    notOnStageTitle: "未在此场景中提前声明同名图层，请选择一个已有图层",
+    hint: "图层",
+    createNew: "新建图层"
+  },
+  appearance: {
+    noPoses: "该角色还没有姿态",
+    noAxes: "该角色还没有分层轴",
+    unchanged: "不改动",
+    appearance: "外观",
+    default: "默认",
+    preview: "预览"
+  },
+  pause: {
+    title: "暂停",
+    clickToProceed: "点击继续",
+    waitFor: "等待",
+    seconds: "秒",
+    clickHint: "等待玩家点击后继续",
+    remove: "移除暂停"
+  },
+  ruby: {
+    title: "注音",
+    placeholder: "读音",
+    remove: "移除注音"
+  },
+  /**
+   * 右键点击被标记的词时弹出的面板。
+   *
+   * `addToDictionary` 指的是工程词典，不是本机的：词随仓库一起走，所以写同一份剧本的人拼写一致。
+   */
+  spellcheck: {
+    checking: "正在找替换建议…",
+    noSuggestions: "没有建议",
+    addToDictionary: "加入工程词典"
+  },
+  interpolation: {
+    title: "插入值",
+    kindVariable: "变量",
+    kindBlueprint: "蓝图",
+    selectVariable: "选择一个变量…",
+    noVariables: "未声明任何变量",
+    storyValueTitle: "故事值"
+  },
+  richText: {
+    collapse: "折叠富文本工具",
+    bold: "加粗",
+    italic: "斜体",
+    textColor: "文字颜色 {color}",
+    moreColors: "从项目调色板选择更多颜色",
+    insertPause: "插入暂停（等待点击）",
+    insertValue: "插入内联值",
+    insertValueHint: "插入内联值（变量或蓝图）",
+    insertExpression: "插入表情切换",
+    ruby: "注音",
+    rubyHint: "注音（先选中要注音的文字）",
+    tools: "富文本工具",
+    pauseClick: "暂停（等待点击）",
+    pauseSeconds: "暂停 {seconds} 秒",
+    insertedValue: "已插入的值：{name}",
+    valueFallback: "值",
+    expressionEvent: "表情切换",
+    soundEvent: "音效"
+  },
+  inlineEvent: {
+    title: "行内事件",
+    noCharacter: "该行没有角色",
+    sound: "音效"
+  },
+  actionCreator: {
+    starred: "已收藏",
+    searchPlaceholder: "搜索动作",
+    noActions: "未找到动作",
+    scopedTo: "{name} 可用的动作",
+    addStarred: "添加到收藏",
+    removeStarred: "从收藏中移除"
+  },
+  music: {
+    missingAudio: "音频缺失",
+    none: "无音乐"
+  },
+  background: {
+    missingImage: "图片缺失",
+    none: "无背景",
+    unassigned: "未指定"
+  },
+  paramHint: {
+    variableName: "变量名",
+    variable: "变量",
+    // 「初始值」而非「默认值」：这个词现在既是提示，也是声明行上写出来的键（`初始值=false`）。
+    // 说的是同一件事，但「初始」点明了它只在变量诞生的那一刻起作用——之后是谁把它改成别的，是剧本
+    // 自己的事，而「默认」听上去像是随时会回落到的那个值。
+    defaultValue: "初始值",
+    valueType: "类型",
+    description: "说明",
+    expressionValue: "值或表达式",
+    condition: "条件",
+    amount: "数量",
+    times: "次数",
+    character: "角色",
+    speaker: "说话人",
+    form: "表情",
+    motion: "动作",
+    skin: "皮肤",
+    puppetParam: "参数",
+    puppetParamValue: "数值",
+    imageAsset: "图片",
+    imageOrColor: "图片或颜色",
+    videoAsset: "视频",
+    audioAsset: "音频",
+    objectName: "名称",
+    content: "内容",
+    target: "目标",
+    lineText: "文本",
+    labelName: "标签",
+    scene: "场景",
+    track: "音轨",
+    appTag: "变体",
+    displayName: "显示名",
+    seekTime: "秒数",
+    cameraOperation: "平移 / 缩放 / 旋转 / 压暗 / 运镜 / 复位",
+    cameraAmount: "数值或位置",
+    // 这个词会同时出现在三处：候选菜单的左栏、行内提示 `<持续时间>`、以及作者可以直接敲的键
+    // （`持续时间=1` 与 `d=1` 等价）。所以它必须是一个不含空格、在同一条指令里不重名的词。
+    duration: "持续时间",
+    transition: "转场",
+    reveal: "显隐动画",
+    placement: "位置",
+    waitFor: "秒数或 click",
+    fade: "淡入淡出秒数",
+    loop: "循环",
+    vol: "音量",
+    volume: "音量",
+    rate: "速度",
+    muted: "静音",
+    color: "颜色",
+    hold: "保持秒数",
+    opacity: "不透明度",
+    size: "字号",
+    z: "层级"
+  },
 
-    /**
-     * 指令行里"值"的中文写法——三张词表的最后一张（指令名 / 参数名 / 值）。
-     *
-     * 每个词必须是**单个词**（不含空格），并且在同一个可选值集合内互不重复：重名的那个会被
-     * `localizedEnums.ts` 丢掉，作者就再也打不出它。`zoom` 在转场里是"放大显现"、在镜头里是
-     * "推拉"，共用一个键，所以取两边都说得通的"缩放"，并让镜头行的措辞跟着它走。
-     * 未翻译的词（代码语言这类专有名词）直接留空，回落到英文原词——那一定是解析器认得的写法。
-     */
-    enumValue: {
-        // 转场词表（`t=`）
-        fade: "淡变",
-        slide: "推移",
-        "slide-left": "左滑",
-        "slide-right": "右滑",
-        "slide-up": "上滑",
-        "slide-down": "下滑",
-        circle: "圆形",
-        wipe: "擦除",
-        iris: "光圈",
-        blur: "模糊",
-        blinds: "百叶",
-        "barn-door": "对开门",
-        clock: "时钟",
-        fan: "风扇",
-        dots: "圆点",
-        black: "黑场",
-        darkness: "压暗",
-        none: "无",
-        // `t=` 在显隐动画里能落到的另外几个变换预设——和右侧检查器"预设"下拉是同一个字段，
-        // 用同一批词，作者在哪边选都读作同一件事。
-        scale: "比例",
-        opacity: "不透明度",
-        // 位置（`at=`）与镜头的位置型数值
-        left: "左",
-        center: "居中",
-        right: "右",
-        // 镜头操作
-        pan: "平移",
-        zoom: "缩放",
-        rotate: "旋转",
-        darken: "压暗",
-        motion: "运镜",
-        reset: "复位",
-        // 变量类型
-        boolean: "布尔",
-        number: "数字",
-        string: "文本",
-        // 专有名词，中文里也照写——大小写折叠后与原词相同，词表会把它丢掉并回落到原词。
-        json: "JSON",
-    },
+  /**
+   * 指令行里"值"的中文写法——三张词表的最后一张（指令名 / 参数名 / 值）。
+   *
+   * 每个词必须是**单个词**（不含空格），并且在同一个可选值集合内互不重复：重名的那个会被
+   * `localizedEnums.ts` 丢掉，作者就再也打不出它。`zoom` 在转场里是"放大显现"、在镜头里是
+   * "推拉"，共用一个键，所以取两边都说得通的"缩放"，并让镜头行的措辞跟着它走。
+   * 未翻译的词（代码语言这类专有名词）直接留空，回落到英文原词——那一定是解析器认得的写法。
+   */
+  enumValue: {
+    // 转场词表（`t=`）
+    fade: "淡变",
+    slide: "推移",
+    "slide-left": "左滑",
+    "slide-right": "右滑",
+    "slide-up": "上滑",
+    "slide-down": "下滑",
+    circle: "圆形",
+    wipe: "擦除",
+    iris: "光圈",
+    blur: "模糊",
+    blinds: "百叶",
+    "barn-door": "对开门",
+    clock: "时钟",
+    fan: "风扇",
+    dots: "圆点",
+    black: "黑场",
+    darkness: "压暗",
+    none: "无",
+    // `t=` 在显隐动画里能落到的另外几个变换预设——和右侧检查器"预设"下拉是同一个字段，
+    // 用同一批词，作者在哪边选都读作同一件事。
+    scale: "比例",
+    opacity: "不透明度",
+    // 位置（`at=`）与镜头的位置型数值
+    left: "左",
+    center: "居中",
+    right: "右",
+    // 镜头操作
+    pan: "平移",
+    zoom: "缩放",
+    rotate: "旋转",
+    darken: "压暗",
+    motion: "运镜",
+    reset: "复位",
+    // 变量类型
+    boolean: "布尔",
+    number: "数字",
+    string: "文本",
+    // 专有名词，中文里也照写——大小写折叠后与原词相同，词表会把它丢掉并回落到原词。
+    json: "JSON"
+  },
 
-    /**
-     * 数值的单位——第三张词表之后的第四张（指令名 / 参数名 / 枚举值 / 单位）。
-     *
-     * 和前三张一样，写在这里的词既是**显示**的写法，也是作者**能敲进去**的写法：`持续时间=1秒` 与
-     * `d=1s` 完全等价。所以它必须是单个词、不含空格、不以数字开头，否则 `localizedUnits.ts` 会丢掉它，
-     * 界面就会显示一个解析不了的后缀。
-     */
-    unit: {
-        s: "秒",
-    },
+  /**
+   * 数值的单位——第三张词表之后的第四张（指令名 / 参数名 / 枚举值 / 单位）。
+   *
+   * 和前三张一样，写在这里的词既是**显示**的写法，也是作者**能敲进去**的写法：`持续时间=1秒` 与
+   * `d=1s` 完全等价。所以它必须是单个词、不含空格、不以数字开头，否则 `localizedUnits.ts` 会丢掉它，
+   * 界面就会显示一个解析不了的后缀。
+   */
+  unit: {
+    s: "秒"
+  },
 
-    view: {
-        density: "阅读密度",
-        "density.compact": "紧凑",
-        "density.standard": "标准",
-        "density.comfortable": "舒适",
-        filter: {
-            title: "筛选行",
-            /** 面板顶部两颗：一颗预设，一颗退路。 */
-            dialogueOnly: "仅对白",
-            clear: "清空筛选",
-            sectionScript: "剧本",
-            sectionStaging: "指令",
-            // 不叫「角色」：指令区里已经有一档叫角色（作用在角色身上的指令），同一张面板里同名两次读不出区别。
-            sectionCast: "出场角色",
-            facet: {
-                dialogue: "对白",
-                narration: "旁白",
-                choice: "选项",
-                note: "备注",
-                character: "角色",
-                stage: "舞台",
-                camera: "镜头",
-                scene: "场景",
-                sound: "声音",
-                flow: "流程",
-                data: "变量",
-                utils: "其他",
-                invalid: "无效行",
-            },
-        },
-    },
-    diagnostics: {
-        missingAsset: "这一行指向的资源已经不在项目里了",
-        unknownPuppetName: "这个角色的模型里没有这个名字",
-    },
-    find: {
-        placeholder: "在场景中查找",
-        replacePlaceholder: "替换为",
-        caseSensitive: "区分大小写",
-        wholeWord: "全词匹配",
-        regex: "使用正则表达式",
-        invalidPattern: "表达式无效",
-        noMatches: "没有结果",
-        previous: "上一个",
-        next: "下一个",
-        replace: "替换",
-        replaceAll: "全部替换",
-        open: "查找和替换",
-    },
-    commandManual: {
-        open: "指令手册",
-        title: "指令手册",
-        searchPlaceholder: "搜索指令",
-        aliases: "别名",
-        empty: "没有匹配的指令",
-    },
-    manual: {
-        title: "指令",
-        searchPlaceholder: "搜索指令",
-        empty: "没有匹配的指令",
-        pick: "选一条指令，看它做什么",
-        back: "全部指令",
-        insert: "插入到场景",
-        aliases: "也可以写作",
-        parameters: "参数",
-        noParameters: "不接受参数",
-        examples: "示例",
-        required: "必填",
-        optional: "可选",
-        greedy: "吃掉本行剩余内容",
-        appliesTo: "同时归入",
-        star: "收藏",
-        unstar: "取消收藏",
-        type: {
-            image: "图片资源",
-            audio: "音频资源",
-            video: "视频资源",
-            character: "角色",
-            characterOrName: "角色，或任意名字",
-            characterForm: "该角色的某个表情",
-            puppet: {
-                motion: "该角色运行时里的动作名（留空则静止）",
-                expression: "该角色运行时里的表情名（留空则清除）",
-                skin: "该角色运行时里的皮肤名（留空则恢复默认）",
-                param: "该角色模型里的数值参数 id",
-            },
-            scene: "场景",
-            audioTrack: "音轨",
-            label: "本场景内的标签",
-            appTag: "变体",
-            variable: "变量",
-            content: "新内容，类型随目标而定",
-            color: "颜色",
-            literal: "任意值",
-            constant: "常量值",
-            text: "文本",
-            expression: "表达式",
-            expressionBoolean: "表达式，真或假",
-            number: "数字",
-            integer: "整数",
-        },
-        target: {
-            character: "角色",
-            image: "图片",
-            text: "文本",
-            layer: "层",
-            video: "视频",
-            audio: "声音",
-            vfx: "特效",
-        },
-    },
-    position: {
-        label: "站位",
-        left: "左",
-        center: "中",
-        right: "右",
-    },
-    rows: {
-        placeholderDialogue: "对白…",
-        placeholderDialogueStart: "使用 {name} 开始对白，或使用 {trigger} 插入角色动作",
-        placeholderDialogueContinue: "使用 {name} 继续对白，或使用 {trigger} 插入角色动作",
-        placeholderNarration: "旁白…",
-        placeholderChoicePrompt: "选项提示…",
-        placeholderChoiceText: "选项文本…",
-        placeholderNote: "备注…",
-        placeholderText: "文本…",
-        dragRow: "拖动行",
-        dragRows: {
-            one: "拖动 {count} 行",
-            other: "拖动 {count} 行",
-        },
-        insert: "在此行后插入空行",
-        delete: "删除此行",
-        insertTitle: "在此行后插入空行（{keys}）",
-        deleteTitle: "删除此行（{keys}）",
-        playFromRow: "从这一行开始播放",
-        playBranch: "试玩这个分支",
-        insertPlaceholder: "输入旁白，{trigger} 插入动作，# 选择角色…",
-        insertPlaceholderCharacter: "为 {name} 选择一个动作…",
-        noCategoryActionFound: "未找到{category}动作",
-        actionTypes: "动作类型",
-        noCharacterFound: "未找到角色",
-        noCandidates: "无匹配项",
-        setBackground: "设置背景",
-        transform: "变换",
-        invalidHint: "无法构建",
-        // 出现在截断点这一行上，紧挨着写明它截断哪个变体的那句命令。行上只显示短的一半，
-        // 完整的一句放在悬停提示里。
-        cutPoint: "其他变体没有此行",
-        cutPointTitle: "{name}的剧情在此行结束；其他任何变体都不含这一行",
-        cutPointInactive: "变体已删除",
-        cutPointInactiveTitle: "这一行截断的变体已被删除，因此它不再截断任何内容",
-        tempSpeaker: "仅名字",
-        createCharacter: "创建角色「{name}」",
-        voiceOutdated: "配音待更新，打开配音表",
-        voiceManage: "打开配音表",
-        voicePlay: "试听配音",
-        voiceStop: "停止试听",
-    },
-    sceneEditor: {
-        defaultSceneName: "未命名场景",
-        untitledScene: "未命名场景",
-        changeBackgroundTitle: "更换默认背景",
-        selectBackgroundTitle: "选择默认背景",
-        change: "更换",
-        select: "选择",
-        sceneName: "场景名称",
-        noDescription: "暂无描述",
-        defaultBackground: "默认背景",
-        clearBackground: "清除背景",
-        sceneMusic: "场景音乐",
-        clearSceneMusic: "清除场景音乐",
-        selectSceneMusic: "选择场景音乐",
-        sceneMusicVolume: "音量",
-        sceneMusicLoop: "循环",
-        sceneMusicFade: "淡入（秒）",
-        sceneMusicLoopRegion: "循环 {from}s 至 {to}s",
-        sceneMusicIntroLoop: "从 {from}s 播放，循环 {loop}s 至 {to}s",
-        sceneMusicFromIn: "从 {from}s 开始",
-        sceneMusicWholeClip: "整曲",
-        backgroundResolveError: "无法解析图片资源：{error}",
-        selectDefaultBackground: "选择默认背景",
-        tabInvalid: "故事场景编辑器标签无效",
-        loadingScene: "正在加载故事场景…",
-        notFound: "未找到故事或场景",
-        addRow: "点击或输入以添加一行…",
-        emptyHint: "该场景为空；在新行中输入 {trigger} 选择一条指令，或者输入一段旁白",
-        emptyExampleBg: "设置背景",
-        emptyExampleShow: "让角色登场",
-        emptyExampleSay: "给他一句台词",
-        emptyOpenManual: "打开指令手册",
-        /** 场景里有行、但筛选把它们全挡住了——和「场景是空的」是两回事，不能共用一句提示。 */
-        filteredEmpty: "没有匹配当前筛选条件的行",
-        filteredEmptyClear: "显示全部",
-        snapshotsPanel: "场景快照",
-    },
-    preview: {
-        label: "预览",
-        openPreview: "打开实时预览",
-        closePreview: "关闭实时预览",
-        title: "实时预览",
-        dock: "停靠到侧边栏",
-        pip: "画中画",
-        selectRow: "选择一个故事行以预览舞台状态",
-        failed: "预览失败",
-        playFromHere: "从这里播放",
-        restart: "重新播放",
-        stop: "停止播放",
-        mute: "静音",
-        unmute: "取消静音",
-        playing: "播放中",
-        ended: "已播放到场景结尾",
-        endedAtJump: "在场景跳转处停止",
-        diagnostics: {
-            targetNotFound: "找不到预览目标行，改为预览场景开头",
-            targetUnreachable: "预览目标从场景开头走不到，改为预览场景结尾",
-            repeatedGroupOnce: "预览把重复组只执行一次",
-            sceneJumpIgnored: "预览会忽略场景跳转",
-            choiceNotTaken: "预览假定前面这个选项的分支都没有被选中",
-            conditionUnresolved: "条件 `{expression}` 无法求值，在预览里按 false 处理",
-            blueprintConditionFalse: "蓝图条件在预览里按 false 处理",
-            persistentConditionDefaults: "持久化变量的条件在预览里按默认值求值",
-            videoSkipped: "预览不播放视频",
-            ambienceSkipped: "预览不播放氛围效果",
-            storyActionSkipped: "预览不模拟故事动作蓝图的效果",
-            displayableNotFound: "找不到显示对象：{target}",
-            displayableUnnamed: "（未命名）",
-            persistentAssignmentSkipped: "预览不会写入持久化变量",
-            assignmentUnresolved: "表达式 `{expression}` 无法求值，预览里跳过了这次赋值",
-            blueprintCallEmpty: "蓝图 `{name}()` 不在预览里运行，读到的是空值",
-            persistentReadEmpty: "持久化变量在预览里读到的是空值",
-            sceneVisitUntracked: "预览不记录场景到访情况，`visited({name})` 按 false 处理",
-            choicePickUntracked: "预览不记录选项选择情况，`picked({name})` 按 false 处理",
-            presetNotFoldable: "{preset} 变换暂时无法折叠进角色出场",
-            animationNotFound: "找不到故事动画：{animationId}",
-            animationIdMissing: "动画变换缺少 animationId",
-        },
-    },
-    blueprintCard: {
-        openAria: "打开故事动作蓝图",
-        createAria: "创建故事动作蓝图",
-    },
-    condition: {
-        title: "条件",
-        kindGraph: "图",
-        kindExpression: "表达式",
-        expressionPlaceholder: "gold >= 100 && !met",
-        expressionVariables: "可用变量：{names}",
-        opIsOn: "为开",
-        opIsOff: "为关",
-        opEquals: "等于",
-        opNotEquals: "不等于",
-        opExists: "已设置",
-        openGraphAria: "打开条件图",
-        createGraphAria: "创建条件图",
-        valueTrue: "开",
-        valueFalse: "关",
-        valuePlaceholder: "值",
-        clear: "清除条件",
-        summarySet: "设置条件…",
-        summaryGraph: "图条件",
-        summaryExpression: "表达式",
-        fallbackVariable: "变量",
-        fallbackPersistent: "持久化",
-    },
-    container: {
-        addOption: "添加选项",
-        addAction: "添加动作",
-        addOptionInside: "在内部添加选项",
-        addActionInside: "在内部添加动作",
-        elseIf: "否则如果",
-        elseBranch: "否则",
-    },
-    repeat: {
-        times: "次",
-        until: "直到",
-    },
-    bulkDelete: {
-        confirm: "删除选中的 {count} 行？",
-        detail: "此操作将移除选中的脚本行及其子项",
-    },
-    actionCategory: {
-        all: "全部",
+  view: {
+    density: "阅读密度",
+    "density.compact": "紧凑",
+    "density.standard": "标准",
+    "density.comfortable": "舒适",
+    filter: {
+      title: "筛选行",
+      /** 面板顶部两颗：一颗预设，一颗退路。 */
+      dialogueOnly: "仅对白",
+      clear: "清空筛选",
+      sectionScript: "剧本",
+      sectionStaging: "指令",
+      // 不叫「角色」：指令区里已经有一档叫角色（作用在角色身上的指令），同一张面板里同名两次读不出区别。
+      sectionCast: "出场角色",
+      facet: {
+        dialogue: "对白",
+        narration: "旁白",
+        choice: "选项",
+        note: "备注",
         character: "角色",
         stage: "舞台",
-        image: "图片",
-        text: "文本",
-        layer: "图层",
-        video: "视频",
-        vfx: "氛围特效",
         camera: "镜头",
         scene: "场景",
         sound: "声音",
-        data: "数据",
         flow: "流程",
-        utils: "工具",
+        data: "变量",
+        utils: "其他",
+        invalid: "无效行"
+      }
+    }
+  },
+  diagnostics: {
+    missingAsset: "这一行指向的资源已经不在项目里了",
+    unknownPuppetName: "这个角色的模型里没有这个名字"
+  },
+  find: {
+    placeholder: "在场景中查找",
+    replacePlaceholder: "替换为",
+    caseSensitive: "区分大小写",
+    wholeWord: "全词匹配",
+    regex: "使用正则表达式",
+    invalidPattern: "表达式无效",
+    noMatches: "没有结果",
+    previous: "上一个",
+    next: "下一个",
+    replace: "替换",
+    replaceAll: "全部替换",
+    open: "查找和替换"
+  },
+  commandManual: {
+    open: "指令手册",
+    title: "指令手册",
+    searchPlaceholder: "搜索指令",
+    aliases: "别名",
+    empty: "没有匹配的指令"
+  },
+  manual: {
+    title: "指令",
+    searchPlaceholder: "搜索指令",
+    empty: "没有匹配的指令",
+    pick: "选一条指令，看它做什么",
+    back: "全部指令",
+    insert: "插入到场景",
+    aliases: "也可以写作",
+    parameters: "参数",
+    noParameters: "不接受参数",
+    examples: "示例",
+    required: "必填",
+    optional: "可选",
+    greedy: "吃掉本行剩余内容",
+    appliesTo: "同时归入",
+    star: "收藏",
+    unstar: "取消收藏",
+    type: {
+      image: "图片资源",
+      audio: "音频资源",
+      video: "视频资源",
+      character: "角色",
+      characterOrName: "角色，或任意名字",
+      characterForm: "该角色的某个表情",
+      puppet: {
+        motion: "该角色运行时里的动作名（留空则静止）",
+        expression: "该角色运行时里的表情名（留空则清除）",
+        skin: "该角色运行时里的皮肤名（留空则恢复默认）",
+        param: "该角色模型里的数值参数 id"
+      },
+      scene: "场景",
+      audioTrack: "音轨",
+      label: "本场景内的标签",
+      appTag: "变体",
+      variable: "变量",
+      content: "新内容，类型随目标而定",
+      color: "颜色",
+      literal: "任意值",
+      constant: "常量值",
+      text: "文本",
+      expression: "表达式",
+      expressionBoolean: "表达式，真或假",
+      number: "数字",
+      integer: "整数"
     },
-    pluginActionFallbackDetail: "插件故事动作",
-    command: {
-        background: { label: "背景", detail: "设置场景背景图片或颜色" },
-        jump: { label: "跳转", detail: "前往另一个场景，会卸载并重新开始该场景，与 /goto 不同" },
-        wait: { label: "等待", detail: "等待数秒，或等待点击" },
-        nvl: { label: "NVL", detail: "切换堆叠对白面板" },
-        show: { label: "显示", detail: "显示角色或舞台对象" },
-        hide: { label: "隐藏", detail: "隐藏角色或舞台对象" },
-        move: { label: "移动", detail: "把角色移到某个位置" },
-        face: { label: "表情", detail: "切换角色表情" },
-        motion: { label: "动作", detail: "设置由运行时绘制的角色所播放的动作" },
-        param: { label: "参数", detail: "设置由运行时绘制的角色模型上的一个数值参数" },
-        skin: { label: "皮肤", detail: "设置由运行时绘制的角色所穿的皮肤" },
-        rename: { label: "改名", detail: "改变角色说话时显示的名字" },
-        say: { label: "对白", detail: "一句台词" },
-        image: { label: "图片", detail: "在舞台上放置图片" },
-        text: { label: "文本", detail: "在舞台上放置文本" },
-        video: { label: "视频", detail: "在舞台上放置视频" },
-        vfx: { label: "氛围特效", detail: "全屏循环叠加：落花、雨雪、尘埃、光斑" },
-        layer: { label: "图层", detail: "创建渲染图层" },
-        swap: { label: "替换", detail: "替换对象的图片或文本内容" },
-        play: { label: "播放", detail: "播放视频" },
-        font: { label: "字体", detail: "修改文本字号或颜色" },
-        bgm: { label: "背景音乐", detail: "设置背景音乐" },
-        sound: { label: "音效", detail: "播放音效" },
-        volume: { label: "音量", detail: "设置音量（默认 BGM）" },
-        rate: { label: "倍速", detail: "设置播放速度（默认 BGM）" },
-        stop: { label: "停止", detail: "停止声音或视频（默认 BGM）" },
-        pause: { label: "暂停", detail: "暂停声音或视频（默认 BGM）" },
-        resume: { label: "继续", detail: "继续播放声音或视频（默认 BGM）" },
-        mute: { label: "静音", detail: "静音（默认 BGM）" },
-        unmute: { label: "取消静音", detail: "取消静音（默认 BGM）" },
-        seek: { label: "跳转进度", detail: "把视频跳到指定时间" },
-        set: { label: "赋值", detail: "为变量赋值" },
-        inc: { label: "增加", detail: "为数值变量加值" },
-        dec: { label: "减少", detail: "为数值变量减值" },
-        toggle: { label: "翻转", detail: "翻转真/假变量" },
-        reset: { label: "重置", detail: "把变量恢复为默认值" },
-        declareLocal: { label: "场景变量", detail: "声明仅本场景有效的变量" },
-        if: { label: "条件", detail: "按条件分支" },
-        // 「菜单」而不是「选项」：选项是它的子行的名字（containerHeader.option），两者同名时
-        // 「@选项 要回头吗？」下面挂着一串「选项 …」，读起来像同一种东西套了两层。英文本来就是
-        // Menu/Option 两个词，这里只是把中文名对回去。
-        menu: { label: "菜单", detail: "让玩家做出选择" },
-        repeat: { label: "重复", detail: "按设定次数重复执行所含动作；按条件循环请用 /until" },
-        until: { label: "直到", detail: "重复执行所含动作，直到条件成立；条件在每轮开始前检查" },
-        break: { label: "跳出", detail: "跳出本行所在的重复组" },
-        parallel: { label: "并行", detail: "同时执行所含动作" },
-        race: { label: "竞速", detail: "全部执行，最先完成者结束" },
-        sequence: { label: "顺序", detail: "依次执行所含动作" },
-        label: { label: "标签", detail: "在本场景标记一个位置，供 /goto 跳转" },
-        goto: { label: "跳到标签", detail: "把播放头移到本场景的标签，与 /jump 不同，场景不会重启" },
-        // 不叫「剪切」：编辑器里那个词已经归剪贴板了。这个名字说的是它造出来的那一行本身，
-        // 而它属于哪一个变体、其他变体里为何没有这一行，交给 detail 说。
-        cut: { label: "截断", detail: "让某个变体的剧情在此行结束，其他变体中没有这一行" },
-        blueprint: { label: "蓝图", detail: "运行故事动作蓝图" },
-        blink: { label: "闪屏", detail: "屏幕闪烁效果" },
-        vignette: { label: "暗角", detail: "屏幕暗角效果" },
-        camera: { label: "镜头", detail: "平移、推拉、旋转或压暗舞台镜头，姿态跨场景保留" },
-        fx: { label: "特效", detail: "为对象应用特效" },
-        transform: { label: "变换", detail: "移动、缩放或旋转对象" },
-        note: { label: "备注", detail: "仅 Studio 可见的备注" },
+    target: {
+      character: "角色",
+      image: "图片",
+      text: "文本",
+      layer: "层",
+      video: "视频",
+      audio: "声音",
+      vfx: "特效"
+    }
+  },
+  position: {
+    label: "站位",
+    left: "左",
+    center: "中",
+    right: "右"
+  },
+  rows: {
+    placeholderDialogue: "对白…",
+    placeholderDialogueStart: "使用 {name} 开始对白，或使用 {trigger} 插入角色动作",
+    placeholderDialogueContinue: "使用 {name} 继续对白，或使用 {trigger} 插入角色动作",
+    placeholderNarration: "旁白…",
+    placeholderChoicePrompt: "选项提示…",
+    placeholderChoiceText: "选项文本…",
+    placeholderNote: "备注…",
+    placeholderText: "文本…",
+    dragRow: "拖动行",
+    dragRows: {
+      one: "拖动 {count} 行",
+      other: "拖动 {count} 行"
     },
-    containerHeader: {
-        condition: "条件",
-        if: "如果",
-        elseIf: "否则如果",
-        else: "否则",
-        repeat: "重复",
-        repeatUntil: "重复直到",
-        parallel: "同时运行",
-        race: "竞速（最先完成者）",
-        sequence: "依次执行",
-        nvl: "NVL",
-        menu: "菜单",
-        option: "选项",
+    insert: "在此行后插入空行",
+    delete: "删除此行",
+    insertTitle: "在此行后插入空行（{keys}）",
+    deleteTitle: "删除此行（{keys}）",
+    playFromRow: "从这一行开始播放",
+    playBranch: "试玩这个分支",
+    insertPlaceholder: "输入旁白，{trigger} 插入动作，# 选择角色…",
+    insertPlaceholderCharacter: "为 {name} 选择一个动作…",
+    noCategoryActionFound: "未找到{category}动作",
+    actionTypes: "动作类型",
+    noCharacterFound: "未找到角色",
+    noCandidates: "无匹配项",
+    setBackground: "设置背景",
+    transform: "变换",
+    invalidHint: "无法构建",
+    // 出现在截断点这一行上，紧挨着写明它截断哪个变体的那句命令。行上只显示短的一半，
+    // 完整的一句放在悬停提示里。
+    cutPoint: "其他变体没有此行",
+    cutPointTitle: "{name}的剧情在此行结束；其他任何变体都不含这一行",
+    cutPointInactive: "变体已删除",
+    cutPointInactiveTitle: "这一行截断的变体已被删除，因此它不再截断任何内容",
+    tempSpeaker: "仅名字",
+    createCharacter: "创建角色「{name}」",
+    voiceOutdated: "配音待更新，打开配音表",
+    voiceManage: "打开配音表",
+    voicePlay: "试听配音",
+    voiceStop: "停止试听"
+  },
+  sceneEditor: {
+    defaultSceneName: "未命名场景",
+    untitledScene: "未命名场景",
+    changeBackgroundTitle: "更换默认背景",
+    selectBackgroundTitle: "选择默认背景",
+    change: "更换",
+    select: "选择",
+    sceneName: "场景名称",
+    noDescription: "暂无描述",
+    defaultBackground: "默认背景",
+    clearBackground: "清除背景",
+    sceneMusic: "场景音乐",
+    clearSceneMusic: "清除场景音乐",
+    selectSceneMusic: "选择场景音乐",
+    sceneMusicVolume: "音量",
+    sceneMusicLoop: "循环",
+    sceneMusicFade: "淡入（秒）",
+    sceneMusicLoopRegion: "循环 {from}s 至 {to}s",
+    sceneMusicIntroLoop: "从 {from}s 播放，循环 {loop}s 至 {to}s",
+    sceneMusicFromIn: "从 {from}s 开始",
+    sceneMusicWholeClip: "整曲",
+    backgroundResolveError: "无法解析图片资源：{error}",
+    selectDefaultBackground: "选择默认背景",
+    tabInvalid: "故事场景编辑器标签无效",
+    loadingScene: "正在加载故事场景…",
+    notFound: "未找到故事或场景",
+    addRow: "点击或输入以添加一行…",
+    emptyHint: "该场景为空；在新行中输入 {trigger} 选择一条指令，或者输入一段旁白",
+    emptyExampleBg: "设置背景",
+    emptyExampleShow: "让角色登场",
+    emptyExampleSay: "给他一句台词",
+    emptyOpenManual: "打开指令手册",
+    /** 场景里有行、但筛选把它们全挡住了——和「场景是空的」是两回事，不能共用一句提示。 */
+    filteredEmpty: "没有匹配当前筛选条件的行",
+    filteredEmptyClear: "显示全部",
+    snapshotsPanel: "场景快照"
+  },
+  preview: {
+    label: "预览",
+    openPreview: "打开实时预览",
+    closePreview: "关闭实时预览",
+    title: "实时预览",
+    dock: "停靠到侧边栏",
+    pip: "画中画",
+    selectRow: "选择一个故事行以预览舞台状态",
+    failed: "预览失败",
+    playFromHere: "从这里播放",
+    restart: "重新播放",
+    stop: "停止播放",
+    mute: "静音",
+    unmute: "取消静音",
+    playing: "播放中",
+    ended: "已播放到场景结尾",
+    endedAtJump: "在场景跳转处停止",
+    diagnostics: {
+      targetNotFound: "找不到预览目标行，改为预览场景开头",
+      targetUnreachable: "预览目标从场景开头走不到，改为预览场景结尾",
+      repeatedGroupOnce: "预览把重复组只执行一次",
+      sceneJumpIgnored: "预览会忽略场景跳转",
+      choiceNotTaken: "预览假定前面这个选项的分支都没有被选中",
+      conditionUnresolved: "条件 `{expression}` 无法求值，在预览里按 false 处理",
+      blueprintConditionFalse: "蓝图条件在预览里按 false 处理",
+      persistentConditionDefaults: "持久化变量的条件在预览里按默认值求值",
+      videoSkipped: "预览不播放视频",
+      ambienceSkipped: "预览不播放氛围效果",
+      storyActionSkipped: "预览不模拟故事动作蓝图的效果",
+      displayableNotFound: "找不到显示对象：{target}",
+      displayableUnnamed: "（未命名）",
+      persistentAssignmentSkipped: "预览不会写入持久化变量",
+      assignmentUnresolved: "表达式 `{expression}` 无法求值，预览里跳过了这次赋值",
+      blueprintCallEmpty: "蓝图 `{name}()` 不在预览里运行，读到的是空值",
+      persistentReadEmpty: "持久化变量在预览里读到的是空值",
+      sceneVisitUntracked: "预览不记录场景到访情况，`visited({name})` 按 false 处理",
+      choicePickUntracked: "预览不记录选项选择情况，`picked({name})` 按 false 处理",
+      presetNotFoldable: "{preset} 变换暂时无法折叠进角色出场",
+      animationNotFound: "找不到故事动画：{animationId}",
+      animationIdMissing: "动画变换缺少 animationId"
+    }
+  },
+  blueprintCard: {
+    openAria: "打开故事动作蓝图",
+    createAria: "创建故事动作蓝图"
+  },
+  condition: {
+    title: "条件",
+    kindGraph: "图",
+    kindExpression: "表达式",
+    expressionPlaceholder: "gold >= 100 && !met",
+    expressionVariables: "可用变量：{names}",
+    opIsOn: "为开",
+    opIsOff: "为关",
+    opEquals: "等于",
+    opNotEquals: "不等于",
+    opExists: "已设置",
+    openGraphAria: "打开条件图",
+    createGraphAria: "创建条件图",
+    valueTrue: "开",
+    valueFalse: "关",
+    valuePlaceholder: "值",
+    clear: "清除条件",
+    summarySet: "设置条件…",
+    summaryGraph: "图条件",
+    summaryExpression: "表达式",
+    fallbackVariable: "变量",
+    fallbackPersistent: "持久化"
+  },
+  container: {
+    addOption: "添加选项",
+    addAction: "添加动作",
+    addOptionInside: "在内部添加选项",
+    addActionInside: "在内部添加动作",
+    elseIf: "否则如果",
+    elseBranch: "否则"
+  },
+  repeat: {
+    times: "次",
+    until: "直到"
+  },
+  bulkDelete: {
+    confirm: "删除选中的 {count} 行？",
+    detail: "此操作将移除选中的脚本行及其子项"
+  },
+  actionCategory: {
+    all: "全部",
+    character: "角色",
+    stage: "舞台",
+    image: "图片",
+    text: "文本",
+    layer: "图层",
+    video: "视频",
+    vfx: "氛围特效",
+    camera: "镜头",
+    scene: "场景",
+    sound: "声音",
+    data: "数据",
+    flow: "流程",
+    utils: "工具"
+  },
+  pluginActionFallbackDetail: "插件故事动作",
+  command: {
+    background: { label: "背景", detail: "设置场景背景图片或颜色" },
+    jump: { label: "跳转", detail: "前往另一个场景，会卸载并重新开始该场景，与 /goto 不同" },
+    wait: { label: "等待", detail: "等待数秒，或等待点击" },
+    nvl: { label: "NVL", detail: "切换堆叠对白面板" },
+    show: { label: "显示", detail: "显示角色或舞台对象" },
+    hide: { label: "隐藏", detail: "隐藏角色或舞台对象" },
+    move: { label: "移动", detail: "把角色移到某个位置" },
+    face: { label: "表情", detail: "切换角色表情" },
+    motion: { label: "动作", detail: "设置由运行时绘制的角色所播放的动作" },
+    param: { label: "参数", detail: "设置由运行时绘制的角色模型上的一个数值参数" },
+    skin: { label: "皮肤", detail: "设置由运行时绘制的角色所穿的皮肤" },
+    rename: { label: "改名", detail: "改变角色说话时显示的名字" },
+    say: { label: "对白", detail: "一句台词" },
+    image: { label: "图片", detail: "在舞台上放置图片" },
+    text: { label: "文本", detail: "在舞台上放置文本" },
+    video: { label: "视频", detail: "在舞台上放置视频" },
+    vfx: { label: "氛围特效", detail: "全屏循环叠加：落花、雨雪、尘埃、光斑" },
+    layer: { label: "图层", detail: "创建渲染图层" },
+    swap: { label: "替换", detail: "替换对象的图片或文本内容" },
+    play: { label: "播放", detail: "播放视频" },
+    font: { label: "字体", detail: "修改文本字号或颜色" },
+    bgm: { label: "背景音乐", detail: "设置背景音乐" },
+    sound: { label: "音效", detail: "播放音效" },
+    volume: { label: "音量", detail: "设置音量（默认 BGM）" },
+    rate: { label: "倍速", detail: "设置播放速度（默认 BGM）" },
+    stop: { label: "停止", detail: "停止声音或视频（默认 BGM）" },
+    pause: { label: "暂停", detail: "暂停声音或视频（默认 BGM）" },
+    resume: { label: "继续", detail: "继续播放声音或视频（默认 BGM）" },
+    mute: { label: "静音", detail: "静音（默认 BGM）" },
+    unmute: { label: "取消静音", detail: "取消静音（默认 BGM）" },
+    seek: { label: "跳转进度", detail: "把视频跳到指定时间" },
+    set: { label: "赋值", detail: "为变量赋值" },
+    inc: { label: "增加", detail: "为数值变量加值" },
+    dec: { label: "减少", detail: "为数值变量减值" },
+    toggle: { label: "翻转", detail: "翻转真/假变量" },
+    reset: { label: "重置", detail: "把变量恢复为默认值" },
+    declareLocal: { label: "场景变量", detail: "声明仅本场景有效的变量" },
+    if: { label: "条件", detail: "按条件分支" },
+    // 「菜单」而不是「选项」：选项是它的子行的名字（containerHeader.option），两者同名时
+    // 「@选项 要回头吗？」下面挂着一串「选项 …」，读起来像同一种东西套了两层。英文本来就是
+    // Menu/Option 两个词，这里只是把中文名对回去。
+    menu: { label: "菜单", detail: "让玩家做出选择" },
+    repeat: { label: "重复", detail: "按设定次数重复执行所含动作；按条件循环请用 /until" },
+    until: { label: "直到", detail: "重复执行所含动作，直到条件成立；条件在每轮开始前检查" },
+    break: { label: "跳出", detail: "跳出本行所在的重复组" },
+    parallel: { label: "并行", detail: "同时执行所含动作" },
+    race: { label: "竞速", detail: "全部执行，最先完成者结束" },
+    sequence: { label: "顺序", detail: "依次执行所含动作" },
+    label: { label: "标签", detail: "在本场景标记一个位置，供 /goto 跳转" },
+    goto: { label: "跳到标签", detail: "把播放头移到本场景的标签，与 /jump 不同，场景不会重启" },
+    // 不叫「剪切」：编辑器里那个词已经归剪贴板了。这个名字说的是它造出来的那一行本身，
+    // 而它属于哪一个变体、其他变体里为何没有这一行，交给 detail 说。
+    cut: { label: "截断", detail: "让某个变体的剧情在此行结束，其他变体中没有这一行" },
+    blueprint: { label: "蓝图", detail: "运行故事动作蓝图" },
+    blink: { label: "闪屏", detail: "屏幕闪烁效果" },
+    vignette: { label: "暗角", detail: "屏幕暗角效果" },
+    camera: { label: "镜头", detail: "平移、推拉、旋转或压暗舞台镜头，姿态跨场景保留" },
+    fx: { label: "特效", detail: "为对象应用特效" },
+    transform: { label: "变换", detail: "移动、缩放或旋转对象" },
+    note: { label: "备注", detail: "仅 Studio 可见的备注" }
+  },
+  containerHeader: {
+    condition: "条件",
+    if: "如果",
+    elseIf: "否则如果",
+    else: "否则",
+    repeat: "重复",
+    repeatUntil: "重复直到",
+    parallel: "同时运行",
+    race: "竞速（最先完成者）",
+    sequence: "依次执行",
+    nvl: "NVL",
+    menu: "菜单",
+    option: "选项"
+  },
+  badge: {
+    declare: { scene: "场景变量", saved: "存档变量", persistent: "全局变量" },
+    narration: "旁白",
+    dialogue: "对白",
+    choice: "选择",
+    choiceOption: "选项",
+    background: "背景",
+    character: "角色",
+    audio: "音频",
+    variable: "变量",
+    wait: "等待",
+    image: "图片",
+    transform: "变换",
+    displayable: "可显示对象",
+    text: "文本",
+    layer: "图层",
+    video: "视频",
+    vfx: "氛围",
+    nvl: "NVL",
+    blueprint: "蓝图",
+    effect: "特效",
+    camera: "镜头",
+    control: "控制",
+    label: "标签",
+    goto: "跳到标签",
+    break: "跳出",
+    cut: "截断点",
+    jump: "跳转",
+    note: "备注",
+    invalid: "无效"
+  },
+  emptyPlaceholder: {
+    narration: "双击输入旁白",
+    option: "双击输入选项文本",
+    choice: "双击输入选择提示",
+    note: "双击输入备注",
+    text: "双击输入文本"
+  },
+  characterName: {
+    unassigned: "未指定角色",
+    unknown: "未知角色"
+  },
+  describe: {
+    narration: "旁白",
+    dialogue: "对白",
+    choice: "选择",
+    option: "选项",
+    setBackground: "设置背景 {value}",
+    missingAsset: "资源缺失",
+    unassigned: "未指定",
+    characterFallback: "角色",
+    charOp: {
+      enter: "登场",
+      move: "移动",
+      exit: "退场",
+      expression: "表情",
+      setName: "改名",
+      setMotion: "动作",
+      setSkin: "皮肤",
+      setParams: "参数"
     },
-    badge: {
-        declare: { scene: "场景变量", saved: "存档变量", persistent: "全局变量" },
-        narration: "旁白",
-        dialogue: "对白",
-        choice: "选择",
-        choiceOption: "选项",
-        background: "背景",
-        character: "角色",
-        audio: "音频",
-        variable: "变量",
-        wait: "等待",
-        image: "图片",
-        transform: "变换",
-        displayable: "可显示对象",
-        text: "文本",
-        layer: "图层",
-        video: "视频",
-        vfx: "氛围",
-        nvl: "NVL",
-        blueprint: "蓝图",
-        effect: "特效",
-        camera: "镜头",
-        control: "控制",
-        label: "标签",
-        goto: "跳到标签",
-        break: "跳出",
-        cut: "截断点",
-        jump: "跳转",
-        note: "备注",
-        invalid: "无效",
+    waitDuration: "等待 {seconds}s",
+    waitClick: "等待点击",
+    unnamed: "未命名",
+    puppetNone: "无",
+    targetFallback: "目标",
+    image: "{operation} 图片 {name}",
+    text: "{operation} 文本 {name}",
+    layer: "{operation} 图层 {name}",
+    video: "{operation} 视频 {name}",
+    vfx: "{operation} 氛围特效 {name}",
+    nvl: "NVL 块",
+    blueprint: "蓝图",
+    effect: "{effect} 屏幕特效",
+    // 镜头行的措辞就是作者敲进去的那个词（`story.enumValue.*`）——行里读到的和手册里教的
+    // 必须是同一个词，否则又回到"打的是缩放、显示的是推拉"那种割裂。
+    cameraOp: {
+      pan: "平移",
+      zoom: "缩放",
+      rotate: "旋转",
+      darken: "压暗",
+      motion: "运镜",
+      reset: "复位"
     },
-    emptyPlaceholder: {
-        narration: "双击输入旁白",
-        option: "双击输入选项文本",
-        choice: "双击输入选择提示",
-        note: "双击输入备注",
-        text: "双击输入文本",
-    },
-    characterName: {
-        unassigned: "未指定角色",
-        unknown: "未知角色",
-    },
-    describe: {
-        narration: "旁白",
-        dialogue: "对白",
-        choice: "选择",
-        option: "选项",
-        setBackground: "设置背景 {value}",
-        missingAsset: "资源缺失",
-        unassigned: "未指定",
-        characterFallback: "角色",
-        charOp: {
-            enter: "登场",
-            move: "移动",
-            exit: "退场",
-            expression: "表情",
-            setName: "改名",
-            setMotion: "动作",
-            setSkin: "皮肤",
-            setParams: "参数",
-        },
-        waitDuration: "等待 {seconds}s",
-        waitClick: "等待点击",
-        unnamed: "未命名",
-        puppetNone: "无",
-        targetFallback: "目标",
-        image: "{operation} 图片 {name}",
-        text: "{operation} 文本 {name}",
-        layer: "{operation} 图层 {name}",
-        video: "{operation} 视频 {name}",
-        vfx: "{operation} 氛围特效 {name}",
-        nvl: "NVL 块",
-        blueprint: "蓝图",
-        effect: "{effect} 屏幕特效",
-        // 镜头行的措辞就是作者敲进去的那个词（`story.enumValue.*`）——行里读到的和手册里教的
-        // 必须是同一个词，否则又回到"打的是缩放、显示的是推拉"那种割裂。
-        cameraOp: {
-            pan: "平移",
-            zoom: "缩放",
-            rotate: "旋转",
-            darken: "压暗",
-            motion: "运镜",
-            reset: "复位",
-        },
-        condition: "条件",
-        branch: "{branch} 分支",
-        label: "标签 {name}",
-        goto: "跳到 {name}",
-        break: "跳出循环",
-        cut: "{name} 在此结束",
-        // 没有变体可命名：要么这一行指向的 id 已经没人认领，要么这个读者手上根本没有变体表。
-        // 只说两种情况下都成立的那一句；「变体已被删除」由行上那个拿得到变体表的标记来说。
-        cutUnknown: "截断点",
-        jump: "跳转 {scene}",
-        note: "备注",
-        invalid: "无效指令",
-        sceneUnassigned: "未指定",
-        sceneUnknown: "未知场景",
-        variableFallback: "变量",
-        savedVariable: "存档变量",
-        persistent: "持久化",
-    },
-    quickParam: {
-        waitLabel: "等待",
-        jumpLabel: "跳转到",
-    },
-    lens: {
-        toLens: "时间线视图",
-        toList: "列表视图",
-    },
-    rowMenu: {
-        insertAbove: "在上方插入",
-        insertBelow: "在下方插入",
-        duplicate: "复制行",
-        disable: "禁用",
-        enable: "启用",
-        playFromHere: "从此行播放",
-        openInspector: "打开检查器",
-        delete: "删除",
-    },
-    // 这几个删除留下的撤销步骤叫什么（"撤销 删除场景 At the Station"）。
-    history: {
-        deleteScene: "删除场景 {name}",
-        deleteChapter: "删除章节 {name}",
-        deleteStory: "删除故事 {name}",
-        deleteAnimation: "删除运动 {name}",
-    },
-    keybindings: {
-        find: "查找和替换",
-        deleteRows: "删除选中的故事行",
-        deleteRowsConfirm: "删除选中的故事行（多选时需确认）",
-        undo: "撤销故事场景编辑",
-        redo: "重做故事场景编辑",
-        editRow: "编辑当前行（或打开其检查器）",
-        closeInspector: "关闭属性编辑器",
-        insertRow: "在当前行下方插入新的故事行",
-        indent: "增加选中故事行的缩进",
-        outdent: "减少选中故事行的缩进",
-        selectAll: "选中所有可见的故事行",
-        duplicateRows: "创建选中故事行的副本",
-        moveSelectionDown: "向下移动故事行选择",
-        moveSelectionUp: "向上移动故事行选择",
-        extendSelectionDown: "向下扩展故事行选择",
-        extendSelectionUp: "向上扩展故事行选择",
-        moveRowDown: "将选中的故事行下移",
-        moveRowUp: "将选中的故事行上移",
-        selectFirst: "选中第一行故事行",
-        selectLast: "选中最后一行故事行",
-        pageDown: "向下翻页移动故事行选择",
-        pageUp: "向上翻页移动故事行选择",
-    },
+    condition: "条件",
+    branch: "{branch} 分支",
+    label: "标签 {name}",
+    goto: "跳到 {name}",
+    break: "跳出循环",
+    cut: "{name} 在此结束",
+    // 没有变体可命名：要么这一行指向的 id 已经没人认领，要么这个读者手上根本没有变体表。
+    // 只说两种情况下都成立的那一句；「变体已被删除」由行上那个拿得到变体表的标记来说。
+    cutUnknown: "截断点",
+    jump: "跳转 {scene}",
+    note: "备注",
+    invalid: "无效指令",
+    sceneUnassigned: "未指定",
+    sceneUnknown: "未知场景",
+    variableFallback: "变量",
+    savedVariable: "存档变量",
+    persistent: "持久化"
+  },
+  quickParam: {
+    waitLabel: "等待",
+    jumpLabel: "跳转到"
+  },
+  lens: {
+    toLens: "时间线视图",
+    toList: "列表视图"
+  },
+  rowMenu: {
+    insertAbove: "在上方插入",
+    insertBelow: "在下方插入",
+    duplicate: "复制行",
+    disable: "禁用",
+    enable: "启用",
+    playFromHere: "从此行播放",
+    openInspector: "打开检查器",
+    delete: "删除"
+  },
+  // 这几个删除留下的撤销步骤叫什么（"撤销 删除场景 At the Station"）。
+  history: {
+    deleteScene: "删除场景 {name}",
+    deleteChapter: "删除章节 {name}",
+    deleteStory: "删除故事 {name}",
+    deleteAnimation: "删除运动 {name}"
+  },
+  keybindings: {
+    find: "查找和替换",
+    deleteRows: "删除选中的故事行",
+    deleteRowsConfirm: "删除选中的故事行（多选时需确认）",
+    undo: "撤销故事场景编辑",
+    redo: "重做故事场景编辑",
+    editRow: "编辑当前行（或打开其检查器）",
+    closeInspector: "关闭属性编辑器",
+    insertRow: "在当前行下方插入新的故事行",
+    indent: "增加选中故事行的缩进",
+    outdent: "减少选中故事行的缩进",
+    selectAll: "选中所有可见的故事行",
+    duplicateRows: "创建选中故事行的副本",
+    moveSelectionDown: "向下移动故事行选择",
+    moveSelectionUp: "向上移动故事行选择",
+    extendSelectionDown: "向下扩展故事行选择",
+    extendSelectionUp: "向上扩展故事行选择",
+    moveRowDown: "将选中的故事行下移",
+    moveRowUp: "将选中的故事行上移",
+    selectFirst: "选中第一行故事行",
+    selectLast: "选中最后一行故事行",
+    pageDown: "向下翻页移动故事行选择",
+    pageUp: "向上翻页移动故事行选择"
+  }
 } satisfies LocaleNamespace<"story">;

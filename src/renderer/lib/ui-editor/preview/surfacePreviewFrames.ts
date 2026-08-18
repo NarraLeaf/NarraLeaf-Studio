@@ -17,67 +17,63 @@
  */
 
 export type SurfacePreviewSize = {
-    width: number;
-    height: number;
+  width: number;
+  height: number;
 };
 
 export type SurfacePreviewRect = {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };
 
 export type SurfacePreviewInsets = {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
 };
 
 /* -------------------------------------------------------------------------- */
 /* Aspect ratio presets                                                        */
 /* -------------------------------------------------------------------------- */
 
-export type SurfacePreviewAspectPresetId =
-    | "16:9"
-    | "16:10"
-    | "4:3"
-    | "21:9"
-    | "19.5:9"
-    | "9:16";
+export type SurfacePreviewAspectPresetId = "16:9" | "16:10" | "4:3" | "21:9" | "19.5:9" | "9:16";
 
 export type SurfacePreviewAspectPreset = {
-    id: SurfacePreviewAspectPresetId;
-    /**
-     * Exact fraction, never a rounded decimal — `ratio.w / ratio.h` is the width/height ratio.
-     * The frame math divides by `ratio.h` last so common cases (16:9 against 1920x1080) land on
-     * exact integers instead of drifting by a float ulp.
-     */
-    ratio: { w: number; h: number };
+  id: SurfacePreviewAspectPresetId;
+  /**
+   * Exact fraction, never a rounded decimal — `ratio.w / ratio.h` is the width/height ratio.
+   * The frame math divides by `ratio.h` last so common cases (16:9 against 1920x1080) land on
+   * exact integers instead of drifting by a float ulp.
+   */
+  ratio: { w: number; h: number };
 };
 
 export const SURFACE_PREVIEW_ASPECT_PRESETS: readonly SurfacePreviewAspectPreset[] = [
-    { id: "16:9", ratio: { w: 16, h: 9 } },
-    { id: "16:10", ratio: { w: 16, h: 10 } },
-    { id: "4:3", ratio: { w: 4, h: 3 } },
-    { id: "21:9", ratio: { w: 21, h: 9 } },
-    // 19.5:9 as an integer fraction so the ratio stays exact.
-    { id: "19.5:9", ratio: { w: 39, h: 18 } },
-    { id: "9:16", ratio: { w: 9, h: 16 } },
+  { id: "16:9", ratio: { w: 16, h: 9 } },
+  { id: "16:10", ratio: { w: 16, h: 10 } },
+  { id: "4:3", ratio: { w: 4, h: 3 } },
+  { id: "21:9", ratio: { w: 21, h: 9 } },
+  // 19.5:9 as an integer fraction so the ratio stays exact.
+  { id: "19.5:9", ratio: { w: 39, h: 18 } },
+  { id: "9:16", ratio: { w: 9, h: 16 } }
 ];
 
 export function getSurfacePreviewAspectPreset(
-    id: string | null | undefined,
+  id: string | null | undefined
 ): SurfacePreviewAspectPreset | null {
-    if (!id) {
-        return null;
-    }
-    return SURFACE_PREVIEW_ASPECT_PRESETS.find(preset => preset.id === id) ?? null;
+  if (!id) {
+    return null;
+  }
+  return SURFACE_PREVIEW_ASPECT_PRESETS.find((preset) => preset.id === id) ?? null;
 }
 
 export function isSurfacePreviewAspectPresetId(id: unknown): id is SurfacePreviewAspectPresetId {
-    return typeof id === "string" && SURFACE_PREVIEW_ASPECT_PRESETS.some(preset => preset.id === id);
+  return (
+    typeof id === "string" && SURFACE_PREVIEW_ASPECT_PRESETS.some((preset) => preset.id === id)
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -93,9 +89,9 @@ export type SurfacePreviewOrientation = "landscape" | "portrait";
 export type SurfacePreviewFit = "contain" | "cover";
 
 export type SafeAreaGeometry = {
-    /** Logical screen size in pt (iOS) or dp (Android), in this orientation. */
-    screen: SurfacePreviewSize;
-    insets: SurfacePreviewInsets;
+  /** Logical screen size in pt (iOS) or dp (Android), in this orientation. */
+  screen: SurfacePreviewSize;
+  insets: SurfacePreviewInsets;
 };
 
 /** Menu grouping. Also the shape of the inset rule that produced the numbers. */
@@ -108,12 +104,12 @@ export type SafeAreaDeviceFamily = "iphone" | "ipad" | "android";
  * Both orientations are carried because iOS insets differ substantially between them.
  */
 export type SafeAreaPreset = {
-    id: string;
-    /** Exact marketing name — it is what the menu and the readout show. */
-    reference: string;
-    family: SafeAreaDeviceFamily;
-    landscape: SafeAreaGeometry;
-    portrait: SafeAreaGeometry;
+  id: string;
+  /** Exact marketing name — it is what the menu and the readout show. */
+  reference: string;
+  family: SafeAreaDeviceFamily;
+  landscape: SafeAreaGeometry;
+  portrait: SafeAreaGeometry;
 };
 
 /**
@@ -124,18 +120,18 @@ export type SafeAreaPreset = {
  * is the only per-device inset value; everything else comes from the shared rule.
  */
 type SafeAreaDeviceSpec = {
-    id: string;
-    reference: string;
-    family: SafeAreaDeviceFamily;
-    /** Portrait logical size in pt (iOS) / dp (Android). */
-    points: SurfacePreviewSize;
-    /**
-     * How far the sensor housing / display cutout reaches into the screen, in logical units: the
-     * portrait top inset, and (mirrored) the landscape side inset. 0 for a device with no cutout.
-     */
-    housing: number;
-    /** Home-indicator inset: `[portrait, landscape]`. `[0, 0]` for a home-button device. */
-    homeIndicator: [number, number];
+  id: string;
+  reference: string;
+  family: SafeAreaDeviceFamily;
+  /** Portrait logical size in pt (iOS) / dp (Android). */
+  points: SurfacePreviewSize;
+  /**
+   * How far the sensor housing / display cutout reaches into the screen, in logical units: the
+   * portrait top inset, and (mirrored) the landscape side inset. 0 for a device with no cutout.
+   */
+  housing: number;
+  /** Home-indicator inset: `[portrait, landscape]`. `[0, 0]` for a home-button device. */
+  homeIndicator: [number, number];
 };
 
 /**
@@ -178,28 +174,98 @@ type SafeAreaDeviceSpec = {
  * AOSP cutout shapes instead; see `ANDROID_CUTOUT_PRESETS` for why.
  */
 const SAFE_AREA_DEVICES: readonly SafeAreaDeviceSpec[] = [
-    // 750x1334 @2x. Home button: no ears and no home indicator, so with the status bar hidden it is
-    // safe on every edge. Kept precisely because "this device has no risk" is a real answer.
-    { id: "iphone-se-3", reference: "iPhone SE (3rd gen)", family: "iphone", points: { width: 375, height: 667 }, housing: 0, homeIndicator: [0, 0] },
-    // 1125x2436 @3x. The mini's housing costs MORE than a 13's (50 vs 47): same notch, narrower screen.
-    { id: "iphone-13-mini", reference: "iPhone 13 mini", family: "iphone", points: { width: 375, height: 812 }, housing: 50, homeIndicator: [34, 21] },
-    // 1170x2532 @3x — iPhone 12/12 Pro, 13/13 Pro, 14.
-    { id: "iphone-14", reference: "iPhone 14", family: "iphone", points: { width: 390, height: 844 }, housing: 47, homeIndicator: [34, 21] },
-    // 1284x2778 @3x — iPhone 12/13 Pro Max, 14 Plus.
-    { id: "iphone-14-plus", reference: "iPhone 14 Plus", family: "iphone", points: { width: 428, height: 926 }, housing: 47, homeIndicator: [34, 21] },
-    // 1179x2556 @3x — iPhone 14 Pro, 15, 15 Pro, 16. First Dynamic Island size.
-    { id: "iphone-15-pro", reference: "iPhone 15 Pro", family: "iphone", points: { width: 393, height: 852 }, housing: 59, homeIndicator: [34, 21] },
-    // 1290x2796 @3x — iPhone 14 Pro Max, 15 Plus, 15 Pro Max, 16 Plus.
-    { id: "iphone-15-pro-max", reference: "iPhone 15 Pro Max", family: "iphone", points: { width: 430, height: 932 }, housing: 59, homeIndicator: [34, 21] },
-    // 1206x2622 @3x. The 16 Pro pair is the first to go past 59.
-    { id: "iphone-16-pro", reference: "iPhone 16 Pro", family: "iphone", points: { width: 402, height: 874 }, housing: 62, homeIndicator: [34, 21] },
-    // 1320x2868 @3x.
-    { id: "iphone-16-pro-max", reference: "iPhone 16 Pro Max", family: "iphone", points: { width: 440, height: 956 }, housing: 62, homeIndicator: [34, 21] },
-    // 1640x2360 @2x. No ears; status bar hidden => top 0. The home indicator is 20pt on iPad, and it
-    // does not shrink in landscape the way the iPhone's does.
-    { id: "ipad-10", reference: "iPad (10th gen)", family: "ipad", points: { width: 820, height: 1180 }, housing: 0, homeIndicator: [20, 20] },
-    // 1668x2388 @2x.
-    { id: "ipad-pro-11", reference: "iPad Pro 11\"", family: "ipad", points: { width: 834, height: 1194 }, housing: 0, homeIndicator: [20, 20] },
+  // 750x1334 @2x. Home button: no ears and no home indicator, so with the status bar hidden it is
+  // safe on every edge. Kept precisely because "this device has no risk" is a real answer.
+  {
+    id: "iphone-se-3",
+    reference: "iPhone SE (3rd gen)",
+    family: "iphone",
+    points: { width: 375, height: 667 },
+    housing: 0,
+    homeIndicator: [0, 0]
+  },
+  // 1125x2436 @3x. The mini's housing costs MORE than a 13's (50 vs 47): same notch, narrower screen.
+  {
+    id: "iphone-13-mini",
+    reference: "iPhone 13 mini",
+    family: "iphone",
+    points: { width: 375, height: 812 },
+    housing: 50,
+    homeIndicator: [34, 21]
+  },
+  // 1170x2532 @3x — iPhone 12/12 Pro, 13/13 Pro, 14.
+  {
+    id: "iphone-14",
+    reference: "iPhone 14",
+    family: "iphone",
+    points: { width: 390, height: 844 },
+    housing: 47,
+    homeIndicator: [34, 21]
+  },
+  // 1284x2778 @3x — iPhone 12/13 Pro Max, 14 Plus.
+  {
+    id: "iphone-14-plus",
+    reference: "iPhone 14 Plus",
+    family: "iphone",
+    points: { width: 428, height: 926 },
+    housing: 47,
+    homeIndicator: [34, 21]
+  },
+  // 1179x2556 @3x — iPhone 14 Pro, 15, 15 Pro, 16. First Dynamic Island size.
+  {
+    id: "iphone-15-pro",
+    reference: "iPhone 15 Pro",
+    family: "iphone",
+    points: { width: 393, height: 852 },
+    housing: 59,
+    homeIndicator: [34, 21]
+  },
+  // 1290x2796 @3x — iPhone 14 Pro Max, 15 Plus, 15 Pro Max, 16 Plus.
+  {
+    id: "iphone-15-pro-max",
+    reference: "iPhone 15 Pro Max",
+    family: "iphone",
+    points: { width: 430, height: 932 },
+    housing: 59,
+    homeIndicator: [34, 21]
+  },
+  // 1206x2622 @3x. The 16 Pro pair is the first to go past 59.
+  {
+    id: "iphone-16-pro",
+    reference: "iPhone 16 Pro",
+    family: "iphone",
+    points: { width: 402, height: 874 },
+    housing: 62,
+    homeIndicator: [34, 21]
+  },
+  // 1320x2868 @3x.
+  {
+    id: "iphone-16-pro-max",
+    reference: "iPhone 16 Pro Max",
+    family: "iphone",
+    points: { width: 440, height: 956 },
+    housing: 62,
+    homeIndicator: [34, 21]
+  },
+  // 1640x2360 @2x. No ears; status bar hidden => top 0. The home indicator is 20pt on iPad, and it
+  // does not shrink in landscape the way the iPhone's does.
+  {
+    id: "ipad-10",
+    reference: "iPad (10th gen)",
+    family: "ipad",
+    points: { width: 820, height: 1180 },
+    housing: 0,
+    homeIndicator: [20, 20]
+  },
+  // 1668x2388 @2x.
+  {
+    id: "ipad-pro-11",
+    reference: 'iPad Pro 11"',
+    family: "ipad",
+    points: { width: 834, height: 1194 },
+    housing: 0,
+    homeIndicator: [20, 20]
+  }
 ];
 
 /**
@@ -210,21 +276,21 @@ const SAFE_AREA_DEVICES: readonly SafeAreaDeviceSpec[] = [
  * can lock either landscape rotation, so the same is the safe reading on Android.
  */
 function expandSafeAreaDevice(device: SafeAreaDeviceSpec): SafeAreaPreset {
-    const { width, height } = device.points;
-    const [portraitIndicator, landscapeIndicator] = device.homeIndicator;
-    return {
-        id: device.id,
-        reference: device.reference,
-        family: device.family,
-        portrait: {
-            screen: { width, height },
-            insets: { left: 0, right: 0, top: device.housing, bottom: portraitIndicator },
-        },
-        landscape: {
-            screen: { width: height, height: width },
-            insets: { left: device.housing, right: device.housing, top: 0, bottom: landscapeIndicator },
-        },
-    };
+  const { width, height } = device.points;
+  const [portraitIndicator, landscapeIndicator] = device.homeIndicator;
+  return {
+    id: device.id,
+    reference: device.reference,
+    family: device.family,
+    portrait: {
+      screen: { width, height },
+      insets: { left: 0, right: 0, top: device.housing, bottom: portraitIndicator }
+    },
+    landscape: {
+      screen: { width: height, height: width },
+      insets: { left: device.housing, right: device.housing, top: 0, bottom: landscapeIndicator }
+    }
+  };
 }
 
 /**
@@ -259,49 +325,49 @@ function expandSafeAreaDevice(device: SafeAreaDeviceSpec): SafeAreaPreset {
 const ANDROID_SCREEN = { width: 412, height: 915 };
 
 const ANDROID_CUTOUT_PRESETS: readonly SafeAreaPreset[] = [
-    {
-        // DisplayCutoutEmulationCornerOverlay: path max Y = 48, "@dp". Covers Tall (identical depth)
-        // and Hole (136px approximation rect ≈ 48dp at 2.625), plus Narrow/Wide, which differ only
-        // in width. Landscape mirrors onto both sides: the shell may lock either rotation.
-        id: "android-cutout",
-        reference: "Cutout · corner / tall / hole",
-        family: "android",
-        portrait: { screen: ANDROID_SCREEN, insets: { left: 0, right: 0, top: 48, bottom: 0 } },
-        landscape: {
-            screen: { width: ANDROID_SCREEN.height, height: ANDROID_SCREEN.width },
-            insets: { left: 48, right: 48, top: 0, bottom: 0 },
-        },
-    },
-    {
-        // DisplayCutoutEmulationDoubleOverlay: 32dp top AND bottom. The only shape with two opposed
-        // insets, so rotating it puts one on each side rather than mirroring a single edge.
-        id: "android-cutout-double",
-        reference: "Double cutout",
-        family: "android",
-        portrait: { screen: ANDROID_SCREEN, insets: { left: 0, right: 0, top: 32, bottom: 32 } },
-        landscape: {
-            screen: { width: ANDROID_SCREEN.height, height: ANDROID_SCREEN.width },
-            insets: { left: 32, right: 32, top: 0, bottom: 0 },
-        },
-    },
-    {
-        // DisplayCutoutEmulationWaterfallOverlay: no cutout path at all — curved edges instead,
-        // `waterfall_display_left/right_edge_size` = 20dp, top/bottom 0. The only entry whose insets
-        // land on the TOP and bottom in landscape, which is worth having: nothing else tests that.
-        id: "android-waterfall",
-        reference: "Waterfall edges",
-        family: "android",
-        portrait: { screen: ANDROID_SCREEN, insets: { left: 20, right: 20, top: 0, bottom: 0 } },
-        landscape: {
-            screen: { width: ANDROID_SCREEN.height, height: ANDROID_SCREEN.width },
-            insets: { left: 0, right: 0, top: 20, bottom: 20 },
-        },
-    },
+  {
+    // DisplayCutoutEmulationCornerOverlay: path max Y = 48, "@dp". Covers Tall (identical depth)
+    // and Hole (136px approximation rect ≈ 48dp at 2.625), plus Narrow/Wide, which differ only
+    // in width. Landscape mirrors onto both sides: the shell may lock either rotation.
+    id: "android-cutout",
+    reference: "Cutout · corner / tall / hole",
+    family: "android",
+    portrait: { screen: ANDROID_SCREEN, insets: { left: 0, right: 0, top: 48, bottom: 0 } },
+    landscape: {
+      screen: { width: ANDROID_SCREEN.height, height: ANDROID_SCREEN.width },
+      insets: { left: 48, right: 48, top: 0, bottom: 0 }
+    }
+  },
+  {
+    // DisplayCutoutEmulationDoubleOverlay: 32dp top AND bottom. The only shape with two opposed
+    // insets, so rotating it puts one on each side rather than mirroring a single edge.
+    id: "android-cutout-double",
+    reference: "Double cutout",
+    family: "android",
+    portrait: { screen: ANDROID_SCREEN, insets: { left: 0, right: 0, top: 32, bottom: 32 } },
+    landscape: {
+      screen: { width: ANDROID_SCREEN.height, height: ANDROID_SCREEN.width },
+      insets: { left: 32, right: 32, top: 0, bottom: 0 }
+    }
+  },
+  {
+    // DisplayCutoutEmulationWaterfallOverlay: no cutout path at all — curved edges instead,
+    // `waterfall_display_left/right_edge_size` = 20dp, top/bottom 0. The only entry whose insets
+    // land on the TOP and bottom in landscape, which is worth having: nothing else tests that.
+    id: "android-waterfall",
+    reference: "Waterfall edges",
+    family: "android",
+    portrait: { screen: ANDROID_SCREEN, insets: { left: 20, right: 20, top: 0, bottom: 0 } },
+    landscape: {
+      screen: { width: ANDROID_SCREEN.height, height: ANDROID_SCREEN.width },
+      insets: { left: 0, right: 0, top: 20, bottom: 20 }
+    }
+  }
 ];
 
 export const SAFE_AREA_PRESETS: readonly SafeAreaPreset[] = [
-    ...SAFE_AREA_DEVICES.map(expandSafeAreaDevice),
-    ...ANDROID_CUTOUT_PRESETS,
+  ...SAFE_AREA_DEVICES.map(expandSafeAreaDevice),
+  ...ANDROID_CUTOUT_PRESETS
 ];
 
 /**
@@ -312,28 +378,30 @@ export const SAFE_AREA_PRESETS: readonly SafeAreaPreset[] = [
  * "I picked something and nothing happened" this whole feature has already been reported for once.
  */
 const LEGACY_SAFE_AREA_PRESET_IDS: Readonly<Record<string, string>> = {
-    "ios-dynamic-island": "iphone-15-pro",
-    "ios-notch": "iphone-14",
-    "android-gesture": "android-cutout",
-    // Shipped for part of one day, between the device-table rebuild and the move to AOSP shapes.
-    "android-punch-hole": "android-cutout",
+  "ios-dynamic-island": "iphone-15-pro",
+  "ios-notch": "iphone-14",
+  "android-gesture": "android-cutout",
+  // Shipped for part of one day, between the device-table rebuild and the move to AOSP shapes.
+  "android-punch-hole": "android-cutout"
 };
 
 export function getSafeAreaPreset(id: string | null | undefined): SafeAreaPreset | null {
-    if (!id) {
-        return null;
-    }
-    const resolved = LEGACY_SAFE_AREA_PRESET_IDS[id] ?? id;
-    return SAFE_AREA_PRESETS.find(preset => preset.id === resolved) ?? null;
+  if (!id) {
+    return null;
+  }
+  const resolved = LEGACY_SAFE_AREA_PRESET_IDS[id] ?? id;
+  return SAFE_AREA_PRESETS.find((preset) => preset.id === resolved) ?? null;
 }
 
 export function isSafeAreaPresetId(id: unknown): boolean {
-    return typeof id === "string" && getSafeAreaPreset(id) !== null;
+  return typeof id === "string" && getSafeAreaPreset(id) !== null;
 }
 
 /** Square designs count as landscape; there is no third case to show. */
-export function pickSurfacePreviewOrientation(designSize: SurfacePreviewSize): SurfacePreviewOrientation {
-    return designSize.width >= designSize.height ? "landscape" : "portrait";
+export function pickSurfacePreviewOrientation(
+  designSize: SurfacePreviewSize
+): SurfacePreviewOrientation {
+  return designSize.width >= designSize.height ? "landscape" : "portrait";
 }
 
 /**
@@ -351,13 +419,13 @@ export type SafeAreaMobileOrientation = "landscape" | "portrait" | "auto";
  * the wrong edge in exactly the projects that need checking, and it cannot represent `auto` at all.
  */
 export function resolveSafeAreaOrientation(
-    designSize: SurfacePreviewSize,
-    mobileOrientation?: SafeAreaMobileOrientation | null,
+  designSize: SurfacePreviewSize,
+  mobileOrientation?: SafeAreaMobileOrientation | null
 ): SurfacePreviewOrientation {
-    if (mobileOrientation === "landscape" || mobileOrientation === "portrait") {
-        return mobileOrientation;
-    }
-    return pickSurfacePreviewOrientation(designSize);
+  if (mobileOrientation === "landscape" || mobileOrientation === "portrait") {
+    return mobileOrientation;
+  }
+  return pickSurfacePreviewOrientation(designSize);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -365,25 +433,25 @@ export function resolveSafeAreaOrientation(
 /* -------------------------------------------------------------------------- */
 
 export type ScreenRatioFrame = {
-    /**
-     * The player's screen expressed in design-space coordinates.
-     *
-     * Under `contain` it *contains* the design rect and touches it on the constrained axis; under
-     * `cover` it is *inscribed in* it, and everything outside is design the player never sees.
-     */
-    screenRect: SurfacePreviewRect;
-    /** True when this frame describes a crop rather than bars. */
-    cropped: boolean;
-    /**
-     * Per-side thickness of the strip where the two rects differ, in design units — bar under
-     * `contain`, cropped-away design under `cover`. Always >= 0; exactly one of the two is non-zero.
-     */
-    pillarbox: number;
-    letterbox: number;
-    /** `pillarbox / screenRect.width` — 0 .. 0.5. Handy for "12% of the screen is bar". */
-    pillarboxFraction: number;
-    /** `letterbox / screenRect.height` — 0 .. 0.5. */
-    letterboxFraction: number;
+  /**
+   * The player's screen expressed in design-space coordinates.
+   *
+   * Under `contain` it *contains* the design rect and touches it on the constrained axis; under
+   * `cover` it is *inscribed in* it, and everything outside is design the player never sees.
+   */
+  screenRect: SurfacePreviewRect;
+  /** True when this frame describes a crop rather than bars. */
+  cropped: boolean;
+  /**
+   * Per-side thickness of the strip where the two rects differ, in design units — bar under
+   * `contain`, cropped-away design under `cover`. Always >= 0; exactly one of the two is non-zero.
+   */
+  pillarbox: number;
+  letterbox: number;
+  /** `pillarbox / screenRect.width` — 0 .. 0.5. Handy for "12% of the screen is bar". */
+  pillarboxFraction: number;
+  /** `letterbox / screenRect.height` — 0 .. 0.5. */
+  letterboxFraction: number;
 };
 
 /**
@@ -395,37 +463,41 @@ export type ScreenRatioFrame = {
  * translucent fill never stacks — same rule as {@link computeUnsafeBands}.
  */
 export function computeScreenRatioStrips(
-    designSize: SurfacePreviewSize,
-    frame: ScreenRatioFrame | null | undefined,
+  designSize: SurfacePreviewSize,
+  frame: ScreenRatioFrame | null | undefined
 ): SurfacePreviewRect[] {
-    if (!frame || !isUsableSize(designSize)) {
-        return [];
-    }
-    const { screenRect, pillarbox, letterbox, cropped } = frame;
-    // The strips live between the outer rect and the inner one; which is which is the only
-    // difference the fit makes here.
-    const outer = cropped ? { x: 0, y: 0, width: designSize.width, height: designSize.height } : screenRect;
-    const inner = cropped ? screenRect : { x: 0, y: 0, width: designSize.width, height: designSize.height };
-    const strips: SurfacePreviewRect[] = [];
-    if (letterbox > 0) {
-        strips.push({ x: outer.x, y: outer.y, width: outer.width, height: letterbox });
-        strips.push({ x: outer.x, y: inner.y + inner.height, width: outer.width, height: letterbox });
-    }
-    if (pillarbox > 0) {
-        strips.push({ x: outer.x, y: inner.y, width: pillarbox, height: inner.height });
-        strips.push({ x: inner.x + inner.width, y: inner.y, width: pillarbox, height: inner.height });
-    }
-    return strips;
+  if (!frame || !isUsableSize(designSize)) {
+    return [];
+  }
+  const { screenRect, pillarbox, letterbox, cropped } = frame;
+  // The strips live between the outer rect and the inner one; which is which is the only
+  // difference the fit makes here.
+  const outer = cropped
+    ? { x: 0, y: 0, width: designSize.width, height: designSize.height }
+    : screenRect;
+  const inner = cropped
+    ? screenRect
+    : { x: 0, y: 0, width: designSize.width, height: designSize.height };
+  const strips: SurfacePreviewRect[] = [];
+  if (letterbox > 0) {
+    strips.push({ x: outer.x, y: outer.y, width: outer.width, height: letterbox });
+    strips.push({ x: outer.x, y: inner.y + inner.height, width: outer.width, height: letterbox });
+  }
+  if (pillarbox > 0) {
+    strips.push({ x: outer.x, y: inner.y, width: pillarbox, height: inner.height });
+    strips.push({ x: inner.x + inner.width, y: inner.y, width: pillarbox, height: inner.height });
+  }
+  return strips;
 }
 
 function isUsableSize(size: SurfacePreviewSize | null | undefined): size is SurfacePreviewSize {
-    return (
-        !!size &&
-        Number.isFinite(size.width) &&
-        Number.isFinite(size.height) &&
-        size.width > 0 &&
-        size.height > 0
-    );
+  return (
+    !!size &&
+    Number.isFinite(size.width) &&
+    Number.isFinite(size.height) &&
+    size.width > 0 &&
+    size.height > 0
+  );
 }
 
 /**
@@ -439,54 +511,54 @@ function isUsableSize(size: SurfacePreviewSize | null | undefined): size is Surf
  * Returns `null` for degenerate input rather than producing NaN geometry.
  */
 export function computeScreenRatioFrame(input: {
-    designSize: SurfacePreviewSize;
-    preset: SurfacePreviewAspectPreset;
-    /** The project's stage fit; omitted means `contain`. */
-    stageFit?: SurfacePreviewFit;
+  designSize: SurfacePreviewSize;
+  preset: SurfacePreviewAspectPreset;
+  /** The project's stage fit; omitted means `contain`. */
+  stageFit?: SurfacePreviewFit;
 }): ScreenRatioFrame | null {
-    const { designSize, preset } = input;
-    if (!isUsableSize(designSize)) {
-        return null;
-    }
-    const { w: rw, h: rh } = preset.ratio;
-    if (!Number.isFinite(rw) || !Number.isFinite(rh) || rw <= 0 || rh <= 0) {
-        return null;
-    }
+  const { designSize, preset } = input;
+  if (!isUsableSize(designSize)) {
+    return null;
+  }
+  const { w: rw, h: rh } = preset.ratio;
+  if (!Number.isFinite(rw) || !Number.isFinite(rh) || rw <= 0 || rh <= 0) {
+    return null;
+  }
 
-    const dw = designSize.width;
-    const dh = designSize.height;
-    // Divide last so exact-match cases (16:9 vs 1920x1080) come out exact rather than off by an ulp.
-    // `contain` grows the screen around the design (the excess is bars); `cover` inscribes it (the
-    // excess is design that never reaches the player). The rest of this function does not care
-    // which — it measures the difference between the two rects, and only the sign flips.
-    const cover = input.stageFit === "cover";
-    const screenW = cover ? Math.min(dw, (dh * rw) / rh) : Math.max(dw, (dh * rw) / rh);
-    const screenH = cover ? Math.min(dh, (dw * rh) / rw) : Math.max(dh, (dw * rh) / rw);
-    if (!Number.isFinite(screenW) || !Number.isFinite(screenH)) {
-        return null;
-    }
+  const dw = designSize.width;
+  const dh = designSize.height;
+  // Divide last so exact-match cases (16:9 vs 1920x1080) come out exact rather than off by an ulp.
+  // `contain` grows the screen around the design (the excess is bars); `cover` inscribes it (the
+  // excess is design that never reaches the player). The rest of this function does not care
+  // which — it measures the difference between the two rects, and only the sign flips.
+  const cover = input.stageFit === "cover";
+  const screenW = cover ? Math.min(dw, (dh * rw) / rh) : Math.max(dw, (dh * rw) / rh);
+  const screenH = cover ? Math.min(dh, (dw * rh) / rw) : Math.max(dh, (dw * rh) / rw);
+  if (!Number.isFinite(screenW) || !Number.isFinite(screenH)) {
+    return null;
+  }
 
-    // Absolute, so a caller never has to know the sign convention: the screen rect's own position
-    // already says which side of the design rect the strip is on.
-    const pillarbox = Math.abs(screenW - dw) / 2;
-    const letterbox = Math.abs(screenH - dh) / 2;
-    const offsetX = (dw - screenW) / 2;
-    const offsetY = (dh - screenH) / 2;
+  // Absolute, so a caller never has to know the sign convention: the screen rect's own position
+  // already says which side of the design rect the strip is on.
+  const pillarbox = Math.abs(screenW - dw) / 2;
+  const letterbox = Math.abs(screenH - dh) / 2;
+  const offsetX = (dw - screenW) / 2;
+  const offsetY = (dh - screenH) / 2;
 
-    return {
-        screenRect: {
-            // `-0` is harmless in CSS but poisons equality checks and snapshots — normalize it away.
-            x: offsetX === 0 ? 0 : offsetX,
-            y: offsetY === 0 ? 0 : offsetY,
-            width: screenW,
-            height: screenH,
-        },
-        cropped: cover,
-        pillarbox,
-        letterbox,
-        pillarboxFraction: screenW > 0 ? pillarbox / screenW : 0,
-        letterboxFraction: screenH > 0 ? letterbox / screenH : 0,
-    };
+  return {
+    screenRect: {
+      // `-0` is harmless in CSS but poisons equality checks and snapshots — normalize it away.
+      x: offsetX === 0 ? 0 : offsetX,
+      y: offsetY === 0 ? 0 : offsetY,
+      width: screenW,
+      height: screenH
+    },
+    cropped: cover,
+    pillarbox,
+    letterbox,
+    pillarboxFraction: screenW > 0 ? pillarbox / screenW : 0,
+    letterboxFraction: screenH > 0 ? letterbox / screenH : 0
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -494,14 +566,14 @@ export function computeScreenRatioFrame(input: {
 /* -------------------------------------------------------------------------- */
 
 export type SafeAreaFrame = {
-    /** The safe region in design space. Equals the design rect when `fullySafe`. */
-    safeRect: SurfacePreviewRect;
-    /** How far each device inset reaches into the content, in design units. */
-    insets: SurfacePreviewInsets;
-    /** True when every inset is 0 — the bars swallowed the notch, the content is genuinely safe. */
-    fullySafe: boolean;
-    /** Which of the preset's two orientations the design size selected. */
-    orientation: SurfacePreviewOrientation;
+  /** The safe region in design space. Equals the design rect when `fullySafe`. */
+  safeRect: SurfacePreviewRect;
+  /** How far each device inset reaches into the content, in design units. */
+  insets: SurfacePreviewInsets;
+  /** True when every inset is 0 — the bars swallowed the notch, the content is genuinely safe. */
+  fullySafe: boolean;
+  /** Which of the preset's two orientations the design size selected. */
+  orientation: SurfacePreviewOrientation;
 };
 
 /**
@@ -521,65 +593,66 @@ export type SafeAreaFrame = {
  * Returns `null` for degenerate input rather than producing NaN geometry.
  */
 export function computeSafeAreaFrameForGeometry(input: {
-    designSize: SurfacePreviewSize;
-    geometry: SafeAreaGeometry;
-    orientation: SurfacePreviewOrientation;
-    /** The project's stage fit; omitted means `contain`. */
-    stageFit?: SurfacePreviewFit;
+  designSize: SurfacePreviewSize;
+  geometry: SafeAreaGeometry;
+  orientation: SurfacePreviewOrientation;
+  /** The project's stage fit; omitted means `contain`. */
+  stageFit?: SurfacePreviewFit;
 }): SafeAreaFrame | null {
-    const { designSize, geometry, orientation } = input;
-    if (!isUsableSize(designSize) || !isUsableSize(geometry.screen)) {
-        return null;
-    }
-    const raw = geometry.insets;
-    if (
-        !Number.isFinite(raw.left) ||
-        !Number.isFinite(raw.right) ||
-        !Number.isFinite(raw.top) ||
-        !Number.isFinite(raw.bottom)
-    ) {
-        return null;
-    }
+  const { designSize, geometry, orientation } = input;
+  if (!isUsableSize(designSize) || !isUsableSize(geometry.screen)) {
+    return null;
+  }
+  const raw = geometry.insets;
+  if (
+    !Number.isFinite(raw.left) ||
+    !Number.isFinite(raw.right) ||
+    !Number.isFinite(raw.top) ||
+    !Number.isFinite(raw.bottom)
+  ) {
+    return null;
+  }
 
-    const dw = designSize.width;
-    const dh = designSize.height;
-    const fit = input.stageFit === "cover"
-        ? Math.max(geometry.screen.width / dw, geometry.screen.height / dh)
-        : Math.min(geometry.screen.width / dw, geometry.screen.height / dh);
-    if (!Number.isFinite(fit) || fit <= 0) {
-        return null;
-    }
+  const dw = designSize.width;
+  const dh = designSize.height;
+  const fit =
+    input.stageFit === "cover"
+      ? Math.max(geometry.screen.width / dw, geometry.screen.height / dh)
+      : Math.min(geometry.screen.width / dw, geometry.screen.height / dh);
+  if (!Number.isFinite(fit) || fit <= 0) {
+    return null;
+  }
 
-    const cw = dw * fit;
-    const ch = dh * fit;
-    // Under `cover` these go NEGATIVE — the content runs off the screen instead of leaving a bar —
-    // and the `max(0, inset - ox)` below then correctly reports MORE than the raw inset: the part of
-    // the design outside the screen is lost too, and an author planning a margin needs the total.
-    const ox = (geometry.screen.width - cw) / 2;
-    const oy = (geometry.screen.height - ch) / 2;
+  const cw = dw * fit;
+  const ch = dh * fit;
+  // Under `cover` these go NEGATIVE — the content runs off the screen instead of leaving a bar —
+  // and the `max(0, inset - ox)` below then correctly reports MORE than the raw inset: the part of
+  // the design outside the screen is lost too, and an author planning a margin needs the total.
+  const ox = (geometry.screen.width - cw) / 2;
+  const oy = (geometry.screen.height - ch) / 2;
 
-    const insets: SurfacePreviewInsets = {
-        left: Math.max(0, raw.left - ox) / fit,
-        right: Math.max(0, raw.right - ox) / fit,
-        top: Math.max(0, raw.top - oy) / fit,
-        bottom: Math.max(0, raw.bottom - oy) / fit,
-    };
+  const insets: SurfacePreviewInsets = {
+    left: Math.max(0, raw.left - ox) / fit,
+    right: Math.max(0, raw.right - ox) / fit,
+    top: Math.max(0, raw.top - oy) / fit,
+    bottom: Math.max(0, raw.bottom - oy) / fit
+  };
 
-    const fullySafe =
-        insets.left === 0 && insets.right === 0 && insets.top === 0 && insets.bottom === 0;
+  const fullySafe =
+    insets.left === 0 && insets.right === 0 && insets.top === 0 && insets.bottom === 0;
 
-    return {
-        safeRect: {
-            x: insets.left,
-            y: insets.top,
-            // Floor at 0: a preset whose insets exceed the screen must not produce inverted geometry.
-            width: Math.max(0, dw - insets.left - insets.right),
-            height: Math.max(0, dh - insets.top - insets.bottom),
-        },
-        insets,
-        fullySafe,
-        orientation,
-    };
+  return {
+    safeRect: {
+      x: insets.left,
+      y: insets.top,
+      // Floor at 0: a preset whose insets exceed the screen must not produce inverted geometry.
+      width: Math.max(0, dw - insets.left - insets.right),
+      height: Math.max(0, dh - insets.top - insets.bottom)
+    },
+    insets,
+    fullySafe,
+    orientation
+  };
 }
 
 /**
@@ -587,24 +660,24 @@ export function computeSafeAreaFrameForGeometry(input: {
  * (`width >= height` => landscape). See `computeSafeAreaFrameForGeometry` for the math.
  */
 export function computeSafeAreaFrame(input: {
-    designSize: SurfacePreviewSize;
-    preset: SafeAreaPreset;
-    /** The project's `app.mobile.orientation`; omitted / `auto` falls back to the design size. */
-    mobileOrientation?: SafeAreaMobileOrientation | null;
-    /** The project's `app.mobile.fit`; omitted means `contain`. */
-    stageFit?: SurfacePreviewFit;
+  designSize: SurfacePreviewSize;
+  preset: SafeAreaPreset;
+  /** The project's `app.mobile.orientation`; omitted / `auto` falls back to the design size. */
+  mobileOrientation?: SafeAreaMobileOrientation | null;
+  /** The project's `app.mobile.fit`; omitted means `contain`. */
+  stageFit?: SurfacePreviewFit;
 }): SafeAreaFrame | null {
-    const { designSize, preset, mobileOrientation, stageFit } = input;
-    if (!isUsableSize(designSize)) {
-        return null;
-    }
-    const orientation = resolveSafeAreaOrientation(designSize, mobileOrientation);
-    return computeSafeAreaFrameForGeometry({
-        designSize,
-        geometry: preset[orientation],
-        orientation,
-        stageFit,
-    });
+  const { designSize, preset, mobileOrientation, stageFit } = input;
+  if (!isUsableSize(designSize)) {
+    return null;
+  }
+  const orientation = resolveSafeAreaOrientation(designSize, mobileOrientation);
+  return computeSafeAreaFrameForGeometry({
+    designSize,
+    geometry: preset[orientation],
+    orientation,
+    stageFit
+  });
 }
 
 /**
@@ -618,32 +691,32 @@ export function computeSafeAreaFrame(input: {
  * covered" and "the layer is off" look identical on the canvas.
  */
 export function computeUnsafeBands(
-    designSize: SurfacePreviewSize,
-    frame: SafeAreaFrame | null | undefined,
+  designSize: SurfacePreviewSize,
+  frame: SafeAreaFrame | null | undefined
 ): SurfacePreviewRect[] {
-    if (!frame || frame.fullySafe || !isUsableSize(designSize)) {
-        return [];
-    }
-    const dw = designSize.width;
-    const dh = designSize.height;
-    const { top, bottom, left, right } = frame.insets;
-    const middleHeight = Math.max(0, dh - top - bottom);
-    const bands: SurfacePreviewRect[] = [];
-    if (top > 0) {
-        bands.push({ x: 0, y: 0, width: dw, height: Math.min(top, dh) });
-    }
-    if (bottom > 0) {
-        const height = Math.min(bottom, dh);
-        bands.push({ x: 0, y: dh - height, width: dw, height });
-    }
-    if (left > 0 && middleHeight > 0) {
-        bands.push({ x: 0, y: top, width: Math.min(left, dw), height: middleHeight });
-    }
-    if (right > 0 && middleHeight > 0) {
-        const width = Math.min(right, dw);
-        bands.push({ x: dw - width, y: top, width, height: middleHeight });
-    }
-    return bands;
+  if (!frame || frame.fullySafe || !isUsableSize(designSize)) {
+    return [];
+  }
+  const dw = designSize.width;
+  const dh = designSize.height;
+  const { top, bottom, left, right } = frame.insets;
+  const middleHeight = Math.max(0, dh - top - bottom);
+  const bands: SurfacePreviewRect[] = [];
+  if (top > 0) {
+    bands.push({ x: 0, y: 0, width: dw, height: Math.min(top, dh) });
+  }
+  if (bottom > 0) {
+    const height = Math.min(bottom, dh);
+    bands.push({ x: 0, y: dh - height, width: dw, height });
+  }
+  if (left > 0 && middleHeight > 0) {
+    bands.push({ x: 0, y: top, width: Math.min(left, dw), height: middleHeight });
+  }
+  if (right > 0 && middleHeight > 0) {
+    const width = Math.min(right, dw);
+    bands.push({ x: dw - width, y: top, width, height: middleHeight });
+  }
+  return bands;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -652,21 +725,21 @@ export function computeUnsafeBands(
 
 /** Resolve an aspect preset id and compute its frame in one step. Unknown id => `null`. */
 export function computeScreenRatioFrameById(
-    designSize: SurfacePreviewSize,
-    aspectId: string | null | undefined,
-    stageFit?: SurfacePreviewFit,
+  designSize: SurfacePreviewSize,
+  aspectId: string | null | undefined,
+  stageFit?: SurfacePreviewFit
 ): ScreenRatioFrame | null {
-    const preset = getSurfacePreviewAspectPreset(aspectId);
-    return preset ? computeScreenRatioFrame({ designSize, preset, stageFit }) : null;
+  const preset = getSurfacePreviewAspectPreset(aspectId);
+  return preset ? computeScreenRatioFrame({ designSize, preset, stageFit }) : null;
 }
 
 /** Resolve a device preset id and compute its safe frame in one step. Unknown id => `null`. */
 export function computeSafeAreaFrameById(
-    designSize: SurfacePreviewSize,
-    safeAreaId: string | null | undefined,
-    mobileOrientation?: SafeAreaMobileOrientation | null,
-    stageFit?: SurfacePreviewFit,
+  designSize: SurfacePreviewSize,
+  safeAreaId: string | null | undefined,
+  mobileOrientation?: SafeAreaMobileOrientation | null,
+  stageFit?: SurfacePreviewFit
 ): SafeAreaFrame | null {
-    const preset = getSafeAreaPreset(safeAreaId);
-    return preset ? computeSafeAreaFrame({ designSize, preset, mobileOrientation, stageFit }) : null;
+  const preset = getSafeAreaPreset(safeAreaId);
+  return preset ? computeSafeAreaFrame({ designSize, preset, mobileOrientation, stageFit }) : null;
 }

@@ -1,14 +1,14 @@
 import {
-    BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
-    BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON,
-    BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_TEXT,
-    BLUEPRINT_NODE_TYPE_LITERAL,
-    BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+  BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
+  BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON,
+  BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_TEXT,
+  BLUEPRINT_NODE_TYPE_LITERAL,
+  BLUEPRINT_NODE_TYPE_LITERAL_STRING
 } from "@shared/types/blueprint/graph";
 import {
-    isNetworkAddressAllowed,
-    networkAllowlistCspSources,
-    type NetworkAllowlist,
+  isNetworkAddressAllowed,
+  networkAllowlistCspSources,
+  type NetworkAllowlist
 } from "@shared/types/networkAllowlist";
 import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
@@ -33,9 +33,9 @@ import type { LintFinding, LintRule } from "../types";
  */
 
 const NETWORK_NODE_TYPES: ReadonlySet<string> = new Set([
-    BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
-    BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_TEXT,
-    BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON,
+  BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
+  BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_TEXT,
+  BLUEPRINT_NODE_TYPE_NETWORK_READ_RESPONSE_JSON
 ]);
 
 /** The `url` pin id on the Fetch node. Its literal lives in `params` under the same key. */
@@ -49,42 +49,50 @@ const FETCH_URL_PIN = "url";
  * literal node wired to it. Anything else - a variable, a concatenation, another node's output -
  * has no value here and must not be guessed at.
  */
-function writtenFetchUrl(ir: BlueprintGraphIr, node: { id: string; params?: Record<string, unknown> }): string | null {
-    const edge = ir.edges?.find(item => item.to.nodeId === node.id && item.to.port === FETCH_URL_PIN);
-    if (!edge) {
-        const written = String(node.params?.[FETCH_URL_PIN] ?? "").trim();
-        return written || null;
-    }
-    const source = ir.nodes?.[edge.from.nodeId];
-    if (!source || edge.from.port !== "value") {
-        return null;
-    }
-    if (source.type !== BLUEPRINT_NODE_TYPE_LITERAL_STRING && source.type !== BLUEPRINT_NODE_TYPE_LITERAL) {
-        return null;
-    }
-    const written = String(source.params?.value ?? "").trim();
+function writtenFetchUrl(
+  ir: BlueprintGraphIr,
+  node: { id: string; params?: Record<string, unknown> }
+): string | null {
+  const edge = ir.edges?.find(
+    (item) => item.to.nodeId === node.id && item.to.port === FETCH_URL_PIN
+  );
+  if (!edge) {
+    const written = String(node.params?.[FETCH_URL_PIN] ?? "").trim();
     return written || null;
+  }
+  const source = ir.nodes?.[edge.from.nodeId];
+  if (!source || edge.from.port !== "value") {
+    return null;
+  }
+  if (
+    source.type !== BLUEPRINT_NODE_TYPE_LITERAL_STRING &&
+    source.type !== BLUEPRINT_NODE_TYPE_LITERAL
+  ) {
+    return null;
+  }
+  const written = String(source.params?.value ?? "").trim();
+  return written || null;
 }
 
 export type BlueprintNetworkNodeSite = {
-    blueprintId: string;
-    blueprintName: string;
-    graphId: string;
-    nodeId: string;
-    nodeType: string;
-    /**
-     * The address a Fetch node will request, when it is knowable without running the graph.
-     *
-     * Null for the two read-the-response nodes, which address nothing, and for a Fetch whose
-     * address is computed - a variable, a concatenation, anything that is not written down.
-     * Guessing at one of those would produce findings against a string never requested, so
-     * they are decided at run time instead, where the address exists.
-     *
-     * A `url` pin wired to a string literal node counts as written: it is the same fact the
-     * author typed, one drag further away.
-     */
-    literalUrl: string | null;
-    target: SearchJumpTarget;
+  blueprintId: string;
+  blueprintName: string;
+  graphId: string;
+  nodeId: string;
+  nodeType: string;
+  /**
+   * The address a Fetch node will request, when it is knowable without running the graph.
+   *
+   * Null for the two read-the-response nodes, which address nothing, and for a Fetch whose
+   * address is computed - a variable, a concatenation, anything that is not written down.
+   * Guessing at one of those would produce findings against a string never requested, so
+   * they are decided at run time instead, where the address exists.
+   *
+   * A `url` pin wired to a string literal node counts as written: it is the same fact the
+   * author typed, one drag further away.
+   */
+  literalUrl: string | null;
+  target: SearchJumpTarget;
 };
 
 /**
@@ -98,27 +106,28 @@ export type BlueprintNetworkNodeSite = {
  * use the network" would be two chances to disagree, and the one that decides whether a build ships
  * is the one that must not be wrong.
  */
-export function collectBlueprintNetworkNodes(document: BlueprintDocument | null): BlueprintNetworkNodeSite[] {
-    const sites: BlueprintNetworkNodeSite[] = [];
-    for (const site of listBlueprintGraphSites(document)) {
-        for (const node of Object.values(site.ir.nodes ?? {})) {
-            if (!NETWORK_NODE_TYPES.has(node.type)) {
-                continue;
-            }
-            sites.push({
-                blueprintId: site.blueprintId,
-                blueprintName: site.blueprintName,
-                graphId: site.graphId,
-                nodeId: node.id,
-                nodeType: node.type,
-                literalUrl: node.type === BLUEPRINT_NODE_TYPE_NETWORK_FETCH
-                    ? writtenFetchUrl(site.ir, node)
-                    : null,
-                target: blueprintNodeJumpTarget(site, node.id),
-            });
-        }
+export function collectBlueprintNetworkNodes(
+  document: BlueprintDocument | null
+): BlueprintNetworkNodeSite[] {
+  const sites: BlueprintNetworkNodeSite[] = [];
+  for (const site of listBlueprintGraphSites(document)) {
+    for (const node of Object.values(site.ir.nodes ?? {})) {
+      if (!NETWORK_NODE_TYPES.has(node.type)) {
+        continue;
+      }
+      sites.push({
+        blueprintId: site.blueprintId,
+        blueprintName: site.blueprintName,
+        graphId: site.graphId,
+        nodeId: node.id,
+        nodeType: node.type,
+        literalUrl:
+          node.type === BLUEPRINT_NODE_TYPE_NETWORK_FETCH ? writtenFetchUrl(site.ir, node) : null,
+        target: blueprintNodeJumpTarget(site, node.id)
+      });
     }
-    return sites;
+  }
+  return sites;
 }
 
 /**
@@ -128,22 +137,22 @@ export function collectBlueprintNetworkNodes(document: BlueprintDocument | null)
  * and delete it, or to change the setting, and a single project-level finding would name neither.
  */
 function runFetchDisallowed(ctx: LintContext): LintFinding[] {
-    if (ctx.network.allowHttp) {
-        return [];
-    }
-    return collectBlueprintNetworkNodes(ctx.blueprintDocument).map(site => ({
-        ruleId: "network/fetch-disallowed" as const,
-        messageKey: "lint.rule.networkFetchDisallowed.message" as const,
-        messageParams: { blueprint: site.blueprintName },
-        location: {
-            kind: "blueprint" as const,
-            blueprintId: site.blueprintId,
-            blueprintName: site.blueprintName,
-            graphId: site.graphId,
-            nodeId: site.nodeId,
-        },
-        target: site.target,
-    }));
+  if (ctx.network.allowHttp) {
+    return [];
+  }
+  return collectBlueprintNetworkNodes(ctx.blueprintDocument).map((site) => ({
+    ruleId: "network/fetch-disallowed" as const,
+    messageKey: "lint.rule.networkFetchDisallowed.message" as const,
+    messageParams: { blueprint: site.blueprintName },
+    location: {
+      kind: "blueprint" as const,
+      blueprintId: site.blueprintId,
+      blueprintName: site.blueprintName,
+      graphId: site.graphId,
+      nodeId: site.nodeId
+    },
+    target: site.target
+  }));
 }
 
 /**
@@ -161,30 +170,30 @@ function runFetchDisallowed(ctx: LintContext): LintFinding[] {
  * project and a build that ships a request the game refuses.
  */
 function runFetchNotAllowlisted(ctx: LintContext): LintFinding[] {
-    const allowlist = projectNetworkAllowlist(ctx);
-    if (!ctx.network.allowHttp || networkAllowlistCspSources(allowlist) === null) {
-        return [];
+  const allowlist = projectNetworkAllowlist(ctx);
+  if (!ctx.network.allowHttp || networkAllowlistCspSources(allowlist) === null) {
+    return [];
+  }
+  const findings: LintFinding[] = [];
+  for (const site of collectBlueprintNetworkNodes(ctx.blueprintDocument)) {
+    if (!site.literalUrl || isNetworkAddressAllowed(site.literalUrl, allowlist)) {
+      continue;
     }
-    const findings: LintFinding[] = [];
-    for (const site of collectBlueprintNetworkNodes(ctx.blueprintDocument)) {
-        if (!site.literalUrl || isNetworkAddressAllowed(site.literalUrl, allowlist)) {
-            continue;
-        }
-        findings.push({
-            ruleId: "network/fetch-not-allowlisted" as const,
-            messageKey: "lint.rule.networkFetchNotAllowlisted.message" as const,
-            messageParams: { url: site.literalUrl },
-            location: {
-                kind: "blueprint" as const,
-                blueprintId: site.blueprintId,
-                blueprintName: site.blueprintName,
-                graphId: site.graphId,
-                nodeId: site.nodeId,
-            },
-            target: site.target,
-        });
-    }
-    return findings;
+    findings.push({
+      ruleId: "network/fetch-not-allowlisted" as const,
+      messageKey: "lint.rule.networkFetchNotAllowlisted.message" as const,
+      messageParams: { url: site.literalUrl },
+      location: {
+        kind: "blueprint" as const,
+        blueprintId: site.blueprintId,
+        blueprintName: site.blueprintName,
+        graphId: site.graphId,
+        nodeId: site.nodeId
+      },
+      target: site.target
+    });
+  }
+  return findings;
 }
 
 /**
@@ -195,26 +204,26 @@ function runFetchNotAllowlisted(ctx: LintContext): LintFinding[] {
  * project reach" would be two chances to disagree - the rule the node sweep above follows too.
  */
 export function projectNetworkAllowlist(ctx: LintContext): NetworkAllowlist {
-    return {
-        policy: ctx.network.policy,
-        entries: ctx.network.allowlist,
-        plugins: ctx.pluginNetworkDeclarations,
-    };
+  return {
+    policy: ctx.network.policy,
+    entries: ctx.network.allowlist,
+    plugins: ctx.pluginNetworkDeclarations
+  };
 }
 
 export const NETWORK_LINT_RULES: readonly LintRule[] = [
-    {
-        id: "network/fetch-disallowed",
-        category: "network",
-        defaultSeverity: "error",
-        slug: "networkFetchDisallowed",
-        run: ctx => runFetchDisallowed(ctx),
-    },
-    {
-        id: "network/fetch-not-allowlisted",
-        category: "network",
-        defaultSeverity: "error",
-        slug: "networkFetchNotAllowlisted",
-        run: ctx => runFetchNotAllowlisted(ctx),
-    },
+  {
+    id: "network/fetch-disallowed",
+    category: "network",
+    defaultSeverity: "error",
+    slug: "networkFetchDisallowed",
+    run: (ctx) => runFetchDisallowed(ctx)
+  },
+  {
+    id: "network/fetch-not-allowlisted",
+    category: "network",
+    defaultSeverity: "error",
+    slug: "networkFetchNotAllowlisted",
+    run: (ctx) => runFetchNotAllowlisted(ctx)
+  }
 ];

@@ -4,10 +4,10 @@ import { resolveCharacterAvatarAssetUrl } from "@/lib/ui-editor/runtime/characte
 import { resolveGameRuntimeAssetUrl } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
 
 type AssetObjectUrlState = {
-    url: string | null;
-    metadata: null;
-    loading: boolean;
-    error: string | null;
+  url: string | null;
+  metadata: null;
+  loading: boolean;
+  error: string | null;
 };
 
 /**
@@ -18,34 +18,36 @@ type AssetObjectUrlState = {
  *
  * It is nevertheless typed, not `unknown`: see the guard at the bottom of this file.
  */
-export function useAssetObjectUrl(assetId?: string | null, _assetType?: AssetPoolName): AssetObjectUrlState {
-    const [state, setState] = useState<AssetObjectUrlState>({
-        url: null,
-        metadata: null,
-        loading: false,
-        error: null,
+export function useAssetObjectUrl(
+  assetId?: string | null,
+  _assetType?: AssetPoolName
+): AssetObjectUrlState {
+  const [state, setState] = useState<AssetObjectUrlState>({
+    url: null,
+    metadata: null,
+    loading: false,
+    error: null
+  });
+
+  useEffect(() => {
+    if (!assetId) {
+      setState({ url: null, metadata: null, loading: false, error: null });
+      return;
+    }
+    const previewUrl = resolveDevModeSavePreviewImageUrl(assetId);
+    // Avatars first: the mounted compile already resolved them, so this is the swap that must
+    // not cost a round trip.
+    const runtimeUrl =
+      previewUrl ?? resolveCharacterAvatarAssetUrl(assetId) ?? resolveGameRuntimeAssetUrl(assetId);
+    setState({
+      url: runtimeUrl,
+      metadata: null,
+      loading: false,
+      error: runtimeUrl ? null : `Runtime asset not found: ${assetId}`
     });
+  }, [assetId]);
 
-    useEffect(() => {
-        if (!assetId) {
-            setState({ url: null, metadata: null, loading: false, error: null });
-            return;
-        }
-        const previewUrl = resolveDevModeSavePreviewImageUrl(assetId);
-        // Avatars first: the mounted compile already resolved them, so this is the swap that must
-        // not cost a round trip.
-        const runtimeUrl = previewUrl
-            ?? resolveCharacterAvatarAssetUrl(assetId)
-            ?? resolveGameRuntimeAssetUrl(assetId);
-        setState({
-            url: runtimeUrl,
-            metadata: null,
-            loading: false,
-            error: runtimeUrl ? null : `Runtime asset not found: ${assetId}`,
-        });
-    }, [assetId]);
-
-    return state;
+  return state;
 }
 
 /**
@@ -81,9 +83,9 @@ type AssetPoolName = Parameters<typeof WorkspaceUseAssetObjectUrl>[1];
 
 const _shimIsSubstitutable: typeof WorkspaceUseAssetObjectUrl = useAssetObjectUrl;
 const _parametersMatchWorkspace: Parameters<typeof useAssetObjectUrl> =
-    null as unknown as Parameters<typeof WorkspaceUseAssetObjectUrl>;
+  null as unknown as Parameters<typeof WorkspaceUseAssetObjectUrl>;
 const _parametersMatchShim: Parameters<typeof WorkspaceUseAssetObjectUrl> =
-    null as unknown as Parameters<typeof useAssetObjectUrl>;
+  null as unknown as Parameters<typeof useAssetObjectUrl>;
 void _shimIsSubstitutable;
 void _parametersMatchWorkspace;
 void _parametersMatchShim;

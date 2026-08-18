@@ -8,7 +8,7 @@ import type { ConsoleChannelDefinition } from "@/lib/workspace/services/core/Con
 export const STORY_CONSOLE_CHANNEL_ID = "story";
 
 export const STORY_CONSOLE_CHANNEL: ConsoleChannelDefinition = {
-    id: STORY_CONSOLE_CHANNEL_ID,
-    label: "Story",
-    description: "Story scene preview diagnostics and warnings",
+  id: STORY_CONSOLE_CHANNEL_ID,
+  label: "Story",
+  description: "Story scene preview diagnostics and warnings"
 };

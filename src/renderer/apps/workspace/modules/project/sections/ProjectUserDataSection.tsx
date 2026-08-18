@@ -20,69 +20,80 @@ import { IconButton } from "@/lib/components/elements";
 import { copyTextToClipboard } from "@shared/utils/copyText";
 import { deriveGameAppId } from "@shared/types/gameBuild";
 import {
-    describeUserDataLocations,
-    USER_DATA_CONTENT_GROUPS,
-    userDataDirectoryName,
-    type UserDataLocation,
+  describeUserDataLocations,
+  USER_DATA_CONTENT_GROUPS,
+  userDataDirectoryName,
+  type UserDataLocation
 } from "@shared/utils/userDataLocation";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
 
 export function ProjectUserDataSection({ config, uiService }: ProjectSectionProps) {
-    const { t } = useTranslation();
-    const locations = useMemo(
-        () => describeUserDataLocations(userDataDirectoryName(deriveGameAppId(config.identifier, config.name ?? ""))),
-        [config.identifier, config.name],
+  const { t } = useTranslation();
+  const locations = useMemo(
+    () =>
+      describeUserDataLocations(
+        userDataDirectoryName(deriveGameAppId(config.identifier, config.name ?? ""))
+      ),
+    [config.identifier, config.name]
+  );
+
+  const copy = useCallback(() => {
+    void copyTextToClipboard(summarize(locations, t)).then(
+      () => uiService?.showNotification(t("project.userData.copied"), "success"),
+      () => uiService?.showNotification(t("project.userData.copyFailed"), "error")
     );
+  }, [locations, t, uiService]);
 
-    const copy = useCallback(() => {
-        void copyTextToClipboard(summarize(locations, t)).then(
-            () => uiService?.showNotification(t("project.userData.copied"), "success"),
-            () => uiService?.showNotification(t("project.userData.copyFailed"), "error"),
-        );
-    }, [locations, t, uiService]);
-
-    return (
-        <SettingsGroup
-            title={t("project.group.userData")}
-            description={t("project.userData.description")}
-            trailing={(
-                <IconButton
-                    size="sm"
-                    aria-label={t("project.userData.copy")}
-                    title={t("project.userData.copy")}
-                    onClick={copy}
-                >
-                    <Copy className="h-3.5 w-3.5" />
-                </IconButton>
-            )}
+  return (
+    <SettingsGroup
+      title={t("project.group.userData")}
+      description={t("project.userData.description")}
+      trailing={
+        <IconButton
+          size="sm"
+          aria-label={t("project.userData.copy")}
+          title={t("project.userData.copy")}
+          onClick={copy}
         >
-            <div className="grid gap-2 rounded-md border border-edge bg-fill-subtle p-3">
-                {locations.map(location => (
-                    <div key={location.platform} className="grid gap-0.5">
-                        <span className="text-2xs text-fg-subtle">{t(`project.userData.platform.${location.platform}`)}</span>
-                        {/* `break-words` rather than `break-all`: a path in a 320px panel has to
+          <Copy className="h-3.5 w-3.5" />
+        </IconButton>
+      }
+    >
+      <div className="grid gap-2 rounded-md border border-edge bg-fill-subtle p-3">
+        {locations.map((location) => (
+          <div key={location.platform} className="grid gap-0.5">
+            <span className="text-2xs text-fg-subtle">
+              {t(`project.userData.platform.${location.platform}`)}
+            </span>
+            {/* `break-words` rather than `break-all`: a path in a 320px panel has to
                             wrap, but breaking it wherever the line happens to end splits the app id
                             down the middle (…narraleaf.game / s.demo), which reads as two different
                             names. This breaks at the spaces and slashes first and only cuts a token
                             that cannot fit a line on its own. */}
-                        <span className="min-w-0 break-words font-mono text-2xs text-fg-muted">{location.display}</span>
-                    </div>
-                ))}
-            </div>
+            <span className="min-w-0 break-words font-mono text-2xs text-fg-muted">
+              {location.display}
+            </span>
+          </div>
+        ))}
+      </div>
 
-            <div className="grid gap-2 rounded-md border border-edge bg-fill-subtle p-3">
-                {USER_DATA_CONTENT_GROUPS.map(group => (
-                    <div key={group.id} className="grid gap-0.5">
-                        <span className="min-w-0 break-words font-mono text-2xs text-fg-muted">
-                            {group.subdirectory === "." ? group.pattern : `${group.subdirectory}/${group.pattern}`}
-                        </span>
-                        <span className="text-2xs text-fg-subtle">{t(`project.userData.content.${group.id}`)}</span>
-                    </div>
-                ))}
-            </div>
-        </SettingsGroup>
-    );
+      <div className="grid gap-2 rounded-md border border-edge bg-fill-subtle p-3">
+        {USER_DATA_CONTENT_GROUPS.map((group) => (
+          <div key={group.id} className="grid gap-0.5">
+            <span className="min-w-0 break-words font-mono text-2xs text-fg-muted">
+              {group.subdirectory === "."
+                ? group.pattern
+                : `${group.subdirectory}/${group.pattern}`}
+            </span>
+            <span className="text-2xs text-fg-subtle">
+              {t(`project.userData.content.${group.id}`)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </SettingsGroup>
+  );
 }
 
 /**
@@ -90,15 +101,21 @@ export function ProjectUserDataSection({ config, uiService }: ProjectSectionProp
  * form. It names each root as those forms name it, since the resolved path a
  * reader can see on screen is the one thing they cannot type into one.
  */
-function summarize(locations: UserDataLocation[], t: ReturnType<typeof useTranslation>["t"]): string {
-    const lines = [t("project.userData.description"), ""];
-    for (const location of locations) {
-        lines.push(`${t(`project.userData.platform.${location.platform}`)}: ${location.display}  (${location.root})`);
-    }
-    lines.push("");
-    for (const group of USER_DATA_CONTENT_GROUPS) {
-        const relative = group.subdirectory === "." ? group.pattern : `${group.subdirectory}/${group.pattern}`;
-        lines.push(`${relative}: ${t(`project.userData.content.${group.id}`)}`);
-    }
-    return lines.join("\n");
+function summarize(
+  locations: UserDataLocation[],
+  t: ReturnType<typeof useTranslation>["t"]
+): string {
+  const lines = [t("project.userData.description"), ""];
+  for (const location of locations) {
+    lines.push(
+      `${t(`project.userData.platform.${location.platform}`)}: ${location.display}  (${location.root})`
+    );
+  }
+  lines.push("");
+  for (const group of USER_DATA_CONTENT_GROUPS) {
+    const relative =
+      group.subdirectory === "." ? group.pattern : `${group.subdirectory}/${group.pattern}`;
+    lines.push(`${relative}: ${t(`project.userData.content.${group.id}`)}`);
+  }
+  return lines.join("\n");
 }

@@ -1,14 +1,11 @@
 import type { LintFinding, LintRule, LintRuleOptions } from "../types";
 import type { LintContext } from "../context";
+import { measureSegmentWidth, type LintTextCountMode } from "./text/displayWidth";
 import {
-    measureSegmentWidth,
-    type LintTextCountMode,
-} from "./text/displayWidth";
-import {
-    isBlankSegment,
-    listLiveTextSegments,
-    storyBlockTarget,
-    storyLocation,
+  isBlankSegment,
+  listLiveTextSegments,
+  storyBlockTarget,
+  storyLocation
 } from "./text/textSegments";
 
 /**
@@ -24,12 +21,12 @@ import {
 
 /** Options arrive already merged with the declared defaults (see `resolveRuleOptions`). */
 function readCountMode(options: LintRuleOptions): LintTextCountMode {
-    return options.countMode === "codePoints" ? "codePoints" : "eastAsianWidth";
+  return options.countMode === "codePoints" ? "codePoints" : "eastAsianWidth";
 }
 
 function readMaxChars(options: LintRuleOptions): number {
-    const value = options.maxChars;
-    return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 120;
+  const value = options.maxChars;
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 120;
 }
 
 /**
@@ -41,23 +38,23 @@ function readMaxChars(options: LintRuleOptions): number {
  * their rendered width depends on a save file this rule cannot see (see `segmentLiteralText`).
  */
 function runOverlong(ctx: LintContext, options: LintRuleOptions): LintFinding[] {
-    const mode = readCountMode(options);
-    const max = readMaxChars(options);
-    const findings: LintFinding[] = [];
-    for (const ref of listLiveTextSegments(ctx)) {
-        const width = measureSegmentWidth(ref.segment, mode);
-        if (width <= max) {
-            continue;
-        }
-        findings.push({
-            ruleId: "text/overlong",
-            messageKey: "lint.rule.textOverlong.message",
-            messageParams: { width, max },
-            location: storyLocation(ref),
-            target: storyBlockTarget(ref),
-        });
+  const mode = readCountMode(options);
+  const max = readMaxChars(options);
+  const findings: LintFinding[] = [];
+  for (const ref of listLiveTextSegments(ctx)) {
+    const width = measureSegmentWidth(ref.segment, mode);
+    if (width <= max) {
+      continue;
     }
-    return findings;
+    findings.push({
+      ruleId: "text/overlong",
+      messageKey: "lint.rule.textOverlong.message",
+      messageParams: { width, max },
+      location: storyLocation(ref),
+      target: storyBlockTarget(ref)
+    });
+  }
+  return findings;
 }
 
 /**
@@ -69,42 +66,42 @@ function runOverlong(ctx: LintContext, options: LintRuleOptions): LintFinding[] 
  * inline event still renders and is not empty.
  */
 function runEmpty(ctx: LintContext): LintFinding[] {
-    const findings: LintFinding[] = [];
-    for (const ref of listLiveTextSegments(ctx)) {
-        if (ref.kind === "choicePrompt" || !isBlankSegment(ref.segment)) {
-            continue;
-        }
-        findings.push({
-            ruleId: "text/empty",
-            messageKey: "lint.rule.textEmpty.message",
-            location: storyLocation(ref),
-            target: storyBlockTarget(ref),
-        });
+  const findings: LintFinding[] = [];
+  for (const ref of listLiveTextSegments(ctx)) {
+    if (ref.kind === "choicePrompt" || !isBlankSegment(ref.segment)) {
+      continue;
     }
-    return findings;
+    findings.push({
+      ruleId: "text/empty",
+      messageKey: "lint.rule.textEmpty.message",
+      location: storyLocation(ref),
+      target: storyBlockTarget(ref)
+    });
+  }
+  return findings;
 }
 
 export const TEXT_LINT_RULES: readonly LintRule[] = [
-    {
-        id: "text/overlong",
-        category: "text",
-        defaultSeverity: "warning",
-        slug: "textOverlong",
-        options: {
-            maxChars: { kind: "number", default: 120, min: 1, max: 2000 },
-            countMode: {
-                kind: "enum",
-                default: "eastAsianWidth",
-                values: ["eastAsianWidth", "codePoints"],
-            },
-        },
-        run: runOverlong,
+  {
+    id: "text/overlong",
+    category: "text",
+    defaultSeverity: "warning",
+    slug: "textOverlong",
+    options: {
+      maxChars: { kind: "number", default: 120, min: 1, max: 2000 },
+      countMode: {
+        kind: "enum",
+        default: "eastAsianWidth",
+        values: ["eastAsianWidth", "codePoints"]
+      }
     },
-    {
-        id: "text/empty",
-        category: "text",
-        defaultSeverity: "warning",
-        slug: "textEmpty",
-        run: ctx => runEmpty(ctx),
-    },
+    run: runOverlong
+  },
+  {
+    id: "text/empty",
+    category: "text",
+    defaultSeverity: "warning",
+    slug: "textEmpty",
+    run: (ctx) => runEmpty(ctx)
+  }
 ];

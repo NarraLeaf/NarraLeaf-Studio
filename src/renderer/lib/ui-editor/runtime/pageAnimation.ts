@@ -1,9 +1,9 @@
 import {
-    DEFAULT_UI_PAGE_ANIMATION_SETTINGS,
-    normalizeUIPageAnimationSettings,
-    type UIPageAnimationDirection,
-    type UIPageAnimationPreset,
-    type UIPageAnimationSettings,
+  DEFAULT_UI_PAGE_ANIMATION_SETTINGS,
+  normalizeUIPageAnimationSettings,
+  type UIPageAnimationDirection,
+  type UIPageAnimationPreset,
+  type UIPageAnimationSettings
 } from "@shared/types/ui-editor/pageAnimation";
 
 export type PageAnimationNavigationDirection = "forward" | "back";
@@ -13,149 +13,153 @@ type MotionTarget = any;
 type MotionTransition = Record<string, unknown>;
 
 export type PageAnimationMotion = {
-    initial: MotionTarget;
-    animate: MotionTarget;
-    exit: MotionTarget;
-    enterDurationMs: number;
-    exitDurationMs: number;
-    exitBlocking: boolean;
+  initial: MotionTarget;
+  animate: MotionTarget;
+  exit: MotionTarget;
+  enterDurationMs: number;
+  exitDurationMs: number;
+  exitBlocking: boolean;
 };
 
 const PAGE_ANIMATION_DISTANCE_PX = 48;
 const PAGE_ANIMATION_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 const BASE_TARGET = {
-    opacity: 1,
-    x: 0,
-    y: 0,
-    scale: 1,
-    filter: "blur(0px)",
+  opacity: 1,
+  x: 0,
+  y: 0,
+  scale: 1,
+  filter: "blur(0px)"
 };
 
 function hasMotion(preset: UIPageAnimationPreset): boolean {
-    return preset !== "none";
+  return preset !== "none";
 }
 
-function durationFor(settings: UIPageAnimationSettings, phase: PageAnimationPhase, reducedMotion: boolean): number {
-    if (reducedMotion) {
-        return 0;
-    }
-    const preset = phase === "enter" ? settings.enter : settings.exit;
-    const seconds = phase === "enter" ? settings.enterDurationSeconds : settings.exitDurationSeconds;
-    return hasMotion(preset) ? Math.max(0, Math.round(seconds * 1000)) : 0;
+function durationFor(
+  settings: UIPageAnimationSettings,
+  phase: PageAnimationPhase,
+  reducedMotion: boolean
+): number {
+  if (reducedMotion) {
+    return 0;
+  }
+  const preset = phase === "enter" ? settings.enter : settings.exit;
+  const seconds = phase === "enter" ? settings.enterDurationSeconds : settings.exitDurationSeconds;
+  return hasMotion(preset) ? Math.max(0, Math.round(seconds * 1000)) : 0;
 }
 
 function transitionFor(durationMs: number, delayMs = 0): MotionTransition {
-    return {
-        type: "tween",
-        duration: durationMs / 1000,
-        ease: PAGE_ANIMATION_EASE,
-        ...(delayMs > 0 ? { delay: delayMs / 1000 } : {}),
-    };
+  return {
+    type: "tween",
+    duration: durationMs / 1000,
+    ease: PAGE_ANIMATION_EASE,
+    ...(delayMs > 0 ? { delay: delayMs / 1000 } : {})
+  };
 }
 
 function resolveAutoDirection(
-    phase: PageAnimationPhase,
-    navigationDirection: PageAnimationNavigationDirection,
+  phase: PageAnimationPhase,
+  navigationDirection: PageAnimationNavigationDirection
 ): Exclude<UIPageAnimationDirection, "auto" | "angle"> {
-    if (phase === "enter") {
-        return navigationDirection === "back" ? "left" : "right";
-    }
-    return navigationDirection === "back" ? "right" : "left";
+  if (phase === "enter") {
+    return navigationDirection === "back" ? "left" : "right";
+  }
+  return navigationDirection === "back" ? "right" : "left";
 }
 
 function resolveDirection(
-    direction: UIPageAnimationDirection,
-    angleDegrees: number,
-    phase: PageAnimationPhase,
-    navigationDirection: PageAnimationNavigationDirection,
+  direction: UIPageAnimationDirection,
+  angleDegrees: number,
+  phase: PageAnimationPhase,
+  navigationDirection: PageAnimationNavigationDirection
 ): { direction: Exclude<UIPageAnimationDirection, "auto" | "angle"> | null; angleDegrees: number } {
-    if (direction === "auto") {
-        return { direction: resolveAutoDirection(phase, navigationDirection), angleDegrees };
-    }
-    if (direction === "angle") {
-        return { direction: null, angleDegrees };
-    }
-    return { direction, angleDegrees };
+  if (direction === "auto") {
+    return { direction: resolveAutoDirection(phase, navigationDirection), angleDegrees };
+  }
+  if (direction === "angle") {
+    return { direction: null, angleDegrees };
+  }
+  return { direction, angleDegrees };
 }
 
 function vectorFor(input: {
-    direction: Exclude<UIPageAnimationDirection, "auto" | "angle"> | null;
-    angleDegrees: number;
+  direction: Exclude<UIPageAnimationDirection, "auto" | "angle"> | null;
+  angleDegrees: number;
 }): { x: number; y: number } {
-    if (input.direction === null) {
-        const radians = (input.angleDegrees * Math.PI) / 180;
-        return {
-            x: Math.cos(radians) * PAGE_ANIMATION_DISTANCE_PX,
-            y: Math.sin(radians) * PAGE_ANIMATION_DISTANCE_PX,
-        };
-    }
+  if (input.direction === null) {
+    const radians = (input.angleDegrees * Math.PI) / 180;
+    return {
+      x: Math.cos(radians) * PAGE_ANIMATION_DISTANCE_PX,
+      y: Math.sin(radians) * PAGE_ANIMATION_DISTANCE_PX
+    };
+  }
 
-    const direction = input.direction;
-    switch (direction) {
-        case "left":
-            return { x: -PAGE_ANIMATION_DISTANCE_PX, y: 0 };
-        case "right":
-            return { x: PAGE_ANIMATION_DISTANCE_PX, y: 0 };
-        case "up":
-            return { x: 0, y: -PAGE_ANIMATION_DISTANCE_PX };
-        case "down":
-            return { x: 0, y: PAGE_ANIMATION_DISTANCE_PX };
-    }
+  const direction = input.direction;
+  switch (direction) {
+    case "left":
+      return { x: -PAGE_ANIMATION_DISTANCE_PX, y: 0 };
+    case "right":
+      return { x: PAGE_ANIMATION_DISTANCE_PX, y: 0 };
+    case "up":
+      return { x: 0, y: -PAGE_ANIMATION_DISTANCE_PX };
+    case "down":
+      return { x: 0, y: PAGE_ANIMATION_DISTANCE_PX };
+  }
 }
 
 function enterTarget(preset: UIPageAnimationPreset, vector: { x: number; y: number }) {
-    switch (preset) {
-        case "fade":
-            return { ...BASE_TARGET, opacity: 0 };
-        case "slide":
-            return { ...BASE_TARGET, opacity: 0, x: vector.x, y: vector.y };
-        case "push":
-            return { ...BASE_TARGET, x: vector.x, y: vector.y };
-        case "zoom":
-            return { ...BASE_TARGET, opacity: 0, scale: 0.96 };
-        case "pop":
-            return { ...BASE_TARGET, opacity: 0, scale: 0.9 };
-        case "blur":
-            return { ...BASE_TARGET, opacity: 0, filter: "blur(14px)" };
-        case "none":
-            return BASE_TARGET;
-    }
+  switch (preset) {
+    case "fade":
+      return { ...BASE_TARGET, opacity: 0 };
+    case "slide":
+      return { ...BASE_TARGET, opacity: 0, x: vector.x, y: vector.y };
+    case "push":
+      return { ...BASE_TARGET, x: vector.x, y: vector.y };
+    case "zoom":
+      return { ...BASE_TARGET, opacity: 0, scale: 0.96 };
+    case "pop":
+      return { ...BASE_TARGET, opacity: 0, scale: 0.9 };
+    case "blur":
+      return { ...BASE_TARGET, opacity: 0, filter: "blur(14px)" };
+    case "none":
+      return BASE_TARGET;
+  }
 }
 
 function exitTarget(preset: UIPageAnimationPreset, vector: { x: number; y: number }) {
-    switch (preset) {
-        case "fade":
-            return { ...BASE_TARGET, opacity: 0 };
-        case "slide":
-            return { ...BASE_TARGET, opacity: 0, x: vector.x, y: vector.y };
-        case "push":
-            return { ...BASE_TARGET, x: vector.x, y: vector.y };
-        case "zoom":
-            return { ...BASE_TARGET, opacity: 0, scale: 0.96 };
-        case "pop":
-            return { ...BASE_TARGET, opacity: 0, scale: 1.05 };
-        case "blur":
-            return { ...BASE_TARGET, opacity: 0, filter: "blur(14px)" };
-        case "none":
-            return BASE_TARGET;
-    }
+  switch (preset) {
+    case "fade":
+      return { ...BASE_TARGET, opacity: 0 };
+    case "slide":
+      return { ...BASE_TARGET, opacity: 0, x: vector.x, y: vector.y };
+    case "push":
+      return { ...BASE_TARGET, x: vector.x, y: vector.y };
+    case "zoom":
+      return { ...BASE_TARGET, opacity: 0, scale: 0.96 };
+    case "pop":
+      return { ...BASE_TARGET, opacity: 0, scale: 1.05 };
+    case "blur":
+      return { ...BASE_TARGET, opacity: 0, filter: "blur(14px)" };
+    case "none":
+      return BASE_TARGET;
+  }
 }
 
 export function getPageAnimationDurationMs(
-    settings: UIPageAnimationSettings | null | undefined,
-    phase: PageAnimationPhase,
-    reducedMotion = false,
+  settings: UIPageAnimationSettings | null | undefined,
+  phase: PageAnimationPhase,
+  reducedMotion = false
 ): number {
-    return durationFor(normalizeUIPageAnimationSettings(settings), phase, reducedMotion);
+  return durationFor(normalizeUIPageAnimationSettings(settings), phase, reducedMotion);
 }
 
 export function shouldBlockPageAnimationExit(
-    settings: UIPageAnimationSettings | null | undefined,
-    reducedMotion = false,
+  settings: UIPageAnimationSettings | null | undefined,
+  reducedMotion = false
 ): boolean {
-    const normalized = normalizeUIPageAnimationSettings(settings);
-    return normalized.exitBlocking && durationFor(normalized, "exit", reducedMotion) > 0;
+  const normalized = normalizeUIPageAnimationSettings(settings);
+  return normalized.exitBlocking && durationFor(normalized, "exit", reducedMotion) > 0;
 }
 
 /**
@@ -168,74 +172,75 @@ export function shouldBlockPageAnimationExit(
  * which animate in design px and get scaled with the tree.
  */
 export function scalePageMotionDistances(target: MotionTarget, scale: number): MotionTarget {
-    if (scale === 1 || !target || typeof target !== "object") {
-        return target;
-    }
-    const scaled: Record<string, unknown> = { ...target };
-    if (typeof scaled.x === "number") {
-        scaled.x = scaled.x * scale;
-    }
-    if (typeof scaled.y === "number") {
-        scaled.y = scaled.y * scale;
-    }
-    return scaled;
+  if (scale === 1 || !target || typeof target !== "object") {
+    return target;
+  }
+  const scaled: Record<string, unknown> = { ...target };
+  if (typeof scaled.x === "number") {
+    scaled.x = scaled.x * scale;
+  }
+  if (typeof scaled.y === "number") {
+    scaled.y = scaled.y * scale;
+  }
+  return scaled;
 }
 
 export function resolvePageAnimationMotion(input: {
-    settings?: UIPageAnimationSettings | null;
-    navigationDirection?: PageAnimationNavigationDirection;
-    reducedMotion?: boolean;
-    /**
-     * Held before each phase starts, in ms. The settings carry the author's own delay; this is what
-     * the timing plan resolved it to - for a Surface that waits for its children, the wait itself.
-     * Passing it here rather than reading the settings keeps one place in charge of the arithmetic.
-     */
-    delays?: { enterMs?: number; exitMs?: number };
+  settings?: UIPageAnimationSettings | null;
+  navigationDirection?: PageAnimationNavigationDirection;
+  reducedMotion?: boolean;
+  /**
+   * Held before each phase starts, in ms. The settings carry the author's own delay; this is what
+   * the timing plan resolved it to - for a Surface that waits for its children, the wait itself.
+   * Passing it here rather than reading the settings keeps one place in charge of the arithmetic.
+   */
+  delays?: { enterMs?: number; exitMs?: number };
 }): PageAnimationMotion {
-    const settings = normalizeUIPageAnimationSettings(input.settings ?? DEFAULT_UI_PAGE_ANIMATION_SETTINGS);
-    const reducedMotion = input.reducedMotion === true;
-    const enterDelayMs = reducedMotion ? 0 : Math.max(0, input.delays?.enterMs ?? 0);
-    const exitDelayMs = reducedMotion ? 0 : Math.max(0, input.delays?.exitMs ?? 0);
-    const navigationDirection = input.navigationDirection ?? "forward";
-    const enterVector = vectorFor(resolveDirection(
-        settings.enterDirection,
-        settings.enterAngleDegrees,
-        "enter",
-        navigationDirection,
-    ));
-    const exitVector = vectorFor(resolveDirection(
-        settings.exitDirection,
-        settings.exitAngleDegrees,
-        "exit",
-        navigationDirection,
-    ));
-    const enterDurationMs = durationFor(settings, "enter", reducedMotion);
-    const exitDurationMs = durationFor(settings, "exit", reducedMotion);
-    const exitBlocking = shouldBlockPageAnimationExit(settings, reducedMotion);
+  const settings = normalizeUIPageAnimationSettings(
+    input.settings ?? DEFAULT_UI_PAGE_ANIMATION_SETTINGS
+  );
+  const reducedMotion = input.reducedMotion === true;
+  const enterDelayMs = reducedMotion ? 0 : Math.max(0, input.delays?.enterMs ?? 0);
+  const exitDelayMs = reducedMotion ? 0 : Math.max(0, input.delays?.exitMs ?? 0);
+  const navigationDirection = input.navigationDirection ?? "forward";
+  const enterVector = vectorFor(
+    resolveDirection(
+      settings.enterDirection,
+      settings.enterAngleDegrees,
+      "enter",
+      navigationDirection
+    )
+  );
+  const exitVector = vectorFor(
+    resolveDirection(settings.exitDirection, settings.exitAngleDegrees, "exit", navigationDirection)
+  );
+  const enterDurationMs = durationFor(settings, "enter", reducedMotion);
+  const exitDurationMs = durationFor(settings, "exit", reducedMotion);
+  const exitBlocking = shouldBlockPageAnimationExit(settings, reducedMotion);
 
-    if (reducedMotion || (enterDurationMs <= 0 && exitDurationMs <= 0)) {
-        return {
-            initial: BASE_TARGET,
-            animate: { ...BASE_TARGET, transition: transitionFor(0) },
-            exit: { ...BASE_TARGET, transition: transitionFor(0) },
-            enterDurationMs,
-            exitDurationMs,
-            exitBlocking,
-        };
-    }
-
+  if (reducedMotion || (enterDurationMs <= 0 && exitDurationMs <= 0)) {
     return {
-        initial: enterDurationMs > 0 ? enterTarget(settings.enter, enterVector) : BASE_TARGET,
-        animate: {
-            ...BASE_TARGET,
-            transition: transitionFor(enterDurationMs, enterDelayMs),
-        },
-        exit: {
-            ...(exitDurationMs > 0 ? exitTarget(settings.exit, exitVector) : BASE_TARGET),
-            transition: transitionFor(exitDurationMs, exitDelayMs),
-        },
-        enterDurationMs,
-        exitDurationMs,
-        exitBlocking,
+      initial: BASE_TARGET,
+      animate: { ...BASE_TARGET, transition: transitionFor(0) },
+      exit: { ...BASE_TARGET, transition: transitionFor(0) },
+      enterDurationMs,
+      exitDurationMs,
+      exitBlocking
     };
+  }
+
+  return {
+    initial: enterDurationMs > 0 ? enterTarget(settings.enter, enterVector) : BASE_TARGET,
+    animate: {
+      ...BASE_TARGET,
+      transition: transitionFor(enterDurationMs, enterDelayMs)
+    },
+    exit: {
+      ...(exitDurationMs > 0 ? exitTarget(settings.exit, exitVector) : BASE_TARGET),
+      transition: transitionFor(exitDurationMs, exitDelayMs)
+    },
+    enterDurationMs,
+    exitDurationMs,
+    exitBlocking
+  };
 }

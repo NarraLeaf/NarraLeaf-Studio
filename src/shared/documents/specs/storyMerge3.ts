@@ -1,13 +1,13 @@
-import type {StoryBlock, StoryDocument, StoryScene} from "@shared/types/story/document";
-import {listSceneIdsInDocumentOrder} from "@shared/types/story/order";
+import type { StoryBlock, StoryDocument, StoryScene } from "@shared/types/story/document";
+import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import type {
-    DocumentChangeLabel,
-    DocumentMerge3,
-    DocumentMergeDecision,
-    DocumentMergeSide,
+  DocumentChangeLabel,
+  DocumentMerge3,
+  DocumentMergeDecision,
+  DocumentMergeSide
 } from "../diff";
-import {authoredName, sameJsonValue} from "./diffHelpers";
-import {countConflicts, KeyedMergeRow, mergeKeyed} from "./mergeHelpers";
+import { authoredName, sameJsonValue } from "./diffHelpers";
+import { countConflicts, KeyedMergeRow, mergeKeyed } from "./mergeHelpers";
 
 /**
  * Three-way merge of one story - and, as much as anything, the cases it declines to merge.
@@ -48,9 +48,9 @@ import {countConflicts, KeyedMergeRow, mergeKeyed} from "./mergeHelpers";
  *    side whole is the only answer that keeps a document self-consistent.
  */
 export type StoryMergeRefusalReason =
-    | "scene-restructured"
-    | "row-deleted-and-edited"
-    | "schema-version-split";
+  | "scene-restructured"
+  | "row-deleted-and-edited"
+  | "schema-version-split";
 
 /**
  * Labels reused verbatim from the semantic diff (`storyDiff.ts`), and reused rather than invented
@@ -59,19 +59,19 @@ export type StoryMergeRefusalReason =
  * that, and a new key would have to be added to en and zh in the same commit.
  */
 const LABEL = {
-    renamed: "documentDiff.story.renamed",
-    documentField: "documentDiff.story.documentField",
-    chapterOrder: "documentDiff.story.chapterOrder",
-    sceneAdded: "documentDiff.story.sceneAdded",
-    sceneRemoved: "documentDiff.story.sceneRemoved",
-    sceneChanged: "documentDiff.story.sceneChanged",
-    sceneRenamed: "documentDiff.story.sceneRenamed",
-    sceneField: "documentDiff.story.sceneField",
-    blockAdded: "documentDiff.story.blockAdded",
-    blockRemoved: "documentDiff.story.blockRemoved",
-    blockChanged: "documentDiff.story.blockChanged",
-    blockKind: "documentDiff.story.blockKind",
-    blockField: "documentDiff.story.blockField",
+  renamed: "documentDiff.story.renamed",
+  documentField: "documentDiff.story.documentField",
+  chapterOrder: "documentDiff.story.chapterOrder",
+  sceneAdded: "documentDiff.story.sceneAdded",
+  sceneRemoved: "documentDiff.story.sceneRemoved",
+  sceneChanged: "documentDiff.story.sceneChanged",
+  sceneRenamed: "documentDiff.story.sceneRenamed",
+  sceneField: "documentDiff.story.sceneField",
+  blockAdded: "documentDiff.story.blockAdded",
+  blockRemoved: "documentDiff.story.blockRemoved",
+  blockChanged: "documentDiff.story.blockChanged",
+  blockKind: "documentDiff.story.blockKind",
+  blockField: "documentDiff.story.blockField"
 } as const;
 
 /** Handled explicitly below, so they never reach the generic document-field merge. */
@@ -84,112 +84,121 @@ const BLOCK_SKIP = new Set(["id", "parentId", "childrenIds"]);
 type Fields = Record<string, unknown>;
 
 export function merge3Story(
-    base: StoryDocument | undefined,
-    mine: StoryDocument,
-    theirs: StoryDocument,
+  base: StoryDocument | undefined,
+  mine: StoryDocument,
+  theirs: StoryDocument
 ): DocumentMerge3<StoryDocument> {
-    if (isVersion(mine.schemaVersion) && isVersion(theirs.schemaVersion)
-        && mine.schemaVersion !== theirs.schemaVersion) {
-        return refuse("schema-version-split", base, mine, theirs);
+  if (
+    isVersion(mine.schemaVersion) &&
+    isVersion(theirs.schemaVersion) &&
+    mine.schemaVersion !== theirs.schemaVersion
+  ) {
+    return refuse("schema-version-split", base, mine, theirs);
+  }
+
+  const decisions: DocumentMergeDecision[] = [];
+  const fields = mergeKeyed(
+    // `undefined` rather than `{}` when there is no base, and the two are NOT the same argument:
+    // an empty base makes a field only one side holds look like a field the other side deleted
+    // and nobody touched, which `mergeKeyed` then takes automatically. That is the add/add
+    // failure its own note is about, one level up from the collection it was written for.
+    base ? stripFields(base, DOCUMENT_SKIP) : undefined,
+    stripFields(mine, DOCUMENT_SKIP),
+    stripFields(theirs, DOCUMENT_SKIP)
+  );
+  for (const row of byKey(fields.rows)) {
+    decisions.push(build([row.key], row, documentFieldLabel(row)));
+  }
+
+  const baseScenes = scenesOf(base);
+  const mineScenes = scenesOf(mine);
+  const theirsScenes = scenesOf(theirs);
+  const scenesMerge = mergeKeyed<StoryScene>(
+    base ? baseScenes : undefined,
+    mineScenes,
+    theirsScenes
+  );
+  const scenes: Record<string, StoryScene> = { ...scenesMerge.merged };
+
+  // Ordered the way the author reads the story - mine's order, then whatever only theirs has -
+  // rather than by the key order of `scenes`, which the canonical serializer sorts by UUID.
+  const rank = sceneRank(mine, theirs, base);
+  const grouped: { rank: number; rows: DocumentMergeDecision[] }[] = [];
+
+  for (const row of scenesMerge.rows) {
+    const scenePath = ["scenes", row.key];
+    const at = rank.get(row.key) ?? Number.MAX_SAFE_INTEGER;
+    const inBase = base ? baseScenes[row.key] : undefined;
+    const inMine = mineScenes[row.key];
+    const inTheirs = theirsScenes[row.key];
+
+    // Both sides changed a scene that existed before. The only case worth going inside, and the
+    // only case a refusal can come out of.
+    if (row.outcome === "conflict" && inBase && inMine && inTheirs) {
+      const merged = mergeScene(row.key, inBase, inMine, inTheirs);
+      if ("refused" in merged) {
+        return refuse(merged.refused, base, mine, theirs, scenePath, authoredName(inMine.name));
+      }
+      scenes[row.key] = merged.scene;
+      grouped.push({ rank: at, rows: merged.decisions });
+      continue;
     }
 
-    const decisions: DocumentMergeDecision[] = [];
-    const fields = mergeKeyed(
-        // `undefined` rather than `{}` when there is no base, and the two are NOT the same argument:
-        // an empty base makes a field only one side holds look like a field the other side deleted
-        // and nobody touched, which `mergeKeyed` then takes automatically. That is the add/add
-        // failure its own note is about, one level up from the collection it was written for.
-        base ? stripFields(base, DOCUMENT_SKIP) : undefined,
-        stripFields(mine, DOCUMENT_SKIP),
-        stripFields(theirs, DOCUMENT_SKIP),
-    );
-    for (const row of byKey(fields.rows)) {
-        decisions.push(build([row.key], row, documentFieldLabel(row)));
-    }
+    grouped.push({ rank: at, rows: [build(scenePath, row, sceneLabel(row), sceneSubject(row))] });
+  }
 
-    const baseScenes = scenesOf(base);
-    const mineScenes = scenesOf(mine);
-    const theirsScenes = scenesOf(theirs);
-    const scenesMerge = mergeKeyed<StoryScene>(base ? baseScenes : undefined, mineScenes, theirsScenes);
-    const scenes: Record<string, StoryScene> = {...scenesMerge.merged};
+  grouped.sort((a, b) => a.rank - b.rank);
+  for (const entry of grouped) {
+    decisions.push(...entry.rows);
+  }
 
-    // Ordered the way the author reads the story - mine's order, then whatever only theirs has -
-    // rather than by the key order of `scenes`, which the canonical serializer sorts by UUID.
-    const rank = sceneRank(mine, theirs, base);
-    const grouped: {rank: number; rows: DocumentMergeDecision[]}[] = [];
+  const document = {
+    ...fields.merged,
+    ...(mine.schemaVersion === undefined ? {} : { schemaVersion: mine.schemaVersion }),
+    ...(mine.id === undefined ? {} : { id: mine.id }),
+    scenes
+  } as unknown as StoryDocument;
 
-    for (const row of scenesMerge.rows) {
-        const scenePath = ["scenes", row.key];
-        const at = rank.get(row.key) ?? Number.MAX_SAFE_INTEGER;
-        const inBase = base ? baseScenes[row.key] : undefined;
-        const inMine = mineScenes[row.key];
-        const inTheirs = theirsScenes[row.key];
-
-        // Both sides changed a scene that existed before. The only case worth going inside, and the
-        // only case a refusal can come out of.
-        if (row.outcome === "conflict" && inBase && inMine && inTheirs) {
-            const merged = mergeScene(row.key, inBase, inMine, inTheirs);
-            if ("refused" in merged) {
-                return refuse(merged.refused, base, mine, theirs, scenePath, authoredName(inMine.name));
-            }
-            scenes[row.key] = merged.scene;
-            grouped.push({rank: at, rows: merged.decisions});
-            continue;
-        }
-
-        grouped.push({rank: at, rows: [build(scenePath, row, sceneLabel(row), sceneSubject(row))]});
-    }
-
-    grouped.sort((a, b) => a.rank - b.rank);
-    for (const entry of grouped) {
-        decisions.push(...entry.rows);
-    }
-
-    const document = {
-        ...fields.merged,
-        ...(mine.schemaVersion === undefined ? {} : {schemaVersion: mine.schemaVersion}),
-        ...(mine.id === undefined ? {} : {id: mine.id}),
-        scenes,
-    } as unknown as StoryDocument;
-
-    return {document, decisions, conflicts: countConflicts(decisions)};
+  return { document, decisions, conflicts: countConflicts(decisions) };
 }
 
 /** The whole-document answer: hold base, offer the two sides, and say why. */
 function refuse(
-    reason: StoryMergeRefusalReason,
-    base: StoryDocument | undefined,
-    mine: StoryDocument,
-    theirs: StoryDocument,
-    path?: readonly string[],
-    subject?: string,
+  reason: StoryMergeRefusalReason,
+  base: StoryDocument | undefined,
+  mine: StoryDocument,
+  theirs: StoryDocument,
+  path?: readonly string[],
+  subject?: string
 ): DocumentMerge3<StoryDocument> {
-    return {
-        // Base, on the same terms as any other unsettled conflict; mine when there is none.
-        document: base ?? mine,
-        // One decision, addressed at the document itself. A consumer that never reads `refusal`
-        // still cannot merge this by accident - it is handed exactly tier one's "take one side
-        // whole", which is the designed fallback rather than a degraded one.
-        decisions: [{
-            path: [],
-            outcome: "conflict",
-            // No label on purpose: there is no `documentDiff.*` key for "this cannot be merged", and
-            // emitting one that is in neither catalogue would draw the dotted path itself at the
-            // author. The reason below is what the surface renders, in its own words.
-            ...(subject ? {subject} : {}),
-            mine: {present: true, value: mine},
-            theirs: {present: true, value: theirs},
-        }],
-        conflicts: 1,
-        refusal: {reason, ...(path ? {path} : {}), ...(subject ? {subject} : {})},
-    };
+  return {
+    // Base, on the same terms as any other unsettled conflict; mine when there is none.
+    document: base ?? mine,
+    // One decision, addressed at the document itself. A consumer that never reads `refusal`
+    // still cannot merge this by accident - it is handed exactly tier one's "take one side
+    // whole", which is the designed fallback rather than a degraded one.
+    decisions: [
+      {
+        path: [],
+        outcome: "conflict",
+        // No label on purpose: there is no `documentDiff.*` key for "this cannot be merged", and
+        // emitting one that is in neither catalogue would draw the dotted path itself at the
+        // author. The reason below is what the surface renders, in its own words.
+        ...(subject ? { subject } : {}),
+        mine: { present: true, value: mine },
+        theirs: { present: true, value: theirs }
+      }
+    ],
+    conflicts: 1,
+    refusal: { reason, ...(path ? { path } : {}), ...(subject ? { subject } : {}) }
+  };
 }
 
 // --- scenes ---------------------------------------------------------------------------------
 
 type SceneMerge =
-    | {readonly refused: StoryMergeRefusalReason}
-    | {readonly scene: StoryScene; readonly decisions: DocumentMergeDecision[]};
+  | { readonly refused: StoryMergeRefusalReason }
+  | { readonly scene: StoryScene; readonly decisions: DocumentMergeDecision[] };
 
 /**
  * A scene's shape, as the thing two sides either agree about or do not.
@@ -201,21 +210,25 @@ type SceneMerge =
  * that cannot be interleaved.
  */
 interface SceneStructure {
-    readonly roots: readonly unknown[];
-    readonly children: Fields;
-    readonly parents: Fields;
+  readonly roots: readonly unknown[];
+  readonly children: Fields;
+  readonly parents: Fields;
 }
 
 function structureOf(scene: StoryScene | undefined): SceneStructure {
-    const blocks = blocksOf(scene);
-    const children: Fields = {};
-    const parents: Fields = {};
-    for (const id of Object.keys(blocks).sort()) {
-        const block = blocks[id] as StoryBlock | undefined;
-        children[id] = Array.isArray(block?.childrenIds) ? block?.childrenIds : [];
-        parents[id] = block?.parentId ?? null;
-    }
-    return {roots: Array.isArray(scene?.rootBlockIds) ? scene?.rootBlockIds ?? [] : [], children, parents};
+  const blocks = blocksOf(scene);
+  const children: Fields = {};
+  const parents: Fields = {};
+  for (const id of Object.keys(blocks).sort()) {
+    const block = blocks[id] as StoryBlock | undefined;
+    children[id] = Array.isArray(block?.childrenIds) ? block?.childrenIds : [];
+    parents[id] = block?.parentId ?? null;
+  }
+  return {
+    roots: Array.isArray(scene?.rootBlockIds) ? (scene?.rootBlockIds ?? []) : [],
+    children,
+    parents
+  };
 }
 
 /**
@@ -237,96 +250,106 @@ function structureOf(scene: StoryScene | undefined): SceneStructure {
  * row in `blocks` that no ordered array names, and an invisible row in a file is the same
  * silent-and-late failure the whole refusal exists to prevent.
  */
-function mergeScene(sceneId: string, base: StoryScene, mine: StoryScene, theirs: StoryScene): SceneMerge {
-    const baseShape = structureOf(base);
-    const mineShape = structureOf(mine);
-    const theirsShape = structureOf(theirs);
-    let shape = mine;
+function mergeScene(
+  sceneId: string,
+  base: StoryScene,
+  mine: StoryScene,
+  theirs: StoryScene
+): SceneMerge {
+  const baseShape = structureOf(base);
+  const mineShape = structureOf(mine);
+  const theirsShape = structureOf(theirs);
+  let shape = mine;
 
-    if (!sameJsonValue(mineShape, theirsShape)) {
-        const mineMoved = !sameJsonValue(mineShape, baseShape);
-        const theirsMoved = !sameJsonValue(theirsShape, baseShape);
-        if (mineMoved && theirsMoved) {
-            return {refused: "scene-restructured"};
-        }
-        shape = mineMoved ? mine : theirs;
-        const other = mineMoved ? theirs : mine;
-        const baseBlocks = blocksOf(base);
-        const shapeBlocks = blocksOf(shape);
-        const otherBlocks = blocksOf(other);
-        for (const id of Object.keys(baseBlocks)) {
-            if (Object.prototype.hasOwnProperty.call(shapeBlocks, id)) {
-                continue;
-            }
-            if (!sameJsonValue(baseBlocks[id], otherBlocks[id])) {
-                return {refused: "row-deleted-and-edited"};
-            }
-        }
+  if (!sameJsonValue(mineShape, theirsShape)) {
+    const mineMoved = !sameJsonValue(mineShape, baseShape);
+    const theirsMoved = !sameJsonValue(theirsShape, baseShape);
+    if (mineMoved && theirsMoved) {
+      return { refused: "scene-restructured" };
     }
-
-    const decisions: DocumentMergeDecision[] = [];
-    const fields = mergeKeyed(
-        stripFields(base, SCENE_SKIP),
-        stripFields(mine, SCENE_SKIP),
-        stripFields(theirs, SCENE_SKIP),
-    );
-    for (const row of byKey(fields.rows)) {
-        decisions.push(build(["scenes", sceneId, row.key], row, sceneFieldLabel(row)));
-    }
-
-    const blocks = mergeKeyed<StoryBlock>(blocksOf(base), blocksOf(mine), blocksOf(theirs));
-    const settled: Record<string, StoryBlock | undefined> = {...blocks.merged};
-    for (const row of blocks.rows) {
-        const path = ["scenes", sceneId, "blocks", row.key];
-        // Attempted for every row a block survives on both sides of, not only for the contested
-        // ones: a row one side edited is addressed at `…/payload` by the semantic diff, and a
-        // decision that named the whole block instead would break the one premise the tier rests
-        // on - that a comparison and a resolution are one list seen twice, addressed alike.
-        const refined = refineBlock(path, blocksOf(base)[row.key], blocksOf(mine)[row.key], blocksOf(theirs)[row.key]);
-        if (refined) {
-            settled[row.key] = refined.block;
-            decisions.push(...refined.decisions);
-            continue;
-        }
-        decisions.push(build(path, row, blockLabel(row)));
-    }
-
-    // Built from the SHAPE rather than from the merged map, so a row can only be in the scene if the
-    // scene's own ordering names it. Nothing here can produce an orphan even if the reasoning above
-    // has a hole in it.
+    shape = mineMoved ? mine : theirs;
+    const other = mineMoved ? theirs : mine;
+    const baseBlocks = blocksOf(base);
     const shapeBlocks = blocksOf(shape);
-    const merged: Record<string, StoryBlock> = {};
-    for (const id of Object.keys(structureOf(shape).children)) {
-        const chosen = settled[id] ?? shapeBlocks[id];
-        if (chosen) {
-            merged[id] = withShape(chosen, shapeBlocks[id]);
-        }
+    const otherBlocks = blocksOf(other);
+    for (const id of Object.keys(baseBlocks)) {
+      if (Object.prototype.hasOwnProperty.call(shapeBlocks, id)) {
+        continue;
+      }
+      if (!sameJsonValue(baseBlocks[id], otherBlocks[id])) {
+        return { refused: "row-deleted-and-edited" };
+      }
     }
+  }
 
-    const scene = {
-        ...fields.merged,
-        ...(sceneId === undefined ? {} : {id: sceneId}),
-        rootBlockIds: Array.isArray(shape.rootBlockIds) ? shape.rootBlockIds : [],
-        blocks: merged,
-    } as unknown as StoryScene;
+  const decisions: DocumentMergeDecision[] = [];
+  const fields = mergeKeyed(
+    stripFields(base, SCENE_SKIP),
+    stripFields(mine, SCENE_SKIP),
+    stripFields(theirs, SCENE_SKIP)
+  );
+  for (const row of byKey(fields.rows)) {
+    decisions.push(build(["scenes", sceneId, row.key], row, sceneFieldLabel(row)));
+  }
 
-    return {scene, decisions};
+  const blocks = mergeKeyed<StoryBlock>(blocksOf(base), blocksOf(mine), blocksOf(theirs));
+  const settled: Record<string, StoryBlock | undefined> = { ...blocks.merged };
+  for (const row of blocks.rows) {
+    const path = ["scenes", sceneId, "blocks", row.key];
+    // Attempted for every row a block survives on both sides of, not only for the contested
+    // ones: a row one side edited is addressed at `…/payload` by the semantic diff, and a
+    // decision that named the whole block instead would break the one premise the tier rests
+    // on - that a comparison and a resolution are one list seen twice, addressed alike.
+    const refined = refineBlock(
+      path,
+      blocksOf(base)[row.key],
+      blocksOf(mine)[row.key],
+      blocksOf(theirs)[row.key]
+    );
+    if (refined) {
+      settled[row.key] = refined.block;
+      decisions.push(...refined.decisions);
+      continue;
+    }
+    decisions.push(build(path, row, blockLabel(row)));
+  }
+
+  // Built from the SHAPE rather than from the merged map, so a row can only be in the scene if the
+  // scene's own ordering names it. Nothing here can produce an orphan even if the reasoning above
+  // has a hole in it.
+  const shapeBlocks = blocksOf(shape);
+  const merged: Record<string, StoryBlock> = {};
+  for (const id of Object.keys(structureOf(shape).children)) {
+    const chosen = settled[id] ?? shapeBlocks[id];
+    if (chosen) {
+      merged[id] = withShape(chosen, shapeBlocks[id]);
+    }
+  }
+
+  const scene = {
+    ...fields.merged,
+    ...(sceneId === undefined ? {} : { id: sceneId }),
+    rootBlockIds: Array.isArray(shape.rootBlockIds) ? shape.rootBlockIds : [],
+    blocks: merged
+  } as unknown as StoryScene;
+
+  return { scene, decisions };
 }
 
 /** A block wearing the scene's structure, whichever side its contents came from. */
 function withShape(block: StoryBlock, shape: StoryBlock | undefined): StoryBlock {
-    if (!shape) {
-        return block;
+  if (!shape) {
+    return block;
+  }
+  const next = { ...(block as unknown as Fields) };
+  for (const field of ["parentId", "childrenIds"]) {
+    if (Object.prototype.hasOwnProperty.call(shape, field)) {
+      next[field] = (shape as unknown as Fields)[field];
+    } else {
+      delete next[field];
     }
-    const next = {...(block as unknown as Fields)};
-    for (const field of ["parentId", "childrenIds"]) {
-        if (Object.prototype.hasOwnProperty.call(shape, field)) {
-            next[field] = (shape as unknown as Fields)[field];
-        } else {
-            delete next[field];
-        }
-    }
-    return next as unknown as StoryBlock;
+  }
+  return next as unknown as StoryBlock;
 }
 
 /**
@@ -342,91 +365,99 @@ function withShape(block: StoryBlock, shape: StoryBlock | undefined): StoryBlock
  * case that matters most: I disabled the row, you fixed its text, both land.
  */
 function refineBlock(
-    path: readonly string[],
-    base: StoryBlock | undefined,
-    mine: StoryBlock | undefined,
-    theirs: StoryBlock | undefined,
-): {block: StoryBlock; decisions: DocumentMergeDecision[]} | undefined {
-    if (!base || !mine || !theirs) {
-        return undefined;
-    }
-    if (!sameJsonValue(base.kind, mine.kind) || !sameJsonValue(base.kind, theirs.kind)) {
-        return undefined;
-    }
+  path: readonly string[],
+  base: StoryBlock | undefined,
+  mine: StoryBlock | undefined,
+  theirs: StoryBlock | undefined
+): { block: StoryBlock; decisions: DocumentMergeDecision[] } | undefined {
+  if (!base || !mine || !theirs) {
+    return undefined;
+  }
+  if (!sameJsonValue(base.kind, mine.kind) || !sameJsonValue(base.kind, theirs.kind)) {
+    return undefined;
+  }
 
-    const fields = mergeKeyed(
-        stripFields(base, BLOCK_SKIP),
-        stripFields(mine, BLOCK_SKIP),
-        stripFields(theirs, BLOCK_SKIP),
-    );
-    const decisions = byKey(fields.rows).map(row => build([...path, row.key], row, blockFieldLabel(row)));
-    const block = {
-        ...fields.merged,
-        ...(base.id === undefined ? {} : {id: base.id}),
-    } as unknown as StoryBlock;
-    return {block, decisions};
+  const fields = mergeKeyed(
+    stripFields(base, BLOCK_SKIP),
+    stripFields(mine, BLOCK_SKIP),
+    stripFields(theirs, BLOCK_SKIP)
+  );
+  const decisions = byKey(fields.rows).map((row) =>
+    build([...path, row.key], row, blockFieldLabel(row))
+  );
+  const block = {
+    ...fields.merged,
+    ...(base.id === undefined ? {} : { id: base.id })
+  } as unknown as StoryBlock;
+  return { block, decisions };
 }
 
 // --- labels ---------------------------------------------------------------------------------
 
 function label(key: string, params?: Record<string, string | number>): DocumentChangeLabel {
-    return params && Object.keys(params).length > 0 ? {key, params} : {key};
+  return params && Object.keys(params).length > 0 ? { key, params } : { key };
 }
 
 function documentFieldLabel(row: KeyedMergeRow<unknown>): DocumentChangeLabel {
-    if (row.key === "name") {
-        return label(LABEL.renamed);
-    }
-    // The chapter list is one ordered array and gets one row, whatever moved inside it. Worded as a
-    // reorder only when it really is one - the same ids in a different sequence.
-    if (row.key === "chapters" && sameIds(row.mine.value, row.theirs.value)) {
-        return label(LABEL.chapterOrder);
-    }
-    return label(LABEL.documentField, {field: row.key});
+  if (row.key === "name") {
+    return label(LABEL.renamed);
+  }
+  // The chapter list is one ordered array and gets one row, whatever moved inside it. Worded as a
+  // reorder only when it really is one - the same ids in a different sequence.
+  if (row.key === "chapters" && sameIds(row.mine.value, row.theirs.value)) {
+    return label(LABEL.chapterOrder);
+  }
+  return label(LABEL.documentField, { field: row.key });
 }
 
 function sceneFieldLabel(row: KeyedMergeRow<unknown>): DocumentChangeLabel {
-    return row.key === "name" ? label(LABEL.sceneRenamed) : label(LABEL.sceneField, {field: row.key});
+  return row.key === "name"
+    ? label(LABEL.sceneRenamed)
+    : label(LABEL.sceneField, { field: row.key });
 }
 
 function blockFieldLabel(row: KeyedMergeRow<unknown>): DocumentChangeLabel {
-    // `payload` is the row itself. `disabled` deliberately does NOT use the diff's
-    // `blockDisabled`/`blockEnabled` pair: those name an outcome, and this row is the question.
-    return row.key === "payload" ? label(LABEL.blockChanged) : label(LABEL.blockField, {field: row.key});
+  // `payload` is the row itself. `disabled` deliberately does NOT use the diff's
+  // `blockDisabled`/`blockEnabled` pair: those name an outcome, and this row is the question.
+  return row.key === "payload"
+    ? label(LABEL.blockChanged)
+    : label(LABEL.blockField, { field: row.key });
 }
 
 function sceneLabel(row: KeyedMergeRow<StoryScene>): DocumentChangeLabel {
-    if (!row.base.present) {
-        return label(LABEL.sceneAdded, {blocks: blockCount(row)});
-    }
-    if (!row.mine.present || !row.theirs.present) {
-        return label(LABEL.sceneRemoved, {blocks: blockCount(row)});
-    }
-    return label(LABEL.sceneChanged);
+  if (!row.base.present) {
+    return label(LABEL.sceneAdded, { blocks: blockCount(row) });
+  }
+  if (!row.mine.present || !row.theirs.present) {
+    return label(LABEL.sceneRemoved, { blocks: blockCount(row) });
+  }
+  return label(LABEL.sceneChanged);
 }
 
 function blockLabel(row: KeyedMergeRow<StoryBlock>): DocumentChangeLabel {
-    if (!row.base.present) {
-        return label(LABEL.blockAdded);
-    }
-    if (!row.mine.present || !row.theirs.present) {
-        return label(LABEL.blockRemoved);
-    }
-    const mineKind = (row.mine.value as StoryBlock | undefined)?.kind;
-    const theirsKind = (row.theirs.value as StoryBlock | undefined)?.kind;
-    return sameJsonValue(mineKind, theirsKind) ? label(LABEL.blockChanged) : label(LABEL.blockKind);
+  if (!row.base.present) {
+    return label(LABEL.blockAdded);
+  }
+  if (!row.mine.present || !row.theirs.present) {
+    return label(LABEL.blockRemoved);
+  }
+  const mineKind = (row.mine.value as StoryBlock | undefined)?.kind;
+  const theirsKind = (row.theirs.value as StoryBlock | undefined)?.kind;
+  return sameJsonValue(mineKind, theirsKind) ? label(LABEL.blockChanged) : label(LABEL.blockKind);
 }
 
 /** The scene's own name, from whichever side still has it. Never a generated id - see `authoredName`. */
 function sceneSubject(row: KeyedMergeRow<StoryScene>): string | undefined {
-    const present = (row.mine.present ? row.mine.value : undefined) ?? row.theirs.value ?? row.base.value;
-    return authoredName((present as StoryScene | undefined)?.name);
+  const present =
+    (row.mine.present ? row.mine.value : undefined) ?? row.theirs.value ?? row.base.value;
+  return authoredName((present as StoryScene | undefined)?.name);
 }
 
 function blockCount(row: KeyedMergeRow<StoryScene>): number {
-    const present = (row.mine.present ? row.mine.value : undefined) ?? row.theirs.value ?? row.base.value;
-    const blocks = (present as StoryScene | undefined)?.blocks;
-    return blocks && typeof blocks === "object" ? Object.keys(blocks).length : 0;
+  const present =
+    (row.mine.present ? row.mine.value : undefined) ?? row.theirs.value ?? row.base.value;
+  const blocks = (present as StoryScene | undefined)?.blocks;
+  return blocks && typeof blocks === "object" ? Object.keys(blocks).length : 0;
 }
 
 // --- plumbing -------------------------------------------------------------------------------
@@ -441,23 +472,27 @@ function blockCount(row: KeyedMergeRow<StoryScene>): number {
  * reading order, which `sceneRank` and the scene's own arrays already state.
  */
 function byKey<V>(rows: readonly KeyedMergeRow<V>[]): KeyedMergeRow<V>[] {
-    return [...rows].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  return [...rows].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 }
 
 function build(
-    path: readonly string[],
-    row: {outcome: DocumentMergeDecision["outcome"]; mine: DocumentMergeSide; theirs: DocumentMergeSide},
-    labelled: DocumentChangeLabel,
-    subject?: string,
+  path: readonly string[],
+  row: {
+    outcome: DocumentMergeDecision["outcome"];
+    mine: DocumentMergeSide;
+    theirs: DocumentMergeSide;
+  },
+  labelled: DocumentChangeLabel,
+  subject?: string
 ): DocumentMergeDecision {
-    return {
-        path,
-        outcome: row.outcome,
-        label: labelled,
-        ...(subject ? {subject} : {}),
-        mine: row.mine,
-        theirs: row.theirs,
-    };
+  return {
+    path,
+    outcome: row.outcome,
+    label: labelled,
+    ...(subject ? { subject } : {}),
+    mine: row.mine,
+    theirs: row.theirs
+  };
 }
 
 /**
@@ -469,69 +504,69 @@ function build(
  * saved, at the very end of the pipeline.
  */
 function stripFields(record: unknown, skip: ReadonlySet<string>): Fields {
-    const out: Fields = {};
-    if (!record || typeof record !== "object") {
-        return out;
-    }
-    for (const [key, value] of Object.entries(record as Fields)) {
-        if (skip.has(key) || value === undefined) {
-            continue;
-        }
-        out[key] = value;
-    }
+  const out: Fields = {};
+  if (!record || typeof record !== "object") {
     return out;
+  }
+  for (const [key, value] of Object.entries(record as Fields)) {
+    if (skip.has(key) || value === undefined) {
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
 }
 
 function scenesOf(document: StoryDocument | undefined): Record<string, StoryScene> {
-    const scenes = document?.scenes;
-    return scenes && typeof scenes === "object" ? scenes as Record<string, StoryScene> : {};
+  const scenes = document?.scenes;
+  return scenes && typeof scenes === "object" ? (scenes as Record<string, StoryScene>) : {};
 }
 
 function blocksOf(scene: StoryScene | undefined): Record<string, StoryBlock> {
-    const blocks = scene?.blocks;
-    return blocks && typeof blocks === "object" ? blocks as Record<string, StoryBlock> : {};
+  const blocks = scene?.blocks;
+  return blocks && typeof blocks === "object" ? (blocks as Record<string, StoryBlock>) : {};
 }
 
 function isVersion(value: unknown): value is number {
-    return typeof value === "number" && Number.isFinite(value);
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 /** Whether two id-carrying arrays hold the same ids, i.e. whether a change to one is a reorder. */
 function sameIds(left: unknown, right: unknown): boolean {
-    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
-        return false;
-    }
-    const ids = (list: unknown[]): string[] =>
-        list.map(one => String((one as {id?: unknown} | null)?.id ?? "")).sort();
-    return sameJsonValue(ids(left), ids(right));
+  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+    return false;
+  }
+  const ids = (list: unknown[]): string[] =>
+    list.map((one) => String((one as { id?: unknown } | null)?.id ?? "")).sort();
+  return sameJsonValue(ids(left), ids(right));
 }
 
 /** Reading order: mine's, then whatever only theirs or only base still holds. */
 function sceneRank(
-    mine: StoryDocument,
-    theirs: StoryDocument,
-    base: StoryDocument | undefined,
+  mine: StoryDocument,
+  theirs: StoryDocument,
+  base: StoryDocument | undefined
 ): Map<string, number> {
-    const rank = new Map<string, number>();
-    for (const document of [mine, theirs, ...(base ? [base] : [])]) {
-        for (const sceneId of orderedSceneIds(document)) {
-            if (!rank.has(sceneId)) {
-                rank.set(sceneId, rank.size);
-            }
-        }
+  const rank = new Map<string, number>();
+  for (const document of [mine, theirs, ...(base ? [base] : [])]) {
+    for (const sceneId of orderedSceneIds(document)) {
+      if (!rank.has(sceneId)) {
+        rank.set(sceneId, rank.size);
+      }
     }
-    return rank;
+  }
+  return rank;
 }
 
 function orderedSceneIds(document: StoryDocument): string[] {
-    if (!document.scenes || typeof document.scenes !== "object") {
-        return [];
-    }
-    try {
-        return listSceneIdsInDocumentOrder(document);
-    } catch {
-        // These documents came out of a repository and were not migrated, so a helper that indexes a
-        // field this one predates must not be able to take the merge down with it.
-        return [];
-    }
+  if (!document.scenes || typeof document.scenes !== "object") {
+    return [];
+  }
+  try {
+    return listSceneIdsInDocumentOrder(document);
+  } catch {
+    // These documents came out of a repository and were not migrated, so a helper that indexes a
+    // field this one predates must not be able to take the merge down with it.
+    return [];
+  }
 }

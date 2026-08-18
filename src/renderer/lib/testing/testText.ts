@@ -13,7 +13,7 @@ import type { TestText } from "./types";
  * and coming back as a missing-key placeholder.
  */
 export function formatTestText(text: TestText): string {
-    return text.key !== undefined ? translate(text.key, text.params) : text.text;
+  return text.key !== undefined ? translate(text.key, text.params) : text.text;
 }
 
 /**
@@ -25,5 +25,5 @@ export function formatTestText(text: TestText): string {
  * engine sorts its entries on the same principle and for the same reason.
  */
 export function testTextSortKey(text: TestText): string {
-    return text.key !== undefined ? text.key : text.text;
+  return text.key !== undefined ? text.key : text.text;
 }

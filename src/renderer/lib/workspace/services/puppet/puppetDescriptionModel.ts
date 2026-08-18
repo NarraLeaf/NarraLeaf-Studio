@@ -32,16 +32,16 @@ export const PUPPET_DESCRIPTION_CACHE_VERSION = 1;
  * primitive.
  */
 export interface PuppetDescriptionRequest {
-    /** The model bundle asset. */
-    assetId: string;
-    /** Backend name — a directory under the project's `runtimes/puppet/`. */
-    backend: string;
-    /** Entry override within the bundle; null/omitted uses the bundle's own declared entry. */
-    entry?: string | null;
-    /** Backend options, forwarded verbatim to the mount. A backend may load different files for different options. */
-    options?: Record<string, unknown>;
-    /** The box the model is asked to describe itself in. Only some backends report a size that depends on it. */
-    size?: { width: number; height: number } | null;
+  /** The model bundle asset. */
+  assetId: string;
+  /** Backend name — a directory under the project's `runtimes/puppet/`. */
+  backend: string;
+  /** Entry override within the bundle; null/omitted uses the bundle's own declared entry. */
+  entry?: string | null;
+  /** Backend options, forwarded verbatim to the mount. A backend may load different files for different options. */
+  options?: Record<string, unknown>;
+  /** The box the model is asked to describe itself in. Only some backends report a size that depends on it. */
+  size?: { width: number; height: number } | null;
 }
 
 /**
@@ -52,40 +52,40 @@ export interface PuppetDescriptionRequest {
  * empty control the author cannot fill.
  */
 export type PuppetDescriptionUnavailableReason =
-    /** No model asset, or the asset is gone, or its bundle declares no entry file. */
-    | "no-model"
-    /** The puppet names no backend. */
-    | "no-backend"
-    /** The named backend is not installed in this project — `runtimes/puppet/<name>/index.js` is absent. */
-    | "backend-missing"
-    /** The backend loaded and mounted, but implements no `describe()`. Explicitly allowed by the contract. */
-    | "not-described"
-    /** The backend threw, rejected, timed out, or returned something that is not a description. */
-    | "failed";
+  /** No model asset, or the asset is gone, or its bundle declares no entry file. */
+  | "no-model"
+  /** The puppet names no backend. */
+  | "no-backend"
+  /** The named backend is not installed in this project — `runtimes/puppet/<name>/index.js` is absent. */
+  | "backend-missing"
+  /** The backend loaded and mounted, but implements no `describe()`. Explicitly allowed by the contract. */
+  | "not-described"
+  /** The backend threw, rejected, timed out, or returned something that is not a description. */
+  | "failed";
 
 export type PuppetDescriptionResult =
-    | {
-        status: "ok";
-        description: PuppetDescription;
-        /** Whether this answer came off disk or out of a model that was mounted just now. */
-        origin: "memory" | "disk" | "live";
-        fingerprint: string;
+  | {
+      status: "ok";
+      description: PuppetDescription;
+      /** Whether this answer came off disk or out of a model that was mounted just now. */
+      origin: "memory" | "disk" | "live";
+      fingerprint: string;
     }
-    | {
-        status: "unavailable";
-        reason: PuppetDescriptionUnavailableReason;
-        /** Diagnostic detail, already flattened to a string. Never shown as the primary UI. */
-        message?: string;
+  | {
+      status: "unavailable";
+      reason: PuppetDescriptionUnavailableReason;
+      /** Diagnostic detail, already flattened to a string. Never shown as the primary UI. */
+      message?: string;
     };
 
 /** The on-disk record. Lives under `editor/cache/`, so it is derived data and may be deleted at any time. */
 export interface PuppetDescriptionRecord {
-    version: number;
-    /** See {@link puppetDescriptionFingerprint}. A record whose fingerprint no longer matches is a miss. */
-    fingerprint: string;
-    /** ISO timestamp, for diagnostics only — freshness is decided by the fingerprint, never by age. */
-    describedAt: string;
-    description: PuppetDescription;
+  version: number;
+  /** See {@link puppetDescriptionFingerprint}. A record whose fingerprint no longer matches is a miss. */
+  fingerprint: string;
+  /** ISO timestamp, for diagnostics only — freshness is decided by the fingerprint, never by age. */
+  describedAt: string;
+  description: PuppetDescription;
 }
 
 /**
@@ -97,18 +97,18 @@ export interface PuppetDescriptionRecord {
  * is why nothing here watches the filesystem or hooks asset replacement.
  */
 export interface PuppetDescriptionFingerprintInput {
-    /** The bundle's own record hash — a digest of its file listing. */
-    assetHash: string;
-    /** Total bytes in the bundle tree. Catches a texture or skeleton edited in place, which the listing hash cannot. */
-    bundleBytes: number;
-    /** The entry the bundle actually resolved to, override already applied. */
-    resolvedEntry: string;
-    /** Backend directory name. */
-    backend: string;
-    /** A stamp for the backend module itself — see `readPuppetRuntimeStamp`. */
-    backendStamp: string;
-    options: Record<string, unknown>;
-    size: { width: number; height: number } | null;
+  /** The bundle's own record hash — a digest of its file listing. */
+  assetHash: string;
+  /** Total bytes in the bundle tree. Catches a texture or skeleton edited in place, which the listing hash cannot. */
+  bundleBytes: number;
+  /** The entry the bundle actually resolved to, override already applied. */
+  resolvedEntry: string;
+  /** Backend directory name. */
+  backend: string;
+  /** A stamp for the backend module itself — see `readPuppetRuntimeStamp`. */
+  backendStamp: string;
+  options: Record<string, unknown>;
+  size: { width: number; height: number } | null;
 }
 
 /**
@@ -119,14 +119,14 @@ export interface PuppetDescriptionFingerprintInput {
  * whole key derivation into a promise for no benefit.
  */
 export function puppetDescriptionDigest(text: string): string {
-    let a = 0x811c9dc5;
-    let b = 0x01000193;
-    for (let index = 0; index < text.length; index++) {
-        const code = text.charCodeAt(index);
-        a = Math.imul(a ^ code, 0x01000193) >>> 0;
-        b = Math.imul(b + code + index, 0x85ebca6b) >>> 0;
-    }
-    return (a >>> 0).toString(36).padStart(7, "0") + (b >>> 0).toString(36).padStart(7, "0");
+  let a = 0x811c9dc5;
+  let b = 0x01000193;
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    a = Math.imul(a ^ code, 0x01000193) >>> 0;
+    b = Math.imul(b + code + index, 0x85ebca6b) >>> 0;
+  }
+  return (a >>> 0).toString(36).padStart(7, "0") + (b >>> 0).toString(36).padStart(7, "0");
 }
 
 /**
@@ -146,47 +146,51 @@ export const stablePuppetJson = encodeStableJson;
  * identity because two characters can point at two skeletons in one bundle and describe differently.
  */
 export function puppetDescriptionKey(request: PuppetDescriptionRequest): string {
-    return puppetDescriptionDigest(stablePuppetJson({
-        assetId: request.assetId,
-        backend: request.backend,
-        entry: request.entry ?? null,
-        options: request.options ?? {},
-    }));
+  return puppetDescriptionDigest(
+    stablePuppetJson({
+      assetId: request.assetId,
+      backend: request.backend,
+      entry: request.entry ?? null,
+      options: request.options ?? {}
+    })
+  );
 }
 
 /** See {@link PuppetDescriptionFingerprintInput}. */
 export function puppetDescriptionFingerprint(input: PuppetDescriptionFingerprintInput): string {
-    return `${PUPPET_DESCRIPTION_CACHE_VERSION}.${puppetDescriptionDigest(stablePuppetJson({
-        assetHash: input.assetHash,
-        bundleBytes: input.bundleBytes,
-        resolvedEntry: input.resolvedEntry,
-        backend: input.backend,
-        backendStamp: input.backendStamp,
-        options: input.options,
-        size: input.size,
-    }))}`;
+  return `${PUPPET_DESCRIPTION_CACHE_VERSION}.${puppetDescriptionDigest(
+    stablePuppetJson({
+      assetHash: input.assetHash,
+      bundleBytes: input.bundleBytes,
+      resolvedEntry: input.resolvedEntry,
+      backend: input.backend,
+      backendStamp: input.backendStamp,
+      options: input.options,
+      size: input.size
+    })
+  )}`;
 }
 
 function stringList(value: unknown): string[] {
-    if (!Array.isArray(value)) {
-        return [];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") {
+      continue;
     }
-    const seen = new Set<string>();
-    const names: string[] = [];
-    for (const item of value) {
-        if (typeof item !== "string") {
-            continue;
-        }
-        const name = item.trim();
-        // A duplicate would render as two identical options an author cannot tell apart, and an
-        // empty name cannot be selected at all - both are dropped rather than shown.
-        if (!name || seen.has(name)) {
-            continue;
-        }
-        seen.add(name);
-        names.push(name);
+    const name = item.trim();
+    // A duplicate would render as two identical options an author cannot tell apart, and an
+    // empty name cannot be selected at all - both are dropped rather than shown.
+    if (!name || seen.has(name)) {
+      continue;
     }
-    return names;
+    seen.add(name);
+    names.push(name);
+  }
+  return names;
 }
 
 /**
@@ -201,73 +205,82 @@ function stringList(value: unknown): string[] {
  * legitimate answer (plenty of models have skins and no animations) and comes back intact.
  */
 export function normalizePuppetDescription(value: unknown): PuppetDescription | null {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-        return null;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const raw = value as Partial<PuppetDescription>;
+  if (
+    !Array.isArray(raw.motions) &&
+    !Array.isArray(raw.expressions) &&
+    !Array.isArray(raw.skins) &&
+    !Array.isArray(raw.params)
+  ) {
+    // Every field optional-and-absent means this is some other object entirely, not a model
+    // with nothing to say.
+    return null;
+  }
+  const params: PuppetDescription["params"] = [];
+  if (Array.isArray(raw.params)) {
+    const seen = new Set<string>();
+    for (const item of raw.params) {
+      if (typeof item !== "object" || item === null) {
+        continue;
+      }
+      const entry = item as Partial<PuppetDescription["params"][number]>;
+      const id = typeof entry.id === "string" ? entry.id.trim() : "";
+      if (!id || seen.has(id)) {
+        continue;
+      }
+      // `Number()` rather than a typeof check would turn a missing bound into 0, and a
+      // parameter whose min and max are both 0 is a control that cannot be moved.
+      const bound = (value: unknown, fallback: number): number =>
+        typeof value === "number" && Number.isFinite(value) ? value : fallback;
+      seen.add(id);
+      params.push({
+        id,
+        min: bound(entry.min, 0),
+        max: bound(entry.max, 1),
+        default: bound(entry.default, 0)
+      });
     }
-    const raw = value as Partial<PuppetDescription>;
-    if (!Array.isArray(raw.motions) && !Array.isArray(raw.expressions)
-        && !Array.isArray(raw.skins) && !Array.isArray(raw.params)) {
-        // Every field optional-and-absent means this is some other object entirely, not a model
-        // with nothing to say.
-        return null;
-    }
-    const params: PuppetDescription["params"] = [];
-    if (Array.isArray(raw.params)) {
-        const seen = new Set<string>();
-        for (const item of raw.params) {
-            if (typeof item !== "object" || item === null) {
-                continue;
-            }
-            const entry = item as Partial<PuppetDescription["params"][number]>;
-            const id = typeof entry.id === "string" ? entry.id.trim() : "";
-            if (!id || seen.has(id)) {
-                continue;
-            }
-            // `Number()` rather than a typeof check would turn a missing bound into 0, and a
-            // parameter whose min and max are both 0 is a control that cannot be moved.
-            const bound = (value: unknown, fallback: number): number =>
-                typeof value === "number" && Number.isFinite(value) ? value : fallback;
-            seen.add(id);
-            params.push({
-                id,
-                min: bound(entry.min, 0),
-                max: bound(entry.max, 1),
-                default: bound(entry.default, 0),
-            });
-        }
-    }
-    const width = Number((raw.size as { width?: unknown } | null | undefined)?.width);
-    const height = Number((raw.size as { height?: unknown } | null | undefined)?.height);
-    return {
-        motions: stringList(raw.motions),
-        expressions: stringList(raw.expressions),
-        skins: stringList(raw.skins),
-        params,
-        size: Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
-            ? { width, height }
-            : null,
-    };
+  }
+  const width = Number((raw.size as { width?: unknown } | null | undefined)?.width);
+  const height = Number((raw.size as { height?: unknown } | null | undefined)?.height);
+  return {
+    motions: stringList(raw.motions),
+    expressions: stringList(raw.expressions),
+    skins: stringList(raw.skins),
+    params,
+    size:
+      Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+        ? { width, height }
+        : null
+  };
 }
 
 /** Read a cache file back, rejecting anything a different Studio (or a hand edit) left behind. */
 export function parsePuppetDescriptionRecord(value: unknown): PuppetDescriptionRecord | null {
-    if (typeof value !== "object" || value === null) {
-        return null;
-    }
-    const raw = value as Partial<PuppetDescriptionRecord>;
-    if (raw.version !== PUPPET_DESCRIPTION_CACHE_VERSION || typeof raw.fingerprint !== "string" || !raw.fingerprint) {
-        return null;
-    }
-    const description = normalizePuppetDescription(raw.description);
-    if (!description) {
-        return null;
-    }
-    return {
-        version: PUPPET_DESCRIPTION_CACHE_VERSION,
-        fingerprint: raw.fingerprint,
-        describedAt: typeof raw.describedAt === "string" ? raw.describedAt : "",
-        description,
-    };
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const raw = value as Partial<PuppetDescriptionRecord>;
+  if (
+    raw.version !== PUPPET_DESCRIPTION_CACHE_VERSION ||
+    typeof raw.fingerprint !== "string" ||
+    !raw.fingerprint
+  ) {
+    return null;
+  }
+  const description = normalizePuppetDescription(raw.description);
+  if (!description) {
+    return null;
+  }
+  return {
+    version: PUPPET_DESCRIPTION_CACHE_VERSION,
+    fingerprint: raw.fingerprint,
+    describedAt: typeof raw.describedAt === "string" ? raw.describedAt : "",
+    description
+  };
 }
 
 /**
@@ -282,10 +295,13 @@ export function parsePuppetDescriptionRecord(value: unknown): PuppetDescriptionR
  * text. That is per field, not per model: a skeleton with eleven animations and no expressions
  * should still get a list for its animations.
  */
-export function puppetChoiceOptions(available: readonly string[], current: string | null): string[] {
-    const value = current?.trim() ?? "";
-    if (available.length === 0) {
-        return [];
-    }
-    return value && !available.includes(value) ? [value, ...available] : [...available];
+export function puppetChoiceOptions(
+  available: readonly string[],
+  current: string | null
+): string[] {
+  const value = current?.trim() ?? "";
+  if (available.length === 0) {
+    return [];
+  }
+  return value && !available.includes(value) ? [value, ...available] : [...available];
 }

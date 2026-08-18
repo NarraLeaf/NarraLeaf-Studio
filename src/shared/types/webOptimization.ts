@@ -20,32 +20,32 @@
  */
 
 export type WebOptimizationConfiguration = {
-    /**
-     * Re-encode images as lossless WebP when that is smaller.
-     *
-     * "Lossless" is checked rather than assumed: every conversion is decoded
-     * again and compared pixel for pixel against the source, and anything that
-     * does not match is discarded (see `optimizeWebExport`). So this can shrink
-     * the site but cannot alter it.
-     */
-    losslessImages: boolean;
-    /**
-     * Write `.br` and `.gz` siblings next to the site's text files, for servers
-     * configured to serve a precompressed variant (nginx `brotli_static` /
-     * `gzip_static` and equivalents).
-     *
-     * Additive and inert: a host that knows nothing about them serves the
-     * originals and nothing changes.
-     */
-    precompress: boolean;
-    /**
-     * Re-encode images as *lossy* WebP. Off by default, and deliberately so:
-     * it discards picture information permanently, and only the author can
-     * decide their artwork can afford that.
-     */
-    lossyImages: boolean;
-    /** WebP quality for {@link lossyImages}, 1-100. Ignored while that is off. */
-    lossyQuality: number;
+  /**
+   * Re-encode images as lossless WebP when that is smaller.
+   *
+   * "Lossless" is checked rather than assumed: every conversion is decoded
+   * again and compared pixel for pixel against the source, and anything that
+   * does not match is discarded (see `optimizeWebExport`). So this can shrink
+   * the site but cannot alter it.
+   */
+  losslessImages: boolean;
+  /**
+   * Write `.br` and `.gz` siblings next to the site's text files, for servers
+   * configured to serve a precompressed variant (nginx `brotli_static` /
+   * `gzip_static` and equivalents).
+   *
+   * Additive and inert: a host that knows nothing about them serves the
+   * originals and nothing changes.
+   */
+  precompress: boolean;
+  /**
+   * Re-encode images as *lossy* WebP. Off by default, and deliberately so:
+   * it discards picture information permanently, and only the author can
+   * decide their artwork can afford that.
+   */
+  lossyImages: boolean;
+  /** WebP quality for {@link lossyImages}, 1-100. Ignored while that is off. */
+  lossyQuality: number;
 };
 
 /** Guard rails for the authored quality; the settings UI offers the same range. */
@@ -62,18 +62,18 @@ export const WEB_LOSSY_QUALITY_MAX = 100;
  * measurably wrong for this content.
  */
 export const DEFAULT_WEB_OPTIMIZATION_CONFIGURATION: WebOptimizationConfiguration = {
-    losslessImages: true,
-    precompress: true,
-    lossyImages: false,
-    lossyQuality: 82,
+  losslessImages: true,
+  precompress: true,
+  lossyImages: false,
+  lossyQuality: 82
 };
 
 function clampQuality(value: unknown, fallback: number): number {
-    const parsed = typeof value === "number" ? value : Number(value);
-    if (!Number.isFinite(parsed)) {
-        return fallback;
-    }
-    return Math.min(WEB_LOSSY_QUALITY_MAX, Math.max(WEB_LOSSY_QUALITY_MIN, Math.trunc(parsed)));
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.min(WEB_LOSSY_QUALITY_MAX, Math.max(WEB_LOSSY_QUALITY_MIN, Math.trunc(parsed)));
 }
 
 /**
@@ -84,24 +84,31 @@ function clampQuality(value: unknown, fallback: number): number {
  * off. A config file that has been hand-edited into nonsense must not be able to
  * turn on the one step that cannot be undone.
  */
-export function normalizeWebOptimizationConfiguration(value: unknown): WebOptimizationConfiguration {
-    if (!value || typeof value !== "object") {
-        return { ...DEFAULT_WEB_OPTIMIZATION_CONFIGURATION };
-    }
-    const record = value as Record<string, unknown>;
-    return {
-        losslessImages: typeof record.losslessImages === "boolean"
-            ? record.losslessImages
-            : DEFAULT_WEB_OPTIMIZATION_CONFIGURATION.losslessImages,
-        precompress: typeof record.precompress === "boolean"
-            ? record.precompress
-            : DEFAULT_WEB_OPTIMIZATION_CONFIGURATION.precompress,
-        lossyImages: record.lossyImages === true,
-        lossyQuality: clampQuality(record.lossyQuality, DEFAULT_WEB_OPTIMIZATION_CONFIGURATION.lossyQuality),
-    };
+export function normalizeWebOptimizationConfiguration(
+  value: unknown
+): WebOptimizationConfiguration {
+  if (!value || typeof value !== "object") {
+    return { ...DEFAULT_WEB_OPTIMIZATION_CONFIGURATION };
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    losslessImages:
+      typeof record.losslessImages === "boolean"
+        ? record.losslessImages
+        : DEFAULT_WEB_OPTIMIZATION_CONFIGURATION.losslessImages,
+    precompress:
+      typeof record.precompress === "boolean"
+        ? record.precompress
+        : DEFAULT_WEB_OPTIMIZATION_CONFIGURATION.precompress,
+    lossyImages: record.lossyImages === true,
+    lossyQuality: clampQuality(
+      record.lossyQuality,
+      DEFAULT_WEB_OPTIMIZATION_CONFIGURATION.lossyQuality
+    )
+  };
 }
 
 /** Whether anything in this policy would touch the compiled site's images. */
 export function webOptimizationTouchesImages(config: WebOptimizationConfiguration): boolean {
-    return config.losslessImages || config.lossyImages;
+  return config.losslessImages || config.lossyImages;
 }

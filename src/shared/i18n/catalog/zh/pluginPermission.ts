@@ -1,95 +1,95 @@
 import type { LocaleNamespace } from "../types";
 
 export const pluginPermission = {
-    title: "插件权限",
-    window: {
-        launcher: "启动器",
-        settings: "设置",
-        workspace: "工作区",
-        projectWizard: "项目向导",
-        devMode: "开发模式",
-        pluginPermission: "插件权限",
-        studio: "Studio",
+  title: "插件权限",
+  window: {
+    launcher: "启动器",
+    settings: "设置",
+    workspace: "工作区",
+    projectWizard: "项目向导",
+    devMode: "开发模式",
+    pluginPermission: "插件权限",
+    studio: "Studio"
+  },
+  install: {
+    type: "插件安装请求",
+    title: "{requester} 请求安装 {plugin}",
+    body1: "Studio 已识别出本次安装将授予的内容：",
+    body2: "同意安装即向该插件版本授予下列全部权限；请只安装可信来源的插件",
+    source: "来源：{source}"
+  },
+  filesystem: {
+    type: "文件系统权限请求",
+    title: "{plugin} 请求文件访问",
+    body1: "批准后，该插件将能使用所申请的文件系统权限",
+    bodyPermanent: "选择“仅允许一次”只会在当前 Studio 会话内授予该权限",
+    bodySession: "本次请求仅在当前 Studio 会话内有效",
+    permissionRecursive: "{mode}（{path} 及其子路径）",
+    permissionSingle: "{mode}（{path}）"
+  },
+  api: {
+    type: "插件 API 权限请求",
+    title: "{plugin} 请求 {capability}",
+    body1: "批准后，该插件将能调用它申请的 Studio API",
+    body2: "仅在该插件确实需要此权限来完成当前操作时批准"
+  },
+  trust: {
+    type: "插件信任请求",
+    title: "{requester} 请求信任 {plugin}",
+    body1: "受信任的插件，Studio 会直接启用，不再询问",
+    body2: "请仅信任来自你所认识来源的插件",
+    permission: "信任此插件身份"
+  },
+  generic: {
+    type: "插件权限请求",
+    title: "{plugin} 请求一项 Studio 权限",
+    body: "允许前请先审查该请求"
+  },
+  mode: {
+    read: "读取访问",
+    write: "写入访问",
+    readwrite: "读写访问"
+  },
+  permissions: {
+    section: {
+      sidecar: "在玩家设备上运行的程序",
+      sidecarNote: "此插件会在你构建的游戏中附带一个程序",
+      buildDependency: "构建时下载",
+      runtime: "游戏内能力",
+      externalLink: "从游戏跳转出去",
+      externalLinkNote: "此插件可以把玩家带到这些地址，它们会在游戏之外打开",
+      network: "游戏会请求的数据",
+      networkNote: "游戏运行时，此插件会从这些地址请求数据",
+      studio: "Studio 权限"
     },
-    install: {
-        type: "插件安装请求",
-        title: "{requester} 请求安装 {plugin}",
-        body1: "Studio 已识别出本次安装将授予的内容：",
-        body2: "同意安装即向该插件版本授予下列全部权限；请只安装可信来源的插件",
-        source: "来源：{source}",
+    sidecarPlatforms: "运行平台：{platforms}",
+    sidecarKind: {
+      executable: "作为独立的程序运行",
+      node: "插件自身的代码作为游戏的一部分运行"
     },
-    filesystem: {
-        type: "文件系统权限请求",
-        title: "{plugin} 请求文件访问",
-        body1: "批准后，该插件将能使用所申请的文件系统权限",
-        bodyPermanent: "选择“仅允许一次”只会在当前 Studio 会话内授予该权限",
-        bodySession: "本次请求仅在当前 Studio 会话内有效",
-        permissionRecursive: "{mode}（{path} 及其子路径）",
-        permissionSingle: "{mode}（{path}）",
-    },
-    api: {
-        type: "插件 API 权限请求",
-        title: "{plugin} 请求 {capability}",
-        body1: "批准后，该插件将能调用它申请的 Studio API",
-        body2: "仅在该插件确实需要此权限来完成当前操作时批准",
-    },
-    trust: {
-        type: "插件信任请求",
-        title: "{requester} 请求信任 {plugin}",
-        body1: "受信任的插件，Studio 会直接启用，不再询问",
-        body2: "请仅信任来自你所认识来源的插件",
-        permission: "信任此插件身份",
-    },
-    generic: {
-        type: "插件权限请求",
-        title: "{plugin} 请求一项 Studio 权限",
-        body: "允许前请先审查该请求",
-    },
-    mode: {
-        read: "读取访问",
-        write: "写入访问",
-        readwrite: "读写访问",
-    },
-    permissions: {
-        section: {
-            sidecar: "在玩家设备上运行的程序",
-            sidecarNote: "此插件会在你构建的游戏中附带一个程序",
-            buildDependency: "构建时下载",
-            runtime: "游戏内能力",
-            externalLink: "从游戏跳转出去",
-            externalLinkNote: "此插件可以把玩家带到这些地址，它们会在游戏之外打开",
-            network: "游戏会请求的数据",
-            networkNote: "游戏运行时，此插件会从这些地址请求数据",
-            studio: "Studio 权限",
-        },
-        sidecarPlatforms: "运行平台：{platforms}",
-        sidecarKind: {
-            executable: "作为独立的程序运行",
-            node: "插件自身的代码作为游戏的一部分运行",
-        },
-        buildDependencyHosts: "下载来源：{hosts}",
-        runtimeCapability: {
-            store: "在玩家的存档旁保存自己的数据",
-            events: "获知游戏进程（场景、对白、选项、存档）",
-            stateRead: "读取剧情变量",
-            stateWrite: "修改剧情变量",
-            savesRead: "读取玩家的存档列表与存档信息",
-            savesWrite: "覆盖玩家的存档，并读取存档（会替换当前进度）",
-            uiOverlay: "在游戏画面上叠加显示内容",
-            assets: "解析游戏内置资源的地址",
-            locale: "读取并跟随游戏语言",
-        },
-    },
-    button: {
-        dontAllow: "不允许",
-        deny: "拒绝",
-        allowOnce: "仅允许一次",
-        allow: "允许",
-        alwaysAllow: "始终允许",
-        granting: "授权中…",
-    },
-    error: {
-        load: "无法加载权限请求",
-        grant: "无法授予权限",
-    },
+    buildDependencyHosts: "下载来源：{hosts}",
+    runtimeCapability: {
+      store: "在玩家的存档旁保存自己的数据",
+      events: "获知游戏进程（场景、对白、选项、存档）",
+      stateRead: "读取剧情变量",
+      stateWrite: "修改剧情变量",
+      savesRead: "读取玩家的存档列表与存档信息",
+      savesWrite: "覆盖玩家的存档，并读取存档（会替换当前进度）",
+      uiOverlay: "在游戏画面上叠加显示内容",
+      assets: "解析游戏内置资源的地址",
+      locale: "读取并跟随游戏语言"
+    }
+  },
+  button: {
+    dontAllow: "不允许",
+    deny: "拒绝",
+    allowOnce: "仅允许一次",
+    allow: "允许",
+    alwaysAllow: "始终允许",
+    granting: "授权中…"
+  },
+  error: {
+    load: "无法加载权限请求",
+    grant: "无法授予权限"
+  }
 } satisfies LocaleNamespace<"pluginPermission">;

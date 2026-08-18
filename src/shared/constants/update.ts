@@ -41,44 +41,44 @@ export const UPDATE_RELEASES_URL = "https://github.com/NarraLeaf/NarraLeaf-Studi
  * would be a state neither surface could draw.
  */
 export type UpdateStatus =
-    /** Nothing known yet, or a check finished with nothing to report. */
-    | "idle"
-    /** A check is in flight. */
-    | "checking"
-    /** A newer release exists and has not been downloaded. */
-    | "available"
-    /** The installer is downloading. This is the state the quit guard asks about. */
-    | "downloading"
-    /** The installer is on disk and will be applied on quit. */
-    | "ready"
-    /** The last check or download failed; `error` says how. */
-    | "error"
-    /**
-     * A newer release exists but this build cannot install it itself (macOS, see UpdateManager).
-     * The panel offers the download page instead of a button that would not work.
-     */
-    | "manual";
+  /** Nothing known yet, or a check finished with nothing to report. */
+  | "idle"
+  /** A check is in flight. */
+  | "checking"
+  /** A newer release exists and has not been downloaded. */
+  | "available"
+  /** The installer is downloading. This is the state the quit guard asks about. */
+  | "downloading"
+  /** The installer is on disk and will be applied on quit. */
+  | "ready"
+  /** The last check or download failed; `error` says how. */
+  | "error"
+  /**
+   * A newer release exists but this build cannot install it itself (macOS, see UpdateManager).
+   * The panel offers the download page instead of a button that would not work.
+   */
+  | "manual";
 
 /**
  * The whole of what the renderer knows about updates. Pushed on every transition rather than
  * polled, so the panel's progress bar is the downloader's own numbers and not an animation.
  */
 export interface UpdateState {
-    status: UpdateStatus;
-    /** The version on offer, once a check has found one. */
-    availableVersion?: string;
-    /** The running version, so the panel can say "0.4.0 → 0.5.0" without a second round trip. */
-    currentVersion: string;
-    /** Bytes transferred so far, while `status` is "downloading". */
-    transferredBytes?: number;
-    /** Total bytes to transfer, when the server said. */
-    totalBytes?: number;
-    /** Bytes per second, as reported by the downloader. */
-    bytesPerSecond?: number;
-    /** Failure text for "error", already human-readable. */
-    error?: string;
-    /** Release notes URL for the version on offer. */
-    releaseUrl?: string;
-    /** False where the platform cannot self-update (macOS today) - the panel links out instead. */
-    canInstall: boolean;
+  status: UpdateStatus;
+  /** The version on offer, once a check has found one. */
+  availableVersion?: string;
+  /** The running version, so the panel can say "0.4.0 → 0.5.0" without a second round trip. */
+  currentVersion: string;
+  /** Bytes transferred so far, while `status` is "downloading". */
+  transferredBytes?: number;
+  /** Total bytes to transfer, when the server said. */
+  totalBytes?: number;
+  /** Bytes per second, as reported by the downloader. */
+  bytesPerSecond?: number;
+  /** Failure text for "error", already human-readable. */
+  error?: string;
+  /** Release notes URL for the version on offer. */
+  releaseUrl?: string;
+  /** False where the platform cannot self-update (macOS today) - the panel links out instead. */
+  canInstall: boolean;
 }

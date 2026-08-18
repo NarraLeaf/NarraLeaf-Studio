@@ -71,17 +71,17 @@ Run `node project/app/debug.js --help` for the full option list.
 
 ### Options
 
-| Option           | Applies to | Meaning                                                              |
-| ---------------- | ---------- | -------------------------------------------------------------------- |
-| `--channel <id>` | console    | Restrict to one Console channel (`build`, `blueprint`, `story`, …)   |
-| `--window <q>`   | devtools   | Match window by type/title substring or webContents id              |
-| `--level <lvl>`  | both       | Minimum severity. Console: `verbose\|info\|success\|warning\|error`. DevTools: `debug\|info\|warning\|error` |
-| `--source <s>`   | console    | Substring match on the entry source                                  |
-| `--since <ms>`   | both       | Only entries newer than this epoch-ms timestamp                      |
-| `--after-seq <n>`| devtools   | Only entries after this `seq` cursor — use `latestSeq` to tail       |
-| `--limit <n>`    | both       | Max entries (most recent). Default `200`                             |
-| `--host/--port`  | —          | Connection target                                                    |
-| `--json`         | —          | Print the raw JSON response                                          |
+| Option            | Applies to | Meaning                                                                                                      |
+| ----------------- | ---------- | ------------------------------------------------------------------------------------------------------------ |
+| `--channel <id>`  | console    | Restrict to one Console channel (`build`, `blueprint`, `story`, …)                                           |
+| `--window <q>`    | devtools   | Match window by type/title substring or webContents id                                                       |
+| `--level <lvl>`   | both       | Minimum severity. Console: `verbose\|info\|success\|warning\|error`. DevTools: `debug\|info\|warning\|error` |
+| `--source <s>`    | console    | Substring match on the entry source                                                                          |
+| `--since <ms>`    | both       | Only entries newer than this epoch-ms timestamp                                                              |
+| `--after-seq <n>` | devtools   | Only entries after this `seq` cursor — use `latestSeq` to tail                                               |
+| `--limit <n>`     | both       | Max entries (most recent). Default `200`                                                                     |
+| `--host/--port`   | —          | Connection target                                                                                            |
+| `--json`          | —          | Print the raw JSON response                                                                                  |
 
 ## HTTP endpoints
 
@@ -100,12 +100,12 @@ All return JSON. `GET` only.
 ## Module use
 
 ```js
-const { getConsole, getDevtools } = require('./project/app/debug');
+const { getConsole, getDevtools } = require("./project/app/debug");
 
-const errors = await getDevtools({ window: 'workspace', level: 'error' });
+const errors = await getDevtools({ window: "workspace", level: "error" });
 console.log(errors.entries);
 
-const build = await getConsole({ channel: 'build', limit: 20 });
+const build = await getConsole({ channel: "build", limit: 20 });
 console.log(build.data.entries);
 ```
 

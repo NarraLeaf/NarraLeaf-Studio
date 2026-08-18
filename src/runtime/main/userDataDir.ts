@@ -17,18 +17,18 @@
 import path from "path";
 
 export type PlayerDataEnvironment = {
-    platform: NodeJS.Platform;
-    /** `app.getPath("appData")`: roaming app data on Windows, Application Support on macOS. */
-    appDataDir: string;
-    /** `app.getPath("userData")`: where the shell would have put it, and where a previous install did. */
-    shellUserDataDir: string;
-    homeDir: string;
-    /** `process.env.XDG_DATA_HOME`, unresolved. */
-    xdgDataHome?: string;
-    exists: (target: string) => boolean;
-    makeDirectory: (target: string) => void;
-    move: (from: string, to: string) => void;
-    warn: (message: string) => void;
+  platform: NodeJS.Platform;
+  /** `app.getPath("appData")`: roaming app data on Windows, Application Support on macOS. */
+  appDataDir: string;
+  /** `app.getPath("userData")`: where the shell would have put it, and where a previous install did. */
+  shellUserDataDir: string;
+  homeDir: string;
+  /** `process.env.XDG_DATA_HOME`, unresolved. */
+  xdgDataHome?: string;
+  exists: (target: string) => boolean;
+  makeDirectory: (target: string) => void;
+  move: (from: string, to: string) => void;
+  warn: (message: string) => void;
 };
 
 /**
@@ -46,30 +46,33 @@ const PLAYER_DATA_MARKERS = ["saves", "persistence.json"];
  * player on an empty one is indistinguishable from having lost every save, and
  * writing to the less convenient place is much the smaller of the two problems.
  */
-export function resolveRuntimeUserDataDir(directoryName: string | null, env: PlayerDataEnvironment): string {
-    const named = namedUserDataDir(directoryName, env);
-    if (!named || named === env.shellUserDataDir) {
-        return env.shellUserDataDir;
-    }
-    // Never write into a directory already in use; an install that has run once
-    // has nothing left to carry across.
-    if (env.exists(named) || !env.exists(env.shellUserDataDir)) {
-        return named;
-    }
-    if (!PLAYER_DATA_MARKERS.some(marker => env.exists(path.join(env.shellUserDataDir, marker)))) {
-        return named;
-    }
-    try {
-        env.makeDirectory(path.dirname(named));
-        env.move(env.shellUserDataDir, named);
-        return named;
-    } catch (error) {
-        env.warn(
-            `Could not move the player's files from ${env.shellUserDataDir} to ${named} `
-            + `(${String(error)}); continuing on the old location.`,
-        );
-        return env.shellUserDataDir;
-    }
+export function resolveRuntimeUserDataDir(
+  directoryName: string | null,
+  env: PlayerDataEnvironment
+): string {
+  const named = namedUserDataDir(directoryName, env);
+  if (!named || named === env.shellUserDataDir) {
+    return env.shellUserDataDir;
+  }
+  // Never write into a directory already in use; an install that has run once
+  // has nothing left to carry across.
+  if (env.exists(named) || !env.exists(env.shellUserDataDir)) {
+    return named;
+  }
+  if (!PLAYER_DATA_MARKERS.some((marker) => env.exists(path.join(env.shellUserDataDir, marker)))) {
+    return named;
+  }
+  try {
+    env.makeDirectory(path.dirname(named));
+    env.move(env.shellUserDataDir, named);
+    return named;
+  } catch (error) {
+    env.warn(
+      `Could not move the player's files from ${env.shellUserDataDir} to ${named} ` +
+        `(${String(error)}); continuing on the old location.`
+    );
+    return env.shellUserDataDir;
+  }
 }
 
 /**
@@ -78,17 +81,18 @@ export function resolveRuntimeUserDataDir(directoryName: string | null, env: Pla
  * shell's own answer rather than inventing one.
  */
 function namedUserDataDir(directoryName: string | null, env: PlayerDataEnvironment): string | null {
-    if (!directoryName) {
-        return null;
-    }
-    if (env.platform === "linux") {
-        // Per the XDG base directory specification a relative value is to be
-        // ignored rather than resolved against the working directory.
-        const configured = env.xdgDataHome?.trim();
-        const root = configured && path.isAbsolute(configured)
-            ? configured
-            : path.join(env.homeDir, ".local", "share");
-        return path.join(root, directoryName);
-    }
-    return path.join(env.appDataDir, directoryName);
+  if (!directoryName) {
+    return null;
+  }
+  if (env.platform === "linux") {
+    // Per the XDG base directory specification a relative value is to be
+    // ignored rather than resolved against the working directory.
+    const configured = env.xdgDataHome?.trim();
+    const root =
+      configured && path.isAbsolute(configured)
+        ? configured
+        : path.join(env.homeDir, ".local", "share");
+    return path.join(root, directoryName);
+  }
+  return path.join(env.appDataDir, directoryName);
 }

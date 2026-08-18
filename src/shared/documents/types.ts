@@ -1,6 +1,6 @@
 // Type-only in both directions: `diff.ts` names a {@link DocumentKind} and this file names a
 // {@link DocumentDiff}, and a value import either way would make that a real module cycle.
-import type {DocumentDiff, DocumentMerge3} from "./diff";
+import type { DocumentDiff, DocumentMerge3 } from "./diff";
 
 /**
  * What a versioned editor document is, from the outside.
@@ -22,39 +22,39 @@ import type {DocumentDiff, DocumentMerge3} from "./diff";
  * `ProjectNameConvention`.
  */
 export type DocumentKind =
-    | "project"
-    | "story-index"
-    | "story"
-    | "story-animation-index"
-    | "story-animation"
-    | "ui-document"
-    | "ui-graphs"
-    | "variables"
-    | "audio-tracks"
-    /** The project's palette, at `editor/brand.json`. Cross-cutting, like the two above it. */
-    | "brand"
-    /** The build variants the project ships as, at `editor/app-tags.json`. */
-    | "app-tags"
-    /** The words the project spells on purpose, at `editor/dictionary.json`. */
-    | "dictionary"
-    /** What one save slot carries besides the engine's own record, at `editor/save-schema.json`. */
-    | "save-schema"
-    | "localization"
-    | "localization-keys"
-    | "voice"
-    | "assets-metadata"
-    | "assets-groups"
-    | "blueprint"
-    /**
-     * The project's cast, at `editor/services/character.json`.
-     *
-     * Not one of the fourteen above and not derived from the same list: it is a service STORE, and
-     * the only one in `editor/services/` that holds the author's content rather than Studio's own
-     * state (`@shared/vcs/serviceStores` is what decides that). It is a kind here because the
-     * motivating example of a semantic diff is a character's - "Alice's angry differential points at
-     * a different image" - and without a spec that sentence has no model that can express it.
-     */
-    | "characters";
+  | "project"
+  | "story-index"
+  | "story"
+  | "story-animation-index"
+  | "story-animation"
+  | "ui-document"
+  | "ui-graphs"
+  | "variables"
+  | "audio-tracks"
+  /** The project's palette, at `editor/brand.json`. Cross-cutting, like the two above it. */
+  | "brand"
+  /** The build variants the project ships as, at `editor/app-tags.json`. */
+  | "app-tags"
+  /** The words the project spells on purpose, at `editor/dictionary.json`. */
+  | "dictionary"
+  /** What one save slot carries besides the engine's own record, at `editor/save-schema.json`. */
+  | "save-schema"
+  | "localization"
+  | "localization-keys"
+  | "voice"
+  | "assets-metadata"
+  | "assets-groups"
+  | "blueprint"
+  /**
+   * The project's cast, at `editor/services/character.json`.
+   *
+   * Not one of the fourteen above and not derived from the same list: it is a service STORE, and
+   * the only one in `editor/services/` that holds the author's content rather than Studio's own
+   * state (`@shared/vcs/serviceStores` is what decides that). It is a kind here because the
+   * motivating example of a semantic diff is a character's - "Alice's angry differential points at
+   * a different image" - and without a spec that sentence has no model that can express it.
+   */
+  | "characters";
 
 /**
  * One number worth showing about a document, e.g. how many scenes a story has.
@@ -64,34 +64,34 @@ export type DocumentKind =
  * that has a zh catalogue.
  */
 export interface DocumentSummaryCount {
-    readonly key: string;
-    readonly value: number;
+  readonly key: string;
+  readonly value: number;
 }
 
 /** The one-line identity of a document, for history and diff lists. */
 export interface DocumentSummary {
-    /**
-     * The name the author gave this document, e.g. a story's title. Empty when the
-     * document has no authored name (a variable registry has none); the UI already
-     * knows the {@link DocumentKind} and falls back to a translated label for it.
-     * Never a file path - the path is shown separately and would be redundant here.
-     */
-    readonly title: string;
-    readonly counts: readonly DocumentSummaryCount[];
+  /**
+   * The name the author gave this document, e.g. a story's title. Empty when the
+   * document has no authored name (a variable registry has none); the UI already
+   * knows the {@link DocumentKind} and falls back to a translated label for it.
+   * Never a file path - the path is shown separately and would be redundant here.
+   */
+  readonly title: string;
+  readonly counts: readonly DocumentSummaryCount[];
 }
 
 /** What {@link DocumentSpec.parse} is told about the bytes it was handed. */
 export interface DocumentParseContext {
-    /** Project-relative, forward slashes. Some documents carry their id only in their path. */
-    readonly path: string;
-    /**
-     * Reject the document, naming what is wrong with it.
-     *
-     * Returns `never`, so a validator can `return context.corrupt(...)` in a branch
-     * that has to produce a value. The thrown error carries the original bytes,
-     * which is what makes quarantine possible without re-reading the file.
-     */
-    corrupt(reason: string, options?: {cause?: unknown}): never;
+  /** Project-relative, forward slashes. Some documents carry their id only in their path. */
+  readonly path: string;
+  /**
+   * Reject the document, naming what is wrong with it.
+   *
+   * Returns `never`, so a validator can `return context.corrupt(...)` in a branch
+   * that has to produce a value. The thrown error carries the original bytes,
+   * which is what makes quarantine possible without re-reading the file.
+   */
+  corrupt(reason: string, options?: { cause?: unknown }): never;
 }
 
 /**
@@ -103,93 +103,93 @@ export interface DocumentParseContext {
  * outcome that must not happen, because the next save would write it back.
  */
 export interface DocumentSpec<T> {
-    readonly kind: DocumentKind;
+  readonly kind: DocumentKind;
 
-    /** Schema version `parse` migrates up to and `serialize` writes. */
-    readonly version: number;
+  /** Schema version `parse` migrates up to and `serialize` writes. */
+  readonly version: number;
 
-    /**
-     * Project-relative path patterns this spec owns, e.g.
-     * `editor/story/stories/<storyId>/storydoc.json`. Declarative rather than only a
-     * predicate because the registry has to detect two specs claiming one path at
-     * registration time, and predicates cannot be compared. See `documentPath.ts`.
-     */
-    readonly paths: readonly string[];
+  /**
+   * Project-relative path patterns this spec owns, e.g.
+   * `editor/story/stories/<storyId>/storydoc.json`. Declarative rather than only a
+   * predicate because the registry has to detect two specs claiming one path at
+   * registration time, and predicates cannot be compared. See `documentPath.ts`.
+   */
+  readonly paths: readonly string[];
 
-    /** Whether `relativePath` is one of this spec's documents. Windows separators are accepted. */
-    matches(relativePath: string): boolean;
+  /** Whether `relativePath` is one of this spec's documents. Windows separators are accepted. */
+  matches(relativePath: string): boolean;
 
-    /**
-     * Where a document identified by `parameters` lives, e.g.
-     * `pathFor({storyId})`. The counterpart to `matches`: reading starts from a path,
-     * saving starts from an id, and both have to name the same file.
-     *
-     * Throws rather than returning a best effort - a path built from a missing or
-     * malformed parameter is a save that lands somewhere nothing will look.
-     */
-    pathFor(parameters?: Readonly<Record<string, string>>): string;
+  /**
+   * Where a document identified by `parameters` lives, e.g.
+   * `pathFor({storyId})`. The counterpart to `matches`: reading starts from a path,
+   * saving starts from an id, and both have to name the same file.
+   *
+   * Throws rather than returning a best effort - a path built from a missing or
+   * malformed parameter is a save that lands somewhere nothing will look.
+   */
+  pathFor(parameters?: Readonly<Record<string, string>>): string;
 
-    parse(raw: unknown, context: DocumentParseContext): T;
+  parse(raw: unknown, context: DocumentParseContext): T;
 
-    /** Canonical bytes, including the trailing newline. */
-    serialize(document: T): string;
+  /** Canonical bytes, including the trailing newline. */
+  serialize(document: T): string;
 
-    summarize(document: T): DocumentSummary;
+  summarize(document: T): DocumentSummary;
 
-    /**
-     * The differences between two of these documents that the author would call changes.
-     *
-     * **Optional, and absent is a normal answer, not a gap to be filled in.** A format
-     * whose interesting changes are already what a generic walk finds gains nothing from
-     * a bespoke implementation, and the diff engine degrades openly - it runs
-     * {@link summarize} on both sides instead and marks the result as a lesser tier, so
-     * nothing pretends a semantic answer was given.
-     *
-     * An implementation must be **pure and must not throw**. It runs in the main process
-     * over documents that came out of a repository, on the path that builds the whole
-     * change list for a revision: one throw does not lose one document's changes, it
-     * loses every document's. A document this spec cannot make sense of is answered with
-     * fewer changes, never with an exception.
-     *
-     * `limit` is a hard budget on how many changes to build, not a suggestion. The
-     * engine re-truncates anything over it, and truncating a list that was built in an
-     * arbitrary order discards arbitrary changes - so an implementation that expects to
-     * exceed the budget has to order before it stops, the same discipline
-     * `buildDocumentDiff` applies.
-     */
-    diff?(base: T, head: T, options: {limit: number}): DocumentDiff;
+  /**
+   * The differences between two of these documents that the author would call changes.
+   *
+   * **Optional, and absent is a normal answer, not a gap to be filled in.** A format
+   * whose interesting changes are already what a generic walk finds gains nothing from
+   * a bespoke implementation, and the diff engine degrades openly - it runs
+   * {@link summarize} on both sides instead and marks the result as a lesser tier, so
+   * nothing pretends a semantic answer was given.
+   *
+   * An implementation must be **pure and must not throw**. It runs in the main process
+   * over documents that came out of a repository, on the path that builds the whole
+   * change list for a revision: one throw does not lose one document's changes, it
+   * loses every document's. A document this spec cannot make sense of is answered with
+   * fewer changes, never with an exception.
+   *
+   * `limit` is a hard budget on how many changes to build, not a suggestion. The
+   * engine re-truncates anything over it, and truncating a list that was built in an
+   * arbitrary order discards arbitrary changes - so an implementation that expects to
+   * exceed the budget has to order before it stops, the same discipline
+   * `buildDocumentDiff` applies.
+   */
+  diff?(base: T, head: T, options: { limit: number }): DocumentDiff;
 
-    /**
-     * Merge two versions of this document that were written from a common starting point.
-     *
-     * **Optional, and absent is a normal answer**, like {@link diff}. A format with no
-     * implementation here is resolved whole - take mine or take theirs - which is what the
-     * first tier of conflict resolution does for every document including binary assets, and
-     * which is by itself enough to make a merge finishable. This is the second tier: the
-     * author decides one entry at a time instead of one file at a time.
-     *
-     * Three properties are the contract rather than the implementation's business:
-     *
-     *  - **`base` absent means add/add.** Both sides created this document independently and
-     *    there is nothing they started from. It must NEVER be treated as an empty document:
-     *    an empty base makes every entry on both sides look like an addition, every one of
-     *    them merges automatically, and the author is handed a document neither of them wrote
-     *    with nothing reporting that a decision was taken. Answer conflicts instead.
-     *  - **A path with an open conflict holds base** - mine when there is no base - so that
-     *    {@link DocumentMerge3.document} is a complete, serializable document of this format
-     *    at every point, including halfway through resolving. The author can stop, the file
-     *    can be written, the merge can be resumed.
-     *  - **Decisions are addressed by the same `path` a `DocumentChange` uses.** Comparing and
-     *    resolving are one list seen twice; a second addressing scheme would break the one
-     *    premise the whole surface is built on.
-     *
-     * Pure and non-throwing, for the reason {@link diff} is: it runs in the main process over
-     * documents that came out of a repository, and a throw here does not cost one document's
-     * merge but the whole merge. A document this spec cannot make sense of is answered with a
-     * conflict - in the last resort one whole-document conflict at the empty path, which is
-     * how a spec says "I cannot merge this, decide it whole" without pretending otherwise.
-     */
-    merge3?(base: T | undefined, mine: T, theirs: T): DocumentMerge3<T>;
+  /**
+   * Merge two versions of this document that were written from a common starting point.
+   *
+   * **Optional, and absent is a normal answer**, like {@link diff}. A format with no
+   * implementation here is resolved whole - take mine or take theirs - which is what the
+   * first tier of conflict resolution does for every document including binary assets, and
+   * which is by itself enough to make a merge finishable. This is the second tier: the
+   * author decides one entry at a time instead of one file at a time.
+   *
+   * Three properties are the contract rather than the implementation's business:
+   *
+   *  - **`base` absent means add/add.** Both sides created this document independently and
+   *    there is nothing they started from. It must NEVER be treated as an empty document:
+   *    an empty base makes every entry on both sides look like an addition, every one of
+   *    them merges automatically, and the author is handed a document neither of them wrote
+   *    with nothing reporting that a decision was taken. Answer conflicts instead.
+   *  - **A path with an open conflict holds base** - mine when there is no base - so that
+   *    {@link DocumentMerge3.document} is a complete, serializable document of this format
+   *    at every point, including halfway through resolving. The author can stop, the file
+   *    can be written, the merge can be resumed.
+   *  - **Decisions are addressed by the same `path` a `DocumentChange` uses.** Comparing and
+   *    resolving are one list seen twice; a second addressing scheme would break the one
+   *    premise the whole surface is built on.
+   *
+   * Pure and non-throwing, for the reason {@link diff} is: it runs in the main process over
+   * documents that came out of a repository, and a throw here does not cost one document's
+   * merge but the whole merge. A document this spec cannot make sense of is answered with a
+   * conflict - in the last resort one whole-document conflict at the empty path, which is
+   * how a spec says "I cannot merge this, decide it whole" without pretending otherwise.
+   */
+  merge3?(base: T | undefined, mine: T, theirs: T): DocumentMerge3<T>;
 }
 
 /**
@@ -205,13 +205,13 @@ export interface DocumentSpec<T> {
 export type AnyDocumentSpec = DocumentSpec<any>;
 
 export interface DocumentCorruptErrorInit {
-    readonly kind: DocumentKind;
-    /** Project-relative, forward slashes. */
-    readonly path: string;
-    readonly reason: string;
-    /** The exact text that failed to parse. */
-    readonly text: string;
-    readonly cause?: unknown;
+  readonly kind: DocumentKind;
+  /** Project-relative, forward slashes. */
+  readonly path: string;
+  readonly reason: string;
+  /** The exact text that failed to parse. */
+  readonly text: string;
+  readonly cause?: unknown;
 }
 
 /**
@@ -224,17 +224,19 @@ export interface DocumentCorruptErrorInit {
  * and must not trigger quarantine.
  */
 export class DocumentCorruptError extends Error {
-    public readonly kind: DocumentKind;
-    public readonly path: string;
-    public readonly reason: string;
-    public readonly text: string;
+  public readonly kind: DocumentKind;
+  public readonly path: string;
+  public readonly reason: string;
+  public readonly text: string;
 
-    constructor(init: DocumentCorruptErrorInit) {
-        super(`${init.kind} document at ${init.path} could not be read: ${init.reason}`, {cause: init.cause});
-        this.name = "DocumentCorruptError";
-        this.kind = init.kind;
-        this.path = init.path;
-        this.reason = init.reason;
-        this.text = init.text;
-    }
+  constructor(init: DocumentCorruptErrorInit) {
+    super(`${init.kind} document at ${init.path} could not be read: ${init.reason}`, {
+      cause: init.cause
+    });
+    this.name = "DocumentCorruptError";
+    this.kind = init.kind;
+    this.path = init.path;
+    this.reason = init.reason;
+    this.text = init.text;
+  }
 }

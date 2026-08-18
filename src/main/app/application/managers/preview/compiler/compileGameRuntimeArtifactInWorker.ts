@@ -2,37 +2,37 @@ import path from "path";
 import { utilityProcess, type UtilityProcess } from "electron";
 import type { App } from "@/app/app";
 import type {
-    CompileWorkerOutboundMessage,
-    ShippedContentAuditReport,
+  CompileWorkerOutboundMessage,
+  ShippedContentAuditReport
 } from "@/buildWorker/compileWorkerProtocol";
 import type {
-    GameRuntimeArtifactCompileInput,
-    GameRuntimeArtifactCompileResult,
+  GameRuntimeArtifactCompileInput,
+  GameRuntimeArtifactCompileResult
 } from "./gameRuntimeArtifactCompiler";
 
 type CompileWorkerHostApp = Pick<App, "getDistDir" | "getDefaultGameIconPath">;
 
 export type CompileWorkerHooks = {
-    /**
-     * Invoked once the worker is forked, with its handle, so the caller can
-     * store it and kill an in-flight compile on cancel/stop. The worker is torn
-     * down automatically once the compile settles.
-     */
-    onStart?: (worker: UtilityProcess) => void;
-    /**
-     * Lets the caller mark an early worker exit as an intentional cancel rather
-     * than a crash, so the surfaced error matches the caller's cancel wording
-     * (mirrors the packaging worker in GameBuildManager).
-     */
-    cancelled?: () => boolean;
-    /**
-     * Receives the shipped-content audit when the worker ran one, which it does only for an edition
-     * that removes content.
-     *
-     * A hook rather than a second return value because only the build cares: the audit is a build
-     * gate, and a preview or a test run has nothing to refuse.
-     */
-    onAudit?: (report: ShippedContentAuditReport) => void;
+  /**
+   * Invoked once the worker is forked, with its handle, so the caller can
+   * store it and kill an in-flight compile on cancel/stop. The worker is torn
+   * down automatically once the compile settles.
+   */
+  onStart?: (worker: UtilityProcess) => void;
+  /**
+   * Lets the caller mark an early worker exit as an intentional cancel rather
+   * than a crash, so the surfaced error matches the caller's cancel wording
+   * (mirrors the packaging worker in GameBuildManager).
+   */
+  cancelled?: () => boolean;
+  /**
+   * Receives the shipped-content audit when the worker ran one, which it does only for an edition
+   * that removes content.
+   *
+   * A hook rather than a second return value because only the build cares: the audit is a build
+   * gate, and a preview or a test run has nothing to refuse.
+   */
+  onAudit?: (report: ShippedContentAuditReport) => void;
 };
 
 /**
@@ -44,65 +44,70 @@ export type CompileWorkerHooks = {
  * received) and never leaves the machine.
  */
 export function compileGameRuntimeArtifactInWorker(
-    app: CompileWorkerHostApp,
-    input: GameRuntimeArtifactCompileInput,
-    hooks?: CompileWorkerHooks,
+  app: CompileWorkerHostApp,
+  input: GameRuntimeArtifactCompileInput,
+  hooks?: CompileWorkerHooks
 ): Promise<GameRuntimeArtifactCompileResult> {
-    const workerPath = path.join(app.getDistDir(), "main", "compileWorker.js");
-    // Filled in here rather than at each call site: the worker cannot resolve
-    // Electron's resource paths itself, and every artifact a project without
-    // its own icon produces should wear NarraLeaf's mark.
-    const defaultIconPath = app.getDefaultGameIconPath();
-    const opaqueIconPath = app.getDefaultGameIconPath(true);
-    const withDefaults: GameRuntimeArtifactCompileInput = input.defaultIcon || !defaultIconPath
-        ? input
-        : {
-            ...input,
-            defaultIcon: {
-                path: defaultIconPath,
-                ...(opaqueIconPath ? { opaquePath: opaqueIconPath } : {}),
-            },
+  const workerPath = path.join(app.getDistDir(), "main", "compileWorker.js");
+  // Filled in here rather than at each call site: the worker cannot resolve
+  // Electron's resource paths itself, and every artifact a project without
+  // its own icon produces should wear NarraLeaf's mark.
+  const defaultIconPath = app.getDefaultGameIconPath();
+  const opaqueIconPath = app.getDefaultGameIconPath(true);
+  const withDefaults: GameRuntimeArtifactCompileInput =
+    input.defaultIcon || !defaultIconPath
+      ? input
+      : {
+          ...input,
+          defaultIcon: {
+            path: defaultIconPath,
+            ...(opaqueIconPath ? { opaquePath: opaqueIconPath } : {})
+          }
         };
-    return new Promise<GameRuntimeArtifactCompileResult>((resolve, reject) => {
-        const worker = utilityProcess.fork(workerPath, [], {
-            serviceName: "narraleaf-artifact-compile",
-            stdio: "pipe",
-            env: process.env,
-        });
-        hooks?.onStart?.(worker);
-        let settled = false;
-        const settle = (fn: () => void) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            fn();
-        };
-        // The compile emits no protocol logs, but plugin-data resolution can
-        // console.warn; surface it rather than dropping the diagnostic trail.
-        worker.stdout?.on("data", chunk => process.stdout.write(chunk));
-        worker.stderr?.on("data", chunk => process.stderr.write(chunk));
-        worker.on("message", (message: CompileWorkerOutboundMessage) => {
-            if (message.type === "done") {
-                worker.kill();
-                if (message.audit) {
-                    hooks?.onAudit?.(message.audit);
-                }
-                settle(() => resolve(message.result));
-                return;
-            }
-            worker.kill();
-            settle(() => reject(new Error(message.message)));
-        });
-        worker.on("exit", code => {
-            settle(() => reject(new Error(
-                hooks?.cancelled?.()
-                    ? "Build cancelled"
-                    : `Artifact compile worker exited unexpectedly (code ${code})`,
-            )));
-        });
-        worker.once("spawn", () => {
-            worker.postMessage({ type: "compile", input: withDefaults });
-        });
+  return new Promise<GameRuntimeArtifactCompileResult>((resolve, reject) => {
+    const worker = utilityProcess.fork(workerPath, [], {
+      serviceName: "narraleaf-artifact-compile",
+      stdio: "pipe",
+      env: process.env
     });
+    hooks?.onStart?.(worker);
+    let settled = false;
+    const settle = (fn: () => void) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      fn();
+    };
+    // The compile emits no protocol logs, but plugin-data resolution can
+    // console.warn; surface it rather than dropping the diagnostic trail.
+    worker.stdout?.on("data", (chunk) => process.stdout.write(chunk));
+    worker.stderr?.on("data", (chunk) => process.stderr.write(chunk));
+    worker.on("message", (message: CompileWorkerOutboundMessage) => {
+      if (message.type === "done") {
+        worker.kill();
+        if (message.audit) {
+          hooks?.onAudit?.(message.audit);
+        }
+        settle(() => resolve(message.result));
+        return;
+      }
+      worker.kill();
+      settle(() => reject(new Error(message.message)));
+    });
+    worker.on("exit", (code) => {
+      settle(() =>
+        reject(
+          new Error(
+            hooks?.cancelled?.()
+              ? "Build cancelled"
+              : `Artifact compile worker exited unexpectedly (code ${code})`
+          )
+        )
+      );
+    });
+    worker.once("spawn", () => {
+      worker.postMessage({ type: "compile", input: withDefaults });
+    });
+  });
 }

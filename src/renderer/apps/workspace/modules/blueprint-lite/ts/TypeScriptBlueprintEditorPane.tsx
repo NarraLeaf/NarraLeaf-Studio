@@ -3,9 +3,9 @@ import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 type Props = {
-    code: string;
-    onChange: (code: string) => void;
-    debounceMs?: number;
+  code: string;
+  onChange: (code: string) => void;
+  debounceMs?: number;
 };
 
 /**
@@ -22,41 +22,41 @@ type Props = {
  * its number fields `readOnly` as well as `disabled`.
  */
 export function TypeScriptBlueprintEditorPane({ code, onChange, debounceMs = 400 }: Props) {
-    const { t } = useTranslation();
-    const freeze = useFreezeGuard();
-    const [draft, setDraft] = useState(code);
+  const { t } = useTranslation();
+  const freeze = useFreezeGuard();
+  const [draft, setDraft] = useState(code);
 
-    useEffect(() => {
-        setDraft(code);
-    }, [code]);
+  useEffect(() => {
+    setDraft(code);
+  }, [code]);
 
-    useEffect(() => {
-        if (freeze.frozen) {
-            return;
-        }
-        const t = window.setTimeout(() => {
-            if (draft !== code) {
-                onChange(draft);
-            }
-        }, debounceMs);
-        return () => window.clearTimeout(t);
-    }, [draft, code, onChange, debounceMs, freeze.frozen]);
+  useEffect(() => {
+    if (freeze.frozen) {
+      return;
+    }
+    const t = window.setTimeout(() => {
+      if (draft !== code) {
+        onChange(draft);
+      }
+    }, debounceMs);
+    return () => window.clearTimeout(t);
+  }, [draft, code, onChange, debounceMs, freeze.frozen]);
 
-    const onInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        setDraft(e.target.value);
-    }, []);
+  const onInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setDraft(e.target.value);
+  }, []);
 
-    return (
-        <div className="flex h-full min-h-0 flex-col border border-edge bg-surface-sunken">
-            <textarea
-                className="min-h-0 flex-1 resize-none bg-surface-sunken p-3 font-mono text-xs leading-relaxed text-fg outline-none focus:ring-1 focus:ring-primary/40"
-                spellCheck={false}
-                value={draft}
-                onChange={onInput}
-                readOnly={freeze.frozen}
-                data-tip={freeze.frozen ? freeze.reason : t("blueprint.tsPane.importHint")}
-                aria-label={t("blueprint.tsPane.sourceLabel")}
-            />
-        </div>
-    );
+  return (
+    <div className="flex h-full min-h-0 flex-col border border-edge bg-surface-sunken">
+      <textarea
+        className="min-h-0 flex-1 resize-none bg-surface-sunken p-3 font-mono text-xs leading-relaxed text-fg outline-none focus:ring-1 focus:ring-primary/40"
+        spellCheck={false}
+        value={draft}
+        onChange={onInput}
+        readOnly={freeze.frozen}
+        data-tip={freeze.frozen ? freeze.reason : t("blueprint.tsPane.importHint")}
+        aria-label={t("blueprint.tsPane.sourceLabel")}
+      />
+    </div>
+  );
 }

@@ -42,24 +42,23 @@ import { isVcsPlatformSupported, VcsErrorCode } from "@shared/types/vcs";
  * single plug: adding a second dynamic import elsewhere would give the "never reach the
  * binding at startup" rule a second place to be broken.
  */
-export type VcsBackend =
-    & typeof import("./revisionReader")
-    & typeof import("./repository")
-    & typeof import("./remote")
-    /**
-     * Signing in to a server that verifies who is calling. Behind the same plug as the
-     * rest: it reaches the binding for the login itself, and it is meaningless on a host
-     * with no backend to sign anything in.
-     */
-    & typeof import("./serverSession")
-    & typeof import("./merge")
-    /**
-     * Per-change resolution. Reaches no native code at all - it is `fs` plus the document
-     * registry - and is behind the plug anyway because it is only ever called on a repository
-     * whose merge the modules above opened, and because a second way into `vcs/` would give the
-     * "never reach the binding at startup" rule a second place to be broken.
-     */
-    & typeof import("./mergeDocument");
+export type VcsBackend = typeof import("./revisionReader") &
+  typeof import("./repository") &
+  typeof import("./remote") &
+  /**
+   * Signing in to a server that verifies who is calling. Behind the same plug as the
+   * rest: it reaches the binding for the login itself, and it is meaningless on a host
+   * with no backend to sign anything in.
+   */
+  typeof import("./serverSession") &
+  typeof import("./merge") &
+  /**
+   * Per-change resolution. Reaches no native code at all - it is `fs` plus the document
+   * registry - and is behind the plug anyway because it is only ever called on a repository
+   * whose merge the modules above opened, and because a second way into `vcs/` would give the
+   * "never reach the binding at startup" rule a second place to be broken.
+   */
+  typeof import("./mergeDocument");
 
 let cached: VcsBackend | null = null;
 let availability: VcsAvailability | null = null;
@@ -72,7 +71,7 @@ let inFlight: Promise<VcsBackend | null> | null = null;
  * somewhere Epic does not ship.
  */
 function platformGateSatisfied(): boolean {
-    return Boolean(process.env.LORE_LIB_PATH) || isVcsPlatformSupported();
+  return Boolean(process.env.LORE_LIB_PATH) || isVcsPlatformSupported();
 }
 
 /**
@@ -80,86 +79,93 @@ function platformGateSatisfied(): boolean {
  * Never throws - inspect `getAvailability()` for the reason.
  */
 export async function loadVcsBackend(): Promise<VcsBackend | null> {
-    if (cached) return cached;
-    if (availability && !availability.available) return null;
-    if (inFlight) return inFlight;
+  if (cached) return cached;
+  if (availability && !availability.available) return null;
+  if (inFlight) return inFlight;
 
-    inFlight = (async (): Promise<VcsBackend | null> => {
-        if (!platformGateSatisfied()) {
-            availability = {
-                available: false,
-                reason: "unsupported-platform",
-                detail: `No Lore native build for ${process.platform}/${process.arch}`,
-            };
-            return null;
-        }
-        try {
-            // Dynamic on purpose: these imports are what reach the native library, and
-            // a static one would run `koffi.load()` during main-process startup.
-            const [reader, repository, remote, serverSession, merge, mergeDocument] = await Promise.all([
-                import("./revisionReader"),
-                import("./repository"),
-                import("./remote"),
-                import("./serverSession"),
-                import("./merge"),
-                import("./mergeDocument"),
-            ]);
-            // Force the load now rather than at first use, so availability reflects
-            // whether the library actually opened rather than merely whether the
-            // module resolved.
-            const { loadLoreLibrary } = await import("./lore");
-            loadLoreLibrary();
-            cached = { ...reader, ...repository, ...remote, ...serverSession, ...merge, ...mergeDocument };
-            availability = { available: true };
-            return cached;
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            // A missing platform subpackage and a broken library surface the same
-            // way through koffi; separate them so the UI can say something useful.
-            const missing = /Cannot find (module|package)|MODULE_NOT_FOUND/i.test(message);
-            availability = {
-                available: false,
-                reason: missing ? "backend-missing" : "backend-load-failed",
-                detail: message.split("\n")[0],
-            };
-            return null;
-        } finally {
-            inFlight = null;
-        }
-    })();
+  inFlight = (async (): Promise<VcsBackend | null> => {
+    if (!platformGateSatisfied()) {
+      availability = {
+        available: false,
+        reason: "unsupported-platform",
+        detail: `No Lore native build for ${process.platform}/${process.arch}`
+      };
+      return null;
+    }
+    try {
+      // Dynamic on purpose: these imports are what reach the native library, and
+      // a static one would run `koffi.load()` during main-process startup.
+      const [reader, repository, remote, serverSession, merge, mergeDocument] = await Promise.all([
+        import("./revisionReader"),
+        import("./repository"),
+        import("./remote"),
+        import("./serverSession"),
+        import("./merge"),
+        import("./mergeDocument")
+      ]);
+      // Force the load now rather than at first use, so availability reflects
+      // whether the library actually opened rather than merely whether the
+      // module resolved.
+      const { loadLoreLibrary } = await import("./lore");
+      loadLoreLibrary();
+      cached = {
+        ...reader,
+        ...repository,
+        ...remote,
+        ...serverSession,
+        ...merge,
+        ...mergeDocument
+      };
+      availability = { available: true };
+      return cached;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // A missing platform subpackage and a broken library surface the same
+      // way through koffi; separate them so the UI can say something useful.
+      const missing = /Cannot find (module|package)|MODULE_NOT_FOUND/i.test(message);
+      availability = {
+        available: false,
+        reason: missing ? "backend-missing" : "backend-load-failed",
+        detail: message.split("\n")[0]
+      };
+      return null;
+    } finally {
+      inFlight = null;
+    }
+  })();
 
-    return inFlight;
+  return inFlight;
 }
 
 /** Availability of the VCS backend on this host, resolving it on first call. */
 export async function getVcsAvailability(): Promise<VcsAvailability> {
-    if (!availability) await loadVcsBackend();
-    return availability ?? { available: false, reason: "backend-load-failed" };
+  if (!availability) await loadVcsBackend();
+  return availability ?? { available: false, reason: "backend-load-failed" };
 }
 
 /** Thrown by every VCS operation on a host without a usable backend. */
 export class VcsUnavailableError extends Error {
-    /** Carried across IPC by `ipcHost.failed`, so the renderer says this in the author's language. */
-    readonly code = VcsErrorCode.Unavailable;
+  /** Carried across IPC by `ipcHost.failed`, so the renderer says this in the author's language. */
+  readonly code = VcsErrorCode.Unavailable;
 
-    constructor(readonly availability: Extract<VcsAvailability, { available: false }>) {
-        super(
-            availability.reason === "unsupported-platform"
-                ? `Version control is not available on ${process.platform}/${process.arch}`
-                : `Version control backend failed to load: ${availability.detail ?? availability.reason}`,
-        );
-        this.name = "VcsUnavailableError";
-    }
+  constructor(readonly availability: Extract<VcsAvailability, { available: false }>) {
+    super(
+      availability.reason === "unsupported-platform"
+        ? `Version control is not available on ${process.platform}/${process.arch}`
+        : `Version control backend failed to load: ${availability.detail ?? availability.reason}`
+    );
+    this.name = "VcsUnavailableError";
+  }
 }
 
 /** Load the backend or throw a typed, user-presentable error. */
 export async function requireVcsBackend(): Promise<VcsBackend> {
-    const backend = await loadVcsBackend();
-    if (backend) return backend;
-    const current = await getVcsAvailability();
-    throw new VcsUnavailableError(
-        current.available ? { available: false, reason: "backend-load-failed" } : current,
-    );
+  const backend = await loadVcsBackend();
+  if (backend) return backend;
+  const current = await getVcsAvailability();
+  throw new VcsUnavailableError(
+    current.available ? { available: false, reason: "backend-load-failed" } : current
+  );
 }
 
 /**
@@ -171,17 +177,17 @@ export async function requireVcsBackend(): Promise<VcsBackend> {
  * re-dlopen 29MB to learn what the user has not changed.
  */
 export async function refreshVcsAvailability(): Promise<VcsAvailability> {
-    cached = null;
-    availability = null;
-    inFlight = null;
-    const { resetLoreLibraryForRetry } = await import("./lore");
-    resetLoreLibraryForRetry();
-    return getVcsAvailability();
+  cached = null;
+  availability = null;
+  inFlight = null;
+  const { resetLoreLibraryForRetry } = await import("./lore");
+  resetLoreLibraryForRetry();
+  return getVcsAvailability();
 }
 
 /** Test seam: forget the cached backend and availability verdict. */
 export function __resetVcsBackendForTests(): void {
-    cached = null;
-    availability = null;
-    inFlight = null;
+  cached = null;
+  availability = null;
+  inFlight = null;
 }

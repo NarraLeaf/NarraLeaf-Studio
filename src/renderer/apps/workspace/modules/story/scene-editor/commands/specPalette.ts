@@ -13,19 +13,19 @@ import { commandDetailKey, commandLabelKey, getCommandSpec, listCommandSpecs } f
 
 type SpecCommandTranslate = (key: TranslationKey) => string;
 
-const SPEC_PALETTE: readonly PaletteActionCommand[] = listCommandSpecs().map(spec => ({
-    id: spec.id,
-    group: spec.category,
-    label: spec.id,
-    detail: "",
-    // The spec's own glyph, not its group's: the icon says the verb while the group's colour still
-    // says the subject (see `StoryCommandSpec.icon`).
-    icon: spec.icon,
-    aliases: [spec.token, ...(spec.aliases ?? [])].map(alias => `/${alias}`),
+const SPEC_PALETTE: readonly PaletteActionCommand[] = listCommandSpecs().map((spec) => ({
+  id: spec.id,
+  group: spec.category,
+  label: spec.id,
+  detail: "",
+  // The spec's own glyph, not its group's: the icon says the verb while the group's colour still
+  // says the subject (see `StoryCommandSpec.icon`).
+  icon: spec.icon,
+  aliases: [spec.token, ...(spec.aliases ?? [])].map((alias) => `/${alias}`)
 }));
 
 export function specPaletteCommands(): readonly PaletteActionCommand[] {
-    return SPEC_PALETTE;
+  return SPEC_PALETTE;
 }
 
 /**
@@ -37,15 +37,15 @@ export function specPaletteCommands(): readonly PaletteActionCommand[] {
  * and is therefore always available.
  */
 export function isSpecCommandAvailable(commandId: string, context: StoryCommandContext): boolean {
-    return getCommandSpec(commandId)?.available?.(context) ?? true;
+  return getCommandSpec(commandId)?.available?.(context) ?? true;
 }
 
 /** The entries this project can act on. Every browse surface filters through this one call. */
 export function availableSpecCommands(
-    commands: readonly PaletteActionCommand[],
-    context: StoryCommandContext,
+  commands: readonly PaletteActionCommand[],
+  context: StoryCommandContext
 ): readonly PaletteActionCommand[] {
-    return commands.filter(command => isSpecCommandAvailable(command.id, context));
+  return commands.filter((command) => isSpecCommandAvailable(command.id, context));
 }
 
 /**
@@ -57,10 +57,13 @@ export function availableSpecCommands(
  * menu is the vocabulary's own surface, and it has to agree with the table the parser consults, which
  * is keyed on that same locale.
  */
-export function localizeSpecCommand(command: PaletteActionCommand, t: SpecCommandTranslate): PaletteActionCommand {
-    return {
-        ...command,
-        label: t(commandLabelKey(command.id)),
-        detail: t(commandDetailKey(command.id)),
-    };
+export function localizeSpecCommand(
+  command: PaletteActionCommand,
+  t: SpecCommandTranslate
+): PaletteActionCommand {
+  return {
+    ...command,
+    label: t(commandLabelKey(command.id)),
+    detail: t(commandDetailKey(command.id))
+  };
 }

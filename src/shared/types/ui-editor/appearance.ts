@@ -6,214 +6,214 @@ import type { ImageFill } from "@shared/types/ui-editor/imageFill";
  * Omitted keys are not checked.
  */
 export type AppearanceSystemCondition = Partial<{
-    hovered: boolean;
-    active: boolean;
-    disabled: boolean;
-    focused: boolean;
+  hovered: boolean;
+  active: boolean;
+  disabled: boolean;
+  focused: boolean;
 }>;
 
 /**
  * Serialized value for one row in a property group. Interpretation depends on `AppearancePropertyGroup.key`.
  */
 export type AppearanceRowValue =
-    | string
-    | number
-    | boolean
-    | null
-    | ImageFill
-    | Record<string, unknown>;
+  | string
+  | number
+  | boolean
+  | null
+  | ImageFill
+  | Record<string, unknown>;
 
 /**
  * One row: no / empty conditions = default row (always matches unless a later row also matches).
  * Within a group, the last matching row wins.
  */
 export type AppearanceValueRow = {
-    conditions?: AppearanceSystemCondition | null;
-    value: AppearanceRowValue;
+  conditions?: AppearanceSystemCondition | null;
+  value: AppearanceRowValue;
 };
 
 export type AppearanceTransitionTweenEasing =
-    | "linear"
-    | "easeIn"
-    | "easeOut"
-    | "easeInOut"
-    | "circIn"
-    | "circOut"
-    | "circInOut";
+  | "linear"
+  | "easeIn"
+  | "easeOut"
+  | "easeInOut"
+  | "circIn"
+  | "circOut"
+  | "circInOut";
 
 export type AppearanceFieldTransition =
-    | {
-          type: "tween";
-          durationMs: number;
-          delayMs?: number;
-          easing: AppearanceTransitionTweenEasing;
-      }
-    | {
-          type: "spring";
-          delayMs?: number;
-          stiffness: number;
-          damping: number;
-          mass: number;
-      };
+  | {
+      type: "tween";
+      durationMs: number;
+      delayMs?: number;
+      easing: AppearanceTransitionTweenEasing;
+    }
+  | {
+      type: "spring";
+      delayMs?: number;
+      stiffness: number;
+      damping: number;
+      mass: number;
+    };
 
 /** Whitelisted chrome keys for `nl.container` (maps to RectangleLike + container fill typing). */
 export type ContainerAppearancePropertyKey =
-    | "backgroundColor"
-    | "borderRadius"
-    | "borderRadiusTL"
-    | "borderRadiusTR"
-    | "borderRadiusBL"
-    | "borderRadiusBR"
-    | "borderRadiusLinked"
-    | "borderColor"
-    | "borderWidth"
-    | "borderStyle"
-    | "backgroundImage"
-    | "backgroundFit"
-    | "imageFill"
-    | "fillType"
-    | "fillVisible"
-    | "fillOpacity"
-    | "strokeVisible"
-    | "strokeOpacity"
-    | "strokeAlign"
-    | "strokeSide"
-    | "borderJoin"
-    | "cornerAdvanced"
-    | "transformOffsetX"
-    | "transformOffsetY"
-    | "transformScale"
-    | "transformRotation"
-    | "transformOpacity"
-    | "effectBlur"
-    | "effectBackgroundBlur"
-    | "effectShadow"
-    | "effectInnerShadow"
-    | "effectBlend"
-    | "effectGlow"
-    | "effectFilter";
+  | "backgroundColor"
+  | "borderRadius"
+  | "borderRadiusTL"
+  | "borderRadiusTR"
+  | "borderRadiusBL"
+  | "borderRadiusBR"
+  | "borderRadiusLinked"
+  | "borderColor"
+  | "borderWidth"
+  | "borderStyle"
+  | "backgroundImage"
+  | "backgroundFit"
+  | "imageFill"
+  | "fillType"
+  | "fillVisible"
+  | "fillOpacity"
+  | "strokeVisible"
+  | "strokeOpacity"
+  | "strokeAlign"
+  | "strokeSide"
+  | "borderJoin"
+  | "cornerAdvanced"
+  | "transformOffsetX"
+  | "transformOffsetY"
+  | "transformScale"
+  | "transformRotation"
+  | "transformOpacity"
+  | "effectBlur"
+  | "effectBackgroundBlur"
+  | "effectShadow"
+  | "effectInnerShadow"
+  | "effectBlend"
+  | "effectGlow"
+  | "effectFilter";
 
 export const BUTTON_CURSOR_VALUES = [
-    "auto",
-    "default",
-    "pointer",
-    "text",
-    "move",
-    "grab",
-    "grabbing",
-    "crosshair",
-    "help",
-    "wait",
-    "progress",
-    "not-allowed",
+  "auto",
+  "default",
+  "pointer",
+  "text",
+  "move",
+  "grab",
+  "grabbing",
+  "crosshair",
+  "help",
+  "wait",
+  "progress",
+  "not-allowed"
 ] as const;
 
 export type ButtonCursorValue = (typeof BUTTON_CURSOR_VALUES)[number];
 
 export function isButtonCursorValue(value: unknown): value is ButtonCursorValue {
-    return typeof value === "string" && (BUTTON_CURSOR_VALUES as readonly string[]).includes(value);
+  return typeof value === "string" && (BUTTON_CURSOR_VALUES as readonly string[]).includes(value);
 }
 
 /** Whitelisted visual keys for `nl.button`. */
 export type ButtonAppearancePropertyKey =
-    | "backgroundColor"
-    | "fillType"
-    | "fillOpacity"
-    | "fillVisible"
-    | "imageFill"
-    | "backgroundImage"
-    | "backgroundFit"
-    | "borderRadius"
-    | "borderWidth"
-    | "borderColor"
-    | "borderStyle"
-    | "strokeOpacity"
-    | "strokeSide"
-    | "borderJoin"
-    | "strokeAlign"
-    | "paddingX"
-    | "paddingY"
-    | "clipContent"
-    | "cursor"
-    | "transformOffsetX"
-    | "transformOffsetY"
-    | "transformScale"
-    | "transformRotation"
-    | "transformOpacity"
-    | "effectBlur"
-    | "effectBackgroundBlur"
-    | "effectShadow"
-    | "effectTextShadow"
-    | "effectInnerShadow"
-    | "effectBlend"
-    | "effectGlow"
-    | "effectFilter";
+  | "backgroundColor"
+  | "fillType"
+  | "fillOpacity"
+  | "fillVisible"
+  | "imageFill"
+  | "backgroundImage"
+  | "backgroundFit"
+  | "borderRadius"
+  | "borderWidth"
+  | "borderColor"
+  | "borderStyle"
+  | "strokeOpacity"
+  | "strokeSide"
+  | "borderJoin"
+  | "strokeAlign"
+  | "paddingX"
+  | "paddingY"
+  | "clipContent"
+  | "cursor"
+  | "transformOffsetX"
+  | "transformOffsetY"
+  | "transformScale"
+  | "transformRotation"
+  | "transformOpacity"
+  | "effectBlur"
+  | "effectBackgroundBlur"
+  | "effectShadow"
+  | "effectTextShadow"
+  | "effectInnerShadow"
+  | "effectBlend"
+  | "effectGlow"
+  | "effectFilter";
 
 /** Whitelisted visual keys for `nl.text`. Text content and layout stay on flat props / Blueprint Value. */
 export type TextAppearancePropertyKey =
-    | "fontAssetId"
-    | "fontSize"
-    | "fontWeight"
-    | "fontStyle"
-    | "color"
-    | "lineHeight"
-    | "transformOffsetX"
-    | "transformOffsetY"
-    | "transformScale"
-    | "transformRotation"
-    | "transformOpacity"
-    | "effectBlur"
-    | "effectTextShadow"
-    | "effectBlend"
-    | "effectFilter";
+  | "fontAssetId"
+  | "fontSize"
+  | "fontWeight"
+  | "fontStyle"
+  | "color"
+  | "lineHeight"
+  | "transformOffsetX"
+  | "transformOffsetY"
+  | "transformScale"
+  | "transformRotation"
+  | "transformOpacity"
+  | "effectBlur"
+  | "effectTextShadow"
+  | "effectBlend"
+  | "effectFilter";
 
 export type AppearancePropertyKey =
-    | ContainerAppearancePropertyKey
-    | ButtonAppearancePropertyKey
-    | TextAppearancePropertyKey;
+  | ContainerAppearancePropertyKey
+  | ButtonAppearancePropertyKey
+  | TextAppearancePropertyKey;
 
 export type AppearancePropertyGroup =
-    | {
-          key: ContainerAppearancePropertyKey;
-          rows: AppearanceValueRow[];
-          transition?: AppearanceFieldTransition | null;
-      }
-    | {
-          key: ButtonAppearancePropertyKey;
-          rows: AppearanceValueRow[];
-          transition?: AppearanceFieldTransition | null;
-      }
-    | {
-          key: TextAppearancePropertyKey;
-          rows: AppearanceValueRow[];
-          transition?: AppearanceFieldTransition | null;
-      };
+  | {
+      key: ContainerAppearancePropertyKey;
+      rows: AppearanceValueRow[];
+      transition?: AppearanceFieldTransition | null;
+    }
+  | {
+      key: ButtonAppearancePropertyKey;
+      rows: AppearanceValueRow[];
+      transition?: AppearanceFieldTransition | null;
+    }
+  | {
+      key: TextAppearancePropertyKey;
+      rows: AppearanceValueRow[];
+      transition?: AppearanceFieldTransition | null;
+    };
 
 export type AppearanceVariant = {
-    id: string;
-    name: string;
-    propertyGroups: AppearancePropertyGroup[];
+  id: string;
+  name: string;
+  propertyGroups: AppearancePropertyGroup[];
 };
 
 export type AppearanceModel = {
-    defaultVariantId: string;
-    variants: AppearanceVariant[];
+  defaultVariantId: string;
+  variants: AppearanceVariant[];
 };
 
 export function isAppearanceModel(value: unknown): value is AppearanceModel {
-    if (!value || typeof value !== "object") {
-        return false;
-    }
-    const v = value as Record<string, unknown>;
-    if (typeof v.defaultVariantId !== "string" || !Array.isArray(v.variants)) {
-        return false;
-    }
-    return v.variants.every(
-        item =>
-            item &&
-            typeof item === "object" &&
-            typeof (item as AppearanceVariant).id === "string" &&
-            typeof (item as AppearanceVariant).name === "string" &&
-            Array.isArray((item as AppearanceVariant).propertyGroups),
-    );
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const v = value as Record<string, unknown>;
+  if (typeof v.defaultVariantId !== "string" || !Array.isArray(v.variants)) {
+    return false;
+  }
+  return v.variants.every(
+    (item) =>
+      item &&
+      typeof item === "object" &&
+      typeof (item as AppearanceVariant).id === "string" &&
+      typeof (item as AppearanceVariant).name === "string" &&
+      Array.isArray((item as AppearanceVariant).propertyGroups)
+  );
 }

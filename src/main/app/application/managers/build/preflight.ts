@@ -2,25 +2,25 @@ import fs from "fs/promises";
 import { constants as fsConstants } from "fs";
 import path from "path";
 import type {
-    BuildPreflightCode,
-    GameBuildArch,
-    GameBuildDesktopPlatform,
-    GameBuildMobilePlatform,
-    GameBuildPlatform,
+  BuildPreflightCode,
+  GameBuildArch,
+  GameBuildDesktopPlatform,
+  GameBuildMobilePlatform,
+  GameBuildPlatform
 } from "@shared/types/gameBuild";
 import { readProjectIconSet, resolveIconFile } from "@shared/types/projectIcons";
 import { signingNotarizes } from "@shared/types/signing";
 import type {
-    SigningCertificateExpiry,
-    SigningCredential,
-    SigningCredentialKind,
-    SigningPlatform,
+  SigningCertificateExpiry,
+  SigningCredential,
+  SigningCredentialKind,
+  SigningPlatform
 } from "@shared/types/signing";
 import type {
-    NormalizedPluginManifestV2,
-    PluginBuildDependencyTargetContribution,
-    PluginSidecarContribution,
-    PluginSidecarTargetContribution,
+  NormalizedPluginManifestV2,
+  PluginBuildDependencyTargetContribution,
+  PluginSidecarContribution,
+  PluginSidecarTargetContribution
 } from "@shared/types/plugins";
 import type { ProjectConfigData } from "@shared/utils/nlproj";
 import type { DownloadRewriteRule } from "@shared/types/downloadSource";
@@ -28,8 +28,8 @@ import type { MobileShellOrientation } from "@/buildWorker/mobile/mobileShellMan
 // Relative rather than "@/": preflight is unit-tested, and the test runner only
 // aliases "@" to the renderer tree - a value import through it would not resolve.
 import {
-    buildDependencySourcePath,
-    probePluginBuildDependency,
+  buildDependencySourcePath,
+  probePluginBuildDependency
 } from "../../../../buildWorker/pluginBuildDependencies";
 
 /**
@@ -44,24 +44,24 @@ import {
 
 /** Semantic version, per semver.org's official grammar. */
 const SEMVER_PATTERN =
-    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
 /** Minimum edge electron-builder needs to convert a PNG into .icns/.ico. */
 export const MIN_ICON_SIZE = 512;
 
 export function isValidProjectVersion(version: string): boolean {
-    return SEMVER_PATTERN.test(version);
+  return SEMVER_PATTERN.test(version);
 }
 
 /** The project's version as the build will read it, or undefined when unset. */
 export function readProjectVersion(projectConfig: ProjectConfigData | null): string | undefined {
-    const raw = projectConfig?.metadata?.version;
-    return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
+  const raw = projectConfig?.metadata?.version;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
 }
 
 /** The project's identifier as the build will read it, or undefined when unset. */
 export function readProjectIdentifier(projectConfig: ProjectConfigData | null): string | undefined {
-    return projectConfig?.identifier?.trim() || undefined;
+  return projectConfig?.identifier?.trim() || undefined;
 }
 
 /**
@@ -71,11 +71,14 @@ export function readProjectIdentifier(projectConfig: ProjectConfigData | null): 
  * overwhelmingly landscape, so that is the default - including for projects
  * saved before the setting existed.
  */
-export function readMobileOrientation(projectConfig: ProjectConfigData | null): MobileShellOrientation {
-    const configured = (projectConfig?.app as { mobile?: { orientation?: unknown } } | undefined)?.mobile?.orientation;
-    return configured === "portrait" || configured === "auto" || configured === "landscape"
-        ? configured
-        : "landscape";
+export function readMobileOrientation(
+  projectConfig: ProjectConfigData | null
+): MobileShellOrientation {
+  const configured = (projectConfig?.app as { mobile?: { orientation?: unknown } } | undefined)
+    ?.mobile?.orientation;
+  return configured === "portrait" || configured === "auto" || configured === "landscape"
+    ? configured
+    : "landscape";
 }
 
 /**
@@ -92,33 +95,33 @@ export type GameBuildIconPlatform = GameBuildDesktopPlatform | GameBuildMobilePl
  * in the artifact compiler, and in the panel.
  */
 export function readIconPath(
-    projectConfig: ProjectConfigData | null,
-    platform: GameBuildIconPlatform,
+  projectConfig: ProjectConfigData | null,
+  platform: GameBuildIconPlatform
 ): string | undefined {
-    return resolveIconFile(readProjectIconSet(projectConfig), platform)?.path;
+  return resolveIconFile(readProjectIconSet(projectConfig), platform)?.path;
 }
 
 /** Resolve a project-relative path, refusing to escape the project root. */
 export function resolveInsideProject(projectPath: string, relativePath: string): string {
-    const root = path.resolve(projectPath);
-    const resolved = path.resolve(root, relativePath.replace(/^[/\\]+/, ""));
-    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
-        throw new Error(`Path escapes project root: ${relativePath}`);
-    }
-    return resolved;
+  const root = path.resolve(projectPath);
+  const resolved = path.resolve(root, relativePath.replace(/^[/\\]+/, ""));
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    throw new Error(`Path escapes project root: ${relativePath}`);
+  }
+  return resolved;
 }
 
 export type IconCheck =
-    | {
-        status: "ok";
-        iconPath: string;
-        /** Below the packager's floor: it ships, upscaled, and preflight says so. */
-        lowResolution: boolean;
-        /** Whether the file came from the authoring bake rather than the raw source. */
-        baked: boolean;
+  | {
+      status: "ok";
+      iconPath: string;
+      /** Below the packager's floor: it ships, upscaled, and preflight says so. */
+      lowResolution: boolean;
+      /** Whether the file came from the authoring bake rather than the raw source. */
+      baked: boolean;
     }
-    | { status: "missing" }
-    | { status: "unusable" };
+  | { status: "missing" }
+  | { status: "unusable" };
 
 /**
  * Whether a platform's configured icon can be shipped. "missing" covers both
@@ -133,31 +136,31 @@ export type IconCheck =
  * carries the news.
  */
 export async function checkIcon(
-    projectPath: string,
-    projectConfig: ProjectConfigData | null,
-    platform: GameBuildIconPlatform,
+  projectPath: string,
+  projectConfig: ProjectConfigData | null,
+  platform: GameBuildIconPlatform
 ): Promise<IconCheck> {
-    const configured = resolveIconFile(readProjectIconSet(projectConfig), platform);
-    if (!configured) {
-        return { status: "missing" };
-    }
-    let iconPath: string;
-    try {
-        iconPath = resolveInsideProject(projectPath, configured.path);
-        await fs.access(iconPath);
-    } catch {
-        return { status: "missing" };
-    }
-    const size = await readPngIconSize(iconPath);
-    if (size === "unreadable") {
-        return { status: "unusable" };
-    }
-    return {
-        status: "ok",
-        iconPath,
-        baked: configured.baked,
-        lowResolution: size !== null && Math.max(size.width, size.height) < MIN_ICON_SIZE,
-    };
+  const configured = resolveIconFile(readProjectIconSet(projectConfig), platform);
+  if (!configured) {
+    return { status: "missing" };
+  }
+  let iconPath: string;
+  try {
+    iconPath = resolveInsideProject(projectPath, configured.path);
+    await fs.access(iconPath);
+  } catch {
+    return { status: "missing" };
+  }
+  const size = await readPngIconSize(iconPath);
+  if (size === "unreadable") {
+    return { status: "unusable" };
+  }
+  return {
+    status: "ok",
+    iconPath,
+    baked: configured.baked,
+    lowResolution: size !== null && Math.max(size.width, size.height) < MIN_ICON_SIZE
+  };
 }
 
 /**
@@ -166,45 +169,45 @@ export async function checkIcon(
  * "unreadable" for a file that claims to be a PNG but is corrupt or truncated.
  */
 export async function readPngIconSize(
-    iconPath: string,
+  iconPath: string
 ): Promise<{ width: number; height: number } | null | "unreadable"> {
-    if (path.extname(iconPath).toLowerCase() !== ".png") {
-        return null;
+  if (path.extname(iconPath).toLowerCase() !== ".png") {
+    return null;
+  }
+  let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
+  try {
+    handle = await fs.open(iconPath, "r");
+    const header = Buffer.alloc(24);
+    const { bytesRead } = await handle.read(header, 0, 24, 0);
+    // PNG signature (8) + IHDR length/type (8) + width (4) + height (4).
+    if (bytesRead < 24 || header.toString("ascii", 12, 16) !== "IHDR") {
+      return "unreadable";
     }
-    let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
-    try {
-        handle = await fs.open(iconPath, "r");
-        const header = Buffer.alloc(24);
-        const { bytesRead } = await handle.read(header, 0, 24, 0);
-        // PNG signature (8) + IHDR length/type (8) + width (4) + height (4).
-        if (bytesRead < 24 || header.toString("ascii", 12, 16) !== "IHDR") {
-            return "unreadable";
-        }
-        const width = header.readUInt32BE(16);
-        const height = header.readUInt32BE(20);
-        return width > 0 && height > 0 ? { width, height } : "unreadable";
-    } catch {
-        return "unreadable";
-    } finally {
-        await handle?.close();
-    }
+    const width = header.readUInt32BE(16);
+    const height = header.readUInt32BE(20);
+    return width > 0 && height > 0 ? { width, height } : "unreadable";
+  } catch {
+    return "unreadable";
+  } finally {
+    await handle?.close();
+  }
 }
 
 /** One external binary a shipping plugin needs for one platform being built. */
 export type BuildDependencyRequirement = {
-    pluginId: string;
-    dependencyId: string;
-    /** `<platform>-<arch>`, the key the plugin declared the target under. */
-    platformKey: string;
-    target: PluginBuildDependencyTargetContribution;
+  pluginId: string;
+  dependencyId: string;
+  /** `<platform>-<arch>`, the key the plugin declared the target under. */
+  platformKey: string;
+  target: PluginBuildDependencyTargetContribution;
 };
 
 /** A requirement this host can neither find cached nor fetch. */
 export type BuildDependencyGap = BuildDependencyRequirement & {
-    /** Why the fetch could not happen (transport error, HTTP 404, …). */
-    reason: string;
-    /** Where the author saves the file by hand to build with no network. */
-    cachePath: string;
+  /** Why the fetch could not happen (transport error, HTTP 404, …). */
+  reason: string;
+  /** Where the author saves the file by hand to build with no network. */
+  cachePath: string;
 };
 
 /**
@@ -213,31 +216,34 @@ export type BuildDependencyGap = BuildDependencyRequirement & {
  * there - that is a supported shape, not an omission, so it yields nothing.
  */
 export function collectBuildDependencyRequirements(
-    manifests: NormalizedPluginManifestV2[],
-    platformKeys: string[],
+  manifests: NormalizedPluginManifestV2[],
+  platformKeys: string[]
 ): BuildDependencyRequirement[] {
-    const requirements: BuildDependencyRequirement[] = [];
-    for (const manifest of manifests) {
-        for (const dependency of manifest.contributes.buildDependencies) {
-            for (const platformKey of platformKeys) {
-                const target = dependency.targets[platformKey];
-                if (target) {
-                    requirements.push({
-                        pluginId: manifest.id,
-                        dependencyId: dependency.id,
-                        platformKey,
-                        target,
-                    });
-                }
-            }
+  const requirements: BuildDependencyRequirement[] = [];
+  for (const manifest of manifests) {
+    for (const dependency of manifest.contributes.buildDependencies) {
+      for (const platformKey of platformKeys) {
+        const target = dependency.targets[platformKey];
+        if (target) {
+          requirements.push({
+            pluginId: manifest.id,
+            dependencyId: dependency.id,
+            platformKey,
+            target
+          });
         }
+      }
     }
-    return requirements;
+  }
+  return requirements;
 }
 
 /** The platform key a desktop target's binaries are declared under. */
-export function buildDependencyPlatformKey(platform: GameBuildDesktopPlatform, arch: GameBuildArch): string {
-    return `${platform}-${arch}`;
+export function buildDependencyPlatformKey(
+  platform: GameBuildDesktopPlatform,
+  arch: GameBuildArch
+): string {
+  return `${platform}-${arch}`;
 }
 
 /**
@@ -246,39 +252,49 @@ export function buildDependencyPlatformKey(platform: GameBuildDesktopPlatform, a
  * megabytes to render it would be worse than the problem it reports.
  */
 export async function checkBuildDependencies(
-    userDataDir: string,
-    requirements: BuildDependencyRequirement[],
-    /**
-     * The author's download rewrites. Probing the declared host while the build would fetch a
-     * mirrored one is how a dialog ends up reporting a gap that does not exist (or, worse,
-     * clearing a build that then cannot download), so the probe uses the same rules.
-     */
-    rewrites: readonly DownloadRewriteRule[] = [],
+  userDataDir: string,
+  requirements: BuildDependencyRequirement[],
+  /**
+   * The author's download rewrites. Probing the declared host while the build would fetch a
+   * mirrored one is how a dialog ends up reporting a gap that does not exist (or, worse,
+   * clearing a build that then cannot download), so the probe uses the same rules.
+   */
+  rewrites: readonly DownloadRewriteRule[] = []
 ): Promise<BuildDependencyGap[]> {
-    // Probed together: each probe can sit out its own timeout, and a project
-    // with several dependencies would otherwise stall the dialog by their sum.
-    const probes = await Promise.all(requirements.map(async requirement => ({
-        requirement,
-        availability: await probePluginBuildDependency({ userDataDir, target: requirement.target, rewrites }),
-    })));
-    return probes.flatMap(({ requirement, availability }) => availability.status === "unavailable"
-        ? [{
+  // Probed together: each probe can sit out its own timeout, and a project
+  // with several dependencies would otherwise stall the dialog by their sum.
+  const probes = await Promise.all(
+    requirements.map(async (requirement) => ({
+      requirement,
+      availability: await probePluginBuildDependency({
+        userDataDir,
+        target: requirement.target,
+        rewrites
+      })
+    }))
+  );
+  return probes.flatMap(({ requirement, availability }) =>
+    availability.status === "unavailable"
+      ? [
+          {
             ...requirement,
             reason: availability.reason,
-            cachePath: buildDependencySourcePath(userDataDir, requirement.target.sha256),
-        }]
-        : []);
+            cachePath: buildDependencySourcePath(userDataDir, requirement.target.sha256)
+          }
+        ]
+      : []
+  );
 }
 
 /** One sidecar a shipping plugin would contribute to one platform being built. */
 export type SidecarRequirement = {
-    pluginId: string;
-    sidecarId: string;
-    kind: PluginSidecarContribution["kind"];
-    /** `<platform>-<arch>`, the key the sidecar's binaries are declared under. */
-    platformKey: string;
-    /** Absent when the plugin ships no binaries for this platform key. */
-    target?: PluginSidecarTargetContribution;
+  pluginId: string;
+  sidecarId: string;
+  kind: PluginSidecarContribution["kind"];
+  /** `<platform>-<arch>`, the key the sidecar's binaries are declared under. */
+  platformKey: string;
+  /** Absent when the plugin ships no binaries for this platform key. */
+  target?: PluginSidecarTargetContribution;
 };
 
 /**
@@ -293,25 +309,25 @@ export type SidecarRequirement = {
  * somebody says so before the author ships it.
  */
 export function collectSidecarRequirements(
-    manifests: NormalizedPluginManifestV2[],
-    platformKeys: string[],
+  manifests: NormalizedPluginManifestV2[],
+  platformKeys: string[]
 ): SidecarRequirement[] {
-    const requirements: SidecarRequirement[] = [];
-    for (const manifest of manifests) {
-        for (const sidecar of manifest.contributes.sidecars) {
-            for (const platformKey of platformKeys) {
-                const target = sidecar.targets[platformKey];
-                requirements.push({
-                    pluginId: manifest.id,
-                    sidecarId: sidecar.id,
-                    kind: sidecar.kind,
-                    platformKey,
-                    ...(target ? { target } : {}),
-                });
-            }
-        }
+  const requirements: SidecarRequirement[] = [];
+  for (const manifest of manifests) {
+    for (const sidecar of manifest.contributes.sidecars) {
+      for (const platformKey of platformKeys) {
+        const target = sidecar.targets[platformKey];
+        requirements.push({
+          pluginId: manifest.id,
+          sidecarId: sidecar.id,
+          kind: sidecar.kind,
+          platformKey,
+          ...(target ? { target } : {})
+        });
+      }
     }
-    return requirements;
+  }
+  return requirements;
 }
 
 /**
@@ -330,20 +346,20 @@ export function collectSidecarRequirements(
  * Node, which needs no executable bit on the .js file.
  */
 export function sidecarLosesExecBit(
-    requirement: SidecarRequirement,
-    hostPlatform: GameBuildDesktopPlatform,
+  requirement: SidecarRequirement,
+  hostPlatform: GameBuildDesktopPlatform
 ): boolean {
-    if (hostPlatform !== "windows" || requirement.kind !== "executable" || !requirement.target) {
-        return false;
-    }
-    const targetPlatform = sidecarTargetPlatform(requirement.platformKey);
-    return targetPlatform === "macos" || targetPlatform === "linux";
+  if (hostPlatform !== "windows" || requirement.kind !== "executable" || !requirement.target) {
+    return false;
+  }
+  const targetPlatform = sidecarTargetPlatform(requirement.platformKey);
+  return targetPlatform === "macos" || targetPlatform === "linux";
 }
 
 /** The platform half of a `<platform>-<arch>` key. */
 export function sidecarTargetPlatform(platformKey: string): string {
-    const separator = platformKey.indexOf("-");
-    return separator === -1 ? platformKey : platformKey.slice(0, separator);
+  const separator = platformKey.indexOf("-");
+  return separator === -1 ? platformKey : platformKey.slice(0, separator);
 }
 
 /**
@@ -358,11 +374,11 @@ export type ProjectSigningIds = Partial<Record<SigningPlatform, string>>;
  * import from the renderer tree, and the shape is four words long.
  */
 const SIGNING_PLATFORM_KEYS: Record<SigningPlatform, true> = {
-    windows: true,
-    macos: true,
-    linux: true,
-    android: true,
-    ios: true,
+  windows: true,
+  macos: true,
+  linux: true,
+  android: true,
+  ios: true
 };
 
 const SIGNING_PLATFORMS = Object.keys(SIGNING_PLATFORM_KEYS) as SigningPlatform[];
@@ -375,19 +391,19 @@ const SIGNING_PLATFORMS = Object.keys(SIGNING_PLATFORM_KEYS) as SigningPlatform[
  * also what an absent one means, so both simply do not appear.
  */
 export function readProjectSigningIds(projectConfig: ProjectConfigData | null): ProjectSigningIds {
-    const configured = (projectConfig?.app as { signing?: unknown } | undefined)?.signing;
-    if (!configured || typeof configured !== "object") {
-        return {};
+  const configured = (projectConfig?.app as { signing?: unknown } | undefined)?.signing;
+  if (!configured || typeof configured !== "object") {
+    return {};
+  }
+  const record = configured as Record<string, unknown>;
+  const ids: ProjectSigningIds = {};
+  for (const platform of SIGNING_PLATFORMS) {
+    const id = record[platform];
+    if (typeof id === "string" && id.trim()) {
+      ids[platform] = id.trim();
     }
-    const record = configured as Record<string, unknown>;
-    const ids: ProjectSigningIds = {};
-    for (const platform of SIGNING_PLATFORMS) {
-        const id = record[platform];
-        if (typeof id === "string" && id.trim()) {
-            ids[platform] = id.trim();
-        }
-    }
-    return ids;
+  }
+  return ids;
 }
 
 /**
@@ -399,20 +415,20 @@ export function readProjectSigningIds(projectConfig: ProjectConfigData | null): 
  * rather than fall through to "unsigned" unnoticed.
  */
 export function signingPlatformForTarget(platform: GameBuildPlatform): SigningPlatform | null {
-    switch (platform) {
-        case "windows":
-            return "windows";
-        case "macos":
-            return "macos";
-        case "linux":
-            return "linux";
-        case "android":
-            return "android";
-        case "ios":
-            return "ios";
-        case "web":
-            return null;
-    }
+  switch (platform) {
+    case "windows":
+      return "windows";
+    case "macos":
+      return "macos";
+    case "linux":
+      return "linux";
+    case "android":
+      return "android";
+    case "ios":
+      return "ios";
+    case "web":
+      return null;
+  }
 }
 
 /**
@@ -432,16 +448,16 @@ export function signingPlatformForTarget(platform: GameBuildPlatform): SigningPl
  * remotely.
  */
 export function signingCredentialSupportedOnHost(
-    kind: SigningCredentialKind,
-    hostPlatform: GameBuildDesktopPlatform,
+  kind: SigningCredentialKind,
+  hostPlatform: GameBuildDesktopPlatform
 ): boolean {
-    if (kind === "windows-store") {
-        return hostPlatform === "windows";
-    }
-    if (kind === "macos-keychain" || kind === "macos-apple") {
-        return hostPlatform === "macos";
-    }
-    return true;
+  if (kind === "windows-store") {
+    return hostPlatform === "windows";
+  }
+  if (kind === "macos-keychain" || kind === "macos-apple") {
+    return hostPlatform === "macos";
+  }
+  return true;
 }
 
 /**
@@ -460,17 +476,17 @@ export function signingCredentialSupportedOnHost(
  * the keystore, iOS and gpg paths.
  */
 export function signingReachesNetwork(credential: SigningCredential): boolean {
-    switch (credential.kind) {
-        case "windows-pfx":
-        case "windows-store":
-        case "windows-azure":
-            return true;
-        case "macos-keychain":
-        case "macos-apple":
-            return signingNotarizes(credential);
-        default:
-            return false;
-    }
+  switch (credential.kind) {
+    case "windows-pfx":
+    case "windows-store":
+    case "windows-azure":
+      return true;
+    case "macos-keychain":
+    case "macos-apple":
+      return signingNotarizes(credential);
+    default:
+      return false;
+  }
 }
 
 /**
@@ -481,24 +497,24 @@ export function signingReachesNetwork(credential: SigningCredential): boolean {
  * message names the whole window rather than one edge of it.
  */
 export function signingExpiryCode(expiry: SigningCertificateExpiry): BuildPreflightCode | null {
-    switch (expiry) {
-        case "expired":
-        case "not-yet-valid":
-            return "signing-credential-expired";
-        case "expiring":
-            return "signing-credential-expiring";
-        case "valid":
-            return null;
-    }
+  switch (expiry) {
+    case "expired":
+    case "not-yet-valid":
+      return "signing-credential-expired";
+    case "expiring":
+      return "signing-credential-expiring";
+    case "valid":
+      return null;
+  }
 }
 
 /** Whole days from now until `notAfter`, floored at 0. For the expiry warning. */
 export function daysUntil(notAfter: string, now: Date = new Date()): number {
-    const at = Date.parse(notAfter);
-    if (Number.isNaN(at)) {
-        return 0;
-    }
-    return Math.max(0, Math.floor((at - now.getTime()) / (24 * 60 * 60 * 1000)));
+  const at = Date.parse(notAfter);
+  if (Number.isNaN(at)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor((at - now.getTime()) / (24 * 60 * 60 * 1000)));
 }
 
 /**
@@ -524,30 +540,30 @@ export type OutputDirCheck = "ok" | "not-writable" | "not-empty";
  * the packager creates it - as long as its nearest existing parent is writable.
  */
 export async function checkOutputDir(outputDir: string): Promise<OutputDirCheck> {
+  try {
+    const entries = await fs.readdir(outputDir);
+    await fs.access(outputDir, fsConstants.W_OK);
+    return entries.length > 0 ? "not-empty" : "ok";
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      return "not-writable";
+    }
+  }
+  // Does not exist yet: the deepest existing ancestor must be writable.
+  let candidate = path.dirname(path.resolve(outputDir));
+  for (;;) {
     try {
-        const entries = await fs.readdir(outputDir);
-        await fs.access(outputDir, fsConstants.W_OK);
-        return entries.length > 0 ? "not-empty" : "ok";
+      await fs.access(candidate, fsConstants.W_OK);
+      return "ok";
     } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-            return "not-writable";
-        }
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        return "not-writable";
+      }
     }
-    // Does not exist yet: the deepest existing ancestor must be writable.
-    let candidate = path.dirname(path.resolve(outputDir));
-    for (;;) {
-        try {
-            await fs.access(candidate, fsConstants.W_OK);
-            return "ok";
-        } catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-                return "not-writable";
-            }
-        }
-        const parent = path.dirname(candidate);
-        if (parent === candidate) {
-            return "not-writable";
-        }
-        candidate = parent;
+    const parent = path.dirname(candidate);
+    if (parent === candidate) {
+      return "not-writable";
     }
+    candidate = parent;
+  }
 }

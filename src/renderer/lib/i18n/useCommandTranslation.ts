@@ -14,9 +14,9 @@ import { commandI18nStore } from "./commandLocale";
  * any other global-state key rather than from the editor.
  */
 export function useCommandTranslation(): Translator {
-    return useSyncExternalStore(
-        commandI18nStore.subscribe,
-        commandI18nStore.getTranslator,
-        commandI18nStore.getTranslator,
-    );
+  return useSyncExternalStore(
+    commandI18nStore.subscribe,
+    commandI18nStore.getTranslator,
+    commandI18nStore.getTranslator
+  );
 }

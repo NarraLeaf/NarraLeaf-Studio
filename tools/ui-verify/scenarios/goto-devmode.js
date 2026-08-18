@@ -11,12 +11,12 @@
  * "nothing has opened the project yet". Run this first, then the scenario.
  */
 
-const D = require('./_drive');
+const D = require("./_drive");
 
 (async () => {
-    await D.driveToDevMode();
-    console.log('ready: dev-mode is up with the story on stage');
+  await D.driveToDevMode();
+  console.log("ready: dev-mode is up with the story on stage");
 })().catch((e) => {
-    console.error('\nSCRIPT FAIL:', e.message);
-    process.exit(1);
+  console.error("\nSCRIPT FAIL:", e.message);
+  process.exit(1);
 });

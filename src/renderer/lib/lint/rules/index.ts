@@ -21,33 +21,38 @@ import { BRAND_LINT_RULES } from "./brand";
  * something that appears because an array grew.
  */
 export const LINT_RULES: readonly LintRule[] = [
-    ...ASSETS_LINT_RULES,
-    ...PORTABILITY_LINT_RULES,
-    ...NETWORK_LINT_RULES,
-    ...STORY_LINT_RULES,
-    ...BLUEPRINT_LINT_RULES,
-    ...UI_LINT_RULES,
-    ...VARIABLES_LINT_RULES,
-    ...TEXT_LINT_RULES,
-    ...LOCALIZATION_LINT_RULES,
-    ...VOICE_LINT_RULES,
-    ...BRAND_LINT_RULES,
+  ...ASSETS_LINT_RULES,
+  ...PORTABILITY_LINT_RULES,
+  ...NETWORK_LINT_RULES,
+  ...STORY_LINT_RULES,
+  ...BLUEPRINT_LINT_RULES,
+  ...UI_LINT_RULES,
+  ...VARIABLES_LINT_RULES,
+  ...TEXT_LINT_RULES,
+  ...LOCALIZATION_LINT_RULES,
+  ...VOICE_LINT_RULES,
+  ...BRAND_LINT_RULES
 ];
 
-const RULES_BY_ID: ReadonlyMap<LintRuleId, LintRule> = new Map(LINT_RULES.map(rule => [rule.id, rule]));
+const RULES_BY_ID: ReadonlyMap<LintRuleId, LintRule> = new Map(
+  LINT_RULES.map((rule) => [rule.id, rule])
+);
 
 export function getLintRule(id: LintRuleId): LintRule | undefined {
-    return RULES_BY_ID.get(id);
+  return RULES_BY_ID.get(id);
 }
 
 /** Every category in display order, each with its rules in registry order. */
 export const LINT_RULES_BY_CATEGORY: Readonly<Record<LintCategory, readonly LintRule[]>> =
-    Object.freeze(
-        LINT_CATEGORY_ORDER.reduce((acc, category) => {
-            acc[category] = LINT_RULES.filter(rule => rule.category === category);
-            return acc;
-        }, {} as Record<LintCategory, readonly LintRule[]>),
-    );
+  Object.freeze(
+    LINT_CATEGORY_ORDER.reduce(
+      (acc, category) => {
+        acc[category] = LINT_RULES.filter((rule) => rule.category === category);
+        return acc;
+      },
+      {} as Record<LintCategory, readonly LintRule[]>
+    )
+  );
 
 export { ASSETS_LINT_RULES } from "./assets";
 export { PORTABILITY_LINT_RULES } from "./portability";

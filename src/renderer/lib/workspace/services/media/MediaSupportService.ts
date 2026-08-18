@@ -7,14 +7,14 @@ import type { Asset } from "../assets/types";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { getInterface } from "@/lib/app/bridge";
 import {
-    blocksShipping,
-    imageSupportRecord,
-    mediaSupportCheckKind,
-    mediaSupportRecordFromProbe,
-    parseMediaSupportCache,
-    pruneMediaSupportCache,
-    serializeMediaSupportCache,
-    type MediaAssetSupportRecord,
+  blocksShipping,
+  imageSupportRecord,
+  mediaSupportCheckKind,
+  mediaSupportRecordFromProbe,
+  parseMediaSupportCache,
+  pruneMediaSupportCache,
+  serializeMediaSupportCache,
+  type MediaAssetSupportRecord
 } from "./mediaAssetSupport";
 
 /**
@@ -49,325 +49,328 @@ import {
  */
 
 export type MediaSupportScan = {
-    /**
-     * One entry per asset that was checked and answered, keyed by asset id.
-     *
-     * Keyed by id and rebuilt whole on each scan, deliberately: `AssetsService` mutates asset
-     * records in place, so an `Asset` reference lives forever and nothing downstream may key off
-     * its identity. A map that is replaced when the answers change is what makes the badge re-render
-     * at all.
-     */
-    records: ReadonlyMap<string, MediaAssetSupportRecord>;
-    /**
-     * False when this host cannot probe. Every sound and video asset is then unanswered, and no
-     * caller may conclude anything about any of them.
-     */
-    probeAvailable: boolean;
-    /** Ids of assets that needed a probe and did not get an answer. */
-    unanswered: readonly string[];
-    finishedAt: number;
+  /**
+   * One entry per asset that was checked and answered, keyed by asset id.
+   *
+   * Keyed by id and rebuilt whole on each scan, deliberately: `AssetsService` mutates asset
+   * records in place, so an `Asset` reference lives forever and nothing downstream may key off
+   * its identity. A map that is replaced when the answers change is what makes the badge re-render
+   * at all.
+   */
+  records: ReadonlyMap<string, MediaAssetSupportRecord>;
+  /**
+   * False when this host cannot probe. Every sound and video asset is then unanswered, and no
+   * caller may conclude anything about any of them.
+   */
+  probeAvailable: boolean;
+  /** Ids of assets that needed a probe and did not get an answer. */
+  unanswered: readonly string[];
+  finishedAt: number;
 };
 
 const EMPTY_SCAN: MediaSupportScan = {
-    records: new Map(),
-    probeAvailable: true,
-    unanswered: [],
-    finishedAt: 0,
+  records: new Map(),
+  probeAvailable: true,
+  unanswered: [],
+  finishedAt: 0
 };
 
-export class MediaSupportService extends Service<MediaSupportService> implements IMediaSupportService {
-    private scanResult: MediaSupportScan = EMPTY_SCAN;
-    /** The cache as last read or written. `null` until the first scan reads it off disk. */
-    private cache: Map<string, MediaAssetSupportRecord> | null = null;
-    /**
-     * Whether the cache holds anything the file on disk does not.
-     *
-     * The asset browser re-scans whenever the library changes, and a re-scan that hit the cache for
-     * every file learned nothing - writing the same bytes back on each of those would turn a
-     * fifty-file import into fifty rewrites of a file nobody read.
-     */
-    private cacheDirty = false;
-    private inFlight: Promise<MediaSupportScan> | null = null;
-    private readonly listeners = new Set<() => void>();
+export class MediaSupportService
+  extends Service<MediaSupportService>
+  implements IMediaSupportService
+{
+  private scanResult: MediaSupportScan = EMPTY_SCAN;
+  /** The cache as last read or written. `null` until the first scan reads it off disk. */
+  private cache: Map<string, MediaAssetSupportRecord> | null = null;
+  /**
+   * Whether the cache holds anything the file on disk does not.
+   *
+   * The asset browser re-scans whenever the library changes, and a re-scan that hit the cache for
+   * every file learned nothing - writing the same bytes back on each of those would turn a
+   * fifty-file import into fifty rewrites of a file nobody read.
+   */
+  private cacheDirty = false;
+  private inFlight: Promise<MediaSupportScan> | null = null;
+  private readonly listeners = new Set<() => void>();
 
-    protected async init(_ctx: WorkspaceContext): Promise<void> {
-        // Singletons survive a project switch, so nothing about the previous project may remain.
-        this.scanResult = EMPTY_SCAN;
-        this.cache = null;
-        this.cacheDirty = false;
+  protected async init(_ctx: WorkspaceContext): Promise<void> {
+    // Singletons survive a project switch, so nothing about the previous project may remain.
+    this.scanResult = EMPTY_SCAN;
+    this.cache = null;
+    this.cacheDirty = false;
+    this.inFlight = null;
+  }
+
+  public override dispose(): void {
+    this.scanResult = EMPTY_SCAN;
+    this.cache = null;
+    this.cacheDirty = false;
+    this.inFlight = null;
+    this.listeners.clear();
+  }
+
+  /** Fires when a scan produced answers different from the ones on screen. */
+  public onChanged(handler: () => void): () => void {
+    this.listeners.add(handler);
+    return () => {
+      this.listeners.delete(handler);
+    };
+  }
+
+  /** The last scan, without starting one. Empty before the first scan finishes. */
+  public getLastScan(): MediaSupportScan {
+    return this.scanResult;
+  }
+
+  /** One asset's answer from the last scan, or `null` if it has none. */
+  public peek(assetId: string): MediaAssetSupportRecord | null {
+    return this.scanResult.records.get(assetId) ?? null;
+  }
+
+  /** Every asset the last scan found that will not play, in library order. */
+  public listUnplayable(): { asset: Asset; record: MediaAssetSupportRecord }[] {
+    const out: { asset: Asset; record: MediaAssetSupportRecord }[] = [];
+    for (const asset of this.checkableAssets()) {
+      const record = this.scanResult.records.get(asset.id);
+      if (record && blocksShipping(record)) {
+        out.push({ asset, record });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Check every media asset in the project and remember what was found.
+   *
+   * Concurrent calls share one pass - the build gate and the asset browser routinely ask at the
+   * same moment, and two passes would double the spawns to reach the same answer.
+   */
+  public async scan(options?: { force?: boolean }): Promise<MediaSupportScan> {
+    if (this.inFlight && !options?.force) {
+      return this.inFlight;
+    }
+    const task = this.runScan(options?.force === true).finally(() => {
+      if (this.inFlight === task) {
         this.inFlight = null;
+      }
+    });
+    this.inFlight = task;
+    return task;
+  }
+
+  /**
+   * Forget what was known about one asset and ask again.
+   *
+   * Called after the bytes behind an asset are replaced. The hash has moved by then, so the cache
+   * would miss anyway; this exists so the badge disappears the moment the conversion lands rather
+   * than at whatever later point something else happens to scan.
+   */
+  public async refresh(assetId: string): Promise<void> {
+    const asset = this.findAsset(assetId);
+    if (!asset) {
+      return;
+    }
+    // A conversion can land before anything has scanned (a project opened straight into the
+    // asset browser), and a cache that was never read cannot be added to.
+    await this.loadCache();
+    const record = await this.check(asset);
+    const records = new Map(this.scanResult.records);
+    const unanswered = this.scanResult.unanswered.filter((id) => id !== assetId);
+    if (record) {
+      records.set(assetId, record);
+    } else {
+      records.delete(assetId);
+      unanswered.push(assetId);
+    }
+    this.scanResult = { ...this.scanResult, records, unanswered, finishedAt: Date.now() };
+    await this.writeCache();
+    this.notify();
+  }
+
+  /* ------------------------------------------------------------------------------------------ */
+
+  private async runScan(force: boolean): Promise<MediaSupportScan> {
+    if (force) {
+      this.cache = new Map();
+    }
+    await this.loadCache();
+
+    const records = new Map<string, MediaAssetSupportRecord>();
+    const unanswered: string[] = [];
+    const liveHashes = new Set<string>();
+    let probeAvailable = true;
+
+    for (const asset of this.checkableAssets()) {
+      if (asset.hash) {
+        liveHashes.add(asset.hash);
+      }
+      // Once the host has said it has no probe, the remaining files would each answer the
+      // same thing at the cost of another spawn. Stop asking; they are unanswered, which is
+      // what `probeAvailable: false` already says about all of them.
+      if (!probeAvailable && mediaSupportCheckKind(asset) === "probe") {
+        unanswered.push(asset.id);
+        continue;
+      }
+      const outcome = await this.checkWithAvailability(asset);
+      if (outcome.probeMissing) {
+        probeAvailable = false;
+      }
+      if (outcome.record) {
+        records.set(asset.id, outcome.record);
+      } else {
+        unanswered.push(asset.id);
+      }
     }
 
-    public override dispose(): void {
-        this.scanResult = EMPTY_SCAN;
-        this.cache = null;
-        this.cacheDirty = false;
-        this.inFlight = null;
-        this.listeners.clear();
+    if (this.cache) {
+      const pruned = pruneMediaSupportCache(this.cache, liveHashes);
+      this.cacheDirty ||= pruned.size !== this.cache.size;
+      this.cache = pruned;
+    }
+    await this.writeCache();
+
+    this.scanResult = { records, probeAvailable, unanswered, finishedAt: Date.now() };
+    this.notify();
+    return this.scanResult;
+  }
+
+  /** Every asset worth checking, in library order so a report reads the way the browser looks. */
+  private checkableAssets(): Asset[] {
+    const assets = this.tryGetAssets();
+    if (!assets) {
+      return [];
+    }
+    const out: Asset[] = [];
+    for (const type of [AssetType.Image, AssetType.Audio, AssetType.Video]) {
+      for (const asset of assets.getOrderedAssets(type)) {
+        if (mediaSupportCheckKind(asset)) {
+          out.push(asset);
+        }
+      }
+    }
+    return out;
+  }
+
+  private findAsset(assetId: string): Asset | null {
+    return this.checkableAssets().find((asset) => asset.id === assetId) ?? null;
+  }
+
+  private async check(asset: Asset): Promise<MediaAssetSupportRecord | null> {
+    return (await this.checkWithAvailability(asset)).record;
+  }
+
+  /**
+   * One asset's answer, from the cache when the hash still matches and from a probe when it does
+   * not.
+   *
+   * `probeMissing` is reported separately from a `null` record because the two mean different
+   * things to the caller: a probe that failed on this one file is a gap, while a host with no
+   * probe at all is a reason to stop asking and to say so.
+   */
+  private async checkWithAvailability(
+    asset: Asset
+  ): Promise<{ record: MediaAssetSupportRecord | null; probeMissing: boolean }> {
+    const kind = mediaSupportCheckKind(asset);
+    if (kind === null) {
+      return { record: null, probeMissing: false };
+    }
+    if (kind === "image") {
+      // Decided from the name. Not cached: there is no process to save, and an entry keyed by
+      // content hash would answer a question that was never about the content.
+      return { record: imageSupportRecord(asset), probeMissing: false };
     }
 
-    /** Fires when a scan produced answers different from the ones on screen. */
-    public onChanged(handler: () => void): () => void {
-        this.listeners.add(handler);
-        return () => {
-            this.listeners.delete(handler);
-        };
+    // An asset with no hash is one whose digest could not be computed at import. It is still
+    // probed; it just cannot be remembered, because there is nothing to key the answer to.
+    const cached = asset.hash ? this.cache?.get(asset.hash) : undefined;
+    if (cached) {
+      return { record: cached, probeMissing: false };
     }
 
-    /** The last scan, without starting one. Empty before the first scan finishes. */
-    public getLastScan(): MediaSupportScan {
-        return this.scanResult;
+    const outcome = await this.probe(asset);
+    const record = mediaSupportRecordFromProbe(outcome);
+    if (record && asset.hash) {
+      this.cache?.set(asset.hash, record);
+      this.cacheDirty = true;
     }
+    return { record, probeMissing: outcome?.status === "unavailable" };
+  }
 
-    /** One asset's answer from the last scan, or `null` if it has none. */
-    public peek(assetId: string): MediaAssetSupportRecord | null {
-        return this.scanResult.records.get(assetId) ?? null;
+  private async probe(asset: Asset) {
+    const context = this.getContext();
+    // The content shard is addressed by the asset **id**, not by `hash`. Building this path from
+    // the hash - which is the field one reaches for when thinking about content - produces a
+    // path that does not exist, and the probe answers "failed" about a perfectly good file.
+    const path = context.project.resolve(ProjectNameConvention.AssetsDataShard(asset.id));
+    try {
+      const result = await getInterface().probeMedia(path);
+      return result.success ? result.data.outcome : null;
+    } catch {
+      return null;
     }
+  }
 
-    /** Every asset the last scan found that will not play, in library order. */
-    public listUnplayable(): { asset: Asset; record: MediaAssetSupportRecord }[] {
-        const out: { asset: Asset; record: MediaAssetSupportRecord }[] = [];
-        for (const asset of this.checkableAssets()) {
-            const record = this.scanResult.records.get(asset.id);
-            if (record && blocksShipping(record)) {
-                out.push({ asset, record });
-            }
-        }
-        return out;
+  private async loadCache(): Promise<void> {
+    if (this.cache) {
+      return;
     }
-
-    /**
-     * Check every media asset in the project and remember what was found.
-     *
-     * Concurrent calls share one pass - the build gate and the asset browser routinely ask at the
-     * same moment, and two passes would double the spawns to reach the same answer.
-     */
-    public async scan(options?: { force?: boolean }): Promise<MediaSupportScan> {
-        if (this.inFlight && !options?.force) {
-            return this.inFlight;
-        }
-        const task = this.runScan(options?.force === true).finally(() => {
-            if (this.inFlight === task) {
-                this.inFlight = null;
-            }
-        });
-        this.inFlight = task;
-        return task;
+    const filesystem = this.tryGetFileSystem();
+    if (!filesystem) {
+      this.cache = new Map();
+      return;
     }
+    const read = await filesystem.readJSON<unknown>(this.cachePath()).catch(() => null);
+    this.cache = read?.ok ? parseMediaSupportCache(read.data) : new Map();
+  }
 
-    /**
-     * Forget what was known about one asset and ask again.
-     *
-     * Called after the bytes behind an asset are replaced. The hash has moved by then, so the cache
-     * would miss anyway; this exists so the badge disappears the moment the conversion lands rather
-     * than at whatever later point something else happens to scan.
-     */
-    public async refresh(assetId: string): Promise<void> {
-        const asset = this.findAsset(assetId);
-        if (!asset) {
-            return;
-        }
-        // A conversion can land before anything has scanned (a project opened straight into the
-        // asset browser), and a cache that was never read cannot be added to.
-        await this.loadCache();
-        const record = await this.check(asset);
-        const records = new Map(this.scanResult.records);
-        const unanswered = this.scanResult.unanswered.filter(id => id !== assetId);
-        if (record) {
-            records.set(assetId, record);
-        } else {
-            records.delete(assetId);
-            unanswered.push(assetId);
-        }
-        this.scanResult = { ...this.scanResult, records, unanswered, finishedAt: Date.now() };
-        await this.writeCache();
-        this.notify();
+  private async writeCache(): Promise<void> {
+    const filesystem = this.tryGetFileSystem();
+    if (!filesystem || !this.cache || !this.cacheDirty) {
+      return;
     }
-
-    /* ------------------------------------------------------------------------------------------ */
-
-    private async runScan(force: boolean): Promise<MediaSupportScan> {
-        if (force) {
-            this.cache = new Map();
-        }
-        await this.loadCache();
-
-        const records = new Map<string, MediaAssetSupportRecord>();
-        const unanswered: string[] = [];
-        const liveHashes = new Set<string>();
-        let probeAvailable = true;
-
-        for (const asset of this.checkableAssets()) {
-            if (asset.hash) {
-                liveHashes.add(asset.hash);
-            }
-            // Once the host has said it has no probe, the remaining files would each answer the
-            // same thing at the cost of another spawn. Stop asking; they are unanswered, which is
-            // what `probeAvailable: false` already says about all of them.
-            if (!probeAvailable && mediaSupportCheckKind(asset) === "probe") {
-                unanswered.push(asset.id);
-                continue;
-            }
-            const outcome = await this.checkWithAvailability(asset);
-            if (outcome.probeMissing) {
-                probeAvailable = false;
-            }
-            if (outcome.record) {
-                records.set(asset.id, outcome.record);
-            } else {
-                unanswered.push(asset.id);
-            }
-        }
-
-        if (this.cache) {
-            const pruned = pruneMediaSupportCache(this.cache, liveHashes);
-            this.cacheDirty ||= pruned.size !== this.cache.size;
-            this.cache = pruned;
-        }
-        await this.writeCache();
-
-        this.scanResult = { records, probeAvailable, unanswered, finishedAt: Date.now() };
-        this.notify();
-        return this.scanResult;
+    this.cacheDirty = false;
+    try {
+      await filesystem.createDir(
+        this.getContext().project.resolve(ProjectNameConvention.EditorMediaSupportCache)
+      );
+      await filesystem.write(
+        this.cachePath(),
+        JSON.stringify(serializeMediaSupportCache(this.cache)),
+        "utf-8"
+      );
+    } catch {
+      // A cache that cannot be written costs re-probes next time and nothing else. It is not
+      // project data, so there is nobody to tell.
     }
+  }
 
-    /** Every asset worth checking, in library order so a report reads the way the browser looks. */
-    private checkableAssets(): Asset[] {
-        const assets = this.tryGetAssets();
-        if (!assets) {
-            return [];
-        }
-        const out: Asset[] = [];
-        for (const type of [AssetType.Image, AssetType.Audio, AssetType.Video]) {
-            for (const asset of assets.getOrderedAssets(type)) {
-                if (mediaSupportCheckKind(asset)) {
-                    out.push(asset);
-                }
-            }
-        }
-        return out;
+  private cachePath(): string {
+    return this.getContext().project.resolve(ProjectNameConvention.EditorMediaSupportCacheFile);
+  }
+
+  private tryGetAssets(): AssetsService | null {
+    try {
+      return this.getContext().services.get<AssetsService>(Services.Assets);
+    } catch {
+      return null;
     }
+  }
 
-    private findAsset(assetId: string): Asset | null {
-        return this.checkableAssets().find(asset => asset.id === assetId) ?? null;
+  private tryGetFileSystem(): FileSystemService | null {
+    try {
+      return this.getContext().services.get<FileSystemService>(Services.FileSystem);
+    } catch {
+      return null;
     }
+  }
 
-    private async check(asset: Asset): Promise<MediaAssetSupportRecord | null> {
-        return (await this.checkWithAvailability(asset)).record;
+  private notify(): void {
+    for (const listener of [...this.listeners]) {
+      try {
+        listener();
+      } catch {
+        // A subscriber's own failure is not this service's to propagate.
+      }
     }
-
-    /**
-     * One asset's answer, from the cache when the hash still matches and from a probe when it does
-     * not.
-     *
-     * `probeMissing` is reported separately from a `null` record because the two mean different
-     * things to the caller: a probe that failed on this one file is a gap, while a host with no
-     * probe at all is a reason to stop asking and to say so.
-     */
-    private async checkWithAvailability(
-        asset: Asset,
-    ): Promise<{ record: MediaAssetSupportRecord | null; probeMissing: boolean }> {
-        const kind = mediaSupportCheckKind(asset);
-        if (kind === null) {
-            return { record: null, probeMissing: false };
-        }
-        if (kind === "image") {
-            // Decided from the name. Not cached: there is no process to save, and an entry keyed by
-            // content hash would answer a question that was never about the content.
-            return { record: imageSupportRecord(asset), probeMissing: false };
-        }
-
-        // An asset with no hash is one whose digest could not be computed at import. It is still
-        // probed; it just cannot be remembered, because there is nothing to key the answer to.
-        const cached = asset.hash ? this.cache?.get(asset.hash) : undefined;
-        if (cached) {
-            return { record: cached, probeMissing: false };
-        }
-
-        const outcome = await this.probe(asset);
-        const record = mediaSupportRecordFromProbe(outcome);
-        if (record && asset.hash) {
-            this.cache?.set(asset.hash, record);
-            this.cacheDirty = true;
-        }
-        return { record, probeMissing: outcome?.status === "unavailable" };
-    }
-
-    private async probe(asset: Asset) {
-        const context = this.getContext();
-        // The content shard is addressed by the asset **id**, not by `hash`. Building this path from
-        // the hash - which is the field one reaches for when thinking about content - produces a
-        // path that does not exist, and the probe answers "failed" about a perfectly good file.
-        const path = context.project.resolve(ProjectNameConvention.AssetsDataShard(asset.id));
-        try {
-            const result = await getInterface().probeMedia(path);
-            return result.success ? result.data.outcome : null;
-        } catch {
-            return null;
-        }
-    }
-
-    private async loadCache(): Promise<void> {
-        if (this.cache) {
-            return;
-        }
-        const filesystem = this.tryGetFileSystem();
-        if (!filesystem) {
-            this.cache = new Map();
-            return;
-        }
-        const read = await filesystem.readJSON<unknown>(this.cachePath()).catch(() => null);
-        this.cache = read?.ok ? parseMediaSupportCache(read.data) : new Map();
-    }
-
-    private async writeCache(): Promise<void> {
-        const filesystem = this.tryGetFileSystem();
-        if (!filesystem || !this.cache || !this.cacheDirty) {
-            return;
-        }
-        this.cacheDirty = false;
-        try {
-            await filesystem.createDir(
-                this.getContext().project.resolve(ProjectNameConvention.EditorMediaSupportCache),
-            );
-            await filesystem.write(
-                this.cachePath(),
-                JSON.stringify(serializeMediaSupportCache(this.cache)),
-                "utf-8",
-            );
-        } catch {
-            // A cache that cannot be written costs re-probes next time and nothing else. It is not
-            // project data, so there is nobody to tell.
-        }
-    }
-
-    private cachePath(): string {
-        return this.getContext().project.resolve(ProjectNameConvention.EditorMediaSupportCacheFile);
-    }
-
-    private tryGetAssets(): AssetsService | null {
-        try {
-            return this.getContext().services.get<AssetsService>(Services.Assets);
-        } catch {
-            return null;
-        }
-    }
-
-    private tryGetFileSystem(): FileSystemService | null {
-        try {
-            return this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        } catch {
-            return null;
-        }
-    }
-
-    private notify(): void {
-        for (const listener of [...this.listeners]) {
-            try {
-                listener();
-            } catch {
-                // A subscriber's own failure is not this service's to propagate.
-            }
-        }
-    }
+  }
 }

@@ -4,8 +4,8 @@ import type { App } from "@/app/app";
 // Relative on purpose: "@/" means src/main here but src/renderer under vitest,
 // so a runtime (non-type) import through it would not resolve in tests.
 import {
-    validateMobileShellManifest,
-    type MobileShellManifest,
+  validateMobileShellManifest,
+  type MobileShellManifest
 } from "../../../../buildWorker/mobile/mobileShellManifest";
 
 /**
@@ -33,14 +33,14 @@ type MobileShellResolverApp = Pick<App, "isPackaged" | "resolveResource">;
 export type MobileShellVariant = "release" | "debug";
 
 export type MobileShellTemplate = {
-    /** Package root the manifest's relative paths resolve against. */
-    dir: string;
-    manifest: MobileShellManifest;
-    variant: MobileShellVariant;
-    /** Absolute path of this variant's Android template APK. */
-    androidTemplatePath: string;
-    /** Absolute path of this variant's iOS template `.app.zip`. */
-    iosTemplatePath: string;
+  /** Package root the manifest's relative paths resolve against. */
+  dir: string;
+  manifest: MobileShellManifest;
+  variant: MobileShellVariant;
+  /** Absolute path of this variant's Android template APK. */
+  androidTemplatePath: string;
+  /** Absolute path of this variant's iOS template `.app.zip`. */
+  iosTemplatePath: string;
 };
 
 /**
@@ -51,28 +51,32 @@ export type MobileShellTemplate = {
  * esbuild and this package is data, not code.
  */
 export function resolveMobileShellDirForApp(app: MobileShellResolverApp): string {
-    if (app.isPackaged()) {
-        return app.resolveResource("mobile-shell");
-    }
-    return app.resolveResource(path.join("..", "node_modules", "@narraleaf", "studio-shell"));
+  if (app.isPackaged()) {
+    return app.resolveResource("mobile-shell");
+  }
+  return app.resolveResource(path.join("..", "node_modules", "@narraleaf", "studio-shell"));
 }
 
 /** Development repacks with the inspectable shell; a packaged Studio never does. */
 export function mobileShellVariantForApp(app: Pick<App, "isPackaged">): MobileShellVariant {
-    return app.isPackaged() ? "release" : "debug";
+  return app.isPackaged() ? "release" : "debug";
 }
 
-async function resolveTemplateFile(dir: string, relativePath: string, label: string): Promise<string> {
-    const absolute = path.resolve(dir, relativePath);
-    try {
-        await fs.access(absolute);
-    } catch {
-        throw new Error(
-            `The ${label} shell template is missing (${relativePath} under ${dir}). `
-            + "Reinstall dependencies, or run project/build/prepare-mobile-shell.js to stage the templates.",
-        );
-    }
-    return absolute;
+async function resolveTemplateFile(
+  dir: string,
+  relativePath: string,
+  label: string
+): Promise<string> {
+  const absolute = path.resolve(dir, relativePath);
+  try {
+    await fs.access(absolute);
+  } catch {
+    throw new Error(
+      `The ${label} shell template is missing (${relativePath} under ${dir}). ` +
+        "Reinstall dependencies, or run project/build/prepare-mobile-shell.js to stage the templates."
+    );
+  }
+  return absolute;
 }
 
 /**
@@ -83,42 +87,46 @@ async function resolveTemplateFile(dir: string, relativePath: string, label: str
  * much later.
  */
 export async function loadMobileShellTemplate(
-    dir: string,
-    variant: MobileShellVariant,
+  dir: string,
+  variant: MobileShellVariant
 ): Promise<MobileShellTemplate> {
-    const manifestPath = path.join(dir, "manifest.json");
-    let raw: string;
-    try {
-        raw = await fs.readFile(manifestPath, "utf8");
-    } catch {
-        throw new Error(
-            `The mobile shell templates are not installed (no manifest.json under ${dir}). `
-            + "Reinstall dependencies, or run project/build/prepare-mobile-shell.js to stage the templates.",
-        );
-    }
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(raw);
-    } catch (error) {
-        throw new Error(`The shell template manifest is not valid JSON (${manifestPath}): ${String(error)}`);
-    }
-    const manifest = validateMobileShellManifest(parsed);
-    const [androidTemplatePath, iosTemplatePath] = await Promise.all([
-        resolveTemplateFile(
-            dir,
-            variant === "debug" ? manifest.android.templateDebug : manifest.android.template,
-            `Android ${variant}`,
-        ),
-        resolveTemplateFile(
-            dir,
-            variant === "debug" ? manifest.ios.templateDebug : manifest.ios.template,
-            `iOS ${variant}`,
-        ),
-    ]);
-    return { dir, manifest, variant, androidTemplatePath, iosTemplatePath };
+  const manifestPath = path.join(dir, "manifest.json");
+  let raw: string;
+  try {
+    raw = await fs.readFile(manifestPath, "utf8");
+  } catch {
+    throw new Error(
+      `The mobile shell templates are not installed (no manifest.json under ${dir}). ` +
+        "Reinstall dependencies, or run project/build/prepare-mobile-shell.js to stage the templates."
+    );
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      `The shell template manifest is not valid JSON (${manifestPath}): ${String(error)}`
+    );
+  }
+  const manifest = validateMobileShellManifest(parsed);
+  const [androidTemplatePath, iosTemplatePath] = await Promise.all([
+    resolveTemplateFile(
+      dir,
+      variant === "debug" ? manifest.android.templateDebug : manifest.android.template,
+      `Android ${variant}`
+    ),
+    resolveTemplateFile(
+      dir,
+      variant === "debug" ? manifest.ios.templateDebug : manifest.ios.template,
+      `iOS ${variant}`
+    )
+  ]);
+  return { dir, manifest, variant, androidTemplatePath, iosTemplatePath };
 }
 
 /** Convenience for the manager: resolve, then load, in one step. */
-export function loadMobileShellTemplateForApp(app: MobileShellResolverApp): Promise<MobileShellTemplate> {
-    return loadMobileShellTemplate(resolveMobileShellDirForApp(app), mobileShellVariantForApp(app));
+export function loadMobileShellTemplateForApp(
+  app: MobileShellResolverApp
+): Promise<MobileShellTemplate> {
+  return loadMobileShellTemplate(resolveMobileShellDirForApp(app), mobileShellVariantForApp(app));
 }

@@ -16,30 +16,30 @@
  * as its entry is right.
  */
 export type ModelBundleFormat =
-    | "live2d-cubism4"
-    | "live2d-cubism2"
-    | "spine-binary"
-    | "spine-json"
-    | "unknown";
+  | "live2d-cubism4"
+  | "live2d-cubism2"
+  | "spine-binary"
+  | "spine-json"
+  | "unknown";
 
 export interface ModelEntryCandidate {
-    /** Path relative to the bundle root, `/`-separated. */
-    path: string;
-    format: ModelBundleFormat;
-    /** Higher is a stronger signal. Only used to rank; the absolute value means nothing. */
-    confidence: number;
+  /** Path relative to the bundle root, `/`-separated. */
+  path: string;
+  format: ModelBundleFormat;
+  /** Higher is a stronger signal. Only used to rank; the absolute value means nothing. */
+  confidence: number;
 }
 
 export interface ModelEntryDetection {
-    /** The entry to use, or null when the author has to pick one. */
-    entry: string | null;
-    /** Every plausible entry, best first. May be empty when the tree contains no manifest-ish file. */
-    candidates: ModelEntryCandidate[];
-    /**
-     * Why {@link entry} is null. `"ambiguous"` means several files tied at the top rank (two models
-     * in one folder is the usual cause); `"none"` means nothing in the tree looked like a manifest.
-     */
-    reason?: "ambiguous" | "none";
+  /** The entry to use, or null when the author has to pick one. */
+  entry: string | null;
+  /** Every plausible entry, best first. May be empty when the tree contains no manifest-ish file. */
+  candidates: ModelEntryCandidate[];
+  /**
+   * Why {@link entry} is null. `"ambiguous"` means several files tied at the top rank (two models
+   * in one folder is the usual cause); `"none"` means nothing in the tree looked like a manifest.
+   */
+  reason?: "ambiguous" | "none";
 }
 
 /** How many files a bundle may contain before import refuses it. */
@@ -56,21 +56,21 @@ export const MODEL_BUNDLE_MAX_DEPTH = 16;
  * dropping it is how that becomes hard to diagnose.
  */
 export function normalizeBundlePath(relativePath: string): string | null {
-    const unified = relativePath.replace(/\\/g, "/");
-    if (unified.includes("\0")) {
-        return null;
+  const unified = relativePath.replace(/\\/g, "/");
+  if (unified.includes("\0")) {
+    return null;
+  }
+  const segments: string[] = [];
+  for (const segment of unified.split("/")) {
+    if (segment === "" || segment === ".") {
+      continue;
     }
-    const segments: string[] = [];
-    for (const segment of unified.split("/")) {
-        if (segment === "" || segment === ".") {
-            continue;
-        }
-        if (segment === "..") {
-            return null;
-        }
-        segments.push(segment);
+    if (segment === "..") {
+      return null;
     }
-    return segments.length > 0 ? segments.join("/") : null;
+    segments.push(segment);
+  }
+  return segments.length > 0 ? segments.join("/") : null;
 }
 
 /**
@@ -81,26 +81,26 @@ export function normalizeBundlePath(relativePath: string): string | null {
  * would produce a spurious diff on every re-import of the same folder.
  */
 export function sortBundlePaths(paths: readonly string[]): string[] {
-    return [...paths].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  return [...paths].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
 function depthOf(path: string): number {
-    return path.split("/").length - 1;
+  return path.split("/").length - 1;
 }
 
 function fileNameOf(path: string): string {
-    const index = path.lastIndexOf("/");
-    return index === -1 ? path : path.slice(index + 1);
+  const index = path.lastIndexOf("/");
+  return index === -1 ? path : path.slice(index + 1);
 }
 
 function dirNameOf(path: string): string {
-    const index = path.lastIndexOf("/");
-    return index === -1 ? "" : path.slice(0, index);
+  const index = path.lastIndexOf("/");
+  return index === -1 ? "" : path.slice(0, index);
 }
 
 function stemOf(fileName: string): string {
-    const index = fileName.indexOf(".");
-    return index === -1 ? fileName : fileName.slice(0, index);
+  const index = fileName.indexOf(".");
+  return index === -1 ? fileName : fileName.slice(0, index);
 }
 
 /**
@@ -124,73 +124,77 @@ function stemOf(fileName: string): string {
  * folder is a real thing authors do, and guessing between them silently is worse than asking.
  */
 export function detectModelBundleEntry(files: readonly string[]): ModelEntryDetection {
-    const normalized = files
-        .map(file => normalizeBundlePath(file))
-        .filter((file): file is string => file !== null);
+  const normalized = files
+    .map((file) => normalizeBundlePath(file))
+    .filter((file): file is string => file !== null);
 
-    const atlasDirs = new Set<string>();
-    const atlasStems = new Set<string>();
-    for (const file of normalized) {
-        const name = fileNameOf(file).toLowerCase();
-        if (name.endsWith(".atlas") || name.endsWith(".atlas.txt")) {
-            atlasDirs.add(dirNameOf(file));
-            atlasStems.add(`${dirNameOf(file)}/${stemOf(fileNameOf(file))}`);
-        }
+  const atlasDirs = new Set<string>();
+  const atlasStems = new Set<string>();
+  for (const file of normalized) {
+    const name = fileNameOf(file).toLowerCase();
+    if (name.endsWith(".atlas") || name.endsWith(".atlas.txt")) {
+      atlasDirs.add(dirNameOf(file));
+      atlasStems.add(`${dirNameOf(file)}/${stemOf(fileNameOf(file))}`);
     }
+  }
 
-    const candidates: ModelEntryCandidate[] = [];
-    for (const file of normalized) {
-        const name = fileNameOf(file).toLowerCase();
-        const dir = dirNameOf(file);
+  const candidates: ModelEntryCandidate[] = [];
+  for (const file of normalized) {
+    const name = fileNameOf(file).toLowerCase();
+    const dir = dirNameOf(file);
 
-        if (name.endsWith(".model3.json")) {
-            candidates.push({ path: file, format: "live2d-cubism4", confidence: 100 });
-            continue;
-        }
-        if (name.endsWith(".skel") && atlasDirs.has(dir)) {
-            candidates.push({ path: file, format: "spine-binary", confidence: 90 });
-            continue;
-        }
-        if (name.endsWith(".json") && atlasDirs.has(dir) && !isLive2dSidecar(name)) {
-            // The atlas itself is sometimes `foo.atlas.json`; never offer it as the skeleton.
-            if (!name.endsWith(".atlas.json")) {
-                candidates.push({ path: file, format: "spine-json", confidence: 80 });
-            }
-            continue;
-        }
-        if (name === "model.json" || name.endsWith(".model.json")) {
-            candidates.push({ path: file, format: "live2d-cubism2", confidence: 60 });
-        }
+    if (name.endsWith(".model3.json")) {
+      candidates.push({ path: file, format: "live2d-cubism4", confidence: 100 });
+      continue;
     }
-
-    candidates.sort((a, b) =>
-        b.confidence - a.confidence
-        || depthOf(a.path) - depthOf(b.path)
-        || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-
-    if (candidates.length === 0) {
-        return { entry: null, candidates: [], reason: "none" };
+    if (name.endsWith(".skel") && atlasDirs.has(dir)) {
+      candidates.push({ path: file, format: "spine-binary", confidence: 90 });
+      continue;
     }
-
-    const best = candidates[0];
-    const tied = candidates.filter(candidate =>
-        candidate.confidence === best.confidence && depthOf(candidate.path) === depthOf(best.path));
-    if (tied.length > 1) {
-        // Spine exports both `foo.skel` and `foo.json` from the same skeleton; those are the same
-        // model in two encodings, not two models, so they never count as a tie against each other.
-        // Different stems next to the same atlas genuinely are two models.
-        const stems = new Set(tied.map(candidate => stemOf(fileNameOf(candidate.path))));
-        if (stems.size > 1) {
-            return { entry: null, candidates, reason: "ambiguous" };
-        }
+    if (name.endsWith(".json") && atlasDirs.has(dir) && !isLive2dSidecar(name)) {
+      // The atlas itself is sometimes `foo.atlas.json`; never offer it as the skeleton.
+      if (!name.endsWith(".atlas.json")) {
+        candidates.push({ path: file, format: "spine-json", confidence: 80 });
+      }
+      continue;
     }
+    if (name === "model.json" || name.endsWith(".model.json")) {
+      candidates.push({ path: file, format: "live2d-cubism2", confidence: 60 });
+    }
+  }
 
-    return { entry: best.path, candidates };
+  candidates.sort(
+    (a, b) =>
+      b.confidence - a.confidence ||
+      depthOf(a.path) - depthOf(b.path) ||
+      (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
+  );
+
+  if (candidates.length === 0) {
+    return { entry: null, candidates: [], reason: "none" };
+  }
+
+  const best = candidates[0];
+  const tied = candidates.filter(
+    (candidate) =>
+      candidate.confidence === best.confidence && depthOf(candidate.path) === depthOf(best.path)
+  );
+  if (tied.length > 1) {
+    // Spine exports both `foo.skel` and `foo.json` from the same skeleton; those are the same
+    // model in two encodings, not two models, so they never count as a tie against each other.
+    // Different stems next to the same atlas genuinely are two models.
+    const stems = new Set(tied.map((candidate) => stemOf(fileNameOf(candidate.path))));
+    if (stems.size > 1) {
+      return { entry: null, candidates, reason: "ambiguous" };
+    }
+  }
+
+  return { entry: best.path, candidates };
 }
 
 /** The Live2D sidecars that sit beside a `.model3.json` and are never the entry themselves. */
 function isLive2dSidecar(lowerFileName: string): boolean {
-    return /\.(physics3|cdi3|pose3|userdata3|exp3|motion3|display3)\.json$/.test(lowerFileName);
+  return /\.(physics3|cdi3|pose3|userdata3|exp3|motion3|display3)\.json$/.test(lowerFileName);
 }
 
 /**
@@ -206,18 +210,18 @@ function isLive2dSidecar(lowerFileName: string): boolean {
  * digest of the bytes.
  */
 export function bundleListingFingerprint(files: readonly string[]): string {
-    let h1 = 0x811c9dc5;
-    let h2 = 0x01000193;
-    for (const path of sortBundlePaths(files)) {
-        for (let index = 0; index < path.length; index += 1) {
-            const code = path.charCodeAt(index);
-            h1 = Math.imul(h1 ^ code, 0x01000193) >>> 0;
-            h2 = Math.imul(h2 + code, 0x85ebca6b) >>> 0;
-        }
-        h1 = Math.imul(h1 ^ 0x2f, 0x01000193) >>> 0;
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  for (const path of sortBundlePaths(files)) {
+    for (let index = 0; index < path.length; index += 1) {
+      const code = path.charCodeAt(index);
+      h1 = Math.imul(h1 ^ code, 0x01000193) >>> 0;
+      h2 = Math.imul(h2 + code, 0x85ebca6b) >>> 0;
     }
-    const count = files.length.toString(16).padStart(4, "0");
-    return `bundle:${count}${h1.toString(16).padStart(8, "0")}${h2.toString(16).padStart(8, "0")}`;
+    h1 = Math.imul(h1 ^ 0x2f, 0x01000193) >>> 0;
+  }
+  const count = files.length.toString(16).padStart(4, "0");
+  return `bundle:${count}${h1.toString(16).padStart(8, "0")}${h2.toString(16).padStart(8, "0")}`;
 }
 
 /**
@@ -226,8 +230,8 @@ export function bundleListingFingerprint(files: readonly string[]): string {
  * Studio has never heard of.
  */
 export function listModelEntryChoices(files: readonly string[]): string[] {
-    const detection = detectModelBundleEntry(files);
-    const ranked = detection.candidates.map(candidate => candidate.path);
-    const rest = sortBundlePaths(files.filter(file => !ranked.includes(file)));
-    return [...ranked, ...rest];
+  const detection = detectModelBundleEntry(files);
+  const ranked = detection.candidates.map((candidate) => candidate.path);
+  const rest = sortBundlePaths(files.filter((file) => !ranked.includes(file)));
+  return [...ranked, ...rest];
 }

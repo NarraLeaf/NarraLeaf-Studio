@@ -33,11 +33,11 @@ machine an English selector finds nothing and the run reads as stuck, not as mis
 Three switches skip that, all of them **development-only** — a packaged build ignores them, because
 argv there is where shortcuts and file associations arrive:
 
-| | |
-|---|---|
-| `--skip-onboarding` | Open the home screen even on a profile that has never been through setup. Records nothing: the profile still owes the flow, and the next launch without the flag asks for it. |
-| `--project <name-or-path>` | Open this project's workspace instead of the home screen. Implies `--skip-onboarding`. |
-| `--onboarding` | Force first-run setup. Beats both of the above. |
+|                            |                                                                                                                                                                               |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--skip-onboarding`        | Open the home screen even on a profile that has never been through setup. Records nothing: the profile still owes the flow, and the next launch without the flag asks for it. |
+| `--project <name-or-path>` | Open this project's workspace instead of the home screen. Implies `--skip-onboarding`.                                                                                        |
+| `--onboarding`             | Force first-run setup. Beats both of the above.                                                                                                                               |
 
 ```sh
 node tools/ui-verify/drive.js projects           # which projects does this profile remember?
@@ -57,7 +57,7 @@ its own list — seed one by opening a project there once, or just launch with `
 which adds it on the way in.
 
 Coordinates are **CSS pixels**; screenshot pixels are CSS px x `devicePixelRatio` (1.25 here), so divide
-before clicking a point read off an image. The same factor applies to any distance you *report*: a
+before clicking a point read off an image. The same factor applies to any distance you _report_: a
 "61px" gap measured off a screenshot in the version-rail round was 49 CSS px, which was exactly the
 width of the column that had just been added — the number sent someone looking for a second cause
 that did not exist.
@@ -65,7 +65,7 @@ that did not exist.
 ## Four traps, each of which has cost an acceptance here
 
 **1. The stale bundle — check it before believing anything.** The launcher rebuilds `dist` only after
-it owns the reload port. If something else holds that port it prints *"dist was left untouched"* and
+it owns the reload port. If something else holds that port it prints _"dist was left untouched"_ and
 exits, while a **previous instance keeps answering on the CDP port** — so the app you are driving can
 be an hour older than the code you are accepting. Integration tests that drive `DevModeManager` leave
 such processes behind. Assert freshness first:
@@ -78,11 +78,11 @@ If it is not, kill by command line (`Get-CimInstance Win32_Process | Where Comma
 free the ports, relaunch, and check again. This nearly passed a 55-minute-old build twice in one round.
 
 **2. `el.disabled` does not see an ancestor `<fieldset disabled>`.** That property reflects the
-element's *own* attribute. The property framework disables structural fields by wrapping them, so ask
+element's _own_ attribute. The property framework disables structural fields by wrapping them, so ask
 `el.matches(':disabled')`. Asking the wrong one reports a defect that is not there.
 
-**3. The command palette does not substring-match.** `>unfreeze` does not find *Unfreeze Project
-(Resume Saving Changes)*; `>freeze` does. Dump the visible rows and click one instead of typing a
+**3. The command palette does not substring-match.** `>unfreeze` does not find _Unfreeze Project
+(Resume Saving Changes)_; `>freeze` does. Dump the visible rows and click one instead of typing a
 query and pressing Enter blind — otherwise a command that silently did not run looks like a product
 bug, and the app will happily keep behaving as though you never ran it.
 
@@ -94,11 +94,11 @@ loser returned success having done nothing).
 As a module:
 
 ```js
-const { withDriver } = require('./tools/ui-verify/drive');
+const { withDriver } = require("./tools/ui-verify/drive");
 
-await withDriver({ target: 'dev-mode' }, async (d) => {
-    await d.click(320, 240);
-    console.log(await d.evaluate('document.querySelectorAll("li").length'));
-    console.log(await d.screenshot('timeline'));
+await withDriver({ target: "dev-mode" }, async (d) => {
+  await d.click(320, 240);
+  console.log(await d.evaluate('document.querySelectorAll("li").length'));
+  console.log(await d.screenshot("timeline"));
 });
 ```

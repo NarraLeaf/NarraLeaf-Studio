@@ -34,21 +34,21 @@ export type FieldReadOnlyStrategy = "own" | "structural";
  * both of its inputs, and `FieldRenderer` passes it to the `fontAsset` field.
  */
 const SELF_READ_ONLY_FIELD_TYPES: ReadonlySet<FieldType> = new Set<FieldType>([
-    "text",
-    "textarea",
-    "number",
-    "inputGroup",
-    "colorPicker",
-    "fontAsset",
-    // Purely presentational - there is nothing to write, so a clamp would only add a wrapper.
-    "info",
-    "thumbnail",
-    "section",
+  "text",
+  "textarea",
+  "number",
+  "inputGroup",
+  "colorPicker",
+  "fontAsset",
+  // Purely presentational - there is nothing to write, so a clamp would only add a wrapper.
+  "info",
+  "thumbnail",
+  "section"
 ]);
 
 /** Which of the two ways a field of this TYPE has to be made read-only. */
 export function fieldTypeReadOnlyStrategy(type: FieldType): FieldReadOnlyStrategy {
-    return SELF_READ_ONLY_FIELD_TYPES.has(type) ? "own" : "structural";
+  return SELF_READ_ONLY_FIELD_TYPES.has(type) ? "own" : "structural";
 }
 
 /**
@@ -76,22 +76,24 @@ export type ReadOnlyAwareComponent = { readOnlyStrategy?: FieldReadOnlyStrategy 
  * Getting this wrong offers a write inside a frozen project, which is the one direction this whole
  * pass is not allowed to be wrong in.
  */
-export function selfReadOnly<C extends ComponentType<any>>(component: C): C & ReadOnlyAwareComponent {
-    return Object.assign(component, { readOnlyStrategy: "own" as const });
+export function selfReadOnly<C extends ComponentType<any>>(
+  component: C
+): C & ReadOnlyAwareComponent {
+  return Object.assign(component, { readOnlyStrategy: "own" as const });
 }
 
 /** What the framework has to render around a field, given its type and (for `custom`) its component. */
 export function fieldReadOnlyStrategy(field: {
-    type: FieldType;
-    component?: unknown;
+  type: FieldType;
+  component?: unknown;
 }): FieldReadOnlyStrategy {
-    if ((field.component as ReadOnlyAwareComponent | undefined)?.readOnlyStrategy === "own") {
-        return "own";
-    }
-    return fieldTypeReadOnlyStrategy(field.type);
+  if ((field.component as ReadOnlyAwareComponent | undefined)?.readOnlyStrategy === "own") {
+    return "own";
+  }
+  return fieldTypeReadOnlyStrategy(field.type);
 }
 
 /** Whether the framework must clamp this field's rendered subtree from outside. */
 export function needsStructuralReadOnly(field: { type: FieldType; component?: unknown }): boolean {
-    return fieldReadOnlyStrategy(field) === "structural";
+  return fieldReadOnlyStrategy(field) === "structural";
 }

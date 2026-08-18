@@ -20,55 +20,55 @@ import { useStoryScriptIo } from "./useStoryScriptIo";
  * workspace is frozen (it writes a file the author picks, outside the project); import does not.
  */
 export function StoryScriptCommands() {
-    const { context } = useWorkspace();
-    const script = useStoryScriptIo();
+  const { context } = useWorkspace();
+  const script = useStoryScriptIo();
 
-    // The registration is made once and reads the current flow through this ref, so a re-render does
-    // not churn the palette's registry.
-    const scriptRef = useRef(script);
-    scriptRef.current = script;
+  // The registration is made once and reads the current flow through this ref, so a re-render does
+  // not churn the palette's registry.
+  const scriptRef = useRef(script);
+  scriptRef.current = script;
 
-    useEffect(() => {
-        if (!context) {
-            return;
+  useEffect(() => {
+    if (!context) {
+      return;
+    }
+    const commandService = context.services.get<CommandService>(Services.Command);
+    const storyService = context.services.get<StoryService>(Services.Story);
+    const targetStoryId = (): string | null =>
+      storyService.getDefaultStoryId() ?? storyService.listStories()[0]?.id ?? null;
+
+    return commandService.registerMany([
+      {
+        id: "story:export-script",
+        titleKey: "story.script.exportStory",
+        categoryKey: "workspace.shell.commandPalette.categoryStory",
+        // Out of the project and into it - the arrow points the way the script travels.
+        icon: <FileUp className="w-4 h-4" />,
+        when: () => targetStoryId() !== null,
+        run: () => {
+          const storyId = targetStoryId();
+          if (storyId) {
+            scriptRef.current.beginExport({ storyId, sceneIds: null });
+          }
         }
-        const commandService = context.services.get<CommandService>(Services.Command);
-        const storyService = context.services.get<StoryService>(Services.Story);
-        const targetStoryId = (): string | null =>
-            storyService.getDefaultStoryId() ?? storyService.listStories()[0]?.id ?? null;
+      },
+      {
+        id: "story:import-script",
+        titleKey: "story.script.import",
+        categoryKey: "workspace.shell.commandPalette.categoryStory",
+        icon: <FileDown className="w-4 h-4" />,
+        // Registered commands are exempt from the palette's own freeze filter by design, so
+        // the gate has to be here - see `WorkspaceCommands`.
+        when: () => getProjectWriteFreeze() === null && targetStoryId() !== null,
+        run: () => {
+          const storyId = targetStoryId();
+          if (storyId) {
+            scriptRef.current.beginImport(storyId);
+          }
+        }
+      }
+    ]);
+  }, [context]);
 
-        return commandService.registerMany([
-            {
-                id: "story:export-script",
-                titleKey: "story.script.exportStory",
-                categoryKey: "workspace.shell.commandPalette.categoryStory",
-                // Out of the project and into it - the arrow points the way the script travels.
-                icon: <FileUp className="w-4 h-4" />,
-                when: () => targetStoryId() !== null,
-                run: () => {
-                    const storyId = targetStoryId();
-                    if (storyId) {
-                        scriptRef.current.beginExport({ storyId, sceneIds: null });
-                    }
-                },
-            },
-            {
-                id: "story:import-script",
-                titleKey: "story.script.import",
-                categoryKey: "workspace.shell.commandPalette.categoryStory",
-                icon: <FileDown className="w-4 h-4" />,
-                // Registered commands are exempt from the palette's own freeze filter by design, so
-                // the gate has to be here - see `WorkspaceCommands`.
-                when: () => getProjectWriteFreeze() === null && targetStoryId() !== null,
-                run: () => {
-                    const storyId = targetStoryId();
-                    if (storyId) {
-                        scriptRef.current.beginImport(storyId);
-                    }
-                },
-            },
-        ]);
-    }, [context]);
-
-    return <>{script.dialogs}</>;
+  return <>{script.dialogs}</>;
 }

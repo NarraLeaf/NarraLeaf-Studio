@@ -10,24 +10,24 @@ import type { HelpBrowserResource } from "./HelpBrowser";
  * `app.openExternal`, which refuses anything else.
  */
 export const HELP_RESOURCES: readonly HelpBrowserResource[] = [
-    {
-        id: "docs-studio",
-        titleKey: "help.resourceTitles.docs" as TranslationKey,
-        url: "https://www.narraleaf.com/docs/studio",
-    },
-    {
-        id: "docs-website",
-        titleKey: "help.resourceTitles.site" as TranslationKey,
-        url: "https://www.narraleaf.com",
-    },
-    {
-        id: "docs-github",
-        titleKey: "help.resourceTitles.github" as TranslationKey,
-        url: "https://github.com/NarraLeaf",
-    },
-    {
-        id: "docs-narraleaf-react",
-        titleKey: "help.resourceTitles.engine" as TranslationKey,
-        url: "https://github.com/NarraLeaf/narraleaf-react",
-    },
+  {
+    id: "docs-studio",
+    titleKey: "help.resourceTitles.docs" as TranslationKey,
+    url: "https://www.narraleaf.com/docs/studio"
+  },
+  {
+    id: "docs-website",
+    titleKey: "help.resourceTitles.site" as TranslationKey,
+    url: "https://www.narraleaf.com"
+  },
+  {
+    id: "docs-github",
+    titleKey: "help.resourceTitles.github" as TranslationKey,
+    url: "https://github.com/NarraLeaf"
+  },
+  {
+    id: "docs-narraleaf-react",
+    titleKey: "help.resourceTitles.engine" as TranslationKey,
+    url: "https://github.com/NarraLeaf/narraleaf-react"
+  }
 ];

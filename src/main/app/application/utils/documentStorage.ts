@@ -15,54 +15,56 @@ import { Fs } from "@shared/utils/fs";
  * that reads one way in the editor and another way in history.
  */
 export class MainDocumentStorage implements DocumentStorage {
-    public constructor(private readonly projectRoot: string) {}
+  public constructor(private readonly projectRoot: string) {}
 
-    public async read(relativePath: string): Promise<string | null> {
-        const result = await Fs.read(this.absolute(relativePath), "utf-8");
-        if (result.ok) {
-            return result.data;
-        }
-        // A missing document is an answer; anything else is a failure that has to propagate, or a
-        // file we merely could not open would be indistinguishable from one that is not there.
-        if (result.error.code === FsRejectErrorCode.NOT_FOUND) {
-            return null;
-        }
-        throw new Error(`Failed to read ${relativePath}: ${result.error.message}`);
+  public async read(relativePath: string): Promise<string | null> {
+    const result = await Fs.read(this.absolute(relativePath), "utf-8");
+    if (result.ok) {
+      return result.data;
     }
+    // A missing document is an answer; anything else is a failure that has to propagate, or a
+    // file we merely could not open would be indistinguishable from one that is not there.
+    if (result.error.code === FsRejectErrorCode.NOT_FOUND) {
+      return null;
+    }
+    throw new Error(`Failed to read ${relativePath}: ${result.error.message}`);
+  }
 
-    public async write(relativePath: string, text: string): Promise<void> {
-        await this.ensureParentDirectory(relativePath);
-        const result = await Fs.write(this.absolute(relativePath), text, "utf-8");
-        if (!result.ok) {
-            throw new Error(`Failed to write ${relativePath}: ${result.error.message}`);
-        }
+  public async write(relativePath: string, text: string): Promise<void> {
+    await this.ensureParentDirectory(relativePath);
+    const result = await Fs.write(this.absolute(relativePath), text, "utf-8");
+    if (!result.ok) {
+      throw new Error(`Failed to write ${relativePath}: ${result.error.message}`);
     }
+  }
 
-    public async copy(fromPath: string, toPath: string): Promise<void> {
-        await this.ensureParentDirectory(toPath);
-        const result = await Fs.cpFile(this.absolute(fromPath), this.absolute(toPath));
-        if (!result.ok) {
-            throw new Error(`Failed to copy ${fromPath} to ${toPath}: ${result.error.message}`);
-        }
+  public async copy(fromPath: string, toPath: string): Promise<void> {
+    await this.ensureParentDirectory(toPath);
+    const result = await Fs.cpFile(this.absolute(fromPath), this.absolute(toPath));
+    if (!result.ok) {
+      throw new Error(`Failed to copy ${fromPath} to ${toPath}: ${result.error.message}`);
     }
+  }
 
-    /**
-     * Created on demand because quarantine writes into `.nlstudio/quarantine/<timestamp>/...`,
-     * a directory that by construction has never existed before it is needed.
-     */
-    private async ensureParentDirectory(relativePath: string): Promise<void> {
-        const segments = normalizeDocumentPath(relativePath).split("/");
-        if (segments.length < 2) {
-            return;
-        }
-        const created = await Fs.createDir(this.absolute(segments.slice(0, -1).join("/")));
-        if (!created.ok) {
-            throw new Error(`Failed to create ${segments.slice(0, -1).join("/")}: ${created.error.message}`);
-        }
+  /**
+   * Created on demand because quarantine writes into `.nlstudio/quarantine/<timestamp>/...`,
+   * a directory that by construction has never existed before it is needed.
+   */
+  private async ensureParentDirectory(relativePath: string): Promise<void> {
+    const segments = normalizeDocumentPath(relativePath).split("/");
+    if (segments.length < 2) {
+      return;
     }
+    const created = await Fs.createDir(this.absolute(segments.slice(0, -1).join("/")));
+    if (!created.ok) {
+      throw new Error(
+        `Failed to create ${segments.slice(0, -1).join("/")}: ${created.error.message}`
+      );
+    }
+  }
 
-    /** Normalising here is what keeps a document path - quarantine's especially - inside the project. */
-    private absolute(relativePath: string): string {
-        return path.join(this.projectRoot, ...normalizeDocumentPath(relativePath).split("/"));
-    }
+  /** Normalising here is what keeps a document path - quarantine's especially - inside the project. */
+  private absolute(relativePath: string): string {
+    return path.join(this.projectRoot, ...normalizeDocumentPath(relativePath).split("/"));
+  }
 }

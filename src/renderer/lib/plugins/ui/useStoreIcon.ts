@@ -15,20 +15,21 @@ const resolved = new Map<string, string | null>();
 const pending = new Map<string, Promise<string | null>>();
 
 function load(pluginId: string): Promise<string | null> {
-    const existing = pending.get(pluginId);
-    if (existing) {
-        return existing;
-    }
-    const request = getInterface().plugins.registryIcon(pluginId)
-        .then(result => (result.success ? result.data.icon : null))
-        .catch(() => null)
-        .then(icon => {
-            resolved.set(pluginId, icon);
-            pending.delete(pluginId);
-            return icon;
-        });
-    pending.set(pluginId, request);
-    return request;
+  const existing = pending.get(pluginId);
+  if (existing) {
+    return existing;
+  }
+  const request = getInterface()
+    .plugins.registryIcon(pluginId)
+    .then((result) => (result.success ? result.data.icon : null))
+    .catch(() => null)
+    .then((icon) => {
+      resolved.set(pluginId, icon);
+      pending.delete(pluginId);
+      return icon;
+    });
+  pending.set(pluginId, request);
+  return request;
 }
 
 /**
@@ -37,33 +38,35 @@ function load(pluginId: string): Promise<string | null> {
  *   requested at all, so a registry of icon-less plugins costs zero round trips
  */
 export function useStoreIcon(pluginId: string, hasIcon: boolean): string | null {
-    const [icon, setIcon] = useState<string | null>(() => (hasIcon ? resolved.get(pluginId) ?? null : null));
+  const [icon, setIcon] = useState<string | null>(() =>
+    hasIcon ? (resolved.get(pluginId) ?? null) : null
+  );
 
-    useEffect(() => {
-        if (!hasIcon) {
-            setIcon(null);
-            return;
-        }
-        if (resolved.has(pluginId)) {
-            setIcon(resolved.get(pluginId) ?? null);
-            return;
-        }
-        let live = true;
-        void load(pluginId).then(next => {
-            if (live) {
-                setIcon(next);
-            }
-        });
-        return () => {
-            live = false;
-        };
-    }, [pluginId, hasIcon]);
+  useEffect(() => {
+    if (!hasIcon) {
+      setIcon(null);
+      return;
+    }
+    if (resolved.has(pluginId)) {
+      setIcon(resolved.get(pluginId) ?? null);
+      return;
+    }
+    let live = true;
+    void load(pluginId).then((next) => {
+      if (live) {
+        setIcon(next);
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [pluginId, hasIcon]);
 
-    return icon;
+  return icon;
 }
 
 /** Forget a plugin's cached thumbnail, so the next render asks main again. */
 export function forgetStoreIcon(pluginId: string): void {
-    resolved.delete(pluginId);
-    pending.delete(pluginId);
+  resolved.delete(pluginId);
+  pending.delete(pluginId);
 }

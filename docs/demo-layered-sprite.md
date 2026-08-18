@@ -14,15 +14,15 @@ Any transparent-background character PNG works — swap `--asset` for whatever y
 pass a plain file path instead of `--project`/`--asset`. The script paints everything except the
 base sprite, so what comes out is a real 1088×1984 sheet with all of this in it:
 
-| Layer | Why it is there |
-|---|---|
-| `Body` | the sprite itself, the constant layer |
-| `Warm tint` | full-canvas, **clipped** to the body — without the clip it floods the whole rectangle |
-| `Rim light` | full-canvas, **clipped**, blend mode `color` — a mode that mixes channels |
-| `Mood/` → `Calm`, `Angry` | a top-level group, and the two layers inside it are cropped to the face |
-| `Shade` | `multiply`, sitting **above** the group |
-| `Grain` | `dissolve` — deliberately something Studio refuses to flatten |
-| `Scratch (WIP)` | hidden, the way a real working file always has one |
+| Layer                     | Why it is there                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------- |
+| `Body`                    | the sprite itself, the constant layer                                                 |
+| `Warm tint`               | full-canvas, **clipped** to the body — without the clip it floods the whole rectangle |
+| `Rim light`               | full-canvas, **clipped**, blend mode `color` — a mode that mixes channels             |
+| `Mood/` → `Calm`, `Angry` | a top-level group, and the two layers inside it are cropped to the face               |
+| `Shade`                   | `multiply`, sitting **above** the group                                               |
+| `Grain`                   | `dissolve` — deliberately something Studio refuses to flatten                         |
+| `Scratch (WIP)`           | hidden, the way a real working file always has one                                    |
 
 ## 2. Make a layered character
 

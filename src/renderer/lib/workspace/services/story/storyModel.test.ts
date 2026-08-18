@@ -1,25 +1,29 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock, StoryDocument, StoryExpr, StoryVariableRef } from "@shared/types/story";
-import { isStoryExpressionEvaluable, storyVariableRefKey, STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import {
-    collectInvalidBlocks,
-    collectTempSpeakers,
-    createEmptyStoryAnimationIndex,
-    createEmptyStoryDocument,
-    createEmptyStoryLibraryIndex,
-    deleteBlockFromScene,
-    insertBlockInScene,
-    isBlockDisabled,
-    migrateStoryDocumentToLatest,
-    moveBlockInScene,
-    normalizeStoryAnimationAsset,
-    normalizeStoryAnimationIndex,
-    normalizeStoryDocument,
-    normalizeStoryLibraryIndex,
-    promoteTempSpeaker,
-    storyAnimationDocumentRelativePath,
-    storyDocumentRelativePath,
-    updateBlockPayload,
+  isStoryExpressionEvaluable,
+  storyVariableRefKey,
+  STORY_DOCUMENT_SCHEMA_VERSION
+} from "@shared/types/story";
+import {
+  collectInvalidBlocks,
+  collectTempSpeakers,
+  createEmptyStoryAnimationIndex,
+  createEmptyStoryDocument,
+  createEmptyStoryLibraryIndex,
+  deleteBlockFromScene,
+  insertBlockInScene,
+  isBlockDisabled,
+  migrateStoryDocumentToLatest,
+  moveBlockInScene,
+  normalizeStoryAnimationAsset,
+  normalizeStoryAnimationIndex,
+  normalizeStoryDocument,
+  normalizeStoryLibraryIndex,
+  promoteTempSpeaker,
+  storyAnimationDocumentRelativePath,
+  storyDocumentRelativePath,
+  updateBlockPayload
 } from "./storyModel";
 
 const STORY_ID_1 = "00000000-0000-4000-8000-000000000001";
@@ -29,1046 +33,1205 @@ const STORY_ID_3 = "00000000-0000-4000-8000-000000000003";
 let nextFactoryBase = 1000;
 
 function idFactory(_prefix = "id") {
-    let next = nextFactoryBase;
-    nextFactoryBase += 1000;
-    return () => `00000000-0000-4000-8000-${(++next).toString(16).padStart(12, "0")}`;
+  let next = nextFactoryBase;
+  nextFactoryBase += 1000;
+  return () => `00000000-0000-4000-8000-${(++next).toString(16).padStart(12, "0")}`;
 }
 
 function narrationBlock(id: string, textId: string, value: string): StoryBlock {
-    return {
-        id,
+  return {
+    id,
+    kind: "nodeAction",
+    parentId: null,
+    childrenIds: [],
+    payload: {
+      action: "narration",
+      text: {
+        textId,
+        role: "narration",
+        value
+      }
+    }
+  };
+}
+
+describe("storyModel", () => {
+  it("creates an empty library without forcing a story document", () => {
+    const index = createEmptyStoryLibraryIndex("2026-06-08T00:00:00.000Z");
+
+    expect(index.schemaVersion).toBe(1);
+    expect(index.stories).toEqual([]);
+    expect(index.defaultStoryId).toBeUndefined();
+  });
+
+  it("creates independent story documents and paths", () => {
+    const ids = idFactory("story-a");
+    const first = createEmptyStoryDocument({
+      id: STORY_ID_1,
+      name: "First",
+      now: "2026-06-08T00:00:00.000Z",
+      generateId: ids
+    });
+    const second = createEmptyStoryDocument({
+      id: STORY_ID_2,
+      name: "Second",
+      now: "2026-06-08T00:00:00.000Z",
+      generateId: idFactory("story-b")
+    });
+
+    expect(first.id).toBe(STORY_ID_1);
+    expect(second.id).toBe(STORY_ID_2);
+    expect(storyDocumentRelativePath(first.id)).toBe(
+      `editor/story/stories/${STORY_ID_1}/storydoc.json`
+    );
+    expect(storyDocumentRelativePath(second.id)).toBe(
+      `editor/story/stories/${STORY_ID_2}/storydoc.json`
+    );
+    expect(first.entrySceneId).not.toBe(second.entrySceneId);
+  });
+
+  it("keeps only UUID story ids and canonical document paths in the library index", () => {
+    const now = "2026-06-08T00:00:00.000Z";
+    const index = {
+      schemaVersion: 1 as const,
+      defaultStoryId: "story-1",
+      stories: [
+        {
+          id: "story-1",
+          name: "Legacy",
+          documentPath: "../../outside.json",
+          createdAt: now,
+          updatedAt: now
+        },
+        {
+          id: STORY_ID_1,
+          name: "Safe",
+          documentPath: "/tmp/outside.json",
+          createdAt: now,
+          updatedAt: now
+        },
+        {
+          id: STORY_ID_1,
+          name: "Duplicate",
+          documentPath: `editor/story/stories/${STORY_ID_1}/duplicate.json`,
+          createdAt: now,
+          updatedAt: now
+        }
+      ]
+    };
+
+    const normalized = normalizeStoryLibraryIndex(index, now);
+
+    expect(normalized.defaultStoryId).toBeUndefined();
+    expect(normalized.stories.map((story) => story.id)).toEqual([STORY_ID_1]);
+    expect(normalized.stories[0]?.documentPath).toBe(
+      `editor/story/stories/${STORY_ID_1}/storydoc.json`
+    );
+  });
+
+  it("normalizes the hidden story animation index to canonical asset paths", () => {
+    const now = "2026-06-08T00:00:00.000Z";
+    const empty = createEmptyStoryAnimationIndex(now);
+    const index = {
+      schemaVersion: 1 as const,
+      animations: [
+        {
+          id: "motion-1",
+          name: "Legacy",
+          targetKind: "character",
+          documentPath: "../../outside.json",
+          createdAt: now,
+          updatedAt: now
+        },
+        {
+          id: STORY_ID_1,
+          name: "",
+          targetKind: "bad",
+          documentPath: "/tmp/outside.json",
+          createdAt: now,
+          updatedAt: now
+        },
+        {
+          id: STORY_ID_1,
+          name: "Duplicate",
+          targetKind: "image",
+          documentPath: `editor/story/animations/${STORY_ID_1}.json`,
+          createdAt: now,
+          updatedAt: now
+        }
+      ]
+    };
+
+    const normalized = normalizeStoryAnimationIndex(index as any, now);
+
+    expect(empty.animations).toEqual([]);
+    expect(storyAnimationDocumentRelativePath(STORY_ID_1)).toBe(
+      `editor/story/animations/${STORY_ID_1}.json`
+    );
+    expect(normalized.animations).toEqual([
+      expect.objectContaining({
+        id: STORY_ID_1,
+        name: "Untitled Motion",
+        targetKind: "image",
+        documentPath: `editor/story/animations/${STORY_ID_1}.json`
+      })
+    ]);
+  });
+
+  it("keeps a camera motion filed under the camera", () => {
+    // The fallback for an unknown kind is `image`, so a motion target kind that is not on the
+    // normalizer's list is not rejected - it is silently reassigned, and the author's camera shot
+    // shows up in every sprite's motion picker instead. Hence a test naming the kind directly.
+    const normalized = normalizeStoryAnimationAsset(
+      {
+        schemaVersion: 1,
+        id: STORY_ID_2,
+        name: "Camera shake",
+        targetKind: "camera",
+        sequences: []
+      } as any,
+      "2026-07-29T00:00:00.000Z"
+    );
+
+    expect(normalized.targetKind).toBe("camera");
+  });
+
+  it("normalizes story animation assets without leaking unsupported sequence fields", () => {
+    const now = "2026-06-08T00:00:00.000Z";
+    const normalized = normalizeStoryAnimationAsset(
+      {
+        schemaVersion: 1,
+        id: STORY_ID_2,
+        name: "",
+        targetKind: "bad",
+        sequences: [
+          {
+            id: "",
+            props: {
+              position: {
+                xalign: 0.25,
+                yalign: "bad",
+                xoffset: 12
+              },
+              opacity: "bad",
+              zoom: 0.9,
+              filter: "blur(2px)"
+            },
+            options: {
+              durationMs: -1,
+              delayMs: 50,
+              easing: "easeOut",
+              at: "+120"
+            },
+            unknown: true
+          }
+        ],
+        config: {
+          repeat: 0,
+          repeatDelayMs: -20
+        }
+      } as any,
+      now
+    );
+
+    expect(normalized.name).toBe("Untitled Motion");
+    expect(normalized.targetKind).toBe("image");
+    expect(normalized.config).toEqual({});
+    expect(normalized.sequences).toEqual([
+      {
+        id: "step-1",
+        props: {
+          position: {
+            xalign: 0.25,
+            xoffset: 12
+          },
+          zoom: 0.9,
+          filter: "blur(2px)"
+        },
+        options: {
+          durationMs: undefined,
+          delayMs: 50,
+          easing: "easeOut",
+          at: "+120"
+        }
+      }
+    ]);
+    const positionTrack = normalized.timeline?.tracks.find(
+      (track) => track.property === "position"
+    );
+    const zoomTrack = normalized.timeline?.tracks.find((track) => track.property === "zoom");
+    expect(normalized.timeline?.fps).toBeUndefined();
+    expect(positionTrack?.keyframes).toEqual([
+      expect.objectContaining({
+        timeMs: 470,
+        value: {
+          xalign: 0.25,
+          xoffset: 12
+        },
+        easing: "easeOut"
+      })
+    ]);
+    expect(zoomTrack?.keyframes).toEqual([
+      expect.objectContaining({
+        timeMs: 470,
+        value: 0.9
+      })
+    ]);
+  });
+
+  it("keeps keyframe timelines as the canonical story animation editor model", () => {
+    const now = "2026-06-08T00:00:00.000Z";
+    const normalized = normalizeStoryAnimationAsset(
+      {
+        schemaVersion: 1,
+        id: STORY_ID_2,
+        name: "Slide",
+        targetKind: "character",
+        sequences: [],
+        timeline: {
+          durationMs: 500,
+          tracks: [
+            {
+              id: "",
+              property: "position",
+              keyframes: [
+                {
+                  id: "",
+                  timeMs: 500,
+                  value: {
+                    xalign: 0.5,
+                    yalign: 0.55,
+                    xoffset: -80,
+                    bad: true
+                  },
+                  easing: "easeOut"
+                }
+              ]
+            },
+            {
+              id: "bad",
+              property: "unknown",
+              keyframes: [{ id: "bad", timeMs: 200, value: 1 }]
+            }
+          ]
+        }
+      } as any,
+      now
+    );
+
+    expect(normalized.timeline).toEqual({
+      durationMs: 500,
+      tracks: [
+        {
+          id: "track-position-1",
+          property: "position",
+          keyframes: [
+            {
+              id: "kf-position-500-1",
+              timeMs: 500,
+              value: {
+                xalign: 0.5,
+                yalign: 0.55,
+                xoffset: -80
+              },
+              easing: "easeOut"
+            }
+          ]
+        }
+      ]
+    });
+  });
+
+  it("rejects unsafe story ids before building document paths", () => {
+    expect(() => storyDocumentRelativePath("story-1")).toThrow(/UUID v4/);
+    expect(() => storyDocumentRelativePath("../story")).toThrow(/UUID v4/);
+    expect(() => storyAnimationDocumentRelativePath("motion-1")).toThrow(/UUID v4/);
+  });
+
+  it("rejects future story schemas", () => {
+    const index = createEmptyStoryLibraryIndex("2026-06-08T00:00:00.000Z") as any;
+    index.schemaVersion = 99;
+    expect(() => normalizeStoryLibraryIndex(index, "2026-06-08T00:00:00.000Z")).toThrow(/newer/);
+
+    const document = createEmptyStoryDocument({
+      id: STORY_ID_1,
+      name: "Story",
+      now: "2026-06-08T00:00:00.000Z",
+      generateId: idFactory()
+    }) as any;
+    document.schemaVersion = 99;
+    expect(() => normalizeStoryDocument(document, "2026-06-08T00:00:00.000Z")).toThrow(/newer/);
+  });
+
+  it("keeps block trees legal when inserting, moving, and deleting blocks", () => {
+    const document = createEmptyStoryDocument({
+      id: STORY_ID_1,
+      name: "Story",
+      now: "2026-06-08T00:00:00.000Z",
+      generateId: idFactory()
+    });
+    const scene = document.scenes[document.entrySceneId!];
+    const choice: StoryBlock = {
+      id: "choice",
+      kind: "nodeAction",
+      parentId: null,
+      childrenIds: [],
+      payload: {
+        action: "choice",
+        prompt: {
+          textId: "prompt-text",
+          role: "choicePrompt",
+          value: "Pick one"
+        }
+      }
+    };
+    const option = {
+      id: "option",
+      kind: "nodeAction",
+      parentId: null,
+      childrenIds: [],
+      payload: {
+        action: "choiceOption",
+        text: {
+          textId: "option-text",
+          role: "choiceText",
+          value: "Stay"
+        }
+      }
+    } satisfies StoryBlock;
+    const line = narrationBlock("line", "line-text", "Stayed.");
+
+    insertBlockInScene(scene, choice, { parentId: null });
+    insertBlockInScene(scene, option, { parentId: "choice" });
+    insertBlockInScene(scene, line, { parentId: "option" });
+
+    expect(scene.rootBlockIds).toEqual(["choice"]);
+    expect(scene.blocks.choice.childrenIds).toEqual(["option"]);
+    expect(scene.blocks.option.childrenIds).toEqual(["line"]);
+
+    moveBlockInScene(scene, "line", { parentId: null });
+    expect(scene.rootBlockIds).toEqual(["choice", "line"]);
+    expect(scene.blocks.line.parentId).toBeNull();
+    expect(scene.blocks.option.childrenIds).toEqual([]);
+
+    deleteBlockFromScene(scene, "choice");
+    expect(scene.rootBlockIds).toEqual(["line"]);
+    expect(scene.blocks.choice).toBeUndefined();
+    expect(scene.blocks.option).toBeUndefined();
+    expect(scene.blocks.line).toBeDefined();
+  });
+
+  it("preserves text ids when text payload changes", () => {
+    const document = createEmptyStoryDocument({
+      id: STORY_ID_2,
+      name: "Story",
+      now: "2026-06-08T00:00:00.000Z",
+      generateId: idFactory()
+    });
+    const scene = document.scenes[document.entrySceneId!];
+    insertBlockInScene(scene, narrationBlock("line", "stable-text", "Before"), { parentId: null });
+
+    updateBlockPayload(scene, "line", {
+      action: "narration",
+      text: {
+        textId: "new-text-id",
+        role: "narration",
+        value: "After"
+      }
+    });
+
+    const block = scene.blocks.line;
+    expect(block.kind).toBe("nodeAction");
+    if (block.kind === "nodeAction" && block.payload.action === "narration") {
+      expect(block.payload.text.value).toBe("After");
+      expect(block.payload.text.textId).toBe("stable-text");
+    }
+  });
+
+  it("preserves dialogue pause and displayable effect fields through normalization", () => {
+    const now = "2026-06-08T00:00:00.000Z";
+    const document = createEmptyStoryDocument({
+      id: STORY_ID_1,
+      name: "Story",
+      now,
+      generateId: idFactory()
+    });
+    const scene = document.scenes[document.entrySceneId!];
+    insertBlockInScene(
+      scene,
+      {
+        id: "say",
         kind: "nodeAction",
         parentId: null,
         childrenIds: [],
         payload: {
-            action: "narration",
-            text: {
-                textId,
-                role: "narration",
-                value,
-            },
-        },
-    };
-}
-
-describe("storyModel", () => {
-    it("creates an empty library without forcing a story document", () => {
-        const index = createEmptyStoryLibraryIndex("2026-06-08T00:00:00.000Z");
-
-        expect(index.schemaVersion).toBe(1);
-        expect(index.stories).toEqual([]);
-        expect(index.defaultStoryId).toBeUndefined();
-    });
-
-    it("creates independent story documents and paths", () => {
-        const ids = idFactory("story-a");
-        const first = createEmptyStoryDocument({
-            id: STORY_ID_1,
-            name: "First",
-            now: "2026-06-08T00:00:00.000Z",
-            generateId: ids,
-        });
-        const second = createEmptyStoryDocument({
-            id: STORY_ID_2,
-            name: "Second",
-            now: "2026-06-08T00:00:00.000Z",
-            generateId: idFactory("story-b"),
-        });
-
-        expect(first.id).toBe(STORY_ID_1);
-        expect(second.id).toBe(STORY_ID_2);
-        expect(storyDocumentRelativePath(first.id)).toBe(`editor/story/stories/${STORY_ID_1}/storydoc.json`);
-        expect(storyDocumentRelativePath(second.id)).toBe(`editor/story/stories/${STORY_ID_2}/storydoc.json`);
-        expect(first.entrySceneId).not.toBe(second.entrySceneId);
-    });
-
-    it("keeps only UUID story ids and canonical document paths in the library index", () => {
-        const now = "2026-06-08T00:00:00.000Z";
-        const index = {
-            schemaVersion: 1 as const,
-            defaultStoryId: "story-1",
-            stories: [
-                {
-                    id: "story-1",
-                    name: "Legacy",
-                    documentPath: "../../outside.json",
-                    createdAt: now,
-                    updatedAt: now,
-                },
-                {
-                    id: STORY_ID_1,
-                    name: "Safe",
-                    documentPath: "/tmp/outside.json",
-                    createdAt: now,
-                    updatedAt: now,
-                },
-                {
-                    id: STORY_ID_1,
-                    name: "Duplicate",
-                    documentPath: `editor/story/stories/${STORY_ID_1}/duplicate.json`,
-                    createdAt: now,
-                    updatedAt: now,
-                },
-            ],
-        };
-
-        const normalized = normalizeStoryLibraryIndex(index, now);
-
-        expect(normalized.defaultStoryId).toBeUndefined();
-        expect(normalized.stories.map(story => story.id)).toEqual([STORY_ID_1]);
-        expect(normalized.stories[0]?.documentPath).toBe(`editor/story/stories/${STORY_ID_1}/storydoc.json`);
-    });
-
-    it("normalizes the hidden story animation index to canonical asset paths", () => {
-        const now = "2026-06-08T00:00:00.000Z";
-        const empty = createEmptyStoryAnimationIndex(now);
-        const index = {
-            schemaVersion: 1 as const,
-            animations: [
-                {
-                    id: "motion-1",
-                    name: "Legacy",
-                    targetKind: "character",
-                    documentPath: "../../outside.json",
-                    createdAt: now,
-                    updatedAt: now,
-                },
-                {
-                    id: STORY_ID_1,
-                    name: "",
-                    targetKind: "bad",
-                    documentPath: "/tmp/outside.json",
-                    createdAt: now,
-                    updatedAt: now,
-                },
-                {
-                    id: STORY_ID_1,
-                    name: "Duplicate",
-                    targetKind: "image",
-                    documentPath: `editor/story/animations/${STORY_ID_1}.json`,
-                    createdAt: now,
-                    updatedAt: now,
-                },
-            ],
-        };
-
-        const normalized = normalizeStoryAnimationIndex(index as any, now);
-
-        expect(empty.animations).toEqual([]);
-        expect(storyAnimationDocumentRelativePath(STORY_ID_1)).toBe(`editor/story/animations/${STORY_ID_1}.json`);
-        expect(normalized.animations).toEqual([
-            expect.objectContaining({
-                id: STORY_ID_1,
-                name: "Untitled Motion",
-                targetKind: "image",
-                documentPath: `editor/story/animations/${STORY_ID_1}.json`,
-            }),
-        ]);
-    });
-
-    it("keeps a camera motion filed under the camera", () => {
-        // The fallback for an unknown kind is `image`, so a motion target kind that is not on the
-        // normalizer's list is not rejected - it is silently reassigned, and the author's camera shot
-        // shows up in every sprite's motion picker instead. Hence a test naming the kind directly.
-        const normalized = normalizeStoryAnimationAsset({
-            schemaVersion: 1,
-            id: STORY_ID_2,
-            name: "Camera shake",
-            targetKind: "camera",
-            sequences: [],
-        } as any, "2026-07-29T00:00:00.000Z");
-
-        expect(normalized.targetKind).toBe("camera");
-    });
-
-    it("normalizes story animation assets without leaking unsupported sequence fields", () => {
-        const now = "2026-06-08T00:00:00.000Z";
-        const normalized = normalizeStoryAnimationAsset({
-            schemaVersion: 1,
-            id: STORY_ID_2,
-            name: "",
-            targetKind: "bad",
-            sequences: [
-                {
-                    id: "",
-                    props: {
-                        position: {
-                            xalign: 0.25,
-                            yalign: "bad",
-                            xoffset: 12,
-                        },
-                        opacity: "bad",
-                        zoom: 0.9,
-                        filter: "blur(2px)",
-                    },
-                    options: {
-                        durationMs: -1,
-                        delayMs: 50,
-                        easing: "easeOut",
-                        at: "+120",
-                    },
-                    unknown: true,
-                },
-            ],
-            config: {
-                repeat: 0,
-                repeatDelayMs: -20,
-            },
-        } as any, now);
-
-        expect(normalized.name).toBe("Untitled Motion");
-        expect(normalized.targetKind).toBe("image");
-        expect(normalized.config).toEqual({});
-        expect(normalized.sequences).toEqual([
-            {
-                id: "step-1",
-                props: {
-                    position: {
-                        xalign: 0.25,
-                        xoffset: 12,
-                    },
-                    zoom: 0.9,
-                    filter: "blur(2px)",
-                },
-                options: {
-                    durationMs: undefined,
-                    delayMs: 50,
-                    easing: "easeOut",
-                    at: "+120",
-                },
-            },
-        ]);
-        const positionTrack = normalized.timeline?.tracks.find(track => track.property === "position");
-        const zoomTrack = normalized.timeline?.tracks.find(track => track.property === "zoom");
-        expect(normalized.timeline?.fps).toBeUndefined();
-        expect(positionTrack?.keyframes).toEqual([
-            expect.objectContaining({
-                timeMs: 470,
-                value: {
-                    xalign: 0.25,
-                    xoffset: 12,
-                },
-                easing: "easeOut",
-            }),
-        ]);
-        expect(zoomTrack?.keyframes).toEqual([
-            expect.objectContaining({
-                timeMs: 470,
-                value: 0.9,
-            }),
-        ]);
-    });
-
-    it("keeps keyframe timelines as the canonical story animation editor model", () => {
-        const now = "2026-06-08T00:00:00.000Z";
-        const normalized = normalizeStoryAnimationAsset({
-            schemaVersion: 1,
-            id: STORY_ID_2,
-            name: "Slide",
-            targetKind: "character",
-            sequences: [],
-            timeline: {
-                durationMs: 500,
-                tracks: [
-                    {
-                        id: "",
-                        property: "position",
-                        keyframes: [
-                            {
-                                id: "",
-                                timeMs: 500,
-                                value: {
-                                    xalign: 0.5,
-                                    yalign: 0.55,
-                                    xoffset: -80,
-                                    bad: true,
-                                },
-                                easing: "easeOut",
-                            },
-                        ],
-                    },
-                    {
-                        id: "bad",
-                        property: "unknown",
-                        keyframes: [{ id: "bad", timeMs: 200, value: 1 }],
-                    },
-                ],
-            },
-        } as any, now);
-
-        expect(normalized.timeline).toEqual({
-            durationMs: 500,
-            tracks: [
-                {
-                    id: "track-position-1",
-                    property: "position",
-                    keyframes: [
-                        {
-                            id: "kf-position-500-1",
-                            timeMs: 500,
-                            value: {
-                                xalign: 0.5,
-                                yalign: 0.55,
-                                xoffset: -80,
-                            },
-                            easing: "easeOut",
-                        },
-                    ],
-                },
-            ],
-        });
-    });
-
-    it("rejects unsafe story ids before building document paths", () => {
-        expect(() => storyDocumentRelativePath("story-1")).toThrow(/UUID v4/);
-        expect(() => storyDocumentRelativePath("../story")).toThrow(/UUID v4/);
-        expect(() => storyAnimationDocumentRelativePath("motion-1")).toThrow(/UUID v4/);
-    });
-
-    it("rejects future story schemas", () => {
-        const index = createEmptyStoryLibraryIndex("2026-06-08T00:00:00.000Z") as any;
-        index.schemaVersion = 99;
-        expect(() => normalizeStoryLibraryIndex(index, "2026-06-08T00:00:00.000Z")).toThrow(/newer/);
-
-        const document = createEmptyStoryDocument({
-            id: STORY_ID_1,
-            name: "Story",
-            now: "2026-06-08T00:00:00.000Z",
-            generateId: idFactory(),
-        }) as any;
-        document.schemaVersion = 99;
-        expect(() => normalizeStoryDocument(document, "2026-06-08T00:00:00.000Z")).toThrow(/newer/);
-    });
-
-    it("keeps block trees legal when inserting, moving, and deleting blocks", () => {
-        const document = createEmptyStoryDocument({
-            id: STORY_ID_1,
-            name: "Story",
-            now: "2026-06-08T00:00:00.000Z",
-            generateId: idFactory(),
-        });
-        const scene = document.scenes[document.entrySceneId!];
-        const choice: StoryBlock = {
-            id: "choice",
-            kind: "nodeAction",
-            parentId: null,
-            childrenIds: [],
-            payload: {
-                action: "choice",
-                prompt: {
-                    textId: "prompt-text",
-                    role: "choicePrompt",
-                    value: "Pick one",
-                },
-            },
-        };
-        const option = {
-            id: "option",
-            kind: "nodeAction",
-            parentId: null,
-            childrenIds: [],
-            payload: {
-                action: "choiceOption",
-                text: {
-                    textId: "option-text",
-                    role: "choiceText",
-                    value: "Stay",
-                },
-            },
-        } satisfies StoryBlock;
-        const line = narrationBlock("line", "line-text", "Stayed.");
-
-        insertBlockInScene(scene, choice, { parentId: null });
-        insertBlockInScene(scene, option, { parentId: "choice" });
-        insertBlockInScene(scene, line, { parentId: "option" });
-
-        expect(scene.rootBlockIds).toEqual(["choice"]);
-        expect(scene.blocks.choice.childrenIds).toEqual(["option"]);
-        expect(scene.blocks.option.childrenIds).toEqual(["line"]);
-
-        moveBlockInScene(scene, "line", { parentId: null });
-        expect(scene.rootBlockIds).toEqual(["choice", "line"]);
-        expect(scene.blocks.line.parentId).toBeNull();
-        expect(scene.blocks.option.childrenIds).toEqual([]);
-
-        deleteBlockFromScene(scene, "choice");
-        expect(scene.rootBlockIds).toEqual(["line"]);
-        expect(scene.blocks.choice).toBeUndefined();
-        expect(scene.blocks.option).toBeUndefined();
-        expect(scene.blocks.line).toBeDefined();
-    });
-
-    it("preserves text ids when text payload changes", () => {
-        const document = createEmptyStoryDocument({
-            id: STORY_ID_2,
-            name: "Story",
-            now: "2026-06-08T00:00:00.000Z",
-            generateId: idFactory(),
-        });
-        const scene = document.scenes[document.entrySceneId!];
-        insertBlockInScene(scene, narrationBlock("line", "stable-text", "Before"), { parentId: null });
-
-        updateBlockPayload(scene, "line", {
-            action: "narration",
-            text: {
-                textId: "new-text-id",
-                role: "narration",
-                value: "After",
-            },
-        });
-
-        const block = scene.blocks.line;
-        expect(block.kind).toBe("nodeAction");
-        if (block.kind === "nodeAction" && block.payload.action === "narration") {
-            expect(block.payload.text.value).toBe("After");
-            expect(block.payload.text.textId).toBe("stable-text");
+          action: "dialogue",
+          characterId: "char-1",
+          pauseAfter: 400,
+          text: { textId: "t1", role: "dialogue", value: "Hi" }
         }
+      },
+      { parentId: null }
+    );
+    insertBlockInScene(
+      scene,
+      {
+        id: "fx",
+        kind: "action",
+        parentId: null,
+        childrenIds: [],
+        payload: {
+          action: "displayable",
+          operation: "wipe",
+          target: { name: "hero", kind: "image" },
+          durationMs: 500,
+          easing: "easeOut",
+          effectProps: { direction: "right", reverse: true }
+        }
+      },
+      { parentId: null }
+    );
+
+    const normalized = normalizeStoryDocument(document, now);
+    const normalizedScene = normalized.scenes[document.entrySceneId!];
+
+    expect((normalizedScene.blocks.say.payload as any).pauseAfter).toBe(400);
+    expect((normalizedScene.blocks.fx.payload as any).operation).toBe("wipe");
+    expect((normalizedScene.blocks.fx.payload as any).effectProps).toEqual({
+      direction: "right",
+      reverse: true
     });
+    expect((normalizedScene.blocks.fx.payload as any).durationMs).toBe(500);
+  });
 
-    it("preserves dialogue pause and displayable effect fields through normalization", () => {
-        const now = "2026-06-08T00:00:00.000Z";
-        const document = createEmptyStoryDocument({
-            id: STORY_ID_1,
-            name: "Story",
-            now,
-            generateId: idFactory(),
-        });
-        const scene = document.scenes[document.entrySceneId!];
-        insertBlockInScene(scene, {
-            id: "say",
-            kind: "nodeAction",
-            parentId: null,
-            childrenIds: [],
-            payload: {
-                action: "dialogue",
-                characterId: "char-1",
-                pauseAfter: 400,
-                text: { textId: "t1", role: "dialogue", value: "Hi" },
-            },
-        }, { parentId: null });
-        insertBlockInScene(scene, {
-            id: "fx",
-            kind: "action",
-            parentId: null,
-            childrenIds: [],
-            payload: {
-                action: "displayable",
-                operation: "wipe",
-                target: { name: "hero", kind: "image" },
-                durationMs: 500,
-                easing: "easeOut",
-                effectProps: { direction: "right", reverse: true },
-            },
-        }, { parentId: null });
-
-        const normalized = normalizeStoryDocument(document, now);
-        const normalizedScene = normalized.scenes[document.entrySceneId!];
-
-        expect((normalizedScene.blocks.say.payload as any).pauseAfter).toBe(400);
-        expect((normalizedScene.blocks.fx.payload as any).operation).toBe("wipe");
-        expect((normalizedScene.blocks.fx.payload as any).effectProps).toEqual({ direction: "right", reverse: true });
-        expect((normalizedScene.blocks.fx.payload as any).durationMs).toBe(500);
+  it("keeps a scene's audio track through normalization, even one no track list has", () => {
+    const now = "2026-06-08T00:00:00.000Z";
+    const document = createEmptyStoryDocument({
+      id: STORY_ID_1,
+      name: "Story",
+      now,
+      generateId: idFactory()
     });
+    const scene = document.scenes[document.entrySceneId!];
+    // A deleted track's id, which is the case that matters: references are NOT rewritten when a
+    // track goes away, they resolve to the bus's built-in - so dropping the id here would erase
+    // the author's choice the moment they deleted a track they meant to re-create.
+    scene.bgm = { assetId: "asset-theme", audioTrackId: "  t_gone  ", volume: 0.5 };
 
-    it("keeps a scene's audio track through normalization, even one no track list has", () => {
-        const now = "2026-06-08T00:00:00.000Z";
-        const document = createEmptyStoryDocument({ id: STORY_ID_1, name: "Story", now, generateId: idFactory() });
-        const scene = document.scenes[document.entrySceneId!];
-        // A deleted track's id, which is the case that matters: references are NOT rewritten when a
-        // track goes away, they resolve to the bus's built-in - so dropping the id here would erase
-        // the author's choice the moment they deleted a track they meant to re-create.
-        scene.bgm = { assetId: "asset-theme", audioTrackId: "  t_gone  ", volume: 0.5 };
+    const normalized = normalizeStoryDocument(document, now);
 
-        const normalized = normalizeStoryDocument(document, now);
-
-        expect(normalized.scenes[document.entrySceneId!].bgm).toMatchObject({
-            assetId: "asset-theme",
-            audioTrackId: "t_gone",
-            volume: 0.5,
-        });
+    expect(normalized.scenes[document.entrySceneId!].bgm).toMatchObject({
+      assetId: "asset-theme",
+      audioTrackId: "t_gone",
+      volume: 0.5
     });
+  });
 
-    it("writes no audio track key when the scene names none", () => {
-        const now = "2026-06-08T00:00:00.000Z";
-        const document = createEmptyStoryDocument({ id: STORY_ID_1, name: "Story", now, generateId: idFactory() });
-        document.scenes[document.entrySceneId!].bgm = { assetId: "asset-theme" };
-
-        const normalized = normalizeStoryDocument(document, now);
-
-        expect(normalized.scenes[document.entrySceneId!].bgm).not.toHaveProperty("audioTrackId");
+  it("writes no audio track key when the scene names none", () => {
+    const now = "2026-06-08T00:00:00.000Z";
+    const document = createEmptyStoryDocument({
+      id: STORY_ID_1,
+      name: "Story",
+      now,
+      generateId: idFactory()
     });
+    document.scenes[document.entrySceneId!].bgm = { assetId: "asset-theme" };
 
-    it("migrates legacy image/text layerName strings to stable layer refs (v2 → v3)", () => {
-        const now = "2026-06-08T00:00:00.000Z";
-        const document = createEmptyStoryDocument({
-            id: STORY_ID_1,
-            name: "Story",
-            now,
-            generateId: idFactory(),
-        });
-        const scene = document.scenes[document.entrySceneId!];
-        insertBlockInScene(scene, {
-            id: "layer-block",
-            kind: "action",
-            parentId: null,
-            childrenIds: [],
-            payload: { action: "layer", operation: "create", objectName: "Foreground", zIndex: 2 },
-        }, { parentId: null });
-        insertBlockInScene(scene, {
-            id: "img-bound",
-            kind: "action",
-            parentId: null,
-            childrenIds: [],
-            // Legacy free-text layer name matching the layer block (case-insensitively).
-            payload: { action: "image", operation: "create", objectName: "hero", layerName: "foreground" },
-        } as unknown as StoryBlock, { parentId: null });
-        insertBlockInScene(scene, {
-            id: "text-orphan",
-            kind: "action",
-            parentId: null,
-            childrenIds: [],
-            // Legacy layer name with no matching layer block - keeps the last-known name only.
-            payload: { action: "text", operation: "create", objectName: "caption", layerName: "ghost" },
-        } as unknown as StoryBlock, { parentId: null });
-        (document as { schemaVersion: number }).schemaVersion = 2;
+    const normalized = normalizeStoryDocument(document, now);
 
-        const normalized = normalizeStoryDocument(document, now);
-        const migratedScene = normalized.scenes[document.entrySceneId!];
+    expect(normalized.scenes[document.entrySceneId!].bgm).not.toHaveProperty("audioTrackId");
+  });
 
-        // Normalization always lands on the current schema; what this test is about is the layer-ref
-        // migration below, not the version number it happens to stamp.
-        expect(normalized.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
-        expect((migratedScene.blocks["img-bound"].payload as Record<string, unknown>).layerName).toBeUndefined();
-        expect((migratedScene.blocks["img-bound"].payload as Record<string, unknown>).layer).toEqual({
-            kind: "custom",
-            sourceBlockId: "layer-block",
-            name: "foreground",
-        });
-        expect((migratedScene.blocks["text-orphan"].payload as Record<string, unknown>).layer).toEqual({
-            kind: "custom",
-            name: "ghost",
-        });
+  it("migrates legacy image/text layerName strings to stable layer refs (v2 → v3)", () => {
+    const now = "2026-06-08T00:00:00.000Z";
+    const document = createEmptyStoryDocument({
+      id: STORY_ID_1,
+      name: "Story",
+      now,
+      generateId: idFactory()
     });
+    const scene = document.scenes[document.entrySceneId!];
+    insertBlockInScene(
+      scene,
+      {
+        id: "layer-block",
+        kind: "action",
+        parentId: null,
+        childrenIds: [],
+        payload: { action: "layer", operation: "create", objectName: "Foreground", zIndex: 2 }
+      },
+      { parentId: null }
+    );
+    insertBlockInScene(
+      scene,
+      {
+        id: "img-bound",
+        kind: "action",
+        parentId: null,
+        childrenIds: [],
+        // Legacy free-text layer name matching the layer block (case-insensitively).
+        payload: {
+          action: "image",
+          operation: "create",
+          objectName: "hero",
+          layerName: "foreground"
+        }
+      } as unknown as StoryBlock,
+      { parentId: null }
+    );
+    insertBlockInScene(
+      scene,
+      {
+        id: "text-orphan",
+        kind: "action",
+        parentId: null,
+        childrenIds: [],
+        // Legacy layer name with no matching layer block - keeps the last-known name only.
+        payload: { action: "text", operation: "create", objectName: "caption", layerName: "ghost" }
+      } as unknown as StoryBlock,
+      { parentId: null }
+    );
+    (document as { schemaVersion: number }).schemaVersion = 2;
 
-    it("preserves rich text runs through normalization", () => {
-        const now = "2026-06-08T00:00:00.000Z";
-        const document = createEmptyStoryDocument({
-            id: STORY_ID_2,
-            name: "Story",
-            now,
-            generateId: idFactory(),
-        });
-        const scene = document.scenes[document.entrySceneId!];
-        insertBlockInScene(scene, {
-            id: "say",
-            kind: "nodeAction",
-            parentId: null,
-            childrenIds: [],
-            payload: {
-                action: "dialogue",
-                text: {
-                    textId: "t",
-                    role: "dialogue",
-                    value: "Hi there",
-                    rich: [{ text: "Hi " }, { text: "there", marks: { bold: true } }],
-                },
-            },
-        }, { parentId: null });
+    const normalized = normalizeStoryDocument(document, now);
+    const migratedScene = normalized.scenes[document.entrySceneId!];
 
-        const normalized = normalizeStoryDocument(document, now);
-
-        expect((normalized.scenes[document.entrySceneId!].blocks.say.payload as any).text.rich)
-            .toEqual([{ text: "Hi " }, { text: "there", marks: { bold: true } }]);
+    // Normalization always lands on the current schema; what this test is about is the layer-ref
+    // migration below, not the version number it happens to stamp.
+    expect(normalized.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    expect(
+      (migratedScene.blocks["img-bound"].payload as Record<string, unknown>).layerName
+    ).toBeUndefined();
+    expect((migratedScene.blocks["img-bound"].payload as Record<string, unknown>).layer).toEqual({
+      kind: "custom",
+      sourceBlockId: "layer-block",
+      name: "foreground"
     });
-
-    it("does not allow jump blocks to own children", () => {
-        const document = createEmptyStoryDocument({
-            id: STORY_ID_3,
-            name: "Story",
-            now: "2026-06-08T00:00:00.000Z",
-            generateId: idFactory(),
-        });
-        const scene = document.scenes[document.entrySceneId!];
-        const jump: StoryBlock = {
-            id: "jump",
-            kind: "jump",
-            parentId: null,
-            childrenIds: ["illegal"],
-            payload: {
-                targetSceneId: "target-scene",
-            },
-        };
-
-        expect(() => insertBlockInScene(scene, jump, { parentId: null })).toThrow(/Jump/);
+    expect((migratedScene.blocks["text-orphan"].payload as Record<string, unknown>).layer).toEqual({
+      kind: "custom",
+      name: "ghost"
     });
+  });
+
+  it("preserves rich text runs through normalization", () => {
+    const now = "2026-06-08T00:00:00.000Z";
+    const document = createEmptyStoryDocument({
+      id: STORY_ID_2,
+      name: "Story",
+      now,
+      generateId: idFactory()
+    });
+    const scene = document.scenes[document.entrySceneId!];
+    insertBlockInScene(
+      scene,
+      {
+        id: "say",
+        kind: "nodeAction",
+        parentId: null,
+        childrenIds: [],
+        payload: {
+          action: "dialogue",
+          text: {
+            textId: "t",
+            role: "dialogue",
+            value: "Hi there",
+            rich: [{ text: "Hi " }, { text: "there", marks: { bold: true } }]
+          }
+        }
+      },
+      { parentId: null }
+    );
+
+    const normalized = normalizeStoryDocument(document, now);
+
+    expect((normalized.scenes[document.entrySceneId!].blocks.say.payload as any).text.rich).toEqual(
+      [{ text: "Hi " }, { text: "there", marks: { bold: true } }]
+    );
+  });
+
+  it("does not allow jump blocks to own children", () => {
+    const document = createEmptyStoryDocument({
+      id: STORY_ID_3,
+      name: "Story",
+      now: "2026-06-08T00:00:00.000Z",
+      generateId: idFactory()
+    });
+    const scene = document.scenes[document.entrySceneId!];
+    const jump: StoryBlock = {
+      id: "jump",
+      kind: "jump",
+      parentId: null,
+      childrenIds: ["illegal"],
+      payload: {
+        targetSceneId: "target-scene"
+      }
+    };
+
+    expect(() => insertBlockInScene(scene, jump, { parentId: null })).toThrow(/Jump/);
+  });
 });
 
 describe("collectInvalidBlocks", () => {
-    function documentWith(blocks: StoryBlock[]) {
-        const document = createEmptyStoryDocument({
-            id: STORY_ID_1,
-            name: "My Story",
-            now: "2026-07-16T00:00:00.000Z",
-            generateId: idFactory(),
-        });
-        const scene = Object.values(document.scenes)[0];
-        for (const block of blocks) {
-            scene.blocks[block.id] = block;
-            scene.rootBlockIds.push(block.id);
-        }
-        return document;
+  function documentWith(blocks: StoryBlock[]) {
+    const document = createEmptyStoryDocument({
+      id: STORY_ID_1,
+      name: "My Story",
+      now: "2026-07-16T00:00:00.000Z",
+      generateId: idFactory()
+    });
+    const scene = Object.values(document.scenes)[0];
+    for (const block of blocks) {
+      scene.blocks[block.id] = block;
+      scene.rootBlockIds.push(block.id);
     }
+    return document;
+  }
 
-    function invalidBlock(id: string, source: string): StoryBlock {
-        return { id, kind: "invalid", parentId: null, childrenIds: [], payload: { source } };
-    }
+  function invalidBlock(id: string, source: string): StoryBlock {
+    return { id, kind: "invalid", parentId: null, childrenIds: [], payload: { source } };
+  }
 
-    it("finds nothing in a story that has none", () => {
-        const document = documentWith([narrationBlock("n1", "t1", "Hello")]);
-        expect(collectInvalidBlocks(document)).toEqual([]);
-    });
+  it("finds nothing in a story that has none", () => {
+    const document = documentWith([narrationBlock("n1", "t1", "Hello")]);
+    expect(collectInvalidBlocks(document)).toEqual([]);
+  });
 
-    it("reports each invalid block with the text the author typed and where it lives", () => {
-        const document = documentWith([
-            narrationBlock("n1", "t1", "Hello"),
-            invalidBlock("bad", "/bgg forest"),
-        ]);
-        const scene = Object.values(document.scenes)[0];
+  it("reports each invalid block with the text the author typed and where it lives", () => {
+    const document = documentWith([
+      narrationBlock("n1", "t1", "Hello"),
+      invalidBlock("bad", "/bgg forest")
+    ]);
+    const scene = Object.values(document.scenes)[0];
 
-        expect(collectInvalidBlocks(document)).toEqual([
-            {
-                storyId: STORY_ID_1,
-                storyName: "My Story",
-                sceneId: scene.id,
-                sceneName: scene.name,
-                blockId: "bad",
-                source: "/bgg forest",
-            },
-        ]);
-    });
+    expect(collectInvalidBlocks(document)).toEqual([
+      {
+        storyId: STORY_ID_1,
+        storyName: "My Story",
+        sceneId: scene.id,
+        sceneName: scene.name,
+        blockId: "bad",
+        source: "/bgg forest"
+      }
+    ]);
+  });
 
-    it("finds every one of them, not just the first", () => {
-        const document = documentWith([invalidBlock("bad1", "/bgg"), invalidBlock("bad2", "#")]);
-        expect(collectInvalidBlocks(document).map(ref => ref.blockId)).toEqual(["bad1", "bad2"]);
-    });
+  it("finds every one of them, not just the first", () => {
+    const document = documentWith([invalidBlock("bad1", "/bgg"), invalidBlock("bad2", "#")]);
+    expect(collectInvalidBlocks(document).map((ref) => ref.blockId)).toEqual(["bad1", "bad2"]);
+  });
 
-    it("does not gate the build on a disabled invalid row (schema v7)", () => {
-        const document = documentWith([{ ...invalidBlock("bad", "/bgg"), disabled: true }]);
-        expect(collectInvalidBlocks(document)).toEqual([]);
-    });
+  it("does not gate the build on a disabled invalid row (schema v7)", () => {
+    const document = documentWith([{ ...invalidBlock("bad", "/bgg"), disabled: true }]);
+    expect(collectInvalidBlocks(document)).toEqual([]);
+  });
 
-    it("does not gate the build on an invalid row nested under a disabled container", () => {
-        const document = documentWith([
-            { id: "grp", kind: "control", parentId: null, childrenIds: ["bad"], disabled: true, payload: { control: "sequence", mode: "do" } },
-            { ...invalidBlock("bad", "/bgg"), parentId: "grp" },
-        ]);
-        const scene = Object.values(document.scenes)[0];
-        expect(isBlockDisabled(scene, scene.blocks.bad)).toBe(true);
-        expect(collectInvalidBlocks(document)).toEqual([]);
-    });
+  it("does not gate the build on an invalid row nested under a disabled container", () => {
+    const document = documentWith([
+      {
+        id: "grp",
+        kind: "control",
+        parentId: null,
+        childrenIds: ["bad"],
+        disabled: true,
+        payload: { control: "sequence", mode: "do" }
+      },
+      { ...invalidBlock("bad", "/bgg"), parentId: "grp" }
+    ]);
+    const scene = Object.values(document.scenes)[0];
+    expect(isBlockDisabled(scene, scene.blocks.bad)).toBe(true);
+    expect(collectInvalidBlocks(document)).toEqual([]);
+  });
 });
 
 describe("temp speakers", () => {
-    function dialogue(id: string, payload: { characterId?: string; speakerName?: string }): StoryBlock {
-        return {
-            id,
-            kind: "nodeAction",
-            parentId: null,
-            childrenIds: [],
-            payload: {
-                action: "dialogue",
-                ...payload,
-                text: { textId: `t-${id}`, role: "dialogue", value: "Hi" },
-            },
-        };
+  function dialogue(
+    id: string,
+    payload: { characterId?: string; speakerName?: string }
+  ): StoryBlock {
+    return {
+      id,
+      kind: "nodeAction",
+      parentId: null,
+      childrenIds: [],
+      payload: {
+        action: "dialogue",
+        ...payload,
+        text: { textId: `t-${id}`, role: "dialogue", value: "Hi" }
+      }
+    };
+  }
+
+  function documentWith(blocks: StoryBlock[]) {
+    const document = createEmptyStoryDocument({
+      id: STORY_ID_1,
+      name: "My Story",
+      now: "2026-07-16T00:00:00.000Z",
+      generateId: idFactory()
+    });
+    const scene = Object.values(document.scenes)[0];
+    for (const block of blocks) {
+      scene.blocks[block.id] = block;
+      scene.rootBlockIds.push(block.id);
     }
+    return document;
+  }
 
-    function documentWith(blocks: StoryBlock[]) {
-        const document = createEmptyStoryDocument({
-            id: STORY_ID_1,
-            name: "My Story",
-            now: "2026-07-16T00:00:00.000Z",
-            generateId: idFactory(),
-        });
-        const scene = Object.values(document.scenes)[0];
-        for (const block of blocks) {
-            scene.blocks[block.id] = block;
-            scene.rootBlockIds.push(block.id);
-        }
-        return document;
+  it("groups every line under the name that speaks it", () => {
+    const document = documentWith([
+      dialogue("a", { speakerName: "Alice" }),
+      dialogue("b", { speakerName: "Bob" }),
+      dialogue("c", { speakerName: "Alice" })
+    ]);
+
+    expect(collectTempSpeakers(document)).toEqual([
+      { name: "Alice", blockIds: ["a", "c"] },
+      { name: "Bob", blockIds: ["b"] }
+    ]);
+  });
+
+  it("ignores lines that already have a real character", () => {
+    const document = documentWith([
+      dialogue("a", { characterId: "char-alice", speakerName: "Stale" })
+    ]);
+    expect(collectTempSpeakers(document)).toEqual([]);
+  });
+
+  it("ignores blank names, which cannot be spoken by anyone", () => {
+    const document = documentWith([dialogue("a", { speakerName: "   " }), dialogue("b", {})]);
+    expect(collectTempSpeakers(document)).toEqual([]);
+  });
+
+  it("retires a temp speaker once nothing references it", () => {
+    const document = documentWith([dialogue("a", { speakerName: "Alice" })]);
+    const scene = Object.values(document.scenes)[0];
+
+    deleteBlockFromScene(scene, "a");
+
+    expect(collectTempSpeakers(document)).toEqual([]);
+  });
+
+  it("rebinds every line of a promoted speaker and drops the bare name", () => {
+    const document = documentWith([
+      dialogue("a", { speakerName: "Alice" }),
+      dialogue("b", { speakerName: "Bob" }),
+      dialogue("c", { speakerName: "Alice" })
+    ]);
+    const scene = Object.values(document.scenes)[0];
+
+    expect(promoteTempSpeaker(document, "Alice", "char-new")).toBe(2);
+
+    for (const id of ["a", "c"]) {
+      const payload = scene.blocks[id].payload as Record<string, unknown>;
+      expect(payload.characterId).toBe("char-new");
+      expect(payload.speakerName).toBeUndefined();
     }
+    // Bob is a different speaker and must not be swept up.
+    expect(collectTempSpeakers(document)).toEqual([{ name: "Bob", blockIds: ["b"] }]);
+  });
 
-    it("groups every line under the name that speaks it", () => {
-        const document = documentWith([
-            dialogue("a", { speakerName: "Alice" }),
-            dialogue("b", { speakerName: "Bob" }),
-            dialogue("c", { speakerName: "Alice" }),
-        ]);
+  it("does not touch lines already bound to a character", () => {
+    const document = documentWith([
+      dialogue("a", { characterId: "char-existing", speakerName: "Alice" })
+    ]);
+    const scene = Object.values(document.scenes)[0];
 
-        expect(collectTempSpeakers(document)).toEqual([
-            { name: "Alice", blockIds: ["a", "c"] },
-            { name: "Bob", blockIds: ["b"] },
-        ]);
-    });
-
-    it("ignores lines that already have a real character", () => {
-        const document = documentWith([dialogue("a", { characterId: "char-alice", speakerName: "Stale" })]);
-        expect(collectTempSpeakers(document)).toEqual([]);
-    });
-
-    it("ignores blank names, which cannot be spoken by anyone", () => {
-        const document = documentWith([dialogue("a", { speakerName: "   " }), dialogue("b", {})]);
-        expect(collectTempSpeakers(document)).toEqual([]);
-    });
-
-    it("retires a temp speaker once nothing references it", () => {
-        const document = documentWith([dialogue("a", { speakerName: "Alice" })]);
-        const scene = Object.values(document.scenes)[0];
-
-        deleteBlockFromScene(scene, "a");
-
-        expect(collectTempSpeakers(document)).toEqual([]);
-    });
-
-    it("rebinds every line of a promoted speaker and drops the bare name", () => {
-        const document = documentWith([
-            dialogue("a", { speakerName: "Alice" }),
-            dialogue("b", { speakerName: "Bob" }),
-            dialogue("c", { speakerName: "Alice" }),
-        ]);
-        const scene = Object.values(document.scenes)[0];
-
-        expect(promoteTempSpeaker(document, "Alice", "char-new")).toBe(2);
-
-        for (const id of ["a", "c"]) {
-            const payload = scene.blocks[id].payload as Record<string, unknown>;
-            expect(payload.characterId).toBe("char-new");
-            expect(payload.speakerName).toBeUndefined();
-        }
-        // Bob is a different speaker and must not be swept up.
-        expect(collectTempSpeakers(document)).toEqual([{ name: "Bob", blockIds: ["b"] }]);
-    });
-
-    it("does not touch lines already bound to a character", () => {
-        const document = documentWith([dialogue("a", { characterId: "char-existing", speakerName: "Alice" })]);
-        const scene = Object.values(document.scenes)[0];
-
-        expect(promoteTempSpeaker(document, "Alice", "char-new")).toBe(0);
-        expect((scene.blocks["a"].payload as Record<string, unknown>).characterId).toBe("char-existing");
-    });
+    expect(promoteTempSpeaker(document, "Alice", "char-new")).toBe(0);
+    expect((scene.blocks["a"].payload as Record<string, unknown>).characterId).toBe(
+      "char-existing"
+    );
+  });
 });
 
 describe("story document migration ladder", () => {
-    function docAtVersion(version: number) {
-        const document = createEmptyStoryDocument({
-            id: STORY_ID_1,
-            name: "My Story",
-            now: "2026-07-16T00:00:00.000Z",
-            generateId: idFactory(),
-        });
-        return { ...document, schemaVersion: version as never };
+  function docAtVersion(version: number) {
+    const document = createEmptyStoryDocument({
+      id: STORY_ID_1,
+      name: "My Story",
+      now: "2026-07-16T00:00:00.000Z",
+      generateId: idFactory()
+    });
+    return { ...document, schemaVersion: version as never };
+  }
+
+  // The regression that shipped: bumping the constant without adding a step left v3 documents
+  // falling through migrateStoryDocumentToLatest untouched, so every existing project threw
+  // "migration is not implemented" and its story panel would not open.
+  it.each([[1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12]])(
+    "brings a v%i document to the current schema",
+    (version) => {
+      expect(
+        normalizeStoryDocument(docAtVersion(version), "2026-07-16T00:00:00.000Z").schemaVersion
+      ).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    }
+  );
+
+  /**
+   * v11→v12 has exactly one chance to run: the key order of a freshly parsed `scenes` record IS
+   * the authored order of the scenes no chapter claims, and the first canonical write destroys it.
+   * These pin that it reads that order, and that nothing about the step can un-capture it.
+   */
+  describe("v11→v12 unassignedSceneIds", () => {
+    const SCENE_IN_CHAPTER = "00000000-0000-4000-8000-00000000aa01";
+    const LOOSE_FIRST = "00000000-0000-4000-8000-00000000bb02";
+    const LOOSE_SECOND = "00000000-0000-4000-8000-00000000bb01";
+
+    /** A v11 document whose two chapter-less scenes are stored in an order UUID sorting reverses. */
+    function v11WithLooseScenes(): StoryDocument {
+      const base = docAtVersion(11);
+      const chapterId = base.chapters[0].id;
+      const template = Object.values(base.scenes)[0];
+      const scene = (id: string) => ({ ...template, id, blocks: {}, rootBlockIds: [] });
+      return {
+        ...base,
+        entrySceneId: SCENE_IN_CHAPTER,
+        chapters: [{ ...base.chapters[0], id: chapterId, sceneIds: [SCENE_IN_CHAPTER] }],
+        scenes: {
+          [SCENE_IN_CHAPTER]: scene(SCENE_IN_CHAPTER),
+          [LOOSE_FIRST]: scene(LOOSE_FIRST),
+          [LOOSE_SECOND]: scene(LOOSE_SECOND)
+        }
+      } as StoryDocument;
     }
 
-    // The regression that shipped: bumping the constant without adding a step left v3 documents
-    // falling through migrateStoryDocumentToLatest untouched, so every existing project threw
-    // "migration is not implemented" and its story panel would not open.
-    it.each([[1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12]])("brings a v%i document to the current schema", version => {
-        expect(normalizeStoryDocument(docAtVersion(version), "2026-07-16T00:00:00.000Z").schemaVersion)
-            .toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    it("captures the parsed key order of the scenes no chapter claims", () => {
+      // Through JSON, because that is the only state the order ever exists in: `JSON.parse`
+      // hands back insertion order for these (non-integer-like) keys and nothing else does.
+      const parsed = JSON.parse(JSON.stringify(v11WithLooseScenes())) as StoryDocument;
+      const migrated = migrateStoryDocumentToLatest(parsed);
+      expect(migrated.unassignedSceneIds).toEqual([LOOSE_FIRST, LOOSE_SECOND]);
+      // Which is not what sorting the record would have said.
+      expect([LOOSE_FIRST, LOOSE_SECOND]).not.toEqual([...Object.keys(parsed.scenes)].sort());
     });
 
-    /**
-     * v11→v12 has exactly one chance to run: the key order of a freshly parsed `scenes` record IS
-     * the authored order of the scenes no chapter claims, and the first canonical write destroys it.
-     * These pin that it reads that order, and that nothing about the step can un-capture it.
-     */
-    describe("v11→v12 unassignedSceneIds", () => {
-        const SCENE_IN_CHAPTER = "00000000-0000-4000-8000-00000000aa01";
-        const LOOSE_FIRST = "00000000-0000-4000-8000-00000000bb02";
-        const LOOSE_SECOND = "00000000-0000-4000-8000-00000000bb01";
+    it("survives the canonical rewrite that key order does not", () => {
+      const migrated = migrateStoryDocumentToLatest(v11WithLooseScenes());
+      const canonical = {
+        ...migrated,
+        scenes: Object.fromEntries(
+          Object.keys(migrated.scenes)
+            .sort()
+            .map((id) => [id, migrated.scenes[id]])
+        )
+      };
+      expect(
+        normalizeStoryDocument(canonical, "2026-07-16T00:00:00.000Z").unassignedSceneIds
+      ).toEqual([LOOSE_FIRST, LOOSE_SECOND]);
+    });
 
-        /** A v11 document whose two chapter-less scenes are stored in an order UUID sorting reverses. */
-        function v11WithLooseScenes(): StoryDocument {
-            const base = docAtVersion(11);
-            const chapterId = base.chapters[0].id;
-            const template = Object.values(base.scenes)[0];
-            const scene = (id: string) => ({ ...template, id, blocks: {}, rootBlockIds: [] });
-            return {
-                ...base,
-                entrySceneId: SCENE_IN_CHAPTER,
-                chapters: [{ ...base.chapters[0], id: chapterId, sceneIds: [SCENE_IN_CHAPTER] }],
-                scenes: {
-                    [SCENE_IN_CHAPTER]: scene(SCENE_IN_CHAPTER),
-                    [LOOSE_FIRST]: scene(LOOSE_FIRST),
-                    [LOOSE_SECOND]: scene(LOOSE_SECOND),
-                },
-            } as StoryDocument;
+    it("is a no-op on an already-migrated document", () => {
+      const once = normalizeStoryDocument(v11WithLooseScenes(), "2026-07-16T00:00:00.000Z");
+      const twice = normalizeStoryDocument(once, "2026-07-16T00:00:00.000Z");
+      expect(twice).toEqual(once);
+    });
+
+    it("loads a v12 document that carries no ordering field at all", () => {
+      const { unassignedSceneIds: _absent, ...withoutField } =
+        migrateStoryDocumentToLatest(v11WithLooseScenes());
+      expect(() =>
+        normalizeStoryDocument(withoutField as StoryDocument, "2026-07-16T00:00:00.000Z")
+      ).not.toThrow();
+    });
+
+    it("writes no field when every scene belongs to a chapter", () => {
+      const normalized = normalizeStoryDocument(docAtVersion(11), "2026-07-16T00:00:00.000Z");
+      expect("unassignedSceneIds" in normalized).toBe(false);
+    });
+
+    it("drops a scene that has since been claimed by a chapter, without reordering the rest", () => {
+      const migrated = normalizeStoryDocument(v11WithLooseScenes(), "2026-07-16T00:00:00.000Z");
+      const adopted = {
+        ...migrated,
+        chapters: [{ ...migrated.chapters[0], sceneIds: [SCENE_IN_CHAPTER, LOOSE_FIRST] }]
+      };
+      expect(
+        normalizeStoryDocument(adopted, "2026-07-16T00:00:00.000Z").unassignedSceneIds
+      ).toEqual([LOOSE_SECOND]);
+    });
+  });
+
+  it("v8→v9 renames the persistent StoryVariableRef arm storageKey→variableId with zero semantic change", () => {
+    const document = docAtVersion(8);
+    const sceneId = Object.keys(document.scenes)[0];
+    const scene = document.scenes[sceneId];
+    const v8 = {
+      ...document,
+      scenes: {
+        [sceneId]: {
+          ...scene,
+          rootBlockIds: ["persis-decl", "set-gold"],
+          blocks: {
+            // A `/persis` declaration row keeps its storageKey - it is not a ref.
+            "persis-decl": {
+              id: "persis-decl",
+              parentId: null,
+              childrenIds: [],
+              kind: "declaration",
+              payload: {
+                scope: "persistent",
+                name: "Gold",
+                valueType: "number",
+                storageKey: "persis-decl"
+              }
+            },
+            // A setVariable targeting a persistent variable - its ref carries storageKey (v8).
+            "set-gold": {
+              id: "set-gold",
+              parentId: null,
+              childrenIds: [],
+              kind: "action",
+              payload: {
+                action: "setVariable",
+                target: { scope: "persistent", storageKey: "persis-decl" },
+                value: 5
+              }
+            }
+          }
         }
+      }
+    } as unknown as StoryDocument;
 
-        it("captures the parsed key order of the scenes no chapter claims", () => {
-            // Through JSON, because that is the only state the order ever exists in: `JSON.parse`
-            // hands back insertion order for these (non-integer-like) keys and nothing else does.
-            const parsed = JSON.parse(JSON.stringify(v11WithLooseScenes())) as StoryDocument;
-            const migrated = migrateStoryDocumentToLatest(parsed);
-            expect(migrated.unassignedSceneIds).toEqual([LOOSE_FIRST, LOOSE_SECOND]);
-            // Which is not what sorting the record would have said.
-            expect([LOOSE_FIRST, LOOSE_SECOND]).not.toEqual([...Object.keys(parsed.scenes)].sort());
-        });
+    const migrated = migrateStoryDocumentToLatest(v8);
+    expect(migrated.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    const setBlock = migrated.scenes[sceneId].blocks["set-gold"] as {
+      payload: { target: StoryVariableRef };
+    };
+    // The ref arm is renamed, same value - old references resolve unchanged.
+    expect(setBlock.payload.target).toEqual({ scope: "persistent", variableId: "persis-decl" });
+    expect(storyVariableRefKey(setBlock.payload.target)).toBe("persistent:persis-decl");
+    // The declaration payload is untouched (it is a variable, not a ref).
+    const decl = migrated.scenes[sceneId].blocks["persis-decl"] as {
+      payload: { storageKey: string; name: string };
+    };
+    expect(decl.payload).toMatchObject({ storageKey: "persis-decl", name: "Gold" });
+  });
 
-        it("survives the canonical rewrite that key order does not", () => {
-            const migrated = migrateStoryDocumentToLatest(v11WithLooseScenes());
-            const canonical = {
-                ...migrated,
-                scenes: Object.fromEntries(Object.keys(migrated.scenes).sort().map(id => [id, migrated.scenes[id]])),
-            };
-            expect(normalizeStoryDocument(canonical, "2026-07-16T00:00:00.000Z").unassignedSceneIds)
-                .toEqual([LOOSE_FIRST, LOOSE_SECOND]);
-        });
+  /**
+   * v12→v13 deletes a block kind, so the only thing it can get wrong is losing what the row held.
+   * The source is asserted byte-for-byte rather than "contains something like it": authors put real
+   * code in these blocks, and a migration that reformatted, trimmed or re-indented it would be data
+   * loss that no diff review would catch.
+   */
+  describe("v12→v13 code blocks become notes", () => {
+    const SOURCE = '  const a = 1;\n\n\tif (a) {\n  return "don\'t";\n}\n';
 
-        it("is a no-op on an already-migrated document", () => {
-            const once = normalizeStoryDocument(v11WithLooseScenes(), "2026-07-16T00:00:00.000Z");
-            const twice = normalizeStoryDocument(once, "2026-07-16T00:00:00.000Z");
-            expect(twice).toEqual(once);
-        });
-
-        it("loads a v12 document that carries no ordering field at all", () => {
-            const { unassignedSceneIds: _absent, ...withoutField } = migrateStoryDocumentToLatest(v11WithLooseScenes());
-            expect(() => normalizeStoryDocument(withoutField as StoryDocument, "2026-07-16T00:00:00.000Z")).not.toThrow();
-        });
-
-        it("writes no field when every scene belongs to a chapter", () => {
-            const normalized = normalizeStoryDocument(docAtVersion(11), "2026-07-16T00:00:00.000Z");
-            expect("unassignedSceneIds" in normalized).toBe(false);
-        });
-
-        it("drops a scene that has since been claimed by a chapter, without reordering the rest", () => {
-            const migrated = normalizeStoryDocument(v11WithLooseScenes(), "2026-07-16T00:00:00.000Z");
-            const adopted = {
-                ...migrated,
-                chapters: [{ ...migrated.chapters[0], sceneIds: [SCENE_IN_CHAPTER, LOOSE_FIRST] }],
-            };
-            expect(normalizeStoryDocument(adopted, "2026-07-16T00:00:00.000Z").unassignedSceneIds).toEqual([LOOSE_SECOND]);
-        });
-    });
-
-    it("v8→v9 renames the persistent StoryVariableRef arm storageKey→variableId with zero semantic change", () => {
-        const document = docAtVersion(8);
-        const sceneId = Object.keys(document.scenes)[0];
-        const scene = document.scenes[sceneId];
-        const v8 = {
-            ...document,
-            scenes: {
-                [sceneId]: {
-                    ...scene,
-                    rootBlockIds: ["persis-decl", "set-gold"],
-                    blocks: {
-                        // A `/persis` declaration row keeps its storageKey - it is not a ref.
-                        "persis-decl": {
-                            id: "persis-decl", parentId: null, childrenIds: [], kind: "declaration",
-                            payload: { scope: "persistent", name: "Gold", valueType: "number", storageKey: "persis-decl" },
-                        },
-                        // A setVariable targeting a persistent variable - its ref carries storageKey (v8).
-                        "set-gold": {
-                            id: "set-gold", parentId: null, childrenIds: [], kind: "action",
-                            payload: { action: "setVariable", target: { scope: "persistent", storageKey: "persis-decl" }, value: 5 },
-                        },
-                    },
-                },
-            },
-        } as unknown as StoryDocument;
-
-        const migrated = migrateStoryDocumentToLatest(v8);
-        expect(migrated.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
-        const setBlock = migrated.scenes[sceneId].blocks["set-gold"] as { payload: { target: StoryVariableRef } };
-        // The ref arm is renamed, same value - old references resolve unchanged.
-        expect(setBlock.payload.target).toEqual({ scope: "persistent", variableId: "persis-decl" });
-        expect(storyVariableRefKey(setBlock.payload.target)).toBe("persistent:persis-decl");
-        // The declaration payload is untouched (it is a variable, not a ref).
-        const decl = migrated.scenes[sceneId].blocks["persis-decl"] as { payload: { storageKey: string; name: string } };
-        expect(decl.payload).toMatchObject({ storageKey: "persis-decl", name: "Gold" });
-    });
-
-    /**
-     * v12→v13 deletes a block kind, so the only thing it can get wrong is losing what the row held.
-     * The source is asserted byte-for-byte rather than "contains something like it": authors put real
-     * code in these blocks, and a migration that reformatted, trimmed or re-indented it would be data
-     * loss that no diff review would catch.
-     */
-    describe("v12→v13 code blocks become notes", () => {
-        const SOURCE = "  const a = 1;\n\n\tif (a) {\n  return \"don't\";\n}\n";
-
-        function v12WithCodeBlock(payload: Record<string, unknown>): StoryDocument {
-            const document = docAtVersion(12);
-            const sceneId = Object.keys(document.scenes)[0];
-            const scene = document.scenes[sceneId];
-            return {
-                ...document,
-                scenes: {
-                    [sceneId]: {
-                        ...scene,
-                        rootBlockIds: ["c1"],
-                        blocks: { c1: { id: "c1", parentId: null, childrenIds: [], kind: "code", payload } },
-                    },
-                },
-            } as unknown as StoryDocument;
+    function v12WithCodeBlock(payload: Record<string, unknown>): StoryDocument {
+      const document = docAtVersion(12);
+      const sceneId = Object.keys(document.scenes)[0];
+      const scene = document.scenes[sceneId];
+      return {
+        ...document,
+        scenes: {
+          [sceneId]: {
+            ...scene,
+            rootBlockIds: ["c1"],
+            blocks: { c1: { id: "c1", parentId: null, childrenIds: [], kind: "code", payload } }
+          }
         }
-
-        function migratedBlock(payload: Record<string, unknown>) {
-            const migrated = migrateStoryDocumentToLatest(v12WithCodeBlock(payload));
-            expect(migrated.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
-            const sceneId = Object.keys(migrated.scenes)[0];
-            return migrated.scenes[sceneId].blocks.c1;
-        }
-
-        it("keeps the source verbatim, at the end of the note", () => {
-            const block = migratedBlock({ language: "typescript", source: SOURCE });
-            expect(block.kind).toBe("note");
-            const value = (block as { payload: { text: { value: string } } }).payload.text.value;
-            // Byte equality of the tail: whatever the header line says, the author's bytes end the note.
-            expect(value.endsWith(SOURCE)).toBe(true);
-            expect(value.slice(value.length - SOURCE.length)).toBe(SOURCE);
-            // The language is the one thing the note has to state, since the payload field is gone.
-            expect(value).toContain("typescript");
-        });
-
-        it("survives an empty or malformed payload rather than dropping the row", () => {
-            expect(migratedBlock({}).kind).toBe("note");
-            expect(migratedBlock({ source: 12 as unknown as string }).kind).toBe("note");
-        });
-
-        it("keeps the row's id, place in the tree and disabled flag", () => {
-            const document = docAtVersion(12);
-            const sceneId = Object.keys(document.scenes)[0];
-            const scene = document.scenes[sceneId];
-            const v12 = {
-                ...document,
-                scenes: {
-                    [sceneId]: {
-                        ...scene,
-                        rootBlockIds: ["group"],
-                        blocks: {
-                            group: { id: "group", parentId: null, childrenIds: ["c1"], kind: "control", payload: { control: "sequence" } },
-                            c1: { id: "c1", parentId: "group", childrenIds: [], kind: "code", disabled: true, payload: { language: "javascript", source: SOURCE } },
-                        },
-                    },
-                },
-            } as unknown as StoryDocument;
-            const block = migrateStoryDocumentToLatest(v12).scenes[sceneId].blocks.c1;
-            expect(block).toMatchObject({ id: "c1", kind: "note", parentId: "group", disabled: true });
-        });
-    });
-
-    it("migrates v6 forward additively — a bump only, every block untouched (no invented `disabled`)", () => {
-        const document = docAtVersion(6);
-        const sceneId = Object.keys(document.scenes)[0];
-        const scene = document.scenes[sceneId];
-        const v6 = {
-            ...document,
-            scenes: {
-                [sceneId]: {
-                    ...scene,
-                    rootBlockIds: ["n1"],
-                    blocks: { n1: { id: "n1", parentId: null, childrenIds: [], kind: "note", payload: { text: { textId: "t", role: "note", value: "hi" } } } },
-                },
-            },
-        } as StoryDocument;
-        const migrated = migrateStoryDocumentToLatest(v6);
-        expect(migrated.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
-        expect(migrated.scenes[sceneId].blocks.n1).not.toHaveProperty("disabled");
-    });
-
-    it("migrates v7 to v8 additively — a bump only, no invented `event` runs", () => {
-        const document = docAtVersion(7);
-        const sceneId = Object.keys(document.scenes)[0];
-        const scene = document.scenes[sceneId];
-        const v7 = {
-            ...document,
-            scenes: {
-                [sceneId]: {
-                    ...scene,
-                    rootBlockIds: ["d1"],
-                    blocks: {
-                        d1: {
-                            id: "d1", parentId: null, childrenIds: [], kind: "nodeAction",
-                            payload: {
-                                action: "dialogue", characterId: "c1",
-                                text: { textId: "t", role: "dialogue", value: "hi", rich: [{ text: "hi" }] },
-                            },
-                        },
-                    },
-                },
-            },
-        } as unknown as StoryDocument;
-        const migrated = migrateStoryDocumentToLatest(v7);
-        expect(migrated.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
-        const rich = (migrated.scenes[sceneId].blocks.d1 as { payload: { text: { rich: unknown[] } } }).payload.text.rich;
-        expect(rich).toEqual([{ text: "hi" }]);
-    });
-
-    /** A v4 document holding one `conditionBranch` whose expression condition is the legacy raw string. */
-    function docWithLegacyExpression(source: string) {
-        const document = docAtVersion(4);
-        const sceneId = Object.keys(document.scenes)[0];
-        const scene = document.scenes[sceneId];
-        return {
-            ...document,
-            scenes: {
-                [sceneId]: {
-                    ...scene,
-                    sceneVariables: {
-                        "v-gold": { id: "v-gold", name: "gold", valueType: "number", storageKey: "v-gold", defaultValue: 0 },
-                    },
-                    rootBlockIds: ["b-branch"],
-                    blocks: {
-                        "b-branch": {
-                            id: "b-branch",
-                            parentId: null,
-                            childrenIds: [],
-                            kind: "control",
-                            payload: { control: "conditionBranch", branch: "if", condition: { kind: "expression", source } },
-                        },
-                    },
-                },
-            },
-        } as never;
+      } as unknown as StoryDocument;
     }
 
-    function migratedCondition(source: string) {
-        const migrated = normalizeStoryDocument(docWithLegacyExpression(source), "2026-07-16T00:00:00.000Z");
-        const scene = Object.values(migrated.scenes)[0];
-        const payload = scene.blocks["b-branch"].payload as { condition: { kind: string; expression: { source: string; ast: { kind: string } } } };
-        return payload.condition;
+    function migratedBlock(payload: Record<string, unknown>) {
+      const migrated = migrateStoryDocumentToLatest(v12WithCodeBlock(payload));
+      expect(migrated.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+      const sceneId = Object.keys(migrated.scenes)[0];
+      return migrated.scenes[sceneId].blocks.c1;
     }
 
-    it("parses a v4 expression condition into a tree, so conditions that never worked start working", () => {
-        // v4 stored raw text here and every consumer refused it - the compiler returned a constant
-        // false. Migration is what turns those rows into conditions that actually branch.
-        const condition = migratedCondition("gold >= 100");
-        expect(condition.kind).toBe("expression");
-        expect(condition.expression.source).toBe("gold >= 100");
-        expect(condition.expression.ast.kind).toBe("binary");
+    it("keeps the source verbatim, at the end of the note", () => {
+      const block = migratedBlock({ language: "typescript", source: SOURCE });
+      expect(block.kind).toBe("note");
+      const value = (block as { payload: { text: { value: string } } }).payload.text.value;
+      // Byte equality of the tail: whatever the header line says, the author's bytes end the note.
+      expect(value.endsWith(SOURCE)).toBe(true);
+      expect(value.slice(value.length - SOURCE.length)).toBe(SOURCE);
+      // The language is the one thing the note has to state, since the payload field is gone.
+      expect(value).toContain("typescript");
     });
 
-    it("keeps unresolvable legacy source as a non-evaluable tree rather than dropping the row", () => {
-        // Still evaluates false, exactly as it did in v4 - but now the row can say so instead of
-        // looking like a condition that simply never matched.
-        //
-        // The assertion is `isStoryExpressionEvaluable`, not the shape of the root node: the tree keeps
-        // its structure (`someLongGoneVariable > 1` is still a comparison) and marks only the part that
-        // failed, so the author sees where the problem is. Evaluability is what the compiler gates on.
-        const condition = migratedCondition("someLongGoneVariable > 1");
-        expect(condition.expression.source).toBe("someLongGoneVariable > 1");
-        expect(isStoryExpressionEvaluable(condition.expression.ast as StoryExpr)).toBe(false);
+    it("survives an empty or malformed payload rather than dropping the row", () => {
+      expect(migratedBlock({}).kind).toBe("note");
+      expect(migratedBlock({ source: 12 as unknown as string }).kind).toBe("note");
     });
 
-    it("leaves a current-version document alone", () => {
-        const document = docAtVersion(STORY_DOCUMENT_SCHEMA_VERSION);
-        expect(normalizeStoryDocument(document, "2026-07-16T00:00:00.000Z").schemaVersion)
-            .toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    it("keeps the row's id, place in the tree and disabled flag", () => {
+      const document = docAtVersion(12);
+      const sceneId = Object.keys(document.scenes)[0];
+      const scene = document.scenes[sceneId];
+      const v12 = {
+        ...document,
+        scenes: {
+          [sceneId]: {
+            ...scene,
+            rootBlockIds: ["group"],
+            blocks: {
+              group: {
+                id: "group",
+                parentId: null,
+                childrenIds: ["c1"],
+                kind: "control",
+                payload: { control: "sequence" }
+              },
+              c1: {
+                id: "c1",
+                parentId: "group",
+                childrenIds: [],
+                kind: "code",
+                disabled: true,
+                payload: { language: "javascript", source: SOURCE }
+              }
+            }
+          }
+        }
+      } as unknown as StoryDocument;
+      const block = migrateStoryDocumentToLatest(v12).scenes[sceneId].blocks.c1;
+      expect(block).toMatchObject({ id: "c1", kind: "note", parentId: "group", disabled: true });
     });
+  });
 
-    it("still refuses a document from a newer Studio", () => {
-        expect(() => normalizeStoryDocument(docAtVersion(STORY_DOCUMENT_SCHEMA_VERSION + 1), "2026-07-16T00:00:00.000Z"))
-            .toThrow(/newer than this Studio/);
-    });
+  it("migrates v6 forward additively — a bump only, every block untouched (no invented `disabled`)", () => {
+    const document = docAtVersion(6);
+    const sceneId = Object.keys(document.scenes)[0];
+    const scene = document.scenes[sceneId];
+    const v6 = {
+      ...document,
+      scenes: {
+        [sceneId]: {
+          ...scene,
+          rootBlockIds: ["n1"],
+          blocks: {
+            n1: {
+              id: "n1",
+              parentId: null,
+              childrenIds: [],
+              kind: "note",
+              payload: { text: { textId: "t", role: "note", value: "hi" } }
+            }
+          }
+        }
+      }
+    } as StoryDocument;
+    const migrated = migrateStoryDocumentToLatest(v6);
+    expect(migrated.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    expect(migrated.scenes[sceneId].blocks.n1).not.toHaveProperty("disabled");
+  });
+
+  it("migrates v7 to v8 additively — a bump only, no invented `event` runs", () => {
+    const document = docAtVersion(7);
+    const sceneId = Object.keys(document.scenes)[0];
+    const scene = document.scenes[sceneId];
+    const v7 = {
+      ...document,
+      scenes: {
+        [sceneId]: {
+          ...scene,
+          rootBlockIds: ["d1"],
+          blocks: {
+            d1: {
+              id: "d1",
+              parentId: null,
+              childrenIds: [],
+              kind: "nodeAction",
+              payload: {
+                action: "dialogue",
+                characterId: "c1",
+                text: { textId: "t", role: "dialogue", value: "hi", rich: [{ text: "hi" }] }
+              }
+            }
+          }
+        }
+      }
+    } as unknown as StoryDocument;
+    const migrated = migrateStoryDocumentToLatest(v7);
+    expect(migrated.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+    const rich = (migrated.scenes[sceneId].blocks.d1 as { payload: { text: { rich: unknown[] } } })
+      .payload.text.rich;
+    expect(rich).toEqual([{ text: "hi" }]);
+  });
+
+  /** A v4 document holding one `conditionBranch` whose expression condition is the legacy raw string. */
+  function docWithLegacyExpression(source: string) {
+    const document = docAtVersion(4);
+    const sceneId = Object.keys(document.scenes)[0];
+    const scene = document.scenes[sceneId];
+    return {
+      ...document,
+      scenes: {
+        [sceneId]: {
+          ...scene,
+          sceneVariables: {
+            "v-gold": {
+              id: "v-gold",
+              name: "gold",
+              valueType: "number",
+              storageKey: "v-gold",
+              defaultValue: 0
+            }
+          },
+          rootBlockIds: ["b-branch"],
+          blocks: {
+            "b-branch": {
+              id: "b-branch",
+              parentId: null,
+              childrenIds: [],
+              kind: "control",
+              payload: {
+                control: "conditionBranch",
+                branch: "if",
+                condition: { kind: "expression", source }
+              }
+            }
+          }
+        }
+      }
+    } as never;
+  }
+
+  function migratedCondition(source: string) {
+    const migrated = normalizeStoryDocument(
+      docWithLegacyExpression(source),
+      "2026-07-16T00:00:00.000Z"
+    );
+    const scene = Object.values(migrated.scenes)[0];
+    const payload = scene.blocks["b-branch"].payload as {
+      condition: { kind: string; expression: { source: string; ast: { kind: string } } };
+    };
+    return payload.condition;
+  }
+
+  it("parses a v4 expression condition into a tree, so conditions that never worked start working", () => {
+    // v4 stored raw text here and every consumer refused it - the compiler returned a constant
+    // false. Migration is what turns those rows into conditions that actually branch.
+    const condition = migratedCondition("gold >= 100");
+    expect(condition.kind).toBe("expression");
+    expect(condition.expression.source).toBe("gold >= 100");
+    expect(condition.expression.ast.kind).toBe("binary");
+  });
+
+  it("keeps unresolvable legacy source as a non-evaluable tree rather than dropping the row", () => {
+    // Still evaluates false, exactly as it did in v4 - but now the row can say so instead of
+    // looking like a condition that simply never matched.
+    //
+    // The assertion is `isStoryExpressionEvaluable`, not the shape of the root node: the tree keeps
+    // its structure (`someLongGoneVariable > 1` is still a comparison) and marks only the part that
+    // failed, so the author sees where the problem is. Evaluability is what the compiler gates on.
+    const condition = migratedCondition("someLongGoneVariable > 1");
+    expect(condition.expression.source).toBe("someLongGoneVariable > 1");
+    expect(isStoryExpressionEvaluable(condition.expression.ast as StoryExpr)).toBe(false);
+  });
+
+  it("leaves a current-version document alone", () => {
+    const document = docAtVersion(STORY_DOCUMENT_SCHEMA_VERSION);
+    expect(normalizeStoryDocument(document, "2026-07-16T00:00:00.000Z").schemaVersion).toBe(
+      STORY_DOCUMENT_SCHEMA_VERSION
+    );
+  });
+
+  it("still refuses a document from a newer Studio", () => {
+    expect(() =>
+      normalizeStoryDocument(
+        docAtVersion(STORY_DOCUMENT_SCHEMA_VERSION + 1),
+        "2026-07-16T00:00:00.000Z"
+      )
+    ).toThrow(/newer than this Studio/);
+  });
 });

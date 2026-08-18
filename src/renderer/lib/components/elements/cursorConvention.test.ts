@@ -15,13 +15,13 @@ import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome
  * regression in them is the expensive kind.
  */
 describe("cursor convention", () => {
-    it("controlButtonClass opts out of the preflight pointer cursor", () => {
-        // Both arms: `active` swaps colours and must not drop the cursor on the way through.
-        expect(controlButtonClass()).toContain("cursor-default");
-        expect(controlButtonClass(true)).toContain("cursor-default");
-    });
+  it("controlButtonClass opts out of the preflight pointer cursor", () => {
+    // Both arms: `active` swaps colours and must not drop the cursor on the way through.
+    expect(controlButtonClass()).toContain("cursor-default");
+    expect(controlButtonClass(true)).toContain("cursor-default");
+  });
 
-    it("controlButtonClass never emits a pointer cursor", () => {
-        expect(controlButtonClass()).not.toContain("cursor-pointer");
-    });
+  it("controlButtonClass never emits a pointer cursor", () => {
+    expect(controlButtonClass()).not.toContain("cursor-pointer");
+  });
 });

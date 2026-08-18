@@ -3,435 +3,727 @@ import type { StoryAnimationAsset, StoryBlock, StoryDocument } from "@shared/typ
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import { computeStoryStageSnapshot } from "./storyStageSnapshot";
 
-function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[] = Object.keys(blocks)): StoryDocument {
-    // v6: the scene variable is a declaration ROW in the block tree, not a registry entry.
-    const flagDeclaration: StoryBlock = {
-        id: "flag",
-        kind: "declaration",
-        parentId: null,
-        childrenIds: [],
-        payload: { scope: "scene", name: "flag", valueType: "boolean", defaultValue: false, storageKey: "flag" },
-    };
-    return {
-        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
-        id: "story-1",
-        name: "Story",
-        chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1"] }],
-        scenes: {
-            "scene-1": {
-                id: "scene-1",
-                name: "Scene 1",
-                runtimeName: "Scene 1",
-                rootBlockIds: ["flag", ...rootBlockIds],
-                blocks: { flag: flagDeclaration, ...blocks },
-            },
-        },
-    };
+function baseDocument(
+  blocks: Record<string, StoryBlock>,
+  rootBlockIds: string[] = Object.keys(blocks)
+): StoryDocument {
+  // v6: the scene variable is a declaration ROW in the block tree, not a registry entry.
+  const flagDeclaration: StoryBlock = {
+    id: "flag",
+    kind: "declaration",
+    parentId: null,
+    childrenIds: [],
+    payload: {
+      scope: "scene",
+      name: "flag",
+      valueType: "boolean",
+      defaultValue: false,
+      storageKey: "flag"
+    }
+  };
+  return {
+    schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+    id: "story-1",
+    name: "Story",
+    chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1"] }],
+    scenes: {
+      "scene-1": {
+        id: "scene-1",
+        name: "Scene 1",
+        runtimeName: "Scene 1",
+        rootBlockIds: ["flag", ...rootBlockIds],
+        blocks: { flag: flagDeclaration, ...blocks }
+      }
+    }
+  };
 }
 
-function block(id: string, kind: StoryBlock["kind"], payload: unknown, parentId: string | null = null, childrenIds: string[] = []): StoryBlock {
-    return { id, kind, parentId, childrenIds, payload } as StoryBlock;
+function block(
+  id: string,
+  kind: StoryBlock["kind"],
+  payload: unknown,
+  parentId: string | null = null,
+  childrenIds: string[] = []
+): StoryBlock {
+  return { id, kind, parentId, childrenIds, payload } as StoryBlock;
 }
 
 const say = (id: string, parentId: string | null = null, childrenIds: string[] = []) =>
-    block(id, "nodeAction", { action: "narration", text: { textId: `${id}-text`, value: "Text", role: "narration" } }, parentId, childrenIds);
+  block(
+    id,
+    "nodeAction",
+    { action: "narration", text: { textId: `${id}-text`, value: "Text", role: "narration" } },
+    parentId,
+    childrenIds
+  );
 
-function snapshot(document: StoryDocument, targetBlockId: string | null, animations?: Record<string, StoryAnimationAsset>) {
-    return computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId, animations });
+function snapshot(
+  document: StoryDocument,
+  targetBlockId: string | null,
+  animations?: Record<string, StoryAnimationAsset>
+) {
+  return computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId, animations });
 }
 
 describe("computeStoryStageSnapshot", () => {
-    it("returns an empty snapshot for the scene start", () => {
-        const document = baseDocument({
-            bg: block("bg", "action", { action: "setBackground", assetId: "asset-bg" }),
-        }, ["bg"]);
-        const result = snapshot(document, null);
-        expect(result.background).toBeNull();
-        expect(result.displayables).toEqual([]);
-        expect(result.diagnostics).toEqual([]);
+  it("returns an empty snapshot for the scene start", () => {
+    const document = baseDocument(
+      {
+        bg: block("bg", "action", { action: "setBackground", assetId: "asset-bg" })
+      },
+      ["bg"]
+    );
+    const result = snapshot(document, null);
+    expect(result.background).toBeNull();
+    expect(result.displayables).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accumulates the last background before the target", () => {
+    const document = baseDocument(
+      {
+        "bg-1": block("bg-1", "action", { action: "setBackground", assetId: "asset-1" }),
+        "bg-2": block("bg-2", "action", {
+          action: "setBackground",
+          assetId: "asset-2",
+          transition: { kind: "dissolve", durationMs: 300 }
+        }),
+        target: say("target")
+      },
+      ["bg-1", "bg-2", "target"]
+    );
+    const result = snapshot(document, "target");
+    expect(result.background).toEqual({ assetId: "asset-2" });
+  });
+
+  it("computes character enter/exit visibility and settled show props", () => {
+    const document = baseDocument(
+      {
+        enter: block("enter", "action", {
+          action: "character",
+          operation: "enter",
+          characterId: "char-alice",
+          transform: { preset: "center", durationMs: 300, props: { zoom: 0.5, xoffset: 24 } }
+        }),
+        "target-1": say("target-1"),
+        exit: block("exit", "action", {
+          action: "character",
+          operation: "exit",
+          characterId: "char-alice"
+        }),
+        "target-2": say("target-2")
+      },
+      ["enter", "target-1", "exit", "target-2"]
+    );
+
+    const atTarget1 = snapshot(document, "target-1");
+    expect(atTarget1.displayables).toHaveLength(1);
+    const alice = atTarget1.displayables[0];
+    expect(alice.kind).toBe("image");
+    expect(alice.objectName).toBe("char-alice");
+    expect(alice.visible).toBe(true);
+    expect(alice.autoFit).toBe(true);
+    expect(alice.source).toEqual({
+      type: "character",
+      characterId: "char-alice",
+      pose: undefined,
+      tags: undefined
     });
+    expect(alice.props).toEqual(
+      expect.objectContaining({
+        opacity: 1,
+        zoom: 0.5,
+        position: expect.objectContaining({ xalign: 0.5, yalign: 0.5, xoffset: 24 })
+      })
+    );
 
-    it("accumulates the last background before the target", () => {
-        const document = baseDocument({
-            "bg-1": block("bg-1", "action", { action: "setBackground", assetId: "asset-1" }),
-            "bg-2": block("bg-2", "action", { action: "setBackground", assetId: "asset-2", transition: { kind: "dissolve", durationMs: 300 } }),
-            target: say("target"),
-        }, ["bg-1", "bg-2", "target"]);
-        const result = snapshot(document, "target");
-        expect(result.background).toEqual({ assetId: "asset-2" });
+    const atTarget2 = snapshot(document, "target-2");
+    expect(atTarget2.displayables[0].visible).toBe(false);
+    expect(atTarget2.displayables[0].props.opacity).toBe(0);
+  });
+
+  it("leaves the portrait alone across a /rename", () => {
+    // `setName` retitles the speaker label and nothing else. It used to fall into the
+    // enter/expression arm, which rebuilds `source` from a payload it never carries - so a
+    // `/rename` after a `/face` silently reverted the character to their default look in a
+    // row-precise launch, which is the one place this snapshot is the whole truth.
+    const document = baseDocument(
+      {
+        enter: block("enter", "action", {
+          action: "character",
+          operation: "enter",
+          characterId: "char-alice"
+        }),
+        face: block("face", "action", {
+          action: "character",
+          operation: "expression",
+          characterId: "char-alice",
+          pose: "pose-angry"
+        }),
+        rename: block("rename", "action", {
+          action: "character",
+          operation: "setName",
+          characterId: "char-alice",
+          displayName: "Alice"
+        }),
+        target: say("target")
+      },
+      ["enter", "face", "rename", "target"]
+    );
+
+    const result = snapshot(document, "target");
+    expect(result.displayables).toHaveLength(1);
+    const alice = result.displayables[0];
+    expect(alice.visible).toBe(true);
+    expect(alice.source).toEqual({
+      type: "character",
+      characterId: "char-alice",
+      pose: "pose-angry",
+      tags: undefined
     });
+  });
 
-    it("computes character enter/exit visibility and settled show props", () => {
-        const document = baseDocument({
-            enter: block("enter", "action", {
-                action: "character",
-                operation: "enter",
-                characterId: "char-alice",
-                transform: { preset: "center", durationMs: 300, props: { zoom: 0.5, xoffset: 24 } },
-            }),
-            "target-1": say("target-1"),
-            exit: block("exit", "action", { action: "character", operation: "exit", characterId: "char-alice" }),
-            "target-2": say("target-2"),
-        }, ["enter", "target-1", "exit", "target-2"]);
+  it("does not conjure a stage record for a character only ever renamed", () => {
+    // `setName` settles no stage state, so it must not even reserve a displayable - otherwise
+    // "？？？" becoming a name would put a blank portrait in the preview.
+    const document = baseDocument(
+      {
+        rename: block("rename", "action", {
+          action: "character",
+          operation: "setName",
+          characterId: "char-bob",
+          displayName: "Bob"
+        }),
+        target: say("target")
+      },
+      ["rename", "target"]
+    );
+    expect(snapshot(document, "target").displayables).toEqual([]);
+  });
 
-        const atTarget1 = snapshot(document, "target-1");
-        expect(atTarget1.displayables).toHaveLength(1);
-        const alice = atTarget1.displayables[0];
-        expect(alice.kind).toBe("image");
-        expect(alice.objectName).toBe("char-alice");
-        expect(alice.visible).toBe(true);
-        expect(alice.autoFit).toBe(true);
-        expect(alice.source).toEqual({ type: "character", characterId: "char-alice", pose: undefined, tags: undefined });
-        expect(alice.props).toEqual(expect.objectContaining({
-            opacity: 1,
-            zoom: 0.5,
-            position: expect.objectContaining({ xalign: 0.5, yalign: 0.5, xoffset: 24 }),
-        }));
+  it("warns that a /vfx overlay is not previewed, as it does for a video", () => {
+    // An ambience overlay is a real visual the snapshot cannot settle. Silence would leave the
+    // author reading a row-precise launch as complete when a layer of it is simply missing.
+    const document = baseDocument(
+      {
+        rain: block("rain", "action", {
+          action: "vfx",
+          operation: "create",
+          objectName: "rain",
+          assetId: "asset-rain"
+        }),
+        clip: block("clip", "action", {
+          action: "video",
+          operation: "create",
+          objectName: "intro",
+          assetId: "asset-intro"
+        }),
+        target: say("target")
+      },
+      ["rain", "clip", "target"]
+    );
+    const result = snapshot(document, "target");
+    expect(result.diagnostics).toEqual([
+      { level: "warning", blockId: "rain", message: "Ambience effects are not previewed." },
+      { level: "warning", blockId: "clip", message: "Videos are not previewed." }
+    ]);
+  });
 
-        const atTarget2 = snapshot(document, "target-2");
-        expect(atTarget2.displayables[0].visible).toBe(false);
-        expect(atTarget2.displayables[0].props.opacity).toBe(0);
+  it("records the settled camera pose before the target and clamps degenerate values", () => {
+    // The stage camera is a story-level singleton whose pose the runtime carries into a
+    // row-precise launch. A launch that pre-poses everything else but leaves the camera neutral
+    // shows the author a shot the real playthrough never had. Clamping mirrors the compiler,
+    // because the pose is pre-posed straight onto the camera, bypassing compileCameraAction.
+    const document = baseDocument(
+      {
+        zoom: block("zoom", "action", { action: "camera", operation: "zoom", zoom: 0 }),
+        pan: block("pan", "action", {
+          action: "camera",
+          operation: "pan",
+          position: { xalign: 0.25, yalign: 0.5 }
+        }),
+        rotate: block("rotate", "action", { action: "camera", operation: "rotate", rotation: 15 }),
+        dark: block("dark", "action", { action: "camera", operation: "darken", darkness: 2 }),
+        target: say("target")
+      },
+      ["zoom", "pan", "rotate", "dark", "target"]
+    );
+    const result = snapshot(document, "target");
+    expect(result.diagnostics).toEqual([]);
+    // zoom 0 → the 0.05 floor; darkness 2 → the 0-1 ceiling.
+    expect(result.camera).toEqual({
+      props: {
+        zoom: 0.05,
+        position: expect.objectContaining({ xalign: 0.25, yalign: 0.5 }),
+        rotation: 15
+      },
+      effects: { darkness: 1 }
     });
+  });
 
-    it("leaves the portrait alone across a /rename", () => {
-        // `setName` retitles the speaker label and nothing else. It used to fall into the
-        // enter/expression arm, which rebuilds `source` from a payload it never carries - so a
-        // `/rename` after a `/face` silently reverted the character to their default look in a
-        // row-precise launch, which is the one place this snapshot is the whole truth.
-        const document = baseDocument({
-            enter: block("enter", "action", { action: "character", operation: "enter", characterId: "char-alice" }),
-            face: block("face", "action", { action: "character", operation: "expression", characterId: "char-alice", pose: "pose-angry" }),
-            rename: block("rename", "action", { action: "character", operation: "setName", characterId: "char-alice", displayName: "Alice" }),
-            target: say("target"),
-        }, ["enter", "face", "rename", "target"]);
+  it("lets the latest camera op on a channel win and drops the pose on reset", () => {
+    const later = baseDocument(
+      {
+        first: block("first", "action", { action: "camera", operation: "zoom", zoom: 2 }),
+        second: block("second", "action", { action: "camera", operation: "zoom", zoom: 3 }),
+        target: say("target")
+      },
+      ["first", "second", "target"]
+    );
+    expect(snapshot(later, "target").camera?.props.zoom).toBe(3);
 
-        const result = snapshot(document, "target");
-        expect(result.displayables).toHaveLength(1);
-        const alice = result.displayables[0];
-        expect(alice.visible).toBe(true);
-        expect(alice.source).toEqual({ type: "character", characterId: "char-alice", pose: "pose-angry", tags: undefined });
-    });
+    const reset = baseDocument(
+      {
+        zoom: block("zoom", "action", { action: "camera", operation: "zoom", zoom: 2 }),
+        reset: block("reset", "action", { action: "camera", operation: "reset" }),
+        target: say("target")
+      },
+      ["zoom", "reset", "target"]
+    );
+    expect(snapshot(reset, "target").camera).toBeNull();
+  });
 
-    it("does not conjure a stage record for a character only ever renamed", () => {
-        // `setName` settles no stage state, so it must not even reserve a displayable - otherwise
-        // "？？？" becoming a name would put a blank portrait in the preview.
-        const document = baseDocument({
-            rename: block("rename", "action", { action: "character", operation: "setName", characterId: "char-bob", displayName: "Bob" }),
-            target: say("target"),
-        }, ["rename", "target"]);
-        expect(snapshot(document, "target").displayables).toEqual([]);
-    });
+  it("leaves the camera pose null when no /camera runs before the target", () => {
+    const document = baseDocument({ target: say("target") }, ["target"]);
+    expect(snapshot(document, "target").camera).toBeNull();
+  });
 
-    it("warns that a /vfx overlay is not previewed, as it does for a video", () => {
-        // An ambience overlay is a real visual the snapshot cannot settle. Silence would leave the
-        // author reading a row-precise launch as complete when a layer of it is simply missing.
-        const document = baseDocument({
-            rain: block("rain", "action", { action: "vfx", operation: "create", objectName: "rain", assetId: "asset-rain" }),
-            clip: block("clip", "action", { action: "video", operation: "create", objectName: "intro", assetId: "asset-intro" }),
-            target: say("target"),
-        }, ["rain", "clip", "target"]);
-        const result = snapshot(document, "target");
-        expect(result.diagnostics).toEqual([
-            { level: "warning", blockId: "rain", message: "Ambience effects are not previewed." },
-            { level: "warning", blockId: "clip", message: "Videos are not previewed." },
-        ]);
-    });
+  it("merges successive transforms with position-aware semantics", () => {
+    const document = baseDocument(
+      {
+        show: block("show", "action", {
+          action: "image",
+          operation: "show",
+          objectName: "hero",
+          transform: { preset: "left", durationMs: 200 }
+        }),
+        move: block("move", "action", {
+          action: "displayable",
+          operation: "transform",
+          target: { name: "hero", kind: "image" },
+          transform: { preset: "custom", durationMs: 200, props: { yalign: 0.8 } }
+        }),
+        target: say("target")
+      },
+      ["show", "move", "target"]
+    );
+    const result = snapshot(document, "target");
+    const hero = result.displayables[0];
+    // The later "custom" preset resolves xalign to its 0.5 default (matching the live
+    // compile path, where target.pos() always receives a full alignment) and overrides
+    // the earlier "left" preset; yalign comes from the move's explicit prop.
+    expect(hero.props.position).toEqual(expect.objectContaining({ xalign: 0.5, yalign: 0.8 }));
+    expect(hero.props.opacity).toBe(1);
+  });
 
-    it("records the settled camera pose before the target and clamps degenerate values", () => {
-        // The stage camera is a story-level singleton whose pose the runtime carries into a
-        // row-precise launch. A launch that pre-poses everything else but leaves the camera neutral
-        // shows the author a shot the real playthrough never had. Clamping mirrors the compiler,
-        // because the pose is pre-posed straight onto the camera, bypassing compileCameraAction.
-        const document = baseDocument({
-            zoom: block("zoom", "action", { action: "camera", operation: "zoom", zoom: 0 }),
-            pan: block("pan", "action", { action: "camera", operation: "pan", position: { xalign: 0.25, yalign: 0.5 } }),
-            rotate: block("rotate", "action", { action: "camera", operation: "rotate", rotation: 15 }),
-            dark: block("dark", "action", { action: "camera", operation: "darken", darkness: 2 }),
-            target: say("target"),
-        }, ["zoom", "pan", "rotate", "dark", "target"]);
-        const result = snapshot(document, "target");
-        expect(result.diagnostics).toEqual([]);
-        // zoom 0 → the 0.05 floor; darkness 2 → the 0-1 ceiling.
-        expect(result.camera).toEqual({
-            props: {
-                zoom: 0.05,
-                position: expect.objectContaining({ xalign: 0.25, yalign: 0.5 }),
-                rotation: 15,
-            },
-            effects: { darkness: 1 },
-        });
-    });
+  it("computes animation-mode final props from merged sequences", () => {
+    const animation: StoryAnimationAsset = {
+      schemaVersion: 1,
+      id: "00000000-0000-4000-8000-000000000201",
+      name: "Slide",
+      targetKind: "image",
+      sequences: [
+        {
+          id: "s1",
+          props: { position: { xalign: 0.2, yalign: 0.5 }, opacity: 0.4 },
+          options: { durationMs: 200 }
+        },
+        { id: "s2", props: { position: { xalign: 0.6 }, zoom: 1.2 }, options: { durationMs: 200 } }
+      ]
+    };
+    const document = baseDocument(
+      {
+        show: block("show", "action", {
+          action: "image",
+          operation: "show",
+          objectName: "hero",
+          transform: { mode: "animation", animationId: animation.id }
+        }),
+        target: say("target")
+      },
+      ["show", "target"]
+    );
+    const result = snapshot(document, "target", { [animation.id]: animation });
+    const hero = result.displayables[0];
+    expect(hero.props).toEqual(
+      expect.objectContaining({
+        zoom: 1.2,
+        // Show visibility default folds into the last sequence.
+        opacity: 1,
+        position: expect.objectContaining({ xalign: 0.6, yalign: 0.5 })
+      })
+    );
+  });
 
-    it("lets the latest camera op on a channel win and drops the pose on reset", () => {
-        const later = baseDocument({
-            first: block("first", "action", { action: "camera", operation: "zoom", zoom: 2 }),
-            second: block("second", "action", { action: "camera", operation: "zoom", zoom: 3 }),
-            target: say("target"),
-        }, ["first", "second", "target"]);
-        expect(snapshot(later, "target").camera?.props.zoom).toBe(3);
+  it("evaluates prefix conditions statically against tracked variables", () => {
+    const document = baseDocument(
+      {
+        set: block("set", "action", {
+          action: "setVariable",
+          target: { scope: "scene", variableId: "flag" },
+          value: true
+        }),
+        condition: block("condition", "control", { control: "condition" }, null, [
+          "if-branch",
+          "else-branch"
+        ]),
+        "if-branch": block(
+          "if-branch",
+          "control",
+          {
+            control: "conditionBranch",
+            branch: "if",
+            condition: {
+              kind: "variable",
+              target: { scope: "scene", variableId: "flag" },
+              operator: "isTrue"
+            }
+          },
+          "condition",
+          ["show-if"]
+        ),
+        "else-branch": block(
+          "else-branch",
+          "control",
+          { control: "conditionBranch", branch: "else" },
+          "condition",
+          ["show-else"]
+        ),
+        "show-if": block(
+          "show-if",
+          "action",
+          { action: "image", operation: "show", objectName: "if-img" },
+          "if-branch"
+        ),
+        "show-else": block(
+          "show-else",
+          "action",
+          { action: "image", operation: "show", objectName: "else-img" },
+          "else-branch"
+        ),
+        target: say("target")
+      },
+      ["set", "condition", "target"]
+    );
 
-        const reset = baseDocument({
-            zoom: block("zoom", "action", { action: "camera", operation: "zoom", zoom: 2 }),
-            reset: block("reset", "action", { action: "camera", operation: "reset" }),
-            target: say("target"),
-        }, ["zoom", "reset", "target"]);
-        expect(snapshot(reset, "target").camera).toBeNull();
-    });
+    const withSet = snapshot(document, "target");
+    expect(withSet.displayables.map((d) => d.objectName)).toEqual(["if-img"]);
+    expect(withSet.sceneVariables).toEqual({ flag: true });
 
-    it("leaves the camera pose null when no /camera runs before the target", () => {
-        const document = baseDocument({ target: say("target") }, ["target"]);
-        expect(snapshot(document, "target").camera).toBeNull();
-    });
+    // Without the assignment, the else branch runs (default false).
+    const withoutSet = {
+      ...document,
+      scenes: {
+        "scene-1": { ...document.scenes["scene-1"], rootBlockIds: ["condition", "target"] }
+      }
+    };
+    const elseResult = snapshot(withoutSet as StoryDocument, "target");
+    expect(elseResult.displayables.map((d) => d.objectName)).toEqual(["else-img"]);
+  });
 
-    it("merges successive transforms with position-aware semantics", () => {
-        const document = baseDocument({
-            show: block("show", "action", { action: "image", operation: "show", objectName: "hero", transform: { preset: "left", durationMs: 200 } }),
-            move: block("move", "action", {
-                action: "displayable",
-                operation: "transform",
-                target: { name: "hero", kind: "image" },
-                transform: { preset: "custom", durationMs: 200, props: { yalign: 0.8 } },
-            }),
-            target: say("target"),
-        }, ["show", "move", "target"]);
-        const result = snapshot(document, "target");
-        const hero = result.displayables[0];
-        // The later "custom" preset resolves xalign to its 0.5 default (matching the live
-        // compile path, where target.pos() always receives a full alignment) and overrides
-        // the earlier "left" preset; yalign comes from the move's explicit prop.
-        expect(hero.props.position).toEqual(expect.objectContaining({ xalign: 0.5, yalign: 0.8 }));
-        expect(hero.props.opacity).toBe(1);
-    });
+  it("degrades visited / picked / invoke to their zero AND says so", () => {
+    // The preview has no playthrough behind it and no ScriptCtx to run a graph with, so all three
+    // read as their zero. Asserting the DIAGNOSTIC is the whole point of the test: a silent zero
+    // is indistinguishable from the expression having genuinely evaluated to it, which is how
+    // "the preview is lying" becomes "the feature is broken".
+    const document = baseDocument(
+      {
+        set: block("set", "action", {
+          action: "setVariable",
+          target: { scope: "scene", variableId: "flag" },
+          expression: {
+            source: "bonus()",
+            ast: { kind: "invoke", blueprintId: "bp1", name: "bonus" }
+          }
+        }),
+        condition: block("condition", "control", { control: "condition" }, null, [
+          "if-branch",
+          "else-branch"
+        ]),
+        "if-branch": block(
+          "if-branch",
+          "control",
+          {
+            control: "conditionBranch",
+            branch: "if",
+            condition: {
+              kind: "expression",
+              expression: {
+                source: "visited(序章)",
+                ast: {
+                  kind: "visited",
+                  target: { kind: "scene", sceneId: "sc_prologue" },
+                  name: "序章"
+                }
+              }
+            }
+          },
+          "condition",
+          ["show-if"]
+        ),
+        "else-branch": block(
+          "else-branch",
+          "control",
+          { control: "conditionBranch", branch: "else" },
+          "condition",
+          ["show-else"]
+        ),
+        "show-if": block(
+          "show-if",
+          "action",
+          { action: "image", operation: "show", objectName: "if-img" },
+          "if-branch"
+        ),
+        "show-else": block(
+          "show-else",
+          "action",
+          { action: "image", operation: "show", objectName: "else-img" },
+          "else-branch"
+        ),
+        target: say("target")
+      },
+      ["set", "condition", "target"]
+    );
 
-    it("computes animation-mode final props from merged sequences", () => {
-        const animation: StoryAnimationAsset = {
-            schemaVersion: 1,
-            id: "00000000-0000-4000-8000-000000000201",
-            name: "Slide",
-            targetKind: "image",
-            sequences: [
-                { id: "s1", props: { position: { xalign: 0.2, yalign: 0.5 }, opacity: 0.4 }, options: { durationMs: 200 } },
-                { id: "s2", props: { position: { xalign: 0.6 }, zoom: 1.2 }, options: { durationMs: 200 } },
-            ],
-        };
-        const document = baseDocument({
-            show: block("show", "action", { action: "image", operation: "show", objectName: "hero", transform: { mode: "animation", animationId: animation.id } }),
-            target: say("target"),
-        }, ["show", "target"]);
-        const result = snapshot(document, "target", { [animation.id]: animation });
-        const hero = result.displayables[0];
-        expect(hero.props).toEqual(expect.objectContaining({
-            zoom: 1.2,
-            // Show visibility default folds into the last sequence.
-            opacity: 1,
-            position: expect.objectContaining({ xalign: 0.6, yalign: 0.5 }),
-        }));
-    });
+    const result = snapshot(document, "target");
+    // `visited(…)` read false, so the else branch ran; `bonus()` read empty, so the assignment
+    // wrote null rather than a number the author would then chase.
+    expect(result.displayables.map((d) => d.objectName)).toEqual(["else-img"]);
+    expect(result.sceneVariables).toEqual({ flag: null });
+    expect(result.diagnostics).toEqual([
+      {
+        level: "warning",
+        blockId: "set",
+        message: "Blueprint `bonus()` does not run in the preview; it reads as empty."
+      },
+      {
+        level: "warning",
+        blockId: "if-branch",
+        message: "Scene visits are not tracked in the preview; `visited(序章)` reads as false."
+      }
+    ]);
+  });
 
-    it("evaluates prefix conditions statically against tracked variables", () => {
-        const document = baseDocument({
-            set: block("set", "action", { action: "setVariable", target: { scope: "scene", variableId: "flag" }, value: true }),
-            condition: block("condition", "control", { control: "condition" }, null, ["if-branch", "else-branch"]),
-            "if-branch": block("if-branch", "control", {
-                control: "conditionBranch",
-                branch: "if",
-                condition: { kind: "variable", target: { scope: "scene", variableId: "flag" }, operator: "isTrue" },
-            }, "condition", ["show-if"]),
-            "else-branch": block("else-branch", "control", { control: "conditionBranch", branch: "else" }, "condition", ["show-else"]),
-            "show-if": block("show-if", "action", { action: "image", operation: "show", objectName: "if-img" }, "if-branch"),
-            "show-else": block("show-else", "action", { action: "image", operation: "show", objectName: "else-img" }, "else-branch"),
-            target: say("target"),
-        }, ["set", "condition", "target"]);
+  it("takes the branch containing the target and skips earlier un-taken choices", () => {
+    const document = baseDocument(
+      {
+        "early-choice": block("early-choice", "nodeAction", { action: "choice" }, null, [
+          "early-option"
+        ]),
+        "early-option": block(
+          "early-option",
+          "nodeAction",
+          { action: "choiceOption", text: { textId: "t1", value: "A", role: "choiceText" } },
+          "early-choice",
+          ["early-show"]
+        ),
+        "early-show": block(
+          "early-show",
+          "action",
+          { action: "image", operation: "show", objectName: "early" },
+          "early-option"
+        ),
+        choice: block("choice", "nodeAction", { action: "choice" }, null, ["option-1", "option-2"]),
+        "option-1": block(
+          "option-1",
+          "nodeAction",
+          { action: "choiceOption", text: { textId: "t2", value: "L", role: "choiceText" } },
+          "choice",
+          ["show-1"]
+        ),
+        "option-2": block(
+          "option-2",
+          "nodeAction",
+          { action: "choiceOption", text: { textId: "t3", value: "R", role: "choiceText" } },
+          "choice",
+          ["show-2", "target"]
+        ),
+        "show-1": block(
+          "show-1",
+          "action",
+          { action: "image", operation: "show", objectName: "left-img" },
+          "option-1"
+        ),
+        "show-2": block(
+          "show-2",
+          "action",
+          { action: "image", operation: "show", objectName: "right-img" },
+          "option-2"
+        ),
+        target: say("target", "option-2")
+      },
+      ["early-choice", "choice"]
+    );
 
-        const withSet = snapshot(document, "target");
-        expect(withSet.displayables.map(d => d.objectName)).toEqual(["if-img"]);
-        expect(withSet.sceneVariables).toEqual({ flag: true });
+    const result = snapshot(document, "target");
+    expect(result.displayables.map((d) => d.objectName)).toEqual(["right-img"]);
+    expect(result.diagnostics).toEqual([
+      {
+        level: "warning",
+        blockId: "early-choice",
+        message: "Preview assumes no branch of this earlier choice was taken."
+      }
+    ]);
+  });
 
-        // Without the assignment, the else branch runs (default false).
-        const withoutSet = { ...document, scenes: { "scene-1": { ...document.scenes["scene-1"], rootBlockIds: ["condition", "target"] } } };
-        const elseResult = snapshot(withoutSet as StoryDocument, "target");
-        expect(elseResult.displayables.map(d => d.objectName)).toEqual(["else-img"]);
-    });
+  it("tracks residual effects and their clears", () => {
+    const document = baseDocument(
+      {
+        show: block("show", "action", { action: "image", operation: "show", objectName: "hero" }),
+        darken: block("darken", "action", {
+          action: "displayable",
+          operation: "darken",
+          target: { name: "hero", kind: "image" },
+          darkness: 0.6
+        }),
+        clip: block("clip", "action", {
+          action: "displayable",
+          operation: "clip",
+          target: { name: "hero", kind: "image" },
+          clipPath: "inset(10% 0)"
+        }),
+        reveal: block("reveal", "action", {
+          action: "displayable",
+          operation: "circleReveal",
+          target: { name: "hero", kind: "image" }
+        }),
+        target: say("target")
+      },
+      ["show", "darken", "clip", "reveal", "target"]
+    );
+    const result = snapshot(document, "target");
+    const hero = result.displayables[0];
+    expect(hero.effects.darkness).toBe(0.6);
+    // circleReveal ends fully revealed, superseding the clip.
+    expect(hero.effects.clip).toBe("clear");
+  });
 
-    it("degrades visited / picked / invoke to their zero AND says so", () => {
-        // The preview has no playthrough behind it and no ScriptCtx to run a graph with, so all three
-        // read as their zero. Asserting the DIAGNOSTIC is the whole point of the test: a silent zero
-        // is indistinguishable from the expression having genuinely evaluated to it, which is how
-        // "the preview is lying" becomes "the feature is broken".
-        const document = baseDocument({
-            set: block("set", "action", {
-                action: "setVariable",
-                target: { scope: "scene", variableId: "flag" },
-                expression: { source: "bonus()", ast: { kind: "invoke", blueprintId: "bp1", name: "bonus" } },
-            }),
-            condition: block("condition", "control", { control: "condition" }, null, ["if-branch", "else-branch"]),
-            "if-branch": block("if-branch", "control", {
-                control: "conditionBranch",
-                branch: "if",
-                condition: {
-                    kind: "expression",
-                    expression: {
-                        source: "visited(序章)",
-                        ast: { kind: "visited", target: { kind: "scene", sceneId: "sc_prologue" }, name: "序章" },
-                    },
-                },
-            }, "condition", ["show-if"]),
-            "else-branch": block("else-branch", "control", { control: "conditionBranch", branch: "else" }, "condition", ["show-else"]),
-            "show-if": block("show-if", "action", { action: "image", operation: "show", objectName: "if-img" }, "if-branch"),
-            "show-else": block("show-else", "action", { action: "image", operation: "show", objectName: "else-img" }, "else-branch"),
-            target: say("target"),
-        }, ["set", "condition", "target"]);
+  it("accumulates built-in background transforms separately", () => {
+    const document = baseDocument(
+      {
+        zoom: block("zoom", "action", {
+          action: "displayable",
+          operation: "transform",
+          target: { builtin: "background", kind: "image", name: "Scene background" },
+          transform: { preset: "zoom", durationMs: 300, props: { zoom: 1.25 } }
+        }),
+        target: say("target")
+      },
+      ["zoom", "target"]
+    );
+    const result = snapshot(document, "target");
+    expect(result.backgroundProps).toEqual(expect.objectContaining({ zoom: 1.25 }));
+    expect(result.displayables).toEqual([]);
+  });
 
-        const result = snapshot(document, "target");
-        // `visited(…)` read false, so the else branch ran; `bonus()` read empty, so the assignment
-        // wrote null rather than a number the author would then chase.
-        expect(result.displayables.map(d => d.objectName)).toEqual(["else-img"]);
-        expect(result.sceneVariables).toEqual({ flag: null });
-        expect(result.diagnostics).toEqual([
-            {
-                level: "warning",
-                blockId: "set",
-                message: "Blueprint `bonus()` does not run in the preview; it reads as empty.",
-            },
-            {
-                level: "warning",
-                blockId: "if-branch",
-                message: "Scene visits are not tracked in the preview; `visited(序章)` reads as false.",
-            },
-        ]);
-    });
+  it("flags nvl containers and layer records", () => {
+    const document = baseDocument(
+      {
+        layer: block("layer", "action", {
+          action: "layer",
+          operation: "create",
+          objectName: "fg",
+          zIndex: 5
+        }),
+        "layer-move": block("layer-move", "action", {
+          action: "layer",
+          operation: "transform",
+          objectName: "fg",
+          target: { kind: "custom", sourceBlockId: "layer" },
+          transform: { preset: "custom", durationMs: 100, props: { yoffset: -20 } }
+        }),
+        nvl: block("nvl", "action", { action: "nvl" }, null, ["target"]),
+        target: say("target", "nvl")
+      },
+      ["layer", "layer-move", "nvl"]
+    );
+    const result = snapshot(document, "target");
+    expect(result.nvl).toBe(true);
+    const layer = result.displayables[0];
+    expect(layer.kind).toBe("layer");
+    expect(layer.zIndex).toBe(5);
+    expect(layer.visible).toBe(true);
+    expect(layer.props.position).toEqual(expect.objectContaining({ yoffset: -20 }));
+  });
 
-    it("takes the branch containing the target and skips earlier un-taken choices", () => {
-        const document = baseDocument({
-            "early-choice": block("early-choice", "nodeAction", { action: "choice" }, null, ["early-option"]),
-            "early-option": block("early-option", "nodeAction", { action: "choiceOption", text: { textId: "t1", value: "A", role: "choiceText" } }, "early-choice", ["early-show"]),
-            "early-show": block("early-show", "action", { action: "image", operation: "show", objectName: "early" }, "early-option"),
-            choice: block("choice", "nodeAction", { action: "choice" }, null, ["option-1", "option-2"]),
-            "option-1": block("option-1", "nodeAction", { action: "choiceOption", text: { textId: "t2", value: "L", role: "choiceText" } }, "choice", ["show-1"]),
-            "option-2": block("option-2", "nodeAction", { action: "choiceOption", text: { textId: "t3", value: "R", role: "choiceText" } }, "choice", ["show-2", "target"]),
-            "show-1": block("show-1", "action", { action: "image", operation: "show", objectName: "left-img" }, "option-1"),
-            "show-2": block("show-2", "action", { action: "image", operation: "show", objectName: "right-img" }, "option-2"),
-            target: say("target", "option-2"),
-        }, ["early-choice", "choice"]);
+  it("previews the scene start with a diagnostic for unknown targets", () => {
+    const document = baseDocument(
+      {
+        bg: block("bg", "action", { action: "setBackground", assetId: "asset-1" })
+      },
+      ["bg"]
+    );
+    const result = snapshot(document, "missing");
+    expect(result.background).toBeNull();
+    expect(result.diagnostics).toEqual([
+      {
+        level: "warning",
+        blockId: "missing",
+        message: "Preview target block not found; previewing the scene start instead."
+      }
+    ]);
+  });
 
-        const result = snapshot(document, "target");
-        expect(result.displayables.map(d => d.objectName)).toEqual(["right-img"]);
-        expect(result.diagnostics).toEqual([
-            { level: "warning", blockId: "early-choice", message: "Preview assumes no branch of this earlier choice was taken." },
-        ]);
-    });
+  /**
+   * A character enter block carries no `objectName` until the author types one, so the portrait is
+   * keyed on `characterId`. A displayable op that resolved the same block to the word "Character"
+   * looked up an object that was never registered and silently did nothing.
+   */
+  it("applies a displayable effect to a character portrait that has no explicit stage name", () => {
+    const document = baseDocument(
+      {
+        enter: block("enter", "action", {
+          action: "character",
+          operation: "enter",
+          characterId: "char-alice",
+          assetId: "asset-alice",
+          transform: { preset: "center" }
+        }),
+        darken: block("darken", "action", {
+          action: "displayable",
+          operation: "darken",
+          target: { name: "Character", kind: "character", sourceBlockId: "enter" },
+          darkness: 0.6
+        }),
+        target: say("target")
+      },
+      ["enter", "darken", "target"]
+    );
 
-    it("tracks residual effects and their clears", () => {
-        const document = baseDocument({
-            show: block("show", "action", { action: "image", operation: "show", objectName: "hero" }),
-            darken: block("darken", "action", { action: "displayable", operation: "darken", target: { name: "hero", kind: "image" }, darkness: 0.6 }),
-            clip: block("clip", "action", { action: "displayable", operation: "clip", target: { name: "hero", kind: "image" }, clipPath: "inset(10% 0)" }),
-            reveal: block("reveal", "action", { action: "displayable", operation: "circleReveal", target: { name: "hero", kind: "image" } }),
-            target: say("target"),
-        }, ["show", "darken", "clip", "reveal", "target"]);
-        const result = snapshot(document, "target");
-        const hero = result.displayables[0];
-        expect(hero.effects.darkness).toBe(0.6);
-        // circleReveal ends fully revealed, superseding the clip.
-        expect(hero.effects.clip).toBe("clear");
-    });
+    const result = snapshot(document, "target");
 
-    it("accumulates built-in background transforms separately", () => {
-        const document = baseDocument({
-            zoom: block("zoom", "action", {
-                action: "displayable",
-                operation: "transform",
-                target: { builtin: "background", kind: "image", name: "Scene background" },
-                transform: { preset: "zoom", durationMs: 300, props: { zoom: 1.25 } },
-            }),
-            target: say("target"),
-        }, ["zoom", "target"]);
-        const result = snapshot(document, "target");
-        expect(result.backgroundProps).toEqual(expect.objectContaining({ zoom: 1.25 }));
-        expect(result.displayables).toEqual([]);
-    });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.displayables).toHaveLength(1);
+    expect(result.displayables[0].objectName).toBe("char-alice");
+    expect(result.displayables[0].effects.darkness).toBe(0.6);
+  });
 
-    it("flags nvl containers and layer records", () => {
-        const document = baseDocument({
-            layer: block("layer", "action", { action: "layer", operation: "create", objectName: "fg", zIndex: 5 }),
-            "layer-move": block("layer-move", "action", {
-                action: "layer",
-                operation: "transform",
-                objectName: "fg",
-                target: { kind: "custom", sourceBlockId: "layer" },
-                transform: { preset: "custom", durationMs: 100, props: { yoffset: -20 } },
-            }),
-            nvl: block("nvl", "action", { action: "nvl" }, null, ["target"]),
-            target: say("target", "nvl"),
-        }, ["layer", "layer-move", "nvl"]);
-        const result = snapshot(document, "target");
-        expect(result.nvl).toBe(true);
-        const layer = result.displayables[0];
-        expect(layer.kind).toBe("layer");
-        expect(layer.zIndex).toBe(5);
-        expect(layer.visible).toBe(true);
-        expect(layer.props.position).toEqual(expect.objectContaining({ yoffset: -20 }));
-    });
+  it("applies a displayable effect to an image whose stage name was cleared", () => {
+    // Same divergence, non-character: an empty `objectName` keys on the compiler's "object"
+    // fallback, not the display word "Image".
+    const document = baseDocument(
+      {
+        create: block("create", "action", {
+          action: "image",
+          operation: "create",
+          objectName: "",
+          assetId: "asset-x",
+          transform: { preset: "center" }
+        }),
+        filter: block("filter", "action", {
+          action: "displayable",
+          operation: "filter",
+          target: { name: "Image", kind: "image", sourceBlockId: "create" },
+          filter: "blur(4px)"
+        }),
+        target: say("target")
+      },
+      ["create", "filter", "target"]
+    );
 
-    it("previews the scene start with a diagnostic for unknown targets", () => {
-        const document = baseDocument({
-            bg: block("bg", "action", { action: "setBackground", assetId: "asset-1" }),
-        }, ["bg"]);
-        const result = snapshot(document, "missing");
-        expect(result.background).toBeNull();
-        expect(result.diagnostics).toEqual([
-            { level: "warning", blockId: "missing", message: "Preview target block not found; previewing the scene start instead." },
-        ]);
-    });
+    const result = snapshot(document, "target");
 
-    /**
-     * A character enter block carries no `objectName` until the author types one, so the portrait is
-     * keyed on `characterId`. A displayable op that resolved the same block to the word "Character"
-     * looked up an object that was never registered and silently did nothing.
-     */
-    it("applies a displayable effect to a character portrait that has no explicit stage name", () => {
-        const document = baseDocument({
-            enter: block("enter", "action", {
-                action: "character",
-                operation: "enter",
-                characterId: "char-alice",
-                assetId: "asset-alice",
-                transform: { preset: "center" },
-            }),
-            darken: block("darken", "action", {
-                action: "displayable",
-                operation: "darken",
-                target: { name: "Character", kind: "character", sourceBlockId: "enter" },
-                darkness: 0.6,
-            }),
-            target: say("target"),
-        }, ["enter", "darken", "target"]);
-
-        const result = snapshot(document, "target");
-
-        expect(result.diagnostics).toEqual([]);
-        expect(result.displayables).toHaveLength(1);
-        expect(result.displayables[0].objectName).toBe("char-alice");
-        expect(result.displayables[0].effects.darkness).toBe(0.6);
-    });
-
-    it("applies a displayable effect to an image whose stage name was cleared", () => {
-        // Same divergence, non-character: an empty `objectName` keys on the compiler's "object"
-        // fallback, not the display word "Image".
-        const document = baseDocument({
-            create: block("create", "action", { action: "image", operation: "create", objectName: "", assetId: "asset-x", transform: { preset: "center" } }),
-            filter: block("filter", "action", {
-                action: "displayable",
-                operation: "filter",
-                target: { name: "Image", kind: "image", sourceBlockId: "create" },
-                filter: "blur(4px)",
-            }),
-            target: say("target"),
-        }, ["create", "filter", "target"]);
-
-        const result = snapshot(document, "target");
-
-        expect(result.diagnostics).toEqual([]);
-        expect(result.displayables[0].effects.filter).toEqual({ filter: "blur(4px)" });
-    });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.displayables[0].effects.filter).toEqual({ filter: "blur(4px)" });
+  });
 });

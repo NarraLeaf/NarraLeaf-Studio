@@ -4,10 +4,10 @@ const DECIMALS = 2;
 const FACTOR = 10 ** DECIMALS;
 
 function roundGeometryScalar(n: number): number {
-    if (!Number.isFinite(n)) {
-        return n;
-    }
-    return Math.round(n * FACTOR) / FACTOR;
+  if (!Number.isFinite(n)) {
+    return n;
+  }
+  return Math.round(n * FACTOR) / FACTOR;
 }
 
 /**
@@ -15,15 +15,15 @@ function roundGeometryScalar(n: number): number {
  * Does not alter opacity, visible, lockAspectRatio, or other non-geometry layout keys.
  */
 export function roundUILayoutGeometryFields(layout: UILayout): UILayout {
-    const next: UILayout = {
-        ...layout,
-        x: roundGeometryScalar(layout.x),
-        y: roundGeometryScalar(layout.y),
-        width: roundGeometryScalar(layout.width),
-        height: roundGeometryScalar(layout.height),
-    };
-    if (layout.rotation !== undefined) {
-        next.rotation = roundGeometryScalar(layout.rotation);
-    }
-    return next;
+  const next: UILayout = {
+    ...layout,
+    x: roundGeometryScalar(layout.x),
+    y: roundGeometryScalar(layout.y),
+    width: roundGeometryScalar(layout.width),
+    height: roundGeometryScalar(layout.height)
+  };
+  if (layout.rotation !== undefined) {
+    next.rotation = roundGeometryScalar(layout.rotation);
+  }
+  return next;
 }

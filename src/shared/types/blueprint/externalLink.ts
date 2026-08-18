@@ -58,29 +58,29 @@ export const CORE_EXTERNAL_LINK_SCHEMES: readonly string[] = ["http:", "https:",
  * like an address to a regular expression is exactly the case worth refusing.
  */
 export function normalizeCoreExternalLinkUrl(raw: unknown): string | null {
-    if (typeof raw !== "string" || !raw.trim()) {
-        return null;
-    }
-    let parsed: URL;
-    try {
-        parsed = new URL(raw.trim());
-    } catch {
-        return null;
-    }
-    if (!CORE_EXTERNAL_LINK_SCHEMES.includes(parsed.protocol.toLowerCase())) {
-        return null;
-    }
-    // Credentials in an address handed to a browser read as one host and go to another
-    // (`https://store.example.com@evil.test/`), and no page a game shows a player carries a
-    // password. Refused here for the reason the pattern language refuses them in a declaration.
-    if (parsed.username || parsed.password) {
-        return null;
-    }
-    return parsed.href;
+  if (typeof raw !== "string" || !raw.trim()) {
+    return null;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+  if (!CORE_EXTERNAL_LINK_SCHEMES.includes(parsed.protocol.toLowerCase())) {
+    return null;
+  }
+  // Credentials in an address handed to a browser read as one host and go to another
+  // (`https://store.example.com@evil.test/`), and no page a game shows a player carries a
+  // password. Refused here for the reason the pattern language refuses them in a declaration.
+  if (parsed.username || parsed.password) {
+    return null;
+  }
+  return parsed.href;
 }
 
 export type BlueprintOpenExternalRequest = {
-    url: string;
+  url: string;
 };
 
 /**
@@ -93,9 +93,9 @@ export type BlueprintOpenExternalRequest = {
 export type BlueprintOpenExternalOutcome = "opened" | "refused" | "failed";
 
 export type BlueprintOpenExternalResult = {
-    outcome: BlueprintOpenExternalOutcome;
-    /** Human-readable reason, null when the page was handed over. */
-    error: string | null;
+  outcome: BlueprintOpenExternalOutcome;
+  /** Human-readable reason, null when the page was handed over. */
+  error: string | null;
 };
 
 /**
@@ -107,9 +107,11 @@ export type BlueprintOpenExternalResult = {
  * that a page is fine and the thing they wrote is not a page.
  */
 export function externalLinkRefusalMessage(url: string): string {
-    return `Open Link cannot open ${url.trim() || "(none)"}. `
-        + `Addresses must be ${CORE_EXTERNAL_LINK_SCHEMES.join(", ")}; `
-        + "other schemes are reached through a plugin that declares them.";
+  return (
+    `Open Link cannot open ${url.trim() || "(none)"}. ` +
+    `Addresses must be ${CORE_EXTERNAL_LINK_SCHEMES.join(", ")}; ` +
+    "other schemes are reached through a plugin that declares them."
+  );
 }
 
 /**
@@ -120,17 +122,17 @@ export function externalLinkRefusalMessage(url: string): string {
  * only thing they must share is this decision.
  */
 export function resolveCoreExternalLink(
-    request: BlueprintOpenExternalRequest,
+  request: BlueprintOpenExternalRequest
 ): { allowed: true; url: string } | { allowed: false; result: BlueprintOpenExternalResult } {
-    const url = String(request?.url ?? "");
-    const normalized = normalizeCoreExternalLinkUrl(url);
-    if (!normalized) {
-        return {
-            allowed: false,
-            result: { outcome: "refused", error: externalLinkRefusalMessage(url) },
-        };
-    }
-    return { allowed: true, url: normalized };
+  const url = String(request?.url ?? "");
+  const normalized = normalizeCoreExternalLinkUrl(url);
+  if (!normalized) {
+    return {
+      allowed: false,
+      result: { outcome: "refused", error: externalLinkRefusalMessage(url) }
+    };
+  }
+  return { allowed: true, url: normalized };
 }
 
 /**
@@ -146,9 +148,11 @@ export function resolveCoreExternalLink(
  * means a new version of the plugin and a fresh approval.
  */
 export function pluginExternalLinkRefusalMessage(pluginId: string, url: string): string {
-    return `The plugin ${pluginId.trim() || "(unknown)"} does not declare the address `
-        + `${url.trim() || "(none)"}. `
-        + "Add it to the plugin's contributes.externalLinks and reinstall the plugin to open it.";
+  return (
+    `The plugin ${pluginId.trim() || "(unknown)"} does not declare the address ` +
+    `${url.trim() || "(none)"}. ` +
+    "Add it to the plugin's contributes.externalLinks and reinstall the plugin to open it."
+  );
 }
 
 /**
@@ -168,21 +172,21 @@ export function pluginExternalLinkRefusalMessage(pluginId: string, url: string):
  * Never throws, for the reason the other one does not.
  */
 export function resolvePluginExternalLink(
-    pluginId: string,
-    request: BlueprintOpenExternalRequest,
-    patterns: readonly string[] | undefined,
+  pluginId: string,
+  request: BlueprintOpenExternalRequest,
+  patterns: readonly string[] | undefined
 ): { allowed: true; url: string } | { allowed: false; result: BlueprintOpenExternalResult } {
-    const url = String(request?.url ?? "").trim();
-    if (!url || !isExternalLinkPatternDeclared(patterns, url)) {
-        return {
-            allowed: false,
-            result: {
-                outcome: "refused",
-                error: pluginExternalLinkRefusalMessage(String(pluginId ?? ""), url),
-            },
-        };
-    }
-    return { allowed: true, url };
+  const url = String(request?.url ?? "").trim();
+  if (!url || !isExternalLinkPatternDeclared(patterns, url)) {
+    return {
+      allowed: false,
+      result: {
+        outcome: "refused",
+        error: pluginExternalLinkRefusalMessage(String(pluginId ?? ""), url)
+      }
+    };
+  }
+  return { allowed: true, url };
 }
 
 /**
@@ -194,10 +198,10 @@ export function resolvePluginExternalLink(
  * because two of those three arrive as parsed JSON from disk.
  */
 export type ExternalLinkDeclaringPlugin = {
-    manifest?: {
-        id?: string;
-        contributes?: { externalLinks?: string[] };
-    };
+  manifest?: {
+    id?: string;
+    contributes?: { externalLinks?: string[] };
+  };
 };
 
 /**
@@ -211,11 +215,11 @@ export type ExternalLinkDeclaringPlugin = {
  * this build, a name invented by a caller - the safe case rather than an unhandled one.
  */
 export function resolvePluginExternalLinkAmong(
-    plugins: readonly ExternalLinkDeclaringPlugin[] | undefined,
-    pluginId: string,
-    request: BlueprintOpenExternalRequest,
+  plugins: readonly ExternalLinkDeclaringPlugin[] | undefined,
+  pluginId: string,
+  request: BlueprintOpenExternalRequest
 ): { allowed: true; url: string } | { allowed: false; result: BlueprintOpenExternalResult } {
-    const id = String(pluginId ?? "");
-    const entry = (plugins ?? []).find(plugin => plugin.manifest?.id === id);
-    return resolvePluginExternalLink(id, request, entry?.manifest?.contributes?.externalLinks);
+  const id = String(pluginId ?? "");
+  const entry = (plugins ?? []).find((plugin) => plugin.manifest?.id === id);
+  return resolvePluginExternalLink(id, request, entry?.manifest?.contributes?.externalLinks);
 }

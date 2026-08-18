@@ -35,10 +35,10 @@ const HEX = /^[0-9a-fA-F]*$/;
 const ZERO = /^0*$/;
 
 export class LoreValueError extends Error {
-    constructor(message: string) {
-        super(message);
-        this.name = "LoreValueError";
-    }
+  constructor(message: string) {
+    super(message);
+    this.name = "LoreValueError";
+  }
 }
 
 /**
@@ -51,15 +51,15 @@ export class LoreValueError extends Error {
  * than finding it as a commit written against the wrong repository.
  */
 export function hashBytes(hex: LoreHex, byteLength: number, field: string): { data: Buffer } {
-    if (typeof hex !== "string" || !HEX.test(hex)) {
-        throw new LoreValueError(`${field} must be a hex string, got ${JSON.stringify(hex)}`);
-    }
-    if (hex.length !== byteLength * 2) {
-        throw new LoreValueError(
-            `${field} must be ${byteLength * 2} hex characters (${byteLength} bytes), got ${hex.length}`,
-        );
-    }
-    return { data: Buffer.from(hex, "hex") };
+  if (typeof hex !== "string" || !HEX.test(hex)) {
+    throw new LoreValueError(`${field} must be a hex string, got ${JSON.stringify(hex)}`);
+  }
+  if (hex.length !== byteLength * 2) {
+    throw new LoreValueError(
+      `${field} must be ${byteLength * 2} hex characters (${byteLength} bytes), got ${hex.length}`
+    );
+  }
+  return { data: Buffer.from(hex, "hex") };
 }
 
 /** 32-byte revision/content hash. */
@@ -69,8 +69,14 @@ export const partitionBytes = (hex: LoreHex, field = "repository") => hashBytes(
 /** 16-byte branch/context id. */
 export const contextBytes = (hex: LoreHex, field = "context") => hashBytes(hex, 16, field);
 
-export interface LoreStringValue { string: Buffer; length: number }
-export interface LoreStringArrayValue { ptr: LoreStringValue[]; count: number }
+export interface LoreStringValue {
+  string: Buffer;
+  length: number;
+}
+export interface LoreStringArrayValue {
+  ptr: LoreStringValue[];
+  count: number;
+}
 
 /**
  * A `LoreString`: a pointer plus a byte length, NOT a NUL-terminated C string.
@@ -83,20 +89,23 @@ export interface LoreStringArrayValue { ptr: LoreStringValue[]; count: number }
  * why nothing here hands out a bare pointer.
  */
 export function loreString(value: string | undefined): LoreStringValue {
-    const bytes = Buffer.from(value ?? "", "utf-8");
-    return { string: bytes, length: bytes.byteLength };
+  const bytes = Buffer.from(value ?? "", "utf-8");
+  return { string: bytes, length: bytes.byteLength };
 }
 
 /** A `LoreStringArray`: a pointer to `LoreString` plus a count. */
 export function loreStringArray(values: readonly string[] | undefined): LoreStringArrayValue {
-    const items = (values ?? []).map(loreString);
-    return { ptr: items, count: items.length };
+  const items = (values ?? []).map(loreString);
+  return { ptr: items, count: items.length };
 }
 
 /** Lore's booleans are `uint8_t`. */
 export const loreBool = (value: boolean | undefined): number => (value ? 1 : 0);
 
-export interface LoreMetadataTypeArrayValue { ptr: number[]; count: number }
+export interface LoreMetadataTypeArrayValue {
+  ptr: number[];
+  count: number;
+}
 
 /**
  * A `LoreMetadataTypeArray`: the per-entry format tags a metadata write is parsed with.
@@ -107,7 +116,7 @@ export interface LoreMetadataTypeArrayValue { ptr: number[]; count: number }
  * encodes what it is given.
  */
 export function loreMetadataTypeArray(values: readonly number[]): LoreMetadataTypeArrayValue {
-    return { ptr: [...values], count: values.length };
+  return { ptr: [...values], count: values.length };
 }
 
 // -- decoding ---------------------------------------------------------------
@@ -121,9 +130,9 @@ export type DecodedStruct = Record<string, unknown> | null | undefined;
 
 /** Fixed-width identifier struct (`{ data: uint8_t[N] }`) to lowercase hex. */
 export function decodeHash(value: DecodedStruct): LoreHex {
-    const data = value?.data as ArrayLike<number> | undefined;
-    if (!data) return "";
-    return Buffer.from(Uint8Array.from(Array.from(data))).toString("hex");
+  const data = value?.data as ArrayLike<number> | undefined;
+  if (!data) return "";
+  return Buffer.from(Uint8Array.from(Array.from(data))).toString("hex");
 }
 
 /**
@@ -134,24 +143,24 @@ export function decodeHash(value: DecodedStruct): LoreHex {
  * as a revision id produces lookups for a revision that cannot exist.
  */
 export function decodeOptionalHash(value: DecodedStruct): LoreHex | undefined {
-    const hex = decodeHash(value);
-    return hex.length === 0 || ZERO.test(hex) ? undefined : hex;
+  const hex = decodeHash(value);
+  return hex.length === 0 || ZERO.test(hex) ? undefined : hex;
 }
 
 /** `LoreString` to a JS string. Copies; the pointer is only valid during the callback. */
 export function decodeString(value: DecodedStruct): string {
-    if (!value?.string) return "";
-    const length = Number(value.length ?? 0);
-    if (length === 0) return "";
-    return toBuffer(koffi.decode(value.string, "uint8_t", length)).toString("utf-8");
+  if (!value?.string) return "";
+  const length = Number(value.length ?? 0);
+  if (length === 0) return "";
+  return toBuffer(koffi.decode(value.string, "uint8_t", length)).toString("utf-8");
 }
 
 /** `LoreBytes` / `LoreBinary` payload to a Buffer. Copies, for the same reason. */
 export function decodeBytes(value: DecodedStruct): Buffer {
-    const pointer = value?.ptr ?? value?.payload;
-    const size = Number(value?.len ?? value?.length ?? 0);
-    if (!pointer || size === 0) return Buffer.alloc(0);
-    return toBuffer(koffi.decode(pointer, "uint8_t", size));
+  const pointer = value?.ptr ?? value?.payload;
+  const size = Number(value?.len ?? value?.length ?? 0);
+  if (!pointer || size === 0) return Buffer.alloc(0);
+  return toBuffer(koffi.decode(pointer, "uint8_t", size));
 }
 
 /** Lore's 64-bit counters arrive as number or BigInt depending on magnitude. */
@@ -162,10 +171,10 @@ export const decodeCount = (value: unknown): number => Number(value ?? 0);
  * type and version. Normalise once here rather than at every call site.
  */
 function toBuffer(decoded: unknown): Buffer {
-    if (Buffer.isBuffer(decoded)) return Buffer.from(decoded);
-    if (decoded instanceof Uint8Array) return Buffer.from(decoded);
-    if (Array.isArray(decoded)) return Buffer.from(Uint8Array.from(decoded));
-    throw new LoreValueError(`Cannot read ${typeof decoded} as bytes`);
+  if (Buffer.isBuffer(decoded)) return Buffer.from(decoded);
+  if (decoded instanceof Uint8Array) return Buffer.from(decoded);
+  if (Array.isArray(decoded)) return Buffer.from(Uint8Array.from(decoded));
+  throw new LoreValueError(`Cannot read ${typeof decoded} as bytes`);
 }
 
 /**
@@ -182,10 +191,10 @@ function toBuffer(decoded: unknown): Buffer {
  *     versioned and it is not.
  */
 export function repositoryPath(root: string, relative: string): string {
-    const absolute = path.resolve(root, relative);
-    const rel = path.relative(root, absolute);
-    if (rel.startsWith("..") || path.isAbsolute(rel)) {
-        throw new LoreValueError(`Path escapes the repository: ${relative}`);
-    }
-    return absolute;
+  const absolute = path.resolve(root, relative);
+  const rel = path.relative(root, absolute);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+    throw new LoreValueError(`Path escapes the repository: ${relative}`);
+  }
+  return absolute;
 }

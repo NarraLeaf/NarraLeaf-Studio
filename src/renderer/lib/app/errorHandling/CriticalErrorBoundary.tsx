@@ -6,10 +6,10 @@ import { reportRendererError } from "./crashRecovery";
 import { getInterface } from "../bridge";
 
 export interface CriticalErrorBoundaryProps extends ErrorBoundaryProps {
-    children: React.ReactNode;
-    initialTimestamp?: number;
-    platformInfo: PlatformInfo;
-};
+  children: React.ReactNode;
+  initialTimestamp?: number;
+  platformInfo: PlatformInfo;
+}
 
 /**
  * The boundary at the root of every window.
@@ -26,35 +26,35 @@ export interface CriticalErrorBoundaryProps extends ErrorBoundaryProps {
  * blank and silent would be strictly worse than the error box.
  */
 export class CriticalErrorBoundary<T extends CriticalErrorBoundaryProps> extends ErrorBoundary<T> {
-    constructor(props: T) {
-        super(props);
-        this.handleCrashScreenFailure = this.handleCrashScreenFailure.bind(this);
+  constructor(props: T) {
+    super(props);
+    this.handleCrashScreenFailure = this.handleCrashScreenFailure.bind(this);
+  }
+
+  protected handleError(error: Error, info: { componentStack: string }): void {
+    reportRendererError({
+      source: "boundary",
+      error,
+      componentStack: info.componentStack
+    });
+  }
+
+  private handleCrashScreenFailure(error: Error, info: { componentStack: string }): void {
+    const message = `${error.message}\n${error.stack ?? ""}\n${info.componentStack}`;
+    console.error(message);
+    getInterface().terminate(message);
+  }
+
+  render() {
+    const { error, hasError } = this.state;
+    if (!hasError) {
+      return this.props.children;
     }
 
-    protected handleError(error: Error, info: { componentStack: string }): void {
-        reportRendererError({
-            source: "boundary",
-            error,
-            componentStack: info.componentStack,
-        });
-    }
-
-    private handleCrashScreenFailure(error: Error, info: { componentStack: string }): void {
-        const message = `${error.message}\n${error.stack ?? ""}\n${info.componentStack}`;
-        console.error(message);
-        getInterface().terminate(message);
-    }
-
-    render() {
-        const { error, hasError } = this.state;
-        if (!hasError) {
-            return this.props.children;
-        }
-
-        return (
-            <ErrorBoundary onError={this.handleCrashScreenFailure}>
-                <AppCrashScreen error={error ?? new Error("Unknown rendering error")} />
-            </ErrorBoundary>
-        );
-    }
+    return (
+      <ErrorBoundary onError={this.handleCrashScreenFailure}>
+        <AppCrashScreen error={error ?? new Error("Unknown rendering error")} />
+      </ErrorBoundary>
+    );
+  }
 }

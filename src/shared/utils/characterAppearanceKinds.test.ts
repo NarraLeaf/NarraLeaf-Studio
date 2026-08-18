@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-    CHARACTER_APPEARANCE_KINDS,
-    PUPPET_APPEARANCE_KINDS,
-    isCharacterAppearanceKind,
-    isPuppetAppearanceKind,
-    type CharacterAppearanceKind,
-    type PuppetAppearanceKind,
+  CHARACTER_APPEARANCE_KINDS,
+  PUPPET_APPEARANCE_KINDS,
+  isCharacterAppearanceKind,
+  isPuppetAppearanceKind,
+  type CharacterAppearanceKind,
+  type PuppetAppearanceKind
 } from "./characterAppearanceKinds";
 import { KNOWN_PUPPET_RUNTIME_IDS, listKnownPuppetRuntimes } from "./puppetRuntimes";
 
@@ -29,52 +29,52 @@ const EVERY_KIND_IS_LISTED: ListedKind = null as unknown as CharacterAppearanceK
 const EVERY_PUPPET_KIND_IS_LISTED: ListedPuppetKind = null as unknown as PuppetAppearanceKind;
 
 describe("character appearance kinds", () => {
-    it("lists every kind exactly once", () => {
-        expect([...CHARACTER_APPEARANCE_KINDS]).toEqual([...new Set(CHARACTER_APPEARANCE_KINDS)]);
-        expect([...PUPPET_APPEARANCE_KINDS]).toEqual([...new Set(PUPPET_APPEARANCE_KINDS)]);
-    });
+  it("lists every kind exactly once", () => {
+    expect([...CHARACTER_APPEARANCE_KINDS]).toEqual([...new Set(CHARACTER_APPEARANCE_KINDS)]);
+    expect([...PUPPET_APPEARANCE_KINDS]).toEqual([...new Set(PUPPET_APPEARANCE_KINDS)]);
+  });
 
-    it("keeps the type-level exhaustiveness guards referenced", () => {
-        // The two consts above are the real assertions and are checked by `tsc`, not by vitest.
-        // Reading them here is what stops a linter or a future cleanup from deleting them as unused.
-        expect([EVERY_KIND_IS_LISTED, EVERY_PUPPET_KIND_IS_LISTED]).toHaveLength(2);
-    });
+  it("keeps the type-level exhaustiveness guards referenced", () => {
+    // The two consts above are the real assertions and are checked by `tsc`, not by vitest.
+    // Reading them here is what stops a linter or a future cleanup from deleting them as unused.
+    expect([EVERY_KIND_IS_LISTED, EVERY_PUPPET_KIND_IS_LISTED]).toHaveLength(2);
+  });
 
-    it("treats every puppet kind as a character kind", () => {
-        for (const kind of PUPPET_APPEARANCE_KINDS) {
-            expect(isPuppetAppearanceKind(kind)).toBe(true);
-            expect(isCharacterAppearanceKind(kind)).toBe(true);
-            expect(CHARACTER_APPEARANCE_KINDS).toContain(kind);
-        }
-    });
+  it("treats every puppet kind as a character kind", () => {
+    for (const kind of PUPPET_APPEARANCE_KINDS) {
+      expect(isPuppetAppearanceKind(kind)).toBe(true);
+      expect(isCharacterAppearanceKind(kind)).toBe(true);
+      expect(CHARACTER_APPEARANCE_KINDS).toContain(kind);
+    }
+  });
 
-    it("does not treat the kinds Studio draws itself as puppets", () => {
-        for (const kind of ["preset", "layered"] as const) {
-            expect(isCharacterAppearanceKind(kind)).toBe(true);
-            expect(isPuppetAppearanceKind(kind)).toBe(false);
-        }
-    });
+  it("does not treat the kinds Studio draws itself as puppets", () => {
+    for (const kind of ["preset", "layered"] as const) {
+      expect(isCharacterAppearanceKind(kind)).toBe(true);
+      expect(isPuppetAppearanceKind(kind)).toBe(false);
+    }
+  });
 
-    it("rejects anything else, including the shapes a malformed store holds", () => {
-        for (const value of ["", "Preset", "live2D", "puppet ", null, undefined, 0, {}, ["puppet"]]) {
-            expect(isCharacterAppearanceKind(value)).toBe(false);
-            expect(isPuppetAppearanceKind(value)).toBe(false);
-        }
-    });
+  it("rejects anything else, including the shapes a malformed store holds", () => {
+    for (const value of ["", "Preset", "live2D", "puppet ", null, undefined, 0, {}, ["puppet"]]) {
+      expect(isCharacterAppearanceKind(value)).toBe(false);
+      expect(isPuppetAppearanceKind(value)).toBe(false);
+    }
+  });
 
-    /**
-     * The two lists are deliberately not derived from one another (see `PuppetAppearanceKind`), so
-     * this is what keeps them in step: naming a runtime in the registry without adding its kind would
-     * put a product in the creation menu whose characters cannot be stored.
-     */
-    it("has an appearance kind for every runtime it names", () => {
-        for (const id of KNOWN_PUPPET_RUNTIME_IDS) {
-            expect(isPuppetAppearanceKind(id)).toBe(true);
-        }
-    });
+  /**
+   * The two lists are deliberately not derived from one another (see `PuppetAppearanceKind`), so
+   * this is what keeps them in step: naming a runtime in the registry without adding its kind would
+   * put a product in the creation menu whose characters cannot be stored.
+   */
+  it("has an appearance kind for every runtime it names", () => {
+    for (const id of KNOWN_PUPPET_RUNTIME_IDS) {
+      expect(isPuppetAppearanceKind(id)).toBe(true);
+    }
+  });
 
-    it("names a runtime for every puppet kind except the custom one", () => {
-        const named = new Set(listKnownPuppetRuntimes().map(runtime => runtime.id as string));
-        expect(PUPPET_APPEARANCE_KINDS.filter(kind => !named.has(kind))).toEqual(["puppet"]);
-    });
+  it("names a runtime for every puppet kind except the custom one", () => {
+    const named = new Set(listKnownPuppetRuntimes().map((runtime) => runtime.id as string));
+    expect(PUPPET_APPEARANCE_KINDS.filter((kind) => !named.has(kind))).toEqual(["puppet"]);
+  });
 });

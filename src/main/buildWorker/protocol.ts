@@ -1,8 +1,8 @@
 import type {
-    GameBuildArch,
-    GameBuildCompression,
-    GameBuildDesktopPlatform,
-    GameBuildFormat,
+  GameBuildArch,
+  GameBuildCompression,
+  GameBuildDesktopPlatform,
+  GameBuildFormat
 } from "@shared/types/gameBuild";
 import type { MobileShellManifest, MobileShellOrientation } from "./mobile/mobileShellManifest";
 import type { SigningIdentity } from "./mobile/signingIdentity";
@@ -35,19 +35,19 @@ import type { SigningIdentity } from "./mobile/signingIdentity";
 
 /** What both signtool-driven Windows paths share. */
 type WindowsSigntoolCommon = {
-    /**
-     * RFC 3161 timestamp authority. A timestamp is what keeps a signature valid
-     * after the certificate expires - and it is a network call, which preflight
-     * warns about. Unset leaves electron-builder's own default.
-     */
-    rfc3161TimeStampServer?: string;
-    /**
-     * Absolute path of the signtool.exe to use, exported as SIGNTOOL_PATH.
-     * Unset lets electron-builder download its own Windows Kits bundle, which
-     * needs a network. Resolved by the manager (a host probe, not a decision
-     * the worker can make); the discovery itself lands with the Windows batch.
-     */
-    signtoolPath?: string;
+  /**
+   * RFC 3161 timestamp authority. A timestamp is what keeps a signature valid
+   * after the certificate expires - and it is a network call, which preflight
+   * warns about. Unset leaves electron-builder's own default.
+   */
+  rfc3161TimeStampServer?: string;
+  /**
+   * Absolute path of the signtool.exe to use, exported as SIGNTOOL_PATH.
+   * Unset lets electron-builder download its own Windows Kits bundle, which
+   * needs a network. Resolved by the manager (a host probe, not a decision
+   * the worker can make); the discovery itself lands with the Windows batch.
+   */
+  signtoolPath?: string;
 };
 
 /**
@@ -57,34 +57,34 @@ type WindowsSigntoolCommon = {
  * flat record with optional halves.
  */
 export type GameBuildWorkerWindowsSigning =
-    | (WindowsSigntoolCommon & {
-        /** A PFX file and its password -> `win.signtoolOptions.certificateFile`/`certificatePassword`. */
-        source: "pfx";
-        certificateFile: string;
-        certificatePassword: string;
+  | (WindowsSigntoolCommon & {
+      /** A PFX file and its password -> `win.signtoolOptions.certificateFile`/`certificatePassword`. */
+      source: "pfx";
+      certificateFile: string;
+      certificatePassword: string;
     })
-    | (WindowsSigntoolCommon & {
-        /**
-         * A certificate already in the Windows certificate store, typically on a
-         * hardware token or HSM -> `win.signtoolOptions.certificateSubjectName`
-         * or `certificateSha1`. At least one of the two is set; signing this way
-         * only works from Windows.
-         */
-        source: "certificate-store";
-        certificateSubjectName?: string;
-        certificateSha1?: string;
+  | (WindowsSigntoolCommon & {
+      /**
+       * A certificate already in the Windows certificate store, typically on a
+       * hardware token or HSM -> `win.signtoolOptions.certificateSubjectName`
+       * or `certificateSha1`. At least one of the two is set; signing this way
+       * only works from Windows.
+       */
+      source: "certificate-store";
+      certificateSubjectName?: string;
+      certificateSha1?: string;
     })
-    | {
-        /**
-         * Azure Trusted Signing -> `win.azureSignOptions`. The Entra credentials
-         * are NOT here: the Azure tooling reads them from the host environment
-         * itself, and Studio deliberately does not hold them.
-         */
-        source: "azure";
-        endpoint: string;
-        codeSigningAccountName: string;
-        certificateProfileName: string;
-        publisherName: string;
+  | {
+      /**
+       * Azure Trusted Signing -> `win.azureSignOptions`. The Entra credentials
+       * are NOT here: the Azure tooling reads them from the host environment
+       * itself, and Studio deliberately does not hold them.
+       */
+      source: "azure";
+      endpoint: string;
+      codeSigningAccountName: string;
+      certificateProfileName: string;
+      publisherName: string;
     };
 
 /**
@@ -97,10 +97,10 @@ export type GameBuildWorkerWindowsSigning =
  * takes nothing from the configuration. See `withNotarizationEnv`.
  */
 export type GameBuildWorkerNotarization = {
-    /** Absolute path of the vault's copy of the .p8 private key. */
-    keyFile: string;
-    keyId: string;
-    issuerId: string;
+  /** Absolute path of the vault's copy of the .p8 private key. */
+  keyFile: string;
+  keyId: string;
+  issuerId: string;
 };
 
 /**
@@ -116,18 +116,18 @@ export type GameBuildWorkerNotarization = {
  * not about where the key came from.
  */
 export type GameBuildWorkerMacSigning =
-    | {
-        /** A certificate in the host's keychain -> `mac.identity`. macOS hosts only. */
-        source: "keychain";
-        identity: string;
-        notarization?: GameBuildWorkerNotarization;
+  | {
+      /** A certificate in the host's keychain -> `mac.identity`. macOS hosts only. */
+      source: "keychain";
+      identity: string;
+      notarization?: GameBuildWorkerNotarization;
     }
-    | {
-        /** A .p12 to import -> `mac.cscLink` + `mac.cscKeyPassword`. */
-        source: "p12";
-        certificateFile: string;
-        certificatePassword: string;
-        notarization?: GameBuildWorkerNotarization;
+  | {
+      /** A .p12 to import -> `mac.cscLink` + `mac.cscKeyPassword`. */
+      source: "p12";
+      certificateFile: string;
+      certificatePassword: string;
+      notarization?: GameBuildWorkerNotarization;
     };
 
 /**
@@ -136,10 +136,10 @@ export type GameBuildWorkerMacSigning =
  * it, which is why this block has no password.
  */
 export type GameBuildWorkerGpgSigning = {
-    /** `gpg --local-user <keyId>`. */
-    keyId: string;
-    /** Absolute gpg binary; unset means the one on PATH. */
-    gpgPath?: string;
+  /** `gpg --local-user <keyId>`. */
+  keyId: string;
+  /** Absolute gpg binary; unset means the one on PATH. */
+  gpgPath?: string;
 };
 
 /**
@@ -148,12 +148,12 @@ export type GameBuildWorkerGpgSigning = {
  * signer that consumes the key - so both passwords travel with it.
  */
 export type GameBuildWorkerAndroidSigning = {
-    /** Absolute path of the vault's copy (.p12 / .jks / .keystore). */
-    keystoreFile: string;
-    /** Which entry in the keystore to sign with. */
-    alias: string;
-    storePassword: string;
-    keyPassword: string;
+  /** Absolute path of the vault's copy (.p12 / .jks / .keystore). */
+  keystoreFile: string;
+  /** Which entry in the keystore to sign with. */
+  alias: string;
+  storePassword: string;
+  keyPassword: string;
 };
 
 /**
@@ -162,68 +162,68 @@ export type GameBuildWorkerAndroidSigning = {
  * signature needs and fails outright.
  */
 export type GameBuildWorkerIosSigning = {
-    /** Absolute path of the vault's copy of the .p12. */
-    p12File: string;
-    p12Password: string;
-    /** Absolute path of the vault's copy of the .mobileprovision to embed. */
-    provisioningProfileFile: string;
-    /**
-     * Absolute path of the vendored signing tool, resolved by the manager like
-     * every other path here.
-     *
-     * Worth stating why it is not worked out in the worker: the tool lives
-     * beside the app under `resources/`, and where that is differs between a dev
-     * checkout and a packaged install. A worker-side derivation would be a
-     * second copy of knowledge the manager already has, and its packaged branch
-     * is precisely the one that cannot be exercised outside a real installer -
-     * so a change to the packaging layout would break signed iOS builds in a
-     * release and nowhere before it.
-     */
-    toolPath: string;
+  /** Absolute path of the vault's copy of the .p12. */
+  p12File: string;
+  p12Password: string;
+  /** Absolute path of the vault's copy of the .mobileprovision to embed. */
+  provisioningProfileFile: string;
+  /**
+   * Absolute path of the vendored signing tool, resolved by the manager like
+   * every other path here.
+   *
+   * Worth stating why it is not worked out in the worker: the tool lives
+   * beside the app under `resources/`, and where that is differs between a dev
+   * checkout and a packaged install. A worker-side derivation would be a
+   * second copy of knowledge the manager already has, and its packaged branch
+   * is precisely the one that cannot be exercised outside a real installer -
+   * so a change to the packaging layout would break signed iOS builds in a
+   * release and nowhere before it.
+   */
+  toolPath: string;
 };
 
 export type GameBuildWorkerFuses = {
-    runAsNode: boolean;
-    enableCookieEncryption: boolean;
-    enableNodeOptionsEnvironmentVariable: boolean;
-    enableNodeCliInspectArguments: boolean;
-    enableEmbeddedAsarIntegrityValidation: boolean;
-    onlyLoadAppFromAsar: boolean;
-    grantFileProtocolExtraPrivileges: boolean;
-    resetAdHocDarwinSignature: boolean;
+  runAsNode: boolean;
+  enableCookieEncryption: boolean;
+  enableNodeOptionsEnvironmentVariable: boolean;
+  enableNodeCliInspectArguments: boolean;
+  enableEmbeddedAsarIntegrityValidation: boolean;
+  onlyLoadAppFromAsar: boolean;
+  grantFileProtocolExtraPrivileges: boolean;
+  resetAdHocDarwinSignature: boolean;
 };
 
 export type GameBuildWorkerTarget = {
-    platform: GameBuildDesktopPlatform;
-    formats: GameBuildFormat[];
-    /** The single arch to package for; see GameBuildTarget.arch for why one. */
-    arch: GameBuildArch;
-    /** Electron fuse set for this platform's binaries. */
-    fuses: GameBuildWorkerFuses;
-    /**
-     * Local Electron dist to package from. Only set when the target matches
-     * the host platform; cross builds leave it unset so electron-builder
-     * downloads (and caches) the right dist.
-     */
-    electronDist?: string;
-    /**
-     * Absolute path of the app icon for this platform. electron-builder
-     * converts a large PNG to the native format (.icns/.ico) as needed; unset
-     * falls back to the default Electron icon.
-     */
-    iconPath?: string;
-    /**
-     * Code signing for this target's binaries and installers, done inside
-     * electron-builder. Windows and macOS targets only; Linux packages carry no
-     * OS-level signature at all - their integrity ships as the detached GPG
-     * signatures in `GameBuildWorkerConfig.gpg`.
-     *
-     * The two arms are told apart by `signing.source`, and the worker checks the
-     * target's platform before reading either: a Windows block reaching a macOS
-     * target would put a `win` section into a macOS configuration, which is the
-     * shape of a build that silently signs nothing.
-     */
-    signing?: GameBuildWorkerWindowsSigning | GameBuildWorkerMacSigning;
+  platform: GameBuildDesktopPlatform;
+  formats: GameBuildFormat[];
+  /** The single arch to package for; see GameBuildTarget.arch for why one. */
+  arch: GameBuildArch;
+  /** Electron fuse set for this platform's binaries. */
+  fuses: GameBuildWorkerFuses;
+  /**
+   * Local Electron dist to package from. Only set when the target matches
+   * the host platform; cross builds leave it unset so electron-builder
+   * downloads (and caches) the right dist.
+   */
+  electronDist?: string;
+  /**
+   * Absolute path of the app icon for this platform. electron-builder
+   * converts a large PNG to the native format (.icns/.ico) as needed; unset
+   * falls back to the default Electron icon.
+   */
+  iconPath?: string;
+  /**
+   * Code signing for this target's binaries and installers, done inside
+   * electron-builder. Windows and macOS targets only; Linux packages carry no
+   * OS-level signature at all - their integrity ships as the detached GPG
+   * signatures in `GameBuildWorkerConfig.gpg`.
+   *
+   * The two arms are told apart by `signing.source`, and the worker checks the
+   * target's platform before reading either: a Windows block reaching a macOS
+   * target would put a `win` section into a macOS configuration, which is the
+   * shape of a build that silently signs nothing.
+   */
+  signing?: GameBuildWorkerWindowsSigning | GameBuildWorkerMacSigning;
 };
 
 /**
@@ -232,21 +232,21 @@ export type GameBuildWorkerTarget = {
  * "zip" archives it (site files at the archive root, ready to upload).
  */
 export type GameBuildWorkerWebJob = {
-    /** Compiled static-site dir (output of the web artifact compile). */
-    sourceDir: string;
-    /** Subset of ["zip", "dir"]. */
-    formats: GameBuildFormat[];
-    /** Folder name (under outputDir) the "dir" format is copied to. */
-    dirName: string;
-    /** File name (under outputDir) the "zip" format is written to. */
-    zipName: string;
-    /**
-     * Write `.br`/`.gz` siblings for the site's text files, for a host that
-     * serves precompressed variants. Only the web output gets them - the mobile
-     * packages share `sourceDir` and serve their files directly, so a variant
-     * there is dead weight (see precompressWebSite.ts).
-     */
-    precompress: boolean;
+  /** Compiled static-site dir (output of the web artifact compile). */
+  sourceDir: string;
+  /** Subset of ["zip", "dir"]. */
+  formats: GameBuildFormat[];
+  /** Folder name (under outputDir) the "dir" format is copied to. */
+  dirName: string;
+  /** File name (under outputDir) the "zip" format is written to. */
+  zipName: string;
+  /**
+   * Write `.br`/`.gz` siblings for the site's text files, for a host that
+   * serves precompressed variants. Only the web output gets them - the mobile
+   * packages share `sourceDir` and serve their files directly, so a variant
+   * there is dead weight (see precompressWebSite.ts).
+   */
+  precompress: boolean;
 };
 
 /**
@@ -260,172 +260,172 @@ export type GameBuildWorkerWebJob = {
  * API). The worker only reads files and moves bytes.
  */
 export type GameBuildWorkerMobileJob = {
-    /** Compiled static-site dir - the same web compile the web target uses. */
-    sourceDir: string;
+  /** Compiled static-site dir - the same web compile the web target uses. */
+  sourceDir: string;
+  /**
+   * When set, every payload file is protected with this key at repack time,
+   * and the same key is written into shell-config.json for the shell's
+   * decoder. Absent for a plain build. It is all-or-nothing: the shell assumes
+   * every file under wwwRoot is protected, so a partial layout is not allowed.
+   * The compiled site on disk (`sourceDir`, shared with the web target) is
+   * never touched — the protection happens as bytes are read into the package.
+   */
+  contentKey?: string;
+  /** The shell template contract, already validated by the manager. */
+  templateManifest: MobileShellManifest;
+  /** Home-screen name (Android label / CFBundleDisplayName) and .app dir name. */
+  productName: string;
+  /** Sanitized, path-safe base for the `Payload/<name>.app` directory. */
+  appDirBaseName: string;
+  orientation: MobileShellOrientation;
+  /**
+   * The mobile variant of index.html, injected over the compiled site's copy.
+   * Passed rather than re-compiled so the shared staging-web dir stays exactly
+   * what the web target ships.
+   */
+  indexHtmlOverride: string;
+  /** shell-config.json payload, written verbatim into the template. */
+  shellConfigJson: string;
+  android?: {
+    /** Template APK for the variant the manager picked (release/debug). */
+    templateApkPath: string;
     /**
-     * When set, every payload file is protected with this key at repack time,
-     * and the same key is written into shell-config.json for the shell's
-     * decoder. Absent for a plain build. It is all-or-nothing: the shell assumes
-     * every file under wwwRoot is protected, so a partial layout is not allowed.
-     * The compiled site on disk (`sourceDir`, shared with the web target) is
-     * never touched — the protection happens as bytes are read into the package.
+     * The packages to write under outputDir, keyed by format, each already
+     * named. Both are formats of the one Android target and share
+     * everything above - the payload, the identity, the icons and the
+     * signing credential - so they are a selection here rather than two
+     * jobs; producing both must not cost a second payload pass.
+     *
+     * At least one is present: the manager refuses an Android target with
+     * neither, the same way it refuses a web target with no usable format.
      */
-    contentKey?: string;
-    /** The shell template contract, already validated by the manager. */
-    templateManifest: MobileShellManifest;
-    /** Home-screen name (Android label / CFBundleDisplayName) and .app dir name. */
-    productName: string;
-    /** Sanitized, path-safe base for the `Payload/<name>.app` directory. */
-    appDirBaseName: string;
-    orientation: MobileShellOrientation;
+    outputs: {
+      /** Installs on a device: sideloading, and stores that take APKs. */
+      apk?: string;
+      /** The upload Google Play accepts. */
+      aab?: string;
+    };
+    /** Already through normalizeAndroidPackageName. */
+    applicationId: string;
+    /** android:versionName - the project's raw semver. */
+    versionName: string;
+    /** android:versionCode - monotonic integer from deriveAndroidVersionCode. */
+    versionCode: number;
+    /** Icon slot (zip entry path) → absolute path of the scaled PNG. */
+    iconPngBySlot?: Record<string, string>;
     /**
-     * The mobile variant of index.html, injected over the compiled site's copy.
-     * Passed rather than re-compiled so the shared staging-web dir stays exactly
-     * what the web target ships.
+     * The sideload-only debug identity, always present. Used when `signing`
+     * is absent, and only then.
      */
-    indexHtmlOverride: string;
-    /** shell-config.json payload, written verbatim into the template. */
-    shellConfigJson: string;
-    android?: {
-        /** Template APK for the variant the manager picked (release/debug). */
-        templateApkPath: string;
-        /**
-         * The packages to write under outputDir, keyed by format, each already
-         * named. Both are formats of the one Android target and share
-         * everything above - the payload, the identity, the icons and the
-         * signing credential - so they are a selection here rather than two
-         * jobs; producing both must not cost a second payload pass.
-         *
-         * At least one is present: the manager refuses an Android target with
-         * neither, the same way it refuses a web target with no usable format.
-         */
-        outputs: {
-            /** Installs on a device: sideloading, and stores that take APKs. */
-            apk?: string;
-            /** The upload Google Play accepts. */
-            aab?: string;
-        };
-        /** Already through normalizeAndroidPackageName. */
-        applicationId: string;
-        /** android:versionName - the project's raw semver. */
-        versionName: string;
-        /** android:versionCode - monotonic integer from deriveAndroidVersionCode. */
-        versionCode: number;
-        /** Icon slot (zip entry path) → absolute path of the scaled PNG. */
-        iconPngBySlot?: Record<string, string>;
-        /**
-         * The sideload-only debug identity, always present. Used when `signing`
-         * is absent, and only then.
-         */
-        signingIdentity: SigningIdentity;
-        /**
-         * The author's own release keystore, when the project points at one. It
-         * replaces `signingIdentity` rather than adding to it: an APK carries
-         * one signer, and installing over a build signed by the other identity
-         * fails on the device until the old one is uninstalled.
-         *
-         * One credential covers both outputs. The APK is signed with Signature
-         * Scheme v2 (what the device verifies) and the AAB with JAR v1 (what
-         * Play registers as the upload key); the key material is the same, so
-         * there is deliberately no second signing slot here.
-         */
-        signing?: GameBuildWorkerAndroidSigning;
-    };
-    ios?: {
-        templateAppZipPath: string;
-        outputName: string;
-        /** Already through normalizeIosBundleId. */
-        bundleId: string;
-        /** Numeric three-part version; shared with bundleVersion. */
-        shortVersionString: string;
-        bundleVersion: string;
-        /** Icon slot (path relative to the .app) → absolute path of the scaled PNG. */
-        iconPngBySlot?: Record<string, string>;
-        /**
-         * The Apple identity to sign the .ipa with. Absent leaves the package
-         * unsigned - which iOS will not install, but which is still the useful
-         * artifact for someone who signs it themselves afterwards.
-         */
-        signing?: GameBuildWorkerIosSigning;
-    };
+    signingIdentity: SigningIdentity;
+    /**
+     * The author's own release keystore, when the project points at one. It
+     * replaces `signingIdentity` rather than adding to it: an APK carries
+     * one signer, and installing over a build signed by the other identity
+     * fails on the device until the old one is uninstalled.
+     *
+     * One credential covers both outputs. The APK is signed with Signature
+     * Scheme v2 (what the device verifies) and the AAB with JAR v1 (what
+     * Play registers as the upload key); the key material is the same, so
+     * there is deliberately no second signing slot here.
+     */
+    signing?: GameBuildWorkerAndroidSigning;
+  };
+  ios?: {
+    templateAppZipPath: string;
+    outputName: string;
+    /** Already through normalizeIosBundleId. */
+    bundleId: string;
+    /** Numeric three-part version; shared with bundleVersion. */
+    shortVersionString: string;
+    bundleVersion: string;
+    /** Icon slot (path relative to the .app) → absolute path of the scaled PNG. */
+    iconPngBySlot?: Record<string, string>;
+    /**
+     * The Apple identity to sign the .ipa with. Absent leaves the package
+     * unsigned - which iOS will not install, but which is still the useful
+     * artifact for someone who signs it themselves afterwards.
+     */
+    signing?: GameBuildWorkerIosSigning;
+  };
 };
 
 export type GameBuildWorkerConfig = {
-    /**
-     * Compiled staging app dir (contains package.json + runtime + payload).
-     * Required whenever `targets` is non-empty; a web-only build has none.
-     */
-    appDir?: string;
-    /** Absolute directory artifacts are written into. */
-    outputDir: string;
-    appId: string;
-    productName: string;
-    /** Sanitized, path-safe artifact base name. */
-    artifactBaseName: string;
-    electronVersion: string;
-    /** Copyright line embedded in the binaries; unset leaves it to electron-builder. */
-    copyright?: string;
-    /**
-     * Absolute path to the project's `COPYRIGHT.txt`, shipped beside the executable.
-     *
-     * An extra file rather than part of the app dir: the app dir becomes `app.asar`, and a notice
-     * a player is meant to read cannot live inside an archive. Unset when the project has none.
-     */
-    copyrightFile?: string;
-    /** Payload compression; unset uses electron-builder's default ("maximum"). */
-    compression?: GameBuildCompression;
-    /** Download mirror for Electron dists (cross builds); empty = official. */
-    electronMirror?: string;
-    /**
-     * Download mirror for electron-builder's toolchain binaries (winCodeSign, NSIS, AppImage,
-     * 7za); empty = official. A separate field from `electronMirror` because their URL layouts
-     * differ - which is exactly why this used to be reachable only through an environment
-     * variable a Studio user had no way to set.
-     */
-    electronBuilderBinariesMirror?: string;
-    /** Glob patterns kept outside the asar as real files. */
-    asarUnpack: string[];
-    /** Desktop packaging jobs, one per platform (electron-builder). */
-    targets: GameBuildWorkerTarget[];
-    /**
-     * GPG identity for the detached signatures over the finished artifacts.
-     * Build-level rather than per-target because the signatures cover every
-     * artifact the build produced, not only the Linux ones - even though the
-     * project selects this credential under its "linux" slot, which is where
-     * the format's own conventions (SHA256SUMS + .asc) come from.
-     */
-    gpg?: GameBuildWorkerGpgSigning;
-    /** Optional web export job, packaged without electron-builder. */
-    web?: GameBuildWorkerWebJob;
-    /** Optional mobile repack job, packaged without electron-builder. */
-    mobile?: GameBuildWorkerMobileJob;
+  /**
+   * Compiled staging app dir (contains package.json + runtime + payload).
+   * Required whenever `targets` is non-empty; a web-only build has none.
+   */
+  appDir?: string;
+  /** Absolute directory artifacts are written into. */
+  outputDir: string;
+  appId: string;
+  productName: string;
+  /** Sanitized, path-safe artifact base name. */
+  artifactBaseName: string;
+  electronVersion: string;
+  /** Copyright line embedded in the binaries; unset leaves it to electron-builder. */
+  copyright?: string;
+  /**
+   * Absolute path to the project's `COPYRIGHT.txt`, shipped beside the executable.
+   *
+   * An extra file rather than part of the app dir: the app dir becomes `app.asar`, and a notice
+   * a player is meant to read cannot live inside an archive. Unset when the project has none.
+   */
+  copyrightFile?: string;
+  /** Payload compression; unset uses electron-builder's default ("maximum"). */
+  compression?: GameBuildCompression;
+  /** Download mirror for Electron dists (cross builds); empty = official. */
+  electronMirror?: string;
+  /**
+   * Download mirror for electron-builder's toolchain binaries (winCodeSign, NSIS, AppImage,
+   * 7za); empty = official. A separate field from `electronMirror` because their URL layouts
+   * differ - which is exactly why this used to be reachable only through an environment
+   * variable a Studio user had no way to set.
+   */
+  electronBuilderBinariesMirror?: string;
+  /** Glob patterns kept outside the asar as real files. */
+  asarUnpack: string[];
+  /** Desktop packaging jobs, one per platform (electron-builder). */
+  targets: GameBuildWorkerTarget[];
+  /**
+   * GPG identity for the detached signatures over the finished artifacts.
+   * Build-level rather than per-target because the signatures cover every
+   * artifact the build produced, not only the Linux ones - even though the
+   * project selects this credential under its "linux" slot, which is where
+   * the format's own conventions (SHA256SUMS + .asc) come from.
+   */
+  gpg?: GameBuildWorkerGpgSigning;
+  /** Optional web export job, packaged without electron-builder. */
+  web?: GameBuildWorkerWebJob;
+  /** Optional mobile repack job, packaged without electron-builder. */
+  mobile?: GameBuildWorkerMobileJob;
 };
 
 export type GameBuildWorkerStartMessage = {
-    type: "start";
-    config: GameBuildWorkerConfig;
+  type: "start";
+  config: GameBuildWorkerConfig;
 };
 
 export type GameBuildWorkerLogMessage = {
-    type: "log";
-    level: "info" | "warning" | "error";
-    message: string;
+  type: "log";
+  level: "info" | "warning" | "error";
+  message: string;
 };
 
 export type GameBuildWorkerDoneMessage = {
-    type: "done";
-    /** Absolute paths of the artifacts electron-builder reported. */
-    artifacts: string[];
+  type: "done";
+  /** Absolute paths of the artifacts electron-builder reported. */
+  artifacts: string[];
 };
 
 export type GameBuildWorkerErrorMessage = {
-    type: "error";
-    message: string;
+  type: "error";
+  message: string;
 };
 
 export type GameBuildWorkerInboundMessage = GameBuildWorkerStartMessage;
 
 export type GameBuildWorkerOutboundMessage =
-    | GameBuildWorkerLogMessage
-    | GameBuildWorkerDoneMessage
-    | GameBuildWorkerErrorMessage;
+  | GameBuildWorkerLogMessage
+  | GameBuildWorkerDoneMessage
+  | GameBuildWorkerErrorMessage;

@@ -11,11 +11,11 @@ import type { BlueprintOpenOptions } from "./useOpenBlueprintTarget";
  * window that just opened.
  */
 export function blueprintEntryContextMenu(
-    open: (options?: BlueprintOpenOptions) => void,
+  open: (options?: BlueprintOpenOptions) => void
 ): (event: ReactMouseEvent) => void {
-    return (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        open({ inOwnWindow: true });
-    };
+  return (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    open({ inOwnWindow: true });
+  };
 }

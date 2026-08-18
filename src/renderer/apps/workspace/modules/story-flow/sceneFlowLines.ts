@@ -1,9 +1,9 @@
 import type { StoryBlockId, StorySceneId } from "@shared/types/story";
 import type {
-    SceneFlowBranchLabel,
-    SceneFlowEdgeModel,
-    SceneFlowGraph,
-    SceneFlowJumpRef,
+  SceneFlowBranchLabel,
+  SceneFlowEdgeModel,
+  SceneFlowGraph,
+  SceneFlowJumpRef
 } from "./sceneFlowModel";
 
 /**
@@ -19,18 +19,18 @@ import type {
  * the arm-owned ones too — lines the author can still see drawn beside the one they deleted.
  */
 export type SceneFlowDrawnLine = {
-    id: string;
-    sourceSceneId: StorySceneId;
-    targetSceneId: StorySceneId;
-    /** The arm's node id, when the line leaves an arm's row rather than the scene's rim. */
-    sourceBranchId?: string;
-    jumps: SceneFlowJumpRef[];
-    /** Drawn dashed: the jump only fires on some runs. */
-    conditional: boolean;
-    /** Drawn faded: every jump on this line is switched off, so the compiler emits none of them. */
-    disabled: boolean;
-    /** The forks that reach this target — what a collapsed line hides. Empty on an arm's own line. */
-    branches: SceneFlowBranchLabel[];
+  id: string;
+  sourceSceneId: StorySceneId;
+  targetSceneId: StorySceneId;
+  /** The arm's node id, when the line leaves an arm's row rather than the scene's rim. */
+  sourceBranchId?: string;
+  jumps: SceneFlowJumpRef[];
+  /** Drawn dashed: the jump only fires on some runs. */
+  conditional: boolean;
+  /** Drawn faded: every jump on this line is switched off, so the compiler emits none of them. */
+  disabled: boolean;
+  /** The forks that reach this target — what a collapsed line hides. Empty on an arm's own line. */
+  branches: SceneFlowBranchLabel[];
 };
 
 /**
@@ -43,35 +43,35 @@ export type SceneFlowDrawnLine = {
  * included — the alternative is a line labelled with an option that is no longer on it.
  */
 export function residualSceneEdge(
-    edge: SceneFlowEdgeModel,
-    claimed: ReadonlySet<StoryBlockId>,
+  edge: SceneFlowEdgeModel,
+  claimed: ReadonlySet<StoryBlockId>
 ): SceneFlowEdgeModel | null {
-    const jumps = edge.jumps.filter(jump => !claimed.has(jump.blockId));
-    if (jumps.length === 0) {
-        return null;
+  const jumps = edge.jumps.filter((jump) => !claimed.has(jump.blockId));
+  if (jumps.length === 0) {
+    return null;
+  }
+  if (jumps.length === edge.jumps.length) {
+    return edge;
+  }
+  const seen = new Set<string>();
+  const branches: SceneFlowBranchLabel[] = [];
+  for (const jump of jumps) {
+    if (!jump.branch) {
+      continue;
     }
-    if (jumps.length === edge.jumps.length) {
-        return edge;
+    const key = `${jump.branch.kind}:${jump.branch.label}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      branches.push(jump.branch);
     }
-    const seen = new Set<string>();
-    const branches: SceneFlowBranchLabel[] = [];
-    for (const jump of jumps) {
-        if (!jump.branch) {
-            continue;
-        }
-        const key = `${jump.branch.kind}:${jump.branch.label}`;
-        if (!seen.has(key)) {
-            seen.add(key);
-            branches.push(jump.branch);
-        }
-    }
-    return {
-        ...edge,
-        jumps,
-        conditional: jumps.every(jump => jump.conditional),
-        disabled: jumps.every(jump => jump.disabled),
-        branches,
-    };
+  }
+  return {
+    ...edge,
+    jumps,
+    conditional: jumps.every((jump) => jump.conditional),
+    disabled: jumps.every((jump) => jump.disabled),
+    branches
+  };
 }
 
 /**
@@ -82,50 +82,50 @@ export function residualSceneEdge(
  * to rows that are not there would drop them from the map entirely.
  */
 export function buildSceneFlowLines(
-    graph: SceneFlowGraph,
-    expandedScenes: ReadonlySet<StorySceneId>,
+  graph: SceneFlowGraph,
+  expandedScenes: ReadonlySet<StorySceneId>
 ): SceneFlowDrawnLine[] {
-    // Jumps an expanded scene's arms have taken over, so the scene line does not draw them twice.
-    const claimedJumps = new Set<StoryBlockId>();
-    for (const edge of graph.branchEdges) {
-        if (expandedScenes.has(edge.sourceSceneId)) {
-            for (const jump of edge.jumps) {
-                claimedJumps.add(jump.blockId);
-            }
-        }
+  // Jumps an expanded scene's arms have taken over, so the scene line does not draw them twice.
+  const claimedJumps = new Set<StoryBlockId>();
+  for (const edge of graph.branchEdges) {
+    if (expandedScenes.has(edge.sourceSceneId)) {
+      for (const jump of edge.jumps) {
+        claimedJumps.add(jump.blockId);
+      }
     }
+  }
 
-    const lines: SceneFlowDrawnLine[] = [];
-    for (const edge of graph.edges) {
-        const residual = expandedScenes.has(edge.source) ? residualSceneEdge(edge, claimedJumps) : edge;
-        if (!residual) {
-            continue;
-        }
-        lines.push({
-            id: edge.id,
-            sourceSceneId: edge.source,
-            targetSceneId: edge.target,
-            jumps: residual.jumps,
-            conditional: residual.conditional,
-            disabled: residual.disabled,
-            branches: residual.branches,
-        });
+  const lines: SceneFlowDrawnLine[] = [];
+  for (const edge of graph.edges) {
+    const residual = expandedScenes.has(edge.source) ? residualSceneEdge(edge, claimedJumps) : edge;
+    if (!residual) {
+      continue;
     }
-    for (const edge of graph.branchEdges) {
-        if (!expandedScenes.has(edge.sourceSceneId)) {
-            continue;
-        }
-        lines.push({
-            id: edge.id,
-            sourceSceneId: edge.sourceSceneId,
-            targetSceneId: edge.target,
-            sourceBranchId: edge.sourceBranchId,
-            jumps: edge.jumps,
-            // A line leaving an arm only fires when that arm is taken.
-            conditional: true,
-            disabled: edge.jumps.every(jump => jump.disabled),
-            branches: [],
-        });
+    lines.push({
+      id: edge.id,
+      sourceSceneId: edge.source,
+      targetSceneId: edge.target,
+      jumps: residual.jumps,
+      conditional: residual.conditional,
+      disabled: residual.disabled,
+      branches: residual.branches
+    });
+  }
+  for (const edge of graph.branchEdges) {
+    if (!expandedScenes.has(edge.sourceSceneId)) {
+      continue;
     }
-    return lines;
+    lines.push({
+      id: edge.id,
+      sourceSceneId: edge.sourceSceneId,
+      targetSceneId: edge.target,
+      sourceBranchId: edge.sourceBranchId,
+      jumps: edge.jumps,
+      // A line leaving an arm only fires when that arm is taken.
+      conditional: true,
+      disabled: edge.jumps.every((jump) => jump.disabled),
+      branches: []
+    });
+  }
+  return lines;
 }

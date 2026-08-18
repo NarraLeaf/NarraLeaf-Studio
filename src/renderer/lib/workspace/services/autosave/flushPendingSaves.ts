@@ -15,31 +15,34 @@ import { SaveStatusService, STORAGE_CONSOLE_CHANNEL } from "./SaveStatusService"
 export const FLUSH_STORE_TIMEOUT_MS = 5_000;
 
 export type FlushPendingSavesResult = {
-    /** True when every store answered and none of them rejected. */
-    flushed: boolean;
-    /** Human-readable store names that failed or timed out, for the console line. */
-    failures: string[];
+  /** True when every store answered and none of them rejected. */
+  flushed: boolean;
+  /** Human-readable store names that failed or timed out, for the console line. */
+  failures: string[];
 };
 
 type FlushTarget = {
-    labelKey: TranslationKey;
-    flush: () => Promise<void>;
+  labelKey: TranslationKey;
+  flush: () => Promise<void>;
 };
 
 function withTimeout(promise: Promise<void>, timeoutMs: number, label: string): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error(`${label} did not finish within ${timeoutMs}ms`)), timeoutMs);
-        promise.then(
-            () => {
-                clearTimeout(timer);
-                resolve();
-            },
-            error => {
-                clearTimeout(timer);
-                reject(error);
-            },
-        );
-    });
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} did not finish within ${timeoutMs}ms`)),
+      timeoutMs
+    );
+    promise.then(
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
 }
 
 /**
@@ -50,28 +53,28 @@ function withTimeout(promise: Promise<void>, timeoutMs: number, label: string): 
  * its own (already bounded) timer.
  */
 function collectTargets(ctx: WorkspaceContext): FlushTarget[] {
-    const targets: FlushTarget[] = [];
+  const targets: FlushTarget[] = [];
 
-    try {
-        const saveStatus = ctx.services.get<SaveStatusService>(Services.SaveStatus);
-        for (const { labelKey, saver } of saveStatus.listSavers()) {
-            targets.push({ labelKey, flush: () => saver.flush() });
-        }
-    } catch {
-        // No save-status service means no registered savers to flush.
+  try {
+    const saveStatus = ctx.services.get<SaveStatusService>(Services.SaveStatus);
+    for (const { labelKey, saver } of saveStatus.listSavers()) {
+      targets.push({ labelKey, flush: () => saver.flush() });
     }
+  } catch {
+    // No save-status service means no registered savers to flush.
+  }
 
-    try {
-        const characters = ctx.services.get<CharacterService>(Services.Character);
-        targets.push({
-            labelKey: "workspace.shell.save.stores.characters",
-            flush: () => characters.flushPendingChanges(),
-        });
-    } catch {
-        // Same.
-    }
+  try {
+    const characters = ctx.services.get<CharacterService>(Services.Character);
+    targets.push({
+      labelKey: "workspace.shell.save.stores.characters",
+      flush: () => characters.flushPendingChanges()
+    });
+  } catch {
+    // Same.
+  }
 
-    return targets;
+  return targets;
 }
 
 /**
@@ -97,36 +100,36 @@ function collectTargets(ctx: WorkspaceContext): FlushTarget[] {
  * (`workspaceFlushPendingSaves`) is the only shape that can actually wait.
  */
 export async function flushPendingSaves(
-    ctx: WorkspaceContext,
-    options: { timeoutMs?: number } = {},
+  ctx: WorkspaceContext,
+  options: { timeoutMs?: number } = {}
 ): Promise<FlushPendingSavesResult> {
-    const timeoutMs = options.timeoutMs ?? FLUSH_STORE_TIMEOUT_MS;
-    const targets = collectTargets(ctx);
+  const timeoutMs = options.timeoutMs ?? FLUSH_STORE_TIMEOUT_MS;
+  const targets = collectTargets(ctx);
 
-    const results = await Promise.allSettled(
-        targets.map(target => withTimeout(target.flush(), timeoutMs, translate(target.labelKey))),
-    );
+  const results = await Promise.allSettled(
+    targets.map((target) => withTimeout(target.flush(), timeoutMs, translate(target.labelKey)))
+  );
 
-    const failures: string[] = [];
-    for (const [index, result] of results.entries()) {
-        if (result.status === "rejected") {
-            const label = translate(targets[index].labelKey);
-            failures.push(label);
-            try {
-                ctx.services.get<ConsoleService>(Services.Console).log(
-                    STORAGE_CONSOLE_CHANNEL,
-                    "error",
-                    translate("workspace.shell.save.flushFailed", {
-                        label,
-                        error: String((result.reason as Error)?.message ?? result.reason),
-                    }),
-                    { source: "Storage" },
-                );
-            } catch {
-                // Reporting must not be the reason a shutdown flush throws.
-            }
-        }
+  const failures: string[] = [];
+  for (const [index, result] of results.entries()) {
+    if (result.status === "rejected") {
+      const label = translate(targets[index].labelKey);
+      failures.push(label);
+      try {
+        ctx.services.get<ConsoleService>(Services.Console).log(
+          STORAGE_CONSOLE_CHANNEL,
+          "error",
+          translate("workspace.shell.save.flushFailed", {
+            label,
+            error: String((result.reason as Error)?.message ?? result.reason)
+          }),
+          { source: "Storage" }
+        );
+      } catch {
+        // Reporting must not be the reason a shutdown flush throws.
+      }
     }
+  }
 
-    return { flushed: failures.length === 0, failures };
+  return { flushed: failures.length === 0, failures };
 }

@@ -10,30 +10,30 @@ import { isStageSizeUsable, type StageSize } from "./stageSize";
  * `main/app/application/managers/projectTemplates.ts`.
  */
 export type ProjectTemplateDescriptor = {
-    id: string;
-    /** Fallback display name; `locales` overrides it for the active language. */
-    name: string;
-    description: string;
-    version: string;
-    /**
-     * Per-locale name/description, keyed by locale code.
-     *
-     * Templates are content rather than chrome — they are added and removed by
-     * editing `resources/`, without touching the app's own catalogs — so their
-     * wording travels with them instead of living in `src/shared/i18n`.
-     */
-    locales: Record<string, { name?: string; description?: string }>;
-    /** The stage size the template's interface and scenes were authored against. */
-    designSize?: StageSize;
-    /**
-     * Every stage size this template's content is laid out for, when it has more than one.
-     *
-     * A template's surfaces are positioned in absolute coordinates, so the size is not the
-     * author's to choose freely - picking one the template was not drawn for produces a project
-     * whose interface is off the edge of its own stage, silently. The wizard therefore offers
-     * exactly what is listed here and nothing else.
-     */
-    designSizes?: StageSize[];
+  id: string;
+  /** Fallback display name; `locales` overrides it for the active language. */
+  name: string;
+  description: string;
+  version: string;
+  /**
+   * Per-locale name/description, keyed by locale code.
+   *
+   * Templates are content rather than chrome — they are added and removed by
+   * editing `resources/`, without touching the app's own catalogs — so their
+   * wording travels with them instead of living in `src/shared/i18n`.
+   */
+  locales: Record<string, { name?: string; description?: string }>;
+  /** The stage size the template's interface and scenes were authored against. */
+  designSize?: StageSize;
+  /**
+   * Every stage size this template's content is laid out for, when it has more than one.
+   *
+   * A template's surfaces are positioned in absolute coordinates, so the size is not the
+   * author's to choose freely - picking one the template was not drawn for produces a project
+   * whose interface is off the edge of its own stage, silently. The wizard therefore offers
+   * exactly what is listed here and nothing else.
+   */
+  designSizes?: StageSize[];
 };
 
 /**
@@ -43,11 +43,11 @@ export type ProjectTemplateDescriptor = {
  * every template did before this field existed, and what a metadata-only template still means.
  */
 export function projectTemplateStageSizes(template: ProjectTemplateDescriptor): StageSize[] {
-    const declared = template.designSizes?.filter(isStageSizeUsable) ?? [];
-    if (declared.length > 0) {
-        return declared;
-    }
-    return template.designSize && isStageSizeUsable(template.designSize) ? [template.designSize] : [];
+  const declared = template.designSizes?.filter(isStageSizeUsable) ?? [];
+  if (declared.length > 0) {
+    return declared;
+  }
+  return template.designSize && isStageSizeUsable(template.designSize) ? [template.designSize] : [];
 }
 
 /**
@@ -58,8 +58,8 @@ export function projectTemplateStageSizes(template: ProjectTemplateDescriptor): 
  * is invisible until an author sees one of the three in the wrong language.
  */
 export function resolveProjectTemplateText(
-    template: ProjectTemplateDescriptor,
-    locale: string,
+  template: ProjectTemplateDescriptor,
+  locale: string
 ): { name: string; description: string } {
-    return resolveLocalizedText(template, locale);
+  return resolveLocalizedText(template, locale);
 }

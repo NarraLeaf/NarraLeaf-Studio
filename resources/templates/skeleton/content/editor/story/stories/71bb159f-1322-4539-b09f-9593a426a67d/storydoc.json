@@ -735,9 +735,7 @@
         "ba294d91-a990-4119-9a92-12fb0fc31bdb": {
           "id": "ba294d91-a990-4119-9a92-12fb0fc31bdb",
           "parentId": "33451d3b-c09a-4bc2-98d6-3304ac7b9cd1",
-          "childrenIds": [
-            "fe04b9e6-2883-4afd-881b-1e8cd9d7bd97"
-          ],
+          "childrenIds": ["fe04b9e6-2883-4afd-881b-1e8cd9d7bd97"],
           "kind": "control",
           "payload": {
             "control": "conditionBranch",
@@ -770,9 +768,7 @@
         "d2e8a253-f83e-47da-8870-9c7e88200d07": {
           "id": "d2e8a253-f83e-47da-8870-9c7e88200d07",
           "parentId": "33451d3b-c09a-4bc2-98d6-3304ac7b9cd1",
-          "childrenIds": [
-            "62763119-eeaa-440a-a9ca-e7b3663888c6"
-          ],
+          "childrenIds": ["62763119-eeaa-440a-a9ca-e7b3663888c6"],
           "kind": "control",
           "payload": {
             "control": "conditionBranch",

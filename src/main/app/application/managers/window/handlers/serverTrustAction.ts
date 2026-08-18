@@ -17,20 +17,22 @@ import { IPCHandler } from "./IPCHandler";
  * which is the only reading that keeps the caller from waiting forever.
  */
 export class ServerTrustPromptHandler extends IPCHandler<IPCEventType.serverTrustPrompt> {
-    readonly name = IPCEventType.serverTrustPrompt;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.serverTrustPrompt;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { props }: IPCEvents[IPCEventType.serverTrustPrompt]["data"],
-    ): Promise<RequestStatus<{ trusted: boolean }>> {
-        const promptWindow = await window.getApp().launchServerTrustPrompt(window, props);
-        window.addChild(promptWindow);
+  public async handle(
+    window: AppWindow,
+    { props }: IPCEvents[IPCEventType.serverTrustPrompt]["data"]
+  ): Promise<RequestStatus<{ trusted: boolean }>> {
+    const promptWindow = await window.getApp().launchServerTrustPrompt(window, props);
+    window.addChild(promptWindow);
 
-        return new Promise<RequestStatus<{ trusted: boolean }>>(resolve => {
-            promptWindow.setCloseResultResolver((result: WindowCloseResults[WindowAppType.ServerTrustPrompt]) => {
-                resolve(this.success({ trusted: result?.trusted === true }));
-            });
-        });
-    }
+    return new Promise<RequestStatus<{ trusted: boolean }>>((resolve) => {
+      promptWindow.setCloseResultResolver(
+        (result: WindowCloseResults[WindowAppType.ServerTrustPrompt]) => {
+          resolve(this.success({ trusted: result?.trusted === true }));
+        }
+      );
+    });
+  }
 }

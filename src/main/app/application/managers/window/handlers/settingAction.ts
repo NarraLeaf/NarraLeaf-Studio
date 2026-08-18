@@ -9,16 +9,16 @@ import { IPCMessageType } from "@shared/types/ipc";
  * (e.g. "Customize keyboard shortcuts" needs a workspace to open its tab in).
  */
 export class AppCountWorkspaceWindowsHandler extends IPCHandler<IPCEventType.appCountWorkspaceWindows> {
-    readonly name = IPCEventType.appCountWorkspaceWindows;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.appCountWorkspaceWindows;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<{ count: number }>> {
-        const count = window
-            .getApp()
-            .windowManager.getWindows()
-            .filter(candidate => candidate.getWindowType() === WindowAppType.Workspace).length;
-        return this.success({ count });
-    }
+  public async handle(window: AppWindow): Promise<RequestStatus<{ count: number }>> {
+    const count = window
+      .getApp()
+      .windowManager.getWindows()
+      .filter((candidate) => candidate.getWindowType() === WindowAppType.Workspace).length;
+    return this.success({ count });
+  }
 }
 
 /**
@@ -30,25 +30,25 @@ export class AppCountWorkspaceWindowsHandler extends IPCHandler<IPCEventType.app
  * workspaces open, every one of them would pop the same tab.
  */
 export class AppRequestWorkspaceViewHandler extends IPCHandler<IPCEventType.appRequestWorkspaceView> {
-    readonly name = IPCEventType.appRequestWorkspaceView;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.appRequestWorkspaceView;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { view }: IPCEvents[IPCEventType.appRequestWorkspaceView]["data"],
-    ): Promise<RequestStatus<{ delivered: boolean }>> {
-        const workspaces = window
-            .getApp()
-            .windowManager.getWindows()
-            .filter(candidate => candidate.getWindowType() === WindowAppType.Workspace);
-        const target = workspaces.find(candidate => candidate.win.isFocused()) ?? workspaces[0];
-        if (!target) {
-            return this.success({ delivered: false });
-        }
-        target.sendIpcEvent(IPCEventType.workspaceOpenView, { view });
-        target.focus();
-        return this.success({ delivered: true });
+  public async handle(
+    window: AppWindow,
+    { view }: IPCEvents[IPCEventType.appRequestWorkspaceView]["data"]
+  ): Promise<RequestStatus<{ delivered: boolean }>> {
+    const workspaces = window
+      .getApp()
+      .windowManager.getWindows()
+      .filter((candidate) => candidate.getWindowType() === WindowAppType.Workspace);
+    const target = workspaces.find((candidate) => candidate.win.isFocused()) ?? workspaces[0];
+    if (!target) {
+      return this.success({ delivered: false });
     }
+    target.sendIpcEvent(IPCEventType.workspaceOpenView, { view });
+    target.focus();
+    return this.success({ delivered: true });
+  }
 }
 
 /**
@@ -59,13 +59,16 @@ export class AppRequestWorkspaceViewHandler extends IPCHandler<IPCEventType.appR
  * selected. An open window is focused and told where to go instead.
  */
 export class AppSettingsWindowLaunchHandler extends IPCHandler<IPCEventType.appLaunchSettings> {
-    readonly name = IPCEventType.appLaunchSettings;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.appLaunchSettings;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow, { props }: IPCEvents[IPCEventType.appLaunchSettings]["data"]): Promise<RequestStatus<void>> {
-        // The reuse-or-launch logic lives on App because the tray's "Check for Updates" row needs
-        // the same behaviour from a process that has no window to ask on behalf of.
-        await window.getApp().revealSettings(props, window);
-        return this.success(void 0);
-    }
+  public async handle(
+    window: AppWindow,
+    { props }: IPCEvents[IPCEventType.appLaunchSettings]["data"]
+  ): Promise<RequestStatus<void>> {
+    // The reuse-or-launch logic lives on App because the tray's "Check for Updates" row needs
+    // the same behaviour from a process that has no window to ask on behalf of.
+    await window.getApp().revealSettings(props, window);
+    return this.success(void 0);
+  }
 }

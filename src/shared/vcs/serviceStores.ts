@@ -49,29 +49,29 @@ export type ServiceStoreLocation = "studio" | "project";
  * fixed set of them to enumerate, so they take the default.
  */
 export const SERVICE_STORE_LOCATIONS = {
-    /** Dock layout and open tabs: the shape of Studio's window, not of the game. */
-    panel_state: "studio",
-    /** Toast history - a log of what Studio said to this author, on this machine. */
-    notification_history: "studio",
-    /** The colour picker's recently-used list: a tool remembering the last few clicks. */
-    recent_colors: "studio",
-    /**
-     * Which side the author has picked for each conflicted file, while a merge is open.
-     *
-     * Studio state rather than project content, and the distinction is exact: not one byte of the
-     * merge is applied until Finish is pressed, so this is a form half filled in, not a decision the
-     * project has taken. Losing it costs the author the choosing again - time, never work - which is
-     * the same test `docs/caches.md` applies. It also has to be writable while the workspace is
-     * frozen by that very merge, which `.nlstudio/` is and `editor/` is not.
-     */
-    merge_decisions: "studio",
-    /**
-     * The project's characters - profiles, appearances, groups. Content the author
-     * wrote, and the single largest thing in `editor/services/`. Moving it would take
-     * the cast out of version control, which is the exact failure the default above is
-     * written to avoid; it is listed rather than left implicit so that is on the page.
-     */
-    character: "project",
+  /** Dock layout and open tabs: the shape of Studio's window, not of the game. */
+  panel_state: "studio",
+  /** Toast history - a log of what Studio said to this author, on this machine. */
+  notification_history: "studio",
+  /** The colour picker's recently-used list: a tool remembering the last few clicks. */
+  recent_colors: "studio",
+  /**
+   * Which side the author has picked for each conflicted file, while a merge is open.
+   *
+   * Studio state rather than project content, and the distinction is exact: not one byte of the
+   * merge is applied until Finish is pressed, so this is a form half filled in, not a decision the
+   * project has taken. Losing it costs the author the choosing again - time, never work - which is
+   * the same test `docs/caches.md` applies. It also has to be writable while the workspace is
+   * frozen by that very merge, which `.nlstudio/` is and `editor/` is not.
+   */
+  merge_decisions: "studio",
+  /**
+   * The project's characters - profiles, appearances, groups. Content the author
+   * wrote, and the single largest thing in `editor/services/`. Moving it would take
+   * the cast out of version control, which is the exact failure the default above is
+   * written to avoid; it is listed rather than left implicit so that is on the page.
+   */
+  character: "project"
 } as const satisfies Record<string, ServiceStoreLocation>;
 
 /**
@@ -84,17 +84,18 @@ export const SERVICE_STORE_LOCATIONS = {
  * recurring with nothing to notice it.
  */
 export type StudioStateStoreNamespace = {
-    [K in keyof typeof SERVICE_STORE_LOCATIONS]:
-        (typeof SERVICE_STORE_LOCATIONS)[K] extends "studio" ? K : never;
+  [K in keyof typeof SERVICE_STORE_LOCATIONS]: (typeof SERVICE_STORE_LOCATIONS)[K] extends "studio"
+    ? K
+    : never;
 }[keyof typeof SERVICE_STORE_LOCATIONS];
 
 /** Where one store namespace belongs. Unlisted namespaces are project content. */
 export function serviceStoreLocation(namespace: string): ServiceStoreLocation {
-    const table: Record<string, ServiceStoreLocation | undefined> = SERVICE_STORE_LOCATIONS;
-    return table[namespace] ?? "project";
+  const table: Record<string, ServiceStoreLocation | undefined> = SERVICE_STORE_LOCATIONS;
+  return table[namespace] ?? "project";
 }
 
 /** Whether a store is Studio's own state, i.e. lives outside the versioned tree. */
 export function isStudioStateStore(namespace: string): boolean {
-    return serviceStoreLocation(namespace) === "studio";
+  return serviceStoreLocation(namespace) === "studio";
 }

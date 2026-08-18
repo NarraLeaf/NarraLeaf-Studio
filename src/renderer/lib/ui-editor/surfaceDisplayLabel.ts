@@ -15,13 +15,15 @@ import type { InterpolationParams, TranslationKey } from "@shared/i18n";
  * handler.
  */
 export function getSurfaceDisplayLabel(
-    surface: UISurface,
-    t: (key: TranslationKey, params?: InterpolationParams) => string,
+  surface: UISurface,
+  t: (key: TranslationKey, params?: InterpolationParams) => string
 ): string {
-    if (surface.id === MAIN_APP_SURFACE_ID) {
-        return DEFAULT_APP_SURFACE_NAME;
-    }
-    return surface.kind === "appSurface" ? t("uiEditor.surfaceKind.page") : t("uiEditor.surfaceKind.gameUi");
+  if (surface.id === MAIN_APP_SURFACE_ID) {
+    return DEFAULT_APP_SURFACE_NAME;
+  }
+  return surface.kind === "appSurface"
+    ? t("uiEditor.surfaceKind.page")
+    : t("uiEditor.surfaceKind.gameUi");
 }
 
 /**
@@ -33,8 +35,8 @@ export function getSurfaceDisplayLabel(
  * entry for straight through, which is what makes that work.
  */
 export function getSurfaceRenameNoun(surface: UISurface): string {
-    if (surface.id === MAIN_APP_SURFACE_ID) {
-        return DEFAULT_APP_SURFACE_NAME;
-    }
-    return surface.kind === "appSurface" ? "page" : "gameUi";
+  if (surface.id === MAIN_APP_SURFACE_ID) {
+    return DEFAULT_APP_SURFACE_NAME;
+  }
+  return surface.kind === "appSurface" ? "page" : "gameUi";
 }

@@ -2,32 +2,32 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GitMerge, Loader2, RotateCcw } from "lucide-react";
 import type { DocumentMergeDecision } from "@shared/documents/diff";
 import { mergeDecisionKey } from "@shared/documents/mergeApply";
-import type {
-    VcsMergeDecision,
-    VcsMergeSideChoice,
-    VcsMergeState,
-} from "@shared/types/vcs";
+import type { VcsMergeDecision, VcsMergeSideChoice, VcsMergeState } from "@shared/types/vcs";
 import { HelpTrigger } from "@/lib/help";
 import { translate, useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
-import { ConflictFooter, ConflictResolveView, type WriteGuard } from "@/lib/vcs/ConflictResolveView";
 import {
-    buildConflictRows,
-    countUndecidedFiles,
-    type MergeChangeChoices,
-    type MergeDocumentEntry,
+  ConflictFooter,
+  ConflictResolveView,
+  type WriteGuard
+} from "@/lib/vcs/ConflictResolveView";
+import {
+  buildConflictRows,
+  countUndecidedFiles,
+  type MergeChangeChoices,
+  type MergeDocumentEntry
 } from "@/lib/vcs/mergeDecisionView";
 import { useWorkspace } from "../../context";
 import { useFreezeGuard, type FreezeGuard } from "../../components/ui/freezeGuard";
 import { useWorkspaceFreezeReason } from "../../hooks/useWorkspaceFrozen";
 import {
-    clearMergeDecisionDraft,
-    mergeFingerprint,
-    readMergeDecisionDraft,
-    writeMergeDecisionDraft,
+  clearMergeDecisionDraft,
+  mergeFingerprint,
+  readMergeDecisionDraft,
+  writeMergeDecisionDraft
 } from "./mergeDecisionDraft";
 
 /**
@@ -91,451 +91,464 @@ const RESOLVE_ROW_LIMIT = 200;
  * would be pressable with files still undecided.
  */
 const PERMISSIVE_GUARD: WriteGuard = {
-    // `data-tip`, the shape `FrozenControlProps` asks for: a disabled control gets no pointer
-    // events, so its reason is drawn by Studio's own tooltip rather than the browser's.
-    writes: (ownDisabled, ownTooltip) => ({ disabled: Boolean(ownDisabled), "data-tip": ownTooltip }),
+  // `data-tip`, the shape `FrozenControlProps` asks for: a disabled control gets no pointer
+  // events, so its reason is drawn by Studio's own tooltip rather than the browser's.
+  writes: (ownDisabled, ownTooltip) => ({ disabled: Boolean(ownDisabled), "data-tip": ownTooltip })
 };
 
 export function VcsResolvePanel() {
-    const { t } = useTranslation();
-    const { context } = useWorkspace();
-    // A resolve WRITES the author's files, so unlike everything else in this tab it is gated. The
-    // read half - the file list, which side is which, what changed inside, the fact that a merge is
-    // open - is not: a frozen workspace is exactly the state an author browsing a past revision is
-    // in, and taking away their view of the merge would tell them nothing about why they cannot act
-    // on it.
-    const workspaceGuard = useFreezeGuard();
-    const freezeReason = useWorkspaceFreezeReason();
-    /**
-     * The guard this panel actually obeys - the workspace's, except for the freeze it exists to end.
-     *
-     * A project opened mid-merge is frozen with `kind: "merge"`, and that freeze has no `thaw`: the
-     * only ways out are the two buttons at the bottom of this panel. Obeying it therefore greys out
-     * the only exit from the state it describes, which is not a safe default - it is a locked room,
-     * and the rail's own copy is meanwhile telling the author to come here and finish. Every other
-     * freeze still applies: a manual one, or a revision preview, means somebody deliberately made
-     * the project read-only and settling a merge under it would write the very files they stopped.
-     *
-     * Not a special case inside `useFreezeGuard`, deliberately: that hook is what every editor uses,
-     * and an exception living there would be an exception every future surface inherits by accident.
-     */
-    const guard = useMemo<FreezeGuard | WriteGuard>(
-        () => (freezeReason === "merge" ? PERMISSIVE_GUARD : workspaceGuard),
-        [freezeReason, workspaceGuard],
-    );
-    const blockedByFreeze = workspaceGuard.frozen && freezeReason !== "merge";
-    const [state, setState] = useState<VcsMergeState | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    /**
-     * The author's choices so far - **an unapplied form, and still not repository state.**
-     *
-     * Keyed by repository-relative path. A path that is not a key is undecided, which is the state
-     * every row starts in.
-     *
-     * Kept in a draft under `.nlstudio/` as well as here (`mergeDecisionDraft`), so closing the
-     * window forty files into a two-hundred-file merge does not start the choosing again. Nothing
-     * about WHEN it is applied has changed: one press settles everything, and until then not a byte
-     * of the author's tree has moved.
-     */
-    const [decisions, setDecisions] = useState<Record<string, VcsMergeSideChoice>>({});
-    /**
-     * Paths the author is settling change by change, and what they chose inside each.
-     *
-     * Two records rather than one, because "this file is being merged" and "this change goes to
-     * theirs" are different facts: a document whose every inner change merged automatically has
-     * nothing to choose and still has to be marked as merged, or the finish button would wait
-     * forever on a file with no question in it.
-     */
-    const [perChange, setPerChange] = useState<Record<string, true>>({});
-    const [changeChoices, setChangeChoices] = useState<Record<string, MergeChangeChoices>>({});
-    const [selectedPath, setSelectedPath] = useState<string | null>(null);
-    const [documents, setDocuments] = useState<Record<string, MergeDocumentEntry>>({});
-    const [running, setRunning] = useState<"finish" | "abandon" | null>(null);
-    const alive = useRef(true);
-    useEffect(() => {
-        alive.current = true;
-        return () => {
-            alive.current = false;
-        };
-    }, []);
-
-    const service = useMemo(
-        () => (context ? context.services.get<VersionControlService>(Services.VersionControl) : null),
-        [context],
-    );
-
-    const read = useCallback(async () => {
-        if (!service) {
-            return;
-        }
-        setLoading(true);
-        setError(null);
-        try {
-            const answer = await service.getMergeState();
-            if (!alive.current) return;
-            setState(answer);
-        } catch (thrown) {
-            if (!alive.current) return;
-            setState(null);
-            setError(messageOf(thrown));
-        } finally {
-            if (alive.current) setLoading(false);
-        }
-    }, [service]);
-
-    // Once when the tab opens, and then only when something changed the merge - never on a timer.
-    // The read is local and non-scanning, but "cheap" has never been the reason this feature
-    // refuses to poll (docs §4.17).
-    useEffect(() => {
-        void read();
-    }, [read]);
-    useEffect(() => {
-        if (!service) {
-            return;
-        }
-        // Completing or abandoning a merge happens from THIS panel, so this is mostly the tab
-        // agreeing with itself - and it is also what keeps a second window's abandon from leaving
-        // this one offering decisions on a merge that is gone.
-        return service.onMergeChanged(() => void read());
-    }, [service, read]);
-
-    const conflicts = useMemo(
-        () => (state?.inProgress ? state.conflicts : []),
-        [state],
-    );
-
-    /**
-     * Which merge is open, as one value the draft can be keyed by. Null when none is.
-     */
-    const fingerprint = useMemo(
-        () => (state?.inProgress ? mergeFingerprint(state) : null),
-        [state],
-    );
-    const serviceAssets = useMemo(
-        () => (context ? context.services.get<ServiceAssetsService>(Services.ServiceAssets) : null),
-        [context],
-    );
-    /**
-     * The fingerprint whose draft has been read, so the writer below cannot run first.
-     *
-     * Without it the empty initial state would be saved over a real draft between mount and the
-     * read landing - the failure mode being "the author's forty decisions are erased by opening the
-     * tab", which is precisely what this is here to prevent.
-     */
-    const hydrated = useRef<string | null>(null);
-
-    useEffect(() => {
-        if (!serviceAssets || !fingerprint || hydrated.current === fingerprint) {
-            return;
-        }
-        void readMergeDecisionDraft(serviceAssets, fingerprint).then(draft => {
-            if (!alive.current) return;
-            hydrated.current = fingerprint;
-            if (!draft) {
-                return;
-            }
-            setDecisions(draft.decisions);
-            setPerChange(draft.perChange);
-            setChangeChoices(draft.changeChoices);
-        });
-    }, [serviceAssets, fingerprint]);
-
-    // Saved on every change rather than on a timer: a merge produces a click every few seconds at
-    // most, and the whole value of the draft is that it survives a window that closed without
-    // warning - which a debounce is exactly long enough to miss.
-    useEffect(() => {
-        if (!serviceAssets || !fingerprint || hydrated.current !== fingerprint) {
-            return;
-        }
-        void writeMergeDecisionDraft(serviceAssets, {
-            fingerprint,
-            decisions,
-            perChange,
-            changeChoices,
-        });
-    }, [serviceAssets, fingerprint, decisions, perChange, changeChoices]);
-    const listed = conflicts.slice(0, RESOLVE_ROW_LIMIT);
-    /**
-     * The selected file, resolved against the current merge rather than stored as truth.
-     *
-     * A re-read can drop the file that was selected - a second window's abandon, or a merge that
-     * finished - and a selection kept in state would then point at a conflict that no longer
-     * exists. The fallback is the first conflict, so the detail is never blank on arrival.
-     */
-    const selectedPathInList = selectedPath !== null && listed.includes(selectedPath);
-    const selected = selectedPathInList ? selectedPath : (listed[0] ?? null);
-
-    /**
-     * Read one file's insides, once, when the author asks to see them.
-     *
-     * On demand rather than for the whole merge, because a decision carries BOTH sides' values
-     * verbatim - a merge with two hundred conflicted files fetched up front would be a message
-     * almost none of which is ever looked at.
-     */
-    const readDocument = useCallback((path: string) => {
-        if (!service) {
-            return;
-        }
-        setDocuments(current => (current[path] ? current : { ...current, [path]: { status: "loading" } }));
-        void service.getMergeDocument(path)
-            .then(document => {
-                if (!alive.current) return;
-                setDocuments(current => ({
-                    ...current,
-                    [path]: document
-                        ? { status: "ready", document }
-                        : { status: "error", message: translate("documentDiff.tab.unavailable") },
-                }));
-            })
-            .catch(thrown => {
-                if (!alive.current) return;
-                setDocuments(current => ({ ...current, [path]: { status: "error", message: messageOf(thrown) } }));
-            });
-    }, [service]);
-
-    // Selecting a file IS asking to see inside it, so the read follows the selection rather than a
-    // second gesture. Which is also what makes the per-change control honest: it appears once the
-    // document has answered and its format turns out to be mergeable, and never before anyone has
-    // looked.
-    useEffect(() => {
-        if (selected !== null && documents[selected] === undefined) {
-            readDocument(selected);
-        }
-    }, [selected, documents, readDocument]);
-
-    /** Take a whole file from one side. Drops any per-change work on it - the two are exclusive. */
-    const chooseWhole = (path: string, choice: VcsMergeSideChoice) => {
-        setDecisions(current => ({ ...current, [path]: choice }));
-        setPerChange(current => {
-            const { [path]: _removed, ...rest } = current;
-            return rest;
-        });
+  const { t } = useTranslation();
+  const { context } = useWorkspace();
+  // A resolve WRITES the author's files, so unlike everything else in this tab it is gated. The
+  // read half - the file list, which side is which, what changed inside, the fact that a merge is
+  // open - is not: a frozen workspace is exactly the state an author browsing a past revision is
+  // in, and taking away their view of the merge would tell them nothing about why they cannot act
+  // on it.
+  const workspaceGuard = useFreezeGuard();
+  const freezeReason = useWorkspaceFreezeReason();
+  /**
+   * The guard this panel actually obeys - the workspace's, except for the freeze it exists to end.
+   *
+   * A project opened mid-merge is frozen with `kind: "merge"`, and that freeze has no `thaw`: the
+   * only ways out are the two buttons at the bottom of this panel. Obeying it therefore greys out
+   * the only exit from the state it describes, which is not a safe default - it is a locked room,
+   * and the rail's own copy is meanwhile telling the author to come here and finish. Every other
+   * freeze still applies: a manual one, or a revision preview, means somebody deliberately made
+   * the project read-only and settling a merge under it would write the very files they stopped.
+   *
+   * Not a special case inside `useFreezeGuard`, deliberately: that hook is what every editor uses,
+   * and an exception living there would be an exception every future surface inherits by accident.
+   */
+  const guard = useMemo<FreezeGuard | WriteGuard>(
+    () => (freezeReason === "merge" ? PERMISSIVE_GUARD : workspaceGuard),
+    [freezeReason, workspaceGuard]
+  );
+  const blockedByFreeze = workspaceGuard.frozen && freezeReason !== "merge";
+  const [state, setState] = useState<VcsMergeState | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  /**
+   * The author's choices so far - **an unapplied form, and still not repository state.**
+   *
+   * Keyed by repository-relative path. A path that is not a key is undecided, which is the state
+   * every row starts in.
+   *
+   * Kept in a draft under `.nlstudio/` as well as here (`mergeDecisionDraft`), so closing the
+   * window forty files into a two-hundred-file merge does not start the choosing again. Nothing
+   * about WHEN it is applied has changed: one press settles everything, and until then not a byte
+   * of the author's tree has moved.
+   */
+  const [decisions, setDecisions] = useState<Record<string, VcsMergeSideChoice>>({});
+  /**
+   * Paths the author is settling change by change, and what they chose inside each.
+   *
+   * Two records rather than one, because "this file is being merged" and "this change goes to
+   * theirs" are different facts: a document whose every inner change merged automatically has
+   * nothing to choose and still has to be marked as merged, or the finish button would wait
+   * forever on a file with no question in it.
+   */
+  const [perChange, setPerChange] = useState<Record<string, true>>({});
+  const [changeChoices, setChangeChoices] = useState<Record<string, MergeChangeChoices>>({});
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [documents, setDocuments] = useState<Record<string, MergeDocumentEntry>>({});
+  const [running, setRunning] = useState<"finish" | "abandon" | null>(null);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
     };
+  }, []);
 
-    /** Settle this file change by change, keeping whatever the merge already decided inside it. */
-    const chooseMerged = (path: string) => {
-        setPerChange(current => ({ ...current, [path]: true }));
-        setDecisions(current => {
-            const { [path]: _removed, ...rest } = current;
-            return rest;
-        });
-    };
+  const service = useMemo(
+    () => (context ? context.services.get<VersionControlService>(Services.VersionControl) : null),
+    [context]
+  );
 
-    const chooseChange = (path: string, decision: DocumentMergeDecision, side: VcsMergeSideChoice) => {
-        // Choosing inside a file IS choosing to merge it: making the author press a mode button
-        // first would be a control whose only job is to permit the control beside it.
-        chooseMerged(path);
-        setChangeChoices(current => ({
+  const read = useCallback(async () => {
+    if (!service) {
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const answer = await service.getMergeState();
+      if (!alive.current) return;
+      setState(answer);
+    } catch (thrown) {
+      if (!alive.current) return;
+      setState(null);
+      setError(messageOf(thrown));
+    } finally {
+      if (alive.current) setLoading(false);
+    }
+  }, [service]);
+
+  // Once when the tab opens, and then only when something changed the merge - never on a timer.
+  // The read is local and non-scanning, but "cheap" has never been the reason this feature
+  // refuses to poll (docs §4.17).
+  useEffect(() => {
+    void read();
+  }, [read]);
+  useEffect(() => {
+    if (!service) {
+      return;
+    }
+    // Completing or abandoning a merge happens from THIS panel, so this is mostly the tab
+    // agreeing with itself - and it is also what keeps a second window's abandon from leaving
+    // this one offering decisions on a merge that is gone.
+    return service.onMergeChanged(() => void read());
+  }, [service, read]);
+
+  const conflicts = useMemo(() => (state?.inProgress ? state.conflicts : []), [state]);
+
+  /**
+   * Which merge is open, as one value the draft can be keyed by. Null when none is.
+   */
+  const fingerprint = useMemo(() => (state?.inProgress ? mergeFingerprint(state) : null), [state]);
+  const serviceAssets = useMemo(
+    () => (context ? context.services.get<ServiceAssetsService>(Services.ServiceAssets) : null),
+    [context]
+  );
+  /**
+   * The fingerprint whose draft has been read, so the writer below cannot run first.
+   *
+   * Without it the empty initial state would be saved over a real draft between mount and the
+   * read landing - the failure mode being "the author's forty decisions are erased by opening the
+   * tab", which is precisely what this is here to prevent.
+   */
+  const hydrated = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!serviceAssets || !fingerprint || hydrated.current === fingerprint) {
+      return;
+    }
+    void readMergeDecisionDraft(serviceAssets, fingerprint).then((draft) => {
+      if (!alive.current) return;
+      hydrated.current = fingerprint;
+      if (!draft) {
+        return;
+      }
+      setDecisions(draft.decisions);
+      setPerChange(draft.perChange);
+      setChangeChoices(draft.changeChoices);
+    });
+  }, [serviceAssets, fingerprint]);
+
+  // Saved on every change rather than on a timer: a merge produces a click every few seconds at
+  // most, and the whole value of the draft is that it survives a window that closed without
+  // warning - which a debounce is exactly long enough to miss.
+  useEffect(() => {
+    if (!serviceAssets || !fingerprint || hydrated.current !== fingerprint) {
+      return;
+    }
+    void writeMergeDecisionDraft(serviceAssets, {
+      fingerprint,
+      decisions,
+      perChange,
+      changeChoices
+    });
+  }, [serviceAssets, fingerprint, decisions, perChange, changeChoices]);
+  const listed = conflicts.slice(0, RESOLVE_ROW_LIMIT);
+  /**
+   * The selected file, resolved against the current merge rather than stored as truth.
+   *
+   * A re-read can drop the file that was selected - a second window's abandon, or a merge that
+   * finished - and a selection kept in state would then point at a conflict that no longer
+   * exists. The fallback is the first conflict, so the detail is never blank on arrival.
+   */
+  const selectedPathInList = selectedPath !== null && listed.includes(selectedPath);
+  const selected = selectedPathInList ? selectedPath : (listed[0] ?? null);
+
+  /**
+   * Read one file's insides, once, when the author asks to see them.
+   *
+   * On demand rather than for the whole merge, because a decision carries BOTH sides' values
+   * verbatim - a merge with two hundred conflicted files fetched up front would be a message
+   * almost none of which is ever looked at.
+   */
+  const readDocument = useCallback(
+    (path: string) => {
+      if (!service) {
+        return;
+      }
+      setDocuments((current) =>
+        current[path] ? current : { ...current, [path]: { status: "loading" } }
+      );
+      void service
+        .getMergeDocument(path)
+        .then((document) => {
+          if (!alive.current) return;
+          setDocuments((current) => ({
             ...current,
-            [path]: { ...(current[path] ?? {}), [mergeDecisionKey(decision.path)]: side },
-        }));
-    };
-
-    /**
-     * Every conflict as a row, decisions included.
-     *
-     * Built over the whole conflict list rather than over the rows the index draws: a file past the
-     * cap that nobody answered still holds the merge open, and a finish button counting only what
-     * is on screen would offer to close a merge that the backend then refuses.
-     */
-    const rows = useMemo(
-        () => buildConflictRows(conflicts, { decisions, perChange, changeChoices, documents }),
-        [conflicts, decisions, perChange, changeChoices, documents],
-    );
-    const undecided = countUndecidedFiles(rows);
-
-    const chooseAll = (choice: VcsMergeSideChoice) => {
-        setDecisions(Object.fromEntries(conflicts.map(path => [path, choice])));
-        setPerChange({});
-    };
-
-    const finish = () => {
-        // No floor on `conflicts.length`: a merge whose automerge settled everything has nothing to
-        // decide and still needs the commit that closes it, which is exactly this press.
-        if (!service || running !== null || blockedByFreeze || undecided > 0) {
-            return;
-        }
-        // Built by filtering rather than by asserting the map is complete: the button is disabled
-        // while anything is undecided, and if that ever fails the backend refuses the commit and
-        // names the path - which is a sentence the author can act on, unlike a crash here.
-        const chosen: VcsMergeDecision[] = [];
-        for (const path of conflicts) {
-            const whole = decisions[path];
-            if (whole) {
-                chosen.push({ path, choice: whole });
-                continue;
-            }
-            if (perChange[path]) {
-                // Only the flips travel. Everything the merge decided on its own is recomputed in
-                // the main process from the same three files, so an `auto-*` row the author left
-                // alone needs no entry - see `VcsMergePerChangeDecision`.
-                chosen.push({ path, choice: "per-change", changes: { ...(changeChoices[path] ?? {}) } });
-            }
-        }
-        setRunning("finish");
-        setError(null);
-        void service.completeMerge(chosen)
-            .then(() => {
-                if (!alive.current) return;
-                // The decisions described a merge that is over; keeping them would pre-select rows
-                // of the NEXT one, which is the worst possible default for a control this
-                // consequential.
-                resetChoices();
-            })
-            .catch(thrown => {
-                if (alive.current) setError(messageOf(thrown));
-            })
-            .finally(() => {
-                if (alive.current) setRunning(null);
-            });
-    };
-
-    /**
-     * Forget every choice, and every side read to make them.
-     *
-     * The documents go too, not only the choices: the merge's three copies are deleted by the
-     * commit and by an abandon (docs §4.23, §4.27), so anything kept here would be a detail pane
-     * over files that no longer exist.
-     */
-    const resetChoices = () => {
-        setDecisions({});
-        setPerChange({});
-        setChangeChoices({});
-        setSelectedPath(null);
-        setDocuments({});
-        // The draft goes with them, and eagerly rather than through the effect above: that effect is
-        // keyed on the fingerprint, and the merge this draft described no longer exists to have one.
-        hydrated.current = null;
-        if (serviceAssets) {
-            void clearMergeDecisionDraft(serviceAssets);
-        }
-    };
-
-    /**
-     * Abandon the merge, after asking.
-     *
-     * Offered at all only because the rollback is measured to be complete (docs §4.27): every file
-     * back to its pre-merge content and the merge's leftovers removed. The question is here rather
-     * than in the button because this throws away everything that arrived in the sync - which is
-     * recoverable (sync again) and still not something to do by accident.
-     */
-    const abandon = () => {
-        if (!service || !context || running !== null || blockedByFreeze) {
-            return;
-        }
-        const ui = context.services.get<UIService>(Services.UI);
-        void ui.showDestructiveConfirm(
-            translate("documentDiff.resolve.abandonConfirm"),
-            translate("documentDiff.resolve.abandonConfirmDetail"),
-            translate("documentDiff.resolve.abandon"),
-        ).then(confirmed => {
-            if (!confirmed || !alive.current) {
-                return;
-            }
-            setRunning("abandon");
-            setError(null);
-            void service.abortMerge()
-                .then(() => {
-                    if (alive.current) resetChoices();
-                })
-                .catch(thrown => {
-                    if (alive.current) setError(messageOf(thrown));
-                })
-                .finally(() => {
-                    if (alive.current) setRunning(null);
-                });
+            [path]: document
+              ? { status: "ready", document }
+              : { status: "error", message: translate("documentDiff.tab.unavailable") }
+          }));
+        })
+        .catch((thrown) => {
+          if (!alive.current) return;
+          setDocuments((current) => ({
+            ...current,
+            [path]: { status: "error", message: messageOf(thrown) }
+          }));
         });
-    };
+    },
+    [service]
+  );
 
-    const hasConflicts = state?.inProgress === true && conflicts.length > 0;
+  // Selecting a file IS asking to see inside it, so the read follows the selection rather than a
+  // second gesture. Which is also what makes the per-change control honest: it appears once the
+  // document has answered and its format turns out to be mergeable, and never before anyone has
+  // looked.
+  useEffect(() => {
+    if (selected !== null && documents[selected] === undefined) {
+      readDocument(selected);
+    }
+  }, [selected, documents, readDocument]);
 
-    return (
-        // One of the two places an author meets a state they did not ask for and cannot leave by
-        // undoing, so the `?` is drawn here rather than left to `F1` alone. The other is the rail.
-        <div className="flex h-full min-h-0 flex-col bg-surface" data-help-topic="versionConflicts">
-            <div className="group/help flex shrink-0 items-center gap-2 border-b border-edge px-3 py-2">
-                <GitMerge className="h-3.5 w-3.5 shrink-0 text-fg-subtle" aria-hidden />
-                <span className="min-w-0 flex-1 truncate text-xs text-fg-subtle">
-                    {/* **No revision is named here, and that is a measured decision.**
+  /** Take a whole file from one side. Drops any per-change work on it - the two are exclusive. */
+  const chooseWhole = (path: string, choice: VcsMergeSideChoice) => {
+    setDecisions((current) => ({ ...current, [path]: choice }));
+    setPerChange((current) => {
+      const { [path]: _removed, ...rest } = current;
+      return rest;
+    });
+  };
+
+  /** Settle this file change by change, keeping whatever the merge already decided inside it. */
+  const chooseMerged = (path: string) => {
+    setPerChange((current) => ({ ...current, [path]: true }));
+    setDecisions((current) => {
+      const { [path]: _removed, ...rest } = current;
+      return rest;
+    });
+  };
+
+  const chooseChange = (
+    path: string,
+    decision: DocumentMergeDecision,
+    side: VcsMergeSideChoice
+  ) => {
+    // Choosing inside a file IS choosing to merge it: making the author press a mode button
+    // first would be a control whose only job is to permit the control beside it.
+    chooseMerged(path);
+    setChangeChoices((current) => ({
+      ...current,
+      [path]: { ...(current[path] ?? {}), [mergeDecisionKey(decision.path)]: side }
+    }));
+  };
+
+  /**
+   * Every conflict as a row, decisions included.
+   *
+   * Built over the whole conflict list rather than over the rows the index draws: a file past the
+   * cap that nobody answered still holds the merge open, and a finish button counting only what
+   * is on screen would offer to close a merge that the backend then refuses.
+   */
+  const rows = useMemo(
+    () => buildConflictRows(conflicts, { decisions, perChange, changeChoices, documents }),
+    [conflicts, decisions, perChange, changeChoices, documents]
+  );
+  const undecided = countUndecidedFiles(rows);
+
+  const chooseAll = (choice: VcsMergeSideChoice) => {
+    setDecisions(Object.fromEntries(conflicts.map((path) => [path, choice])));
+    setPerChange({});
+  };
+
+  const finish = () => {
+    // No floor on `conflicts.length`: a merge whose automerge settled everything has nothing to
+    // decide and still needs the commit that closes it, which is exactly this press.
+    if (!service || running !== null || blockedByFreeze || undecided > 0) {
+      return;
+    }
+    // Built by filtering rather than by asserting the map is complete: the button is disabled
+    // while anything is undecided, and if that ever fails the backend refuses the commit and
+    // names the path - which is a sentence the author can act on, unlike a crash here.
+    const chosen: VcsMergeDecision[] = [];
+    for (const path of conflicts) {
+      const whole = decisions[path];
+      if (whole) {
+        chosen.push({ path, choice: whole });
+        continue;
+      }
+      if (perChange[path]) {
+        // Only the flips travel. Everything the merge decided on its own is recomputed in
+        // the main process from the same three files, so an `auto-*` row the author left
+        // alone needs no entry - see `VcsMergePerChangeDecision`.
+        chosen.push({ path, choice: "per-change", changes: { ...(changeChoices[path] ?? {}) } });
+      }
+    }
+    setRunning("finish");
+    setError(null);
+    void service
+      .completeMerge(chosen)
+      .then(() => {
+        if (!alive.current) return;
+        // The decisions described a merge that is over; keeping them would pre-select rows
+        // of the NEXT one, which is the worst possible default for a control this
+        // consequential.
+        resetChoices();
+      })
+      .catch((thrown) => {
+        if (alive.current) setError(messageOf(thrown));
+      })
+      .finally(() => {
+        if (alive.current) setRunning(null);
+      });
+  };
+
+  /**
+   * Forget every choice, and every side read to make them.
+   *
+   * The documents go too, not only the choices: the merge's three copies are deleted by the
+   * commit and by an abandon (docs §4.23, §4.27), so anything kept here would be a detail pane
+   * over files that no longer exist.
+   */
+  const resetChoices = () => {
+    setDecisions({});
+    setPerChange({});
+    setChangeChoices({});
+    setSelectedPath(null);
+    setDocuments({});
+    // The draft goes with them, and eagerly rather than through the effect above: that effect is
+    // keyed on the fingerprint, and the merge this draft described no longer exists to have one.
+    hydrated.current = null;
+    if (serviceAssets) {
+      void clearMergeDecisionDraft(serviceAssets);
+    }
+  };
+
+  /**
+   * Abandon the merge, after asking.
+   *
+   * Offered at all only because the rollback is measured to be complete (docs §4.27): every file
+   * back to its pre-merge content and the merge's leftovers removed. The question is here rather
+   * than in the button because this throws away everything that arrived in the sync - which is
+   * recoverable (sync again) and still not something to do by accident.
+   */
+  const abandon = () => {
+    if (!service || !context || running !== null || blockedByFreeze) {
+      return;
+    }
+    const ui = context.services.get<UIService>(Services.UI);
+    void ui
+      .showDestructiveConfirm(
+        translate("documentDiff.resolve.abandonConfirm"),
+        translate("documentDiff.resolve.abandonConfirmDetail"),
+        translate("documentDiff.resolve.abandon")
+      )
+      .then((confirmed) => {
+        if (!confirmed || !alive.current) {
+          return;
+        }
+        setRunning("abandon");
+        setError(null);
+        void service
+          .abortMerge()
+          .then(() => {
+            if (alive.current) resetChoices();
+          })
+          .catch((thrown) => {
+            if (alive.current) setError(messageOf(thrown));
+          })
+          .finally(() => {
+            if (alive.current) setRunning(null);
+          });
+      });
+  };
+
+  const hasConflicts = state?.inProgress === true && conflicts.length > 0;
+
+  return (
+    // One of the two places an author meets a state they did not ask for and cannot leave by
+    // undoing, so the `?` is drawn here rather than left to `F1` alone. The other is the rail.
+    <div className="flex h-full min-h-0 flex-col bg-surface" data-help-topic="versionConflicts">
+      <div className="group/help flex shrink-0 items-center gap-2 border-b border-edge px-3 py-2">
+        <GitMerge className="h-3.5 w-3.5 shrink-0 text-fg-subtle" aria-hidden />
+        <span className="min-w-0 flex-1 truncate text-xs text-fg-subtle">
+          {/* **No revision is named here, and that is a measured decision.**
                         `VcsMergeState.incoming` comes from `revisionMerged`, and after a sync that
                         field holds the AUTHOR'S own tip rather than what came down from the server
                         (docs §4.31) - so putting it beside "the version you got" would attribute
                         the merge to the wrong side. The sides are named per row, where they are
                         read from the merge's own copies and are right in both origins. */}
-                    {t("documentDiff.resolve.merging")}
-                </span>
-                <button
-                    type="button"
-                    onClick={() => void read()}
-                    disabled={loading || running !== null}
-                    data-tip={t("documentDiff.tab.refresh")}
-                    aria-label={t("documentDiff.tab.refresh")}
-                    className="flex h-6 w-6 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg disabled:opacity-50"
-                >
-                    {loading
-                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        : <RotateCcw className="h-3.5 w-3.5" />}
-                </button>
-                <HelpTrigger topic="versionConflicts" />
-            </div>
+          {t("documentDiff.resolve.merging")}
+        </span>
+        <button
+          type="button"
+          onClick={() => void read()}
+          disabled={loading || running !== null}
+          data-tip={t("documentDiff.tab.refresh")}
+          aria-label={t("documentDiff.tab.refresh")}
+          className="flex h-6 w-6 items-center justify-center rounded-md text-fg-subtle transition-colors cursor-default hover:bg-fill hover:text-fg disabled:opacity-50"
+        >
+          {loading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <RotateCcw className="h-3.5 w-3.5" />
+          )}
+        </button>
+        <HelpTrigger topic="versionConflicts" />
+      </div>
 
-            {/* Above both panes, because it is a fact about the merge rather than about any one
+      {/* Above both panes, because it is a fact about the merge rather than about any one
                 file - and a failed finish must not be scrolled past inside a list. */}
-            {error && <p className="shrink-0 px-3 pt-2 text-xs text-danger">{error}</p>}
+      {error && <p className="shrink-0 px-3 pt-2 text-xs text-danger">{error}</p>}
 
-            {hasConflicts ? (
-                <ConflictResolveView
-                    rows={rows.slice(0, RESOLVE_ROW_LIMIT)}
-                    conflictCount={conflicts.length}
-                    omitted={conflicts.length - listed.length}
-                    selectedPath={selected}
-                    onSelect={setSelectedPath}
-                    documents={documents}
-                    changeChoices={changeChoices}
-                    running={running !== null}
-                    guard={guard}
-                    onChooseWhole={chooseWhole}
-                    onChooseMerged={chooseMerged}
-                    onChooseChange={chooseChange}
-                    onChooseAll={chooseAll}
-                />
-            ) : (
-                <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-                    {loading && state === null && (
-                        <p className="flex items-center gap-2 text-xs text-fg-subtle">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            {t("documentDiff.rows.loading")}
-                        </p>
-                    )}
+      {hasConflicts ? (
+        <ConflictResolveView
+          rows={rows.slice(0, RESOLVE_ROW_LIMIT)}
+          conflictCount={conflicts.length}
+          omitted={conflicts.length - listed.length}
+          selectedPath={selected}
+          onSelect={setSelectedPath}
+          documents={documents}
+          changeChoices={changeChoices}
+          running={running !== null}
+          guard={guard}
+          onChooseWhole={chooseWhole}
+          onChooseMerged={chooseMerged}
+          onChooseChange={chooseChange}
+          onChooseAll={chooseAll}
+        />
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+          {loading && state === null && (
+            <p className="flex items-center gap-2 text-xs text-fg-subtle">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {t("documentDiff.rows.loading")}
+            </p>
+          )}
 
-                    {!loading && state !== null && !state.inProgress && (
-                        <p className="text-xs text-fg-subtle">{t("documentDiff.resolve.none")}</p>
-                    )}
+          {!loading && state !== null && !state.inProgress && (
+            <p className="text-xs text-fg-subtle">{t("documentDiff.resolve.none")}</p>
+          )}
 
-                    {state?.inProgress && (
-                        // A merge with nothing left to a human: the automerge settled every path,
-                        // and all that is missing is the commit that closes it. Not an error, and
-                        // not an empty screen either - the button below is the whole of what is
-                        // left to do.
-                        <p className="text-xs text-fg-subtle">{t("documentDiff.resolve.automerged")}</p>
-                    )}
-                </div>
-            )}
-
-            {state?.inProgress && (
-                <ConflictFooter
-                    rows={rows}
-                    running={running}
-                    guard={guard}
-                    onFinish={finish}
-                    onAbandon={abandon}
-                />
-            )}
+          {state?.inProgress && (
+            // A merge with nothing left to a human: the automerge settled every path,
+            // and all that is missing is the commit that closes it. Not an error, and
+            // not an empty screen either - the button below is the whole of what is
+            // left to do.
+            <p className="text-xs text-fg-subtle">{t("documentDiff.resolve.automerged")}</p>
+          )}
         </div>
-    );
+      )}
+
+      {state?.inProgress && (
+        <ConflictFooter
+          rows={rows}
+          running={running}
+          guard={guard}
+          onFinish={finish}
+          onAbandon={abandon}
+        />
+      )}
+    </div>
+  );
 }
 
 function messageOf(thrown: unknown): string {
-    return thrown instanceof Error ? thrown.message : String(thrown);
+  return thrown instanceof Error ? thrown.message : String(thrown);
 }

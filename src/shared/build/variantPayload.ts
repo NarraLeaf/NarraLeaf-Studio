@@ -32,7 +32,7 @@ const SCENE_INDEPENDENT_UNIT_PREFIXES = ["ui:", "char:", "key:"] as const;
 const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
 export function isSceneIndependentUnitId(unitId: string): boolean {
-    return SCENE_INDEPENDENT_UNIT_PREFIXES.some(prefix => unitId.startsWith(prefix));
+  return SCENE_INDEPENDENT_UNIT_PREFIXES.some((prefix) => unitId.startsWith(prefix));
 }
 
 /**
@@ -43,73 +43,73 @@ export function isSceneIndependentUnitId(unitId: string): boolean {
  * that line's translation from every localized build without failing anything.
  */
 export function collectTextIds(value: unknown): Set<string> {
-    const found = new Set<string>();
-    const visit = (node: unknown): void => {
-        if (Array.isArray(node)) {
-            for (const item of node) {
-                visit(item);
-            }
-            return;
-        }
-        if (!node || typeof node !== "object") {
-            return;
-        }
-        for (const [key, child] of Object.entries(node as Record<string, unknown>)) {
-            if (key === "textId" && typeof child === "string" && child) {
-                found.add(child);
-                continue;
-            }
-            visit(child);
-        }
-    };
-    visit(value);
-    return found;
+  const found = new Set<string>();
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        visit(item);
+      }
+      return;
+    }
+    if (!node || typeof node !== "object") {
+      return;
+    }
+    for (const [key, child] of Object.entries(node as Record<string, unknown>)) {
+      if (key === "textId" && typeof child === "string" && child) {
+        found.add(child);
+        continue;
+      }
+      visit(child);
+    }
+  };
+  visit(value);
+  return found;
 }
 
 /** Drop translation units whose story row is no longer in the build. */
 export function restrictLocalizationToTextIds(
-    bundle: GameLocalizationBundle,
-    textIds: ReadonlySet<string>,
+  bundle: GameLocalizationBundle,
+  textIds: ReadonlySet<string>
 ): { bundle: GameLocalizationBundle; removedUnitCount: number } {
-    let removedUnitCount = 0;
-    const tables: GameLocalizationBundle["tables"] = {};
-    for (const [locale, table] of Object.entries(bundle.tables)) {
-        const kept: Record<string, string> = {};
-        for (const [unitId, target] of Object.entries(table)) {
-            if (isSceneIndependentUnitId(unitId) || textIds.has(unitId)) {
-                kept[unitId] = target;
-            } else {
-                removedUnitCount += 1;
-            }
-        }
-        if (Object.keys(kept).length > 0) {
-            tables[locale] = kept;
-        }
+  let removedUnitCount = 0;
+  const tables: GameLocalizationBundle["tables"] = {};
+  for (const [locale, table] of Object.entries(bundle.tables)) {
+    const kept: Record<string, string> = {};
+    for (const [unitId, target] of Object.entries(table)) {
+      if (isSceneIndependentUnitId(unitId) || textIds.has(unitId)) {
+        kept[unitId] = target;
+      } else {
+        removedUnitCount += 1;
+      }
     }
-    return { bundle: { ...bundle, tables }, removedUnitCount };
+    if (Object.keys(kept).length > 0) {
+      tables[locale] = kept;
+    }
+  }
+  return { bundle: { ...bundle, tables }, removedUnitCount };
 }
 
 /** Drop voice lines whose story row is no longer in the build; their audio then has no reference left. */
 export function restrictVoiceToTextIds(
-    bundle: GameVoiceBundle,
-    textIds: ReadonlySet<string>,
+  bundle: GameVoiceBundle,
+  textIds: ReadonlySet<string>
 ): { bundle: GameVoiceBundle; removedUnitCount: number } {
-    let removedUnitCount = 0;
-    const tables: GameVoiceBundle["tables"] = {};
-    for (const [locale, table] of Object.entries(bundle.tables)) {
-        const kept: Record<string, string> = {};
-        for (const [unitId, assetId] of Object.entries(table)) {
-            if (textIds.has(unitId)) {
-                kept[unitId] = assetId;
-            } else {
-                removedUnitCount += 1;
-            }
-        }
-        if (Object.keys(kept).length > 0) {
-            tables[locale] = kept;
-        }
+  let removedUnitCount = 0;
+  const tables: GameVoiceBundle["tables"] = {};
+  for (const [locale, table] of Object.entries(bundle.tables)) {
+    const kept: Record<string, string> = {};
+    for (const [unitId, assetId] of Object.entries(table)) {
+      if (textIds.has(unitId)) {
+        kept[unitId] = assetId;
+      } else {
+        removedUnitCount += 1;
+      }
     }
-    return { bundle: { ...bundle, tables }, removedUnitCount };
+    if (Object.keys(kept).length > 0) {
+      tables[locale] = kept;
+    }
+  }
+  return { bundle: { ...bundle, tables }, removedUnitCount };
 }
 
 /**
@@ -121,10 +121,10 @@ export function restrictVoiceToTextIds(
  * afterwards; being subsets of it, they add nothing back.
  */
 export function collectReferencedAssetIds(
-    payload: unknown,
-    libraryAssetIds: ReadonlySet<string>,
+  payload: unknown,
+  libraryAssetIds: ReadonlySet<string>
 ): Set<string> {
-    return collectReferencedIds(payload, libraryAssetIds);
+  return collectReferencedIds(payload, libraryAssetIds);
 }
 
 /**
@@ -136,28 +136,25 @@ export function collectReferencedAssetIds(
  * character - and therefore that character's portraits - out of an edition that cannot reach them,
  * or worse, drop one an edition can.
  */
-export function collectReferencedIds(
-    payload: unknown,
-    knownIds: ReadonlySet<string>,
-): Set<string> {
-    const referenced = new Set<string>();
-    if (knownIds.size === 0) {
-        return referenced;
-    }
-    const text = JSON.stringify(payload) ?? "";
-    for (const match of text.matchAll(UUID_PATTERN)) {
-        const candidate = match[0];
-        if (knownIds.has(candidate)) {
-            referenced.add(candidate);
-            continue;
-        }
-        // Ids are stored lower-case; a hand-written document may not be.
-        const lowered = candidate.toLowerCase();
-        if (knownIds.has(lowered)) {
-            referenced.add(lowered);
-        }
-    }
+export function collectReferencedIds(payload: unknown, knownIds: ReadonlySet<string>): Set<string> {
+  const referenced = new Set<string>();
+  if (knownIds.size === 0) {
     return referenced;
+  }
+  const text = JSON.stringify(payload) ?? "";
+  for (const match of text.matchAll(UUID_PATTERN)) {
+    const candidate = match[0];
+    if (knownIds.has(candidate)) {
+      referenced.add(candidate);
+      continue;
+    }
+    // Ids are stored lower-case; a hand-written document may not be.
+    const lowered = candidate.toLowerCase();
+    if (knownIds.has(lowered)) {
+      referenced.add(lowered);
+    }
+  }
+  return referenced;
 }
 
 /**
@@ -173,46 +170,46 @@ export function collectReferencedIds(
  * to tidy.
  */
 export function restrictCharacterUnits(
-    bundle: GameLocalizationBundle,
-    characterIds: ReadonlySet<string>,
+  bundle: GameLocalizationBundle,
+  characterIds: ReadonlySet<string>
 ): { bundle: GameLocalizationBundle; removedUnitCount: number } {
-    let removedUnitCount = 0;
-    const tables: GameLocalizationBundle["tables"] = {};
-    for (const [locale, table] of Object.entries(bundle.tables)) {
-        const kept: Record<string, string> = {};
-        for (const [unitId, target] of Object.entries(table)) {
-            if (isDroppedCharacterUnitId(unitId, characterIds)) {
-                removedUnitCount += 1;
-                continue;
-            }
-            kept[unitId] = target;
-        }
-        tables[locale] = kept;
+  let removedUnitCount = 0;
+  const tables: GameLocalizationBundle["tables"] = {};
+  for (const [locale, table] of Object.entries(bundle.tables)) {
+    const kept: Record<string, string> = {};
+    for (const [unitId, target] of Object.entries(table)) {
+      if (isDroppedCharacterUnitId(unitId, characterIds)) {
+        removedUnitCount += 1;
+        continue;
+      }
+      kept[unitId] = target;
     }
-    return { bundle: { ...bundle, tables }, removedUnitCount };
+    tables[locale] = kept;
+  }
+  return { bundle: { ...bundle, tables }, removedUnitCount };
 }
 
 function isDroppedCharacterUnitId(unitId: string, characterIds: ReadonlySet<string>): boolean {
-    if (!unitId.startsWith("char:")) {
-        return false;
-    }
-    const characterId = unitId.slice("char:".length).split(":")[0];
-    return characterId.length > 0 && !characterIds.has(characterId);
+  if (!unitId.startsWith("char:")) {
+    return false;
+  }
+  const characterId = unitId.slice("char:".length).split(":")[0];
+  return characterId.length > 0 && !characterIds.has(characterId);
 }
 
 /** Keep only the entries whose key is a shipped asset. */
 export function restrictRecordToAssetIds<T>(
-    record: Readonly<Record<string, T>>,
-    assetIds: ReadonlySet<string>,
+  record: Readonly<Record<string, T>>,
+  assetIds: ReadonlySet<string>
 ): { record: Record<string, T>; removedCount: number } {
-    const kept: Record<string, T> = {};
-    let removedCount = 0;
-    for (const [assetId, value] of Object.entries(record)) {
-        if (assetIds.has(assetId)) {
-            kept[assetId] = value;
-        } else {
-            removedCount += 1;
-        }
+  const kept: Record<string, T> = {};
+  let removedCount = 0;
+  for (const [assetId, value] of Object.entries(record)) {
+    if (assetIds.has(assetId)) {
+      kept[assetId] = value;
+    } else {
+      removedCount += 1;
     }
-    return { record: kept, removedCount };
+  }
+  return { record: kept, removedCount };
 }

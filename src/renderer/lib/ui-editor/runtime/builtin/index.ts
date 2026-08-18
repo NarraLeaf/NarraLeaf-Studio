@@ -24,72 +24,72 @@ import type { ElementRendererDefinition } from "../ElementRendererRegistry";
  * insert-palette, and other authoring-only Studio UI.
  */
 export const BuiltinElementRenderers: ElementRendererDefinition[] = [
-    {
-        type: "nl.root",
-        render: ({ children }) => createElement(Fragment, null, children),
-    },
-    {
-        type: "nl.container",
-        render: props => createElement(ContainerRenderer, props),
-    },
-    {
-        type: "nl.text",
-        render: props => createElement(TextRenderer, props),
-    },
-    {
-        type: "nl.image",
-        render: props => createElement(ImageRenderer, props),
-    },
-    {
-        type: UI_VIDEO_ELEMENT_TYPE,
-        render: props => createElement(VideoRenderer, props),
-    },
-    {
-        type: UI_PUPPET_ELEMENT_TYPE,
-        render: props => createElement(PuppetRenderer, props),
-    },
-    {
-        type: "nl.button",
-        render: props => createElement(ButtonRenderer, props),
-    },
-    {
-        type: "nl.textInput",
-        render: props => createElement(TextInputRenderer, props),
-    },
-    {
-        type: "nl.slider",
-        render: props => createElement(SliderRenderer, props),
-    },
-    {
-        type: "nl.switch",
-        render: props => createElement(SwitchRenderer, props),
-    },
-    {
-        type: "nl.list",
-        render: props => createElement(ListRenderer, props),
-    },
-    {
-        type: UI_FRAME_ELEMENT_TYPE,
-        render: props => createElement(FrameRenderer, props),
-    },
-    {
-        type: "nl.dialog.sentence",
-        render: props => createElement(DialogSentenceRenderer, props),
-    },
-    {
-        type: "nl.notification.list",
-        render: props => createElement(ListRenderer, props),
-    },
-    {
-        type: "nl.choice.list",
-        render: props => createElement(ListRenderer, props),
-    },
-    {
-        type: "nl.nvl.list",
-        render: props => createElement(ListRenderer, props),
-    },
-    {
-        type: "nl.nvl.texts",
-        render: props => createElement(NvlTextsRenderer, props),
-    },
+  {
+    type: "nl.root",
+    render: ({ children }) => createElement(Fragment, null, children)
+  },
+  {
+    type: "nl.container",
+    render: (props) => createElement(ContainerRenderer, props)
+  },
+  {
+    type: "nl.text",
+    render: (props) => createElement(TextRenderer, props)
+  },
+  {
+    type: "nl.image",
+    render: (props) => createElement(ImageRenderer, props)
+  },
+  {
+    type: UI_VIDEO_ELEMENT_TYPE,
+    render: (props) => createElement(VideoRenderer, props)
+  },
+  {
+    type: UI_PUPPET_ELEMENT_TYPE,
+    render: (props) => createElement(PuppetRenderer, props)
+  },
+  {
+    type: "nl.button",
+    render: (props) => createElement(ButtonRenderer, props)
+  },
+  {
+    type: "nl.textInput",
+    render: (props) => createElement(TextInputRenderer, props)
+  },
+  {
+    type: "nl.slider",
+    render: (props) => createElement(SliderRenderer, props)
+  },
+  {
+    type: "nl.switch",
+    render: (props) => createElement(SwitchRenderer, props)
+  },
+  {
+    type: "nl.list",
+    render: (props) => createElement(ListRenderer, props)
+  },
+  {
+    type: UI_FRAME_ELEMENT_TYPE,
+    render: (props) => createElement(FrameRenderer, props)
+  },
+  {
+    type: "nl.dialog.sentence",
+    render: (props) => createElement(DialogSentenceRenderer, props)
+  },
+  {
+    type: "nl.notification.list",
+    render: (props) => createElement(ListRenderer, props)
+  },
+  {
+    type: "nl.choice.list",
+    render: (props) => createElement(ListRenderer, props)
+  },
+  {
+    type: "nl.nvl.list",
+    render: (props) => createElement(ListRenderer, props)
+  },
+  {
+    type: "nl.nvl.texts",
+    render: (props) => createElement(NvlTextsRenderer, props)
+  }
 ];

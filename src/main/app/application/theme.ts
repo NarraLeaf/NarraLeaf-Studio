@@ -12,7 +12,7 @@ const WINDOW_BACKGROUND_DARK = "#0f1115";
 const WINDOW_BACKGROUND_LIGHT = "#eef0f4";
 
 export function normalizeThemeMode(value: unknown): ThemeMode {
-    return value === "light" || value === "dark" ? value : "auto";
+  return value === "light" || value === "dark" ? value : "auto";
 }
 
 /**
@@ -22,13 +22,13 @@ export function normalizeThemeMode(value: unknown): ThemeMode {
  * dialogs, and the window background color below.
  */
 export function applyThemeMode(value: unknown): void {
-    const mode = normalizeThemeMode(value);
-    nativeTheme.themeSource = mode === "auto" ? "system" : mode;
+  const mode = normalizeThemeMode(value);
+  nativeTheme.themeSource = mode === "auto" ? "system" : mode;
 }
 
 /** Resolved paint-behind color for new windows under the current theme. */
 export function getWindowBackgroundColor(): string {
-    return nativeTheme.shouldUseDarkColors ? WINDOW_BACKGROUND_DARK : WINDOW_BACKGROUND_LIGHT;
+  return nativeTheme.shouldUseDarkColors ? WINDOW_BACKGROUND_DARK : WINDOW_BACKGROUND_LIGHT;
 }
 
 /**
@@ -38,5 +38,5 @@ export function getWindowBackgroundColor(): string {
  * above would flash a light frame around a dark game.
  */
 export function getGameHostWindowBackgroundColor(): string {
-    return WINDOW_BACKGROUND_DARK;
+  return WINDOW_BACKGROUND_DARK;
 }

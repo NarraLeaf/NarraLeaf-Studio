@@ -8,12 +8,12 @@
 
 ## 依赖与环境
 
-| 依赖 | 说明 |
-|------|------|
-| `useWorkspace()` | 必须处于 Workspace 上下文内，用于 `context`、`isInitialized`。 |
-| `useAssetData` | 加载 `assets` / `groups`，提供 `loadAssets`、loading / error。 |
+| 依赖              | 说明                                                                         |
+| ----------------- | ---------------------------------------------------------------------------- |
+| `useWorkspace()`  | 必须处于 Workspace 上下文内，用于 `context`、`isInitialized`。               |
+| `useAssetData`    | 加载 `assets` / `groups`，提供 `loadAssets`、loading / error。               |
 | `useAssetFilters` | 提供筛选配置与 `filteredAssets` / `filteredGroups`（仅作用于**工程资源**）。 |
-| `AssetsService` | 图片预览默认走 `fetch`；导入走 `importLocalAssets`。 |
+| `AssetsService`   | 图片预览默认走 `fetch`；导入走 `importLocalAssets`。                         |
 
 若不在 Workspace 内挂载，数据与导入行为可能不可用（与 `context` 一致）。
 
@@ -23,9 +23,9 @@
 
 ```ts
 import {
-    AssetSelector,
-    type AssetSelectorProps,
-    type AssetSelectorVirtualGroup,
+  AssetSelector,
+  type AssetSelectorProps,
+  type AssetSelectorVirtualGroup
 } from "@/apps/workspace/modules/assets/components/AssetSelector";
 ```
 
@@ -39,20 +39,20 @@ import {
 
 ### Props 一览
 
-| Prop | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `visible` | `boolean` | （必填） | 是否显示选择器。 |
-| `assetType` | `AssetType` | （必填） | 当前选择的资源类型；标题默认图标与文案与此一致。 |
-| `multiple` | `boolean` | `false` | 单选：点击一项即 `onConfirm` 并关闭；多选：底部显示 Choose / Clear。 |
-| `selectedIds` | `string[]` | `[]` | 受控初始选中 id；在 `selectedIds` 或 `visible` 变化时会同步到内部 `selection`。 |
-| `anchorRef` | `RefObject<HTMLElement \| null>` | 未传 | 有锚点时面板为 `position: absolute`，宽度在 320–480px 间随锚点宽度；无锚点时居中，宽约 420px。 |
-| `title` | `string` | 按类型 | 覆盖默认标题 `Select {Images|Audio|…}`。 |
-| `className` | `string` | `""` | 追加到面板根节点 class。 |
-| `virtualGroups` | `AssetSelectorVirtualGroup[]` | 未传 | 虚拟分组（见下文）。 |
-| `virtualGroupsPlacement` | `"before" \| "after"` | `"before"` | 虚拟分组相对工程资源树的位置。 |
-| `resolveAssetPreviewUrl` | `(asset) => Promise<string \| null \| undefined>` | 未传 | 图片预览 URL 解析（见下文）。 |
-| `onClose` | `() => void` | （必填） | 关闭（含点遮罩、点关闭按钮、单选确认后）。 |
-| `onConfirm` | `(assets: Asset[]) => void` | （必填） | 单选：长度为 1；多选：点击 Choose 时传入当前选中项（顺序与 `selection` 迭代顺序相关）。 |
+| Prop                     | 类型                                              | 默认值     | 说明                                                                                           |
+| ------------------------ | ------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------- |
+| `visible`                | `boolean`                                         | （必填）   | 是否显示选择器。                                                                               |
+| `assetType`              | `AssetType`                                       | （必填）   | 当前选择的资源类型；标题默认图标与文案与此一致。                                               |
+| `multiple`               | `boolean`                                         | `false`    | 单选：点击一项即 `onConfirm` 并关闭；多选：底部显示 Choose / Clear。                           |
+| `selectedIds`            | `string[]`                                        | `[]`       | 受控初始选中 id；在 `selectedIds` 或 `visible` 变化时会同步到内部 `selection`。                |
+| `anchorRef`              | `RefObject<HTMLElement \| null>`                  | 未传       | 有锚点时面板为 `position: absolute`，宽度在 320–480px 间随锚点宽度；无锚点时居中，宽约 420px。 |
+| `title`                  | `string`                                          | 按类型     | 覆盖默认标题 `Select {Images                                                                   | Audio | …}`。 |
+| `className`              | `string`                                          | `""`       | 追加到面板根节点 class。                                                                       |
+| `virtualGroups`          | `AssetSelectorVirtualGroup[]`                     | 未传       | 虚拟分组（见下文）。                                                                           |
+| `virtualGroupsPlacement` | `"before" \| "after"`                             | `"before"` | 虚拟分组相对工程资源树的位置。                                                                 |
+| `resolveAssetPreviewUrl` | `(asset) => Promise<string \| null \| undefined>` | 未传       | 图片预览 URL 解析（见下文）。                                                                  |
+| `onClose`                | `() => void`                                      | （必填）   | 关闭（含点遮罩、点关闭按钮、单选确认后）。                                                     |
+| `onConfirm`              | `(assets: Asset[]) => void`                       | （必填）   | 单选：长度为 1；多选：点击 Choose 时传入当前选中项（顺序与 `selection` 迭代顺序相关）。        |
 
 ---
 
@@ -62,22 +62,22 @@ import {
 
 ```ts
 export interface AssetSelectorVirtualGroup {
-    id: string; // 稳定唯一，用于展开状态
-    title: string; // 分组标题（与工程文件夹行样式一致）
-    assets: Asset[];
-    defaultExpanded?: boolean; // 省略或为 true：打开选择器时默认展开；显式 false 则默认折叠
+  id: string; // 稳定唯一，用于展开状态
+  title: string; // 分组标题（与工程文件夹行样式一致）
+  assets: Asset[];
+  defaultExpanded?: boolean; // 省略或为 true：打开选择器时默认展开；显式 false 则默认折叠
 }
 ```
 
 ### 与工程列表的差异
 
-| 能力 | 工程资源 | 虚拟分组内 `assets` |
-|------|----------|---------------------|
-| 顶部 **FilterSystem**（筛选芯片） | ✅ 参与 | ❌ 不参与；需调用方按业务自行缩减传入的 `assets` |
-| **搜索框** | ✅ 按 name / description / tags 子串匹配（不区分大小写） | ✅ 同一套规则过滤各组内条目 |
-| 分组树 / `groupId` | ✅ | ❌ 虚拟组内平铺，无子文件夹 |
-| 导入（文件夹按钮） | ✅ 写入工程并 `loadAssets` | 不涉及 |
-| 多选解析 | 从 `typeAssets` 查 id | 与工程合并进同一 `Map`（虚拟在后，同 id 会覆盖工程条目） |
+| 能力                              | 工程资源                                                 | 虚拟分组内 `assets`                                      |
+| --------------------------------- | -------------------------------------------------------- | -------------------------------------------------------- |
+| 顶部 **FilterSystem**（筛选芯片） | ✅ 参与                                                  | ❌ 不参与；需调用方按业务自行缩减传入的 `assets`         |
+| **搜索框**                        | ✅ 按 name / description / tags 子串匹配（不区分大小写） | ✅ 同一套规则过滤各组内条目                              |
+| 分组树 / `groupId`                | ✅                                                       | ❌ 虚拟组内平铺，无子文件夹                              |
+| 导入（文件夹按钮）                | ✅ 写入工程并 `loadAssets`                               | 不涉及                                                   |
+| 多选解析                          | 从 `typeAssets` 查 id                                    | 与工程合并进同一 `Map`（虚拟在后，同 id 会覆盖工程条目） |
 
 ### 展开状态的时机
 
@@ -141,12 +141,12 @@ export interface AssetSelectorVirtualGroup {
 
 ## UI 状态
 
-| 状态 | 表现 |
-|------|------|
-| `loading` | 全列表区域显示 Loading；**此时不展示虚拟分组与工程列表**（仅加载指示）。 |
-| `error` | 错误文案；不展示列表。 |
-| 工程无可见项且虚拟组搜索后也无可见项 | 「No assets match the current filters」。 |
-| 工程加载失败但虚拟组有项 | 仍走 error 分支，虚拟组**不会**在 error 时显示。 |
+| 状态                                 | 表现                                                                     |
+| ------------------------------------ | ------------------------------------------------------------------------ |
+| `loading`                            | 全列表区域显示 Loading；**此时不展示虚拟分组与工程列表**（仅加载指示）。 |
+| `error`                              | 错误文案；不展示列表。                                                   |
+| 工程无可见项且虚拟组搜索后也无可见项 | 「No assets match the current filters」。                                |
+| 工程加载失败但虚拟组有项             | 仍走 error 分支，虚拟组**不会**在 error 时显示。                         |
 
 ---
 
@@ -166,14 +166,14 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 
 const builtinImage: Asset<AssetType.Image, AssetSource.Local> = {
-    id: "builtin:checker",
-    type: AssetType.Image,
-    name: "Checker (built-in)",
-    hash: "builtin-checker",
-    source: AssetSource.Local,
-    meta: {},
-    tags: ["builtin", "preset"],
-    description: "Procedural checker preview",
+  id: "builtin:checker",
+  type: AssetType.Image,
+  name: "Checker (built-in)",
+  hash: "builtin-checker",
+  source: AssetSource.Local,
+  meta: {},
+  tags: ["builtin", "preset"],
+  description: "Procedural checker preview"
 };
 ```
 
@@ -189,14 +189,14 @@ const builtinImage: Asset<AssetType.Image, AssetSource.Local> = {
 const [open, setOpen] = useState(false);
 
 <AssetSelector
-    visible={open}
-    assetType={AssetType.Image}
-    onClose={() => setOpen(false)}
-    onConfirm={(assets) => {
-        const asset = assets[0];
-        if (asset) applyImage(asset);
-        setOpen(false);
-    }}
+  visible={open}
+  assetType={AssetType.Image}
+  onClose={() => setOpen(false)}
+  onConfirm={(assets) => {
+    const asset = assets[0];
+    if (asset) applyImage(asset);
+    setOpen(false);
+  }}
 />;
 ```
 
@@ -204,15 +204,15 @@ const [open, setOpen] = useState(false);
 
 ```tsx
 <AssetSelector
-    visible={open}
-    assetType={AssetType.Font}
-    multiple
-    selectedIds={existingFontIds}
-    onClose={() => setOpen(false)}
-    onConfirm={(assets) => {
-        setProjectFonts(assets.map((a) => a.id));
-        setOpen(false);
-    }}
+  visible={open}
+  assetType={AssetType.Font}
+  multiple
+  selectedIds={existingFontIds}
+  onClose={() => setOpen(false)}
+  onConfirm={(assets) => {
+    setProjectFonts(assets.map((a) => a.id));
+    setOpen(false);
+  }}
 />
 ```
 
@@ -240,43 +240,43 @@ const anchorRef = useRef<HTMLButtonElement>(null);
 
 ```tsx
 const virtualGroups = useMemo<AssetSelectorVirtualGroup[]>(
-    () => [
-        {
-            id: "presets",
-            title: "Presets",
-            defaultExpanded: true,
-            assets: [presetAssetA, presetAssetB],
-        },
-        {
-            id: "builtin",
-            title: "Built-in",
-            defaultExpanded: false,
-            assets: [builtinImage],
-        },
-    ],
-    [presetAssetA, presetAssetB, builtinImage],
+  () => [
+    {
+      id: "presets",
+      title: "Presets",
+      defaultExpanded: true,
+      assets: [presetAssetA, presetAssetB]
+    },
+    {
+      id: "builtin",
+      title: "Built-in",
+      defaultExpanded: false,
+      assets: [builtinImage]
+    }
+  ],
+  [presetAssetA, presetAssetB, builtinImage]
 );
 
 <AssetSelector
-    visible={open}
-    assetType={AssetType.Image}
-    virtualGroups={virtualGroups}
-    virtualGroupsPlacement="after"
-    resolveAssetPreviewUrl={async (asset) => {
-        if (asset.id.startsWith("builtin:")) {
-            // Prefer https: or data:; avoid returning caller-owned blob: unless you accept revoke on unmount.
-            return "/your-app/builtin-thumb.png";
-        }
-        return undefined;
-    }}
-    onClose={() => setOpen(false)}
-    onConfirm={(assets) => {
-        const a = assets[0];
-        if (!a) return;
-        if (a.id.startsWith("builtin:")) applyBuiltinImage(a.id);
-        else applyProjectImage(a);
-    }}
-/>
+  visible={open}
+  assetType={AssetType.Image}
+  virtualGroups={virtualGroups}
+  virtualGroupsPlacement="after"
+  resolveAssetPreviewUrl={async (asset) => {
+    if (asset.id.startsWith("builtin:")) {
+      // Prefer https: or data:; avoid returning caller-owned blob: unless you accept revoke on unmount.
+      return "/your-app/builtin-thumb.png";
+    }
+    return undefined;
+  }}
+  onClose={() => setOpen(false)}
+  onConfirm={(assets) => {
+    const a = assets[0];
+    if (!a) return;
+    if (a.id.startsWith("builtin:")) applyBuiltinImage(a.id);
+    else applyProjectImage(a);
+  }}
+/>;
 ```
 
 ### 5. 筛选与虚拟组联动（调用方缩小虚拟列表）
@@ -287,9 +287,9 @@ FilterSystem 不改变虚拟组内容；若希望「只显示某筛选下的内�
 const { activeFilters } = useMyFilterState();
 
 const virtualGroups = useMemo(() => {
-    const base = ALL_BUILTIN_GROUPS;
-    if (!activeFilters.includeBuiltin) return [];
-    return base;
+  const base = ALL_BUILTIN_GROUPS;
+  if (!activeFilters.includeBuiltin) return [];
+  return base;
 }, [activeFilters.includeBuiltin]);
 ```
 
@@ -299,11 +299,11 @@ const virtualGroups = useMemo(() => {
 
 ## 相关文件
 
-| 文件 | 作用 |
-|------|------|
-| `SearchBox.tsx` | 搜索输入。 |
-| `FilterSystem.tsx` | 工程资源筛选芯片。 |
-| `../state/useAssetData.ts` | 资源与分组数据。 |
+| 文件                          | 作用                     |
+| ----------------------------- | ------------------------ |
+| `SearchBox.tsx`               | 搜索输入。               |
+| `FilterSystem.tsx`            | 工程资源筛选芯片。       |
+| `../state/useAssetData.ts`    | 资源与分组数据。         |
 | `../state/useAssetFilters.ts` | 过滤后的 assets/groups。 |
 
 ---

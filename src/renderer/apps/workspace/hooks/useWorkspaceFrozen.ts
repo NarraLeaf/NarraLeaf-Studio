@@ -13,7 +13,7 @@ import { useWorkspace } from "../context";
  * reason on hover) belong on this side - correctness is the write boundary's job, not theirs.
  */
 export function useWorkspaceFrozen(): boolean {
-    return useWorkspaceFreezeReason() !== null;
+  return useWorkspaceFreezeReason() !== null;
 }
 
 /**
@@ -27,18 +27,18 @@ export function useWorkspaceFrozen(): boolean {
  * which writes nothing and is never gated either way.
  */
 export function useWorkspaceFreezeReason(): WorkspaceFreezeReason["kind"] | null {
-    const { context } = useWorkspace();
-    const [reason, setReason] = useState<WorkspaceFreezeReason["kind"] | null>(null);
+  const { context } = useWorkspace();
+  const [reason, setReason] = useState<WorkspaceFreezeReason["kind"] | null>(null);
 
-    useEffect(() => {
-        if (!context) {
-            setReason(null);
-            return;
-        }
-        const freezeService = context.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
-        setReason(freezeService.getReason()?.kind ?? null);
-        return freezeService.onChanged(next => setReason(next?.kind ?? null));
-    }, [context]);
+  useEffect(() => {
+    if (!context) {
+      setReason(null);
+      return;
+    }
+    const freezeService = context.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
+    setReason(freezeService.getReason()?.kind ?? null);
+    return freezeService.onChanged((next) => setReason(next?.kind ?? null));
+  }, [context]);
 
-    return reason;
+  return reason;
 }

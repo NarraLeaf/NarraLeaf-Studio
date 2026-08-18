@@ -21,7 +21,7 @@ installRuntimeErrorHooks();
 const root = document.getElementById("root");
 
 if (!root) {
-    throw new Error("Runtime root element not found");
+  throw new Error("Runtime root element not found");
 }
 
 /**
@@ -32,18 +32,25 @@ if (!root) {
  * the player was in went with the process, and pretending otherwise would mean starting a session
  * that quietly lost its place.
  */
-const crashDetails = new URLSearchParams(window.location.search).get(GAME_RUNTIME_CRASH_QUERY_PARAM);
+const crashDetails = new URLSearchParams(window.location.search).get(
+  GAME_RUNTIME_CRASH_QUERY_PARAM
+);
 
 createRoot(root).render(
-    crashDetails === null
-        ? (
-            // Around everything, including the pack read: a game that cannot start and a game that
-            // stops drawing halfway through look the same to the player, and both used to end as a
-            // black window.
-            <RuntimeCrashBoundary>
-                <GameRuntimeApp />
-            </RuntimeCrashBoundary>
-        )
-        // Restarting has to drop the marker, or the reload lands right back on this screen.
-        : <RuntimeCrashScreen details={crashDetails} onRestart={() => { window.location.search = ""; }} />,
+  crashDetails === null ? (
+    // Around everything, including the pack read: a game that cannot start and a game that
+    // stops drawing halfway through look the same to the player, and both used to end as a
+    // black window.
+    <RuntimeCrashBoundary>
+      <GameRuntimeApp />
+    </RuntimeCrashBoundary>
+  ) : (
+    // Restarting has to drop the marker, or the reload lands right back on this screen.
+    <RuntimeCrashScreen
+      details={crashDetails}
+      onRestart={() => {
+        window.location.search = "";
+      }}
+    />
+  )
 );

@@ -13,24 +13,24 @@ import { preferenceKeys, workspaceLayoutKeys } from "@/lib/settings/settingsScop
  */
 
 async function deleteKeys(keys: string[]): Promise<number> {
-    if (keys.length === 0) {
-        return 0;
-    }
-    const result = await getInterface().app.state.deleteGlobalState(keys);
-    if (!result.success) {
-        throw new Error(result.error ?? translate("settings.persistFailed"));
-    }
-    return result.data.deleted.length;
+  if (keys.length === 0) {
+    return 0;
+  }
+  const result = await getInterface().app.state.deleteGlobalState(keys);
+  if (!result.success) {
+    throw new Error(result.error ?? translate("settings.persistFailed"));
+  }
+  return result.data.deleted.length;
 }
 
 /** One setting back to its default. */
 export async function resetSetting(key: string): Promise<void> {
-    await deleteKeys([key]);
+  await deleteKeys([key]);
 }
 
 /** Every preference this build has. The project history and per-project data are not touched. */
 export async function resetAllPreferences(): Promise<void> {
-    await deleteKeys(preferenceKeys());
+  await deleteKeys(preferenceKeys());
 }
 
 /**
@@ -43,9 +43,9 @@ export async function resetAllPreferences(): Promise<void> {
  * the per-project ones exist nowhere else.
  */
 export async function resetWorkspaceLayout(): Promise<void> {
-    const all = await getInterface().app.state.getAllGlobalState();
-    if (!all.success) {
-        throw new Error(all.error ?? translate("settings.persistFailed"));
-    }
-    await deleteKeys(workspaceLayoutKeys(all.data.settings));
+  const all = await getInterface().app.state.getAllGlobalState();
+  if (!all.success) {
+    throw new Error(all.error ?? translate("settings.persistFailed"));
+  }
+  await deleteKeys(workspaceLayoutKeys(all.data.settings));
 }

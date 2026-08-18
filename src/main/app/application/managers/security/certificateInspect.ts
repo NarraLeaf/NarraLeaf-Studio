@@ -1,12 +1,12 @@
 import crypto from "crypto";
 import fs from "fs/promises";
 import {
-    SIGNING_EXPIRY_WARNING_DAYS,
-    type ResolvedSigningMaterial,
-    type SigningCertificateExpiry,
-    type SigningCertificateInfo,
-    type SigningCredentialKind,
-    type SigningInspectResult,
+  SIGNING_EXPIRY_WARNING_DAYS,
+  type ResolvedSigningMaterial,
+  type SigningCertificateExpiry,
+  type SigningCertificateInfo,
+  type SigningCredentialKind,
+  type SigningInspectResult
 } from "@shared/types/signing";
 // Relative on purpose: "@/" means src/main here but src/renderer under vitest.
 import { KeystoreError, readKeystore } from "../../../../buildWorker/mobile/keystoreReader";
@@ -35,11 +35,11 @@ import { KeystoreError, readKeystore } from "../../../../buildWorker/mobile/keys
  * unseal one, which reads the same as having none.
  */
 export type KeystoreSecrets = {
-    storePassword: string | null;
-    /** Defaults to `storePassword`, which is the usual case. */
-    keyPassword?: string | null;
-    /** Which key to describe. Optional when the keystore holds exactly one. */
-    alias?: string;
+  storePassword: string | null;
+  /** Defaults to `storePassword`, which is the usual case. */
+  keyPassword?: string | null;
+  /** Which key to describe. Optional when the keystore holds exactly one. */
+  alias?: string;
 };
 
 /**
@@ -54,27 +54,27 @@ export type KeystoreSecrets = {
  * would eventually disagree about which one that is.
  */
 export function certificateContainer(
-    material: ResolvedSigningMaterial,
+  material: ResolvedSigningMaterial
 ): { file: string; secrets: KeystoreSecrets } | null {
-    switch (material.kind) {
-        case "windows-pfx":
-            return { file: material.file, secrets: { storePassword: material.password } };
-        case "android-keystore":
-            return {
-                file: material.file,
-                secrets: {
-                    storePassword: material.storePassword,
-                    keyPassword: material.keyPassword,
-                    alias: material.alias,
-                },
-            };
-        case "ios-apple":
-            return { file: material.p12File, secrets: { storePassword: material.p12Password } };
-        case "macos-apple":
-            return { file: material.p12File, secrets: { storePassword: material.p12Password } };
-        default:
-            return null;
-    }
+  switch (material.kind) {
+    case "windows-pfx":
+      return { file: material.file, secrets: { storePassword: material.password } };
+    case "android-keystore":
+      return {
+        file: material.file,
+        secrets: {
+          storePassword: material.storePassword,
+          keyPassword: material.keyPassword,
+          alias: material.alias
+        }
+      };
+    case "ios-apple":
+      return { file: material.p12File, secrets: { storePassword: material.p12Password } };
+    case "macos-apple":
+      return { file: material.p12File, secrets: { storePassword: material.p12Password } };
+    default:
+      return null;
+  }
 }
 
 /**
@@ -91,49 +91,52 @@ export function certificateContainer(
  * they would drift, and the drift would read as "your certificate is unreadable".
  */
 export function credentialKindHasCertificate(kind: SigningCredentialKind): boolean {
-    switch (kind) {
-        case "windows-pfx":
-        case "android-keystore":
-        case "ios-apple":
-        case "macos-apple":
-            return true;
-        // The certificate is in the Windows store, in Azure, or in the login
-        // keychain - real in every case, but not a file this process can open.
-        // `linux-gpg` has none at all.
-        case "windows-store":
-        case "windows-azure":
-        case "macos-keychain":
-        case "linux-gpg":
-            return false;
-    }
+  switch (kind) {
+    case "windows-pfx":
+    case "android-keystore":
+    case "ios-apple":
+    case "macos-apple":
+      return true;
+    // The certificate is in the Windows store, in Azure, or in the login
+    // keychain - real in every case, but not a file this process can open.
+    // `linux-gpg` has none at all.
+    case "windows-store":
+    case "windows-azure":
+    case "macos-keychain":
+    case "linux-gpg":
+      return false;
+  }
 }
 
 export async function inspectCertificateFile(
-    filePath: string,
-    secrets?: KeystoreSecrets,
+  filePath: string,
+  secrets?: KeystoreSecrets
 ): Promise<SigningInspectResult> {
-    let bytes: Buffer;
-    try {
-        bytes = await fs.readFile(filePath);
-    } catch {
-        return { available: false, reason: "unreadable" };
-    }
-    return inspectCertificateBytes(bytes, secrets);
+  let bytes: Buffer;
+  try {
+    bytes = await fs.readFile(filePath);
+  } catch {
+    return { available: false, reason: "unreadable" };
+  }
+  return inspectCertificateBytes(bytes, secrets);
 }
 
-export function inspectCertificateBytes(bytes: Buffer, secrets?: KeystoreSecrets): SigningInspectResult {
-    // Checked before parsing: a PKCS#12 is valid DER, so X509Certificate fails
-    // on it with the same opaque error as actual garbage would produce.
-    if (looksLikeKeystore(bytes)) {
-        return secrets?.storePassword
-            ? inspectKeystoreBytes(bytes, secrets.storePassword, secrets)
-            : { available: false, reason: "unsupported-format" };
-    }
-    try {
-        return { available: true, certificate: describeCertificate(new crypto.X509Certificate(bytes)) };
-    } catch {
-        return { available: false, reason: "unreadable" };
-    }
+export function inspectCertificateBytes(
+  bytes: Buffer,
+  secrets?: KeystoreSecrets
+): SigningInspectResult {
+  // Checked before parsing: a PKCS#12 is valid DER, so X509Certificate fails
+  // on it with the same opaque error as actual garbage would produce.
+  if (looksLikeKeystore(bytes)) {
+    return secrets?.storePassword
+      ? inspectKeystoreBytes(bytes, secrets.storePassword, secrets)
+      : { available: false, reason: "unsupported-format" };
+  }
+  try {
+    return { available: true, certificate: describeCertificate(new crypto.X509Certificate(bytes)) };
+  } catch {
+    return { available: false, reason: "unreadable" };
+  }
 }
 
 /**
@@ -142,28 +145,28 @@ export function inspectCertificateBytes(bytes: Buffer, secrets?: KeystoreSecrets
  * expiry decides whether a build can be signed today.
  */
 function inspectKeystoreBytes(
-    bytes: Buffer,
-    storePassword: string,
-    secrets: KeystoreSecrets,
+  bytes: Buffer,
+  storePassword: string,
+  secrets: KeystoreSecrets
 ): SigningInspectResult {
-    let der: Buffer;
-    try {
-        const identity = readKeystore(bytes, {
-            storePassword,
-            // `undefined` makes the reader fall back to the store password;
-            // `null` from the vault has to mean the same, not an empty password.
-            keyPassword: secrets.keyPassword ?? undefined,
-            alias: secrets.alias,
-        });
-        der = Buffer.from(identity.certificateDerBase64, "base64");
-    } catch (error) {
-        return { available: false, reason: keystoreFailureReason(error) };
-    }
-    try {
-        return { available: true, certificate: describeCertificate(new crypto.X509Certificate(der)) };
-    } catch {
-        return { available: false, reason: "unreadable" };
-    }
+  let der: Buffer;
+  try {
+    const identity = readKeystore(bytes, {
+      storePassword,
+      // `undefined` makes the reader fall back to the store password;
+      // `null` from the vault has to mean the same, not an empty password.
+      keyPassword: secrets.keyPassword ?? undefined,
+      alias: secrets.alias
+    });
+    der = Buffer.from(identity.certificateDerBase64, "base64");
+  } catch (error) {
+    return { available: false, reason: keystoreFailureReason(error) };
+  }
+  try {
+    return { available: true, certificate: describeCertificate(new crypto.X509Certificate(der)) };
+  } catch {
+    return { available: false, reason: "unreadable" };
+  }
 }
 
 /**
@@ -172,22 +175,24 @@ function inspectKeystoreBytes(
  * second by checking the password, the alias, or the file itself.
  */
 function keystoreFailureReason(error: unknown): "unsupported-format" | "unreadable" {
-    if (error instanceof KeystoreError
-        && (error.code === "unsupported-format" || error.code === "unsupported-algorithm")) {
-        return "unsupported-format";
-    }
-    return "unreadable";
+  if (
+    error instanceof KeystoreError &&
+    (error.code === "unsupported-format" || error.code === "unsupported-algorithm")
+  ) {
+    return "unsupported-format";
+  }
+  return "unreadable";
 }
 
 export function describeCertificate(certificate: crypto.X509Certificate): SigningCertificateInfo {
-    return {
-        subject: certificate.subject,
-        issuer: certificate.issuer,
-        notBefore: new Date(certificate.validFrom).toISOString(),
-        notAfter: new Date(certificate.validTo).toISOString(),
-        sha1: certificate.fingerprint.replace(/:/g, "").toUpperCase(),
-        serialNumber: certificate.serialNumber.toUpperCase(),
-    };
+  return {
+    subject: certificate.subject,
+    issuer: certificate.issuer,
+    notBefore: new Date(certificate.validFrom).toISOString(),
+    notAfter: new Date(certificate.validTo).toISOString(),
+    sha1: certificate.fingerprint.replace(/:/g, "").toUpperCase(),
+    serialNumber: certificate.serialNumber.toUpperCase()
+  };
 }
 
 /**
@@ -196,23 +201,23 @@ export function describeCertificate(certificate: crypto.X509Certificate): Signin
  * is called out separately because "expired" would be actively misleading.
  */
 export function certificateExpiry(
-    certificate: SigningCertificateInfo,
-    now: Date = new Date(),
-    warningDays: number = SIGNING_EXPIRY_WARNING_DAYS,
+  certificate: SigningCertificateInfo,
+  now: Date = new Date(),
+  warningDays: number = SIGNING_EXPIRY_WARNING_DAYS
 ): SigningCertificateExpiry {
-    const notAfter = Date.parse(certificate.notAfter);
-    const notBefore = Date.parse(certificate.notBefore);
-    const at = now.getTime();
-    if (Number.isNaN(notAfter) || Number.isNaN(notBefore)) {
-        return "expired";
-    }
-    if (at >= notAfter) {
-        return "expired";
-    }
-    if (at < notBefore) {
-        return "not-yet-valid";
-    }
-    return notAfter - at <= warningDays * 24 * 60 * 60 * 1000 ? "expiring" : "valid";
+  const notAfter = Date.parse(certificate.notAfter);
+  const notBefore = Date.parse(certificate.notBefore);
+  const at = now.getTime();
+  if (Number.isNaN(notAfter) || Number.isNaN(notBefore)) {
+    return "expired";
+  }
+  if (at >= notAfter) {
+    return "expired";
+  }
+  if (at < notBefore) {
+    return "not-yet-valid";
+  }
+  return notAfter - at <= warningDays * 24 * 60 * 60 * 1000 ? "expiring" : "valid";
 }
 
 /**
@@ -222,7 +227,7 @@ export function certificateExpiry(
  * PKCS#12 into files named `.jks`.
  */
 export function looksLikeKeystore(bytes: Buffer): boolean {
-    return looksLikePkcs12(bytes) || looksLikeJavaKeystore(bytes);
+  return looksLikePkcs12(bytes) || looksLikeJavaKeystore(bytes);
 }
 
 /**
@@ -231,11 +236,11 @@ export function looksLikeKeystore(bytes: Buffer): boolean {
  * container" beats saying "unreadable file".
  */
 export function looksLikeJavaKeystore(bytes: Buffer): boolean {
-    if (bytes.length < 4) {
-        return false;
-    }
-    const magic = bytes.readUInt32BE(0);
-    return magic === 0xfeedfeed || magic === 0xcececece;
+  if (bytes.length < 4) {
+    return false;
+  }
+  const magic = bytes.readUInt32BE(0);
+  return magic === 0xfeedfeed || magic === 0xcececece;
 }
 
 /**
@@ -245,15 +250,17 @@ export function looksLikeJavaKeystore(bytes: Buffer): boolean {
  * SEQUENCE (tbsCertificate), so the two never collide.
  */
 export function looksLikePkcs12(bytes: Buffer): boolean {
-    if (bytes.length < 4 || bytes[0] !== 0x30) {
-        return false;
-    }
-    const lengthByte = bytes[1];
-    // Definite long form: 0x80 | number of length bytes. Indefinite length
-    // (0x80) is not valid DER, so anything else is a short form length.
-    const headerLength = lengthByte > 0x80 ? 2 + (lengthByte & 0x7f) : 2;
-    return bytes.length >= headerLength + 3
-        && bytes[headerLength] === 0x02
-        && bytes[headerLength + 1] === 0x01
-        && bytes[headerLength + 2] === 0x03;
+  if (bytes.length < 4 || bytes[0] !== 0x30) {
+    return false;
+  }
+  const lengthByte = bytes[1];
+  // Definite long form: 0x80 | number of length bytes. Indefinite length
+  // (0x80) is not valid DER, so anything else is a short form length.
+  const headerLength = lengthByte > 0x80 ? 2 + (lengthByte & 0x7f) : 2;
+  return (
+    bytes.length >= headerLength + 3 &&
+    bytes[headerLength] === 0x02 &&
+    bytes[headerLength + 1] === 0x01 &&
+    bytes[headerLength + 2] === 0x03
+  );
 }

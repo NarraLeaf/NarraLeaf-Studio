@@ -1,10 +1,10 @@
 import type { DevModeBundle } from "@shared/types/devMode";
 
 declare global {
-    // eslint-disable-next-line no-var
-    var __NL_BP_MODULES__:
-        | Record<string, { events: Record<string, unknown>; bound: Record<string, unknown> }>
-        | undefined;
+  // eslint-disable-next-line no-var
+  var __NL_BP_MODULES__:
+    | Record<string, { events: Record<string, unknown>; bound: Record<string, unknown> }>
+    | undefined;
 }
 
 /**
@@ -16,5 +16,5 @@ declare global {
  * in an isolated sandbox with an explicit capability boundary.
  */
 export function mountBlueprintCompiledScripts(_bundle: DevModeBundle): void {
-    globalThis.__NL_BP_MODULES__ = {};
+  globalThis.__NL_BP_MODULES__ = {};
 }

@@ -26,12 +26,12 @@
  * The instance must already be in the workspace of the project copy this run may write to.
  */
 
-const { withDriver } = require('../drive');
-const A = require('../assert');
+const { withDriver } = require("../drive");
+const A = require("../assert");
 
 const PORT = Number(process.env.NLS_VERIFY_PORT || 9222);
 const PID = process.env.NLS_VERIFY_PID;
-const SURFACE_NAME = process.env.NLS_VERIFY_SURFACE || 'Title';
+const SURFACE_NAME = process.env.NLS_VERIFY_SURFACE || "Title";
 
 const run = A.createRun();
 
@@ -41,14 +41,14 @@ const run = A.createRun();
  * page while reporting success. Assert the url actually names the window before touching it.
  */
 function onWindow(target, title, fn) {
-    return withDriver({ target, port: PORT }, async (d) => {
-        const url = String(d.target && d.target.url);
-        if (!url.includes(target)) {
-            throw new Error(`asked for the "${target}" window and got ${url} — that window is not open`);
-        }
-        await A.assertVisible(d, title, PID);
-        return fn(d);
-    });
+  return withDriver({ target, port: PORT }, async (d) => {
+    const url = String(d.target && d.target.url);
+    if (!url.includes(target)) {
+      throw new Error(`asked for the "${target}" window and got ${url} — that window is not open`);
+    }
+    await A.assertVisible(d, title, PID);
+    return fn(d);
+  });
 }
 
 // --- reaching the workspace services from inside the page -----------------------------------------
@@ -80,7 +80,9 @@ function __services() {
 }`;
 
 /** Seed three switches on the named surface and report what the document now holds. */
-const SEED = new Function('surfaceName', `
+const SEED = new Function(
+  "surfaceName",
+  `
 ${SERVICES_SRC}
 const services = __services();
 if (!services) return { ok: false, why: 'workspace services not reachable from the fiber tree' };
@@ -115,10 +117,13 @@ try {
 return Promise.resolve(uidoc.save(uidoc.getDocument()))
     .then(function () { return { ok: true, reused: false, saved: true, surfaceId: surface.id, ids }; })
     .catch(function (err) { return { ok: false, why: 'save threw: ' + (err && err.message), ids }; });
-`);
+`
+);
 
 /** Structural report on one switch: its parts, their slots, and their appearance variants. */
-const INSPECT = new Function('switchId', `
+const INSPECT = new Function(
+  "switchId",
+  `
 ${SERVICES_SRC}
 const services = __services();
 if (!services) return { ok: false, why: 'services unreachable' };
@@ -157,7 +162,8 @@ return {
     thumbOffTravel: thumb ? rowValue(thumb, 'default', 'transformOffsetX') : null,
     thumbOnTravel: thumb ? rowValue(thumb, 'on', 'transformOffsetX') : null,
 };
-`);
+`
+);
 
 /**
  * Painted geometry and chrome of one element id.
@@ -170,7 +176,9 @@ return {
  *
  * So: rect from the id-bearing node, chrome from the nearest descendant that actually has it.
  */
-const PAINTED = new Function('elementId', `
+const PAINTED = new Function(
+  "elementId",
+  `
 const nodes = Array.from(document.querySelectorAll('[data-ui-element-id="' + elementId + '"]'));
 if (!nodes.length) return { painted: false, count: 0 };
 // The canvas and the panel thumbnail both render the same element id. Take the widest one: the
@@ -196,7 +204,8 @@ return {
     transform: transformed ? getComputedStyle(transformed).transform : 'none',
     backgroundColor: filled ? getComputedStyle(filled).backgroundColor : 'none',
 };
-`);
+`
+);
 
 /**
  * The switch shells the running game is showing, by aria state.
@@ -235,134 +244,197 @@ return els.map((el) => {
 let parts = { trackId: null, thumbId: null };
 
 async function main() {
-    const seeded = await onWindow('workspace', A.WINDOWS.workspace, async (d) => {
-        const result = await A.call(d, SEED, SURFACE_NAME);
-        run.check('S0', 'workspace services reachable, three switches on the surface', result.ok, result);
-        if (!result.ok) throw new Error('setup guard failed: ' + JSON.stringify(result));
-        if (result.reused) run.note('reused switches from a previous run - state may not be pristine');
+  const seeded = await onWindow("workspace", A.WINDOWS.workspace, async (d) => {
+    const result = await A.call(d, SEED, SURFACE_NAME);
+    run.check(
+      "S0",
+      "workspace services reachable, three switches on the surface",
+      result.ok,
+      result
+    );
+    if (!result.ok) throw new Error("setup guard failed: " + JSON.stringify(result));
+    if (result.reused) run.note("reused switches from a previous run - state may not be pristine");
 
-        for (let i = 0; i < result.ids.length; i += 1) {
-            const info = await A.call(d, INSPECT, result.ids[i]);
-            const tag = `switch#${i}`;
+    for (let i = 0; i < result.ids.length; i += 1) {
+      const info = await A.call(d, INSPECT, result.ids[i]);
+      const tag = `switch#${i}`;
 
-            run.check(`S1.${i}`, `${tag}: exactly two container parts, slots track+thumb`,
-                info.ok && info.childCount === 2 && info.trackId && info.thumbId
-                    && info.childTypes.every((t) => t === 'nl.container'),
-                info);
+      run.check(
+        `S1.${i}`,
+        `${tag}: exactly two container parts, slots track+thumb`,
+        info.ok &&
+          info.childCount === 2 &&
+          info.trackId &&
+          info.thumbId &&
+          info.childTypes.every((t) => t === "nl.container"),
+        info
+      );
 
-            run.check(`S2.${i}`, `${tag}: props point at its own parts`, info.propsPointAtParts, {
-                trackId: info.trackId, thumbId: info.thumbId,
-            });
+      run.check(`S2.${i}`, `${tag}: props point at its own parts`, info.propsPointAtParts, {
+        trackId: info.trackId,
+        thumbId: info.thumbId
+      });
 
-            run.check(`S3.${i}`, `${tag}: both parts carry the fixed "on" appearance variant`,
-                Array.isArray(info.trackVariantIds) && info.trackVariantIds.includes('on')
-                    && Array.isArray(info.thumbVariantIds) && info.thumbVariantIds.includes('on'),
-                { track: info.trackVariantIds, thumb: info.thumbVariantIds });
+      run.check(
+        `S3.${i}`,
+        `${tag}: both parts carry the fixed "on" appearance variant`,
+        Array.isArray(info.trackVariantIds) &&
+          info.trackVariantIds.includes("on") &&
+          Array.isArray(info.thumbVariantIds) &&
+          info.thumbVariantIds.includes("on"),
+        { track: info.trackVariantIds, thumb: info.thumbVariantIds }
+      );
 
-            run.check(`S4.${i}`, `${tag}: thumb "on" variant carries a non-zero travel with a transition`,
-                info.thumbOnTravel && typeof info.thumbOnTravel.value === 'number'
-                    && info.thumbOnTravel.value > 0 && info.thumbOnTravel.hasTransition,
-                { off: info.thumbOffTravel, on: info.thumbOnTravel });
+      run.check(
+        `S4.${i}`,
+        `${tag}: thumb "on" variant carries a non-zero travel with a transition`,
+        info.thumbOnTravel &&
+          typeof info.thumbOnTravel.value === "number" &&
+          info.thumbOnTravel.value > 0 &&
+          info.thumbOnTravel.hasTransition,
+        { off: info.thumbOffTravel, on: info.thumbOnTravel }
+      );
 
-            run.check(`S5.${i}`, `${tag}: track changes colour between off and on`,
-                info.trackOffColour && info.trackOnColour
-                    && info.trackOffColour.value !== info.trackOnColour.value,
-                { off: info.trackOffColour, on: info.trackOnColour });
-        }
-        return result;
+      run.check(
+        `S5.${i}`,
+        `${tag}: track changes colour between off and on`,
+        info.trackOffColour &&
+          info.trackOnColour &&
+          info.trackOffColour.value !== info.trackOnColour.value,
+        { off: info.trackOffColour, on: info.trackOnColour }
+      );
+    }
+    return result;
+  });
+
+  // Canvas: the two-registries check. Run this only once the surface editor tab is open.
+  await onWindow("workspace", A.WINDOWS.workspace, async (d) => {
+    const first = await A.call(d, INSPECT, seeded.ids[0]);
+    parts = { trackId: first.trackId, thumbId: first.thumbId };
+    const track = await A.call(d, PAINTED, first.trackId);
+    const thumb = await A.call(d, PAINTED, first.thumbId);
+    run.check("S6", "track paints on the editor canvas with a non-zero box", track.painted, track);
+    run.check("S7", "thumb paints on the editor canvas with a non-zero box", thumb.painted, thumb);
+    // The palette button is named for the action, not the widget - "插入开关" / "Insert Switch".
+    // An anchored `^(switch|开关)$` finds nothing and reads as a missing palette entry; that is
+    // what this check did on its first run, and the product was right both times.
+    const palette = await A.call(d, function () {
+      return Array.from(document.querySelectorAll("button"))
+        .map((el) =>
+          (
+            el.getAttribute("aria-label") ||
+            el.getAttribute("data-tip") ||
+            el.getAttribute("title") ||
+            ""
+          ).trim()
+        )
+        .filter((name) => /switch|开关/i.test(name));
     });
+    run.check("S8", "the insert palette offers a Switch", palette.length > 0, palette);
+    await d.screenshot("switch-canvas");
+  });
 
-    // Canvas: the two-registries check. Run this only once the surface editor tab is open.
-    await onWindow('workspace', A.WINDOWS.workspace, async (d) => {
-        const first = await A.call(d, INSPECT, seeded.ids[0]);
-        parts = { trackId: first.trackId, thumbId: first.thumbId };
-        const track = await A.call(d, PAINTED, first.trackId);
-        const thumb = await A.call(d, PAINTED, first.thumbId);
-        run.check('S6', 'track paints on the editor canvas with a non-zero box', track.painted, track);
-        run.check('S7', 'thumb paints on the editor canvas with a non-zero box', thumb.painted, thumb);
-        // The palette button is named for the action, not the widget - "插入开关" / "Insert Switch".
-        // An anchored `^(switch|开关)$` finds nothing and reads as a missing palette entry; that is
-        // what this check did on its first run, and the product was right both times.
-        const palette = await A.call(d, function () {
-            return Array.from(document.querySelectorAll('button'))
-                .map((el) => (el.getAttribute('aria-label') || el.getAttribute('data-tip') || el.getAttribute('title') || '').trim())
-                .filter((name) => /switch|开关/i.test(name));
-        });
-        run.check('S8', 'the insert palette offers a Switch', palette.length > 0, palette);
-        await d.screenshot('switch-canvas');
-    });
+  // Dev Mode: the parts that only a running game can answer.
+  await onWindow("dev-mode", A.WINDOWS.devmode, async (d) => {
+    let live = await A.call(d, LIVE_SWITCHES);
+    run.check("S9", "the running game shows three switch shells", live.length === 3, live);
+    if (live.length < 2)
+      throw new Error("cannot test interaction without at least two switches on screen");
 
-    // Dev Mode: the parts that only a running game can answer.
-    await onWindow('dev-mode', A.WINDOWS.devmode, async (d) => {
-        let live = await A.call(d, LIVE_SWITCHES);
-        run.check('S9', 'the running game shows three switch shells', live.length === 3, live);
-        if (live.length < 2) throw new Error('cannot test interaction without at least two switches on screen');
+    if (!parts.thumbId || !parts.trackId)
+      throw new Error("part ids were never captured in the workspace phase");
 
-        if (!parts.thumbId || !parts.trackId) throw new Error('part ids were never captured in the workspace phase');
+    // A re-run inherits whatever the last run left switched on, and "click it and expect true"
+    // would then be asserting the opposite of what happens. Normalise to off first.
+    for (let i = 0; i < live.length && live[i].checked === "true"; i += 1) {
+      if (live[i].disabled) break;
+      await d.click(live[i].cx, live[i].cy);
+      await A.sleep(600);
+      live = await A.call(d, LIVE_SWITCHES);
+    }
+    run.check("S9a", "switch#0 starts from off", live[0].checked === "false", live[0]);
 
-        // A re-run inherits whatever the last run left switched on, and "click it and expect true"
-        // would then be asserting the opposite of what happens. Normalise to off first.
-        for (let i = 0; i < live.length && live[i].checked === 'true'; i += 1) {
-            if (live[i].disabled) break;
-            await d.click(live[i].cx, live[i].cy);
-            await A.sleep(600);
-            live = await A.call(d, LIVE_SWITCHES);
-        }
-        run.check('S9a', 'switch#0 starts from off', live[0].checked === 'false', live[0]);
+    const before = live.map((s) => s.checked);
+    const thumbBefore = await A.call(d, PAINTED, parts.thumbId);
+    const trackBefore = await A.call(d, PAINTED, parts.trackId);
+    run.check(
+      "S9b",
+      "both parts of switch#0 are painted in the running game",
+      thumbBefore.painted && trackBefore.painted,
+      { thumb: thumbBefore, track: trackBefore }
+    );
+    await d.screenshot("switch-devmode-off");
 
-        const before = live.map((s) => s.checked);
-        const thumbBefore = await A.call(d, PAINTED, parts.thumbId);
-        const trackBefore = await A.call(d, PAINTED, parts.trackId);
-        run.check('S9b', 'both parts of switch#0 are painted in the running game',
-            thumbBefore.painted && trackBefore.painted, { thumb: thumbBefore, track: trackBefore });
-        await d.screenshot('switch-devmode-off');
+    // A real mouse event, not el.click(): synthetic clicks do not move focus, and this codebase
+    // has already produced one phantom defect that way.
+    run.check("S10", "switch#0 is reachable where it is drawn", live[0].onScreen, live[0]);
+    await d.click(live[0].cx, live[0].cy);
+    await A.sleep(600);
 
-        // A real mouse event, not el.click(): synthetic clicks do not move focus, and this codebase
-        // has already produced one phantom defect that way.
-        run.check('S10', 'switch#0 is reachable where it is drawn', live[0].onScreen, live[0]);
-        await d.click(live[0].cx, live[0].cy);
-        await A.sleep(600);
+    live = await A.call(d, LIVE_SWITCHES);
+    run.check(
+      "S11",
+      "clicking switch#0 flips its aria-checked",
+      live[0].checked !== before[0] && live[0].checked === "true",
+      { before: before[0], after: live[0].checked }
+    );
+    run.check(
+      "S12",
+      "switch#1 did NOT follow it (per-element runtime state, not shared)",
+      live[1].checked === before[1],
+      { before: before[1], after: live[1].checked }
+    );
 
-        live = await A.call(d, LIVE_SWITCHES);
-        run.check('S11', 'clicking switch#0 flips its aria-checked',
-            live[0].checked !== before[0] && live[0].checked === 'true', { before: before[0], after: live[0].checked });
-        run.check('S12', 'switch#1 did NOT follow it (per-element runtime state, not shared)',
-            live[1].checked === before[1], { before: before[1], after: live[1].checked });
+    const thumbAfter = await A.call(d, PAINTED, parts.thumbId);
+    run.check(
+      "S13",
+      "the thumb actually moved on screen (computed transform changed)",
+      thumbBefore.transform !== thumbAfter.transform,
+      { before: thumbBefore.transform, after: thumbAfter.transform }
+    );
 
-        const thumbAfter = await A.call(d, PAINTED, parts.thumbId);
-        run.check('S13', 'the thumb actually moved on screen (computed transform changed)',
-            thumbBefore.transform !== thumbAfter.transform, { before: thumbBefore.transform, after: thumbAfter.transform });
+    const trackAfter = await A.call(d, PAINTED, parts.trackId);
+    run.check(
+      "S14",
+      "the track actually changed colour on screen",
+      trackBefore.backgroundColor !== trackAfter.backgroundColor,
+      { before: trackBefore.backgroundColor, after: trackAfter.backgroundColor }
+    );
+    await d.screenshot("switch-devmode-on");
 
-        const trackAfter = await A.call(d, PAINTED, parts.trackId);
-        run.check('S14', 'the track actually changed colour on screen',
-            trackBefore.backgroundColor !== trackAfter.backgroundColor,
-            { before: trackBefore.backgroundColor, after: trackAfter.backgroundColor });
-        await d.screenshot('switch-devmode-on');
-
-        // The disabled one.
-        const disabled = live[2];
-        if (disabled && disabled.onScreen) {
-            const was = disabled.checked;
-            await d.click(disabled.cx, disabled.cy);
-            await A.sleep(600);
-            const now = (await A.call(d, LIVE_SWITCHES))[2];
-            run.check('S15', 'an interaction-disabled switch does not flip when clicked',
-                now.checked === was, { before: was, after: now.checked });
-        } else {
-            run.check('S15', 'an interaction-disabled switch does not flip when clicked', false, 'switch#2 not on screen');
-        }
-    });
+    // The disabled one.
+    const disabled = live[2];
+    if (disabled && disabled.onScreen) {
+      const was = disabled.checked;
+      await d.click(disabled.cx, disabled.cy);
+      await A.sleep(600);
+      const now = (await A.call(d, LIVE_SWITCHES))[2];
+      run.check(
+        "S15",
+        "an interaction-disabled switch does not flip when clicked",
+        now.checked === was,
+        { before: was, after: now.checked }
+      );
+    } else {
+      run.check(
+        "S15",
+        "an interaction-disabled switch does not flip when clicked",
+        false,
+        "switch#2 not on screen"
+      );
+    }
+  });
 }
 
 main()
-    .then(() => {
-        const { red } = run.summary();
-        A.releaseWindows();
-        process.exit(red > 0 ? 1 : 0);
-    })
-    .catch((err) => {
-        console.error(err);
-        run.summary();
-        A.releaseWindows();
-        process.exit(1);
-    });
+  .then(() => {
+    const { red } = run.summary();
+    A.releaseWindows();
+    process.exit(red > 0 ? 1 : 0);
+  })
+  .catch((err) => {
+    console.error(err);
+    run.summary();
+    A.releaseWindows();
+    process.exit(1);
+  });

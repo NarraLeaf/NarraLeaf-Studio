@@ -10,9 +10,9 @@
  * — the Console service exists nowhere else.
  */
 import {
-    ConsoleService,
-    type ConsoleEntry,
-    type ConsoleLogLevel,
+  ConsoleService,
+  type ConsoleEntry,
+  type ConsoleLogLevel
 } from "../services/core/ConsoleService";
 import { getWorkspaceAnomalies, type WorkspaceAnomaly } from "../recovery/anomalyLog";
 
@@ -22,123 +22,128 @@ const BRIDGE_VERSION = 2;
 
 /** Severity order used for the `level` (minimum-severity) filter. */
 const LEVEL_RANK: Record<ConsoleLogLevel, number> = {
-    verbose: 0,
-    info: 1,
-    success: 1,
-    warning: 2,
-    error: 3,
+  verbose: 0,
+  info: 1,
+  success: 1,
+  warning: 2,
+  error: 3
 };
 
 export interface ConsoleSnapshotOptions {
-    /** Restrict to one channel id (e.g. "build", "blueprint", "story"). */
-    channel?: string;
-    /** Minimum severity; e.g. "warning" returns warnings and errors. */
-    level?: ConsoleLogLevel | string;
-    /** Case-insensitive substring match against the entry source. */
-    source?: string;
-    /** Only entries with a timestamp strictly greater than this (ms epoch). */
-    since?: number;
-    /** Keep at most this many entries, most recent first-trimmed. Default 200. */
-    limit?: number;
+  /** Restrict to one channel id (e.g. "build", "blueprint", "story"). */
+  channel?: string;
+  /** Minimum severity; e.g. "warning" returns warnings and errors. */
+  level?: ConsoleLogLevel | string;
+  /** Case-insensitive substring match against the entry source. */
+  source?: string;
+  /** Only entries with a timestamp strictly greater than this (ms epoch). */
+  since?: number;
+  /** Keep at most this many entries, most recent first-trimmed. Default 200. */
+  limit?: number;
 }
 
 interface FlatConsoleEntry {
-    id: string;
-    channel: string;
-    level: ConsoleLogLevel;
-    timestamp: number;
-    /** ISO string for human-readable output. */
-    time: string;
-    source?: string;
-    /** Segments flattened to plain text — what the panel renders as one line. */
-    text: string;
+  id: string;
+  channel: string;
+  level: ConsoleLogLevel;
+  timestamp: number;
+  /** ISO string for human-readable output. */
+  time: string;
+  source?: string;
+  /** Segments flattened to plain text — what the panel renders as one line. */
+  text: string;
 }
 
 interface ConsoleSnapshot {
-    channels: { id: string; label: string; description: string }[];
-    entries: FlatConsoleEntry[];
-    /** Total entries matched before `limit` trimming. */
-    matched: number;
+  channels: { id: string; label: string; description: string }[];
+  entries: FlatConsoleEntry[];
+  /** Total entries matched before `limit` trimming. */
+  matched: number;
 }
 
 interface StudioDebugBridge {
-    version: number;
-    console: {
-        snapshot(options?: ConsoleSnapshotOptions): ConsoleSnapshot;
-        channels(): { id: string; label: string; description: string }[];
-    };
-    /**
-     * Everything the workspace survived rather than reported - what recovery mode is built on.
-     *
-     * Exposed here because it is otherwise unreachable from outside: the log is module state with no
-     * service in front of it (deliberately - see `anomalyLog`), so a session driving Studio to check
-     * whether a damaged project was actually noticed has no other way to ask.
-     */
-    anomalies(): readonly WorkspaceAnomaly[];
+  version: number;
+  console: {
+    snapshot(options?: ConsoleSnapshotOptions): ConsoleSnapshot;
+    channels(): { id: string; label: string; description: string }[];
+  };
+  /**
+   * Everything the workspace survived rather than reported - what recovery mode is built on.
+   *
+   * Exposed here because it is otherwise unreachable from outside: the log is module state with no
+   * service in front of it (deliberately - see `anomalyLog`), so a session driving Studio to check
+   * whether a damaged project was actually noticed has no other way to ask.
+   */
+  anomalies(): readonly WorkspaceAnomaly[];
 }
 
 declare global {
-    interface Window {
-        __NLS_STUDIO_DEBUG__?: StudioDebugBridge;
-    }
+  interface Window {
+    __NLS_STUDIO_DEBUG__?: StudioDebugBridge;
+  }
 }
 
 const DEFAULT_LIMIT = 200;
 
 function flatten(entry: ConsoleEntry): FlatConsoleEntry {
-    return {
-        id: entry.id,
-        channel: entry.channel,
-        level: entry.level,
-        timestamp: entry.timestamp,
-        time: new Date(entry.timestamp).toISOString(),
-        source: entry.source,
-        text: entry.segments.map(segment => segment.text).join(""),
-    };
+  return {
+    id: entry.id,
+    channel: entry.channel,
+    level: entry.level,
+    timestamp: entry.timestamp,
+    time: new Date(entry.timestamp).toISOString(),
+    source: entry.source,
+    text: entry.segments.map((segment) => segment.text).join("")
+  };
 }
 
 function snapshot(options: ConsoleSnapshotOptions = {}): ConsoleSnapshot {
-    const service = ConsoleService.getInstance();
-    const channels = service.getChannels();
-    const minRank = options.level ? LEVEL_RANK[String(options.level).toLowerCase() as ConsoleLogLevel] ?? -1 : -1;
-    const sourceNeedle = options.source?.toLowerCase();
-    const limit = Math.max(1, options.limit ?? DEFAULT_LIMIT);
+  const service = ConsoleService.getInstance();
+  const channels = service.getChannels();
+  const minRank = options.level
+    ? (LEVEL_RANK[String(options.level).toLowerCase() as ConsoleLogLevel] ?? -1)
+    : -1;
+  const sourceNeedle = options.source?.toLowerCase();
+  const limit = Math.max(1, options.limit ?? DEFAULT_LIMIT);
 
-    const targetChannels = options.channel
-        ? channels.filter(channel => channel.id === options.channel)
-        : channels;
+  const targetChannels = options.channel
+    ? channels.filter((channel) => channel.id === options.channel)
+    : channels;
 
-    const matched: FlatConsoleEntry[] = [];
-    for (const channel of targetChannels) {
-        for (const entry of service.getEntries(channel.id)) {
-            if (LEVEL_RANK[entry.level] < minRank) continue;
-            if (options.since != null && entry.timestamp <= options.since) continue;
-            if (sourceNeedle && !(entry.source ?? "").toLowerCase().includes(sourceNeedle)) continue;
-            matched.push(flatten(entry));
-        }
+  const matched: FlatConsoleEntry[] = [];
+  for (const channel of targetChannels) {
+    for (const entry of service.getEntries(channel.id)) {
+      if (LEVEL_RANK[entry.level] < minRank) continue;
+      if (options.since != null && entry.timestamp <= options.since) continue;
+      if (sourceNeedle && !(entry.source ?? "").toLowerCase().includes(sourceNeedle)) continue;
+      matched.push(flatten(entry));
     }
+  }
 
-    matched.sort((a, b) => a.timestamp - b.timestamp);
-    const trimmed = matched.length > limit ? matched.slice(matched.length - limit) : matched;
+  matched.sort((a, b) => a.timestamp - b.timestamp);
+  const trimmed = matched.length > limit ? matched.slice(matched.length - limit) : matched;
 
-    return {
-        channels: channels.map(channel => ({ ...channel })),
-        entries: trimmed,
-        matched: matched.length,
-    };
+  return {
+    channels: channels.map((channel) => ({ ...channel })),
+    entries: trimmed,
+    matched: matched.length
+  };
 }
 
 /** Idempotently install `window.__NLS_STUDIO_DEBUG__`. No-op outside a browser realm. */
 export function installStudioDebugBridge(): void {
-    if (typeof window === "undefined" || window.__NLS_STUDIO_DEBUG__) {
-        return;
-    }
-    window.__NLS_STUDIO_DEBUG__ = {
-        version: BRIDGE_VERSION,
-        console: {
-            snapshot,
-            channels: () => ConsoleService.getInstance().getChannels().map(channel => ({ ...channel })),
-        },
-        anomalies: () => getWorkspaceAnomalies(),
-    };
+  if (typeof window === "undefined" || window.__NLS_STUDIO_DEBUG__) {
+    return;
+  }
+  window.__NLS_STUDIO_DEBUG__ = {
+    version: BRIDGE_VERSION,
+    console: {
+      snapshot,
+      channels: () =>
+        ConsoleService.getInstance()
+          .getChannels()
+          .map((channel) => ({ ...channel }))
+    },
+    anomalies: () => getWorkspaceAnomalies()
+  };
 }

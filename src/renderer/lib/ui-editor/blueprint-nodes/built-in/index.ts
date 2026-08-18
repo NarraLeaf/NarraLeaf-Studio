@@ -44,7 +44,10 @@ export { backlogBlueprintNodes } from "./backlogNodes";
 export { booleanCompareBlueprintNodes } from "./booleanCompareNodes";
 export { broadcastBlueprintNodes } from "./broadcastNodes";
 export { collectionBlueprintNodes } from "./collectionNodes";
-export { componentBlueprintNodes, BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE } from "./componentNodes";
+export {
+  componentBlueprintNodes,
+  BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE
+} from "./componentNodes";
 export { controlFlowBlueprintNodes } from "./controlFlowNodes";
 export { dataBlueprintNodes } from "./dataNodes";
 export { devtoolsBlueprintNodes } from "./devtoolsNodes";
@@ -76,38 +79,38 @@ export { imageAssetBlueprintNodes, widgetPropertyBlueprintNodes } from "./widget
 
 /** All core built-in nodes in registration order (must stay stable if you rely on duplicate checks elsewhere). */
 export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
-    ...structuralBlueprintNodes,
-    ...eventHeadBlueprintNodes,
-    ...broadcastBlueprintNodes,
-    ...fnBlueprintNodes,
-    ...frameBlueprintNodes,
-    ...layerBlueprintNodes,
-    ...componentBlueprintNodes,
-    ...gameBlueprintNodes,
-    ...visitedBlueprintNodes,
-    ...appTagBlueprintNodes,
-    ...progressBlueprintNodes,
-    ...backlogBlueprintNodes,
-    ...controlFlowBlueprintNodes,
-    ...dataBlueprintNodes,
-    ...collectionBlueprintNodes,
-    ...listBlueprintNodes,
-    ...elementBlueprintNodes,
-    ...localVariableBlueprintNodes,
-    ...localizationBlueprintNodes,
-    ...voiceBlueprintNodes,
-    ...soundBlueprintNodes,
-    ...networkBlueprintNodes,
-    ...persistentVariableBlueprintNodes,
-    ...storyVariableBlueprintNodes,
-    ...mathBlueprintNodes,
-    ...booleanCompareBlueprintNodes,
-    ...stringBlueprintNodes,
-    ...timeBlueprintNodes,
-    ...textBlueprintNodes,
-    ...sliderBlueprintNodes,
-    ...switchBlueprintNodes,
-    ...textInputBlueprintNodes,
-    ...widgetPropertyBlueprintNodes,
-    ...devtoolsBlueprintNodes,
+  ...structuralBlueprintNodes,
+  ...eventHeadBlueprintNodes,
+  ...broadcastBlueprintNodes,
+  ...fnBlueprintNodes,
+  ...frameBlueprintNodes,
+  ...layerBlueprintNodes,
+  ...componentBlueprintNodes,
+  ...gameBlueprintNodes,
+  ...visitedBlueprintNodes,
+  ...appTagBlueprintNodes,
+  ...progressBlueprintNodes,
+  ...backlogBlueprintNodes,
+  ...controlFlowBlueprintNodes,
+  ...dataBlueprintNodes,
+  ...collectionBlueprintNodes,
+  ...listBlueprintNodes,
+  ...elementBlueprintNodes,
+  ...localVariableBlueprintNodes,
+  ...localizationBlueprintNodes,
+  ...voiceBlueprintNodes,
+  ...soundBlueprintNodes,
+  ...networkBlueprintNodes,
+  ...persistentVariableBlueprintNodes,
+  ...storyVariableBlueprintNodes,
+  ...mathBlueprintNodes,
+  ...booleanCompareBlueprintNodes,
+  ...stringBlueprintNodes,
+  ...timeBlueprintNodes,
+  ...textBlueprintNodes,
+  ...sliderBlueprintNodes,
+  ...switchBlueprintNodes,
+  ...textInputBlueprintNodes,
+  ...widgetPropertyBlueprintNodes,
+  ...devtoolsBlueprintNodes
 ];

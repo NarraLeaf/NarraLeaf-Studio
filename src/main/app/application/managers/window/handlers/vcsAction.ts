@@ -1,29 +1,29 @@
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import type {
-    RevisionId,
-    VcsAvailability,
-    VcsCommitResult,
-    VcsHistoryEntry,
-    VcsMergeCompletion,
-    VcsMergeDocument,
-    VcsMergeResolveResult,
-    VcsMergeState,
-    VcsPushResult,
-    VcsRepositoryInfo,
-    VcsRestoreResult,
-    VcsRevisionDiffResult,
-    VcsAddServerOutcome,
-    VcsServerProbe,
-    VcsServerSession,
-    VcsSignInOutcome,
-    VcsSignInProblem,
-    VcsStatus,
-    VcsSyncResult,
-    VcsSyncState,
-    VcsThreeWayResult,
-    VcsWorkingFileRead,
-    VcsWorkingTreeDiffResult,
+  RevisionId,
+  VcsAvailability,
+  VcsCommitResult,
+  VcsHistoryEntry,
+  VcsMergeCompletion,
+  VcsMergeDocument,
+  VcsMergeResolveResult,
+  VcsMergeState,
+  VcsPushResult,
+  VcsRepositoryInfo,
+  VcsRestoreResult,
+  VcsRevisionDiffResult,
+  VcsAddServerOutcome,
+  VcsServerProbe,
+  VcsServerSession,
+  VcsSignInOutcome,
+  VcsSignInProblem,
+  VcsStatus,
+  VcsSyncResult,
+  VcsSyncState,
+  VcsThreeWayResult,
+  VcsWorkingFileRead,
+  VcsWorkingTreeDiffResult
 } from "@shared/types/vcs";
 import { WorkingFileRefusedError } from "../../vcs/workingFile";
 import { AppWindow } from "../appWindow";
@@ -59,38 +59,38 @@ import { IPCHandler } from "./IPCHandler";
  * way to find that out - the UI branches on it instead of probing with errors.
  */
 export class VcsGetAvailabilityHandler extends IPCHandler<IPCEventType.vcsGetAvailability> {
-    readonly name = IPCEventType.vcsGetAvailability;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsGetAvailability;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<VcsAvailability>> {
-        return this.tryUse(() => window.app.getVcsManager().getAvailability());
-    }
+  public async handle(window: AppWindow): Promise<RequestStatus<VcsAvailability>> {
+    return this.tryUse(() => window.app.getVcsManager().getAvailability());
+  }
 }
 
 export class VcsIsRepositoryHandler extends IPCHandler<IPCEventType.vcsIsRepository> {
-    readonly name = IPCEventType.vcsIsRepository;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsIsRepository;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath }: IPCEvents[IPCEventType.vcsIsRepository]["data"],
-    ): Promise<RequestStatus<{ isRepository: boolean }>> {
-        return this.tryUse(async () => ({
-            isRepository: await window.app.getVcsManager().isRepository(projectPath),
-        }));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath }: IPCEvents[IPCEventType.vcsIsRepository]["data"]
+  ): Promise<RequestStatus<{ isRepository: boolean }>> {
+    return this.tryUse(async () => ({
+      isRepository: await window.app.getVcsManager().isRepository(projectPath)
+    }));
+  }
 }
 
 export class VcsGetInfoHandler extends IPCHandler<IPCEventType.vcsGetInfo> {
-    readonly name = IPCEventType.vcsGetInfo;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsGetInfo;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath }: IPCEvents[IPCEventType.vcsGetInfo]["data"],
-    ): Promise<RequestStatus<VcsRepositoryInfo>> {
-        return this.tryUse(() => window.app.getVcsManager().getInfo(projectPath));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath }: IPCEvents[IPCEventType.vcsGetInfo]["data"]
+  ): Promise<RequestStatus<VcsRepositoryInfo>> {
+    return this.tryUse(() => window.app.getVcsManager().getInfo(projectPath));
+  }
 }
 
 /**
@@ -102,15 +102,15 @@ export class VcsGetInfoHandler extends IPCHandler<IPCEventType.vcsGetInfo> {
  * with nothing anywhere to explain why.
  */
 export class VcsInitRepositoryHandler extends IPCHandler<IPCEventType.vcsInitRepository> {
-    readonly name = IPCEventType.vcsInitRepository;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsInitRepository;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath, options }: IPCEvents[IPCEventType.vcsInitRepository]["data"],
-    ): Promise<RequestStatus<VcsRepositoryInfo>> {
-        return this.tryUse(() => window.app.getVcsManager().initRepository(projectPath, options ?? {}));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath, options }: IPCEvents[IPCEventType.vcsInitRepository]["data"]
+  ): Promise<RequestStatus<VcsRepositoryInfo>> {
+    return this.tryUse(() => window.app.getVcsManager().initRepository(projectPath, options ?? {}));
+  }
 }
 
 /**
@@ -123,15 +123,15 @@ export class VcsInitRepositoryHandler extends IPCHandler<IPCEventType.vcsInitRep
  * too - it is the answer, phrased so the author can read it.
  */
 export class VcsCommitHandler extends IPCHandler<IPCEventType.vcsCommit> {
-    readonly name = IPCEventType.vcsCommit;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsCommit;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath, options }: IPCEvents[IPCEventType.vcsCommit]["data"],
-    ): Promise<RequestStatus<VcsCommitResult>> {
-        return this.tryUse(() => window.app.getVcsManager().commit(projectPath, options ?? {}));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath, options }: IPCEvents[IPCEventType.vcsCommit]["data"]
+  ): Promise<RequestStatus<VcsCommitResult>> {
+    return this.tryUse(() => window.app.getVcsManager().commit(projectPath, options ?? {}));
+  }
 }
 
 /**
@@ -143,17 +143,17 @@ export class VcsCommitHandler extends IPCHandler<IPCEventType.vcsCommit> {
  * that is not under version control would be noise forever.
  */
 export class VcsCheckpointHandler extends IPCHandler<IPCEventType.vcsCheckpoint> {
-    readonly name = IPCEventType.vcsCheckpoint;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsCheckpoint;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath, reason }: IPCEvents[IPCEventType.vcsCheckpoint]["data"],
-    ): Promise<RequestStatus<{ revision: VcsCommitResult | null }>> {
-        return this.tryUse(async () => ({
-            revision: await window.app.getVcsManager().checkpoint(projectPath, reason),
-        }));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath, reason }: IPCEvents[IPCEventType.vcsCheckpoint]["data"]
+  ): Promise<RequestStatus<{ revision: VcsCommitResult | null }>> {
+    return this.tryUse(async () => ({
+      revision: await window.app.getVcsManager().checkpoint(projectPath, reason)
+    }));
+  }
 }
 
 /**
@@ -175,15 +175,17 @@ export class VcsCheckpointHandler extends IPCHandler<IPCEventType.vcsCheckpoint>
  * their project sits on a restored, unrecorded tree.
  */
 export class VcsRestoreRevisionHandler extends IPCHandler<IPCEventType.vcsRestoreRevision> {
-    readonly name = IPCEventType.vcsRestoreRevision;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsRestoreRevision;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath, revision, options }: IPCEvents[IPCEventType.vcsRestoreRevision]["data"],
-    ): Promise<RequestStatus<VcsRestoreResult>> {
-        return this.tryUse(() => window.app.getVcsManager().restoreRevision(projectPath, revision, options ?? {}));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath, revision, options }: IPCEvents[IPCEventType.vcsRestoreRevision]["data"]
+  ): Promise<RequestStatus<VcsRestoreResult>> {
+    return this.tryUse(() =>
+      window.app.getVcsManager().restoreRevision(projectPath, revision, options ?? {})
+    );
+  }
 }
 
 /**
@@ -197,44 +199,46 @@ export class VcsRestoreRevisionHandler extends IPCHandler<IPCEventType.vcsRestor
  * the removal of something that never existed.
  */
 export class VcsGetStatusHandler extends IPCHandler<IPCEventType.vcsGetStatus> {
-    readonly name = IPCEventType.vcsGetStatus;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsGetStatus;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath }: IPCEvents[IPCEventType.vcsGetStatus]["data"],
-    ): Promise<RequestStatus<VcsStatus>> {
-        return this.tryUse(() => window.app.getVcsManager().getStatus(projectPath));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath }: IPCEvents[IPCEventType.vcsGetStatus]["data"]
+  ): Promise<RequestStatus<VcsStatus>> {
+    return this.tryUse(() => window.app.getVcsManager().getStatus(projectPath));
+  }
 }
 
 export class VcsGetHistoryHandler extends IPCHandler<IPCEventType.vcsGetHistory> {
-    readonly name = IPCEventType.vcsGetHistory;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsGetHistory;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath, limit, includeDetails }: IPCEvents[IPCEventType.vcsGetHistory]["data"],
-    ): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>> {
-        return this.tryUse(async () => ({
-            entries: await window.app.getVcsManager().getHistory(projectPath, limit ?? 0, { includeDetails }),
-        }));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath, limit, includeDetails }: IPCEvents[IPCEventType.vcsGetHistory]["data"]
+  ): Promise<RequestStatus<{ entries: VcsHistoryEntry[] }>> {
+    return this.tryUse(async () => ({
+      entries: await window.app
+        .getVcsManager()
+        .getHistory(projectPath, limit ?? 0, { includeDetails })
+    }));
+  }
 }
 
 export class VcsReadBlobHandler extends IPCHandler<IPCEventType.vcsReadBlob> {
-    readonly name = IPCEventType.vcsReadBlob;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsReadBlob;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        request: IPCEvents[IPCEventType.vcsReadBlob]["data"],
-    ): Promise<RequestStatus<{ contentBase64: string }>> {
-        return this.tryUse(async () => {
-            const bytes = await window.app.getVcsManager().readBlob(request);
-            return { contentBase64: bytes.toString("base64") };
-        });
-    }
+  public async handle(
+    window: AppWindow,
+    request: IPCEvents[IPCEventType.vcsReadBlob]["data"]
+  ): Promise<RequestStatus<{ contentBase64: string }>> {
+    return this.tryUse(async () => {
+      const bytes = await window.app.getVcsManager().readBlob(request);
+      return { contentBase64: bytes.toString("base64") };
+    });
+  }
 }
 
 /**
@@ -247,61 +251,63 @@ export class VcsReadBlobHandler extends IPCHandler<IPCEventType.vcsReadBlob> {
  * path it should not have, and turning that into a tidy "not shown" would hide it forever.
  */
 export class VcsReadWorkingFileHandler extends IPCHandler<IPCEventType.vcsReadWorkingFile> {
-    readonly name = IPCEventType.vcsReadWorkingFile;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsReadWorkingFile;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        request: IPCEvents[IPCEventType.vcsReadWorkingFile]["data"],
-    ): Promise<RequestStatus<VcsWorkingFileRead>> {
-        return this.tryUse(async () => {
-            try {
-                const bytes = await window.app.getVcsManager().readWorkingFile(request);
-                return { contentBase64: bytes.toString("base64") };
-            } catch (error) {
-                if (error instanceof WorkingFileRefusedError && error.refusal === "tooLarge") {
-                    return { contentBase64: null, refusal: "tooLarge" as const };
-                }
-                throw error;
-            }
-        });
-    }
+  public async handle(
+    window: AppWindow,
+    request: IPCEvents[IPCEventType.vcsReadWorkingFile]["data"]
+  ): Promise<RequestStatus<VcsWorkingFileRead>> {
+    return this.tryUse(async () => {
+      try {
+        const bytes = await window.app.getVcsManager().readWorkingFile(request);
+        return { contentBase64: bytes.toString("base64") };
+      } catch (error) {
+        if (error instanceof WorkingFileRefusedError && error.refusal === "tooLarge") {
+          return { contentBase64: null, refusal: "tooLarge" as const };
+        }
+        throw error;
+      }
+    });
+  }
 }
 
 export class VcsReadRevisionDocumentsHandler extends IPCHandler<IPCEventType.vcsReadRevisionDocuments> {
-    readonly name = IPCEventType.vcsReadRevisionDocuments;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsReadRevisionDocuments;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath, revision, paths }: IPCEvents[IPCEventType.vcsReadRevisionDocuments]["data"],
-    ): Promise<RequestStatus<{ documents: { path: string; contentBase64: string | null }[] }>> {
-        return this.tryUse(async () => {
-            const read = await window.app.getVcsManager().readRevisionDocuments(projectPath, revision, { paths });
-            // An array rather than a record: a repository-relative path is arbitrary text
-            // and `__proto__` as an object key is not something to find out about later.
-            return {
-                documents: [...read].map(([path, bytes]) => ({
-                    path,
-                    contentBase64: bytes === null ? null : bytes.toString("base64"),
-                })),
-            };
-        });
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath, revision, paths }: IPCEvents[IPCEventType.vcsReadRevisionDocuments]["data"]
+  ): Promise<RequestStatus<{ documents: { path: string; contentBase64: string | null }[] }>> {
+    return this.tryUse(async () => {
+      const read = await window.app
+        .getVcsManager()
+        .readRevisionDocuments(projectPath, revision, { paths });
+      // An array rather than a record: a repository-relative path is arbitrary text
+      // and `__proto__` as an object key is not something to find out about later.
+      return {
+        documents: [...read].map(([path, bytes]) => ({
+          path,
+          contentBase64: bytes === null ? null : bytes.toString("base64")
+        }))
+      };
+    });
+  }
 }
 
 export class VcsGetChangedPathsHandler extends IPCHandler<IPCEventType.vcsGetChangedPaths> {
-    readonly name = IPCEventType.vcsGetChangedPaths;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsGetChangedPaths;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath, from, to }: IPCEvents[IPCEventType.vcsGetChangedPaths]["data"],
-    ): Promise<RequestStatus<{ paths: string[] }>> {
-        return this.tryUse(async () => ({
-            paths: await window.app.getVcsManager().getChangedPaths(projectPath, from, to),
-        }));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath, from, to }: IPCEvents[IPCEventType.vcsGetChangedPaths]["data"]
+  ): Promise<RequestStatus<{ paths: string[] }>> {
+    return this.tryUse(async () => ({
+      paths: await window.app.getVcsManager().getChangedPaths(projectPath, from, to)
+    }));
+  }
 }
 
 /**
@@ -316,15 +322,15 @@ export class VcsGetChangedPathsHandler extends IPCHandler<IPCEventType.vcsGetCha
  * revisions are immutable; the working-tree comparison below shares none of it.
  */
 export class VcsDiffRevisionsHandler extends IPCHandler<IPCEventType.vcsDiffRevisions> {
-    readonly name = IPCEventType.vcsDiffRevisions;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsDiffRevisions;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath, from, to }: IPCEvents[IPCEventType.vcsDiffRevisions]["data"],
-    ): Promise<RequestStatus<VcsRevisionDiffResult>> {
-        return this.tryUse(() => window.app.getVcsManager().diffRevisions(projectPath, from, to));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath, from, to }: IPCEvents[IPCEventType.vcsDiffRevisions]["data"]
+  ): Promise<RequestStatus<VcsRevisionDiffResult>> {
+    return this.tryUse(() => window.app.getVcsManager().diffRevisions(projectPath, from, to));
+  }
 }
 
 /**
@@ -337,27 +343,29 @@ export class VcsDiffRevisionsHandler extends IPCHandler<IPCEventType.vcsDiffRevi
  * deletion for the rest of the session (docs §4.17).
  */
 export class VcsDiffWorkingTreeHandler extends IPCHandler<IPCEventType.vcsDiffWorkingTree> {
-    readonly name = IPCEventType.vcsDiffWorkingTree;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsDiffWorkingTree;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath }: IPCEvents[IPCEventType.vcsDiffWorkingTree]["data"],
-    ): Promise<RequestStatus<VcsWorkingTreeDiffResult>> {
-        return this.tryUse(() => window.app.getVcsManager().diffWorkingTree(projectPath));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath }: IPCEvents[IPCEventType.vcsDiffWorkingTree]["data"]
+  ): Promise<RequestStatus<VcsWorkingTreeDiffResult>> {
+    return this.tryUse(() => window.app.getVcsManager().diffWorkingTree(projectPath));
+  }
 }
 
 export class VcsGetThreeWayHandler extends IPCHandler<IPCEventType.vcsGetThreeWay> {
-    readonly name = IPCEventType.vcsGetThreeWay;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsGetThreeWay;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath, mine, theirs, path }: IPCEvents[IPCEventType.vcsGetThreeWay]["data"],
-    ): Promise<RequestStatus<VcsThreeWayResult>> {
-        return this.tryUse(() => window.app.getVcsManager().getThreeWay(projectPath, mine, theirs, path));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath, mine, theirs, path }: IPCEvents[IPCEventType.vcsGetThreeWay]["data"]
+  ): Promise<RequestStatus<VcsThreeWayResult>> {
+    return this.tryUse(() =>
+      window.app.getVcsManager().getThreeWay(projectPath, mine, theirs, path)
+    );
+  }
 }
 
 /**
@@ -368,17 +376,17 @@ export class VcsGetThreeWayHandler extends IPCHandler<IPCEventType.vcsGetThreeWa
  * answers whether that server can be reached, is the one that costs time.
  */
 export class VcsGetRemoteHandler extends IPCHandler<IPCEventType.vcsGetRemote> {
-    readonly name = IPCEventType.vcsGetRemote;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsGetRemote;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath }: IPCEvents[IPCEventType.vcsGetRemote]["data"],
-    ): Promise<RequestStatus<{ url: string | null }>> {
-        return this.tryUse(async () => ({
-            url: await window.app.getVcsManager().getRemote(projectPath),
-        }));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath }: IPCEvents[IPCEventType.vcsGetRemote]["data"]
+  ): Promise<RequestStatus<{ url: string | null }>> {
+    return this.tryUse(async () => ({
+      url: await window.app.getVcsManager().getRemote(projectPath)
+    }));
+  }
 }
 
 /**
@@ -389,18 +397,18 @@ export class VcsGetRemoteHandler extends IPCHandler<IPCEventType.vcsGetRemote> {
  * {@link VcsGetSyncStateHandler} answers.
  */
 export class VcsSetRemoteHandler extends IPCHandler<IPCEventType.vcsSetRemote> {
-    readonly name = IPCEventType.vcsSetRemote;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsSetRemote;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath, url }: IPCEvents[IPCEventType.vcsSetRemote]["data"],
-    ): Promise<RequestStatus<{ url: string | null }>> {
-        return this.tryUse(async () => {
-            await window.app.getVcsManager().setRemote(projectPath, url);
-            return { url: await window.app.getVcsManager().getRemote(projectPath) };
-        });
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath, url }: IPCEvents[IPCEventType.vcsSetRemote]["data"]
+  ): Promise<RequestStatus<{ url: string | null }>> {
+    return this.tryUse(async () => {
+      await window.app.getVcsManager().setRemote(projectPath, url);
+      return { url: await window.app.getVcsManager().getRemote(projectPath) };
+    });
+  }
 }
 
 /**
@@ -412,15 +420,15 @@ export class VcsSetRemoteHandler extends IPCHandler<IPCEventType.vcsSetRemote> {
  * the answer. An unreachable server is `remoteAvailable: false`, not a failure.
  */
 export class VcsGetSyncStateHandler extends IPCHandler<IPCEventType.vcsGetSyncState> {
-    readonly name = IPCEventType.vcsGetSyncState;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsGetSyncState;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath }: IPCEvents[IPCEventType.vcsGetSyncState]["data"],
-    ): Promise<RequestStatus<VcsSyncState>> {
-        return this.tryUse(() => window.app.getVcsManager().getSyncState(projectPath));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath }: IPCEvents[IPCEventType.vcsGetSyncState]["data"]
+  ): Promise<RequestStatus<VcsSyncState>> {
+    return this.tryUse(() => window.app.getVcsManager().getSyncState(projectPath));
+  }
 }
 
 /**
@@ -432,17 +440,17 @@ export class VcsGetSyncStateHandler extends IPCHandler<IPCEventType.vcsGetSyncSt
  * refused is worse than saying nobody is.
  */
 export class VcsGetServerSessionHandler extends IPCHandler<IPCEventType.vcsGetServerSession> {
-    readonly name = IPCEventType.vcsGetServerSession;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsGetServerSession;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath }: IPCEvents[IPCEventType.vcsGetServerSession]["data"],
-    ): Promise<RequestStatus<{ session: VcsServerSession | null }>> {
-        return this.tryUse(async () => ({
-            session: await window.app.getVcsManager().getServerSession(projectPath),
-        }));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath }: IPCEvents[IPCEventType.vcsGetServerSession]["data"]
+  ): Promise<RequestStatus<{ session: VcsServerSession | null }>> {
+    return this.tryUse(async () => ({
+      session: await window.app.getVcsManager().getServerSession(projectPath)
+    }));
+  }
 }
 
 /**
@@ -458,28 +466,28 @@ export class VcsGetServerSessionHandler extends IPCHandler<IPCEventType.vcsGetSe
  * four they are looking at.
  */
 export class VcsSignInHandler extends IPCHandler<IPCEventType.vcsSignIn> {
-    readonly name = IPCEventType.vcsSignIn;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsSignIn;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath, authUrl, token }: IPCEvents[IPCEventType.vcsSignIn]["data"],
-    ): Promise<RequestStatus<VcsSignInOutcome>> {
-        return this.tryUse(async () => {
-            try {
-                const result = await window.app.getVcsManager().signIn(projectPath, { authUrl, token });
-                return { ok: true as const, ...result };
-            } catch (error) {
-                // A refused sign-in travels as a successful call carrying a refusal, not as a
-                // failed one: the message is thrown away by the layers between here and the
-                // panel, and the CODE is the only thing that lets the panel say which of four
-                // identical-looking transport failures this was.
-                const problem = (error as { problem?: unknown }).problem;
-                if (!problem) throw error;
-                return { ok: false as const, problem: problem as VcsSignInProblem };
-            }
-        });
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath, authUrl, token }: IPCEvents[IPCEventType.vcsSignIn]["data"]
+  ): Promise<RequestStatus<VcsSignInOutcome>> {
+    return this.tryUse(async () => {
+      try {
+        const result = await window.app.getVcsManager().signIn(projectPath, { authUrl, token });
+        return { ok: true as const, ...result };
+      } catch (error) {
+        // A refused sign-in travels as a successful call carrying a refusal, not as a
+        // failed one: the message is thrown away by the layers between here and the
+        // panel, and the CODE is the only thing that lets the panel say which of four
+        // identical-looking transport failures this was.
+        const problem = (error as { problem?: unknown }).problem;
+        if (!problem) throw error;
+        return { ok: false as const, problem: problem as VcsSignInProblem };
+      }
+    });
+  }
 }
 
 /**
@@ -492,31 +500,31 @@ export class VcsSignInHandler extends IPCHandler<IPCEventType.vcsSignIn> {
  * specific and a bare failure would leave the author with "it did not work".
  */
 export class VcsTrustAuthorityHandler extends IPCHandler<IPCEventType.vcsTrustAuthority> {
-    readonly name = IPCEventType.vcsTrustAuthority;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsTrustAuthority;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { certificatePath }: IPCEvents[IPCEventType.vcsTrustAuthority]["data"],
-    ): Promise<RequestStatus<{ installed: boolean; output: string }>> {
-        return this.tryUse(() => window.app.getVcsManager().trustAuthority(certificatePath));
-    }
+  public async handle(
+    window: AppWindow,
+    { certificatePath }: IPCEvents[IPCEventType.vcsTrustAuthority]["data"]
+  ): Promise<RequestStatus<{ installed: boolean; output: string }>> {
+    return this.tryUse(() => window.app.getVcsManager().trustAuthority(certificatePath));
+  }
 }
 
 /** Clear the stored token and Studio's record of whose it was. Local; contacts nothing. */
 export class VcsSignOutHandler extends IPCHandler<IPCEventType.vcsSignOut> {
-    readonly name = IPCEventType.vcsSignOut;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsSignOut;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath }: IPCEvents[IPCEventType.vcsSignOut]["data"],
-    ): Promise<RequestStatus<{ session: null }>> {
-        return this.tryUse(async () => {
-            await window.app.getVcsManager().signOut(projectPath);
-            return { session: null };
-        });
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath }: IPCEvents[IPCEventType.vcsSignOut]["data"]
+  ): Promise<RequestStatus<{ session: null }>> {
+    return this.tryUse(async () => {
+      await window.app.getVcsManager().signOut(projectPath);
+      return { session: null };
+    });
+  }
 }
 
 /**
@@ -531,15 +539,15 @@ export class VcsSignOutHandler extends IPCHandler<IPCEventType.vcsSignOut> {
  * where it needs to know which of the four it is looking at.
  */
 export class VcsProbeServerHandler extends IPCHandler<IPCEventType.vcsProbeServer> {
-    readonly name = IPCEventType.vcsProbeServer;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsProbeServer;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { address }: IPCEvents[IPCEventType.vcsProbeServer]["data"],
-    ): Promise<RequestStatus<VcsServerProbe>> {
-        return this.tryUse(() => window.app.getVcsManager().probeServer(address));
-    }
+  public async handle(
+    window: AppWindow,
+    { address }: IPCEvents[IPCEventType.vcsProbeServer]["data"]
+  ): Promise<RequestStatus<VcsServerProbe>> {
+    return this.tryUse(() => window.app.getVcsManager().probeServer(address));
+  }
 }
 
 /**
@@ -549,51 +557,51 @@ export class VcsProbeServerHandler extends IPCHandler<IPCEventType.vcsProbeServe
  * a session was never a property of a repository in the first place.
  */
 export class VcsListServersHandler extends IPCHandler<IPCEventType.vcsListServers> {
-    readonly name = IPCEventType.vcsListServers;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsListServers;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<{ servers: VcsServerSession[] }>> {
-        return this.tryUse(async () => ({ servers: window.app.getVcsManager().listServers() }));
-    }
+  public async handle(window: AppWindow): Promise<RequestStatus<{ servers: VcsServerSession[] }>> {
+    return this.tryUse(async () => ({ servers: window.app.getVcsManager().listServers() }));
+  }
 }
 
 /** Sign in to the server a token names. */
 export class VcsAddServerHandler extends IPCHandler<IPCEventType.vcsAddServer> {
-    readonly name = IPCEventType.vcsAddServer;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsAddServer;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { authUrl, remoteUrl, token }: IPCEvents[IPCEventType.vcsAddServer]["data"],
-    ): Promise<RequestStatus<VcsAddServerOutcome>> {
-        return this.tryUse(async () => {
-            try {
-                const result = await window.app.getVcsManager().addServer({ authUrl, remoteUrl, token });
-                return { ok: true as const, ...result };
-            } catch (error) {
-                // Same bargain as signing in from a project: a refusal is an answer the
-                // panel puts a sentence to, and only the code survives the trip.
-                const problem = (error as { problem?: unknown }).problem;
-                if (!problem) throw error;
-                return { ok: false as const, problem: problem as VcsSignInProblem };
-            }
-        });
-    }
+  public async handle(
+    window: AppWindow,
+    { authUrl, remoteUrl, token }: IPCEvents[IPCEventType.vcsAddServer]["data"]
+  ): Promise<RequestStatus<VcsAddServerOutcome>> {
+    return this.tryUse(async () => {
+      try {
+        const result = await window.app.getVcsManager().addServer({ authUrl, remoteUrl, token });
+        return { ok: true as const, ...result };
+      } catch (error) {
+        // Same bargain as signing in from a project: a refusal is an answer the
+        // panel puts a sentence to, and only the code survives the trip.
+        const problem = (error as { problem?: unknown }).problem;
+        if (!problem) throw error;
+        return { ok: false as const, problem: problem as VcsSignInProblem };
+      }
+    });
+  }
 }
 
 /** Take a server off this machine. */
 export class VcsForgetServerHandler extends IPCHandler<IPCEventType.vcsForgetServer> {
-    readonly name = IPCEventType.vcsForgetServer;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsForgetServer;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { remoteOrigin }: IPCEvents[IPCEventType.vcsForgetServer]["data"],
-    ): Promise<RequestStatus<{ servers: VcsServerSession[] }>> {
-        return this.tryUse(async () => ({
-            servers: await window.app.getVcsManager().forgetServer(remoteOrigin),
-        }));
-    }
+  public async handle(
+    window: AppWindow,
+    { remoteOrigin }: IPCEvents[IPCEventType.vcsForgetServer]["data"]
+  ): Promise<RequestStatus<{ servers: VcsServerSession[] }>> {
+    return this.tryUse(async () => ({
+      servers: await window.app.getVcsManager().forgetServer(remoteOrigin)
+    }));
+  }
 }
 
 /**
@@ -604,15 +612,15 @@ export class VcsForgetServerHandler extends IPCHandler<IPCEventType.vcsForgetSer
  * (sync first) and is more useful than anything this layer could substitute.
  */
 export class VcsPushHandler extends IPCHandler<IPCEventType.vcsPush> {
-    readonly name = IPCEventType.vcsPush;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsPush;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath }: IPCEvents[IPCEventType.vcsPush]["data"],
-    ): Promise<RequestStatus<VcsPushResult>> {
-        return this.tryUse(() => window.app.getVcsManager().push(projectPath));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath }: IPCEvents[IPCEventType.vcsPush]["data"]
+  ): Promise<RequestStatus<VcsPushResult>> {
+    return this.tryUse(() => window.app.getVcsManager().push(projectPath));
+  }
 }
 
 /**
@@ -628,15 +636,15 @@ export class VcsPushHandler extends IPCHandler<IPCEventType.vcsPush> {
  * a caller that read that as a failure would leave the author believing nothing changed.
  */
 export class VcsSyncHandler extends IPCHandler<IPCEventType.vcsSync> {
-    readonly name = IPCEventType.vcsSync;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsSync;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath }: IPCEvents[IPCEventType.vcsSync]["data"],
-    ): Promise<RequestStatus<VcsSyncResult>> {
-        return this.tryUse(() => window.app.getVcsManager().sync(projectPath));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath }: IPCEvents[IPCEventType.vcsSync]["data"]
+  ): Promise<RequestStatus<VcsSyncResult>> {
+    return this.tryUse(() => window.app.getVcsManager().sync(projectPath));
+  }
 }
 
 /**
@@ -647,29 +655,29 @@ export class VcsSyncHandler extends IPCHandler<IPCEventType.vcsSync> {
  * a byte is fetched - the backend writes into whatever it is pointed at without asking.
  */
 export class VcsCloneHandler extends IPCHandler<IPCEventType.vcsClone> {
-    readonly name = IPCEventType.vcsClone;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsClone;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { url, destination }: IPCEvents[IPCEventType.vcsClone]["data"],
-    ): Promise<RequestStatus<{ root: string; branch: string; fileCount: number }>> {
-        return this.tryUse(() => window.app.getVcsManager().cloneRepository(url, destination));
-    }
+  public async handle(
+    window: AppWindow,
+    { url, destination }: IPCEvents[IPCEventType.vcsClone]["data"]
+  ): Promise<RequestStatus<{ root: string; branch: string; fileCount: number }>> {
+    return this.tryUse(() => window.app.getVcsManager().cloneRepository(url, destination));
+  }
 }
 
 export class VcsGetMergeBaseHandler extends IPCHandler<IPCEventType.vcsGetMergeBase> {
-    readonly name = IPCEventType.vcsGetMergeBase;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsGetMergeBase;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath, a, b }: IPCEvents[IPCEventType.vcsGetMergeBase]["data"],
-    ): Promise<RequestStatus<{ base?: RevisionId }>> {
-        return this.tryUse(async () => ({
-            base: await window.app.getVcsManager().getMergeBase(projectPath, a, b),
-        }));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath, a, b }: IPCEvents[IPCEventType.vcsGetMergeBase]["data"]
+  ): Promise<RequestStatus<{ base?: RevisionId }>> {
+    return this.tryUse(async () => ({
+      base: await window.app.getVcsManager().getMergeBase(projectPath, a, b)
+    }));
+  }
 }
 
 /**
@@ -684,15 +692,15 @@ export class VcsGetMergeBaseHandler extends IPCHandler<IPCEventType.vcsGetMergeB
  * Cheap and local: one non-scanning status call plus a walk of the versioned working set.
  */
 export class VcsGetMergeStateHandler extends IPCHandler<IPCEventType.vcsGetMergeState> {
-    readonly name = IPCEventType.vcsGetMergeState;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsGetMergeState;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath }: IPCEvents[IPCEventType.vcsGetMergeState]["data"],
-    ): Promise<RequestStatus<VcsMergeState>> {
-        return this.tryUse(() => window.app.getVcsManager().getMergeState(projectPath));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath }: IPCEvents[IPCEventType.vcsGetMergeState]["data"]
+  ): Promise<RequestStatus<VcsMergeState>> {
+    return this.tryUse(() => window.app.getVcsManager().getMergeState(projectPath));
+  }
 }
 
 /**
@@ -708,15 +716,15 @@ export class VcsGetMergeStateHandler extends IPCHandler<IPCEventType.vcsGetMerge
  * author takes on this live in the window that asked (docs §4.24).
  */
 export class VcsGetMergeDocumentHandler extends IPCHandler<IPCEventType.vcsGetMergeDocument> {
-    readonly name = IPCEventType.vcsGetMergeDocument;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsGetMergeDocument;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath, path }: IPCEvents[IPCEventType.vcsGetMergeDocument]["data"],
-    ): Promise<RequestStatus<VcsMergeDocument>> {
-        return this.tryUse(() => window.app.getVcsManager().getMergeDocument(projectPath, path));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath, path }: IPCEvents[IPCEventType.vcsGetMergeDocument]["data"]
+  ): Promise<RequestStatus<VcsMergeDocument>> {
+    return this.tryUse(() => window.app.getVcsManager().getMergeDocument(projectPath, path));
+  }
 }
 
 /**
@@ -732,15 +740,17 @@ export class VcsGetMergeDocumentHandler extends IPCHandler<IPCEventType.vcsGetMe
  * and accepts whatever is on disk, which is how an answer neither side wrote is settled.
  */
 export class VcsResolveConflictsHandler extends IPCHandler<IPCEventType.vcsResolveConflicts> {
-    readonly name = IPCEventType.vcsResolveConflicts;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsResolveConflicts;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath, paths, choice }: IPCEvents[IPCEventType.vcsResolveConflicts]["data"],
-    ): Promise<RequestStatus<VcsMergeResolveResult>> {
-        return this.tryUse(() => window.app.getVcsManager().resolveConflicts(projectPath, paths, choice));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath, paths, choice }: IPCEvents[IPCEventType.vcsResolveConflicts]["data"]
+  ): Promise<RequestStatus<VcsMergeResolveResult>> {
+    return this.tryUse(() =>
+      window.app.getVcsManager().resolveConflicts(projectPath, paths, choice)
+    );
+  }
 }
 
 /**
@@ -759,28 +769,30 @@ export class VcsResolveConflictsHandler extends IPCHandler<IPCEventType.vcsResol
  * the backend's own sentence, which names that path.
  */
 export class VcsCompleteMergeHandler extends IPCHandler<IPCEventType.vcsCompleteMerge> {
-    readonly name = IPCEventType.vcsCompleteMerge;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsCompleteMerge;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath, decisions, options }: IPCEvents[IPCEventType.vcsCompleteMerge]["data"],
-    ): Promise<RequestStatus<VcsMergeCompletion>> {
-        return this.tryUse(() => window.app.getVcsManager().completeMerge(projectPath, decisions, options ?? {}));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath, decisions, options }: IPCEvents[IPCEventType.vcsCompleteMerge]["data"]
+  ): Promise<RequestStatus<VcsMergeCompletion>> {
+    return this.tryUse(() =>
+      window.app.getVcsManager().completeMerge(projectPath, decisions, options ?? {})
+    );
+  }
 }
 
 /** Undo a choice: these paths go back to unsettled, with all three sides still on disk. */
 export class VcsUnresolveConflictsHandler extends IPCHandler<IPCEventType.vcsUnresolveConflicts> {
-    readonly name = IPCEventType.vcsUnresolveConflicts;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsUnresolveConflicts;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath, paths }: IPCEvents[IPCEventType.vcsUnresolveConflicts]["data"],
-    ): Promise<RequestStatus<VcsMergeResolveResult>> {
-        return this.tryUse(() => window.app.getVcsManager().unresolveConflicts(projectPath, paths));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath, paths }: IPCEvents[IPCEventType.vcsUnresolveConflicts]["data"]
+  ): Promise<RequestStatus<VcsMergeResolveResult>> {
+    return this.tryUse(() => window.app.getVcsManager().unresolveConflicts(projectPath, paths));
+  }
 }
 
 /**
@@ -790,15 +802,15 @@ export class VcsUnresolveConflictsHandler extends IPCHandler<IPCEventType.vcsUnr
  * too. The way out of a merge result the author edited into something they no longer want.
  */
 export class VcsRestartConflictsHandler extends IPCHandler<IPCEventType.vcsRestartConflicts> {
-    readonly name = IPCEventType.vcsRestartConflicts;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsRestartConflicts;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath, paths }: IPCEvents[IPCEventType.vcsRestartConflicts]["data"],
-    ): Promise<RequestStatus<VcsMergeState>> {
-        return this.tryUse(() => window.app.getVcsManager().restartConflicts(projectPath, paths));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath, paths }: IPCEvents[IPCEventType.vcsRestartConflicts]["data"]
+  ): Promise<RequestStatus<VcsMergeState>> {
+    return this.tryUse(() => window.app.getVcsManager().restartConflicts(projectPath, paths));
+  }
 }
 
 /**
@@ -810,13 +822,13 @@ export class VcsRestartConflictsHandler extends IPCHandler<IPCEventType.vcsResta
  * once it resolves.
  */
 export class VcsAbortMergeHandler extends IPCHandler<IPCEventType.vcsAbortMerge> {
-    readonly name = IPCEventType.vcsAbortMerge;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.vcsAbortMerge;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        { projectPath }: IPCEvents[IPCEventType.vcsAbortMerge]["data"],
-    ): Promise<RequestStatus<VcsMergeState>> {
-        return this.tryUse(() => window.app.getVcsManager().abortMerge(projectPath));
-    }
+  public async handle(
+    window: AppWindow,
+    { projectPath }: IPCEvents[IPCEventType.vcsAbortMerge]["data"]
+  ): Promise<RequestStatus<VcsMergeState>> {
+    return this.tryUse(() => window.app.getVcsManager().abortMerge(projectPath));
+  }
 }

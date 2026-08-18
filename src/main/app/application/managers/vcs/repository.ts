@@ -1,32 +1,32 @@
 import fs from "fs";
 import path from "path";
 import {
-    VCS_REVISION_KIND_KEY,
-    VCS_UNCONFIGURED_REMOTE_URL,
-    VcsErrorCode,
-    type VcsChangeKind,
-    type VcsCommitResult,
-    type VcsFileChange,
-    type VcsInitOptions,
-    type VcsRevisionKind,
-    type VcsStatus,
+  VCS_REVISION_KIND_KEY,
+  VCS_UNCONFIGURED_REMOTE_URL,
+  VcsErrorCode,
+  type VcsChangeKind,
+  type VcsCommitResult,
+  type VcsFileChange,
+  type VcsInitOptions,
+  type VcsRevisionKind,
+  type VcsStatus
 } from "@shared/types/vcs";
 import { VCS_INITIAL_MESSAGE } from "@shared/vcs/systemRevisionMessage";
 import { renderWorkingSetIgnoreFile } from "./workingSet";
 import {
-    commit,
-    createRepository,
-    flushRepository,
-    getRevisionMetadata,
-    history,
-    listRevisionMetadata,
-    releaseRepository,
-    repositoryStatus,
-    setRevisionMetadata,
-    stage,
-    type LoreGlobals,
-    type LoreStatusFilePayload,
-    type StageResult,
+  commit,
+  createRepository,
+  flushRepository,
+  getRevisionMetadata,
+  history,
+  listRevisionMetadata,
+  releaseRepository,
+  repositoryStatus,
+  setRevisionMetadata,
+  stage,
+  type LoreGlobals,
+  type LoreStatusFilePayload,
+  type StageResult
 } from "./lore";
 
 /**
@@ -83,20 +83,20 @@ const DEFAULT_INITIAL_MESSAGE = VCS_INITIAL_MESSAGE;
 export type InitRepositoryOptions = VcsInitOptions;
 
 export interface InitRepositoryResult {
-    /** Repository (partition) id, hex. */
-    repositoryId: string;
-    /** The initial commit. */
-    revision: string;
-    /** Files in that commit. Excludes directories, which Lore counts separately. */
-    fileCount: number;
+  /** Repository (partition) id, hex. */
+  repositoryId: string;
+  /** The initial commit. */
+  revision: string;
+  /** Files in that commit. Excludes directories, which Lore counts separately. */
+  fileCount: number;
 }
 
 /** The directory already holds a working repository, so there is nothing safe to do. */
 export class RepositoryExistsError extends Error {
-    constructor(readonly root: string) {
-        super(`${root} is already under version control`);
-        this.name = "RepositoryExistsError";
-    }
+  constructor(readonly root: string) {
+    super(`${root} is already under version control`);
+    this.name = "RepositoryExistsError";
+  }
 }
 
 /**
@@ -111,17 +111,17 @@ export class RepositoryExistsError extends Error {
  * case where the rollback could not.
  */
 export class IncompleteRepositoryError extends Error {
-    constructor(readonly root: string) {
-        super(
-            `${root} holds a version control repository with no commits, left behind by an interrupted setup. `
-            + `Remove ${path.join(root, REPOSITORY_DIRECTORY)} and enable version control again.`,
-        );
-        this.name = "IncompleteRepositoryError";
-    }
+  constructor(readonly root: string) {
+    super(
+      `${root} holds a version control repository with no commits, left behind by an interrupted setup. ` +
+        `Remove ${path.join(root, REPOSITORY_DIRECTORY)} and enable version control again.`
+    );
+    this.name = "IncompleteRepositoryError";
+  }
 }
 
 export function isRepositoryDirectory(root: string): boolean {
-    return fs.existsSync(path.join(root, REPOSITORY_DIRECTORY));
+  return fs.existsSync(path.join(root, REPOSITORY_DIRECTORY));
 }
 
 /** How long to keep trying to remove a rolled-back repository directory. */
@@ -138,12 +138,12 @@ const ROLLBACK_RETRY_MS = 100;
  * and being wrong in that direction destroys real history.
  */
 async function hasRevisions(globals: LoreGlobals): Promise<boolean> {
-    try {
-        const { header } = await history(globals, { limit: 1 });
-        return Boolean(header?.repository);
-    } catch {
-        return true;
-    }
+  try {
+    const { header } = await history(globals, { limit: 1 });
+    return Boolean(header?.repository);
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -165,17 +165,17 @@ async function hasRevisions(globals: LoreGlobals): Promise<boolean> {
  * retry rewrites it, so deleting it would be risk without benefit.
  */
 async function discardCreatedRepository(globals: LoreGlobals, root: string): Promise<void> {
-    await flushRepository(globals).catch(() => undefined);
-    await releaseRepository(globals).catch(() => undefined);
+  await flushRepository(globals).catch(() => undefined);
+  await releaseRepository(globals).catch(() => undefined);
 
-    for (let attempt = 0; attempt < ROLLBACK_ATTEMPTS; attempt++) {
-        try {
-            fs.rmSync(path.join(root, REPOSITORY_DIRECTORY), { recursive: true, force: true });
-            return;
-        } catch {
-            await new Promise((resolve) => setTimeout(resolve, ROLLBACK_RETRY_MS));
-        }
+  for (let attempt = 0; attempt < ROLLBACK_ATTEMPTS; attempt++) {
+    try {
+      fs.rmSync(path.join(root, REPOSITORY_DIRECTORY), { recursive: true, force: true });
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, ROLLBACK_RETRY_MS));
     }
+  }
 }
 
 /**
@@ -208,48 +208,48 @@ async function discardCreatedRepository(globals: LoreGlobals, root: string): Pro
  * the caller rather than anything the cleanup ran into.
  */
 export async function initRepository(
-    globals: LoreGlobals,
-    options: InitRepositoryOptions = {},
+  globals: LoreGlobals,
+  options: InitRepositoryOptions = {}
 ): Promise<InitRepositoryResult> {
-    const root = globals.repositoryPath;
-    const scoped: LoreGlobals = { ...globals, identity: options.identity ?? globals.identity };
+  const root = globals.repositoryPath;
+  const scoped: LoreGlobals = { ...globals, identity: options.identity ?? globals.identity };
 
-    if (isRepositoryDirectory(root)) {
-        // Lore would refuse too ("Repository already exist in path ..."), but only
-        // after loading the native library, and re-initialising would orphan the
-        // existing history rather than fail. WHICH refusal matters: one tells the
-        // author they are done, the other tells them their setup was interrupted and
-        // names the directory to remove.
-        throw (await hasRevisions(scoped))
-            ? new RepositoryExistsError(root)
-            : new IncompleteRepositoryError(root);
-    }
+  if (isRepositoryDirectory(root)) {
+    // Lore would refuse too ("Repository already exist in path ..."), but only
+    // after loading the native library, and re-initialising would orphan the
+    // existing history rather than fail. WHICH refusal matters: one tells the
+    // author they are done, the other tells them their setup was interrupted and
+    // names the directory to remove.
+    throw (await hasRevisions(scoped))
+      ? new RepositoryExistsError(root)
+      : new IncompleteRepositoryError(root);
+  }
 
-    const created = await createRepository(scoped, {
-        repositoryUrl: options.repositoryUrl ?? PLACEHOLDER_REPOSITORY_URL,
-        description: options.description,
-    });
+  const created = await createRepository(scoped, {
+    repositoryUrl: options.repositoryUrl ?? PLACEHOLDER_REPOSITORY_URL,
+    description: options.description
+  });
 
-    try {
-        fs.writeFileSync(path.join(root, IGNORE_FILE), renderWorkingSetIgnoreFile(), "utf-8");
+  try {
+    fs.writeFileSync(path.join(root, IGNORE_FILE), renderWorkingSetIgnoreFile(), "utf-8");
 
-        // The root, not a file list. Lore recurses and applies the ignore file itself,
-        // which also sidesteps handing a large project's worth of paths across the FFI
-        // boundary as one array. Paths that land outside the repository still raise -
-        // that guard is the reason `stage` is not called with the escape hatch.
-        const staged = await stage(scoped, [root]);
-        const revision = await commit(scoped, options.message ?? DEFAULT_INITIAL_MESSAGE);
-        await flushRepository(scoped);
+    // The root, not a file list. Lore recurses and applies the ignore file itself,
+    // which also sidesteps handing a large project's worth of paths across the FFI
+    // boundary as one array. Paths that land outside the repository still raise -
+    // that guard is the reason `stage` is not called with the escape hatch.
+    const staged = await stage(scoped, [root]);
+    const revision = await commit(scoped, options.message ?? DEFAULT_INITIAL_MESSAGE);
+    await flushRepository(scoped);
 
-        return {
-            repositoryId: created.repository,
-            revision: revision.revision,
-            fileCount: staged.counts?.fileAddCount ?? 0,
-        };
-    } catch (error) {
-        await discardCreatedRepository(scoped, root);
-        throw error;
-    }
+    return {
+      repositoryId: created.repository,
+      revision: revision.revision,
+      fileCount: staged.counts?.fileAddCount ?? 0
+    };
+  } catch (error) {
+    await discardCreatedRepository(scoped, root);
+    throw error;
+  }
 }
 
 /**
@@ -265,20 +265,20 @@ export async function initRepository(
  * stops being answerable.
  */
 export class NothingToCommitError extends Error {
-    /**
-     * Carried across IPC by `ipcHost.failed`. The sentence below still travels with it and still
-     * reads correctly in English - but the rail draws this situation as an ordinary note rather
-     * than as a red failure line, and it can only tell which is which from the code.
-     */
-    readonly code = VcsErrorCode.NothingToCommit;
+  /**
+   * Carried across IPC by `ipcHost.failed`. The sentence below still travels with it and still
+   * reads correctly in English - but the rail draws this situation as an ordinary note rather
+   * than as a red failure line, and it can only tell which is which from the code.
+   */
+  readonly code = VcsErrorCode.NothingToCommit;
 
-    constructor(readonly root: string) {
-        // The message reaches an AUTHOR - it is rendered verbatim in the version rail, 320px wide -
-        // so it does not name the repository. They know which project they are in; the path only
-        // wrapped the sentence onto a second line. Anything logging this still has `root`.
-        super("Nothing has changed since the last version");
-        this.name = "NothingToCommitError";
-    }
+  constructor(readonly root: string) {
+    // The message reaches an AUTHOR - it is rendered verbatim in the version rail, 320px wide -
+    // so it does not name the repository. They know which project they are in; the path only
+    // wrapped the sentence onto a second line. Anything logging this still has `root`.
+    super("Nothing has changed since the last version");
+    this.name = "NothingToCommitError";
+  }
 }
 
 /**
@@ -290,7 +290,7 @@ export class NothingToCommitError extends Error {
  * turning a routine "nothing changed" into an opaque error in front of an author.
  */
 function isNothingStaged(error: unknown): boolean {
-    return error instanceof Error && /nothing staged for commit/i.test(error.message);
+  return error instanceof Error && /nothing staged for commit/i.test(error.message);
 }
 
 /**
@@ -307,9 +307,9 @@ function isNothingStaged(error: unknown): boolean {
  * no staged revision at all.
  */
 async function hasSomethingToCommit(globals: LoreGlobals, staged: StageResult): Promise<boolean> {
-    if ((staged.counts?.totalCount ?? 0) > 0) return true;
-    const status = await repositoryStatus(globals, { scan: false, revisionOnly: true });
-    return Boolean(status.revision?.revisionStaged);
+  if ((staged.counts?.totalCount ?? 0) > 0) return true;
+  const status = await repositoryStatus(globals, { scan: false, revisionOnly: true });
+  return Boolean(status.revision?.revisionStaged);
 }
 
 /**
@@ -348,39 +348,40 @@ async function hasSomethingToCommit(globals: LoreGlobals, staged: StageResult): 
  * describe a file that is about to change.
  */
 export async function commitWorkingTree(
-    globals: LoreGlobals,
-    options: { message: string; kind: VcsRevisionKind },
+  globals: LoreGlobals,
+  options: { message: string; kind: VcsRevisionKind }
 ): Promise<VcsCommitResult> {
-    const staged = await stage(globals, [globals.repositoryPath]);
-    if (!(await hasSomethingToCommit(globals, staged))) {
-        throw new NothingToCommitError(globals.repositoryPath);
-    }
+  const staged = await stage(globals, [globals.repositoryPath]);
+  if (!(await hasSomethingToCommit(globals, staged))) {
+    throw new NothingToCommitError(globals.repositoryPath);
+  }
 
-    // Namespaced because these keys share one map with Lore's own - a revision already
-    // carries `branch`, `timestamp`, `message`, `created-by` and `committed-by`.
-    await setRevisionMetadata(globals, { [VCS_REVISION_KIND_KEY]: options.kind });
+  // Namespaced because these keys share one map with Lore's own - a revision already
+  // carries `branch`, `timestamp`, `message`, `created-by` and `committed-by`.
+  await setRevisionMetadata(globals, { [VCS_REVISION_KIND_KEY]: options.kind });
 
-    let revision;
-    try {
-        revision = await commit(globals, options.message);
-    } catch (error) {
-        if (isNothingStaged(error)) throw new NothingToCommitError(globals.repositoryPath);
-        throw error;
-    }
+  let revision;
+  try {
+    revision = await commit(globals, options.message);
+  } catch (error) {
+    if (isNothingStaged(error)) throw new NothingToCommitError(globals.repositoryPath);
+    throw error;
+  }
 
-    await flushRepository(globals);
+  await flushRepository(globals);
 
-    return {
-        revision: revision.revision,
-        number: revision.revisionNumber,
-        kind: options.kind,
-        // Directories are excluded: they are counted separately by Lore and an author
-        // reading "12 files" does not mean the folders those files are in.
-        fileCount: (staged.counts?.fileAddCount ?? 0)
-            + (staged.counts?.fileModifyCount ?? 0)
-            + (staged.counts?.fileDeleteCount ?? 0)
-            + (staged.counts?.fileMoveCount ?? 0),
-    };
+  return {
+    revision: revision.revision,
+    number: revision.revisionNumber,
+    kind: options.kind,
+    // Directories are excluded: they are counted separately by Lore and an author
+    // reading "12 files" does not mean the folders those files are in.
+    fileCount:
+      (staged.counts?.fileAddCount ?? 0) +
+      (staged.counts?.fileModifyCount ?? 0) +
+      (staged.counts?.fileDeleteCount ?? 0) +
+      (staged.counts?.fileMoveCount ?? 0)
+  };
 }
 
 /**
@@ -397,16 +398,18 @@ export async function commitWorkingTree(
  * cannot render because one entry predates a metadata key.
  */
 export async function readRevisionKind(
-    globals: LoreGlobals,
-    revision: string,
+  globals: LoreGlobals,
+  revision: string
 ): Promise<VcsRevisionKind | undefined> {
-    const entry = await getRevisionMetadata(globals, revision, VCS_REVISION_KIND_KEY).catch(() => undefined);
-    return toRevisionKind(entry?.text);
+  const entry = await getRevisionMetadata(globals, revision, VCS_REVISION_KIND_KEY).catch(
+    () => undefined
+  );
+  return toRevisionKind(entry?.text);
 }
 
 /** Only the two kinds Studio writes. Anything else is another client's vocabulary. */
 function toRevisionKind(value: string | undefined): VcsRevisionKind | undefined {
-    return value === "commit" || value === "checkpoint" ? value : undefined;
+  return value === "commit" || value === "checkpoint" ? value : undefined;
 }
 
 /**
@@ -452,35 +455,35 @@ const LORE_COMMITTER_KEY = "committed-by";
  * entry predates a key.
  */
 export interface RevisionDetails {
-    kind?: VcsRevisionKind;
-    message?: string;
-    /** Epoch milliseconds, UTC. */
-    timestamp?: number;
-    author?: string;
+  kind?: VcsRevisionKind;
+  message?: string;
+  /** Epoch milliseconds, UTC. */
+  timestamp?: number;
+  author?: string;
 }
 
 export async function readRevisionDetails(
-    globals: LoreGlobals,
-    revision: string,
+  globals: LoreGlobals,
+  revision: string
 ): Promise<RevisionDetails> {
-    const entries = await listRevisionMetadata(globals, revision).catch(() => []);
-    const byKey = new Map(entries.map((entry) => [entry.key, entry]));
+  const entries = await listRevisionMetadata(globals, revision).catch(() => []);
+  const byKey = new Map(entries.map((entry) => [entry.key, entry]));
 
-    const details: RevisionDetails = {};
-    const kind = toRevisionKind(byKey.get(VCS_REVISION_KIND_KEY)?.text);
-    if (kind) details.kind = kind;
-    // Empty is absent on purpose: an empty string would render as a revision with a
-    // blank title or a blank author rather than as one that did not say.
-    const message = byKey.get(LORE_MESSAGE_KEY)?.text;
-    if (message) details.message = message;
-    const timestamp = byKey.get(LORE_TIMESTAMP_KEY)?.numeric;
-    if (timestamp !== undefined) details.timestamp = timestamp;
-    const author = byKey.get(LORE_COMMITTER_KEY)?.text;
-    if (author) details.author = author;
-    // Keys the revision does not carry are OMITTED, not set to undefined: an explicit
-    // undefined survives the IPC structured clone as a present key, so `"author" in
-    // entry` would answer yes for a revision that never had one.
-    return details;
+  const details: RevisionDetails = {};
+  const kind = toRevisionKind(byKey.get(VCS_REVISION_KIND_KEY)?.text);
+  if (kind) details.kind = kind;
+  // Empty is absent on purpose: an empty string would render as a revision with a
+  // blank title or a blank author rather than as one that did not say.
+  const message = byKey.get(LORE_MESSAGE_KEY)?.text;
+  if (message) details.message = message;
+  const timestamp = byKey.get(LORE_TIMESTAMP_KEY)?.numeric;
+  if (timestamp !== undefined) details.timestamp = timestamp;
+  const author = byKey.get(LORE_COMMITTER_KEY)?.text;
+  if (author) details.author = author;
+  // Keys the revision does not carry are OMITTED, not set to undefined: an explicit
+  // undefined survives the IPC structured clone as a present key, so `"author" in
+  // entry` would answer yes for a revision that never had one.
+  return details;
 }
 
 /**
@@ -497,16 +500,16 @@ export async function readRevisionDetails(
  * carry, so reading it used to mean either scanning or walking every revision in the project.
  */
 export async function readBranchIdentity(globals: LoreGlobals): Promise<{
-    branch: string;
-    head?: string;
-    headNumber: number;
+  branch: string;
+  head?: string;
+  headNumber: number;
 }> {
-    const { revision } = await repositoryStatus(globals, { scan: false, revisionOnly: true });
-    return {
-        branch: revision?.branchName ?? "",
-        head: revision?.revision,
-        headNumber: revision?.revisionNumber ?? 0,
-    };
+  const { revision } = await repositoryStatus(globals, { scan: false, revisionOnly: true });
+  return {
+    branch: revision?.branchName ?? "",
+    head: revision?.revision,
+    headNumber: revision?.revisionNumber ?? 0
+  };
 }
 
 /**
@@ -532,34 +535,34 @@ export async function readBranchIdentity(globals: LoreGlobals): Promise<{
  * directory does not stick either. Pinned in repository.integration.test.ts.
  */
 export async function getStatus(globals: LoreGlobals): Promise<VcsStatus> {
-    const status = await repositoryStatus(globals, { scan: true });
-    const revision = status.revision;
-    const files = status.files.map(toFileChange);
-    const summary = status.summary;
+  const status = await repositoryStatus(globals, { scan: true });
+  const revision = status.revision;
+  const files = status.files.map(toFileChange);
+  const summary = status.summary;
 
-    return {
-        branch: revision?.branchName ?? "",
-        head: revision?.revision,
-        revisionNumber: revision?.revisionNumber ?? 0,
-        stagedRevision: revision?.revisionStaged,
-        clean: files.length === 0,
-        files,
-        counts: {
-            added: summary?.adds ?? 0,
-            modified: summary?.modifies ?? 0,
-            deleted: summary?.deletes ?? 0,
-            moved: summary?.moves ?? 0,
-            copied: summary?.copies ?? 0,
-        },
-        sync: {
-            remoteAvailable: revision?.remoteAvailable ?? false,
-            remoteAuthorized: revision?.remoteAuthorized ?? false,
-            remoteBranchExists: revision?.remoteBranchExist ?? false,
-            localAhead: revision?.isLocalAhead ?? false,
-            remoteAhead: revision?.isRemoteAhead ?? false,
-            remoteRevision: revision?.revisionRemote,
-        },
-    };
+  return {
+    branch: revision?.branchName ?? "",
+    head: revision?.revision,
+    revisionNumber: revision?.revisionNumber ?? 0,
+    stagedRevision: revision?.revisionStaged,
+    clean: files.length === 0,
+    files,
+    counts: {
+      added: summary?.adds ?? 0,
+      modified: summary?.modifies ?? 0,
+      deleted: summary?.deletes ?? 0,
+      moved: summary?.moves ?? 0,
+      copied: summary?.copies ?? 0
+    },
+    sync: {
+      remoteAvailable: revision?.remoteAvailable ?? false,
+      remoteAuthorized: revision?.remoteAuthorized ?? false,
+      remoteBranchExists: revision?.remoteBranchExist ?? false,
+      localAhead: revision?.isLocalAhead ?? false,
+      remoteAhead: revision?.isRemoteAhead ?? false,
+      remoteRevision: revision?.revisionRemote
+    }
+  };
 }
 
 /**
@@ -575,36 +578,36 @@ export async function getStatus(globals: LoreGlobals): Promise<VcsStatus> {
  * assumed absent.
  */
 const CHANGE_KINDS: Readonly<Record<number, VcsChangeKind>> = {
-    0: "modified",
-    1: "added",
-    2: "deleted",
-    3: "moved",
-    4: "copied",
+  0: "modified",
+  1: "added",
+  2: "deleted",
+  3: "moved",
+  4: "copied"
 };
 
 /** `LoreNodeType.DIRECTORY`. FILE is 1 and LINK is 2, and Studio treats both as files. */
 const NODE_TYPE_DIRECTORY = 0;
 
 function toFileChange(file: LoreStatusFilePayload): VcsFileChange {
-    return {
-        path: file.path,
-        directory: file.type === NODE_TYPE_DIRECTORY,
-        // An action this version of Studio does not know is still a change the author
-        // made. Reporting it as a modification is wrong in the label; dropping it
-        // would be wrong about whether anything happened at all.
-        kind: CHANGE_KINDS[file.action] ?? "modified",
-        size: file.size,
-        staged: file.staged,
-        dirty: file.dirty,
-        conflicted: file.conflict,
-        conflictUnresolved: file.conflictUnresolved,
-        // Carried rather than dropped, and honestly labelled where they are declared:
-        // measured, status reports NO files at all while a merge is open (§4.24), so
-        // none of these three has ever been seen set. The paths a merge left open come
-        // from `merge.ts`, not from here.
-        conflictAutomerged: file.conflictAutomerged,
-        conflictMine: file.conflictMine,
-        conflictTheirs: file.conflictTheirs,
-        fromPath: file.fromPath || undefined,
-    };
+  return {
+    path: file.path,
+    directory: file.type === NODE_TYPE_DIRECTORY,
+    // An action this version of Studio does not know is still a change the author
+    // made. Reporting it as a modification is wrong in the label; dropping it
+    // would be wrong about whether anything happened at all.
+    kind: CHANGE_KINDS[file.action] ?? "modified",
+    size: file.size,
+    staged: file.staged,
+    dirty: file.dirty,
+    conflicted: file.conflict,
+    conflictUnresolved: file.conflictUnresolved,
+    // Carried rather than dropped, and honestly labelled where they are declared:
+    // measured, status reports NO files at all while a merge is open (§4.24), so
+    // none of these three has ever been seen set. The paths a merge left open come
+    // from `merge.ts`, not from here.
+    conflictAutomerged: file.conflictAutomerged,
+    conflictMine: file.conflictMine,
+    conflictTheirs: file.conflictTheirs,
+    fromPath: file.fromPath || undefined
+  };
 }

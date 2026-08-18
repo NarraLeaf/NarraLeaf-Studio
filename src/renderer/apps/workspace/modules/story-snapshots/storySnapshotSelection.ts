@@ -10,11 +10,24 @@ type SelectedSnapshotStore = Record<string, string>;
 
 const keyOf = (storyId: string, sceneId: string) => `${storyId}::${sceneId}`;
 
-export function getSelectedSnapshotId(panelState: PanelStateService, storyId: string, sceneId: string): string | undefined {
-    return panelState.getPanelState<SelectedSnapshotStore>(SELECTED_SNAPSHOT_KEY)?.[keyOf(storyId, sceneId)];
+export function getSelectedSnapshotId(
+  panelState: PanelStateService,
+  storyId: string,
+  sceneId: string
+): string | undefined {
+  return panelState.getPanelState<SelectedSnapshotStore>(SELECTED_SNAPSHOT_KEY)?.[
+    keyOf(storyId, sceneId)
+  ];
 }
 
-export function setSelectedSnapshotId(panelState: PanelStateService, storyId: string, sceneId: string, snapshotId: string): void {
-    // setPanelState shallow-merges, so only this (story, scene) entry changes.
-    panelState.setPanelState<SelectedSnapshotStore>(SELECTED_SNAPSHOT_KEY, { [keyOf(storyId, sceneId)]: snapshotId });
+export function setSelectedSnapshotId(
+  panelState: PanelStateService,
+  storyId: string,
+  sceneId: string,
+  snapshotId: string
+): void {
+  // setPanelState shallow-merges, so only this (story, scene) entry changes.
+  panelState.setPanelState<SelectedSnapshotStore>(SELECTED_SNAPSHOT_KEY, {
+    [keyOf(storyId, sceneId)]: snapshotId
+  });
 }

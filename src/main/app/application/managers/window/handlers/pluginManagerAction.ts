@@ -6,15 +6,19 @@ import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { PrivilegedCapability } from "@shared/types/privileged";
 import type {
-    PluginApproveResult,
-    PluginInstallResult,
-    PluginListItem,
-    RuntimePluginDescriptor,
-    WorkspacePluginDescriptor,
+  PluginApproveResult,
+  PluginInstallResult,
+  PluginListItem,
+  RuntimePluginDescriptor,
+  WorkspacePluginDescriptor
 } from "@shared/types/plugins";
 import type { PluginRegistryFetchResult } from "@shared/types/pluginRegistry";
 import type { LocaleContribution } from "@shared/i18n";
-import { downloadAndExtract, fetchRegistryIndex, resolveRegistryUrl } from "../../pluginRegistryClient";
+import {
+  downloadAndExtract,
+  fetchRegistryIndex,
+  resolveRegistryUrl
+} from "../../pluginRegistryClient";
 import { WindowAppType, WindowCloseResults } from "@shared/types/window";
 import { resolveDependencies } from "@shared/utils/resolveDependencies";
 import { satisfiesRange } from "@shared/utils/semver";
@@ -25,344 +29,363 @@ import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
 function ensurePluginInstallCapability(window: AppWindow): RequestStatus<never> | null {
-    const authorization = authorizeActorCapabilityRequest(
-        window,
-        { kind: "facade", id: "default" },
-        PrivilegedCapability.PluginInstall,
-    );
-    if (!authorization.allowed) {
-        return {
-            success: false,
-            error: authorization.reason ?? "Plugin management is not allowed",
-        };
-    }
-    return null;
+  const authorization = authorizeActorCapabilityRequest(
+    window,
+    { kind: "facade", id: "default" },
+    PrivilegedCapability.PluginInstall
+  );
+  if (!authorization.allowed) {
+    return {
+      success: false,
+      error: authorization.reason ?? "Plugin management is not allowed"
+    };
+  }
+  return null;
 }
 
 export class PluginListHandler extends IPCHandler<IPCEventType.pluginList> {
-    readonly name = IPCEventType.pluginList;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.pluginList;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<{ plugins: PluginListItem[] }>> {
-        return this.success({ plugins: await window.app.pluginManager.listPlugins() });
-    }
+  public async handle(window: AppWindow): Promise<RequestStatus<{ plugins: PluginListItem[] }>> {
+    return this.success({ plugins: await window.app.pluginManager.listPlugins() });
+  }
 }
 
 export class PluginInstallLocalHandler extends IPCHandler<IPCEventType.pluginInstallLocal> {
-    readonly name = IPCEventType.pluginInstallLocal;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.pluginInstallLocal;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<PluginInstallResult>> {
-        const denied = ensurePluginInstallCapability(window);
-        if (denied) return denied;
+  public async handle(window: AppWindow): Promise<RequestStatus<PluginInstallResult>> {
+    const denied = ensurePluginInstallCapability(window);
+    if (denied) return denied;
 
-        const result = await dialog.showOpenDialog(window.win, {
-            title: "Install Plugin",
-            properties: ["openDirectory"],
-            buttonLabel: "Install Plugin",
-        });
-        if (result.canceled || result.filePaths.length === 0) {
-            return this.success({ canceled: true });
-        }
-
-        const installed = await this.tryUse(() => window.app.pluginManager.installFromDirectory(result.filePaths[0]));
-        if (installed.success && !installed.data.canceled) {
-            void window.app.refreshPluginLocales();
-        }
-        return installed;
+    const result = await dialog.showOpenDialog(window.win, {
+      title: "Install Plugin",
+      properties: ["openDirectory"],
+      buttonLabel: "Install Plugin"
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return this.success({ canceled: true });
     }
+
+    const installed = await this.tryUse(() =>
+      window.app.pluginManager.installFromDirectory(result.filePaths[0])
+    );
+    if (installed.success && !installed.data.canceled) {
+      void window.app.refreshPluginLocales();
+    }
+    return installed;
+  }
 }
 
 export class PluginSetEnabledHandler extends IPCHandler<IPCEventType.pluginSetEnabled> {
-    readonly name = IPCEventType.pluginSetEnabled;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.pluginSetEnabled;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        data: IPCEvents[IPCEventType.pluginSetEnabled]["data"],
-    ): Promise<RequestStatus<PluginListItem>> {
-        const denied = ensurePluginInstallCapability(window);
-        if (denied) return denied;
-        const result = await this.tryUse(() => window.app.pluginManager.setPluginEnabled(data.pluginId, data.enabled));
-        if (result.success) {
-            void window.app.refreshPluginLocales();
-        }
-        return result;
+  public async handle(
+    window: AppWindow,
+    data: IPCEvents[IPCEventType.pluginSetEnabled]["data"]
+  ): Promise<RequestStatus<PluginListItem>> {
+    const denied = ensurePluginInstallCapability(window);
+    if (denied) return denied;
+    const result = await this.tryUse(() =>
+      window.app.pluginManager.setPluginEnabled(data.pluginId, data.enabled)
+    );
+    if (result.success) {
+      void window.app.refreshPluginLocales();
     }
+    return result;
+  }
 }
 
 export class PluginApproveHandler extends IPCHandler<IPCEventType.pluginApprove> {
-    readonly name = IPCEventType.pluginApprove;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.pluginApprove;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        data: IPCEvents[IPCEventType.pluginApprove]["data"],
-    ): Promise<RequestStatus<PluginApproveResult>> {
-        const denied = ensurePluginInstallCapability(window);
-        if (denied) return denied;
+  public async handle(
+    window: AppWindow,
+    data: IPCEvents[IPCEventType.pluginApprove]["data"]
+  ): Promise<RequestStatus<PluginApproveResult>> {
+    const denied = ensurePluginInstallCapability(window);
+    if (denied) return denied;
 
-        const request = await window.app.pluginManager.buildInstallRequest(data.pluginId);
-        const promptWindow = await window.getApp().launchPluginPermissionPrompt(window, { request });
-        window.addChild(promptWindow);
+    const request = await window.app.pluginManager.buildInstallRequest(data.pluginId);
+    const promptWindow = await window.getApp().launchPluginPermissionPrompt(window, { request });
+    window.addChild(promptWindow);
 
-        return new Promise<RequestStatus<PluginApproveResult>>(resolve => {
-            promptWindow.setCloseResultResolver(async (result: WindowCloseResults[WindowAppType.PluginPermissionPrompt]) => {
-                try {
-                    const approval = await window.app.pluginManager.approvePlugin(data.pluginId, result ?? null);
-                    void window.app.refreshPluginLocales();
-                    resolve(this.success(approval));
-                } catch (error) {
-                    resolve(this.failed(error));
-                }
-            });
-        });
-    }
+    return new Promise<RequestStatus<PluginApproveResult>>((resolve) => {
+      promptWindow.setCloseResultResolver(
+        async (result: WindowCloseResults[WindowAppType.PluginPermissionPrompt]) => {
+          try {
+            const approval = await window.app.pluginManager.approvePlugin(
+              data.pluginId,
+              result ?? null
+            );
+            void window.app.refreshPluginLocales();
+            resolve(this.success(approval));
+          } catch (error) {
+            resolve(this.failed(error));
+          }
+        }
+      );
+    });
+  }
 }
 
 export class PluginUninstallHandler extends IPCHandler<IPCEventType.pluginUninstall> {
-    readonly name = IPCEventType.pluginUninstall;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.pluginUninstall;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        data: IPCEvents[IPCEventType.pluginUninstall]["data"],
-    ): Promise<RequestStatus<void>> {
-        const denied = ensurePluginInstallCapability(window);
-        if (denied) return denied;
-        const result = await this.tryUse(() => window.app.pluginManager.uninstallPlugin(data.pluginId));
-        if (result.success) {
-            void window.app.refreshPluginLocales();
-        }
-        return result;
+  public async handle(
+    window: AppWindow,
+    data: IPCEvents[IPCEventType.pluginUninstall]["data"]
+  ): Promise<RequestStatus<void>> {
+    const denied = ensurePluginInstallCapability(window);
+    if (denied) return denied;
+    const result = await this.tryUse(() => window.app.pluginManager.uninstallPlugin(data.pluginId));
+    if (result.success) {
+      void window.app.refreshPluginLocales();
     }
+    return result;
+  }
 }
 
 export class PluginRevokeHandler extends IPCHandler<IPCEventType.pluginRevoke> {
-    readonly name = IPCEventType.pluginRevoke;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.pluginRevoke;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        data: IPCEvents[IPCEventType.pluginRevoke]["data"],
-    ): Promise<RequestStatus<PluginListItem>> {
-        const denied = ensurePluginInstallCapability(window);
-        if (denied) return denied;
-        const result = await this.tryUse(() => window.app.pluginManager.revokePlugin(data.pluginId));
-        if (result.success) {
-            void window.app.refreshPluginLocales();
-        }
-        return result;
+  public async handle(
+    window: AppWindow,
+    data: IPCEvents[IPCEventType.pluginRevoke]["data"]
+  ): Promise<RequestStatus<PluginListItem>> {
+    const denied = ensurePluginInstallCapability(window);
+    if (denied) return denied;
+    const result = await this.tryUse(() => window.app.pluginManager.revokePlugin(data.pluginId));
+    if (result.success) {
+      void window.app.refreshPluginLocales();
     }
+    return result;
+  }
 }
 
 export class PluginWorkspaceListHandler extends IPCHandler<IPCEventType.pluginWorkspaceList> {
-    readonly name = IPCEventType.pluginWorkspaceList;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.pluginWorkspaceList;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<{ plugins: WorkspacePluginDescriptor[] }>> {
-        if (window.getWindowType() !== WindowAppType.Workspace) {
-            return this.failed("Workspace plugins can only be requested by workspace windows");
-        }
-        return this.success({ plugins: await window.app.pluginManager.listWorkspacePlugins() });
+  public async handle(
+    window: AppWindow
+  ): Promise<RequestStatus<{ plugins: WorkspacePluginDescriptor[] }>> {
+    if (window.getWindowType() !== WindowAppType.Workspace) {
+      return this.failed("Workspace plugins can only be requested by workspace windows");
     }
+    return this.success({ plugins: await window.app.pluginManager.listWorkspacePlugins() });
+  }
 }
 
 export class PluginRuntimeListHandler extends IPCHandler<IPCEventType.pluginRuntimeList> {
-    readonly name = IPCEventType.pluginRuntimeList;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.pluginRuntimeList;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<{ plugins: RuntimePluginDescriptor[] }>> {
-        if (window.getWindowType() !== WindowAppType.DevMode) {
-            return this.failed("Runtime plugins can only be requested by Dev Mode windows");
-        }
-        const plugins = await window.app.pluginManager.listRuntimePlugins();
-        const allowed = await this.filterSuppressed(window, plugins);
-        return this.success({ plugins: await this.attachRuntimeData(window, allowed) });
+  public async handle(
+    window: AppWindow
+  ): Promise<RequestStatus<{ plugins: RuntimePluginDescriptor[] }>> {
+    if (window.getWindowType() !== WindowAppType.DevMode) {
+      return this.failed("Runtime plugins can only be requested by Dev Mode windows");
     }
+    const plugins = await window.app.pluginManager.listRuntimePlugins();
+    const allowed = await this.filterSuppressed(window, plugins);
+    return this.success({ plugins: await this.attachRuntimeData(window, allowed) });
+  }
 
-    /**
-     * Dev Mode reads the live project rather than a pack, so publishable plugin
-     * storage is loaded straight from `editor/services`. Best-effort: a project
-     * without a resolvable path just gets descriptors with no data, and the
-     * plugin degrades the same way it would in a game built before the data
-     * channel existed.
-     */
-    private async attachRuntimeData(
-        window: AppWindow,
-        plugins: RuntimePluginDescriptor[],
-    ): Promise<RuntimePluginDescriptor[]> {
-        const projectPath = (window.getProps() as { projectPath?: unknown }).projectPath;
-        if (typeof projectPath !== "string" || !projectPath.trim()) {
-            return plugins;
-        }
-        return Promise.all(plugins.map(async descriptor => {
-            try {
-                const data = await readPublishedPluginData({
-                    projectPath,
-                    manifest: descriptor.manifest,
-                    onWarning: message => console.warn("[PluginRuntimeListHandler]", message),
-                });
-                return data ? { ...descriptor, data } : descriptor;
-            } catch (error) {
-                console.warn(
-                    `[PluginRuntimeListHandler] failed to read runtime data of plugin "${descriptor.plugin.id}":`,
-                    error,
-                );
-                return descriptor;
-            }
-        }));
+  /**
+   * Dev Mode reads the live project rather than a pack, so publishable plugin
+   * storage is loaded straight from `editor/services`. Best-effort: a project
+   * without a resolvable path just gets descriptors with no data, and the
+   * plugin degrades the same way it would in a game built before the data
+   * channel existed.
+   */
+  private async attachRuntimeData(
+    window: AppWindow,
+    plugins: RuntimePluginDescriptor[]
+  ): Promise<RuntimePluginDescriptor[]> {
+    const projectPath = (window.getProps() as { projectPath?: unknown }).projectPath;
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return plugins;
     }
-
-    /**
-     * Mirror the workspace's per-project dependency suppression: a plugin whose
-     * installed version is incompatible with what the project was authored
-     * against must not execute in that project's Dev Mode session either.
-     * Resolution failures never block the session - suppression is best-effort.
-     */
-    private async filterSuppressed(
-        window: AppWindow,
-        plugins: RuntimePluginDescriptor[],
-    ): Promise<RuntimePluginDescriptor[]> {
-        const projectPath = (window.getProps() as { projectPath?: unknown }).projectPath;
-        if (typeof projectPath !== "string" || !projectPath.trim()) {
-            return plugins;
-        }
+    return Promise.all(
+      plugins.map(async (descriptor) => {
         try {
-            const projectConfig = await readProjectConfigFromDir(projectPath);
-            const table = projectConfig?.dependencies;
-            if (!table || table.plugins.length === 0) {
-                return plugins;
-            }
-            const installed = (await window.app.pluginManager.listPlugins()).map(plugin => ({
-                id: plugin.pluginId,
-                version: plugin.manifest.version,
-                enabled: plugin.enabled,
-            }));
-            const suppressed = new Set(resolveDependencies(table, installed).suppressedPluginIds);
-            return plugins.filter(descriptor => !suppressed.has(descriptor.plugin.id));
+          const data = await readPublishedPluginData({
+            projectPath,
+            manifest: descriptor.manifest,
+            onWarning: (message) => console.warn("[PluginRuntimeListHandler]", message)
+          });
+          return data ? { ...descriptor, data } : descriptor;
         } catch (error) {
-            console.warn("[PluginRuntimeListHandler] dependency suppression skipped:", error);
-            return plugins;
+          console.warn(
+            `[PluginRuntimeListHandler] failed to read runtime data of plugin "${descriptor.plugin.id}":`,
+            error
+          );
+          return descriptor;
         }
+      })
+    );
+  }
+
+  /**
+   * Mirror the workspace's per-project dependency suppression: a plugin whose
+   * installed version is incompatible with what the project was authored
+   * against must not execute in that project's Dev Mode session either.
+   * Resolution failures never block the session - suppression is best-effort.
+   */
+  private async filterSuppressed(
+    window: AppWindow,
+    plugins: RuntimePluginDescriptor[]
+  ): Promise<RuntimePluginDescriptor[]> {
+    const projectPath = (window.getProps() as { projectPath?: unknown }).projectPath;
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      return plugins;
     }
+    try {
+      const projectConfig = await readProjectConfigFromDir(projectPath);
+      const table = projectConfig?.dependencies;
+      if (!table || table.plugins.length === 0) {
+        return plugins;
+      }
+      const installed = (await window.app.pluginManager.listPlugins()).map((plugin) => ({
+        id: plugin.pluginId,
+        version: plugin.manifest.version,
+        enabled: plugin.enabled
+      }));
+      const suppressed = new Set(resolveDependencies(table, installed).suppressedPluginIds);
+      return plugins.filter((descriptor) => !suppressed.has(descriptor.plugin.id));
+    } catch (error) {
+      console.warn("[PluginRuntimeListHandler] dependency suppression skipped:", error);
+      return plugins;
+    }
+  }
 }
 
 export class PluginLocaleListHandler extends IPCHandler<IPCEventType.pluginLocaleList> {
-    readonly name = IPCEventType.pluginLocaleList;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.pluginLocaleList;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<{ contributions: LocaleContribution[] }>> {
-        return this.success({ contributions: await window.app.pluginManager.listLocaleContributions() });
-    }
+  public async handle(
+    window: AppWindow
+  ): Promise<RequestStatus<{ contributions: LocaleContribution[] }>> {
+    return this.success({
+      contributions: await window.app.pluginManager.listLocaleContributions()
+    });
+  }
 }
 
 export class PluginReportLoadErrorHandler extends IPCHandler<IPCEventType.pluginReportLoadError> {
-    readonly name = IPCEventType.pluginReportLoadError;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.pluginReportLoadError;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        data: IPCEvents[IPCEventType.pluginReportLoadError]["data"],
-    ): Promise<RequestStatus<PluginListItem>> {
-        if (window.getWindowType() !== WindowAppType.Workspace) {
-            return this.failed("Plugin load errors can only be reported by workspace windows");
-        }
-        return this.tryUse(() => window.app.pluginManager.reportLoadError(data.pluginId, data.error));
+  public async handle(
+    window: AppWindow,
+    data: IPCEvents[IPCEventType.pluginReportLoadError]["data"]
+  ): Promise<RequestStatus<PluginListItem>> {
+    if (window.getWindowType() !== WindowAppType.Workspace) {
+      return this.failed("Plugin load errors can only be reported by workspace windows");
     }
+    return this.tryUse(() => window.app.pluginManager.reportLoadError(data.pluginId, data.error));
+  }
 }
 
 export class PluginRegistryFetchHandler extends IPCHandler<IPCEventType.pluginRegistryFetch> {
-    readonly name = IPCEventType.pluginRegistryFetch;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.pluginRegistryFetch;
+  readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<PluginRegistryFetchResult>> {
-        const denied = ensurePluginInstallCapability(window);
-        if (denied) return denied;
+  public async handle(window: AppWindow): Promise<RequestStatus<PluginRegistryFetchResult>> {
+    const denied = ensurePluginInstallCapability(window);
+    if (denied) return denied;
 
-        const registryUrl = resolveRegistryUrl(window.app.getGlobalState().get("plugins.registryUrl"));
-        // Refresh means the whole store, thumbnails included: an icon that was
-        // unreachable last time gets another chance. Ones already on disk stay
-        // there — they are keyed by version, so they cannot be stale.
-        window.app.pluginIconCache.clearFailures();
-        return this.tryUse(async () => ({
-            registryUrl,
-            index: await fetchRegistryIndex(registryUrl),
-        }));
-    }
+    const registryUrl = resolveRegistryUrl(window.app.getGlobalState().get("plugins.registryUrl"));
+    // Refresh means the whole store, thumbnails included: an icon that was
+    // unreachable last time gets another chance. Ones already on disk stay
+    // there — they are keyed by version, so they cannot be stale.
+    window.app.pluginIconCache.clearFailures();
+    return this.tryUse(async () => ({
+      registryUrl,
+      index: await fetchRegistryIndex(registryUrl)
+    }));
+  }
 }
 
 export class PluginRegistryIconHandler extends IPCHandler<IPCEventType.pluginRegistryIcon> {
-    readonly name = IPCEventType.pluginRegistryIcon;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.pluginRegistryIcon;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        data: IPCEvents[IPCEventType.pluginRegistryIcon]["data"],
-    ): Promise<RequestStatus<{ icon: string | null }>> {
-        const denied = ensurePluginInstallCapability(window);
-        if (denied) return denied;
+  public async handle(
+    window: AppWindow,
+    data: IPCEvents[IPCEventType.pluginRegistryIcon]["data"]
+  ): Promise<RequestStatus<{ icon: string | null }>> {
+    const denied = ensurePluginInstallCapability(window);
+    if (denied) return denied;
 
-        // Same shape as the install handler: the renderer names a plugin, and
-        // the address is taken from the index main trusts. It never supplies one.
-        const registryUrl = resolveRegistryUrl(window.app.getGlobalState().get("plugins.registryUrl"));
-        return this.tryUse(async () => ({
-            icon: await window.app.pluginIconCache.resolve(registryUrl, data.pluginId),
-        }));
-    }
+    // Same shape as the install handler: the renderer names a plugin, and
+    // the address is taken from the index main trusts. It never supplies one.
+    const registryUrl = resolveRegistryUrl(window.app.getGlobalState().get("plugins.registryUrl"));
+    return this.tryUse(async () => ({
+      icon: await window.app.pluginIconCache.resolve(registryUrl, data.pluginId)
+    }));
+  }
 }
 
 export class PluginInstallFromRegistryHandler extends IPCHandler<IPCEventType.pluginInstallFromRegistry> {
-    readonly name = IPCEventType.pluginInstallFromRegistry;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.pluginInstallFromRegistry;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        window: AppWindow,
-        data: IPCEvents[IPCEventType.pluginInstallFromRegistry]["data"],
-    ): Promise<RequestStatus<PluginInstallResult>> {
-        const denied = ensurePluginInstallCapability(window);
-        if (denied) return denied;
+  public async handle(
+    window: AppWindow,
+    data: IPCEvents[IPCEventType.pluginInstallFromRegistry]["data"]
+  ): Promise<RequestStatus<PluginInstallResult>> {
+    const denied = ensurePluginInstallCapability(window);
+    if (denied) return denied;
 
-        // Re-fetch the index and match the id here so the download URL is the one
-        // the trusted registry carries, never an address supplied by the renderer.
-        const registryUrl = resolveRegistryUrl(window.app.getGlobalState().get("plugins.registryUrl"));
-        const installed = await this.tryUse(async () => {
-            const index = await fetchRegistryIndex(registryUrl);
-            const entry = index.plugins.find(plugin => plugin.id === data.pluginId);
-            if (!entry) {
-                throw new Error(`Plugin is not in the registry: ${data.pluginId}`);
-            }
-            // The store UI already hides the button, but the range is enforced
-            // here too: this handler is the trust boundary, and an incompatible
-            // plugin that installs and then throws at load is far harder to
-            // diagnose than one that refuses up front.
-            const studioVersion = window.app.getAppInfo().version;
-            if (!satisfiesRange(studioVersion, entry.studioVersion)) {
-                throw new Error(
-                    `${entry.name} requires Studio ${entry.studioVersion} (this is ${studioVersion})`,
-                );
-            }
-            const tempDir = path.join(
-                os.tmpdir(),
-                `nls-plugin-install-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            );
-            try {
-                const manifestDir = await downloadAndExtract(entry, tempDir);
-                return await window.app.pluginManager.installFromDirectory(manifestDir, {
-                    kind: "registry",
-                    url: entry.release.download,
-                });
-            } finally {
-                await fs.rm(tempDir, { recursive: true, force: true });
-            }
+    // Re-fetch the index and match the id here so the download URL is the one
+    // the trusted registry carries, never an address supplied by the renderer.
+    const registryUrl = resolveRegistryUrl(window.app.getGlobalState().get("plugins.registryUrl"));
+    const installed = await this.tryUse(async () => {
+      const index = await fetchRegistryIndex(registryUrl);
+      const entry = index.plugins.find((plugin) => plugin.id === data.pluginId);
+      if (!entry) {
+        throw new Error(`Plugin is not in the registry: ${data.pluginId}`);
+      }
+      // The store UI already hides the button, but the range is enforced
+      // here too: this handler is the trust boundary, and an incompatible
+      // plugin that installs and then throws at load is far harder to
+      // diagnose than one that refuses up front.
+      const studioVersion = window.app.getAppInfo().version;
+      if (!satisfiesRange(studioVersion, entry.studioVersion)) {
+        throw new Error(
+          `${entry.name} requires Studio ${entry.studioVersion} (this is ${studioVersion})`
+        );
+      }
+      const tempDir = path.join(
+        os.tmpdir(),
+        `nls-plugin-install-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      );
+      try {
+        const manifestDir = await downloadAndExtract(entry, tempDir);
+        return await window.app.pluginManager.installFromDirectory(manifestDir, {
+          kind: "registry",
+          url: entry.release.download
         });
-        if (installed.success && !installed.data.canceled) {
-            void window.app.refreshPluginLocales();
-            // The version moved, so a thumbnail cached against the old one is
-            // stale — and the installed package now carries its own icon anyway.
-            // Dropping it here doubles as the retry for one that failed to fetch.
-            void window.app.pluginIconCache.invalidate(data.pluginId);
-        }
-        return installed;
+      } finally {
+        await fs.rm(tempDir, { recursive: true, force: true });
+      }
+    });
+    if (installed.success && !installed.data.canceled) {
+      void window.app.refreshPluginLocales();
+      // The version moved, so a thumbnail cached against the old one is
+      // stale — and the installed package now carries its own icon anyway.
+      // Dropping it here doubles as the retry for one that failed to fetch.
+      void window.app.pluginIconCache.invalidate(data.pluginId);
     }
+    return installed;
+  }
 }

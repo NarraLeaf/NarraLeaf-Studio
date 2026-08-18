@@ -1,17 +1,10 @@
-const path = require('path');
-const fs = require('fs');
-const { promisify } = require('util');
-const { execSync } = require('child_process');
-const esbuild = require('esbuild');
-const {
-    rootDir,
-    appsDir,
-    distWindows,
-    isDev,
-    renderHtml,
-    getRendererApps,
-} = require('./utils');
-const { postcssPlugin } = require('./postCss-plugin');
+const path = require("path");
+const fs = require("fs");
+const { promisify } = require("util");
+const { execSync } = require("child_process");
+const esbuild = require("esbuild");
+const { rootDir, appsDir, distWindows, isDev, renderHtml, getRendererApps } = require("./utils");
+const { postcssPlugin } = require("./postCss-plugin");
 
 /**
  * Build all renderer apps located under "src/renderer/apps/<appName>".
@@ -22,77 +15,79 @@ const { postcssPlugin } = require('./postCss-plugin');
  */
 
 (async () => {
-    console.log(`[build-apps] Mode: ${isDev() ? 'development' : 'production'}`);
+  console.log(`[build-apps] Mode: ${isDev() ? "development" : "production"}`);
 
-    // Ensure dist root exists
-    fs.mkdirSync(distWindows, { recursive: true });
+  // Ensure dist root exists
+  fs.mkdirSync(distWindows, { recursive: true });
 
-    const entries = getRendererApps();
+  const entries = getRendererApps();
 
-    if (entries.length === 0) {
-        console.warn('[build-apps] No apps found in src/renderer/apps');
+  if (entries.length === 0) {
+    console.warn("[build-apps] No apps found in src/renderer/apps");
+    return;
+  }
+
+  console.log(`[build-apps] Found ${entries.length} app(s): ${entries.join(", ")}`);
+
+  // Preload template render function
+
+  await Promise.all(
+    entries.map(async (appName) => {
+      const entryFile = path.join(appsDir, appName, "index.tsx");
+      if (!fs.existsSync(entryFile)) {
+        console.warn(`[build-apps] Skip ${appName}: missing index.tsx`);
         return;
-    }
+      }
 
-    console.log(`[build-apps] Found ${entries.length} app(s): ${entries.join(', ')}`);
+      const outDir = path.join(distWindows, appName);
+      fs.mkdirSync(outDir, { recursive: true });
 
-    // Preload template render function
+      const outfile = path.join(outDir, "index.js");
 
-    await Promise.all(entries.map(async (appName) => {
-        const entryFile = path.join(appsDir, appName, 'index.tsx');
-        if (!fs.existsSync(entryFile)) {
-            console.warn(`[build-apps] Skip ${appName}: missing index.tsx`);
-            return;
-        }
+      console.log(`[build-apps] Bundling ${appName} → ${path.relative(rootDir, outfile)}`);
 
-        const outDir = path.join(distWindows, appName);
-        fs.mkdirSync(outDir, { recursive: true });
+      await esbuild.build({
+        entryPoints: [entryFile],
+        outfile,
+        bundle: true,
+        platform: "browser",
+        format: "iife",
+        sourcemap: isDev(),
+        minify: !isDev(),
+        // A crash screen that reports `at t (index.js:1:948213)` reports nothing. Function
+        // names survive minification for a few kilobytes, and they are the whole difference
+        // between a stack an author can send on and one nobody can act on.
+        keepNames: true,
+        // Dev-only debug hooks compile in for dev builds and tree-shake out otherwise.
+        define: { __NLS_STUDIO_DEV__: JSON.stringify(isDev()) },
+        jsx: "automatic",
+        target: ["chrome114", "firefox120", "safari16"],
+        // narraleaf-react is linked from a sibling checkout whose own node_modules also
+        // contains these packages; pin them to THIS repo's copies so the bundle never
+        // carries two React (or motion) instances.
+        alias: {
+          react: path.join(rootDir, "node_modules", "react"),
+          "react-dom": path.join(rootDir, "node_modules", "react-dom"),
+          motion: path.join(rootDir, "node_modules", "motion")
+        },
+        loader: {
+          ".ts": "ts",
+          ".tsx": "tsx",
+          ".ttf": "file",
+          ".woff": "file",
+          ".woff2": "file"
+        },
+        plugins: [postcssPlugin()]
+      });
 
-        const outfile = path.join(outDir, 'index.js');
+      // Render html
+      const html = await renderHtml(appName);
 
-        console.log(`[build-apps] Bundling ${appName} → ${path.relative(rootDir, outfile)}`);
+      await promisify(fs.writeFile)(path.join(outDir, "index.html"), html, "utf-8");
 
-        await esbuild.build({
-            entryPoints: [entryFile],
-            outfile,
-            bundle: true,
-            platform: 'browser',
-            format: 'iife',
-            sourcemap: isDev(),
-            minify: !isDev(),
-            // A crash screen that reports `at t (index.js:1:948213)` reports nothing. Function
-            // names survive minification for a few kilobytes, and they are the whole difference
-            // between a stack an author can send on and one nobody can act on.
-            keepNames: true,
-            // Dev-only debug hooks compile in for dev builds and tree-shake out otherwise.
-            define: { __NLS_STUDIO_DEV__: JSON.stringify(isDev()) },
-            jsx: 'automatic',
-            target: ['chrome114', 'firefox120', 'safari16'],
-            // narraleaf-react is linked from a sibling checkout whose own node_modules also
-            // contains these packages; pin them to THIS repo's copies so the bundle never
-            // carries two React (or motion) instances.
-            alias: {
-                'react': path.join(rootDir, 'node_modules', 'react'),
-                'react-dom': path.join(rootDir, 'node_modules', 'react-dom'),
-                'motion': path.join(rootDir, 'node_modules', 'motion'),
-            },
-            loader: {
-                '.ts': 'ts',
-                '.tsx': 'tsx',
-                '.ttf': 'file',
-                '.woff': 'file',
-                '.woff2': 'file',
-            },
-            plugins: [postcssPlugin()],
-        });
+      console.log(`[build-apps] Generated HTML for ${appName}`);
+    })
+  );
 
-        // Render html
-        const html = await renderHtml(appName);
-
-        await promisify(fs.writeFile)(path.join(outDir, 'index.html'), html, 'utf-8');
-
-        console.log(`[build-apps] Generated HTML for ${appName}`);
-    }));
-
-    console.log('[build-apps] All apps built successfully.');
+  console.log("[build-apps] All apps built successfully.");
 })();

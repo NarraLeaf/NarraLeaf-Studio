@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import type { UIStageSurface } from "@shared/types/ui-editor/document";
 import {
-    StageSlotSurfaceBody,
-    useStageSlotSurfaceRuntime,
-    type GameUiSlotHostOptions,
+  StageSlotSurfaceBody,
+  useStageSlotSurfaceRuntime,
+  type GameUiSlotHostOptions
 } from "./StageSlotSurfaceShell";
 
 /**
@@ -16,23 +16,29 @@ import {
  * A full-surface interactive container would still block stage clicks — documented caveat.
  */
 export function OnStageSlotSurface(props: {
-    options: GameUiSlotHostOptions;
-    surface: UIStageSurface;
+  options: GameUiSlotHostOptions;
+  surface: UIStageSurface;
 }) {
-    const { options, surface } = props;
-    const runtime = useStageSlotSurfaceRuntime({ options, surface, slotId: "onStage" });
-    return (
-        <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }} data-element-type="studio-on-stage">
-            <StageSlotSurfaceBody
-                options={options}
-                surface={surface}
-                runtime={runtime}
-                surfacePointerEvents="none"
-            />
-        </div>
-    );
+  const { options, surface } = props;
+  const runtime = useStageSlotSurfaceRuntime({ options, surface, slotId: "onStage" });
+  return (
+    <div
+      style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+      data-element-type="studio-on-stage"
+    >
+      <StageSlotSurfaceBody
+        options={options}
+        surface={surface}
+        runtime={runtime}
+        surfacePointerEvents="none"
+      />
+    </div>
+  );
 }
 
-export function createOnStageSlotNode(options: GameUiSlotHostOptions, surface: UIStageSurface): ReactNode {
-    return <OnStageSlotSurface options={options} surface={surface} />;
+export function createOnStageSlotNode(
+  options: GameUiSlotHostOptions,
+  surface: UIStageSurface
+): ReactNode {
+  return <OnStageSlotSurface options={options} surface={surface} />;
 }

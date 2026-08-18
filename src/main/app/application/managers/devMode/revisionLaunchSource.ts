@@ -15,10 +15,10 @@ import type { RevisionSnapshotResult } from "../vcs/revisionSnapshot";
  * this one has to tell them apart because only one of them changes what "the project" means.
  */
 export interface DevModeLaunchSource {
-    /** The directory the compile path reads. */
-    directory: string;
-    /** The revision {@link directory} is a snapshot of, when it is one. */
-    revision?: RevisionId;
+  /** The directory the compile path reads. */
+  directory: string;
+  /** The revision {@link directory} is a snapshot of, when it is one. */
+  revision?: RevisionId;
 }
 
 /**
@@ -29,11 +29,16 @@ export interface DevModeLaunchSource {
  * to the working tree - is the failure this milestone exists to prevent, and an author who has seen
  * other tools do that will assume it happened here.
  */
-export function devModeRevisionRefusalMessage(revision: RevisionId | undefined, detail: string): string {
-    const named = revision ? `version ${revision.slice(0, 12)}` : "the version you are looking at";
-    return `Dev Mode could not run ${named}: ${detail} Nothing was run. While you are looking at an `
-        + `older version, Dev Mode will not silently run your current files instead. Leave the version `
-        + `you are looking at to run those.`;
+export function devModeRevisionRefusalMessage(
+  revision: RevisionId | undefined,
+  detail: string
+): string {
+  const named = revision ? `version ${revision.slice(0, 12)}` : "the version you are looking at";
+  return (
+    `Dev Mode could not run ${named}: ${detail} Nothing was run. While you are looking at an ` +
+    `older version, Dev Mode will not silently run your current files instead. Leave the version ` +
+    `you are looking at to run those.`
+  );
 }
 
 /**
@@ -49,27 +54,29 @@ export function devModeRevisionRefusalMessage(revision: RevisionId | undefined, 
  * working tree and call it the revision.
  */
 export async function resolveDevModeLaunchSource(options: {
-    projectPath: string;
-    materialize: (revision: RevisionId) => Promise<RevisionSnapshotResult>;
+  projectPath: string;
+  materialize: (revision: RevisionId) => Promise<RevisionSnapshotResult>;
 }): Promise<DevModeLaunchSource> {
-    const frozen = getWorkspaceFreezeState(options.projectPath);
-    if (!frozen || frozen.kind !== "revision") {
-        return { directory: options.projectPath };
-    }
-    if (!frozen.revision) {
-        // The workspace says it is showing a revision and did not say which. Refusing is the only safe
-        // answer: the report crosses IPC, so this is reachable from a renderer older than the field, and
-        // guessing "probably the tip" would run the current game under a past version's name.
-        throw new Error(devModeRevisionRefusalMessage(
-            undefined,
-            "the workspace did not say which version it is showing.",
-        ));
-    }
-    try {
-        const snapshot = await options.materialize(frozen.revision);
-        return { directory: snapshot.directory, revision: frozen.revision };
-    } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        throw new Error(devModeRevisionRefusalMessage(frozen.revision, `${detail}.`));
-    }
+  const frozen = getWorkspaceFreezeState(options.projectPath);
+  if (!frozen || frozen.kind !== "revision") {
+    return { directory: options.projectPath };
+  }
+  if (!frozen.revision) {
+    // The workspace says it is showing a revision and did not say which. Refusing is the only safe
+    // answer: the report crosses IPC, so this is reachable from a renderer older than the field, and
+    // guessing "probably the tip" would run the current game under a past version's name.
+    throw new Error(
+      devModeRevisionRefusalMessage(
+        undefined,
+        "the workspace did not say which version it is showing."
+      )
+    );
+  }
+  try {
+    const snapshot = await options.materialize(frozen.revision);
+    return { directory: snapshot.directory, revision: frozen.revision };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(devModeRevisionRefusalMessage(frozen.revision, `${detail}.`));
+  }
 }

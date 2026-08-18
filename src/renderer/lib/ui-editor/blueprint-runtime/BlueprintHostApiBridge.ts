@@ -1,57 +1,60 @@
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type {
-    BlueprintOpenExternalRequest,
-    BlueprintOpenExternalResult,
+  BlueprintOpenExternalRequest,
+  BlueprintOpenExternalResult
 } from "@shared/types/blueprint/externalLink";
 import type {
-    BlueprintNetworkFetchRequest,
-    BlueprintNetworkFetchResult,
+  BlueprintNetworkFetchRequest,
+  BlueprintNetworkFetchResult
 } from "@shared/types/blueprint/network";
 import {
-    normalizeBlueprintImageAssetValue,
-    normalizeBlueprintRGBAColor,
-    toBlueprintImageAsset,
-    type BlueprintElementRef,
-    type BlueprintImageAsset,
-    type BlueprintRGBAColor,
-    type BlueprintSoundHandle,
+  normalizeBlueprintImageAssetValue,
+  normalizeBlueprintRGBAColor,
+  toBlueprintImageAsset,
+  type BlueprintElementRef,
+  type BlueprintImageAsset,
+  type BlueprintRGBAColor,
+  type BlueprintSoundHandle
 } from "@shared/types/blueprint/valueTypes";
 import {
-    findBlueprintCharacterInfo,
-    normalizeBlueprintCharacterInfo,
-    type BlueprintCharacterInfo,
+  findBlueprintCharacterInfo,
+  normalizeBlueprintCharacterInfo,
+  type BlueprintCharacterInfo
 } from "@shared/types/blueprint/characterInfo";
 import { truncateDebugEventMessage } from "./DebugBridge";
 import {
-    BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
-    BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY,
-    BLUEPRINT_GAME_NAMETAG_STATE_KEY,
-    BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY,
-    BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY,
-    BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY,
-    BLUEPRINT_GAME_NVL_MODE_STATE_KEY,
-    BLUEPRINT_GAME_TEXT_READ_STATE_KEY,
-    BLUEPRINT_TEXT_READ_PERSISTENCE_KEY,
+  BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
+  BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY,
+  BLUEPRINT_GAME_NAMETAG_STATE_KEY,
+  BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY,
+  BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY,
+  BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY,
+  BLUEPRINT_GAME_NVL_MODE_STATE_KEY,
+  BLUEPRINT_GAME_TEXT_READ_STATE_KEY,
+  BLUEPRINT_TEXT_READ_PERSISTENCE_KEY
 } from "@shared/types/blueprint/hostApi";
 import {
-    BUILTIN_AUDIO_TRACKS,
-    resolveAudioTrack,
-    resolveAudioTrackPlayback,
-    resolveMixedElementVolume,
-    type AudioMixPreferences,
-    type ProjectAudioTrack,
+  BUILTIN_AUDIO_TRACKS,
+  resolveAudioTrack,
+  resolveAudioTrackPlayback,
+  resolveMixedElementVolume,
+  type AudioMixPreferences,
+  type ProjectAudioTrack
 } from "@shared/types/audioTrack";
 import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY, type VoiceLocaleEntry } from "@shared/types/voice";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
-import { normalizeElementEffectValues, type ElementEffectValues } from "@shared/types/ui-editor/effects";
+import {
+  normalizeElementEffectValues,
+  type ElementEffectValues
+} from "@shared/types/ui-editor/effects";
 import type {
-    UIDisplayableBaseTransform,
-    UIDisplayableMotionOverride,
-    UIDisplayableMotionTarget,
-    UIDisplayableMotionTransition,
-    WidgetRuntimeStateStore,
+  UIDisplayableBaseTransform,
+  UIDisplayableMotionOverride,
+  UIDisplayableMotionTarget,
+  UIDisplayableMotionTransition,
+  WidgetRuntimeStateStore
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { ScopeStoreBridge } from "./ScopeStoreBridge";
 import { isAppearanceCapableElementType } from "./appearanceCapableWidgets";
@@ -59,86 +62,101 @@ import { finalDisplayableMotionValue } from "@/lib/ui-editor/runtime/displayable
 import { getElementSurfaceTopLeftEx } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
 import { getTextProps } from "@/lib/ui-editor/widget-modules/builtin/text/helpers";
 import { getSliderProps } from "@/lib/ui-editor/widget-modules/builtin/slider/helpers";
-import { getListProps, resolveListItemsBindingArray } from "@/lib/ui-editor/widget-modules/builtin/list/helpers";
+import {
+  getListProps,
+  resolveListItemsBindingArray
+} from "@/lib/ui-editor/widget-modules/builtin/list/helpers";
 import { getButtonProps } from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
 import { getContainerProps } from "@/lib/ui-editor/widget-modules/builtin/container/helpers";
 import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import { getFrameProps } from "@/lib/ui-editor/widget-modules/builtin/frame/helpers";
 import { buildImageFillPropsUpdate } from "@/lib/ui-editor/widget-modules/shared/chrome/imageFillProps";
-import type { ImageFill, ImageFillCropPlacement, ImageFillMode } from "@shared/types/ui-editor/imageFill";
+import type {
+  ImageFill,
+  ImageFillCropPlacement,
+  ImageFillMode
+} from "@shared/types/ui-editor/imageFill";
 import { DEFAULT_RECTANGLE_CROP_PLACEMENT } from "@shared/types/ui-editor/rectangleLike";
 import type {
-    TextAlign,
-    TextVerticalAlign,
-    TextWidgetProps,
-    TextWrapMode,
+  TextAlign,
+  TextVerticalAlign,
+  TextWidgetProps,
+  TextWrapMode
 } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 import type { UISliderRuntimeValue, UISliderWidgetProps } from "@shared/types/ui-editor/slider";
 import { resolveSliderRuntimeValue } from "@shared/types/ui-editor/slider";
 import type { UISwitchRuntimeValue, UISwitchWidgetProps } from "@shared/types/ui-editor/switch";
 import { normalizeSwitchProps, resolveSwitchRuntimeValue } from "@shared/types/ui-editor/switch";
-import type { UITextInputRuntimeValue, UITextInputWidgetProps } from "@shared/types/ui-editor/textInput";
-import { normalizeTextInputProps, resolveTextInputRuntimeValue } from "@shared/types/ui-editor/textInput";
+import type {
+  UITextInputRuntimeValue,
+  UITextInputWidgetProps
+} from "@shared/types/ui-editor/textInput";
+import {
+  normalizeTextInputProps,
+  resolveTextInputRuntimeValue
+} from "@shared/types/ui-editor/textInput";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 import type { AutoSaveEntry, SaveRecordLine, SaveRecordTimes } from "@shared/types/saves";
 import type { GameProgressImportOutcome } from "@shared/types/gameProgress";
 import {
-    isButtonCursorValue,
-    type AppearanceFieldTransition,
-    type AppearanceModel,
-    type AppearancePropertyGroup,
-    type AppearanceVariant,
-    type ButtonCursorValue,
+  isButtonCursorValue,
+  type AppearanceFieldTransition,
+  type AppearanceModel,
+  type AppearancePropertyGroup,
+  type AppearanceVariant,
+  type ButtonCursorValue
 } from "@shared/types/ui-editor/appearance";
 import {
-    DEFAULT_SYSTEM_INTERACTION_SIGNALS,
-    type SystemInteractionSignals,
+  DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+  type SystemInteractionSignals
 } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
 import {
-    resolveAppearanceDisplayableOpacity,
-    resolveImageDisplayableOpacityKeys,
+  resolveAppearanceDisplayableOpacity,
+  resolveImageDisplayableOpacityKeys
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import {
-    createInitialButtonAppearance,
-    ensureButtonAppearanceHasAllKeys,
-    isUsableAppearanceModel,
+  createInitialButtonAppearance,
+  ensureButtonAppearanceHasAllKeys,
+  isUsableAppearanceModel
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 
 export type DevModeWidgetRuntimePatch = {
-    display?: boolean;
-    visible?: boolean;
-    enabled?: boolean;
-    frame?: {
-        targetSurfaceId?: string | null;
-        params?: Record<string, unknown>;
-    };
-    layout?: Partial<Pick<BlueprintDisplayableProperties["bounds"], "x" | "y" | "width" | "height">> &
-        Partial<Pick<BlueprintDisplayableProperties, "rotation" | "opacity">>;
+  display?: boolean;
+  visible?: boolean;
+  enabled?: boolean;
+  frame?: {
+    targetSurfaceId?: string | null;
+    params?: Record<string, unknown>;
+  };
+  layout?: Partial<Pick<BlueprintDisplayableProperties["bounds"], "x" | "y" | "width" | "height">> &
+    Partial<Pick<BlueprintDisplayableProperties, "rotation" | "opacity">>;
 };
 
 export type BlueprintElementFlushPayload = {
-    element: BlueprintElementRef;
+  element: BlueprintElementRef;
 };
 
 export type BlueprintTextProperties = Pick<
-    TextWidgetProps,
-    | "text"
-    | "fontAssetId"
-    | "fontSize"
-    | "fontWeight"
-    | "color"
-    | "textAlign"
-    | "textVerticalAlign"
-    | "lineHeight"
-    | "textWrapMode"
-    | "effects"
+  TextWidgetProps,
+  | "text"
+  | "fontAssetId"
+  | "fontSize"
+  | "fontWeight"
+  | "color"
+  | "textAlign"
+  | "textVerticalAlign"
+  | "lineHeight"
+  | "textWrapMode"
+  | "effects"
 >;
 
 export type BlueprintTextPropertiesPatch = Partial<BlueprintTextProperties>;
 
 export type BlueprintSliderProperties = UISliderRuntimeValue;
 
-export type BlueprintSliderPropertiesPatch = Partial<Pick<UISliderWidgetProps, "value" | "min" | "max" | "step">>;
+export type BlueprintSliderPropertiesPatch = Partial<
+  Pick<UISliderWidgetProps, "value" | "min" | "max" | "step">
+>;
 
 export type BlueprintSwitchProperties = UISwitchRuntimeValue;
 
@@ -158,94 +176,94 @@ export type BlueprintTextInputProperties = UITextInputRuntimeValue;
 export type BlueprintTextInputPropertiesPatch = Partial<Pick<UITextInputWidgetProps, "value">>;
 
 export type BlueprintListProperties = {
-    items: unknown[];
-    selectedIndex: number;
+  items: unknown[];
+  selectedIndex: number;
 };
 
 export type BlueprintDisplayableProperties = {
-    position: { x: number; y: number };
-    offset: { x: number; y: number };
-    size: { width: number; height: number };
-    bounds: { x: number; y: number; width: number; height: number };
-    rotation: number;
-    opacity: number;
-    display: boolean;
-    visible: boolean;
+  position: { x: number; y: number };
+  offset: { x: number; y: number };
+  size: { width: number; height: number };
+  bounds: { x: number; y: number; width: number; height: number };
+  rotation: number;
+  opacity: number;
+  display: boolean;
+  visible: boolean;
 };
 
 export type BlueprintDisplayablePropertiesPatch = Partial<{
-    x: number;
-    y: number;
-    offsetX: number;
-    offsetY: number;
-    width: number;
-    height: number;
-    rotation: number;
-    opacity: number;
-    display: boolean;
-    visible: boolean;
+  x: number;
+  y: number;
+  offsetX: number;
+  offsetY: number;
+  width: number;
+  height: number;
+  rotation: number;
+  opacity: number;
+  display: boolean;
+  visible: boolean;
 }>;
 
 export type BlueprintDisplayableMotionRequest = {
-    id?: string;
-    target: UIDisplayableMotionTarget;
-    transition: UIDisplayableMotionTransition;
-    resetOnComplete?: boolean;
-    commitLayoutOnComplete?: Partial<Pick<BlueprintDisplayablePropertiesPatch, "x" | "y">>;
+  id?: string;
+  target: UIDisplayableMotionTarget;
+  transition: UIDisplayableMotionTransition;
+  resetOnComplete?: boolean;
+  commitLayoutOnComplete?: Partial<Pick<BlueprintDisplayablePropertiesPatch, "x" | "y">>;
 };
 
 export type BlueprintWidgetCommonProperties = {
-    visible: boolean;
-    enabled: boolean;
-    variantId: string | null;
+  visible: boolean;
+  enabled: boolean;
+  variantId: string | null;
 };
 
 export type BlueprintButtonProperties = {
-    label: string;
-    cursor: ButtonCursorValue;
+  label: string;
+  cursor: ButtonCursorValue;
 };
 
 export type BlueprintContainerProperties = {
-    clipContent: boolean;
+  clipContent: boolean;
 };
 
 export type BlueprintImageProperties = {
-    asset: BlueprintImageAsset | null;
-    /** Legacy patch/read alias kept so older saved graph nodes can still run. */
-    assetId: string | null;
-    fitMode: ImageFillMode;
-    cropRect: ImageFillCropPlacement;
-    flipX: boolean;
-    flipY: boolean;
+  asset: BlueprintImageAsset | null;
+  /** Legacy patch/read alias kept so older saved graph nodes can still run. */
+  assetId: string | null;
+  fitMode: ImageFillMode;
+  cropRect: ImageFillCropPlacement;
+  flipX: boolean;
+  flipY: boolean;
 };
 
 export type BlueprintFrameProperties = {
-    targetSurfaceId: string | null;
-    params: Record<string, unknown>;
+  targetSurfaceId: string | null;
+  params: Record<string, unknown>;
 };
 
 export type BlueprintGamePreferenceKey =
-    | "autoForward"
-    | "skip"
-    /**
-     * Studio's own, not the engine's: skipping stops at a line the player has not read.
-     *
-     * It lives in the engine's preference store all the same (see `preferenceRuntime`), which is
-     * what lets it reach this API, the `gamePreferenceChanged` event and the project's preference
-     * defaults through exactly the same plumbing as the twelve the engine defines.
-     */
-    | "skipReadText"
-    | "showDialog"
-    | "gameSpeed"
-    | "cps"
-    | "voiceVolume"
-    | "voiceFadeDuration"
-    | "voiceEndMode"
-    | "bgmVolume"
-    | "soundVolume"
-    | "globalVolume"
-    | "skipDelay"
-    | "skipInterval";
+  | "autoForward"
+  | "skip"
+  /**
+   * Studio's own, not the engine's: skipping stops at a line the player has not read.
+   *
+   * It lives in the engine's preference store all the same (see `preferenceRuntime`), which is
+   * what lets it reach this API, the `gamePreferenceChanged` event and the project's preference
+   * defaults through exactly the same plumbing as the twelve the engine defines.
+   */
+  | "skipReadText"
+  | "showDialog"
+  | "gameSpeed"
+  | "cps"
+  | "voiceVolume"
+  | "voiceFadeDuration"
+  | "voiceEndMode"
+  | "bgmVolume"
+  | "soundVolume"
+  | "globalVolume"
+  | "skipDelay"
+  | "skipInterval";
 
 export type BlueprintGamePreferenceVoiceEndMode = "fade" | "stop" | "none";
 
@@ -253,281 +271,322 @@ export type BlueprintGamePreferenceValue = boolean | number | BlueprintGamePrefe
 
 /** One mount, as the host receives it: the options below, resolved, plus who is responsible for it. */
 export type BlueprintLayerShowRequest = {
-    surfaceId: string;
-    props: Record<string, unknown>;
-    modal: boolean;
-    dismissible: boolean;
-    group: string | null;
-    /** The runtime scope that asked for this layer; the layer closes when that scope does. */
-    ownerScopeId: string;
+  surfaceId: string;
+  props: Record<string, unknown>;
+  modal: boolean;
+  dismissible: boolean;
+  group: string | null;
+  /** The runtime scope that asked for this layer; the layer closes when that scope does. */
+  ownerScopeId: string;
 };
 
 /** How a layer is put up. Everything but the page itself has a default. */
 export type BlueprintLayerShowOptions = {
-    /** Everything below goes inert and the keys belong to this layer. */
-    modal?: boolean;
-    /** Whether Go back closes it. Default true. */
-    dismissible?: boolean;
-    /** Mutual-exclusion group; a second layer of an occupied group queues behind the first. */
-    group?: string | null;
+  /** Everything below goes inert and the keys belong to this layer. */
+  modal?: boolean;
+  /** Whether Go back closes it. Default true. */
+  dismissible?: boolean;
+  /** Mutual-exclusion group; a second layer of an occupied group queues behind the first. */
+  group?: string | null;
 };
 
 export type BlueprintHostApiRuntime = {
-    navigation: {
-        openSurface: (surfaceId: string, props?: unknown) => Promise<void>;
-        getPageProps: () => Record<string, unknown>;
-        pageBack: () => Promise<void>;
-        clearPages: () => Promise<void>;
-        clearGameOverlay: () => Promise<void>;
-        quitApplication: () => Promise<void>;
-        getFullscreen: () => Promise<boolean>;
-        setFullscreen: (fullscreen: boolean) => Promise<void>;
-        /**
-         * Open one web address in the player's browser.
-         *
-         * The host does not decide: it hands the request to whatever the shell supplied, and the
-         * shell's own process checks it against the addresses the build declared. Nothing here
-         * consults the project's network setting, because no request is made - see
-         * `@shared/types/blueprint/externalLink`.
-         */
-        openExternal: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
-    };
-    /** Surfaces stacked over the page lane. See the `layers` family in `@shared/types/blueprint/hostApi`. */
-    layers: {
-        /** Put a page up as a layer and return the handle that names it. */
-        show: (surfaceId: string, props?: unknown, options?: BlueprintLayerShowOptions) => Promise<string>;
-        /** Take that layer down, settling once it has finished animating out. */
-        hide: (handle: string) => Promise<void>;
-        /** Take a whole group down - what is on screen and what is queued behind it. */
-        hideGroup: (group: string) => Promise<void>;
-        /** Wait for that layer to close and read what it closed with. Null for a handle already gone. */
-        wait: (handle: string) => Promise<unknown>;
-        /** Close the layer the calling graph runs in. A no-op with a warning anywhere else. */
-        closeSelf: (result?: unknown) => Promise<void>;
-        isMounted: (handle: string) => boolean;
-    };
-    widget: {
-        setVisible: (elementId: string, visible: boolean) => Promise<void>;
-        setEnabled: (elementId: string, enabled: boolean) => Promise<void>;
-        /** `null` clears runtime override and restores authored default variant resolution. */
-        setVariant: (elementId: string, variantId: string | null, options?: { waitForTransition?: boolean }) => Promise<void>;
-        getCommonProperties: (elementId: string) => BlueprintWidgetCommonProperties;
-        getTextProperties: (elementId: string) => BlueprintTextProperties;
-        setTextProperties: (elementId: string, patch: BlueprintTextPropertiesPatch) => Promise<void>;
-        getButtonProperties: (elementId: string) => BlueprintButtonProperties;
-        setButtonProperties: (elementId: string, patch: Partial<BlueprintButtonProperties>) => Promise<void>;
-        getContainerProperties: (elementId: string) => BlueprintContainerProperties;
-        setContainerProperties: (elementId: string, patch: Partial<BlueprintContainerProperties>) => Promise<void>;
-        getImageProperties: (elementId: string) => BlueprintImageProperties;
-        setImageProperties: (elementId: string, patch: Partial<BlueprintImageProperties>) => Promise<void>;
-        getSliderProperties: (elementId: string) => BlueprintSliderProperties;
-        setSliderProperties: (elementId: string, patch: BlueprintSliderPropertiesPatch) => Promise<void>;
-        getSwitchProperties: (elementId: string) => BlueprintSwitchProperties;
-        setSwitchProperties: (elementId: string, patch: BlueprintSwitchPropertiesPatch) => Promise<void>;
-        getTextInputProperties: (elementId: string) => BlueprintTextInputProperties;
-        setTextInputProperties: (elementId: string, patch: BlueprintTextInputPropertiesPatch) => Promise<void>;
-        getListProperties: (elementId: string) => BlueprintListProperties;
-        setListItems: (elementId: string, items: readonly unknown[]) => Promise<void>;
-        setListSelectedIndex: (elementId: string, index: number) => Promise<void>;
-        scrollListToIndex: (elementId: string, index: number) => Promise<void>;
-        scrollListToTop: (elementId: string) => Promise<void>;
-        scrollListToBottom: (elementId: string) => Promise<void>;
-        getDisplayableProperties: (elementId: string) => BlueprintDisplayableProperties;
-        setDisplayableProperties: (elementId: string, patch: BlueprintDisplayablePropertiesPatch) => Promise<void>;
-        animateDisplayable: (elementId: string, request: BlueprintDisplayableMotionRequest) => Promise<UIDisplayableMotionOverride>;
-        stopDisplayableAnimation: (animationId: string) => Promise<void>;
-        getFrameProperties: (elementId: string) => BlueprintFrameProperties;
-        setFrameProperties: (elementId: string, patch: Partial<BlueprintFrameProperties>) => Promise<void>;
-    };
-    state: {
-        get: (scope: string, key: string) => unknown;
-        set: (scope: string, key: string, value: unknown) => void;
-    };
-    persistence: {
-        get: (key: string) => Promise<unknown>;
-        set: (key: string, value: unknown) => Promise<void>;
-    };
-    localization: {
-        /** Localization setup of the running game, or null when the project has none. */
-        getConfig: () => GameLocalizationConfigSnapshot | null;
-        /** Effective current locale (stored player choice, else the source locale). */
-        getLocale: () => Promise<string>;
-        /** Persist the player's language choice; callers validate against getConfig(). */
-        setLocale: (code: string) => Promise<void>;
-    };
+  navigation: {
+    openSurface: (surfaceId: string, props?: unknown) => Promise<void>;
+    getPageProps: () => Record<string, unknown>;
+    pageBack: () => Promise<void>;
+    clearPages: () => Promise<void>;
+    clearGameOverlay: () => Promise<void>;
+    quitApplication: () => Promise<void>;
+    getFullscreen: () => Promise<boolean>;
+    setFullscreen: (fullscreen: boolean) => Promise<void>;
     /**
-     * Voice-over: which dub the player hears, and replaying a take on demand.
+     * Open one web address in the player's browser.
      *
-     * Separate from `localization` because dub language and subtitle language are separate player
-     * choices - a game may be read in English and heard in Japanese.
+     * The host does not decide: it hands the request to whatever the shell supplied, and the
+     * shell's own process checks it against the addresses the build declared. Nothing here
+     * consults the project's network setting, because no request is made - see
+     * `@shared/types/blueprint/externalLink`.
      */
-    voice: {
-        /** The dub languages this build ships, in project order. Empty when the game has no voice. */
-        listLocales: () => VoiceLocaleEntry[];
-        /** Effective dub language: the stored player choice when the build ships it, else the first. */
-        getLocale: () => Promise<string>;
-        /** Persist the player's dub choice. Takes effect from the next spoken line - no restart. */
-        setLocale: (code: string) => Promise<void>;
-        /**
-         * Play one line's take in the current dub language, on that speaker's bus.
-         *
-         * The id is a voice unit id - the same id a backlog entry reports as `voiceId` - which is why
-         * a replay button is built from this rather than from the entry's resolved URL. Resolves to
-         * false when the line has no take in the current language.
-         */
-        play: (unitId: string) => Promise<boolean>;
-    };
-    frame: {
-        getParam: (key: string) => unknown;
-        emit: (eventName: string, data: unknown) => Promise<void>;
-    };
-    game: {
-        startStory: (request: DevModeStartStoryRequest) => Promise<void>;
-        isInGame: () => boolean;
-        isGameOverlay: () => boolean;
-        quit: (surfaceId: string) => Promise<void>;
-        writeSave: (id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>;
-        loadSave: (id: string) => Promise<void>;
-        deleteSave: (id: string) => Promise<void>;
-        listSaveIds: () => Promise<string[]>;
-        getSaveMetadata: (id: string) => Promise<unknown>;
-        /** When a slot was written, or null when there is no such slot. */
-        getSaveTimes: (id: string) => Promise<SaveRecordTimes | null>;
-        /** Where a slot stopped, or null when there is no such slot. */
-        getSaveLine: (id: string) => Promise<SaveRecordLine | null>;
-        getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
-        /** Write an autosave into the reserved ring now, regardless of the timer. */
-        writeAutoSave: () => Promise<void>;
-        /** The reserved autosave ring, newest first. Never overlaps `listSaveIds`. */
-        listAutoSaves: () => Promise<AutoSaveEntry[]>;
-        getHistory: () => Promise<BlueprintGameHistoryEntry[]>;
-        /** Jump back to a history entry by id; omit the id to undo the last entry. */
-        restoreHistory: (id?: string) => Promise<void>;
-        getNametag: () => string | null;
-        /**
-         * The speaking character's dialog avatar, or null. Already keyed on the differential the
-         * character is currently wearing - the engine resolves it off the live portrait element.
-         */
-        getSpeakerAvatar: () => BlueprintImageAsset | null;
-        /**
-         * The speaking character's authored accent colour, already in pin shape. Opaque white when
-         * nobody is speaking, the narrator is, or the character has no colour - the pin it feeds is
-         * a non-nullable RGBAColor, so "no colour" and "the default colour" are the same answer.
-         */
-        getSpeakerColor: () => BlueprintRGBAColor;
-        /**
-         * Any character by id, from the table mirrored into global state - the addressable read the
-         * speaker-scoped getters above cannot do. Null when the id is empty, or names a character
-         * that is not (or is no longer) in the project.
-         */
-        getCharacter: (characterId: string) => BlueprintCharacterInfo | null;
-        getNotifications: () => BlueprintGameNotification[];
-        getChoiceCount: () => number;
-        isNvlMode: () => boolean;
-        /** True while a dialog line is on screen and its message is marked read. */
-        isCurrentTextRead: () => boolean;
-        isTextRead: (textId: string) => boolean;
-        /** Wipe the persisted text-read record (all stories). */
-        clearTextRead: () => Promise<void>;
-        /**
-         * Has the player ever ENTERED this scene, by Studio scene id.
-         *
-         * Not the same question as `isTextRead`: that record is written when a line is displayed,
-         * this one when a scene actually starts. Saved-domain, so loading an older save rewinds it.
-         */
-        isSceneVisited: (sceneId: string) => boolean;
-        /**
-         * Has the player ever PICKED this choice option, by the option row's Studio block id. The
-         * one thing the text-read record structurally cannot answer - a menu that merely appeared
-         * marks every option of it read.
-         */
-        isOptionPicked: (optionId: string) => boolean;
-        /**
-         * Wipe the visited record of the running game.
-         *
-         * Synchronous, unlike `clearTextRead`: the record lives in the live `Storable`, not in host
-         * persistence, so there is nothing to await. It is also scoped to the running session - with
-         * no game up there is no record, and the call is a no-op instead of an error.
-         */
-        clearVisited: () => void;
-        choose: (index: number) => Promise<void>;
-        next: () => Promise<void>;
-        skip: () => Promise<void>;
-        showDialog: () => Promise<void>;
-        hideDialog: () => Promise<void>;
-        toggleDialogDisplay: () => Promise<void>;
-        setSentenceSpeed: (cps: number) => Promise<void>;
-        getPreference: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
-        setPreference: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void>;
-    };
-    sound: {
-        play: (input: BlueprintSoundPlayInput) => Promise<BlueprintSoundHandle | null>;
-        stop: (handle: BlueprintSoundHandle | null, fadeMs?: number) => Promise<void>;
-        pause: (handle: BlueprintSoundHandle) => Promise<void>;
-        resume: (handle: BlueprintSoundHandle) => Promise<void>;
-        /** Ramp rather than jump when `fadeMs` is set - this is also the fade-out/duck node. */
-        setVolume: (handle: BlueprintSoundHandle, volume: number, fadeMs?: number) => Promise<void>;
-        /** Milliseconds from the start of the file, not from the clip's in point. */
-        seek: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void>;
-        isPlaying: (handle: BlueprintSoundHandle) => boolean;
-        /**
-         * The volume a **host-owned** media element (the `nl.video` widget's `<video>`) must be set
-         * to so it obeys the same mixer everything else does.
-         *
-         * A DOM element the host created sits on none of the engine's gain nodes, so the whole
-         * product has to be computed and written to `element.volume`: the authored volume, times
-         * every bus in the track's chain, times the player's slider for whichever seeded bus that
-         * chain runs through, times master. Without this a muted game keeps playing video at full
-         * volume. Pair it with {@link subscribeMixerChanges} - a value read once goes stale the
-         * moment the player drags a slider, bus faders included.
-         */
-        resolveElementVolume: (input: { audioTrackId?: string | null; volume?: number | null }) => number;
-        /** Fires when any preference feeding `resolveElementVolume` changes. Returns a disposer. */
-        subscribeMixerChanges: (listener: () => void) => () => void;
-        /**
-         * An audio **track**'s own volume, 0..1 - one strip of the player's mixer.
-         *
-         * The player-facing counterpart of {@link setVolume}, which addresses one playing clip by
-         * handle. A track is a bus every clip beneath it is routed through, so setting one applies
-         * live to everything already playing and survives the clip that provoked it. This is what
-         * makes "turn Alice down" expressible at all: the four fixed volume preferences can only
-         * reach the three buses the engine seeds.
-         *
-         * An unknown or deleted track id reads as unity and writes nowhere, so a settings page
-         * built against a track the author later removed degrades to an inert slider.
-         */
-        getTrackVolume: (trackId: string) => number;
-        setTrackVolume: (trackId: string, volume: number) => Promise<void>;
-    };
+    openExternal: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
+  };
+  /** Surfaces stacked over the page lane. See the `layers` family in `@shared/types/blueprint/hostApi`. */
+  layers: {
+    /** Put a page up as a layer and return the handle that names it. */
+    show: (
+      surfaceId: string,
+      props?: unknown,
+      options?: BlueprintLayerShowOptions
+    ) => Promise<string>;
+    /** Take that layer down, settling once it has finished animating out. */
+    hide: (handle: string) => Promise<void>;
+    /** Take a whole group down - what is on screen and what is queued behind it. */
+    hideGroup: (group: string) => Promise<void>;
+    /** Wait for that layer to close and read what it closed with. Null for a handle already gone. */
+    wait: (handle: string) => Promise<unknown>;
+    /** Close the layer the calling graph runs in. A no-op with a warning anywhere else. */
+    closeSelf: (result?: unknown) => Promise<void>;
+    isMounted: (handle: string) => boolean;
+  };
+  widget: {
+    setVisible: (elementId: string, visible: boolean) => Promise<void>;
+    setEnabled: (elementId: string, enabled: boolean) => Promise<void>;
+    /** `null` clears runtime override and restores authored default variant resolution. */
+    setVariant: (
+      elementId: string,
+      variantId: string | null,
+      options?: { waitForTransition?: boolean }
+    ) => Promise<void>;
+    getCommonProperties: (elementId: string) => BlueprintWidgetCommonProperties;
+    getTextProperties: (elementId: string) => BlueprintTextProperties;
+    setTextProperties: (elementId: string, patch: BlueprintTextPropertiesPatch) => Promise<void>;
+    getButtonProperties: (elementId: string) => BlueprintButtonProperties;
+    setButtonProperties: (
+      elementId: string,
+      patch: Partial<BlueprintButtonProperties>
+    ) => Promise<void>;
+    getContainerProperties: (elementId: string) => BlueprintContainerProperties;
+    setContainerProperties: (
+      elementId: string,
+      patch: Partial<BlueprintContainerProperties>
+    ) => Promise<void>;
+    getImageProperties: (elementId: string) => BlueprintImageProperties;
+    setImageProperties: (
+      elementId: string,
+      patch: Partial<BlueprintImageProperties>
+    ) => Promise<void>;
+    getSliderProperties: (elementId: string) => BlueprintSliderProperties;
+    setSliderProperties: (
+      elementId: string,
+      patch: BlueprintSliderPropertiesPatch
+    ) => Promise<void>;
+    getSwitchProperties: (elementId: string) => BlueprintSwitchProperties;
+    setSwitchProperties: (
+      elementId: string,
+      patch: BlueprintSwitchPropertiesPatch
+    ) => Promise<void>;
+    getTextInputProperties: (elementId: string) => BlueprintTextInputProperties;
+    setTextInputProperties: (
+      elementId: string,
+      patch: BlueprintTextInputPropertiesPatch
+    ) => Promise<void>;
+    getListProperties: (elementId: string) => BlueprintListProperties;
+    setListItems: (elementId: string, items: readonly unknown[]) => Promise<void>;
+    setListSelectedIndex: (elementId: string, index: number) => Promise<void>;
+    scrollListToIndex: (elementId: string, index: number) => Promise<void>;
+    scrollListToTop: (elementId: string) => Promise<void>;
+    scrollListToBottom: (elementId: string) => Promise<void>;
+    getDisplayableProperties: (elementId: string) => BlueprintDisplayableProperties;
+    setDisplayableProperties: (
+      elementId: string,
+      patch: BlueprintDisplayablePropertiesPatch
+    ) => Promise<void>;
+    animateDisplayable: (
+      elementId: string,
+      request: BlueprintDisplayableMotionRequest
+    ) => Promise<UIDisplayableMotionOverride>;
+    stopDisplayableAnimation: (animationId: string) => Promise<void>;
+    getFrameProperties: (elementId: string) => BlueprintFrameProperties;
+    setFrameProperties: (
+      elementId: string,
+      patch: Partial<BlueprintFrameProperties>
+    ) => Promise<void>;
+  };
+  state: {
+    get: (scope: string, key: string) => unknown;
+    set: (scope: string, key: string, value: unknown) => void;
+  };
+  persistence: {
+    get: (key: string) => Promise<unknown>;
+    set: (key: string, value: unknown) => Promise<void>;
+  };
+  localization: {
+    /** Localization setup of the running game, or null when the project has none. */
+    getConfig: () => GameLocalizationConfigSnapshot | null;
+    /** Effective current locale (stored player choice, else the source locale). */
+    getLocale: () => Promise<string>;
+    /** Persist the player's language choice; callers validate against getConfig(). */
+    setLocale: (code: string) => Promise<void>;
+  };
+  /**
+   * Voice-over: which dub the player hears, and replaying a take on demand.
+   *
+   * Separate from `localization` because dub language and subtitle language are separate player
+   * choices - a game may be read in English and heard in Japanese.
+   */
+  voice: {
+    /** The dub languages this build ships, in project order. Empty when the game has no voice. */
+    listLocales: () => VoiceLocaleEntry[];
+    /** Effective dub language: the stored player choice when the build ships it, else the first. */
+    getLocale: () => Promise<string>;
+    /** Persist the player's dub choice. Takes effect from the next spoken line - no restart. */
+    setLocale: (code: string) => Promise<void>;
     /**
-     * HTTP, for the Fetch node.
+     * Play one line's take in the current dub language, on that speaker's bus.
      *
-     * The host does not issue the request itself: it hands it to whatever the shell supplied, which
-     * on desktop and in Dev Mode is the main process (`onNetworkFetch`). Nothing here calls
-     * `fetch()` - see `@shared/utils/blueprintNetworkFetch` for why the renderer must not.
+     * The id is a voice unit id - the same id a backlog entry reports as `voiceId` - which is why
+     * a replay button is built from this rather than from the entry's resolved URL. Resolves to
+     * false when the line has no take in the current language.
      */
-    network: {
-        fetch: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
-    };
+    play: (unitId: string) => Promise<boolean>;
+  };
+  frame: {
+    getParam: (key: string) => unknown;
+    emit: (eventName: string, data: unknown) => Promise<void>;
+  };
+  game: {
+    startStory: (request: DevModeStartStoryRequest) => Promise<void>;
+    isInGame: () => boolean;
+    isGameOverlay: () => boolean;
+    quit: (surfaceId: string) => Promise<void>;
+    writeSave: (id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>;
+    loadSave: (id: string) => Promise<void>;
+    deleteSave: (id: string) => Promise<void>;
+    listSaveIds: () => Promise<string[]>;
+    getSaveMetadata: (id: string) => Promise<unknown>;
+    /** When a slot was written, or null when there is no such slot. */
+    getSaveTimes: (id: string) => Promise<SaveRecordTimes | null>;
+    /** Where a slot stopped, or null when there is no such slot. */
+    getSaveLine: (id: string) => Promise<SaveRecordLine | null>;
+    getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
+    /** Write an autosave into the reserved ring now, regardless of the timer. */
+    writeAutoSave: () => Promise<void>;
+    /** The reserved autosave ring, newest first. Never overlaps `listSaveIds`. */
+    listAutoSaves: () => Promise<AutoSaveEntry[]>;
+    getHistory: () => Promise<BlueprintGameHistoryEntry[]>;
+    /** Jump back to a history entry by id; omit the id to undo the last entry. */
+    restoreHistory: (id?: string) => Promise<void>;
+    getNametag: () => string | null;
     /**
-     * Carrying a playthrough between two editions of one title, for the Export/Import Progress
-     * nodes.
-     *
-     * The host does not decide where the document is: it hands the act to whatever the shell
-     * supplied, and the shell's own process resolves the file from the build's progress key. What
-     * this side states is what the playthrough holds, never where it goes.
-     *
-     * `import` answers with a scene id rather than going anywhere with it. The node deliberately
-     * does not jump - `Start Game` is what starts a story, and an author's graph usually has
-     * something to do first.
+     * The speaking character's dialog avatar, or null. Already keyed on the differential the
+     * character is currently wearing - the engine resolves it off the live portrait element.
      */
-    progress: {
-        export: () => Promise<{ outcome: "written" | "failed"; error: string }>;
-        import: () => Promise<GameProgressImportOutcome>;
-    };
-    devtools: {
-        log: (level: string, message: string) => void;
-    };
+    getSpeakerAvatar: () => BlueprintImageAsset | null;
+    /**
+     * The speaking character's authored accent colour, already in pin shape. Opaque white when
+     * nobody is speaking, the narrator is, or the character has no colour - the pin it feeds is
+     * a non-nullable RGBAColor, so "no colour" and "the default colour" are the same answer.
+     */
+    getSpeakerColor: () => BlueprintRGBAColor;
+    /**
+     * Any character by id, from the table mirrored into global state - the addressable read the
+     * speaker-scoped getters above cannot do. Null when the id is empty, or names a character
+     * that is not (or is no longer) in the project.
+     */
+    getCharacter: (characterId: string) => BlueprintCharacterInfo | null;
+    getNotifications: () => BlueprintGameNotification[];
+    getChoiceCount: () => number;
+    isNvlMode: () => boolean;
+    /** True while a dialog line is on screen and its message is marked read. */
+    isCurrentTextRead: () => boolean;
+    isTextRead: (textId: string) => boolean;
+    /** Wipe the persisted text-read record (all stories). */
+    clearTextRead: () => Promise<void>;
+    /**
+     * Has the player ever ENTERED this scene, by Studio scene id.
+     *
+     * Not the same question as `isTextRead`: that record is written when a line is displayed,
+     * this one when a scene actually starts. Saved-domain, so loading an older save rewinds it.
+     */
+    isSceneVisited: (sceneId: string) => boolean;
+    /**
+     * Has the player ever PICKED this choice option, by the option row's Studio block id. The
+     * one thing the text-read record structurally cannot answer - a menu that merely appeared
+     * marks every option of it read.
+     */
+    isOptionPicked: (optionId: string) => boolean;
+    /**
+     * Wipe the visited record of the running game.
+     *
+     * Synchronous, unlike `clearTextRead`: the record lives in the live `Storable`, not in host
+     * persistence, so there is nothing to await. It is also scoped to the running session - with
+     * no game up there is no record, and the call is a no-op instead of an error.
+     */
+    clearVisited: () => void;
+    choose: (index: number) => Promise<void>;
+    next: () => Promise<void>;
+    skip: () => Promise<void>;
+    showDialog: () => Promise<void>;
+    hideDialog: () => Promise<void>;
+    toggleDialogDisplay: () => Promise<void>;
+    setSentenceSpeed: (cps: number) => Promise<void>;
+    getPreference: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
+    setPreference: (
+      key: BlueprintGamePreferenceKey,
+      value: BlueprintGamePreferenceValue
+    ) => Promise<void>;
+  };
+  sound: {
+    play: (input: BlueprintSoundPlayInput) => Promise<BlueprintSoundHandle | null>;
+    stop: (handle: BlueprintSoundHandle | null, fadeMs?: number) => Promise<void>;
+    pause: (handle: BlueprintSoundHandle) => Promise<void>;
+    resume: (handle: BlueprintSoundHandle) => Promise<void>;
+    /** Ramp rather than jump when `fadeMs` is set - this is also the fade-out/duck node. */
+    setVolume: (handle: BlueprintSoundHandle, volume: number, fadeMs?: number) => Promise<void>;
+    /** Milliseconds from the start of the file, not from the clip's in point. */
+    seek: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void>;
+    isPlaying: (handle: BlueprintSoundHandle) => boolean;
+    /**
+     * The volume a **host-owned** media element (the `nl.video` widget's `<video>`) must be set
+     * to so it obeys the same mixer everything else does.
+     *
+     * A DOM element the host created sits on none of the engine's gain nodes, so the whole
+     * product has to be computed and written to `element.volume`: the authored volume, times
+     * every bus in the track's chain, times the player's slider for whichever seeded bus that
+     * chain runs through, times master. Without this a muted game keeps playing video at full
+     * volume. Pair it with {@link subscribeMixerChanges} - a value read once goes stale the
+     * moment the player drags a slider, bus faders included.
+     */
+    resolveElementVolume: (input: {
+      audioTrackId?: string | null;
+      volume?: number | null;
+    }) => number;
+    /** Fires when any preference feeding `resolveElementVolume` changes. Returns a disposer. */
+    subscribeMixerChanges: (listener: () => void) => () => void;
+    /**
+     * An audio **track**'s own volume, 0..1 - one strip of the player's mixer.
+     *
+     * The player-facing counterpart of {@link setVolume}, which addresses one playing clip by
+     * handle. A track is a bus every clip beneath it is routed through, so setting one applies
+     * live to everything already playing and survives the clip that provoked it. This is what
+     * makes "turn Alice down" expressible at all: the four fixed volume preferences can only
+     * reach the three buses the engine seeds.
+     *
+     * An unknown or deleted track id reads as unity and writes nowhere, so a settings page
+     * built against a track the author later removed degrades to an inert slider.
+     */
+    getTrackVolume: (trackId: string) => number;
+    setTrackVolume: (trackId: string, volume: number) => Promise<void>;
+  };
+  /**
+   * HTTP, for the Fetch node.
+   *
+   * The host does not issue the request itself: it hands it to whatever the shell supplied, which
+   * on desktop and in Dev Mode is the main process (`onNetworkFetch`). Nothing here calls
+   * `fetch()` - see `@shared/utils/blueprintNetworkFetch` for why the renderer must not.
+   */
+  network: {
+    fetch: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
+  };
+  /**
+   * Carrying a playthrough between two editions of one title, for the Export/Import Progress
+   * nodes.
+   *
+   * The host does not decide where the document is: it hands the act to whatever the shell
+   * supplied, and the shell's own process resolves the file from the build's progress key. What
+   * this side states is what the playthrough holds, never where it goes.
+   *
+   * `import` answers with a scene id rather than going anywhere with it. The node deliberately
+   * does not jump - `Start Game` is what starts a story, and an author's graph usually has
+   * something to do first.
+   */
+  progress: {
+    export: () => Promise<{ outcome: "written" | "failed"; error: string }>;
+    import: () => Promise<GameProgressImportOutcome>;
+  };
+  devtools: {
+    log: (level: string, message: string) => void;
+  };
 };
 
 /**
@@ -542,25 +601,27 @@ export type BlueprintHostApiRuntime = {
  * must get a number, not an exception. A missing value reads as unity, not silence.
  */
 function readMixPreferences(
-    onGetGamePreference: ((key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue) | undefined,
+  onGetGamePreference:
+    | ((key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue)
+    | undefined
 ): AudioMixPreferences {
-    if (!onGetGamePreference) {
-        return {};
+  if (!onGetGamePreference) {
+    return {};
+  }
+  const read = (key: BlueprintGamePreferenceKey): number | null => {
+    try {
+      const value = onGetGamePreference(key);
+      return typeof value === "number" ? value : null;
+    } catch {
+      return null;
     }
-    const read = (key: BlueprintGamePreferenceKey): number | null => {
-        try {
-            const value = onGetGamePreference(key);
-            return typeof value === "number" ? value : null;
-        } catch {
-            return null;
-        }
-    };
-    return {
-        globalVolume: read("globalVolume"),
-        bgmVolume: read("bgmVolume"),
-        soundVolume: read("soundVolume"),
-        voiceVolume: read("voiceVolume"),
-    };
+  };
+  return {
+    globalVolume: read("globalVolume"),
+    bgmVolume: read("bgmVolume"),
+    soundVolume: read("soundVolume"),
+    voiceVolume: read("voiceVolume")
+  };
 }
 
 /**
@@ -572,32 +633,32 @@ export const BLUEPRINT_SOUND_CHANNELS = ["bgm", "sound", "voice"] as const;
 export type BlueprintSoundChannel = (typeof BLUEPRINT_SOUND_CHANNELS)[number];
 
 export function normalizeBlueprintSoundChannel(value: unknown): BlueprintSoundChannel {
-    return BLUEPRINT_SOUND_CHANNELS.includes(value as BlueprintSoundChannel)
-        ? value as BlueprintSoundChannel
-        : "sound";
+  return BLUEPRINT_SOUND_CHANNELS.includes(value as BlueprintSoundChannel)
+    ? (value as BlueprintSoundChannel)
+    : "sound";
 }
 
 export type BlueprintSoundPlayInput = {
-    assetId: string;
-    /**
-     * Project audio track (`ProjectAudioTrack.id`), which **is** the engine bus this clip is routed
-     * into, and whose own gain is applied live by the gain graph rather than folded in here. It also
-     * supplies the loop default below. Absent resolves to the seeded SFX bus, which is what an
-     * unqualified "play this clip" has always meant.
-     */
-    audioTrackId?: string | null;
-    /** Author override; absent means the track's own default. */
-    loop?: boolean | null;
-    /** Author override, 0..1 as authored; absent means unity. Never pre-multiplied by a bus gain. */
-    volume?: number | null;
-    /** Fade-in in milliseconds; absent means a hard start (a fade belongs to the moment). */
-    fadeInMs?: number | null;
-    /**
-     * The pre-track channel select, kept only so a graph or a host call written before tracks
-     * existed still plays on the bus it named. Read only when `audioTrackId` is unset, and mapped
-     * to that channel's built-in track by the transport. Nothing writes it any more.
-     */
-    channel?: BlueprintSoundChannel;
+  assetId: string;
+  /**
+   * Project audio track (`ProjectAudioTrack.id`), which **is** the engine bus this clip is routed
+   * into, and whose own gain is applied live by the gain graph rather than folded in here. It also
+   * supplies the loop default below. Absent resolves to the seeded SFX bus, which is what an
+   * unqualified "play this clip" has always meant.
+   */
+  audioTrackId?: string | null;
+  /** Author override; absent means the track's own default. */
+  loop?: boolean | null;
+  /** Author override, 0..1 as authored; absent means unity. Never pre-multiplied by a bus gain. */
+  volume?: number | null;
+  /** Fade-in in milliseconds; absent means a hard start (a fade belongs to the moment). */
+  fadeInMs?: number | null;
+  /**
+   * The pre-track channel select, kept only so a graph or a host call written before tracks
+   * existed still plays on the bus it named. Read only when `audioTrackId` is unset, and mapped
+   * to that channel's built-in track by the transport. Nothing writes it any more.
+   */
+  channel?: BlueprintSoundChannel;
 };
 
 /**
@@ -606,854 +667,937 @@ export type BlueprintSoundPlayInput = {
  * text-resolution nodes (Get Text / Has Text) can look translations up; a
  * bare config (no tables) still satisfies the language-management nodes.
  */
-export type GameLocalizationConfigSnapshot = Pick<GameLocalizationBundle, "sourceLocale" | "locales">
-    & Partial<Pick<GameLocalizationBundle, "tables" | "keys">>;
+export type GameLocalizationConfigSnapshot = Pick<
+  GameLocalizationBundle,
+  "sourceLocale" | "locales"
+> &
+  Partial<Pick<GameLocalizationBundle, "tables" | "keys">>;
 
 export type CreateBlueprintHostApiRuntimeOptions = {
-    document: UIDocument;
-    scope: ScopeStoreBridge;
-    activeSurfaceId: string;
-    runtimeScopeId?: string;
-    pageProps?: Record<string, unknown>;
-    frameParams?: Record<string, unknown>;
-    onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
-    onStartStory?: (request: DevModeStartStoryRequest) => Promise<void> | void;
-    onIsInGame?: () => boolean;
-    onIsGameOverlay?: () => boolean;
-    onQuitGame?: (surfaceId: string) => Promise<void> | void;
-    onWriteSave?: (id: string, metadata: unknown, screenshot?: boolean) => Promise<void> | void;
-    onLoadSave?: (id: string) => Promise<void> | void;
-    onDeleteSave?: (id: string) => Promise<void> | void;
-    onListSaveIds?: () => Promise<string[]> | string[];
-    onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
-    onGetSaveTimes?: (id: string) => Promise<SaveRecordTimes | null> | SaveRecordTimes | null;
-    onGetSaveLine?: (id: string) => Promise<SaveRecordLine | null> | SaveRecordLine | null;
-    onGetSavePreview?: (id: string) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
-    onWriteAutoSave?: () => Promise<void> | void;
-    onListAutoSaves?: () => Promise<AutoSaveEntry[]> | AutoSaveEntry[];
-    onGetHistory?: () => Promise<BlueprintGameHistoryEntry[]> | BlueprintGameHistoryEntry[];
-    onRestoreHistory?: (id?: string) => Promise<void> | void;
-    onGetNametag?: () => string | null;
-    onGetSpeakerAvatar?: () => BlueprintImageAsset | null;
-    /** Optional override; without it the speaker colour comes from the mirrored dialog state key. */
-    onGetSpeakerColor?: () => unknown;
-    /**
-     * Optional override; without it `getCharacter` looks the id up in the character table mirrored
-     * into global state. Left unset by every real host - the mirror is the whole point, since it
-     * reaches Game UI slot surfaces without each of them wiring a callback.
-     */
-    onGetCharacter?: (characterId: string) => unknown;
-    onGetNotifications?: () => BlueprintGameNotification[];
-    onGetChoiceCount?: () => number;
-    onIsNvlMode?: () => boolean;
-    onIsCurrentTextRead?: () => boolean;
-    /** Per-id read check. Absent without a tracker (story preview); reads as false. */
-    onIsTextRead?: (textId: string) => boolean;
-    onClearTextRead?: () => Promise<void> | void;
-    /**
-     * The visited record (see `runtime/game/storyVisited`). Absent when no story is running - a
-     * settings page or a main menu opened before the first game reads everything as "not visited",
-     * which is the correct answer there rather than an error.
-     */
-    onIsSceneVisited?: (sceneId: string) => boolean;
-    onIsOptionPicked?: (optionId: string) => boolean;
-    onClearVisited?: () => void;
-    onSelectChoice?: (index: number) => Promise<void> | void;
-    onNext?: () => Promise<void> | void;
-    onSkip?: () => Promise<void> | void;
-    onShowDialog?: () => Promise<void> | void;
-    onHideDialog?: () => Promise<void> | void;
-    onToggleDialogDisplay?: () => Promise<void> | void;
-    onSetSentenceSpeed?: (cps: number) => Promise<void> | void;
-    onGetGamePreference?: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
-    onSetGamePreference?: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void> | void;
-    /**
-     * Sound transport, backed by the engine's audio path. Absent in environments
-     * with no running game (the editor preview), where the sound nodes degrade
-     * to a warned no-op rather than throwing - a Page previewed in Studio should
-     * still lay out, just silently.
-     */
-    onPlaySound?: (input: BlueprintSoundPlayInput) => Promise<BlueprintSoundHandle | null> | BlueprintSoundHandle | null;
-    onStopSound?: (handle: BlueprintSoundHandle | null, fadeMs: number) => Promise<void> | void;
-    onPauseSound?: (handle: BlueprintSoundHandle) => Promise<void> | void;
-    onResumeSound?: (handle: BlueprintSoundHandle) => Promise<void> | void;
-    onSetSoundVolume?: (handle: BlueprintSoundHandle, volume: number, fadeMs: number) => Promise<void> | void;
-    onSeekSound?: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void> | void;
-    onIsSoundPlaying?: (handle: BlueprintSoundHandle) => boolean;
-    /**
-     * Per-bus volume, backed by the engine's mixer. Absent in an environment with no running game,
-     * where `Get Track Volume` reads unity and `Set Track Volume` is a no-op - the same degradation
-     * the rest of this family takes.
-     */
-    onGetTrackVolume?: (trackId: string) => number;
-    onSetTrackVolume?: (trackId: string, volume: number) => Promise<void> | void;
-    /**
-     * The project's audio tracks (from the bundle). Absent falls back to the built-ins, so a host
-     * assembled from a bundle that predates tracks resolves exactly as it did before they existed.
-     */
-    audioTracks?: readonly ProjectAudioTrack[];
-    /**
-     * Subscribe to the player's preference changes. Backs `sound.subscribeMixerChanges`; hosts with
-     * no running game (the editor preview) leave it unset and the subscription is a no-op.
-     */
-    onSubscribeGamePreferences?: (listener: () => void) => () => void;
-    emit: (event: BlueprintDebugEvent) => void;
-    onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
-    onPageBack: () => void | Promise<void>;
-    /** Empty the page stack down to its root. Hosts without a page stack leave it unset. */
-    onClearPages?: () => void | Promise<void>;
-    /** Dismiss pages opened over a running game; a no-op when no game is running. */
-    onClearGameOverlay?: () => void | Promise<void>;
-    onQuitApplication?: () => void | Promise<void>;
-    /** Hosts without a real application window (story preview) leave these unset. */
-    onGetFullscreen?: () => boolean | Promise<boolean>;
-    onSetFullscreen?: (fullscreen: boolean) => void | Promise<void>;
-    /**
-     * The layer stack composited over the page lane.
-     *
-     * Absent in every host with nothing to stack onto - the editor preview and the workspace story
-     * preview both render one surface and no composite - where the whole family degrades to a warned
-     * no-op the way the sound family does, rather than throwing. `Show Layer` is the exception: it
-     * has to hand back a handle, so with no host it fails loudly instead of returning one that names
-     * nothing.
-     *
-     * `ownerScopeId` is filled in here rather than by the caller: it is this bundle's own
-     * `runtimeScopeId`, which is exactly the scope whose closing has to take the layer with it.
-     */
-    onShowLayer?: (request: BlueprintLayerShowRequest) => string;
-    onHideLayer?: (handle: string) => Promise<void> | void;
-    onHideLayerGroup?: (group: string) => Promise<void> | void;
-    onWaitLayer?: (handle: string) => Promise<unknown>;
-    /** Closes the layer whose runtime scope this is. False when this surface is not a layer. */
-    onCloseOwnLayer?: (runtimeScopeId: string, result: unknown) => boolean;
-    onIsLayerMounted?: (handle: string) => boolean;
-    onWidgetPatch: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
-    onElementFlush?: (elementId: string, payload: BlueprintElementFlushPayload) => Promise<void> | void;
-    widgetRuntimeStore: WidgetRuntimeStateStore;
-    /** Component definition graphs should pass a component-scoped document so Element Host API stays local. */
-    componentDefinitionMode?: boolean;
-    /** Game localization setup (from the bundle); absent when the project has none. */
-    localizationConfig?: GameLocalizationConfigSnapshot | null;
-    /** Voice setup of the running game (dub languages), or null when the project has none. */
-    voiceConfig?: { voicedLocales: VoiceLocaleEntry[] } | null;
-    /** Plays one voice unit in the current dub language; absent outside a game runtime. */
-    onPlayVoice?: (unitId: string) => Promise<boolean>;
-    /**
-     * Issues one Fetch node request, in a main process.
-     *
-     * Absent in every environment with nowhere to send it - the editor preview, and the story
-     * preview. There the node reports a `networkError` saying so rather than throwing, matching how
-     * the sound family degrades: a Page previewed in Studio should still lay out.
-     *
-     * The web export supplies one backed by the browser's own `fetch`, which is the one shell where
-     * there is no main process to reach and no project network policy to enforce.
-     */
-    onNetworkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
-    /**
-     * Opens one web address in the player's browser, in a process that can check it.
-     *
-     * Absent in every environment with nowhere to send it - the editor preview, and the story
-     * preview. There the node reports a `failed` result saying so rather than throwing, the same
-     * degradation the Fetch node takes: a Page previewed in Studio should still lay out.
-     */
-    onOpenExternal?: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
-    /**
-     * Writes this playthrough into the title's progress document, in a process that owns a
-     * filesystem. Absent in every environment with nowhere to send it - the editor preview and the
-     * story preview - where the node reports a failure saying so rather than throwing, the same
-     * degradation the Fetch and Open Link nodes take.
-     */
-    onExportProgress?: () => Promise<{ outcome: "written" | "failed"; error: string }>;
-    /** Reads it back, and applies what it holds to the running game. Absent for the same reasons. */
-    onImportProgress?: () => Promise<GameProgressImportOutcome>;
+  document: UIDocument;
+  scope: ScopeStoreBridge;
+  activeSurfaceId: string;
+  runtimeScopeId?: string;
+  pageProps?: Record<string, unknown>;
+  frameParams?: Record<string, unknown>;
+  onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
+  onStartStory?: (request: DevModeStartStoryRequest) => Promise<void> | void;
+  onIsInGame?: () => boolean;
+  onIsGameOverlay?: () => boolean;
+  onQuitGame?: (surfaceId: string) => Promise<void> | void;
+  onWriteSave?: (id: string, metadata: unknown, screenshot?: boolean) => Promise<void> | void;
+  onLoadSave?: (id: string) => Promise<void> | void;
+  onDeleteSave?: (id: string) => Promise<void> | void;
+  onListSaveIds?: () => Promise<string[]> | string[];
+  onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
+  onGetSaveTimes?: (id: string) => Promise<SaveRecordTimes | null> | SaveRecordTimes | null;
+  onGetSaveLine?: (id: string) => Promise<SaveRecordLine | null> | SaveRecordLine | null;
+  onGetSavePreview?: (
+    id: string
+  ) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
+  onWriteAutoSave?: () => Promise<void> | void;
+  onListAutoSaves?: () => Promise<AutoSaveEntry[]> | AutoSaveEntry[];
+  onGetHistory?: () => Promise<BlueprintGameHistoryEntry[]> | BlueprintGameHistoryEntry[];
+  onRestoreHistory?: (id?: string) => Promise<void> | void;
+  onGetNametag?: () => string | null;
+  onGetSpeakerAvatar?: () => BlueprintImageAsset | null;
+  /** Optional override; without it the speaker colour comes from the mirrored dialog state key. */
+  onGetSpeakerColor?: () => unknown;
+  /**
+   * Optional override; without it `getCharacter` looks the id up in the character table mirrored
+   * into global state. Left unset by every real host - the mirror is the whole point, since it
+   * reaches Game UI slot surfaces without each of them wiring a callback.
+   */
+  onGetCharacter?: (characterId: string) => unknown;
+  onGetNotifications?: () => BlueprintGameNotification[];
+  onGetChoiceCount?: () => number;
+  onIsNvlMode?: () => boolean;
+  onIsCurrentTextRead?: () => boolean;
+  /** Per-id read check. Absent without a tracker (story preview); reads as false. */
+  onIsTextRead?: (textId: string) => boolean;
+  onClearTextRead?: () => Promise<void> | void;
+  /**
+   * The visited record (see `runtime/game/storyVisited`). Absent when no story is running - a
+   * settings page or a main menu opened before the first game reads everything as "not visited",
+   * which is the correct answer there rather than an error.
+   */
+  onIsSceneVisited?: (sceneId: string) => boolean;
+  onIsOptionPicked?: (optionId: string) => boolean;
+  onClearVisited?: () => void;
+  onSelectChoice?: (index: number) => Promise<void> | void;
+  onNext?: () => Promise<void> | void;
+  onSkip?: () => Promise<void> | void;
+  onShowDialog?: () => Promise<void> | void;
+  onHideDialog?: () => Promise<void> | void;
+  onToggleDialogDisplay?: () => Promise<void> | void;
+  onSetSentenceSpeed?: (cps: number) => Promise<void> | void;
+  onGetGamePreference?: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
+  onSetGamePreference?: (
+    key: BlueprintGamePreferenceKey,
+    value: BlueprintGamePreferenceValue
+  ) => Promise<void> | void;
+  /**
+   * Sound transport, backed by the engine's audio path. Absent in environments
+   * with no running game (the editor preview), where the sound nodes degrade
+   * to a warned no-op rather than throwing - a Page previewed in Studio should
+   * still lay out, just silently.
+   */
+  onPlaySound?: (
+    input: BlueprintSoundPlayInput
+  ) => Promise<BlueprintSoundHandle | null> | BlueprintSoundHandle | null;
+  onStopSound?: (handle: BlueprintSoundHandle | null, fadeMs: number) => Promise<void> | void;
+  onPauseSound?: (handle: BlueprintSoundHandle) => Promise<void> | void;
+  onResumeSound?: (handle: BlueprintSoundHandle) => Promise<void> | void;
+  onSetSoundVolume?: (
+    handle: BlueprintSoundHandle,
+    volume: number,
+    fadeMs: number
+  ) => Promise<void> | void;
+  onSeekSound?: (handle: BlueprintSoundHandle, timeMs: number) => Promise<void> | void;
+  onIsSoundPlaying?: (handle: BlueprintSoundHandle) => boolean;
+  /**
+   * Per-bus volume, backed by the engine's mixer. Absent in an environment with no running game,
+   * where `Get Track Volume` reads unity and `Set Track Volume` is a no-op - the same degradation
+   * the rest of this family takes.
+   */
+  onGetTrackVolume?: (trackId: string) => number;
+  onSetTrackVolume?: (trackId: string, volume: number) => Promise<void> | void;
+  /**
+   * The project's audio tracks (from the bundle). Absent falls back to the built-ins, so a host
+   * assembled from a bundle that predates tracks resolves exactly as it did before they existed.
+   */
+  audioTracks?: readonly ProjectAudioTrack[];
+  /**
+   * Subscribe to the player's preference changes. Backs `sound.subscribeMixerChanges`; hosts with
+   * no running game (the editor preview) leave it unset and the subscription is a no-op.
+   */
+  onSubscribeGamePreferences?: (listener: () => void) => () => void;
+  emit: (event: BlueprintDebugEvent) => void;
+  onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
+  onPageBack: () => void | Promise<void>;
+  /** Empty the page stack down to its root. Hosts without a page stack leave it unset. */
+  onClearPages?: () => void | Promise<void>;
+  /** Dismiss pages opened over a running game; a no-op when no game is running. */
+  onClearGameOverlay?: () => void | Promise<void>;
+  onQuitApplication?: () => void | Promise<void>;
+  /** Hosts without a real application window (story preview) leave these unset. */
+  onGetFullscreen?: () => boolean | Promise<boolean>;
+  onSetFullscreen?: (fullscreen: boolean) => void | Promise<void>;
+  /**
+   * The layer stack composited over the page lane.
+   *
+   * Absent in every host with nothing to stack onto - the editor preview and the workspace story
+   * preview both render one surface and no composite - where the whole family degrades to a warned
+   * no-op the way the sound family does, rather than throwing. `Show Layer` is the exception: it
+   * has to hand back a handle, so with no host it fails loudly instead of returning one that names
+   * nothing.
+   *
+   * `ownerScopeId` is filled in here rather than by the caller: it is this bundle's own
+   * `runtimeScopeId`, which is exactly the scope whose closing has to take the layer with it.
+   */
+  onShowLayer?: (request: BlueprintLayerShowRequest) => string;
+  onHideLayer?: (handle: string) => Promise<void> | void;
+  onHideLayerGroup?: (group: string) => Promise<void> | void;
+  onWaitLayer?: (handle: string) => Promise<unknown>;
+  /** Closes the layer whose runtime scope this is. False when this surface is not a layer. */
+  onCloseOwnLayer?: (runtimeScopeId: string, result: unknown) => boolean;
+  onIsLayerMounted?: (handle: string) => boolean;
+  onWidgetPatch: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
+  onElementFlush?: (
+    elementId: string,
+    payload: BlueprintElementFlushPayload
+  ) => Promise<void> | void;
+  widgetRuntimeStore: WidgetRuntimeStateStore;
+  /** Component definition graphs should pass a component-scoped document so Element Host API stays local. */
+  componentDefinitionMode?: boolean;
+  /** Game localization setup (from the bundle); absent when the project has none. */
+  localizationConfig?: GameLocalizationConfigSnapshot | null;
+  /** Voice setup of the running game (dub languages), or null when the project has none. */
+  voiceConfig?: { voicedLocales: VoiceLocaleEntry[] } | null;
+  /** Plays one voice unit in the current dub language; absent outside a game runtime. */
+  onPlayVoice?: (unitId: string) => Promise<boolean>;
+  /**
+   * Issues one Fetch node request, in a main process.
+   *
+   * Absent in every environment with nowhere to send it - the editor preview, and the story
+   * preview. There the node reports a `networkError` saying so rather than throwing, matching how
+   * the sound family degrades: a Page previewed in Studio should still lay out.
+   *
+   * The web export supplies one backed by the browser's own `fetch`, which is the one shell where
+   * there is no main process to reach and no project network policy to enforce.
+   */
+  onNetworkFetch?: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
+  /**
+   * Opens one web address in the player's browser, in a process that can check it.
+   *
+   * Absent in every environment with nowhere to send it - the editor preview, and the story
+   * preview. There the node reports a `failed` result saying so rather than throwing, the same
+   * degradation the Fetch node takes: a Page previewed in Studio should still lay out.
+   */
+  onOpenExternal?: (request: BlueprintOpenExternalRequest) => Promise<BlueprintOpenExternalResult>;
+  /**
+   * Writes this playthrough into the title's progress document, in a process that owns a
+   * filesystem. Absent in every environment with nowhere to send it - the editor preview and the
+   * story preview - where the node reports a failure saying so rather than throwing, the same
+   * degradation the Fetch and Open Link nodes take.
+   */
+  onExportProgress?: () => Promise<{ outcome: "written" | "failed"; error: string }>;
+  /** Reads it back, and applies what it holds to the running game. Absent for the same reasons. */
+  onImportProgress?: () => Promise<GameProgressImportOutcome>;
 };
 
 function readDocumentElement(document: UIDocument, elementId: string): UIElement | undefined {
-    const element = document.elements[elementId];
-    if (element) {
-        return element;
+  const element = document.elements[elementId];
+  if (element) {
+    return element;
+  }
+  for (const component of document.components ?? []) {
+    const componentElement = component.elements[elementId];
+    if (componentElement) {
+      return componentElement;
     }
-    for (const component of document.components ?? []) {
-        const componentElement = component.elements[elementId];
-        if (componentElement) {
-            return componentElement;
-        }
-    }
-    return undefined;
+  }
+  return undefined;
 }
 
 function requireDocumentElement(document: UIDocument, elementId: string, label: string): UIElement {
-    const element = readDocumentElement(document, elementId);
-    if (!element) {
-        throw new Error(`${label}: element not found: ${elementId}`);
-    }
-    return element;
+  const element = readDocumentElement(document, elementId);
+  if (!element) {
+    throw new Error(`${label}: element not found: ${elementId}`);
+  }
+  return element;
 }
 
 function readPatchedDocumentElement(
-    document: UIDocument,
-    runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
-    elementId: string,
+  document: UIDocument,
+  runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
+  elementId: string
 ): UIElement | undefined {
-    const element = readDocumentElement(document, elementId);
-    const layoutPatch = runtimePatches?.get(elementId)?.layout;
-    if (!element || !layoutPatch) {
-        return element;
+  const element = readDocumentElement(document, elementId);
+  const layoutPatch = runtimePatches?.get(elementId)?.layout;
+  if (!element || !layoutPatch) {
+    return element;
+  }
+  return {
+    ...element,
+    layout: {
+      ...element.layout,
+      ...layoutPatch
     }
-    return {
-        ...element,
-        layout: {
-            ...element.layout,
-            ...layoutPatch,
-        },
-    };
+  };
 }
 
 function readPatchedElementLayout(
-    document: UIDocument,
-    runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
-    elementId: string,
+  document: UIDocument,
+  runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
+  elementId: string
 ): UIElement["layout"] {
-    const element = requireDocumentElement(document, elementId, "displayable");
-    return {
-        ...element.layout,
-        ...(runtimePatches?.get(elementId)?.layout ?? {}),
-    };
+  const element = requireDocumentElement(document, elementId, "displayable");
+  return {
+    ...element.layout,
+    ...(runtimePatches?.get(elementId)?.layout ?? {})
+  };
 }
 
 function readDisplayableSurfaceTopLeft(
-    document: UIDocument,
-    runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
-    elementId: string,
+  document: UIDocument,
+  runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
+  elementId: string
 ): { x: number; y: number } {
-    requireDocumentElement(document, elementId, "displayable");
-    return getElementSurfaceTopLeftEx(id => readPatchedDocumentElement(document, runtimePatches, id), elementId);
+  requireDocumentElement(document, elementId, "displayable");
+  return getElementSurfaceTopLeftEx(
+    (id) => readPatchedDocumentElement(document, runtimePatches, id),
+    elementId
+  );
 }
 
 function readDisplayableParentSurfaceTopLeft(
-    document: UIDocument,
-    runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
-    elementId: string,
+  document: UIDocument,
+  runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
+  elementId: string
 ): { x: number; y: number } {
-    const element = requireDocumentElement(document, elementId, "displayable");
-    if (!element.parentId) {
-        return { x: 0, y: 0 };
-    }
-    return getElementSurfaceTopLeftEx(id => readPatchedDocumentElement(document, runtimePatches, id), element.parentId);
+  const element = requireDocumentElement(document, elementId, "displayable");
+  if (!element.parentId) {
+    return { x: 0, y: 0 };
+  }
+  return getElementSurfaceTopLeftEx(
+    (id) => readPatchedDocumentElement(document, runtimePatches, id),
+    element.parentId
+  );
 }
 
-function assertAppearanceVariantId(document: UIDocument, elementId: string, variantId: string | null): void {
-    const el = requireDocumentElement(document, elementId, "setVariant");
-    if (!isAppearanceCapableElementType(el.type)) {
-        throw new Error(`setVariant: element type does not support appearance variants: ${el.type}`);
-    }
-    if (variantId === null) {
-        return;
-    }
-    const rawAppearance = (el.props as Record<string, unknown> | undefined)?.appearance;
-    if (!rawAppearance || typeof rawAppearance !== "object") {
-        throw new Error(`setVariant: element has no appearance model: ${elementId}`);
-    }
-    const variants = (rawAppearance as { variants?: { id: string }[] }).variants;
-    if (!Array.isArray(variants) || variants.length === 0) {
-        throw new Error(`setVariant: element has no appearance variants: ${elementId}`);
-    }
-    if (!variants.some(v => v.id === variantId)) {
-        throw new Error(`setVariant: unknown variant id "${variantId}" for element ${elementId}`);
-    }
+function assertAppearanceVariantId(
+  document: UIDocument,
+  elementId: string,
+  variantId: string | null
+): void {
+  const el = requireDocumentElement(document, elementId, "setVariant");
+  if (!isAppearanceCapableElementType(el.type)) {
+    throw new Error(`setVariant: element type does not support appearance variants: ${el.type}`);
+  }
+  if (variantId === null) {
+    return;
+  }
+  const rawAppearance = (el.props as Record<string, unknown> | undefined)?.appearance;
+  if (!rawAppearance || typeof rawAppearance !== "object") {
+    throw new Error(`setVariant: element has no appearance model: ${elementId}`);
+  }
+  const variants = (rawAppearance as { variants?: { id: string }[] }).variants;
+  if (!Array.isArray(variants) || variants.length === 0) {
+    throw new Error(`setVariant: element has no appearance variants: ${elementId}`);
+  }
+  if (!variants.some((v) => v.id === variantId)) {
+    throw new Error(`setVariant: unknown variant id "${variantId}" for element ${elementId}`);
+  }
 }
 
 function readAppearanceModel(document: UIDocument, elementId: string): AppearanceModel | null {
-    const raw = (readDocumentElement(document, elementId)?.props as Record<string, unknown> | undefined)?.appearance;
-    if (!raw || typeof raw !== "object") {
-        return null;
-    }
-    const model = raw as AppearanceModel;
-    return Array.isArray(model.variants) ? model : null;
+  const raw = (
+    readDocumentElement(document, elementId)?.props as Record<string, unknown> | undefined
+  )?.appearance;
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const model = raw as AppearanceModel;
+  return Array.isArray(model.variants) ? model : null;
 }
 
-function resolveVariantForSetVariant(model: AppearanceModel | null, variantId: string | null): AppearanceVariant | null {
-    if (!model || model.variants.length === 0) {
-        return null;
-    }
-    if (variantId) {
-        return model.variants.find(variant => variant.id === variantId) ?? null;
-    }
-    return model.variants.find(variant => variant.id === model.defaultVariantId) ?? model.variants[0] ?? null;
+function resolveVariantForSetVariant(
+  model: AppearanceModel | null,
+  variantId: string | null
+): AppearanceVariant | null {
+  if (!model || model.variants.length === 0) {
+    return null;
+  }
+  if (variantId) {
+    return model.variants.find((variant) => variant.id === variantId) ?? null;
+  }
+  return (
+    model.variants.find((variant) => variant.id === model.defaultVariantId) ??
+    model.variants[0] ??
+    null
+  );
 }
 
 function transitionWaitMs(transition: AppearanceFieldTransition | null | undefined): number {
-    if (!transition) {
-        return 0;
-    }
-    const delay = Math.max(0, transition.delayMs ?? 0);
-    if (transition.type === "tween") {
-        return delay + Math.max(0, transition.durationMs);
-    }
-    return delay + 300;
+  if (!transition) {
+    return 0;
+  }
+  const delay = Math.max(0, transition.delayMs ?? 0);
+  if (transition.type === "tween") {
+    return delay + Math.max(0, transition.durationMs);
+  }
+  return delay + 300;
 }
 
-function displayableMotionWaitMs(transition: UIDisplayableMotionTransition | null | undefined): number {
-    if (!transition) {
-        return 0;
-    }
-    const delay = Math.max(0, transition.delayMs ?? 0);
-    if (transition.type === "tween") {
-        return delay + Math.max(0, transition.durationMs);
-    }
-    return delay + 300;
+function displayableMotionWaitMs(
+  transition: UIDisplayableMotionTransition | null | undefined
+): number {
+  if (!transition) {
+    return 0;
+  }
+  const delay = Math.max(0, transition.delayMs ?? 0);
+  if (transition.type === "tween") {
+    return delay + Math.max(0, transition.durationMs);
+  }
+  return delay + 300;
 }
 
 function hasExplicitDisplayableMotionKeyframes(target: UIDisplayableMotionTarget): boolean {
-    return Object.values(target).some(value => Array.isArray(value));
+  return Object.values(target).some((value) => Array.isArray(value));
 }
 
 function waitForDisplayableMotionStartFrame(): Promise<void> {
-    if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
-        return Promise.resolve();
-    }
-    return new Promise(resolve => {
-        window.requestAnimationFrame(() => {
-            window.requestAnimationFrame(() => resolve());
-        });
+  if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve());
     });
+  });
 }
 
 function variantWaitMs(variant: AppearanceVariant | null): number {
-    if (!variant) {
-        return 0;
-    }
-    return Math.max(0, ...variant.propertyGroups.map(group => transitionWaitMs(group.transition)));
+  if (!variant) {
+    return 0;
+  }
+  return Math.max(0, ...variant.propertyGroups.map((group) => transitionWaitMs(group.transition)));
 }
 
-function variantTransitionForKey(variant: AppearanceVariant | null, key: string): AppearanceFieldTransition | null {
-    return variant?.propertyGroups.find(group => group.key === key)?.transition ?? null;
+function variantTransitionForKey(
+  variant: AppearanceVariant | null,
+  key: string
+): AppearanceFieldTransition | null {
+  return variant?.propertyGroups.find((group) => group.key === key)?.transition ?? null;
 }
 
-function toDisplayableTransition(transition: AppearanceFieldTransition): UIDisplayableMotionTransition {
-    return transition.type === "spring"
-        ? {
-              type: "spring",
-              delayMs: transition.delayMs,
-              stiffness: transition.stiffness,
-              damping: transition.damping,
-              mass: transition.mass,
-          }
-        : {
-              type: "tween",
-              durationMs: transition.durationMs,
-              delayMs: transition.delayMs,
-              easing: transition.easing,
-          };
+function toDisplayableTransition(
+  transition: AppearanceFieldTransition
+): UIDisplayableMotionTransition {
+  return transition.type === "spring"
+    ? {
+        type: "spring",
+        delayMs: transition.delayMs,
+        stiffness: transition.stiffness,
+        damping: transition.damping,
+        mass: transition.mass
+      }
+    : {
+        type: "tween",
+        durationMs: transition.durationMs,
+        delayMs: transition.delayMs,
+        easing: transition.easing
+      };
 }
 
 function sleepMs(durationMs: number): Promise<void> {
-    const waitMs = Math.max(0, durationMs);
-    return waitMs > 0 ? new Promise(resolve => setTimeout(resolve, waitMs)) : Promise.resolve();
+  const waitMs = Math.max(0, durationMs);
+  return waitMs > 0 ? new Promise((resolve) => setTimeout(resolve, waitMs)) : Promise.resolve();
 }
 
 function assertTextElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "text");
-    if (el.type !== "nl.text") {
-        throw new Error(`text: element is not a Text widget: ${el.type}`);
-    }
-    return el;
+  const el = requireDocumentElement(document, elementId, "text");
+  if (el.type !== "nl.text") {
+    throw new Error(`text: element is not a Text widget: ${el.type}`);
+  }
+  return el;
 }
 
 function assertSliderElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "slider");
-    if (el.type !== "nl.slider") {
-        throw new Error(`slider: element is not a Slider widget: ${el.type}`);
-    }
-    return el;
+  const el = requireDocumentElement(document, elementId, "slider");
+  if (el.type !== "nl.slider") {
+    throw new Error(`slider: element is not a Slider widget: ${el.type}`);
+  }
+  return el;
 }
 
 function assertSwitchElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "switch");
-    if (el.type !== "nl.switch") {
-        throw new Error(`switch: element is not a Switch widget: ${el.type}`);
-    }
-    return el;
+  const el = requireDocumentElement(document, elementId, "switch");
+  if (el.type !== "nl.switch") {
+    throw new Error(`switch: element is not a Switch widget: ${el.type}`);
+  }
+  return el;
 }
 
 function assertTextInputElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "textInput");
-    if (el.type !== "nl.textInput") {
-        throw new Error(`textInput: element is not a Text Input widget: ${el.type}`);
-    }
-    return el;
+  const el = requireDocumentElement(document, elementId, "textInput");
+  if (el.type !== "nl.textInput") {
+    throw new Error(`textInput: element is not a Text Input widget: ${el.type}`);
+  }
+  return el;
 }
 
 function assertListElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "list");
-    if (!isListLikeWidgetType(el.type)) {
-        throw new Error(`list: element is not a List widget: ${el.type}`);
-    }
-    return el;
+  const el = requireDocumentElement(document, elementId, "list");
+  if (!isListLikeWidgetType(el.type)) {
+    throw new Error(`list: element is not a List widget: ${el.type}`);
+  }
+  return el;
 }
 
 function assertButtonElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "button");
-    if (el.type !== "nl.button") {
-        throw new Error(`button: element is not a Button widget: ${el.type}`);
-    }
-    return el;
+  const el = requireDocumentElement(document, elementId, "button");
+  if (el.type !== "nl.button") {
+    throw new Error(`button: element is not a Button widget: ${el.type}`);
+  }
+  return el;
 }
 
 function assertContainerElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "container");
-    if (el.type !== "nl.container") {
-        throw new Error(`container: element is not a Container widget: ${el.type}`);
-    }
-    return el;
+  const el = requireDocumentElement(document, elementId, "container");
+  if (el.type !== "nl.container") {
+    throw new Error(`container: element is not a Container widget: ${el.type}`);
+  }
+  return el;
 }
 
 function assertImageElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "image");
-    if (el.type !== "nl.image") {
-        throw new Error(`image: element is not an Image widget: ${el.type}`);
-    }
-    return el;
+  const el = requireDocumentElement(document, elementId, "image");
+  if (el.type !== "nl.image") {
+    throw new Error(`image: element is not an Image widget: ${el.type}`);
+  }
+  return el;
 }
 
 function assertFrameElement(document: UIDocument, elementId: string) {
-    const el = requireDocumentElement(document, elementId, "frame");
-    if (el.type !== "nl.frame") {
-        throw new Error(`frame: element is not a Frame widget: ${el.type}`);
-    }
-    return el;
+  const el = requireDocumentElement(document, elementId, "frame");
+  if (el.type !== "nl.frame") {
+    throw new Error(`frame: element is not a Frame widget: ${el.type}`);
+  }
+  return el;
 }
 
 function cloneJson<T>(value: T): T {
-    return JSON.parse(JSON.stringify(value)) as T;
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function jsonEquals(a: unknown, b: unknown): boolean {
-    try {
-        return JSON.stringify(a) === JSON.stringify(b);
-    } catch {
-        return a === b;
-    }
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return a === b;
+  }
 }
 
 function readTextProperties(document: UIDocument, elementId: string): BlueprintTextProperties {
-    const el = assertTextElement(document, elementId);
-    const p = getTextProps(el);
-    return {
-        text: p.text,
-        fontAssetId: p.fontAssetId,
-        fontSize: p.fontSize,
-        fontWeight: p.fontWeight,
-        color: p.color,
-        textAlign: p.textAlign,
-        textVerticalAlign: p.textVerticalAlign,
-        lineHeight: p.lineHeight,
-        textWrapMode: p.textWrapMode,
-        effects: cloneJson(p.effects),
-    };
+  const el = assertTextElement(document, elementId);
+  const p = getTextProps(el);
+  return {
+    text: p.text,
+    fontAssetId: p.fontAssetId,
+    fontSize: p.fontSize,
+    fontWeight: p.fontWeight,
+    color: p.color,
+    textAlign: p.textAlign,
+    textVerticalAlign: p.textVerticalAlign,
+    lineHeight: p.lineHeight,
+    textWrapMode: p.textWrapMode,
+    effects: cloneJson(p.effects)
+  };
 }
 
-function readAuthoredSliderProperties(document: UIDocument, elementId: string): UISliderWidgetProps {
-    const el = assertSliderElement(document, elementId);
-    return getSliderProps(el);
+function readAuthoredSliderProperties(
+  document: UIDocument,
+  elementId: string
+): UISliderWidgetProps {
+  const el = assertSliderElement(document, elementId);
+  return getSliderProps(el);
 }
 
 function readListItemsFallback(
-    document: UIDocument,
-    scope: ScopeStoreBridge,
-    stateScopeId: string,
-    pageProps: Readonly<Record<string, unknown>>,
-    elementId: string,
+  document: UIDocument,
+  scope: ScopeStoreBridge,
+  stateScopeId: string,
+  pageProps: Readonly<Record<string, unknown>>,
+  elementId: string
 ): unknown[] {
-    const el = assertListElement(document, elementId);
-    const props = getListProps(el);
-    const bound = resolveListItemsBindingArray(props.itemsBinding, {
-        surfaceState: { get: key => scope.getSurfaceStore(stateScopeId).get(key) },
-        globalState: { get: key => scope.globalGet(key) },
-        pageProps,
-    });
-    if (bound) {
-        return cloneJson(bound);
-    }
-    if (props.previewItems.length > 0) {
-        return cloneJson(props.previewItems);
-    }
-    return Array.from({ length: props.previewCount }, (_, index) => ({ index }));
+  const el = assertListElement(document, elementId);
+  const props = getListProps(el);
+  const bound = resolveListItemsBindingArray(props.itemsBinding, {
+    surfaceState: { get: (key) => scope.getSurfaceStore(stateScopeId).get(key) },
+    globalState: { get: (key) => scope.globalGet(key) },
+    pageProps
+  });
+  if (bound) {
+    return cloneJson(bound);
+  }
+  if (props.previewItems.length > 0) {
+    return cloneJson(props.previewItems);
+  }
+  return Array.from({ length: props.previewCount }, (_, index) => ({ index }));
 }
 
 function readListProperties(
-    document: UIDocument,
-    scope: ScopeStoreBridge,
-    widgetRuntimeStore: WidgetRuntimeStateStore,
-    runtimeScopeId: string | undefined,
-    activeSurfaceId: string,
-    stateScopeId: string,
-    pageProps: Readonly<Record<string, unknown>>,
-    elementId: string,
+  document: UIDocument,
+  scope: ScopeStoreBridge,
+  widgetRuntimeStore: WidgetRuntimeStateStore,
+  runtimeScopeId: string | undefined,
+  activeSurfaceId: string,
+  stateScopeId: string,
+  pageProps: Readonly<Record<string, unknown>>,
+  elementId: string
 ): BlueprintListProperties {
-    assertListElement(document, elementId);
-    const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
-    const items = widgetRuntimeStore.getListItems(scopedKey)
-        ?? readListItemsFallback(document, scope, stateScopeId, pageProps, elementId);
-    const selectedIndex = widgetRuntimeStore.getListSelectedIndex(scopedKey) ??
-        getListProps(requireDocumentElement(document, elementId, "list")).selectedIndex;
-    return {
-        items,
-        selectedIndex,
-    };
+  assertListElement(document, elementId);
+  const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+  const items =
+    widgetRuntimeStore.getListItems(scopedKey) ??
+    readListItemsFallback(document, scope, stateScopeId, pageProps, elementId);
+  const selectedIndex =
+    widgetRuntimeStore.getListSelectedIndex(scopedKey) ??
+    getListProps(requireDocumentElement(document, elementId, "list")).selectedIndex;
+  return {
+    items,
+    selectedIndex
+  };
 }
 
-function readAuthoredTextInputProperties(document: UIDocument, elementId: string): UITextInputWidgetProps {
-    const el = assertTextInputElement(document, elementId);
-    return normalizeTextInputProps(el.props);
+function readAuthoredTextInputProperties(
+  document: UIDocument,
+  elementId: string
+): UITextInputWidgetProps {
+  const el = assertTextInputElement(document, elementId);
+  return normalizeTextInputProps(el.props);
 }
 
 function readTextInputProperties(
-    document: UIDocument,
-    widgetRuntimeStore: WidgetRuntimeStateStore,
-    runtimeScopeId: string | undefined,
-    activeSurfaceId: string,
-    elementId: string,
+  document: UIDocument,
+  widgetRuntimeStore: WidgetRuntimeStateStore,
+  runtimeScopeId: string | undefined,
+  activeSurfaceId: string,
+  elementId: string
 ): BlueprintTextInputProperties {
-    const authored = readAuthoredTextInputProperties(document, elementId);
-    const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
-    return widgetRuntimeStore.getTextInputProperties(scopedKey) ?? resolveTextInputRuntimeValue(authored);
+  const authored = readAuthoredTextInputProperties(document, elementId);
+  const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+  return (
+    widgetRuntimeStore.getTextInputProperties(scopedKey) ?? resolveTextInputRuntimeValue(authored)
+  );
 }
 
 function readSliderProperties(
-    document: UIDocument,
-    widgetRuntimeStore: WidgetRuntimeStateStore,
-    runtimeScopeId: string | undefined,
-    activeSurfaceId: string,
-    elementId: string,
+  document: UIDocument,
+  widgetRuntimeStore: WidgetRuntimeStateStore,
+  runtimeScopeId: string | undefined,
+  activeSurfaceId: string,
+  elementId: string
 ): BlueprintSliderProperties {
-    const authored = readAuthoredSliderProperties(document, elementId);
-    const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
-    return widgetRuntimeStore.getSliderProperties(scopedKey) ?? resolveSliderRuntimeValue(authored);
+  const authored = readAuthoredSliderProperties(document, elementId);
+  const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+  return widgetRuntimeStore.getSliderProperties(scopedKey) ?? resolveSliderRuntimeValue(authored);
 }
 
-function readAuthoredSwitchProperties(document: UIDocument, elementId: string): UISwitchWidgetProps {
-    const el = assertSwitchElement(document, elementId);
-    return normalizeSwitchProps(el.props);
+function readAuthoredSwitchProperties(
+  document: UIDocument,
+  elementId: string
+): UISwitchWidgetProps {
+  const el = assertSwitchElement(document, elementId);
+  return normalizeSwitchProps(el.props);
 }
 
 function readSwitchProperties(
-    document: UIDocument,
-    widgetRuntimeStore: WidgetRuntimeStateStore,
-    runtimeScopeId: string | undefined,
-    activeSurfaceId: string,
-    elementId: string,
+  document: UIDocument,
+  widgetRuntimeStore: WidgetRuntimeStateStore,
+  runtimeScopeId: string | undefined,
+  activeSurfaceId: string,
+  elementId: string
 ): BlueprintSwitchProperties {
-    const authored = readAuthoredSwitchProperties(document, elementId);
-    const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
-    return widgetRuntimeStore.getSwitchProperties(scopedKey) ?? resolveSwitchRuntimeValue(authored);
+  const authored = readAuthoredSwitchProperties(document, elementId);
+  const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+  return widgetRuntimeStore.getSwitchProperties(scopedKey) ?? resolveSwitchRuntimeValue(authored);
 }
 
 function readDisplayableProperties(
-    document: UIDocument,
-    elementId: string,
-    runtimePatches?: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+  document: UIDocument,
+  elementId: string,
+  runtimePatches?: ReadonlyMap<string, DevModeWidgetRuntimePatch>
 ): BlueprintDisplayableProperties {
-    const layout = readPatchedElementLayout(document, runtimePatches, elementId);
-    const patch = runtimePatches?.get(elementId);
-    const position = readDisplayableSurfaceTopLeft(document, runtimePatches, elementId);
-    return {
-        position,
-        offset: { x: 0, y: 0 },
-        size: { width: layout.width, height: layout.height },
-        bounds: { x: position.x, y: position.y, width: layout.width, height: layout.height },
-        rotation: layout.rotation ?? 0,
-        opacity: layout.opacity ?? 1,
-        display: patch?.display ?? true,
-        visible: patch?.visible ?? layout.visible !== false,
-    };
+  const layout = readPatchedElementLayout(document, runtimePatches, elementId);
+  const patch = runtimePatches?.get(elementId);
+  const position = readDisplayableSurfaceTopLeft(document, runtimePatches, elementId);
+  return {
+    position,
+    offset: { x: 0, y: 0 },
+    size: { width: layout.width, height: layout.height },
+    bounds: { x: position.x, y: position.y, width: layout.width, height: layout.height },
+    rotation: layout.rotation ?? 0,
+    opacity: layout.opacity ?? 1,
+    display: patch?.display ?? true,
+    visible: patch?.visible ?? layout.visible !== false
+  };
 }
 
 function hasRuntimeOpacityPatch(patch: DevModeWidgetRuntimePatch | undefined): boolean {
-    return Boolean(patch?.layout && Object.prototype.hasOwnProperty.call(patch.layout, "opacity"));
+  return Boolean(patch?.layout && Object.prototype.hasOwnProperty.call(patch.layout, "opacity"));
 }
 
 function normalizeDisplayableOpacity(value: number): number {
-    return Math.max(0, Math.min(1, value));
+  return Math.max(0, Math.min(1, value));
 }
 
 function displayableOpacityKeysForElement(
-    document: UIDocument,
-    elementId: string,
-    variantId: string | null,
-    signals: SystemInteractionSignals,
+  document: UIDocument,
+  elementId: string,
+  variantId: string | null,
+  signals: SystemInteractionSignals
 ): readonly string[] {
-    const element = readDocumentElement(document, elementId);
-    if (element?.type !== "nl.image") {
-        return ["transformOpacity"];
-    }
-    return resolveImageDisplayableOpacityKeys(element, readAppearanceModel(document, elementId), {
-        variantOverrideId: variantId,
-        signals,
-    });
+  const element = readDocumentElement(document, elementId);
+  if (element?.type !== "nl.image") {
+    return ["transformOpacity"];
+  }
+  return resolveImageDisplayableOpacityKeys(element, readAppearanceModel(document, elementId), {
+    variantOverrideId: variantId,
+    signals
+  });
 }
 
 function readAppearanceOpacity(
-    document: UIDocument,
-    widgetRuntimeStore: WidgetRuntimeStateStore,
-    scopedKey: string,
-    elementId: string,
-    variantId?: string | null,
+  document: UIDocument,
+  widgetRuntimeStore: WidgetRuntimeStateStore,
+  scopedKey: string,
+  elementId: string,
+  variantId?: string | null
 ): number | null {
-    const appearance = readAppearanceModel(document, elementId);
-    const activeVariantId =
-        variantId === undefined ? widgetRuntimeStore.getVariantOverride(scopedKey) ?? null : variantId;
-    const signals = widgetRuntimeStore.getSignalsForElement(scopedKey, false) ?? DEFAULT_SYSTEM_INTERACTION_SIGNALS;
-    return resolveAppearanceDisplayableOpacity(appearance, {
-        variantOverrideId: activeVariantId,
-        signals,
-        displayableOpacityKeys: displayableOpacityKeysForElement(document, elementId, activeVariantId, signals),
-    });
+  const appearance = readAppearanceModel(document, elementId);
+  const activeVariantId =
+    variantId === undefined
+      ? (widgetRuntimeStore.getVariantOverride(scopedKey) ?? null)
+      : variantId;
+  const signals =
+    widgetRuntimeStore.getSignalsForElement(scopedKey, false) ?? DEFAULT_SYSTEM_INTERACTION_SIGNALS;
+  return resolveAppearanceDisplayableOpacity(appearance, {
+    variantOverrideId: activeVariantId,
+    signals,
+    displayableOpacityKeys: displayableOpacityKeysForElement(
+      document,
+      elementId,
+      activeVariantId,
+      signals
+    )
+  });
 }
 
 function variantDisplayableOpacityTransition(
-    document: UIDocument,
-    elementId: string,
-    variant: AppearanceVariant | null,
+  document: UIDocument,
+  elementId: string,
+  variant: AppearanceVariant | null
 ): AppearanceFieldTransition | null {
-    for (const key of displayableOpacityKeysForElement(
-        document,
-        elementId,
-        variant?.id ?? null,
-        DEFAULT_SYSTEM_INTERACTION_SIGNALS,
-    )) {
-        const transition = variantTransitionForKey(variant, key);
-        if (transition) {
-            return transition;
-        }
+  for (const key of displayableOpacityKeysForElement(
+    document,
+    elementId,
+    variant?.id ?? null,
+    DEFAULT_SYSTEM_INTERACTION_SIGNALS
+  )) {
+    const transition = variantTransitionForKey(variant, key);
+    if (transition) {
+      return transition;
     }
-    return null;
+  }
+  return null;
 }
 
 function readEffectiveDisplayableProperties(
-    document: UIDocument,
-    widgetRuntimeStore: WidgetRuntimeStateStore,
-    runtimePatches: Map<string, DevModeWidgetRuntimePatch>,
-    runtimeScopeId: string | undefined,
-    activeSurfaceId: string,
-    elementId: string,
+  document: UIDocument,
+  widgetRuntimeStore: WidgetRuntimeStateStore,
+  runtimePatches: Map<string, DevModeWidgetRuntimePatch>,
+  runtimeScopeId: string | undefined,
+  activeSurfaceId: string,
+  elementId: string
 ): BlueprintDisplayableProperties {
-    const patch = runtimePatches.get(elementId);
-    const merged = readDisplayableProperties(document, elementId, runtimePatches);
-    const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
-    const motion = widgetRuntimeStore.getDisplayableMotion(scopedKey);
-    const baseTransform = widgetRuntimeStore.getDisplayableBaseTransform(scopedKey);
-    // An in-flight motion that animates x/y still reports its target offset (legacy behavior);
-    // otherwise the persistent base transform is the effective offset. Persistent offsets no
-    // longer live in the motion slot, so reads survive the motion being replaced.
-    merged.offset = {
-        x: finalDisplayableMotionValue(motion?.target.x) ?? baseTransform.offsetX,
-        y: finalDisplayableMotionValue(motion?.target.y) ?? baseTransform.offsetY,
-    };
-    if (!hasRuntimeOpacityPatch(patch)) {
-        const appearanceOpacity = readAppearanceOpacity(document, widgetRuntimeStore, scopedKey, elementId);
-        if (appearanceOpacity !== null) {
-            merged.opacity = appearanceOpacity;
-        }
+  const patch = runtimePatches.get(elementId);
+  const merged = readDisplayableProperties(document, elementId, runtimePatches);
+  const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+  const motion = widgetRuntimeStore.getDisplayableMotion(scopedKey);
+  const baseTransform = widgetRuntimeStore.getDisplayableBaseTransform(scopedKey);
+  // An in-flight motion that animates x/y still reports its target offset (legacy behavior);
+  // otherwise the persistent base transform is the effective offset. Persistent offsets no
+  // longer live in the motion slot, so reads survive the motion being replaced.
+  merged.offset = {
+    x: finalDisplayableMotionValue(motion?.target.x) ?? baseTransform.offsetX,
+    y: finalDisplayableMotionValue(motion?.target.y) ?? baseTransform.offsetY
+  };
+  if (!hasRuntimeOpacityPatch(patch)) {
+    const appearanceOpacity = readAppearanceOpacity(
+      document,
+      widgetRuntimeStore,
+      scopedKey,
+      elementId
+    );
+    if (appearanceOpacity !== null) {
+      merged.opacity = appearanceOpacity;
     }
-    return merged;
+  }
+  return merged;
 }
 
-function readVariantId(document: UIDocument, widgetRuntimeStore: WidgetRuntimeStateStore, scopedKey: string, elementId: string): string | null {
-    const override = widgetRuntimeStore.getVariantOverride(scopedKey);
-    if (override) {
-        return override;
-    }
-    const el = readDocumentElement(document, elementId);
-    const appearance = (el?.props as Record<string, unknown> | undefined)?.appearance as
-        | { defaultVariantId?: unknown; variants?: Array<{ id?: unknown }> }
-        | undefined;
-    const defaultVariantId = typeof appearance?.defaultVariantId === "string" ? appearance.defaultVariantId.trim() : "";
-    if (defaultVariantId) {
-        return defaultVariantId;
-    }
-    const first = Array.isArray(appearance?.variants) ? appearance.variants[0]?.id : undefined;
-    return typeof first === "string" && first.trim() ? first.trim() : null;
+function readVariantId(
+  document: UIDocument,
+  widgetRuntimeStore: WidgetRuntimeStateStore,
+  scopedKey: string,
+  elementId: string
+): string | null {
+  const override = widgetRuntimeStore.getVariantOverride(scopedKey);
+  if (override) {
+    return override;
+  }
+  const el = readDocumentElement(document, elementId);
+  const appearance = (el?.props as Record<string, unknown> | undefined)?.appearance as
+    | { defaultVariantId?: unknown; variants?: Array<{ id?: unknown }> }
+    | undefined;
+  const defaultVariantId =
+    typeof appearance?.defaultVariantId === "string" ? appearance.defaultVariantId.trim() : "";
+  if (defaultVariantId) {
+    return defaultVariantId;
+  }
+  const first = Array.isArray(appearance?.variants) ? appearance.variants[0]?.id : undefined;
+  return typeof first === "string" && first.trim() ? first.trim() : null;
 }
 
 function readCommonProperties(
-    document: UIDocument,
-    widgetRuntimeStore: WidgetRuntimeStateStore,
-    runtimePatches: Map<string, DevModeWidgetRuntimePatch>,
-    scopedKey: string,
-    elementId: string,
+  document: UIDocument,
+  widgetRuntimeStore: WidgetRuntimeStateStore,
+  runtimePatches: Map<string, DevModeWidgetRuntimePatch>,
+  scopedKey: string,
+  elementId: string
 ): BlueprintWidgetCommonProperties {
-    const el = requireDocumentElement(document, elementId, "widget");
-    const patch = runtimePatches.get(elementId);
-    const props = (el.props ?? {}) as Record<string, unknown>;
-    return {
-        visible: patch?.visible ?? el.layout.visible !== false,
-        enabled: patch?.enabled ?? !Boolean(props.interactionDisabled),
-        variantId: readVariantId(document, widgetRuntimeStore, scopedKey, elementId),
-    };
+  const el = requireDocumentElement(document, elementId, "widget");
+  const patch = runtimePatches.get(elementId);
+  const props = (el.props ?? {}) as Record<string, unknown>;
+  return {
+    visible: patch?.visible ?? el.layout.visible !== false,
+    enabled: patch?.enabled ?? !props.interactionDisabled,
+    variantId: readVariantId(document, widgetRuntimeStore, scopedKey, elementId)
+  };
 }
 
-function readButtonDefaultCursor(appearance: AppearanceModel | null | undefined, fallback: ButtonCursorValue): ButtonCursorValue {
-    if (!isUsableAppearanceModel(appearance)) {
-        return fallback;
-    }
-    const variant =
-        appearance.variants.find(v => v.id === appearance.defaultVariantId) ??
-        appearance.variants[0];
-    const value = variant?.propertyGroups.find(group => group.key === "cursor")?.rows[0]?.value;
-    return isButtonCursorValue(value) ? value : fallback;
+function readButtonDefaultCursor(
+  appearance: AppearanceModel | null | undefined,
+  fallback: ButtonCursorValue
+): ButtonCursorValue {
+  if (!isUsableAppearanceModel(appearance)) {
+    return fallback;
+  }
+  const variant =
+    appearance.variants.find((v) => v.id === appearance.defaultVariantId) ?? appearance.variants[0];
+  const value = variant?.propertyGroups.find((group) => group.key === "cursor")?.rows[0]?.value;
+  return isButtonCursorValue(value) ? value : fallback;
 }
 
 function patchButtonDefaultCursorAppearance(
-    appearance: AppearanceModel | null | undefined,
-    flat: ReturnType<typeof getButtonProps>,
-    cursor: ButtonCursorValue,
+  appearance: AppearanceModel | null | undefined,
+  flat: ReturnType<typeof getButtonProps>,
+  cursor: ButtonCursorValue
 ): AppearanceModel {
-    const model = isUsableAppearanceModel(appearance)
-        ? ensureButtonAppearanceHasAllKeys(appearance, flat)
-        : createInitialButtonAppearance({ ...flat, cursor });
-    const defaultVariantId = model.variants.some(variant => variant.id === model.defaultVariantId)
-        ? model.defaultVariantId
-        : model.variants[0]?.id;
-    if (!defaultVariantId) {
-        return model;
-    }
+  const model = isUsableAppearanceModel(appearance)
+    ? ensureButtonAppearanceHasAllKeys(appearance, flat)
+    : createInitialButtonAppearance({ ...flat, cursor });
+  const defaultVariantId = model.variants.some((variant) => variant.id === model.defaultVariantId)
+    ? model.defaultVariantId
+    : model.variants[0]?.id;
+  if (!defaultVariantId) {
+    return model;
+  }
 
-    let changed = model !== appearance;
-    const variants = model.variants.map(variant => {
-        if (variant.id !== defaultVariantId) {
-            return variant;
-        }
-        let foundCursorGroup = false;
-        const propertyGroups = variant.propertyGroups.map(group => {
-            if (group.key !== "cursor") {
-                return group;
-            }
-            foundCursorGroup = true;
-            const firstRow = group.rows[0] ?? { conditions: null, value: cursor };
-            if (group.rows[0] && firstRow.value === cursor) {
-                return group;
-            }
-            changed = true;
-            return {
-                ...group,
-                rows: [{ ...firstRow, value: cursor }, ...group.rows.slice(1)],
-            };
-        });
-        if (foundCursorGroup) {
-            return { ...variant, propertyGroups };
-        }
-        changed = true;
-        const cursorGroup: AppearancePropertyGroup = {
-            key: "cursor",
-            rows: [{ conditions: null, value: cursor }],
-        };
-        return { ...variant, propertyGroups: [...propertyGroups, cursorGroup] };
+  let changed = model !== appearance;
+  const variants = model.variants.map((variant) => {
+    if (variant.id !== defaultVariantId) {
+      return variant;
+    }
+    let foundCursorGroup = false;
+    const propertyGroups = variant.propertyGroups.map((group) => {
+      if (group.key !== "cursor") {
+        return group;
+      }
+      foundCursorGroup = true;
+      const firstRow = group.rows[0] ?? { conditions: null, value: cursor };
+      if (group.rows[0] && firstRow.value === cursor) {
+        return group;
+      }
+      changed = true;
+      return {
+        ...group,
+        rows: [{ ...firstRow, value: cursor }, ...group.rows.slice(1)]
+      };
     });
-    return changed ? { ...model, variants } : model;
+    if (foundCursorGroup) {
+      return { ...variant, propertyGroups };
+    }
+    changed = true;
+    const cursorGroup: AppearancePropertyGroup = {
+      key: "cursor",
+      rows: [{ conditions: null, value: cursor }]
+    };
+    return { ...variant, propertyGroups: [...propertyGroups, cursorGroup] };
+  });
+  return changed ? { ...model, variants } : model;
 }
 
 function readButtonProperties(document: UIDocument, elementId: string): BlueprintButtonProperties {
-    const p = getButtonProps(assertButtonElement(document, elementId));
-    const fallbackCursor = isButtonCursorValue(p.cursor) ? p.cursor : "auto";
-    return {
-        label: p.label,
-        cursor: readButtonDefaultCursor(p.appearance, fallbackCursor),
-    };
+  const p = getButtonProps(assertButtonElement(document, elementId));
+  const fallbackCursor = isButtonCursorValue(p.cursor) ? p.cursor : "auto";
+  return {
+    label: p.label,
+    cursor: readButtonDefaultCursor(p.appearance, fallbackCursor)
+  };
 }
 
-function readContainerProperties(document: UIDocument, elementId: string): BlueprintContainerProperties {
-    return { clipContent: getContainerProps(assertContainerElement(document, elementId)).clipContent };
+function readContainerProperties(
+  document: UIDocument,
+  elementId: string
+): BlueprintContainerProperties {
+  return {
+    clipContent: getContainerProps(assertContainerElement(document, elementId)).clipContent
+  };
 }
 
 function readImageProperties(document: UIDocument, elementId: string): BlueprintImageProperties {
-    const p = getImageWidgetRectangleProps(assertImageElement(document, elementId));
-    const fill = p.imageFill ?? null;
-    const assetId = fill?.assetId?.trim() || null;
-    return {
-        asset: toBlueprintImageAsset(assetId),
-        assetId,
-        fitMode: fill?.mode ?? "cover",
-        cropRect: fill?.cropPlacement ?? { ...DEFAULT_RECTANGLE_CROP_PLACEMENT },
-        flipX: p.imageFlipX === true,
-        flipY: p.imageFlipY === true,
-    };
+  const p = getImageWidgetRectangleProps(assertImageElement(document, elementId));
+  const fill = p.imageFill ?? null;
+  const assetId = fill?.assetId?.trim() || null;
+  return {
+    asset: toBlueprintImageAsset(assetId),
+    assetId,
+    fitMode: fill?.mode ?? "cover",
+    cropRect: fill?.cropPlacement ?? { ...DEFAULT_RECTANGLE_CROP_PLACEMENT },
+    flipX: p.imageFlipX === true,
+    flipY: p.imageFlipY === true
+  };
 }
 
 function readFrameProperties(document: UIDocument, elementId: string): BlueprintFrameProperties {
-    const p = getFrameProps(assertFrameElement(document, elementId));
-    return {
-        targetSurfaceId: p.targetSurfaceId,
-        params: cloneJson(p.params ?? {}),
-    };
+  const p = getFrameProps(assertFrameElement(document, elementId));
+  return {
+    targetSurfaceId: p.targetSurfaceId,
+    params: cloneJson(p.params ?? {})
+  };
 }
 
 function readEffectiveFrameProperties(
-    document: UIDocument,
-    runtimePatches: Map<string, DevModeWidgetRuntimePatch>,
-    elementId: string,
+  document: UIDocument,
+  runtimePatches: Map<string, DevModeWidgetRuntimePatch>,
+  elementId: string
 ): BlueprintFrameProperties {
-    const current = readFrameProperties(document, elementId);
-    const patch = runtimePatches.get(elementId)?.frame;
-    return {
-        targetSurfaceId: patch && Object.prototype.hasOwnProperty.call(patch, "targetSurfaceId")
-            ? patch.targetSurfaceId ?? null
-            : current.targetSurfaceId,
-        params: cloneJson(patch?.params ?? current.params),
-    };
+  const current = readFrameProperties(document, elementId);
+  const patch = runtimePatches.get(elementId)?.frame;
+  return {
+    targetSurfaceId:
+      patch && Object.prototype.hasOwnProperty.call(patch, "targetSurfaceId")
+        ? (patch.targetSurfaceId ?? null)
+        : current.targetSurfaceId,
+    params: cloneJson(patch?.params ?? current.params)
+  };
 }
 
 function finiteNumber(raw: unknown, fallback: number): number {
-    const n = typeof raw === "number" ? raw : Number(raw);
-    return Number.isFinite(n) ? n : fallback;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 function normalizeFontAssetId(raw: unknown): string | null {
-    if (raw === null) {
-        return null;
-    }
-    const s = String(raw ?? "").trim();
-    return s.length > 0 ? s : null;
+  if (raw === null) {
+    return null;
+  }
+  const s = String(raw ?? "").trim();
+  return s.length > 0 ? s : null;
 }
 
 function normalizeString(raw: unknown, fallback: string): string {
-    return raw == null ? fallback : String(raw);
+  return raw == null ? fallback : String(raw);
 }
 
 function toBlueprintVisibleValue(value: unknown): unknown {
-    return value === undefined ? null : value;
+  return value === undefined ? null : value;
 }
 
 function normalizeBlueprintNametag(value: unknown): string | null {
-    if (value == null) {
-        return null;
-    }
-    const text = String(value);
-    return text.trim().length > 0 ? text : null;
+  if (value == null) {
+    return null;
+  }
+  const text = String(value);
+  return text.trim().length > 0 ? text : null;
 }
 
 /** One NarraLeaf notification mirrored into the blueprint runtime. */
 export type BlueprintGameNotification = {
-    id: string;
-    message: string;
+  id: string;
+  message: string;
 };
 
 function normalizeBlueprintGameNotifications(value: unknown): BlueprintGameNotification[] {
-    if (!Array.isArray(value)) {
-        return [];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const out: BlueprintGameNotification[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      continue;
     }
-    const out: BlueprintGameNotification[] = [];
-    for (const item of value) {
-        if (!item || typeof item !== "object") {
-            continue;
-        }
-        const record = item as Record<string, unknown>;
-        out.push({
-            id: String(record.id ?? ""),
-            message: String(record.message ?? ""),
-        });
-    }
-    return out;
+    const record = item as Record<string, unknown>;
+    out.push({
+      id: String(record.id ?? ""),
+      message: String(record.message ?? "")
+    });
+  }
+  return out;
 }
 
 /**
@@ -1462,58 +1606,58 @@ function normalizeBlueprintGameNotifications(value: unknown): BlueprintGameNotif
  * back into the Restore From History node (NLR `LiveGame.undo(id)`).
  */
 export type BlueprintGameHistoryEntry = {
-    /** History token; pass to Restore From History to jump the game back to this point. */
-    id: string;
-    /** "say" for spoken lines, "menu" for a resolved choice. */
-    type: "say" | "menu";
-    /** Sentence text (say) or the menu prompt (menu); empty string when the source had none. */
-    text: string;
-    /** Speaker nametag for a say entry; null for menu entries or narration. */
-    character: string | null;
-    /** Resolved voice clip URL for a say entry; null when absent. Not addressable - see `voiceId`. */
-    voice: string | null;
-    /**
-     * The voice unit id this line's take is filed under; null when the line was not voiced through
-     * the voice module. This is the replayable handle: feed it to the Play Voice node. `voice` is a
-     * URL the player already heard and nothing in the runtime accepts a URL.
-     */
-    voiceId: string | null;
-    /** Chosen option text for a menu entry; null for say entries or an unresolved menu. */
-    selected: string | null;
-    /** True while the entry is the line currently being shown (not yet committed). */
-    isPending: boolean;
+  /** History token; pass to Restore From History to jump the game back to this point. */
+  id: string;
+  /** "say" for spoken lines, "menu" for a resolved choice. */
+  type: "say" | "menu";
+  /** Sentence text (say) or the menu prompt (menu); empty string when the source had none. */
+  text: string;
+  /** Speaker nametag for a say entry; null for menu entries or narration. */
+  character: string | null;
+  /** Resolved voice clip URL for a say entry; null when absent. Not addressable - see `voiceId`. */
+  voice: string | null;
+  /**
+   * The voice unit id this line's take is filed under; null when the line was not voiced through
+   * the voice module. This is the replayable handle: feed it to the Play Voice node. `voice` is a
+   * URL the player already heard and nothing in the runtime accepts a URL.
+   */
+  voiceId: string | null;
+  /** Chosen option text for a menu entry; null for say entries or an unresolved menu. */
+  selected: string | null;
+  /** True while the entry is the line currently being shown (not yet committed). */
+  isPending: boolean;
 };
 
 function normalizeNullableHistoryString(raw: unknown): string | null {
-    if (raw == null) {
-        return null;
-    }
-    const text = String(raw);
-    return text.length > 0 ? text : null;
+  if (raw == null) {
+    return null;
+  }
+  const text = String(raw);
+  return text.length > 0 ? text : null;
 }
 
 function normalizeBlueprintGameHistory(value: unknown): BlueprintGameHistoryEntry[] {
-    if (!Array.isArray(value)) {
-        return [];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const out: BlueprintGameHistoryEntry[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      continue;
     }
-    const out: BlueprintGameHistoryEntry[] = [];
-    for (const item of value) {
-        if (!item || typeof item !== "object") {
-            continue;
-        }
-        const record = item as Record<string, unknown>;
-        out.push({
-            id: String(record.id ?? ""),
-            type: record.type === "menu" ? "menu" : "say",
-            text: record.text == null ? "" : String(record.text),
-            character: normalizeNullableHistoryString(record.character),
-            voice: normalizeNullableHistoryString(record.voice),
-            voiceId: normalizeNullableHistoryString(record.voiceId),
-            selected: normalizeNullableHistoryString(record.selected),
-            isPending: record.isPending === true,
-        });
-    }
-    return out;
+    const record = item as Record<string, unknown>;
+    out.push({
+      id: String(record.id ?? ""),
+      type: record.type === "menu" ? "menu" : "say",
+      text: record.text == null ? "" : String(record.text),
+      character: normalizeNullableHistoryString(record.character),
+      voice: normalizeNullableHistoryString(record.voice),
+      voiceId: normalizeNullableHistoryString(record.voiceId),
+      selected: normalizeNullableHistoryString(record.selected),
+      isPending: record.isPending === true
+    });
+  }
+  return out;
 }
 
 /**
@@ -1522,28 +1666,28 @@ function normalizeBlueprintGameHistory(value: unknown): BlueprintGameHistoryEntr
  * `entries[0]` in every graph that reads it.
  */
 function normalizeAutoSaveEntries(value: unknown): AutoSaveEntry[] {
-    if (!Array.isArray(value)) {
-        return [];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const out: AutoSaveEntry[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      continue;
     }
-    const out: AutoSaveEntry[] = [];
-    for (const item of value) {
-        if (!item || typeof item !== "object") {
-            continue;
-        }
-        const record = item as Record<string, unknown>;
-        const id = String(record.id ?? "");
-        if (!id) {
-            continue;
-        }
-        out.push({
-            id,
-            slot: Number.isFinite(Number(record.slot)) ? Math.trunc(Number(record.slot)) : 0,
-            timestamp: Number.isFinite(Number(record.timestamp)) ? Number(record.timestamp) : 0,
-            createdAt: Number.isFinite(Number(record.createdAt)) ? Number(record.createdAt) : 0,
-            metadata: normalizeJsonValue(record.metadata),
-        });
+    const record = item as Record<string, unknown>;
+    const id = String(record.id ?? "");
+    if (!id) {
+      continue;
     }
-    return out.sort((a, b) => b.timestamp - a.timestamp);
+    out.push({
+      id,
+      slot: Number.isFinite(Number(record.slot)) ? Math.trunc(Number(record.slot)) : 0,
+      timestamp: Number.isFinite(Number(record.timestamp)) ? Number(record.timestamp) : 0,
+      createdAt: Number.isFinite(Number(record.createdAt)) ? Number(record.createdAt) : 0,
+      metadata: normalizeJsonValue(record.metadata)
+    });
+  }
+  return out.sort((a, b) => b.timestamp - a.timestamp);
 }
 
 /**
@@ -1554,15 +1698,16 @@ function normalizeAutoSaveEntries(value: unknown): AutoSaveEntry[] {
  * make a missing slot indistinguishable from one saved at the epoch.
  */
 function normalizeSaveRecordTimes(value: unknown): SaveRecordTimes | null {
-    if (!value || typeof value !== "object") {
-        return null;
-    }
-    const record = value as Record<string, unknown>;
-    const toMs = (raw: unknown): number => (Number.isFinite(Number(raw)) ? Math.trunc(Number(raw)) : 0);
-    return {
-        savedAt: toMs(record.savedAt),
-        createdAt: toMs(record.createdAt),
-    };
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const toMs = (raw: unknown): number =>
+    Number.isFinite(Number(raw)) ? Math.trunc(Number(raw)) : 0;
+  return {
+    savedAt: toMs(record.savedAt),
+    createdAt: toMs(record.createdAt)
+  };
 }
 
 /**
@@ -1573,2258 +1718,2337 @@ function normalizeSaveRecordTimes(value: unknown): SaveRecordTimes | null {
  * narration, which is a real save with no speaker rather than a missing one.
  */
 function normalizeSaveRecordLine(value: unknown): SaveRecordLine | null {
-    if (!value || typeof value !== "object") {
-        return null;
-    }
-    const record = value as Record<string, unknown>;
-    const toText = (raw: unknown): string => (typeof raw === "string" ? raw : "");
-    return {
-        line: toText(record.line),
-        speaker: toText(record.speaker),
-    };
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const toText = (raw: unknown): string => (typeof raw === "string" ? raw : "");
+  return {
+    line: toText(record.line),
+    speaker: toText(record.speaker)
+  };
 }
 
 function normalizeBlueprintChoiceCount(value: unknown): number {
-    const count = Number(value);
-    return Number.isInteger(count) && count > 0 ? count : 0;
+  const count = Number(value);
+  return Number.isInteger(count) && count > 0 ? count : 0;
 }
 
 function normalizeNullableString(raw: unknown): string | null {
-    if (raw === null) {
-        return null;
-    }
-    const s = String(raw ?? "").trim();
-    return s.length > 0 ? s : null;
+  if (raw === null) {
+    return null;
+  }
+  const s = String(raw ?? "").trim();
+  return s.length > 0 ? s : null;
 }
 
 const IMAGE_FILL_MODES: readonly ImageFillMode[] = ["cover", "contain", "stretch", "crop", "tile"];
 
 function normalizeImageFillMode(raw: unknown, fallback: ImageFillMode): ImageFillMode {
-    return IMAGE_FILL_MODES.includes(raw as ImageFillMode) ? raw as ImageFillMode : fallback;
+  return IMAGE_FILL_MODES.includes(raw as ImageFillMode) ? (raw as ImageFillMode) : fallback;
 }
 
 function normalizeImageCropPlacement(
-    raw: unknown,
-    fallback: ImageFillCropPlacement,
+  raw: unknown,
+  fallback: ImageFillCropPlacement
 ): ImageFillCropPlacement {
-    const obj = raw && typeof raw === "object" && !Array.isArray(raw)
-        ? raw as Partial<Record<keyof ImageFillCropPlacement, unknown>>
-        : {};
-    return {
-        leftPct: finiteNumber(obj.leftPct, fallback.leftPct),
-        topPct: finiteNumber(obj.topPct, fallback.topPct),
-        widthPct: finiteNumber(obj.widthPct, fallback.widthPct),
-        heightPct: finiteNumber(obj.heightPct, fallback.heightPct),
-    };
+  const obj =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Partial<Record<keyof ImageFillCropPlacement, unknown>>)
+      : {};
+  return {
+    leftPct: finiteNumber(obj.leftPct, fallback.leftPct),
+    topPct: finiteNumber(obj.topPct, fallback.topPct),
+    widthPct: finiteNumber(obj.widthPct, fallback.widthPct),
+    heightPct: finiteNumber(obj.heightPct, fallback.heightPct)
+  };
 }
 
 function imageCropPlacementEqual(a: ImageFillCropPlacement, b: ImageFillCropPlacement): boolean {
-    return a.leftPct === b.leftPct &&
-        a.topPct === b.topPct &&
-        a.widthPct === b.widthPct &&
-        a.heightPct === b.heightPct;
+  return (
+    a.leftPct === b.leftPct &&
+    a.topPct === b.topPct &&
+    a.widthPct === b.widthPct &&
+    a.heightPct === b.heightPct
+  );
 }
 
 function normalizeRecord(raw: unknown): Record<string, unknown> {
-    return raw && typeof raw === "object" && !Array.isArray(raw)
-        ? cloneJson(raw as Record<string, unknown>)
-        : {};
+  return raw && typeof raw === "object" && !Array.isArray(raw)
+    ? cloneJson(raw as Record<string, unknown>)
+    : {};
 }
 
 function normalizeJsonValue(raw: unknown): unknown {
-    if (raw === undefined) {
-        return null;
-    }
-    try {
-        const serialized = JSON.stringify(raw);
-        return serialized === undefined ? null : JSON.parse(serialized);
-    } catch {
-        return null;
-    }
+  if (raw === undefined) {
+    return null;
+  }
+  try {
+    const serialized = JSON.stringify(raw);
+    return serialized === undefined ? null : JSON.parse(serialized);
+  } catch {
+    return null;
+  }
 }
 
 function normalizeJsonRecord(raw: unknown): Record<string, unknown> {
-    const value = normalizeJsonValue(raw);
-    return value && typeof value === "object" && !Array.isArray(value)
-        ? value as Record<string, unknown>
-        : {};
+  const value = normalizeJsonValue(raw);
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function normalizeColor(raw: unknown, fallback: string): string {
-    const s = String(raw ?? "").trim();
-    return s.length > 0 ? s : fallback;
+  const s = String(raw ?? "").trim();
+  return s.length > 0 ? s : fallback;
 }
 
 function normalizeTextAlign(raw: unknown, fallback: TextAlign): TextAlign {
-    return raw === "left" || raw === "center" || raw === "right" ? raw : fallback;
+  return raw === "left" || raw === "center" || raw === "right" ? raw : fallback;
 }
 
 function normalizeTextVerticalAlign(raw: unknown, fallback: TextVerticalAlign): TextVerticalAlign {
-    return raw === "start" || raw === "center" || raw === "end" ? raw : fallback;
+  return raw === "start" || raw === "center" || raw === "end" ? raw : fallback;
 }
 
 function normalizeFontWeight(raw: unknown, fallback: BlueprintTextProperties["fontWeight"]) {
-    return raw === "normal" || raw === "600" || raw === "bold" ? raw : fallback;
+  return raw === "normal" || raw === "600" || raw === "bold" ? raw : fallback;
 }
 
 function normalizeTextWrapMode(raw: unknown, fallback: TextWrapMode): TextWrapMode {
-    return raw === "word" || raw === "character" || raw === "nowrap" ? raw : fallback;
+  return raw === "word" || raw === "character" || raw === "nowrap" ? raw : fallback;
 }
 
 function patchHas<K extends keyof BlueprintTextProperties>(
-    patch: BlueprintTextPropertiesPatch,
-    key: K,
+  patch: BlueprintTextPropertiesPatch,
+  key: K
 ): patch is BlueprintTextPropertiesPatch & Pick<BlueprintTextProperties, K> {
-    return Object.prototype.hasOwnProperty.call(patch, key);
+  return Object.prototype.hasOwnProperty.call(patch, key);
 }
 
 function normalizeTextPatch(
-    current: BlueprintTextProperties,
-    patch: BlueprintTextPropertiesPatch,
+  current: BlueprintTextProperties,
+  patch: BlueprintTextPropertiesPatch
 ): BlueprintTextPropertiesPatch {
-    const next: BlueprintTextPropertiesPatch = {};
-    if (patchHas(patch, "text")) {
-        next.text = normalizeString(patch.text, current.text);
-    }
-    if (patchHas(patch, "fontAssetId")) {
-        next.fontAssetId = normalizeFontAssetId(patch.fontAssetId);
-    }
-    if (patchHas(patch, "fontSize")) {
-        next.fontSize = Math.max(1, finiteNumber(patch.fontSize, current.fontSize));
-    }
-    if (patchHas(patch, "fontWeight")) {
-        next.fontWeight = normalizeFontWeight(patch.fontWeight, current.fontWeight);
-    }
-    if (patchHas(patch, "color")) {
-        next.color = normalizeColor(patch.color, current.color);
-    }
-    if (patchHas(patch, "textAlign")) {
-        next.textAlign = normalizeTextAlign(patch.textAlign, current.textAlign);
-    }
-    if (patchHas(patch, "textVerticalAlign")) {
-        next.textVerticalAlign = normalizeTextVerticalAlign(patch.textVerticalAlign, current.textVerticalAlign);
-    }
-    if (patchHas(patch, "lineHeight")) {
-        next.lineHeight = Math.max(0.1, finiteNumber(patch.lineHeight, current.lineHeight));
-    }
-    if (patchHas(patch, "textWrapMode")) {
-        next.textWrapMode = normalizeTextWrapMode(patch.textWrapMode, current.textWrapMode);
-    }
-    if (patchHas(patch, "effects")) {
-        next.effects = cloneJson<ElementEffectValues>(normalizeElementEffectValues(patch.effects));
-    }
-    return next;
-}
-
-function textPatchChanges(current: BlueprintTextProperties, patch: BlueprintTextPropertiesPatch): boolean {
-    for (const [key, value] of Object.entries(patch) as Array<[keyof BlueprintTextProperties, unknown]>) {
-        if (!jsonEquals(current[key], value)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-function sliderPropertiesEqual(a: BlueprintSliderProperties, b: BlueprintSliderProperties): boolean {
-    return (
-        a.value === b.value &&
-        a.normalizedValue === b.normalizedValue &&
-        a.min === b.min &&
-        a.max === b.max &&
-        a.step === b.step
+  const next: BlueprintTextPropertiesPatch = {};
+  if (patchHas(patch, "text")) {
+    next.text = normalizeString(patch.text, current.text);
+  }
+  if (patchHas(patch, "fontAssetId")) {
+    next.fontAssetId = normalizeFontAssetId(patch.fontAssetId);
+  }
+  if (patchHas(patch, "fontSize")) {
+    next.fontSize = Math.max(1, finiteNumber(patch.fontSize, current.fontSize));
+  }
+  if (patchHas(patch, "fontWeight")) {
+    next.fontWeight = normalizeFontWeight(patch.fontWeight, current.fontWeight);
+  }
+  if (patchHas(patch, "color")) {
+    next.color = normalizeColor(patch.color, current.color);
+  }
+  if (patchHas(patch, "textAlign")) {
+    next.textAlign = normalizeTextAlign(patch.textAlign, current.textAlign);
+  }
+  if (patchHas(patch, "textVerticalAlign")) {
+    next.textVerticalAlign = normalizeTextVerticalAlign(
+      patch.textVerticalAlign,
+      current.textVerticalAlign
     );
+  }
+  if (patchHas(patch, "lineHeight")) {
+    next.lineHeight = Math.max(0.1, finiteNumber(patch.lineHeight, current.lineHeight));
+  }
+  if (patchHas(patch, "textWrapMode")) {
+    next.textWrapMode = normalizeTextWrapMode(patch.textWrapMode, current.textWrapMode);
+  }
+  if (patchHas(patch, "effects")) {
+    next.effects = cloneJson<ElementEffectValues>(normalizeElementEffectValues(patch.effects));
+  }
+  return next;
 }
 
-function switchPropertiesEqual(a: BlueprintSwitchProperties, b: BlueprintSwitchProperties): boolean {
-    return a.checked === b.checked;
-}
-
-function emitHostCall(emit: (event: BlueprintDebugEvent) => void, capabilityId: string, phase: "call" | "return"): void {
-    if (phase === "call") {
-        emit({ type: "function.call", functionId: capabilityId });
-    } else {
-        emit({ type: "function.return", functionId: capabilityId });
+function textPatchChanges(
+  current: BlueprintTextProperties,
+  patch: BlueprintTextPropertiesPatch
+): boolean {
+  for (const [key, value] of Object.entries(patch) as Array<
+    [keyof BlueprintTextProperties, unknown]
+  >) {
+    if (!jsonEquals(current[key], value)) {
+      return true;
     }
+  }
+  return false;
 }
 
-function scopedWidgetRuntimeKey(runtimeScopeId: string | undefined, activeSurfaceId: string, elementId: string): string {
-    return `${runtimeScopeId ?? activeSurfaceId}\0${elementId}`;
+function sliderPropertiesEqual(
+  a: BlueprintSliderProperties,
+  b: BlueprintSliderProperties
+): boolean {
+  return (
+    a.value === b.value &&
+    a.normalizedValue === b.normalizedValue &&
+    a.min === b.min &&
+    a.max === b.max &&
+    a.step === b.step
+  );
+}
+
+function switchPropertiesEqual(
+  a: BlueprintSwitchProperties,
+  b: BlueprintSwitchProperties
+): boolean {
+  return a.checked === b.checked;
+}
+
+function emitHostCall(
+  emit: (event: BlueprintDebugEvent) => void,
+  capabilityId: string,
+  phase: "call" | "return"
+): void {
+  if (phase === "call") {
+    emit({ type: "function.call", functionId: capabilityId });
+  } else {
+    emit({ type: "function.return", functionId: capabilityId });
+  }
+}
+
+function scopedWidgetRuntimeKey(
+  runtimeScopeId: string | undefined,
+  activeSurfaceId: string,
+  elementId: string
+): string {
+  return `${runtimeScopeId ?? activeSurfaceId}\0${elementId}`;
 }
 
 function elementIdFromScopedWidgetRuntimeKey(scopedKey: string): string {
-    const separatorIndex = scopedKey.indexOf("\0");
-    return separatorIndex >= 0 ? scopedKey.slice(separatorIndex + 1) : scopedKey;
+  const separatorIndex = scopedKey.indexOf("\0");
+  return separatorIndex >= 0 ? scopedKey.slice(separatorIndex + 1) : scopedKey;
 }
 
 function normalizeGameSaveId(operation: string, id: string): string {
-    const safe = String(id ?? "").trim();
-    if (!safe) {
-        throw new Error(`${operation}: save id is required`);
-    }
-    return safe;
+  const safe = String(id ?? "").trim();
+  if (!safe) {
+    throw new Error(`${operation}: save id is required`);
+  }
+  return safe;
 }
 
 function normalizeSentenceCps(cps: unknown): number {
-    const value = typeof cps === "number" ? cps : Number(cps);
-    if (!Number.isFinite(value) || value <= 0) {
-        throw new Error("setSentenceSpeed: CPS must be a positive number");
-    }
-    return value;
+  const value = typeof cps === "number" ? cps : Number(cps);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error("setSentenceSpeed: CPS must be a positive number");
+  }
+  return value;
 }
 
 const GAME_PREFERENCE_KEYS = new Set<BlueprintGamePreferenceKey>([
-    "autoForward",
-    "skip",
-    "skipReadText",
-    "showDialog",
-    "gameSpeed",
-    "cps",
-    "voiceVolume",
-    "voiceFadeDuration",
-    "voiceEndMode",
-    "bgmVolume",
-    "soundVolume",
-    "globalVolume",
-    "skipDelay",
-    "skipInterval",
+  "autoForward",
+  "skip",
+  "skipReadText",
+  "showDialog",
+  "gameSpeed",
+  "cps",
+  "voiceVolume",
+  "voiceFadeDuration",
+  "voiceEndMode",
+  "bgmVolume",
+  "soundVolume",
+  "globalVolume",
+  "skipDelay",
+  "skipInterval"
 ]);
 
 function normalizeGamePreferenceKey(key: unknown): BlueprintGamePreferenceKey {
-    const safeKey = String(key ?? "").trim() as BlueprintGamePreferenceKey;
-    if (!GAME_PREFERENCE_KEYS.has(safeKey)) {
-        throw new Error(`game preference key is not supported: ${String(key ?? "")}`);
-    }
-    return safeKey;
+  const safeKey = String(key ?? "").trim() as BlueprintGamePreferenceKey;
+  if (!GAME_PREFERENCE_KEYS.has(safeKey)) {
+    throw new Error(`game preference key is not supported: ${String(key ?? "")}`);
+  }
+  return safeKey;
 }
 
-function normalizeGamePreferenceNumber(operation: string, key: BlueprintGamePreferenceKey, value: unknown): number {
-    const safeValue = typeof value === "number" ? value : Number(value);
-    if (!Number.isFinite(safeValue)) {
-        throw new Error(`${operation}: ${key} must be a finite number`);
-    }
-    switch (key) {
-        case "gameSpeed":
-        case "cps":
-        case "skipInterval":
-            if (safeValue <= 0) {
-                throw new Error(`${operation}: ${key} must be a positive number`);
-            }
-            break;
-        case "voiceVolume":
-        case "voiceFadeDuration":
-        case "bgmVolume":
-        case "soundVolume":
-        case "globalVolume":
-        case "skipDelay":
-            if (safeValue < 0) {
-                throw new Error(`${operation}: ${key} must be zero or greater`);
-            }
-            break;
-        default:
-            break;
-    }
-    return safeValue;
+function normalizeGamePreferenceNumber(
+  operation: string,
+  key: BlueprintGamePreferenceKey,
+  value: unknown
+): number {
+  const safeValue = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(safeValue)) {
+    throw new Error(`${operation}: ${key} must be a finite number`);
+  }
+  switch (key) {
+    case "gameSpeed":
+    case "cps":
+    case "skipInterval":
+      if (safeValue <= 0) {
+        throw new Error(`${operation}: ${key} must be a positive number`);
+      }
+      break;
+    case "voiceVolume":
+    case "voiceFadeDuration":
+    case "bgmVolume":
+    case "soundVolume":
+    case "globalVolume":
+    case "skipDelay":
+      if (safeValue < 0) {
+        throw new Error(`${operation}: ${key} must be zero or greater`);
+      }
+      break;
+    default:
+      break;
+  }
+  return safeValue;
 }
 
 function normalizeGamePreferenceValue(
-    operation: string,
-    key: BlueprintGamePreferenceKey,
-    value: unknown,
+  operation: string,
+  key: BlueprintGamePreferenceKey,
+  value: unknown
 ): BlueprintGamePreferenceValue {
-    switch (key) {
-        case "autoForward":
-        case "skip":
-        case "skipReadText":
-        case "showDialog":
-            if (typeof value !== "boolean") {
-                throw new Error(`${operation}: ${key} must be a boolean`);
-            }
-            return value;
-        case "voiceEndMode": {
-            const mode = String(value ?? "").trim();
-            if (mode !== "fade" && mode !== "stop" && mode !== "none") {
-                throw new Error(`${operation}: voiceEndMode must be "fade", "stop", or "none"`);
-            }
-            return mode;
-        }
-        case "gameSpeed":
-        case "cps":
-        case "voiceVolume":
-        case "voiceFadeDuration":
-        case "bgmVolume":
-        case "soundVolume":
-        case "globalVolume":
-        case "skipDelay":
-        case "skipInterval":
-            return normalizeGamePreferenceNumber(operation, key, value);
-        default:
-            throw new Error(`${operation}: ${key} is not supported`);
+  switch (key) {
+    case "autoForward":
+    case "skip":
+    case "skipReadText":
+    case "showDialog":
+      if (typeof value !== "boolean") {
+        throw new Error(`${operation}: ${key} must be a boolean`);
+      }
+      return value;
+    case "voiceEndMode": {
+      const mode = String(value ?? "").trim();
+      if (mode !== "fade" && mode !== "stop" && mode !== "none") {
+        throw new Error(`${operation}: voiceEndMode must be "fade", "stop", or "none"`);
+      }
+      return mode;
     }
+    case "gameSpeed":
+    case "cps":
+    case "voiceVolume":
+    case "voiceFadeDuration":
+    case "bgmVolume":
+    case "soundVolume":
+    case "globalVolume":
+    case "skipDelay":
+    case "skipInterval":
+      return normalizeGamePreferenceNumber(operation, key, value);
+    default:
+      throw new Error(`${operation}: ${key} is not supported`);
+  }
 }
 
 /**
  * Unified Host API implementation for Dev Mode (M3-full). Workspace editor does not instantiate this.
  */
-export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRuntimeOptions): BlueprintHostApiRuntime {
-    const {
-        document,
-        scope,
-        activeSurfaceId,
-        runtimeScopeId,
-        pageProps,
-        frameParams,
-        onFrameEmit,
-        onStartStory,
-        onIsInGame,
-        onIsGameOverlay,
-        onQuitGame,
-        onWriteSave,
-        onLoadSave,
-        onDeleteSave,
-        onListSaveIds,
-        onGetSaveMetadata,
-        onGetSaveTimes,
-        onGetSaveLine,
-        onGetSavePreview,
-        onWriteAutoSave,
-        onListAutoSaves,
-        onGetHistory,
-        onRestoreHistory,
-        onGetNametag,
-        onGetSpeakerAvatar,
-        onGetSpeakerColor,
-        onGetCharacter,
-        onGetNotifications,
-        onGetChoiceCount,
-        onIsNvlMode,
-        onIsCurrentTextRead,
-        onIsTextRead,
-        onClearTextRead,
-        onIsSceneVisited,
-        onIsOptionPicked,
-        onClearVisited,
-        onSelectChoice,
-        onNext,
-        onSkip,
-        onShowDialog,
-        onHideDialog,
-        onToggleDialogDisplay,
-        onSetSentenceSpeed,
-        onGetGamePreference,
-        onSetGamePreference,
-        onPlaySound,
-        onStopSound,
-        onPauseSound,
-        onResumeSound,
-        onSetSoundVolume,
-        onSeekSound,
-        onIsSoundPlaying,
-        onGetTrackVolume,
-        onSetTrackVolume,
-        onNetworkFetch,
-        onOpenExternal,
-        onExportProgress,
-        onImportProgress,
-        audioTracks,
-        onSubscribeGamePreferences,
-        emit,
-        onOpenSurface,
-        onPageBack,
-        onClearPages,
-        onClearGameOverlay,
-        onQuitApplication,
-        onGetFullscreen,
-        onSetFullscreen,
-        onShowLayer,
-        onHideLayer,
-        onHideLayerGroup,
-        onWaitLayer,
-        onCloseOwnLayer,
-        onIsLayerMounted,
-        onWidgetPatch,
-        onElementFlush,
-        widgetRuntimeStore,
-    } =
-        options;
-    const stateScopeId = runtimeScopeId ?? activeSurfaceId;
-    const currentPageProps = normalizeJsonRecord(pageProps);
-    const pendingFlushElementIds = new Set<string>();
-    const runtimePatches = new Map<string, DevModeWidgetRuntimePatch>();
-    type DisplayableAnimationWaitReason = "completed" | "stopped";
+export function createDevModeBlueprintHostApi(
+  options: CreateBlueprintHostApiRuntimeOptions
+): BlueprintHostApiRuntime {
+  const {
+    document,
+    scope,
+    activeSurfaceId,
+    runtimeScopeId,
+    pageProps,
+    frameParams,
+    onFrameEmit,
+    onStartStory,
+    onIsInGame,
+    onIsGameOverlay,
+    onQuitGame,
+    onWriteSave,
+    onLoadSave,
+    onDeleteSave,
+    onListSaveIds,
+    onGetSaveMetadata,
+    onGetSaveTimes,
+    onGetSaveLine,
+    onGetSavePreview,
+    onWriteAutoSave,
+    onListAutoSaves,
+    onGetHistory,
+    onRestoreHistory,
+    onGetNametag,
+    onGetSpeakerAvatar,
+    onGetSpeakerColor,
+    onGetCharacter,
+    onGetNotifications,
+    onGetChoiceCount,
+    onIsNvlMode,
+    onIsCurrentTextRead,
+    onIsTextRead,
+    onClearTextRead,
+    onIsSceneVisited,
+    onIsOptionPicked,
+    onClearVisited,
+    onSelectChoice,
+    onNext,
+    onSkip,
+    onShowDialog,
+    onHideDialog,
+    onToggleDialogDisplay,
+    onSetSentenceSpeed,
+    onGetGamePreference,
+    onSetGamePreference,
+    onPlaySound,
+    onStopSound,
+    onPauseSound,
+    onResumeSound,
+    onSetSoundVolume,
+    onSeekSound,
+    onIsSoundPlaying,
+    onGetTrackVolume,
+    onSetTrackVolume,
+    onNetworkFetch,
+    onOpenExternal,
+    onExportProgress,
+    onImportProgress,
+    audioTracks,
+    onSubscribeGamePreferences,
+    emit,
+    onOpenSurface,
+    onPageBack,
+    onClearPages,
+    onClearGameOverlay,
+    onQuitApplication,
+    onGetFullscreen,
+    onSetFullscreen,
+    onShowLayer,
+    onHideLayer,
+    onHideLayerGroup,
+    onWaitLayer,
+    onCloseOwnLayer,
+    onIsLayerMounted,
+    onWidgetPatch,
+    onElementFlush,
+    widgetRuntimeStore
+  } = options;
+  const stateScopeId = runtimeScopeId ?? activeSurfaceId;
+  const currentPageProps = normalizeJsonRecord(pageProps);
+  const pendingFlushElementIds = new Set<string>();
+  const runtimePatches = new Map<string, DevModeWidgetRuntimePatch>();
+  type DisplayableAnimationWaitReason = "completed" | "stopped";
 
-    const displayableAnimationWaiters = new Map<
-        string,
-        Set<(reason: DisplayableAnimationWaitReason) => void>
-    >();
-    let flushScheduled = false;
+  const displayableAnimationWaiters = new Map<
+    string,
+    Set<(reason: DisplayableAnimationWaitReason) => void>
+  >();
+  let flushScheduled = false;
 
-    const emitWidgetPatch = (
-        elementId: string,
-        patch: DevModeWidgetRuntimePatch,
-        options?: { widgetStateChanged?: boolean },
-    ) => {
-        onWidgetPatch(elementId, patch);
-        widgetRuntimeStore.notifyRuntimePatchesChanged(options);
-    };
+  const emitWidgetPatch = (
+    elementId: string,
+    patch: DevModeWidgetRuntimePatch,
+    options?: { widgetStateChanged?: boolean }
+  ) => {
+    onWidgetPatch(elementId, patch);
+    widgetRuntimeStore.notifyRuntimePatchesChanged(options);
+  };
 
-    const scheduleElementFlush = (elementId: string) => {
-        if (!onElementFlush) {
-            return;
+  const scheduleElementFlush = (elementId: string) => {
+    if (!onElementFlush) {
+      return;
+    }
+    const el = readDocumentElement(document, elementId);
+    if (!el) {
+      return;
+    }
+    pendingFlushElementIds.add(elementId);
+    if (flushScheduled) {
+      return;
+    }
+    flushScheduled = true;
+    queueMicrotask(() => {
+      flushScheduled = false;
+      const elementIds = [...pendingFlushElementIds];
+      pendingFlushElementIds.clear();
+      for (const id of elementIds) {
+        const target = readDocumentElement(document, id);
+        if (!target) {
+          continue;
         }
-        const el = readDocumentElement(document, elementId);
-        if (!el) {
-            return;
-        }
-        pendingFlushElementIds.add(elementId);
-        if (flushScheduled) {
-            return;
-        }
-        flushScheduled = true;
-        queueMicrotask(() => {
-            flushScheduled = false;
-            const elementIds = [...pendingFlushElementIds];
-            pendingFlushElementIds.clear();
-            for (const id of elementIds) {
-                const target = readDocumentElement(document, id);
-                if (!target) {
-                    continue;
-                }
-                void onElementFlush(id, {
-                    element: {
-                        surfaceId: activeSurfaceId,
-                        elementId: id,
-                        elementType: target.type,
-                    },
-                });
-            }
+        void onElementFlush(id, {
+          element: {
+            surfaceId: activeSurfaceId,
+            elementId: id,
+            elementType: target.type
+          }
         });
-    };
+      }
+    });
+  };
 
-    const notifyDisplayableAnimationDone = (
-        animationId: string,
-        reason: DisplayableAnimationWaitReason = "stopped",
-    ): void => {
+  const notifyDisplayableAnimationDone = (
+    animationId: string,
+    reason: DisplayableAnimationWaitReason = "stopped"
+  ): void => {
+    const waiters = displayableAnimationWaiters.get(animationId);
+    if (!waiters || waiters.size === 0) {
+      return;
+    }
+    displayableAnimationWaiters.delete(animationId);
+    for (const resolve of Array.from(waiters)) {
+      resolve(reason);
+    }
+  };
+
+  const waitForDisplayableAnimation = async (
+    animationId: string,
+    waitMs: number
+  ): Promise<DisplayableAnimationWaitReason> => {
+    if (waitMs <= 0) {
+      return "completed";
+    }
+    return new Promise<DisplayableAnimationWaitReason>((resolve) => {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      const finish = (reason: DisplayableAnimationWaitReason) => {
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
         const waiters = displayableAnimationWaiters.get(animationId);
-        if (!waiters || waiters.size === 0) {
-            return;
+        waiters?.delete(finish);
+        if (waiters?.size === 0) {
+          displayableAnimationWaiters.delete(animationId);
         }
-        displayableAnimationWaiters.delete(animationId);
-        for (const resolve of Array.from(waiters)) {
-            resolve(reason);
-        }
-    };
+        resolve(reason);
+      };
+      let waiters = displayableAnimationWaiters.get(animationId);
+      if (!waiters) {
+        waiters = new Set<(reason: DisplayableAnimationWaitReason) => void>();
+        displayableAnimationWaiters.set(animationId, waiters);
+      }
+      waiters.add(finish);
+      timeoutId = setTimeout(() => finish("completed"), waitMs);
+    });
+  };
 
-    const waitForDisplayableAnimation = async (
-        animationId: string,
-        waitMs: number,
-    ): Promise<DisplayableAnimationWaitReason> => {
-        if (waitMs <= 0) {
-            return "completed";
+  const createDisplayableLayoutPatch = (
+    elementId: string,
+    patch: BlueprintDisplayablePropertiesPatch
+  ): NonNullable<DevModeWidgetRuntimePatch["layout"]> => {
+    const layoutPatch: NonNullable<DevModeWidgetRuntimePatch["layout"]> = {};
+    const assignFinite = (value: unknown): number | undefined => {
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        return undefined;
+      }
+      return value;
+    };
+    const x = assignFinite(patch.x);
+    const y = assignFinite(patch.y);
+    const width = assignFinite(patch.width);
+    const height = assignFinite(patch.height);
+    const rotation = assignFinite(patch.rotation);
+    const opacity = assignFinite(patch.opacity);
+    const currentLayout = readPatchedElementLayout(document, runtimePatches, elementId);
+    const nextWidth = width ?? currentLayout.width;
+    const nextHeight = height ?? currentLayout.height;
+    const parentPosition =
+      x !== undefined || y !== undefined
+        ? readDisplayableParentSurfaceTopLeft(document, runtimePatches, elementId)
+        : null;
+    if (x !== undefined) {
+      layoutPatch.x = x - (parentPosition?.x ?? 0) - Math.min(0, nextWidth);
+    }
+    if (y !== undefined) {
+      layoutPatch.y = y - (parentPosition?.y ?? 0) - Math.min(0, nextHeight);
+    }
+    if (width !== undefined) {
+      layoutPatch.width = width;
+    }
+    if (height !== undefined) {
+      layoutPatch.height = height;
+    }
+    if (rotation !== undefined) {
+      layoutPatch.rotation = rotation;
+    }
+    if (opacity !== undefined) {
+      layoutPatch.opacity = opacity;
+    }
+    return layoutPatch;
+  };
+
+  return {
+    navigation: {
+      openSurface: async (surfaceId: string, props?: unknown) => {
+        const cap = "navigation.openSurface";
+        emitHostCall(emit, cap, "call");
+        const targetSurfaceId = String(surfaceId ?? "").trim();
+        if (!targetSurfaceId) {
+          // "None" in the page dropdown means no page, not one page fewer. This used to
+          // alias Go back, so an author who picked None to dismiss an overlay two pages
+          // deep landed on the page underneath and had no way to say what they meant.
+          await (onClearPages ?? onPageBack)();
+          emitHostCall(emit, cap, "return");
+          return;
         }
-        return new Promise<DisplayableAnimationWaitReason>(resolve => {
-            let timeoutId: ReturnType<typeof setTimeout> | undefined;
-            const finish = (reason: DisplayableAnimationWaitReason) => {
-                if (timeoutId !== undefined) {
-                    clearTimeout(timeoutId);
-                }
-                const waiters = displayableAnimationWaiters.get(animationId);
-                waiters?.delete(finish);
-                if (waiters?.size === 0) {
-                    displayableAnimationWaiters.delete(animationId);
-                }
-                resolve(reason);
+        const target = document.surfaces.find((s) => s.id === targetSurfaceId);
+        if (!target) {
+          emitHostCall(emit, cap, "return");
+          throw new Error(`openSurface: surface not found: ${targetSurfaceId}`);
+        }
+        await onOpenSurface(targetSurfaceId, normalizeJsonRecord(props));
+        emitHostCall(emit, cap, "return");
+      },
+      getPageProps: () => {
+        const cap = "navigation.getPageProps";
+        emitHostCall(emit, cap, "call");
+        const props = normalizeJsonRecord(currentPageProps);
+        emitHostCall(emit, cap, "return");
+        return props;
+      },
+      pageBack: async () => {
+        const cap = "navigation.pageBack";
+        emitHostCall(emit, cap, "call");
+        await onPageBack();
+        emitHostCall(emit, cap, "return");
+      },
+      clearPages: async () => {
+        const cap = "navigation.clearPages";
+        emitHostCall(emit, cap, "call");
+        await (onClearPages ?? onPageBack)();
+        emitHostCall(emit, cap, "return");
+      },
+      clearGameOverlay: async () => {
+        const cap = "navigation.clearGameOverlay";
+        emitHostCall(emit, cap, "call");
+        // Hosts with no game behind their pages (the story preview) have nothing to clear,
+        // which is the same answer this gives when a game is running but nothing is over it.
+        await onClearGameOverlay?.();
+        emitHostCall(emit, cap, "return");
+      },
+      quitApplication: async () => {
+        const cap = "navigation.quitApplication";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onQuitApplication) {
+            throw new Error("quitApplication: application runtime is not available");
+          }
+          await onQuitApplication();
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getFullscreen: async () => {
+        const cap = "navigation.getFullscreen";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onGetFullscreen) {
+            throw new Error("getFullscreen: application window is not available");
+          }
+          return (await onGetFullscreen()) === true;
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      setFullscreen: async (fullscreen: boolean) => {
+        const cap = "navigation.setFullscreen";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onSetFullscreen) {
+            throw new Error("setFullscreen: application window is not available");
+          }
+          await onSetFullscreen(fullscreen === true);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      openExternal: async (request: BlueprintOpenExternalRequest) => {
+        const cap = "navigation.openExternal";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onOpenExternal) {
+            // No backend = nowhere to send it (editor preview, story preview). Reported
+            // as a result rather than thrown, so a Page being previewed in Studio still
+            // lays out and the author's own branch is what runs.
+            return {
+              outcome: "failed" as const,
+              error: "Links cannot be opened here. Run the project in Dev Mode to open one."
             };
-            let waiters = displayableAnimationWaiters.get(animationId);
-            if (!waiters) {
-                waiters = new Set<(reason: DisplayableAnimationWaitReason) => void>();
-                displayableAnimationWaiters.set(animationId, waiters);
-            }
-            waiters.add(finish);
-            timeoutId = setTimeout(() => finish("completed"), waitMs);
+          }
+          return await onOpenExternal(request);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      }
+    },
+    layers: {
+      show: async (surfaceId: string, props?: unknown, showOptions?: BlueprintLayerShowOptions) => {
+        const cap = "layers.show";
+        emitHostCall(emit, cap, "call");
+        try {
+          const targetSurfaceId = String(surfaceId ?? "").trim();
+          if (!targetSurfaceId) {
+            throw new Error("Show Layer: no page selected");
+          }
+          // Named ahead of the host call and by id: an author picked a page that has since
+          // been deleted or renamed, and the id is the only thing that ties the failure
+          // back to the node they have to fix.
+          if (!document.surfaces.some((surface) => surface.id === targetSurfaceId)) {
+            throw new Error(`Show Layer: page not found: ${targetSurfaceId}`);
+          }
+          if (!onShowLayer) {
+            throw new Error("Show Layer: this preview has no layer stack");
+          }
+          const group =
+            typeof showOptions?.group === "string" && showOptions.group.trim()
+              ? showOptions.group.trim()
+              : null;
+          return onShowLayer({
+            surfaceId: targetSurfaceId,
+            props: normalizeJsonRecord(props),
+            modal: showOptions?.modal === true,
+            dismissible: showOptions?.dismissible !== false,
+            group,
+            ownerScopeId: stateScopeId
+          });
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      hide: async (handle: string) => {
+        const cap = "layers.hide";
+        emitHostCall(emit, cap, "call");
+        try {
+          await onHideLayer?.(String(handle ?? ""));
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      hideGroup: async (group: string) => {
+        const cap = "layers.hideGroup";
+        emitHostCall(emit, cap, "call");
+        try {
+          await onHideLayerGroup?.(String(group ?? "").trim());
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      wait: async (handle: string) => {
+        const cap = "layers.wait";
+        emitHostCall(emit, cap, "call");
+        try {
+          // No host, or a handle naming nothing, both answer null rather than hanging. A
+          // wait that never returns is the one failure an author cannot see the shape of.
+          return (await onWaitLayer?.(String(handle ?? ""))) ?? null;
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      closeSelf: async (result?: unknown) => {
+        const cap = "layers.closeSelf";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (onCloseOwnLayer?.(stateScopeId, result ?? null) !== true) {
+            // Not an error: the same page can be opened as a page and shown as a layer,
+            // and one wired to close itself has to survive being opened the other way.
+            emit({
+              type: "devtools.log",
+              level: "warn",
+              message: "Close This Layer: this page is not a layer, so nothing was closed"
+            });
+          }
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      isMounted: (handle: string) => {
+        const cap = "layers.isMounted";
+        emitHostCall(emit, cap, "call");
+        const mounted = onIsLayerMounted?.(String(handle ?? "")) === true;
+        emitHostCall(emit, cap, "return");
+        return mounted;
+      }
+    },
+    widget: {
+      setVisible: async (elementId: string, visible: boolean) => {
+        const cap = "widget.setVisible";
+        emitHostCall(emit, cap, "call");
+        if (!readDocumentElement(document, elementId)) {
+          emitHostCall(emit, cap, "return");
+          throw new Error(`setVisible: element not found: ${elementId}`);
+        }
+        const previous = readCommonProperties(
+          document,
+          widgetRuntimeStore,
+          runtimePatches,
+          scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+          elementId
+        ).visible;
+        runtimePatches.set(elementId, {
+          ...(runtimePatches.get(elementId) ?? {}),
+          visible
         });
-    };
-
-    const createDisplayableLayoutPatch = (
+        emitWidgetPatch(elementId, { visible });
+        if (previous !== visible) {
+          scheduleElementFlush(elementId);
+        }
+        emitHostCall(emit, cap, "return");
+      },
+      setEnabled: async (elementId: string, enabled: boolean) => {
+        const cap = "widget.setEnabled";
+        emitHostCall(emit, cap, "call");
+        if (!readDocumentElement(document, elementId)) {
+          emitHostCall(emit, cap, "return");
+          throw new Error(`setEnabled: element not found: ${elementId}`);
+        }
+        const previous = readCommonProperties(
+          document,
+          widgetRuntimeStore,
+          runtimePatches,
+          scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+          elementId
+        ).enabled;
+        runtimePatches.set(elementId, {
+          ...(runtimePatches.get(elementId) ?? {}),
+          enabled
+        });
+        emitWidgetPatch(elementId, { enabled });
+        if (previous !== enabled) {
+          scheduleElementFlush(elementId);
+        }
+        emitHostCall(emit, cap, "return");
+      },
+      setVariant: async (
         elementId: string,
-        patch: BlueprintDisplayablePropertiesPatch,
-    ): NonNullable<DevModeWidgetRuntimePatch["layout"]> => {
-        const layoutPatch: NonNullable<DevModeWidgetRuntimePatch["layout"]> = {};
-        const assignFinite = (value: unknown): number | undefined => {
+        variantId: string | null,
+        options?: { waitForTransition?: boolean }
+      ) => {
+        const cap = "widget.setVariant";
+        emitHostCall(emit, cap, "call");
+        assertAppearanceVariantId(document, elementId, variantId);
+        const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+        const previous = widgetRuntimeStore.getVariantOverride(scopedKey);
+        const before = readEffectiveDisplayableProperties(
+          document,
+          widgetRuntimeStore,
+          runtimePatches,
+          runtimeScopeId,
+          activeSurfaceId,
+          elementId
+        );
+        const model = readAppearanceModel(document, elementId);
+        const targetVariant = resolveVariantForSetVariant(model, variantId);
+        const targetOpacity =
+          readAppearanceOpacity(document, widgetRuntimeStore, scopedKey, elementId, variantId) ??
+          readDisplayableProperties(document, elementId).opacity;
+        widgetRuntimeStore.setVariantOverride(scopedKey, variantId);
+        const previousPatch = runtimePatches.get(elementId) ?? {};
+        if (hasRuntimeOpacityPatch(previousPatch)) {
+          const layout = { ...(previousPatch.layout ?? {}) };
+          delete layout.opacity;
+          const nextPatch: DevModeWidgetRuntimePatch = {
+            ...previousPatch,
+            layout
+          };
+          runtimePatches.set(elementId, nextPatch);
+          emitWidgetPatch(elementId, nextPatch);
+        }
+        const opacityTransition = variantDisplayableOpacityTransition(
+          document,
+          elementId,
+          targetVariant
+        );
+        if (opacityTransition && before.opacity !== targetOpacity) {
+          widgetRuntimeStore.setDisplayableMotion(scopedKey, {
+            target: { opacity: [before.opacity, targetOpacity] },
+            transition: toDisplayableTransition(opacityTransition),
+            resetOnComplete: true
+          });
+        }
+        if (previous !== variantId || before.opacity !== targetOpacity) {
+          scheduleElementFlush(elementId);
+        }
+        if (options?.waitForTransition) {
+          await sleepMs(variantWaitMs(targetVariant));
+        }
+        emitHostCall(emit, cap, "return");
+      },
+      getCommonProperties: (elementId: string) => {
+        const cap = "widget.getCommonProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          return readCommonProperties(
+            document,
+            widgetRuntimeStore,
+            runtimePatches,
+            scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+            elementId
+          );
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getTextProperties: (elementId: string) => {
+        const cap = "widget.getTextProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          return readTextProperties(document, elementId);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      setTextProperties: async (elementId: string, patch: BlueprintTextPropertiesPatch) => {
+        const cap = "widget.setTextProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          const current = readTextProperties(document, elementId);
+          const el = assertTextElement(document, elementId);
+          const normalized = normalizeTextPatch(current, patch);
+          if (!textPatchChanges(current, normalized)) {
+            return;
+          }
+          el.props = {
+            ...(el.props ?? {}),
+            ...normalized
+          };
+          emitWidgetPatch(elementId, {});
+          scheduleElementFlush(elementId);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getButtonProperties: (elementId: string) => {
+        const cap = "widget.getButtonProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          return readButtonProperties(document, elementId);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      setButtonProperties: async (elementId: string, patch: Partial<BlueprintButtonProperties>) => {
+        const cap = "widget.setButtonProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          const el = assertButtonElement(document, elementId);
+          const current = readButtonProperties(document, elementId);
+          const hasLabelPatch = Object.prototype.hasOwnProperty.call(patch, "label");
+          const hasCursorPatch = Object.prototype.hasOwnProperty.call(patch, "cursor");
+          const nextLabel = hasLabelPatch
+            ? normalizeString(patch.label, current.label)
+            : current.label;
+          const nextCursor =
+            hasCursorPatch && isButtonCursorValue(patch.cursor) ? patch.cursor : current.cursor;
+
+          let changed = false;
+          const nextProps = { ...(el.props ?? {}) };
+          if (hasLabelPatch && nextLabel !== current.label) {
+            nextProps.label = nextLabel;
+            changed = true;
+          }
+          if (hasCursorPatch && nextCursor !== current.cursor) {
+            const flat = { ...getButtonProps(el), cursor: nextCursor };
+            nextProps.cursor = nextCursor;
+            nextProps.appearance = patchButtonDefaultCursorAppearance(
+              flat.appearance,
+              flat,
+              nextCursor
+            );
+            changed = true;
+          }
+          if (!changed) {
+            return;
+          }
+          el.props = nextProps;
+          emitWidgetPatch(elementId, {});
+          scheduleElementFlush(elementId);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getContainerProperties: (elementId: string) => {
+        const cap = "widget.getContainerProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          return readContainerProperties(document, elementId);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      setContainerProperties: async (
+        elementId: string,
+        patch: Partial<BlueprintContainerProperties>
+      ) => {
+        const cap = "widget.setContainerProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          const el = assertContainerElement(document, elementId);
+          const current = readContainerProperties(document, elementId);
+          const clipContent =
+            patch.clipContent === undefined ? current.clipContent : patch.clipContent === true;
+          if (clipContent === current.clipContent) {
+            return;
+          }
+          el.props = { ...(el.props ?? {}), clipContent };
+          emitWidgetPatch(elementId, {});
+          scheduleElementFlush(elementId);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getImageProperties: (elementId: string) => {
+        const cap = "widget.getImageProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          return readImageProperties(document, elementId);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      setImageProperties: async (elementId: string, patch: Partial<BlueprintImageProperties>) => {
+        const cap = "widget.setImageProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          const el = assertImageElement(document, elementId);
+          const current = readImageProperties(document, elementId);
+          const hasAssetPatch = Object.prototype.hasOwnProperty.call(patch, "asset");
+          const assetId = hasAssetPatch
+            ? (normalizeBlueprintImageAssetValue(patch.asset)?.assetId ?? null)
+            : patch.assetId === undefined
+              ? current.assetId
+              : normalizeNullableString(patch.assetId);
+          const fitMode =
+            patch.fitMode === undefined
+              ? current.fitMode
+              : normalizeImageFillMode(patch.fitMode, current.fitMode);
+          const cropRect =
+            patch.cropRect === undefined
+              ? current.cropRect
+              : normalizeImageCropPlacement(patch.cropRect, current.cropRect);
+          const flipX = patch.flipX === undefined ? current.flipX : patch.flipX === true;
+          const flipY = patch.flipY === undefined ? current.flipY : patch.flipY === true;
+          const fillChanged =
+            assetId !== current.assetId ||
+            fitMode !== current.fitMode ||
+            !imageCropPlacementEqual(cropRect, current.cropRect);
+          const flipChanged = flipX !== current.flipX || flipY !== current.flipY;
+          if (!fillChanged && !flipChanged) {
+            return;
+          }
+          let nextProps: Record<string, unknown> = { ...(el.props ?? {}) };
+          if (fillChanged) {
+            const previousFill = getImageWidgetRectangleProps(el).imageFill;
+            const nextFill: ImageFill = {
+              ...previousFill,
+              mode: fitMode,
+              assetId,
+              cropPlacement: cropRect
+            };
+            nextProps = buildImageFillPropsUpdate(el, nextFill);
+          }
+          el.props = { ...nextProps, imageFlipX: flipX, imageFlipY: flipY };
+          emitWidgetPatch(elementId, {});
+          scheduleElementFlush(elementId);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getSliderProperties: (elementId: string) => {
+        const cap = "widget.getSliderProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          return readSliderProperties(
+            document,
+            widgetRuntimeStore,
+            runtimeScopeId,
+            activeSurfaceId,
+            elementId
+          );
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      setSliderProperties: async (elementId: string, patch: BlueprintSliderPropertiesPatch) => {
+        const cap = "widget.setSliderProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          const before = readSliderProperties(
+            document,
+            widgetRuntimeStore,
+            runtimeScopeId,
+            activeSurfaceId,
+            elementId
+          );
+          const authored = readAuthoredSliderProperties(document, elementId);
+          const after = widgetRuntimeStore.setSliderProperties(
+            scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+            authored,
+            patch
+          );
+          if (!sliderPropertiesEqual(before, after)) {
+            scheduleElementFlush(elementId);
+          }
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getSwitchProperties: (elementId: string) => {
+        const cap = "widget.getSwitchProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          return readSwitchProperties(
+            document,
+            widgetRuntimeStore,
+            runtimeScopeId,
+            activeSurfaceId,
+            elementId
+          );
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      setSwitchProperties: async (elementId: string, patch: BlueprintSwitchPropertiesPatch) => {
+        const cap = "widget.setSwitchProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          const before = readSwitchProperties(
+            document,
+            widgetRuntimeStore,
+            runtimeScopeId,
+            activeSurfaceId,
+            elementId
+          );
+          const authored = readAuthoredSwitchProperties(document, elementId);
+          const after = widgetRuntimeStore.setSwitchProperties(
+            scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+            authored,
+            patch
+          );
+          if (!switchPropertiesEqual(before, after)) {
+            scheduleElementFlush(elementId);
+          }
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getTextInputProperties: (elementId: string) => {
+        const cap = "widget.getTextInputProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          return readTextInputProperties(
+            document,
+            widgetRuntimeStore,
+            runtimeScopeId,
+            activeSurfaceId,
+            elementId
+          );
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      setTextInputProperties: async (
+        elementId: string,
+        patch: BlueprintTextInputPropertiesPatch
+      ) => {
+        const cap = "widget.setTextInputProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          const before = readTextInputProperties(
+            document,
+            widgetRuntimeStore,
+            runtimeScopeId,
+            activeSurfaceId,
+            elementId
+          );
+          const authored = readAuthoredTextInputProperties(document, elementId);
+          const after = widgetRuntimeStore.setTextInputProperties(
+            scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+            authored,
+            patch
+          );
+          if (before.value !== after.value) {
+            scheduleElementFlush(elementId);
+          }
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getListProperties: (elementId: string) => {
+        const cap = "widget.getListProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          return readListProperties(
+            document,
+            scope,
+            widgetRuntimeStore,
+            runtimeScopeId,
+            activeSurfaceId,
+            stateScopeId,
+            currentPageProps,
+            elementId
+          );
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      setListItems: async (elementId: string, items: readonly unknown[]) => {
+        const cap = "widget.setListItems";
+        emitHostCall(emit, cap, "call");
+        try {
+          assertListElement(document, elementId);
+          widgetRuntimeStore.setListItems(
+            scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+            items
+          );
+          scheduleElementFlush(elementId);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      setListSelectedIndex: async (elementId: string, index: number) => {
+        const cap = "widget.setListSelectedIndex";
+        emitHostCall(emit, cap, "call");
+        try {
+          assertListElement(document, elementId);
+          const before = readListProperties(
+            document,
+            scope,
+            widgetRuntimeStore,
+            runtimeScopeId,
+            activeSurfaceId,
+            stateScopeId,
+            currentPageProps,
+            elementId
+          ).selectedIndex;
+          const next = Math.trunc(index);
+          widgetRuntimeStore.setListSelectedIndex(
+            scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+            next
+          );
+          if (before !== next) {
+            scheduleElementFlush(elementId);
+          }
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      scrollListToIndex: async (elementId: string, index: number) => {
+        const cap = "widget.scrollListToIndex";
+        emitHostCall(emit, cap, "call");
+        try {
+          assertListElement(document, elementId);
+          widgetRuntimeStore.requestListScroll(
+            scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+            { kind: "index", index: Math.max(0, Math.trunc(index)) }
+          );
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      scrollListToTop: async (elementId: string) => {
+        const cap = "widget.scrollListToTop";
+        emitHostCall(emit, cap, "call");
+        try {
+          assertListElement(document, elementId);
+          widgetRuntimeStore.requestListScroll(
+            scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+            { kind: "top" }
+          );
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      scrollListToBottom: async (elementId: string) => {
+        const cap = "widget.scrollListToBottom";
+        emitHostCall(emit, cap, "call");
+        try {
+          assertListElement(document, elementId);
+          widgetRuntimeStore.requestListScroll(
+            scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+            { kind: "bottom" }
+          );
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getDisplayableProperties: (elementId: string) => {
+        const cap = "widget.getDisplayableProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          return readEffectiveDisplayableProperties(
+            document,
+            widgetRuntimeStore,
+            runtimePatches,
+            runtimeScopeId,
+            activeSurfaceId,
+            elementId
+          );
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      setDisplayableProperties: async (
+        elementId: string,
+        patch: BlueprintDisplayablePropertiesPatch
+      ) => {
+        const cap = "widget.setDisplayableProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          const current = readEffectiveDisplayableProperties(
+            document,
+            widgetRuntimeStore,
+            runtimePatches,
+            runtimeScopeId,
+            activeSurfaceId,
+            elementId
+          );
+          const assignFinite = (value: unknown): number | undefined => {
             if (typeof value !== "number" || !Number.isFinite(value)) {
-                return undefined;
+              return undefined;
             }
             return value;
-        };
-        const x = assignFinite(patch.x);
-        const y = assignFinite(patch.y);
-        const width = assignFinite(patch.width);
-        const height = assignFinite(patch.height);
-        const rotation = assignFinite(patch.rotation);
-        const opacity = assignFinite(patch.opacity);
-        const currentLayout = readPatchedElementLayout(document, runtimePatches, elementId);
-        const nextWidth = width ?? currentLayout.width;
-        const nextHeight = height ?? currentLayout.height;
-        const parentPosition =
-            x !== undefined || y !== undefined
-                ? readDisplayableParentSurfaceTopLeft(document, runtimePatches, elementId)
-                : null;
-        if (x !== undefined) {
-            layoutPatch.x = x - (parentPosition?.x ?? 0) - Math.min(0, nextWidth);
+          };
+          const offsetX = assignFinite(patch.offsetX);
+          const offsetY = assignFinite(patch.offsetY);
+          const layoutPatch = createDisplayableLayoutPatch(elementId, patch);
+          const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+          if (offsetX !== undefined || offsetY !== undefined) {
+            // Offsets are persistent state, so they go to the base transform, NOT the
+            // one-shot motion slot: a later motion (variant opacity transition, shake)
+            // replacing the slot used to evict the offset and reset the widget to its
+            // un-offset origin. A motion currently animating x/y keeps visual control
+            // until it clears; the pose then converges on this base.
+            widgetRuntimeStore.setDisplayableBaseTransform(scopedKey, {
+              ...(offsetX !== undefined ? { offsetX } : {}),
+              ...(offsetY !== undefined ? { offsetY } : {})
+            });
+          }
+          const previousPatch = runtimePatches.get(elementId) ?? {};
+          const nextPatch: DevModeWidgetRuntimePatch = {
+            ...previousPatch,
+            layout: {
+              ...(previousPatch.layout ?? {}),
+              ...layoutPatch
+            }
+          };
+          if (patch.visible !== undefined) {
+            nextPatch.visible = patch.visible;
+          }
+          if (patch.display !== undefined) {
+            nextPatch.display = patch.display;
+          }
+          if (Object.keys(nextPatch.layout ?? {}).length === 0) {
+            delete nextPatch.layout;
+          }
+          runtimePatches.set(elementId, nextPatch);
+          emitWidgetPatch(elementId, nextPatch);
+          const next = readEffectiveDisplayableProperties(
+            document,
+            widgetRuntimeStore,
+            runtimePatches,
+            runtimeScopeId,
+            activeSurfaceId,
+            elementId
+          );
+          if (
+            current.position.x !== next.position.x ||
+            current.position.y !== next.position.y ||
+            current.size.width !== next.size.width ||
+            current.size.height !== next.size.height ||
+            current.rotation !== next.rotation ||
+            current.opacity !== next.opacity ||
+            current.offset.x !== next.offset.x ||
+            current.offset.y !== next.offset.y ||
+            current.display !== next.display ||
+            current.visible !== next.visible
+          ) {
+            scheduleElementFlush(elementId);
+          }
+        } finally {
+          emitHostCall(emit, cap, "return");
         }
-        if (y !== undefined) {
-            layoutPatch.y = y - (parentPosition?.y ?? 0) - Math.min(0, nextHeight);
+      },
+      animateDisplayable: async (elementId: string, request: BlueprintDisplayableMotionRequest) => {
+        const cap = "widget.animateDisplayable";
+        emitHostCall(emit, cap, "call");
+        try {
+          const waitMs =
+            displayableMotionWaitMs(request.transition) * (request.resetOnComplete ? 2 : 1);
+          const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+          const motion = widgetRuntimeStore.setDisplayableMotion(scopedKey, request);
+          if (waitMs > 0 && hasExplicitDisplayableMotionKeyframes(request.target)) {
+            await waitForDisplayableMotionStartFrame();
+            if (widgetRuntimeStore.getDisplayableMotion(scopedKey)?.id !== motion.id) {
+              return motion;
+            }
+          }
+          const waitReason = await waitForDisplayableAnimation(motion.id, waitMs);
+          // Hold-mode motions ("after: hold") commit their final pose into persistent
+          // state on natural completion and release the one-shot motion slot in the
+          // same update: absolute x/y (commitLayoutOnComplete), rotation, and opacity
+          // fold into the layout patch; held x/y offsets and scale fold into the base
+          // transform. Committing and clearing together lets EditorNodeWrapper wipe
+          // the leftover DOM transform in the same React commit as the layout change
+          // (no double offset, no flash-back), and the committed pose survives the
+          // next motion replacing the slot.
+          if (waitReason === "completed" && !request.resetOnComplete) {
+            const currentMotion = widgetRuntimeStore.getDisplayableMotion(scopedKey);
+            if (currentMotion?.id === motion.id) {
+              const beforeCommit = readEffectiveDisplayableProperties(
+                document,
+                widgetRuntimeStore,
+                runtimePatches,
+                runtimeScopeId,
+                activeSurfaceId,
+                elementId
+              );
+              const finalX = finalDisplayableMotionValue(request.target.x);
+              const finalY = finalDisplayableMotionValue(request.target.y);
+              const finalScale = finalDisplayableMotionValue(request.target.scale);
+              const finalRotate = finalDisplayableMotionValue(request.target.rotate);
+              const heldOpacity = finalDisplayableMotionValue(request.target.opacity);
+              const layoutCommit: BlueprintDisplayablePropertiesPatch = {
+                ...(request.commitLayoutOnComplete ?? {})
+              };
+              if (finalRotate !== undefined) {
+                layoutCommit.rotation = finalRotate;
+              }
+              if (heldOpacity !== undefined) {
+                layoutCommit.opacity = normalizeDisplayableOpacity(heldOpacity);
+              }
+              const basePatch: Partial<UIDisplayableBaseTransform> = {};
+              // An absolute x/y layout commit consumes the whole translate delta;
+              // the base offset on that axis must return to zero or the layout move
+              // would double-apply it. Otherwise the held offset becomes the new base.
+              if (layoutCommit.x !== undefined) {
+                basePatch.offsetX = 0;
+              } else if (finalX !== undefined) {
+                basePatch.offsetX = finalX;
+              }
+              if (layoutCommit.y !== undefined) {
+                basePatch.offsetY = 0;
+              } else if (finalY !== undefined) {
+                basePatch.offsetY = finalY;
+              }
+              if (finalScale !== undefined) {
+                basePatch.scale = finalScale;
+              }
+              const layoutPatch = createDisplayableLayoutPatch(elementId, layoutCommit);
+              let nextPatch: DevModeWidgetRuntimePatch = runtimePatches.get(elementId) ?? {};
+              if (Object.keys(layoutPatch).length > 0) {
+                nextPatch = {
+                  ...nextPatch,
+                  layout: {
+                    ...(nextPatch.layout ?? {}),
+                    ...layoutPatch
+                  }
+                };
+                runtimePatches.set(elementId, nextPatch);
+              }
+              const baseChanged =
+                Object.keys(basePatch).length > 0
+                  ? widgetRuntimeStore.setDisplayableBaseTransform(scopedKey, basePatch, {
+                      silent: true
+                    })
+                  : false;
+              const motionCleared = widgetRuntimeStore.clearDisplayableMotion(scopedKey, {
+                silent: true
+              });
+              emitWidgetPatch(elementId, nextPatch, {
+                widgetStateChanged: motionCleared || baseChanged
+              });
+              const afterCommit = readEffectiveDisplayableProperties(
+                document,
+                widgetRuntimeStore,
+                runtimePatches,
+                runtimeScopeId,
+                activeSurfaceId,
+                elementId
+              );
+              if (
+                beforeCommit.position.x !== afterCommit.position.x ||
+                beforeCommit.position.y !== afterCommit.position.y ||
+                beforeCommit.offset.x !== afterCommit.offset.x ||
+                beforeCommit.offset.y !== afterCommit.offset.y ||
+                beforeCommit.rotation !== afterCommit.rotation ||
+                beforeCommit.opacity !== afterCommit.opacity
+              ) {
+                scheduleElementFlush(elementId);
+              }
+            }
+          }
+          return motion;
+        } finally {
+          emitHostCall(emit, cap, "return");
         }
-        if (width !== undefined) {
-            layoutPatch.width = width;
+      },
+      stopDisplayableAnimation: async (animationId: string) => {
+        const cap = "widget.stopDisplayableAnimation";
+        emitHostCall(emit, cap, "call");
+        try {
+          // "Stop Animation" cancels: the motion is discarded without committing any
+          // layout/base state, and the widget snaps back to its base pose (authored
+          // layout + persistent offsets) via EditorNodeWrapper's cleared-motion reset.
+          // Freezing the mid-flight pose is not an option here: this store never sees
+          // DOM-sampled values, and getDisplayableProperties already reports base
+          // values after a stop, so the DOM must match what blueprints read.
+          const cleared = widgetRuntimeStore.clearDisplayableMotionById(animationId);
+          if (cleared) {
+            scheduleElementFlush(elementIdFromScopedWidgetRuntimeKey(cleared.elementId));
+          }
+          notifyDisplayableAnimationDone(animationId, "stopped");
+        } finally {
+          emitHostCall(emit, cap, "return");
         }
-        if (height !== undefined) {
-            layoutPatch.height = height;
+      },
+      getFrameProperties: (elementId: string) => {
+        const cap = "widget.getFrameProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          return readEffectiveFrameProperties(document, runtimePatches, elementId);
+        } finally {
+          emitHostCall(emit, cap, "return");
         }
-        if (rotation !== undefined) {
-            layoutPatch.rotation = rotation;
+      },
+      setFrameProperties: async (elementId: string, patch: Partial<BlueprintFrameProperties>) => {
+        const cap = "widget.setFrameProperties";
+        emitHostCall(emit, cap, "call");
+        try {
+          const el = assertFrameElement(document, elementId);
+          const current = readEffectiveFrameProperties(document, runtimePatches, elementId);
+          const targetSurfaceId =
+            patch.targetSurfaceId === undefined
+              ? current.targetSurfaceId
+              : normalizeNullableString(patch.targetSurfaceId);
+          const params =
+            patch.params === undefined ? current.params : normalizeRecord(patch.params);
+          if (targetSurfaceId === current.targetSurfaceId && jsonEquals(params, current.params)) {
+            return;
+          }
+          el.props = {
+            ...(el.props ?? {}),
+            targetSurfaceId,
+            params
+          };
+          const nextPatch: DevModeWidgetRuntimePatch = {
+            ...(runtimePatches.get(elementId) ?? {}),
+            frame: {
+              targetSurfaceId,
+              params
+            }
+          };
+          runtimePatches.set(elementId, nextPatch);
+          emitWidgetPatch(elementId, nextPatch);
+          scheduleElementFlush(elementId);
+        } finally {
+          emitHostCall(emit, cap, "return");
         }
-        if (opacity !== undefined) {
-            layoutPatch.opacity = opacity;
+      }
+    },
+    state: {
+      get: (scopeKind: string, key: string) => {
+        emit({ type: "state.read", scope: scopeKind, key });
+        if (scopeKind === "surface") {
+          return toBlueprintVisibleValue(scope.getSurfaceStore(stateScopeId).get(key));
         }
-        return layoutPatch;
-    };
-
-    return {
-        navigation: {
-            openSurface: async (surfaceId: string, props?: unknown) => {
-                const cap = "navigation.openSurface";
-                emitHostCall(emit, cap, "call");
-                const targetSurfaceId = String(surfaceId ?? "").trim();
-                if (!targetSurfaceId) {
-                    // "None" in the page dropdown means no page, not one page fewer. This used to
-                    // alias Go back, so an author who picked None to dismiss an overlay two pages
-                    // deep landed on the page underneath and had no way to say what they meant.
-                    await (onClearPages ?? onPageBack)();
-                    emitHostCall(emit, cap, "return");
-                    return;
-                }
-                const target = document.surfaces.find(s => s.id === targetSurfaceId);
-                if (!target) {
-                    emitHostCall(emit, cap, "return");
-                    throw new Error(`openSurface: surface not found: ${targetSurfaceId}`);
-                }
-                await onOpenSurface(targetSurfaceId, normalizeJsonRecord(props));
-                emitHostCall(emit, cap, "return");
-            },
-            getPageProps: () => {
-                const cap = "navigation.getPageProps";
-                emitHostCall(emit, cap, "call");
-                const props = normalizeJsonRecord(currentPageProps);
-                emitHostCall(emit, cap, "return");
-                return props;
-            },
-            pageBack: async () => {
-                const cap = "navigation.pageBack";
-                emitHostCall(emit, cap, "call");
-                await onPageBack();
-                emitHostCall(emit, cap, "return");
-            },
-            clearPages: async () => {
-                const cap = "navigation.clearPages";
-                emitHostCall(emit, cap, "call");
-                await (onClearPages ?? onPageBack)();
-                emitHostCall(emit, cap, "return");
-            },
-            clearGameOverlay: async () => {
-                const cap = "navigation.clearGameOverlay";
-                emitHostCall(emit, cap, "call");
-                // Hosts with no game behind their pages (the story preview) have nothing to clear,
-                // which is the same answer this gives when a game is running but nothing is over it.
-                await onClearGameOverlay?.();
-                emitHostCall(emit, cap, "return");
-            },
-            quitApplication: async () => {
-                const cap = "navigation.quitApplication";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onQuitApplication) {
-                        throw new Error("quitApplication: application runtime is not available");
-                    }
-                    await onQuitApplication();
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getFullscreen: async () => {
-                const cap = "navigation.getFullscreen";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onGetFullscreen) {
-                        throw new Error("getFullscreen: application window is not available");
-                    }
-                    return (await onGetFullscreen()) === true;
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            setFullscreen: async (fullscreen: boolean) => {
-                const cap = "navigation.setFullscreen";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onSetFullscreen) {
-                        throw new Error("setFullscreen: application window is not available");
-                    }
-                    await onSetFullscreen(fullscreen === true);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            openExternal: async (request: BlueprintOpenExternalRequest) => {
-                const cap = "navigation.openExternal";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onOpenExternal) {
-                        // No backend = nowhere to send it (editor preview, story preview). Reported
-                        // as a result rather than thrown, so a Page being previewed in Studio still
-                        // lays out and the author's own branch is what runs.
-                        return {
-                            outcome: "failed" as const,
-                            error: "Links cannot be opened here. Run the project in Dev Mode to open one.",
-                        };
-                    }
-                    return await onOpenExternal(request);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-        },
-        layers: {
-            show: async (surfaceId: string, props?: unknown, showOptions?: BlueprintLayerShowOptions) => {
-                const cap = "layers.show";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const targetSurfaceId = String(surfaceId ?? "").trim();
-                    if (!targetSurfaceId) {
-                        throw new Error("Show Layer: no page selected");
-                    }
-                    // Named ahead of the host call and by id: an author picked a page that has since
-                    // been deleted or renamed, and the id is the only thing that ties the failure
-                    // back to the node they have to fix.
-                    if (!document.surfaces.some(surface => surface.id === targetSurfaceId)) {
-                        throw new Error(`Show Layer: page not found: ${targetSurfaceId}`);
-                    }
-                    if (!onShowLayer) {
-                        throw new Error("Show Layer: this preview has no layer stack");
-                    }
-                    const group = typeof showOptions?.group === "string" && showOptions.group.trim()
-                        ? showOptions.group.trim()
-                        : null;
-                    return onShowLayer({
-                        surfaceId: targetSurfaceId,
-                        props: normalizeJsonRecord(props),
-                        modal: showOptions?.modal === true,
-                        dismissible: showOptions?.dismissible !== false,
-                        group,
-                        ownerScopeId: stateScopeId,
-                    });
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            hide: async (handle: string) => {
-                const cap = "layers.hide";
-                emitHostCall(emit, cap, "call");
-                try {
-                    await onHideLayer?.(String(handle ?? ""));
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            hideGroup: async (group: string) => {
-                const cap = "layers.hideGroup";
-                emitHostCall(emit, cap, "call");
-                try {
-                    await onHideLayerGroup?.(String(group ?? "").trim());
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            wait: async (handle: string) => {
-                const cap = "layers.wait";
-                emitHostCall(emit, cap, "call");
-                try {
-                    // No host, or a handle naming nothing, both answer null rather than hanging. A
-                    // wait that never returns is the one failure an author cannot see the shape of.
-                    return (await onWaitLayer?.(String(handle ?? ""))) ?? null;
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            closeSelf: async (result?: unknown) => {
-                const cap = "layers.closeSelf";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (onCloseOwnLayer?.(stateScopeId, result ?? null) !== true) {
-                        // Not an error: the same page can be opened as a page and shown as a layer,
-                        // and one wired to close itself has to survive being opened the other way.
-                        emit({
-                            type: "devtools.log",
-                            level: "warn",
-                            message: "Close This Layer: this page is not a layer, so nothing was closed",
-                        });
-                    }
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            isMounted: (handle: string) => {
-                const cap = "layers.isMounted";
-                emitHostCall(emit, cap, "call");
-                const mounted = onIsLayerMounted?.(String(handle ?? "")) === true;
-                emitHostCall(emit, cap, "return");
-                return mounted;
-            },
-        },
-        widget: {
-            setVisible: async (elementId: string, visible: boolean) => {
-                const cap = "widget.setVisible";
-                emitHostCall(emit, cap, "call");
-                if (!readDocumentElement(document, elementId)) {
-                    emitHostCall(emit, cap, "return");
-                    throw new Error(`setVisible: element not found: ${elementId}`);
-                }
-                const previous = readCommonProperties(
-                    document,
-                    widgetRuntimeStore,
-                    runtimePatches,
-                    scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
-                    elementId,
-                ).visible;
-                runtimePatches.set(elementId, {
-                    ...(runtimePatches.get(elementId) ?? {}),
-                    visible,
-                });
-                emitWidgetPatch(elementId, { visible });
-                if (previous !== visible) {
-                    scheduleElementFlush(elementId);
-                }
-                emitHostCall(emit, cap, "return");
-            },
-            setEnabled: async (elementId: string, enabled: boolean) => {
-                const cap = "widget.setEnabled";
-                emitHostCall(emit, cap, "call");
-                if (!readDocumentElement(document, elementId)) {
-                    emitHostCall(emit, cap, "return");
-                    throw new Error(`setEnabled: element not found: ${elementId}`);
-                }
-                const previous = readCommonProperties(
-                    document,
-                    widgetRuntimeStore,
-                    runtimePatches,
-                    scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
-                    elementId,
-                ).enabled;
-                runtimePatches.set(elementId, {
-                    ...(runtimePatches.get(elementId) ?? {}),
-                    enabled,
-                });
-                emitWidgetPatch(elementId, { enabled });
-                if (previous !== enabled) {
-                    scheduleElementFlush(elementId);
-                }
-                emitHostCall(emit, cap, "return");
-            },
-            setVariant: async (elementId: string, variantId: string | null, options?: { waitForTransition?: boolean }) => {
-                const cap = "widget.setVariant";
-                emitHostCall(emit, cap, "call");
-                assertAppearanceVariantId(document, elementId, variantId);
-                const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
-                const previous = widgetRuntimeStore.getVariantOverride(scopedKey);
-                const before = readEffectiveDisplayableProperties(
-                    document,
-                    widgetRuntimeStore,
-                    runtimePatches,
-                    runtimeScopeId,
-                    activeSurfaceId,
-                    elementId,
-                );
-                const model = readAppearanceModel(document, elementId);
-                const targetVariant = resolveVariantForSetVariant(model, variantId);
-                const targetOpacity =
-                    readAppearanceOpacity(document, widgetRuntimeStore, scopedKey, elementId, variantId) ??
-                    readDisplayableProperties(document, elementId).opacity;
-                widgetRuntimeStore.setVariantOverride(scopedKey, variantId);
-                const previousPatch = runtimePatches.get(elementId) ?? {};
-                if (hasRuntimeOpacityPatch(previousPatch)) {
-                    const layout = { ...(previousPatch.layout ?? {}) };
-                    delete layout.opacity;
-                    const nextPatch: DevModeWidgetRuntimePatch = {
-                        ...previousPatch,
-                        layout,
-                    };
-                    runtimePatches.set(elementId, nextPatch);
-                    emitWidgetPatch(elementId, nextPatch);
-                }
-                const opacityTransition = variantDisplayableOpacityTransition(document, elementId, targetVariant);
-                if (opacityTransition && before.opacity !== targetOpacity) {
-                    widgetRuntimeStore.setDisplayableMotion(scopedKey, {
-                        target: { opacity: [before.opacity, targetOpacity] },
-                        transition: toDisplayableTransition(opacityTransition),
-                        resetOnComplete: true,
-                    });
-                }
-                if (previous !== variantId || before.opacity !== targetOpacity) {
-                    scheduleElementFlush(elementId);
-                }
-                if (options?.waitForTransition) {
-                    await sleepMs(variantWaitMs(targetVariant));
-                }
-                emitHostCall(emit, cap, "return");
-            },
-            getCommonProperties: (elementId: string) => {
-                const cap = "widget.getCommonProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    return readCommonProperties(
-                        document,
-                        widgetRuntimeStore,
-                        runtimePatches,
-                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
-                        elementId,
-                    );
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getTextProperties: (elementId: string) => {
-                const cap = "widget.getTextProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    return readTextProperties(document, elementId);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            setTextProperties: async (elementId: string, patch: BlueprintTextPropertiesPatch) => {
-                const cap = "widget.setTextProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const current = readTextProperties(document, elementId);
-                    const el = assertTextElement(document, elementId);
-                    const normalized = normalizeTextPatch(current, patch);
-                    if (!textPatchChanges(current, normalized)) {
-                        return;
-                    }
-                    el.props = {
-                        ...(el.props ?? {}),
-                        ...normalized,
-                    };
-                    emitWidgetPatch(elementId, {});
-                    scheduleElementFlush(elementId);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getButtonProperties: (elementId: string) => {
-                const cap = "widget.getButtonProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    return readButtonProperties(document, elementId);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            setButtonProperties: async (elementId: string, patch: Partial<BlueprintButtonProperties>) => {
-                const cap = "widget.setButtonProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const el = assertButtonElement(document, elementId);
-                    const current = readButtonProperties(document, elementId);
-                    const hasLabelPatch = Object.prototype.hasOwnProperty.call(patch, "label");
-                    const hasCursorPatch = Object.prototype.hasOwnProperty.call(patch, "cursor");
-                    const nextLabel = hasLabelPatch ? normalizeString(patch.label, current.label) : current.label;
-                    const nextCursor =
-                        hasCursorPatch && isButtonCursorValue(patch.cursor)
-                            ? patch.cursor
-                            : current.cursor;
-
-                    let changed = false;
-                    const nextProps = { ...(el.props ?? {}) };
-                    if (hasLabelPatch && nextLabel !== current.label) {
-                        nextProps.label = nextLabel;
-                        changed = true;
-                    }
-                    if (hasCursorPatch && nextCursor !== current.cursor) {
-                        const flat = { ...getButtonProps(el), cursor: nextCursor };
-                        nextProps.cursor = nextCursor;
-                        nextProps.appearance = patchButtonDefaultCursorAppearance(flat.appearance, flat, nextCursor);
-                        changed = true;
-                    }
-                    if (!changed) {
-                        return;
-                    }
-                    el.props = nextProps;
-                    emitWidgetPatch(elementId, {});
-                    scheduleElementFlush(elementId);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getContainerProperties: (elementId: string) => {
-                const cap = "widget.getContainerProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    return readContainerProperties(document, elementId);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            setContainerProperties: async (elementId: string, patch: Partial<BlueprintContainerProperties>) => {
-                const cap = "widget.setContainerProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const el = assertContainerElement(document, elementId);
-                    const current = readContainerProperties(document, elementId);
-                    const clipContent = patch.clipContent === undefined ? current.clipContent : patch.clipContent === true;
-                    if (clipContent === current.clipContent) {
-                        return;
-                    }
-                    el.props = { ...(el.props ?? {}), clipContent };
-                    emitWidgetPatch(elementId, {});
-                    scheduleElementFlush(elementId);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getImageProperties: (elementId: string) => {
-                const cap = "widget.getImageProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    return readImageProperties(document, elementId);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            setImageProperties: async (elementId: string, patch: Partial<BlueprintImageProperties>) => {
-                const cap = "widget.setImageProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const el = assertImageElement(document, elementId);
-                    const current = readImageProperties(document, elementId);
-                    const hasAssetPatch = Object.prototype.hasOwnProperty.call(patch, "asset");
-                    const assetId = hasAssetPatch
-                        ? normalizeBlueprintImageAssetValue(patch.asset)?.assetId ?? null
-                        : patch.assetId === undefined
-                          ? current.assetId
-                          : normalizeNullableString(patch.assetId);
-                    const fitMode = patch.fitMode === undefined
-                        ? current.fitMode
-                        : normalizeImageFillMode(patch.fitMode, current.fitMode);
-                    const cropRect = patch.cropRect === undefined
-                        ? current.cropRect
-                        : normalizeImageCropPlacement(patch.cropRect, current.cropRect);
-                    const flipX = patch.flipX === undefined ? current.flipX : patch.flipX === true;
-                    const flipY = patch.flipY === undefined ? current.flipY : patch.flipY === true;
-                    const fillChanged = assetId !== current.assetId ||
-                        fitMode !== current.fitMode ||
-                        !imageCropPlacementEqual(cropRect, current.cropRect);
-                    const flipChanged = flipX !== current.flipX || flipY !== current.flipY;
-                    if (!fillChanged && !flipChanged) {
-                        return;
-                    }
-                    let nextProps: Record<string, unknown> = { ...(el.props ?? {}) };
-                    if (fillChanged) {
-                        const previousFill = getImageWidgetRectangleProps(el).imageFill;
-                        const nextFill: ImageFill = {
-                            ...previousFill,
-                            mode: fitMode,
-                            assetId,
-                            cropPlacement: cropRect,
-                        };
-                        nextProps = buildImageFillPropsUpdate(el, nextFill);
-                    }
-                    el.props = { ...nextProps, imageFlipX: flipX, imageFlipY: flipY };
-                    emitWidgetPatch(elementId, {});
-                    scheduleElementFlush(elementId);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getSliderProperties: (elementId: string) => {
-                const cap = "widget.getSliderProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    return readSliderProperties(
-                        document,
-                        widgetRuntimeStore,
-                        runtimeScopeId,
-                        activeSurfaceId,
-                        elementId,
-                    );
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            setSliderProperties: async (elementId: string, patch: BlueprintSliderPropertiesPatch) => {
-                const cap = "widget.setSliderProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const before = readSliderProperties(
-                        document,
-                        widgetRuntimeStore,
-                        runtimeScopeId,
-                        activeSurfaceId,
-                        elementId,
-                    );
-                    const authored = readAuthoredSliderProperties(document, elementId);
-                    const after = widgetRuntimeStore.setSliderProperties(
-                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
-                        authored,
-                        patch,
-                    );
-                    if (!sliderPropertiesEqual(before, after)) {
-                        scheduleElementFlush(elementId);
-                    }
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getSwitchProperties: (elementId: string) => {
-                const cap = "widget.getSwitchProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    return readSwitchProperties(
-                        document,
-                        widgetRuntimeStore,
-                        runtimeScopeId,
-                        activeSurfaceId,
-                        elementId,
-                    );
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            setSwitchProperties: async (elementId: string, patch: BlueprintSwitchPropertiesPatch) => {
-                const cap = "widget.setSwitchProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const before = readSwitchProperties(
-                        document,
-                        widgetRuntimeStore,
-                        runtimeScopeId,
-                        activeSurfaceId,
-                        elementId,
-                    );
-                    const authored = readAuthoredSwitchProperties(document, elementId);
-                    const after = widgetRuntimeStore.setSwitchProperties(
-                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
-                        authored,
-                        patch,
-                    );
-                    if (!switchPropertiesEqual(before, after)) {
-                        scheduleElementFlush(elementId);
-                    }
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getTextInputProperties: (elementId: string) => {
-                const cap = "widget.getTextInputProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    return readTextInputProperties(
-                        document,
-                        widgetRuntimeStore,
-                        runtimeScopeId,
-                        activeSurfaceId,
-                        elementId,
-                    );
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            setTextInputProperties: async (elementId: string, patch: BlueprintTextInputPropertiesPatch) => {
-                const cap = "widget.setTextInputProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const before = readTextInputProperties(
-                        document,
-                        widgetRuntimeStore,
-                        runtimeScopeId,
-                        activeSurfaceId,
-                        elementId,
-                    );
-                    const authored = readAuthoredTextInputProperties(document, elementId);
-                    const after = widgetRuntimeStore.setTextInputProperties(
-                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
-                        authored,
-                        patch,
-                    );
-                    if (before.value !== after.value) {
-                        scheduleElementFlush(elementId);
-                    }
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getListProperties: (elementId: string) => {
-                const cap = "widget.getListProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    return readListProperties(
-                        document,
-                        scope,
-                        widgetRuntimeStore,
-                        runtimeScopeId,
-                        activeSurfaceId,
-                        stateScopeId,
-                        currentPageProps,
-                        elementId,
-                    );
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            setListItems: async (elementId: string, items: readonly unknown[]) => {
-                const cap = "widget.setListItems";
-                emitHostCall(emit, cap, "call");
-                try {
-                    assertListElement(document, elementId);
-                    widgetRuntimeStore.setListItems(
-                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
-                        items,
-                    );
-                    scheduleElementFlush(elementId);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            setListSelectedIndex: async (elementId: string, index: number) => {
-                const cap = "widget.setListSelectedIndex";
-                emitHostCall(emit, cap, "call");
-                try {
-                    assertListElement(document, elementId);
-                    const before = readListProperties(
-                        document,
-                        scope,
-                        widgetRuntimeStore,
-                        runtimeScopeId,
-                        activeSurfaceId,
-                        stateScopeId,
-                        currentPageProps,
-                        elementId,
-                    ).selectedIndex;
-                    const next = Math.trunc(index);
-                    widgetRuntimeStore.setListSelectedIndex(
-                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
-                        next,
-                    );
-                    if (before !== next) {
-                        scheduleElementFlush(elementId);
-                    }
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            scrollListToIndex: async (elementId: string, index: number) => {
-                const cap = "widget.scrollListToIndex";
-                emitHostCall(emit, cap, "call");
-                try {
-                    assertListElement(document, elementId);
-                    widgetRuntimeStore.requestListScroll(
-                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
-                        { kind: "index", index: Math.max(0, Math.trunc(index)) },
-                    );
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            scrollListToTop: async (elementId: string) => {
-                const cap = "widget.scrollListToTop";
-                emitHostCall(emit, cap, "call");
-                try {
-                    assertListElement(document, elementId);
-                    widgetRuntimeStore.requestListScroll(
-                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
-                        { kind: "top" },
-                    );
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            scrollListToBottom: async (elementId: string) => {
-                const cap = "widget.scrollListToBottom";
-                emitHostCall(emit, cap, "call");
-                try {
-                    assertListElement(document, elementId);
-                    widgetRuntimeStore.requestListScroll(
-                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
-                        { kind: "bottom" },
-                    );
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getDisplayableProperties: (elementId: string) => {
-                const cap = "widget.getDisplayableProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    return readEffectiveDisplayableProperties(
-                        document,
-                        widgetRuntimeStore,
-                        runtimePatches,
-                        runtimeScopeId,
-                        activeSurfaceId,
-                        elementId,
-                    );
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            setDisplayableProperties: async (elementId: string, patch: BlueprintDisplayablePropertiesPatch) => {
-                const cap = "widget.setDisplayableProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const current = readEffectiveDisplayableProperties(
-                        document,
-                        widgetRuntimeStore,
-                        runtimePatches,
-                        runtimeScopeId,
-                        activeSurfaceId,
-                        elementId,
-                    );
-                    const assignFinite = (value: unknown): number | undefined => {
-                        if (typeof value !== "number" || !Number.isFinite(value)) {
-                            return undefined;
-                        }
-                        return value;
-                    };
-                    const offsetX = assignFinite(patch.offsetX);
-                    const offsetY = assignFinite(patch.offsetY);
-                    const layoutPatch = createDisplayableLayoutPatch(elementId, patch);
-                    const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
-                    if (offsetX !== undefined || offsetY !== undefined) {
-                        // Offsets are persistent state, so they go to the base transform, NOT the
-                        // one-shot motion slot: a later motion (variant opacity transition, shake)
-                        // replacing the slot used to evict the offset and reset the widget to its
-                        // un-offset origin. A motion currently animating x/y keeps visual control
-                        // until it clears; the pose then converges on this base.
-                        widgetRuntimeStore.setDisplayableBaseTransform(scopedKey, {
-                            ...(offsetX !== undefined ? { offsetX } : {}),
-                            ...(offsetY !== undefined ? { offsetY } : {}),
-                        });
-                    }
-                    const previousPatch = runtimePatches.get(elementId) ?? {};
-                    const nextPatch: DevModeWidgetRuntimePatch = {
-                        ...previousPatch,
-                        layout: {
-                            ...(previousPatch.layout ?? {}),
-                            ...layoutPatch,
-                        },
-                    };
-                    if (patch.visible !== undefined) {
-                        nextPatch.visible = patch.visible;
-                    }
-                    if (patch.display !== undefined) {
-                        nextPatch.display = patch.display;
-                    }
-                    if (Object.keys(nextPatch.layout ?? {}).length === 0) {
-                        delete nextPatch.layout;
-                    }
-                    runtimePatches.set(elementId, nextPatch);
-                    emitWidgetPatch(elementId, nextPatch);
-                    const next = readEffectiveDisplayableProperties(
-                        document,
-                        widgetRuntimeStore,
-                        runtimePatches,
-                        runtimeScopeId,
-                        activeSurfaceId,
-                        elementId,
-                    );
-                    if (
-                        current.position.x !== next.position.x ||
-                        current.position.y !== next.position.y ||
-                        current.size.width !== next.size.width ||
-                        current.size.height !== next.size.height ||
-                        current.rotation !== next.rotation ||
-                        current.opacity !== next.opacity ||
-                        current.offset.x !== next.offset.x ||
-                        current.offset.y !== next.offset.y ||
-                        current.display !== next.display ||
-                        current.visible !== next.visible
-                    ) {
-                        scheduleElementFlush(elementId);
-                    }
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            animateDisplayable: async (elementId: string, request: BlueprintDisplayableMotionRequest) => {
-                const cap = "widget.animateDisplayable";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const waitMs = displayableMotionWaitMs(request.transition) * (request.resetOnComplete ? 2 : 1);
-                    const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
-                    const motion = widgetRuntimeStore.setDisplayableMotion(
-                        scopedKey,
-                        request,
-                    );
-                    if (waitMs > 0 && hasExplicitDisplayableMotionKeyframes(request.target)) {
-                        await waitForDisplayableMotionStartFrame();
-                        if (widgetRuntimeStore.getDisplayableMotion(scopedKey)?.id !== motion.id) {
-                            return motion;
-                        }
-                    }
-                    const waitReason = await waitForDisplayableAnimation(motion.id, waitMs);
-                    // Hold-mode motions ("after: hold") commit their final pose into persistent
-                    // state on natural completion and release the one-shot motion slot in the
-                    // same update: absolute x/y (commitLayoutOnComplete), rotation, and opacity
-                    // fold into the layout patch; held x/y offsets and scale fold into the base
-                    // transform. Committing and clearing together lets EditorNodeWrapper wipe
-                    // the leftover DOM transform in the same React commit as the layout change
-                    // (no double offset, no flash-back), and the committed pose survives the
-                    // next motion replacing the slot.
-                    if (waitReason === "completed" && !request.resetOnComplete) {
-                        const currentMotion = widgetRuntimeStore.getDisplayableMotion(scopedKey);
-                        if (currentMotion?.id === motion.id) {
-                            const beforeCommit = readEffectiveDisplayableProperties(
-                                document,
-                                widgetRuntimeStore,
-                                runtimePatches,
-                                runtimeScopeId,
-                                activeSurfaceId,
-                                elementId,
-                            );
-                            const finalX = finalDisplayableMotionValue(request.target.x);
-                            const finalY = finalDisplayableMotionValue(request.target.y);
-                            const finalScale = finalDisplayableMotionValue(request.target.scale);
-                            const finalRotate = finalDisplayableMotionValue(request.target.rotate);
-                            const heldOpacity = finalDisplayableMotionValue(request.target.opacity);
-                            const layoutCommit: BlueprintDisplayablePropertiesPatch = {
-                                ...(request.commitLayoutOnComplete ?? {}),
-                            };
-                            if (finalRotate !== undefined) {
-                                layoutCommit.rotation = finalRotate;
-                            }
-                            if (heldOpacity !== undefined) {
-                                layoutCommit.opacity = normalizeDisplayableOpacity(heldOpacity);
-                            }
-                            const basePatch: Partial<UIDisplayableBaseTransform> = {};
-                            // An absolute x/y layout commit consumes the whole translate delta;
-                            // the base offset on that axis must return to zero or the layout move
-                            // would double-apply it. Otherwise the held offset becomes the new base.
-                            if (layoutCommit.x !== undefined) {
-                                basePatch.offsetX = 0;
-                            } else if (finalX !== undefined) {
-                                basePatch.offsetX = finalX;
-                            }
-                            if (layoutCommit.y !== undefined) {
-                                basePatch.offsetY = 0;
-                            } else if (finalY !== undefined) {
-                                basePatch.offsetY = finalY;
-                            }
-                            if (finalScale !== undefined) {
-                                basePatch.scale = finalScale;
-                            }
-                            const layoutPatch = createDisplayableLayoutPatch(elementId, layoutCommit);
-                            let nextPatch: DevModeWidgetRuntimePatch = runtimePatches.get(elementId) ?? {};
-                            if (Object.keys(layoutPatch).length > 0) {
-                                nextPatch = {
-                                    ...nextPatch,
-                                    layout: {
-                                        ...(nextPatch.layout ?? {}),
-                                        ...layoutPatch,
-                                    },
-                                };
-                                runtimePatches.set(elementId, nextPatch);
-                            }
-                            const baseChanged = Object.keys(basePatch).length > 0
-                                ? widgetRuntimeStore.setDisplayableBaseTransform(scopedKey, basePatch, { silent: true })
-                                : false;
-                            const motionCleared = widgetRuntimeStore.clearDisplayableMotion(scopedKey, {
-                                silent: true,
-                            });
-                            emitWidgetPatch(elementId, nextPatch, { widgetStateChanged: motionCleared || baseChanged });
-                            const afterCommit = readEffectiveDisplayableProperties(
-                                document,
-                                widgetRuntimeStore,
-                                runtimePatches,
-                                runtimeScopeId,
-                                activeSurfaceId,
-                                elementId,
-                            );
-                            if (
-                                beforeCommit.position.x !== afterCommit.position.x ||
-                                beforeCommit.position.y !== afterCommit.position.y ||
-                                beforeCommit.offset.x !== afterCommit.offset.x ||
-                                beforeCommit.offset.y !== afterCommit.offset.y ||
-                                beforeCommit.rotation !== afterCommit.rotation ||
-                                beforeCommit.opacity !== afterCommit.opacity
-                            ) {
-                                scheduleElementFlush(elementId);
-                            }
-                        }
-                    }
-                    return motion;
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            stopDisplayableAnimation: async (animationId: string) => {
-                const cap = "widget.stopDisplayableAnimation";
-                emitHostCall(emit, cap, "call");
-                try {
-                    // "Stop Animation" cancels: the motion is discarded without committing any
-                    // layout/base state, and the widget snaps back to its base pose (authored
-                    // layout + persistent offsets) via EditorNodeWrapper's cleared-motion reset.
-                    // Freezing the mid-flight pose is not an option here: this store never sees
-                    // DOM-sampled values, and getDisplayableProperties already reports base
-                    // values after a stop, so the DOM must match what blueprints read.
-                    const cleared = widgetRuntimeStore.clearDisplayableMotionById(animationId);
-                    if (cleared) {
-                        scheduleElementFlush(elementIdFromScopedWidgetRuntimeKey(cleared.elementId));
-                    }
-                    notifyDisplayableAnimationDone(animationId, "stopped");
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getFrameProperties: (elementId: string) => {
-                const cap = "widget.getFrameProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    return readEffectiveFrameProperties(document, runtimePatches, elementId);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            setFrameProperties: async (elementId: string, patch: Partial<BlueprintFrameProperties>) => {
-                const cap = "widget.setFrameProperties";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const el = assertFrameElement(document, elementId);
-                    const current = readEffectiveFrameProperties(document, runtimePatches, elementId);
-                    const targetSurfaceId = patch.targetSurfaceId === undefined
-                        ? current.targetSurfaceId
-                        : normalizeNullableString(patch.targetSurfaceId);
-                    const params = patch.params === undefined ? current.params : normalizeRecord(patch.params);
-                    if (targetSurfaceId === current.targetSurfaceId && jsonEquals(params, current.params)) {
-                        return;
-                    }
-                    el.props = {
-                        ...(el.props ?? {}),
-                        targetSurfaceId,
-                        params,
-                    };
-                    const nextPatch: DevModeWidgetRuntimePatch = {
-                        ...(runtimePatches.get(elementId) ?? {}),
-                        frame: {
-                            targetSurfaceId,
-                            params,
-                        },
-                    };
-                    runtimePatches.set(elementId, nextPatch);
-                    emitWidgetPatch(elementId, nextPatch);
-                    scheduleElementFlush(elementId);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-        },
-        state: {
-            get: (scopeKind: string, key: string) => {
-                emit({ type: "state.read", scope: scopeKind, key });
-                if (scopeKind === "surface") {
-                    return toBlueprintVisibleValue(scope.getSurfaceStore(stateScopeId).get(key));
-                }
-                if (scopeKind === "global") {
-                    return toBlueprintVisibleValue(scope.globalGet(key));
-                }
-                if (scopeKind === "persistence") {
-                    return toBlueprintVisibleValue(scope.persistenceGet(key));
-                }
-                return null;
-            },
-            set: (scopeKind: string, key: string, value: unknown) => {
-                const nextValue = toBlueprintVisibleValue(value);
-                if (scopeKind === "surface") {
-                    scope.getSurfaceStore(stateScopeId).set(key, nextValue);
-                } else if (scopeKind === "global") {
-                    scope.globalSet(key, nextValue);
-                } else if (scopeKind === "persistence") {
-                    scope.persistenceSet(key, nextValue);
-                }
-                emit({ type: "state.write", scope: scopeKind, key });
-            },
-        },
-        persistence: {
-            get: async (key: string) => {
-                emitHostCall(emit, "persistence.get", "call");
-                try {
-                    return toBlueprintVisibleValue(await scope.persistenceGetAsync(key));
-                } finally {
-                    emitHostCall(emit, "persistence.get", "return");
-                }
-            },
-            set: async (key: string, value: unknown) => {
-                emitHostCall(emit, "persistence.set", "call");
-                try {
-                    await scope.persistenceSetAsync(key, toBlueprintVisibleValue(value));
-                    emit({ type: "state.write", scope: "persistence", key });
-                } finally {
-                    emitHostCall(emit, "persistence.set", "return");
-                }
-            },
-        },
-        localization: {
-            getConfig: () => options.localizationConfig ?? null,
-            getLocale: async () => {
-                emitHostCall(emit, "localization.getLocale", "call");
-                try {
-                    const config = options.localizationConfig;
-                    const stored = await scope.persistenceGetAsync(LOCALE_STORAGE_KEY);
-                    if (typeof stored === "string" && stored && config?.locales.some(locale => locale.code === stored)) {
-                        return stored;
-                    }
-                    return config?.sourceLocale ?? "";
-                } finally {
-                    emitHostCall(emit, "localization.getLocale", "return");
-                }
-            },
-            setLocale: async (code: string) => {
-                emitHostCall(emit, "localization.setLocale", "call");
-                try {
-                    await scope.persistenceSetAsync(LOCALE_STORAGE_KEY, code);
-                    emit({ type: "state.write", scope: "persistence", key: LOCALE_STORAGE_KEY });
-                } finally {
-                    emitHostCall(emit, "localization.setLocale", "return");
-                }
-            },
-        },
-        voice: {
-            listLocales: () => [...(options.voiceConfig?.voicedLocales ?? [])],
-            getLocale: async () => {
-                emitHostCall(emit, "voice.getLocale", "call");
-                try {
-                    const locales = options.voiceConfig?.voicedLocales ?? [];
-                    const stored = await scope.persistenceGetAsync(VOICE_LOCALE_STORAGE_KEY);
-                    if (typeof stored === "string" && stored && locales.some(entry => entry.code === stored)) {
-                        return stored;
-                    }
-                    return locales[0]?.code ?? "";
-                } finally {
-                    emitHostCall(emit, "voice.getLocale", "return");
-                }
-            },
-            setLocale: async (code: string) => {
-                emitHostCall(emit, "voice.setLocale", "call");
-                try {
-                    // A plain persistence write, exactly like the text language. GameApp watches this
-                    // key and re-points the running compile's take table, so the next line is in the
-                    // new dub without a recompile.
-                    await scope.persistenceSetAsync(VOICE_LOCALE_STORAGE_KEY, code);
-                    emit({ type: "state.write", scope: "persistence", key: VOICE_LOCALE_STORAGE_KEY });
-                } finally {
-                    emitHostCall(emit, "voice.setLocale", "return");
-                }
-            },
-            play: async (unitId: string) => {
-                const cap = "voice.play";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!options.onPlayVoice) {
-                        return false;
-                    }
-                    return await options.onPlayVoice(String(unitId ?? "").trim());
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-        },
-        frame: {
-            getParam: (key: string) => {
-                emitHostCall(emit, "frame.getParam", "call");
-                const source = frameParams && Object.prototype.hasOwnProperty.call(frameParams, key)
-                    ? frameParams
-                    : currentPageProps;
-                const value = source[key];
-                emitHostCall(emit, "frame.getParam", "return");
-                return toBlueprintVisibleValue(value);
-            },
-            emit: async (eventName: string, data: unknown) => {
-                const cap = "frame.emit";
-                emitHostCall(emit, cap, "call");
-                const safeEventName = String(eventName ?? "").trim();
-                if (safeEventName && onFrameEmit) {
-                    await onFrameEmit(safeEventName, toBlueprintVisibleValue(data));
-                }
-                emitHostCall(emit, cap, "return");
-            },
-        },
-        game: {
-            startStory: async (request: DevModeStartStoryRequest) => {
-                const cap = "game.startStory";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const storyId = String(request?.storyId ?? "").trim();
-                    const sceneId = String(request?.sceneId ?? "").trim();
-                    if (!storyId) {
-                        throw new Error("startStory: storyId is required");
-                    }
-                    if (!sceneId) {
-                        throw new Error("startStory: sceneId is required");
-                    }
-                    if (!onStartStory) {
-                        throw new Error("startStory: game runtime is not available");
-                    }
-                    await onStartStory({ storyId, sceneId });
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            isInGame: () => {
-                const cap = "game.isInGame";
-                emitHostCall(emit, cap, "call");
-                try {
-                    return onIsInGame ? onIsInGame() === true : false;
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            isGameOverlay: () => {
-                const cap = "game.isGameOverlay";
-                emitHostCall(emit, cap, "call");
-                try {
-                    return onIsGameOverlay ? onIsGameOverlay() === true : false;
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            quit: async (surfaceId: string) => {
-                const cap = "game.quit";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const targetSurfaceId = String(surfaceId ?? "").trim();
-                    if (!targetSurfaceId) {
-                        throw new Error("quit: surfaceId is required");
-                    }
-                    if (!onQuitGame) {
-                        throw new Error("quit: game runtime is not available");
-                    }
-                    await onQuitGame(targetSurfaceId);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            writeSave: async (id: string, metadata?: unknown, screenshot?: boolean) => {
-                const cap = "game.writeSave";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const saveId = normalizeGameSaveId("writeSave", id);
-                    if (!onWriteSave) {
-                        throw new Error("writeSave: game save runtime is not available");
-                    }
-                    await onWriteSave(saveId, normalizeJsonValue(metadata), screenshot === true);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            loadSave: async (id: string) => {
-                const cap = "game.loadSave";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const saveId = normalizeGameSaveId("loadSave", id);
-                    if (!onLoadSave) {
-                        throw new Error("loadSave: game save runtime is not available");
-                    }
-                    await onLoadSave(saveId);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            deleteSave: async (id: string) => {
-                const cap = "game.deleteSave";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const saveId = normalizeGameSaveId("deleteSave", id);
-                    if (!onDeleteSave) {
-                        throw new Error("deleteSave: game save runtime is not available");
-                    }
-                    await onDeleteSave(saveId);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            listSaveIds: async () => {
-                const cap = "game.listSaveIds";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onListSaveIds) {
-                        throw new Error("listSaveIds: game save runtime is not available");
-                    }
-                    const ids = await onListSaveIds();
-                    return [...ids].map(id => String(id));
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getSaveMetadata: async (id: string) => {
-                const cap = "game.getSaveMetadata";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const saveId = normalizeGameSaveId("getSaveMetadata", id);
-                    if (!onGetSaveMetadata) {
-                        throw new Error("getSaveMetadata: game save runtime is not available");
-                    }
-                    return normalizeJsonValue(await onGetSaveMetadata(saveId));
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getSaveTimes: async (id: string) => {
-                const cap = "game.getSaveTimes";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const saveId = normalizeGameSaveId("getSaveTimes", id);
-                    if (!onGetSaveTimes) {
-                        throw new Error("getSaveTimes: game save runtime is not available");
-                    }
-                    return normalizeSaveRecordTimes(await onGetSaveTimes(saveId));
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getSaveLine: async (id: string) => {
-                const cap = "game.getSaveLine";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const saveId = normalizeGameSaveId("getSaveLine", id);
-                    if (!onGetSaveLine) {
-                        throw new Error("getSaveLine: game save runtime is not available");
-                    }
-                    return normalizeSaveRecordLine(await onGetSaveLine(saveId));
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getSavePreview: async (id: string) => {
-                const cap = "game.getSavePreview";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const saveId = normalizeGameSaveId("getSavePreview", id);
-                    if (!onGetSavePreview) {
-                        throw new Error("getSavePreview: game save runtime is not available");
-                    }
-                    return normalizeBlueprintImageAssetValue(await onGetSavePreview(saveId));
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            writeAutoSave: async () => {
-                const cap = "game.writeAutoSave";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onWriteAutoSave) {
-                        throw new Error("writeAutoSave: game save runtime is not available");
-                    }
-                    await onWriteAutoSave();
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            listAutoSaves: async () => {
-                const cap = "game.listAutoSaves";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onListAutoSaves) {
-                        throw new Error("listAutoSaves: game save runtime is not available");
-                    }
-                    return normalizeAutoSaveEntries(await onListAutoSaves());
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getHistory: async () => {
-                const cap = "game.getHistory";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onGetHistory) {
-                        throw new Error("getHistory: game runtime is not available");
-                    }
-                    return normalizeBlueprintGameHistory(await onGetHistory());
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            restoreHistory: async (id?: string) => {
-                const cap = "game.restoreHistory";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onRestoreHistory) {
-                        throw new Error("restoreHistory: game runtime is not available");
-                    }
-                    const safeId = String(id ?? "").trim();
-                    await onRestoreHistory(safeId ? safeId : undefined);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getNametag: () => {
-                const cap = "game.getNametag";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const value = onGetNametag ? onGetNametag() : scope.globalGet(BLUEPRINT_GAME_NAMETAG_STATE_KEY);
-                    return normalizeBlueprintNametag(value);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getSpeakerAvatar: () => {
-                const cap = "game.getSpeakerAvatar";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const value = onGetSpeakerAvatar
-                        ? onGetSpeakerAvatar()
-                        : scope.globalGet(BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY);
-                    return normalizeBlueprintImageAssetValue(value);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getSpeakerColor: () => {
-                const cap = "game.getSpeakerColor";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const value = onGetSpeakerColor
-                        ? onGetSpeakerColor()
-                        : scope.globalGet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY);
-                    // `normalizeBlueprintRGBAColor` accepts the record the mirror writes *and* a raw
-                    // hex string, and turns null/undefined into the default white.
-                    return normalizeBlueprintRGBAColor(value);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getCharacter: (characterId: string) => {
-                const cap = "game.getCharacter";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const id = String(characterId ?? "").trim();
-                    if (!id) {
-                        return null;
-                    }
-                    if (onGetCharacter) {
-                        return normalizeBlueprintCharacterInfo(onGetCharacter(id));
-                    }
-                    return findBlueprintCharacterInfo(scope.globalGet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY), id);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getNotifications: () => {
-                const cap = "game.getNotifications";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const value = onGetNotifications
-                        ? onGetNotifications()
-                        : scope.globalGet(BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY);
-                    return normalizeBlueprintGameNotifications(value);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getChoiceCount: () => {
-                const cap = "game.getChoiceCount";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const value = onGetChoiceCount
-                        ? onGetChoiceCount()
-                        : scope.globalGet(BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY);
-                    return normalizeBlueprintChoiceCount(value);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            isNvlMode: () => {
-                const cap = "game.isNvlMode";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const value = onIsNvlMode
-                        ? onIsNvlMode()
-                        : scope.globalGet(BLUEPRINT_GAME_NVL_MODE_STATE_KEY);
-                    return value === true;
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            isCurrentTextRead: () => {
-                const cap = "game.isCurrentTextRead";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const value = onIsCurrentTextRead
-                        ? onIsCurrentTextRead()
-                        : scope.globalGet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY);
-                    return value === true;
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            isTextRead: (textId: string) => {
-                const cap = "game.isTextRead";
-                emitHostCall(emit, cap, "call");
-                try {
-                    return onIsTextRead ? onIsTextRead(textId) : false;
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            clearTextRead: async () => {
-                const cap = "game.clearTextRead";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (onClearTextRead) {
-                        await onClearTextRead();
-                        return;
-                    }
-                    // No tracker installed (e.g. story preview): wipe the record
-                    // directly and drop the mirrored flag.
-                    await scope.persistenceSetAsync(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
-                    scope.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, false);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            isSceneVisited: (sceneId: string) => {
-                const cap = "game.isSceneVisited";
-                emitHostCall(emit, cap, "call");
-                try {
-                    // No running story is "nothing visited", not an error: a main menu asking
-                    // whether a route is unlocked must render, and the honest answer there is false.
-                    return onIsSceneVisited ? onIsSceneVisited(sceneId) : false;
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            isOptionPicked: (optionId: string) => {
-                const cap = "game.isOptionPicked";
-                emitHostCall(emit, cap, "call");
-                try {
-                    return onIsOptionPicked ? onIsOptionPicked(optionId) : false;
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            clearVisited: () => {
-                const cap = "game.clearVisited";
-                emitHostCall(emit, cap, "call");
-                try {
-                    onClearVisited?.();
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            choose: async (index: number) => {
-                const cap = "game.choose";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onSelectChoice) {
-                        throw new Error("choose: choice runtime is not available");
-                    }
-                    await onSelectChoice(index);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            next: async () => {
-                const cap = "game.next";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onNext) {
-                        throw new Error("next: game runtime is not available");
-                    }
-                    await onNext();
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            skip: async () => {
-                const cap = "game.skip";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onSkip) {
-                        throw new Error("skip: game runtime is not available");
-                    }
-                    await onSkip();
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            showDialog: async () => {
-                const cap = "game.showDialog";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onShowDialog) {
-                        throw new Error("showDialog: game runtime is not available");
-                    }
-                    await onShowDialog();
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            hideDialog: async () => {
-                const cap = "game.hideDialog";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onHideDialog) {
-                        throw new Error("hideDialog: game runtime is not available");
-                    }
-                    await onHideDialog();
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            toggleDialogDisplay: async () => {
-                const cap = "game.toggleDialogDisplay";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onToggleDialogDisplay) {
-                        throw new Error("toggleDialogDisplay: game runtime is not available");
-                    }
-                    await onToggleDialogDisplay();
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            setSentenceSpeed: async (cps: number) => {
-                const cap = "game.setSentenceSpeed";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const safeCps = normalizeSentenceCps(cps);
-                    if (!onSetSentenceSpeed) {
-                        throw new Error("setSentenceSpeed: game runtime is not available");
-                    }
-                    await onSetSentenceSpeed(safeCps);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            getPreference: (key: BlueprintGamePreferenceKey) => {
-                const cap = "game.getPreference";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const safeKey = normalizeGamePreferenceKey(key);
-                    if (!onGetGamePreference) {
-                        throw new Error("getPreference: game runtime is not available");
-                    }
-                    return normalizeGamePreferenceValue(
-                        "getPreference",
-                        safeKey,
-                        onGetGamePreference(safeKey),
-                    );
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            setPreference: async (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => {
-                const cap = "game.setPreference";
-                emitHostCall(emit, cap, "call");
-                try {
-                    const safeKey = normalizeGamePreferenceKey(key);
-                    const safeValue = normalizeGamePreferenceValue("setPreference", safeKey, value);
-                    if (!onSetGamePreference) {
-                        throw new Error("setPreference: game runtime is not available");
-                    }
-                    await onSetGamePreference(safeKey, safeValue);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-        },
-        sound: {
-            /**
-             * Absent backend = no running game (editor preview). A warned no-op
-             * beats throwing: the author is looking at layout, not listening.
-             */
-            play: async (input: BlueprintSoundPlayInput) => {
-                const cap = "sound.play";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onPlaySound) {
-                        return null;
-                    }
-                    return await onPlaySound(input) ?? null;
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            stop: async (handle: BlueprintSoundHandle | null, fadeMs = 0) => {
-                const cap = "sound.stop";
-                emitHostCall(emit, cap, "call");
-                try {
-                    await onStopSound?.(handle, Math.max(0, fadeMs));
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            pause: async (handle: BlueprintSoundHandle) => {
-                const cap = "sound.pause";
-                emitHostCall(emit, cap, "call");
-                try {
-                    await onPauseSound?.(handle);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            resume: async (handle: BlueprintSoundHandle) => {
-                const cap = "sound.resume";
-                emitHostCall(emit, cap, "call");
-                try {
-                    await onResumeSound?.(handle);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            setVolume: async (handle: BlueprintSoundHandle, volume: number, fadeMs = 0) => {
-                const cap = "sound.setVolume";
-                emitHostCall(emit, cap, "call");
-                try {
-                    // Clamped, not rejected: a slider bound to the wrong range asking for 1.2 means
-                    // "as loud as it goes", and a dead control is the worse answer.
-                    const safeVolume = Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 1;
-                    await onSetSoundVolume?.(handle, safeVolume, Math.max(0, fadeMs));
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            seek: async (handle: BlueprintSoundHandle, timeMs: number) => {
-                const cap = "sound.seek";
-                emitHostCall(emit, cap, "call");
-                try {
-                    await onSeekSound?.(handle, Number.isFinite(timeMs) ? Math.max(0, timeMs) : 0);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            isPlaying: (handle: BlueprintSoundHandle) => {
-                const cap = "sound.isPlaying";
-                emitHostCall(emit, cap, "call");
-                try {
-                    return onIsSoundPlaying?.(handle) ?? false;
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            /**
-             * Deliberately not instrumented with `emitHostCall`: this runs on every render of every
-             * video widget and on every slider tick, and a debug event per read would drown the
-             * blueprint event stream in noise that describes nothing an author did.
-             */
-            resolveElementVolume: input => {
-                const tracks = audioTracks && audioTracks.length > 0 ? audioTracks : BUILTIN_AUDIO_TRACKS;
-                const track = resolveAudioTrack(tracks, input.audioTrackId, "sound");
-                const playback = resolveAudioTrackPlayback(track, { volume: input.volume });
-                // The whole chain, not one channel: with a bus tree a clip on `voice/alice` is
-                // attenuated by `alice`, then by `voice`, then by the player's Voice slider, then by
-                // master. Reading a single channel's preference - which is what this did when a
-                // track was a preset on one of three fixed channels - would leave every bus the
-                // author invented inaudible to the element.
-                return resolveMixedElementVolume(playback, tracks, readMixPreferences(onGetGamePreference));
-            },
-            subscribeMixerChanges: listener => onSubscribeGamePreferences?.(listener) ?? (() => undefined),
-            getTrackVolume: (trackId: string) => {
-                const cap = "sound.getTrackVolume";
-                emitHostCall(emit, cap, "call");
-                try {
-                    return onGetTrackVolume?.(String(trackId ?? "").trim()) ?? 1;
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            setTrackVolume: async (trackId: string, volume: number) => {
-                const cap = "sound.setTrackVolume";
-                emitHostCall(emit, cap, "call");
-                try {
-                    // Clamped rather than rejected, exactly as `setVolume` above: a slider bound to
-                    // the wrong range asking for 1.2 means "as loud as it goes", and the engine's
-                    // own bus gain clamps to 0..1 anyway.
-                    const safeVolume = Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 1;
-                    await onSetTrackVolume?.(String(trackId ?? "").trim(), safeVolume);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-        },
-        network: {
-            fetch: async (request: BlueprintNetworkFetchRequest) => {
-                const cap = "network.fetch";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onNetworkFetch) {
-                        // No backend = nowhere to send it (editor preview, story preview). Reported as
-                        // a `networkError` rather than thrown, so a Page being previewed in Studio
-                        // still lays out and the author's own error branch is what runs.
-                        return {
-                            outcome: "networkError" as const,
-                            status: 0,
-                            body: null,
-                            error: "Network is not available here. Run the project in Dev Mode to make requests.",
-                        };
-                    }
-                    return await onNetworkFetch(request);
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-        },
-        progress: {
-            export: async () => {
-                const cap = "progress.export";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onExportProgress) {
-                        // No backend = nowhere to write it (editor preview, story preview). Reported
-                        // as a result rather than thrown, for the reason Open Link does the same.
-                        return {
-                            outcome: "failed" as const,
-                            error: "Progress cannot be written here. Run the project in Dev Mode to carry it.",
-                        };
-                    }
-                    return await onExportProgress();
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-            import: async () => {
-                const cap = "progress.import";
-                emitHostCall(emit, cap, "call");
-                try {
-                    if (!onImportProgress) {
-                        // `failed`, deliberately not `missing`: missing is a fact about the player
-                        // (nobody has exported), this is a fact about where the graph is running,
-                        // and an author who wired `missing` to "start a new game" must not be sent
-                        // down it by an environment that simply cannot look.
-                        return {
-                            outcome: "failed" as const,
-                            sceneId: "",
-                            error: "Progress cannot be read here. Run the project in Dev Mode to carry it.",
-                        };
-                    }
-                    return await onImportProgress();
-                } finally {
-                    emitHostCall(emit, cap, "return");
-                }
-            },
-        },
-        devtools: {
-            log: (level: string, message: string) => {
-                const safeMessage = truncateDebugEventMessage(String(message));
-                emitHostCall(emit, "devtools.log", "call");
-                emit({ type: "devtools.log", level, message: safeMessage });
-                const line = `[Blueprint devtools.${level}] ${safeMessage}`;
-                if (level === "error") {
-                    console.error(line);
-                } else if (level === "warn") {
-                    console.warn(line);
-                } else {
-                    console.info(line);
-                }
-                emitHostCall(emit, "devtools.log", "return");
-            },
-        },
-    };
+        if (scopeKind === "global") {
+          return toBlueprintVisibleValue(scope.globalGet(key));
+        }
+        if (scopeKind === "persistence") {
+          return toBlueprintVisibleValue(scope.persistenceGet(key));
+        }
+        return null;
+      },
+      set: (scopeKind: string, key: string, value: unknown) => {
+        const nextValue = toBlueprintVisibleValue(value);
+        if (scopeKind === "surface") {
+          scope.getSurfaceStore(stateScopeId).set(key, nextValue);
+        } else if (scopeKind === "global") {
+          scope.globalSet(key, nextValue);
+        } else if (scopeKind === "persistence") {
+          scope.persistenceSet(key, nextValue);
+        }
+        emit({ type: "state.write", scope: scopeKind, key });
+      }
+    },
+    persistence: {
+      get: async (key: string) => {
+        emitHostCall(emit, "persistence.get", "call");
+        try {
+          return toBlueprintVisibleValue(await scope.persistenceGetAsync(key));
+        } finally {
+          emitHostCall(emit, "persistence.get", "return");
+        }
+      },
+      set: async (key: string, value: unknown) => {
+        emitHostCall(emit, "persistence.set", "call");
+        try {
+          await scope.persistenceSetAsync(key, toBlueprintVisibleValue(value));
+          emit({ type: "state.write", scope: "persistence", key });
+        } finally {
+          emitHostCall(emit, "persistence.set", "return");
+        }
+      }
+    },
+    localization: {
+      getConfig: () => options.localizationConfig ?? null,
+      getLocale: async () => {
+        emitHostCall(emit, "localization.getLocale", "call");
+        try {
+          const config = options.localizationConfig;
+          const stored = await scope.persistenceGetAsync(LOCALE_STORAGE_KEY);
+          if (
+            typeof stored === "string" &&
+            stored &&
+            config?.locales.some((locale) => locale.code === stored)
+          ) {
+            return stored;
+          }
+          return config?.sourceLocale ?? "";
+        } finally {
+          emitHostCall(emit, "localization.getLocale", "return");
+        }
+      },
+      setLocale: async (code: string) => {
+        emitHostCall(emit, "localization.setLocale", "call");
+        try {
+          await scope.persistenceSetAsync(LOCALE_STORAGE_KEY, code);
+          emit({ type: "state.write", scope: "persistence", key: LOCALE_STORAGE_KEY });
+        } finally {
+          emitHostCall(emit, "localization.setLocale", "return");
+        }
+      }
+    },
+    voice: {
+      listLocales: () => [...(options.voiceConfig?.voicedLocales ?? [])],
+      getLocale: async () => {
+        emitHostCall(emit, "voice.getLocale", "call");
+        try {
+          const locales = options.voiceConfig?.voicedLocales ?? [];
+          const stored = await scope.persistenceGetAsync(VOICE_LOCALE_STORAGE_KEY);
+          if (
+            typeof stored === "string" &&
+            stored &&
+            locales.some((entry) => entry.code === stored)
+          ) {
+            return stored;
+          }
+          return locales[0]?.code ?? "";
+        } finally {
+          emitHostCall(emit, "voice.getLocale", "return");
+        }
+      },
+      setLocale: async (code: string) => {
+        emitHostCall(emit, "voice.setLocale", "call");
+        try {
+          // A plain persistence write, exactly like the text language. GameApp watches this
+          // key and re-points the running compile's take table, so the next line is in the
+          // new dub without a recompile.
+          await scope.persistenceSetAsync(VOICE_LOCALE_STORAGE_KEY, code);
+          emit({ type: "state.write", scope: "persistence", key: VOICE_LOCALE_STORAGE_KEY });
+        } finally {
+          emitHostCall(emit, "voice.setLocale", "return");
+        }
+      },
+      play: async (unitId: string) => {
+        const cap = "voice.play";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!options.onPlayVoice) {
+            return false;
+          }
+          return await options.onPlayVoice(String(unitId ?? "").trim());
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      }
+    },
+    frame: {
+      getParam: (key: string) => {
+        emitHostCall(emit, "frame.getParam", "call");
+        const source =
+          frameParams && Object.prototype.hasOwnProperty.call(frameParams, key)
+            ? frameParams
+            : currentPageProps;
+        const value = source[key];
+        emitHostCall(emit, "frame.getParam", "return");
+        return toBlueprintVisibleValue(value);
+      },
+      emit: async (eventName: string, data: unknown) => {
+        const cap = "frame.emit";
+        emitHostCall(emit, cap, "call");
+        const safeEventName = String(eventName ?? "").trim();
+        if (safeEventName && onFrameEmit) {
+          await onFrameEmit(safeEventName, toBlueprintVisibleValue(data));
+        }
+        emitHostCall(emit, cap, "return");
+      }
+    },
+    game: {
+      startStory: async (request: DevModeStartStoryRequest) => {
+        const cap = "game.startStory";
+        emitHostCall(emit, cap, "call");
+        try {
+          const storyId = String(request?.storyId ?? "").trim();
+          const sceneId = String(request?.sceneId ?? "").trim();
+          if (!storyId) {
+            throw new Error("startStory: storyId is required");
+          }
+          if (!sceneId) {
+            throw new Error("startStory: sceneId is required");
+          }
+          if (!onStartStory) {
+            throw new Error("startStory: game runtime is not available");
+          }
+          await onStartStory({ storyId, sceneId });
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      isInGame: () => {
+        const cap = "game.isInGame";
+        emitHostCall(emit, cap, "call");
+        try {
+          return onIsInGame ? onIsInGame() === true : false;
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      isGameOverlay: () => {
+        const cap = "game.isGameOverlay";
+        emitHostCall(emit, cap, "call");
+        try {
+          return onIsGameOverlay ? onIsGameOverlay() === true : false;
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      quit: async (surfaceId: string) => {
+        const cap = "game.quit";
+        emitHostCall(emit, cap, "call");
+        try {
+          const targetSurfaceId = String(surfaceId ?? "").trim();
+          if (!targetSurfaceId) {
+            throw new Error("quit: surfaceId is required");
+          }
+          if (!onQuitGame) {
+            throw new Error("quit: game runtime is not available");
+          }
+          await onQuitGame(targetSurfaceId);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      writeSave: async (id: string, metadata?: unknown, screenshot?: boolean) => {
+        const cap = "game.writeSave";
+        emitHostCall(emit, cap, "call");
+        try {
+          const saveId = normalizeGameSaveId("writeSave", id);
+          if (!onWriteSave) {
+            throw new Error("writeSave: game save runtime is not available");
+          }
+          await onWriteSave(saveId, normalizeJsonValue(metadata), screenshot === true);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      loadSave: async (id: string) => {
+        const cap = "game.loadSave";
+        emitHostCall(emit, cap, "call");
+        try {
+          const saveId = normalizeGameSaveId("loadSave", id);
+          if (!onLoadSave) {
+            throw new Error("loadSave: game save runtime is not available");
+          }
+          await onLoadSave(saveId);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      deleteSave: async (id: string) => {
+        const cap = "game.deleteSave";
+        emitHostCall(emit, cap, "call");
+        try {
+          const saveId = normalizeGameSaveId("deleteSave", id);
+          if (!onDeleteSave) {
+            throw new Error("deleteSave: game save runtime is not available");
+          }
+          await onDeleteSave(saveId);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      listSaveIds: async () => {
+        const cap = "game.listSaveIds";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onListSaveIds) {
+            throw new Error("listSaveIds: game save runtime is not available");
+          }
+          const ids = await onListSaveIds();
+          return [...ids].map((id) => String(id));
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getSaveMetadata: async (id: string) => {
+        const cap = "game.getSaveMetadata";
+        emitHostCall(emit, cap, "call");
+        try {
+          const saveId = normalizeGameSaveId("getSaveMetadata", id);
+          if (!onGetSaveMetadata) {
+            throw new Error("getSaveMetadata: game save runtime is not available");
+          }
+          return normalizeJsonValue(await onGetSaveMetadata(saveId));
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getSaveTimes: async (id: string) => {
+        const cap = "game.getSaveTimes";
+        emitHostCall(emit, cap, "call");
+        try {
+          const saveId = normalizeGameSaveId("getSaveTimes", id);
+          if (!onGetSaveTimes) {
+            throw new Error("getSaveTimes: game save runtime is not available");
+          }
+          return normalizeSaveRecordTimes(await onGetSaveTimes(saveId));
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getSaveLine: async (id: string) => {
+        const cap = "game.getSaveLine";
+        emitHostCall(emit, cap, "call");
+        try {
+          const saveId = normalizeGameSaveId("getSaveLine", id);
+          if (!onGetSaveLine) {
+            throw new Error("getSaveLine: game save runtime is not available");
+          }
+          return normalizeSaveRecordLine(await onGetSaveLine(saveId));
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getSavePreview: async (id: string) => {
+        const cap = "game.getSavePreview";
+        emitHostCall(emit, cap, "call");
+        try {
+          const saveId = normalizeGameSaveId("getSavePreview", id);
+          if (!onGetSavePreview) {
+            throw new Error("getSavePreview: game save runtime is not available");
+          }
+          return normalizeBlueprintImageAssetValue(await onGetSavePreview(saveId));
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      writeAutoSave: async () => {
+        const cap = "game.writeAutoSave";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onWriteAutoSave) {
+            throw new Error("writeAutoSave: game save runtime is not available");
+          }
+          await onWriteAutoSave();
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      listAutoSaves: async () => {
+        const cap = "game.listAutoSaves";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onListAutoSaves) {
+            throw new Error("listAutoSaves: game save runtime is not available");
+          }
+          return normalizeAutoSaveEntries(await onListAutoSaves());
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getHistory: async () => {
+        const cap = "game.getHistory";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onGetHistory) {
+            throw new Error("getHistory: game runtime is not available");
+          }
+          return normalizeBlueprintGameHistory(await onGetHistory());
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      restoreHistory: async (id?: string) => {
+        const cap = "game.restoreHistory";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onRestoreHistory) {
+            throw new Error("restoreHistory: game runtime is not available");
+          }
+          const safeId = String(id ?? "").trim();
+          await onRestoreHistory(safeId ? safeId : undefined);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getNametag: () => {
+        const cap = "game.getNametag";
+        emitHostCall(emit, cap, "call");
+        try {
+          const value = onGetNametag
+            ? onGetNametag()
+            : scope.globalGet(BLUEPRINT_GAME_NAMETAG_STATE_KEY);
+          return normalizeBlueprintNametag(value);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getSpeakerAvatar: () => {
+        const cap = "game.getSpeakerAvatar";
+        emitHostCall(emit, cap, "call");
+        try {
+          const value = onGetSpeakerAvatar
+            ? onGetSpeakerAvatar()
+            : scope.globalGet(BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY);
+          return normalizeBlueprintImageAssetValue(value);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getSpeakerColor: () => {
+        const cap = "game.getSpeakerColor";
+        emitHostCall(emit, cap, "call");
+        try {
+          const value = onGetSpeakerColor
+            ? onGetSpeakerColor()
+            : scope.globalGet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY);
+          // `normalizeBlueprintRGBAColor` accepts the record the mirror writes *and* a raw
+          // hex string, and turns null/undefined into the default white.
+          return normalizeBlueprintRGBAColor(value);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getCharacter: (characterId: string) => {
+        const cap = "game.getCharacter";
+        emitHostCall(emit, cap, "call");
+        try {
+          const id = String(characterId ?? "").trim();
+          if (!id) {
+            return null;
+          }
+          if (onGetCharacter) {
+            return normalizeBlueprintCharacterInfo(onGetCharacter(id));
+          }
+          return findBlueprintCharacterInfo(
+            scope.globalGet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY),
+            id
+          );
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getNotifications: () => {
+        const cap = "game.getNotifications";
+        emitHostCall(emit, cap, "call");
+        try {
+          const value = onGetNotifications
+            ? onGetNotifications()
+            : scope.globalGet(BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY);
+          return normalizeBlueprintGameNotifications(value);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getChoiceCount: () => {
+        const cap = "game.getChoiceCount";
+        emitHostCall(emit, cap, "call");
+        try {
+          const value = onGetChoiceCount
+            ? onGetChoiceCount()
+            : scope.globalGet(BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY);
+          return normalizeBlueprintChoiceCount(value);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      isNvlMode: () => {
+        const cap = "game.isNvlMode";
+        emitHostCall(emit, cap, "call");
+        try {
+          const value = onIsNvlMode
+            ? onIsNvlMode()
+            : scope.globalGet(BLUEPRINT_GAME_NVL_MODE_STATE_KEY);
+          return value === true;
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      isCurrentTextRead: () => {
+        const cap = "game.isCurrentTextRead";
+        emitHostCall(emit, cap, "call");
+        try {
+          const value = onIsCurrentTextRead
+            ? onIsCurrentTextRead()
+            : scope.globalGet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY);
+          return value === true;
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      isTextRead: (textId: string) => {
+        const cap = "game.isTextRead";
+        emitHostCall(emit, cap, "call");
+        try {
+          return onIsTextRead ? onIsTextRead(textId) : false;
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      clearTextRead: async () => {
+        const cap = "game.clearTextRead";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (onClearTextRead) {
+            await onClearTextRead();
+            return;
+          }
+          // No tracker installed (e.g. story preview): wipe the record
+          // directly and drop the mirrored flag.
+          await scope.persistenceSetAsync(BLUEPRINT_TEXT_READ_PERSISTENCE_KEY, []);
+          scope.globalSet(BLUEPRINT_GAME_TEXT_READ_STATE_KEY, false);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      isSceneVisited: (sceneId: string) => {
+        const cap = "game.isSceneVisited";
+        emitHostCall(emit, cap, "call");
+        try {
+          // No running story is "nothing visited", not an error: a main menu asking
+          // whether a route is unlocked must render, and the honest answer there is false.
+          return onIsSceneVisited ? onIsSceneVisited(sceneId) : false;
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      isOptionPicked: (optionId: string) => {
+        const cap = "game.isOptionPicked";
+        emitHostCall(emit, cap, "call");
+        try {
+          return onIsOptionPicked ? onIsOptionPicked(optionId) : false;
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      clearVisited: () => {
+        const cap = "game.clearVisited";
+        emitHostCall(emit, cap, "call");
+        try {
+          onClearVisited?.();
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      choose: async (index: number) => {
+        const cap = "game.choose";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onSelectChoice) {
+            throw new Error("choose: choice runtime is not available");
+          }
+          await onSelectChoice(index);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      next: async () => {
+        const cap = "game.next";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onNext) {
+            throw new Error("next: game runtime is not available");
+          }
+          await onNext();
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      skip: async () => {
+        const cap = "game.skip";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onSkip) {
+            throw new Error("skip: game runtime is not available");
+          }
+          await onSkip();
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      showDialog: async () => {
+        const cap = "game.showDialog";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onShowDialog) {
+            throw new Error("showDialog: game runtime is not available");
+          }
+          await onShowDialog();
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      hideDialog: async () => {
+        const cap = "game.hideDialog";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onHideDialog) {
+            throw new Error("hideDialog: game runtime is not available");
+          }
+          await onHideDialog();
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      toggleDialogDisplay: async () => {
+        const cap = "game.toggleDialogDisplay";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onToggleDialogDisplay) {
+            throw new Error("toggleDialogDisplay: game runtime is not available");
+          }
+          await onToggleDialogDisplay();
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      setSentenceSpeed: async (cps: number) => {
+        const cap = "game.setSentenceSpeed";
+        emitHostCall(emit, cap, "call");
+        try {
+          const safeCps = normalizeSentenceCps(cps);
+          if (!onSetSentenceSpeed) {
+            throw new Error("setSentenceSpeed: game runtime is not available");
+          }
+          await onSetSentenceSpeed(safeCps);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      getPreference: (key: BlueprintGamePreferenceKey) => {
+        const cap = "game.getPreference";
+        emitHostCall(emit, cap, "call");
+        try {
+          const safeKey = normalizeGamePreferenceKey(key);
+          if (!onGetGamePreference) {
+            throw new Error("getPreference: game runtime is not available");
+          }
+          return normalizeGamePreferenceValue(
+            "getPreference",
+            safeKey,
+            onGetGamePreference(safeKey)
+          );
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      setPreference: async (
+        key: BlueprintGamePreferenceKey,
+        value: BlueprintGamePreferenceValue
+      ) => {
+        const cap = "game.setPreference";
+        emitHostCall(emit, cap, "call");
+        try {
+          const safeKey = normalizeGamePreferenceKey(key);
+          const safeValue = normalizeGamePreferenceValue("setPreference", safeKey, value);
+          if (!onSetGamePreference) {
+            throw new Error("setPreference: game runtime is not available");
+          }
+          await onSetGamePreference(safeKey, safeValue);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      }
+    },
+    sound: {
+      /**
+       * Absent backend = no running game (editor preview). A warned no-op
+       * beats throwing: the author is looking at layout, not listening.
+       */
+      play: async (input: BlueprintSoundPlayInput) => {
+        const cap = "sound.play";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onPlaySound) {
+            return null;
+          }
+          return (await onPlaySound(input)) ?? null;
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      stop: async (handle: BlueprintSoundHandle | null, fadeMs = 0) => {
+        const cap = "sound.stop";
+        emitHostCall(emit, cap, "call");
+        try {
+          await onStopSound?.(handle, Math.max(0, fadeMs));
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      pause: async (handle: BlueprintSoundHandle) => {
+        const cap = "sound.pause";
+        emitHostCall(emit, cap, "call");
+        try {
+          await onPauseSound?.(handle);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      resume: async (handle: BlueprintSoundHandle) => {
+        const cap = "sound.resume";
+        emitHostCall(emit, cap, "call");
+        try {
+          await onResumeSound?.(handle);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      setVolume: async (handle: BlueprintSoundHandle, volume: number, fadeMs = 0) => {
+        const cap = "sound.setVolume";
+        emitHostCall(emit, cap, "call");
+        try {
+          // Clamped, not rejected: a slider bound to the wrong range asking for 1.2 means
+          // "as loud as it goes", and a dead control is the worse answer.
+          const safeVolume = Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 1;
+          await onSetSoundVolume?.(handle, safeVolume, Math.max(0, fadeMs));
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      seek: async (handle: BlueprintSoundHandle, timeMs: number) => {
+        const cap = "sound.seek";
+        emitHostCall(emit, cap, "call");
+        try {
+          await onSeekSound?.(handle, Number.isFinite(timeMs) ? Math.max(0, timeMs) : 0);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      isPlaying: (handle: BlueprintSoundHandle) => {
+        const cap = "sound.isPlaying";
+        emitHostCall(emit, cap, "call");
+        try {
+          return onIsSoundPlaying?.(handle) ?? false;
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      /**
+       * Deliberately not instrumented with `emitHostCall`: this runs on every render of every
+       * video widget and on every slider tick, and a debug event per read would drown the
+       * blueprint event stream in noise that describes nothing an author did.
+       */
+      resolveElementVolume: (input) => {
+        const tracks = audioTracks && audioTracks.length > 0 ? audioTracks : BUILTIN_AUDIO_TRACKS;
+        const track = resolveAudioTrack(tracks, input.audioTrackId, "sound");
+        const playback = resolveAudioTrackPlayback(track, { volume: input.volume });
+        // The whole chain, not one channel: with a bus tree a clip on `voice/alice` is
+        // attenuated by `alice`, then by `voice`, then by the player's Voice slider, then by
+        // master. Reading a single channel's preference - which is what this did when a
+        // track was a preset on one of three fixed channels - would leave every bus the
+        // author invented inaudible to the element.
+        return resolveMixedElementVolume(playback, tracks, readMixPreferences(onGetGamePreference));
+      },
+      subscribeMixerChanges: (listener) =>
+        onSubscribeGamePreferences?.(listener) ?? (() => undefined),
+      getTrackVolume: (trackId: string) => {
+        const cap = "sound.getTrackVolume";
+        emitHostCall(emit, cap, "call");
+        try {
+          return onGetTrackVolume?.(String(trackId ?? "").trim()) ?? 1;
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      setTrackVolume: async (trackId: string, volume: number) => {
+        const cap = "sound.setTrackVolume";
+        emitHostCall(emit, cap, "call");
+        try {
+          // Clamped rather than rejected, exactly as `setVolume` above: a slider bound to
+          // the wrong range asking for 1.2 means "as loud as it goes", and the engine's
+          // own bus gain clamps to 0..1 anyway.
+          const safeVolume = Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 1;
+          await onSetTrackVolume?.(String(trackId ?? "").trim(), safeVolume);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      }
+    },
+    network: {
+      fetch: async (request: BlueprintNetworkFetchRequest) => {
+        const cap = "network.fetch";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onNetworkFetch) {
+            // No backend = nowhere to send it (editor preview, story preview). Reported as
+            // a `networkError` rather than thrown, so a Page being previewed in Studio
+            // still lays out and the author's own error branch is what runs.
+            return {
+              outcome: "networkError" as const,
+              status: 0,
+              body: null,
+              error: "Network is not available here. Run the project in Dev Mode to make requests."
+            };
+          }
+          return await onNetworkFetch(request);
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      }
+    },
+    progress: {
+      export: async () => {
+        const cap = "progress.export";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onExportProgress) {
+            // No backend = nowhere to write it (editor preview, story preview). Reported
+            // as a result rather than thrown, for the reason Open Link does the same.
+            return {
+              outcome: "failed" as const,
+              error: "Progress cannot be written here. Run the project in Dev Mode to carry it."
+            };
+          }
+          return await onExportProgress();
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      },
+      import: async () => {
+        const cap = "progress.import";
+        emitHostCall(emit, cap, "call");
+        try {
+          if (!onImportProgress) {
+            // `failed`, deliberately not `missing`: missing is a fact about the player
+            // (nobody has exported), this is a fact about where the graph is running,
+            // and an author who wired `missing` to "start a new game" must not be sent
+            // down it by an environment that simply cannot look.
+            return {
+              outcome: "failed" as const,
+              sceneId: "",
+              error: "Progress cannot be read here. Run the project in Dev Mode to carry it."
+            };
+          }
+          return await onImportProgress();
+        } finally {
+          emitHostCall(emit, cap, "return");
+        }
+      }
+    },
+    devtools: {
+      log: (level: string, message: string) => {
+        const safeMessage = truncateDebugEventMessage(String(message));
+        emitHostCall(emit, "devtools.log", "call");
+        emit({ type: "devtools.log", level, message: safeMessage });
+        const line = `[Blueprint devtools.${level}] ${safeMessage}`;
+        if (level === "error") {
+          console.error(line);
+        } else if (level === "warn") {
+          console.warn(line);
+        } else {
+          console.info(line);
+        }
+        emitHostCall(emit, "devtools.log", "return");
+      }
+    }
+  };
 }

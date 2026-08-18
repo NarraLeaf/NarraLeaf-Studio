@@ -16,19 +16,19 @@
  * they do (see `useMenuActionHandler`).
  */
 export const WorkspaceMenuAction = {
-    NewWorkspace: "narraleaf-studio:file-new",
-    OpenWorkspace: "narraleaf-studio:file-open",
-    ExportProject: "narraleaf-studio:file-export-project",
-    CloseWorkspace: "narraleaf-studio:file-close-workspace",
-    OpenWelcome: "narraleaf-studio:open-welcome",
-    About: "narraleaf-studio:about",
-    Build: "narraleaf-studio:build",
-    ToggleLeftSidebar: "narraleaf-studio:toggle-left-sidebar",
-    ToggleBottomPanel: "narraleaf-studio:toggle-bottom-panel",
-    ToggleRightSidebar: "narraleaf-studio:toggle-right-sidebar",
+  NewWorkspace: "narraleaf-studio:file-new",
+  OpenWorkspace: "narraleaf-studio:file-open",
+  ExportProject: "narraleaf-studio:file-export-project",
+  CloseWorkspace: "narraleaf-studio:file-close-workspace",
+  OpenWelcome: "narraleaf-studio:open-welcome",
+  About: "narraleaf-studio:about",
+  Build: "narraleaf-studio:build",
+  ToggleLeftSidebar: "narraleaf-studio:toggle-left-sidebar",
+  ToggleBottomPanel: "narraleaf-studio:toggle-bottom-panel",
+  ToggleRightSidebar: "narraleaf-studio:toggle-right-sidebar"
 } as const;
 
-export type WorkspaceMenuAction = typeof WorkspaceMenuAction[keyof typeof WorkspaceMenuAction];
+export type WorkspaceMenuAction = (typeof WorkspaceMenuAction)[keyof typeof WorkspaceMenuAction];
 
 /**
  * The Develop menu's run entries, which are palette COMMANDS rather than registry actions.
@@ -44,15 +44,15 @@ export type WorkspaceMenuAction = typeof WorkspaceMenuAction[keyof typeof Worksp
  * a run id at something already running would only be refused by the command's own `when`.
  */
 export const WorkspaceRunCommand = {
-    RunDevMode: "run:dev-mode",
-    StopDevMode: "run:stop-dev-mode",
-    RunPreview: "run:preview",
-    StopPreview: "run:stop-preview",
-    RunTest: "run:test",
-    StopTest: "run:stop-test",
+  RunDevMode: "run:dev-mode",
+  StopDevMode: "run:stop-dev-mode",
+  RunPreview: "run:preview",
+  StopPreview: "run:stop-preview",
+  RunTest: "run:test",
+  StopTest: "run:stop-test"
 } as const;
 
-export type WorkspaceRunCommand = typeof WorkspaceRunCommand[keyof typeof WorkspaceRunCommand];
+export type WorkspaceRunCommand = (typeof WorkspaceRunCommand)[keyof typeof WorkspaceRunCommand];
 
 /**
  * Any registered renderer action id. Menu items synced up from the renderer carry ids the main
@@ -92,29 +92,29 @@ export type EditMenuRole = "copy" | "cut" | "paste" | "delete" | "undo" | "redo"
  * no icons, no React, no callbacks - clicks travel back as `id`.
  */
 export type NativeMenuItem =
-    | { kind: "separator" }
-    | {
-        kind: "action";
-        id: MenuActionId;
-        label: string;
-        enabled: boolean;
-        /** Present for toggles; renders as a native checkbox item. */
-        checked?: boolean;
-        /** Present when this action replaces a standard Edit-menu command (see EditMenuRole). */
-        role?: EditMenuRole;
+  | { kind: "separator" }
+  | {
+      kind: "action";
+      id: MenuActionId;
+      label: string;
+      enabled: boolean;
+      /** Present for toggles; renders as a native checkbox item. */
+      checked?: boolean;
+      /** Present when this action replaces a standard Edit-menu command (see EditMenuRole). */
+      role?: EditMenuRole;
     }
-    | {
-        kind: "submenu";
-        label: string;
-        items: NativeMenuItem[];
+  | {
+      kind: "submenu";
+      label: string;
+      items: NativeMenuItem[];
     };
 
 /** Serializable mirror of one renderer action group, already filtered to the current focus. */
 export type NativeMenuGroup = {
-    id: string;
-    label: string;
-    slot: SyncedMenuSlot;
-    items: NativeMenuItem[];
+  id: string;
+  label: string;
+  slot: SyncedMenuSlot;
+  items: NativeMenuItem[];
 };
 
 /**
@@ -126,21 +126,21 @@ export type NativeMenuGroup = {
  * means run or stop, which is what keeps the menu from ever holding an entry that does nothing.
  */
 export type NativeMenuRuntimeStatus = {
-    devModeActive: boolean;
-    previewActive: boolean;
-    /** A test run holds the run slot exactly as a mode does, so the Test entry becomes Stop too. */
-    testActive: boolean;
-    /**
-     * Whether the project is frozen, which is what turns Preview and Production Build off.
-     *
-     * Sent up so the menu can grey them the way the toolbar does. The commands behind them refuse
-     * a frozen workspace on their own, but a refusal the user cannot see reads as a broken menu.
-     */
-    frozen: boolean;
+  devModeActive: boolean;
+  previewActive: boolean;
+  /** A test run holds the run slot exactly as a mode does, so the Test entry becomes Stop too. */
+  testActive: boolean;
+  /**
+   * Whether the project is frozen, which is what turns Preview and Production Build off.
+   *
+   * Sent up so the menu can grey them the way the toolbar does. The commands behind them refuse
+   * a frozen workspace on their own, but a refusal the user cannot see reads as a broken menu.
+   */
+  frozen: boolean;
 };
 
 /** Everything one workspace window pushes up for its native menu. */
 export type NativeMenuModel = {
-    groups: NativeMenuGroup[];
-    runtime: NativeMenuRuntimeStatus;
+  groups: NativeMenuGroup[];
+  runtime: NativeMenuRuntimeStatus;
 };

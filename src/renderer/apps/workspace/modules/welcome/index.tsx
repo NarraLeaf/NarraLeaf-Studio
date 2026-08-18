@@ -8,16 +8,15 @@ import { WelcomeEditor } from "./WelcomeEditor";
  * Displays the welcome screen when the workspace starts
  */
 export const welcomeModule: EditorModule = {
-    metadata: {
-        id: "narraleaf-studio:welcome",
-        // Resolved lazily on read (module registration runs after i18n init).
-        titleKey: "placeholders.moduleTitles.welcome",
-        get title() {
-            return translate("placeholders.moduleTitles.welcome");
-        },
-        icon: <Home className="w-4 h-4" />,
-        closable: true,
+  metadata: {
+    id: "narraleaf-studio:welcome",
+    // Resolved lazily on read (module registration runs after i18n init).
+    titleKey: "placeholders.moduleTitles.welcome",
+    get title() {
+      return translate("placeholders.moduleTitles.welcome");
     },
-    component: WelcomeEditor,
+    icon: <Home className="w-4 h-4" />,
+    closable: true
+  },
+  component: WelcomeEditor
 };
-

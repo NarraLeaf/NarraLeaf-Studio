@@ -1,38 +1,38 @@
-import {registerDocumentSpec} from "../registry";
-import {AnyDocumentSpec} from "../types";
-import {appTagsSpec} from "./appTags";
-import {assetsMetadataSpec} from "./assetsMetadata";
-import {audioTracksSpec} from "./audioTracks";
-import {brandSpec} from "./brand";
-import {charactersSpec} from "./characters";
-import {dictionarySpec} from "./dictionary";
-import {localizationDocumentSpec} from "./localization";
-import {localizationKeysSpec} from "./localizationKeys";
-import {saveSchemaSpec} from "./saveSchema";
-import {storyDocumentSpec} from "./story";
-import {uiDocumentSpec} from "./uiDocument";
-import {uiGraphsSpec} from "./uiGraphs";
-import {variableRegistrySpec} from "./variables";
-import {voiceDocumentSpec} from "./voice";
+import { registerDocumentSpec } from "../registry";
+import { AnyDocumentSpec } from "../types";
+import { appTagsSpec } from "./appTags";
+import { assetsMetadataSpec } from "./assetsMetadata";
+import { audioTracksSpec } from "./audioTracks";
+import { brandSpec } from "./brand";
+import { charactersSpec } from "./characters";
+import { dictionarySpec } from "./dictionary";
+import { localizationDocumentSpec } from "./localization";
+import { localizationKeysSpec } from "./localizationKeys";
+import { saveSchemaSpec } from "./saveSchema";
+import { storyDocumentSpec } from "./story";
+import { uiDocumentSpec } from "./uiDocument";
+import { uiGraphsSpec } from "./uiGraphs";
+import { variableRegistrySpec } from "./variables";
+import { voiceDocumentSpec } from "./voice";
 
-export {APP_TAGS_DOCUMENT_PATH, appTagsSpec} from "./appTags";
-export {AUDIO_TRACKS_DOCUMENT_PATH, audioTracksSpec} from "./audioTracks";
-export {BRAND_DOCUMENT_PATH, brandSpec} from "./brand";
-export {SAVE_SCHEMA_DOCUMENT_PATH, saveSchemaSpec} from "./saveSchema";
-export {VARIABLE_REGISTRY_DOCUMENT_PATH, variableRegistrySpec} from "./variables";
-export {VOICE_DOCUMENT_PATH, voiceDocumentSpec} from "./voice";
-export {LOCALIZATION_DOCUMENT_PATH, localizationDocumentSpec} from "./localization";
-export {LOCALIZATION_KEYS_DOCUMENT_PATH, localizationKeysSpec} from "./localizationKeys";
-export {CHARACTER_STORE_DOCUMENT_PATH, charactersSpec} from "./characters";
-export {DICTIONARY_DOCUMENT_PATH, dictionarySpec} from "./dictionary";
-export {STORY_DOCUMENT_PATH, storyDocumentSpec} from "./story";
-export {UI_DOCUMENT_PATH, uiDocumentSpec} from "./uiDocument";
-export {UI_GRAPHS_DOCUMENT_PATH, uiGraphsSpec} from "./uiGraphs";
+export { APP_TAGS_DOCUMENT_PATH, appTagsSpec } from "./appTags";
+export { AUDIO_TRACKS_DOCUMENT_PATH, audioTracksSpec } from "./audioTracks";
+export { BRAND_DOCUMENT_PATH, brandSpec } from "./brand";
+export { SAVE_SCHEMA_DOCUMENT_PATH, saveSchemaSpec } from "./saveSchema";
+export { VARIABLE_REGISTRY_DOCUMENT_PATH, variableRegistrySpec } from "./variables";
+export { VOICE_DOCUMENT_PATH, voiceDocumentSpec } from "./voice";
+export { LOCALIZATION_DOCUMENT_PATH, localizationDocumentSpec } from "./localization";
+export { LOCALIZATION_KEYS_DOCUMENT_PATH, localizationKeysSpec } from "./localizationKeys";
+export { CHARACTER_STORE_DOCUMENT_PATH, charactersSpec } from "./characters";
+export { DICTIONARY_DOCUMENT_PATH, dictionarySpec } from "./dictionary";
+export { STORY_DOCUMENT_PATH, storyDocumentSpec } from "./story";
+export { UI_DOCUMENT_PATH, uiDocumentSpec } from "./uiDocument";
+export { UI_GRAPHS_DOCUMENT_PATH, uiGraphsSpec } from "./uiGraphs";
 export {
-    ASSETS_METADATA_DOCUMENT_PATH,
-    assetsMetadataSpec,
-    type AssetMetadataEntry,
-    type AssetsMetadataShard,
+  ASSETS_METADATA_DOCUMENT_PATH,
+  assetsMetadataSpec,
+  type AssetMetadataEntry,
+  type AssetsMetadataShard
 } from "./assetsMetadata";
 
 /**
@@ -50,20 +50,20 @@ export {
  * by design. Each says so in its own module.
  */
 export const PROJECT_DOCUMENT_SPECS: readonly AnyDocumentSpec[] = [
-    appTagsSpec,
-    audioTracksSpec,
-    brandSpec,
-    dictionarySpec,
-    saveSchemaSpec,
-    variableRegistrySpec,
-    voiceDocumentSpec,
-    localizationDocumentSpec,
-    localizationKeysSpec,
-    charactersSpec,
-    storyDocumentSpec,
-    assetsMetadataSpec,
-    uiDocumentSpec,
-    uiGraphsSpec,
+  appTagsSpec,
+  audioTracksSpec,
+  brandSpec,
+  dictionarySpec,
+  saveSchemaSpec,
+  variableRegistrySpec,
+  voiceDocumentSpec,
+  localizationDocumentSpec,
+  localizationKeysSpec,
+  charactersSpec,
+  storyDocumentSpec,
+  assetsMetadataSpec,
+  uiDocumentSpec,
+  uiGraphsSpec
 ];
 
 // Registration happens on import rather than behind a call, so no consumer can reach the registry
@@ -72,5 +72,5 @@ export const PROJECT_DOCUMENT_SPECS: readonly AnyDocumentSpec[] = [
 // instances of this module, which is a bundler fault worth failing loudly on rather than papering
 // over. Import it as `@shared/documents/specs` everywhere so that stays true.
 for (const spec of PROJECT_DOCUMENT_SPECS) {
-    registerDocumentSpec(spec);
+  registerDocumentSpec(spec);
 }

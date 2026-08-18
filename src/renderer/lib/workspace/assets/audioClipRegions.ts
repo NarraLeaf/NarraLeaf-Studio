@@ -10,14 +10,16 @@ import type { AssetsService } from "@/lib/workspace/services/core/AssetsService"
  * live asset records here. Both reduce through the same normalizer, so a region cannot mean one thing
  * in the preview and another in the game.
  */
-export function collectAudioClipRegions(assets: AssetsService | null | undefined): Record<string, AudioClipRegion> {
-    const clips: Record<string, AudioClipRegion> = {};
-    const audio = assets?.getAssets()[AssetType.Audio];
-    for (const [assetId, asset] of Object.entries(audio ?? {})) {
-        const region = normalizeAudioClipRegion(asset?.extras);
-        if (region) {
-            clips[assetId] = region;
-        }
+export function collectAudioClipRegions(
+  assets: AssetsService | null | undefined
+): Record<string, AudioClipRegion> {
+  const clips: Record<string, AudioClipRegion> = {};
+  const audio = assets?.getAssets()[AssetType.Audio];
+  for (const [assetId, asset] of Object.entries(audio ?? {})) {
+    const region = normalizeAudioClipRegion(asset?.extras);
+    if (region) {
+      clips[assetId] = region;
     }
-    return clips;
+  }
+  return clips;
 }

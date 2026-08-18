@@ -8,159 +8,159 @@ import path from "path";
 import { BaseApp } from "../baseApp";
 
 export class ProtocolManager implements IProtocolManager {
-    private handlers: ProtocolHandler[] = [];
-    private initialized: boolean = false;
+  private handlers: ProtocolHandler[] = [];
+  private initialized: boolean = false;
 
-    constructor(private app: BaseApp) { }
+  constructor(private app: BaseApp) {}
 
-    public initialize(): void {
-        if (this.initialized) {
-            return;
+  public initialize(): void {
+    if (this.initialized) {
+      return;
+    }
+    this.initialized = true;
+
+    this.setupFileSystemHandlers();
+    this.setupProtocolHandler();
+    this.app.events.once(App.Events.Ready, () => {
+      this.startHandling();
+    });
+  }
+
+  private startHandling(): void {
+    // Setup protocol handler
+    protocol.handle(AppProtocol, async (request) => {
+      // Debug level: this fires for every asset fetch, which is hot-path
+      // noise once the engine starts streaming scene assets.
+      this.app.logger.debug("[Host] Requesting URL caught", request.url);
+
+      const url = new URL(request.url);
+      const handler = this.getHandler(url);
+
+      if (!handler) {
+        this.app.logger.warn("[Host] 404 No handler found for URL", request.url);
+        return new Response(null, {
+          status: 404,
+          headers: new Headers()
+        });
+      }
+
+      try {
+        const response = await handler.handle(request);
+        // Handle response data
+        let body: BodyInit | null = null;
+
+        if (response.data) {
+          if (response.data instanceof Buffer) {
+            body = new Uint8Array(response.data);
+          } else if (typeof response.data === "string") {
+            body = response.data;
+          } else if (response.data instanceof ReadableStream) {
+            body = response.data;
+          }
         }
-        this.initialized = true;
 
-        this.setupFileSystemHandlers();
-        this.setupProtocolHandler();
-        this.app.events.once(App.Events.Ready, () => {
-            this.startHandling();
-        });
-    }
-
-    private startHandling(): void {
-        // Setup protocol handler
-        protocol.handle(AppProtocol, async (request) => {
-            // Debug level: this fires for every asset fetch, which is hot-path
-            // noise once the engine starts streaming scene assets.
-            this.app.logger.debug("[Host] Requesting URL caught", request.url);
-
-            const url = new URL(request.url);
-            const handler = this.getHandler(url);
-
-            if (!handler) {
-                this.app.logger.warn("[Host] 404 No handler found for URL", request.url);
-                return new Response(null, {
-                    status: 404,
-                    headers: new Headers()
-                });
+        // Convert headers to Headers object
+        const headers = new Headers();
+        if (response.headers) {
+          Object.entries(response.headers).forEach(([key, value]) => {
+            if (Array.isArray(value)) {
+              value.forEach((v) => headers.append(key, v));
+            } else {
+              headers.set(key, value);
             }
+          });
+        }
 
-            try {
-                const response = await handler.handle(request);
-                // Handle response data
-                let body: BodyInit | null = null;
-
-                if (response.data) {
-                    if (response.data instanceof Buffer) {
-                        body = new Uint8Array(response.data);
-                    } else if (typeof response.data === 'string') {
-                        body = response.data;
-                    } else if (response.data instanceof ReadableStream) {
-                        body = response.data;
-                    }
-                }
-
-                // Convert headers to Headers object
-                const headers = new Headers();
-                if (response.headers) {
-                    Object.entries(response.headers).forEach(([key, value]) => {
-                        if (Array.isArray(value)) {
-                            value.forEach(v => headers.append(key, v));
-                        } else {
-                            headers.set(key, value);
-                        }
-                    });
-                }
-
-                return new Response(body, {
-                    status: response.statusCode,
-                    headers
-                });
-            } catch (error) {
-                this.app.logger.error("[Host] Error handling request:", error);
-                return new Response(null, {
-                    status: 500,
-                    headers: new Headers()
-                });
-            }
+        return new Response(body, {
+          status: response.statusCode,
+          headers
         });
-    }
-
-    private setupFileSystemHandlers(): void {
-        // Public assets handler
-        const publicHandler = new FileSystemHandler(
-            AppProtocol,
-            { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
-            () => this.app.getPublicDir(),
-            AppHost.Public
-        );
-        publicHandler.addRule({
-            include: (requested) => {
-                const url = new URL(requested);
-                return url.protocol === AppProtocol + ":" && url.hostname === AppHost.Public;
-            },
-            handler: (requested) => ({
-                path: publicHandler.formatFileUrl(requested),
-                noCache: false,
-            })
+      } catch (error) {
+        this.app.logger.error("[Host] Error handling request:", error);
+        return new Response(null, {
+          status: 500,
+          headers: new Headers()
         });
-        this.registerHandler(publicHandler);
+      }
+    });
+  }
 
-        // Window assets handler
-        const windowsHandler = new FileSystemHandler(
-            AppProtocol,
-            { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
-            () => path.resolve(this.app.getDistDir(), "windows"),
-            AppHost.Windows,
-            this.app.isDevMode()
-        );
-        windowsHandler.addRule({
-            include: (requested) => {
-                const url = new URL(requested);
-                return url.protocol === AppProtocol + ":" && url.hostname === AppHost.Windows;
-            },
-            handler: (requested) => ({
-                path: windowsHandler.formatFileUrl(requested),
-                noCache: false,
-            })
-        });
-        this.registerHandler(windowsHandler);
+  private setupFileSystemHandlers(): void {
+    // Public assets handler
+    const publicHandler = new FileSystemHandler(
+      AppProtocol,
+      { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+      () => this.app.getPublicDir(),
+      AppHost.Public
+    );
+    publicHandler.addRule({
+      include: (requested) => {
+        const url = new URL(requested);
+        return url.protocol === AppProtocol + ":" && url.hostname === AppHost.Public;
+      },
+      handler: (requested) => ({
+        path: publicHandler.formatFileUrl(requested),
+        noCache: false
+      })
+    });
+    this.registerHandler(publicHandler);
 
-        // File system hash handler for app://fs/{hash} requests
-        const fsHashHandler = new FileSystemHashHandler(
-            AppProtocol,
-            { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
-            this.app.storageManager
-        );
-        this.registerHandler(fsHashHandler);
+    // Window assets handler
+    const windowsHandler = new FileSystemHandler(
+      AppProtocol,
+      { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+      () => path.resolve(this.app.getDistDir(), "windows"),
+      AppHost.Windows,
+      this.app.isDevMode()
+    );
+    windowsHandler.addRule({
+      include: (requested) => {
+        const url = new URL(requested);
+        return url.protocol === AppProtocol + ":" && url.hostname === AppHost.Windows;
+      },
+      handler: (requested) => ({
+        path: windowsHandler.formatFileUrl(requested),
+        noCache: false
+      })
+    });
+    this.registerHandler(windowsHandler);
 
-        const pluginEntryHandler = new PluginEntryHandler(
-            AppProtocol,
-            { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
-            this.app.pluginManager
-        );
-        this.registerHandler(pluginEntryHandler);
+    // File system hash handler for app://fs/{hash} requests
+    const fsHashHandler = new FileSystemHashHandler(
+      AppProtocol,
+      { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+      this.app.storageManager
+    );
+    this.registerHandler(fsHashHandler);
 
-        this.registerHandler(new PluginApiHandler());
-    }
+    const pluginEntryHandler = new PluginEntryHandler(
+      AppProtocol,
+      { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+      this.app.pluginManager
+    );
+    this.registerHandler(pluginEntryHandler);
 
-    private setupProtocolHandler(): void {
-        // Register all schemes
-        const schemes = this.handlers.map(handler => ({
-            scheme: handler.scheme,
-            privileges: handler.privileges
-        }));
-        protocol.registerSchemesAsPrivileged(schemes);
-    }
+    this.registerHandler(new PluginApiHandler());
+  }
 
-    public registerHandler(handler: ProtocolHandler): void {
-        this.handlers.push(handler);
-    }
+  private setupProtocolHandler(): void {
+    // Register all schemes
+    const schemes = this.handlers.map((handler) => ({
+      scheme: handler.scheme,
+      privileges: handler.privileges
+    }));
+    protocol.registerSchemesAsPrivileged(schemes);
+  }
 
-    public unregisterHandler(scheme: string): void {
-        this.handlers = this.handlers.filter(h => h.scheme !== scheme);
-    }
+  public registerHandler(handler: ProtocolHandler): void {
+    this.handlers.push(handler);
+  }
 
-    public getHandler(url: URL): ProtocolHandler | undefined {
-        return this.handlers.find(handler => handler.canHandle(url));
-    }
-} 
+  public unregisterHandler(scheme: string): void {
+    this.handlers = this.handlers.filter((h) => h.scheme !== scheme);
+  }
+
+  public getHandler(url: URL): ProtocolHandler | undefined {
+    return this.handlers.find((handler) => handler.canHandle(url));
+  }
+}

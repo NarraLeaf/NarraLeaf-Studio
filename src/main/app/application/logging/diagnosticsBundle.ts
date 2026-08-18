@@ -12,7 +12,7 @@ export const MAX_LOG_TAIL_BYTES = 512 * 1024;
 const LOG_FILE_NAME = "main.log";
 
 /** Reserved on Windows, and separators everywhere. Control characters are dropped by range below. */
-const RESERVED_FILE_NAME_CHARS = "<>:\"/\\|?*";
+const RESERVED_FILE_NAME_CHARS = '<>:"/\\|?*';
 
 /** The extensions a diagnostics bundle may carry, and the one it gets when it carries none. */
 const DIAGNOSTICS_EXTENSIONS = [".log", ".txt"] as const;
@@ -35,22 +35,22 @@ const DIAGNOSTICS_EXTENSIONS = [".log", ".txt"] as const;
  * next is worse than no default, so the allowed set is now stated at every call site.
  */
 export function sanitizeBundleFileName(
-    candidate: string,
-    fallback: string,
-    extensions: readonly string[] = DIAGNOSTICS_EXTENSIONS,
+  candidate: string,
+  fallback: string,
+  extensions: readonly string[] = DIAGNOSTICS_EXTENSIONS
 ): string {
-    const base = candidate.trim().split(/[\\/]/).pop() ?? "";
-    const kept = Array.from(base)
-        .filter(char => char >= " " && !RESERVED_FILE_NAME_CHARS.includes(char))
-        .join("");
-    const trimmed = kept.replace(/^\.+/, "").trim();
-    if (!trimmed) {
-        return fallback;
-    }
-    const lower = trimmed.toLowerCase();
-    return extensions.some(extension => lower.endsWith(extension))
-        ? trimmed
-        : `${trimmed}${extensions[0]}`;
+  const base = candidate.trim().split(/[\\/]/).pop() ?? "";
+  const kept = Array.from(base)
+    .filter((char) => char >= " " && !RESERVED_FILE_NAME_CHARS.includes(char))
+    .join("");
+  const trimmed = kept.replace(/^\.+/, "").trim();
+  if (!trimmed) {
+    return fallback;
+  }
+  const lower = trimmed.toLowerCase();
+  return extensions.some((extension) => lower.endsWith(extension))
+    ? trimmed
+    : `${trimmed}${extensions[0]}`;
 }
 
 /**
@@ -63,61 +63,64 @@ export function sanitizeBundleFileName(
  * Never throws. A bundle is what someone falls back to when the app is already broken, and a
  * missing or unreadable log must not be the thing that stops it from being written.
  */
-export async function readMainLogTail(logsDir: string, maxBytes = MAX_LOG_TAIL_BYTES): Promise<string> {
-    const logPath = path.join(logsDir, LOG_FILE_NAME);
-    let handle;
-    try {
-        handle = await fs.open(logPath, "r");
-    } catch (error) {
-        return `<no main.log at ${logPath}: ${(error as Error).message}>`;
-    }
+export async function readMainLogTail(
+  logsDir: string,
+  maxBytes = MAX_LOG_TAIL_BYTES
+): Promise<string> {
+  const logPath = path.join(logsDir, LOG_FILE_NAME);
+  let handle;
+  try {
+    handle = await fs.open(logPath, "r");
+  } catch (error) {
+    return `<no main.log at ${logPath}: ${(error as Error).message}>`;
+  }
 
-    try {
-        const { size } = await handle.stat();
-        const length = Math.min(size, maxBytes);
-        const buffer = Buffer.alloc(length);
-        await handle.read(buffer, 0, length, size - length);
-        const text = buffer.toString("utf-8");
-        if (size <= maxBytes) {
-            return text;
-        }
-        const firstBreak = text.indexOf("\n");
-        const body = firstBreak === -1 ? text : text.slice(firstBreak + 1);
-        return `<truncated: showing the last ${length} of ${size} bytes>\n${body}`;
-    } catch (error) {
-        return `<could not read ${logPath}: ${(error as Error).message}>`;
-    } finally {
-        await handle.close().catch(() => undefined);
+  try {
+    const { size } = await handle.stat();
+    const length = Math.min(size, maxBytes);
+    const buffer = Buffer.alloc(length);
+    await handle.read(buffer, 0, length, size - length);
+    const text = buffer.toString("utf-8");
+    if (size <= maxBytes) {
+      return text;
     }
+    const firstBreak = text.indexOf("\n");
+    const body = firstBreak === -1 ? text : text.slice(firstBreak + 1);
+    return `<truncated: showing the last ${length} of ${size} bytes>\n${body}`;
+  } catch (error) {
+    return `<could not read ${logPath}: ${(error as Error).message}>`;
+  } finally {
+    await handle.close().catch(() => undefined);
+  }
 }
 
 export interface DiagnosticsEnvironment {
-    appVersion: string;
-    electronVersion: string;
-    chromeVersion: string;
-    nodeVersion: string;
-    platform: string;
-    osRelease: string;
-    arch: string;
-    packaged: boolean;
-    locale: string;
-    userDataDir: string;
-    logsDir: string;
-    generatedAt: string;
+  appVersion: string;
+  electronVersion: string;
+  chromeVersion: string;
+  nodeVersion: string;
+  platform: string;
+  osRelease: string;
+  arch: string;
+  packaged: boolean;
+  locale: string;
+  userDataDir: string;
+  logsDir: string;
+  generatedAt: string;
 }
 
 /** The header every bundle opens with: what was running, and where its files are. */
 export function formatEnvironmentSection(environment: DiagnosticsEnvironment): string {
-    return [
-        "=== NarraLeaf Studio diagnostics ===",
-        `Generated: ${environment.generatedAt}`,
-        `Studio: ${environment.appVersion}${environment.packaged ? "" : " (development build)"}`,
-        `Electron: ${environment.electronVersion} (Chrome ${environment.chromeVersion}, Node ${environment.nodeVersion})`,
-        `Platform: ${environment.platform} ${environment.osRelease} ${environment.arch}`,
-        `Language: ${environment.locale}`,
-        `User data: ${environment.userDataDir}`,
-        `Logs: ${environment.logsDir}`,
-    ].join("\n");
+  return [
+    "=== NarraLeaf Studio diagnostics ===",
+    `Generated: ${environment.generatedAt}`,
+    `Studio: ${environment.appVersion}${environment.packaged ? "" : " (development build)"}`,
+    `Electron: ${environment.electronVersion} (Chrome ${environment.chromeVersion}, Node ${environment.nodeVersion})`,
+    `Platform: ${environment.platform} ${environment.osRelease} ${environment.arch}`,
+    `Language: ${environment.locale}`,
+    `User data: ${environment.userDataDir}`,
+    `Logs: ${environment.logsDir}`
+  ].join("\n");
 }
 
 /**
@@ -127,17 +130,17 @@ export function formatEnvironmentSection(environment: DiagnosticsEnvironment): s
  * the answer is almost always in the report - the log is the evidence behind it.
  */
 export function composeDiagnosticsBundle(
-    environment: DiagnosticsEnvironment,
-    rendererReport: string,
-    mainLogTail: string,
+  environment: DiagnosticsEnvironment,
+  rendererReport: string,
+  mainLogTail: string
 ): string {
-    return [
-        formatEnvironmentSection(environment),
-        "",
-        rendererReport.trim(),
-        "",
-        `--- main.log (tail, up to ${MAX_LOG_TAIL_BYTES} bytes) ---`,
-        mainLogTail.trimEnd(),
-        "",
-    ].join("\n");
+  return [
+    formatEnvironmentSection(environment),
+    "",
+    rendererReport.trim(),
+    "",
+    `--- main.log (tail, up to ${MAX_LOG_TAIL_BYTES} bytes) ---`,
+    mainLogTail.trimEnd(),
+    ""
+  ].join("\n");
 }

@@ -1,11 +1,16 @@
 import crypto from "crypto";
-import type {
-    MediaConvertRequest,
-    MediaConvertStateSnapshot,
-} from "@shared/types/mediaConvert";
+import type { MediaConvertRequest, MediaConvertStateSnapshot } from "@shared/types/mediaConvert";
 import { Logger } from "@shared/utils/logger";
-import { resolveFfmpegBinary, type FfmpegResolveOptions, type FfmpegResolverApp } from "./ffmpegTool";
-import { startMediaTranscode, type MediaTranscodeError, type MediaTranscodeOptions } from "./mediaTranscode";
+import {
+  resolveFfmpegBinary,
+  type FfmpegResolveOptions,
+  type FfmpegResolverApp
+} from "./ffmpegTool";
+import {
+  startMediaTranscode,
+  type MediaTranscodeError,
+  type MediaTranscodeOptions
+} from "./mediaTranscode";
 
 /**
  * Conversions in flight, and what to tell a renderer that asks about one.
@@ -47,137 +52,142 @@ const logger = new Logger("MediaConvert");
 const FINISHED_JOB_RETENTION_MS = 10 * 60_000;
 
 type ConvertJob = {
-    snapshot: MediaConvertStateSnapshot;
-    cancel: () => void;
+  snapshot: MediaConvertStateSnapshot;
+  cancel: () => void;
 };
 
-export type MediaConvertManagerOptions = FfmpegResolveOptions & Pick<MediaTranscodeOptions, "spawnProcess">;
+export type MediaConvertManagerOptions = FfmpegResolveOptions &
+  Pick<MediaTranscodeOptions, "spawnProcess">;
 
 export class MediaConvertManager {
-    private readonly jobs = new Map<string, ConvertJob>();
+  private readonly jobs = new Map<string, ConvertJob>();
 
-    constructor(private readonly app: FfmpegResolverApp) {}
+  constructor(private readonly app: FfmpegResolverApp) {}
 
-    /**
-     * Begin a conversion and return its opening snapshot.
-     *
-     * Resolves the binary first, so a host with no staged ffmpeg answers `unavailable` immediately
-     * rather than starting a job that fails a moment later. That distinction is the caller's whole
-     * basis for saying "conversion is not available here" instead of "this file is broken".
-     *
-     * Never throws: like the probe, this is called with a dialog open, and every way it can go wrong
-     * has to be a status the dialog can render.
-     */
-    public async start(
-        request: MediaConvertRequest,
-        options: MediaConvertManagerOptions = {},
-    ): Promise<MediaConvertStateSnapshot> {
-        const jobId = crypto.randomUUID();
-        const tool = await resolveFfmpegBinary(this.app, "ffmpeg", options);
-        if (!tool.available) {
-            logger.warn(
-                `No ffmpeg on this host, so ${request.sourcePath} was not converted: ${tool.detail}`,
-            );
-            // Recorded like any other job so a caller that polls before reading the return value
-            // gets the same answer twice, rather than `idle` for a job it was just handed.
-            return this.record(jobId, {
-                jobId,
-                status: "unavailable",
-                finishedAt: Date.now(),
-                error: tool.detail,
-            }, () => undefined);
-        }
-
-        const startedAt = Date.now();
-        const handle = startMediaTranscode(tool.path, request, {
-            spawnProcess: options.spawnProcess,
-            onProgress: progress => {
-                const job = this.jobs.get(jobId);
-                // Progress after the job has stopped is dropped rather than resurrecting it: the
-                // stdout pipe can deliver a buffered block after the process has already closed.
-                if (job && job.snapshot.status === "converting") {
-                    job.snapshot = { ...job.snapshot, progress };
-                }
-            },
-        });
-
-        this.record(jobId, { jobId, status: "converting", startedAt }, handle.cancel);
-
-        void handle.result.then(result => {
-            const job = this.jobs.get(jobId);
-            if (!job) {
-                return;
-            }
-            const finishedAt = Date.now();
-            if (result.status === "done") {
-                logger.info(
-                    `Converted ${request.sourcePath} to ${result.outputPath} in `
-                    + `${finishedAt - startedAt}ms (${describeTarget(request)})`,
-                );
-                job.snapshot = {
-                    ...job.snapshot,
-                    status: "done",
-                    finishedAt,
-                    outputPath: result.outputPath,
-                };
-            } else if (result.status === "cancelled") {
-                job.snapshot = { ...job.snapshot, status: "cancelled", finishedAt };
-            } else {
-                logger.error(failureReport(request, result));
-                job.snapshot = {
-                    ...job.snapshot,
-                    status: "error",
-                    finishedAt,
-                    reason: result.reason,
-                    error: result.detail,
-                };
-            }
-            this.retire(jobId);
-        });
-
-        return this.getStatus(jobId);
+  /**
+   * Begin a conversion and return its opening snapshot.
+   *
+   * Resolves the binary first, so a host with no staged ffmpeg answers `unavailable` immediately
+   * rather than starting a job that fails a moment later. That distinction is the caller's whole
+   * basis for saying "conversion is not available here" instead of "this file is broken".
+   *
+   * Never throws: like the probe, this is called with a dialog open, and every way it can go wrong
+   * has to be a status the dialog can render.
+   */
+  public async start(
+    request: MediaConvertRequest,
+    options: MediaConvertManagerOptions = {}
+  ): Promise<MediaConvertStateSnapshot> {
+    const jobId = crypto.randomUUID();
+    const tool = await resolveFfmpegBinary(this.app, "ffmpeg", options);
+    if (!tool.available) {
+      logger.warn(
+        `No ffmpeg on this host, so ${request.sourcePath} was not converted: ${tool.detail}`
+      );
+      // Recorded like any other job so a caller that polls before reading the return value
+      // gets the same answer twice, rather than `idle` for a job it was just handed.
+      return this.record(
+        jobId,
+        {
+          jobId,
+          status: "unavailable",
+          finishedAt: Date.now(),
+          error: tool.detail
+        },
+        () => undefined
+      );
     }
 
-    /**
-     * Stop a conversion.
-     *
-     * Returns the snapshot as it stands, which is still `converting`: the job is not cancelled until
-     * the process is gone and its partial file has been removed, and saying so early would let a
-     * caller start a second conversion onto the same target while the first one is still writing.
-     * The next poll carries `cancelled`.
-     */
-    public cancel(jobId: string): MediaConvertStateSnapshot {
+    const startedAt = Date.now();
+    const handle = startMediaTranscode(tool.path, request, {
+      spawnProcess: options.spawnProcess,
+      onProgress: (progress) => {
         const job = this.jobs.get(jobId);
-        if (!job) {
-            return { jobId, status: "idle" };
+        // Progress after the job has stopped is dropped rather than resurrecting it: the
+        // stdout pipe can deliver a buffered block after the process has already closed.
+        if (job && job.snapshot.status === "converting") {
+          job.snapshot = { ...job.snapshot, progress };
         }
-        if (job.snapshot.status === "converting") {
-            job.cancel();
-        }
-        return job.snapshot;
-    }
+      }
+    });
 
-    public getStatus(jobId: string): MediaConvertStateSnapshot {
-        return this.jobs.get(jobId)?.snapshot ?? { jobId, status: "idle" };
-    }
+    this.record(jobId, { jobId, status: "converting", startedAt }, handle.cancel);
 
-    private record(
-        jobId: string,
-        snapshot: MediaConvertStateSnapshot,
-        cancel: () => void,
-    ): MediaConvertStateSnapshot {
-        this.jobs.set(jobId, { snapshot, cancel });
-        if (snapshot.status !== "converting") {
-            this.retire(jobId);
-        }
-        return snapshot;
-    }
+    void handle.result.then((result) => {
+      const job = this.jobs.get(jobId);
+      if (!job) {
+        return;
+      }
+      const finishedAt = Date.now();
+      if (result.status === "done") {
+        logger.info(
+          `Converted ${request.sourcePath} to ${result.outputPath} in ` +
+            `${finishedAt - startedAt}ms (${describeTarget(request)})`
+        );
+        job.snapshot = {
+          ...job.snapshot,
+          status: "done",
+          finishedAt,
+          outputPath: result.outputPath
+        };
+      } else if (result.status === "cancelled") {
+        job.snapshot = { ...job.snapshot, status: "cancelled", finishedAt };
+      } else {
+        logger.error(failureReport(request, result));
+        job.snapshot = {
+          ...job.snapshot,
+          status: "error",
+          finishedAt,
+          reason: result.reason,
+          error: result.detail
+        };
+      }
+      this.retire(jobId);
+    });
 
-    /** Forget a finished job after the retention window. `unref` so it cannot hold the app open. */
-    private retire(jobId: string): void {
-        const timer = setTimeout(() => this.jobs.delete(jobId), FINISHED_JOB_RETENTION_MS);
-        timer.unref?.();
+    return this.getStatus(jobId);
+  }
+
+  /**
+   * Stop a conversion.
+   *
+   * Returns the snapshot as it stands, which is still `converting`: the job is not cancelled until
+   * the process is gone and its partial file has been removed, and saying so early would let a
+   * caller start a second conversion onto the same target while the first one is still writing.
+   * The next poll carries `cancelled`.
+   */
+  public cancel(jobId: string): MediaConvertStateSnapshot {
+    const job = this.jobs.get(jobId);
+    if (!job) {
+      return { jobId, status: "idle" };
     }
+    if (job.snapshot.status === "converting") {
+      job.cancel();
+    }
+    return job.snapshot;
+  }
+
+  public getStatus(jobId: string): MediaConvertStateSnapshot {
+    return this.jobs.get(jobId)?.snapshot ?? { jobId, status: "idle" };
+  }
+
+  private record(
+    jobId: string,
+    snapshot: MediaConvertStateSnapshot,
+    cancel: () => void
+  ): MediaConvertStateSnapshot {
+    this.jobs.set(jobId, { snapshot, cancel });
+    if (snapshot.status !== "converting") {
+      this.retire(jobId);
+    }
+    return snapshot;
+  }
+
+  /** Forget a finished job after the retention window. `unref` so it cannot hold the app open. */
+  private retire(jobId: string): void {
+    const timer = setTimeout(() => this.jobs.delete(jobId), FINISHED_JOB_RETENTION_MS);
+    timer.unref?.();
+  }
 }
 
 /**
@@ -188,15 +198,17 @@ export class MediaConvertManager {
  * drift out of step with the one that ran.
  */
 function describeTarget(request: MediaConvertRequest): string {
-    const target = request.target;
-    if (target.kind === "image") {
-        return `image -> ${target.container}`;
-    }
-    if (target.kind === "remux") {
-        return `remux -> ${target.container}${target.audioOnly ? " (audio only)" : ""}`;
-    }
-    return `reencode -> ${target.container} `
-        + `(video ${target.video ?? "none"}, audio ${target.audio ?? "none"})`;
+  const target = request.target;
+  if (target.kind === "image") {
+    return `image -> ${target.container}`;
+  }
+  if (target.kind === "remux") {
+    return `remux -> ${target.container}${target.audioOnly ? " (audio only)" : ""}`;
+  }
+  return (
+    `reencode -> ${target.container} ` +
+    `(video ${target.video ?? "none"}, audio ${target.audio ?? "none"})`
+  );
 }
 
 /**
@@ -211,16 +223,19 @@ function describeTarget(request: MediaConvertRequest): string {
  * carries the summary, and it is the summary the author was shown.
  */
 function failureReport(request: MediaConvertRequest, result: MediaTranscodeError): string {
-    const lines = [
-        `Conversion failed (${result.reason}): ${result.detail}`,
-        `  source: ${request.sourcePath}`,
-        `  target: ${request.targetPath} [${describeTarget(request)}]`,
-    ];
-    const stderr = result.stderr.trimEnd();
-    lines.push(
-        stderr
-            ? `  ffmpeg wrote:\n${stderr.split(/\r?\n/).map(line => `    ${line}`).join("\n")}`
-            : "  ffmpeg wrote nothing to stderr",
-    );
-    return lines.join("\n");
+  const lines = [
+    `Conversion failed (${result.reason}): ${result.detail}`,
+    `  source: ${request.sourcePath}`,
+    `  target: ${request.targetPath} [${describeTarget(request)}]`
+  ];
+  const stderr = result.stderr.trimEnd();
+  lines.push(
+    stderr
+      ? `  ffmpeg wrote:\n${stderr
+          .split(/\r?\n/)
+          .map((line) => `    ${line}`)
+          .join("\n")}`
+      : "  ffmpeg wrote nothing to stderr"
+  );
+  return lines.join("\n");
 }

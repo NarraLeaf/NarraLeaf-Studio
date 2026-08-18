@@ -17,5 +17,5 @@ import { createContext, useContext } from "react";
 export const SurfacePassiveContext = createContext(false);
 
 export function useSurfacePassive(): boolean {
-    return useContext(SurfacePassiveContext);
+  return useContext(SurfacePassiveContext);
 }

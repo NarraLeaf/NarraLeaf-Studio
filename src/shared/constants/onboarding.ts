@@ -29,5 +29,5 @@ export const ONBOARDING_VERSION = 1;
 
 /** Whether an installation carrying this stored value still has setup to go through. */
 export function needsOnboarding(stored: unknown): boolean {
-    return typeof stored !== "number" || !Number.isFinite(stored) || stored < ONBOARDING_VERSION;
+  return typeof stored !== "number" || !Number.isFinite(stored) || stored < ONBOARDING_VERSION;
 }

@@ -1,16 +1,13 @@
 import fs from "fs/promises";
 import path from "path";
 import {
-    DEFAULT_PLUGIN_REGISTRY_URL,
-    PLUGIN_REGISTRY_FETCH_TIMEOUT_MS,
-    PLUGIN_REGISTRY_FORMAT_VERSION,
-    PLUGIN_REGISTRY_MAX_DOWNLOAD_BYTES,
+  DEFAULT_PLUGIN_REGISTRY_URL,
+  PLUGIN_REGISTRY_FETCH_TIMEOUT_MS,
+  PLUGIN_REGISTRY_FORMAT_VERSION,
+  PLUGIN_REGISTRY_MAX_DOWNLOAD_BYTES
 } from "@shared/constants/pluginRegistry";
 import { PLUGIN_ICON_MAX_BYTES } from "@shared/constants/pluginIcon";
-import type {
-    PluginRegistryEntry,
-    PluginRegistryIndex,
-} from "@shared/types/pluginRegistry";
+import type { PluginRegistryEntry, PluginRegistryIndex } from "@shared/types/pluginRegistry";
 import { parseZipIndex, readEntryBytes } from "../../../buildWorker/mobile/zipModel";
 import { applyDownloadRewrite } from "./downloadRewrites";
 import { resolveDownloadSource } from "@shared/utils/downloadSource";
@@ -28,7 +25,7 @@ import { resolveDownloadSource } from "@shared/utils/downloadSource";
 
 /** Resolve the effective registry URL: a configured value, else the official default. */
 export function resolveRegistryUrl(configured: string | undefined | null): string {
-    return resolveDownloadSource(configured, DEFAULT_PLUGIN_REGISTRY_URL);
+  return resolveDownloadSource(configured, DEFAULT_PLUGIN_REGISTRY_URL);
 }
 
 /**
@@ -40,21 +37,26 @@ export function resolveRegistryUrl(configured: string | undefined | null): strin
  * behind a mirror could browse the entire store and have every Install time out.
  */
 async function fetchWithTimeout(url: string): Promise<Response> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), PLUGIN_REGISTRY_FETCH_TIMEOUT_MS);
-    try {
-        return await fetch(applyDownloadRewrite(url), { redirect: "follow", signal: controller.signal });
-    } finally {
-        clearTimeout(timer);
-    }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PLUGIN_REGISTRY_FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(applyDownloadRewrite(url), {
+      redirect: "follow",
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function asString(value: unknown): string {
-    return typeof value === "string" ? value : "";
+  return typeof value === "string" ? value : "";
 }
 
 function asStringArray(value: unknown): string[] {
-    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
 }
 
 /**
@@ -65,15 +67,15 @@ function asStringArray(value: unknown): string[] {
  * `data:` or `javascript:` address.
  */
 function asHttpsUrl(value: unknown): string | undefined {
-    const raw = asString(value).trim();
-    if (!raw) {
-        return undefined;
-    }
-    try {
-        return new URL(raw).protocol === "https:" ? raw : undefined;
-    } catch {
-        return undefined;
-    }
+  const raw = asString(value).trim();
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    return new URL(raw).protocol === "https:" ? raw : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -82,40 +84,44 @@ function asHttpsUrl(value: unknown): string | undefined {
  * Being lenient here keeps one malformed entry from blanking the whole store.
  */
 function normalizeEntry(raw: unknown): PluginRegistryEntry | null {
-    if (!raw || typeof raw !== "object") {
-        return null;
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  const release = (
+    record.release && typeof record.release === "object" ? record.release : {}
+  ) as Record<string, unknown>;
+  const id = asString(record.id);
+  const version = asString(record.version);
+  const download = asString(release.download);
+  if (!id || !version || !download) {
+    return null;
+  }
+  const targets = asStringArray(record.targets).filter(
+    (target): target is "studio" | "runtime" => target === "studio" || target === "runtime"
+  );
+  return {
+    id,
+    name: asString(record.name) || id,
+    version,
+    description: asString(record.description),
+    publisher: asString(record.publisher),
+    targets,
+    categories: asStringArray(record.categories),
+    keywords: asStringArray(record.keywords),
+    license: asString(record.license),
+    icon: asHttpsUrl(record.icon),
+    homepage: asString(record.homepage) || undefined,
+    studioVersion: asString(record.studioVersion) || undefined,
+    permissions: Array.isArray(record.permissions)
+      ? (record.permissions as PluginRegistryEntry["permissions"])
+      : [],
+    release: {
+      tag: asString(release.tag),
+      page: asString(release.page),
+      download
     }
-    const record = raw as Record<string, unknown>;
-    const release = (record.release && typeof record.release === "object" ? record.release : {}) as Record<string, unknown>;
-    const id = asString(record.id);
-    const version = asString(record.version);
-    const download = asString(release.download);
-    if (!id || !version || !download) {
-        return null;
-    }
-    const targets = asStringArray(record.targets).filter(
-        (target): target is "studio" | "runtime" => target === "studio" || target === "runtime",
-    );
-    return {
-        id,
-        name: asString(record.name) || id,
-        version,
-        description: asString(record.description),
-        publisher: asString(record.publisher),
-        targets,
-        categories: asStringArray(record.categories),
-        keywords: asStringArray(record.keywords),
-        license: asString(record.license),
-        icon: asHttpsUrl(record.icon),
-        homepage: asString(record.homepage) || undefined,
-        studioVersion: asString(record.studioVersion) || undefined,
-        permissions: Array.isArray(record.permissions) ? (record.permissions as PluginRegistryEntry["permissions"]) : [],
-        release: {
-            tag: asString(release.tag),
-            page: asString(release.page),
-            download,
-        },
-    };
+  };
 }
 
 /**
@@ -129,65 +135,67 @@ function normalizeEntry(raw: unknown): PluginRegistryEntry | null {
 const indexMemo = new Map<string, { at: number; index: PluginRegistryIndex }>();
 
 export async function fetchRegistryIndex(
-    url: string,
-    options: { maxAgeMs?: number } = {},
+  url: string,
+  options: { maxAgeMs?: number } = {}
 ): Promise<PluginRegistryIndex> {
-    const maxAgeMs = options.maxAgeMs ?? 0;
-    if (maxAgeMs > 0) {
-        const cached = indexMemo.get(url);
-        if (cached && Date.now() - cached.at <= maxAgeMs) {
-            return cached.index;
-        }
+  const maxAgeMs = options.maxAgeMs ?? 0;
+  if (maxAgeMs > 0) {
+    const cached = indexMemo.get(url);
+    if (cached && Date.now() - cached.at <= maxAgeMs) {
+      return cached.index;
     }
-    const index = await readRegistryIndex(url);
-    indexMemo.set(url, { at: Date.now(), index });
-    return index;
+  }
+  const index = await readRegistryIndex(url);
+  indexMemo.set(url, { at: Date.now(), index });
+  return index;
 }
 
 async function readRegistryIndex(url: string): Promise<PluginRegistryIndex> {
-    const response = await fetchWithTimeout(url);
-    if (!response.ok) {
-        throw new Error(`Registry request failed (${response.status} ${response.statusText})`);
-    }
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(await response.text());
-    } catch {
-        throw new Error("Registry index is not valid JSON");
-    }
-    if (!parsed || typeof parsed !== "object") {
-        throw new Error("Registry index is not an object");
-    }
-    const record = parsed as Record<string, unknown>;
-    if (record.formatVersion !== PLUGIN_REGISTRY_FORMAT_VERSION) {
-        throw new Error(
-            `Unsupported registry format version ${String(record.formatVersion)} (expected ${PLUGIN_REGISTRY_FORMAT_VERSION})`,
-        );
-    }
-    const plugins = Array.isArray(record.plugins)
-        ? record.plugins.map(normalizeEntry).filter((entry): entry is PluginRegistryEntry => entry !== null)
-        : [];
-    return {
-        formatVersion: PLUGIN_REGISTRY_FORMAT_VERSION,
-        repository: asString(record.repository),
-        plugins,
-    };
+  const response = await fetchWithTimeout(url);
+  if (!response.ok) {
+    throw new Error(`Registry request failed (${response.status} ${response.statusText})`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await response.text());
+  } catch {
+    throw new Error("Registry index is not valid JSON");
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Registry index is not an object");
+  }
+  const record = parsed as Record<string, unknown>;
+  if (record.formatVersion !== PLUGIN_REGISTRY_FORMAT_VERSION) {
+    throw new Error(
+      `Unsupported registry format version ${String(record.formatVersion)} (expected ${PLUGIN_REGISTRY_FORMAT_VERSION})`
+    );
+  }
+  const plugins = Array.isArray(record.plugins)
+    ? record.plugins
+        .map(normalizeEntry)
+        .filter((entry): entry is PluginRegistryEntry => entry !== null)
+    : [];
+  return {
+    formatVersion: PLUGIN_REGISTRY_FORMAT_VERSION,
+    repository: asString(record.repository),
+    plugins
+  };
 }
 
 async function downloadPackage(url: string): Promise<Buffer> {
-    const response = await fetchWithTimeout(url);
-    if (!response.ok) {
-        throw new Error(`Plugin download failed (${response.status} ${response.statusText})`);
-    }
-    const declaredLength = Number(response.headers.get("content-length"));
-    if (Number.isFinite(declaredLength) && declaredLength > PLUGIN_REGISTRY_MAX_DOWNLOAD_BYTES) {
-        throw new Error("Plugin package exceeds the maximum download size");
-    }
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.byteLength > PLUGIN_REGISTRY_MAX_DOWNLOAD_BYTES) {
-        throw new Error("Plugin package exceeds the maximum download size");
-    }
-    return buffer;
+  const response = await fetchWithTimeout(url);
+  if (!response.ok) {
+    throw new Error(`Plugin download failed (${response.status} ${response.statusText})`);
+  }
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > PLUGIN_REGISTRY_MAX_DOWNLOAD_BYTES) {
+    throw new Error("Plugin package exceeds the maximum download size");
+  }
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.byteLength > PLUGIN_REGISTRY_MAX_DOWNLOAD_BYTES) {
+    throw new Error("Plugin package exceeds the maximum download size");
+  }
+  return buffer;
 }
 
 /**
@@ -197,41 +205,44 @@ async function downloadPackage(url: string): Promise<Buffer> {
  * bundled dependency ships one of its own.
  */
 export async function extractPluginZip(buffer: Buffer, destDir: string): Promise<string> {
-    const index = parseZipIndex(buffer);
-    const root = path.resolve(destDir);
-    await fs.mkdir(root, { recursive: true });
-    let manifestDir: string | null = null;
+  const index = parseZipIndex(buffer);
+  const root = path.resolve(destDir);
+  await fs.mkdir(root, { recursive: true });
+  let manifestDir: string | null = null;
 
-    for (const entry of index.entries) {
-        if (entry.isDirectory) {
-            continue;
-        }
-        const normalized = entry.name.replace(/\\/g, "/");
-        const target = path.resolve(root, ...normalized.split("/"));
-        const relative = path.relative(root, target);
-        if (relative.startsWith("..") || path.isAbsolute(relative)) {
-            throw new Error(`Plugin package entry escapes the extract directory: ${entry.name}`);
-        }
-        await fs.mkdir(path.dirname(target), { recursive: true });
-        await fs.writeFile(target, readEntryBytes(buffer, entry));
-        if (path.basename(normalized) === "manifest.json") {
-            const dir = path.dirname(target);
-            if (!manifestDir || dir.length < manifestDir.length) {
-                manifestDir = dir;
-            }
-        }
+  for (const entry of index.entries) {
+    if (entry.isDirectory) {
+      continue;
     }
+    const normalized = entry.name.replace(/\\/g, "/");
+    const target = path.resolve(root, ...normalized.split("/"));
+    const relative = path.relative(root, target);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      throw new Error(`Plugin package entry escapes the extract directory: ${entry.name}`);
+    }
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, readEntryBytes(buffer, entry));
+    if (path.basename(normalized) === "manifest.json") {
+      const dir = path.dirname(target);
+      if (!manifestDir || dir.length < manifestDir.length) {
+        manifestDir = dir;
+      }
+    }
+  }
 
-    if (!manifestDir) {
-        throw new Error("Plugin package does not contain a manifest.json");
-    }
-    return manifestDir;
+  if (!manifestDir) {
+    throw new Error("Plugin package does not contain a manifest.json");
+  }
+  return manifestDir;
 }
 
 /** Download a registry entry's package and extract it, returning its manifest directory. */
-export async function downloadAndExtract(entry: PluginRegistryEntry, destDir: string): Promise<string> {
-    const buffer = await downloadPackage(entry.release.download);
-    return extractPluginZip(buffer, destDir);
+export async function downloadAndExtract(
+  entry: PluginRegistryEntry,
+  destDir: string
+): Promise<string> {
+  const buffer = await downloadPackage(entry.release.download);
+  return extractPluginZip(buffer, destDir);
 }
 
 /**
@@ -243,17 +254,17 @@ export async function downloadAndExtract(entry: PluginRegistryEntry, destDir: st
  * arbitrary blob to keep forever.
  */
 export async function downloadIcon(url: string): Promise<Buffer> {
-    const response = await fetchWithTimeout(url);
-    if (!response.ok) {
-        throw new Error(`Plugin icon download failed (${response.status} ${response.statusText})`);
-    }
-    const declaredLength = Number(response.headers.get("content-length"));
-    if (Number.isFinite(declaredLength) && declaredLength > PLUGIN_ICON_MAX_BYTES) {
-        throw new Error("Plugin icon exceeds the maximum size");
-    }
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.byteLength > PLUGIN_ICON_MAX_BYTES) {
-        throw new Error("Plugin icon exceeds the maximum size");
-    }
-    return buffer;
+  const response = await fetchWithTimeout(url);
+  if (!response.ok) {
+    throw new Error(`Plugin icon download failed (${response.status} ${response.statusText})`);
+  }
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > PLUGIN_ICON_MAX_BYTES) {
+    throw new Error("Plugin icon exceeds the maximum size");
+  }
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.byteLength > PLUGIN_ICON_MAX_BYTES) {
+    throw new Error("Plugin icon exceeds the maximum size");
+  }
+  return buffer;
 }

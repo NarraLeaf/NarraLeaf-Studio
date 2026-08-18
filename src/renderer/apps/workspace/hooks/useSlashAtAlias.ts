@@ -11,30 +11,32 @@ import { SLASH_AT_ALIAS_KEY, slashAtAliasDefault } from "@/lib/settings/slashAli
  * soon as the author returns, mirroring {@link useMaxActiveEditors} (no cross-window push).
  */
 export function useSlashAtAlias(): boolean {
-    const [value, setValue] = useState(slashAtAliasDefault);
+  const [value, setValue] = useState(slashAtAliasDefault);
 
-    useEffect(() => {
-        let cancelled = false;
-        const load = async () => {
-            try {
-                const result = await getInterface().app.state.getGlobalState(SLASH_AT_ALIAS_KEY);
-                if (cancelled) {
-                    return;
-                }
-                const stored = result.success ? result.data.value : undefined;
-                setValue(typeof stored === "boolean" ? stored : slashAtAliasDefault());
-            } catch {
-                // Keep the last known-good value on transient IPC failures.
-            }
-        };
-        void load();
-        const onFocus = () => { void load(); };
-        window.addEventListener("focus", onFocus);
-        return () => {
-            cancelled = true;
-            window.removeEventListener("focus", onFocus);
-        };
-    }, []);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const result = await getInterface().app.state.getGlobalState(SLASH_AT_ALIAS_KEY);
+        if (cancelled) {
+          return;
+        }
+        const stored = result.success ? result.data.value : undefined;
+        setValue(typeof stored === "boolean" ? stored : slashAtAliasDefault());
+      } catch {
+        // Keep the last known-good value on transient IPC failures.
+      }
+    };
+    void load();
+    const onFocus = () => {
+      void load();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
 
-    return value;
+  return value;
 }

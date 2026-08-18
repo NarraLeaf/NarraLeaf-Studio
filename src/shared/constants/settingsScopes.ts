@@ -22,19 +22,15 @@
  *   There is already a deliberate, separately-confirmed action for erasing it
  *   (`dashboard.clearAllStats`), which is where that decision belongs.
  */
-export const PROTECTED_STATE_KEYS: readonly string[] = [
-    "app.recentProjects",
-];
+export const PROTECTED_STATE_KEYS: readonly string[] = ["app.recentProjects"];
 
-export const PROTECTED_STATE_KEY_PREFIXES: readonly string[] = [
-    "stats.project.",
-];
+export const PROTECTED_STATE_KEY_PREFIXES: readonly string[] = ["stats.project."];
 
 export function isProtectedStateKey(key: string): boolean {
-    return (
-        PROTECTED_STATE_KEYS.includes(key) ||
-        PROTECTED_STATE_KEY_PREFIXES.some(prefix => key.startsWith(prefix))
-    );
+  return (
+    PROTECTED_STATE_KEYS.includes(key) ||
+    PROTECTED_STATE_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))
+  );
 }
 
 /**
@@ -50,24 +46,22 @@ export function isProtectedStateKey(key: string): boolean {
  * would miss their project history.
  */
 export const WORKSPACE_LAYOUT_KEY_PREFIXES: readonly string[] = [
-    "ui.leftSidebar.",
-    "ui.rightSidebar.",
-    "ui.bottomPanel.",
-    "ui.editor.session",
-    "ui.versionRail.",
-    "uiEditor.",
-    "debug.breakpoints.",
+  "ui.leftSidebar.",
+  "ui.rightSidebar.",
+  "ui.bottomPanel.",
+  "ui.editor.session",
+  "ui.versionRail.",
+  "uiEditor.",
+  "debug.breakpoints."
 ];
 
-export const WORKSPACE_LAYOUT_KEYS: readonly string[] = [
-    "ui.compactMode",
-];
+export const WORKSPACE_LAYOUT_KEYS: readonly string[] = ["ui.compactMode"];
 
 export function isWorkspaceLayoutKey(key: string): boolean {
-    return (
-        WORKSPACE_LAYOUT_KEYS.includes(key) ||
-        WORKSPACE_LAYOUT_KEY_PREFIXES.some(prefix => key.startsWith(prefix))
-    );
+  return (
+    WORKSPACE_LAYOUT_KEYS.includes(key) ||
+    WORKSPACE_LAYOUT_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))
+  );
 }
 
 /**
@@ -79,13 +73,13 @@ export function isWorkspaceLayoutKey(key: string): boolean {
  * the star on an action), not because they are internal state.
  */
 export const NON_REGISTRY_PREFERENCE_KEYS: readonly string[] = [
-    "ui.runMode",
-    "ui.backgroundImage",
-    "ui.backgroundOpacity",
-    "ui.backgroundFill",
-    "ui.backgroundAnchor",
-    "ui.backgroundBlur",
-    "story.actionCreator.starredActionIds",
+  "ui.runMode",
+  "ui.backgroundImage",
+  "ui.backgroundOpacity",
+  "ui.backgroundFill",
+  "ui.backgroundAnchor",
+  "ui.backgroundBlur",
+  "story.actionCreator.starredActionIds"
 ];
 
 /**
@@ -103,11 +97,11 @@ export const NON_REGISTRY_PREFERENCE_KEYS: readonly string[] = [
  *   installation's, and an exported file is the kind of thing that gets attached to an issue.
  */
 export const UNEXPORTED_PREFERENCE_KEYS: readonly string[] = [
-    "ui.backgroundImage",
-    "ui.backgroundOpacity",
-    "ui.backgroundFill",
-    "ui.backgroundAnchor",
-    "ui.backgroundBlur",
-    "versionControl.authorName",
-    "versionControl.authorEmail",
+  "ui.backgroundImage",
+  "ui.backgroundOpacity",
+  "ui.backgroundFill",
+  "ui.backgroundAnchor",
+  "ui.backgroundBlur",
+  "versionControl.authorName",
+  "versionControl.authorEmail"
 ];

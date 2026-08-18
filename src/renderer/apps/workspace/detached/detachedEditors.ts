@@ -14,14 +14,14 @@ import type { BlueprintEntryTabPayload } from "../modules/blueprint-lite/bluepri
  * adding a second one is an addition rather than a rewrite.
  */
 export type DetachedBlueprintEditor = {
-    kind: "blueprint";
-    /** The id the tab had, and gets back. Also the popup window's key. */
-    tabId: string;
-    /** Window title. */
-    title: string;
-    /** The name the tab strip gave it, restored with it. */
-    tabTitle: string;
-    payload: BlueprintEntryTabPayload;
+  kind: "blueprint";
+  /** The id the tab had, and gets back. Also the popup window's key. */
+  tabId: string;
+  /** Window title. */
+  title: string;
+  /** The name the tab strip gave it, restored with it. */
+  tabTitle: string;
+  payload: BlueprintEntryTabPayload;
 };
 
 export type DetachedEditor = DetachedBlueprintEditor;
@@ -30,22 +30,22 @@ let detached: readonly DetachedEditor[] = [];
 const listeners = new Set<() => void>();
 
 function notify(): void {
-    for (const listener of [...listeners]) {
-        listener();
-    }
+  for (const listener of [...listeners]) {
+    listener();
+  }
 }
 
 export function subscribeDetachedEditors(listener: () => void): () => void {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 }
 
 export function readDetachedEditors(): readonly DetachedEditor[] {
-    return detached;
+  return detached;
 }
 
 export function isEditorDetached(tabId: string): boolean {
-    return detached.some(entry => entry.tabId === tabId);
+  return detached.some((entry) => entry.tabId === tabId);
 }
 
 /**
@@ -56,11 +56,11 @@ export function isEditorDetached(tabId: string): boolean {
  * (a diagnostic, a widget's Edit blueprint) has to do.
  */
 export function detachEditor(entry: DetachedEditor): void {
-    const existing = detached.find(item => item.tabId === entry.tabId);
-    detached = existing
-        ? detached.map(item => (item.tabId === entry.tabId ? entry : item))
-        : [...detached, entry];
-    notify();
+  const existing = detached.find((item) => item.tabId === entry.tabId);
+  detached = existing
+    ? detached.map((item) => (item.tabId === entry.tabId ? entry : item))
+    : [...detached, entry];
+  notify();
 }
 
 /**
@@ -70,23 +70,26 @@ export function detachEditor(entry: DetachedEditor): void {
  * payload; detached, there is no tab to write to, so it writes here instead and the state survives
  * the trip back. No-op for an editor that is not detached.
  */
-export function updateDetachedEditorPayload(tabId: string, payload: DetachedEditor["payload"]): boolean {
-    const existing = detached.find(item => item.tabId === tabId);
-    if (!existing) {
-        return false;
-    }
-    detached = detached.map(item => (item.tabId === tabId ? { ...item, payload } : item));
-    notify();
-    return true;
+export function updateDetachedEditorPayload(
+  tabId: string,
+  payload: DetachedEditor["payload"]
+): boolean {
+  const existing = detached.find((item) => item.tabId === tabId);
+  if (!existing) {
+    return false;
+  }
+  detached = detached.map((item) => (item.tabId === tabId ? { ...item, payload } : item));
+  notify();
+  return true;
 }
 
 /** Forget a detached editor. The caller decides whether it becomes a tab again. */
 export function releaseDetachedEditor(tabId: string): DetachedEditor | null {
-    const entry = detached.find(item => item.tabId === tabId) ?? null;
-    if (!entry) {
-        return null;
-    }
-    detached = detached.filter(item => item.tabId !== tabId);
-    notify();
-    return entry;
+  const entry = detached.find((item) => item.tabId === tabId) ?? null;
+  if (!entry) {
+    return null;
+  }
+  detached = detached.filter((item) => item.tabId !== tabId);
+  notify();
+  return entry;
 }

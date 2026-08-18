@@ -28,50 +28,50 @@ import { sep } from "@shared/utils/path";
 
 /** Why the workspace is frozen. The UI has to say, and there will be more than one cause. */
 export type WorkspaceFreezeReason =
-    /** The author is browsing a past revision. `label` is what to call it in the UI. */
-    | { kind: "revision"; revision: RevisionId; label?: string }
-    /** Entered by hand, from the command palette. */
-    | { kind: "manual" }
-    /**
-     * A merge is open and left files it could not settle.
-     *
-     * **Not entered by anything the author pressed** - it is armed while the workspace is starting,
-     * before a service has parsed a document, because the tree underneath is not one version of the
-     * project: some files are the merge's automatic result and the conflicted ones are unparseable
-     * (docs §4.23). What the editors show is the author's own side, read out of the merge's copies
-     * (`@/lib/app/mergeConflictReads`), so an edit saved here would write pre-merge content over the
-     * merge's own result - which is precisely what this latch refuses.
-     *
-     * The way out is finishing or abandoning the merge, not `thaw`, and the rail's strip offers
-     * that instead of its usual escape.
-     */
-    | { kind: "merge" }
-    /**
-     * The window is a recovery shell.
-     *
-     * Armed before the first service initializes and never lifted - `thaw` is not offered, because
-     * leaving recovery mode means reloading the window, not unlatching. Recovery mode exists to look
-     * at a project that is already damaged, and the one thing it must never do is make the damage
-     * worse or destroy the evidence: without this latch, merely *opening* the project resets a
-     * corrupt asset shard to `{}` (see `AssetsMetadataManager`), and the file the author came to
-     * diagnose is gone before they have read the error about it.
-     *
-     * The lore actions the recovery panel offers are unaffected: those run in the main process,
-     * which is not behind this gate.
-     */
-    | { kind: "recovery" };
+  /** The author is browsing a past revision. `label` is what to call it in the UI. */
+  | { kind: "revision"; revision: RevisionId; label?: string }
+  /** Entered by hand, from the command palette. */
+  | { kind: "manual" }
+  /**
+   * A merge is open and left files it could not settle.
+   *
+   * **Not entered by anything the author pressed** - it is armed while the workspace is starting,
+   * before a service has parsed a document, because the tree underneath is not one version of the
+   * project: some files are the merge's automatic result and the conflicted ones are unparseable
+   * (docs §4.23). What the editors show is the author's own side, read out of the merge's copies
+   * (`@/lib/app/mergeConflictReads`), so an edit saved here would write pre-merge content over the
+   * merge's own result - which is precisely what this latch refuses.
+   *
+   * The way out is finishing or abandoning the merge, not `thaw`, and the rail's strip offers
+   * that instead of its usual escape.
+   */
+  | { kind: "merge" }
+  /**
+   * The window is a recovery shell.
+   *
+   * Armed before the first service initializes and never lifted - `thaw` is not offered, because
+   * leaving recovery mode means reloading the window, not unlatching. Recovery mode exists to look
+   * at a project that is already damaged, and the one thing it must never do is make the damage
+   * worse or destroy the evidence: without this latch, merely *opening* the project resets a
+   * corrupt asset shard to `{}` (see `AssetsMetadataManager`), and the file the author came to
+   * diagnose is gone before they have read the error about it.
+   *
+   * The lore actions the recovery panel offers are unaffected: those run in the main process,
+   * which is not behind this gate.
+   */
+  | { kind: "recovery" };
 
 export type WorkspaceFreeze = {
-    /** The project whose data is frozen. Writes anywhere else are none of this module's business. */
-    projectPath: string;
-    reason: WorkspaceFreezeReason;
+  /** The project whose data is frozen. Writes anywhere else are none of this module's business. */
+  projectPath: string;
+  reason: WorkspaceFreezeReason;
 };
 
 /** One write that did not happen because the workspace was frozen. */
 export type RefusedWrite = {
-    /** The absolute path that was going to be written. */
-    path: string;
-    reason: WorkspaceFreezeReason;
+  /** The absolute path that was going to be written. */
+  path: string;
+  reason: WorkspaceFreezeReason;
 };
 
 /**
@@ -121,16 +121,16 @@ const refusalObservers = new Set<(refusal: RefusedWrite) => void>();
  * does. Re-freezing with a different reason is allowed and replaces the old one.
  */
 export function freezeProjectWrites(freeze: WorkspaceFreeze): void {
-    frozen = freeze;
-    announceFreeze();
+  frozen = freeze;
+  announceFreeze();
 }
 
 export function thawProjectWrites(): void {
-    if (!frozen) {
-        return;
-    }
-    frozen = null;
-    announceFreeze();
+  if (!frozen) {
+    return;
+  }
+  frozen = null;
+  announceFreeze();
 }
 
 /**
@@ -154,18 +154,18 @@ export function thawProjectWrites(): void {
  * config) and a raw comparison would answer "different project" for both of them.
  */
 export function thawForeignProjectWrites(projectPath: string): void {
-    if (!frozen) {
-        return;
-    }
-    if (fold(canonical(frozen.projectPath)) === fold(canonical(projectPath))) {
-        return;
-    }
-    thawProjectWrites();
+  if (!frozen) {
+    return;
+  }
+  if (fold(canonical(frozen.projectPath)) === fold(canonical(projectPath))) {
+    return;
+  }
+  thawProjectWrites();
 }
 
 /** The active freeze, or null when project data is writable. */
 export function getProjectWriteFreeze(): WorkspaceFreeze | null {
-    return frozen;
+  return frozen;
 }
 
 /**
@@ -177,37 +177,39 @@ export function getProjectWriteFreeze(): WorkspaceFreeze | null {
  * count, and only the last release lifts it.
  */
 export function holdProjectWritesForReload(projectPath: string): () => void {
-    if (reloadHold && reloadHold.projectPath === projectPath) {
-        reloadHold.depth += 1;
-    } else {
-        // A window is one project (see the multi-project window model), so a hold naming a different
-        // project is a stale one from a project that has already closed.
-        reloadHold = { projectPath, depth: 1 };
+  if (reloadHold && reloadHold.projectPath === projectPath) {
+    reloadHold.depth += 1;
+  } else {
+    // A window is one project (see the multi-project window model), so a hold naming a different
+    // project is a stale one from a project that has already closed.
+    reloadHold = { projectPath, depth: 1 };
+  }
+  let released = false;
+  return () => {
+    if (released || !reloadHold) {
+      return;
     }
-    let released = false;
-    return () => {
-        if (released || !reloadHold) {
-            return;
-        }
-        released = true;
-        reloadHold.depth -= 1;
-        if (reloadHold.depth <= 0) {
-            reloadHold = null;
-        }
-    };
+    released = true;
+    reloadHold.depth -= 1;
+    if (reloadHold.depth <= 0) {
+      reloadHold = null;
+    }
+  };
 }
 
 /** Whether a working-tree re-read is holding writes off right now. Exported for tests. */
 export function isProjectWriteReloadHeld(): boolean {
-    return reloadHold !== null;
+  return reloadHold !== null;
 }
 
 /** Watch freeze and thaw. Returns an unsubscribe. */
-export function observeProjectWriteFreeze(observer: (freeze: WorkspaceFreeze | null) => void): () => void {
-    freezeObservers.add(observer);
-    return () => {
-        freezeObservers.delete(observer);
-    };
+export function observeProjectWriteFreeze(
+  observer: (freeze: WorkspaceFreeze | null) => void
+): () => void {
+  freezeObservers.add(observer);
+  return () => {
+    freezeObservers.delete(observer);
+  };
 }
 
 /**
@@ -218,10 +220,10 @@ export function observeProjectWriteFreeze(observer: (freeze: WorkspaceFreeze | n
  * typing into a workspace that is quietly discarding everything.
  */
 export function observeRefusedWrites(observer: (refusal: RefusedWrite) => void): () => void {
-    refusalObservers.add(observer);
-    return () => {
-        refusalObservers.delete(observer);
-    };
+  refusalObservers.add(observer);
+  return () => {
+    refusalObservers.delete(observer);
+  };
 }
 
 /**
@@ -233,17 +235,17 @@ export function observeRefusedWrites(observer: (refusal: RefusedWrite) => void):
  * check on the destination alone would let a frozen workspace delete a versioned file.
  */
 export function refuseFrozenWrite(...paths: (string | null | undefined)[]): WorkspaceFreeze | null {
-    const active = frozen;
-    if (!active) {
-        return null;
-    }
-    for (const path of paths) {
-        if (typeof path === "string" && isFrozenProjectData(active.projectPath, path)) {
-            announceRefusal({ path, reason: active.reason });
-            return active;
-        }
-    }
+  const active = frozen;
+  if (!active) {
     return null;
+  }
+  for (const path of paths) {
+    if (typeof path === "string" && isFrozenProjectData(active.projectPath, path)) {
+      announceRefusal({ path, reason: active.reason });
+      return active;
+    }
+  }
+  return null;
 }
 
 /**
@@ -255,24 +257,24 @@ export function refuseFrozenWrite(...paths: (string | null | undefined)[]): Work
  * them should read as having made that choice. The write boundary consults both.
  */
 export function refuseReloadingWrite(...paths: (string | null | undefined)[]): boolean {
-    const hold = reloadHold;
-    if (!hold) {
-        return false;
-    }
-    for (const path of paths) {
-        if (typeof path === "string" && isFrozenProjectData(hold.projectPath, path)) {
-            // Not a toast: nothing of the author's is at stake, but a load path that writes during a
-            // reload is worth finding, and this is the only place that can name the file.
-            console.warn("[writeFreeze] refused a write while the working tree was being re-read", path);
-            return true;
-        }
-    }
+  const hold = reloadHold;
+  if (!hold) {
     return false;
+  }
+  for (const path of paths) {
+    if (typeof path === "string" && isFrozenProjectData(hold.projectPath, path)) {
+      // Not a toast: nothing of the author's is at stake, but a load path that writes during a
+      // reload is worth finding, and this is the only place that can name the file.
+      console.warn("[writeFreeze] refused a write while the working tree was being re-read", path);
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Whether one absolute path is project data belonging to `projectPath`. Exported for tests. */
 export function isFrozenProjectData(projectPath: string, absolutePath: string): boolean {
-    return versionedProjectRelativePath(projectPath, absolutePath) !== null;
+  return versionedProjectRelativePath(projectPath, absolutePath) !== null;
 }
 
 /**
@@ -284,9 +286,12 @@ export function isFrozenProjectData(projectPath: string, absolutePath: string): 
  * comparison this module owns - including the Windows case-folding rule that a second
  * copy would get subtly wrong.
  */
-export function versionedProjectRelativePath(projectPath: string, absolutePath: string): string | null {
-    const relative = repositoryRelative(projectPath, absolutePath);
-    return relative !== null && isVersioned(relative) ? relative : null;
+export function versionedProjectRelativePath(
+  projectPath: string,
+  absolutePath: string
+): string | null {
+  const relative = repositoryRelative(projectPath, absolutePath);
+  return relative !== null && isVersioned(relative) ? relative : null;
 }
 
 /**
@@ -297,45 +302,45 @@ export function versionedProjectRelativePath(projectPath: string, absolutePath: 
  * untouched while frozen.
  */
 function repositoryRelative(projectPath: string, absolutePath: string): string | null {
-    const root = canonical(projectPath);
-    const target = canonical(absolutePath);
-    // Also rejects the project directory itself, and a path that is only the root plus a
-    // separator: neither leaves anything for the predicate to judge.
-    if (!root || target.length <= root.length + 1 || target[root.length] !== "/") {
-        return null;
-    }
-    if (fold(target.slice(0, root.length)) !== fold(root)) {
-        return null;
-    }
-    return target.slice(root.length + 1);
+  const root = canonical(projectPath);
+  const target = canonical(absolutePath);
+  // Also rejects the project directory itself, and a path that is only the root plus a
+  // separator: neither leaves anything for the predicate to judge.
+  if (!root || target.length <= root.length + 1 || target[root.length] !== "/") {
+    return null;
+  }
+  if (fold(target.slice(0, root.length)) !== fold(root)) {
+    return null;
+  }
+  return target.slice(root.length + 1);
 }
 
 /** Separators and trailing slashes only. Casing is the author's and is left alone. */
 function canonical(path: string): string {
-    return path.replace(/[\\/]+/g, "/").replace(/\/+$/, "");
+  return path.replace(/[\\/]+/g, "/").replace(/\/+$/, "");
 }
 
 function fold(path: string): string {
-    return FOLD_CASE ? path.toLowerCase() : path;
+  return FOLD_CASE ? path.toLowerCase() : path;
 }
 
 function announceFreeze(): void {
-    for (const observer of freezeObservers) {
-        notify(() => observer(frozen));
-    }
+  for (const observer of freezeObservers) {
+    notify(() => observer(frozen));
+  }
 }
 
 function announceRefusal(refusal: RefusedWrite): void {
-    for (const observer of refusalObservers) {
-        notify(() => observer(refusal));
-    }
+  for (const observer of refusalObservers) {
+    notify(() => observer(refusal));
+  }
 }
 
 function notify(run: () => void): void {
-    try {
-        run();
-    } catch (error) {
-        // An observer must never be able to turn a refusal into a thrown write.
-        console.warn("[writeFreeze] observer threw", error);
-    }
+  try {
+    run();
+  } catch (error) {
+    // An observer must never be able to turn a refusal into a thrown write.
+    console.warn("[writeFreeze] observer threw", error);
+  }
 }

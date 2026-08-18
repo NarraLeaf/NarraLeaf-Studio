@@ -11,30 +11,30 @@ import { NvlTextsRenderer } from "./nvl/renderer";
 const NVL_TEXTS_TYPE = "nl.nvl.texts";
 
 function createNvlTextsDefault() {
-    const textProps = {
-        ...defaultTextWidgetProps,
-        text: translate("widgets.defaults.nvl.text"),
-        fontSize: 22,
-        color: "#f8fafc",
-        fontWeight: "normal" as const,
-        lineHeight: 1.5,
-    };
-    return {
-        type: NVL_TEXTS_TYPE,
-        name: translate("widgets.defaults.nvl.name"),
-        layout: {
-            x: 0,
-            y: 0,
-            width: 760,
-            height: 64,
-            opacity: 1,
-            visible: true,
-        },
-        props: {
-            ...textProps,
-            appearance: createInitialTextAppearance(textProps),
-        },
-    } as const;
+  const textProps = {
+    ...defaultTextWidgetProps,
+    text: translate("widgets.defaults.nvl.text"),
+    fontSize: 22,
+    color: "#f8fafc",
+    fontWeight: "normal" as const,
+    lineHeight: 1.5
+  };
+  return {
+    type: NVL_TEXTS_TYPE,
+    name: translate("widgets.defaults.nvl.name"),
+    layout: {
+      x: 0,
+      y: 0,
+      width: 760,
+      height: 64,
+      opacity: 1,
+      visible: true
+    },
+    props: {
+      ...textProps,
+      appearance: createInitialTextAppearance(textProps)
+    }
+  } as const;
 }
 
 /**
@@ -43,15 +43,15 @@ function createNvlTextsDefault() {
  * plain text preview outside the live NVL slot runtime.
  */
 export const NvlTextsWidgetModule: UIWidgetModule = {
-    type: NVL_TEXTS_TYPE,
-    logicApi: getWidgetLogicApi(NVL_TEXTS_TYPE),
-    get displayName() {
-        return translate("widgets.defaults.nvl.name");
-    },
-    icon: MessagesSquare,
-    createDefaultElement: createNvlTextsDefault,
-    render: NvlTextsRenderer,
-    createInspector: createTextInspector,
-    createDockerBarItems: createTextDockerBarItems,
-    createMultiSelectDockerBarItems: createTextDockerBarItems,
+  type: NVL_TEXTS_TYPE,
+  logicApi: getWidgetLogicApi(NVL_TEXTS_TYPE),
+  get displayName() {
+    return translate("widgets.defaults.nvl.name");
+  },
+  icon: MessagesSquare,
+  createDefaultElement: createNvlTextsDefault,
+  render: NvlTextsRenderer,
+  createInspector: createTextInspector,
+  createDockerBarItems: createTextDockerBarItems,
+  createMultiSelectDockerBarItems: createTextDockerBarItems
 };

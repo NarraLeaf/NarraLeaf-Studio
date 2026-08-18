@@ -9,20 +9,20 @@ export type FlatMessages = Map<string, string>;
 
 /** Recursively flatten a nested message object into `out` as `dotted.key -> string`. */
 export function flatten(node: unknown, prefix: string, out: FlatMessages): void {
-    if (typeof node === "string") {
-        out.set(prefix, node);
-        return;
+  if (typeof node === "string") {
+    out.set(prefix, node);
+    return;
+  }
+  if (node && typeof node === "object") {
+    for (const [key, value] of Object.entries(node)) {
+      flatten(value, prefix ? `${prefix}.${key}` : key, out);
     }
-    if (node && typeof node === "object") {
-        for (const [key, value] of Object.entries(node)) {
-            flatten(value, prefix ? `${prefix}.${key}` : key, out);
-        }
-    }
+  }
 }
 
 /** Flatten a whole catalog (nested or already-flat dotted) into a fresh map. */
 export function flattenCatalog(catalog: unknown): FlatMessages {
-    const out: FlatMessages = new Map();
-    flatten(catalog, "", out);
-    return out;
+  const out: FlatMessages = new Map();
+  flatten(catalog, "", out);
+  return out;
 }

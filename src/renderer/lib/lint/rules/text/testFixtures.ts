@@ -1,9 +1,9 @@
 import type {
-    StoryBlock,
-    StoryDocument,
-    StoryRichRun,
-    StoryScene,
-    StoryTextSegment,
+  StoryBlock,
+  StoryDocument,
+  StoryRichRun,
+  StoryScene,
+  StoryTextSegment
 } from "@shared/types/story";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import type { LintStoryEntry } from "../../context";
@@ -17,106 +17,110 @@ import type { LintStoryEntry } from "../../context";
  */
 
 export function textSegment(
-    textId: string,
-    value: string,
-    role: StoryTextSegment["role"],
-    rich?: StoryRichRun[],
+  textId: string,
+  value: string,
+  role: StoryTextSegment["role"],
+  rich?: StoryRichRun[]
 ): StoryTextSegment {
-    return { textId, value, role, ...(rich ? { rich } : {}) };
+  return { textId, value, role, ...(rich ? { rich } : {}) };
 }
 
-function nodeAction(id: string, payload: unknown, options?: { disabled?: boolean; parentId?: string }): StoryBlock {
-    return {
-        id,
-        kind: "nodeAction",
-        parentId: options?.parentId ?? null,
-        childrenIds: [],
-        payload,
-        ...(options?.disabled ? { disabled: true } : {}),
-    } as StoryBlock;
+function nodeAction(
+  id: string,
+  payload: unknown,
+  options?: { disabled?: boolean; parentId?: string }
+): StoryBlock {
+  return {
+    id,
+    kind: "nodeAction",
+    parentId: options?.parentId ?? null,
+    childrenIds: [],
+    payload,
+    ...(options?.disabled ? { disabled: true } : {})
+  } as StoryBlock;
 }
 
 export function narrationBlock(
-    id: string,
-    segment: StoryTextSegment,
-    options?: { disabled?: boolean },
+  id: string,
+  segment: StoryTextSegment,
+  options?: { disabled?: boolean }
 ): StoryBlock {
-    return nodeAction(id, { action: "narration", text: segment }, options);
+  return nodeAction(id, { action: "narration", text: segment }, options);
 }
 
 export function dialogueBlock(
-    id: string,
-    segment: StoryTextSegment,
-    options?: { disabled?: boolean; characterId?: string; voiceAssetId?: string },
+  id: string,
+  segment: StoryTextSegment,
+  options?: { disabled?: boolean; characterId?: string; voiceAssetId?: string }
 ): StoryBlock {
-    return nodeAction(
-        id,
-        {
-            action: "dialogue",
-            text: segment,
-            ...(options?.characterId ? { characterId: options.characterId } : {}),
-            ...(options?.voiceAssetId ? { voiceAssetId: options.voiceAssetId } : {}),
-        },
-        options,
-    );
+  return nodeAction(
+    id,
+    {
+      action: "dialogue",
+      text: segment,
+      ...(options?.characterId ? { characterId: options.characterId } : {}),
+      ...(options?.voiceAssetId ? { voiceAssetId: options.voiceAssetId } : {})
+    },
+    options
+  );
 }
 
 export function choiceBlock(
-    id: string,
-    prompt: StoryTextSegment | null,
-    childrenIds: string[],
-    options?: { disabled?: boolean },
+  id: string,
+  prompt: StoryTextSegment | null,
+  childrenIds: string[],
+  options?: { disabled?: boolean }
 ): StoryBlock {
-    const block = nodeAction(id, { action: "choice", ...(prompt ? { prompt } : {}) }, options);
-    block.childrenIds = childrenIds;
-    return block;
+  const block = nodeAction(id, { action: "choice", ...(prompt ? { prompt } : {}) }, options);
+  block.childrenIds = childrenIds;
+  return block;
 }
 
 export function choiceOptionBlock(
-    id: string,
-    segment: StoryTextSegment,
-    parentId: string,
-    options?: { disabled?: boolean },
+  id: string,
+  segment: StoryTextSegment,
+  parentId: string,
+  options?: { disabled?: boolean }
 ): StoryBlock {
-    return nodeAction(id, { action: "choiceOption", text: segment }, { ...options, parentId });
+  return nodeAction(id, { action: "choiceOption", text: segment }, { ...options, parentId });
 }
 
 export function noteBlock(id: string, segment: StoryTextSegment): StoryBlock {
-    return {
-        id,
-        kind: "note",
-        parentId: null,
-        childrenIds: [],
-        payload: { text: segment },
-    } as StoryBlock;
+  return {
+    id,
+    kind: "note",
+    parentId: null,
+    childrenIds: [],
+    payload: { text: segment }
+  } as StoryBlock;
 }
 
 /** A scene holding the given blocks; every parentless block is a root, in the order supplied. */
 export function sceneOf(id: string, name: string, blocks: StoryBlock[]): StoryScene {
-    return {
-        id,
-        name,
-        runtimeName: id,
-        rootBlockIds: blocks.filter(block => block.parentId === null).map(block => block.id),
-        blocks: Object.fromEntries(blocks.map(block => [block.id, block])),
-    };
+  return {
+    id,
+    name,
+    runtimeName: id,
+    rootBlockIds: blocks.filter((block) => block.parentId === null).map((block) => block.id),
+    blocks: Object.fromEntries(blocks.map((block) => [block.id, block]))
+  };
 }
 
 export function storyDocumentOf(id: string, name: string, scenes: StoryScene[]): StoryDocument {
-    return {
-        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
-        id,
-        name,
-        chapters: [{ id: `${id}-ch`, name: "Chapter 1", sceneIds: scenes.map(scene => scene.id) }],
-        scenes: Object.fromEntries(scenes.map(scene => [scene.id, scene])),
-    };
+  return {
+    schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+    id,
+    name,
+    chapters: [{ id: `${id}-ch`, name: "Chapter 1", sceneIds: scenes.map((scene) => scene.id) }],
+    scenes: Object.fromEntries(scenes.map((scene) => [scene.id, scene]))
+  };
 }
 
 export function storyEntryOf(id: string, name: string, scenes: StoryScene[]): LintStoryEntry {
-    return { id, name, document: storyDocumentOf(id, name, scenes) };
+  return { id, name, document: storyDocumentOf(id, name, scenes) };
 }
 
 /** One story, one scene, the blocks given - the shape almost every rule test wants. */
 export function singleSceneStories(blocks: StoryBlock[]): LintStoryEntry[] {
-    return [storyEntryOf("story-1", "Story", [sceneOf("scene-1", "Scene One", blocks)])];
+  return [storyEntryOf("story-1", "Story", [sceneOf("scene-1", "Scene One", blocks)])];
 }

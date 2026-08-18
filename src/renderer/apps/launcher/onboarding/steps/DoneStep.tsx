@@ -13,8 +13,8 @@ import { useTranslation } from "@/lib/i18n";
 const START_TOPICS: readonly HelpTopicId[] = ["newProject", "storyScene", "runModes"];
 
 export interface DoneStepProps {
-    /** Leave setup and land on this topic in the Learning tab. */
-    onOpenTopic: (topic: HelpTopicId) => void;
+  /** Leave setup and land on this topic in the Learning tab. */
+  onOpenTopic: (topic: HelpTopicId) => void;
 }
 
 /**
@@ -25,31 +25,31 @@ export interface DoneStepProps {
  * (docs/help-system.md §5).
  */
 export function DoneStep({ onOpenTopic }: DoneStepProps) {
-    const { t } = useTranslation();
+  const { t } = useTranslation();
 
-    return (
-        <div>
-            <FieldLabel as="div">{t("onboarding.done.topics")}</FieldLabel>
-            {/* Pulled out by the button's own padding so the labels sit on the same left edge as
+  return (
+    <div>
+      <FieldLabel as="div">{t("onboarding.done.topics")}</FieldLabel>
+      {/* Pulled out by the button's own padding so the labels sit on the same left edge as
                 the title and the line above them, and the rows read as a list rather than as a
                 row of controls indented under one. */}
-            <div className="-mx-2">
-                {START_TOPICS.map(topic => (
-                    <Button
-                        key={topic}
-                        variant="ghost"
-                        size="sm"
-                        fullWidth
-                        className="group justify-between"
-                        onClick={() => onOpenTopic(topic)}
-                    >
-                        <span className="min-w-0 truncate">{t(helpTitleKey(topic))}</span>
-                        {/* Revealed on hover, like the help browser's own rows: the arrow says the
+      <div className="-mx-2">
+        {START_TOPICS.map((topic) => (
+          <Button
+            key={topic}
+            variant="ghost"
+            size="sm"
+            fullWidth
+            className="group justify-between"
+            onClick={() => onOpenTopic(topic)}
+          >
+            <span className="min-w-0 truncate">{t(helpTitleKey(topic))}</span>
+            {/* Revealed on hover, like the help browser's own rows: the arrow says the
                             row goes somewhere, and three permanent chevrons say it three times. */}
-                        <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
-                    </Button>
-                ))}
-            </div>
-        </div>
-    );
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
 }

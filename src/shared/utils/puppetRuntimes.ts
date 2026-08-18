@@ -51,64 +51,66 @@ export const KNOWN_PUPPET_RUNTIME_IDS: readonly KnownPuppetRuntimeId[] = ["live2
 export type PuppetRuntimeInstallMethod = "sdk-zip" | "prebuilt";
 
 export type KnownPuppetRuntime = {
-    id: KnownPuppetRuntimeId;
-    /**
-     * The directory under the project's `runtimes/puppet/` and the name the adapter registers with
-     * the engine. These are the same string by convention and the install flow depends on it: a
-     * runtime is discovered by its folder and resolved by its backend name.
-     */
-    backend: string;
-    /**
-     * The product's own name. A trademark, so it is never translated and never enters the i18n
-     * catalogue — the UI reads it from here.
-     */
-    productName: string;
-    /** Where the author gets it. Opened in their browser; Studio never fetches it. */
-    vendorUrl: string;
-    /**
-     * NarraLeaf's own guide for this runtime, as a site-root path. Not a full URL, because the locale
-     * goes in the middle of it — see {@link puppetRuntimeDocsUrl}.
-     */
-    docsPath: string;
-    /** How Studio can install this one. Empty is not a legal value; see {@link PuppetRuntimeInstallMethod}. */
-    methods: readonly PuppetRuntimeInstallMethod[];
+  id: KnownPuppetRuntimeId;
+  /**
+   * The directory under the project's `runtimes/puppet/` and the name the adapter registers with
+   * the engine. These are the same string by convention and the install flow depends on it: a
+   * runtime is discovered by its folder and resolved by its backend name.
+   */
+  backend: string;
+  /**
+   * The product's own name. A trademark, so it is never translated and never enters the i18n
+   * catalogue — the UI reads it from here.
+   */
+  productName: string;
+  /** Where the author gets it. Opened in their browser; Studio never fetches it. */
+  vendorUrl: string;
+  /**
+   * NarraLeaf's own guide for this runtime, as a site-root path. Not a full URL, because the locale
+   * goes in the middle of it — see {@link puppetRuntimeDocsUrl}.
+   */
+  docsPath: string;
+  /** How Studio can install this one. Empty is not a legal value; see {@link PuppetRuntimeInstallMethod}. */
+  methods: readonly PuppetRuntimeInstallMethod[];
 };
 
 const KNOWN_PUPPET_RUNTIMES: Readonly<Record<KnownPuppetRuntimeId, KnownPuppetRuntime>> = {
-    live2d: {
-        id: "live2d",
-        backend: "live2d",
-        productName: "Live2D Cubism",
-        vendorUrl: "https://www.live2d.com/en/sdk/download/web/",
-        docsPath: "/docs/studio/model-runtimes/live2d",
-        // Only `sdk-zip`: see PuppetRuntimeInstallMethod. `prebuilt` is not offered because there is
-        // nowhere legitimate to obtain a prebuilt Cubism adapter from.
-        methods: ["sdk-zip"],
-    },
-    spine: {
-        id: "spine",
-        backend: "spine",
-        productName: "Spine",
-        vendorUrl: "https://esotericsoftware.com/spine-purchase",
-        docsPath: "/docs/studio/model-runtimes/spine",
-        // `prebuilt` only. Integrating a Spine runtime requires the *integrator* to hold a Spine
-        // Editor licence (Editor License Agreement 2.1(b); a trial does not count), and NarraLeaf
-        // holds none — so Studio carries no Spine glue to build from, and the author brings their
-        // own adapter. Naming the product and linking to it is not integration.
-        methods: ["prebuilt"],
-    },
+  live2d: {
+    id: "live2d",
+    backend: "live2d",
+    productName: "Live2D Cubism",
+    vendorUrl: "https://www.live2d.com/en/sdk/download/web/",
+    docsPath: "/docs/studio/model-runtimes/live2d",
+    // Only `sdk-zip`: see PuppetRuntimeInstallMethod. `prebuilt` is not offered because there is
+    // nowhere legitimate to obtain a prebuilt Cubism adapter from.
+    methods: ["sdk-zip"]
+  },
+  spine: {
+    id: "spine",
+    backend: "spine",
+    productName: "Spine",
+    vendorUrl: "https://esotericsoftware.com/spine-purchase",
+    docsPath: "/docs/studio/model-runtimes/spine",
+    // `prebuilt` only. Integrating a Spine runtime requires the *integrator* to hold a Spine
+    // Editor licence (Editor License Agreement 2.1(b); a trial does not count), and NarraLeaf
+    // holds none — so Studio carries no Spine glue to build from, and the author brings their
+    // own adapter. Naming the product and linking to it is not integration.
+    methods: ["prebuilt"]
+  }
 };
 
 export function knownPuppetRuntime(id: KnownPuppetRuntimeId): KnownPuppetRuntime {
-    return KNOWN_PUPPET_RUNTIMES[id];
+  return KNOWN_PUPPET_RUNTIMES[id];
 }
 
 export function listKnownPuppetRuntimes(): readonly KnownPuppetRuntime[] {
-    return KNOWN_PUPPET_RUNTIME_IDS.map(id => KNOWN_PUPPET_RUNTIMES[id]);
+  return KNOWN_PUPPET_RUNTIME_IDS.map((id) => KNOWN_PUPPET_RUNTIMES[id]);
 }
 
 export function isKnownPuppetRuntimeId(value: unknown): value is KnownPuppetRuntimeId {
-    return typeof value === "string" && KNOWN_PUPPET_RUNTIME_IDS.includes(value as KnownPuppetRuntimeId);
+  return (
+    typeof value === "string" && KNOWN_PUPPET_RUNTIME_IDS.includes(value as KnownPuppetRuntimeId)
+  );
 }
 
 const DOCS_ORIGIN = "https://www.narraleaf.com";
@@ -130,14 +132,14 @@ const DOCS_LOCALES = new Set(["en", "zh"]);
  * convention worth reinventing here.
  */
 export function puppetRuntimeDocsUrl(runtime: KnownPuppetRuntime, locale: string): string {
-    const prefix = locale !== "en" && DOCS_LOCALES.has(locale) ? `/${locale}` : "";
-    return `${DOCS_ORIGIN}${prefix}${runtime.docsPath}`;
+  const prefix = locale !== "en" && DOCS_LOCALES.has(locale) ? `/${locale}` : "";
+  return `${DOCS_ORIGIN}${prefix}${runtime.docsPath}`;
 }
 
 /** The section itself, for a runtime Studio does not name — the "write your own" guide. */
 export function customPuppetRuntimeDocsUrl(locale: string): string {
-    const prefix = locale !== "en" && DOCS_LOCALES.has(locale) ? `/${locale}` : "";
-    return `${DOCS_ORIGIN}${prefix}/docs/studio/model-runtimes/custom`;
+  const prefix = locale !== "en" && DOCS_LOCALES.has(locale) ? `/${locale}` : "";
+  return `${DOCS_ORIGIN}${prefix}/docs/studio/model-runtimes/custom`;
 }
 
 /**
@@ -150,5 +152,5 @@ export function customPuppetRuntimeDocsUrl(locale: string): string {
  * for a runtime the author wrote themselves, not an error.
  */
 export function knownPuppetRuntimeFor(value: string | null | undefined): KnownPuppetRuntime | null {
-    return isKnownPuppetRuntimeId(value) ? KNOWN_PUPPET_RUNTIMES[value] : null;
+  return isKnownPuppetRuntimeId(value) ? KNOWN_PUPPET_RUNTIMES[value] : null;
 }

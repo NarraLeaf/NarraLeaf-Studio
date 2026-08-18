@@ -33,10 +33,10 @@ export type ChangeMaskTone = "added" | "removed" | "changed" | "moved";
  * decides which scene runs next. It reads as "something happened here" and stops there.
  */
 export const CHANGE_MASK_CLASS: Record<ChangeMaskTone, string> = {
-    added: "border-primary bg-primary/20",
-    removed: "border-danger bg-danger/20",
-    changed: "border-warning bg-warning/20",
-    moved: "border-edge-strong bg-fill-subtle",
+  added: "border-primary bg-primary/20",
+  removed: "border-danger bg-danger/20",
+  changed: "border-warning bg-warning/20",
+  moved: "border-edge-strong bg-fill-subtle"
 };
 
 /**
@@ -46,22 +46,27 @@ export const CHANGE_MASK_CLASS: Record<ChangeMaskTone, string> = {
  * `border-*` and `fill` for `bg-*` (design-system.md §1), and a stroke is neither of those roles.
  */
 export const CHANGE_MASK_STROKE: Record<ChangeMaskTone, string> = {
-    added: "stroke-primary",
-    removed: "stroke-danger",
-    changed: "stroke-warning",
-    moved: "stroke-fg-subtle",
+  added: "stroke-primary",
+  removed: "stroke-danger",
+  changed: "stroke-warning",
+  moved: "stroke-fg-subtle"
 };
 
 /** What each tone is called, for the legend above a pair of canvases. */
 export const CHANGE_MASK_LABEL: Record<ChangeMaskTone, TranslationKey> = {
-    added: "documentDiff.canvas.legend.added",
-    removed: "documentDiff.canvas.legend.removed",
-    changed: "documentDiff.canvas.legend.changed",
-    moved: "documentDiff.canvas.legend.moved",
+  added: "documentDiff.canvas.legend.added",
+  removed: "documentDiff.canvas.legend.removed",
+  changed: "documentDiff.canvas.legend.changed",
+  moved: "documentDiff.canvas.legend.moved"
 };
 
 /** Legend order: the three that alter the game first, the one that does not last. */
-export const CHANGE_MASK_TONES: readonly ChangeMaskTone[] = ["added", "removed", "changed", "moved"];
+export const CHANGE_MASK_TONES: readonly ChangeMaskTone[] = [
+  "added",
+  "removed",
+  "changed",
+  "moved"
+];
 
 /**
  * Which mask one change wears.
@@ -76,14 +81,14 @@ export const CHANGE_MASK_TONES: readonly ChangeMaskTone[] = ["added", "removed",
  * over a node whose parameters changed, which is the one mistake this whole scheme is against.
  */
 export function changeMaskTone(change: DocumentChange): ChangeMaskTone {
-    if (change.kind !== "changed") {
-        return change.kind;
-    }
-    const children = change.children ?? [];
-    if (children.length === 0 || (change.truncated ?? 0) > 0) {
-        return "changed";
-    }
-    return children.every(child => child.kind === "moved") ? "moved" : "changed";
+  if (change.kind !== "changed") {
+    return change.kind;
+  }
+  const children = change.children ?? [];
+  if (children.length === 0 || (change.truncated ?? 0) > 0) {
+    return "changed";
+  }
+  return children.every((child) => child.kind === "moved") ? "moved" : "changed";
 }
 
 /**
@@ -93,17 +98,17 @@ export function changeMaskTone(change: DocumentChange): ChangeMaskTone {
  * covers 3 of the 12" adds up to the number the index shows.
  */
 export function changeLeafCount(change: DocumentChange): number {
-    return (change.children?.length ?? 1) + (change.truncated ?? 0);
+  return (change.children?.length ?? 1) + (change.truncated ?? 0);
 }
 
 /** Which of the two columns a change belongs in. A removal was never in the new one. */
 export function maskColumns(kind: DocumentChange["kind"]): { onBase: boolean; onHead: boolean } {
-    switch (kind) {
-        case "added":
-            return { onBase: false, onHead: true };
-        case "removed":
-            return { onBase: true, onHead: false };
-        default:
-            return { onBase: true, onHead: true };
-    }
+  switch (kind) {
+    case "added":
+      return { onBase: false, onHead: true };
+    case "removed":
+      return { onBase: true, onHead: false };
+    default:
+      return { onBase: true, onHead: true };
+  }
 }

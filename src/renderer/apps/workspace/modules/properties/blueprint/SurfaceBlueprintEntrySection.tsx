@@ -3,15 +3,18 @@ import type { CustomFieldProps } from "@/apps/workspace/modules/properties/frame
 import { selfReadOnly } from "@/apps/workspace/modules/properties/framework/fields/fieldReadOnlyStrategy";
 import { useBlueprintDocumentRevision } from "@/apps/workspace/modules/blueprint-lite/hooks/useBlueprintDocumentRevision";
 import { blueprintEntryContextMenu } from "@/apps/workspace/modules/blueprint-lite/hooks/blueprintEntryGesture";
-import { useOpenBlueprintTarget, type BlueprintOpenOptions } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
+import {
+  useOpenBlueprintTarget,
+  type BlueprintOpenOptions
+} from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import {
-    BlueprintLayerPreview,
-    resolveFirstBlueprintLayerPreview,
+  BlueprintLayerPreview,
+  resolveFirstBlueprintLayerPreview
 } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintLayerPreview";
 import { useReadonlySurfaceBlueprintSummary } from "@/lib/ui-editor/widget-modules/shared/blueprint/useReadonlySurfaceBlueprintSummary";
 import type { SceneEditorContext } from "../schemas/sceneSchema";
@@ -25,62 +28,73 @@ import type { SceneEditorContext } from "../schemas/sceneSchema";
  * had open.
  */
 export const SurfaceBlueprintEntrySection = selfReadOnly(function SurfaceBlueprintEntrySection({
-    data,
+  data
 }: CustomFieldProps<SceneEditorContext>) {
-    const { t, tn } = useTranslation();
-    const { context, isInitialized } = useWorkspace();
-    const openBlueprint = useOpenBlueprintTarget();
-    const blueprintRevision = useBlueprintDocumentRevision();
-    const surfaceId = data.surface.id;
-    const summary = useReadonlySurfaceBlueprintSummary(data.documentService, surfaceId);
-    const logicLabel =
-        data.surface.kind === "stageSurface"
-            ? t("properties.blueprintEntry.gameUiLogic")
-            : t("properties.blueprintEntry.pageLogic");
-    const localBp =
-        isInitialized && context ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint) : null;
-    const nodeCatalog =
-        isInitialized && context ? context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog) : null;
-    const previewModel = useMemo(
-        () => resolveFirstBlueprintLayerPreview(localBp, nodeCatalog, summary.blueprintId),
-        [localBp, nodeCatalog, summary.blueprintId, blueprintRevision],
-    );
+  const { t, tn } = useTranslation();
+  const { context, isInitialized } = useWorkspace();
+  const openBlueprint = useOpenBlueprintTarget();
+  const blueprintRevision = useBlueprintDocumentRevision();
+  const surfaceId = data.surface.id;
+  const summary = useReadonlySurfaceBlueprintSummary(data.documentService, surfaceId);
+  const logicLabel =
+    data.surface.kind === "stageSurface"
+      ? t("properties.blueprintEntry.gameUiLogic")
+      : t("properties.blueprintEntry.pageLogic");
+  const localBp =
+    isInitialized && context
+      ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint)
+      : null;
+  const nodeCatalog =
+    isInitialized && context
+      ? context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog)
+      : null;
+  const previewModel = useMemo(
+    () => resolveFirstBlueprintLayerPreview(localBp, nodeCatalog, summary.blueprintId),
+    [localBp, nodeCatalog, summary.blueprintId, blueprintRevision]
+  );
 
-    const openEntry = (options?: BlueprintOpenOptions) => {
-        if (!summary.blueprintId) {
-            return;
+  const openEntry = (options?: BlueprintOpenOptions) => {
+    if (!summary.blueprintId) {
+      return;
+    }
+    openBlueprint(
+      {
+        blueprintId: summary.blueprintId,
+        ownerKind: "surfaceMain",
+        surfaceId,
+        title: t("properties.blueprintEntry.title", {
+          logic: logicLabel,
+          name: data.surface.name || t("properties.blueprintEntry.interfaceFallback")
+        })
+      },
+      options
+    );
+  };
+
+  const canOpenEntry = summary.hasSurfaceMain && Boolean(summary.blueprintId);
+
+  return (
+    <div className="rounded-lg border border-edge bg-surface px-3 py-3 space-y-2">
+      <button
+        type="button"
+        className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/70 disabled:cursor-default"
+        disabled={!canOpenEntry}
+        onClick={() => openEntry()}
+        onContextMenu={blueprintEntryContextMenu(openEntry)}
+        data-tip={canOpenEntry ? t("blueprint.entry.openInWindow") : undefined}
+        aria-label={
+          canOpenEntry
+            ? t("properties.blueprintEntry.open")
+            : t("properties.blueprintEntry.noBlueprint")
         }
-        openBlueprint({
-            blueprintId: summary.blueprintId,
-            ownerKind: "surfaceMain",
-            surfaceId,
-            title: t("properties.blueprintEntry.title", {
-                logic: logicLabel,
-                name: data.surface.name || t("properties.blueprintEntry.interfaceFallback"),
-            }),
-        }, options);
-    };
-
-    const canOpenEntry = summary.hasSurfaceMain && Boolean(summary.blueprintId);
-
-    return (
-        <div className="rounded-lg border border-edge bg-surface px-3 py-3 space-y-2">
-            <button
-                type="button"
-                className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/70 disabled:cursor-default"
-                disabled={!canOpenEntry}
-                onClick={() => openEntry()}
-                onContextMenu={blueprintEntryContextMenu(openEntry)}
-                data-tip={canOpenEntry ? t("blueprint.entry.openInWindow") : undefined}
-                aria-label={canOpenEntry ? t("properties.blueprintEntry.open") : t("properties.blueprintEntry.noBlueprint")}
-            >
-                <BlueprintLayerPreview model={previewModel} />
-            </button>
-            {summary.brokenBindingCount > 0 ? (
-                <p className="text-2xs text-warning rounded-md border border-warning/25 bg-warning/10 px-2 py-1.5">
-                    {tn("properties.blueprintEntry.brokenBindings", summary.brokenBindingCount)}
-                </p>
-            ) : null}
-        </div>
-    );
+      >
+        <BlueprintLayerPreview model={previewModel} />
+      </button>
+      {summary.brokenBindingCount > 0 ? (
+        <p className="text-2xs text-warning rounded-md border border-warning/25 bg-warning/10 px-2 py-1.5">
+          {tn("properties.blueprintEntry.brokenBindings", summary.brokenBindingCount)}
+        </p>
+      ) : null}
+    </div>
+  );
 });

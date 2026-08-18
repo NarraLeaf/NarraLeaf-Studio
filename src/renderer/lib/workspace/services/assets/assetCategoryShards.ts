@@ -33,7 +33,7 @@ import type { AssetGroup, LegacyTypedAssetGroup } from "./types";
  * migrate and nothing to merge.
  */
 export function legacyShardTypesFor(category: AssetCategory): AssetType[] {
-    return ASSET_CATEGORY_TYPES[category].filter(type => String(type) !== String(category));
+  return ASSET_CATEGORY_TYPES[category].filter((type) => String(type) !== String(category));
 }
 
 /**
@@ -44,34 +44,34 @@ export function legacyShardTypesFor(category: AssetCategory): AssetType[] {
  * names a `category` is taken at its word.
  */
 export function normalizeAssetGroupRecords(
-    raw: Readonly<Record<string, LegacyTypedAssetGroup>> | null | undefined,
-    fallbackCategory: AssetCategory,
+  raw: Readonly<Record<string, LegacyTypedAssetGroup>> | null | undefined,
+  fallbackCategory: AssetCategory
 ): Record<string, AssetGroup> {
-    const out: Record<string, AssetGroup> = {};
-    if (!raw || typeof raw !== "object") {
-        return out;
-    }
-
-    for (const [id, record] of Object.entries(raw)) {
-        if (!record || typeof record !== "object" || typeof record.id !== "string") {
-            continue;
-        }
-        const category = record.category
-            ?? (record.type ? categoryOfAssetType(record.type) : fallbackCategory);
-        const group: AssetGroup = {
-            id: record.id,
-            name: typeof record.name === "string" ? record.name : record.id,
-            category,
-            createdAt: typeof record.createdAt === "number" ? record.createdAt : 0,
-            updatedAt: typeof record.updatedAt === "number" ? record.updatedAt : 0,
-        };
-        if (record.parentGroupId) {
-            group.parentGroupId = record.parentGroupId;
-        }
-        out[id] = group;
-    }
-
+  const out: Record<string, AssetGroup> = {};
+  if (!raw || typeof raw !== "object") {
     return out;
+  }
+
+  for (const [id, record] of Object.entries(raw)) {
+    if (!record || typeof record !== "object" || typeof record.id !== "string") {
+      continue;
+    }
+    const category =
+      record.category ?? (record.type ? categoryOfAssetType(record.type) : fallbackCategory);
+    const group: AssetGroup = {
+      id: record.id,
+      name: typeof record.name === "string" ? record.name : record.id,
+      category,
+      createdAt: typeof record.createdAt === "number" ? record.createdAt : 0,
+      updatedAt: typeof record.updatedAt === "number" ? record.updatedAt : 0
+    };
+    if (record.parentGroupId) {
+      group.parentGroupId = record.parentGroupId;
+    }
+    out[id] = group;
+  }
+
+  return out;
 }
 
 /**
@@ -82,14 +82,17 @@ export function normalizeAssetGroupRecords(
  * *names* are left as the separate rows they are.
  */
 export function mergeLegacyGroupShards(
-    category: AssetCategory,
-    shards: readonly { type: AssetType; records: Readonly<Record<string, LegacyTypedAssetGroup>> | null }[],
+  category: AssetCategory,
+  shards: readonly {
+    type: AssetType;
+    records: Readonly<Record<string, LegacyTypedAssetGroup>> | null;
+  }[]
 ): Record<string, AssetGroup> {
-    const merged: Record<string, AssetGroup> = {};
-    for (const shard of shards) {
-        Object.assign(merged, normalizeAssetGroupRecords(shard.records, category));
-    }
-    return merged;
+  const merged: Record<string, AssetGroup> = {};
+  for (const shard of shards) {
+    Object.assign(merged, normalizeAssetGroupRecords(shard.records, category));
+  }
+  return merged;
 }
 
 /**
@@ -99,26 +102,28 @@ export function mergeLegacyGroupShards(
  * an id that appears in neither list is appended rather than lost. Concatenating is therefore enough:
  * audio's rows keep their sequence, video's follow, and anything either list forgot lands at the end.
  */
-export function mergeAssetOrderDocuments(documents: readonly AssetOrderDocument[]): AssetOrderDocument {
-    const assetIds: string[] = [];
-    const groupIds: string[] = [];
-    const seenAssets = new Set<string>();
-    const seenGroups = new Set<string>();
+export function mergeAssetOrderDocuments(
+  documents: readonly AssetOrderDocument[]
+): AssetOrderDocument {
+  const assetIds: string[] = [];
+  const groupIds: string[] = [];
+  const seenAssets = new Set<string>();
+  const seenGroups = new Set<string>();
 
-    for (const document of documents) {
-        for (const id of document.assetIds) {
-            if (!seenAssets.has(id)) {
-                seenAssets.add(id);
-                assetIds.push(id);
-            }
-        }
-        for (const id of document.groupIds) {
-            if (!seenGroups.has(id)) {
-                seenGroups.add(id);
-                groupIds.push(id);
-            }
-        }
+  for (const document of documents) {
+    for (const id of document.assetIds) {
+      if (!seenAssets.has(id)) {
+        seenAssets.add(id);
+        assetIds.push(id);
+      }
     }
+    for (const id of document.groupIds) {
+      if (!seenGroups.has(id)) {
+        seenGroups.add(id);
+        groupIds.push(id);
+      }
+    }
+  }
 
-    return { assetIds, groupIds };
+  return { assetIds, groupIds };
 }

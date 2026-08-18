@@ -12,41 +12,41 @@ let suppressNextCanvasWidgetDoubleClick = false;
 let suppressNextCanvasWidgetDoubleClickClearTimer: ReturnType<typeof setTimeout> | null = null;
 
 function scheduleSuppressNextCanvasWidgetDoubleClickClear(delayMs: number): void {
-    if (suppressNextCanvasWidgetDoubleClickClearTimer) {
-        clearTimeout(suppressNextCanvasWidgetDoubleClickClearTimer);
-    }
-    suppressNextCanvasWidgetDoubleClickClearTimer = setTimeout(() => {
-        suppressNextCanvasWidgetDoubleClick = false;
-        suppressNextCanvasWidgetDoubleClickClearTimer = null;
-    }, delayMs);
+  if (suppressNextCanvasWidgetDoubleClickClearTimer) {
+    clearTimeout(suppressNextCanvasWidgetDoubleClickClearTimer);
+  }
+  suppressNextCanvasWidgetDoubleClickClearTimer = setTimeout(() => {
+    suppressNextCanvasWidgetDoubleClick = false;
+    suppressNextCanvasWidgetDoubleClickClearTimer = null;
+  }, delayMs);
 }
 
 export function markSuppressNextCanvasWidgetDoubleClick(): void {
-    suppressNextCanvasWidgetDoubleClick = true;
-    scheduleSuppressNextCanvasWidgetDoubleClickClear(750);
+  suppressNextCanvasWidgetDoubleClick = true;
+  scheduleSuppressNextCanvasWidgetDoubleClickClear(750);
 }
 
 export function hasSuppressNextCanvasWidgetDoubleClick(): boolean {
-    return suppressNextCanvasWidgetDoubleClick;
+  return suppressNextCanvasWidgetDoubleClick;
 }
 
 export function consumeSuppressNextCanvasWidgetDoubleClick(): boolean {
-    if (!suppressNextCanvasWidgetDoubleClick) {
-        return false;
-    }
-    scheduleSuppressNextCanvasWidgetDoubleClickClear(0);
-    return true;
+  if (!suppressNextCanvasWidgetDoubleClick) {
+    return false;
+  }
+  scheduleSuppressNextCanvasWidgetDoubleClickClear(0);
+  return true;
 }
 
 /** No UI selection on this surface, or an empty element id list. */
 export function isEmptyOrAbsentUiSelection(
-    selection: UIElementSelection | null | undefined,
-    surfaceId: string,
+  selection: UIElementSelection | null | undefined,
+  surfaceId: string
 ): boolean {
-    if (!selection || selection.surfaceId !== surfaceId) {
-        return true;
-    }
-    return selection.elementIds.length === 0;
+  if (!selection || selection.surfaceId !== surfaceId) {
+    return true;
+  }
+  return selection.elementIds.length === 0;
 }
 
 /**
@@ -54,24 +54,24 @@ export function isEmptyOrAbsentUiSelection(
  * Used so an empty selection picks the top frame under root instead of the deepest leaf.
  */
 export function promoteHitToDirectChildOfSurfaceRoot(
-    document: UIDocument,
-    surfaceId: string,
-    hitElementId: string,
+  document: UIDocument,
+  surfaceId: string,
+  hitElementId: string
 ): string {
-    const rootId = resolveSurfaceRootElementId(document, surfaceId);
-    if (!rootId) {
-        return hitElementId;
-    }
-    let cur = hitElementId;
-    for (let guard = 0; guard < 256; guard++) {
-        const el = document.elements[cur];
-        const parentId = el?.parentId ?? null;
-        if (!parentId || parentId === rootId) {
-            return cur;
-        }
-        cur = parentId;
-    }
+  const rootId = resolveSurfaceRootElementId(document, surfaceId);
+  if (!rootId) {
     return hitElementId;
+  }
+  let cur = hitElementId;
+  for (let guard = 0; guard < 256; guard++) {
+    const el = document.elements[cur];
+    const parentId = el?.parentId ?? null;
+    if (!parentId || parentId === rootId) {
+      return cur;
+    }
+    cur = parentId;
+  }
+  return hitElementId;
 }
 
 /**
@@ -83,22 +83,22 @@ export function promoteHitToDirectChildOfSurfaceRoot(
  *   (i.e. the user switched to a completely different subtree)
  */
 export function shouldPromoteToSurfaceRootChild(
-    document: UIDocument,
-    selection: UIElementSelection | null | undefined,
-    surfaceId: string,
-    hitElementId: string,
+  document: UIDocument,
+  selection: UIElementSelection | null | undefined,
+  surfaceId: string,
+  hitElementId: string
 ): boolean {
-    if (isEmptyOrAbsentUiSelection(selection, surfaceId)) {
-        return true;
-    }
-    const hitFrame = promoteHitToDirectChildOfSurfaceRoot(document, surfaceId, hitElementId);
-    for (const selectedId of selection!.elementIds) {
-        const selectedFrame = promoteHitToDirectChildOfSurfaceRoot(document, surfaceId, selectedId);
-        if (selectedFrame === hitFrame) {
-            return false;
-        }
-    }
+  if (isEmptyOrAbsentUiSelection(selection, surfaceId)) {
     return true;
+  }
+  const hitFrame = promoteHitToDirectChildOfSurfaceRoot(document, surfaceId, hitElementId);
+  for (const selectedId of selection!.elementIds) {
+    const selectedFrame = promoteHitToDirectChildOfSurfaceRoot(document, surfaceId, selectedId);
+    if (selectedFrame === hitFrame) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -106,24 +106,24 @@ export function shouldPromoteToSurfaceRootChild(
  * Used to require double-click / selecto double to drill into children instead of a single pointer pick.
  */
 export function isUiContainerDrillLockHit(
-    document: UIDocument,
-    surfaceId: string,
-    selection: UIElementSelection | null,
-    hitElementId: string,
+  document: UIDocument,
+  surfaceId: string,
+  selection: UIElementSelection | null,
+  hitElementId: string
 ): boolean {
-    if (!selection || selection.surfaceId !== surfaceId || selection.elementIds.length !== 1) {
-        return false;
-    }
-    const selectedId = selection.elementIds[0];
-    const selectedEl = document.elements[selectedId];
-    const drillable =
-        selectedEl?.type === "nl.container" ||
-        selectedEl?.type === "nl.slider" ||
-        selectedEl?.type === UI_SWITCH_ELEMENT_TYPE;
-    if (!selectedEl || !drillable || (selectedEl.childrenIds?.length ?? 0) === 0) {
-        return false;
-    }
-    return isStrictDescendantOf(document, hitElementId, selectedId);
+  if (!selection || selection.surfaceId !== surfaceId || selection.elementIds.length !== 1) {
+    return false;
+  }
+  const selectedId = selection.elementIds[0];
+  const selectedEl = document.elements[selectedId];
+  const drillable =
+    selectedEl?.type === "nl.container" ||
+    selectedEl?.type === "nl.slider" ||
+    selectedEl?.type === UI_SWITCH_ELEMENT_TYPE;
+  if (!selectedEl || !drillable || (selectedEl.childrenIds?.length ?? 0) === 0) {
+    return false;
+  }
+  return isStrictDescendantOf(document, hitElementId, selectedId);
 }
 
 /**
@@ -131,25 +131,25 @@ export function isUiContainerDrillLockHit(
  * A deep hit advances one hierarchy level instead of jumping straight to the deepest leaf.
  */
 export function resolveUiContainerDrillTarget(
-    document: UIDocument,
-    surfaceId: string,
-    selection: UIElementSelection | null,
-    hitElementId: string,
+  document: UIDocument,
+  surfaceId: string,
+  selection: UIElementSelection | null,
+  hitElementId: string
 ): string | null {
-    if (!isUiContainerDrillLockHit(document, surfaceId, selection, hitElementId) || !selection) {
-        return null;
-    }
-    const selectedId = selection.elementIds[0];
-    let currentId = hitElementId;
-    for (let guard = 0; guard < 256; guard++) {
-        const element = document.elements[currentId];
-        if (!element?.parentId) {
-            return null;
-        }
-        if (element.parentId === selectedId) {
-            return currentId;
-        }
-        currentId = element.parentId;
-    }
+  if (!isUiContainerDrillLockHit(document, surfaceId, selection, hitElementId) || !selection) {
     return null;
+  }
+  const selectedId = selection.elementIds[0];
+  let currentId = hitElementId;
+  for (let guard = 0; guard < 256; guard++) {
+    const element = document.elements[currentId];
+    if (!element?.parentId) {
+      return null;
+    }
+    if (element.parentId === selectedId) {
+      return currentId;
+    }
+    currentId = element.parentId;
+  }
+  return null;
 }

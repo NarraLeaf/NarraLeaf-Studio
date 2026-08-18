@@ -11,20 +11,20 @@ import { LocalizationService } from "@/lib/workspace/services/localization/Local
 import { translate } from "@/lib/i18n";
 
 export function listLocalizationKeyOptions(): SelectOption[] {
-    let keys: Record<string, { sourceText: string }> = {};
-    try {
-        keys = LocalizationService.getInstance().getKeysIfLoaded()?.keys ?? {};
-    } catch {
-        // Outside a workspace context; offer only "None".
-    }
-    return [
-        { value: "", label: translate("widgets.localization.none") },
-        ...Object.entries(keys)
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([name, definition]) => ({
-                value: name,
-                label: definition.sourceText.trim() || name,
-                secondaryLabel: name,
-            })),
-    ];
+  let keys: Record<string, { sourceText: string }> = {};
+  try {
+    keys = LocalizationService.getInstance().getKeysIfLoaded()?.keys ?? {};
+  } catch {
+    // Outside a workspace context; offer only "None".
+  }
+  return [
+    { value: "", label: translate("widgets.localization.none") },
+    ...Object.entries(keys)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, definition]) => ({
+        value: name,
+        label: definition.sourceText.trim() || name,
+        secondaryLabel: name
+      }))
+  ];
 }

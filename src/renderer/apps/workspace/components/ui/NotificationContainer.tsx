@@ -8,106 +8,136 @@ import { useTranslation } from "@/lib/i18n";
 /**
  * Individual notification item
  */
-function NotificationItem({ notification, onClose }: { notification: Notification; onClose: () => void }) {
-    const { t } = useTranslation();
-    // Icon based on type
-    const getIcon = () => {
-        switch (notification.type) {
-            case NotificationType.Info:
-                return (
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                );
-            case NotificationType.Success:
-                return (
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                );
-            case NotificationType.Warning:
-                return (
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                );
-            case NotificationType.Error:
-                return (
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                );
-        }
-    };
+function NotificationItem({
+  notification,
+  onClose
+}: {
+  notification: Notification;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  // Icon based on type
+  const getIcon = () => {
+    switch (notification.type) {
+      case NotificationType.Info:
+        return (
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+        );
+      case NotificationType.Success:
+        return (
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+        );
+      case NotificationType.Warning:
+        return (
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
+          </svg>
+        );
+      case NotificationType.Error:
+        return (
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+        );
+    }
+  };
 
-    // Color based on type
-    const getColorClasses = () => {
-        switch (notification.type) {
-            case NotificationType.Info:
-                return "bg-primary/10 border-primary/30 text-primary";
-            case NotificationType.Success:
-                return "bg-success/10 border-success/30 text-success";
-            case NotificationType.Warning:
-                return "bg-warning/10 border-warning/30 text-warning";
-            case NotificationType.Error:
-                return "bg-danger/10 border-danger/30 text-danger";
-        }
-    };
+  // Color based on type
+  const getColorClasses = () => {
+    switch (notification.type) {
+      case NotificationType.Info:
+        return "bg-primary/10 border-primary/30 text-primary";
+      case NotificationType.Success:
+        return "bg-success/10 border-success/30 text-success";
+      case NotificationType.Warning:
+        return "bg-warning/10 border-warning/30 text-warning";
+      case NotificationType.Error:
+        return "bg-danger/10 border-danger/30 text-danger";
+    }
+  };
 
-    return (
-        <div
-            className={`
+  return (
+    <div
+      className={`
                 flex items-start gap-3 p-4 rounded-lg border backdrop-blur-sm
                 shadow-lg min-w-[320px] max-w-[480px]
                 animate-slide-in-right
                 ${getColorClasses()}
             `}
-        >
-            <div className="flex-shrink-0 mt-0.5">{getIcon()}</div>
-            
-            <div className="flex-1 min-w-0">
-                <p className="nl-selectable-text text-sm font-medium text-fg">{notification.message}</p>
-                {notification.detail && (
-                    <p className="mt-1 text-xs text-fg-muted">{notification.detail}</p>
-                )}
-                
-                {notification.actions && notification.actions.length > 0 && (
-                    <div className="mt-3 flex gap-2">
-                        {notification.actions.map((action, index) => (
-                            <button
-                                key={index}
-                                onClick={() => {
-                                    action.onClick();
-                                    onClose();
-                                }}
-                                className={`
+    >
+      <div className="flex-shrink-0 mt-0.5">{getIcon()}</div>
+
+      <div className="flex-1 min-w-0">
+        <p className="nl-selectable-text text-sm font-medium text-fg">{notification.message}</p>
+        {notification.detail && <p className="mt-1 text-xs text-fg-muted">{notification.detail}</p>}
+
+        {notification.actions && notification.actions.length > 0 && (
+          <div className="mt-3 flex gap-2">
+            {notification.actions.map((action, index) => (
+              <button
+                key={index}
+                onClick={() => {
+                  action.onClick();
+                  onClose();
+                }}
+                className={`
                                     px-3 py-1 text-xs rounded-md transition-colors
-                                    ${action.primary
+                                    ${
+                                      action.primary
                                         ? "bg-fill-strong hover:bg-fg/30 text-fg font-medium"
                                         : "bg-fill-subtle hover:bg-fill text-fg-muted"
                                     }
                                 `}
-                            >
-                                {action.label}
-                            </button>
-                        ))}
-                    </div>
-                )}
-            </div>
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
-            {notification.closable && (
-                <button
-                    onClick={onClose}
-                    className="flex-shrink-0 p-1 rounded-md hover:bg-fill transition-colors"
-                    aria-label={t("common.close")}
-                >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
-            )}
-        </div>
-    );
+      {notification.closable && (
+        <button
+          onClick={onClose}
+          className="flex-shrink-0 p-1 rounded-md hover:bg-fill transition-colors"
+          aria-label={t("common.close")}
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -115,46 +145,46 @@ function NotificationItem({ notification, onClose }: { notification: Notificatio
  * Displays all active notifications in a corner of the screen
  */
 export function NotificationContainer() {
-    const { context } = useWorkspace();
-    const [notifications, setNotifications] = useState<Notification[]>([]);
+  const { context } = useWorkspace();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
-    useEffect(() => {
-        if (!context) return;
-        
-        const uiService = context.services.get<UIService>(Services.UI);
-        const store = uiService.getStore();
-        
-        // Initial state
-        setNotifications(store.getNotifications());
+  useEffect(() => {
+    if (!context) return;
 
-        // Subscribe to changes
-        const events = uiService.getEvents();
-        const unsubscribe = events.on("stateChanged", (changes) => {
-            if (changes.notifications) {
-                setNotifications([...changes.notifications]);
-            }
-        });
+    const uiService = context.services.get<UIService>(Services.UI);
+    const store = uiService.getStore();
 
-        return unsubscribe;
-    }, [context]);
+    // Initial state
+    setNotifications(store.getNotifications());
 
-    if (notifications.length === 0 || !context) {
-        return null;
-    }
+    // Subscribe to changes
+    const events = uiService.getEvents();
+    const unsubscribe = events.on("stateChanged", (changes) => {
+      if (changes.notifications) {
+        setNotifications([...changes.notifications]);
+      }
+    });
 
-    return (
-        <div className="fixed right-4 top-[calc(var(--nl-window-titlebar-height)+1rem)] z-50 flex flex-col gap-3 pointer-events-none">
-            {notifications.map(notification => (
-                <div key={notification.id} className="pointer-events-auto">
-                    <NotificationItem
-                        notification={notification}
-                        onClose={() => {
-                            const uiService = context.services.get<UIService>(Services.UI);
-                            uiService.notifications.close(notification.id);
-                        }}
-                    />
-                </div>
-            ))}
+    return unsubscribe;
+  }, [context]);
+
+  if (notifications.length === 0 || !context) {
+    return null;
+  }
+
+  return (
+    <div className="fixed right-4 top-[calc(var(--nl-window-titlebar-height)+1rem)] z-50 flex flex-col gap-3 pointer-events-none">
+      {notifications.map((notification) => (
+        <div key={notification.id} className="pointer-events-auto">
+          <NotificationItem
+            notification={notification}
+            onClose={() => {
+              const uiService = context.services.get<UIService>(Services.UI);
+              uiService.notifications.close(notification.id);
+            }}
+          />
         </div>
-    );
+      ))}
+    </div>
+  );
 }

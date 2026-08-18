@@ -8,35 +8,35 @@ import { listInsertPaletteModules } from "@/lib/ui-editor/widget-modules/insertP
 import { useWorkspace } from "@/apps/workspace/context";
 
 export function useUISurfaceEditorServices() {
-    const { context } = useWorkspace();
+  const { context } = useWorkspace();
 
-    const runtimeBridge = useMemo(() => {
-        if (!context) return null;
-        return context.services.get<UIRuntimeBridgeService>(Services.RuntimeBridge);
-    }, [context]);
+  const runtimeBridge = useMemo(() => {
+    if (!context) return null;
+    return context.services.get<UIRuntimeBridgeService>(Services.RuntimeBridge);
+  }, [context]);
 
-    const stateService = useMemo(() => {
-        if (!context) return null;
-        return context.services.get<UIEditorStateService>(Services.UIEditorState);
-    }, [context]);
+  const stateService = useMemo(() => {
+    if (!context) return null;
+    return context.services.get<UIEditorStateService>(Services.UIEditorState);
+  }, [context]);
 
-    const documentService = useMemo<UIDocumentService | null>(() => {
-        if (!context) return null;
-        return context.services.get<UIDocumentService>(Services.UIDocument);
-    }, [context]);
+  const documentService = useMemo<UIDocumentService | null>(() => {
+    if (!context) return null;
+    return context.services.get<UIDocumentService>(Services.UIDocument);
+  }, [context]);
 
-    const uiService = useMemo<UIService | null>(() => {
-        if (!context) return null;
-        return context.services.get<UIService>(Services.UI);
-    }, [context]);
+  const uiService = useMemo<UIService | null>(() => {
+    if (!context) return null;
+    return context.services.get<UIService>(Services.UI);
+  }, [context]);
 
-    const widgetModules = useMemo(() => listInsertPaletteModules(), []);
+  const widgetModules = useMemo(() => listInsertPaletteModules(), []);
 
-    return {
-        runtimeBridge,
-        stateService,
-        documentService,
-        uiService,
-        widgetModules,
-    };
+  return {
+    runtimeBridge,
+    stateService,
+    documentService,
+    uiService,
+    widgetModules
+  };
 }

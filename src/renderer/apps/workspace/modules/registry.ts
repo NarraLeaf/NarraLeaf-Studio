@@ -36,22 +36,22 @@ import { testReportModule } from "./testing";
  * All panels that should be registered on workspace startup
  */
 export const builtInPanels: PanelModule[] = [
-    dashboardPanelModule,
-    projectPanelModule,
-    storyPanelModule,
-    searchPanelModule,
-    uiEditorSurfacesModule,
-    charactersModule,
-    assetsModule,
-    localizationPanelModule,
-    voicePanelModule,
-    storyMotionPanelModule,
-    assetsBottomModule,
-    propertiesModule,
-    storyVariablesPanelModule,
-    notificationsPanelModule,
-    pluginsPanelModule,
-    consoleModule,
+  dashboardPanelModule,
+  projectPanelModule,
+  storyPanelModule,
+  searchPanelModule,
+  uiEditorSurfacesModule,
+  charactersModule,
+  assetsModule,
+  localizationPanelModule,
+  voicePanelModule,
+  storyMotionPanelModule,
+  assetsBottomModule,
+  propertiesModule,
+  storyVariablesPanelModule,
+  notificationsPanelModule,
+  pluginsPanelModule,
+  consoleModule
 ];
 
 /**
@@ -59,15 +59,15 @@ export const builtInPanels: PanelModule[] = [
  * All editors that should be registered on workspace startup
  */
 export const builtInEditors: EditorModule[] = [
-    welcomeModule,
-    helpModule,
-    aboutModule,
-    imagePreviewModule,
-    audioPreviewModule,
-    videoPreviewModule,
-    fontPreviewModule,
-    jsonPreviewModule,
-    testReportModule,
+  welcomeModule,
+  helpModule,
+  aboutModule,
+  imagePreviewModule,
+  audioPreviewModule,
+  videoPreviewModule,
+  fontPreviewModule,
+  jsonPreviewModule,
+  testReportModule
 ];
 
 /**

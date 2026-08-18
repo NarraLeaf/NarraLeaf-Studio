@@ -16,22 +16,22 @@
 import fs from "fs/promises";
 import path from "path";
 import {
-    GAME_PROGRESS_DIRECTORY_SEGMENTS,
-    buildGameProgressDocument,
-    gameProgressFileName,
-    normalizeGameProgressDocument,
-    type GameProgressExportRequest,
-    type GameProgressExportResult,
-    type GameProgressImportResult,
+  GAME_PROGRESS_DIRECTORY_SEGMENTS,
+  buildGameProgressDocument,
+  gameProgressFileName,
+  normalizeGameProgressDocument,
+  type GameProgressExportRequest,
+  type GameProgressExportResult,
+  type GameProgressImportResult
 } from "../types/gameProgress";
 
 export type GameProgressEnvironment = {
-    platform: NodeJS.Platform;
-    /** `app.getPath("appData")`: roaming app data on Windows, Application Support on macOS. */
-    appDataDir: string;
-    homeDir: string;
-    /** `process.env.XDG_DATA_HOME`, unresolved. */
-    xdgDataHome?: string;
+  platform: NodeJS.Platform;
+  /** `app.getPath("appData")`: roaming app data on Windows, Application Support on macOS. */
+  appDataDir: string;
+  homeDir: string;
+  /** `process.env.XDG_DATA_HOME`, unresolved. */
+  xdgDataHome?: string;
 };
 
 /**
@@ -43,22 +43,23 @@ export type GameProgressEnvironment = {
  * launched from a shortcut would be somewhere nobody could name.
  */
 export function resolveGameProgressDirectory(env: GameProgressEnvironment): string {
-    const root = env.platform === "linux"
-        ? linuxDataRoot(env)
-        : env.appDataDir;
-    return path.join(root, ...GAME_PROGRESS_DIRECTORY_SEGMENTS);
+  const root = env.platform === "linux" ? linuxDataRoot(env) : env.appDataDir;
+  return path.join(root, ...GAME_PROGRESS_DIRECTORY_SEGMENTS);
 }
 
 function linuxDataRoot(env: GameProgressEnvironment): string {
-    const configured = env.xdgDataHome?.trim();
-    return configured && path.isAbsolute(configured)
-        ? configured
-        : path.join(env.homeDir, ".local", "share");
+  const configured = env.xdgDataHome?.trim();
+  return configured && path.isAbsolute(configured)
+    ? configured
+    : path.join(env.homeDir, ".local", "share");
 }
 
 /** The one path a title's two editions agree on. */
-export function resolveGameProgressFilePath(env: GameProgressEnvironment, progressKey: string): string {
-    return path.join(resolveGameProgressDirectory(env), gameProgressFileName(progressKey));
+export function resolveGameProgressFilePath(
+  env: GameProgressEnvironment,
+  progressKey: string
+): string {
+  return path.join(resolveGameProgressDirectory(env), gameProgressFileName(progressKey));
 }
 
 /**
@@ -71,26 +72,26 @@ export function resolveGameProgressFilePath(env: GameProgressEnvironment, progre
  * blueprint node whose author wired an exec pin for exactly this and cannot catch an exception.
  */
 export async function writeGameProgressFile(
-    env: GameProgressEnvironment,
-    progressKey: string,
-    request: GameProgressExportRequest,
-    now: string = new Date().toISOString(),
+  env: GameProgressEnvironment,
+  progressKey: string,
+  request: GameProgressExportRequest,
+  now: string = new Date().toISOString()
 ): Promise<GameProgressExportResult> {
-    const key = progressKey.trim();
-    if (!key) {
-        return { outcome: "failed", error: "This build carries no progress key." };
-    }
-    const filePath = resolveGameProgressFilePath(env, key);
-    try {
-        await fs.mkdir(path.dirname(filePath), { recursive: true });
-        const document = buildGameProgressDocument(key, request, now);
-        // Two spaces: the file is an interchange document that a player or a support desk may open,
-        // and it is small enough that legibility costs nothing worth counting.
-        await fs.writeFile(filePath, `${JSON.stringify(document, null, 2)}\n`, "utf-8");
-        return { outcome: "written", error: null };
-    } catch (error) {
-        return { outcome: "failed", error: error instanceof Error ? error.message : String(error) };
-    }
+  const key = progressKey.trim();
+  if (!key) {
+    return { outcome: "failed", error: "This build carries no progress key." };
+  }
+  const filePath = resolveGameProgressFilePath(env, key);
+  try {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    const document = buildGameProgressDocument(key, request, now);
+    // Two spaces: the file is an interchange document that a player or a support desk may open,
+    // and it is small enough that legibility costs nothing worth counting.
+    await fs.writeFile(filePath, `${JSON.stringify(document, null, 2)}\n`, "utf-8");
+    return { outcome: "written", error: null };
+  } catch (error) {
+    return { outcome: "failed", error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 /**
@@ -108,51 +109,51 @@ export async function writeGameProgressFile(
  * written by a build that could not name itself is still readable.
  */
 export async function readGameProgressFile(
-    env: GameProgressEnvironment,
-    progressKey: string,
+  env: GameProgressEnvironment,
+  progressKey: string
 ): Promise<GameProgressImportResult> {
-    const key = progressKey.trim();
-    if (!key) {
-        return { outcome: "failed", document: null, error: "This build carries no progress key." };
+  const key = progressKey.trim();
+  if (!key) {
+    return { outcome: "failed", document: null, error: "This build carries no progress key." };
+  }
+  const filePath = resolveGameProgressFilePath(env, key);
+  let raw: string;
+  try {
+    raw = await fs.readFile(filePath, "utf-8");
+  } catch (error) {
+    if (error && typeof error === "object" && (error as { code?: string }).code === "ENOENT") {
+      return { outcome: "missing", document: null, error: null };
     }
-    const filePath = resolveGameProgressFilePath(env, key);
-    let raw: string;
-    try {
-        raw = await fs.readFile(filePath, "utf-8");
-    } catch (error) {
-        if (error && typeof error === "object" && (error as { code?: string }).code === "ENOENT") {
-            return { outcome: "missing", document: null, error: null };
-        }
-        return {
-            outcome: "failed",
-            document: null,
-            error: error instanceof Error ? error.message : String(error),
-        };
-    }
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(raw);
-    } catch (error) {
-        return {
-            outcome: "failed",
-            document: null,
-            error: `The progress file could not be read: ${error instanceof Error ? error.message : String(error)}`,
-        };
-    }
-    const document = normalizeGameProgressDocument(parsed);
-    if (!document) {
-        return {
-            outcome: "failed",
-            document: null,
-            error: "The progress file was written by a newer version of this game.",
-        };
-    }
-    if (document.progressKey && document.progressKey !== key) {
-        return {
-            outcome: "failed",
-            document: null,
-            error: "The progress file belongs to a different game.",
-        };
-    }
-    return { outcome: "found", document, error: null };
+    return {
+      outcome: "failed",
+      document: null,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    return {
+      outcome: "failed",
+      document: null,
+      error: `The progress file could not be read: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+  const document = normalizeGameProgressDocument(parsed);
+  if (!document) {
+    return {
+      outcome: "failed",
+      document: null,
+      error: "The progress file was written by a newer version of this game."
+    };
+  }
+  if (document.progressKey && document.progressKey !== key) {
+    return {
+      outcome: "failed",
+      document: null,
+      error: "The progress file belongs to a different game."
+    };
+  }
+  return { outcome: "found", document, error: null };
 }

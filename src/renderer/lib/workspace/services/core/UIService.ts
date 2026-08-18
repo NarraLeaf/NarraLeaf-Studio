@@ -12,9 +12,9 @@ import { TextEditorContributionService } from "../ui/TextEditorContributionServi
 import { TextDocumentStatusService } from "../ui/TextDocumentStatusService";
 import { FocusManager } from "../ui/FocusManager";
 import {
-    KeybindingService,
-    KEYBINDING_OVERRIDES_SETTINGS_KEY,
-    sanitizeKeybindingOverrides,
+  KeybindingService,
+  KEYBINDING_OVERRIDES_SETTINGS_KEY,
+  sanitizeKeybindingOverrides
 } from "../ui/KeybindingService";
 import { EventEmitter } from "../ui/EventEmitter";
 import { UIStateEvents } from "../ui/UIStore";
@@ -41,285 +41,296 @@ import type { AppEventToken } from "@shared/types/app";
  * - textDocumentStatus: What the open text tabs report to the status bar
  */
 export class UIService extends Service<UIService> implements IUIService {
-    private store: UIStore;
-    /** Unsubscribers for AssetsService listeners registered in init */
-    private assetEventsUnsubs: (() => void)[] = [];
-    /** Cross-window sync for keybinding overrides (the Settings window shares the store). */
-    private keybindingOverridesToken: AppEventToken | null = null;
-    private _notifications: NotificationService;
-    private _actionBar: ActionBarService;
-    private _panels: PanelService;
-    private _editor: EditorService;
-    private _dialogs: DialogService;
-    private _statusBar: StatusBarService;
-    private _textEditor: TextEditorContributionService;
-    private _textDocumentStatus: TextDocumentStatusService;
-    private _focus: FocusManager;
-    private _keybindings: KeybindingService;
+  private store: UIStore;
+  /** Unsubscribers for AssetsService listeners registered in init */
+  private assetEventsUnsubs: (() => void)[] = [];
+  /** Cross-window sync for keybinding overrides (the Settings window shares the store). */
+  private keybindingOverridesToken: AppEventToken | null = null;
+  private _notifications: NotificationService;
+  private _actionBar: ActionBarService;
+  private _panels: PanelService;
+  private _editor: EditorService;
+  private _dialogs: DialogService;
+  private _statusBar: StatusBarService;
+  private _textEditor: TextEditorContributionService;
+  private _textDocumentStatus: TextDocumentStatusService;
+  private _focus: FocusManager;
+  private _keybindings: KeybindingService;
 
-    constructor() {
-        super();
-        this.store = new UIStore();
-        this._focus = new FocusManager();
-        this._notifications = new NotificationService(this.store);
-        this._actionBar = new ActionBarService(this.store);
-        this._panels = new PanelService(this.store);
-        this._editor = new EditorService(this.store);
-        this._dialogs = new DialogService(this.store, this._focus);
-        this._statusBar = new StatusBarService(this.store);
-        this._textEditor = new TextEditorContributionService(this.store);
-        this._textDocumentStatus = new TextDocumentStatusService();
-        this._keybindings = new KeybindingService(this._focus, this.store);
-        this.store.setKeybindingService(this._keybindings);
-    }
+  constructor() {
+    super();
+    this.store = new UIStore();
+    this._focus = new FocusManager();
+    this._notifications = new NotificationService(this.store);
+    this._actionBar = new ActionBarService(this.store);
+    this._panels = new PanelService(this.store);
+    this._editor = new EditorService(this.store);
+    this._dialogs = new DialogService(this.store, this._focus);
+    this._statusBar = new StatusBarService(this.store);
+    this._textEditor = new TextEditorContributionService(this.store);
+    this._textDocumentStatus = new TextDocumentStatusService();
+    this._keybindings = new KeybindingService(this._focus, this.store);
+    this.store.setKeybindingService(this._keybindings);
+  }
 
-    protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
-        const assetsService = ctx.services.get<AssetsService>(Services.Assets);
-        const globalSettings = ctx.services.get<GlobalSettingsService>(Services.GlobalSettings);
-        const serviceAssets = ctx.services.get<ServiceAssetsService>(Services.ServiceAssets);
-        await depend([assetsService, globalSettings, serviceAssets]);
+  protected async init(
+    ctx: WorkspaceContext,
+    depend: (services: Service[]) => Promise<void>
+  ): Promise<void> {
+    const assetsService = ctx.services.get<AssetsService>(Services.Assets);
+    const globalSettings = ctx.services.get<GlobalSettingsService>(Services.GlobalSettings);
+    const serviceAssets = ctx.services.get<ServiceAssetsService>(Services.ServiceAssets);
+    await depend([assetsService, globalSettings, serviceAssets]);
 
-        // User keybinding overrides: seed from global state, then follow cross-window writes.
-        this._keybindings.setOverrides(
-            sanitizeKeybindingOverrides(globalSettings.getSync(KEYBINDING_OVERRIDES_SETTINGS_KEY)),
-        );
-        this.keybindingOverridesToken?.cancel();
-        this.keybindingOverridesToken = getInterface().app.state.onGlobalStateChanged?.(change => {
-            if (change.key === KEYBINDING_OVERRIDES_SETTINGS_KEY) {
-                this._keybindings.setOverrides(sanitizeKeybindingOverrides(change.value));
-            }
-        }) ?? null;
-
-        await this._notifications.startPersistence(serviceAssets);
-
-        // Start keybinding service
-        this._keybindings.start();
-
-        try {
-            for (const unsub of this.assetEventsUnsubs) {
-                unsub();
-            }
-            this.assetEventsUnsubs = [];
-
-            const unsubDeleted = assetsService.getEvents().on("deleted", (asset: Asset) => {
-                // Clear selection if the deleted asset is selected
-                const selection = this.store.getSelection();
-                if (selection.type === "asset" && (selection.data as Asset).id === asset.id) {
-                    this.store.setSelection({ type: null, data: null });
-                }
-
-                // Helper to traverse editor layout and gather {tab, groupId}
-                const collectTabs = (
-                    layout: any,
-                    acc: Array<{ tab: any; groupId: string }>
-                ) => {
-                    if ("tabs" in layout) {
-                        // EditorGroup
-                        (layout.tabs as any[]).forEach((t) => acc.push({ tab: t, groupId: layout.id }));
-                    } else {
-                        collectTabs(layout.first, acc);
-                        collectTabs(layout.second, acc);
-                    }
-                };
-
-                const allTabs: Array<{ tab: any; groupId: string }> = [];
-                collectTabs(this.store.getEditorLayout(), allTabs);
-
-                allTabs.forEach(({ tab, groupId }) => {
-                    const related =
-                        tab.id === `image-preview:${asset.id}` ||
-                        (tab.payload && typeof tab.payload === "object" && "asset" in tab.payload && tab.payload.asset?.id === asset.id);
-                    if (related) {
-                        this.store.closeEditorTabInGroup(tab.id, groupId);
-                    }
-                });
-            });
-
-            const unsubUpdated = assetsService.getEvents().on("updated", (asset: Asset) => {
-                const selection = this.store.getSelection();
-                if (selection.type !== "asset" || !selection.data) {
-                    return;
-                }
-                const selected = selection.data as Asset;
-                if (selected.id !== asset.id) {
-                    return;
-                }
-                // Shallow clone so React consumers re-render after in-place metadata updates
-                this.store.setSelection({ type: "asset", data: { ...asset } });
-            });
-
-            this.assetEventsUnsubs.push(unsubDeleted, unsubUpdated);
-        } catch (err) {
-            console.warn("UIService: failed to attach asset event listeners", err);
+    // User keybinding overrides: seed from global state, then follow cross-window writes.
+    this._keybindings.setOverrides(
+      sanitizeKeybindingOverrides(globalSettings.getSync(KEYBINDING_OVERRIDES_SETTINGS_KEY))
+    );
+    this.keybindingOverridesToken?.cancel();
+    this.keybindingOverridesToken =
+      getInterface().app.state.onGlobalStateChanged?.((change) => {
+        if (change.key === KEYBINDING_OVERRIDES_SETTINGS_KEY) {
+          this._keybindings.setOverrides(sanitizeKeybindingOverrides(change.value));
         }
-    }
+      }) ?? null;
 
-    /**
-     * Get the UI store (for internal use by hooks)
-     */
-    public getStore(): UIStore {
-        return this.store;
-    }
+    await this._notifications.startPersistence(serviceAssets);
 
-    /**
-     * Get event emitter for UI state changes
-     */
-    public getEvents(): EventEmitter<UIStateEvents> {
-        return this.store.getEvents();
-    }
+    // Start keybinding service
+    this._keybindings.start();
 
-    // === Sub-services ===
+    try {
+      for (const unsub of this.assetEventsUnsubs) {
+        unsub();
+      }
+      this.assetEventsUnsubs = [];
 
-    /**
-     * Notification service
-     * Usage: services.get<UIService>(Services.UI).notifications.info("Hello!")
-     */
-    public get notifications(): NotificationService {
-        return this._notifications;
-    }
-
-    /**
-     * Action bar service
-     * Usage: services.get<UIService>(Services.UI).actionBar.register({...})
-     */
-    public get actionBar(): ActionBarService {
-        return this._actionBar;
-    }
-
-    /**
-     * Panel service
-     * Usage: services.get<UIService>(Services.UI).panels.register({...})
-     */
-    public get panels(): PanelService {
-        return this._panels;
-    }
-
-    /**
-     * Editor service
-     * Usage: services.get<UIService>(Services.UI).editor.open({...})
-     */
-    public get editor(): EditorService {
-        return this._editor;
-    }
-
-    /**
-     * Dialog service
-     * Usage: services.get<UIService>(Services.UI).dialogs.confirm("Are you sure?")
-     */
-    public get dialogs(): DialogService {
-        return this._dialogs;
-    }
-
-    /**
-     * Status bar service
-     * Usage: services.get<UIService>(Services.UI).statusBar.create({...})
-     */
-    public get statusBar(): StatusBarService {
-        return this._statusBar;
-    }
-
-    /**
-     * Plugin contributions to the built-in text editor
-     * Usage: services.get<UIService>(Services.UI).textEditor.registerPreview({...})
-     *
-     * Studio itself registers nothing here - this registry exists so a plugin can add the
-     * Markdown grammar, preview and commands the built-in editor deliberately does not ship.
-     */
-    public get textEditor(): TextEditorContributionService {
-        return this._textEditor;
-    }
-
-    /**
-     * What the open text tabs are reporting about themselves, for the status bar.
-     *
-     * Host-internal and not part of any plugin surface; see {@link TextDocumentStatusService}.
-     */
-    public get textDocumentStatus(): TextDocumentStatusService {
-        return this._textDocumentStatus;
-    }
-
-    /**
-     * Focus manager
-     * Usage: services.get<UIService>(Services.UI).focus.setFocus(...)
-     */
-    public get focus(): FocusManager {
-        return this._focus;
-    }
-
-    /**
-     * Keybinding service
-     * Usage: services.get<UIService>(Services.UI).keybindings.register({...})
-     */
-    public get keybindings(): KeybindingService {
-        return this._keybindings;
-    }
-
-    // === Legacy API (for backward compatibility) ===
-
-    /**
-     * Show a confirmation dialog
-     */
-    public async showConfirm(message: string, detail?: string): Promise<boolean> {
-        return this._dialogs.confirm(message, detail);
-    }
-
-    /**
-     * Confirm an irreversible action. Cancel is the primary button and the keyboard default; the
-     * destructive one is a danger-coloured secondary. See {@link DialogService.confirmDestructive}.
-     */
-    public async showDestructiveConfirm(message: string, detail: string | undefined, confirmLabel: string): Promise<boolean> {
-        return this._dialogs.confirmDestructive(message, detail, confirmLabel);
-    }
-
-    /**
-     * Show an alert dialog
-     */
-    public async showAlert(message: string, detail?: string): Promise<void> {
-        return this._dialogs.alert(message, detail);
-    }
-
-    /**
-     * Show a notification
-     */
-    public showNotification(message: string, type: "info" | "success" | "warning" | "error" = "info"): void {
-        switch (type) {
-            case "info":
-                this._notifications.info(message);
-                break;
-            case "success":
-                this._notifications.success(message);
-                break;
-            case "warning":
-                this._notifications.warning(message);
-                break;
-            case "error":
-                this._notifications.error(message);
-                break;
+      const unsubDeleted = assetsService.getEvents().on("deleted", (asset: Asset) => {
+        // Clear selection if the deleted asset is selected
+        const selection = this.store.getSelection();
+        if (selection.type === "asset" && (selection.data as Asset).id === asset.id) {
+          this.store.setSelection({ type: null, data: null });
         }
-    }
 
-    /**
-     * Show an error message
-     */
-    public showError(error: Error | string): void {
-        const message = typeof error === "string" ? error : error.message;
+        // Helper to traverse editor layout and gather {tab, groupId}
+        const collectTabs = (layout: any, acc: Array<{ tab: any; groupId: string }>) => {
+          if ("tabs" in layout) {
+            // EditorGroup
+            (layout.tabs as any[]).forEach((t) => acc.push({ tab: t, groupId: layout.id }));
+          } else {
+            collectTabs(layout.first, acc);
+            collectTabs(layout.second, acc);
+          }
+        };
+
+        const allTabs: Array<{ tab: any; groupId: string }> = [];
+        collectTabs(this.store.getEditorLayout(), allTabs);
+
+        allTabs.forEach(({ tab, groupId }) => {
+          const related =
+            tab.id === `image-preview:${asset.id}` ||
+            (tab.payload &&
+              typeof tab.payload === "object" &&
+              "asset" in tab.payload &&
+              tab.payload.asset?.id === asset.id);
+          if (related) {
+            this.store.closeEditorTabInGroup(tab.id, groupId);
+          }
+        });
+      });
+
+      const unsubUpdated = assetsService.getEvents().on("updated", (asset: Asset) => {
+        const selection = this.store.getSelection();
+        if (selection.type !== "asset" || !selection.data) {
+          return;
+        }
+        const selected = selection.data as Asset;
+        if (selected.id !== asset.id) {
+          return;
+        }
+        // Shallow clone so React consumers re-render after in-place metadata updates
+        this.store.setSelection({ type: "asset", data: { ...asset } });
+      });
+
+      this.assetEventsUnsubs.push(unsubDeleted, unsubUpdated);
+    } catch (err) {
+      console.warn("UIService: failed to attach asset event listeners", err);
+    }
+  }
+
+  /**
+   * Get the UI store (for internal use by hooks)
+   */
+  public getStore(): UIStore {
+    return this.store;
+  }
+
+  /**
+   * Get event emitter for UI state changes
+   */
+  public getEvents(): EventEmitter<UIStateEvents> {
+    return this.store.getEvents();
+  }
+
+  // === Sub-services ===
+
+  /**
+   * Notification service
+   * Usage: services.get<UIService>(Services.UI).notifications.info("Hello!")
+   */
+  public get notifications(): NotificationService {
+    return this._notifications;
+  }
+
+  /**
+   * Action bar service
+   * Usage: services.get<UIService>(Services.UI).actionBar.register({...})
+   */
+  public get actionBar(): ActionBarService {
+    return this._actionBar;
+  }
+
+  /**
+   * Panel service
+   * Usage: services.get<UIService>(Services.UI).panels.register({...})
+   */
+  public get panels(): PanelService {
+    return this._panels;
+  }
+
+  /**
+   * Editor service
+   * Usage: services.get<UIService>(Services.UI).editor.open({...})
+   */
+  public get editor(): EditorService {
+    return this._editor;
+  }
+
+  /**
+   * Dialog service
+   * Usage: services.get<UIService>(Services.UI).dialogs.confirm("Are you sure?")
+   */
+  public get dialogs(): DialogService {
+    return this._dialogs;
+  }
+
+  /**
+   * Status bar service
+   * Usage: services.get<UIService>(Services.UI).statusBar.create({...})
+   */
+  public get statusBar(): StatusBarService {
+    return this._statusBar;
+  }
+
+  /**
+   * Plugin contributions to the built-in text editor
+   * Usage: services.get<UIService>(Services.UI).textEditor.registerPreview({...})
+   *
+   * Studio itself registers nothing here - this registry exists so a plugin can add the
+   * Markdown grammar, preview and commands the built-in editor deliberately does not ship.
+   */
+  public get textEditor(): TextEditorContributionService {
+    return this._textEditor;
+  }
+
+  /**
+   * What the open text tabs are reporting about themselves, for the status bar.
+   *
+   * Host-internal and not part of any plugin surface; see {@link TextDocumentStatusService}.
+   */
+  public get textDocumentStatus(): TextDocumentStatusService {
+    return this._textDocumentStatus;
+  }
+
+  /**
+   * Focus manager
+   * Usage: services.get<UIService>(Services.UI).focus.setFocus(...)
+   */
+  public get focus(): FocusManager {
+    return this._focus;
+  }
+
+  /**
+   * Keybinding service
+   * Usage: services.get<UIService>(Services.UI).keybindings.register({...})
+   */
+  public get keybindings(): KeybindingService {
+    return this._keybindings;
+  }
+
+  // === Legacy API (for backward compatibility) ===
+
+  /**
+   * Show a confirmation dialog
+   */
+  public async showConfirm(message: string, detail?: string): Promise<boolean> {
+    return this._dialogs.confirm(message, detail);
+  }
+
+  /**
+   * Confirm an irreversible action. Cancel is the primary button and the keyboard default; the
+   * destructive one is a danger-coloured secondary. See {@link DialogService.confirmDestructive}.
+   */
+  public async showDestructiveConfirm(
+    message: string,
+    detail: string | undefined,
+    confirmLabel: string
+  ): Promise<boolean> {
+    return this._dialogs.confirmDestructive(message, detail, confirmLabel);
+  }
+
+  /**
+   * Show an alert dialog
+   */
+  public async showAlert(message: string, detail?: string): Promise<void> {
+    return this._dialogs.alert(message, detail);
+  }
+
+  /**
+   * Show a notification
+   */
+  public showNotification(
+    message: string,
+    type: "info" | "success" | "warning" | "error" = "info"
+  ): void {
+    switch (type) {
+      case "info":
+        this._notifications.info(message);
+        break;
+      case "success":
+        this._notifications.success(message);
+        break;
+      case "warning":
+        this._notifications.warning(message);
+        break;
+      case "error":
         this._notifications.error(message);
-        console.error(error);
+        break;
     }
+  }
 
-    /**
-     * Clean up
-     */
-    public override dispose(_ctx: WorkspaceContext): void {
-        for (const unsub of this.assetEventsUnsubs) {
-            unsub();
-        }
-        this.assetEventsUnsubs = [];
-        this.keybindingOverridesToken?.cancel();
-        this.keybindingOverridesToken = null;
-        this._notifications.stopPersistence();
-        this._keybindings.stop();
-        this._keybindings.clear();
-        this.store.clear();
+  /**
+   * Show an error message
+   */
+  public showError(error: Error | string): void {
+    const message = typeof error === "string" ? error : error.message;
+    this._notifications.error(message);
+    console.error(error);
+  }
+
+  /**
+   * Clean up
+   */
+  public override dispose(_ctx: WorkspaceContext): void {
+    for (const unsub of this.assetEventsUnsubs) {
+      unsub();
     }
+    this.assetEventsUnsubs = [];
+    this.keybindingOverridesToken?.cancel();
+    this.keybindingOverridesToken = null;
+    this._notifications.stopPersistence();
+    this._keybindings.stop();
+    this._keybindings.clear();
+    this.store.clear();
+  }
 }

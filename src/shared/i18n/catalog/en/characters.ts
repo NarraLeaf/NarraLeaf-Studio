@@ -1,301 +1,310 @@
 /** `characters` - the Characters panel plus the character property/variant/forms editors. */
 export const characters = {
-    errors: {
-        assetLoad: "Failed to load asset",
+  errors: {
+    assetLoad: "Failed to load asset"
+  },
+  panel: {
+    searchPlaceholder: "Search characters…",
+    loading: "Loading characters…",
+    empty: "No characters match your filters.",
+    ungrouped: "Ungrouped",
+    groupEmpty: "No characters in this group.",
+    filterTags: "Tags",
+    addCharacter: "Add Character",
+    addGroup: "Add Group",
+    newCharacter: "New Character",
+    newGroup: "New Group",
+    moveToUngrouped: "Move to Ungrouped",
+    moveToGroup: "Move to Group",
+    renameGroup: "Rename Group",
+    deleteGroup: "Delete Group",
+    rowActions: "Actions",
+    groupActions: "Group actions",
+    namePlaceholder: "Enter character name",
+    groupNamePlaceholder: "Enter group name",
+    deleteCharacterConfirm: 'Delete character "{name}"?',
+    // Was "This action cannot be undone." until deletion became undoable. What is worth
+    // weighing now is the consequence, not the finality: lines naming this character keep the
+    // reference and stop resolving.
+    deleteCharacterDetail: "Lines that name this character stop resolving until it is restored.",
+    deleteGroupConfirm: 'Delete group "{name}"?',
+    deleteGroupDetail: "Characters in this group will be unassigned."
+  },
+  // Names for the undo steps these deletions leave behind ("Undo delete character Hiyori").
+  history: {
+    deleteCharacter: "delete character {name}",
+    deleteGroup: "delete group {name}"
+  },
+  // The one dialog "New character" opens. Everything a character is created with is asked here,
+  // including the accent — it is what every surface identifies them by from their first line.
+  create: {
+    nameRequired: "Give the character a name.",
+    unnamed: "Unnamed",
+    appearanceLabel: "Appearance",
+    kindDescription: {
+      preset: "One finished sprite per pose.",
+      layered: "Layers composited and switched by tag."
     },
-    panel: {
-        searchPlaceholder: "Search characters…",
-        loading: "Loading characters…",
-        empty: "No characters match your filters.",
-        ungrouped: "Ungrouped",
-        groupEmpty: "No characters in this group.",
-        filterTags: "Tags",
-        addCharacter: "Add Character",
-        addGroup: "Add Group",
-        newCharacter: "New Character",
-        newGroup: "New Group",
-        moveToUngrouped: "Move to Ungrouped",
-        moveToGroup: "Move to Group",
-        renameGroup: "Rename Group",
-        deleteGroup: "Delete Group",
-        rowActions: "Actions",
-        groupActions: "Group actions",
-        namePlaceholder: "Enter character name",
-        groupNamePlaceholder: "Enter group name",
-        deleteCharacterConfirm: "Delete character \"{name}\"?",
-        // Was "This action cannot be undone." until deletion became undoable. What is worth
-        // weighing now is the consequence, not the finality: lines naming this character keep the
-        // reference and stop resolving.
-        deleteCharacterDetail: "Lines that name this character stop resolving until it is restored.",
-        deleteGroupConfirm: "Delete group \"{name}\"?",
-        deleteGroupDetail: "Characters in this group will be unassigned.",
+    runtimeGroup: "Drawn by a runtime",
+    runtimeHint:
+      "Requires that runtime to be installed in this project. Install it from the character editor.",
+    colorLabel: "Color",
+    // Not a "default colour": nothing is written, and the name keeps deciding for as long as it
+    // stays that way — including if the character is renamed. Said once, in the hint: the label
+    // that used to sit beside the swatch was the same sentence with the reasons taken out.
+    colorAutoHint:
+      "With no color chosen, a character's name decides their color. The same name gives the same color in every project.",
+    colorReset: "Compute from the name"
+  },
+  editor: {
+    // No `live2d` / `spine` entries: those read as the product's own name, which is a trademark
+    // and comes from the runtime registry rather than from here.
+    kind: { preset: "Preset sprites", layered: "Layered sprite", puppet: "Custom runtime" },
+    puppet: {
+      model: "Model",
+      noModel: "None",
+      selectModel: "Choose a model",
+      clearModel: "Remove model",
+      backend: "Runtime",
+      // Two different situations, and "None installed" was saying the second when it meant the
+      // first: the project had two runtimes and both were one click away.
+      chooseBackend: "Choose a runtime",
+      noBackendInstalled: "No runtime installed",
+      noBackendInstalledHint: "Add one as a folder under runtimes/puppet/, each with an index.js",
+      entry: "Entry",
+      entryDefault: "Default",
+      size: "Size",
+      sizeStage: "Stage",
+      motion: "Motion",
+      expression: "Expression",
+      skin: "Skin",
+      stateNone: "None",
+      skinDefault: "Default",
+      describing: "Reading the model...",
+      describeOk: "Filled from the model",
+      describeNoModel: "No model to read",
+      describeNoBackend: "No runtime chosen",
+      describeBackendMissing: "Runtime not installed here",
+      describeNotSupported: "This runtime lists nothing",
+      describeFailed: "The model could not be read",
+      redescribe: "Read the model again",
+      previewFailed: "This model could not be drawn",
+      // The guided state a puppet character starts in. Until a runtime and a model are both
+      // there, the state fields below them cannot mean anything, so they are not shown.
+      setupTitle: "Two things to set up",
+      stepRuntime: "Drawing runtime",
+      stepModel: "Model",
+      runtimeInstalled: "Installed",
+      runtimeMissing: "Not installed in this project",
+      runtimeIncomplete: "Installed but incomplete",
+      runtimeUnchosen: "Not chosen",
+      install: "Install...",
+      reinstall: "Reinstall...",
+      chooseRuntime: "Choose a runtime",
+      importModel: "Import a model...",
+      noModelAssets: "This project has no model assets yet",
+      modelHint: "A model is a folder: its manifest, and the textures and motions it names."
     },
-    // Names for the undo steps these deletions leave behind ("Undo delete character Hiyori").
-    history: {
-        deleteCharacter: "delete character {name}",
-        deleteGroup: "delete group {name}",
+    // Installing an author-supplied drawing runtime. Product names come from the runtime registry,
+    // never from here — they are trademarks and read the same in every language.
+    runtime: {
+      title: "Install {product}",
+      installed: "{product} is installed",
+      licenseTitle: "Before you install",
+      licenseAgree: "I have read the terms above",
+      vendorLink: "Open the {product} download page",
+      docsLink: "Read the {product} guide",
+      customDocsLink: "Read how to write a runtime",
+      neverDownloads:
+        "Studio does not download it. Obtain it from the vendor, which is also where its licence is accepted.",
+      live2dTerms:
+        "Live2D Cubism is licensed by Live2D Inc., not by NarraLeaf. You accept the Cubism SDK licence when you download it, and you are the one distributing it in the game you build. Commercial releases above Live2D's annual revenue threshold need a separate publication licence from Live2D.",
+      spineTerms:
+        "Spine Runtimes are licensed by Esoteric Software. Every person who works with Spine needs their own Spine Editor licence, and the Spine Runtimes License must travel with the game you ship. NarraLeaf holds no Spine licence, so Studio ships no Spine code and cannot build the adapter for you.",
+      sdkStep: "Choose the downloaded {product} SDK archive. Do not extract it.",
+      sdkPick: "Choose SDK archive...",
+      prebuiltStep:
+        "Choose the built adapter. A folder is copied whole; a single file becomes the runtime's index.js.",
+      prebuiltPickFolder: "Choose folder...",
+      prebuiltPickFile: "Choose file...",
+      prebuiltName: "Install as",
+      building: "Building the runtime...",
+      copying: "Installing...",
+      builtFrom: "Built from SDK {version}",
+      renamed: 'Installed as "{backend}". Use that name on your characters.',
+      remove: "Remove",
+      removeConfirm: 'Remove the "{backend}" runtime?',
+      removeDetail:
+        "Characters using it keep the name and draw an empty box until it is installed again.",
+      customName: "Runtime name",
+      customNameHint: "Also the folder it lives in, under runtimes/puppet/."
     },
-    // The one dialog "New character" opens. Everything a character is created with is asked here,
-    // including the accent — it is what every surface identifies them by from their first line.
-    create: {
-        nameRequired: "Give the character a name.",
-        unnamed: "Unnamed",
-        appearanceLabel: "Appearance",
-        kindDescription: {
-            preset: "One finished sprite per pose.",
-            layered: "Layers composited and switched by tag.",
-        },
-        runtimeGroup: "Drawn by a runtime",
-        runtimeHint: "Requires that runtime to be installed in this project. Install it from the character editor.",
-        colorLabel: "Color",
-        // Not a "default colour": nothing is written, and the name keeps deciding for as long as it
-        // stays that way — including if the character is renamed. Said once, in the hint: the label
-        // that used to sit beside the swatch was the same sentence with the reasons taken out.
-        colorAutoHint: "With no color chosen, a character's name decides their color. The same name gives the same color in every project.",
-        colorReset: "Compute from the name",
+    poses: "Poses",
+    removePose: "Remove pose",
+    // New things are numbered rather than all called "New pose": the story row's pose picker
+    // lists them by name, and five identical entries cannot be told apart there.
+    defaultPoseName: "Pose {n}",
+    defaultAxisName: "Axis {n}",
+    defaultTagName: "Tag {n}",
+    defaultLayerName: "Layer {n}",
+    renameHint: "Double-click or F2 to rename",
+    avatar: "Dialog avatar",
+    avatarAxis: "Avatar varies with this axis",
+    avatarClearOverride: "Remove override",
+    rebake: "Re-bake avatars",
+    bakeReceipt: "{written} written · {unresolved} without art · {removed} removed",
+    selectImage: "Choose an image",
+    selectAvatarImage: "Choose an avatar image",
+    axes: "Axes",
+    removeAxis: "Remove axis",
+    newTag: "New tag",
+    removeTag: "Remove tag",
+    // Two halves of one glyph: the marker on the thing that is the default, and the action on
+    // every other one. They used to be the same word, which made "Default" mean a state on one
+    // row and a command on the next.
+    makeDefault: "Make default",
+    isDefault: "Default",
+    changeImage: "Change image",
+    layers: "Layers",
+    removeLayer: "Remove layer",
+    constantLayer: "Always drawn",
+    layerAxis: "Layer varies with this axis",
+    hasImage: "image set",
+    noImage: "no image",
+    drawsNothing: "draws nothing",
+    layerCount: "{count} drawn",
+    hideLayer: "Hide",
+    showLayer: "Show",
+    lockLayer: "Lock",
+    unlockLayer: "Unlock",
+    onionSkin: "Onion skin",
+    setCanvas: "Set canvas",
+    problems: "Problems",
+    snapshots: "Snapshots",
+    combinations: {
+      title: "Combinations",
+      name: "Name this combination",
+      missing: "No art here: {list}"
     },
-    editor: {
-        // No `live2d` / `spine` entries: those read as the product's own name, which is a trademark
-        // and comes from the runtime registry rather than from here.
-        kind: { preset: "Preset sprites", layered: "Layered sprite", puppet: "Custom runtime" },
-        puppet: {
-            model: "Model",
-            noModel: "None",
-            selectModel: "Choose a model",
-            clearModel: "Remove model",
-            backend: "Runtime",
-            // Two different situations, and "None installed" was saying the second when it meant the
-            // first: the project had two runtimes and both were one click away.
-            chooseBackend: "Choose a runtime",
-            noBackendInstalled: "No runtime installed",
-            noBackendInstalledHint: "Add one as a folder under runtimes/puppet/, each with an index.js",
-            entry: "Entry",
-            entryDefault: "Default",
-            size: "Size",
-            sizeStage: "Stage",
-            motion: "Motion",
-            expression: "Expression",
-            skin: "Skin",
-            stateNone: "None",
-            skinDefault: "Default",
-            describing: "Reading the model...",
-            describeOk: "Filled from the model",
-            describeNoModel: "No model to read",
-            describeNoBackend: "No runtime chosen",
-            describeBackendMissing: "Runtime not installed here",
-            describeNotSupported: "This runtime lists nothing",
-            describeFailed: "The model could not be read",
-            redescribe: "Read the model again",
-            previewFailed: "This model could not be drawn",
-            // The guided state a puppet character starts in. Until a runtime and a model are both
-            // there, the state fields below them cannot mean anything, so they are not shown.
-            setupTitle: "Two things to set up",
-            stepRuntime: "Drawing runtime",
-            stepModel: "Model",
-            runtimeInstalled: "Installed",
-            runtimeMissing: "Not installed in this project",
-            runtimeIncomplete: "Installed but incomplete",
-            runtimeUnchosen: "Not chosen",
-            install: "Install...",
-            reinstall: "Reinstall...",
-            chooseRuntime: "Choose a runtime",
-            importModel: "Import a model...",
-            noModelAssets: "This project has no model assets yet",
-            modelHint: "A model is a folder: its manifest, and the textures and motions it names.",
-        },
-        // Installing an author-supplied drawing runtime. Product names come from the runtime registry,
-        // never from here — they are trademarks and read the same in every language.
-        runtime: {
-            title: "Install {product}",
-            installed: "{product} is installed",
-            licenseTitle: "Before you install",
-            licenseAgree: "I have read the terms above",
-            vendorLink: "Open the {product} download page",
-            docsLink: "Read the {product} guide",
-            customDocsLink: "Read how to write a runtime",
-            neverDownloads: "Studio does not download it. Obtain it from the vendor, which is also where its licence is accepted.",
-            live2dTerms: "Live2D Cubism is licensed by Live2D Inc., not by NarraLeaf. You accept the Cubism SDK licence when you download it, and you are the one distributing it in the game you build. Commercial releases above Live2D's annual revenue threshold need a separate publication licence from Live2D.",
-            spineTerms: "Spine Runtimes are licensed by Esoteric Software. Every person who works with Spine needs their own Spine Editor licence, and the Spine Runtimes License must travel with the game you ship. NarraLeaf holds no Spine licence, so Studio ships no Spine code and cannot build the adapter for you.",
-            sdkStep: "Choose the downloaded {product} SDK archive. Do not extract it.",
-            sdkPick: "Choose SDK archive...",
-            prebuiltStep: "Choose the built adapter. A folder is copied whole; a single file becomes the runtime's index.js.",
-            prebuiltPickFolder: "Choose folder...",
-            prebuiltPickFile: "Choose file...",
-            prebuiltName: "Install as",
-            building: "Building the runtime...",
-            copying: "Installing...",
-            builtFrom: "Built from SDK {version}",
-            renamed: "Installed as \"{backend}\". Use that name on your characters.",
-            remove: "Remove",
-            removeConfirm: "Remove the \"{backend}\" runtime?",
-            removeDetail: "Characters using it keep the name and draw an empty box until it is installed again.",
-            customName: "Runtime name",
-            customNameHint: "Also the folder it lives in, under runtimes/puppet/.",
-        },
-        poses: "Poses",
-        removePose: "Remove pose",
-        // New things are numbered rather than all called "New pose": the story row's pose picker
-        // lists them by name, and five identical entries cannot be told apart there.
-        defaultPoseName: "Pose {n}",
-        defaultAxisName: "Axis {n}",
-        defaultTagName: "Tag {n}",
-        defaultLayerName: "Layer {n}",
-        renameHint: "Double-click or F2 to rename",
-        avatar: "Dialog avatar",
-        avatarAxis: "Avatar varies with this axis",
-        avatarClearOverride: "Remove override",
-        rebake: "Re-bake avatars",
-        bakeReceipt: "{written} written · {unresolved} without art · {removed} removed",
-        selectImage: "Choose an image",
-        selectAvatarImage: "Choose an avatar image",
-        axes: "Axes",
-        removeAxis: "Remove axis",
-        newTag: "New tag",
-        removeTag: "Remove tag",
-        // Two halves of one glyph: the marker on the thing that is the default, and the action on
-        // every other one. They used to be the same word, which made "Default" mean a state on one
-        // row and a command on the next.
-        makeDefault: "Make default",
-        isDefault: "Default",
-        changeImage: "Change image",
-        layers: "Layers",
-        removeLayer: "Remove layer",
-        constantLayer: "Always drawn",
-        layerAxis: "Layer varies with this axis",
-        hasImage: "image set",
-        noImage: "no image",
-        drawsNothing: "draws nothing",
-        layerCount: "{count} drawn",
-        hideLayer: "Hide",
-        showLayer: "Show",
-        lockLayer: "Lock",
-        unlockLayer: "Unlock",
-        onionSkin: "Onion skin",
-        setCanvas: "Set canvas",
-        problems: "Problems",
-        snapshots: "Snapshots",
-        combinations: {
-            title: "Combinations",
-            name: "Name this combination",
-            missing: "No art here: {list}",
-        },
-        psd: {
-            title: "Import PSD",
-            choose: "Choose a PSD…",
-            canvas: "Document size",
-            cost: "{layers} layers · ~{megabytes} MB",
-            mapping: "Layers",
-            axis: "axis, {count} tags",
-            blends: "Blend modes the engine cannot reproduce",
-            merge: "Merge down",
-            skip: "Skip",
-            mergeUnavailable: "{mode} cannot be reproduced faithfully, so it can only be skipped",
-            mergedInto: "+ {name} ({mode}) merged in",
-            clippedInto: "+ {name} clipped in",
-            dropped: "Not imported",
-            nothing: "Nothing to import",
-            undecided: "Decide what to do with {count} more",
-            summary: "{created} to add, {refreshed} to refresh",
-            import: "Import",
-            importing: "Importing…",
-            failed: "Import failed",
-            reason: {
-                hidden: "hidden in Photoshop",
-                blendSkipped: "skipped",
-                clipBaseDropped: "the layer it clips to was not imported",
-            },
-        },
-        diagnostics: {
-            offCanvas: "{name} is {size}, canvas is {canvas}",
-            layerNoImage: "{name} draws nothing under any tag",
-            constantNoImage: "{name} has no image",
-            axisNoTags: "{name} has no tags",
-            axisUnused: "{name} drives no layer",
-            duplicateTag: "{axis} has two tags named {name}",
-            duplicateAxis: "Two axes are named {name}",
-            axisDefaultMissing: "{axis} has no default tag; {name} is used instead",
-            occluded: "{name} is completely covered by the layers above it",
-            avatarCombinations: "{count} dialogue avatars will be baked. Narrow the axes to reduce the count",
-            combinationNoArt: "{name} draws nothing at all",
-            snapshotStale: "{name} was saved with tags that no longer exist",
-            poseNoImage: "{name} has no image",
-            noPoses: "This character has no poses, so nothing draws",
-            defaultPoseMissing: "The default pose was deleted; {name} is used instead",
-            duplicatePose: "Two poses are named {name}",
-        },
-        header: {
-            fallbackName: "Character",
-            subtitle: "Character Editor",
-        },
-        // No `dialog` / `validation` / `notify` / `menu` blocks: those named the forms-and-variants
-        // system this editor replaced, and a preset character is permanently flat (user ruling), so
-        // nothing will ask for them back.
-        confirm: {
-            // Deleting anything inside the appearance editor. There is no history service here, so
-            // "are you sure" is the whole safety net — which is why the detail names the cascade
-            // rather than repeating "this cannot be undone" five times.
-            deleteTitle: "Delete \"{name}\"?",
-            deletePoseDetail: "Story rows that name this pose will no longer resolve one.",
-            deleteAxisDetail: "Layers bound to it become constant and lose their per-tag images.",
-            deleteTagDetail: "Images assigned to this tag are released.",
-            deleteLayerDetail: "Its images are released.",
-            deleteSnapshotDetail: "The combination itself is unaffected; only the name is removed.",
-        },
+    psd: {
+      title: "Import PSD",
+      choose: "Choose a PSD…",
+      canvas: "Document size",
+      cost: "{layers} layers · ~{megabytes} MB",
+      mapping: "Layers",
+      axis: "axis, {count} tags",
+      blends: "Blend modes the engine cannot reproduce",
+      merge: "Merge down",
+      skip: "Skip",
+      mergeUnavailable: "{mode} cannot be reproduced faithfully, so it can only be skipped",
+      mergedInto: "+ {name} ({mode}) merged in",
+      clippedInto: "+ {name} clipped in",
+      dropped: "Not imported",
+      nothing: "Nothing to import",
+      undecided: "Decide what to do with {count} more",
+      summary: "{created} to add, {refreshed} to refresh",
+      import: "Import",
+      importing: "Importing…",
+      failed: "Import failed",
+      reason: {
+        hidden: "hidden in Photoshop",
+        blendSkipped: "skipped",
+        clipBaseDropped: "the layer it clips to was not imported"
+      }
     },
-    properties: {
-        editorTitle: "Character Properties",
-        thumbnail: "Thumbnail",
-        preview: "Preview",
-        defaultAvatar: "Dialog avatar",
-        // The bus this character's voice lines play on. Only the voice bus and buses beneath it are
-        // offered - the engine refuses a voice clip anywhere else.
-        voiceTrack: "Voice bus",
-        voiceTrackMissing: "Missing bus",
-        // Shown only while there is nothing under Voice to pick, i.e. exactly when the select cannot
-        // help and the author has to go and make a bus first.
-        voiceTrackEmpty: "Add a bus under Voice in Project → Audio to give this character its own volume control.",
-        select: "Select",
-        thumbnailAlt: "thumbnail",
-        color: "Color",
-        namePlaceholder: "Character name",
-        descriptionPlaceholder: "Character description…",
-        tags: "Tags",
-        defaultPose: "Default Pose",
-        selectDefaultPose: "Select default pose",
-        followFirstPose: "Follow first pose",
-        selectThumbnailTitle: "Select Thumbnail",
-        cropThumbnailTitle: "Crop Thumbnail",
-        removeTag: "Remove tag",
-        removeTagAria: "Remove tag {tag}",
-        addTagPlaceholder: "Add tag…",
-        addTag: "Add tag",
-        error: {
-            workspaceNotReady: "Workspace not ready",
-            selectImageAsset: "Please select an image asset",
-            deleteThumbnailFailed: "Failed to delete thumbnail",
-            saveThumbnailFailed: "Failed to save thumbnail",
-            unknown: "Unknown error",
-        },
+    diagnostics: {
+      offCanvas: "{name} is {size}, canvas is {canvas}",
+      layerNoImage: "{name} draws nothing under any tag",
+      constantNoImage: "{name} has no image",
+      axisNoTags: "{name} has no tags",
+      axisUnused: "{name} drives no layer",
+      duplicateTag: "{axis} has two tags named {name}",
+      duplicateAxis: "Two axes are named {name}",
+      axisDefaultMissing: "{axis} has no default tag; {name} is used instead",
+      occluded: "{name} is completely covered by the layers above it",
+      avatarCombinations:
+        "{count} dialogue avatars will be baked. Narrow the axes to reduce the count",
+      combinationNoArt: "{name} draws nothing at all",
+      snapshotStale: "{name} was saved with tags that no longer exist",
+      poseNoImage: "{name} has no image",
+      noPoses: "This character has no poses, so nothing draws",
+      defaultPoseMissing: "The default pose was deleted; {name} is used instead",
+      duplicatePose: "Two poses are named {name}"
     },
-    preview: {
-        title: "Preview",
-        currentForm: "Current form: {name}",
-        variant: "Variant: {name}",
-        loading: "Loading preview…",
-        failed: "Preview failed",
-        placeholder: "Select a variant with an image to preview",
-        noSize: "No size",
-        noMetadata: "No metadata",
-        zoomOut: "Zoom Out",
-        zoomIn: "Zoom In",
-        resetView: "Reset View",
-        alt: "Variant preview",
-        setPortrait: "Portrait framing",
-        resetPortrait: "Frame automatically",
-        portraitTitle: "Portrait framing",
-        // A switch label, so it names the state rather than describing the click. "Look" rather than
-        // "pose" because both kinds have one: a pose for a preset character, a tag combination for a
-        // layered one, and the crop is keyed on whichever it is.
-        portraitScoped: "Frame this look only",
+    header: {
+      fallbackName: "Character",
+      subtitle: "Character Editor"
     },
+    // No `dialog` / `validation` / `notify` / `menu` blocks: those named the forms-and-variants
+    // system this editor replaced, and a preset character is permanently flat (user ruling), so
+    // nothing will ask for them back.
+    confirm: {
+      // Deleting anything inside the appearance editor. There is no history service here, so
+      // "are you sure" is the whole safety net — which is why the detail names the cascade
+      // rather than repeating "this cannot be undone" five times.
+      deleteTitle: 'Delete "{name}"?',
+      deletePoseDetail: "Story rows that name this pose will no longer resolve one.",
+      deleteAxisDetail: "Layers bound to it become constant and lose their per-tag images.",
+      deleteTagDetail: "Images assigned to this tag are released.",
+      deleteLayerDetail: "Its images are released.",
+      deleteSnapshotDetail: "The combination itself is unaffected; only the name is removed."
+    }
+  },
+  properties: {
+    editorTitle: "Character Properties",
+    thumbnail: "Thumbnail",
+    preview: "Preview",
+    defaultAvatar: "Dialog avatar",
+    // The bus this character's voice lines play on. Only the voice bus and buses beneath it are
+    // offered - the engine refuses a voice clip anywhere else.
+    voiceTrack: "Voice bus",
+    voiceTrackMissing: "Missing bus",
+    // Shown only while there is nothing under Voice to pick, i.e. exactly when the select cannot
+    // help and the author has to go and make a bus first.
+    voiceTrackEmpty:
+      "Add a bus under Voice in Project → Audio to give this character its own volume control.",
+    select: "Select",
+    thumbnailAlt: "thumbnail",
+    color: "Color",
+    namePlaceholder: "Character name",
+    descriptionPlaceholder: "Character description…",
+    tags: "Tags",
+    defaultPose: "Default Pose",
+    selectDefaultPose: "Select default pose",
+    followFirstPose: "Follow first pose",
+    selectThumbnailTitle: "Select Thumbnail",
+    cropThumbnailTitle: "Crop Thumbnail",
+    removeTag: "Remove tag",
+    removeTagAria: "Remove tag {tag}",
+    addTagPlaceholder: "Add tag…",
+    addTag: "Add tag",
+    error: {
+      workspaceNotReady: "Workspace not ready",
+      selectImageAsset: "Please select an image asset",
+      deleteThumbnailFailed: "Failed to delete thumbnail",
+      saveThumbnailFailed: "Failed to save thumbnail",
+      unknown: "Unknown error"
+    }
+  },
+  preview: {
+    title: "Preview",
+    currentForm: "Current form: {name}",
+    variant: "Variant: {name}",
+    loading: "Loading preview…",
+    failed: "Preview failed",
+    placeholder: "Select a variant with an image to preview",
+    noSize: "No size",
+    noMetadata: "No metadata",
+    zoomOut: "Zoom Out",
+    zoomIn: "Zoom In",
+    resetView: "Reset View",
+    alt: "Variant preview",
+    setPortrait: "Portrait framing",
+    resetPortrait: "Frame automatically",
+    portraitTitle: "Portrait framing",
+    // A switch label, so it names the state rather than describing the click. "Look" rather than
+    // "pose" because both kinds have one: a pose for a preset character, a tag combination for a
+    // layered one, and the crop is keyed on whichever it is.
+    portraitScoped: "Frame this look only"
+  }
 } as const;

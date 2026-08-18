@@ -23,55 +23,55 @@ import { CHANGE_KIND_GLYPH, CHANGE_KIND_TINT } from "./documentChangeView";
  * on is gone.
  */
 export interface ChangeIndexPaneProps {
-    readonly index: ChangeIndex;
-    /** Whether this heading is open. The tab layers the author's clicks over the model's default. */
-    isOpen(group: ChangeIndexGroup): boolean;
-    onToggle(group: ChangeIndexGroup): void;
-    readonly selectedPath: string | null;
-    onSelect(path: string): void;
-    readonly className?: string;
-    readonly style?: CSSProperties;
+  readonly index: ChangeIndex;
+  /** Whether this heading is open. The tab layers the author's clicks over the model's default. */
+  isOpen(group: ChangeIndexGroup): boolean;
+  onToggle(group: ChangeIndexGroup): void;
+  readonly selectedPath: string | null;
+  onSelect(path: string): void;
+  readonly className?: string;
+  readonly style?: CSSProperties;
 }
 
 export function ChangeIndexPane({
-    index,
-    isOpen,
-    onToggle,
-    selectedPath,
-    onSelect,
-    className,
-    style,
+  index,
+  isOpen,
+  onToggle,
+  selectedPath,
+  onSelect,
+  className,
+  style
 }: ChangeIndexPaneProps) {
-    const { t } = useTranslation();
+  const { t } = useTranslation();
 
-    return (
-        <nav
-            aria-label={t("documentDiff.shell.fileList")}
-            style={style}
-            // Inset by a hair so a row's own rounding has somewhere to sit. The rail's change list
-            // and the history list are both drawn this way, and this is the third list of the same
-            // kind in the same feature.
-            className={cn("min-w-0 overflow-y-auto px-1 py-1", className)}
-        >
-            {index.groups.map(group => (
-                <ChangeIndexGroupView
-                    key={group.category}
-                    group={group}
-                    open={isOpen(group)}
-                    onToggle={() => onToggle(group)}
-                    selectedPath={selectedPath}
-                    onSelect={onSelect}
-                />
-            ))}
-            {index.omitted > 0 && (
-                // The count the budget left out, said once for the whole index. A list that stops at
-                // its limit in silence is read as the complete list.
-                <p className="px-2 pt-2 text-2xs text-fg-subtle">
-                    {t("documentDiff.tab.documentsOmitted", { count: String(index.omitted) })}
-                </p>
-            )}
-        </nav>
-    );
+  return (
+    <nav
+      aria-label={t("documentDiff.shell.fileList")}
+      style={style}
+      // Inset by a hair so a row's own rounding has somewhere to sit. The rail's change list
+      // and the history list are both drawn this way, and this is the third list of the same
+      // kind in the same feature.
+      className={cn("min-w-0 overflow-y-auto px-1 py-1", className)}
+    >
+      {index.groups.map((group) => (
+        <ChangeIndexGroupView
+          key={group.category}
+          group={group}
+          open={isOpen(group)}
+          onToggle={() => onToggle(group)}
+          selectedPath={selectedPath}
+          onSelect={onSelect}
+        />
+      ))}
+      {index.omitted > 0 && (
+        // The count the budget left out, said once for the whole index. A list that stops at
+        // its limit in silence is read as the complete list.
+        <p className="px-2 pt-2 text-2xs text-fg-subtle">
+          {t("documentDiff.tab.documentsOmitted", { count: String(index.omitted) })}
+        </p>
+      )}
+    </nav>
+  );
 }
 
 /**
@@ -82,57 +82,60 @@ export function ChangeIndexPane({
  * something about files nobody can see yet.
  */
 export function ChangeIndexGroupView({
-    group,
-    open,
-    onToggle,
-    selectedPath,
-    onSelect,
+  group,
+  open,
+  onToggle,
+  selectedPath,
+  onSelect
 }: {
-    group: ChangeIndexGroup;
-    open: boolean;
-    onToggle: () => void;
-    selectedPath: string | null;
-    onSelect: (path: string) => void;
+  group: ChangeIndexGroup;
+  open: boolean;
+  onToggle: () => void;
+  selectedPath: string | null;
+  onSelect: (path: string) => void;
 }) {
-    const { t, tn } = useTranslation();
+  const { t, tn } = useTranslation();
 
-    return (
-        <section>
-            <button
-                type="button"
-                onClick={onToggle}
-                aria-expanded={open}
-                className={cn(
-                    "flex w-full items-center gap-1 rounded-md px-2 py-1 text-left transition-colors cursor-default",
-                    // `.nl-focus-ring` rather than a Tailwind ring: `styles.css` drops `box-shadow`
-                    // on every native control, so a ring on a `<button>` is dead code
-                    // (design-system §5), and a keyboard walking this list needs to be visible.
-                    "nl-focus-ring text-2xs font-medium text-fg-muted hover:bg-fill hover:text-fg",
-                )}
-            >
-                {open
-                    ? <ChevronDown className="h-3 w-3 shrink-0" aria-hidden />
-                    : <ChevronRight className="h-3 w-3 shrink-0" aria-hidden />}
-                <span className="min-w-0 truncate">{t(CHANGE_CATEGORY_LABEL_KEY[group.category])}</span>
-                <span className="shrink-0 text-fg-subtle">{group.count}</span>
-            </button>
+  return (
+    <section>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className={cn(
+          "flex w-full items-center gap-1 rounded-md px-2 py-1 text-left transition-colors cursor-default",
+          // `.nl-focus-ring` rather than a Tailwind ring: `styles.css` drops `box-shadow`
+          // on every native control, so a ring on a `<button>` is dead code
+          // (design-system §5), and a keyboard walking this list needs to be visible.
+          "nl-focus-ring text-2xs font-medium text-fg-muted hover:bg-fill hover:text-fg"
+        )}
+      >
+        {open ? (
+          <ChevronDown className="h-3 w-3 shrink-0" aria-hidden />
+        ) : (
+          <ChevronRight className="h-3 w-3 shrink-0" aria-hidden />
+        )}
+        <span className="min-w-0 truncate">{t(CHANGE_CATEGORY_LABEL_KEY[group.category])}</span>
+        <span className="shrink-0 text-fg-subtle">{group.count}</span>
+      </button>
 
-            {open && group.caveats.partialDocuments > 0 && (
-                <p className="px-2 pb-1 pl-6 text-2xs text-fg-subtle" data-testid="group-caveat">
-                    {tn("documentDiff.shell.partial", group.caveats.partialDocuments)}
-                </p>
-            )}
+      {open && group.caveats.partialDocuments > 0 && (
+        <p className="px-2 pb-1 pl-6 text-2xs text-fg-subtle" data-testid="group-caveat">
+          {tn("documentDiff.shell.partial", group.caveats.partialDocuments)}
+        </p>
+      )}
 
-            {open && group.rows.map(row => (
-                <ChangeIndexRowView
-                    key={row.path}
-                    row={row}
-                    selected={row.path === selectedPath}
-                    onSelect={() => onSelect(row.path)}
-                />
-            ))}
-        </section>
-    );
+      {open &&
+        group.rows.map((row) => (
+          <ChangeIndexRowView
+            key={row.path}
+            row={row}
+            selected={row.path === selectedPath}
+            onSelect={() => onSelect(row.path)}
+          />
+        ))}
+    </section>
+  );
 }
 
 /**
@@ -143,58 +146,61 @@ export function ChangeIndexGroupView({
  * produced them, which is what keeps the index scannable at forty files and at four hundred.
  */
 function ChangeIndexRowView({
-    row,
-    selected,
-    onSelect,
+  row,
+  selected,
+  onSelect
 }: {
-    row: ChangeIndexRow;
-    selected: boolean;
-    onSelect: () => void;
+  row: ChangeIndexRow;
+  selected: boolean;
+  onSelect: () => void;
 }) {
-    const translator = useTranslation();
+  const translator = useTranslation();
 
-    return (
-        <button
-            type="button"
-            onClick={onSelect}
-            data-tip={row.path}
-            data-change-index-row={row.path}
-            className={cn(
-                "flex w-full items-baseline gap-1.5 overflow-hidden whitespace-nowrap rounded-md px-2 py-1 pl-6 text-left",
-                "nl-focus-ring transition-colors cursor-default",
-                selected ? "bg-primary/15 text-fg" : "hover:bg-fill",
-            )}
-        >
-            <span
-                aria-hidden
-                className={cn("w-2 shrink-0 text-center font-mono text-2xs", CHANGE_KIND_TINT[row.kind])}
-            >
-                {CHANGE_KIND_GLYPH[row.kind]}
-            </span>
-            <span className="min-w-0 truncate text-xs text-fg">{row.name}</span>
-            {row.directory !== null && (
-                <span className="min-w-0 shrink truncate text-2xs text-fg-subtle">{row.directory}</span>
-            )}
-            <span className="ml-auto shrink-0 pl-1 text-2xs text-fg-subtle">
-                {changeIndexRowSummary(row, translator)}
-            </span>
-        </button>
-    );
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      data-tip={row.path}
+      data-change-index-row={row.path}
+      className={cn(
+        "flex w-full items-baseline gap-1.5 overflow-hidden whitespace-nowrap rounded-md px-2 py-1 pl-6 text-left",
+        "nl-focus-ring transition-colors cursor-default",
+        selected ? "bg-primary/15 text-fg" : "hover:bg-fill"
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn("w-2 shrink-0 text-center font-mono text-2xs", CHANGE_KIND_TINT[row.kind])}
+      >
+        {CHANGE_KIND_GLYPH[row.kind]}
+      </span>
+      <span className="min-w-0 truncate text-xs text-fg">{row.name}</span>
+      {row.directory !== null && (
+        <span className="min-w-0 shrink truncate text-2xs text-fg-subtle">{row.directory}</span>
+      )}
+      <span className="ml-auto shrink-0 pl-1 text-2xs text-fg-subtle">
+        {changeIndexRowSummary(row, translator)}
+      </span>
+    </button>
+  );
 }
 
 /** What one file's row says it stands for. A count, except where a count would be misleading. */
-export function changeIndexRowSummary(row: ChangeIndexRow, { t, tn }: Pick<Translator, "t" | "tn">): string {
-    switch (row.kind) {
-        case "added":
-            return t("documentDiff.shell.fileAdded");
-        case "removed":
-            return t("documentDiff.shell.fileRemoved");
-        case "moved":
-            return t("documentDiff.shell.fileMoved");
-        case "changed":
-            // A count only where a count is the truth: an added file is reported as one change
-            // because there is nothing to compare it against, and "1 change" for a new chapter
-            // would be a number the author cannot act on.
-            return tn("documentDiff.shell.changes", row.changeCount);
-    }
+export function changeIndexRowSummary(
+  row: ChangeIndexRow,
+  { t, tn }: Pick<Translator, "t" | "tn">
+): string {
+  switch (row.kind) {
+    case "added":
+      return t("documentDiff.shell.fileAdded");
+    case "removed":
+      return t("documentDiff.shell.fileRemoved");
+    case "moved":
+      return t("documentDiff.shell.fileMoved");
+    case "changed":
+      // A count only where a count is the truth: an added file is reported as one change
+      // because there is nothing to compare it against, and "1 change" for a new chapter
+      // would be a number the author cannot act on.
+      return tn("documentDiff.shell.changes", row.changeCount);
+  }
 }

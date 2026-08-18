@@ -1,4 +1,10 @@
-import {buildDocumentDiff, DocumentChange, DocumentChangeKind, DocumentChangeLabel, DocumentDiff} from "./diff";
+import {
+  buildDocumentDiff,
+  DocumentChange,
+  DocumentChangeKind,
+  DocumentChangeLabel,
+  DocumentDiff
+} from "./diff";
 
 /**
  * A diff of two JSON values by structure alone, for documents no spec claims.
@@ -35,14 +41,14 @@ const ABSENT = Symbol("absent");
 type Slot = unknown | typeof ABSENT;
 
 interface Leaf {
-    readonly group: string | undefined;
-    readonly change: DocumentChange;
+  readonly group: string | undefined;
+  readonly change: DocumentChange;
 }
 
 interface Group {
-    key: string;
-    changes: DocumentChange[];
-    truncated: number;
+  key: string;
+  changes: DocumentChange[];
+  truncated: number;
 }
 
 /**
@@ -60,47 +66,51 @@ interface Group {
  *    listing order could not do this, and taking the limit afterwards would keep an
  *    arbitrary subset.
  */
-export function diffJsonStructural(base: unknown, head: unknown, options: {limit: number}): DocumentDiff {
-    const limit = Math.max(0, options.limit);
-    const groups: Group[] = [];
-    let built = 0;
-    let total = 0;
+export function diffJsonStructural(
+  base: unknown,
+  head: unknown,
+  options: { limit: number }
+): DocumentDiff {
+  const limit = Math.max(0, options.limit);
+  const groups: Group[] = [];
+  let built = 0;
+  let total = 0;
 
-    const emit = (leaf: Leaf): void => {
-        total += 1;
-        if (leaf.group === undefined) {
-            // A change at the root itself - the two sides are not the same kind of value at
-            // all. There is nothing to group it under and nothing below it.
-            if (built < limit) {
-                groups.push({key: "", changes: [leaf.change], truncated: 0});
-                built += 1;
-            }
-            return;
-        }
+  const emit = (leaf: Leaf): void => {
+    total += 1;
+    if (leaf.group === undefined) {
+      // A change at the root itself - the two sides are not the same kind of value at
+      // all. There is nothing to group it under and nothing below it.
+      if (built < limit) {
+        groups.push({ key: "", changes: [leaf.change], truncated: 0 });
+        built += 1;
+      }
+      return;
+    }
 
-        const current = groups.length > 0 ? groups[groups.length - 1] : undefined;
-        const sameGroup = current !== undefined && current.key === leaf.group;
-        if (built < limit) {
-            if (sameGroup) {
-                current.changes.push(leaf.change);
-            } else {
-                groups.push({key: leaf.group, changes: [leaf.change], truncated: 0});
-            }
-            built += 1;
-            return;
-        }
-        // Past the budget the walk keeps counting. A leaf belonging to the group that was
-        // being filled when the budget ran out is recorded on it, so that group can say how
-        // much of itself is missing; anything in a group that never started is covered by
-        // `complete` and `total` on the diff.
-        if (sameGroup) {
-            current.truncated += 1;
-        }
-    };
+    const current = groups.length > 0 ? groups[groups.length - 1] : undefined;
+    const sameGroup = current !== undefined && current.key === leaf.group;
+    if (built < limit) {
+      if (sameGroup) {
+        current.changes.push(leaf.change);
+      } else {
+        groups.push({ key: leaf.group, changes: [leaf.change], truncated: 0 });
+      }
+      built += 1;
+      return;
+    }
+    // Past the budget the walk keeps counting. A leaf belonging to the group that was
+    // being filled when the budget ran out is recorded on it, so that group can say how
+    // much of itself is missing; anything in a group that never started is covered by
+    // `complete` and `total` on the diff.
+    if (sameGroup) {
+      current.truncated += 1;
+    }
+  };
 
-    walk(base, head, [], emit);
+  walk(base, head, [], emit);
 
-    return buildDocumentDiff(groups.map(toChange), {tier: "structural", limit, total});
+  return buildDocumentDiff(groups.map(toChange), { tier: "structural", limit, total });
 }
 
 /**
@@ -113,96 +123,97 @@ export function diffJsonStructural(base: unknown, head: unknown, options: {limit
  * cannot be taken on a subtree.
  */
 function toChange(group: Group): DocumentChange {
-    const [first] = group.changes;
-    if (group.changes.length === 1 && group.truncated === 0 && first.path.length <= 1) {
-        return first;
-    }
-    return {
-        path: [group.key],
-        kind: "changed",
-        ...labelFor(group.key, undefined, undefined),
-        children: group.changes,
-        ...(group.truncated > 0 ? {truncated: group.truncated} : {}),
-    };
+  const [first] = group.changes;
+  if (group.changes.length === 1 && group.truncated === 0 && first.path.length <= 1) {
+    return first;
+  }
+  return {
+    path: [group.key],
+    kind: "changed",
+    ...labelFor(group.key, undefined, undefined),
+    children: group.changes,
+    ...(group.truncated > 0 ? { truncated: group.truncated } : {})
+  };
 }
 
 function walk(base: Slot, head: Slot, path: (string | number)[], emit: (leaf: Leaf) => void): void {
-    if (base === ABSENT && head === ABSENT) {
-        return;
-    }
+  if (base === ABSENT && head === ABSENT) {
+    return;
+  }
 
-    if (base === ABSENT || head === ABSENT) {
-        const added = base === ABSENT;
-        // Deliberately NOT descending into the added or removed value. One row saying "this
-        // was added" is the change the author made; the alternative spends the whole budget
-        // restating every field of one new object.
-        emitLeaf(emit, path, added ? "added" : "removed", labelFor(
-            path[path.length - 1],
-            undefined,
-            describe(added ? head : base),
-        ));
-        return;
-    }
+  if (base === ABSENT || head === ABSENT) {
+    const added = base === ABSENT;
+    // Deliberately NOT descending into the added or removed value. One row saying "this
+    // was added" is the change the author made; the alternative spends the whole budget
+    // restating every field of one new object.
+    emitLeaf(
+      emit,
+      path,
+      added ? "added" : "removed",
+      labelFor(path[path.length - 1], undefined, describe(added ? head : base))
+    );
+    return;
+  }
 
-    if (Array.isArray(base) && Array.isArray(head)) {
-        // Positional, and that is all this tier offers: one element inserted at the front
-        // reads as every element after it changing. Aligning two sequences by identity is
-        // what a real `spec.diff` is for - it is the one thing here that cannot be done
-        // without knowing what the elements ARE, since the id to match on is format
-        // knowledge. Guessing an alignment (LCS over serialised elements) would produce a
-        // confident wrong answer on exactly the documents that matter most.
-        for (let index = 0; index < Math.max(base.length, head.length); index += 1) {
-            path.push(index);
-            walk(
-                index < base.length ? base[index] : ABSENT,
-                index < head.length ? head[index] : ABSENT,
-                path,
-                emit,
-            );
-            path.pop();
-        }
-        return;
+  if (Array.isArray(base) && Array.isArray(head)) {
+    // Positional, and that is all this tier offers: one element inserted at the front
+    // reads as every element after it changing. Aligning two sequences by identity is
+    // what a real `spec.diff` is for - it is the one thing here that cannot be done
+    // without knowing what the elements ARE, since the id to match on is format
+    // knowledge. Guessing an alignment (LCS over serialised elements) would produce a
+    // confident wrong answer on exactly the documents that matter most.
+    for (let index = 0; index < Math.max(base.length, head.length); index += 1) {
+      path.push(index);
+      walk(
+        index < base.length ? base[index] : ABSENT,
+        index < head.length ? head[index] : ABSENT,
+        path,
+        emit
+      );
+      path.pop();
     }
+    return;
+  }
 
-    if (isPlainObject(base) && isPlainObject(head)) {
-        // Sorted, so the walk order is the listing order (see the note on the export) and
-        // so two runs over documents whose keys were built in different orders agree.
-        const keys = [...new Set([...Object.keys(base), ...Object.keys(head)])].sort();
-        for (const key of keys) {
-            path.push(key);
-            walk(
-                Object.prototype.hasOwnProperty.call(base, key) ? base[key] : ABSENT,
-                Object.prototype.hasOwnProperty.call(head, key) ? head[key] : ABSENT,
-                path,
-                emit,
-            );
-            path.pop();
-        }
-        return;
+  if (isPlainObject(base) && isPlainObject(head)) {
+    // Sorted, so the walk order is the listing order (see the note on the export) and
+    // so two runs over documents whose keys were built in different orders agree.
+    const keys = [...new Set([...Object.keys(base), ...Object.keys(head)])].sort();
+    for (const key of keys) {
+      path.push(key);
+      walk(
+        Object.prototype.hasOwnProperty.call(base, key) ? base[key] : ABSENT,
+        Object.prototype.hasOwnProperty.call(head, key) ? head[key] : ABSENT,
+        path,
+        emit
+      );
+      path.pop();
     }
+    return;
+  }
 
-    if (sameScalar(base, head)) {
-        return;
-    }
+  if (sameScalar(base, head)) {
+    return;
+  }
 
-    emitLeaf(emit, path, "changed", labelFor(path[path.length - 1], describe(base), describe(head)));
+  emitLeaf(emit, path, "changed", labelFor(path[path.length - 1], describe(base), describe(head)));
 }
 
 function emitLeaf(
-    emit: (leaf: Leaf) => void,
-    path: readonly (string | number)[],
-    kind: DocumentChangeKind,
-    label: {label: DocumentChangeLabel; subject?: string},
+  emit: (leaf: Leaf) => void,
+  path: readonly (string | number)[],
+  kind: DocumentChangeKind,
+  label: { label: DocumentChangeLabel; subject?: string }
 ): void {
-    const first = path[0];
-    emit({
-        group: first === undefined ? undefined : String(first),
-        change: {
-            path: path.map(String),
-            kind,
-            ...label,
-        },
-    });
+  const first = path[0];
+  emit({
+    group: first === undefined ? undefined : String(first),
+    change: {
+      path: path.map(String),
+      kind,
+      ...label
+    }
+  });
 }
 
 /**
@@ -214,26 +225,26 @@ function emitLeaf(
  * label's parameters and nowhere else.
  */
 function labelFor(
-    segment: string | number | undefined,
-    from: string | undefined,
-    to: string | undefined,
-): {label: DocumentChangeLabel; subject?: string} {
-    const values = {
-        ...(from === undefined ? {} : {from}),
-        ...(to === undefined ? {} : {to}),
-    };
+  segment: string | number | undefined,
+  from: string | undefined,
+  to: string | undefined
+): { label: DocumentChangeLabel; subject?: string } {
+  const values = {
+    ...(from === undefined ? {} : { from }),
+    ...(to === undefined ? {} : { to })
+  };
 
-    if (segment === undefined) {
-        return {label: {key: LABEL_ROOT, ...(hasKeys(values) ? {params: values} : {})}};
-    }
-    if (typeof segment === "number") {
-        return {label: {key: LABEL_ELEMENT, params: {index: segment, ...values}}};
-    }
-    return {label: {key: LABEL_PROPERTY, params: {name: segment, ...values}}, subject: segment};
+  if (segment === undefined) {
+    return { label: { key: LABEL_ROOT, ...(hasKeys(values) ? { params: values } : {}) } };
+  }
+  if (typeof segment === "number") {
+    return { label: { key: LABEL_ELEMENT, params: { index: segment, ...values } } };
+  }
+  return { label: { key: LABEL_PROPERTY, params: { name: segment, ...values } }, subject: segment };
 }
 
 function hasKeys(record: Record<string, unknown>): boolean {
-    return Object.keys(record).length > 0;
+  return Object.keys(record).length > 0;
 }
 
 /**
@@ -244,13 +255,13 @@ function hasKeys(record: Record<string, unknown>): boolean {
  * prints verbatim.
  */
 function describe(value: unknown): string | undefined {
-    if (value === ABSENT || (typeof value === "object" && value !== null)) {
-        return undefined;
-    }
-    const text = typeof value === "string" ? value : String(value);
-    return text.length > STRUCTURAL_VALUE_PREVIEW_CHARS
-        ? `${text.slice(0, STRUCTURAL_VALUE_PREVIEW_CHARS)}…`
-        : text;
+  if (value === ABSENT || (typeof value === "object" && value !== null)) {
+    return undefined;
+  }
+  const text = typeof value === "string" ? value : String(value);
+  return text.length > STRUCTURAL_VALUE_PREVIEW_CHARS
+    ? `${text.slice(0, STRUCTURAL_VALUE_PREVIEW_CHARS)}…`
+    : text;
 }
 
 /**
@@ -261,9 +272,9 @@ function describe(value: unknown): string | undefined {
  * round-trips as two different files, and `===` would call that no change.
  */
 function sameScalar(base: unknown, head: unknown): boolean {
-    return Object.is(base, head);
+  return Object.is(base, head);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

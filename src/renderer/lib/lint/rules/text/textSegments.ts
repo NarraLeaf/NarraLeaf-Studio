@@ -1,6 +1,9 @@
 import type { StoryBlock, StoryScene, StoryTextSegment } from "@shared/types/story";
 import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder } from "@shared/types/story";
-import { countSegmentInterpolations, serializeSegmentSourceText } from "@shared/utils/localizationText";
+import {
+  countSegmentInterpolations,
+  serializeSegmentSourceText
+} from "@shared/utils/localizationText";
 import type { SearchJumpTarget } from "../../../workspace/services/search/searchIndexModel";
 import type { LintContext, LintStoryEntry } from "../../context";
 import type { LintLocation } from "../../types";
@@ -35,67 +38,67 @@ export type LintTextSegmentKind = "narration" | "dialogue" | "choicePrompt" | "c
 export const SPOKEN_TEXT_SEGMENT_KINDS: readonly LintTextSegmentKind[] = ["narration", "dialogue"];
 
 export type LintTextSegmentRef = {
-    story: LintStoryEntry;
-    scene: StoryScene;
-    block: StoryBlock;
-    segment: StoryTextSegment;
-    /** The segment's `textId` - simultaneously the translation unit id and the engine's `voiceId`. */
-    textId: string;
-    /**
-     * Derived from the block payload rather than from `segment.role`: the role is authored data that
-     * a migration or a hand-edited document can leave disagreeing with the action it sits on, and
-     * every rule here means "what kind of row is this", which only the payload answers.
-     */
-    kind: LintTextSegmentKind;
+  story: LintStoryEntry;
+  scene: StoryScene;
+  block: StoryBlock;
+  segment: StoryTextSegment;
+  /** The segment's `textId` - simultaneously the translation unit id and the engine's `voiceId`. */
+  textId: string;
+  /**
+   * Derived from the block payload rather than from `segment.role`: the role is authored data that
+   * a migration or a hand-edited document can leave disagreeing with the action it sits on, and
+   * every rule here means "what kind of row is this", which only the payload answers.
+   */
+  kind: LintTextSegmentKind;
 };
 
 type SegmentOfBlock = { segment: StoryTextSegment; kind: LintTextSegmentKind };
 
 function textSegmentOfBlock(block: StoryBlock): SegmentOfBlock | null {
-    if (block.kind !== "nodeAction") {
-        return null;
-    }
-    const payload = block.payload;
-    switch (payload.action) {
-        case "narration":
-            return { segment: payload.text, kind: "narration" };
-        case "dialogue":
-            return { segment: payload.text, kind: "dialogue" };
-        case "choice":
-            return payload.prompt ? { segment: payload.prompt, kind: "choicePrompt" } : null;
-        case "choiceOption":
-            return { segment: payload.text, kind: "choiceOption" };
-        default:
-            return null;
-    }
+  if (block.kind !== "nodeAction") {
+    return null;
+  }
+  const payload = block.payload;
+  switch (payload.action) {
+    case "narration":
+      return { segment: payload.text, kind: "narration" };
+    case "dialogue":
+      return { segment: payload.text, kind: "dialogue" };
+    case "choice":
+      return payload.prompt ? { segment: payload.prompt, kind: "choicePrompt" } : null;
+    case "choiceOption":
+      return { segment: payload.text, kind: "choiceOption" };
+    default:
+      return null;
+  }
 }
 
 function isDisabled(block: StoryBlock): boolean {
-    return block.disabled === true;
+  return block.disabled === true;
 }
 
 /** Every live text segment of every story, in authoring order. */
 export function listLiveTextSegments(ctx: LintContext): LintTextSegmentRef[] {
-    const refs: LintTextSegmentRef[] = [];
-    for (const story of ctx.stories) {
-        for (const scene of listScenesInDocumentOrder(story.document)) {
-            for (const block of listSceneBlocksInDocumentOrder(scene, { skipSubtree: isDisabled })) {
-                const found = textSegmentOfBlock(block);
-                if (!found || !found.segment.textId) {
-                    continue;
-                }
-                refs.push({
-                    story,
-                    scene,
-                    block,
-                    segment: found.segment,
-                    textId: found.segment.textId,
-                    kind: found.kind,
-                });
-            }
+  const refs: LintTextSegmentRef[] = [];
+  for (const story of ctx.stories) {
+    for (const scene of listScenesInDocumentOrder(story.document)) {
+      for (const block of listSceneBlocksInDocumentOrder(scene, { skipSubtree: isDisabled })) {
+        const found = textSegmentOfBlock(block);
+        if (!found || !found.segment.textId) {
+          continue;
         }
+        refs.push({
+          story,
+          scene,
+          block,
+          segment: found.segment,
+          textId: found.segment.textId,
+          kind: found.kind
+        });
+      }
     }
-    return refs;
+  }
+  return refs;
 }
 
 /**
@@ -106,7 +109,7 @@ export function listLiveTextSegments(ctx: LintContext): LintTextSegmentRef[] {
  * fixes it in.
  */
 export function segmentSourceText(segment: StoryTextSegment): string {
-    return serializeSegmentSourceText(segment);
+  return serializeSegmentSourceText(segment);
 }
 
 /**
@@ -119,13 +122,13 @@ export function segmentSourceText(segment: StoryTextSegment): string {
  * rule that reports them, once.
  */
 export function isBlankSegment(segment: StoryTextSegment): boolean {
-    if (segmentSourceText(segment).trim()) {
-        return false;
-    }
-    if (countSegmentInterpolations(segment) > 0) {
-        return false;
-    }
-    return !(segment.rich ?? []).some(run => "event" in run);
+  if (segmentSourceText(segment).trim()) {
+    return false;
+  }
+  if (countSegmentInterpolations(segment) > 0) {
+    return false;
+  }
+  return !(segment.rich ?? []).some((run) => "event" in run);
 }
 
 /**
@@ -136,30 +139,30 @@ export function isBlankSegment(segment: StoryTextSegment): boolean {
  * would report a missing recording for a line that plays one.
  */
 export function legacyVoiceAssetId(block: StoryBlock): string | undefined {
-    if (block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
-        return undefined;
-    }
-    return block.payload.voiceAssetId;
+  if (block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+    return undefined;
+  }
+  return block.payload.voiceAssetId;
 }
 
 export function storyLocation(ref: LintTextSegmentRef): LintLocation {
-    return {
-        kind: "story",
-        storyId: ref.story.id,
-        storyName: ref.story.name,
-        sceneId: ref.scene.id,
-        sceneName: ref.scene.name,
-        blockId: ref.block.id,
-    };
+  return {
+    kind: "story",
+    storyId: ref.story.id,
+    storyName: ref.story.name,
+    sceneId: ref.scene.id,
+    sceneName: ref.scene.name,
+    blockId: ref.block.id
+  };
 }
 
 export function storyBlockTarget(ref: LintTextSegmentRef): SearchJumpTarget {
-    return {
-        kind: "storyBlock",
-        storyId: ref.story.id,
-        storyName: ref.story.name,
-        sceneId: ref.scene.id,
-        sceneName: ref.scene.name,
-        blockId: ref.block.id,
-    };
+  return {
+    kind: "storyBlock",
+    storyId: ref.story.id,
+    storyName: ref.story.name,
+    sceneId: ref.scene.id,
+    sceneName: ref.scene.name,
+    blockId: ref.block.id
+  };
 }

@@ -12,8 +12,8 @@ import type { ReactElement } from "react";
 import type { PluginIdentity } from "@shared/types/pluginPermissions";
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import type {
-    BlueprintOpenExternalRequest,
-    BlueprintOpenExternalResult,
+  BlueprintOpenExternalRequest,
+  BlueprintOpenExternalResult
 } from "@shared/types/blueprint/externalLink";
 import type { BehaviorNodeExecuteResult } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { ElementRendererProps } from "../ElementRendererRegistry";
@@ -31,25 +31,25 @@ export type RuntimePluginLogLevel = "info" | "warning" | "error";
  * same capability-gated {@link RuntimePluginGame} that `setup` was handed.
  */
 export type RuntimeBlueprintNodeContext = {
-    /** Static parameter values authored on the node. */
-    params: Record<string, unknown>;
-    /**
-     * Read one of this node's declared data input pins, following the wired edge.
-     * Lazy, and undefined for unwired or undeclared pins. Call it as
-     * `ctx.resolveInput?.(pinId)`.
-     */
-    resolveInput?: (pinId: string) => unknown;
-    /** Event slot being handled, when the node runs inside an event graph. */
-    eventName?: string;
-    eventPayload?: Record<string, unknown>;
-    /** Aborted when the execution is cancelled; honour it in long-running nodes. */
-    signal?: AbortSignal;
-    /** The very same object `setup(app)` received as `app.game`. */
-    game: RuntimePluginGame;
+  /** Static parameter values authored on the node. */
+  params: Record<string, unknown>;
+  /**
+   * Read one of this node's declared data input pins, following the wired edge.
+   * Lazy, and undefined for unwired or undeclared pins. Call it as
+   * `ctx.resolveInput?.(pinId)`.
+   */
+  resolveInput?: (pinId: string) => unknown;
+  /** Event slot being handled, when the node runs inside an event graph. */
+  eventName?: string;
+  eventPayload?: Record<string, unknown>;
+  /** Aborted when the execution is cancelled; honour it in long-running nodes. */
+  signal?: AbortSignal;
+  /** The very same object `setup(app)` received as `app.game`. */
+  game: RuntimePluginGame;
 };
 
 export type RuntimeBlueprintNodeExecute = (
-    ctx: RuntimeBlueprintNodeContext,
+  ctx: RuntimeBlueprintNodeContext
 ) => BehaviorNodeExecuteResult | void | Promise<BehaviorNodeExecuteResult | void>;
 
 export type { BehaviorNodeExecuteResult as RuntimeBlueprintNodeResult };
@@ -60,9 +60,9 @@ export type { BehaviorNodeExecuteResult as RuntimeBlueprintNodeResult };
  * with the studio entry; extra fields are ignored.
  */
 export type RuntimeBlueprintNodeDef = {
-    type: string;
-    displayName?: string;
-    execute: RuntimeBlueprintNodeExecute;
+  type: string;
+  displayName?: string;
+  execute: RuntimeBlueprintNodeExecute;
 };
 
 /**
@@ -72,8 +72,8 @@ export type RuntimeBlueprintNodeDef = {
  * from a shared module.
  */
 export type RuntimeWidgetRendererDef = {
-    type: string;
-    render: (props: ElementRendererProps) => ReactElement | null;
+  type: string;
+  render: (props: ElementRendererProps) => ReactElement | null;
 };
 
 /** Removes a subscription. Also tracked by the host, so a failed plugin cannot leak listeners. */
@@ -87,10 +87,10 @@ export type RuntimePluginCleanup = () => void;
  * on the web export.
  */
 export type RuntimePluginStore = {
-    get<T = unknown>(key: string): Promise<T | null>;
-    set<T = unknown>(key: string, value: T): Promise<void>;
-    remove(key: string): Promise<void>;
-    keys(): Promise<string[]>;
+  get<T = unknown>(key: string): Promise<T | null>;
+  set<T = unknown>(key: string, value: T): Promise<void>;
+  remove(key: string): Promise<void>;
+  keys(): Promise<string[]>;
 };
 
 /**
@@ -99,54 +99,54 @@ export type RuntimePluginStore = {
  * implementation history.
  */
 export type RuntimePluginEventMap = {
-    /** First-pass preload finished. Replayed: subscribing late still fires. */
-    preloadComplete: void;
-    /** First scene mounted and painted once. Replayed. */
-    firstSceneReady: void;
-    /**
-     * A scene component mounted. This is a *rendering* event, not "the story
-     * reached this scene" — a remount fires it again.
-     */
-    sceneEnter: { sceneId: string | null };
-    sceneExit: { sceneId: string | null };
-    /** One line of dialogue finished displaying. */
-    dialogueEnd: void;
-    /** The player picked a choice. */
-    choiceMade: { text: string };
-    /** A character line was shown. */
-    characterPrompt: { character: string | null; text: string };
-    /** The action stack drained with a save context present. */
-    gameEnd: void;
-    beforeRestore: void;
-    afterRestore: void;
-    fullscreenChanged: boolean;
-    /** The player asked to close the window. Desktop only — never fires on the web. */
-    closeRequested: void;
-    saveWritten: { id: string };
+  /** First-pass preload finished. Replayed: subscribing late still fires. */
+  preloadComplete: void;
+  /** First scene mounted and painted once. Replayed. */
+  firstSceneReady: void;
+  /**
+   * A scene component mounted. This is a *rendering* event, not "the story
+   * reached this scene" — a remount fires it again.
+   */
+  sceneEnter: { sceneId: string | null };
+  sceneExit: { sceneId: string | null };
+  /** One line of dialogue finished displaying. */
+  dialogueEnd: void;
+  /** The player picked a choice. */
+  choiceMade: { text: string };
+  /** A character line was shown. */
+  characterPrompt: { character: string | null; text: string };
+  /** The action stack drained with a save context present. */
+  gameEnd: void;
+  beforeRestore: void;
+  afterRestore: void;
+  fullscreenChanged: boolean;
+  /** The player asked to close the window. Desktop only — never fires on the web. */
+  closeRequested: void;
+  saveWritten: { id: string };
 };
 
 export type RuntimePluginEvents = {
-    on<K extends keyof RuntimePluginEventMap>(
-        event: K,
-        listener: (payload: RuntimePluginEventMap[K]) => void,
-    ): RuntimePluginCleanup;
-    /**
-     * Whether this environment can ever fire the event. `closeRequested` is false
-     * on the web export, for instance. Check it rather than assuming a desktop
-     * shell — a listener that never fires is a bug that only shows up on one
-     * target.
-     */
-    available(event: keyof RuntimePluginEventMap): boolean;
+  on<K extends keyof RuntimePluginEventMap>(
+    event: K,
+    listener: (payload: RuntimePluginEventMap[K]) => void
+  ): RuntimePluginCleanup;
+  /**
+   * Whether this environment can ever fire the event. `closeRequested` is false
+   * on the web export, for instance. Check it rather than assuming a desktop
+   * shell — a listener that never fires is a bug that only shows up on one
+   * target.
+   */
+  available(event: keyof RuntimePluginEventMap): boolean;
 };
 
 /** Which table a story variable lives in. */
 export type RuntimePluginStateScope = "scene" | "saved" | "persistent";
 
 export type RuntimePluginStateChange = {
-    scope: RuntimePluginStateScope;
-    key: string;
-    previous: unknown;
-    next: unknown;
+  scope: RuntimePluginStateScope;
+  key: string;
+  previous: unknown;
+  next: unknown;
 };
 
 /**
@@ -155,16 +155,16 @@ export type RuntimePluginStateChange = {
  * it are very different things to hand a plugin.
  */
 export type RuntimePluginState = {
-    get<T = unknown>(scope: RuntimePluginStateScope, key: string): T | null;
-    /** Present only when `state.write` was declared. */
-    set?: (scope: RuntimePluginStateScope, key: string, value: unknown) => void;
-    onChange(listener: (change: RuntimePluginStateChange) => void): RuntimePluginCleanup;
+  get<T = unknown>(scope: RuntimePluginStateScope, key: string): T | null;
+  /** Present only when `state.write` was declared. */
+  set?: (scope: RuntimePluginStateScope, key: string, value: unknown) => void;
+  onChange(listener: (change: RuntimePluginStateChange) => void): RuntimePluginCleanup;
 };
 
 export type RuntimePluginSaveMetadata = {
-    id: string;
-    updatedAt?: number;
-    metadata?: unknown;
+  id: string;
+  updatedAt?: number;
+  metadata?: unknown;
 };
 
 /**
@@ -173,12 +173,12 @@ export type RuntimePluginSaveMetadata = {
  * heavier capability.
  */
 export type RuntimePluginSaves = {
-    listIds(): Promise<string[]>;
-    readMetadata(id: string): Promise<RuntimePluginSaveMetadata | null>;
-    /** Present only with `saves.write`. Overwrites the slot. */
-    write?: (id: string, metadata?: unknown) => Promise<void>;
-    /** Present only with `saves.write`. Replaces the running playthrough. */
-    load?: (id: string) => Promise<void>;
+  listIds(): Promise<string[]>;
+  readMetadata(id: string): Promise<RuntimePluginSaveMetadata | null>;
+  /** Present only with `saves.write`. Overwrites the slot. */
+  write?: (id: string, metadata?: unknown) => Promise<void>;
+  /** Present only with `saves.write`. Replaces the running playthrough. */
+  load?: (id: string) => Promise<void>;
 };
 
 /**
@@ -197,18 +197,18 @@ export type RuntimePluginSaves = {
  * engine-side overlay slot.
  */
 export type RuntimePluginOverlay = {
-    mount(render: () => ReactElement | null): RuntimePluginCleanup;
+  mount(render: () => ReactElement | null): RuntimePluginCleanup;
 };
 
 /** `locale` — the game's display language, and a subscription for switches. */
 export type RuntimePluginLocale = {
-    readonly current: string;
-    onChange(listener: (locale: string) => void): RuntimePluginCleanup;
+  readonly current: string;
+  onChange(listener: (locale: string) => void): RuntimePluginCleanup;
 };
 
 /** `assets` — turn an asset id from the pack into a URL this shell can load. */
 export type RuntimePluginAssets = {
-    url(assetId: string): string;
+  url(assetId: string): string;
 };
 
 /**
@@ -229,18 +229,20 @@ export type RuntimePluginAssets = {
  * plugin branches on the outcome instead of wrapping the call.
  */
 export type RuntimePluginNavigation = {
-    openExternal(request: BlueprintOpenExternalRequest): Promise<BlueprintOpenExternalResult>;
+  openExternal(request: BlueprintOpenExternalRequest): Promise<BlueprintOpenExternalResult>;
 };
 
 /** A live connection to one declared sidecar process. */
 export type RuntimePluginSidecarHandle = {
-    /** Send a method call and await its reply. Rejects if the sidecar dies mid-flight. */
-    request<T = unknown>(method: string, params?: unknown): Promise<T>;
-    /** Fire-and-forget. */
-    notify(method: string, params?: unknown): void;
-    onEvent(listener: (method: string, params: unknown) => void): RuntimePluginCleanup;
-    onExit(listener: (info: { code: number | null; signal: string | null }) => void): RuntimePluginCleanup;
-    stop(): Promise<void>;
+  /** Send a method call and await its reply. Rejects if the sidecar dies mid-flight. */
+  request<T = unknown>(method: string, params?: unknown): Promise<T>;
+  /** Fire-and-forget. */
+  notify(method: string, params?: unknown): void;
+  onEvent(listener: (method: string, params: unknown) => void): RuntimePluginCleanup;
+  onExit(
+    listener: (info: { code: number | null; signal: string | null }) => void
+  ): RuntimePluginCleanup;
+  stop(): Promise<void>;
 };
 
 /**
@@ -250,9 +252,9 @@ export type RuntimePluginSidecarHandle = {
  * to spawn: check {@link available} instead of assuming a desktop build.
  */
 export type RuntimePluginSidecars = {
-    available(sidecarId: string): boolean;
-    /** Idempotent: repeated calls return the same running handle. */
-    start(sidecarId: string): Promise<RuntimePluginSidecarHandle>;
+  available(sidecarId: string): boolean;
+  /** Idempotent: repeated calls return the same running handle. */
+  start(sidecarId: string): Promise<RuntimePluginSidecarHandle>;
 };
 
 /**
@@ -265,69 +267,69 @@ export type RuntimePluginSidecars = {
  * the same set by construction.
  */
 export type RuntimePluginGame = {
-    blueprintNodes: {
-        register(def: RuntimeBlueprintNodeDef): void;
-        registerMany(defs: RuntimeBlueprintNodeDef[]): void;
-    };
-    widgets: {
-        register(def: RuntimeWidgetRendererDef): void;
-        registerMany(defs: RuntimeWidgetRendererDef[]): void;
-    };
-    /**
-     * Read-only access to plugin storage published with the game, for the
-     * namespaces declared in `contributes.runtimeData`. Synchronous: the
-     * data travels with the pack, so there is nothing to await.
-     *
-     * Returns null when the namespace was not declared, the project never
-     * wrote it, or the game predates the data being published. Callers must
-     * degrade gracefully rather than assume authored data exists.
-     */
-    data: {
-        readJson<T = unknown>(namespace: string): T | null;
-    };
-    /**
-     * What the author filled in for this plugin's `contributes.buildConfig` fields, for the
-     * variant this build was compiled as. Synchronous for the reason `data` is: the values
-     * travel with the pack.
-     *
-     * Always present, like `data`, and for the same reason - declaring a field grants the plugin
-     * nothing, so there is no capability here to gate on. Only this plugin's own fields are
-     * readable; another plugin's values are not in the entry this reads.
-     *
-     * Returns null for a key the manifest never declared, for a `secret` field (the value stays
-     * on the machine that typed it and is not in any build), for one the author left blank, and
-     * outside a compiled build. A plugin must treat every one of those as "not configured" rather
-     * than assume a value exists.
-     */
-    config: {
-        get(key: string): string | null;
-    };
-    log(level: RuntimePluginLogLevel, message: string): void;
+  blueprintNodes: {
+    register(def: RuntimeBlueprintNodeDef): void;
+    registerMany(defs: RuntimeBlueprintNodeDef[]): void;
+  };
+  widgets: {
+    register(def: RuntimeWidgetRendererDef): void;
+    registerMany(defs: RuntimeWidgetRendererDef[]): void;
+  };
+  /**
+   * Read-only access to plugin storage published with the game, for the
+   * namespaces declared in `contributes.runtimeData`. Synchronous: the
+   * data travels with the pack, so there is nothing to await.
+   *
+   * Returns null when the namespace was not declared, the project never
+   * wrote it, or the game predates the data being published. Callers must
+   * degrade gracefully rather than assume authored data exists.
+   */
+  data: {
+    readJson<T = unknown>(namespace: string): T | null;
+  };
+  /**
+   * What the author filled in for this plugin's `contributes.buildConfig` fields, for the
+   * variant this build was compiled as. Synchronous for the reason `data` is: the values
+   * travel with the pack.
+   *
+   * Always present, like `data`, and for the same reason - declaring a field grants the plugin
+   * nothing, so there is no capability here to gate on. Only this plugin's own fields are
+   * readable; another plugin's values are not in the entry this reads.
+   *
+   * Returns null for a key the manifest never declared, for a `secret` field (the value stays
+   * on the machine that typed it and is not in any build), for one the author left blank, and
+   * outside a compiled build. A plugin must treat every one of those as "not configured" rather
+   * than assume a value exists.
+   */
+  config: {
+    get(key: string): string | null;
+  };
+  log(level: RuntimePluginLogLevel, message: string): void;
 
-    /** Present with `contributes.runtimeCapabilities: ["store"]`. */
-    store?: RuntimePluginStore;
-    /** Present with `"events"`. */
-    events?: RuntimePluginEvents;
-    /** Present with `"state.read"` (and `set` with `"state.write"`). */
-    state?: RuntimePluginState;
-    /** Present with `"saves.read"`. */
-    saves?: RuntimePluginSaves;
-    /** Present with `"ui.overlay"`. */
-    ui?: { overlay: RuntimePluginOverlay };
-    /** Present with `"assets"`. */
-    assets?: RuntimePluginAssets;
-    /** Present with `"locale"`. */
-    locale?: RuntimePluginLocale;
-    /** Present when `contributes.sidecars` is non-empty. */
-    sidecar?: RuntimePluginSidecars;
-    /** Present when `contributes.externalLinks` is non-empty. */
-    navigation?: RuntimePluginNavigation;
+  /** Present with `contributes.runtimeCapabilities: ["store"]`. */
+  store?: RuntimePluginStore;
+  /** Present with `"events"`. */
+  events?: RuntimePluginEvents;
+  /** Present with `"state.read"` (and `set` with `"state.write"`). */
+  state?: RuntimePluginState;
+  /** Present with `"saves.read"`. */
+  saves?: RuntimePluginSaves;
+  /** Present with `"ui.overlay"`. */
+  ui?: { overlay: RuntimePluginOverlay };
+  /** Present with `"assets"`. */
+  assets?: RuntimePluginAssets;
+  /** Present with `"locale"`. */
+  locale?: RuntimePluginLocale;
+  /** Present when `contributes.sidecars` is non-empty. */
+  sidecar?: RuntimePluginSidecars;
+  /** Present when `contributes.externalLinks` is non-empty. */
+  navigation?: RuntimePluginNavigation;
 };
 
 export type RuntimePluginApp = {
-    plugin: PluginIdentity;
-    manifest: NormalizedPluginManifestV2;
-    game: RuntimePluginGame;
+  plugin: PluginIdentity;
+  manifest: NormalizedPluginManifestV2;
+  game: RuntimePluginGame;
 };
 
 /**
@@ -337,26 +339,26 @@ export type RuntimePluginApp = {
 export type RuntimePluginSetup = (app: RuntimePluginApp) => void | Promise<void>;
 
 export type RuntimePluginDefinition = {
-    setup: RuntimePluginSetup;
+  setup: RuntimePluginSetup;
 };
 
 const RUNTIME_PLUGIN_DEFINITION_MARKER = "__nlsRuntimePluginDefinition";
 
 export function defineRuntimePlugin(definition: RuntimePluginDefinition): RuntimePluginDefinition {
-    if (!definition || typeof definition.setup !== "function") {
-        throw new Error("Runtime plugin definition requires a setup(app) function");
-    }
-    return Object.freeze({
-        ...definition,
-        [RUNTIME_PLUGIN_DEFINITION_MARKER]: true,
-    });
+  if (!definition || typeof definition.setup !== "function") {
+    throw new Error("Runtime plugin definition requires a setup(app) function");
+  }
+  return Object.freeze({
+    ...definition,
+    [RUNTIME_PLUGIN_DEFINITION_MARKER]: true
+  });
 }
 
 export function isRuntimePluginDefinition(value: unknown): value is RuntimePluginDefinition {
-    return (
-        typeof value === "object" &&
-        value !== null &&
-        (value as Record<string, unknown>)[RUNTIME_PLUGIN_DEFINITION_MARKER] === true &&
-        typeof (value as RuntimePluginDefinition).setup === "function"
-    );
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<string, unknown>)[RUNTIME_PLUGIN_DEFINITION_MARKER] === true &&
+    typeof (value as RuntimePluginDefinition).setup === "function"
+  );
 }

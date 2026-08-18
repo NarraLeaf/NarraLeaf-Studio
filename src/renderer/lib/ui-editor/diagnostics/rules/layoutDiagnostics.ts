@@ -16,40 +16,42 @@ import type { UISurfaceDiagnostic } from "../types";
  * is always wrong teaches authors to stop reading warnings.
  */
 export function collectLayoutDiagnostics(
-    document: UIDocument,
-    surface: UISurface,
-    elements: UIElement[],
+  document: UIDocument,
+  surface: UISurface,
+  elements: UIElement[]
 ): UISurfaceDiagnostic[] {
-    const out: UISurfaceDiagnostic[] = [];
-    const { width: dw, height: dh } = surface.designSize;
+  const out: UISurfaceDiagnostic[] = [];
+  const { width: dw, height: dh } = surface.designSize;
 
-    for (const el of elements) {
-        const { width, height, visible, opacity } = el.layout;
-        if (isUIElementFlowLayoutChild(document, el)) {
-            continue;
-        }
-        if (visible === false) {
-            continue;
-        }
-        const op = opacity ?? 1;
-        if (op <= 0.01) {
-            continue;
-        }
-        const origin = getElementSurfaceTopLeft(document, el.id);
-        const wAbs = Math.abs(width);
-        const hAbs = Math.abs(height);
-        const right = origin.x + wAbs;
-        const bottom = origin.y + hAbs;
-        if (right < 0 || bottom < 0 || origin.x > dw || origin.y > dh) {
-            out.push({
-                id: `layout:oob:${el.id}`,
-                severity: "warning",
-                source: "layout",
-                message: translate("blueprint.diagnostics.layout.outOfBounds", { name: el.name ?? el.type }),
-                hint: translate("blueprint.diagnostics.layout.outOfBoundsHint", { width: dw, height: dh }),
-                elementId: el.id,
-            });
-        }
+  for (const el of elements) {
+    const { width, height, visible, opacity } = el.layout;
+    if (isUIElementFlowLayoutChild(document, el)) {
+      continue;
     }
-    return out;
+    if (visible === false) {
+      continue;
+    }
+    const op = opacity ?? 1;
+    if (op <= 0.01) {
+      continue;
+    }
+    const origin = getElementSurfaceTopLeft(document, el.id);
+    const wAbs = Math.abs(width);
+    const hAbs = Math.abs(height);
+    const right = origin.x + wAbs;
+    const bottom = origin.y + hAbs;
+    if (right < 0 || bottom < 0 || origin.x > dw || origin.y > dh) {
+      out.push({
+        id: `layout:oob:${el.id}`,
+        severity: "warning",
+        source: "layout",
+        message: translate("blueprint.diagnostics.layout.outOfBounds", {
+          name: el.name ?? el.type
+        }),
+        hint: translate("blueprint.diagnostics.layout.outOfBoundsHint", { width: dw, height: dh }),
+        elementId: el.id
+      });
+    }
+  }
+  return out;
 }

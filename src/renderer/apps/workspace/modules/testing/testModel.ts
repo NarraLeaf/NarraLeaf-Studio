@@ -1,17 +1,17 @@
 import type { Translator } from "@shared/i18n";
 import type { TranslationKey } from "@shared/i18n";
 import {
-    TEST_CATEGORY_ORDER,
-    TEST_FINDING_SEVERITY_ORDER,
-    TEST_TERMINAL_STATUSES,
-    type RegisteredTest,
-    type TestCategory,
-    type TestFinding,
-    type TestFindingSeverity,
-    type TestPresentation,
-    type TestRunRecord,
-    type TestRunStatus,
-    type TestText,
+  TEST_CATEGORY_ORDER,
+  TEST_FINDING_SEVERITY_ORDER,
+  TEST_TERMINAL_STATUSES,
+  type RegisteredTest,
+  type TestCategory,
+  type TestFinding,
+  type TestFindingSeverity,
+  type TestPresentation,
+  type TestRunRecord,
+  type TestRunStatus,
+  type TestText
 } from "@/lib/testing/types";
 
 /**
@@ -26,46 +26,46 @@ import {
 
 /** One author-visible string, from either producer. See `TestText`: a key for us, a literal for a plugin. */
 export function resolveTestText(text: TestText | undefined, t: Translator["t"]): string {
-    if (!text) {
-        return "";
-    }
-    return text.key !== undefined ? t(text.key, text.params) : text.text;
+  if (!text) {
+    return "";
+  }
+  return text.key !== undefined ? t(text.key, text.params) : text.text;
 }
 
 export const TEST_CATEGORY_LABEL_KEYS: Record<TestCategory, TranslationKey> = {
-    integrity: "test.category.integrity",
-    runtime: "test.category.runtime",
-    compatibility: "test.category.compatibility",
-    custom: "test.category.custom",
+  integrity: "test.category.integrity",
+  runtime: "test.category.runtime",
+  compatibility: "test.category.compatibility",
+  custom: "test.category.custom"
 };
 
 export const TEST_PRESENTATION_LABEL_KEYS: Record<TestPresentation, TranslationKey> = {
-    headless: "test.presentation.headless",
-    windowed: "test.presentation.windowed",
+  headless: "test.presentation.headless",
+  windowed: "test.presentation.windowed"
 };
 
 export const TEST_STATUS_LABEL_KEYS: Record<TestRunStatus, TranslationKey> = {
-    running: "test.status.running",
-    passed: "test.status.passed",
-    failed: "test.status.failed",
-    skipped: "test.status.skipped",
-    cancelled: "test.status.cancelled",
-    errored: "test.status.errored",
+  running: "test.status.running",
+  passed: "test.status.passed",
+  failed: "test.status.failed",
+  skipped: "test.status.skipped",
+  cancelled: "test.status.cancelled",
+  errored: "test.status.errored"
 };
 
 export const TEST_SEVERITY_LABEL_KEYS: Record<TestFindingSeverity, TranslationKey> = {
-    error: "test.severity.error",
-    warning: "test.severity.warning",
-    info: "test.severity.info",
+  error: "test.severity.error",
+  warning: "test.severity.warning",
+  info: "test.severity.info"
 };
 
 /** The toast raised once a run settles. Absent for `running`, which is not something to announce. */
 export const TEST_TOAST_KEYS: Record<TerminalTestStatus, TranslationKey> = {
-    passed: "test.toast.passed",
-    failed: "test.toast.failed",
-    skipped: "test.toast.skipped",
-    cancelled: "test.toast.cancelled",
-    errored: "test.toast.errored",
+  passed: "test.toast.passed",
+  failed: "test.toast.failed",
+  skipped: "test.toast.skipped",
+  cancelled: "test.toast.cancelled",
+  errored: "test.toast.errored"
 };
 
 /**
@@ -76,18 +76,18 @@ export const TEST_TOAST_KEYS: Record<TerminalTestStatus, TranslationKey> = {
  * `failed` and `errored` are the game (or the test) having gone wrong.
  */
 export const TEST_TOAST_TONE: Record<TerminalTestStatus, "success" | "error" | "info"> = {
-    passed: "success",
-    failed: "error",
-    skipped: "info",
-    cancelled: "info",
-    errored: "error",
+  passed: "success",
+  failed: "error",
+  skipped: "info",
+  cancelled: "info",
+  errored: "error"
 };
 
 /** Same three colours the lint report and the blueprint problems list use; severity is never a pill. */
 export const TEST_SEVERITY_TEXT_CLASS: Record<TestFindingSeverity, string> = {
-    error: "text-danger",
-    warning: "text-warning",
-    info: "text-fg-muted",
+  error: "text-danger",
+  warning: "text-warning",
+  info: "text-fg-muted"
 };
 
 /**
@@ -97,12 +97,12 @@ export const TEST_SEVERITY_TEXT_CLASS: Record<TestFindingSeverity, string> = {
 export type TerminalTestStatus = Exclude<TestRunStatus, "running">;
 
 export function isTerminalTestStatus(status: TestRunStatus): status is TerminalTestStatus {
-    return TEST_TERMINAL_STATUSES.includes(status);
+  return TEST_TERMINAL_STATUSES.includes(status);
 }
 
 export type TestCategoryGroup = {
-    category: TestCategory;
-    tests: RegisteredTest[];
+  category: TestCategory;
+  tests: RegisteredTest[];
 };
 
 /**
@@ -112,27 +112,27 @@ export type TestCategoryGroup = {
  * An empty category produces no group at all - a heading over nothing is furniture.
  */
 export function groupTestsByCategory(tests: readonly RegisteredTest[]): TestCategoryGroup[] {
-    const byCategory = new Map<TestCategory, RegisteredTest[]>();
-    for (const test of tests) {
-        const category = test.definition.category ?? "custom";
-        const bucket = byCategory.get(category);
-        if (bucket) {
-            bucket.push(test);
-        } else {
-            byCategory.set(category, [test]);
-        }
+  const byCategory = new Map<TestCategory, RegisteredTest[]>();
+  for (const test of tests) {
+    const category = test.definition.category ?? "custom";
+    const bucket = byCategory.get(category);
+    if (bucket) {
+      bucket.push(test);
+    } else {
+      byCategory.set(category, [test]);
     }
-    return TEST_CATEGORY_ORDER.flatMap(category => {
-        const bucket = byCategory.get(category);
-        return bucket && bucket.length > 0 ? [{ category, tests: bucket }] : [];
-    });
+  }
+  return TEST_CATEGORY_ORDER.flatMap((category) => {
+    const bucket = byCategory.get(category);
+    return bucket && bucket.length > 0 ? [{ category, tests: bucket }] : [];
+  });
 }
 
 /** Error first, info last - the order `TEST_FINDING_SEVERITY_ORDER` states, applied stably. */
 export function sortTestFindings(findings: readonly TestFinding[]): TestFinding[] {
-    return [...findings].sort(
-        (a, b) => TEST_FINDING_SEVERITY_ORDER[a.severity] - TEST_FINDING_SEVERITY_ORDER[b.severity],
-    );
+  return [...findings].sort(
+    (a, b) => TEST_FINDING_SEVERITY_ORDER[a.severity] - TEST_FINDING_SEVERITY_ORDER[b.severity]
+  );
 }
 
 export type TestFindingCounts = Record<TestFindingSeverity, number>;
@@ -145,15 +145,15 @@ export type TestFindingCounts = Record<TestFindingSeverity, number>;
  * converts in their head.
  */
 export function formatTestDuration(record: TestRunRecord, t: Translator["t"]): string {
-    if (record.finishedAt === undefined) {
-        return "";
-    }
-    const elapsedMs = Math.max(0, record.finishedAt - record.startedAt);
-    const totalSeconds = elapsedMs / 1000;
-    if (totalSeconds < 60) {
-        return t("test.report.durationSeconds", { seconds: totalSeconds.toFixed(1) });
-    }
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = Math.round(totalSeconds - minutes * 60);
-    return t("test.report.durationMinutes", { minutes, seconds: String(seconds).padStart(2, "0") });
+  if (record.finishedAt === undefined) {
+    return "";
+  }
+  const elapsedMs = Math.max(0, record.finishedAt - record.startedAt);
+  const totalSeconds = elapsedMs / 1000;
+  if (totalSeconds < 60) {
+    return t("test.report.durationSeconds", { seconds: totalSeconds.toFixed(1) });
+  }
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.round(totalSeconds - minutes * 60);
+  return t("test.report.durationMinutes", { minutes, seconds: String(seconds).padStart(2, "0") });
 }

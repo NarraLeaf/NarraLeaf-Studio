@@ -23,57 +23,60 @@ import type { SearchJumpTarget } from "../workspace/services/search/searchIndexM
 export type BlueprintGraphKind = "event" | "function" | "macro";
 
 export type BlueprintGraphSite = {
-    blueprintId: string;
-    blueprintName: string;
-    /** Stable owner key, as `ownerRecords` spells it - what the editor navigates by. */
-    ownerKey: string;
-    graphKind: BlueprintGraphKind;
-    graphId: string;
-    ir: BlueprintGraphIr;
+  blueprintId: string;
+  blueprintName: string;
+  /** Stable owner key, as `ownerRecords` spells it - what the editor navigates by. */
+  ownerKey: string;
+  graphKind: BlueprintGraphKind;
+  graphId: string;
+  ir: BlueprintGraphIr;
 };
 
 export function listBlueprintGraphSites(document: BlueprintDocument | null): BlueprintGraphSite[] {
-    if (!document) {
-        return [];
-    }
+  if (!document) {
+    return [];
+  }
 
-    // blueprintId -> ownerKey. The active blueprint is listed first so it wins over the historical
-    // revisions kept beside it in the same record.
-    const ownerKeyByBlueprintId = new Map<string, string>();
-    for (const [ownerKey, record] of Object.entries(document.ownerRecords ?? {})) {
-        for (const blueprintId of [record.activeBlueprintId, ...(record.privateBlueprintIds ?? [])]) {
-            if (blueprintId && !ownerKeyByBlueprintId.has(blueprintId)) {
-                ownerKeyByBlueprintId.set(blueprintId, ownerKey);
-            }
-        }
+  // blueprintId -> ownerKey. The active blueprint is listed first so it wins over the historical
+  // revisions kept beside it in the same record.
+  const ownerKeyByBlueprintId = new Map<string, string>();
+  for (const [ownerKey, record] of Object.entries(document.ownerRecords ?? {})) {
+    for (const blueprintId of [record.activeBlueprintId, ...(record.privateBlueprintIds ?? [])]) {
+      if (blueprintId && !ownerKeyByBlueprintId.has(blueprintId)) {
+        ownerKeyByBlueprintId.set(blueprintId, ownerKey);
+      }
     }
+  }
 
-    const sites: BlueprintGraphSite[] = [];
-    for (const blueprint of Object.values(document.blueprints ?? {})) {
-        const ownerKey = ownerKeyByBlueprintId.get(blueprint.id);
-        if (!ownerKey || blueprint.program.kind !== "graph") {
-            continue;
-        }
-        const graphs = blueprint.program.graphs;
-        const slots: readonly { graphKind: BlueprintGraphKind; entries: Record<string, { graph?: BlueprintGraphIr }> }[] = [
-            { graphKind: "event", entries: graphs.events ?? {} },
-            { graphKind: "function", entries: graphs.functions ?? {} },
-            { graphKind: "macro", entries: graphs.macros ?? {} },
-        ];
-        for (const { graphKind, entries } of slots) {
-            for (const [graphId, slot] of Object.entries(entries)) {
-                sites.push({
-                    blueprintId: blueprint.id,
-                    blueprintName: blueprint.name,
-                    ownerKey,
-                    graphKind,
-                    graphId,
-                    ir: slot?.graph ?? {},
-                });
-            }
-        }
+  const sites: BlueprintGraphSite[] = [];
+  for (const blueprint of Object.values(document.blueprints ?? {})) {
+    const ownerKey = ownerKeyByBlueprintId.get(blueprint.id);
+    if (!ownerKey || blueprint.program.kind !== "graph") {
+      continue;
     }
-    return sites;
+    const graphs = blueprint.program.graphs;
+    const slots: readonly {
+      graphKind: BlueprintGraphKind;
+      entries: Record<string, { graph?: BlueprintGraphIr }>;
+    }[] = [
+      { graphKind: "event", entries: graphs.events ?? {} },
+      { graphKind: "function", entries: graphs.functions ?? {} },
+      { graphKind: "macro", entries: graphs.macros ?? {} }
+    ];
+    for (const { graphKind, entries } of slots) {
+      for (const [graphId, slot] of Object.entries(entries)) {
+        sites.push({
+          blueprintId: blueprint.id,
+          blueprintName: blueprint.name,
+          ownerKey,
+          graphKind,
+          graphId,
+          ir: slot?.graph ?? {}
+        });
+      }
+    }
+  }
+  return sites;
 }
 
 /**
@@ -84,13 +87,16 @@ export function listBlueprintGraphSites(document: BlueprintDocument | null): Blu
  * one owner kind whose key `parseBlueprintOwnerKey` cannot read is `sharedAsset`, which has no
  * editor route at all; a row for one is clickable and does nothing, which is the lesser fault.
  */
-export function blueprintNodeJumpTarget(site: BlueprintGraphSite, nodeId: string): SearchJumpTarget {
-    return {
-        kind: "blueprint",
-        blueprintId: site.blueprintId,
-        ownerKey: site.ownerKey,
-        focusNodeId: nodeId,
-        ...(site.graphKind === "event" ? { focusEventId: site.graphId } : {}),
-        ...(site.graphKind === "function" ? { focusFunctionId: site.graphId } : {}),
-    };
+export function blueprintNodeJumpTarget(
+  site: BlueprintGraphSite,
+  nodeId: string
+): SearchJumpTarget {
+  return {
+    kind: "blueprint",
+    blueprintId: site.blueprintId,
+    ownerKey: site.ownerKey,
+    focusNodeId: nodeId,
+    ...(site.graphKind === "event" ? { focusEventId: site.graphId } : {}),
+    ...(site.graphKind === "function" ? { focusFunctionId: site.graphId } : {})
+  };
 }

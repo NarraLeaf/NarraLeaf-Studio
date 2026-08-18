@@ -12,17 +12,17 @@
  * suddenly reports as starting with a stray character.
  */
 export type TextEncodingId =
-    | "utf8"
-    | "utf8bom"
-    | "utf16le"
-    | "utf16be"
-    | "gbk"
-    | "gb18030"
-    | "big5"
-    | "shiftjis"
-    | "euckr"
-    | "windows1252"
-    | "iso88591";
+  | "utf8"
+  | "utf8bom"
+  | "utf16le"
+  | "utf16be"
+  | "gbk"
+  | "gb18030"
+  | "big5"
+  | "shiftjis"
+  | "euckr"
+  | "windows1252"
+  | "iso88591";
 
 /**
  * How a line ending is written down in a project file.
@@ -35,7 +35,7 @@ export type TextEncodingId =
 export type PersistedTextEol = "lf" | "crlf";
 
 export function isPersistedTextEol(value: unknown): value is PersistedTextEol {
-    return value === "lf" || value === "crlf";
+  return value === "lf" || value === "crlf";
 }
 
 /**
@@ -49,17 +49,17 @@ export type FsTextEncoding = BufferEncoding | TextEncodingId;
 
 /** Menu order: the two defaults first, then the CJK families, then the Latin single-bytes. */
 export const TEXT_ENCODING_IDS: readonly TextEncodingId[] = [
-    "utf8",
-    "utf8bom",
-    "utf16le",
-    "utf16be",
-    "gbk",
-    "gb18030",
-    "big5",
-    "shiftjis",
-    "euckr",
-    "windows1252",
-    "iso88591",
+  "utf8",
+  "utf8bom",
+  "utf16le",
+  "utf16be",
+  "gbk",
+  "gb18030",
+  "big5",
+  "shiftjis",
+  "euckr",
+  "windows1252",
+  "iso88591"
 ];
 
 /**
@@ -70,28 +70,28 @@ export const TEXT_ENCODING_IDS: readonly TextEncodingId[] = [
  * 国标" would be a name nobody could match against the tool they are sharing the file with.
  */
 export const TEXT_ENCODING_LABELS: Record<TextEncodingId, string> = {
-    utf8: "UTF-8",
-    utf8bom: "UTF-8 with BOM",
-    utf16le: "UTF-16 LE",
-    utf16be: "UTF-16 BE",
-    gbk: "GBK",
-    gb18030: "GB18030",
-    big5: "Big5",
-    shiftjis: "Shift_JIS",
-    euckr: "EUC-KR",
-    windows1252: "Windows-1252",
-    iso88591: "ISO-8859-1",
+  utf8: "UTF-8",
+  utf8bom: "UTF-8 with BOM",
+  utf16le: "UTF-16 LE",
+  utf16be: "UTF-16 BE",
+  gbk: "GBK",
+  gb18030: "GB18030",
+  big5: "Big5",
+  shiftjis: "Shift_JIS",
+  euckr: "EUC-KR",
+  windows1252: "Windows-1252",
+  iso88591: "ISO-8859-1"
 };
 
 /** Studio's answer when nothing says otherwise, for every extension. */
 export const DEFAULT_TEXT_ENCODING: TextEncodingId = "utf8";
 
 export function isTextEncodingId(value: unknown): value is TextEncodingId {
-    return typeof value === "string" && (TEXT_ENCODING_IDS as readonly string[]).includes(value);
+  return typeof value === "string" && (TEXT_ENCODING_IDS as readonly string[]).includes(value);
 }
 
 export function textEncodingLabel(id: TextEncodingId): string {
-    return TEXT_ENCODING_LABELS[id];
+  return TEXT_ENCODING_LABELS[id];
 }
 
 /**
@@ -107,14 +107,14 @@ export function textEncodingLabel(id: TextEncodingId): string {
  * decides nothing. It is a reading order, not a disambiguation.
  */
 export function detectTextEncodingFromBom(bytes: Uint8Array): TextEncodingId | null {
-    if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
-        return "utf8bom";
-    }
-    if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
-        return "utf16be";
-    }
-    if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
-        return "utf16le";
-    }
-    return null;
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    return "utf8bom";
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    return "utf16be";
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    return "utf16le";
+  }
+  return null;
 }

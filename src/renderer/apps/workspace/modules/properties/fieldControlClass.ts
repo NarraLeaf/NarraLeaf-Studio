@@ -13,9 +13,9 @@ import { CONTROL_HEIGHT_CLASS } from "@/lib/components/elements";
 
 /** Border, fill, radius and type — everything except how tall the box is. */
 const FIELD_BOX_CLASS =
-    "bg-surface-raised border border-edge rounded-md text-sm text-fg-muted "
-    + "focus:outline-none focus:border-primary/50 transition-colors "
-    + "disabled:opacity-50 disabled:cursor-not-allowed";
+  "bg-surface-raised border border-edge rounded-md text-sm text-fg-muted " +
+  "focus:outline-none focus:border-primary/50 transition-colors " +
+  "disabled:opacity-50 disabled:cursor-not-allowed";
 
 /** A single-line field, on the shared `md` control height (36px). */
 export const FIELD_INPUT_CLASS = `px-3 ${CONTROL_HEIGHT_CLASS.md} ${FIELD_BOX_CLASS}`;

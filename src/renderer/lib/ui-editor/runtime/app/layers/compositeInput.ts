@@ -9,37 +9,37 @@
 
 /** The page-lane entries currently mounted. Only their keys matter here. */
 export type CompositeInputPageEntry = {
-    key: string;
+  key: string;
 };
 
 /** A stacked layer, bottom to top. Only its key and whether it is modal matter here. */
 export type CompositeInputLayer = {
-    key: string;
-    modal: boolean;
+  key: string;
+  modal: boolean;
 };
 
 export type CompositeInputState = {
-    pageEntries: readonly CompositeInputPageEntry[];
-    /** The entry the page lane is settling on - the top of its own stack, not of the composite. */
-    activePageKey: string | null;
-    layers: readonly CompositeInputLayer[];
+  pageEntries: readonly CompositeInputPageEntry[];
+  /** The entry the page lane is settling on - the top of its own stack, not of the composite. */
+  activePageKey: string | null;
+  layers: readonly CompositeInputLayer[];
 };
 
 export type CompositeInputResolution = {
-    /**
-     * Everything that takes pointer input this frame. A subset of the keys handed in, so a caller can
-     * ask about any mounted entry and get an answer that is about that entry.
-     */
-    interactiveKeys: ReadonlySet<string>;
-    /**
-     * The one entry keyboard events belong to, or none.
-     *
-     * Names the page lane's active entry even in the frames where that entry is not mounted (a
-     * transition that empties the lane while the incoming page prepaints). Ownership is a fact about
-     * the stack, not about what has finished painting; readiness is a separate gate and the page lane
-     * already applies its own.
-     */
-    keyboardOwnerKey: string | null;
+  /**
+   * Everything that takes pointer input this frame. A subset of the keys handed in, so a caller can
+   * ask about any mounted entry and get an answer that is about that entry.
+   */
+  interactiveKeys: ReadonlySet<string>;
+  /**
+   * The one entry keyboard events belong to, or none.
+   *
+   * Names the page lane's active entry even in the frames where that entry is not mounted (a
+   * transition that empties the lane while the incoming page prepaints). Ownership is a fact about
+   * the stack, not about what has finished painting; readiness is a separate gate and the page lane
+   * already applies its own.
+   */
+  keyboardOwnerKey: string | null;
 };
 
 /**
@@ -60,28 +60,28 @@ export type CompositeInputResolution = {
  * them away from the one thing on screen that declared it wanted them.
  */
 export function resolveCompositeInput(input: CompositeInputState): CompositeInputResolution {
-    let topModalIndex = -1;
-    for (let index = 0; index < input.layers.length; index++) {
-        if (input.layers[index]!.modal) {
-            topModalIndex = index;
-        }
+  let topModalIndex = -1;
+  for (let index = 0; index < input.layers.length; index++) {
+    if (input.layers[index]!.modal) {
+      topModalIndex = index;
     }
+  }
 
-    const interactiveKeys = new Set<string>();
-    const activePageKey = input.activePageKey;
-    if (
-        topModalIndex < 0 &&
-        activePageKey !== null &&
-        input.pageEntries.some(entry => entry.key === activePageKey)
-    ) {
-        interactiveKeys.add(activePageKey);
-    }
-    for (let index = Math.max(topModalIndex, 0); index < input.layers.length; index++) {
-        interactiveKeys.add(input.layers[index]!.key);
-    }
+  const interactiveKeys = new Set<string>();
+  const activePageKey = input.activePageKey;
+  if (
+    topModalIndex < 0 &&
+    activePageKey !== null &&
+    input.pageEntries.some((entry) => entry.key === activePageKey)
+  ) {
+    interactiveKeys.add(activePageKey);
+  }
+  for (let index = Math.max(topModalIndex, 0); index < input.layers.length; index++) {
+    interactiveKeys.add(input.layers[index]!.key);
+  }
 
-    return {
-        interactiveKeys,
-        keyboardOwnerKey: topModalIndex >= 0 ? input.layers[topModalIndex]!.key : activePageKey,
-    };
+  return {
+    interactiveKeys,
+    keyboardOwnerKey: topModalIndex >= 0 ? input.layers[topModalIndex]!.key : activePageKey
+  };
 }

@@ -8,7 +8,7 @@ import { defineRuntimePlugin } from "narraleaf-studio/runtime";
 import { createQuickSaveBlueprintNodes } from "./nodes";
 
 export default defineRuntimePlugin({
-    setup(app) {
-        app.game.blueprintNodes.registerMany(createQuickSaveBlueprintNodes());
-    },
+  setup(app) {
+    app.game.blueprintNodes.registerMany(createQuickSaveBlueprintNodes());
+  }
 });

@@ -1,1 +1,16 @@
-{"group_1786075133079_orr40gkke":{"id":"group_1786075133079_orr40gkke","name":"Backgrounds","category":"image","createdAt":1786075133079,"updatedAt":1786075133079},"group_1786075133091_s9hww4lcc":{"id":"group_1786075133091_s9hww4lcc","name":"Characters","category":"image","createdAt":1786075133091,"updatedAt":1786075133091}}
+{
+  "group_1786075133079_orr40gkke": {
+    "id": "group_1786075133079_orr40gkke",
+    "name": "Backgrounds",
+    "category": "image",
+    "createdAt": 1786075133079,
+    "updatedAt": 1786075133079
+  },
+  "group_1786075133091_s9hww4lcc": {
+    "id": "group_1786075133091_s9hww4lcc",
+    "name": "Characters",
+    "category": "image",
+    "createdAt": 1786075133091,
+    "updatedAt": 1786075133091
+  }
+}

@@ -14,9 +14,9 @@
  */
 
 import {
-    TOOLTIP_DELAY_DEFAULT_MS,
-    TOOLTIP_DELAY_MAX_MS,
-    TOOLTIP_DELAY_MIN_MS,
+  TOOLTIP_DELAY_DEFAULT_MS,
+  TOOLTIP_DELAY_MAX_MS,
+  TOOLTIP_DELAY_MIN_MS
 } from "@/lib/settings/tooltipOptions";
 
 /** Marks the element a tooltip describes. Absent or empty means no tooltip. */
@@ -49,16 +49,16 @@ export const TOOLTIP_SIDE_DEFAULT: TooltipSide = "top";
 
 /** The side an element asks for, inherited from its nearest declaring ancestor. */
 export function resolveTooltipSide(from: Element | null): TooltipSide {
-    const declaring = from?.closest("[" + TOOLTIP_SIDE_ATTRIBUTE + "]") ?? null;
-    const value = declaring?.getAttribute(TOOLTIP_SIDE_ATTRIBUTE);
-    return SIDES.includes(value as TooltipSide) ? (value as TooltipSide) : TOOLTIP_SIDE_DEFAULT;
+  const declaring = from?.closest("[" + TOOLTIP_SIDE_ATTRIBUTE + "]") ?? null;
+  const value = declaring?.getAttribute(TOOLTIP_SIDE_ATTRIBUTE);
+  return SIDES.includes(value as TooltipSide) ? (value as TooltipSide) : TOOLTIP_SIDE_DEFAULT;
 }
 
 /** What the host draws, or null for nothing. */
 export interface TooltipTarget {
-    anchor: HTMLElement;
-    text: string;
-    side: TooltipSide;
+  anchor: HTMLElement;
+  text: string;
+  side: TooltipSide;
 }
 
 type Publish = (target: TooltipTarget | null) => void;
@@ -71,36 +71,36 @@ type Publish = (target: TooltipTarget | null) => void;
 let delayMs = TOOLTIP_DELAY_DEFAULT_MS;
 
 export function setTooltipDelay(ms: number): void {
-    if (!Number.isFinite(ms)) {
-        return;
-    }
-    delayMs = Math.min(TOOLTIP_DELAY_MAX_MS, Math.max(TOOLTIP_DELAY_MIN_MS, Math.round(ms)));
+  if (!Number.isFinite(ms)) {
+    return;
+  }
+  delayMs = Math.min(TOOLTIP_DELAY_MAX_MS, Math.max(TOOLTIP_DELAY_MIN_MS, Math.round(ms)));
 }
 
 export function getTooltipDelay(): number {
-    return delayMs;
+  return delayMs;
 }
 
 /** The text an element declares, or null when it declares none. */
 export function tooltipTextOf(element: Element | null): string | null {
-    if (!(element instanceof HTMLElement)) {
-        return null;
-    }
-    const text = element.getAttribute(TOOLTIP_ATTRIBUTE);
-    return text ? text : null;
+  if (!(element instanceof HTMLElement)) {
+    return null;
+  }
+  const text = element.getAttribute(TOOLTIP_ATTRIBUTE);
+  return text ? text : null;
 }
 
 /** The nearest ancestor (or self) that declares a tooltip. */
 export function resolveTooltipElement(from: Element | null): HTMLElement | null {
-    let node: Element | null = from;
-    while (node) {
-        const text = tooltipTextOf(node);
-        if (text) {
-            return node as HTMLElement;
-        }
-        node = node.parentElement;
+  let node: Element | null = from;
+  while (node) {
+    const text = tooltipTextOf(node);
+    if (text) {
+      return node as HTMLElement;
     }
-    return null;
+    node = node.parentElement;
+  }
+  return null;
 }
 
 /**
@@ -116,199 +116,201 @@ export function resolveTooltipElement(from: Element | null): HTMLElement | null 
  * a button held is drawing, not reading.
  */
 export function startTooltipTracking(doc: Document, publish: Publish): () => void {
-    const view = doc.defaultView;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let frame = 0;
-    let anchor: HTMLElement | null = null;
-    let shownText: string | null = null;
-    let hotGroup: HTMLElement | null = null;
-    let lastProbe: Element | null = null;
-    /** The control the running timer belongs to, so movement over it does not restart the wait. */
-    let waitingOn: HTMLElement | null = null;
+  const view = doc.defaultView;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let frame = 0;
+  let anchor: HTMLElement | null = null;
+  let shownText: string | null = null;
+  let hotGroup: HTMLElement | null = null;
+  let lastProbe: Element | null = null;
+  /** The control the running timer belongs to, so movement over it does not restart the wait. */
+  let waitingOn: HTMLElement | null = null;
 
-    const groupOf = (element: HTMLElement | null): HTMLElement | null =>
-        element ? element.closest<HTMLElement>("[" + TOOLTIP_GROUP_ATTRIBUTE + "]") : null;
+  const groupOf = (element: HTMLElement | null): HTMLElement | null =>
+    element ? element.closest<HTMLElement>("[" + TOOLTIP_GROUP_ATTRIBUTE + "]") : null;
 
-    const cancelTimer = (): void => {
-        if (timer !== null) {
-            clearTimeout(timer);
-            timer = null;
-        }
-        waitingOn = null;
-    };
+  const cancelTimer = (): void => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    waitingOn = null;
+  };
 
-    const clearShown = (): void => {
-        if (anchor) {
-            anchor = null;
-            shownText = null;
-            publish(null);
-        }
-    };
+  const clearShown = (): void => {
+    if (anchor) {
+      anchor = null;
+      shownText = null;
+      publish(null);
+    }
+  };
 
-    const show = (element: HTMLElement, text: string): void => {
-        anchor = element;
-        shownText = text;
-        const group = groupOf(element);
-        if (group) {
-            hotGroup = group;
-        }
-        publish({ anchor: element, text, side: resolveTooltipSide(element) });
-    };
+  const show = (element: HTMLElement, text: string): void => {
+    anchor = element;
+    shownText = text;
+    const group = groupOf(element);
+    if (group) {
+      hotGroup = group;
+    }
+    publish({ anchor: element, text, side: resolveTooltipSide(element) });
+  };
 
-    /** Hide, and forget where the pointer was, so re-entering the same element shows again. */
-    const hide = (coolGroup: boolean): void => {
-        cancelTimer();
-        lastProbe = null;
-        if (coolGroup) {
-            hotGroup = null;
-        }
-        clearShown();
-    };
+  /** Hide, and forget where the pointer was, so re-entering the same element shows again. */
+  const hide = (coolGroup: boolean): void => {
+    cancelTimer();
+    lastProbe = null;
+    if (coolGroup) {
+      hotGroup = null;
+    }
+    clearShown();
+  };
 
-    const settle = (element: HTMLElement | null, under: Element | null): void => {
-        // The group cools the moment the pointer is outside it, which keeps the rule one sentence
-        // long: a strip is warm while you are in it. No grace period - keeping a group warm after
-        // the pointer has left would make the next tooltip's timing depend on where it had been.
-        if (hotGroup && (!under || !hotGroup.contains(under))) {
-            hotGroup = null;
-        }
+  const settle = (element: HTMLElement | null, under: Element | null): void => {
+    // The group cools the moment the pointer is outside it, which keeps the rule one sentence
+    // long: a strip is warm while you are in it. No grace period - keeping a group warm after
+    // the pointer has left would make the next tooltip's timing depend on where it had been.
+    if (hotGroup && (!under || !hotGroup.contains(under))) {
+      hotGroup = null;
+    }
 
-        const text = element ? tooltipTextOf(element) : null;
-        if (!element || !text) {
-            hide(false);
-            return;
-        }
+    const text = element ? tooltipTextOf(element) : null;
+    if (!element || !text) {
+      hide(false);
+      return;
+    }
 
-        if (element === anchor) {
-            // Same element, new words - a play button that has become a stop button. Redraw rather
-            // than leave the old text standing under the pointer.
-            if (text !== shownText) {
-                show(element, text);
-            }
-            return;
-        }
+    if (element === anchor) {
+      // Same element, new words - a play button that has become a stop button. Redraw rather
+      // than leave the old text standing under the pointer.
+      if (text !== shownText) {
+        show(element, text);
+      }
+      return;
+    }
 
-        // A pointer resting on a control still emits moves - a hand on a mouse is never quite still,
-        // and a repainting row under the cursor produces them on its own. Restarting the wait on each
-        // one is a tooltip that never arrives, so the wait belongs to the control, not to the event.
-        if (element === waitingOn) {
-            return;
-        }
+    // A pointer resting on a control still emits moves - a hand on a mouse is never quite still,
+    // and a repainting row under the cursor produces them on its own. Restarting the wait on each
+    // one is a tooltip that never arrives, so the wait belongs to the control, not to the event.
+    if (element === waitingOn) {
+      return;
+    }
 
-        cancelTimer();
-        if (hotGroup && hotGroup.contains(element)) {
-            show(element, text);
-            return;
-        }
-        clearShown();
-        waitingOn = element;
-        timer = setTimeout(() => {
-            timer = null;
-            waitingOn = null;
-            // Read the words again rather than close over them: a control can relabel itself while
-            // the pointer waits on it.
-            const current = tooltipTextOf(element);
-            if (element.isConnected && current) {
-                show(element, current);
-            }
-        }, delayMs);
-    };
+    cancelTimer();
+    if (hotGroup && hotGroup.contains(element)) {
+      show(element, text);
+      return;
+    }
+    clearShown();
+    waitingOn = element;
+    timer = setTimeout(() => {
+      timer = null;
+      waitingOn = null;
+      // Read the words again rather than close over them: a control can relabel itself while
+      // the pointer waits on it.
+      const current = tooltipTextOf(element);
+      if (element.isConnected && current) {
+        show(element, current);
+      }
+    }, delayMs);
+  };
 
-    const probe = (x: number, y: number): void => {
-        const under = doc.elementFromPoint(x, y);
-        if (under === lastProbe) {
-            return;
-        }
-        lastProbe = under;
-        settle(resolveTooltipElement(under), under);
-    };
+  const probe = (x: number, y: number): void => {
+    const under = doc.elementFromPoint(x, y);
+    if (under === lastProbe) {
+      return;
+    }
+    lastProbe = under;
+    settle(resolveTooltipElement(under), under);
+  };
 
-    const onPointerMove = (event: PointerEvent): void => {
-        if (event.buttons !== 0) {
-            hide(true);
-            return;
-        }
-        const direct = resolveTooltipElement(event.target instanceof Element ? event.target : null);
-        if (direct) {
-            // No early exit on "same element as last time": the walk above is the whole cost, and
-            // skipping the rest would leave a control that has relabelled itself under a resting
-            // pointer still showing the words it had before.
-            lastProbe = direct;
-            settle(direct, direct);
-            return;
-        }
-        const x = event.clientX;
-        const y = event.clientY;
-        if (frame) {
-            return;
-        }
-        frame = view ? view.requestAnimationFrame(() => {
-            frame = 0;
-            probe(x, y);
-        }) : 0;
-    };
+  const onPointerMove = (event: PointerEvent): void => {
+    if (event.buttons !== 0) {
+      hide(true);
+      return;
+    }
+    const direct = resolveTooltipElement(event.target instanceof Element ? event.target : null);
+    if (direct) {
+      // No early exit on "same element as last time": the walk above is the whole cost, and
+      // skipping the rest would leave a control that has relabelled itself under a resting
+      // pointer still showing the words it had before.
+      lastProbe = direct;
+      settle(direct, direct);
+      return;
+    }
+    const x = event.clientX;
+    const y = event.clientY;
+    if (frame) {
+      return;
+    }
+    frame = view
+      ? view.requestAnimationFrame(() => {
+          frame = 0;
+          probe(x, y);
+        })
+      : 0;
+  };
 
-    const onPointerOut = (event: PointerEvent): void => {
-        // `relatedTarget` is null when the pointer left the window rather than moved between
-        // elements, and no further `pointermove` arrives to take a tooltip left showing back down.
-        if (!event.relatedTarget) {
-            hide(true);
-        }
-    };
+  const onPointerOut = (event: PointerEvent): void => {
+    // `relatedTarget` is null when the pointer left the window rather than moved between
+    // elements, and no further `pointermove` arrives to take a tooltip left showing back down.
+    if (!event.relatedTarget) {
+      hide(true);
+    }
+  };
 
-    /**
-     * Keyboard focus shows straight away. The delay is there so a pointer crossing the screen does
-     * not trail bubbles behind it; someone who has tabbed onto a control has already chosen it.
-     */
-    const onFocusIn = (event: FocusEvent): void => {
-        const target = event.target;
-        if (!(target instanceof HTMLElement)) {
-            return;
-        }
-        const text = tooltipTextOf(target);
-        if (!text || !target.matches(":focus-visible")) {
-            return;
-        }
-        cancelTimer();
-        show(target, text);
-    };
+  /**
+   * Keyboard focus shows straight away. The delay is there so a pointer crossing the screen does
+   * not trail bubbles behind it; someone who has tabbed onto a control has already chosen it.
+   */
+  const onFocusIn = (event: FocusEvent): void => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const text = tooltipTextOf(target);
+    if (!text || !target.matches(":focus-visible")) {
+      return;
+    }
+    cancelTimer();
+    show(target, text);
+  };
 
-    const onFocusOut = (event: FocusEvent): void => {
-        if (anchor && event.target === anchor) {
-            hide(false);
-        }
-    };
+  const onFocusOut = (event: FocusEvent): void => {
+    if (anchor && event.target === anchor) {
+      hide(false);
+    }
+  };
 
-    const onPointerDown = (): void => hide(true);
-    const onKeyDown = (): void => hide(true);
-    const onWheel = (): void => hide(true);
-    const onScroll = (): void => hide(false);
-    const onWindowBlur = (): void => hide(true);
+  const onPointerDown = (): void => hide(true);
+  const onKeyDown = (): void => hide(true);
+  const onWheel = (): void => hide(true);
+  const onScroll = (): void => hide(false);
+  const onWindowBlur = (): void => hide(true);
 
-    doc.addEventListener("pointermove", onPointerMove, { passive: true });
-    doc.addEventListener("pointerout", onPointerOut, { passive: true });
-    doc.addEventListener("pointerdown", onPointerDown, { passive: true, capture: true });
-    doc.addEventListener("keydown", onKeyDown, { passive: true, capture: true });
-    doc.addEventListener("wheel", onWheel, { passive: true, capture: true });
-    doc.addEventListener("scroll", onScroll, { passive: true, capture: true });
-    doc.addEventListener("focusin", onFocusIn, { passive: true });
-    doc.addEventListener("focusout", onFocusOut, { passive: true });
-    view?.addEventListener("blur", onWindowBlur);
+  doc.addEventListener("pointermove", onPointerMove, { passive: true });
+  doc.addEventListener("pointerout", onPointerOut, { passive: true });
+  doc.addEventListener("pointerdown", onPointerDown, { passive: true, capture: true });
+  doc.addEventListener("keydown", onKeyDown, { passive: true, capture: true });
+  doc.addEventListener("wheel", onWheel, { passive: true, capture: true });
+  doc.addEventListener("scroll", onScroll, { passive: true, capture: true });
+  doc.addEventListener("focusin", onFocusIn, { passive: true });
+  doc.addEventListener("focusout", onFocusOut, { passive: true });
+  view?.addEventListener("blur", onWindowBlur);
 
-    return () => {
-        cancelTimer();
-        if (frame && view) {
-            view.cancelAnimationFrame(frame);
-            frame = 0;
-        }
-        doc.removeEventListener("pointermove", onPointerMove);
-        doc.removeEventListener("pointerout", onPointerOut);
-        doc.removeEventListener("pointerdown", onPointerDown, true);
-        doc.removeEventListener("keydown", onKeyDown, true);
-        doc.removeEventListener("wheel", onWheel, true);
-        doc.removeEventListener("scroll", onScroll, true);
-        doc.removeEventListener("focusin", onFocusIn);
-        doc.removeEventListener("focusout", onFocusOut);
-        view?.removeEventListener("blur", onWindowBlur);
-    };
+  return () => {
+    cancelTimer();
+    if (frame && view) {
+      view.cancelAnimationFrame(frame);
+      frame = 0;
+    }
+    doc.removeEventListener("pointermove", onPointerMove);
+    doc.removeEventListener("pointerout", onPointerOut);
+    doc.removeEventListener("pointerdown", onPointerDown, true);
+    doc.removeEventListener("keydown", onKeyDown, true);
+    doc.removeEventListener("wheel", onWheel, true);
+    doc.removeEventListener("scroll", onScroll, true);
+    doc.removeEventListener("focusin", onFocusIn);
+    doc.removeEventListener("focusout", onFocusOut);
+    view?.removeEventListener("blur", onWindowBlur);
+  };
 }

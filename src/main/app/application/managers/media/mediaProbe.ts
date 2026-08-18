@@ -2,12 +2,16 @@ import { execFile } from "child_process";
 import type { ExecFileException } from "child_process";
 import type { MediaProbeOutcome } from "@shared/types/mediaProbe";
 import {
-    classifyMediaSupport,
-    isRefusedMediaFileName,
-    parseProbeOutput,
-    probeDurationUs,
+  classifyMediaSupport,
+  isRefusedMediaFileName,
+  parseProbeOutput,
+  probeDurationUs
 } from "@shared/utils/mediaSupport";
-import { resolveFfmpegBinary, type FfmpegResolverApp, type FfmpegResolveOptions } from "./ffmpegTool";
+import {
+  resolveFfmpegBinary,
+  type FfmpegResolverApp,
+  type FfmpegResolveOptions
+} from "./ffmpegTool";
 
 /**
  * Ask ffprobe what is inside a media file, and turn the answer into a support verdict.
@@ -45,13 +49,13 @@ const MAX_PROBE_OUTPUT_BYTES = 8 * 1024 * 1024;
  * quotes, spaces and semicolons, and an author's file name must never be able to become a command.
  */
 function probeArgs(filePath: string): string[] {
-    return ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", filePath];
+  return ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", filePath];
 }
 
 export type ProbeRunner = (
-    binary: string,
-    args: string[],
-    timeoutMs: number,
+  binary: string,
+  args: string[],
+  timeoutMs: number
 ) => Promise<{ stdout: string; timedOut: boolean; error: ExecFileException | null }>;
 
 /**
@@ -69,13 +73,13 @@ export type ProbeRunner = (
  *     malformed output rather than as a stall.
  */
 export function isTimeout(error: ExecFileException | null): boolean {
-    if (!error) {
-        return false;
-    }
-    if ((error as { code?: unknown }).code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
-        return false;
-    }
-    return error.killed === true || typeof error.signal === "string";
+  if (!error) {
+    return false;
+  }
+  if ((error as { code?: unknown }).code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+    return false;
+  }
+  return error.killed === true || typeof error.signal === "string";
 }
 
 /**
@@ -86,21 +90,21 @@ export function isTimeout(error: ExecFileException | null): boolean {
  * looking at stdout would collapse "not a media file" and "ffprobe crashed" into one message.
  */
 const execProbe: ProbeRunner = (binary, args, timeoutMs) =>
-    new Promise(resolve => {
-        execFile(
-            binary,
-            args,
-            { timeout: timeoutMs, maxBuffer: MAX_PROBE_OUTPUT_BYTES, windowsHide: true },
-            (error, stdout) => {
-                resolve({ stdout, timedOut: isTimeout(error), error: error ?? null });
-            },
-        );
-    });
+  new Promise((resolve) => {
+    execFile(
+      binary,
+      args,
+      { timeout: timeoutMs, maxBuffer: MAX_PROBE_OUTPUT_BYTES, windowsHide: true },
+      (error, stdout) => {
+        resolve({ stdout, timedOut: isTimeout(error), error: error ?? null });
+      }
+    );
+  });
 
 export type MediaProbeOptions = FfmpegResolveOptions & {
-    timeoutMs?: number;
-    /** Injected in tests; defaults to running the resolved ffprobe. */
-    run?: ProbeRunner;
+  timeoutMs?: number;
+  /** Injected in tests; defaults to running the resolved ffprobe. */
+  run?: ProbeRunner;
 };
 
 /**
@@ -111,71 +115,71 @@ export type MediaProbeOptions = FfmpegResolveOptions & {
  * including the ones that are nonsense.
  */
 export async function probeMediaFile(
-    app: FfmpegResolverApp,
-    filePath: string,
-    options: MediaProbeOptions = {},
+  app: FfmpegResolverApp,
+  filePath: string,
+  options: MediaProbeOptions = {}
 ): Promise<MediaProbeOutcome> {
-    // Refuse playlists, DRM wrappers and MIDI before spawning anything. Not an optimisation: FFmpeg
-    // resolves the entries inside a playlist, and an entry can be an http:// URL, so probing an
-    // author-supplied .m3u8 would let a file the author did not write make the main process fetch
-    // something. Deciding by name means that path never exists.
-    if (isRefusedMediaFileName(filePath)) {
-        return { status: "probed", verdict: classifyMediaSupport({}, filePath), durationUs: null };
-    }
+  // Refuse playlists, DRM wrappers and MIDI before spawning anything. Not an optimisation: FFmpeg
+  // resolves the entries inside a playlist, and an entry can be an http:// URL, so probing an
+  // author-supplied .m3u8 would let a file the author did not write make the main process fetch
+  // something. Deciding by name means that path never exists.
+  if (isRefusedMediaFileName(filePath)) {
+    return { status: "probed", verdict: classifyMediaSupport({}, filePath), durationUs: null };
+  }
 
-    const tool = await resolveFfmpegBinary(app, "ffprobe", options);
-    if (!tool.available) {
-        return { status: "unavailable", detail: tool.detail, searched: tool.searched };
-    }
+  const tool = await resolveFfmpegBinary(app, "ffprobe", options);
+  if (!tool.available) {
+    return { status: "unavailable", detail: tool.detail, searched: tool.searched };
+  }
 
-    const timeoutMs = options.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
-    const run = options.run ?? execProbe;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
+  const run = options.run ?? execProbe;
 
-    let result: Awaited<ReturnType<ProbeRunner>>;
-    try {
-        result = await run(tool.path, probeArgs(filePath), timeoutMs);
-    } catch (error: unknown) {
-        // Only a runner that rejects lands here — the default one resolves for every process
-        // outcome, so this is the "could not start the process at all" arm.
-        return {
-            status: "failed",
-            reason: "spawn-failed",
-            detail: error instanceof Error ? error.message : String(error),
-        };
-    }
-
-    if (result.timedOut) {
-        return {
-            status: "failed",
-            reason: "timeout",
-            detail: `ffprobe did not answer within ${timeoutMs}ms for ${filePath}`,
-        };
-    }
-
-    const report = parseProbeOutput(result.stdout);
-    if (report === null) {
-        // Output that is not JSON at all. A non-zero exit alongside it is a symptom, not the
-        // diagnosis, so the reason names what actually blocks a verdict.
-        if (result.error && result.stdout.trim().length === 0) {
-            return {
-                status: "failed",
-                reason: "exited",
-                detail: `ffprobe exited without output for ${filePath}: ${result.error.message}`,
-            };
-        }
-        return {
-            status: "failed",
-            reason: "malformed-output",
-            detail: `ffprobe produced output that is not JSON for ${filePath}`,
-        };
-    }
-
-    // Parsed JSON, whatever the exit code. ffprobe's failure output is the empty object `{}`, which
-    // classifies as `refuse`/`no-streams` — the honest verdict for a file nothing can read, and a
-    // better thing to show an author than an exit code.
+  let result: Awaited<ReturnType<ProbeRunner>>;
+  try {
+    result = await run(tool.path, probeArgs(filePath), timeoutMs);
+  } catch (error: unknown) {
+    // Only a runner that rejects lands here — the default one resolves for every process
+    // outcome, so this is the "could not start the process at all" arm.
     return {
-        status: "probed",
-        verdict: classifyMediaSupport(report, filePath),
-        durationUs: probeDurationUs(report),
+      status: "failed",
+      reason: "spawn-failed",
+      detail: error instanceof Error ? error.message : String(error)
     };
+  }
+
+  if (result.timedOut) {
+    return {
+      status: "failed",
+      reason: "timeout",
+      detail: `ffprobe did not answer within ${timeoutMs}ms for ${filePath}`
+    };
+  }
+
+  const report = parseProbeOutput(result.stdout);
+  if (report === null) {
+    // Output that is not JSON at all. A non-zero exit alongside it is a symptom, not the
+    // diagnosis, so the reason names what actually blocks a verdict.
+    if (result.error && result.stdout.trim().length === 0) {
+      return {
+        status: "failed",
+        reason: "exited",
+        detail: `ffprobe exited without output for ${filePath}: ${result.error.message}`
+      };
+    }
+    return {
+      status: "failed",
+      reason: "malformed-output",
+      detail: `ffprobe produced output that is not JSON for ${filePath}`
+    };
+  }
+
+  // Parsed JSON, whatever the exit code. ffprobe's failure output is the empty object `{}`, which
+  // classifies as `refuse`/`no-streams` — the honest verdict for a file nothing can read, and a
+  // better thing to show an author than an exit code.
+  return {
+    status: "probed",
+    verdict: classifyMediaSupport(report, filePath),
+    durationUs: probeDurationUs(report)
+  };
 }

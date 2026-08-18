@@ -14,35 +14,35 @@ import { useWorkspace } from "../../../context";
  * the id, the name, the tags and every reference survive, so nothing below this button moves.
  */
 export function AssetReplaceAction({ asset }: { asset: Asset }) {
-    const { t } = useTranslation();
-    const { context } = useWorkspace();
-    const [busy, setBusy] = useState(false);
+  const { t } = useTranslation();
+  const { context } = useWorkspace();
+  const [busy, setBusy] = useState(false);
 
-    const handleReplace = useCallback(async () => {
-        if (!context || busy) {
-            return;
-        }
-        setBusy(true);
-        try {
-            await runReplaceAssetContentFlow(context, asset, t);
-        } finally {
-            setBusy(false);
-        }
-    }, [asset, busy, context, t]);
-
-    if (asset.source !== AssetSource.Local) {
-        return null;
+  const handleReplace = useCallback(async () => {
+    if (!context || busy) {
+      return;
     }
+    setBusy(true);
+    try {
+      await runReplaceAssetContentFlow(context, asset, t);
+    } finally {
+      setBusy(false);
+    }
+  }, [asset, busy, context, t]);
 
-    return (
-        <button
-            type="button"
-            onClick={handleReplace}
-            disabled={busy || !context}
-            className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border border-edge bg-surface-raised text-xs text-fg-muted hover:bg-fill transition-colors disabled:opacity-50 cursor-default"
-        >
-            <RefreshCw className={`w-3 h-3 ${busy ? "animate-spin" : ""}`} />
-            <span>{t("assets.menu.replaceContent")}</span>
-        </button>
-    );
+  if (asset.source !== AssetSource.Local) {
+    return null;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleReplace}
+      disabled={busy || !context}
+      className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border border-edge bg-surface-raised text-xs text-fg-muted hover:bg-fill transition-colors disabled:opacity-50 cursor-default"
+    >
+      <RefreshCw className={`w-3 h-3 ${busy ? "animate-spin" : ""}`} />
+      <span>{t("assets.menu.replaceContent")}</span>
+    </button>
+  );
 }

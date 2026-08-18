@@ -26,43 +26,43 @@ export type LintSeverity = "error" | "warning" | "info";
 export type LintRuleSeverity = LintSeverity | "off";
 
 export type LintCategory =
-    | "assets"
-    | "portability"
-    | "network"
-    | "story"
-    | "blueprint"
-    | "ui"
-    | "variables"
-    | "text"
-    | "localization"
-    | "voice"
-    | "brand";
+  | "assets"
+  | "portability"
+  | "network"
+  | "story"
+  | "blueprint"
+  | "ui"
+  | "variables"
+  | "text"
+  | "localization"
+  | "voice"
+  | "brand";
 
 /** Fixed presentation (and sort) order of categories. */
 export const LINT_CATEGORY_ORDER: readonly LintCategory[] = [
-    "assets",
-    "portability",
-    "network",
-    "story",
-    // Beside `story` rather than after `network`: the two answer the same question about the two
-    // halves of a project - does every route this names still lead somewhere.
-    "blueprint",
-    // Beside `blueprint` for the same reason `blueprint` sits beside `story`: a page nothing opens
-    // and a graph that navigates nowhere are one subject seen from its two ends, and an author who
-    // has just read one wants the other in the next few rows rather than at the bottom of the list.
-    "ui",
-    "variables",
-    "text",
-    "localization",
-    "voice",
-    "brand",
+  "assets",
+  "portability",
+  "network",
+  "story",
+  // Beside `story` rather than after `network`: the two answer the same question about the two
+  // halves of a project - does every route this names still lead somewhere.
+  "blueprint",
+  // Beside `blueprint` for the same reason `blueprint` sits beside `story`: a page nothing opens
+  // and a graph that navigates nowhere are one subject seen from its two ends, and an author who
+  // has just read one wants the other in the next few rows rather than at the bottom of the list.
+  "ui",
+  "variables",
+  "text",
+  "localization",
+  "voice",
+  "brand"
 ] as const;
 
 /** Error first, info last - the order findings are reported and rendered in. */
 export const LINT_SEVERITY_ORDER: Record<LintSeverity, number> = {
-    error: 0,
-    warning: 1,
-    info: 2,
+  error: 0,
+  warning: 1,
+  info: 2
 };
 
 /**
@@ -72,47 +72,47 @@ export const LINT_SEVERITY_ORDER: Record<LintSeverity, number> = {
  * config or a UI call site should not silently address a rule that does not exist.
  */
 export type LintRuleId =
-    | "assets/unused"
-    | "assets/missing"
-    | "assets/unreadable"
-    | "assets/oversized"
-    | "portability/asset-name"
-    | "portability/case-collision"
-    | "portability/media-format"
-    | "network/fetch-disallowed"
-    | "network/fetch-not-allowlisted"
-    | "story/invalid-command"
-    | "story/goto-missing"
-    | "story/label-duplicate"
-    | "story/label-unused"
-    | "story/jump-missing"
-    | "story/empty-choice"
-    | "story/dead-end"
-    | "story/unreachable-scene"
-    | "story/empty-scene"
-    | "story/app-tag-unknown"
-    | "story/cut-point-orphan"
-    | "story/cut-point-unreachable"
-    | "blueprint/reference-missing"
-    | "blueprint/unreachable-node"
-    | "blueprint/empty-event"
-    | "ui/unlocalized-text"
-    | "ui/page-unreachable"
-    | "ui/empty-behavior"
-    | "blueprint/save-field-empty"
-    | "variables/undeclared"
-    | "variables/unused"
-    | "variables/name-collision"
-    | "variables/random-outside-assignment"
-    | "text/overlong"
-    | "text/empty"
-    | "localization/missing"
-    | "localization/stale"
-    | "localization/orphan"
-    | "voice/missing"
-    | "voice/stale"
-    | "voice/orphan"
-    | "brand/broken-link";
+  | "assets/unused"
+  | "assets/missing"
+  | "assets/unreadable"
+  | "assets/oversized"
+  | "portability/asset-name"
+  | "portability/case-collision"
+  | "portability/media-format"
+  | "network/fetch-disallowed"
+  | "network/fetch-not-allowlisted"
+  | "story/invalid-command"
+  | "story/goto-missing"
+  | "story/label-duplicate"
+  | "story/label-unused"
+  | "story/jump-missing"
+  | "story/empty-choice"
+  | "story/dead-end"
+  | "story/unreachable-scene"
+  | "story/empty-scene"
+  | "story/app-tag-unknown"
+  | "story/cut-point-orphan"
+  | "story/cut-point-unreachable"
+  | "blueprint/reference-missing"
+  | "blueprint/unreachable-node"
+  | "blueprint/empty-event"
+  | "ui/unlocalized-text"
+  | "ui/page-unreachable"
+  | "ui/empty-behavior"
+  | "blueprint/save-field-empty"
+  | "variables/undeclared"
+  | "variables/unused"
+  | "variables/name-collision"
+  | "variables/random-outside-assignment"
+  | "text/overlong"
+  | "text/empty"
+  | "localization/missing"
+  | "localization/stale"
+  | "localization/orphan"
+  | "voice/missing"
+  | "voice/stale"
+  | "voice/orphan"
+  | "brand/broken-link";
 
 /**
  * Where a finding lives.
@@ -122,73 +122,79 @@ export type LintRuleId =
  * deep link when there is one.
  */
 export type LintLocation =
-    | { kind: "project" }
-    | { kind: "asset"; assetId: string; assetName: string }
-    | {
-          kind: "story";
-          storyId: string;
-          storyName: string;
-          sceneId?: string;
-          sceneName?: string;
-          blockId?: string;
-          /**
-           * The row's number within its scene, 1-based - the very number the scene editor prints in
-           * its gutter, so "line 12" in the report and "12" in the editor are the same row.
-           *
-           * Not written by rules: {@link annotateStoryLocation} resolves it from `blockId` once, for
-           * every rule at once. A rule that names a row therefore cannot forget to number it, and a
-           * rule added later gets the number for free.
-           */
-          line?: number;
-          /**
-           * The row's own words, clipped - the author's text, never a rendered description.
-           *
-           * It is what makes four hundred `localization/missing` findings tellable apart: "No zh
-           * translation" is the same sentence on every one of them, and the line the author wrote is
-           * the only thing that says *which* of them this is. Absent on rows that carry no text
-           * (a jump, a `/show`), which is honest rather than a gap.
-           */
-          excerpt?: string;
-      }
-    | { kind: "blueprint"; blueprintId: string; blueprintName?: string; graphId?: string; nodeId?: string }
-    | {
-          kind: "surface";
-          surfaceId: string;
-          /** The page's own name, as the surface list shows it - never a translated kind word. */
-          surfaceName: string;
-          elementId?: string;
-          /**
-           * The widget's author-given name, when it has one.
-           *
-           * What tells two findings of one rule on one page apart, the way `excerpt` does inside a
-           * scene. Absent rather than filled with the raw element type: `nl.button` is an internal
-           * id, and printing it in the locator column would say less than an empty cell.
-           */
-          elementName?: string;
-      }
-    | { kind: "character"; characterId: string; characterName: string };
+  | { kind: "project" }
+  | { kind: "asset"; assetId: string; assetName: string }
+  | {
+      kind: "story";
+      storyId: string;
+      storyName: string;
+      sceneId?: string;
+      sceneName?: string;
+      blockId?: string;
+      /**
+       * The row's number within its scene, 1-based - the very number the scene editor prints in
+       * its gutter, so "line 12" in the report and "12" in the editor are the same row.
+       *
+       * Not written by rules: {@link annotateStoryLocation} resolves it from `blockId` once, for
+       * every rule at once. A rule that names a row therefore cannot forget to number it, and a
+       * rule added later gets the number for free.
+       */
+      line?: number;
+      /**
+       * The row's own words, clipped - the author's text, never a rendered description.
+       *
+       * It is what makes four hundred `localization/missing` findings tellable apart: "No zh
+       * translation" is the same sentence on every one of them, and the line the author wrote is
+       * the only thing that says *which* of them this is. Absent on rows that carry no text
+       * (a jump, a `/show`), which is honest rather than a gap.
+       */
+      excerpt?: string;
+    }
+  | {
+      kind: "blueprint";
+      blueprintId: string;
+      blueprintName?: string;
+      graphId?: string;
+      nodeId?: string;
+    }
+  | {
+      kind: "surface";
+      surfaceId: string;
+      /** The page's own name, as the surface list shows it - never a translated kind word. */
+      surfaceName: string;
+      elementId?: string;
+      /**
+       * The widget's author-given name, when it has one.
+       *
+       * What tells two findings of one rule on one page apart, the way `excerpt` does inside a
+       * scene. Absent rather than filled with the raw element type: `nl.button` is an internal
+       * id, and printing it in the locator column would say less than an empty cell.
+       */
+      elementName?: string;
+    }
+  | { kind: "character"; characterId: string; characterName: string };
 
 /** What a rule emits. Severity is resolved from config when the report is assembled. */
 export type LintFinding = {
-    ruleId: LintRuleId;
-    /** `lint.rule.<slug>.message` (or a declared variant); never a rendered sentence. */
-    messageKey: TranslationKey;
-    messageParams?: Record<string, string | number>;
-    location: LintLocation;
-    /** Reuse of the global-search navigation layer; absent when a site has no deep link. */
-    target?: SearchJumpTarget;
+  ruleId: LintRuleId;
+  /** `lint.rule.<slug>.message` (or a declared variant); never a rendered sentence. */
+  messageKey: TranslationKey;
+  messageParams?: Record<string, string | number>;
+  location: LintLocation;
+  /** Reuse of the global-search navigation layer; absent when a site has no deep link. */
+  target?: SearchJumpTarget;
 };
 
 export type LintReportEntry = LintFinding & { severity: LintSeverity };
 
 export type LintReport = {
-    startedAt: number;
-    finishedAt: number;
-    entries: LintReportEntry[];
-    counts: { error: number; warning: number; info: number };
-    rulesRun: LintRuleId[];
-    /** Rules configured `off`, plus anything left unrun when the sweep was cancelled. */
-    skipped: LintRuleId[];
+  startedAt: number;
+  finishedAt: number;
+  entries: LintReportEntry[];
+  counts: { error: number; warning: number; info: number };
+  rulesRun: LintRuleId[];
+  /** Rules configured `off`, plus anything left unrun when the sweep was cancelled. */
+  skipped: LintRuleId[];
 };
 
 /**
@@ -196,23 +202,23 @@ export type LintReport = {
  * new editor there - keep the set small and boring.
  */
 export type LintRuleOptionSpec =
-    | { kind: "number"; default: number; min?: number; max?: number }
-    | { kind: "enum"; default: string; values: readonly string[] };
+  | { kind: "number"; default: number; min?: number; max?: number }
+  | { kind: "enum"; default: string; values: readonly string[] };
 
 /** Resolved option values handed to `run` - defaults merged with the project's overrides. */
 export type LintRuleOptions = Record<string, string | number>;
 
 export type LintRuleMeta = {
-    id: LintRuleId;
-    category: LintCategory;
-    defaultSeverity: LintRuleSeverity;
-    /** i18n: lint.rule.<slug>.title / .description */
-    slug: string;
-    options?: Record<string, LintRuleOptionSpec>;
+  id: LintRuleId;
+  category: LintCategory;
+  defaultSeverity: LintRuleSeverity;
+  /** i18n: lint.rule.<slug>.title / .description */
+  slug: string;
+  options?: Record<string, LintRuleOptionSpec>;
 };
 
 export type LintRule = LintRuleMeta & {
-    run(ctx: LintContext, options: LintRuleOptions): LintFinding[] | Promise<LintFinding[]>;
+  run(ctx: LintContext, options: LintRuleOptions): LintFinding[] | Promise<LintFinding[]>;
 };
 
 /**
@@ -223,8 +229,8 @@ export type LintRule = LintRuleMeta & {
  * each literal equals what this derives - so the two can never drift.
  */
 export function deriveLintRuleSlug(id: LintRuleId): string {
-    const words = id.split(/[/-]/).filter(Boolean);
-    return words
-        .map((word, index) => (index === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1)))
-        .join("");
+  const words = id.split(/[/-]/).filter(Boolean);
+  return words
+    .map((word, index) => (index === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1)))
+    .join("");
 }

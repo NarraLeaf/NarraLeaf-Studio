@@ -24,15 +24,15 @@
 import type { GameRuntimeProgressBridge } from "@shared/types/gameRuntime";
 
 export const WEB_PROGRESS_UNSUPPORTED_REASON =
-    "This web build cannot carry progress between editions: a page has no shared file to write.";
+  "This web build cannot carry progress between editions: a page has no shared file to write.";
 
 export const webProgressBridge: GameRuntimeProgressBridge = {
-    write: async () => {
-        console.warn(`[GameRuntime] Export Progress refused: ${WEB_PROGRESS_UNSUPPORTED_REASON}`);
-        return { outcome: "failed", error: WEB_PROGRESS_UNSUPPORTED_REASON };
-    },
-    read: async () => {
-        console.warn(`[GameRuntime] Import Progress refused: ${WEB_PROGRESS_UNSUPPORTED_REASON}`);
-        return { outcome: "failed", document: null, error: WEB_PROGRESS_UNSUPPORTED_REASON };
-    },
+  write: async () => {
+    console.warn(`[GameRuntime] Export Progress refused: ${WEB_PROGRESS_UNSUPPORTED_REASON}`);
+    return { outcome: "failed", error: WEB_PROGRESS_UNSUPPORTED_REASON };
+  },
+  read: async () => {
+    console.warn(`[GameRuntime] Import Progress refused: ${WEB_PROGRESS_UNSUPPORTED_REASON}`);
+    return { outcome: "failed", document: null, error: WEB_PROGRESS_UNSUPPORTED_REASON };
+  }
 };

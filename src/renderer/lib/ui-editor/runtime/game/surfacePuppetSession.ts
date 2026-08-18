@@ -52,12 +52,12 @@ export type SurfacePuppetStatus = PuppetStatus;
  * `lib/workspace/services`, which the runtime bundle is not allowed to import.
  */
 export type SurfacePuppetUnavailableReason =
-    /** No model bundle asset selected, or the asset/bundle cannot be resolved. */
-    | "no-model"
-    /** The widget names no backend. */
-    | "no-backend"
-    /** The named backend is not installed — no `runtimes/puppet/<name>/index.js` in this project or pack. */
-    | "backend-missing";
+  /** No model bundle asset selected, or the asset/bundle cannot be resolved. */
+  | "no-model"
+  /** The widget names no backend. */
+  | "no-backend"
+  /** The named backend is not installed — no `runtimes/puppet/<name>/index.js` in this project or pack. */
+  | "backend-missing";
 
 /**
  * "There is nothing to mount, and that is a normal state."
@@ -68,25 +68,25 @@ export type SurfacePuppetUnavailableReason =
  * no runtime installed would render as a red error box.
  */
 export class SurfacePuppetUnavailableError extends Error {
-    constructor(
-        public readonly reason: SurfacePuppetUnavailableReason,
-        message?: string,
-    ) {
-        super(message ?? reason);
-        this.name = "SurfacePuppetUnavailableError";
-    }
+  constructor(
+    public readonly reason: SurfacePuppetUnavailableReason,
+    message?: string
+  ) {
+    super(message ?? reason);
+    this.name = "SurfacePuppetUnavailableError";
+  }
 }
 
 /** Which model, drawn by which of the author's runtimes. Host-independent; the opener resolves it. */
 export interface SurfacePuppetRequest {
-    /** The model bundle asset (`AssetType.Model`). */
-    assetId: string | null;
-    /** Backend name — a directory under the project's (or pack's) `runtimes/puppet/`. */
-    backend: string;
-    /** Entry override within the bundle; null/omitted uses the bundle's own declared entry. */
-    entry?: string | null;
-    /** The author's backend options, forwarded verbatim. */
-    options?: Record<string, unknown>;
+  /** The model bundle asset (`AssetType.Model`). */
+  assetId: string | null;
+  /** Backend name — a directory under the project's (or pack's) `runtimes/puppet/`. */
+  backend: string;
+  /** Entry override within the bundle; null/omitted uses the bundle's own declared entry. */
+  entry?: string | null;
+  /** The author's backend options, forwarded verbatim. */
+  options?: Record<string, unknown>;
 }
 
 /**
@@ -97,63 +97,63 @@ export interface SurfacePuppetRequest {
  * {@link SurfacePuppetMountOptions.createSurface}.
  */
 export type SurfacePuppetOpener = (input: {
-    request: SurfacePuppetRequest;
-    container: HTMLDivElement;
-    size: PuppetSize;
-    onWarn: (message: string) => void;
+  request: SurfacePuppetRequest;
+  container: HTMLDivElement;
+  size: PuppetSize;
+  onWarn: (message: string) => void;
 }) => Promise<PuppetModelSession>;
 
 export interface SurfacePuppetSnapshot {
-    status: SurfacePuppetStatus;
-    /** Set only when `status === "error"`. */
-    error: string | null;
-    /** Set only when `status === "missing-backend"`. */
-    reason: SurfacePuppetUnavailableReason | null;
+  status: SurfacePuppetStatus;
+  /** Set only when `status === "error"`. */
+  error: string | null;
+  /** Set only when `status === "missing-backend"`. */
+  reason: SurfacePuppetUnavailableReason | null;
 }
 
 export const UNMOUNTED_SURFACE_PUPPET: SurfacePuppetSnapshot = {
-    status: "unmounted",
-    error: null,
-    reason: null,
+  status: "unmounted",
+  error: null,
+  reason: null
 };
 
 export interface SurfacePuppetMountOptions {
-    /** The widget's box. Attempts draw into children of it; its own other children are never touched. */
-    host: HTMLElement;
-    /**
-     * Null means no host in this window can look a runtime up at all — see the chain in
-     * `surfacePuppetHosts.ts`. Reported as `missing-backend`, quietly, because a host with no lookup
-     * has not failed at anything, and it is the state every Surface is in before one of the arms
-     * arrives.
-     */
-    open: SurfacePuppetOpener | null;
-    /**
-     * How an attempt's drawing surface is made. Injected for two reasons: a test drives this machine
-     * with no DOM at all, and a host that wants a differently-styled surface does not have to fork
-     * the state machine to get one.
-     */
-    createSurface?: () => HTMLDivElement;
-    onChange?: (snapshot: SurfacePuppetSnapshot) => void;
-    /** Backend `warn()` output and dispose trouble. Advisory: none of it changes the status. */
-    onWarn?: (message: string) => void;
+  /** The widget's box. Attempts draw into children of it; its own other children are never touched. */
+  host: HTMLElement;
+  /**
+   * Null means no host in this window can look a runtime up at all — see the chain in
+   * `surfacePuppetHosts.ts`. Reported as `missing-backend`, quietly, because a host with no lookup
+   * has not failed at anything, and it is the state every Surface is in before one of the arms
+   * arrives.
+   */
+  open: SurfacePuppetOpener | null;
+  /**
+   * How an attempt's drawing surface is made. Injected for two reasons: a test drives this machine
+   * with no DOM at all, and a host that wants a differently-styled surface does not have to fork
+   * the state machine to get one.
+   */
+  createSurface?: () => HTMLDivElement;
+  onChange?: (snapshot: SurfacePuppetSnapshot) => void;
+  /** Backend `warn()` output and dispose trouble. Advisory: none of it changes the status. */
+  onWarn?: (message: string) => void;
 }
 
 /** The default surface: fills the widget box and takes no clicks the widget did not ask for. */
 function defaultCreateSurface(): HTMLDivElement {
-    const surface = document.createElement("div");
-    surface.style.cssText = "position:absolute;inset:0";
-    return surface;
+  const surface = document.createElement("div");
+  surface.style.cssText = "position:absolute;inset:0";
+  return surface;
 }
 
 function messageOf(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+  return error instanceof Error ? error.message : String(error);
 }
 
 interface MountAttempt {
-    generation: number;
-    surface: HTMLDivElement;
-    cancelled: boolean;
-    session: PuppetModelSession | null;
+  generation: number;
+  surface: HTMLDivElement;
+  cancelled: boolean;
+  session: PuppetModelSession | null;
 }
 
 /**
@@ -164,238 +164,242 @@ interface MountAttempt {
  * being reasoned about.
  */
 export class SurfacePuppetMount {
-    private readonly options: SurfacePuppetMountOptions;
-    private readonly createSurface: () => HTMLDivElement;
-    private generation = 0;
-    private current: MountAttempt | null = null;
-    private snapshotValue: SurfacePuppetSnapshot = UNMOUNTED_SURFACE_PUPPET;
-    private lastState: PuppetState | null = null;
-    private lastSize: PuppetSize | null = null;
-    private disposed = false;
+  private readonly options: SurfacePuppetMountOptions;
+  private readonly createSurface: () => HTMLDivElement;
+  private generation = 0;
+  private current: MountAttempt | null = null;
+  private snapshotValue: SurfacePuppetSnapshot = UNMOUNTED_SURFACE_PUPPET;
+  private lastState: PuppetState | null = null;
+  private lastSize: PuppetSize | null = null;
+  private disposed = false;
 
-    constructor(options: SurfacePuppetMountOptions) {
-        this.options = options;
-        this.createSurface = options.createSurface ?? defaultCreateSurface;
+  constructor(options: SurfacePuppetMountOptions) {
+    this.options = options;
+    this.createSurface = options.createSurface ?? defaultCreateSurface;
+  }
+
+  public get snapshot(): SurfacePuppetSnapshot {
+    return this.snapshotValue;
+  }
+
+  /** The mounted session, or null while there is none. For imperative one-shots (phase two's commands). */
+  public get session(): PuppetModelSession | null {
+    return this.current?.session ?? null;
+  }
+
+  /**
+   * (Re)mount this widget's model.
+   *
+   * `request === null` — no asset, no backend, or a host that has decided this widget should not
+   * hold a WebGL context right now — tears down and reports `unmounted` rather than an error.
+   *
+   * The complete initial state is an argument rather than something to `apply()` afterwards because
+   * the engine's lifecycle puts it before `ready()`: a backend loads its pose *at* load time, and a
+   * model that comes up in its bind pose and snaps a frame later is the visible cost of getting
+   * this order wrong.
+   */
+  public mount(request: SurfacePuppetRequest | null, state: PuppetState, size: PuppetSize): void {
+    if (this.disposed) {
+      return;
     }
-
-    public get snapshot(): SurfacePuppetSnapshot {
-        return this.snapshotValue;
+    this.teardown();
+    this.lastState = state;
+    this.lastSize = size;
+    if (!request) {
+      this.publish(UNMOUNTED_SURFACE_PUPPET);
+      return;
     }
-
-    /** The mounted session, or null while there is none. For imperative one-shots (phase two's commands). */
-    public get session(): PuppetModelSession | null {
-        return this.current?.session ?? null;
+    // Checked here rather than left to each host's opener: "the author has not finished
+    // configuring this widget" is the overwhelmingly common case and must cost no round trip, no
+    // module load, and no WebGL context.
+    if (!request.assetId?.trim()) {
+      this.publishUnavailable("no-model");
+      return;
     }
-
-    /**
-     * (Re)mount this widget's model.
-     *
-     * `request === null` — no asset, no backend, or a host that has decided this widget should not
-     * hold a WebGL context right now — tears down and reports `unmounted` rather than an error.
-     *
-     * The complete initial state is an argument rather than something to `apply()` afterwards because
-     * the engine's lifecycle puts it before `ready()`: a backend loads its pose *at* load time, and a
-     * model that comes up in its bind pose and snaps a frame later is the visible cost of getting
-     * this order wrong.
-     */
-    public mount(request: SurfacePuppetRequest | null, state: PuppetState, size: PuppetSize): void {
-        if (this.disposed) {
-            return;
-        }
-        this.teardown();
-        this.lastState = state;
-        this.lastSize = size;
-        if (!request) {
-            this.publish(UNMOUNTED_SURFACE_PUPPET);
-            return;
-        }
-        // Checked here rather than left to each host's opener: "the author has not finished
-        // configuring this widget" is the overwhelmingly common case and must cost no round trip, no
-        // module load, and no WebGL context.
-        if (!request.assetId?.trim()) {
-            this.publishUnavailable("no-model");
-            return;
-        }
-        if (!request.backend.trim()) {
-            this.publishUnavailable("no-backend");
-            return;
-        }
-        // No arm of the chain answered. Checked before a surface is made rather than left to an opener
-        // that does not exist: nothing is drawn, nothing is loaded, and nothing throws.
-        if (!this.options.open) {
-            this.publishUnavailable("backend-missing");
-            return;
-        }
-        const open = this.options.open;
-
-        // Each attempt draws into a surface of its own rather than into the host directly. Disposing
-        // a backend empties the container it was handed, and mounting is asynchronous - so two
-        // overlapping attempts (React's development double-invoke is one, an edit while a load is in
-        // flight is another) would have the loser wipe the winner's canvas out of a shared container,
-        // leaving a blank box and no error to explain it.
-        const surface = this.createSurface();
-        this.options.host.appendChild(surface);
-        const attempt: MountAttempt = {
-            generation: ++this.generation,
-            surface,
-            cancelled: false,
-            session: null,
-        };
-        this.current = attempt;
-        this.publish({ status: "loading", error: null, reason: null });
-
-        void open({
-            request,
-            container: surface,
-            size,
-            onWarn: message => this.options.onWarn?.(message),
-        }).then(async session => {
-            // A stale attempt disposes its *own* session and removes its *own* surface. It must never
-            // publish, and it must never touch the winner's.
-            if (attempt.cancelled) {
-                session.dispose();
-                surface.remove();
-                return;
-            }
-            attempt.session = session;
-            // The engine's order, and the engine's contract on what a state is: whole, with `null`
-            // meaning "cleared" rather than "leave as it was".
-            await session.apply(this.lastState ?? state);
-            if (attempt.cancelled) {
-                return;
-            }
-            // A box that changed while the model was still loading. The mount was handed the old size,
-            // so without this the model comes up at it and only corrects on the next layout change.
-            if (this.lastSize && !surfacePuppetSizeEquals(this.lastSize, size)) {
-                session.resize(this.lastSize);
-            }
-            await session.ready();
-            if (attempt.cancelled) {
-                return;
-            }
-            this.publish({ status: "ready", error: null, reason: null });
-        }).catch((error: unknown) => {
-            // Cleanup comes before the cancelled check, not after it. `apply()` or `ready()` can be
-            // what threw, and in that case the backend is up and owns a WebGL context. Dropping the
-            // surface without disposing it would leak that context for the lifetime of the window -
-            // and the browser's ~16-context ceiling is exactly the budget the widget has to live
-            // inside.
-            //
-            // A cancelled attempt has to run this too. It is the arm that rejects *without* ever
-            // having a session - the author renamed the backend, or changed the model, while
-            // `open()` was in flight and then `open()` failed - and returning early left its surface
-            // attached to the box forever, one more orphan per edit, each of them a node the next
-            // attempt stacks on top of. `teardown()` cannot do it instead: it skips the removal
-            // precisely because an attempt that is still mid-mount owns the node.
-            const mounted = attempt.session;
-            attempt.session = null;
-            try {
-                mounted?.dispose();
-            } catch {
-                // Already being abandoned; the surface goes either way.
-            }
-            surface.remove();
-            if (attempt.cancelled) {
-                return;
-            }
-            if (error instanceof SurfacePuppetUnavailableError) {
-                this.publishUnavailable(error.reason);
-                return;
-            }
-            this.publish({ status: "error", error: messageOf(error), reason: null });
-        });
+    if (!request.backend.trim()) {
+      this.publishUnavailable("no-backend");
+      return;
     }
-
-    /**
-     * Re-pose the mounted model.
-     *
-     * The state is sent whole, never as a patch of what changed: the engine's contract is that `null`
-     * clears rather than "leave as-is", so a half-apply would make a saved game or an undo fail to
-     * reproduce what it recorded. Remembered either way, so a state pushed while a load is still in
-     * flight lands as that load's initial pose instead of being dropped.
-     */
-    public apply(state: PuppetState): void {
-        // Value comparison, because a React caller hands over a freshly built object on every render
-        // and re-posing a live model per render is how an inspector keystroke turns into a stutter.
-        if (this.lastState && surfacePuppetStateEquals(this.lastState, state)) {
-            return;
-        }
-        this.lastState = state;
-        const session = this.current?.session;
-        if (!session) {
-            return;
-        }
-        void Promise.resolve(session.apply(state)).catch((error: unknown) => {
-            // A backend that throws out of `apply` has usually been handed one bad name, which the
-            // engine treats as a warning rather than as a dead element. Same here.
-            this.options.onWarn?.(messageOf(error));
-        });
+    // No arm of the chain answered. Checked before a surface is made rather than left to an opener
+    // that does not exist: nothing is drawn, nothing is loaded, and nothing throws.
+    if (!this.options.open) {
+      this.publishUnavailable("backend-missing");
+      return;
     }
+    const open = this.options.open;
 
-    public resize(size: PuppetSize): void {
-        if (this.lastSize && surfacePuppetSizeEquals(this.lastSize, size)) {
-            return;
-        }
-        this.lastSize = size;
-        try {
-            this.current?.session?.resize(size);
-        } catch (error) {
-            this.options.onWarn?.(messageOf(error));
-        }
-    }
+    // Each attempt draws into a surface of its own rather than into the host directly. Disposing
+    // a backend empties the container it was handed, and mounting is asynchronous - so two
+    // overlapping attempts (React's development double-invoke is one, an edit while a load is in
+    // flight is another) would have the loser wipe the winner's canvas out of a shared container,
+    // leaving a blank box and no error to explain it.
+    const surface = this.createSurface();
+    this.options.host.appendChild(surface);
+    const attempt: MountAttempt = {
+      generation: ++this.generation,
+      surface,
+      cancelled: false,
+      session: null
+    };
+    this.current = attempt;
+    this.publish({ status: "loading", error: null, reason: null });
 
-    /** Tear the model down and forget it. Idempotent; safe from a React cleanup. */
-    public dispose(): void {
-        if (this.disposed) {
-            return;
+    void open({
+      request,
+      container: surface,
+      size,
+      onWarn: (message) => this.options.onWarn?.(message)
+    })
+      .then(async (session) => {
+        // A stale attempt disposes its *own* session and removes its *own* surface. It must never
+        // publish, and it must never touch the winner's.
+        if (attempt.cancelled) {
+          session.dispose();
+          surface.remove();
+          return;
         }
-        this.disposed = true;
-        this.teardown();
-        this.snapshotValue = UNMOUNTED_SURFACE_PUPPET;
-    }
-
-    private teardown(): void {
-        const attempt = this.current;
-        this.current = null;
-        if (!attempt) {
-            return;
+        attempt.session = session;
+        // The engine's order, and the engine's contract on what a state is: whole, with `null`
+        // meaning "cleared" rather than "leave as it was".
+        await session.apply(this.lastState ?? state);
+        if (attempt.cancelled) {
+          return;
         }
-        attempt.cancelled = true;
+        // A box that changed while the model was still loading. The mount was handed the old size,
+        // so without this the model comes up at it and only corrects on the next layout change.
+        if (this.lastSize && !surfacePuppetSizeEquals(this.lastSize, size)) {
+          session.resize(this.lastSize);
+        }
+        await session.ready();
+        if (attempt.cancelled) {
+          return;
+        }
+        this.publish({ status: "ready", error: null, reason: null });
+      })
+      .catch((error: unknown) => {
+        // Cleanup comes before the cancelled check, not after it. `apply()` or `ready()` can be
+        // what threw, and in that case the backend is up and owns a WebGL context. Dropping the
+        // surface without disposing it would leak that context for the lifetime of the window -
+        // and the browser's ~16-context ceiling is exactly the budget the widget has to live
+        // inside.
+        //
+        // A cancelled attempt has to run this too. It is the arm that rejects *without* ever
+        // having a session - the author renamed the backend, or changed the model, while
+        // `open()` was in flight and then `open()` failed - and returning early left its surface
+        // attached to the box forever, one more orphan per edit, each of them a node the next
+        // attempt stacks on top of. `teardown()` cannot do it instead: it skips the removal
+        // precisely because an attempt that is still mid-mount owns the node.
         const mounted = attempt.session;
-        // Claimed before disposing, so the attempt's own arms cannot dispose it a second time when
-        // they notice they were cancelled.
         attempt.session = null;
         try {
-            mounted?.dispose();
-        } catch (error) {
-            this.options.onWarn?.(messageOf(error));
+          mounted?.dispose();
+        } catch {
+          // Already being abandoned; the surface goes either way.
         }
-        // Only when the session was already up: an in-flight attempt still owns this node, and pulling
-        // it out from under a backend that is mid-mount is how a half-built WebGL canvas ends up
-        // detached and leaked. That attempt removes it itself once it notices it was cancelled -
-        // which both of its arms now do, including the rejecting one.
-        if (mounted) {
-            attempt.surface.remove();
+        surface.remove();
+        if (attempt.cancelled) {
+          return;
         }
-    }
+        if (error instanceof SurfacePuppetUnavailableError) {
+          this.publishUnavailable(error.reason);
+          return;
+        }
+        this.publish({ status: "error", error: messageOf(error), reason: null });
+      });
+  }
 
-    private publishUnavailable(reason: SurfacePuppetUnavailableReason): void {
-        this.publish({ status: "missing-backend", error: null, reason });
+  /**
+   * Re-pose the mounted model.
+   *
+   * The state is sent whole, never as a patch of what changed: the engine's contract is that `null`
+   * clears rather than "leave as-is", so a half-apply would make a saved game or an undo fail to
+   * reproduce what it recorded. Remembered either way, so a state pushed while a load is still in
+   * flight lands as that load's initial pose instead of being dropped.
+   */
+  public apply(state: PuppetState): void {
+    // Value comparison, because a React caller hands over a freshly built object on every render
+    // and re-posing a live model per render is how an inspector keystroke turns into a stutter.
+    if (this.lastState && surfacePuppetStateEquals(this.lastState, state)) {
+      return;
     }
+    this.lastState = state;
+    const session = this.current?.session;
+    if (!session) {
+      return;
+    }
+    void Promise.resolve(session.apply(state)).catch((error: unknown) => {
+      // A backend that throws out of `apply` has usually been handed one bad name, which the
+      // engine treats as a warning rather than as a dead element. Same here.
+      this.options.onWarn?.(messageOf(error));
+    });
+  }
 
-    private publish(snapshot: SurfacePuppetSnapshot): void {
-        if (this.disposed) {
-            return;
-        }
-        const previous = this.snapshotValue;
-        if (previous.status === snapshot.status
-            && previous.error === snapshot.error
-            && previous.reason === snapshot.reason) {
-            return;
-        }
-        this.snapshotValue = snapshot;
-        this.options.onChange?.(snapshot);
+  public resize(size: PuppetSize): void {
+    if (this.lastSize && surfacePuppetSizeEquals(this.lastSize, size)) {
+      return;
     }
+    this.lastSize = size;
+    try {
+      this.current?.session?.resize(size);
+    } catch (error) {
+      this.options.onWarn?.(messageOf(error));
+    }
+  }
+
+  /** Tear the model down and forget it. Idempotent; safe from a React cleanup. */
+  public dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    this.teardown();
+    this.snapshotValue = UNMOUNTED_SURFACE_PUPPET;
+  }
+
+  private teardown(): void {
+    const attempt = this.current;
+    this.current = null;
+    if (!attempt) {
+      return;
+    }
+    attempt.cancelled = true;
+    const mounted = attempt.session;
+    // Claimed before disposing, so the attempt's own arms cannot dispose it a second time when
+    // they notice they were cancelled.
+    attempt.session = null;
+    try {
+      mounted?.dispose();
+    } catch (error) {
+      this.options.onWarn?.(messageOf(error));
+    }
+    // Only when the session was already up: an in-flight attempt still owns this node, and pulling
+    // it out from under a backend that is mid-mount is how a half-built WebGL canvas ends up
+    // detached and leaked. That attempt removes it itself once it notices it was cancelled -
+    // which both of its arms now do, including the rejecting one.
+    if (mounted) {
+      attempt.surface.remove();
+    }
+  }
+
+  private publishUnavailable(reason: SurfacePuppetUnavailableReason): void {
+    this.publish({ status: "missing-backend", error: null, reason });
+  }
+
+  private publish(snapshot: SurfacePuppetSnapshot): void {
+    if (this.disposed) {
+      return;
+    }
+    const previous = this.snapshotValue;
+    if (
+      previous.status === snapshot.status &&
+      previous.error === snapshot.error &&
+      previous.reason === snapshot.reason
+    ) {
+      return;
+    }
+    this.snapshotValue = snapshot;
+    this.options.onChange?.(snapshot);
+  }
 }
 
 /**
@@ -405,6 +409,6 @@ export class SurfacePuppetMount {
  * satisfy the same renderer today.
  */
 export interface SurfacePuppetSessionState extends SurfacePuppetSnapshot {
-    /** True only while a model is actually drawing. What a "needs a runtime" placeholder hides behind. */
-    mounted: boolean;
+  /** True only while a model is actually drawing. What a "needs a runtime" placeholder hides behind. */
+  mounted: boolean;
 }

@@ -22,48 +22,48 @@ import type { TranslationKey } from "@shared/i18n";
  */
 
 export type WorkspaceAnomalySource =
-    | "startup"
-    | "project"
-    | "assets"
-    | "story"
-    | "interface"
-    | "characters"
-    | "localization"
-    | "voice"
-    | "variables"
-    | "audio"
-    | "plugins";
+  | "startup"
+  | "project"
+  | "assets"
+  | "story"
+  | "interface"
+  | "characters"
+  | "localization"
+  | "voice"
+  | "variables"
+  | "audio"
+  | "plugins";
 
 export interface WorkspaceAnomaly {
-    /** Unique per record; the list's React key. */
-    id: string;
-    source: WorkspaceAnomalySource;
-    /**
-     * What the workspace was doing when this happened.
-     *
-     * A key rather than a sentence so the list follows a live language switch, and so a report made
-     * during startup - before i18n has necessarily settled - is not frozen in whatever locale
-     * happened to be loaded at that instant.
-     */
-    operationKey: TranslationKey;
-    /** The file involved, when there is one. Shown next to the operation, and worth copying. */
-    path?: string;
-    /** The error exactly as it arrived. See the note above: this is the point of the record. */
-    raw: string;
-    /**
-     * `fatal` stopped the workspace from starting; `degraded` did not.
-     *
-     * Drives whether Studio offers recovery mode on its own. A degraded project is the dangerous
-     * case - nothing looks broken, so nobody goes looking - and it is the one the author has to be
-     * told about; a fatal one is already showing an error screen.
-     */
-    severity: "fatal" | "degraded";
-    at: number;
+  /** Unique per record; the list's React key. */
+  id: string;
+  source: WorkspaceAnomalySource;
+  /**
+   * What the workspace was doing when this happened.
+   *
+   * A key rather than a sentence so the list follows a live language switch, and so a report made
+   * during startup - before i18n has necessarily settled - is not frozen in whatever locale
+   * happened to be loaded at that instant.
+   */
+  operationKey: TranslationKey;
+  /** The file involved, when there is one. Shown next to the operation, and worth copying. */
+  path?: string;
+  /** The error exactly as it arrived. See the note above: this is the point of the record. */
+  raw: string;
+  /**
+   * `fatal` stopped the workspace from starting; `degraded` did not.
+   *
+   * Drives whether Studio offers recovery mode on its own. A degraded project is the dangerous
+   * case - nothing looks broken, so nobody goes looking - and it is the one the author has to be
+   * told about; a fatal one is already showing an error screen.
+   */
+  severity: "fatal" | "degraded";
+  at: number;
 }
 
 export type WorkspaceAnomalyInput = Omit<WorkspaceAnomaly, "id" | "at" | "raw"> & {
-    /** Anything at all: an `Error`, an fs reject `{code, message}`, a string. See {@link describeRawError}. */
-    error: unknown;
+  /** Anything at all: an `Error`, an fs reject `{code, message}`, a string. See {@link describeRawError}. */
+  error: unknown;
 };
 
 /**
@@ -98,44 +98,48 @@ const observers = new Set<(anomalies: readonly WorkspaceAnomaly[]) => void>();
  * different fact and gets its own row.
  */
 export function reportWorkspaceAnomaly(input: WorkspaceAnomalyInput): WorkspaceAnomaly {
-    // Counted before the dedupe returns, deliberately: a repeat is not a new *record* but it is a
-    // new *event*, and that is what a probe watching this subsystem needs to know.
-    reportCounts.set(input.source, (reportCounts.get(input.source) ?? 0) + 1);
+  // Counted before the dedupe returns, deliberately: a repeat is not a new *record* but it is a
+  // new *event*, and that is what a probe watching this subsystem needs to know.
+  reportCounts.set(input.source, (reportCounts.get(input.source) ?? 0) + 1);
 
-    const raw = describeRawError(input.error);
-    const existing = anomalies.find(anomaly =>
-        anomaly.source === input.source
-        && anomaly.operationKey === input.operationKey
-        && anomaly.path === input.path
-        && anomaly.severity === input.severity
-        && anomaly.raw === raw);
-    if (existing) {
-        return existing;
-    }
+  const raw = describeRawError(input.error);
+  const existing = anomalies.find(
+    (anomaly) =>
+      anomaly.source === input.source &&
+      anomaly.operationKey === input.operationKey &&
+      anomaly.path === input.path &&
+      anomaly.severity === input.severity &&
+      anomaly.raw === raw
+  );
+  if (existing) {
+    return existing;
+  }
 
-    const anomaly: WorkspaceAnomaly = {
-        id: `anomaly-${++counter}`,
-        source: input.source,
-        operationKey: input.operationKey,
-        path: input.path,
-        raw,
-        severity: input.severity,
-        at: Date.now(),
-    };
-    // Newest first, matching how the panel reads and how the notification history already behaves.
-    anomalies = [anomaly, ...anomalies].slice(0, LIMIT);
+  const anomaly: WorkspaceAnomaly = {
+    id: `anomaly-${++counter}`,
+    source: input.source,
+    operationKey: input.operationKey,
+    path: input.path,
+    raw,
+    severity: input.severity,
+    at: Date.now()
+  };
+  // Newest first, matching how the panel reads and how the notification history already behaves.
+  anomalies = [anomaly, ...anomalies].slice(0, LIMIT);
 
-    // The console line is not redundant with the record: the diagnostics bundle is built from the
-    // renderer's console ring buffer, so a failure that only ever lived in this array would be
-    // missing from the very export the author is asked to send.
-    console.warn(`[workspace] ${input.source}: ${input.operationKey}${input.path ? ` (${input.path})` : ""}\n${raw}`);
+  // The console line is not redundant with the record: the diagnostics bundle is built from the
+  // renderer's console ring buffer, so a failure that only ever lived in this array would be
+  // missing from the very export the author is asked to send.
+  console.warn(
+    `[workspace] ${input.source}: ${input.operationKey}${input.path ? ` (${input.path})` : ""}\n${raw}`
+  );
 
-    announce();
-    return anomaly;
+  announce();
+  return anomaly;
 }
 
 export function getWorkspaceAnomalies(): readonly WorkspaceAnomaly[] {
-    return anomalies;
+  return anomalies;
 }
 
 /**
@@ -145,7 +149,7 @@ export function getWorkspaceAnomalies(): readonly WorkspaceAnomaly[] {
  * nothing, and a caller reading it as "how broken is this" would be wrong.
  */
 export function getWorkspaceAnomalyReportCount(source: WorkspaceAnomalySource): number {
-    return reportCounts.get(source) ?? 0;
+  return reportCounts.get(source) ?? 0;
 }
 
 /**
@@ -162,12 +166,12 @@ export function getWorkspaceAnomalyReportCount(source: WorkspaceAnomalySource): 
  * one-window model does not currently allow.
  */
 export function clearWorkspaceAnomalies(): void {
-    reportCounts.clear();
-    if (anomalies.length === 0) {
-        return;
-    }
-    anomalies = [];
-    announce();
+  reportCounts.clear();
+  if (anomalies.length === 0) {
+    return;
+  }
+  anomalies = [];
+  announce();
 }
 
 /**
@@ -181,13 +185,13 @@ export function clearWorkspaceAnomalies(): void {
  * take down the thing subscribing to it.
  */
 export function observeWorkspaceAnomalies(
-    observer: (anomalies: readonly WorkspaceAnomaly[]) => void,
+  observer: (anomalies: readonly WorkspaceAnomaly[]) => void
 ): () => void {
-    observers.add(observer);
-    notify(() => observer(anomalies));
-    return () => {
-        observers.delete(observer);
-    };
+  observers.add(observer);
+  notify(() => observer(anomalies));
+  return () => {
+    observers.delete(observer);
+  };
 }
 
 /**
@@ -202,38 +206,41 @@ export function observeWorkspaceAnomalies(
  * of the four code paths that could say that actually did.
  */
 export function describeRawError(error: unknown): string {
-    if (typeof error === "string") {
-        return error;
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error instanceof Error) {
+    const head = `${error.name}: ${error.message}`;
+    // V8 stacks already begin with that same line; a second copy would push the frames off the
+    // visible part of the box for no gain.
+    const body =
+      error.stack && !error.stack.startsWith(head)
+        ? `${head}\n${error.stack}`
+        : (error.stack ?? head);
+    const cause = (error as { cause?: unknown }).cause;
+    return cause === undefined ? body : `${body}\nCaused by: ${describeRawError(cause)}`;
+  }
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    if (typeof record.message === "string") {
+      return typeof record.code === "string" || typeof record.code === "number"
+        ? `${record.code}: ${record.message}`
+        : record.message;
     }
-    if (error instanceof Error) {
-        const head = `${error.name}: ${error.message}`;
-        // V8 stacks already begin with that same line; a second copy would push the frames off the
-        // visible part of the box for no gain.
-        const body = error.stack && !error.stack.startsWith(head) ? `${head}\n${error.stack}` : error.stack ?? head;
-        const cause = (error as { cause?: unknown }).cause;
-        return cause === undefined ? body : `${body}\nCaused by: ${describeRawError(cause)}`;
+    try {
+      return JSON.stringify(error, null, 2);
+    } catch {
+      // Circular, or something with a throwing getter. Still better than nothing.
+      return String(error);
     }
-    if (error && typeof error === "object") {
-        const record = error as Record<string, unknown>;
-        if (typeof record.message === "string") {
-            return typeof record.code === "string" || typeof record.code === "number"
-                ? `${record.code}: ${record.message}`
-                : record.message;
-        }
-        try {
-            return JSON.stringify(error, null, 2);
-        } catch {
-            // Circular, or something with a throwing getter. Still better than nothing.
-            return String(error);
-        }
-    }
-    return String(error);
+  }
+  return String(error);
 }
 
 function announce(): void {
-    for (const observer of observers) {
-        notify(() => observer(anomalies));
-    }
+  for (const observer of observers) {
+    notify(() => observer(anomalies));
+  }
 }
 
 /**
@@ -243,9 +250,9 @@ function announce(): void {
  * that survived it - which would take down the very startup this log exists to report on.
  */
 function notify(run: () => void): void {
-    try {
-        run();
-    } catch (error) {
-        console.warn("[workspace] anomaly observer threw", error);
-    }
+  try {
+    run();
+  } catch (error) {
+    console.warn("[workspace] anomaly observer threw", error);
+  }
 }

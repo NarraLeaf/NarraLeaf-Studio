@@ -12,28 +12,28 @@
  * static modules', not here.
  */
 export const storyVars = {
-    valueType: {
-        boolean: "Boolean",
-        number: "Number",
-        string: "String",
-        json: "JSON",
-    },
-    row: {
-        nameAria: "Variable name",
-        defaultPlaceholder: "default",
-        defaultAria: "Default value",
-        delete: "Delete variable",
-    },
-    scene: {
-        title: "Scene variables",
-        hint: "Declared in the story with /local. Click a row to go to it.",
-    },
-    saved: {
-        title: "Saved variables",
-        hint: "Defined in the project; the value lives in the save file.",
-    },
-    persistent: {
-        title: "Global variables",
-        hint: "Defined in the project; app-level, shared with blueprints.",
-    },
+  valueType: {
+    boolean: "Boolean",
+    number: "Number",
+    string: "String",
+    json: "JSON"
+  },
+  row: {
+    nameAria: "Variable name",
+    defaultPlaceholder: "default",
+    defaultAria: "Default value",
+    delete: "Delete variable"
+  },
+  scene: {
+    title: "Scene variables",
+    hint: "Declared in the story with /local. Click a row to go to it."
+  },
+  saved: {
+    title: "Saved variables",
+    hint: "Defined in the project; the value lives in the save file."
+  },
+  persistent: {
+    title: "Global variables",
+    hint: "Defined in the project; app-level, shared with blueprints."
+  }
 } as const;

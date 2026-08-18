@@ -10,16 +10,16 @@ import { defaultListWidgetProps, type ListWidgetProps } from "./list/types";
 const NOTIFICATION_LIST_TYPE = "nl.notification.list";
 
 function createDefaultNotificationListProps(): ListWidgetProps {
-    const props: ListWidgetProps = JSON.parse(JSON.stringify(defaultListWidgetProps));
-    props.itemKeyPath = "id";
-    props.itemGap = 12;
-    props.previewItems = [
-        { id: "preview-1", message: translate("widgets.defaults.notificationList.message1") },
-        { id: "preview-2", message: translate("widgets.defaults.notificationList.message2") },
-    ];
-    props.scrollbar.enabled = false;
-    props.scrollbar.visibility = "hidden";
-    return props;
+  const props: ListWidgetProps = JSON.parse(JSON.stringify(defaultListWidgetProps));
+  props.itemKeyPath = "id";
+  props.itemGap = 12;
+  props.previewItems = [
+    { id: "preview-1", message: translate("widgets.defaults.notificationList.message1") },
+    { id: "preview-2", message: translate("widgets.defaults.notificationList.message2") }
+  ];
+  props.scrollbar.enabled = false;
+  props.scrollbar.visibility = "hidden";
+  return props;
 }
 
 /**
@@ -27,32 +27,32 @@ function createDefaultNotificationListProps(): ListWidgetProps {
  * slot bridge in the game runtime; the editor shows `previewItems` placeholders.
  */
 export const NotificationListWidgetModule: UIWidgetModule = {
+  type: NOTIFICATION_LIST_TYPE,
+  logicApi: getWidgetLogicApi(NOTIFICATION_LIST_TYPE),
+  get displayName() {
+    return translate("widgets.defaults.notificationList.name");
+  },
+  icon: Bell,
+
+  createDefaultElement: () => ({
     type: NOTIFICATION_LIST_TYPE,
-    logicApi: getWidgetLogicApi(NOTIFICATION_LIST_TYPE),
-    get displayName() {
-        return translate("widgets.defaults.notificationList.name");
+    name: translate("widgets.defaults.notificationList.name"),
+    layout: {
+      x: 0,
+      y: 0,
+      width: 420,
+      height: 360,
+      opacity: 1,
+      visible: true
     },
-    icon: Bell,
+    props: createDefaultNotificationListProps()
+  }),
 
-    createDefaultElement: () => ({
-        type: NOTIFICATION_LIST_TYPE,
-        name: translate("widgets.defaults.notificationList.name"),
-        layout: {
-            x: 0,
-            y: 0,
-            width: 420,
-            height: 360,
-            opacity: 1,
-            visible: true,
-        },
-        props: createDefaultNotificationListProps(),
-    }),
+  render: (props: WidgetRendererProps) => <ListRenderer {...props} />,
 
-    render: (props: WidgetRendererProps) => <ListRenderer {...props} />,
+  createInspector: createListInspector,
 
-    createInspector: createListInspector,
+  createDockerBarItems: createListDockerBarItems,
 
-    createDockerBarItems: createListDockerBarItems,
-
-    createMultiSelectDockerBarItems: createListDockerBarItems,
+  createMultiSelectDockerBarItems: createListDockerBarItems
 };

@@ -20,9 +20,9 @@ import { findProjectConfigFileName } from "@shared/utils/nlproj";
  * the author to the same next step.
  */
 export async function isStudioProject(root: string): Promise<boolean> {
-    const listed = await getInterface().fs.list(root);
-    if (!listed.success || !listed.data.ok) {
-        return false;
-    }
-    return findProjectConfigFileName(listed.data.data) !== null;
+  const listed = await getInterface().fs.list(root);
+  if (!listed.success || !listed.data.ok) {
+    return false;
+  }
+  return findProjectConfigFileName(listed.data.data) !== null;
 }

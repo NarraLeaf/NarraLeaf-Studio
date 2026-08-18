@@ -13,7 +13,7 @@
  * Fixture segments.wav: 0-2s 220Hz / 2-6s 440Hz / 6-10s 880Hz, marked in=1.003 loop=1.997 out=5.987.
  */
 
-const { connect } = require('../drive');
+const { connect } = require("../drive");
 
 const PORT = Number(process.env.NLS_VERIFY_PORT || 9333);
 
@@ -91,28 +91,31 @@ const FIND = `(function () {
     return JSON.stringify({ scanned: scanned, sounds: out });
 })()`;
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const stamp = () => new Date().toISOString().slice(11, 19);
 
 (async () => {
-    const d = await connect({ target: 'dev-mode', port: PORT });
-    try {
-        const path = await d.evaluate('location.pathname');
-        if (!String(path).includes('dev-mode')) throw new Error(`wrong window: ${path}`);
-        if (await d.evaluate('document.hidden')) throw new Error('dev-mode window is hidden');
+  const d = await connect({ target: "dev-mode", port: PORT });
+  try {
+    const path = await d.evaluate("location.pathname");
+    if (!String(path).includes("dev-mode")) throw new Error(`wrong window: ${path}`);
+    if (await d.evaluate("document.hidden")) throw new Error("dev-mode window is hidden");
 
-        // A real mouse press: a CDP keyboard event alone leaves the AudioContext suspended and the
-        // whole reading looks like "nothing is playing".
-        await d.click(700, 450);
-        await sleep(1200);
+    // A real mouse press: a CDP keyboard event alone leaves the AudioContext suspended and the
+    // whole reading looks like "nothing is playing".
+    await d.click(700, 450);
+    await sleep(1200);
 
-        console.log(stamp(), '--- read 1 ---');
-        console.log(JSON.stringify(JSON.parse(await d.evaluate(FIND)), null, 1));
+    console.log(stamp(), "--- read 1 ---");
+    console.log(JSON.stringify(JSON.parse(await d.evaluate(FIND)), null, 1));
 
-        await sleep(10000);
-        console.log(stamp(), '--- read 2, ~10s later (out point is 5.987s) ---');
-        console.log(JSON.stringify(JSON.parse(await d.evaluate(FIND)), null, 1));
-    } finally {
-        d.close();
-    }
-})().catch(e => { console.error('\nSCRIPT FAIL:', e.message); process.exit(1); });
+    await sleep(10000);
+    console.log(stamp(), "--- read 2, ~10s later (out point is 5.987s) ---");
+    console.log(JSON.stringify(JSON.parse(await d.evaluate(FIND)), null, 1));
+  } finally {
+    d.close();
+  }
+})().catch((e) => {
+  console.error("\nSCRIPT FAIL:", e.message);
+  process.exit(1);
+});

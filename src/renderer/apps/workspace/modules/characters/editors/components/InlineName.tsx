@@ -17,103 +17,103 @@ import { cn } from "@/lib/utils/cn";
  * to drop `draggable` while their name is being edited.
  */
 export function InlineName(props: {
-    value: string;
-    onCommit: (next: string) => void;
-    /** Frozen project, or anything else that makes the rename impossible. Selection still works. */
-    disabled?: boolean;
-    tooltip?: string;
-    className?: string;
-    /**
-     * Whether the name takes the row's spare width. True for a list row; false inside a chip, whose
-     * container is shrink-to-fit and would let a `flex-1` name collapse to nothing.
-     */
-    grow?: boolean;
-    onEditingChange?: (editing: boolean) => void;
+  value: string;
+  onCommit: (next: string) => void;
+  /** Frozen project, or anything else that makes the rename impossible. Selection still works. */
+  disabled?: boolean;
+  tooltip?: string;
+  className?: string;
+  /**
+   * Whether the name takes the row's spare width. True for a list row; false inside a chip, whose
+   * container is shrink-to-fit and would let a `flex-1` name collapse to nothing.
+   */
+  grow?: boolean;
+  onEditingChange?: (editing: boolean) => void;
 }) {
-    const [draft, setDraft] = useState<string | null>(null);
-    const inputRef = useRef<HTMLInputElement | null>(null);
-    const editing = draft !== null;
-    const { onEditingChange } = props;
+  const [draft, setDraft] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const editing = draft !== null;
+  const { onEditingChange } = props;
 
-    useEffect(() => {
-        onEditingChange?.(editing);
-    }, [editing, onEditingChange]);
+  useEffect(() => {
+    onEditingChange?.(editing);
+  }, [editing, onEditingChange]);
 
-    useEffect(() => {
-        if (editing) {
-            inputRef.current?.focus();
-            inputRef.current?.select();
-        }
-    }, [editing]);
-
-    // A rename that lands from somewhere else (the properties panel, an undo) while this row is not
-    // being edited must show through; while it is, the author's draft wins.
-    const begin = (event: React.SyntheticEvent) => {
-        if (props.disabled) return;
-        event.preventDefault();
-        event.stopPropagation();
-        setDraft(props.value);
-    };
-
-    const commit = () => {
-        const next = (draft ?? "").trim();
-        setDraft(null);
-        if (next && next !== props.value) {
-            props.onCommit(next);
-        }
-    };
-
-    const box = props.grow === false ? "" : "min-w-0 flex-1";
-
+  useEffect(() => {
     if (editing) {
-        return (
-            <input
-                ref={inputRef}
-                value={draft ?? ""}
-                draggable={false}
-                size={props.grow === false ? Math.max(4, props.value.length) : undefined}
-                className={cn(
-                    box,
-                    "rounded-sm border border-primary/60 bg-surface px-1 py-0 outline-none",
-                    props.className,
-                )}
-                onChange={event => setDraft(event.target.value)}
-                onBlur={commit}
-                // Stopped here rather than at the row: the layer list, the axis cards and the
-                // snapshot rows all act on clicks and keys of their own, and none of them should
-                // hear a keystroke meant for this field.
-                onClick={event => event.stopPropagation()}
-                onDoubleClick={event => event.stopPropagation()}
-                onMouseDown={event => event.stopPropagation()}
-                onKeyDown={event => {
-                    event.stopPropagation();
-                    if (event.key === "Enter") {
-                        event.preventDefault();
-                        commit();
-                    } else if (event.key === "Escape") {
-                        event.preventDefault();
-                        setDraft(null);
-                    }
-                }}
-            />
-        );
+      inputRef.current?.focus();
+      inputRef.current?.select();
     }
+  }, [editing]);
 
+  // A rename that lands from somewhere else (the properties panel, an undo) while this row is not
+  // being edited must show through; while it is, the author's draft wins.
+  const begin = (event: React.SyntheticEvent) => {
+    if (props.disabled) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setDraft(props.value);
+  };
+
+  const commit = () => {
+    const next = (draft ?? "").trim();
+    setDraft(null);
+    if (next && next !== props.value) {
+      props.onCommit(next);
+    }
+  };
+
+  const box = props.grow === false ? "" : "min-w-0 flex-1";
+
+  if (editing) {
     return (
-        <span
-            className={cn(box, "truncate", props.className)}
-            data-tip={props.tooltip}
-            tabIndex={props.disabled ? undefined : 0}
-            onDoubleClick={begin}
-            onKeyDown={event => {
-                if (event.key === "F2" || event.key === "Enter") {
-                    begin(event);
-                }
-            }}
-        >
-            {props.value}
-        </span>
+      <input
+        ref={inputRef}
+        value={draft ?? ""}
+        draggable={false}
+        size={props.grow === false ? Math.max(4, props.value.length) : undefined}
+        className={cn(
+          box,
+          "rounded-sm border border-primary/60 bg-surface px-1 py-0 outline-none",
+          props.className
+        )}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        // Stopped here rather than at the row: the layer list, the axis cards and the
+        // snapshot rows all act on clicks and keys of their own, and none of them should
+        // hear a keystroke meant for this field.
+        onClick={(event) => event.stopPropagation()}
+        onDoubleClick={(event) => event.stopPropagation()}
+        onMouseDown={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          if (event.key === "Enter") {
+            event.preventDefault();
+            commit();
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            setDraft(null);
+          }
+        }}
+      />
     );
+  }
+
+  return (
+    <span
+      className={cn(box, "truncate", props.className)}
+      data-tip={props.tooltip}
+      tabIndex={props.disabled ? undefined : 0}
+      onDoubleClick={begin}
+      onKeyDown={(event) => {
+        if (event.key === "F2" || event.key === "Enter") {
+          begin(event);
+        }
+      }}
+    >
+      {props.value}
+    </span>
+  );
 }
 
 /**
@@ -124,13 +124,16 @@ export function InlineName(props: {
  * Numbering from the lowest free index rather than from the count means deleting the middle one and
  * adding another reuses the gap instead of climbing forever.
  */
-export function nextAutoName(template: (n: number) => string, taken: readonly { name: string }[]): string {
-    const used = new Set(taken.map(item => item.name.trim().toLowerCase()));
-    for (let n = 1; n <= used.size + 1; n++) {
-        const candidate = template(n);
-        if (!used.has(candidate.trim().toLowerCase())) {
-            return candidate;
-        }
+export function nextAutoName(
+  template: (n: number) => string,
+  taken: readonly { name: string }[]
+): string {
+  const used = new Set(taken.map((item) => item.name.trim().toLowerCase()));
+  for (let n = 1; n <= used.size + 1; n++) {
+    const candidate = template(n);
+    if (!used.has(candidate.trim().toLowerCase())) {
+      return candidate;
     }
-    return template(used.size + 1);
+  }
+  return template(used.size + 1);
 }

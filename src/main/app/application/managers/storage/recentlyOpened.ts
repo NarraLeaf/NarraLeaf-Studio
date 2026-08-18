@@ -1,6 +1,10 @@
 import { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
 import { GlobalState, GlobalStateKeys } from "@shared/types/state/globalState";
-import { normalizeProjectPath, recentProjectDisplayName, withRecentProjectNames } from "@shared/utils/recentProject";
+import {
+  normalizeProjectPath,
+  recentProjectDisplayName,
+  withRecentProjectNames
+} from "@shared/utils/recentProject";
 import { RECENT_PROJECTS_LIMIT_DEFAULT } from "@shared/constants/recentProjects";
 
 /** Fallback when the setting holds something unusable (absent, zero, negative, not a number). */
@@ -17,45 +21,49 @@ const DEFAULT_LIMIT = RECENT_PROJECTS_LIMIT_DEFAULT;
  * whole array it read earlier would silently erase whatever happened in between.
  */
 export class RecentlyOpened {
-    private readonly key = "app.recentProjects" satisfies GlobalStateKeys;
+  private readonly key = "app.recentProjects" satisfies GlobalStateKeys;
 
-    constructor(private readonly state: GlobalState) {
-    }
+  constructor(private readonly state: GlobalState) {}
 
-    /**
-     * The history, with every record's name filled in.
-     *
-     * Names are repaired on the way out as well as on the way in: a store written before that was
-     * enforced can be holding a nameless record, and the menu built from one used to be the least
-     * of the problem (see `recentProjectDisplayName`).
-     */
-    public list(): RecentlyOpenedProject[] {
-        return withRecentProjectNames(this.state.getItem(this.key) ?? []);
-    }
+  /**
+   * The history, with every record's name filled in.
+   *
+   * Names are repaired on the way out as well as on the way in: a store written before that was
+   * enforced can be holding a nameless record, and the menu built from one used to be the least
+   * of the problem (see `recentProjectDisplayName`).
+   */
+  public list(): RecentlyOpenedProject[] {
+    return withRecentProjectNames(this.state.getItem(this.key) ?? []);
+  }
 
-    /** The history with `project` promoted to the front, deduped by path and trimmed to the limit. */
-    public withProject({ name, path, icon, securityScopedBookmark }: RecentlyOpenedProject): RecentlyOpenedProject[] {
-        const target = normalizeProjectPath(path);
-        return [
-            {
-                path,
-                name: recentProjectDisplayName({ name, path }),
-                icon,
-                openedAt: Date.now(),
-                securityScopedBookmark,
-            },
-            ...this.list().filter(item => normalizeProjectPath(item.path) !== target),
-        ].slice(0, this.limit());
-    }
+  /** The history with `project` promoted to the front, deduped by path and trimmed to the limit. */
+  public withProject({
+    name,
+    path,
+    icon,
+    securityScopedBookmark
+  }: RecentlyOpenedProject): RecentlyOpenedProject[] {
+    const target = normalizeProjectPath(path);
+    return [
+      {
+        path,
+        name: recentProjectDisplayName({ name, path }),
+        icon,
+        openedAt: Date.now(),
+        securityScopedBookmark
+      },
+      ...this.list().filter((item) => normalizeProjectPath(item.path) !== target)
+    ].slice(0, this.limit());
+  }
 
-    /** The history without `projectPath`. */
-    public without(projectPath: string): RecentlyOpenedProject[] {
-        const target = normalizeProjectPath(projectPath);
-        return this.list().filter(item => normalizeProjectPath(item.path) !== target);
-    }
+  /** The history without `projectPath`. */
+  public without(projectPath: string): RecentlyOpenedProject[] {
+    const target = normalizeProjectPath(projectPath);
+    return this.list().filter((item) => normalizeProjectPath(item.path) !== target);
+  }
 
-    private limit(): number {
-        const configured = Number(this.state.getItem("workspace.recentProjectsLimit"));
-        return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : DEFAULT_LIMIT;
-    }
+  private limit(): number {
+    const configured = Number(this.state.getItem("workspace.recentProjectsLimit"));
+    return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : DEFAULT_LIMIT;
+  }
 }

@@ -26,13 +26,8 @@
       "narraleaf.gallery.getArtworkCount",
       "narraleaf.gallery.getArtworkAt"
     ],
-    "runtimeData": [
-      "narraleaf.gallery.items"
-    ],
-    "runtimeCapabilities": [
-      "store",
-      "events"
-    ]
+    "runtimeData": ["narraleaf.gallery.items"],
+    "runtimeCapabilities": ["store", "events"]
   },
   "permissions": []
 }

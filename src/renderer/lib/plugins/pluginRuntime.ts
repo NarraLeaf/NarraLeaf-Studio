@@ -6,30 +6,32 @@ import * as ReactDOMClient from "react-dom/client";
 import * as ReactJsxRuntime from "react/jsx-runtime";
 import * as ReactJsxDevRuntime from "react/jsx-dev-runtime";
 import {
-    isPluginDefinition,
-    definePlugin,
-    ui as pluginUi,
-    AssetSource,
-    AssetType,
-    PanelPosition,
-    type PluginApp,
-    type PluginBlueprintNodeDef,
-    type PluginCleanup,
-    type PluginMessageBundle,
-    type PluginTranslator,
-    type PluginVoiceUnitEntry,
+  isPluginDefinition,
+  definePlugin,
+  ui as pluginUi,
+  AssetSource,
+  AssetType,
+  PanelPosition,
+  type PluginApp,
+  type PluginBlueprintNodeDef,
+  type PluginCleanup,
+  type PluginMessageBundle,
+  type PluginTranslator,
+  type PluginVoiceUnitEntry
 } from "@/plugin";
 import type { BlueprintNodeDef } from "@/lib/ui-editor/blueprint-nodes/types";
 import type {
-    RuntimePluginGame,
-    RuntimePluginLogLevel,
+  RuntimePluginGame,
+  RuntimePluginLogLevel
 } from "@/lib/ui-editor/runtime/plugins/runtimePluginApi";
-import type { RuntimePluginHost } from "@/lib/ui-editor/runtime/plugins/runtimePluginHost";
 import { i18nStore } from "@/lib/i18n/store";
 import { translate } from "@/lib/i18n";
 import { workspacePluginSession } from "./workspacePluginSession";
 import { openPluginsPanel } from "@/apps/workspace/modules/plugins/openPluginsPanel";
-import { isActionMenuAction, isActionMenuSeparator } from "@/apps/workspace/components/ui/actionMenuModel";
+import {
+  isActionMenuAction,
+  isActionMenuSeparator
+} from "@/apps/workspace/components/ui/actionMenuModel";
 import type { ActionGroup, ActionMenuItem } from "@/apps/workspace/registry/types";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
@@ -52,19 +54,19 @@ import { FsRejectErrorCode } from "@shared/types/os";
 import { pluginStoreNamespace } from "@shared/utils/pluginStorage";
 
 type PluginModule = {
-    default?: unknown;
-    plugin?: unknown;
+  default?: unknown;
+  plugin?: unknown;
 };
 
 const PLUGIN_INTERPOLATION = /\{(\w+)\}/g;
 
 function pluginInterpolate(template: string, params?: Record<string, string | number>): string {
-    if (!params) {
-        return template;
-    }
-    return template.replace(PLUGIN_INTERPOLATION, (match, name: string) =>
-        name in params ? String(params[name]) : match,
-    );
+  if (!params) {
+    return template;
+  }
+  return template.replace(PLUGIN_INTERPOLATION, (match, name: string) =>
+    name in params ? String(params[name]) : match
+  );
 }
 
 /**
@@ -73,46 +75,48 @@ function pluginInterpolate(template: string, params?: Record<string, string | nu
  * instance stays correct across language switches.
  */
 function createPluginTranslator(bundle: PluginMessageBundle): PluginTranslator {
-    const fallbackLocale = bundle.fallbackLocale ?? Object.keys(bundle.messages)[0] ?? "";
-    const resolve = (key: string): string => {
-        const active = i18nStore.getLocale();
-        const primary = bundle.messages[active]?.[key];
-        if (primary !== undefined) {
-            return primary;
-        }
-        return bundle.messages[fallbackLocale]?.[key] ?? key;
-    };
-    return {
-        get locale() {
-            return i18nStore.getLocale();
-        },
-        t: (key, params) => pluginInterpolate(resolve(key), params),
-    };
+  const fallbackLocale = bundle.fallbackLocale ?? Object.keys(bundle.messages)[0] ?? "";
+  const resolve = (key: string): string => {
+    const active = i18nStore.getLocale();
+    const primary = bundle.messages[active]?.[key];
+    if (primary !== undefined) {
+      return primary;
+    }
+    return bundle.messages[fallbackLocale]?.[key] ?? key;
+  };
+  return {
+    get locale() {
+      return i18nStore.getLocale();
+    },
+    t: (key, params) => pluginInterpolate(resolve(key), params)
+  };
 }
 
 /** Enforce that a plugin-registered id/type is namespaced under the plugin id. */
 function assertOwnedId(pluginId: string, id: string, kind: string): void {
-    const trimmed = typeof id === "string" ? id.trim() : "";
-    if (!trimmed.startsWith(`${pluginId}.`)) {
-        throw new Error(`[plugin:${pluginId}] ${kind} id "${id}" must be prefixed with "${pluginId}."`);
-    }
+  const trimmed = typeof id === "string" ? id.trim() : "";
+  if (!trimmed.startsWith(`${pluginId}.`)) {
+    throw new Error(`[plugin:${pluginId}] ${kind} id "${id}" must be prefixed with "${pluginId}."`);
+  }
 }
 
 export type WorkspacePluginLoadResult =
-    | {
-        pluginId: string;
-        ok: true;
-        cleanup?: PluginCleanup;
+  | {
+      pluginId: string;
+      ok: true;
+      cleanup?: PluginCleanup;
     }
-    | {
-        pluginId: string;
-        ok: false;
-        error: string;
+  | {
+      pluginId: string;
+      ok: false;
+      error: string;
     };
 
-export async function loadWorkspacePlugins(ctx: WorkspaceContext): Promise<WorkspacePluginLoadResult[]> {
-    exposePluginModule();
-    return workspacePluginSession(ctx).enqueue(() => loadWorkspacePluginsNow(ctx));
+export async function loadWorkspacePlugins(
+  ctx: WorkspaceContext
+): Promise<WorkspacePluginLoadResult[]> {
+  exposePluginModule();
+  return workspacePluginSession(ctx).enqueue(() => loadWorkspacePluginsNow(ctx));
 }
 
 /**
@@ -124,25 +128,26 @@ export async function loadWorkspacePlugins(ctx: WorkspaceContext): Promise<Works
  * extends the game, not the editor, and never appears in the workspace descriptor list.
  */
 export async function activateWorkspacePlugin(
-    ctx: WorkspaceContext,
-    pluginId: string,
+  ctx: WorkspaceContext,
+  pluginId: string
 ): Promise<WorkspacePluginLoadResult | null> {
-    exposePluginModule();
-    return workspacePluginSession(ctx).enqueue(async () => {
-        const session = workspacePluginSession(ctx);
-        if (session.isRunning(pluginId)) {
-            return { pluginId, ok: true } as WorkspacePluginLoadResult;
-        }
-        if (suppressedPluginIds(ctx).has(pluginId)) {
-            return null;
-        }
-        const descriptor = (await fetchWorkspacePluginDescriptors())
-            .find(candidate => candidate.plugin.id === pluginId);
-        if (!descriptor) {
-            return null;
-        }
-        return loadWorkspacePlugin(ctx, descriptor);
-    });
+  exposePluginModule();
+  return workspacePluginSession(ctx).enqueue(async () => {
+    const session = workspacePluginSession(ctx);
+    if (session.isRunning(pluginId)) {
+      return { pluginId, ok: true } as WorkspacePluginLoadResult;
+    }
+    if (suppressedPluginIds(ctx).has(pluginId)) {
+      return null;
+    }
+    const descriptor = (await fetchWorkspacePluginDescriptors()).find(
+      (candidate) => candidate.plugin.id === pluginId
+    );
+    if (!descriptor) {
+      return null;
+    }
+    return loadWorkspacePlugin(ctx, descriptor);
+  });
 }
 
 /**
@@ -151,29 +156,32 @@ export async function activateWorkspacePlugin(
  * Answers false when it was not running here, which is not a failure - a disabled plugin, a
  * runtime-only one, and one this project suppresses all reach this the same way.
  */
-export async function deactivateWorkspacePlugin(ctx: WorkspaceContext, pluginId: string): Promise<boolean> {
-    return workspacePluginSession(ctx).enqueue(async () => {
-        const session = workspacePluginSession(ctx);
-        if (!session.isRunning(pluginId)) {
-            session.forget(pluginId);
-            return false;
-        }
-        await session.unload(pluginId);
-        return true;
-    });
+export async function deactivateWorkspacePlugin(
+  ctx: WorkspaceContext,
+  pluginId: string
+): Promise<boolean> {
+  return workspacePluginSession(ctx).enqueue(async () => {
+    const session = workspacePluginSession(ctx);
+    if (!session.isRunning(pluginId)) {
+      session.forget(pluginId);
+      return false;
+    }
+    await session.unload(pluginId);
+    return true;
+  });
 }
 
 /** Unload everything this workspace loaded. The workspace's own teardown; also what recovery needs. */
 export async function unloadWorkspacePlugins(ctx: WorkspaceContext): Promise<void> {
-    return workspacePluginSession(ctx).enqueue(() => workspacePluginSession(ctx).unloadAll());
+  return workspacePluginSession(ctx).enqueue(() => workspacePluginSession(ctx).unloadAll());
 }
 
 async function fetchWorkspacePluginDescriptors(): Promise<WorkspacePluginDescriptor[]> {
-    const result = await getInterface().plugins.getWorkspacePlugins();
-    if (!result.success) {
-        throw new Error(result.error ?? "Failed to load workspace plugins");
-    }
-    return result.data.plugins;
+  const result = await getInterface().plugins.getWorkspacePlugins();
+  if (!result.success) {
+    throw new Error(result.error ?? "Failed to load workspace plugins");
+  }
+  return result.data.plugins;
 }
 
 /**
@@ -182,135 +190,141 @@ async function fetchWorkspacePluginDescriptors(): Promise<WorkspacePluginDescrip
  * keeps their nodes, widgets, and actions from registering and corrupting the open project.
  */
 function suppressedPluginIds(ctx: WorkspaceContext): Set<string> {
-    return new Set(
-        ctx.services.get<ProjectDependencyService>(Services.ProjectDependency).getSuppressedPluginIds(),
-    );
+  return new Set(
+    ctx.services.get<ProjectDependencyService>(Services.ProjectDependency).getSuppressedPluginIds()
+  );
 }
 
-async function loadWorkspacePluginsNow(ctx: WorkspaceContext): Promise<WorkspacePluginLoadResult[]> {
-    const descriptors = await fetchWorkspacePluginDescriptors();
-    const suppressed = suppressedPluginIds(ctx);
-    const eligible = descriptors.filter(descriptor => !suppressed.has(descriptor.plugin.id));
+async function loadWorkspacePluginsNow(
+  ctx: WorkspaceContext
+): Promise<WorkspacePluginLoadResult[]> {
+  const descriptors = await fetchWorkspacePluginDescriptors();
+  const suppressed = suppressedPluginIds(ctx);
+  const eligible = descriptors.filter((descriptor) => !suppressed.has(descriptor.plugin.id));
 
-    const skipped = descriptors.filter(descriptor => suppressed.has(descriptor.plugin.id));
-    if (skipped.length > 0) {
-        const names = skipped.map(descriptor => descriptor.manifest.name).join(", ");
-        ctx.services.get<UIService>(Services.UI).notifications.warning(
-            translate("plugins.workspace.suppressedNotice", { names }),
-            undefined,
-            [{
-                label: translate("plugins.workspace.openPanel"),
-                onClick: () => openPluginsPanel(ctx, { pluginId: skipped[0].plugin.id }),
-            }],
-        );
-    }
+  const skipped = descriptors.filter((descriptor) => suppressed.has(descriptor.plugin.id));
+  if (skipped.length > 0) {
+    const names = skipped.map((descriptor) => descriptor.manifest.name).join(", ");
+    ctx.services
+      .get<UIService>(Services.UI)
+      .notifications.warning(
+        translate("plugins.workspace.suppressedNotice", { names }),
+        undefined,
+        [
+          {
+            label: translate("plugins.workspace.openPanel"),
+            onClick: () => openPluginsPanel(ctx, { pluginId: skipped[0].plugin.id })
+          }
+        ]
+      );
+  }
 
-    const loadResults = await Promise.all(
-        eligible.map(descriptor => loadWorkspacePlugin(ctx, descriptor)),
-    );
+  const loadResults = await Promise.all(
+    eligible.map((descriptor) => loadWorkspacePlugin(ctx, descriptor))
+  );
 
-    return loadResults;
+  return loadResults;
 }
 
 async function loadWorkspacePlugin(
-    ctx: WorkspaceContext,
-    descriptor: WorkspacePluginDescriptor,
+  ctx: WorkspaceContext,
+  descriptor: WorkspacePluginDescriptor
 ): Promise<WorkspacePluginLoadResult> {
-    const runtime = createPluginPrivilegedFacade(descriptor.plugin);
-    const { app, dispose } = createPluginApp(ctx, descriptor, runtime.app);
-    try {
-        const mod = await import(descriptor.entryUrl) as PluginModule;
-        const definition = resolvePluginDefinition(mod);
+  const runtime = createPluginPrivilegedFacade(descriptor.plugin);
+  const { app, dispose } = createPluginApp(ctx, descriptor, runtime.app);
+  try {
+    const mod = (await import(descriptor.entryUrl)) as PluginModule;
+    const definition = resolvePluginDefinition(mod);
 
-        const setupResult = await definition.setup(app);
-        const cleanup = async () => {
-            if (typeof setupResult === "function") {
-                try {
-                    await setupResult();
-                } catch (error) {
-                    console.error(`[plugin:${descriptor.plugin.id}] cleanup failed:`, error);
-                }
-            }
-            dispose();
-            runtime.revoke();
-        };
+    const setupResult = await definition.setup(app);
+    const cleanup = async () => {
+      if (typeof setupResult === "function") {
+        try {
+          await setupResult();
+        } catch (error) {
+          console.error(`[plugin:${descriptor.plugin.id}] cleanup failed:`, error);
+        }
+      }
+      dispose();
+      runtime.revoke();
+    };
 
-        await getInterface().plugins.reportLoadError(descriptor.plugin.id, null);
-        workspacePluginSession(ctx).markLoaded(descriptor.plugin.id, cleanup);
-        return {
-            pluginId: descriptor.plugin.id,
-            ok: true,
-            cleanup,
-        };
-    } catch (error) {
-        // Reclaim any registrations made before setup failed.
-        dispose();
-        runtime.revoke();
-        const message = error instanceof Error ? error.message : String(error);
-        await getInterface().plugins.reportLoadError(descriptor.plugin.id, message);
-        workspacePluginSession(ctx).markFailed(descriptor.plugin.id, message);
-        return {
-            pluginId: descriptor.plugin.id,
-            ok: false,
-            error: message,
-        };
-    }
+    await getInterface().plugins.reportLoadError(descriptor.plugin.id, null);
+    workspacePluginSession(ctx).markLoaded(descriptor.plugin.id, cleanup);
+    return {
+      pluginId: descriptor.plugin.id,
+      ok: true,
+      cleanup
+    };
+  } catch (error) {
+    // Reclaim any registrations made before setup failed.
+    dispose();
+    runtime.revoke();
+    const message = error instanceof Error ? error.message : String(error);
+    await getInterface().plugins.reportLoadError(descriptor.plugin.id, message);
+    workspacePluginSession(ctx).markFailed(descriptor.plugin.id, message);
+    return {
+      pluginId: descriptor.plugin.id,
+      ok: false,
+      error: message
+    };
+  }
 }
 
 export function resolvePluginDefinition(mod: PluginModule) {
-    const definition = mod.default ?? mod.plugin;
-    if (!isPluginDefinition(definition)) {
-        throw new Error("Plugin entry must default-export definePlugin({ setup })");
-    }
-    return definition;
+  const definition = mod.default ?? mod.plugin;
+  if (!isPluginDefinition(definition)) {
+    throw new Error("Plugin entry must default-export definePlugin({ setup })");
+  }
+  return definition;
 }
 
 type PluginModuleGlobal = {
-    definePlugin: typeof definePlugin;
-    ui: typeof pluginUi;
-    AssetType: typeof AssetType;
-    AssetSource: typeof AssetSource;
-    PanelPosition: typeof PanelPosition;
-    externals: {
-        react: typeof React;
-        reactDom: typeof ReactDOM;
-        reactDomClient: typeof ReactDOMClient;
-        jsxRuntime: typeof ReactJsxRuntime;
-        jsxDevRuntime: typeof ReactJsxDevRuntime;
-    };
+  definePlugin: typeof definePlugin;
+  ui: typeof pluginUi;
+  AssetType: typeof AssetType;
+  AssetSource: typeof AssetSource;
+  PanelPosition: typeof PanelPosition;
+  externals: {
+    react: typeof React;
+    reactDom: typeof ReactDOM;
+    reactDomClient: typeof ReactDOMClient;
+    jsxRuntime: typeof ReactJsxRuntime;
+    jsxDevRuntime: typeof ReactJsxDevRuntime;
+  };
 };
 
 export function exposePluginModule(): void {
-    const global = globalThis as typeof globalThis & {
-        __NLS_PLUGIN_MODULE__?: PluginModuleGlobal;
-    };
-    if (global.__NLS_PLUGIN_MODULE__) {
-        return;
-    }
-    // Frozen and defined non-writable/non-configurable so no plugin can
-    // replace or poison the module that later-loading plugins import.
-    // ESM namespace objects (React etc.) are spec-immutable already; freezing
-    // the wrapper objects is sufficient. pluginUi is frozen at its source.
-    const moduleValue: PluginModuleGlobal = Object.freeze({
-        definePlugin,
-        ui: pluginUi,
-        AssetType: Object.freeze(AssetType),
-        AssetSource: Object.freeze(AssetSource),
-        PanelPosition: Object.freeze(PanelPosition),
-        externals: Object.freeze({
-            react: React,
-            reactDom: ReactDOM,
-            reactDomClient: ReactDOMClient,
-            jsxRuntime: ReactJsxRuntime,
-            jsxDevRuntime: ReactJsxDevRuntime,
-        }),
-    });
-    Object.defineProperty(global, "__NLS_PLUGIN_MODULE__", {
-        value: moduleValue,
-        writable: false,
-        configurable: false,
-        enumerable: false,
-    });
+  const global = globalThis as typeof globalThis & {
+    __NLS_PLUGIN_MODULE__?: PluginModuleGlobal;
+  };
+  if (global.__NLS_PLUGIN_MODULE__) {
+    return;
+  }
+  // Frozen and defined non-writable/non-configurable so no plugin can
+  // replace or poison the module that later-loading plugins import.
+  // ESM namespace objects (React etc.) are spec-immutable already; freezing
+  // the wrapper objects is sufficient. pluginUi is frozen at its source.
+  const moduleValue: PluginModuleGlobal = Object.freeze({
+    definePlugin,
+    ui: pluginUi,
+    AssetType: Object.freeze(AssetType),
+    AssetSource: Object.freeze(AssetSource),
+    PanelPosition: Object.freeze(PanelPosition),
+    externals: Object.freeze({
+      react: React,
+      reactDom: ReactDOM,
+      reactDomClient: ReactDOMClient,
+      jsxRuntime: ReactJsxRuntime,
+      jsxDevRuntime: ReactJsxDevRuntime
+    })
+  });
+  Object.defineProperty(global, "__NLS_PLUGIN_MODULE__", {
+    value: moduleValue,
+    writable: false,
+    configurable: false,
+    enumerable: false
+  });
 }
 
 /**
@@ -320,21 +334,21 @@ export function exposePluginModule(): void {
  * undeclared registration would silently break packaged games.
  */
 function assertDeclaredBlueprintNode(descriptor: WorkspacePluginDescriptor, type: string): void {
-    if (!descriptor.manifest.contributes.blueprintNodes.includes(type)) {
-        throw new Error(
-            `Blueprint node type is not declared in manifest contributes.blueprintNodes: ${type}. ` +
-            "Declare it so Studio can statically validate projects that use it.",
-        );
-    }
+  if (!descriptor.manifest.contributes.blueprintNodes.includes(type)) {
+    throw new Error(
+      `Blueprint node type is not declared in manifest contributes.blueprintNodes: ${type}. ` +
+        "Declare it so Studio can statically validate projects that use it."
+    );
+  }
 }
 
 function assertDeclaredWidget(descriptor: WorkspacePluginDescriptor, type: string): void {
-    if (!descriptor.manifest.contributes.widgets.includes(type)) {
-        throw new Error(
-            `Widget type is not declared in manifest contributes.widgets: ${type}. ` +
-            "Declare it so Studio can statically validate projects that use it.",
-        );
-    }
+  if (!descriptor.manifest.contributes.widgets.includes(type)) {
+    throw new Error(
+      `Widget type is not declared in manifest contributes.widgets: ${type}. ` +
+        "Declare it so Studio can statically validate projects that use it."
+    );
+  }
 }
 
 /**
@@ -345,12 +359,12 @@ function assertDeclaredWidget(descriptor: WorkspacePluginDescriptor, type: strin
  * never told about until they have already installed and loaded the plugin.
  */
 function assertDeclaredTest(descriptor: WorkspacePluginDescriptor, id: string): void {
-    if (!descriptor.manifest.contributes.tests.includes(id)) {
-        throw new Error(
-            `Test id is not declared in manifest contributes.tests: ${id}. ` +
-            "Declare it so Studio can list what this plugin checks before loading it.",
-        );
-    }
+  if (!descriptor.manifest.contributes.tests.includes(id)) {
+    throw new Error(
+      `Test id is not declared in manifest contributes.tests: ${id}. ` +
+        "Declare it so Studio can list what this plugin checks before loading it."
+    );
+  }
 }
 
 /**
@@ -369,67 +383,67 @@ function assertDeclaredTest(descriptor: WorkspacePluginDescriptor, id: string): 
  * a side door would undo exactly what narrowing the plugin execute achieved.
  */
 function createEditorRuntimePluginGame(descriptor: WorkspacePluginDescriptor): RuntimePluginGame {
-    const pluginId = descriptor.plugin.id;
-    const log = (level: RuntimePluginLogLevel, message: string): void => {
-        const line = `[plugin:${pluginId}] ${message}`;
-        if (level === "error") {
-            console.error(line);
-        } else if (level === "warning") {
-            console.warn(line);
-        } else {
-            console.info(line);
-        }
-    };
-    // Registration belongs to `setup(app)` in a game environment. In Studio the
-    // equivalent is `app.services.*`, which the plugin already used to get this
-    // node registered - so a call here is a mistake worth naming, not a silent
-    // no-op that drops a contribution on the floor.
-    const registrationUnavailable = (namespace: string): never => {
-        throw new Error(
-            `[plugin:${pluginId}] app.game.${namespace} is only available in a game runtime entry; ` +
-            `use app.services.${namespace} from the studio entry instead.`,
-        );
-    };
+  const pluginId = descriptor.plugin.id;
+  const log = (level: RuntimePluginLogLevel, message: string): void => {
+    const line = `[plugin:${pluginId}] ${message}`;
+    if (level === "error") {
+      console.error(line);
+    } else if (level === "warning") {
+      console.warn(line);
+    } else {
+      console.info(line);
+    }
+  };
+  // Registration belongs to `setup(app)` in a game environment. In Studio the
+  // equivalent is `app.services.*`, which the plugin already used to get this
+  // node registered - so a call here is a mistake worth naming, not a silent
+  // no-op that drops a contribution on the floor.
+  const registrationUnavailable = (namespace: string): never => {
+    throw new Error(
+      `[plugin:${pluginId}] app.game.${namespace} is only available in a game runtime entry; ` +
+        `use app.services.${namespace} from the studio entry instead.`
+    );
+  };
 
-    return {
-        blueprintNodes: {
-            register: () => registrationUnavailable("blueprintNodes"),
-            registerMany: () => registrationUnavailable("blueprintNodes"),
-        },
-        widgets: {
-            register: () => registrationUnavailable("widgets"),
-            registerMany: () => registrationUnavailable("widgets"),
-        },
-        data: {
-            // In a game this reads the copy published with the pack, synchronously.
-            // The editor's authored copy lives behind the async storage service, so
-            // there is nothing to return in time; documented as "degrade gracefully
-            // rather than assume authored data exists", which is what null means.
-            readJson: () => {
-                log(
-                    "warning",
-                    "app.game.data is not readable in the editor; read the authored copy through "
-                    + "app.services.storage in the studio entry and pass it into the node.",
-                );
-                return null;
-            },
-        },
-        config: {
-            // A build config value is resolved by a build, for the variant it is building. The
-            // editor is not building anything, so there is no variant here whose value this could
-            // be - and answering with the project's own would be the demo's answer in the release
-            // build as often as not.
-            get: () => {
-                log(
-                    "warning",
-                    "app.game.config is only readable in a build; in the editor there is no variant "
-                    + "for a value to belong to.",
-                );
-                return null;
-            },
-        },
-        log,
-    };
+  return {
+    blueprintNodes: {
+      register: () => registrationUnavailable("blueprintNodes"),
+      registerMany: () => registrationUnavailable("blueprintNodes")
+    },
+    widgets: {
+      register: () => registrationUnavailable("widgets"),
+      registerMany: () => registrationUnavailable("widgets")
+    },
+    data: {
+      // In a game this reads the copy published with the pack, synchronously.
+      // The editor's authored copy lives behind the async storage service, so
+      // there is nothing to return in time; documented as "degrade gracefully
+      // rather than assume authored data exists", which is what null means.
+      readJson: () => {
+        log(
+          "warning",
+          "app.game.data is not readable in the editor; read the authored copy through " +
+            "app.services.storage in the studio entry and pass it into the node."
+        );
+        return null;
+      }
+    },
+    config: {
+      // A build config value is resolved by a build, for the variant it is building. The
+      // editor is not building anything, so there is no variant here whose value this could
+      // be - and answering with the project's own would be the demo's answer in the release
+      // build as often as not.
+      get: () => {
+        log(
+          "warning",
+          "app.game.config is only readable in a build; in the editor there is no variant " +
+            "for a value to belong to."
+        );
+        return null;
+      }
+    },
+    log
+  };
 }
 
 /**
@@ -442,20 +456,21 @@ function createEditorRuntimePluginGame(descriptor: WorkspacePluginDescriptor): R
  * capability-gated `game` the plugin's runtime entry would see.
  */
 function toEditorBlueprintNodeDef(
-    def: PluginBlueprintNodeDef,
-    game: RuntimePluginGame,
+  def: PluginBlueprintNodeDef,
+  game: RuntimePluginGame
 ): BlueprintNodeDef {
-    return {
-        ...def,
-        execute: hostCtx => def.execute({
-            params: hostCtx.params,
-            resolveInput: hostCtx.resolveInput,
-            eventName: hostCtx.eventName,
-            eventPayload: hostCtx.eventPayload,
-            signal: hostCtx.signal,
-            game,
-        }),
-    };
+  return {
+    ...def,
+    execute: (hostCtx) =>
+      def.execute({
+        params: hostCtx.params,
+        resolveInput: hostCtx.resolveInput,
+        eventName: hostCtx.eventName,
+        eventPayload: hostCtx.eventPayload,
+        signal: hostCtx.signal,
+        game
+      })
+  };
 }
 
 /**
@@ -470,417 +485,452 @@ function toEditorBlueprintNodeDef(
  * `menuRole` is dropped for the same reason: it only means anything in the `edit` slot.
  */
 function confineToOwnMenu(group: ActionGroup): ActionGroup {
-    return {
-        ...group,
-        menuSlot: group.menuSlot === "none" ? "none" : "top-level",
-        actions: group.actions?.map(action =>
-            isActionMenuSeparator(action) ? action : { ...action, menuRole: undefined },
-        ),
-        items: group.items?.map(stripMenuRole),
-    };
+  return {
+    ...group,
+    menuSlot: group.menuSlot === "none" ? "none" : "top-level",
+    actions: group.actions?.map((action) =>
+      isActionMenuSeparator(action) ? action : { ...action, menuRole: undefined }
+    ),
+    items: group.items?.map(stripMenuRole)
+  };
 }
 
 function stripMenuRole(item: ActionMenuItem): ActionMenuItem {
-    if (isActionMenuSeparator(item)) {
-        return item;
-    }
-    if (isActionMenuAction(item)) {
-        return { ...item, menuRole: undefined };
-    }
-    return { ...item, items: item.items.map(stripMenuRole) };
+  if (isActionMenuSeparator(item)) {
+    return item;
+  }
+  if (isActionMenuAction(item)) {
+    return { ...item, menuRole: undefined };
+  }
+  return { ...item, items: item.items.map(stripMenuRole) };
 }
 
 export function createPluginApp(
-    ctx: WorkspaceContext,
-    descriptor: WorkspacePluginDescriptor,
-    privileged: PluginApp["privileged"],
+  ctx: WorkspaceContext,
+  descriptor: WorkspacePluginDescriptor,
+  privileged: PluginApp["privileged"]
 ): { app: PluginApp; dispose: () => void } {
-    const ui = ctx.services.get<UIService>(Services.UI);
-    const assets = ctx.services.get<AssetsService>(Services.Assets);
-    const storage = ctx.services.get<ServiceAssetsService>(Services.ServiceAssets);
-    const blueprintNodes = ctx.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
-    const story = ctx.services.get<StoryService>(Services.Story);
-    const freeze = ctx.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
-    const workspaceReload = ctx.services.get<WorkspaceReloadService>(Services.WorkspaceReload);
-    // One per plugin, shared by every node it registers - the runtime loader
-    // hands a node's execute the same `game` object `setup(app)` received.
-    const nodeGame = createEditorRuntimePluginGame(descriptor);
+  const ui = ctx.services.get<UIService>(Services.UI);
+  const assets = ctx.services.get<AssetsService>(Services.Assets);
+  const storage = ctx.services.get<ServiceAssetsService>(Services.ServiceAssets);
+  const blueprintNodes = ctx.services.get<BlueprintNodeCatalogService>(
+    Services.BlueprintNodeCatalog
+  );
+  const story = ctx.services.get<StoryService>(Services.Story);
+  const freeze = ctx.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
+  const workspaceReload = ctx.services.get<WorkspaceReloadService>(Services.WorkspaceReload);
+  // One per plugin, shared by every node it registers - the runtime loader
+  // hands a node's execute the same `game` object `setup(app)` received.
+  const nodeGame = createEditorRuntimePluginGame(descriptor);
 
-    // Every registration a plugin makes through this app object is recorded
-    // so the host can reclaim it on unload, even if the plugin's own cleanup
-    // forgets to (or setup() throws halfway through).
-    const disposables: Array<() => void> = [];
-    const track = (disposer: () => void): void => {
-        disposables.push(disposer);
-    };
-    const dispose = (): void => {
-        for (const disposer of disposables.splice(0).reverse()) {
-            try {
-                disposer();
-            } catch (error) {
-                console.error(`[plugin:${descriptor.plugin.id}] failed to dispose registration:`, error);
-            }
+  // Every registration a plugin makes through this app object is recorded
+  // so the host can reclaim it on unload, even if the plugin's own cleanup
+  // forgets to (or setup() throws halfway through).
+  const disposables: Array<() => void> = [];
+  const track = (disposer: () => void): void => {
+    disposables.push(disposer);
+  };
+  const dispose = (): void => {
+    for (const disposer of disposables.splice(0).reverse()) {
+      try {
+        disposer();
+      } catch (error) {
+        console.error(`[plugin:${descriptor.plugin.id}] failed to dispose registration:`, error);
+      }
+    }
+  };
+  // Track a disposer in the unload bag and hand it back to the plugin.
+  const trackReturn = (disposer: PluginCleanup): PluginCleanup => {
+    track(disposer);
+    return disposer;
+  };
+  // One cleanup that disposes every disposer from a registerMany call (LIFO).
+  const combine =
+    (disposers: PluginCleanup[]): PluginCleanup =>
+    () => {
+      for (const disposer of disposers.splice(0).reverse()) {
+        try {
+          void disposer();
+        } catch (error) {
+          console.error(`[plugin:${descriptor.plugin.id}] failed to dispose registration:`, error);
         }
-    };
-    // Track a disposer in the unload bag and hand it back to the plugin.
-    const trackReturn = (disposer: PluginCleanup): PluginCleanup => {
-        track(disposer);
-        return disposer;
-    };
-    // One cleanup that disposes every disposer from a registerMany call (LIFO).
-    const combine = (disposers: PluginCleanup[]): PluginCleanup => () => {
-        for (const disposer of disposers.splice(0).reverse()) {
-            try {
-                void disposer();
-            } catch (error) {
-                console.error(`[plugin:${descriptor.plugin.id}] failed to dispose registration:`, error);
-            }
-        }
+      }
     };
 
-    const app: PluginApp = {
-        plugin: descriptor.plugin,
-        manifest: descriptor.manifest,
-        privileged,
-        services: {
-            storage: {
-                readJson: async namespace => {
-                    const result = await storage.readStore(pluginStoreNamespace(descriptor.plugin.id, namespace));
-                    if (result.ok) {
-                        return result.data as any;
-                    }
-                    if (result.error.code === FsRejectErrorCode.NOT_FOUND) {
-                        return null;
-                    }
-                    throw new Error(result.error.message);
-                },
-                writeJson: async (namespace, data) => {
-                    const result = await storage.writeStore(pluginStoreNamespace(descriptor.plugin.id, namespace), data);
-                    if (!result.ok) {
-                        throw new Error(result.error.message);
-                    }
-                },
-            },
-            assets: {
-                getMap: () => assets.getAssets(),
-                list: type => Object.values(assets.getAssets()[type] ?? {}) as any,
-                get: (type, assetId) => assets.getAssets()[type]?.[assetId] as any,
-                fetch: async asset => {
-                    const result = await assets.fetch(asset as any);
-                    if (!result.success || !result.data) {
-                        throw new Error(result.error ?? `Failed to fetch asset: ${asset.id}`);
-                    }
-                    return result.data as any;
-                },
-                // Always a `blob:` URL over bytes read from the project, for remote assets too: a
-                // plugin handed a project's `https:` URL could put it in the DOM, which is the one
-                // thing renderers may not do with a remote address.
-                createObjectUrl: async asset => {
-                    const result = await assets.fetch(asset as any);
-                    if (!result.success || !result.data) {
-                        throw new Error(result.error ?? `Failed to fetch asset: ${asset.id}`);
-                    }
-                    const data = (result.data as { data: unknown }).data;
-                    const bytes = data instanceof Uint8Array
-                        ? data
-                        : new TextEncoder().encode(JSON.stringify(data ?? null));
-                    const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-                    return URL.createObjectURL(new Blob([buffer]));
-                },
-                revokeObjectUrl: url => {
-                    if (url.startsWith("blob:")) {
-                        URL.revokeObjectURL(url);
-                    }
-                },
-            },
-            workspace: {
-                get frozen() {
-                    return freeze.isFrozen();
-                },
-                get freezeReason() {
-                    return freeze.getReason()?.kind ?? null;
-                },
-                onFreezeChange: listener => trackReturn(
-                    freeze.onChanged(reason => listener(reason !== null, reason?.kind ?? null)),
-                ),
-                // Keyed by plugin id, so a plugin that re-registers replaces its own reader rather
-                // than stacking a second one that reads into a store nobody owns any more.
-                registerReloader: reload => trackReturn(workspaceReload.registerReloader({
-                    id: `plugin:${descriptor.plugin.id}`,
-                    label: descriptor.manifest.name || descriptor.plugin.id,
-                    reload,
-                })),
-            },
-            i18n: {
-                get locale() {
-                    return i18nStore.getLocale();
-                },
-                onLocaleChange: listener => {
-                    let last = i18nStore.getLocale();
-                    const disposer = i18nStore.subscribe(() => {
-                        const next = i18nStore.getLocale();
-                        if (next !== last) {
-                            last = next;
-                            listener(next);
-                        }
-                    });
-                    return trackReturn(disposer);
-                },
-                formatNumber: (value, options) => i18nStore.getTranslator().formatNumber(value, options),
-                formatDate: (value, options) => i18nStore.getTranslator().formatDate(value, options),
-                formatList: (items, options) => i18nStore.getTranslator().formatList(items, options),
-                createTranslator: bundle => createPluginTranslator(bundle),
-            },
-            tests: {
-                protocolVersion: TEST_PROTOCOL_VERSION,
-                register: definition => {
-                    assertOwnedId(descriptor.plugin.id, definition.id, "test");
-                    assertDeclaredTest(descriptor, definition.id);
-                    // `ownerPluginId` is taken from the descriptor, never from the definition:
-                    // a plugin must not be able to attribute its test to somebody else.
-                    return trackReturn(testRegistry.register(definition, {
-                        ownerPluginId: descriptor.plugin.id,
-                        replaceExisting: true,
-                    }));
-                },
-                registerMany: definitions => {
-                    // Validate the whole batch before registering any of it, so a typo in the
-                    // last definition does not leave the first half installed.
-                    for (const definition of definitions) {
-                        assertOwnedId(descriptor.plugin.id, definition.id, "test");
-                        assertDeclaredTest(descriptor, definition.id);
-                    }
-                    return combine(definitions.map(definition => trackReturn(
-                        testRegistry.register(definition, {
-                            ownerPluginId: descriptor.plugin.id,
-                            replaceExisting: true,
-                        }),
-                    )));
-                },
-            },
-            textEditor: {
-                // Purely imperative, exactly like `ui.panels`: no manifest `contributes` key
-                // backs these. Nothing outside the open editor session needs to know a preview
-                // exists, so a static declaration would be bookkeeping with no reader - and it
-                // would have to be mirrored into the out-of-repo plugin registry's schema.
-                registerLanguage: def => {
-                    assertOwnedId(descriptor.plugin.id, def.id, "text editor language");
-                    return trackReturn(ui.textEditor.registerLanguage(def));
-                },
-                registerPreview: def => {
-                    assertOwnedId(descriptor.plugin.id, def.id, "text editor preview");
-                    return trackReturn(ui.textEditor.registerPreview(def));
-                },
-                registerAction: def => {
-                    assertOwnedId(descriptor.plugin.id, def.id, "text editor action");
-                    return trackReturn(ui.textEditor.registerAction(def));
-                },
-            },
-            ui: {
-                panels: {
-                    register: panel => {
-                        assertOwnedId(descriptor.plugin.id, panel.id, "panel");
-                        return trackReturn(ui.panels.register(panel as any));
-                    },
-                    registerMany: panels => combine(panels.map(panel => {
-                        assertOwnedId(descriptor.plugin.id, panel.id, "panel");
-                        return trackReturn(ui.panels.register(panel as any));
-                    })),
-                },
-                actions: {
-                    register: action => {
-                        assertOwnedId(descriptor.plugin.id, action.id, "action");
-                        ui.getStore().registerAction(action);
-                        return trackReturn(() => ui.getStore().unregisterAction(action.id));
-                    },
-                    registerMany: actions => combine(actions.map(action => {
-                        assertOwnedId(descriptor.plugin.id, action.id, "action");
-                        ui.getStore().registerAction(action);
-                        return trackReturn(() => ui.getStore().unregisterAction(action.id));
-                    })),
-                    registerGroup: group => {
-                        assertOwnedId(descriptor.plugin.id, group.id, "action group");
-                        ui.getStore().registerActionGroup(confineToOwnMenu(group));
-                        return trackReturn(() => ui.getStore().unregisterActionGroup(group.id));
-                    },
-                },
-                editors: {
-                    // Opened tabs are deliberately not auto-closed on unload:
-                    // they are user-visible state and force-closing is hostile UX.
-                    open: (tab, groupId) => ui.editor.open(tab as any, groupId),
-                    close: (tabId, groupId) => ui.getStore().closeEditorTabInGroup(tabId, groupId),
-                },
-                keybindings: {
-                    register: keybinding => {
-                        assertOwnedId(descriptor.plugin.id, keybinding.id, "keybinding");
-                        return trackReturn(ui.keybindings.register(keybinding));
-                    },
-                    registerMany: keybindings => {
-                        for (const keybinding of keybindings) {
-                            assertOwnedId(descriptor.plugin.id, keybinding.id, "keybinding");
-                        }
-                        return trackReturn(ui.keybindings.registerMany(keybindings));
-                    },
-                },
-                notifications: {
-                    info: message => ui.notifications.info(message),
-                    success: message => ui.notifications.success(message),
-                    warning: message => ui.notifications.warning(message),
-                    error: message => ui.notifications.error(message),
-                },
-            },
-            widgets: {
-                register: module => {
-                    assertDeclaredWidget(descriptor, module.type);
-                    widgetModuleRegistry.register(module, { ownerPluginId: descriptor.plugin.id });
-                    return trackReturn(() => {
-                        if (widgetModuleRegistry.get(module.type) === module) {
-                            widgetModuleRegistry.unregister(module.type);
-                        }
-                    });
-                },
-                registerMany: modules => {
-                    for (const module of modules) {
-                        assertDeclaredWidget(descriptor, module.type);
-                    }
-                    return combine(modules.map(module => {
-                        widgetModuleRegistry.register(module, { ownerPluginId: descriptor.plugin.id });
-                        return trackReturn(() => {
-                            if (widgetModuleRegistry.get(module.type) === module) {
-                                widgetModuleRegistry.unregister(module.type);
-                            }
-                        });
-                    }));
-                },
-                get: type => widgetModuleRegistry.get(type),
-                list: () => widgetModuleRegistry.list(),
-                has: type => widgetModuleRegistry.has(type),
-            },
-            story: {
-                listStories: () => story.listStories().map(entry => ({
-                    id: entry.id,
-                    name: entry.name,
-                })),
-                listScenes: async storyId => {
-                    const id = storyId.trim();
-                    if (!id) {
-                        return [];
-                    }
-                    // A story the author has not opened yet is not in memory;
-                    // load it rather than reporting it as having no scenes.
-                    const document = await story.loadStory(id);
-                    return listSceneIdsInDocumentOrder(document).flatMap(sceneId => {
-                        const scene = document.scenes[sceneId];
-                        return scene
-                            ? [{ id: scene.id, name: scene.name || scene.runtimeName || scene.id, storyId: id }]
-                            : [];
-                    });
-                },
-                actions: {
-                    register: registration => {
-                        assertOwnedId(descriptor.plugin.id, registration.id ?? "", "story action");
-                        return trackReturn(story.registerPluginAction(registration));
-                    },
-                    registerMany: registrations => combine(registrations.map(registration => {
-                        assertOwnedId(descriptor.plugin.id, registration.id ?? "", "story action");
-                        return trackReturn(story.registerPluginAction(registration));
-                    })),
-                },
-            },
-            voice: {
-                /**
-                 * Every recorded take, joined to the line it voices so the
-                 * author recognises it by text rather than by unit id.
-                 *
-                 * A project with no voice configured yields an empty list, not
-                 * an error: "no voice yet" is a normal state for a plugin panel
-                 * offering to curate it.
-                 */
-                listUnits: async localeCode => {
-                    const voice = ctx.services.get<VoiceService>(Services.Voice);
-                    const locales = voice.getConfiguration().voicedLocales;
-                    const wanted = localeCode?.trim()
-                        ? locales.filter(entry => entry.code === localeCode.trim())
-                        : locales;
-                    if (wanted.length === 0) {
-                        return [];
-                    }
-                    // Line text lives in the story documents, keyed by the same
-                    // unit id the voice table uses.
-                    const characters = ctx.services.get<CharacterService>(Services.Character);
-                    // The row carries a character *id*; a plugin panel showing a
-                    // UUID where a speaker's name belongs is unusable, so it is
-                    // resolved here and falls back to the id only if the
-                    // character was deleted.
-                    const speakerName = (characterId: string | undefined): string | null => {
-                        if (!characterId) {
-                            return null;
-                        }
-                        return characters.getCharacter(characterId)?.profile.getName() || characterId;
-                    };
-                    const rowsByUnitId = new Map<string, { text: string; character: string | null }>();
-                    for (const entry of story.listStories()) {
-                        const document = await story.loadStory(entry.id);
-                        for (const row of extractVoiceableRows(document)) {
-                            rowsByUnitId.set(row.unitId, {
-                                text: row.sourceText,
-                                character: speakerName(row.characterId),
-                            });
-                        }
-                    }
-                    const units: PluginVoiceUnitEntry[] = [];
-                    for (const locale of wanted) {
-                        const document = await voice.loadDocument(locale.code);
-                        for (const [unitId, unit] of Object.entries(document.units)) {
-                            const line = rowsByUnitId.get(unitId);
-                            units.push({
-                                unitId,
-                                locale: locale.code,
-                                text: line?.text ?? "",
-                                character: line?.character ?? null,
-                                durationSec: unit.duration ?? null,
-                            });
-                        }
-                    }
-                    return units;
-                },
-            },
-            blueprintNodes: {
-                // Node defs are deliberately not auto-removed on unload: the
-                // catalog enforces per-plugin ownership with replaceExisting
-                // semantics, and removing defs would break open documents
-                // that reference them.
-                register: def => {
-                    assertDeclaredBlueprintNode(descriptor, def.type);
-                    blueprintNodes.register(toEditorBlueprintNodeDef(def, nodeGame), {
-                        ownerPluginId: descriptor.plugin.id,
-                        replaceExisting: true,
-                    });
-                },
-                registerMany: defs => {
-                    for (const def of defs) {
-                        assertDeclaredBlueprintNode(descriptor, def.type);
-                    }
-                    blueprintNodes.registerMany(
-                        defs.map(def => toEditorBlueprintNodeDef(def, nodeGame)),
-                        {
-                            ownerPluginId: descriptor.plugin.id,
-                            replaceExisting: true,
-                        },
-                    );
-                },
-                registerDynamicSelectOptionsSource: (sourceId, provider) => {
-                    const disposer = blueprintNodes.registerDynamicSelectOptionsSource(sourceId, provider, {
-                        ownerPluginId: descriptor.plugin.id,
-                        replaceExisting: true,
-                    });
-                    track(disposer);
-                    return disposer;
-                },
-                notifyDynamicSelectOptionsChanged: () => blueprintNodes.notifyDynamicSelectOptionsChanged(),
-            },
+  const app: PluginApp = {
+    plugin: descriptor.plugin,
+    manifest: descriptor.manifest,
+    privileged,
+    services: {
+      storage: {
+        readJson: async (namespace) => {
+          const result = await storage.readStore(
+            pluginStoreNamespace(descriptor.plugin.id, namespace)
+          );
+          if (result.ok) {
+            return result.data as any;
+          }
+          if (result.error.code === FsRejectErrorCode.NOT_FOUND) {
+            return null;
+          }
+          throw new Error(result.error.message);
         },
-    };
+        writeJson: async (namespace, data) => {
+          const result = await storage.writeStore(
+            pluginStoreNamespace(descriptor.plugin.id, namespace),
+            data
+          );
+          if (!result.ok) {
+            throw new Error(result.error.message);
+          }
+        }
+      },
+      assets: {
+        getMap: () => assets.getAssets(),
+        list: (type) => Object.values(assets.getAssets()[type] ?? {}) as any,
+        get: (type, assetId) => assets.getAssets()[type]?.[assetId] as any,
+        fetch: async (asset) => {
+          const result = await assets.fetch(asset as any);
+          if (!result.success || !result.data) {
+            throw new Error(result.error ?? `Failed to fetch asset: ${asset.id}`);
+          }
+          return result.data as any;
+        },
+        // Always a `blob:` URL over bytes read from the project, for remote assets too: a
+        // plugin handed a project's `https:` URL could put it in the DOM, which is the one
+        // thing renderers may not do with a remote address.
+        createObjectUrl: async (asset) => {
+          const result = await assets.fetch(asset as any);
+          if (!result.success || !result.data) {
+            throw new Error(result.error ?? `Failed to fetch asset: ${asset.id}`);
+          }
+          const data = (result.data as { data: unknown }).data;
+          const bytes =
+            data instanceof Uint8Array
+              ? data
+              : new TextEncoder().encode(JSON.stringify(data ?? null));
+          const buffer = bytes.buffer.slice(
+            bytes.byteOffset,
+            bytes.byteOffset + bytes.byteLength
+          ) as ArrayBuffer;
+          return URL.createObjectURL(new Blob([buffer]));
+        },
+        revokeObjectUrl: (url) => {
+          if (url.startsWith("blob:")) {
+            URL.revokeObjectURL(url);
+          }
+        }
+      },
+      workspace: {
+        get frozen() {
+          return freeze.isFrozen();
+        },
+        get freezeReason() {
+          return freeze.getReason()?.kind ?? null;
+        },
+        onFreezeChange: (listener) =>
+          trackReturn(
+            freeze.onChanged((reason) => listener(reason !== null, reason?.kind ?? null))
+          ),
+        // Keyed by plugin id, so a plugin that re-registers replaces its own reader rather
+        // than stacking a second one that reads into a store nobody owns any more.
+        registerReloader: (reload) =>
+          trackReturn(
+            workspaceReload.registerReloader({
+              id: `plugin:${descriptor.plugin.id}`,
+              label: descriptor.manifest.name || descriptor.plugin.id,
+              reload
+            })
+          )
+      },
+      i18n: {
+        get locale() {
+          return i18nStore.getLocale();
+        },
+        onLocaleChange: (listener) => {
+          let last = i18nStore.getLocale();
+          const disposer = i18nStore.subscribe(() => {
+            const next = i18nStore.getLocale();
+            if (next !== last) {
+              last = next;
+              listener(next);
+            }
+          });
+          return trackReturn(disposer);
+        },
+        formatNumber: (value, options) => i18nStore.getTranslator().formatNumber(value, options),
+        formatDate: (value, options) => i18nStore.getTranslator().formatDate(value, options),
+        formatList: (items, options) => i18nStore.getTranslator().formatList(items, options),
+        createTranslator: (bundle) => createPluginTranslator(bundle)
+      },
+      tests: {
+        protocolVersion: TEST_PROTOCOL_VERSION,
+        register: (definition) => {
+          assertOwnedId(descriptor.plugin.id, definition.id, "test");
+          assertDeclaredTest(descriptor, definition.id);
+          // `ownerPluginId` is taken from the descriptor, never from the definition:
+          // a plugin must not be able to attribute its test to somebody else.
+          return trackReturn(
+            testRegistry.register(definition, {
+              ownerPluginId: descriptor.plugin.id,
+              replaceExisting: true
+            })
+          );
+        },
+        registerMany: (definitions) => {
+          // Validate the whole batch before registering any of it, so a typo in the
+          // last definition does not leave the first half installed.
+          for (const definition of definitions) {
+            assertOwnedId(descriptor.plugin.id, definition.id, "test");
+            assertDeclaredTest(descriptor, definition.id);
+          }
+          return combine(
+            definitions.map((definition) =>
+              trackReturn(
+                testRegistry.register(definition, {
+                  ownerPluginId: descriptor.plugin.id,
+                  replaceExisting: true
+                })
+              )
+            )
+          );
+        }
+      },
+      textEditor: {
+        // Purely imperative, exactly like `ui.panels`: no manifest `contributes` key
+        // backs these. Nothing outside the open editor session needs to know a preview
+        // exists, so a static declaration would be bookkeeping with no reader - and it
+        // would have to be mirrored into the out-of-repo plugin registry's schema.
+        registerLanguage: (def) => {
+          assertOwnedId(descriptor.plugin.id, def.id, "text editor language");
+          return trackReturn(ui.textEditor.registerLanguage(def));
+        },
+        registerPreview: (def) => {
+          assertOwnedId(descriptor.plugin.id, def.id, "text editor preview");
+          return trackReturn(ui.textEditor.registerPreview(def));
+        },
+        registerAction: (def) => {
+          assertOwnedId(descriptor.plugin.id, def.id, "text editor action");
+          return trackReturn(ui.textEditor.registerAction(def));
+        }
+      },
+      ui: {
+        panels: {
+          register: (panel) => {
+            assertOwnedId(descriptor.plugin.id, panel.id, "panel");
+            return trackReturn(ui.panels.register(panel as any));
+          },
+          registerMany: (panels) =>
+            combine(
+              panels.map((panel) => {
+                assertOwnedId(descriptor.plugin.id, panel.id, "panel");
+                return trackReturn(ui.panels.register(panel as any));
+              })
+            )
+        },
+        actions: {
+          register: (action) => {
+            assertOwnedId(descriptor.plugin.id, action.id, "action");
+            ui.getStore().registerAction(action);
+            return trackReturn(() => ui.getStore().unregisterAction(action.id));
+          },
+          registerMany: (actions) =>
+            combine(
+              actions.map((action) => {
+                assertOwnedId(descriptor.plugin.id, action.id, "action");
+                ui.getStore().registerAction(action);
+                return trackReturn(() => ui.getStore().unregisterAction(action.id));
+              })
+            ),
+          registerGroup: (group) => {
+            assertOwnedId(descriptor.plugin.id, group.id, "action group");
+            ui.getStore().registerActionGroup(confineToOwnMenu(group));
+            return trackReturn(() => ui.getStore().unregisterActionGroup(group.id));
+          }
+        },
+        editors: {
+          // Opened tabs are deliberately not auto-closed on unload:
+          // they are user-visible state and force-closing is hostile UX.
+          open: (tab, groupId) => ui.editor.open(tab as any, groupId),
+          close: (tabId, groupId) => ui.getStore().closeEditorTabInGroup(tabId, groupId)
+        },
+        keybindings: {
+          register: (keybinding) => {
+            assertOwnedId(descriptor.plugin.id, keybinding.id, "keybinding");
+            return trackReturn(ui.keybindings.register(keybinding));
+          },
+          registerMany: (keybindings) => {
+            for (const keybinding of keybindings) {
+              assertOwnedId(descriptor.plugin.id, keybinding.id, "keybinding");
+            }
+            return trackReturn(ui.keybindings.registerMany(keybindings));
+          }
+        },
+        notifications: {
+          info: (message) => ui.notifications.info(message),
+          success: (message) => ui.notifications.success(message),
+          warning: (message) => ui.notifications.warning(message),
+          error: (message) => ui.notifications.error(message)
+        }
+      },
+      widgets: {
+        register: (module) => {
+          assertDeclaredWidget(descriptor, module.type);
+          widgetModuleRegistry.register(module, { ownerPluginId: descriptor.plugin.id });
+          return trackReturn(() => {
+            if (widgetModuleRegistry.get(module.type) === module) {
+              widgetModuleRegistry.unregister(module.type);
+            }
+          });
+        },
+        registerMany: (modules) => {
+          for (const module of modules) {
+            assertDeclaredWidget(descriptor, module.type);
+          }
+          return combine(
+            modules.map((module) => {
+              widgetModuleRegistry.register(module, { ownerPluginId: descriptor.plugin.id });
+              return trackReturn(() => {
+                if (widgetModuleRegistry.get(module.type) === module) {
+                  widgetModuleRegistry.unregister(module.type);
+                }
+              });
+            })
+          );
+        },
+        get: (type) => widgetModuleRegistry.get(type),
+        list: () => widgetModuleRegistry.list(),
+        has: (type) => widgetModuleRegistry.has(type)
+      },
+      story: {
+        listStories: () =>
+          story.listStories().map((entry) => ({
+            id: entry.id,
+            name: entry.name
+          })),
+        listScenes: async (storyId) => {
+          const id = storyId.trim();
+          if (!id) {
+            return [];
+          }
+          // A story the author has not opened yet is not in memory;
+          // load it rather than reporting it as having no scenes.
+          const document = await story.loadStory(id);
+          return listSceneIdsInDocumentOrder(document).flatMap((sceneId) => {
+            const scene = document.scenes[sceneId];
+            return scene
+              ? [{ id: scene.id, name: scene.name || scene.runtimeName || scene.id, storyId: id }]
+              : [];
+          });
+        },
+        actions: {
+          register: (registration) => {
+            assertOwnedId(descriptor.plugin.id, registration.id ?? "", "story action");
+            return trackReturn(story.registerPluginAction(registration));
+          },
+          registerMany: (registrations) =>
+            combine(
+              registrations.map((registration) => {
+                assertOwnedId(descriptor.plugin.id, registration.id ?? "", "story action");
+                return trackReturn(story.registerPluginAction(registration));
+              })
+            )
+        }
+      },
+      voice: {
+        /**
+         * Every recorded take, joined to the line it voices so the
+         * author recognises it by text rather than by unit id.
+         *
+         * A project with no voice configured yields an empty list, not
+         * an error: "no voice yet" is a normal state for a plugin panel
+         * offering to curate it.
+         */
+        listUnits: async (localeCode) => {
+          const voice = ctx.services.get<VoiceService>(Services.Voice);
+          const locales = voice.getConfiguration().voicedLocales;
+          const wanted = localeCode?.trim()
+            ? locales.filter((entry) => entry.code === localeCode.trim())
+            : locales;
+          if (wanted.length === 0) {
+            return [];
+          }
+          // Line text lives in the story documents, keyed by the same
+          // unit id the voice table uses.
+          const characters = ctx.services.get<CharacterService>(Services.Character);
+          // The row carries a character *id*; a plugin panel showing a
+          // UUID where a speaker's name belongs is unusable, so it is
+          // resolved here and falls back to the id only if the
+          // character was deleted.
+          const speakerName = (characterId: string | undefined): string | null => {
+            if (!characterId) {
+              return null;
+            }
+            return characters.getCharacter(characterId)?.profile.getName() || characterId;
+          };
+          const rowsByUnitId = new Map<string, { text: string; character: string | null }>();
+          for (const entry of story.listStories()) {
+            const document = await story.loadStory(entry.id);
+            for (const row of extractVoiceableRows(document)) {
+              rowsByUnitId.set(row.unitId, {
+                text: row.sourceText,
+                character: speakerName(row.characterId)
+              });
+            }
+          }
+          const units: PluginVoiceUnitEntry[] = [];
+          for (const locale of wanted) {
+            const document = await voice.loadDocument(locale.code);
+            for (const [unitId, unit] of Object.entries(document.units)) {
+              const line = rowsByUnitId.get(unitId);
+              units.push({
+                unitId,
+                locale: locale.code,
+                text: line?.text ?? "",
+                character: line?.character ?? null,
+                durationSec: unit.duration ?? null
+              });
+            }
+          }
+          return units;
+        }
+      },
+      blueprintNodes: {
+        // Node defs are deliberately not auto-removed on unload: the
+        // catalog enforces per-plugin ownership with replaceExisting
+        // semantics, and removing defs would break open documents
+        // that reference them.
+        register: (def) => {
+          assertDeclaredBlueprintNode(descriptor, def.type);
+          blueprintNodes.register(toEditorBlueprintNodeDef(def, nodeGame), {
+            ownerPluginId: descriptor.plugin.id,
+            replaceExisting: true
+          });
+        },
+        registerMany: (defs) => {
+          for (const def of defs) {
+            assertDeclaredBlueprintNode(descriptor, def.type);
+          }
+          blueprintNodes.registerMany(
+            defs.map((def) => toEditorBlueprintNodeDef(def, nodeGame)),
+            {
+              ownerPluginId: descriptor.plugin.id,
+              replaceExisting: true
+            }
+          );
+        },
+        registerDynamicSelectOptionsSource: (sourceId, provider) => {
+          const disposer = blueprintNodes.registerDynamicSelectOptionsSource(sourceId, provider, {
+            ownerPluginId: descriptor.plugin.id,
+            replaceExisting: true
+          });
+          track(disposer);
+          return disposer;
+        },
+        notifyDynamicSelectOptionsChanged: () => blueprintNodes.notifyDynamicSelectOptionsChanged()
+      }
+    }
+  };
 
-    return { app, dispose };
+  return { app, dispose };
 }

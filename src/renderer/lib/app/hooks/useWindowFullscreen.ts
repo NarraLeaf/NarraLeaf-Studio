@@ -10,28 +10,31 @@ import { getInterface } from "@/lib/app/bridge";
  * change event (the same quirk the theme layer works around).
  */
 export function useWindowFullscreen(): boolean {
-    const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
-    useEffect(() => {
-        let cancelled = false;
+  useEffect(() => {
+    let cancelled = false;
 
-        void getInterface().window.control.getFullscreen().then(result => {
-            if (!cancelled && result.success) {
-                setIsFullscreen(result.data.isFullscreen);
-            }
-        }).catch(() => {
-            /* Keep the default (not fullscreen) if the query fails. */
-        });
+    void getInterface()
+      .window.control.getFullscreen()
+      .then((result) => {
+        if (!cancelled && result.success) {
+          setIsFullscreen(result.data.isFullscreen);
+        }
+      })
+      .catch(() => {
+        /* Keep the default (not fullscreen) if the query fails. */
+      });
 
-        const token = getInterface().window.control.onFullscreenChanged(({ isFullscreen: next }) => {
-            setIsFullscreen(next);
-        });
+    const token = getInterface().window.control.onFullscreenChanged(({ isFullscreen: next }) => {
+      setIsFullscreen(next);
+    });
 
-        return () => {
-            cancelled = true;
-            token.cancel();
-        };
-    }, []);
+    return () => {
+      cancelled = true;
+      token.cancel();
+    };
+  }, []);
 
-    return isFullscreen;
+  return isFullscreen;
 }

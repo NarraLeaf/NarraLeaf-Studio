@@ -18,45 +18,45 @@ export type OnboardingMode = "unknown" | "setup" | "home";
  * that it did.
  */
 export function useOnboardingMode(): { mode: OnboardingMode; finish: () => void } {
-    const [mode, setMode] = useState<OnboardingMode>("unknown");
+  const [mode, setMode] = useState<OnboardingMode>("unknown");
 
-    useEffect(() => {
-        let alive = true;
-        void (async () => {
-            try {
-                const props = await getInterface().getWindowProps<WindowAppType.Launcher>();
-                if (alive) {
-                    setMode(props.success && props.data?.onboarding === true ? "setup" : "home");
-                }
-            } catch {
-                // A launcher that cannot say how it was opened is still a launcher. Setup is the
-                // skippable half, so an unanswerable question resolves to the home screen rather
-                // than trapping someone in a flow nothing asked for.
-                if (alive) {
-                    setMode("home");
-                }
-            }
-        })();
-        return () => {
-            alive = false;
-        };
-    }, []);
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const props = await getInterface().getWindowProps<WindowAppType.Launcher>();
+        if (alive) {
+          setMode(props.success && props.data?.onboarding === true ? "setup" : "home");
+        }
+      } catch {
+        // A launcher that cannot say how it was opened is still a launcher. Setup is the
+        // skippable half, so an unanswerable question resolves to the home screen rather
+        // than trapping someone in a flow nothing asked for.
+        if (alive) {
+          setMode("home");
+        }
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-    /**
-     * Leave setup, and stop offering it.
-     *
-     * Called both by finishing and by skipping, because they mean the same thing to this marker:
-     * the author has been asked. Skipping loses nothing - the flow sets two preferences, and both
-     * have a row in Settings.
-     *
-     * What deliberately does NOT call this is quitting mid-setup. Nothing is written then, so the
-     * next launch asks again; marking completion on the way in would let one crash swallow the
-     * language question forever.
-     */
-    const finish = useCallback(() => {
-        setMode("home");
-        void getInterface().app.state.setGlobalState(ONBOARDING_STATE_KEY, ONBOARDING_VERSION);
-    }, []);
+  /**
+   * Leave setup, and stop offering it.
+   *
+   * Called both by finishing and by skipping, because they mean the same thing to this marker:
+   * the author has been asked. Skipping loses nothing - the flow sets two preferences, and both
+   * have a row in Settings.
+   *
+   * What deliberately does NOT call this is quitting mid-setup. Nothing is written then, so the
+   * next launch asks again; marking completion on the way in would let one crash swallow the
+   * language question forever.
+   */
+  const finish = useCallback(() => {
+    setMode("home");
+    void getInterface().app.state.setGlobalState(ONBOARDING_STATE_KEY, ONBOARDING_VERSION);
+  }, []);
 
-    return { mode, finish };
+  return { mode, finish };
 }

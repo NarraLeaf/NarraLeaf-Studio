@@ -1,6 +1,11 @@
 import { SOURCE_LOCALE, type TranslationKey } from "@shared/i18n";
 import { commandI18nStore, translateCommand } from "@/lib/i18n";
-import { findParam, paramHintKey, type StoryCommandDef, type StoryCommandParam } from "../storyCommandGrammar";
+import {
+  findParam,
+  paramHintKey,
+  type StoryCommandDef,
+  type StoryCommandParam
+} from "../storyCommandGrammar";
 
 /**
  * The localized spelling of a parameter key: the "translated name → param" table that lets an author
@@ -29,54 +34,54 @@ import { findParam, paramHintKey, type StoryCommandDef, type StoryCommandParam }
  */
 
 type LocalizedParamCache = {
-    locale: string;
-    byDef: Map<StoryCommandDef, ReadonlyMap<string, StoryCommandParam>>;
+  locale: string;
+  byDef: Map<StoryCommandDef, ReadonlyMap<string, StoryCommandParam>>;
 };
 
 let cache: LocalizedParamCache | null = null;
 commandI18nStore.subscribe(() => {
-    cache = null;
+  cache = null;
 });
 
 /** Every English spelling this def's parser pass already accepts. */
 function canonicalKeys(def: StoryCommandDef): ReadonlySet<string> {
-    const keys = new Set<string>();
-    for (const param of def.params) {
-        keys.add(param.name.toLowerCase());
-        for (const alias of param.aliases ?? []) {
-            keys.add(alias.toLowerCase());
-        }
+  const keys = new Set<string>();
+  for (const param of def.params) {
+    keys.add(param.name.toLowerCase());
+    for (const alias of param.aliases ?? []) {
+      keys.add(alias.toLowerCase());
     }
-    return keys;
+  }
+  return keys;
 }
 
 function buildMap(def: StoryCommandDef): ReadonlyMap<string, StoryCommandParam> {
-    const canonical = canonicalKeys(def);
-    const map = new Map<string, StoryCommandParam>();
-    for (const param of def.params) {
-        const key = `story.paramHint.${paramHintKey(param)}` as TranslationKey;
-        const raw = translateCommand(key);
-        const label = raw.trim().toLowerCase();
-        if (!label || raw === key || /\s/.test(label) || canonical.has(label) || map.has(label)) {
-            continue;
-        }
-        map.set(label, param);
+  const canonical = canonicalKeys(def);
+  const map = new Map<string, StoryCommandParam>();
+  for (const param of def.params) {
+    const key = `story.paramHint.${paramHintKey(param)}` as TranslationKey;
+    const raw = translateCommand(key);
+    const label = raw.trim().toLowerCase();
+    if (!label || raw === key || /\s/.test(label) || canonical.has(label) || map.has(label)) {
+      continue;
     }
-    return map;
+    map.set(label, param);
+  }
+  return map;
 }
 
 function localizedParamMap(def: StoryCommandDef): ReadonlyMap<string, StoryCommandParam> {
-    const locale = commandI18nStore.getLocale();
-    if (cache?.locale !== locale) {
-        cache = { locale, byDef: new Map() };
-    }
-    const existing = cache.byDef.get(def);
-    if (existing) {
-        return existing;
-    }
-    const built = buildMap(def);
-    cache.byDef.set(def, built);
-    return built;
+  const locale = commandI18nStore.getLocale();
+  if (cache?.locale !== locale) {
+    cache = { locale, byDef: new Map() };
+  }
+  const existing = cache.byDef.get(def);
+  if (existing) {
+    return existing;
+  }
+  const built = buildMap(def);
+  cache.byDef.set(def, built);
+  return built;
 }
 
 /**
@@ -87,11 +92,11 @@ function localizedParamMap(def: StoryCommandDef): ReadonlyMap<string, StoryComma
  * {@link findParam} remains the pure, locale-free lookup for anything that must not see a locale.
  */
 export function findParamLocalized(def: StoryCommandDef, key: string): StoryCommandParam | null {
-    const direct = findParam(def, key);
-    if (direct) {
-        return direct;
-    }
-    return localizedParamMap(def).get(key.trim().toLowerCase()) ?? null;
+  const direct = findParam(def, key);
+  if (direct) {
+    return direct;
+  }
+  return localizedParamMap(def).get(key.trim().toLowerCase()) ?? null;
 }
 
 /**
@@ -103,16 +108,16 @@ export function findParamLocalized(def: StoryCommandDef, key: string): StoryComm
  * {@link findParamLocalized} reads, so the line it produces always parses back to this same slot.
  */
 export function localizedParamKey(def: StoryCommandDef, param: StoryCommandParam): string {
-    // In the source locale the canonical key IS the word — `at=`, `d=`. The English hint beside them
-    // ("Position", "Seconds") is a DESCRIPTION of the slot, not a second name for it, and it only
-    // doubles as a name in a locale that has no other word to offer. Inserting `Seconds=1` for an
-    // English author would be replacing their key with its own caption.
-    if (commandI18nStore.getLocale() === SOURCE_LOCALE) {
-        return param.name;
-    }
-    const key = `story.paramHint.${paramHintKey(param)}` as TranslationKey;
-    const raw = translateCommand(key).trim();
-    return localizedParamMap(def).get(raw.toLowerCase()) === param ? raw : param.name;
+  // In the source locale the canonical key IS the word — `at=`, `d=`. The English hint beside them
+  // ("Position", "Seconds") is a DESCRIPTION of the slot, not a second name for it, and it only
+  // doubles as a name in a locale that has no other word to offer. Inserting `Seconds=1` for an
+  // English author would be replacing their key with its own caption.
+  if (commandI18nStore.getLocale() === SOURCE_LOCALE) {
+    return param.name;
+  }
+  const key = `story.paramHint.${paramHintKey(param)}` as TranslationKey;
+  const raw = translateCommand(key).trim();
+  return localizedParamMap(def).get(raw.toLowerCase()) === param ? raw : param.name;
 }
 
 /**
@@ -122,21 +127,25 @@ export function localizedParamKey(def: StoryCommandDef, param: StoryCommandParam
  * matched `at`/`pos` would empty the list the moment the author typed the word they were just shown.
  * Matching is prefix-based, like the canonical pass it extends.
  */
-export function paramMatchesQuery(def: StoryCommandDef, param: StoryCommandParam, query: string): boolean {
-    if (!query) {
-        return true;
+export function paramMatchesQuery(
+  def: StoryCommandDef,
+  param: StoryCommandParam,
+  query: string
+): boolean {
+  if (!query) {
+    return true;
+  }
+  const folded = query.trim().toLowerCase();
+  if (param.name.toLowerCase().startsWith(folded)) {
+    return true;
+  }
+  if ((param.aliases ?? []).some((alias) => alias.toLowerCase().startsWith(folded))) {
+    return true;
+  }
+  for (const [label, candidate] of localizedParamMap(def)) {
+    if (candidate === param && label.startsWith(folded)) {
+      return true;
     }
-    const folded = query.trim().toLowerCase();
-    if (param.name.toLowerCase().startsWith(folded)) {
-        return true;
-    }
-    if ((param.aliases ?? []).some(alias => alias.toLowerCase().startsWith(folded))) {
-        return true;
-    }
-    for (const [label, candidate] of localizedParamMap(def)) {
-        if (candidate === param && label.startsWith(folded)) {
-            return true;
-        }
-    }
-    return false;
+  }
+  return false;
 }

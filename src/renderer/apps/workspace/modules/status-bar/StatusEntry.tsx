@@ -31,60 +31,60 @@ export const StatusBarEntryIdContext = createContext<string | undefined>(undefin
  * keeps working untouched.
  */
 export function StatusEntry({
-    onClick,
-    tooltip,
-    children,
-    emphasis = false,
-    tone: toneOverride,
-    ariaLabel,
-    dataAttributes,
+  onClick,
+  tooltip,
+  children,
+  emphasis = false,
+  tone: toneOverride,
+  ariaLabel,
+  dataAttributes
 }: {
-    onClick?: (event: React.MouseEvent) => void;
-    tooltip?: string;
-    children: React.ReactNode;
-    emphasis?: boolean;
-    /**
-     * A tailwind text-colour class that replaces the cell's resting ink, for a value that is
-     * *wrong* rather than merely notable - today only the text editor's encoding token, which turns
-     * `text-danger` when the file did not survive the decode. Ignored while a run mode is painting
-     * the whole bar, because on-primary ink over the theme wash is the only readable option there.
-     */
-    tone?: string;
-    /** For a cell whose visible text is a bare value that reads as nothing to a screen reader. */
-    ariaLabel?: string;
-    /** Verification hooks the cell wants on its element, e.g. `data-text-editor-encoding`. */
-    dataAttributes?: Record<string, string>;
+  onClick?: (event: React.MouseEvent) => void;
+  tooltip?: string;
+  children: React.ReactNode;
+  emphasis?: boolean;
+  /**
+   * A tailwind text-colour class that replaces the cell's resting ink, for a value that is
+   * *wrong* rather than merely notable - today only the text editor's encoding token, which turns
+   * `text-danger` when the file did not survive the decode. Ignored while a run mode is painting
+   * the whole bar, because on-primary ink over the theme wash is the only readable option there.
+   */
+  tone?: string;
+  /** For a cell whose visible text is a bare value that reads as nothing to a screen reader. */
+  ariaLabel?: string;
+  /** Verification hooks the cell wants on its element, e.g. `data-text-editor-encoding`. */
+  dataAttributes?: Record<string, string>;
 }) {
-    const running = useContext(StatusBarRunningContext);
-    const entryId = useContext(StatusBarEntryIdContext);
-    const attributes = { "data-status-bar-entry-id": entryId, ...dataAttributes };
-    // The tint change eases over 300ms to match the whole-bar transition in StatusBar, so the ink
-    // and the background arrive together rather than the text snapping ahead of the wash.
-    const tone = running
-        ? `${emphasis ? "text-on-primary" : "text-on-primary/85"} ${
-            onClick ? "cursor-default hover:bg-on-primary/15 hover:text-on-primary" : ""
-        }`
-        : `${toneOverride ?? (emphasis ? "text-fg-muted" : "text-fg-subtle")} ${
-            onClick ? "cursor-default hover:bg-fill hover:text-fg" : ""
-        }`;
-    const className = `flex h-full items-center gap-1.5 px-2 text-2xs transition-colors duration-300 ${tone}`;
-    if (!onClick) {
-        return (
-            <span className={className} data-tip={tooltip} aria-label={ariaLabel} {...attributes}>
-                {children}
-            </span>
-        );
-    }
+  const running = useContext(StatusBarRunningContext);
+  const entryId = useContext(StatusBarEntryIdContext);
+  const attributes = { "data-status-bar-entry-id": entryId, ...dataAttributes };
+  // The tint change eases over 300ms to match the whole-bar transition in StatusBar, so the ink
+  // and the background arrive together rather than the text snapping ahead of the wash.
+  const tone = running
+    ? `${emphasis ? "text-on-primary" : "text-on-primary/85"} ${
+        onClick ? "cursor-default hover:bg-on-primary/15 hover:text-on-primary" : ""
+      }`
+    : `${toneOverride ?? (emphasis ? "text-fg-muted" : "text-fg-subtle")} ${
+        onClick ? "cursor-default hover:bg-fill hover:text-fg" : ""
+      }`;
+  const className = `flex h-full items-center gap-1.5 px-2 text-2xs transition-colors duration-300 ${tone}`;
+  if (!onClick) {
     return (
-        <button
-            type="button"
-            onClick={onClick}
-            data-tip={tooltip}
-            aria-label={ariaLabel}
-            className={className}
-            {...attributes}
-        >
-            {children}
-        </button>
+      <span className={className} data-tip={tooltip} aria-label={ariaLabel} {...attributes}>
+        {children}
+      </span>
     );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-tip={tooltip}
+      aria-label={ariaLabel}
+      className={className}
+      {...attributes}
+    >
+      {children}
+    </button>
+  );
 }

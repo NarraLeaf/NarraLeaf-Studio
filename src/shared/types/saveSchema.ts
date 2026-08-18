@@ -42,7 +42,14 @@ export type SaveSchemaVersion = typeof SAVE_SCHEMA_VERSION;
  * round trip through a JSON file: `Timer`, `AnimationToken` and `any` are live runtime handles that
  * cannot be written to a save and read back as themselves.
  */
-export const SAVE_SCHEMA_FIELD_TYPES = ["string", "integer", "float", "boolean", "json", "array"] as const;
+export const SAVE_SCHEMA_FIELD_TYPES = [
+  "string",
+  "integer",
+  "float",
+  "boolean",
+  "json",
+  "array"
+] as const;
 
 export type SaveSchemaFieldType = (typeof SAVE_SCHEMA_FIELD_TYPES)[number];
 
@@ -59,33 +66,33 @@ export type SaveSchemaFieldType = (typeof SAVE_SCHEMA_FIELD_TYPES)[number];
  * save on the player's disk.
  */
 export type SaveSchemaField = {
-    id: string;
-    /** Author-facing label. Shown on the pin and in the popover; the id is never displayed. */
-    name: string;
-    valueType: SaveSchemaFieldType;
-    /**
-     * What a read answers when the slot carries no value for this field.
-     *
-     * This is what makes adding a field to a shipped game safe: every save written before the field
-     * existed reads as the default rather than as nothing, so a save screen built on it keeps
-     * drawing old slots instead of showing blanks.
-     */
-    defaultValue?: LiteralValue;
-    /** Key inside the save's `metadata.user`; set at creation and unchanged by rename. */
-    storageKey: string;
-    description?: string;
-    /** Pin order on the node, low to high. Ties fall back to creation order. */
-    order: number;
+  id: string;
+  /** Author-facing label. Shown on the pin and in the popover; the id is never displayed. */
+  name: string;
+  valueType: SaveSchemaFieldType;
+  /**
+   * What a read answers when the slot carries no value for this field.
+   *
+   * This is what makes adding a field to a shipped game safe: every save written before the field
+   * existed reads as the default rather than as nothing, so a save screen built on it keeps
+   * drawing old slots instead of showing blanks.
+   */
+  defaultValue?: LiteralValue;
+  /** Key inside the save's `metadata.user`; set at creation and unchanged by rename. */
+  storageKey: string;
+  description?: string;
+  /** Pin order on the node, low to high. Ties fall back to creation order. */
+  order: number;
 };
 
 export type SaveSchema = {
-    schemaVersion: SaveSchemaVersion;
-    /** Keyed by field id. */
-    fields: Record<string, SaveSchemaField>;
-    meta?: {
-        createdAt?: string;
-        updatedAt?: string;
-    };
+  schemaVersion: SaveSchemaVersion;
+  /** Keyed by field id. */
+  fields: Record<string, SaveSchemaField>;
+  meta?: {
+    createdAt?: string;
+    updatedAt?: string;
+  };
 };
 
 /**

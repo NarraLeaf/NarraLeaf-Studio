@@ -1,258 +1,258 @@
 import type { LocaleNamespace } from "../types";
 
 export const properties = {
-    saving: "正在保存…",
-    preview: "预览",
-    select: "选择",
-    panel: {
-        title: "属性",
-        empty: "选择一个元素以调整其属性",
-        motionKeyframe: "动效关键帧",
-        storyMotion: "故事动效",
-        scene: "场景",
-        component: "组件",
-        character: "角色",
+  saving: "正在保存…",
+  preview: "预览",
+  select: "选择",
+  panel: {
+    title: "属性",
+    empty: "选择一个元素以调整其属性",
+    motionKeyframe: "动效关键帧",
+    storyMotion: "故事动效",
+    scene: "场景",
+    component: "组件",
+    character: "角色"
+  },
+  scene: {
+    title: "界面属性",
+    interface: "界面",
+    type: "类型",
+    slot: "插槽",
+    typeGameUi: "游戏界面",
+    typePage: "页面",
+    backgroundColor: "背景颜色",
+    backgroundImage: "背景图片",
+    animation: "动画",
+    logic: "逻辑"
+  },
+  diagnostics: {
+    title: "静态检查",
+    selectOnCanvas: "→ 在画布中选中",
+    help: "图结构与绑定问题请打开蓝图编辑器；实时执行轨迹只在开发模式中显示"
+  },
+  layout: {
+    title: "布局",
+    size: "尺寸",
+    position: "位置",
+    rotation: "旋转",
+    appearance: "外观",
+    width: "宽度",
+    height: "高度",
+    lockAspect: "锁定纵横比",
+    unlockAspect: "解锁纵横比",
+    resetRotation: "重置旋转",
+    toggleVisibility: "切换可见性",
+    animation: "动画",
+    uiElement: "界面元素",
+    linkedComponent: "关联组件"
+  },
+  linkedComponent: {
+    missing: "组件缺失",
+    info: "关联实例，解除关联前仅可修改参数与位置、大小和旋转"
+  },
+  componentParams: {
+    title: "参数",
+    none: "暂无参数",
+    add: "添加参数",
+    remove: "移除参数",
+    namePlaceholder: "名称",
+    defaultPlaceholder: "默认值"
+  },
+  binding: {
+    notReady: "该控件的蓝图尚未就绪",
+    bindToField: "绑定到字段…",
+    bindProperty: "绑定属性",
+    closePicker: "关闭绑定选择器",
+    searchFields: "搜索字段…",
+    noMatches: "没有匹配的字段",
+    newField: "新建字段",
+    createAndBind: "创建并绑定",
+    openField: "打开字段",
+    removeBinding: "移除绑定",
+    removeBroken: "移除失效绑定",
+    fieldLabel: "字段",
+    fieldMissing: "字段缺失",
+    scopePage: "页面",
+    scopeApp: "应用",
+    scopeItem: "条目",
+    scopeKey: "{scope} 键"
+  },
+  events: {
+    title: "事件",
+    legacy: "检测到旧版事件 ID"
+  },
+  blueprintEntry: {
+    gameUiLogic: "游戏界面逻辑",
+    pageLogic: "页面逻辑",
+    interfaceFallback: "界面",
+    title: "{logic} - {name}",
+    open: "打开界面蓝图",
+    noBlueprint: "此界面没有蓝图",
+    brokenBindings: {
+      one: "{count} 个失效绑定",
+      other: "{count} 个失效绑定"
+    }
+  },
+  color: {
+    hue: "色相",
+    opacity: "不透明度"
+  },
+  fontAsset: {
+    fallbackName: "字体",
+    none: "无字体",
+    choose: "选择字体",
+    loadError: "字体无法加载（{error}）；在素材有效之前，预览使用回退字体",
+    select: "选择字体"
+  },
+  imageFill: {
+    title: "图片填充",
+    imageSelected: "已选择图片",
+    noImage: "无图片",
+    close: "关闭图片填充编辑器",
+    modeLabel: "模式",
+    selectMode: "选择模式",
+    previewAlt: "填充预览",
+    selectImage: "选择一张图片",
+    selectHint: "点击打开素材浏览器",
+    changeImage: "更换图片",
+    openEditor: "点击打开编辑器",
+    resolveError: "图片素材无法解析（{error}）；在该素材存在之前，预览不准确",
+    selectFillImage: "选择填充图片",
+    mode: {
+      cover: "覆盖",
+      contain: "包含",
+      stretch: "拉伸",
+      crop: "裁剪",
+      tile: "平铺"
+    }
+  },
+  menu: {
+    open: "打开菜单"
+  },
+  palette: {
+    base: "基础",
+    common: "常用",
+    recent: "最近使用",
+    custom: "自定义"
+  },
+  references: {
+    label: "引用位置",
+    building: "正在扫描项目…",
+    none: "没有任何地方引用它",
+    unknown: "无法确定使用情况",
+    unknownDetail: "{location} 无法读取",
+    count: {
+      one: "{count} 处引用",
+      other: "{count} 处引用"
     },
-    scene: {
-        title: "界面属性",
-        interface: "界面",
-        type: "类型",
-        slot: "插槽",
-        typeGameUi: "游戏界面",
-        typePage: "页面",
-        backgroundColor: "背景颜色",
-        backgroundImage: "背景图片",
-        animation: "动画",
-        logic: "逻辑",
+    dormant: "未生效",
+    dormantHint: "已保存在控件上，但当前不显示，因为填充方式设为纯色；删除该素材会清空该字段",
+    kind: {
+      story: "剧情",
+      blueprint: "蓝图",
+      uiElement: "界面",
+      character: "角色",
+      voice: "配音"
+    }
+  },
+  tags: {
+    label: "标签",
+    addPlaceholder: "添加标签…",
+    add: "添加标签",
+    remove: "移除标签",
+    removeAria: "移除标签 {tag}"
+  },
+  thumbnail: {
+    alt: "缩略图",
+    selectTitle: "选择缩略图",
+    cropTitle: "裁剪缩略图",
+    error: {
+      workspaceNotReady: "工作区尚未就绪",
+      selectImage: "请选择一个图片素材",
+      loadAsset: "加载素材失败",
+      deleteFailed: "删除缩略图失败",
+      saveFailed: "保存缩略图失败",
+      unknown: "未知错误"
+    }
+  },
+  asset: {
+    namePlaceholder: "素材名称",
+    descriptionPlaceholder: "输入描述…",
+    info: {
+      dimensions: "尺寸",
+      format: "格式",
+      size: "大小",
+      hash: "哈希",
+      duration: "时长",
+      sampleRate: "采样率",
+      channels: "声道",
+      family: "字体族",
+      style: "样式",
+      weight: "字重",
+      schema: "架构",
+      mimeType: "MIME 类型",
+      extension: "扩展名",
+      frameRate: "帧率"
     },
-    diagnostics: {
-        title: "静态检查",
-        selectOnCanvas: "→ 在画布中选中",
-        help: "图结构与绑定问题请打开蓝图编辑器；实时执行轨迹只在开发模式中显示",
+    remote: {
+      url: "来源",
+      fetched: "取回时间",
+      neverFetched: "尚未下载",
+      refresh: "检查更新",
+      refreshFailedTitle: "无法检查来源"
     },
-    layout: {
-        title: "布局",
-        size: "尺寸",
-        position: "位置",
-        rotation: "旋转",
-        appearance: "外观",
-        width: "宽度",
-        height: "高度",
-        lockAspect: "锁定纵横比",
-        unlockAspect: "解锁纵横比",
-        resetRotation: "重置旋转",
-        toggleVisibility: "切换可见性",
-        animation: "动画",
-        uiElement: "界面元素",
-        linkedComponent: "关联组件",
+    image: {
+      title: "图片属性",
+      info: "图片信息"
     },
-    linkedComponent: {
-        missing: "组件缺失",
-        info: "关联实例，解除关联前仅可修改参数与位置、大小和旋转",
+    audio: {
+      title: "音频属性",
+      info: "音频信息",
+      preview: "音频概览",
+      channelCount: {
+        one: "{count} 个声道",
+        other: "{count} 个声道"
+      }
     },
-    componentParams: {
-        title: "参数",
-        none: "暂无参数",
-        add: "添加参数",
-        remove: "移除参数",
-        namePlaceholder: "名称",
-        defaultPlaceholder: "默认值",
+    video: {
+      title: "视频属性",
+      info: "视频信息",
+      preview: "视频概览"
     },
-    binding: {
-        notReady: "该控件的蓝图尚未就绪",
-        bindToField: "绑定到字段…",
-        bindProperty: "绑定属性",
-        closePicker: "关闭绑定选择器",
-        searchFields: "搜索字段…",
-        noMatches: "没有匹配的字段",
-        newField: "新建字段",
-        createAndBind: "创建并绑定",
-        openField: "打开字段",
-        removeBinding: "移除绑定",
-        removeBroken: "移除失效绑定",
-        fieldLabel: "字段",
-        fieldMissing: "字段缺失",
-        scopePage: "页面",
-        scopeApp: "应用",
-        scopeItem: "条目",
-        scopeKey: "{scope} 键",
+    font: {
+      title: "字体属性",
+      info: "字体信息",
+      preview: "字体预览",
+      sampleText: "示例文本"
     },
-    events: {
-        title: "事件",
-        legacy: "检测到旧版事件 ID",
+    json: {
+      title: "JSON 属性",
+      info: "JSON 信息",
+      preview: "JSON 结构",
+      schemaValue: "架构：{schema}",
+      noSchema: "无架构"
     },
-    blueprintEntry: {
-        gameUiLogic: "游戏界面逻辑",
-        pageLogic: "页面逻辑",
-        interfaceFallback: "界面",
-        title: "{logic} - {name}",
-        open: "打开界面蓝图",
-        noBlueprint: "此界面没有蓝图",
-        brokenBindings: {
-            one: "{count} 个失效绑定",
-            other: "{count} 个失效绑定",
-        },
+    model: {
+      title: "模型属性",
+      info: "模型信息",
+      entry: "入口文件",
+      entryAuto: "自动识别：{entry}",
+      entryUnresolvedNone: "未能识别入口文件，请手动选择",
+      entryUnresolvedAmbiguous: "有多个文件可能是入口，请手动选择",
+      files: "文件",
+      fileCount: {
+        one: "{count} 个文件",
+        other: "{count} 个文件"
+      },
+      browse: "包内文件"
     },
-    color: {
-        hue: "色相",
-        opacity: "不透明度",
-    },
-    fontAsset: {
-        fallbackName: "字体",
-        none: "无字体",
-        choose: "选择字体",
-        loadError: "字体无法加载（{error}）；在素材有效之前，预览使用回退字体",
-        select: "选择字体",
-    },
-    imageFill: {
-        title: "图片填充",
-        imageSelected: "已选择图片",
-        noImage: "无图片",
-        close: "关闭图片填充编辑器",
-        modeLabel: "模式",
-        selectMode: "选择模式",
-        previewAlt: "填充预览",
-        selectImage: "选择一张图片",
-        selectHint: "点击打开素材浏览器",
-        changeImage: "更换图片",
-        openEditor: "点击打开编辑器",
-        resolveError: "图片素材无法解析（{error}）；在该素材存在之前，预览不准确",
-        selectFillImage: "选择填充图片",
-        mode: {
-            cover: "覆盖",
-            contain: "包含",
-            stretch: "拉伸",
-            crop: "裁剪",
-            tile: "平铺",
-        },
-    },
-    menu: {
-        open: "打开菜单",
-    },
-    palette: {
-        base: "基础",
-        common: "常用",
-        recent: "最近使用",
-        custom: "自定义",
-    },
-    references: {
-        label: "引用位置",
-        building: "正在扫描项目…",
-        none: "没有任何地方引用它",
-        unknown: "无法确定使用情况",
-        unknownDetail: "{location} 无法读取",
-        count: {
-            one: "{count} 处引用",
-            other: "{count} 处引用",
-        },
-        dormant: "未生效",
-        dormantHint: "已保存在控件上，但当前不显示，因为填充方式设为纯色；删除该素材会清空该字段",
-        kind: {
-            story: "剧情",
-            blueprint: "蓝图",
-            uiElement: "界面",
-            character: "角色",
-            voice: "配音",
-        },
-    },
-    tags: {
-        label: "标签",
-        addPlaceholder: "添加标签…",
-        add: "添加标签",
-        remove: "移除标签",
-        removeAria: "移除标签 {tag}",
-    },
-    thumbnail: {
-        alt: "缩略图",
-        selectTitle: "选择缩略图",
-        cropTitle: "裁剪缩略图",
-        error: {
-            workspaceNotReady: "工作区尚未就绪",
-            selectImage: "请选择一个图片素材",
-            loadAsset: "加载素材失败",
-            deleteFailed: "删除缩略图失败",
-            saveFailed: "保存缩略图失败",
-            unknown: "未知错误",
-        },
-    },
-    asset: {
-        namePlaceholder: "素材名称",
-        descriptionPlaceholder: "输入描述…",
-        info: {
-            dimensions: "尺寸",
-            format: "格式",
-            size: "大小",
-            hash: "哈希",
-            duration: "时长",
-            sampleRate: "采样率",
-            channels: "声道",
-            family: "字体族",
-            style: "样式",
-            weight: "字重",
-            schema: "架构",
-            mimeType: "MIME 类型",
-            extension: "扩展名",
-            frameRate: "帧率",
-        },
-        remote: {
-            url: "来源",
-            fetched: "取回时间",
-            neverFetched: "尚未下载",
-            refresh: "检查更新",
-            refreshFailedTitle: "无法检查来源",
-        },
-        image: {
-            title: "图片属性",
-            info: "图片信息",
-        },
-        audio: {
-            title: "音频属性",
-            info: "音频信息",
-            preview: "音频概览",
-            channelCount: {
-                one: "{count} 个声道",
-                other: "{count} 个声道",
-            },
-        },
-        video: {
-            title: "视频属性",
-            info: "视频信息",
-            preview: "视频概览",
-        },
-        font: {
-            title: "字体属性",
-            info: "字体信息",
-            preview: "字体预览",
-            sampleText: "示例文本",
-        },
-        json: {
-            title: "JSON 属性",
-            info: "JSON 信息",
-            preview: "JSON 结构",
-            schemaValue: "架构：{schema}",
-            noSchema: "无架构",
-        },
-        model: {
-            title: "模型属性",
-            info: "模型信息",
-            entry: "入口文件",
-            entryAuto: "自动识别：{entry}",
-            entryUnresolvedNone: "未能识别入口文件，请手动选择",
-            entryUnresolvedAmbiguous: "有多个文件可能是入口，请手动选择",
-            files: "文件",
-            fileCount: {
-                one: "{count} 个文件",
-                other: "{count} 个文件",
-            },
-            browse: "包内文件",
-        },
-        other: {
-            title: "文件属性",
-            info: "文件信息",
-            preview: "文件概览",
-            fileSuffix: "{ext} 文件",
-            unknownType: "未知类型",
-            unknown: "未知",
-        },
-    },
+    other: {
+      title: "文件属性",
+      info: "文件信息",
+      preview: "文件概览",
+      fileSuffix: "{ext} 文件",
+      unknownType: "未知类型",
+      unknown: "未知"
+    }
+  }
 } satisfies LocaleNamespace<"properties">;

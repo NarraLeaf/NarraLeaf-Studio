@@ -11,32 +11,32 @@ import { extendTailwindMerge } from "tailwind-merge";
  * `tailwind.config.js`.
  */
 const twMerge = extendTailwindMerge({
-    extend: {
-        theme: {
-            color: [
-                "primary",
-                "surface",
-                "surface-canvas",
-                "surface-sunken",
-                "surface-raised",
-                "surface-overlay",
-                "fg",
-                "fg-muted",
-                "fg-subtle",
-                "edge",
-                "edge-subtle",
-                "edge-strong",
-                "fill",
-                "fill-subtle",
-                "fill-strong",
-                "binding",
-                "danger",
-                "success",
-                "warning",
-            ],
-            text: ["2xs"],
-        },
-    },
+  extend: {
+    theme: {
+      color: [
+        "primary",
+        "surface",
+        "surface-canvas",
+        "surface-sunken",
+        "surface-raised",
+        "surface-overlay",
+        "fg",
+        "fg-muted",
+        "fg-subtle",
+        "edge",
+        "edge-subtle",
+        "edge-strong",
+        "fill",
+        "fill-subtle",
+        "fill-strong",
+        "binding",
+        "danger",
+        "success",
+        "warning"
+      ],
+      text: ["2xs"]
+    }
+  }
 });
 
 /**
@@ -47,5 +47,5 @@ const twMerge = extendTailwindMerge({
  * utilities.
  */
 export function cn(...inputs: ClassValue[]): string {
-    return twMerge(clsx(inputs));
+  return twMerge(clsx(inputs));
 }

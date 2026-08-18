@@ -18,21 +18,21 @@ import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagServic
  * Comments in English per project convention.
  */
 export function useProjectAppTags(): ProjectAppTag[] {
-    const { context, isInitialized } = useWorkspace();
-    const service = useMemo(
-        () => (context && isInitialized ? context.services.get<AppTagService>(Services.AppTags) : null),
-        [context, isInitialized],
-    );
-    const [tags, setTags] = useState<ProjectAppTag[]>(() => [RELEASE_APP_TAG]);
+  const { context, isInitialized } = useWorkspace();
+  const service = useMemo(
+    () => (context && isInitialized ? context.services.get<AppTagService>(Services.AppTags) : null),
+    [context, isInitialized]
+  );
+  const [tags, setTags] = useState<ProjectAppTag[]>(() => [RELEASE_APP_TAG]);
 
-    useEffect(() => {
-        if (!service) {
-            setTags([RELEASE_APP_TAG]);
-            return;
-        }
-        setTags(service.listTags());
-        return service.onTagsChanged(setTags);
-    }, [service]);
+  useEffect(() => {
+    if (!service) {
+      setTags([RELEASE_APP_TAG]);
+      return;
+    }
+    setTags(service.listTags());
+    return service.onTagsChanged(setTags);
+  }, [service]);
 
-    return tags;
+  return tags;
 }

@@ -24,19 +24,19 @@ import { STORY_VARIABLES_PANEL_ID } from "./storyVariablesPanelId";
  * this would rewrite the saved right-dock layout of every existing project.
  */
 export const storyVariablesPanelModule: PanelModule = {
-    metadata: {
-        id: STORY_VARIABLES_PANEL_ID,
-        // Resolved lazily on read (module registration runs before i18n init).
-        titleKey: "placeholders.moduleTitles.variables",
-        get title() {
-            return translate("placeholders.moduleTitles.variables");
-        },
-        icon: <Variable className="w-4 h-4" />,
-        position: PanelPosition.Right,
-        defaultVisible: false,
-        order: 1,
+  metadata: {
+    id: STORY_VARIABLES_PANEL_ID,
+    // Resolved lazily on read (module registration runs before i18n init).
+    titleKey: "placeholders.moduleTitles.variables",
+    get title() {
+      return translate("placeholders.moduleTitles.variables");
     },
-    component: StoryVariablesPanel,
+    icon: <Variable className="w-4 h-4" />,
+    position: PanelPosition.Right,
+    defaultVisible: false,
+    order: 1
+  },
+  component: StoryVariablesPanel
 };
 
 export { StoryVariablesPanel } from "./StoryVariablesPanel";

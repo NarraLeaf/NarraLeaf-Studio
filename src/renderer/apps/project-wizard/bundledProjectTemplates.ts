@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import {
-    projectTemplateStageSizes,
-    resolveProjectTemplateText,
-    type ProjectTemplateDescriptor,
+  projectTemplateStageSizes,
+  resolveProjectTemplateText,
+  type ProjectTemplateDescriptor
 } from "@shared/types/projectTemplate";
 import { blankTemplate } from "./constants";
 import type { ProjectTemplate } from "./types";
@@ -25,30 +25,31 @@ import type { ProjectTemplate } from "./types";
 let cache: Promise<ProjectTemplateDescriptor[]> | null = null;
 
 function loadDescriptors(): Promise<ProjectTemplateDescriptor[]> {
-    if (!cache) {
-        cache = getInterface().projectTemplates.list()
-            .then(result => (result.success && result.data ? result.data : []))
-            .catch(error => {
-                // A build with no templates directory is legitimate, and a failure to
-                // read one must still leave the author able to make an empty project.
-                console.warn("[Wizard] bundled project templates unavailable", error);
-                return [];
-            });
-    }
-    return cache;
+  if (!cache) {
+    cache = getInterface()
+      .projectTemplates.list()
+      .then((result) => (result.success && result.data ? result.data : []))
+      .catch((error) => {
+        // A build with no templates directory is legitimate, and a failure to
+        // read one must still leave the author able to make an empty project.
+        console.warn("[Wizard] bundled project templates unavailable", error);
+        return [];
+      });
+  }
+  return cache;
 }
 
 function toEntry(descriptor: ProjectTemplateDescriptor, locale: string): ProjectTemplate {
-    const text = resolveProjectTemplateText(descriptor, locale);
-    return {
-        id: descriptor.id,
-        name: text.name,
-        description: text.description,
-        // The manifest already carries the localized strings, so no i18n keys here:
-        // `nameKey`/`descriptionKey` would have to name keys that do not exist.
-        contentTemplateId: descriptor.id,
-        stageSizes: projectTemplateStageSizes(descriptor),
-    };
+  const text = resolveProjectTemplateText(descriptor, locale);
+  return {
+    id: descriptor.id,
+    name: text.name,
+    description: text.description,
+    // The manifest already carries the localized strings, so no i18n keys here:
+    // `nameKey`/`descriptionKey` would have to name keys that do not exist.
+    contentTemplateId: descriptor.id,
+    stageSizes: projectTemplateStageSizes(descriptor)
+  };
 }
 
 /**
@@ -58,24 +59,24 @@ function toEntry(descriptor: ProjectTemplateDescriptor, locale: string): Project
  * row is content would read as though a template were required.
  */
 export function useProjectTemplates(): ProjectTemplate[] {
-    const [descriptors, setDescriptors] = useState<ProjectTemplateDescriptor[]>([]);
-    // From the hook, so switching language re-labels the entries in place.
-    const { locale } = useTranslation();
+  const [descriptors, setDescriptors] = useState<ProjectTemplateDescriptor[]>([]);
+  // From the hook, so switching language re-labels the entries in place.
+  const { locale } = useTranslation();
 
-    useEffect(() => {
-        let active = true;
-        void loadDescriptors().then(loaded => {
-            if (active) {
-                setDescriptors(loaded);
-            }
-        });
-        return () => {
-            active = false;
-        };
-    }, []);
+  useEffect(() => {
+    let active = true;
+    void loadDescriptors().then((loaded) => {
+      if (active) {
+        setDescriptors(loaded);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
-    return useMemo(
-        () => [blankTemplate, ...descriptors.map(descriptor => toEntry(descriptor, locale))],
-        [descriptors, locale],
-    );
+  return useMemo(
+    () => [blankTemplate, ...descriptors.map((descriptor) => toEntry(descriptor, locale))],
+    [descriptors, locale]
+  );
 }

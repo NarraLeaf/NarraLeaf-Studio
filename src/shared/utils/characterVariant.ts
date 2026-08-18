@@ -10,17 +10,17 @@ import type { CharacterAppearanceSummary } from "@shared/types/devMode";
  * the caller reports it.
  */
 export function resolvePoseAssetId(
-    appearance: CharacterAppearanceSummary | undefined,
-    poseId: string | undefined,
+  appearance: CharacterAppearanceSummary | undefined,
+  poseId: string | undefined
 ): string | null {
-    if (appearance?.kind !== "preset") {
-        return null;
-    }
-    const wanted = poseId ?? appearance.defaultPoseId ?? appearance.poses[0]?.id;
-    if (!wanted) {
-        return null;
-    }
-    return appearance.poses.find(pose => pose.id === wanted)?.assetId ?? null;
+  if (appearance?.kind !== "preset") {
+    return null;
+  }
+  const wanted = poseId ?? appearance.defaultPoseId ?? appearance.poses[0]?.id;
+  if (!wanted) {
+    return null;
+  }
+  return appearance.poses.find((pose) => pose.id === wanted)?.assetId ?? null;
 }
 
 /**
@@ -31,28 +31,28 @@ export function resolvePoseAssetId(
  * entry row has to pose the whole character, so it resolves through here first.
  */
 export function resolveTagSelection(
-    appearance: CharacterAppearanceSummary | undefined,
-    partial: Record<string, string> | undefined,
+  appearance: CharacterAppearanceSummary | undefined,
+  partial: Record<string, string> | undefined
 ): Record<string, string> {
-    if (appearance?.kind !== "layered") {
-        return {};
+  if (appearance?.kind !== "layered") {
+    return {};
+  }
+  const resolved: Record<string, string> = {};
+  for (const axis of appearance.axes) {
+    const declared = axis.defaultTagId;
+    const valid = declared && axis.tags.some((tag) => tag.id === declared) ? declared : null;
+    const tagId = valid ?? axis.tags[0]?.id;
+    if (tagId) {
+      resolved[axis.id] = tagId;
     }
-    const resolved: Record<string, string> = {};
-    for (const axis of appearance.axes) {
-        const declared = axis.defaultTagId;
-        const valid = declared && axis.tags.some(tag => tag.id === declared) ? declared : null;
-        const tagId = valid ?? axis.tags[0]?.id;
-        if (tagId) {
-            resolved[axis.id] = tagId;
-        }
+  }
+  for (const [axisId, tagId] of Object.entries(partial ?? {})) {
+    const axis = appearance.axes.find((candidate) => candidate.id === axisId);
+    if (axis?.tags.some((tag) => tag.id === tagId)) {
+      resolved[axisId] = tagId;
     }
-    for (const [axisId, tagId] of Object.entries(partial ?? {})) {
-        const axis = appearance.axes.find(candidate => candidate.id === axisId);
-        if (axis?.tags.some(tag => tag.id === tagId)) {
-            resolved[axisId] = tagId;
-        }
-    }
-    return resolved;
+  }
+  return resolved;
 }
 
 /**
@@ -64,21 +64,21 @@ export function resolveTagSelection(
  * one.
  */
 export function resolveLayerAssetIds(
-    appearance: CharacterAppearanceSummary | undefined,
-    selection: Record<string, string>,
+  appearance: CharacterAppearanceSummary | undefined,
+  selection: Record<string, string>
 ): (string | null)[] {
-    if (appearance?.kind !== "layered") {
-        return [];
-    }
-    return appearance.layers
-        .filter(layer => !layer.hidden)
-        .map(layer => {
-            if (!layer.axisId) {
-                return layer.assetId ?? null;
-            }
-            const tagId = selection[layer.axisId];
-            return (tagId ? layer.options?.[tagId] : null) ?? null;
-        });
+  if (appearance?.kind !== "layered") {
+    return [];
+  }
+  return appearance.layers
+    .filter((layer) => !layer.hidden)
+    .map((layer) => {
+      if (!layer.axisId) {
+        return layer.assetId ?? null;
+      }
+      const tagId = selection[layer.axisId];
+      return (tagId ? layer.options?.[tagId] : null) ?? null;
+    });
 }
 
 /**
@@ -90,12 +90,12 @@ export function resolveLayerAssetIds(
  * thing composite {@link resolveLayerAssetIds}.
  */
 export function representativeAssetId(
-    appearance: CharacterAppearanceSummary | undefined,
-    selection: { poseId?: string; tags?: Record<string, string> },
+  appearance: CharacterAppearanceSummary | undefined,
+  selection: { poseId?: string; tags?: Record<string, string> }
 ): string | null {
-    if (appearance?.kind === "preset") {
-        return resolvePoseAssetId(appearance, selection.poseId);
-    }
-    const resolved = resolveTagSelection(appearance, selection.tags);
-    return resolveLayerAssetIds(appearance, resolved).find(assetId => Boolean(assetId)) ?? null;
+  if (appearance?.kind === "preset") {
+    return resolvePoseAssetId(appearance, selection.poseId);
+  }
+  const resolved = resolveTagSelection(appearance, selection.tags);
+  return resolveLayerAssetIds(appearance, resolved).find((assetId) => Boolean(assetId)) ?? null;
 }

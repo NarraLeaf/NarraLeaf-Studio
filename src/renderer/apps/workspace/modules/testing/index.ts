@@ -11,18 +11,18 @@ export { TestReportTab, type TestReportPayload } from "./TestReportTab";
 export { TEST_REPORT_TAB_ID, TEST_RUN_COMMAND_ID } from "./testIds";
 export { getTestRunService, type TestRunServiceHandle } from "./testRunService";
 export {
-    formatTestDuration,
-    groupTestsByCategory,
-    isTerminalTestStatus,
-    resolveTestText,
-    sortTestFindings,
-    TEST_CATEGORY_LABEL_KEYS,
-    TEST_PRESENTATION_LABEL_KEYS,
-    TEST_SEVERITY_LABEL_KEYS,
-    TEST_SEVERITY_TEXT_CLASS,
-    TEST_STATUS_LABEL_KEYS,
-    TEST_TOAST_KEYS,
-    TEST_TOAST_TONE,
-    type TerminalTestStatus,
-    type TestCategoryGroup,
+  formatTestDuration,
+  groupTestsByCategory,
+  isTerminalTestStatus,
+  resolveTestText,
+  sortTestFindings,
+  TEST_CATEGORY_LABEL_KEYS,
+  TEST_PRESENTATION_LABEL_KEYS,
+  TEST_SEVERITY_LABEL_KEYS,
+  TEST_SEVERITY_TEXT_CLASS,
+  TEST_STATUS_LABEL_KEYS,
+  TEST_TOAST_KEYS,
+  TEST_TOAST_TONE,
+  type TerminalTestStatus,
+  type TestCategoryGroup
 } from "./testModel";

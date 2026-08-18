@@ -1,9 +1,9 @@
 import {
-    DEFAULT_TEXT_ENCODING,
-    isPersistedTextEol,
-    isTextEncodingId,
-    type PersistedTextEol,
-    type TextEncodingId,
+  DEFAULT_TEXT_ENCODING,
+  isPersistedTextEol,
+  isTextEncodingId,
+  type PersistedTextEol,
+  type TextEncodingId
 } from "@shared/types/textEncoding";
 import type { AssetExtras } from "@/lib/workspace/services/assets/types";
 import { detectLineEnding, platformDefaultLineEnding, type LineEnding } from "./textEditableFiles";
@@ -20,22 +20,22 @@ import { detectLineEnding, platformDefaultLineEnding, type LineEnding } from "./
 
 /** What the asset record says the author decided, ignoring anything it cannot be. */
 export function readTextDocumentPreferences(extras: AssetExtras | undefined): {
-    encoding: TextEncodingId | null;
-    lineEnding: LineEnding | null;
+  encoding: TextEncodingId | null;
+  lineEnding: LineEnding | null;
 } {
-    // Validated rather than trusted: this is a hand-editable project file, and an unknown id has to
-    // degrade to "nothing recorded" rather than reach the decoder.
-    const encoding = isTextEncodingId(extras?.textEncoding) ? extras.textEncoding : null;
-    const eol = isPersistedTextEol(extras?.textEol) ? extras.textEol : null;
-    return { encoding, lineEnding: eol ? fromPersistedEol(eol) : null };
+  // Validated rather than trusted: this is a hand-editable project file, and an unknown id has to
+  // degrade to "nothing recorded" rather than reach the decoder.
+  const encoding = isTextEncodingId(extras?.textEncoding) ? extras.textEncoding : null;
+  const eol = isPersistedTextEol(extras?.textEol) ? extras.textEol : null;
+  return { encoding, lineEnding: eol ? fromPersistedEol(eol) : null };
 }
 
 export function toPersistedEol(ending: LineEnding): PersistedTextEol {
-    return ending === "CRLF" ? "crlf" : "lf";
+  return ending === "CRLF" ? "crlf" : "lf";
 }
 
 export function fromPersistedEol(eol: PersistedTextEol): LineEnding {
-    return eol === "crlf" ? "CRLF" : "LF";
+  return eol === "crlf" ? "CRLF" : "LF";
 }
 
 /**
@@ -50,10 +50,10 @@ export function fromPersistedEol(eol: PersistedTextEol): LineEnding {
  * and the token turns red, so a stale record is visible and one click from being fixed.
  */
 export function resolveOpenEncoding(
-    recorded: TextEncodingId | null,
-    fromBom: TextEncodingId | null,
+  recorded: TextEncodingId | null,
+  fromBom: TextEncodingId | null
 ): TextEncodingId {
-    return recorded ?? fromBom ?? DEFAULT_TEXT_ENCODING;
+  return recorded ?? fromBom ?? DEFAULT_TEXT_ENCODING;
 }
 
 /**
@@ -68,7 +68,7 @@ export function resolveOpenEncoding(
  * a colleague's document on the next keystroke.
  */
 export function resolveLineEnding(text: string, recorded: LineEnding | null): LineEnding {
-    return detectLineEnding(text) ?? recorded ?? platformDefaultLineEnding();
+  return detectLineEnding(text) ?? recorded ?? platformDefaultLineEnding();
 }
 
 /**
@@ -88,22 +88,22 @@ export type TextPreferenceIntent = "open" | "reopen-with" | "save-with" | "set-e
  * next commit every time someone glanced at the encoding menu.
  */
 export function textPreferencePatch(
-    intent: TextPreferenceIntent,
-    extras: AssetExtras | undefined,
-    next: { encoding?: TextEncodingId; lineEnding?: LineEnding },
+  intent: TextPreferenceIntent,
+  extras: AssetExtras | undefined,
+  next: { encoding?: TextEncodingId; lineEnding?: LineEnding }
 ): Partial<AssetExtras> | null {
-    if (intent === "open") {
-        return null;
+  if (intent === "open") {
+    return null;
+  }
+  const patch: Partial<AssetExtras> = {};
+  if (next.encoding && next.encoding !== extras?.textEncoding) {
+    patch.textEncoding = next.encoding;
+  }
+  if (next.lineEnding) {
+    const eol = toPersistedEol(next.lineEnding);
+    if (eol !== extras?.textEol) {
+      patch.textEol = eol;
     }
-    const patch: Partial<AssetExtras> = {};
-    if (next.encoding && next.encoding !== extras?.textEncoding) {
-        patch.textEncoding = next.encoding;
-    }
-    if (next.lineEnding) {
-        const eol = toPersistedEol(next.lineEnding);
-        if (eol !== extras?.textEol) {
-            patch.textEol = eol;
-        }
-    }
-    return Object.keys(patch).length > 0 ? patch : null;
+  }
+  return Object.keys(patch).length > 0 ? patch : null;
 }

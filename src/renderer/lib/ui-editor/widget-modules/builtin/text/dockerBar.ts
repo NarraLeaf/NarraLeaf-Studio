@@ -6,7 +6,7 @@ import {
   createInitialTextAppearance,
   ensureTextAppearanceHasAllKeys,
   isUsableAppearanceModel,
-  patchTextAppearanceDefaultRows,
+  patchTextAppearanceDefaultRows
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { getTextProps } from "./helpers";
 import type { TextAlign } from "./types";
@@ -19,23 +19,25 @@ function patchTextDockerProps(ctx: DockerBarContext, patch: Partial<TextWidgetPr
   const nextFlat: TextWidgetProps = {
     ...flat,
     ...patch,
-    effects: patch.effects ?? flat.effects,
+    effects: patch.effects ?? flat.effects
   };
   const rawAppearance = (live.props as { appearance?: unknown } | undefined)?.appearance;
-  const baseAppearance: AppearanceModel | null = isAppearanceModel(rawAppearance) ? rawAppearance : null;
+  const baseAppearance: AppearanceModel | null = isAppearanceModel(rawAppearance)
+    ? rawAppearance
+    : null;
   let nextAppearance = baseAppearance;
   if ("fontSize" in patch) {
     const ensured = isUsableAppearanceModel(baseAppearance)
       ? ensureTextAppearanceHasAllKeys(baseAppearance, nextFlat)
       : createInitialTextAppearance(nextFlat);
     nextAppearance = patchTextAppearanceDefaultRows(ensured, {
-      fontSize: nextFlat.fontSize,
+      fontSize: nextFlat.fontSize
     });
   }
   documentService.updateElementProps(element.id, {
     ...live.props,
     ...patch,
-    ...(nextAppearance ? { appearance: nextAppearance } : {}),
+    ...(nextAppearance ? { appearance: nextAppearance } : {})
   });
 }
 
@@ -55,13 +57,13 @@ export function createTextDockerBarItems(ctx: DockerBarContext): DockerBarItem[]
       step: 1,
       onChange: (value: number) => {
         patchTextDockerProps(ctx, {
-          fontSize: Math.min(256, Math.max(8, value)),
+          fontSize: Math.min(256, Math.max(8, value))
         });
-      },
+      }
     },
     {
       kind: "separator",
-      id: "docker-text-sep",
+      id: "docker-text-sep"
     },
     {
       kind: "select",
@@ -72,13 +74,13 @@ export function createTextDockerBarItems(ctx: DockerBarContext): DockerBarItem[]
       options: [
         { value: "left", label: translate("widgetChrome.dockerItems.left") },
         { value: "center", label: translate("widgetChrome.dockerItems.center") },
-        { value: "right", label: translate("widgetChrome.dockerItems.right") },
+        { value: "right", label: translate("widgetChrome.dockerItems.right") }
       ],
       onChange: (value: string | number) => {
         patchTextDockerProps(ctx, {
-          textAlign: String(value) as TextAlign,
+          textAlign: String(value) as TextAlign
         });
-      },
-    },
+      }
+    }
   ];
 }

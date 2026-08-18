@@ -1,7 +1,7 @@
-import type {UIGraphDocument} from "@shared/types/ui-editor/graph";
-import {buildDocumentDiff, DocumentChange, DocumentDiff} from "../diff";
-import {authoredName, change, diffKeyed, fromToParams, sameJsonValue} from "./diffHelpers";
-import {isJsonObject} from "./parseHelpers";
+import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
+import { buildDocumentDiff, DocumentChange, DocumentDiff } from "../diff";
+import { authoredName, change, diffKeyed, fromToParams, sameJsonValue } from "./diffHelpers";
+import { isJsonObject } from "./parseHelpers";
 
 /**
  * What changed in the project's blueprints, in the units an author sees on a graph canvas: graphs,
@@ -56,28 +56,28 @@ import {isJsonObject} from "./parseHelpers";
  */
 
 const LABEL = {
-    ownerRecord: "documentDiff.uiGraphs.ownerRecord",
-    blueprintAdded: "documentDiff.uiGraphs.blueprintAdded",
-    blueprintRemoved: "documentDiff.uiGraphs.blueprintRemoved",
-    blueprintChanged: "documentDiff.uiGraphs.blueprintChanged",
-    blueprintRenamed: "documentDiff.uiGraphs.blueprintRenamed",
-    blueprintSource: "documentDiff.uiGraphs.blueprintSource",
-    blueprintField: "documentDiff.uiGraphs.blueprintField",
-    graphAdded: "documentDiff.uiGraphs.graphAdded",
-    graphRemoved: "documentDiff.uiGraphs.graphRemoved",
-    graphChanged: "documentDiff.uiGraphs.graphChanged",
-    graphRenamed: "documentDiff.uiGraphs.graphRenamed",
-    graphField: "documentDiff.uiGraphs.graphField",
-    graphOrder: "documentDiff.uiGraphs.graphOrder",
-    nodeAdded: "documentDiff.uiGraphs.nodeAdded",
-    nodeRemoved: "documentDiff.uiGraphs.nodeRemoved",
-    nodeChanged: "documentDiff.uiGraphs.nodeChanged",
-    nodeParams: "documentDiff.uiGraphs.nodeParams",
-    nodeMoved: "documentDiff.uiGraphs.nodeMoved",
-    nodeType: "documentDiff.uiGraphs.nodeType",
-    nodeField: "documentDiff.uiGraphs.nodeField",
-    edgeAdded: "documentDiff.uiGraphs.edgeAdded",
-    edgeRemoved: "documentDiff.uiGraphs.edgeRemoved",
+  ownerRecord: "documentDiff.uiGraphs.ownerRecord",
+  blueprintAdded: "documentDiff.uiGraphs.blueprintAdded",
+  blueprintRemoved: "documentDiff.uiGraphs.blueprintRemoved",
+  blueprintChanged: "documentDiff.uiGraphs.blueprintChanged",
+  blueprintRenamed: "documentDiff.uiGraphs.blueprintRenamed",
+  blueprintSource: "documentDiff.uiGraphs.blueprintSource",
+  blueprintField: "documentDiff.uiGraphs.blueprintField",
+  graphAdded: "documentDiff.uiGraphs.graphAdded",
+  graphRemoved: "documentDiff.uiGraphs.graphRemoved",
+  graphChanged: "documentDiff.uiGraphs.graphChanged",
+  graphRenamed: "documentDiff.uiGraphs.graphRenamed",
+  graphField: "documentDiff.uiGraphs.graphField",
+  graphOrder: "documentDiff.uiGraphs.graphOrder",
+  nodeAdded: "documentDiff.uiGraphs.nodeAdded",
+  nodeRemoved: "documentDiff.uiGraphs.nodeRemoved",
+  nodeChanged: "documentDiff.uiGraphs.nodeChanged",
+  nodeParams: "documentDiff.uiGraphs.nodeParams",
+  nodeMoved: "documentDiff.uiGraphs.nodeMoved",
+  nodeType: "documentDiff.uiGraphs.nodeType",
+  nodeField: "documentDiff.uiGraphs.nodeField",
+  edgeAdded: "documentDiff.uiGraphs.edgeAdded",
+  edgeRemoved: "documentDiff.uiGraphs.edgeRemoved"
 } as const;
 
 /** Where a node's canvas position is kept. Its own leaf, never folded into `meta`. */
@@ -87,7 +87,14 @@ const NODE_POSITION_KEY = "editorLayout";
 const GRAPH_SLOTS = ["events", "functions", "macros"] as const;
 
 /** Blueprint fields with no words of their own; the raw identifier goes in the label's `{field}`. */
-const BLUEPRINT_FIELDS = ["owner", "frontend", "programKind", "members", "bindings", "meta"] as const;
+const BLUEPRINT_FIELDS = [
+  "owner",
+  "frontend",
+  "programKind",
+  "members",
+  "bindings",
+  "meta"
+] as const;
 
 /**
  * Where a slot's authored order is written down, when it has one.
@@ -96,52 +103,52 @@ const BLUEPRINT_FIELDS = ["owner", "frontend", "programKind", "members", "bindin
  * its graphs come out sorted by id.
  */
 const ORDER_KEY: Readonly<Record<string, string | undefined>> = {
-    events: "eventIds",
-    functions: "functionIds",
-    macros: undefined,
+  events: "eventIds",
+  functions: "functionIds",
+  macros: undefined
 };
 
 /** Read off a graph, but never reported: its identity, its name, and the graph itself. */
 const GRAPH_FIELDS_NOT_REPORTED = new Set(["id", "name", "graph", "nodes", "edges"]);
 
 export function diffUIGraphs(
-    base: UIGraphDocument,
-    head: UIGraphDocument,
-    options: {limit: number},
+  base: UIGraphDocument,
+  head: UIGraphDocument,
+  options: { limit: number }
 ): DocumentDiff {
-    const rows: DocumentChange[] = [];
+  const rows: DocumentChange[] = [];
 
-    // Built in reading order rather than sorted afterwards: blueprints by the name their author gave
-    // them, each one's graphs in the order the author arranged the layers, each graph's nodes as they
-    // sit on the canvas. Ordering has to happen before `buildDocumentDiff` truncates - a list cut to
-    // the budget in id order keeps whichever rows happened to have early UUIDs.
-    for (const entry of sortedByName(diffKeyed(blueprintsOf(base), blueprintsOf(head)))) {
-        blueprintRows(entry.key, entry.base, entry.head, rows);
-    }
-    for (const entry of diffKeyed(rootGraphsOf(base), rootGraphsOf(head))) {
-        rootGraphRows(entry.key, entry.base, entry.head, rows);
-    }
-    for (const entry of diffKeyed(ownerRecordsOf(base), ownerRecordsOf(head))) {
-        rows.push(change(["ownerRecords", entry.key], entry.kind, LABEL.ownerRecord));
-    }
+  // Built in reading order rather than sorted afterwards: blueprints by the name their author gave
+  // them, each one's graphs in the order the author arranged the layers, each graph's nodes as they
+  // sit on the canvas. Ordering has to happen before `buildDocumentDiff` truncates - a list cut to
+  // the budget in id order keeps whichever rows happened to have early UUIDs.
+  for (const entry of sortedByName(diffKeyed(blueprintsOf(base), blueprintsOf(head)))) {
+    blueprintRows(entry.key, entry.base, entry.head, rows);
+  }
+  for (const entry of diffKeyed(rootGraphsOf(base), rootGraphsOf(head))) {
+    rootGraphRows(entry.key, entry.base, entry.head, rows);
+  }
+  for (const entry of diffKeyed(ownerRecordsOf(base), ownerRecordsOf(head))) {
+    rows.push(change(["ownerRecords", entry.key], entry.kind, LABEL.ownerRecord));
+  }
 
-    return buildDocumentDiff(rows, {tier: "semantic", limit: options.limit});
+  return buildDocumentDiff(rows, { tier: "semantic", limit: options.limit });
 }
 
 /** Nodes across every graph, blueprint and legacy alike - the number that tracks how much logic there is. */
 export function countGraphNodes(document: UIGraphDocument | undefined): number {
-    let total = 0;
-    for (const blueprint of Object.values(blueprintsOf(document))) {
-        for (const slot of GRAPH_SLOTS) {
-            for (const graph of Object.values(graphSlot(blueprint, slot))) {
-                total += Object.keys(nodesOf(irOf(graph))).length;
-            }
-        }
+  let total = 0;
+  for (const blueprint of Object.values(blueprintsOf(document))) {
+    for (const slot of GRAPH_SLOTS) {
+      for (const graph of Object.values(graphSlot(blueprint, slot))) {
+        total += Object.keys(nodesOf(irOf(graph))).length;
+      }
     }
-    for (const graph of Object.values(rootGraphsOf(document))) {
-        total += Object.keys(nodesOf(graph)).length;
-    }
-    return total;
+  }
+  for (const graph of Object.values(rootGraphsOf(document))) {
+    total += Object.keys(nodesOf(graph)).length;
+  }
+  return total;
 }
 
 // ---------------------------------------------------------------------------
@@ -149,81 +156,97 @@ export function countGraphNodes(document: UIGraphDocument | undefined): number {
 // ---------------------------------------------------------------------------
 
 function blueprintRows(
-    blueprintId: string,
-    base: Record<string, unknown> | undefined,
-    head: Record<string, unknown> | undefined,
-    rows: DocumentChange[],
+  blueprintId: string,
+  base: Record<string, unknown> | undefined,
+  head: Record<string, unknown> | undefined,
+  rows: DocumentChange[]
 ): void {
-    const path = ["blueprints", blueprintId];
-    if (!base || !head) {
-        const present = (head ?? base) as Record<string, unknown>;
-        rows.push(change(path, head ? "added" : "removed", head ? LABEL.blueprintAdded : LABEL.blueprintRemoved, {
-            subject: authoredName(present?.name),
-            // One row for a whole blueprint, with its size in the label rather than a row per node:
-            // the change the author made is "I wrote this piece of logic".
-            params: {nodes: blueprintNodeCount(present)},
-        }));
-        return;
-    }
-
-    const subject = authoredName(head.name) ?? authoredName(base.name);
-    const children: DocumentChange[] = [];
-    if (!sameJsonValue(base.name, head.name)) {
-        children.push(change([...path, "name"], "changed", LABEL.blueprintRenamed, {
-            params: fromToParams(base.name, head.name),
-            subject: authoredName(head.name) ?? subject,
-        }));
-    }
-    // A TypeScript blueprint has no graph at all; its whole program is one string, compared whole
-    // because a line-level diff of source is a different surface from a list of changes.
-    if (!sameJsonValue(sourceOf(base), sourceOf(head))) {
-        children.push(change([...path, "source"], "changed", LABEL.blueprintSource, {subject}));
-    }
-    for (const field of BLUEPRINT_FIELDS) {
-        if (!sameJsonValue(base[field], head[field])) {
-            children.push(change([...path, field], "changed", LABEL.blueprintField, {params: {field}, subject}));
+  const path = ["blueprints", blueprintId];
+  if (!base || !head) {
+    const present = (head ?? base) as Record<string, unknown>;
+    rows.push(
+      change(
+        path,
+        head ? "added" : "removed",
+        head ? LABEL.blueprintAdded : LABEL.blueprintRemoved,
+        {
+          subject: authoredName(present?.name),
+          // One row for a whole blueprint, with its size in the label rather than a row per node:
+          // the change the author made is "I wrote this piece of logic".
+          params: { nodes: blueprintNodeCount(present) }
         }
+      )
+    );
+    return;
+  }
+
+  const subject = authoredName(head.name) ?? authoredName(base.name);
+  const children: DocumentChange[] = [];
+  if (!sameJsonValue(base.name, head.name)) {
+    children.push(
+      change([...path, "name"], "changed", LABEL.blueprintRenamed, {
+        params: fromToParams(base.name, head.name),
+        subject: authoredName(head.name) ?? subject
+      })
+    );
+  }
+  // A TypeScript blueprint has no graph at all; its whole program is one string, compared whole
+  // because a line-level diff of source is a different surface from a list of changes.
+  if (!sameJsonValue(sourceOf(base), sourceOf(head))) {
+    children.push(change([...path, "source"], "changed", LABEL.blueprintSource, { subject }));
+  }
+  for (const field of BLUEPRINT_FIELDS) {
+    if (!sameJsonValue(base[field], head[field])) {
+      children.push(
+        change([...path, field], "changed", LABEL.blueprintField, { params: { field }, subject })
+      );
     }
-    // Only when it has something to say. A blueprint's record contains its graphs, so it differs
-    // whenever any node does, and a bare "the blueprint changed" beside the node rows is the same
-    // news twice.
-    if (children.length > 0) {
-        rows.push(change(path, "changed", LABEL.blueprintChanged, {subject, children}));
+  }
+  // Only when it has something to say. A blueprint's record contains its graphs, so it differs
+  // whenever any node does, and a bare "the blueprint changed" beside the node rows is the same
+  // news twice.
+  if (children.length > 0) {
+    rows.push(change(path, "changed", LABEL.blueprintChanged, { subject, children }));
+  }
+
+  for (const slot of GRAPH_SLOTS) {
+    const wasGraphs = graphSlot(base, slot);
+    const nowGraphs = graphSlot(head, slot);
+    const byKey = new Map(diffKeyed(wasGraphs, nowGraphs).map((entry) => [entry.key, entry]));
+
+    for (const graphId of graphOrder(graphIndexOf(base), graphIndexOf(head), slot, byKey)) {
+      const entry = byKey.get(graphId);
+      if (entry) {
+        graphRows([...path, slot, graphId], entry.base, entry.head, rows);
+      }
     }
 
-    for (const slot of GRAPH_SLOTS) {
-        const wasGraphs = graphSlot(base, slot);
-        const nowGraphs = graphSlot(head, slot);
-        const byKey = new Map(diffKeyed(wasGraphs, nowGraphs).map(entry => [entry.key, entry]));
-
-        for (const graphId of graphOrder(graphIndexOf(base), graphIndexOf(head), slot, byKey)) {
-            const entry = byKey.get(graphId);
-            if (entry) {
-                graphRows([...path, slot, graphId], entry.base, entry.head, rows);
-            }
-        }
-
-        // The order of the layers, as one row for the whole list and only over the layers both
-        // sides hold - adding one changes the array, and saying so beside "a graph was added" would
-        // describe one act twice.
-        const shared = new Set(Object.keys(nowGraphs).filter(id => Object.prototype.hasOwnProperty.call(wasGraphs, id)));
-        const orderKey = ORDER_KEY[slot];
-        if (orderKey && !sameJsonValue(
-            declaredOrder(graphIndexOf(base), orderKey, shared),
-            declaredOrder(graphIndexOf(head), orderKey, shared),
-        )) {
-            rows.push(change([...path, orderKey], "moved", LABEL.graphOrder, {subject}));
-        }
+    // The order of the layers, as one row for the whole list and only over the layers both
+    // sides hold - adding one changes the array, and saying so beside "a graph was added" would
+    // describe one act twice.
+    const shared = new Set(
+      Object.keys(nowGraphs).filter((id) => Object.prototype.hasOwnProperty.call(wasGraphs, id))
+    );
+    const orderKey = ORDER_KEY[slot];
+    if (
+      orderKey &&
+      !sameJsonValue(
+        declaredOrder(graphIndexOf(base), orderKey, shared),
+        declaredOrder(graphIndexOf(head), orderKey, shared)
+      )
+    ) {
+      rows.push(change([...path, orderKey], "moved", LABEL.graphOrder, { subject }));
     }
+  }
 }
 
 function rootGraphRows(
-    graphId: string,
-    base: Record<string, unknown> | undefined,
-    head: Record<string, unknown> | undefined,
-    rows: DocumentChange[],
+  graphId: string,
+  base: Record<string, unknown> | undefined,
+  head: Record<string, unknown> | undefined,
+  rows: DocumentChange[]
 ): void {
-    graphRows(["graphs", graphId], base, head, rows);
+  graphRows(["graphs", graphId], base, head, rows);
 }
 
 // ---------------------------------------------------------------------------
@@ -237,146 +260,180 @@ function rootGraphRows(
  * `{nodes, edges}` of the same shape - so `irOf` unwraps and everything below is written once.
  */
 function graphRows(
-    path: readonly string[],
-    base: Record<string, unknown> | undefined,
-    head: Record<string, unknown> | undefined,
-    rows: DocumentChange[],
+  path: readonly string[],
+  base: Record<string, unknown> | undefined,
+  head: Record<string, unknown> | undefined,
+  rows: DocumentChange[]
 ): void {
-    if (!base || !head) {
-        const present = (head ?? base) as Record<string, unknown>;
-        rows.push(change(path, head ? "added" : "removed", head ? LABEL.graphAdded : LABEL.graphRemoved, {
-            subject: authoredName(present?.name),
-            params: {nodes: Object.keys(nodesOf(irOf(present))).length},
-        }));
-        return;
-    }
+  if (!base || !head) {
+    const present = (head ?? base) as Record<string, unknown>;
+    rows.push(
+      change(path, head ? "added" : "removed", head ? LABEL.graphAdded : LABEL.graphRemoved, {
+        subject: authoredName(present?.name),
+        params: { nodes: Object.keys(nodesOf(irOf(present))).length }
+      })
+    );
+    return;
+  }
 
-    const subject = authoredName(head.name) ?? authoredName(base.name);
-    const children: DocumentChange[] = [];
-    if (!sameJsonValue(base.name, head.name)) {
-        children.push(change([...path, "name"], "changed", LABEL.graphRenamed, {
-            params: fromToParams(base.name, head.name),
-            subject: authoredName(head.name) ?? subject,
-        }));
+  const subject = authoredName(head.name) ?? authoredName(base.name);
+  const children: DocumentChange[] = [];
+  if (!sameJsonValue(base.name, head.name)) {
+    children.push(
+      change([...path, "name"], "changed", LABEL.graphRenamed, {
+        params: fromToParams(base.name, head.name),
+        subject: authoredName(head.name) ?? subject
+      })
+    );
+  }
+  const wasFields = graphFields(base);
+  const nowFields = graphFields(head);
+  for (const field of [...new Set([...Object.keys(wasFields), ...Object.keys(nowFields)])].sort()) {
+    if (!sameJsonValue(wasFields[field], nowFields[field])) {
+      children.push(
+        change([...path, field], "changed", LABEL.graphField, { params: { field }, subject })
+      );
     }
-    const wasFields = graphFields(base);
-    const nowFields = graphFields(head);
-    for (const field of [...new Set([...Object.keys(wasFields), ...Object.keys(nowFields)])].sort()) {
-        if (!sameJsonValue(wasFields[field], nowFields[field])) {
-            children.push(change([...path, field], "changed", LABEL.graphField, {params: {field}, subject}));
-        }
-    }
-    if (children.length > 0) {
-        rows.push(change(path, "changed", LABEL.graphChanged, {subject, children}));
-    }
+  }
+  if (children.length > 0) {
+    rows.push(change(path, "changed", LABEL.graphChanged, { subject, children }));
+  }
 
-    const wasNodes = nodesOf(irOf(base));
-    const nowNodes = nodesOf(irOf(head));
-    const entries = diffKeyed(wasNodes, nowNodes);
-    for (const entry of sortedByPosition(entries)) {
-        nodeRows([...path, "nodes", entry.key], entry.base, entry.head, rows);
-    }
+  const wasNodes = nodesOf(irOf(base));
+  const nowNodes = nodesOf(irOf(head));
+  const entries = diffKeyed(wasNodes, nowNodes);
+  for (const entry of sortedByPosition(entries)) {
+    nodeRows([...path, "nodes", entry.key], entry.base, entry.head, rows);
+  }
 
-    edgeRows(path, irOf(base), irOf(head), wasNodes, nowNodes, rows);
+  edgeRows(path, irOf(base), irOf(head), wasNodes, nowNodes, rows);
 }
 
 function nodeRows(
-    path: readonly string[],
-    base: Record<string, unknown> | undefined,
-    head: Record<string, unknown> | undefined,
-    rows: DocumentChange[],
+  path: readonly string[],
+  base: Record<string, unknown> | undefined,
+  head: Record<string, unknown> | undefined,
+  rows: DocumentChange[]
 ): void {
-    if (!base || !head) {
-        // No `subject`: a node has no field an author names it in. Its type is Studio's own
-        // vocabulary and would read, beside a translated label, as something they typed.
-        rows.push(change(path, head ? "added" : "removed", head ? LABEL.nodeAdded : LABEL.nodeRemoved));
-        return;
-    }
+  if (!base || !head) {
+    // No `subject`: a node has no field an author names it in. Its type is Studio's own
+    // vocabulary and would read, beside a translated label, as something they typed.
+    rows.push(change(path, head ? "added" : "removed", head ? LABEL.nodeAdded : LABEL.nodeRemoved));
+    return;
+  }
 
-    const children: DocumentChange[] = [];
-    if (!sameJsonValue(base.params, head.params)) {
-        children.push(change([...path, "params"], "changed", LABEL.nodeParams));
-    }
-    // The whole reason this leaf exists; see the note at the top of this module.
-    if (!sameJsonValue(positionOf(base), positionOf(head))) {
-        children.push(change([...path, NODE_POSITION_KEY], "moved", LABEL.nodeMoved));
-    }
-    if (!sameJsonValue(base.type, head.type)) {
-        children.push(change([...path, "type"], "changed", LABEL.nodeType, {
-            params: fromToParams(base.type, head.type),
-        }));
-    }
-    if (!sameJsonValue(base.ports, head.ports)) {
-        children.push(change([...path, "ports"], "changed", LABEL.nodeField, {params: {field: "ports"}}));
-    }
-    if (!sameJsonValue(metaWithoutPosition(base), metaWithoutPosition(head))) {
-        children.push(change([...path, "meta"], "changed", LABEL.nodeField, {params: {field: "meta"}}));
-    }
-    rows.push(change(path, "changed", LABEL.nodeChanged, {children}));
+  const children: DocumentChange[] = [];
+  if (!sameJsonValue(base.params, head.params)) {
+    children.push(change([...path, "params"], "changed", LABEL.nodeParams));
+  }
+  // The whole reason this leaf exists; see the note at the top of this module.
+  if (!sameJsonValue(positionOf(base), positionOf(head))) {
+    children.push(change([...path, NODE_POSITION_KEY], "moved", LABEL.nodeMoved));
+  }
+  if (!sameJsonValue(base.type, head.type)) {
+    children.push(
+      change([...path, "type"], "changed", LABEL.nodeType, {
+        params: fromToParams(base.type, head.type)
+      })
+    );
+  }
+  if (!sameJsonValue(base.ports, head.ports)) {
+    children.push(
+      change([...path, "ports"], "changed", LABEL.nodeField, { params: { field: "ports" } })
+    );
+  }
+  if (!sameJsonValue(metaWithoutPosition(base), metaWithoutPosition(head))) {
+    children.push(
+      change([...path, "meta"], "changed", LABEL.nodeField, { params: { field: "meta" } })
+    );
+  }
+  rows.push(change(path, "changed", LABEL.nodeChanged, { children }));
 }
 
 function edgeRows(
-    path: readonly string[],
-    base: Record<string, unknown>,
-    head: Record<string, unknown>,
-    baseNodes: Readonly<Record<string, unknown>>,
-    headNodes: Readonly<Record<string, unknown>>,
-    rows: DocumentChange[],
+  path: readonly string[],
+  base: Record<string, unknown>,
+  head: Record<string, unknown>,
+  baseNodes: Readonly<Record<string, unknown>>,
+  headNodes: Readonly<Record<string, unknown>>,
+  rows: DocumentChange[]
 ): void {
-    // Only wires whose two ends exist on BOTH sides. What is left is the rewiring the author did,
-    // rather than the edges a deleted node took with it.
-    const shared = (id: unknown): boolean =>
-        typeof id === "string"
-        && Object.prototype.hasOwnProperty.call(baseNodes, id)
-        && Object.prototype.hasOwnProperty.call(headNodes, id);
-    const keysOf = (graph: Record<string, unknown>): Set<string> => {
-        const keys = new Set<string>();
-        for (const edge of Array.isArray(graph.edges) ? graph.edges : []) {
-            const from = (edge as {from?: {nodeId?: unknown; port?: unknown}} | null)?.from;
-            const to = (edge as {to?: {nodeId?: unknown; port?: unknown}} | null)?.to;
-            if (shared(from?.nodeId) && shared(to?.nodeId)) {
-                keys.add(`${text(from?.nodeId)}:${text(from?.port)}->${text(to?.nodeId)}:${text(to?.port)}`);
-            }
-        }
-        return keys;
-    };
-
-    const was = keysOf(base);
-    const now = keysOf(head);
-    for (const key of [...new Set([...was, ...now])].sort()) {
-        if (was.has(key) === now.has(key)) {
-            continue;
-        }
-        rows.push(change([...path, "edges", key], now.has(key) ? "added" : "removed",
-            now.has(key) ? LABEL.edgeAdded : LABEL.edgeRemoved));
+  // Only wires whose two ends exist on BOTH sides. What is left is the rewiring the author did,
+  // rather than the edges a deleted node took with it.
+  const shared = (id: unknown): boolean =>
+    typeof id === "string" &&
+    Object.prototype.hasOwnProperty.call(baseNodes, id) &&
+    Object.prototype.hasOwnProperty.call(headNodes, id);
+  const keysOf = (graph: Record<string, unknown>): Set<string> => {
+    const keys = new Set<string>();
+    for (const edge of Array.isArray(graph.edges) ? graph.edges : []) {
+      const from = (edge as { from?: { nodeId?: unknown; port?: unknown } } | null)?.from;
+      const to = (edge as { to?: { nodeId?: unknown; port?: unknown } } | null)?.to;
+      if (shared(from?.nodeId) && shared(to?.nodeId)) {
+        keys.add(
+          `${text(from?.nodeId)}:${text(from?.port)}->${text(to?.nodeId)}:${text(to?.port)}`
+        );
+      }
     }
+    return keys;
+  };
+
+  const was = keysOf(base);
+  const now = keysOf(head);
+  for (const key of [...new Set([...was, ...now])].sort()) {
+    if (was.has(key) === now.has(key)) {
+      continue;
+    }
+    rows.push(
+      change(
+        [...path, "edges", key],
+        now.has(key) ? "added" : "removed",
+        now.has(key) ? LABEL.edgeAdded : LABEL.edgeRemoved
+      )
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Reading the document
 // ---------------------------------------------------------------------------
 
-function blueprintsOf(document: UIGraphDocument | undefined): Record<string, Record<string, unknown>> {
-    return mapOf((document as {blueprintDocument?: {blueprints?: unknown}} | undefined)?.blueprintDocument?.blueprints);
+function blueprintsOf(
+  document: UIGraphDocument | undefined
+): Record<string, Record<string, unknown>> {
+  return mapOf(
+    (document as { blueprintDocument?: { blueprints?: unknown } } | undefined)?.blueprintDocument
+      ?.blueprints
+  );
 }
 
-function ownerRecordsOf(document: UIGraphDocument | undefined): Record<string, Record<string, unknown>> {
-    return mapOf((document as {blueprintDocument?: {ownerRecords?: unknown}} | undefined)?.blueprintDocument?.ownerRecords);
+function ownerRecordsOf(
+  document: UIGraphDocument | undefined
+): Record<string, Record<string, unknown>> {
+  return mapOf(
+    (document as { blueprintDocument?: { ownerRecords?: unknown } } | undefined)?.blueprintDocument
+      ?.ownerRecords
+  );
 }
 
-function rootGraphsOf(document: UIGraphDocument | undefined): Record<string, Record<string, unknown>> {
-    return mapOf((document as {graphs?: unknown} | undefined)?.graphs);
+function rootGraphsOf(
+  document: UIGraphDocument | undefined
+): Record<string, Record<string, unknown>> {
+  return mapOf((document as { graphs?: unknown } | undefined)?.graphs);
 }
 
 /** `program.graphs`, which holds the three slots and the two arrays that order them. */
 function graphIndexOf(blueprint: Record<string, unknown>): Record<string, unknown> {
-    const program = blueprint?.program;
-    const graphs = isJsonObject(program) ? program.graphs : undefined;
-    return isJsonObject(graphs) ? graphs : {};
+  const program = blueprint?.program;
+  const graphs = isJsonObject(program) ? program.graphs : undefined;
+  return isJsonObject(graphs) ? graphs : {};
 }
 
-function graphSlot(blueprint: Record<string, unknown>, slot: string): Record<string, Record<string, unknown>> {
-    return mapOf(graphIndexOf(blueprint)[slot]);
+function graphSlot(
+  blueprint: Record<string, unknown>,
+  slot: string
+): Record<string, Record<string, unknown>> {
+  return mapOf(graphIndexOf(blueprint)[slot]);
 }
 
 /**
@@ -388,85 +445,85 @@ function graphSlot(blueprint: Record<string, unknown>, slot: string): Record<str
  * there is nothing to keep apart and the second pass is skipped.
  */
 function graphFields(graph: Record<string, unknown>): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(graph)) {
-        if (!GRAPH_FIELDS_NOT_REPORTED.has(key)) {
-            out[key] = value;
-        }
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(graph)) {
+    if (!GRAPH_FIELDS_NOT_REPORTED.has(key)) {
+      out[key] = value;
     }
-    const ir = irOf(graph);
-    if (ir !== graph) {
-        for (const [key, value] of Object.entries(ir)) {
-            if (key !== "nodes" && key !== "edges") {
-                out[`graph.${key}`] = value;
-            }
-        }
+  }
+  const ir = irOf(graph);
+  if (ir !== graph) {
+    for (const [key, value] of Object.entries(ir)) {
+      if (key !== "nodes" && key !== "edges") {
+        out[`graph.${key}`] = value;
+      }
     }
-    return out;
+  }
+  return out;
 }
 
 /** A blueprint event graph wraps its IR in `graph`; a root-level graph already IS one. */
 function irOf(graph: Record<string, unknown> | undefined): Record<string, unknown> {
-    const inner = graph?.graph;
-    return isJsonObject(inner) ? inner : (graph ?? {});
+  const inner = graph?.graph;
+  return isJsonObject(inner) ? inner : (graph ?? {});
 }
 
 function nodesOf(ir: Record<string, unknown>): Record<string, Record<string, unknown>> {
-    return mapOf(ir.nodes);
+  return mapOf(ir.nodes);
 }
 
 function sourceOf(blueprint: Record<string, unknown>): unknown {
-    const program = blueprint?.program;
-    return isJsonObject(program) ? program.source : undefined;
+  const program = blueprint?.program;
+  return isJsonObject(program) ? program.source : undefined;
 }
 
 function positionOf(node: Record<string, unknown>): unknown {
-    const meta = node?.meta;
-    return isJsonObject(meta) ? meta[NODE_POSITION_KEY] : undefined;
+  const meta = node?.meta;
+  return isJsonObject(meta) ? meta[NODE_POSITION_KEY] : undefined;
 }
 
 /** `meta` with the canvas position taken out, so a drag cannot read as an edit to anything else. */
 function metaWithoutPosition(node: Record<string, unknown>): Record<string, unknown> {
-    const meta = node?.meta;
-    if (!isJsonObject(meta)) {
-        return {};
+  const meta = node?.meta;
+  if (!isJsonObject(meta)) {
+    return {};
+  }
+  const rest: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(meta)) {
+    if (key !== NODE_POSITION_KEY) {
+      rest[key] = value;
     }
-    const rest: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(meta)) {
-        if (key !== NODE_POSITION_KEY) {
-            rest[key] = value;
-        }
-    }
-    return rest;
+  }
+  return rest;
 }
 
 function blueprintNodeCount(blueprint: Record<string, unknown>): number {
-    let total = 0;
-    for (const slot of GRAPH_SLOTS) {
-        for (const graph of Object.values(graphSlot(blueprint, slot))) {
-            total += Object.keys(nodesOf(irOf(graph))).length;
-        }
+  let total = 0;
+  for (const slot of GRAPH_SLOTS) {
+    for (const graph of Object.values(graphSlot(blueprint, slot))) {
+      total += Object.keys(nodesOf(irOf(graph))).length;
     }
-    return total;
+  }
+  return total;
 }
 
 function mapOf(value: unknown): Record<string, Record<string, unknown>> {
-    if (!isJsonObject(value)) {
-        return {};
+  if (!isJsonObject(value)) {
+    return {};
+  }
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    // An entry that is not an object is what a hand-edited document holds. Skipping it costs
+    // one row; refusing the document would cost the author every row in it.
+    if (isJsonObject(entry)) {
+      out[key] = entry;
     }
-    const out: Record<string, Record<string, unknown>> = {};
-    for (const [key, entry] of Object.entries(value)) {
-        // An entry that is not an object is what a hand-edited document holds. Skipping it costs
-        // one row; refusing the document would cost the author every row in it.
-        if (isJsonObject(entry)) {
-            out[key] = entry;
-        }
-    }
-    return out;
+  }
+  return out;
 }
 
 function text(value: unknown): string {
-    return typeof value === "string" ? value : "";
+  return typeof value === "string" ? value : "";
 }
 
 // ---------------------------------------------------------------------------
@@ -474,23 +531,23 @@ function text(value: unknown): string {
 // ---------------------------------------------------------------------------
 
 interface Keyed {
-    readonly key: string;
-    readonly base: Record<string, unknown> | undefined;
-    readonly head: Record<string, unknown> | undefined;
+  readonly key: string;
+  readonly base: Record<string, unknown> | undefined;
+  readonly head: Record<string, unknown> | undefined;
 }
 
 /** By the name the author gave the blueprint, then by id. Unnamed ones go last, together. */
 function sortedByName<T extends Keyed>(entries: readonly T[]): T[] {
-    return [...entries].sort((a, b) => {
-        const left = authoredName(a.head?.name ?? a.base?.name) ?? "";
-        const right = authoredName(b.head?.name ?? b.base?.name) ?? "";
-        if (left !== right) {
-            if (left === "") return 1;
-            if (right === "") return -1;
-            return left < right ? -1 : 1;
-        }
-        return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
-    });
+  return [...entries].sort((a, b) => {
+    const left = authoredName(a.head?.name ?? a.base?.name) ?? "";
+    const right = authoredName(b.head?.name ?? b.base?.name) ?? "";
+    if (left !== right) {
+      if (left === "") return 1;
+      if (right === "") return -1;
+      return left < right ? -1 : 1;
+    }
+    return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+  });
 }
 
 /**
@@ -501,15 +558,17 @@ function sortedByName<T extends Keyed>(entries: readonly T[]): T[] {
  * author DID arrange below it.
  */
 function sortedByPosition<T extends Keyed>(entries: readonly T[]): T[] {
-    const axis = (entry: T, key: "x" | "y"): number => {
-        const position = positionOf(entry.head ?? entry.base ?? {});
-        const value = isJsonObject(position) ? position[key] : undefined;
-        return typeof value === "number" && Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
-    };
-    return [...entries].sort((a, b) =>
-        (axis(a, "y") - axis(b, "y"))
-        || (axis(a, "x") - axis(b, "x"))
-        || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  const axis = (entry: T, key: "x" | "y"): number => {
+    const position = positionOf(entry.head ?? entry.base ?? {});
+    const value = isJsonObject(position) ? position[key] : undefined;
+    return typeof value === "number" && Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
+  };
+  return [...entries].sort(
+    (a, b) =>
+      axis(a, "y") - axis(b, "y") ||
+      axis(a, "x") - axis(b, "x") ||
+      (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
+  );
 }
 
 /**
@@ -517,43 +576,43 @@ function sortedByPosition<T extends Keyed>(entries: readonly T[]): T[] {
  * whatever neither list mentions, sorted so it is the same list on every run.
  */
 function graphOrder(
-    base: Record<string, unknown>,
-    head: Record<string, unknown>,
-    slot: string,
-    changed: ReadonlyMap<string, unknown>,
+  base: Record<string, unknown>,
+  head: Record<string, unknown>,
+  slot: string,
+  changed: ReadonlyMap<string, unknown>
 ): string[] {
-    const orderKey = ORDER_KEY[slot];
-    const out: string[] = [];
-    const seen = new Set<string>();
-    const take = (id: unknown): void => {
-        if (typeof id === "string" && !seen.has(id)) {
-            seen.add(id);
-            out.push(id);
-        }
-    };
+  const orderKey = ORDER_KEY[slot];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const take = (id: unknown): void => {
+    if (typeof id === "string" && !seen.has(id)) {
+      seen.add(id);
+      out.push(id);
+    }
+  };
 
-    for (const side of orderKey ? [head, base] : []) {
-        const declared = side[orderKey as string];
-        for (const id of Array.isArray(declared) ? declared : []) {
-            take(id);
-        }
+  for (const side of orderKey ? [head, base] : []) {
+    const declared = side[orderKey as string];
+    for (const id of Array.isArray(declared) ? declared : []) {
+      take(id);
     }
-    for (const id of [...changed.keys()].sort()) {
-        take(id);
-    }
-    return out;
+  }
+  for (const id of [...changed.keys()].sort()) {
+    take(id);
+  }
+  return out;
 }
 
 /** One slot's declared order, narrowed to the ids both sides hold. */
 function declaredOrder(
-    graphs: Record<string, unknown>,
-    orderKey: string,
-    shared: ReadonlySet<string>,
+  graphs: Record<string, unknown>,
+  orderKey: string,
+  shared: ReadonlySet<string>
 ): string[] {
-    const declared = graphs[orderKey];
-    return Array.isArray(declared)
-        ? declared.filter((id): id is string => typeof id === "string" && shared.has(id))
-        : [];
+  const declared = graphs[orderKey];
+  return Array.isArray(declared)
+    ? declared.filter((id): id is string => typeof id === "string" && shared.has(id))
+    : [];
 }
 
 /**

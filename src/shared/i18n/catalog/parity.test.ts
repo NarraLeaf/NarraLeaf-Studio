@@ -34,8 +34,8 @@ const TRANSLATED_LOCALES = Object.keys(CATALOGS).filter((code) => code !== SOURC
 
 /** `a.b.one` -> `a.b`; any other key -> null. */
 function pluralBase(key: string): string | null {
-    const base = key.replace(/\.one$/, "");
-    return base === key ? null : base;
+  const base = key.replace(/\.one$/, "");
+  return base === key ? null : base;
 }
 
 /**
@@ -44,48 +44,50 @@ function pluralBase(key: string): string | null {
  * flag spelled `one` has no such sibling and stays required.
  */
 function isEnglishOnlyPluralForm(key: string): boolean {
-    const base = pluralBase(key);
-    return base !== null && enKeys.has(`${base}.other`);
+  const base = pluralBase(key);
+  return base !== null && enKeys.has(`${base}.other`);
 }
 
 function list(keys: string[]): string {
-    return keys.sort().join("\n  ");
+  return keys.sort().join("\n  ");
 }
 
 describe("catalog parity", () => {
-    it("has a translated locale to check", () => {
-        // Guards against a vacuous pass if the catalogs or `flatten` ever stop
-        // producing keys, or the registry stops naming any locale but the source -
-        // every assertion below would trivially hold.
-        expect(enKeys.size).toBeGreaterThan(0);
-        expect(TRANSLATED_LOCALES.length).toBeGreaterThan(0);
+  it("has a translated locale to check", () => {
+    // Guards against a vacuous pass if the catalogs or `flatten` ever stop
+    // producing keys, or the registry stops naming any locale but the source -
+    // every assertion below would trivially hold.
+    expect(enKeys.size).toBeGreaterThan(0);
+    expect(TRANSLATED_LOCALES.length).toBeGreaterThan(0);
+  });
+
+  for (const locale of TRANSLATED_LOCALES) {
+    const localeKeys = new Set(flattenCatalog(CATALOGS[locale as keyof typeof CATALOGS]).keys());
+
+    it(`translates every en key in ${locale}, except English-only plural forms`, () => {
+      const missing = [...enKeys].filter(
+        (key) => !localeKeys.has(key) && !isEnglishOnlyPluralForm(key)
+      );
+
+      expect(
+        missing,
+        `${locale} is missing ${missing.length} key(s) that en defines. Translate them in the matching\n` +
+          `src/shared/i18n/catalog/${locale}/<namespace>.ts - or, if the key should not exist at all,\n` +
+          `remove it from en:\n  ${list(missing)}\n`
+      ).toEqual([]);
     });
 
-    for (const locale of TRANSLATED_LOCALES) {
-        const localeKeys = new Set(flattenCatalog(CATALOGS[locale as keyof typeof CATALOGS]).keys());
+    it(`defines every ${locale} key in en`, () => {
+      const stray = [...localeKeys].filter((key) => !enKeys.has(key));
 
-        it(`translates every en key in ${locale}, except English-only plural forms`, () => {
-            const missing = [...enKeys].filter((key) => !localeKeys.has(key) && !isEnglishOnlyPluralForm(key));
-
-            expect(
-                missing,
-                `${locale} is missing ${missing.length} key(s) that en defines. Translate them in the matching\n` +
-                    `src/shared/i18n/catalog/${locale}/<namespace>.ts - or, if the key should not exist at all,\n` +
-                    `remove it from en:\n  ${list(missing)}\n`,
-            ).toEqual([]);
-        });
-
-        it(`defines every ${locale} key in en`, () => {
-            const stray = [...localeKeys].filter((key) => !enKeys.has(key));
-
-            expect(
-                stray,
-                `en is missing ${stray.length} key(s) that ${locale} defines. en is the source of truth, so this is\n` +
-                    `a typo in ${locale} or a key dropped from en without updating ${locale}. Nothing reads these\n` +
-                    `strings:\n  ${list(stray)}\n`,
-            ).toEqual([]);
-        });
-    }
+      expect(
+        stray,
+        `en is missing ${stray.length} key(s) that ${locale} defines. en is the source of truth, so this is\n` +
+          `a typo in ${locale} or a key dropped from en without updating ${locale}. Nothing reads these\n` +
+          `strings:\n  ${list(stray)}\n`
+      ).toEqual([]);
+    });
+  }
 });
 
 /**
@@ -104,43 +106,47 @@ describe("catalog parity", () => {
  * no spaces.
  */
 const ROW_BUTTON_NAME_AND_TOOLTIP: { name: string; tooltip: string }[] = [
-    { name: "story.rows.insert", tooltip: "story.rows.insertTitle" },
-    { name: "story.rows.delete", tooltip: "story.rows.deleteTitle" },
+  { name: "story.rows.insert", tooltip: "story.rows.insertTitle" },
+  { name: "story.rows.delete", tooltip: "story.rows.deleteTitle" }
 ];
 
 /** The tooltip without its keybinding: the placeholder plus any brackets and spaces hugging it. */
 function withoutKeybinding(tooltip: string): string {
-    return tooltip.replace(/[\s([（【]*\{keys\}[\s)\]）】]*/u, "").trim();
+  return tooltip.replace(/[\s([（【]*\{keys\}[\s)\]）】]*/u, "").trim();
 }
 
 describe("row button accessible names", () => {
-    for (const [locale, catalog] of Object.entries(CATALOGS)) {
-        it(`keeps ${locale}'s row-button names and tooltips one keybinding apart`, () => {
-            const flat = flattenCatalog(catalog);
-            for (const { name, tooltip } of ROW_BUTTON_NAME_AND_TOOLTIP) {
-                const nameText = flat.get(name);
-                const tooltipText = flat.get(tooltip);
-                expect(nameText, `${locale} is missing ${name}`).toBeTruthy();
-                expect(tooltipText, `${locale} is missing ${tooltip}`).toBeTruthy();
-                expect(tooltipText, `${locale}: ${tooltip} must carry the {keys} placeholder`).toContain("{keys}");
-                expect(
-                    withoutKeybinding(tooltipText!),
-                    `${locale}: "${name}" must be "${tooltip}" minus the keybinding. The accessible name and
+  for (const [locale, catalog] of Object.entries(CATALOGS)) {
+    it(`keeps ${locale}'s row-button names and tooltips one keybinding apart`, () => {
+      const flat = flattenCatalog(catalog);
+      for (const { name, tooltip } of ROW_BUTTON_NAME_AND_TOOLTIP) {
+        const nameText = flat.get(name);
+        const tooltipText = flat.get(tooltip);
+        expect(nameText, `${locale} is missing ${name}`).toBeTruthy();
+        expect(tooltipText, `${locale} is missing ${tooltip}`).toBeTruthy();
+        expect(tooltipText, `${locale}: ${tooltip} must carry the {keys} placeholder`).toContain(
+          "{keys}"
+        );
+        expect(
+          withoutKeybinding(tooltipText!),
+          `${locale}: "${name}" must be "${tooltip}" minus the keybinding. The accessible name and
 ` +
-                        `the tooltip are the same sentence, so rewording one without the other makes a control
+            `the tooltip are the same sentence, so rewording one without the other makes a control
 ` +
-                        `announce something different from what it shows — and a name shorter than its tooltip
+            `announce something different from what it shows — and a name shorter than its tooltip
 ` +
-                        `is how these ended up as bare verbs with no object.
+            `is how these ended up as bare verbs with no object.
 ` +
-                        `  ${name}    = ${JSON.stringify(nameText)}
+            `  ${name}    = ${JSON.stringify(nameText)}
 ` +
-                        `  ${tooltip} = ${JSON.stringify(tooltipText)}
-`,
-                ).toBe(nameText!.trim());
-                // The name says what the control does, not which keys reach it.
-                expect(nameText, `${locale}: ${name} must not carry the keybinding`).not.toContain("{keys}");
-            }
-        });
-    }
+            `  ${tooltip} = ${JSON.stringify(tooltipText)}
+`
+        ).toBe(nameText!.trim());
+        // The name says what the control does, not which keys reach it.
+        expect(nameText, `${locale}: ${name} must not carry the keybinding`).not.toContain(
+          "{keys}"
+        );
+      }
+    });
+  }
 });

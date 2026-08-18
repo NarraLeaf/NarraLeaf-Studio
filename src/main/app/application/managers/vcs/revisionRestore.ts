@@ -51,19 +51,19 @@ import type { RevisionFileEntry } from "./revisionReader";
  * hand them a tree that matches neither version with no indication anything was left out.
  */
 export class RestorePathEscapesProjectError extends Error {
-    constructor(readonly offending: string) {
-        super(`Revision entry escapes the project directory: ${offending}`);
-        this.name = "RestorePathEscapesProjectError";
-    }
+  constructor(readonly offending: string) {
+    super(`Revision entry escapes the project directory: ${offending}`);
+    this.name = "RestorePathEscapesProjectError";
+  }
 }
 
 export interface RevisionRestorePlan {
-    /** Entries to write, revision-relative. Both "absent on disk" and "present but possibly different". */
-    write: RevisionFileEntry[];
-    /** Repository-relative paths to remove: versioned, on disk now, absent from the target revision. */
-    remove: string[];
-    /** Revision entries the working set excludes, so neither side touches them. Reported, not acted on. */
-    ignored: number;
+  /** Entries to write, revision-relative. Both "absent on disk" and "present but possibly different". */
+  write: RevisionFileEntry[];
+  /** Repository-relative paths to remove: versioned, on disk now, absent from the target revision. */
+  remove: string[];
+  /** Revision entries the working set excludes, so neither side touches them. Reported, not acted on. */
+  ignored: number;
 }
 
 /**
@@ -84,38 +84,38 @@ export interface RevisionRestorePlan {
  *    {@link collectWorkingSet} does not enumerate them.
  */
 export function planRevisionRestore(input: {
-    revision: readonly RevisionFileEntry[];
-    /** Versioned files currently on disk, repository-relative. From {@link readWorkingSetPaths}. */
-    working: readonly string[];
+  revision: readonly RevisionFileEntry[];
+  /** Versioned files currently on disk, repository-relative. From {@link readWorkingSetPaths}. */
+  working: readonly string[];
 }): RevisionRestorePlan {
-    const write: RevisionFileEntry[] = [];
-    const wanted = new Set<string>();
-    let ignored = 0;
+  const write: RevisionFileEntry[] = [];
+  const wanted = new Set<string>();
+  let ignored = 0;
 
-    for (const entry of input.revision) {
-        // Before the working-set test, not after: `isVersioned` answers false for a `..` segment, so
-        // asking it first would turn the one input that has to be REFUSED into one that is silently
-        // dropped - and an absolute path it answers TRUE for, which is why the check is here at all.
-        const relative = assertRepositoryRelative(entry.path);
-        if (!isVersioned(relative)) {
-            ignored += 1;
-            continue;
-        }
-        wanted.add(relative);
-        write.push({ ...entry, path: relative });
+  for (const entry of input.revision) {
+    // Before the working-set test, not after: `isVersioned` answers false for a `..` segment, so
+    // asking it first would turn the one input that has to be REFUSED into one that is silently
+    // dropped - and an absolute path it answers TRUE for, which is why the check is here at all.
+    const relative = assertRepositoryRelative(entry.path);
+    if (!isVersioned(relative)) {
+      ignored += 1;
+      continue;
     }
+    wanted.add(relative);
+    write.push({ ...entry, path: relative });
+  }
 
-    const remove: string[] = [];
-    for (const candidate of input.working) {
-        const relative = assertRepositoryRelative(candidate);
-        // Defence in depth rather than a second filter: the walk already applies this predicate, and a
-        // disagreement between the two would mean the restore deleting something the repository never
-        // had a chance to record.
-        if (!isVersioned(relative) || wanted.has(relative)) continue;
-        remove.push(relative);
-    }
+  const remove: string[] = [];
+  for (const candidate of input.working) {
+    const relative = assertRepositoryRelative(candidate);
+    // Defence in depth rather than a second filter: the walk already applies this predicate, and a
+    // disagreement between the two would mean the restore deleting something the repository never
+    // had a chance to record.
+    if (!isVersioned(relative) || wanted.has(relative)) continue;
+    remove.push(relative);
+  }
 
-    return { write, remove, ignored };
+  return { write, remove, ignored };
 }
 
 /**
@@ -127,21 +127,21 @@ export function planRevisionRestore(input: {
  * here so the two halves cannot drift.
  */
 export async function readWorkingSetPaths(projectPath: string): Promise<string[]> {
-    const root = path.resolve(projectPath);
-    const absolute = await collectWorkingSet(root);
-    return absolute.map((file) => path.relative(root, file).replace(/\\/g, "/"));
+  const root = path.resolve(projectPath);
+  const absolute = await collectWorkingSet(root);
+  return absolute.map((file) => path.relative(root, file).replace(/\\/g, "/"));
 }
 
 export interface RevisionRestoreSource {
-    /** The bytes of one planned entry. */
-    read(entry: RevisionFileEntry): Promise<Buffer>;
+  /** The bytes of one planned entry. */
+  read(entry: RevisionFileEntry): Promise<Buffer>;
 }
 
 export interface RevisionRestoreResult {
-    filesWritten: number;
-    bytesWritten: number;
-    filesRemoved: number;
-    durationMs: number;
+  filesWritten: number;
+  bytesWritten: number;
+  filesRemoved: number;
+  durationMs: number;
 }
 
 /**
@@ -156,49 +156,49 @@ export interface RevisionRestoreResult {
  * already provide, and it would double the write cost over a project's entire document set.
  */
 export async function applyRevisionRestore(options: {
-    projectPath: string;
-    plan: RevisionRestorePlan;
-    source: RevisionRestoreSource;
-    /** Progress, for a restore that would otherwise look hung on a large project. */
-    onProgress?: (message: string) => void;
+  projectPath: string;
+  plan: RevisionRestorePlan;
+  source: RevisionRestoreSource;
+  /** Progress, for a restore that would otherwise look hung on a large project. */
+  onProgress?: (message: string) => void;
 }): Promise<RevisionRestoreResult> {
-    const started = Date.now();
-    // Resolved once, because it is the boundary every write and every delete below is checked against.
-    const root = path.resolve(options.projectPath);
-    options.onProgress?.(
-        `restoring ${options.plan.write.length} file(s), removing ${options.plan.remove.length}`,
-    );
+  const started = Date.now();
+  // Resolved once, because it is the boundary every write and every delete below is checked against.
+  const root = path.resolve(options.projectPath);
+  options.onProgress?.(
+    `restoring ${options.plan.write.length} file(s), removing ${options.plan.remove.length}`
+  );
 
-    let filesWritten = 0;
-    let bytesWritten = 0;
-    for (const entry of options.plan.write) {
-        const target = resolveInside(root, entry.path);
-        const bytes = await options.source.read(entry);
-        await fs.mkdir(path.dirname(target), { recursive: true });
-        await fs.writeFile(target, bytes);
-        filesWritten += 1;
-        bytesWritten += bytes.length;
-    }
+  let filesWritten = 0;
+  let bytesWritten = 0;
+  for (const entry of options.plan.write) {
+    const target = resolveInside(root, entry.path);
+    const bytes = await options.source.read(entry);
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, bytes);
+    filesWritten += 1;
+    bytesWritten += bytes.length;
+  }
 
-    let filesRemoved = 0;
-    const emptied = new Set<string>();
-    for (const relative of options.plan.remove) {
-        const target = resolveInside(root, relative);
-        // `recursive: false` spelled out rather than left to the default: this is the one call in the
-        // feature that deletes the author's files, and the difference between it and the recursive
-        // form is the difference between one stale document and a directory tree. `force` covers a
-        // file another process removed between the walk and here, which is not a failure.
-        await fs.rm(target, { force: true, recursive: false });
-        emptied.add(path.dirname(target));
-        filesRemoved += 1;
-    }
-    await pruneEmptyDirectories(root, emptied);
+  let filesRemoved = 0;
+  const emptied = new Set<string>();
+  for (const relative of options.plan.remove) {
+    const target = resolveInside(root, relative);
+    // `recursive: false` spelled out rather than left to the default: this is the one call in the
+    // feature that deletes the author's files, and the difference between it and the recursive
+    // form is the difference between one stale document and a directory tree. `force` covers a
+    // file another process removed between the walk and here, which is not a failure.
+    await fs.rm(target, { force: true, recursive: false });
+    emptied.add(path.dirname(target));
+    filesRemoved += 1;
+  }
+  await pruneEmptyDirectories(root, emptied);
 
-    const durationMs = Date.now() - started;
-    options.onProgress?.(
-        `restored ${filesWritten} file(s), removed ${filesRemoved}, in ${durationMs} ms`,
-    );
-    return { filesWritten, bytesWritten, filesRemoved, durationMs };
+  const durationMs = Date.now() - started;
+  options.onProgress?.(
+    `restored ${filesWritten} file(s), removed ${filesRemoved}, in ${durationMs} ms`
+  );
+  return { filesWritten, bytesWritten, filesRemoved, durationMs };
 }
 
 /**
@@ -213,18 +213,27 @@ export async function applyRevisionRestore(options: {
  * empty directory is cosmetic, and a restore that already put the right bytes on disk must not be
  * reported as failed because a folder outlived its contents.
  */
-async function pruneEmptyDirectories(root: string, directories: ReadonlySet<string>): Promise<void> {
-    const candidates = new Set<string>();
-    for (const directory of directories) {
-        // Every ancestor, because removing the last file in `a/b/c` can empty `a/b` and `a` too.
-        for (let current = directory; current.startsWith(root + path.sep); current = path.dirname(current)) {
-            candidates.add(current);
-        }
+async function pruneEmptyDirectories(
+  root: string,
+  directories: ReadonlySet<string>
+): Promise<void> {
+  const candidates = new Set<string>();
+  for (const directory of directories) {
+    // Every ancestor, because removing the last file in `a/b/c` can empty `a/b` and `a` too.
+    for (
+      let current = directory;
+      current.startsWith(root + path.sep);
+      current = path.dirname(current)
+    ) {
+      candidates.add(current);
     }
-    const deepestFirst = [...candidates].sort((a, b) => b.split(path.sep).length - a.split(path.sep).length);
-    for (const directory of deepestFirst) {
-        await fs.rmdir(directory).catch(() => undefined);
-    }
+  }
+  const deepestFirst = [...candidates].sort(
+    (a, b) => b.split(path.sep).length - a.split(path.sep).length
+  );
+  for (const directory of deepestFirst) {
+    await fs.rmdir(directory).catch(() => undefined);
+  }
 }
 
 /**
@@ -236,18 +245,18 @@ async function pruneEmptyDirectories(root: string, directories: ReadonlySet<stri
  * absolute path in a crafted tree would reach the writer.
  */
 function assertRepositoryRelative(candidate: string): string {
-    const normalized = candidate.replace(/\\/g, "/").replace(/^\.\//, "");
-    if (normalized.length === 0) {
-        throw new RestorePathEscapesProjectError(candidate);
-    }
-    // A drive-qualified path, a POSIX absolute path, and a UNC share all start the same three ways.
-    if (/^[a-zA-Z]:/.test(normalized) || normalized.startsWith("/")) {
-        throw new RestorePathEscapesProjectError(candidate);
-    }
-    if (normalized.split("/").some((segment) => segment === "..")) {
-        throw new RestorePathEscapesProjectError(candidate);
-    }
-    return normalized;
+  const normalized = candidate.replace(/\\/g, "/").replace(/^\.\//, "");
+  if (normalized.length === 0) {
+    throw new RestorePathEscapesProjectError(candidate);
+  }
+  // A drive-qualified path, a POSIX absolute path, and a UNC share all start the same three ways.
+  if (/^[a-zA-Z]:/.test(normalized) || normalized.startsWith("/")) {
+    throw new RestorePathEscapesProjectError(candidate);
+  }
+  if (normalized.split("/").some((segment) => segment === "..")) {
+    throw new RestorePathEscapesProjectError(candidate);
+  }
+  return normalized;
 }
 
 /**
@@ -259,9 +268,9 @@ function assertRepositoryRelative(candidate: string): string {
  * the case a resolve-and-compare catches and a string test can miss.
  */
 function resolveInside(root: string, relative: string): string {
-    const resolved = path.resolve(path.join(root, ...relative.split("/")));
-    if (resolved === root || !resolved.startsWith(root + path.sep)) {
-        throw new RestorePathEscapesProjectError(relative);
-    }
-    return resolved;
+  const resolved = path.resolve(path.join(root, ...relative.split("/")));
+  if (resolved === root || !resolved.startsWith(root + path.sep)) {
+    throw new RestorePathEscapesProjectError(relative);
+  }
+  return resolved;
 }

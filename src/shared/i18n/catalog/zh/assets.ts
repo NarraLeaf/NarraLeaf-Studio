@@ -1,433 +1,434 @@
 import type { LocaleNamespace } from "../types";
 
 export const assets = {
-    loading: "正在加载素材…",
-    loadError: "加载素材失败",
-    searchPlaceholder: "搜索素材…",
-    searchTooltip: "搜索素材",
-    closeSearch: "关闭搜索",
-    clearSearch: "清除搜索",
-    backToParent: "返回上级分组",
-    importRemote: "远程导入",
-    noTags: "无标签",
-    preview: "预览",
-    unknownError: "未知错误",
-    // 这两个删除留下的撤销步骤叫什么。
-    history: {
-        deleteAsset: "删除 {name}",
-        deleteGroup: "删除文件夹 {name}",
+  loading: "正在加载素材…",
+  loadError: "加载素材失败",
+  searchPlaceholder: "搜索素材…",
+  searchTooltip: "搜索素材",
+  closeSearch: "关闭搜索",
+  clearSearch: "清除搜索",
+  backToParent: "返回上级分组",
+  importRemote: "远程导入",
+  noTags: "无标签",
+  preview: "预览",
+  unknownError: "未知错误",
+  // 这两个删除留下的撤销步骤叫什么。
+  history: {
+    deleteAsset: "删除 {name}",
+    deleteGroup: "删除文件夹 {name}"
+  },
+  delete: {
+    inUseTitle: "这些素材仍在被使用",
+    inUseMessage: "删除后，以下位置将失去素材来源：",
+    moreReferences: "…另有 {count} 处",
+    unverifiedTitle: "无法检查这些素材的使用情况",
+    unverifiedMessage: "无法确定这些素材是否仍在使用。仍要删除吗？",
+    confirmTitle: {
+      one: "删除 {count} 项？",
+      other: "删除 {count} 项？"
     },
-    delete: {
-        inUseTitle: "这些素材仍在被使用",
-        inUseMessage: "删除后，以下位置将失去素材来源：",
-        moreReferences: "…另有 {count} 处",
-        unverifiedTitle: "无法检查这些素材的使用情况",
-        unverifiedMessage: "无法确定这些素材是否仍在使用。仍要删除吗？",
-        confirmTitle: {
-            one: "删除 {count} 项？",
-            other: "删除 {count} 项？",
-        },
-        confirmMessage: "所选分组内的全部内容也会一并删除",
-        action: "删除",
-        failedTitle: "删除失败",
-        failed: "无法删除：{error}",
+    confirmMessage: "所选分组内的全部内容也会一并删除",
+    action: "删除",
+    failedTitle: "删除失败",
+    failed: "无法删除：{error}"
+  },
+  rename: {
+    failed: "无法重命名 {name}"
+  },
+  createGroup: {
+    failed: "无法创建分组"
+  },
+  paste: {
+    failedTitle: "没有任何内容被粘贴",
+    someFailedTitle: "部分内容未能粘贴"
+  },
+  replace: {
+    confirmTitle: "替换 {name} 的文件内容？",
+    confirmAction: "替换",
+    failedTitle: "替换素材内容失败",
+    remoteUnsupported: "远程素材没有可替换的本地文件"
+  },
+  types: {
+    image: "图片",
+    audio: "音频",
+    video: "视频",
+    json: "JSON 文件",
+    blueprint: "蓝图",
+    font: "字体",
+    model: "模型",
+    other: "其他"
+  },
+  categories: {
+    image: "图片",
+    media: "媒体",
+    data: "数据",
+    font: "字体",
+    model: "模型",
+    other: "其他"
+  },
+  itemCount: {
+    one: "{count} 项",
+    other: "{count} 项"
+  },
+  overview: {
+    loading: "正在读取资源库…",
+    failed: "无法读取资源库",
+    retry: "重试",
+    section: {
+      library: "资源库",
+      packaging: "打包",
+      byCategory: "按类别",
+      largest: "体积最大",
+      unreferenced: "未被引用"
     },
-    rename: {
-        failed: "无法重命名 {name}",
+    stat: {
+      total: "总计",
+      referenced: "已引用",
+      unreferenced: "未被引用",
+      actual: "实际",
+      ifTrimmed: "若裁剪",
+      difference: "差额"
     },
-    createGroup: {
-        failed: "无法创建分组",
+    files: {
+      other: "{count} 个文件"
     },
-    paste: {
-        failedTitle: "没有任何内容被粘贴",
-        someFailedTitle: "部分内容未能粘贴",
+    uses: {
+      other: "{count} 处引用"
     },
-    replace: {
-        confirmTitle: "替换 {name} 的文件内容？",
-        confirmAction: "替换",
-        failedTitle: "替换素材内容失败",
-        remoteUnsupported: "远程素材没有可替换的本地文件",
+    detail: {
+      storage: "存储",
+      path: "路径"
+    }
+  },
+  view: {
+    list: "列表视图",
+    icons: "图标视图",
+    overview: "总览"
+  },
+  filter: {
+    label: "筛选",
+    category: "类别",
+    usage: "引用",
+    size: "体积",
+    tags: "标签",
+    format: "格式"
+  },
+  actions: {
+    copyTooltip: "复制选中的素材或分组",
+    cutTooltip: "剪切选中的素材或分组",
+    pasteTooltip: "粘贴素材或分组",
+    deleteTooltip: "删除选中的素材或分组"
+  },
+  list: {
+    emptyFiltered: "没有符合当前筛选的素材"
+  },
+  iconView: {
+    updating: "正在更新…",
+    assetCount: {
+      one: "{count} 个素材",
+      other: "{count} 个素材"
     },
-    types: {
-        image: "图片",
-        audio: "音频",
-        video: "视频",
-        json: "JSON 文件",
-        blueprint: "蓝图",
-        font: "字体",
-        model: "模型",
-        other: "其他",
+    tagCount: {
+      one: "+{count} 个标签",
+      other: "+{count} 个标签"
+    }
+  },
+  import: {
+    unableTitle: "无法导入",
+    failedTitle: "导入素材失败",
+    someFailedTitle: "部分素材导入失败",
+    moveFailedTitle: "移动已导入素材失败",
+    fileAccessFailed: "文件访问授权失败",
+    filePathParsingFailed: "文件路径解析失败",
+    noMatchingFiles: "拖入的文件夹中没有可导入的文件",
+    moreFailures: "…还有 {count} 个",
+    failedCount: {
+      one: "{count} 个文件失败",
+      other: "{count} 个文件失败"
     },
-    categories: {
-        image: "图片",
-        media: "媒体",
-        data: "数据",
-        font: "字体",
-        model: "模型",
-        other: "其他",
+    retry: "重试",
+    remoteTitle: "导入远程素材",
+    remoteDescription: "粘贴直链；文件会立即下载并随工程保存",
+    remoteInvalidUrl: "请输入有效的 URL",
+    remoteUnsupportedScheme: "只能导入 http 与 https 链接",
+    remoteFailedTitle: "导入远程素材失败"
+  },
+  mediaConvert: {
+    title: "部分文件需要转换",
+    titleRefusedOnly: "部分文件无法导入",
+    intro: "转换会在工程中生成新文件，源文件不会被修改",
+    convertingTitle: "正在转换",
+    convertingIntro: "转换完成的文件会被导入",
+    group: {
+      lossless: "可以转换",
+      losslessHint: "画面和声音保持原样",
+      lossy: "可以转换，但会损失一些质量",
+      lossyHint: "画面和声音会被重新编码，耗时更长，质量有损失",
+      refused: "无法导入"
     },
-    itemCount: {
-        one: "{count} 项",
-        other: "{count} 项",
+    becomes: "转成 .{ext}",
+    refusal: {
+      notMedia: "这不是声音或视频文件",
+      noStreams: "文件里没有声音，也没有画面"
     },
-    overview: {
-        loading: "正在读取资源库…",
-        failed: "无法读取资源库",
-        retry: "重试",
-        section: {
-            library: "资源库",
-            packaging: "打包",
-            byCategory: "按类别",
-            largest: "体积最大",
-            unreferenced: "未被引用",
-        },
-        stat: {
-            total: "总计",
-            referenced: "已引用",
-            unreferenced: "未被引用",
-            actual: "实际",
-            ifTrimmed: "若裁剪",
-            difference: "差额",
-        },
-        files: {
-            other: "{count} 个文件",
-        },
-        uses: {
-            other: "{count} 处引用",
-        },
-        detail: {
-            storage: "存储",
-            path: "路径",
-        },
+    state: {
+      waiting: "等待中",
+      done: "完成",
+      failed: "转换失败",
+      stopped: "已停止",
+      unavailable: "这台电脑上没有可用的转换工具"
     },
-    view: {
-        list: "列表视图",
-        icons: "图标视图",
-        overview: "总览",
+    convertAction: "转换并导入",
+    skipAction: "跳过这些文件",
+    importAnywayAction: "不转换直接导入",
+    stopAction: "停止转换",
+    failedError: "该文件无法转换"
+  },
+  support: {
+    needsConverting: "需要转换",
+    needsConvertingHint: "该文件在游戏中无法播放，转换之后即可播放",
+    needsConvertingRemoteHint:
+      "该文件在游戏中无法播放，而以链接方式保存的文件不能转换；请在 Studio 之外完成转换，再作为文件添加",
+    notPlayable: "无法播放",
+    notPlayableHint: "该文件不含音频也不含视频，没有可转换的内容",
+    menuConvert: "转换文件…",
+    convertTitle: "转换文件",
+    convertIntro: "转换后的文件会替换当前文件，所有引用同步更新",
+    convertAction: "转换",
+    replacing: "正在写入文件"
+  },
+  modelImport: {
+    title: "导入模型",
+    familyStep: "这是哪一种模型？",
+    familyNoRuntime: "此处不安装运行时；绘制所用的运行时在角色上设置",
+    family: {
+      live2d: "Live2D Cubism",
+      live2dHint: "含有 .model3.json 的文件夹，或 Cubism 2 的 model.json",
+      spine: "Spine",
+      spineHint: "含有 .skel 或 .json 骨架、并与 .atlas 放在一起的文件夹"
     },
-    filter: {
-        label: "筛选",
-        category: "类别",
-        usage: "引用",
-        size: "体积",
-        tags: "标签",
-        format: "格式",
+    folderStep: "选择文件夹",
+    folderHint: "可以是单个模型的文件夹，也可以是包含多个模型的文件夹，其中的内容会被整体搜索",
+    chooseFolder: "选择文件夹…",
+    changeFolder: "更改…",
+    rescan: "重新扫描",
+    scanning: "正在扫描…",
+    foundCount: {
+      one: "找到 {count} 个模型",
+      other: "找到 {count} 个模型"
     },
-    actions: {
-        copyTooltip: "复制选中的素材或分组",
-        cutTooltip: "剪切选中的素材或分组",
-        pasteTooltip: "粘贴素材或分组",
-        deleteTooltip: "删除选中的素材或分组",
+    noneFound: "该文件夹中没有 {family} 模型",
+    noneFoundHint: "请先确认上方所选的类型，再确认该文件夹是否为导出工具生成的文件夹",
+    entry: "入口文件",
+    fileSummary: "{count} 个文件 · {size}",
+    selectAll: "全选",
+    selectNone: "全不选",
+    importAction: "导入",
+    importCount: {
+      one: "导入 {count} 个模型",
+      other: "导入 {count} 个模型"
     },
-    list: {
-        emptyFiltered: "没有符合当前筛选的素材",
+    blockedHint: "缺少文件的模型默认不勾选；勾选后按当前状态导入",
+    problemCount: {
+      one: "{count} 个问题",
+      other: "{count} 个问题"
     },
-    iconView: {
-        updating: "正在更新…",
-        assetCount: {
-            one: "{count} 个素材",
-            other: "{count} 个素材",
-        },
-        tagCount: {
-            one: "+{count} 个标签",
-            other: "+{count} 个标签",
-        },
+    problem: {
+      missing: "缺少{role}：{path}",
+      unusableReference: "{role}“{raw}”位于该文件夹之外，不会随它一起复制",
+      manifestUnreadable: "无法读取 {path}",
+      atlasMissing: "骨架同级目录没有图集，应当存在 {path}",
+      atlasEmpty: "{path} 没有指明任何图片",
+      nestedModel: "其中还包含另一个模型 {path}，会随该文件夹一并导入"
     },
-    import: {
-        unableTitle: "无法导入",
-        failedTitle: "导入素材失败",
-        someFailedTitle: "部分素材导入失败",
-        moveFailedTitle: "移动已导入素材失败",
-        fileAccessFailed: "文件访问授权失败",
-        filePathParsingFailed: "文件路径解析失败",
-        noMatchingFiles: "拖入的文件夹中没有可导入的文件",
-        moreFailures: "…还有 {count} 个",
-        failedCount: {
-            one: "{count} 个文件失败",
-            other: "{count} 个文件失败",
-        },
-        retry: "重试",
-        remoteTitle: "导入远程素材",
-        remoteDescription: "粘贴直链；文件会立即下载并随工程保存",
-        remoteInvalidUrl: "请输入有效的 URL",
-        remoteUnsupportedScheme: "只能导入 http 与 https 链接",
-        remoteFailedTitle: "导入远程素材失败",
+    role: {
+      moc: "模型文件",
+      texture: "贴图",
+      physics: "物理文件",
+      pose: "姿态文件",
+      displayInfo: "显示信息文件",
+      userData: "用户数据文件",
+      expression: "表情",
+      motion: "动作",
+      sound: "音频",
+      skeleton: "骨架",
+      atlas: "图集",
+      page: "图集图片"
     },
-    mediaConvert: {
-        title: "部分文件需要转换",
-        titleRefusedOnly: "部分文件无法导入",
-        intro: "转换会在工程中生成新文件，源文件不会被修改",
-        convertingTitle: "正在转换",
-        convertingIntro: "转换完成的文件会被导入",
-        group: {
-            lossless: "可以转换",
-            losslessHint: "画面和声音保持原样",
-            lossy: "可以转换，但会损失一些质量",
-            lossyHint: "画面和声音会被重新编码，耗时更长，质量有损失",
-            refused: "无法导入",
-        },
-        becomes: "转成 .{ext}",
-        refusal: {
-            notMedia: "这不是声音或视频文件",
-            noStreams: "文件里没有声音，也没有画面",
-        },
-        state: {
-            waiting: "等待中",
-            done: "完成",
-            failed: "转换失败",
-            stopped: "已停止",
-            unavailable: "这台电脑上没有可用的转换工具",
-        },
-        convertAction: "转换并导入",
-        skipAction: "跳过这些文件",
-        importAnywayAction: "不转换直接导入",
-        stopAction: "停止转换",
-        failedError: "该文件无法转换",
+    failedTitle: "无法扫描该文件夹",
+    unreadable: "无法读取该文件夹",
+    tooManyFiles: "该文件夹包含 {count} 个文件，数量过多，无法逐个核对；请选择模型所在的那一层目录"
+  },
+  menu: {
+    newGroup: "新建分组",
+    newSubGroup: "新建子分组",
+    newTextFile: "新建文本文件",
+    importAssets: "导入素材…",
+    replaceContent: "替换文件…",
+    copyCount: {
+      one: "复制 {count} 项",
+      other: "复制 {count} 项"
     },
-    support: {
-        needsConverting: "需要转换",
-        needsConvertingHint: "该文件在游戏中无法播放，转换之后即可播放",
-        needsConvertingRemoteHint: "该文件在游戏中无法播放，而以链接方式保存的文件不能转换；请在 Studio 之外完成转换，再作为文件添加",
-        notPlayable: "无法播放",
-        notPlayableHint: "该文件不含音频也不含视频，没有可转换的内容",
-        menuConvert: "转换文件…",
-        convertTitle: "转换文件",
-        convertIntro: "转换后的文件会替换当前文件，所有引用同步更新",
-        convertAction: "转换",
-        replacing: "正在写入文件",
+    cutCount: {
+      one: "剪切 {count} 项",
+      other: "剪切 {count} 项"
     },
-    modelImport: {
-        title: "导入模型",
-        familyStep: "这是哪一种模型？",
-        familyNoRuntime: "此处不安装运行时；绘制所用的运行时在角色上设置",
-        family: {
-            live2d: "Live2D Cubism",
-            live2dHint: "含有 .model3.json 的文件夹，或 Cubism 2 的 model.json",
-            spine: "Spine",
-            spineHint: "含有 .skel 或 .json 骨架、并与 .atlas 放在一起的文件夹",
-        },
-        folderStep: "选择文件夹",
-        folderHint: "可以是单个模型的文件夹，也可以是包含多个模型的文件夹，其中的内容会被整体搜索",
-        chooseFolder: "选择文件夹…",
-        changeFolder: "更改…",
-        rescan: "重新扫描",
-        scanning: "正在扫描…",
-        foundCount: {
-            one: "找到 {count} 个模型",
-            other: "找到 {count} 个模型",
-        },
-        noneFound: "该文件夹中没有 {family} 模型",
-        noneFoundHint: "请先确认上方所选的类型，再确认该文件夹是否为导出工具生成的文件夹",
-        entry: "入口文件",
-        fileSummary: "{count} 个文件 · {size}",
-        selectAll: "全选",
-        selectNone: "全不选",
-        importAction: "导入",
-        importCount: {
-            one: "导入 {count} 个模型",
-            other: "导入 {count} 个模型",
-        },
-        blockedHint: "缺少文件的模型默认不勾选；勾选后按当前状态导入",
-        problemCount: {
-            one: "{count} 个问题",
-            other: "{count} 个问题",
-        },
-        problem: {
-            missing: "缺少{role}：{path}",
-            unusableReference: "{role}“{raw}”位于该文件夹之外，不会随它一起复制",
-            manifestUnreadable: "无法读取 {path}",
-            atlasMissing: "骨架同级目录没有图集，应当存在 {path}",
-            atlasEmpty: "{path} 没有指明任何图片",
-            nestedModel: "其中还包含另一个模型 {path}，会随该文件夹一并导入",
-        },
-        role: {
-            moc: "模型文件",
-            texture: "贴图",
-            physics: "物理文件",
-            pose: "姿态文件",
-            displayInfo: "显示信息文件",
-            userData: "用户数据文件",
-            expression: "表情",
-            motion: "动作",
-            sound: "音频",
-            skeleton: "骨架",
-            atlas: "图集",
-            page: "图集图片",
-        },
-        failedTitle: "无法扫描该文件夹",
-        unreadable: "无法读取该文件夹",
-        tooManyFiles: "该文件夹包含 {count} 个文件，数量过多，无法逐个核对；请选择模型所在的那一层目录",
+    deleteCount: {
+      one: "删除 {count} 项",
+      other: "删除 {count} 项"
     },
-    menu: {
-        newGroup: "新建分组",
-        newSubGroup: "新建子分组",
-        newTextFile: "新建文本文件",
-        importAssets: "导入素材…",
-        replaceContent: "替换文件…",
-        copyCount: {
-            one: "复制 {count} 项",
-            other: "复制 {count} 项",
-        },
-        cutCount: {
-            one: "剪切 {count} 项",
-            other: "剪切 {count} 项",
-        },
-        deleteCount: {
-            one: "删除 {count} 项",
-            other: "删除 {count} 项",
-        },
-        export: "导出…",
-        exportCount: {
-            one: "导出 {count} 项…",
-            other: "导出 {count} 项…",
-        },
+    export: "导出…",
+    exportCount: {
+      one: "导出 {count} 项…",
+      other: "导出 {count} 项…"
+    }
+  },
+  export: {
+    empty: "没有可导出的文件",
+    success: {
+      one: "已导出 {count} 个文件",
+      other: "已导出 {count} 个文件"
     },
-    export: {
-        empty: "没有可导出的文件",
-        success: {
-            one: "已导出 {count} 个文件",
-            other: "已导出 {count} 个文件",
-        },
-        partial: "已导出 {exported} 个文件，{failed} 个未能导出",
-        partialTitle: "部分文件未能导出",
-        failed: "导出失败：{error}",
+    partial: "已导出 {exported} 个文件，{failed} 个未能导出",
+    partialTitle: "部分文件未能导出",
+    failed: "导出失败：{error}"
+  },
+  selector: {
+    selectType: "选择{type}",
+    importFromDisk: "从磁盘导入",
+    noAssets: "没有符合当前筛选的素材",
+    selectedCount: "已选 {count} 项",
+    choose: "选择"
+  },
+  cropper: {
+    title: "裁剪图片",
+    reload: "重新加载",
+    loadError: "无法加载图片",
+    selection: "选区：{width}×{height}",
+    waiting: "等待选择选区…"
+  },
+  magicTag: {
+    title: "创建标签",
+    detectedDelimiters: "检测到的分隔符",
+    regexPattern: "正则表达式",
+    captureGroups: "捕获组：{groups}",
+    categoryMapping: "标签类别映射",
+    exampleFilename: "示例文件名：{filename}",
+    categoryPlaceholder: "标签类别（例如：char、emo）",
+    moreFiles: "…还有 {count} 个文件",
+    summary: "将为 {files} 个文件共添加 {tags} 个标签",
+    applying: "正在应用…",
+    applyTags: "应用标签",
+    parseFailedTitle: "魔法标签解析失败",
+    applyFailedTitle: "应用标签失败"
+  },
+  audio: {
+    play: "播放",
+    pause: "暂停",
+    mute: "静音",
+    unmute: "取消静音",
+    analyzing: "正在分析波形…",
+    seek: "跳转",
+    volume: "音量",
+    playback: "播放控制",
+    loading: "正在加载音频…",
+    loadError: "加载音频失败",
+    channelCount: {
+      one: "{count} 声道",
+      other: "{count} 声道"
     },
-    selector: {
-        selectType: "选择{type}",
-        importFromDisk: "从磁盘导入",
-        noAssets: "没有符合当前筛选的素材",
-        selectedCount: "已选 {count} 项",
-        choose: "选择",
+    // 预览的播放与视图控件。这里没有任何操作会改动音频文件--只有标记会写回素材记录。
+    editor: {
+      toStart: "回到开头",
+      loop: "循环",
+      zoomIn: "放大",
+      zoomOut: "缩小",
+      zoomFit: "显示全部",
+      zoomSelection: "缩放到选区",
+      markIn: "在播放头设置入点",
+      markLoop: "在播放头设置循环点",
+      markOut: "在播放头设置出点",
+      channels: "{count} 声道"
     },
-    cropper: {
-        title: "裁剪图片",
-        reload: "重新加载",
-        loadError: "无法加载图片",
-        selection: "选区：{width}×{height}",
-        waiting: "等待选择选区…",
-    },
-    magicTag: {
-        title: "创建标签",
-        detectedDelimiters: "检测到的分隔符",
-        regexPattern: "正则表达式",
-        captureGroups: "捕获组：{groups}",
-        categoryMapping: "标签类别映射",
-        exampleFilename: "示例文件名：{filename}",
-        categoryPlaceholder: "标签类别（例如：char、emo）",
-        moreFiles: "…还有 {count} 个文件",
-        summary: "将为 {files} 个文件共添加 {tags} 个标签",
-        applying: "正在应用…",
-        applyTags: "应用标签",
-        parseFailedTitle: "魔法标签解析失败",
-        applyFailedTitle: "应用标签失败",
-    },
-    audio: {
-        play: "播放",
-        pause: "暂停",
-        mute: "静音",
-        unmute: "取消静音",
-        analyzing: "正在分析波形…",
-        seek: "跳转",
-        volume: "音量",
-        playback: "播放控制",
-        loading: "正在加载音频…",
-        loadError: "加载音频失败",
-        channelCount: {
-            one: "{count} 声道",
-            other: "{count} 声道",
-        },
-        // 预览的播放与视图控件。这里没有任何操作会改动音频文件--只有标记会写回素材记录。
-        editor: {
-            toStart: "回到开头",
-            loop: "循环",
-            zoomIn: "放大",
-            zoomOut: "缩小",
-            zoomFit: "显示全部",
-            zoomSelection: "缩放到选区",
-            markIn: "在播放头设置入点",
-            markLoop: "在播放头设置循环点",
-            markOut: "在播放头设置出点",
-            channels: "{count} 声道",
-        },
-        // 显示在快捷键设置表和「?」速查表中。
-        keybindings: {
-            playPause: "播放 / 暂停",
-            toStart: "回到开头",
-            toEnd: "跳到结尾",
-            nudgeBack: "播放头后退",
-            nudgeForward: "播放头前进",
-            nudgeBackCoarse: "播放头后退一秒",
-            nudgeForwardCoarse: "播放头前进一秒",
-            loop: "切换循环",
-            markIn: "设置入点",
-            markLoop: "设置循环点",
-            markOut: "设置出点",
-            goToIn: "跳到入点",
-            goToLoop: "跳到循环点",
-            goToOut: "跳到出点",
-            clearIn: "清除入点",
-            clearLoop: "清除循环点",
-            clearOut: "清除出点",
-            undo: "撤销标记改动",
-            redo: "重做标记改动",
-            selectAll: "选中整段",
-            clearSelection: "清除选区",
-            zoomIn: "放大",
-            zoomOut: "缩小",
-            zoomFit: "显示全部",
-        },
-    },
-    image: {
-        loading: "正在加载图片…",
-        loadError: "加载图片失败",
-        zoomIn: "放大",
-        zoomOut: "缩小",
-        resetView: "重置视图",
-    },
-    shortcuts: {
-        copy: "复制选中的素材",
-        cut: "剪切选中的素材",
-        paste: "粘贴素材",
-        rename: "重命名选中的素材或分组",
-    },
-    lockReason: {
-        character: "素材正被某个角色使用",
-        scene: "素材正被某个场景使用",
-        editor: "素材正被编辑器使用",
-    },
-    previewEditor: {
-        loadFailed: "素材加载失败",
-    },
-    fontPreview: {
-        sampleText: "The quick brown fox jumps over the lazy dog - 敏捷的棕色狐狸跳过懒狗 0123456789",
-        typePlaceholder: "输入文字以预览效果…",
-    },
-    jsonPreview: {
-        invalid: "此文件不是合法的 JSON，显示原始内容",
-        truncated: "文件过大无法格式化，仅显示开头部分",
-    },
-    textEditor: {
-        loadFailed: "无法读取此文件",
-        saveFailed: "无法保存此文件",
-        caret: "行 {line}，列 {column}",
-        selected: "（已选 {count} 个字符）",
-        selectedInRanges: "（已选 {count} 个字符，共 {ranges} 处）",
-        selectionLabel: "光标位置与选中范围",
-        reopenWithEncoding: "以编码重新打开",
-        saveWithEncoding: "以编码保存",
-        selectEncoding: "选择文件编码",
-        selectLineEnding: "选择行尾符号",
-        lineEndingLabel: "行尾：{ending}",
-        encodingLabel: "编码：{encoding}",
-        actionFailed: "该操作执行失败",
-    },
-    newTextFile: {
-        title: "新建文本文件",
-        prompt: "为文件命名；带扩展名则原样保留；不带则使用 .txt",
-        placeholder: "notes.txt",
-        defaultName: "新建文本文件",
-        empty: "请输入文件名",
-        illegalChars: "文件名不能包含 \\ / : * ? \" < > |",
-        failedTitle: "无法创建文件",
-    },
+    // 显示在快捷键设置表和「?」速查表中。
+    keybindings: {
+      playPause: "播放 / 暂停",
+      toStart: "回到开头",
+      toEnd: "跳到结尾",
+      nudgeBack: "播放头后退",
+      nudgeForward: "播放头前进",
+      nudgeBackCoarse: "播放头后退一秒",
+      nudgeForwardCoarse: "播放头前进一秒",
+      loop: "切换循环",
+      markIn: "设置入点",
+      markLoop: "设置循环点",
+      markOut: "设置出点",
+      goToIn: "跳到入点",
+      goToLoop: "跳到循环点",
+      goToOut: "跳到出点",
+      clearIn: "清除入点",
+      clearLoop: "清除循环点",
+      clearOut: "清除出点",
+      undo: "撤销标记改动",
+      redo: "重做标记改动",
+      selectAll: "选中整段",
+      clearSelection: "清除选区",
+      zoomIn: "放大",
+      zoomOut: "缩小",
+      zoomFit: "显示全部"
+    }
+  },
+  image: {
+    loading: "正在加载图片…",
+    loadError: "加载图片失败",
+    zoomIn: "放大",
+    zoomOut: "缩小",
+    resetView: "重置视图"
+  },
+  shortcuts: {
+    copy: "复制选中的素材",
+    cut: "剪切选中的素材",
+    paste: "粘贴素材",
+    rename: "重命名选中的素材或分组"
+  },
+  lockReason: {
+    character: "素材正被某个角色使用",
+    scene: "素材正被某个场景使用",
+    editor: "素材正被编辑器使用"
+  },
+  previewEditor: {
+    loadFailed: "素材加载失败"
+  },
+  fontPreview: {
+    sampleText: "The quick brown fox jumps over the lazy dog - 敏捷的棕色狐狸跳过懒狗 0123456789",
+    typePlaceholder: "输入文字以预览效果…"
+  },
+  jsonPreview: {
+    invalid: "此文件不是合法的 JSON，显示原始内容",
+    truncated: "文件过大无法格式化，仅显示开头部分"
+  },
+  textEditor: {
+    loadFailed: "无法读取此文件",
+    saveFailed: "无法保存此文件",
+    caret: "行 {line}，列 {column}",
+    selected: "（已选 {count} 个字符）",
+    selectedInRanges: "（已选 {count} 个字符，共 {ranges} 处）",
+    selectionLabel: "光标位置与选中范围",
+    reopenWithEncoding: "以编码重新打开",
+    saveWithEncoding: "以编码保存",
+    selectEncoding: "选择文件编码",
+    selectLineEnding: "选择行尾符号",
+    lineEndingLabel: "行尾：{ending}",
+    encodingLabel: "编码：{encoding}",
+    actionFailed: "该操作执行失败"
+  },
+  newTextFile: {
+    title: "新建文本文件",
+    prompt: "为文件命名；带扩展名则原样保留；不带则使用 .txt",
+    placeholder: "notes.txt",
+    defaultName: "新建文本文件",
+    empty: "请输入文件名",
+    illegalChars: '文件名不能包含 \\ / : * ? " < > |',
+    failedTitle: "无法创建文件"
+  }
 } satisfies LocaleNamespace<"assets">;

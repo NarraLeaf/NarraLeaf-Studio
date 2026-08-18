@@ -58,31 +58,33 @@ const decoded = new Map<string, HTMLImageElement>();
  * Returns a promise so tests can await the warm; production callers do not.
  */
 function warmAvatarDecode(urls: Iterable<string>): Promise<void> {
-    if (typeof window === "undefined" || typeof window.Image === "undefined") {
-        return Promise.resolve();
+  if (typeof window === "undefined" || typeof window.Image === "undefined") {
+    return Promise.resolve();
+  }
+  const pending: Promise<void>[] = [];
+  for (const url of urls) {
+    if (decoded.has(url)) {
+      continue;
     }
-    const pending: Promise<void>[] = [];
-    for (const url of urls) {
-        if (decoded.has(url)) {
-            continue;
-        }
-        const image = new window.Image();
-        image.src = url;
-        if (typeof image.decode !== "function") {
-            continue;
-        }
-        pending.push(image.decode().then(
-            () => {
-                // Re-check: a recompile between the request and its settling has already cleared
-                // the table, and retaining here would resurrect the previous story's bitmap.
-                if (urlByAssetId.size > 0) {
-                    decoded.set(url, image);
-                }
-            },
-            () => undefined,
-        ));
+    const image = new window.Image();
+    image.src = url;
+    if (typeof image.decode !== "function") {
+      continue;
     }
-    return Promise.all(pending).then(() => undefined);
+    pending.push(
+      image.decode().then(
+        () => {
+          // Re-check: a recompile between the request and its settling has already cleared
+          // the table, and retaining here would resurrect the previous story's bitmap.
+          if (urlByAssetId.size > 0) {
+            decoded.set(url, image);
+          }
+        },
+        () => undefined
+      )
+    );
+  }
+  return Promise.all(pending).then(() => undefined);
 }
 
 /**
@@ -91,20 +93,22 @@ function warmAvatarDecode(urls: Iterable<string>): Promise<void> {
  * Takes the compile's `avatarAssetIdByUrl` (url → asset id) and inverts it. Where two ids resolved
  * to one URL the last wins, which is harmless: they picture the same bytes.
  */
-export function registerCharacterAvatarAssets(avatarAssetIdByUrl: ReadonlyMap<string, string>): Promise<void> {
-    urlByAssetId.clear();
-    decoded.clear();
-    for (const [url, assetId] of avatarAssetIdByUrl) {
-        urlByAssetId.set(assetId, url);
-    }
-    return warmAvatarDecode(avatarAssetIdByUrl.keys());
+export function registerCharacterAvatarAssets(
+  avatarAssetIdByUrl: ReadonlyMap<string, string>
+): Promise<void> {
+  urlByAssetId.clear();
+  decoded.clear();
+  for (const [url, assetId] of avatarAssetIdByUrl) {
+    urlByAssetId.set(assetId, url);
+  }
+  return warmAvatarDecode(avatarAssetIdByUrl.keys());
 }
 
 export function resolveCharacterAvatarAssetUrl(assetId: string | null | undefined): string | null {
-    if (!assetId) {
-        return null;
-    }
-    return urlByAssetId.get(assetId) ?? null;
+  if (!assetId) {
+    return null;
+  }
+  return urlByAssetId.get(assetId) ?? null;
 }
 
 /**
@@ -115,15 +119,15 @@ export function resolveCharacterAvatarAssetUrl(assetId: string | null | undefine
  * "not found" and then report a missing asset for something that is merely not mounted.
  */
 export function isCharacterAvatarAssetId(assetId: string | null | undefined): boolean {
-    return Boolean(assetId && parseCharacterAvatarAssetId(assetId) !== null);
+  return Boolean(assetId && parseCharacterAvatarAssetId(assetId) !== null);
 }
 
 export function clearCharacterAvatarAssets(): void {
-    urlByAssetId.clear();
-    decoded.clear();
+  urlByAssetId.clear();
+  decoded.clear();
 }
 
 /** Whether this URL's decoded bitmap is being held, i.e. attaching it can paint without a decode. */
 export function isCharacterAvatarDecoded(url: string): boolean {
-    return decoded.has(url);
+  return decoded.has(url);
 }

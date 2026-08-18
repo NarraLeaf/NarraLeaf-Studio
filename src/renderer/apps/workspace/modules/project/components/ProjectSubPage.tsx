@@ -12,40 +12,40 @@ import { useTranslation } from "@/lib/i18n";
  * `SettingsGroup`s instead; this is for the pages that are one subject end to end.
  */
 export function ProjectSubPage({
-    title,
-    description,
-    helpTopic,
-    onBack,
-    children,
+  title,
+  description,
+  helpTopic,
+  onBack,
+  children
 }: {
-    title: string;
-    description?: string;
-    helpTopic?: HelpTopicId;
-    onBack: () => void;
-    children: ReactNode;
+  title: string;
+  description?: string;
+  helpTopic?: HelpTopicId;
+  onBack: () => void;
+  children: ReactNode;
 }) {
-    const { t } = useTranslation();
-    return (
-        <div className="flex h-full min-h-0 flex-col bg-surface text-fg" data-help-topic={helpTopic}>
-            <div className="group/help flex items-center gap-2 border-b border-edge p-2">
-                <button
-                    type="button"
-                    onClick={onBack}
-                    className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-fg-muted transition-colors hover:bg-fill hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
-                    aria-label={t("project.subPage.backAria")}
-                    data-tip={t("common.back")}
-                >
-                    <ArrowLeft className="h-4 w-4" />
-                </button>
-                <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-fg">{title}</div>
-                    {description ? (
-                        <div className="truncate text-2xs text-fg-subtle">{description}</div>
-                    ) : null}
-                </div>
-                {helpTopic ? <HelpTrigger topic={helpTopic} /> : null}
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto p-3">{children}</div>
+  const { t } = useTranslation();
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-surface text-fg" data-help-topic={helpTopic}>
+      <div className="group/help flex items-center gap-2 border-b border-edge p-2">
+        <button
+          type="button"
+          onClick={onBack}
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-fg-muted transition-colors hover:bg-fill hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+          aria-label={t("project.subPage.backAria")}
+          data-tip={t("common.back")}
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium text-fg">{title}</div>
+          {description ? (
+            <div className="truncate text-2xs text-fg-subtle">{description}</div>
+          ) : null}
         </div>
-    );
+        {helpTopic ? <HelpTrigger topic={helpTopic} /> : null}
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto p-3">{children}</div>
+    </div>
+  );
 }

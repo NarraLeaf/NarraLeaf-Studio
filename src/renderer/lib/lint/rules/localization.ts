@@ -4,12 +4,12 @@ import { deriveUnitState } from "../../workspace/services/localization/localizat
 import type { LintContext, LintLocalizationContext } from "../context";
 import type { LintFinding, LintRule } from "../types";
 import {
-    isBlankSegment,
-    listLiveTextSegments,
-    segmentSourceText,
-    storyBlockTarget,
-    storyLocation,
-    type LintTextSegmentRef,
+  isBlankSegment,
+  listLiveTextSegments,
+  segmentSourceText,
+  storyBlockTarget,
+  storyLocation,
+  type LintTextSegmentRef
 } from "./text/textSegments";
 
 /**
@@ -31,17 +31,19 @@ import {
 
 /** Target locales, with the source locale excluded however it was configured. */
 function targetLocales(localization: LintLocalizationContext): string[] {
-    return localization.targetLocales.filter(locale => locale && locale !== localization.sourceLocale);
+  return localization.targetLocales.filter(
+    (locale) => locale && locale !== localization.sourceLocale
+  );
 }
 
 /** Live lines that carry something to translate. A blank line is `text/empty`'s finding, not this one. */
 function translatableSegments(ctx: LintContext): LintTextSegmentRef[] {
-    return listLiveTextSegments(ctx).filter(ref => !isBlankSegment(ref.segment));
+  return listLiveTextSegments(ctx).filter((ref) => !isBlankSegment(ref.segment));
 }
 
 /** A unit with no text renders as the source line - for authors that is "not translated yet". */
 function hasTranslation(unit: LocalizationUnit | undefined): unit is LocalizationUnit {
-    return Boolean(unit && unit.target.trim());
+  return Boolean(unit && unit.target.trim());
 }
 
 /**
@@ -71,52 +73,56 @@ function hasTranslation(unit: LocalizationUnit | undefined): unit is Localizatio
  * it.
  */
 function runMissing(ctx: LintContext): LintFinding[] {
-    const localization = ctx.localization;
-    if (!localization) {
-        return [];
+  const localization = ctx.localization;
+  if (!localization) {
+    return [];
+  }
+  const locales = targetLocales(localization);
+  if (locales.length === 0) {
+    return [];
+  }
+  const findings: LintFinding[] = [];
+  for (const ref of translatableSegments(ctx)) {
+    const sourceText = segmentSourceText(ref.segment);
+    for (const locale of locales) {
+      const unit = localization.documents.get(locale)?.units[ref.textId];
+      if (deriveUnitState(unit, sourceText) !== "untranslated") {
+        continue;
+      }
+      findings.push(
+        finding(ref, "lint.rule.localizationMissing.message", locale, "localization/missing")
+      );
     }
-    const locales = targetLocales(localization);
-    if (locales.length === 0) {
-        return [];
-    }
-    const findings: LintFinding[] = [];
-    for (const ref of translatableSegments(ctx)) {
-        const sourceText = segmentSourceText(ref.segment);
-        for (const locale of locales) {
-            const unit = localization.documents.get(locale)?.units[ref.textId];
-            if (deriveUnitState(unit, sourceText) !== "untranslated") {
-                continue;
-            }
-            findings.push(finding(ref, "lint.rule.localizationMissing.message", locale, "localization/missing"));
-        }
-    }
-    return findings;
+  }
+  return findings;
 }
 
 /** A translation made against text the author has since rewritten. */
 function runStale(ctx: LintContext): LintFinding[] {
-    const localization = ctx.localization;
-    if (!localization) {
-        return [];
+  const localization = ctx.localization;
+  if (!localization) {
+    return [];
+  }
+  const locales = targetLocales(localization);
+  if (locales.length === 0) {
+    return [];
+  }
+  const findings: LintFinding[] = [];
+  for (const ref of translatableSegments(ctx)) {
+    const sourceText = segmentSourceText(ref.segment);
+    for (const locale of locales) {
+      const unit = localization.documents.get(locale)?.units[ref.textId];
+      // An empty unit is reported by `localization/missing`; reporting it here as well would
+      // charge one line twice for one defect.
+      if (!hasTranslation(unit) || !isSourceHashStale(unit.sourceHash, sourceText)) {
+        continue;
+      }
+      findings.push(
+        finding(ref, "lint.rule.localizationStale.message", locale, "localization/stale")
+      );
     }
-    const locales = targetLocales(localization);
-    if (locales.length === 0) {
-        return [];
-    }
-    const findings: LintFinding[] = [];
-    for (const ref of translatableSegments(ctx)) {
-        const sourceText = segmentSourceText(ref.segment);
-        for (const locale of locales) {
-            const unit = localization.documents.get(locale)?.units[ref.textId];
-            // An empty unit is reported by `localization/missing`; reporting it here as well would
-            // charge one line twice for one defect.
-            if (!hasTranslation(unit) || !isSourceHashStale(unit.sourceHash, sourceText)) {
-                continue;
-            }
-            findings.push(finding(ref, "lint.rule.localizationStale.message", locale, "localization/stale"));
-        }
-    }
-    return findings;
+  }
+  return findings;
 }
 
 /**
@@ -139,72 +145,72 @@ function runStale(ctx: LintContext): LintFinding[] {
  * is what the finding carries. A locale with no orphans emits nothing at all.
  */
 function runOrphan(ctx: LintContext): LintFinding[] {
-    const localization = ctx.localization;
-    if (!localization) {
-        return [];
+  const localization = ctx.localization;
+  if (!localization) {
+    return [];
+  }
+  const locales = targetLocales(localization);
+  if (locales.length === 0) {
+    return [];
+  }
+  const liveTextIds = new Set(listLiveTextSegments(ctx).map((ref) => ref.textId));
+  const findings: LintFinding[] = [];
+  for (const locale of locales) {
+    const document = localization.documents.get(locale);
+    if (!document) {
+      continue;
     }
-    const locales = targetLocales(localization);
-    if (locales.length === 0) {
-        return [];
+    const count = Object.keys(document.units).filter(
+      (unitId) => !unitId.includes(":") && !liveTextIds.has(unitId)
+    ).length;
+    if (count === 0) {
+      continue;
     }
-    const liveTextIds = new Set(listLiveTextSegments(ctx).map(ref => ref.textId));
-    const findings: LintFinding[] = [];
-    for (const locale of locales) {
-        const document = localization.documents.get(locale);
-        if (!document) {
-            continue;
-        }
-        const count = Object.keys(document.units).filter(
-            unitId => !unitId.includes(":") && !liveTextIds.has(unitId),
-        ).length;
-        if (count === 0) {
-            continue;
-        }
-        findings.push({
-            ruleId: "localization/orphan",
-            messageKey: "lint.rule.localizationOrphan.message",
-            messageParams: { count, locale },
-            location: { kind: "project" },
-        });
-    }
-    return findings;
+    findings.push({
+      ruleId: "localization/orphan",
+      messageKey: "lint.rule.localizationOrphan.message",
+      messageParams: { count, locale },
+      location: { kind: "project" }
+    });
+  }
+  return findings;
 }
 
 function finding(
-    ref: LintTextSegmentRef,
-    messageKey: LintFinding["messageKey"],
-    locale: string,
-    ruleId: LintFinding["ruleId"],
+  ref: LintTextSegmentRef,
+  messageKey: LintFinding["messageKey"],
+  locale: string,
+  ruleId: LintFinding["ruleId"]
 ): LintFinding {
-    return {
-        ruleId,
-        messageKey,
-        messageParams: { locale },
-        location: storyLocation(ref),
-        target: storyBlockTarget(ref),
-    };
+  return {
+    ruleId,
+    messageKey,
+    messageParams: { locale },
+    location: storyLocation(ref),
+    target: storyBlockTarget(ref)
+  };
 }
 
 export const LOCALIZATION_LINT_RULES: readonly LintRule[] = [
-    {
-        id: "localization/missing",
-        category: "localization",
-        defaultSeverity: "warning",
-        slug: "localizationMissing",
-        run: ctx => runMissing(ctx),
-    },
-    {
-        id: "localization/stale",
-        category: "localization",
-        defaultSeverity: "warning",
-        slug: "localizationStale",
-        run: ctx => runStale(ctx),
-    },
-    {
-        id: "localization/orphan",
-        category: "localization",
-        defaultSeverity: "info",
-        slug: "localizationOrphan",
-        run: ctx => runOrphan(ctx),
-    },
+  {
+    id: "localization/missing",
+    category: "localization",
+    defaultSeverity: "warning",
+    slug: "localizationMissing",
+    run: (ctx) => runMissing(ctx)
+  },
+  {
+    id: "localization/stale",
+    category: "localization",
+    defaultSeverity: "warning",
+    slug: "localizationStale",
+    run: (ctx) => runStale(ctx)
+  },
+  {
+    id: "localization/orphan",
+    category: "localization",
+    defaultSeverity: "info",
+    slug: "localizationOrphan",
+    run: (ctx) => runOrphan(ctx)
+  }
 ];

@@ -28,8 +28,8 @@ export type ControlFrameReply = { ok: true } | { ok: false; error: string };
 export type ControlFrameEffect = "none" | "shutdown" | "subscribe";
 
 export type ControlFrameOutcome = {
-    reply: ControlFrameReply;
-    effect: ControlFrameEffect;
+  reply: ControlFrameReply;
+  effect: ControlFrameEffect;
 };
 
 /**
@@ -37,7 +37,7 @@ export type ControlFrameOutcome = {
  * echoing the token back on every push would put the secret on the wire once per log line.
  */
 export function encodeTestEventFrame(event: GameTestEvent): string {
-    return JSON.stringify({ type: "test:event", event });
+  return JSON.stringify({ type: "test:event", event });
 }
 
 /**
@@ -47,25 +47,25 @@ export function encodeTestEventFrame(event: GameTestEvent): string {
  * commands this build understands.
  */
 export function dispatchControlFrame(raw: string, expectedToken: string): ControlFrameOutcome {
-    let payload: { type?: unknown; token?: unknown };
-    try {
-        payload = JSON.parse(raw) as { type?: unknown; token?: unknown };
-    } catch {
-        return { reply: { ok: false, error: "Invalid JSON" }, effect: "none" };
-    }
-    // Valid JSON is not necessarily a frame: `null`, `5` and `[]` all parse. Reading `.token` off
-    // them would compare `undefined` against the token, which is the right answer only by accident.
-    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-        return { reply: { ok: false, error: "Invalid token" }, effect: "none" };
-    }
-    if (payload.token !== expectedToken) {
-        return { reply: { ok: false, error: "Invalid token" }, effect: "none" };
-    }
-    if (payload.type === "shutdown") {
-        return { reply: { ok: true }, effect: "shutdown" };
-    }
-    if (payload.type === "test:subscribe") {
-        return { reply: { ok: true }, effect: "subscribe" };
-    }
-    return { reply: { ok: false, error: "Unknown command" }, effect: "none" };
+  let payload: { type?: unknown; token?: unknown };
+  try {
+    payload = JSON.parse(raw) as { type?: unknown; token?: unknown };
+  } catch {
+    return { reply: { ok: false, error: "Invalid JSON" }, effect: "none" };
+  }
+  // Valid JSON is not necessarily a frame: `null`, `5` and `[]` all parse. Reading `.token` off
+  // them would compare `undefined` against the token, which is the right answer only by accident.
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return { reply: { ok: false, error: "Invalid token" }, effect: "none" };
+  }
+  if (payload.token !== expectedToken) {
+    return { reply: { ok: false, error: "Invalid token" }, effect: "none" };
+  }
+  if (payload.type === "shutdown") {
+    return { reply: { ok: true }, effect: "shutdown" };
+  }
+  if (payload.type === "test:subscribe") {
+    return { reply: { ok: true }, effect: "subscribe" };
+  }
+  return { reply: { ok: false, error: "Unknown command" }, effect: "none" };
 }

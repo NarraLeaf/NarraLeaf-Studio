@@ -5,84 +5,85 @@ import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 type Props = {
-    blueprint: Blueprint;
-    localBp: LocalBlueprintService;
-    /** After creating a sibling or switching active, reopen tab for the chosen blueprint id. */
-    onReopenRevision?: (blueprintId: string) => void;
+  blueprint: Blueprint;
+  localBp: LocalBlueprintService;
+  /** After creating a sibling or switching active, reopen tab for the chosen blueprint id. */
+  onReopenRevision?: (blueprintId: string) => void;
 };
 
 /**
  * Lists private blueprint revisions for the same owner slot and supports active switch + new sibling.
  */
 export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevision }: Props) {
-    const { t } = useTranslation();
-    // Making a sibling revision writes the blueprint document. Switching which existing revision is
-    // active writes too - it is what the game runs - so both are off; the list itself stays readable.
-    const freeze = useFreezeGuard();
-    if (blueprint.owner.kind === "sharedAsset") {
-        return (
-            <p className="text-2xs text-fg-subtle">{t("blueprint.revisions.sharedAssetSingle")}</p>
-        );
-    }
+  const { t } = useTranslation();
+  // Making a sibling revision writes the blueprint document. Switching which existing revision is
+  // active writes too - it is what the game runs - so both are off; the list itself stays readable.
+  const freeze = useFreezeGuard();
+  if (blueprint.owner.kind === "sharedAsset") {
+    return <p className="text-2xs text-fg-subtle">{t("blueprint.revisions.sharedAssetSingle")}</p>;
+  }
 
-    const ownerKey = ownerRefToIndexKey(blueprint.owner);
-    const doc = localBp.getBlueprintDocument();
-    const rec = doc.ownerRecords[ownerKey];
-    const ids = rec?.privateBlueprintIds ?? [];
-    const allowTypeScriptRevision = blueprint.owner.kind !== "widgetValue";
+  const ownerKey = ownerRefToIndexKey(blueprint.owner);
+  const doc = localBp.getBlueprintDocument();
+  const rec = doc.ownerRecords[ownerKey];
+  const ids = rec?.privateBlueprintIds ?? [];
+  const allowTypeScriptRevision = blueprint.owner.kind !== "widgetValue";
 
-    return (
-        <div className="space-y-2 text-2xs text-fg-muted">
-            <p className="text-2xs tracking-wide text-fg-subtle">{t("blueprint.revisions.title")}</p>
-            <ul className="space-y-1">
-                {ids.map(id => {
-                    const b = doc.blueprints[id];
-                    const active = rec?.activeBlueprintId === id;
-                    return (
-                        <li key={id} className="flex items-center gap-2">
-                            <button
-                                type="button"
-                                className={`truncate text-left font-mono text-2xs disabled:cursor-not-allowed disabled:opacity-40 ${active ? "text-primary" : "text-fg-muted hover:text-fg"}`}
-                                {...freeze.writes(false)}
-                                onClick={() => {
-                                    if (!active) {
-                                        localBp.setActivePrivateBlueprintForOwnerKey(ownerKey, id);
-                                        onReopenRevision?.(id);
-                                    }
-                                }}
-                            >
-                                {b?.name ?? id} {active ? t("blueprint.revisions.active") : ""}
-                            </button>
-                        </li>
-                    );
-                })}
-            </ul>
-            <div className="flex flex-wrap gap-2 pt-1">
-                {allowTypeScriptRevision ? (
-                    <button
-                        type="button"
-                        className="rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs text-fg hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
-                        {...freeze.writes()}
-                        onClick={() => {
-                            const newId = localBp.createSiblingPrivateBlueprintForOwnerKey(ownerKey, "typescript");
-                            onReopenRevision?.(newId);
-                        }}
-                    >
-                        {t("blueprint.revisions.newTypeScript")}
-                    </button>
-                ) : null}
-                <button
-                    type="button"
-                    className="rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs text-fg hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
-                    {...freeze.writes()}
-                    onClick={() => {
-                        const newId = localBp.createSiblingPrivateBlueprintForOwnerKey(ownerKey, "visual");
-                        onReopenRevision?.(newId);
-                    }}
-                >
-                    {t("blueprint.revisions.newVisual")}
-                </button>
-            </div>
-        </div>
-    );
+  return (
+    <div className="space-y-2 text-2xs text-fg-muted">
+      <p className="text-2xs tracking-wide text-fg-subtle">{t("blueprint.revisions.title")}</p>
+      <ul className="space-y-1">
+        {ids.map((id) => {
+          const b = doc.blueprints[id];
+          const active = rec?.activeBlueprintId === id;
+          return (
+            <li key={id} className="flex items-center gap-2">
+              <button
+                type="button"
+                className={`truncate text-left font-mono text-2xs disabled:cursor-not-allowed disabled:opacity-40 ${active ? "text-primary" : "text-fg-muted hover:text-fg"}`}
+                {...freeze.writes(false)}
+                onClick={() => {
+                  if (!active) {
+                    localBp.setActivePrivateBlueprintForOwnerKey(ownerKey, id);
+                    onReopenRevision?.(id);
+                  }
+                }}
+              >
+                {b?.name ?? id} {active ? t("blueprint.revisions.active") : ""}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="flex flex-wrap gap-2 pt-1">
+        {allowTypeScriptRevision ? (
+          <button
+            type="button"
+            className="rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs text-fg hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
+            {...freeze.writes()}
+            onClick={() => {
+              const newId = localBp.createSiblingPrivateBlueprintForOwnerKey(
+                ownerKey,
+                "typescript"
+              );
+              onReopenRevision?.(newId);
+            }}
+          >
+            {t("blueprint.revisions.newTypeScript")}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="rounded-md border border-edge bg-fill-subtle px-2 py-1 text-2xs text-fg hover:bg-fill disabled:cursor-not-allowed disabled:opacity-40"
+          {...freeze.writes()}
+          onClick={() => {
+            const newId = localBp.createSiblingPrivateBlueprintForOwnerKey(ownerKey, "visual");
+            onReopenRevision?.(newId);
+          }}
+        >
+          {t("blueprint.revisions.newVisual")}
+        </button>
+      </div>
+    </div>
+  );
 }

@@ -1,140 +1,140 @@
 import type { LocaleNamespace } from "../types";
 
 export const wizard = {
-    appTitle: "添加项目",
-    steps: {
-        origin: "来源",
-        project: "工程",
-        stage: "舞台",
-        review: "确认",
-        source: "地址",
-        clone: "克隆",
-        import: "导入",
-    },
-    nav: {
-        createProject: "创建项目",
-        creating: "正在创建…",
-        cloneProject: "开始克隆",
-        cloning: "正在克隆…",
-        importProject: "开始导入",
-        importing: "正在导入…",
-    },
-    error: {
-        closeError: "关闭错误提示",
-    },
-    fields: {
-        appId: "应用 ID",
-        author: "作者",
-        location: "位置",
-        scriptLocale: "剧本语言",
-        stageSize: "舞台尺寸",
-        version: "项目版本",
-        versionControl: "版本控制",
-        website: "主页",
-    },
-    origin: {
-        create: {
-            label: "新建工程",
-            description: "从模板创建",
-        },
-        import: {
-            label: "导入 .nlspkg",
-            description: "解包已导出的项目文件",
-            next: "下一页选择 .nlspkg 文件与解包位置",
-        },
-        clone: {
-            label: "从服务器克隆",
-            description: "复制版本控制服务器上的项目",
-            next: "下一页填写项目地址与本机存放位置",
-        },
-    },
-    template: {
-        blank: {
-            name: "空白",
-            description: "只有工程结构",
-        },
-    },
-    project: {
-        name: "项目名称",
-        namePlaceholder: "项目名称",
-        appIdPlaceholder: "应用标识符",
-        appIdHelper: "仅限小写字母、数字与连字符；创建后不可更改",
-        appIdRequired: "应用 ID 为必填项",
-        appIdInvalid: "应用 ID 只能包含小写字母、数字和连字符",
-        locationPlaceholder: "项目位置",
-        browseLocation: "选择文件夹",
-        validatingDirectory: "正在检查该文件夹…",
-        directoryWillBeCreated: "创建项目时一并创建该文件夹",
-        versionControlLoreHint: "在项目文件夹内建立版本历史，创建时的状态记为第一个版本",
-        versionControlUnavailablePlatform: "本机不支持版本控制，项目不带版本控制创建",
-        versionControlUnavailableInstallation: "当前安装的 Studio 不含版本控制，项目不带版本控制创建",
-        moreDetails: "更多信息",
-        versionHelper: "缺少项目版本时无法构建",
-        authorPlaceholder: "作者邮箱 / 组织 / 项目",
-        descriptionPlaceholder: "项目简介",
-    },
-    stage: {
-        sizePlaceholder: "选择舞台尺寸",
-        custom: "自定义…",
-        customInvalid: "宽和高必须是 {min} 到 {max} 之间的整数",
-        width: "宽",
-        height: "高",
-        orientationLandscape: "移动端构建锁定横屏",
-        orientationPortrait: "移动端构建锁定竖屏",
-        scriptLocaleHelper: "剧本撰写使用的语言；译文在本地化面板添加",
+  appTitle: "添加项目",
+  steps: {
+    origin: "来源",
+    project: "工程",
+    stage: "舞台",
+    review: "确认",
+    source: "地址",
+    clone: "克隆",
+    import: "导入"
+  },
+  nav: {
+    createProject: "创建项目",
+    creating: "正在创建…",
+    cloneProject: "开始克隆",
+    cloning: "正在克隆…",
+    importProject: "开始导入",
+    importing: "正在导入…"
+  },
+  error: {
+    closeError: "关闭错误提示"
+  },
+  fields: {
+    appId: "应用 ID",
+    author: "作者",
+    location: "位置",
+    scriptLocale: "剧本语言",
+    stageSize: "舞台尺寸",
+    version: "项目版本",
+    versionControl: "版本控制",
+    website: "主页"
+  },
+  origin: {
+    create: {
+      label: "新建工程",
+      description: "从模板创建"
     },
     import: {
-        packageLabel: ".nlspkg 文件",
-        packagePlaceholder: "未选择文件",
-        choosePackage: "选择文件",
-        locationPlaceholder: "未选择文件夹",
-        chooseFolder: "选择文件夹",
-        working: "正在解包…",
-        error: {
-            failedTitle: "导入失败",
-            generic: "无法解包该文件",
-            notAProjectTitle: "这不是 NarraLeaf Studio 项目",
-            notAProject: "解包完成，但其中没有 Studio 项目文件；已解包的内容位于 {path}",
-        },
-    },
-    source: {
-        addressLabel: "项目地址",
-        addressHint: "该地址由搭建项目的人提供",
-        addressInvalid: "项目地址末尾需要带上项目名，例如 lore://studio.example.lan:41337/my-game",
-        parsedServer: "服务器",
-        parsedName: "服务器上的项目名",
-        destinationHint: "必须是新建或空的文件夹",
+      label: "导入 .nlspkg",
+      description: "解包已导出的项目文件",
+      next: "下一页选择 .nlspkg 文件与解包位置"
     },
     clone: {
-        subtitle: "该操作把整个项目复制到本机",
-        working: "正在从服务器复制项目…",
-        error: {
-            failedTitle: "克隆失败",
-            generic: "无法从服务器获取该项目",
-            notAProjectTitle: "这不是 NarraLeaf Studio 项目",
-            notAProject: "复制完成，但其中没有 Studio 项目文件；已复制的内容位于 {path}",
-        },
-    },
-    review: {
-        template: "模板",
-        notSpecified: "未指定",
-    },
-    validation: {
-        templateFailed: "无法将模板内容复制到工程中",
-        nameRequired: "项目名称为必填项",
-        locationRequired: "项目位置为必填项",
-        templateRequired: "项目模板为必填项",
-        stageSizeRequired: "舞台尺寸为必填项",
-        invalidPath: "无效路径",
-        notADirectory: "该路径已存在，但不是目录；换一个目录，或新建一个",
-        cannotWrite: "无法写入该目录；检查权限，或换一个位置",
-        notEmpty: "该目录不为空；换一个空目录，或新建一个",
-        validationFailed: "目录校验失败",
-        failedToValidate: "校验目录失败",
-        checkExistenceFailed: "检查目录是否存在失败",
-        checkIsDirFailed: "检查路径是否为目录失败",
-        listContentsFailed: "列出目录内容失败",
-        selectDirectoryFailed: "选择目录失败",
-        createFailed: "创建项目失败",
-    },
+      label: "从服务器克隆",
+      description: "复制版本控制服务器上的项目",
+      next: "下一页填写项目地址与本机存放位置"
+    }
+  },
+  template: {
+    blank: {
+      name: "空白",
+      description: "只有工程结构"
+    }
+  },
+  project: {
+    name: "项目名称",
+    namePlaceholder: "项目名称",
+    appIdPlaceholder: "应用标识符",
+    appIdHelper: "仅限小写字母、数字与连字符；创建后不可更改",
+    appIdRequired: "应用 ID 为必填项",
+    appIdInvalid: "应用 ID 只能包含小写字母、数字和连字符",
+    locationPlaceholder: "项目位置",
+    browseLocation: "选择文件夹",
+    validatingDirectory: "正在检查该文件夹…",
+    directoryWillBeCreated: "创建项目时一并创建该文件夹",
+    versionControlLoreHint: "在项目文件夹内建立版本历史，创建时的状态记为第一个版本",
+    versionControlUnavailablePlatform: "本机不支持版本控制，项目不带版本控制创建",
+    versionControlUnavailableInstallation: "当前安装的 Studio 不含版本控制，项目不带版本控制创建",
+    moreDetails: "更多信息",
+    versionHelper: "缺少项目版本时无法构建",
+    authorPlaceholder: "作者邮箱 / 组织 / 项目",
+    descriptionPlaceholder: "项目简介"
+  },
+  stage: {
+    sizePlaceholder: "选择舞台尺寸",
+    custom: "自定义…",
+    customInvalid: "宽和高必须是 {min} 到 {max} 之间的整数",
+    width: "宽",
+    height: "高",
+    orientationLandscape: "移动端构建锁定横屏",
+    orientationPortrait: "移动端构建锁定竖屏",
+    scriptLocaleHelper: "剧本撰写使用的语言；译文在本地化面板添加"
+  },
+  import: {
+    packageLabel: ".nlspkg 文件",
+    packagePlaceholder: "未选择文件",
+    choosePackage: "选择文件",
+    locationPlaceholder: "未选择文件夹",
+    chooseFolder: "选择文件夹",
+    working: "正在解包…",
+    error: {
+      failedTitle: "导入失败",
+      generic: "无法解包该文件",
+      notAProjectTitle: "这不是 NarraLeaf Studio 项目",
+      notAProject: "解包完成，但其中没有 Studio 项目文件；已解包的内容位于 {path}"
+    }
+  },
+  source: {
+    addressLabel: "项目地址",
+    addressHint: "该地址由搭建项目的人提供",
+    addressInvalid: "项目地址末尾需要带上项目名，例如 lore://studio.example.lan:41337/my-game",
+    parsedServer: "服务器",
+    parsedName: "服务器上的项目名",
+    destinationHint: "必须是新建或空的文件夹"
+  },
+  clone: {
+    subtitle: "该操作把整个项目复制到本机",
+    working: "正在从服务器复制项目…",
+    error: {
+      failedTitle: "克隆失败",
+      generic: "无法从服务器获取该项目",
+      notAProjectTitle: "这不是 NarraLeaf Studio 项目",
+      notAProject: "复制完成，但其中没有 Studio 项目文件；已复制的内容位于 {path}"
+    }
+  },
+  review: {
+    template: "模板",
+    notSpecified: "未指定"
+  },
+  validation: {
+    templateFailed: "无法将模板内容复制到工程中",
+    nameRequired: "项目名称为必填项",
+    locationRequired: "项目位置为必填项",
+    templateRequired: "项目模板为必填项",
+    stageSizeRequired: "舞台尺寸为必填项",
+    invalidPath: "无效路径",
+    notADirectory: "该路径已存在，但不是目录；换一个目录，或新建一个",
+    cannotWrite: "无法写入该目录；检查权限，或换一个位置",
+    notEmpty: "该目录不为空；换一个空目录，或新建一个",
+    validationFailed: "目录校验失败",
+    failedToValidate: "校验目录失败",
+    checkExistenceFailed: "检查目录是否存在失败",
+    checkIsDirFailed: "检查路径是否为目录失败",
+    listContentsFailed: "列出目录内容失败",
+    selectDirectoryFailed: "选择目录失败",
+    createFailed: "创建项目失败"
+  }
 } satisfies LocaleNamespace<"wizard">;

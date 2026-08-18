@@ -1,13 +1,18 @@
 import {
-    LOCALIZATION_DOCUMENT_SCHEMA_VERSION,
-    LocalizationDocument,
-    normalizeLocalizationDocument,
+  LOCALIZATION_DOCUMENT_SCHEMA_VERSION,
+  LocalizationDocument,
+  normalizeLocalizationDocument
 } from "../../types/localization";
-import {DocumentMerge3, DocumentMergeDecision} from "../diff";
-import {compileDocumentPathPattern} from "../documentPath";
-import {defineDocumentSpec} from "../registry";
-import {countConflicts, decision, mergeKeyed} from "./mergeHelpers";
-import {parameterFromPath, rejectNewerSchema, requireDocumentObject, requireOptionalMap} from "./parseHelpers";
+import { DocumentMerge3, DocumentMergeDecision } from "../diff";
+import { compileDocumentPathPattern } from "../documentPath";
+import { defineDocumentSpec } from "../registry";
+import { countConflicts, decision, mergeKeyed } from "./mergeHelpers";
+import {
+  parameterFromPath,
+  rejectNewerSchema,
+  requireDocumentObject,
+  requireOptionalMap
+} from "./parseHelpers";
 
 /**
  * `editor/localization/<locale>.json` - one translation library per language.
@@ -31,27 +36,27 @@ const LOCALIZATION_DOCUMENT_PATTERN = compileDocumentPathPattern(LOCALIZATION_DO
  * the asset shard's rows follow, for the same reason.
  */
 const LABEL = {
-    added: "documentDiff.localization.added",
-    removed: "documentDiff.localization.removed",
-    changed: "documentDiff.localization.changed",
+  added: "documentDiff.localization.added",
+  removed: "documentDiff.localization.removed",
+  changed: "documentDiff.localization.changed"
 } as const;
 
 export const localizationDocumentSpec = defineDocumentSpec<LocalizationDocument>({
-    kind: "localization",
-    version: LOCALIZATION_DOCUMENT_SCHEMA_VERSION,
-    paths: [LOCALIZATION_DOCUMENT_PATH],
-    parse: (raw, context) => {
-        const locale = parameterFromPath(LOCALIZATION_DOCUMENT_PATTERN, "locale", context);
-        const record = requireDocumentObject(raw, context, "a translation library");
-        rejectNewerSchema(record, context, LOCALIZATION_DOCUMENT_SCHEMA_VERSION);
-        requireOptionalMap(record, "units", context);
-        return normalizeLocalizationDocument(record, locale);
-    },
-    summarize: document => ({
-        title: document.locale,
-        counts: [{key: "translationUnits", value: Object.keys(document.units).length}],
-    }),
-    merge3: merge3Localization,
+  kind: "localization",
+  version: LOCALIZATION_DOCUMENT_SCHEMA_VERSION,
+  paths: [LOCALIZATION_DOCUMENT_PATH],
+  parse: (raw, context) => {
+    const locale = parameterFromPath(LOCALIZATION_DOCUMENT_PATTERN, "locale", context);
+    const record = requireDocumentObject(raw, context, "a translation library");
+    rejectNewerSchema(record, context, LOCALIZATION_DOCUMENT_SCHEMA_VERSION);
+    requireOptionalMap(record, "units", context);
+    return normalizeLocalizationDocument(record, locale);
+  },
+  summarize: (document) => ({
+    title: document.locale,
+    counts: [{ key: "translationUnits", value: Object.keys(document.units).length }]
+  }),
+  merge3: merge3Localization
 });
 
 /**
@@ -74,29 +79,35 @@ export const localizationDocumentSpec = defineDocumentSpec<LocalizationDocument>
  * merge, and a decision row for something that cannot differ is noise the author has to read.
  */
 export function merge3Localization(
-    base: LocalizationDocument | undefined,
-    mine: LocalizationDocument,
-    theirs: LocalizationDocument,
+  base: LocalizationDocument | undefined,
+  mine: LocalizationDocument,
+  theirs: LocalizationDocument
 ): DocumentMerge3<LocalizationDocument> {
-    const units = mergeKeyed(base?.units, mine.units, theirs.units);
-    const decisions: DocumentMergeDecision[] = units.rows.map(row =>
-        // Labelled but with no `subject`, and the omission is the deliberate half: the unit id is a
-        // story text id or a `key:`/`char:` handle, none of which the author typed, and `subject` is
-        // defined as the author's own word. What they recognise a row by is the two translations
-        // beside it, which is what {@link DocumentMergeSide.value} carries.
-        decision(["units", row.key], row, {
-            label: row.mine.present && row.theirs.present && row.base.present ? LABEL.changed
-                : row.mine.present && row.theirs.present ? LABEL.added
-                    : row.base.present ? LABEL.removed : LABEL.added,
-        }));
+  const units = mergeKeyed(base?.units, mine.units, theirs.units);
+  const decisions: DocumentMergeDecision[] = units.rows.map((row) =>
+    // Labelled but with no `subject`, and the omission is the deliberate half: the unit id is a
+    // story text id or a `key:`/`char:` handle, none of which the author typed, and `subject` is
+    // defined as the author's own word. What they recognise a row by is the two translations
+    // beside it, which is what {@link DocumentMergeSide.value} carries.
+    decision(["units", row.key], row, {
+      label:
+        row.mine.present && row.theirs.present && row.base.present
+          ? LABEL.changed
+          : row.mine.present && row.theirs.present
+            ? LABEL.added
+            : row.base.present
+              ? LABEL.removed
+              : LABEL.added
+    })
+  );
 
-    return {
-        document: {
-            schemaVersion: mine.schemaVersion,
-            locale: mine.locale,
-            units: units.merged,
-        },
-        decisions,
-        conflicts: countConflicts(decisions),
-    };
+  return {
+    document: {
+      schemaVersion: mine.schemaVersion,
+      locale: mine.locale,
+      units: units.merged
+    },
+    decisions,
+    conflicts: countConflicts(decisions)
+  };
 }

@@ -1,17 +1,17 @@
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode, Ref } from "react";
 
 export interface InspectOnlyButtonProps {
-    onClick: () => void;
-    /** A second, non-primary way in - a blueprint entry opens its own window on a right click. */
-    onContextMenu?: (event: MouseEvent<HTMLSpanElement>) => void;
-    children: ReactNode;
-    /** The control's own reason to be off. A frozen workspace is never one of them. */
-    disabled?: boolean;
-    className?: string;
-    style?: CSSProperties;
-    "aria-label"?: string;
-    "aria-expanded"?: boolean;
-    ref?: Ref<HTMLSpanElement>;
+  onClick: () => void;
+  /** A second, non-primary way in - a blueprint entry opens its own window on a right click. */
+  onContextMenu?: (event: MouseEvent<HTMLSpanElement>) => void;
+  children: ReactNode;
+  /** The control's own reason to be off. A frozen workspace is never one of them. */
+  disabled?: boolean;
+  className?: string;
+  style?: CSSProperties;
+  "aria-label"?: string;
+  "aria-expanded"?: boolean;
+  ref?: Ref<HTMLSpanElement>;
 }
 
 /**
@@ -38,47 +38,47 @@ export interface InspectOnlyButtonProps {
  * does not belong here.
  */
 export function InspectOnlyButton({
-    onClick,
-    children,
-    disabled = false,
-    className,
-    style,
-    onContextMenu,
-    ref,
-    ...aria
+  onClick,
+  children,
+  disabled = false,
+  className,
+  style,
+  onContextMenu,
+  ref,
+  ...aria
 }: InspectOnlyButtonProps) {
-    const activate = () => {
-        if (disabled) {
-            return;
-        }
-        onClick();
-    };
+  const activate = () => {
+    if (disabled) {
+      return;
+    }
+    onClick();
+  };
 
-    const handleKeyDown = (event: KeyboardEvent<HTMLSpanElement>) => {
-        if (event.key !== "Enter" && event.key !== " ") {
-            return;
-        }
-        // Space scrolls the panel otherwise, and the panel this lives in is the one being read.
-        // Only `preventDefault`: a real button's activation bubbles, and every call site here was a
-        // real button until this pass.
-        event.preventDefault();
-        activate();
-    };
+  const handleKeyDown = (event: KeyboardEvent<HTMLSpanElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    // Space scrolls the panel otherwise, and the panel this lives in is the one being read.
+    // Only `preventDefault`: a real button's activation bubbles, and every call site here was a
+    // real button until this pass.
+    event.preventDefault();
+    activate();
+  };
 
-    return (
-        <span
-            ref={ref}
-            role="button"
-            tabIndex={disabled ? -1 : 0}
-            aria-disabled={disabled || undefined}
-            className={className}
-            style={style}
-            onClick={activate}
-            onContextMenu={disabled ? undefined : onContextMenu}
-            onKeyDown={handleKeyDown}
-            {...aria}
-        >
-            {children}
-        </span>
-    );
+  return (
+    <span
+      ref={ref}
+      role="button"
+      tabIndex={disabled ? -1 : 0}
+      aria-disabled={disabled || undefined}
+      className={className}
+      style={style}
+      onClick={activate}
+      onContextMenu={disabled ? undefined : onContextMenu}
+      onKeyDown={handleKeyDown}
+      {...aria}
+    >
+      {children}
+    </span>
+  );
 }

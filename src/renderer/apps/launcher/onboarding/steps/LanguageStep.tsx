@@ -16,39 +16,38 @@ import { getLocaleMeta, getRegisteredLocales } from "@shared/i18n";
  * plugin language pack registers at runtime and the settings window reads it the same way.
  */
 export function LanguageStep() {
-    const { t, locale, setLocale } = useTranslation();
+  const { t, locale, setLocale } = useTranslation();
 
-    const options = useMemo(
-        () => getRegisteredLocales().map(code => ({
-            value: code,
-            // Endonyms, never translated: someone who cannot read the current language has to be
-            // able to find their own in this list.
-            label: getLocaleMeta(code).nativeName,
-        })),
-        // Re-read on a language change: that is also when a pack may have been registered.
-        [locale],
-    );
+  const options = useMemo(
+    () =>
+      getRegisteredLocales().map((code) => ({
+        value: code,
+        // Endonyms, never translated: someone who cannot read the current language has to be
+        // able to find their own in this list.
+        label: getLocaleMeta(code).nativeName
+      })),
+    // Re-read on a language change: that is also when a pack may have been registered.
+    [locale]
+  );
 
-    // A statement about the value, not about how it got there - true whether it was resolved from
-    // the device or picked here a moment ago, which is the only reading that stays honest.
-    const matchesDevice = locale === deviceDefaultLocale();
+  // A statement about the value, not about how it got there - true whether it was resolved from
+  // the device or picked here a moment ago, which is the only reading that stays honest.
+  const matchesDevice = locale === deviceDefaultLocale();
 
-    return (
-        <div className="flex items-center gap-3">
-            <div className="w-56">
-                <Select
-                    fullWidth
-                    options={options}
-                    value={locale}
-                    onChange={value => setLocale(String(value))}
-                    ariaLabel={t("settings.items.language.label")}
-                />
-            </div>
-            {matchesDevice && (
-                <span className="text-xs text-fg-subtle">
-                    {t("onboarding.language.matchedToDevice")}
-                </span>
-            )}
-        </div>
-    );
+  return (
+    <div className="flex items-center gap-3">
+      <div className="w-56">
+        <Select
+          fullWidth
+          options={options}
+          value={locale}
+          onChange={(value) => setLocale(String(value))}
+          ariaLabel={t("settings.items.language.label")}
+        />
+      </div>
+      {matchesDevice && (
+        <span className="text-xs text-fg-subtle">{t("onboarding.language.matchedToDevice")}</span>
+      )}
+    </div>
+  );
 }

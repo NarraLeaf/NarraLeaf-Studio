@@ -15,27 +15,27 @@ import { PANEL_HELP_TOPICS } from "./panelHelpTopics";
  */
 
 const PANEL_ID_CONSTANTS: Record<string, string> = {
-    STORY_VARIABLES_PANEL_ID,
-    STORY_SNAPSHOT_PANEL_ID,
-    STORY_ACTION_CREATOR_PANEL_ID,
+  STORY_VARIABLES_PANEL_ID,
+  STORY_SNAPSHOT_PANEL_ID,
+  STORY_ACTION_CREATOR_PANEL_ID
 };
 
 describe("panel help topics", () => {
-    it("maps every panel to a registered topic", () => {
-        for (const [panelId, topicId] of Object.entries(PANEL_HELP_TOPICS)) {
-            expect(isHelpTopicId(topicId), `${panelId} maps to unknown topic ${topicId}`).toBe(true);
-        }
-    });
+  it("maps every panel to a registered topic", () => {
+    for (const [panelId, topicId] of Object.entries(PANEL_HELP_TOPICS)) {
+      expect(isHelpTopicId(topicId), `${panelId} maps to unknown topic ${topicId}`).toBe(true);
+    }
+  });
 
-    it("keeps the ids namespaced", () => {
-        for (const panelId of Object.keys(PANEL_HELP_TOPICS)) {
-            expect(panelId, "panel ids are namespaced").toMatch(/^narraleaf-studio:/);
-        }
-    });
+  it("keeps the ids namespaced", () => {
+    for (const panelId of Object.keys(PANEL_HELP_TOPICS)) {
+      expect(panelId, "panel ids are namespaced").toMatch(/^narraleaf-studio:/);
+    }
+  });
 
-    it("matches the panel ids that are exported as constants", () => {
-        for (const [name, id] of Object.entries(PANEL_ID_CONSTANTS)) {
-            expect(Object.keys(PANEL_HELP_TOPICS), `${name} (${id}) is no longer mapped`).toContain(id);
-        }
-    });
+  it("matches the panel ids that are exported as constants", () => {
+    for (const [name, id] of Object.entries(PANEL_ID_CONSTANTS)) {
+      expect(Object.keys(PANEL_HELP_TOPICS), `${name} (${id}) is no longer mapped`).toContain(id);
+    }
+  });
 });

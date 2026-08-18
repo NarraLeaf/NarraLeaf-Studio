@@ -15,18 +15,18 @@
  */
 import { createTranslator, DEFAULT_LOCALE } from "@shared/i18n";
 import type {
-    InterpolationParams,
-    Locale,
-    PluralKey,
-    TranslationKey,
-    Translator,
+  InterpolationParams,
+  Locale,
+  PluralKey,
+  TranslationKey,
+  Translator
 } from "@shared/i18n";
 
 const translator: Translator = createTranslator(DEFAULT_LOCALE);
 
 export interface UseTranslation extends Translator {
-    /** No-op in the runtime bundle: there is no Studio language picker here. */
-    setLocale(next: Locale): void;
+  /** No-op in the runtime bundle: there is no Studio language picker here. */
+  setLocale(next: Locale): void;
 }
 
 const noop = (): void => undefined;
@@ -34,31 +34,31 @@ const noopUnsubscribe = (): (() => void) => noop;
 
 /** Mirrors the editor `i18nStore` surface used by shared widget code, minus mutation. */
 export const i18nStore = {
-    getLocale(): Locale {
-        return DEFAULT_LOCALE;
-    },
-    getTranslator(): Translator {
-        return translator;
-    },
-    subscribe(): () => void {
-        return noopUnsubscribe();
-    },
-    setLocale: noop,
+  getLocale(): Locale {
+    return DEFAULT_LOCALE;
+  },
+  getTranslator(): Translator {
+    return translator;
+  },
+  subscribe(): () => void {
+    return noopUnsubscribe();
+  },
+  setLocale: noop
 };
 
 export function useTranslation(): UseTranslation {
-    return { ...translator, setLocale: noop };
+  return { ...translator, setLocale: noop };
 }
 
 export function translate(key: TranslationKey, params?: InterpolationParams): string {
-    return translator.t(key, params);
+  return translator.t(key, params);
 }
 
 export function translateN(base: PluralKey, count: number, params?: InterpolationParams): string {
-    return translator.tn(base, count, params);
+  return translator.tn(base, count, params);
 }
 
 /** No-op: the runtime bundle has no persisted-language bootstrap. */
 export async function initI18n(): Promise<void> {
-    /* intentionally empty */
+  /* intentionally empty */
 }

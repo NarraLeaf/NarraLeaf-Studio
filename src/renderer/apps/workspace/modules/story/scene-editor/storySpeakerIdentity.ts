@@ -29,12 +29,12 @@ const UNNAMED_INITIAL = "?";
  * ever written.
  */
 export function storySpeakerHash(name: string): number {
-    let hash = 2166136261;
-    for (let index = 0; index < name.length; index += 1) {
-        hash ^= name.charCodeAt(index);
-        hash = Math.imul(hash, 16777619);
-    }
-    return Math.abs(hash) % 360;
+  let hash = 2166136261;
+  for (let index = 0; index < name.length; index += 1) {
+    hash ^= name.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash) % 360;
 }
 
 /**
@@ -47,13 +47,13 @@ export function storySpeakerHash(name: string): number {
  * as one glyph instead of being cut in half into a replacement box.
  */
 export function storySpeakerInitial(name: string): string {
-    const graphemes = Array.from(name.trim());
-    const first = graphemes[0];
-    if (!first) {
-        return UNNAMED_INITIAL;
-    }
-    // Latin runs narrow, so two letters fill the disc the way one CJK glyph does.
-    return /[A-Za-z]/.test(first) ? graphemes.slice(0, 2).join("") : first;
+  const graphemes = Array.from(name.trim());
+  const first = graphemes[0];
+  if (!first) {
+    return UNNAMED_INITIAL;
+  }
+  // Latin runs narrow, so two letters fill the disc the way one CJK glyph does.
+  return /[A-Za-z]/.test(first) ? graphemes.slice(0, 2).join("") : first;
 }
 
 /**
@@ -71,9 +71,9 @@ export function storySpeakerInitial(name: string): string {
  * `"none"` is the narrator and the unresolvable — neutral grey by rule (§4).
  */
 export type StorySpeakerPaint =
-    | { source: "author"; hex: string }
-    | { source: "name"; hue: number }
-    | { source: "none" };
+  | { source: "author"; hex: string }
+  | { source: "name"; hue: number }
+  | { source: "none" };
 
 /** The CSS custom property a name-derived speaker publishes its hue on. */
 export const STORY_SPEAKER_HUE_VAR = "--nl-speaker-h";
@@ -105,28 +105,31 @@ const STORY_SPEAKER_NEUTRAL_CLASS = "nl-speaker-neutral";
  * every position, and the cheapest way to keep a promise like that is to leave only one place where
  * it can be broken.
  */
-export function storySpeakerPaint(paint: StorySpeakerPaint): { className: string; style: CSSProperties } {
-    if (paint.source === "author") {
-        return {
-            className: STORY_SPEAKER_CLASS,
-            style: {
-                "--nl-speaker-disc": paint.hex,
-                // Ink derived from the chosen colour's own luminance, not from the theme — a pale
-                // pick needs dark ink on both themes and a deep one needs light ink on both. This is
-                // the same rescue `--nl-on-primary` performs for the user's accent, and for the same
-                // reason: "any colour" is only nominally true if the glyph on it can vanish.
-                "--nl-speaker-ink": `rgb(${accentForeground(paint.hex)})`,
-                "--nl-speaker-name": paint.hex,
-            } as CSSProperties,
-        };
-    }
-    if (paint.source === "name") {
-        return {
-            className: STORY_SPEAKER_CLASS,
-            style: { [STORY_SPEAKER_HUE_VAR]: paint.hue } as CSSProperties,
-        };
-    }
-    return { className: `${STORY_SPEAKER_CLASS} ${STORY_SPEAKER_NEUTRAL_CLASS}`, style: {} };
+export function storySpeakerPaint(paint: StorySpeakerPaint): {
+  className: string;
+  style: CSSProperties;
+} {
+  if (paint.source === "author") {
+    return {
+      className: STORY_SPEAKER_CLASS,
+      style: {
+        "--nl-speaker-disc": paint.hex,
+        // Ink derived from the chosen colour's own luminance, not from the theme — a pale
+        // pick needs dark ink on both themes and a deep one needs light ink on both. This is
+        // the same rescue `--nl-on-primary` performs for the user's accent, and for the same
+        // reason: "any colour" is only nominally true if the glyph on it can vanish.
+        "--nl-speaker-ink": `rgb(${accentForeground(paint.hex)})`,
+        "--nl-speaker-name": paint.hex
+      } as CSSProperties
+    };
+  }
+  if (paint.source === "name") {
+    return {
+      className: STORY_SPEAKER_CLASS,
+      style: { [STORY_SPEAKER_HUE_VAR]: paint.hue } as CSSProperties
+    };
+  }
+  return { className: `${STORY_SPEAKER_CLASS} ${STORY_SPEAKER_NEUTRAL_CLASS}`, style: {} };
 }
 
 /**
@@ -138,10 +141,10 @@ export function storySpeakerPaint(paint: StorySpeakerPaint): { className: string
  * another.
  */
 export type StorySpeakerIdentity = {
-    kind: "portrait" | "disc" | "ring";
-    /** Display name — the disc's grapheme comes from it, and it is what the row's nametag prints. */
-    name: string;
-    paint: StorySpeakerPaint;
+  kind: "portrait" | "disc" | "ring";
+  /** Display name — the disc's grapheme comes from it, and it is what the row's nametag prints. */
+  name: string;
+  paint: StorySpeakerPaint;
 };
 
 /**
@@ -151,22 +154,25 @@ export type StorySpeakerIdentity = {
  * `isReadableAccentColor`, applied by the caller). When it is absent the name hash stands in, so a
  * cast nobody has coloured still reads as a cast rather than as a column of grey.
  */
-export function characterSpeakerIdentity(name: string, options: { hasPortrait: boolean; color?: string }): StorySpeakerIdentity {
-    return {
-        kind: options.hasPortrait ? "portrait" : "disc",
-        name,
-        paint: options.color
-            ? { source: "author", hex: options.color }
-            : { source: "name", hue: storySpeakerHash(name) },
-    };
+export function characterSpeakerIdentity(
+  name: string,
+  options: { hasPortrait: boolean; color?: string }
+): StorySpeakerIdentity {
+  return {
+    kind: options.hasPortrait ? "portrait" : "disc",
+    name,
+    paint: options.color
+      ? { source: "author", hex: options.color }
+      : { source: "name", hue: storySpeakerHash(name) }
+  };
 }
 
 /** The narrator: hollow, neutral, and the only thing that is ever either. */
 export function narratorSpeakerIdentity(name: string): StorySpeakerIdentity {
-    return { kind: "ring", name, paint: { source: "none" } };
+  return { kind: "ring", name, paint: { source: "none" } };
 }
 
 /** A speaker nothing is known about yet — a dialogue row with no one assigned, or a dangling id. */
 export function unknownSpeakerIdentity(name: string): StorySpeakerIdentity {
-    return { kind: "disc", name, paint: { source: "none" } };
+  return { kind: "disc", name, paint: { source: "none" } };
 }

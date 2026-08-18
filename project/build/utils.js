@@ -1,13 +1,13 @@
-const path = require('path');
-const fs = require('fs');
-const { promisify } = require('util');
-const ejs = require('ejs');
+const path = require("path");
+const fs = require("fs");
+const { promisify } = require("util");
+const ejs = require("ejs");
 
-const rootDir = path.resolve(__dirname, '../..');
-const appsDir = path.join(rootDir, 'src', 'renderer', 'apps');
-const templatePath = path.join(rootDir, 'project', 'assets', 'app-entry-html.ejs');
-const distRoot = path.join(rootDir, 'dist');
-const distWindows = path.join(distRoot, 'windows');
+const rootDir = path.resolve(__dirname, "../..");
+const appsDir = path.join(rootDir, "src", "renderer", "apps");
+const templatePath = path.join(rootDir, "project", "assets", "app-entry-html.ejs");
+const distRoot = path.join(rootDir, "dist");
+const distWindows = path.join(distRoot, "windows");
 
 /**
  * Port the dev server listens on for renderer reload sockets. Owning it is what
@@ -26,13 +26,14 @@ const distWindows = path.join(distRoot, 'windows');
 const DEV_RELOAD_PORT = Number(process.env.NLS_DEV_RELOAD_PORT) || 5588;
 
 function isDev(argv = process.argv) {
-    return argv.includes('--dev');
+  return argv.includes("--dev");
 }
 
 function getRendererApps() {
-    return fs.readdirSync(appsDir, { withFileTypes: true })
-        .filter((d) => d.isDirectory())
-        .map((d) => d.name);
+  return fs
+    .readdirSync(appsDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name);
 }
 
 /**
@@ -45,27 +46,27 @@ function getRendererApps() {
  * Values are app directory names, which are also the WindowAppType values in
  * src/shared/types/window.ts — BaseApp.getAppEntry resolves one from the other.
  */
-const GAME_HOSTING_APPS = new Set(['dev-mode']);
+const GAME_HOSTING_APPS = new Set(["dev-mode"]);
 
 async function renderHtml(appName) {
-    const template = await promisify(fs.readFile)(templatePath, 'utf-8');
-    return ejs.render(template, {
-        title: `NarraLeaf - ${appName}`,
-        base: `app://public`,
-        script: `app://windows/${appName}/index.js`,
-        style: `app://windows/${appName}/index.css`,
-        htmlClass: GAME_HOSTING_APPS.has(appName) ? '' : 'nl-studio',
-    });
+  const template = await promisify(fs.readFile)(templatePath, "utf-8");
+  return ejs.render(template, {
+    title: `NarraLeaf - ${appName}`,
+    base: `app://public`,
+    script: `app://windows/${appName}/index.js`,
+    style: `app://windows/${appName}/index.css`,
+    htmlClass: GAME_HOSTING_APPS.has(appName) ? "" : "nl-studio"
+  });
 }
 
 module.exports = {
-    rootDir,
-    appsDir,
-    templatePath,
-    distRoot,
-    distWindows,
-    DEV_RELOAD_PORT,
-    isDev,
-    getRendererApps,
-    renderHtml,
+  rootDir,
+  appsDir,
+  templatePath,
+  distRoot,
+  distWindows,
+  DEV_RELOAD_PORT,
+  isDev,
+  getRendererApps,
+  renderHtml
 };

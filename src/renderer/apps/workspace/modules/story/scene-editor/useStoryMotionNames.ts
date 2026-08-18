@@ -15,29 +15,29 @@ import { useWorkspace } from "@/apps/workspace/context";
  * motion renamed in its editor updates the rows that reference it.
  */
 export function useStoryMotionNames(): (animationId: string) => string | null {
-    const { context, isInitialized } = useWorkspace();
-    const storyService = useMemo(
-        () => context && isInitialized ? context.services.get<StoryService>(Services.Story) : null,
-        [context, isInitialized],
-    );
-    const [entries, setEntries] = useState<StoryAnimationIndexEntry[]>([]);
+  const { context, isInitialized } = useWorkspace();
+  const storyService = useMemo(
+    () => (context && isInitialized ? context.services.get<StoryService>(Services.Story) : null),
+    [context, isInitialized]
+  );
+  const [entries, setEntries] = useState<StoryAnimationIndexEntry[]>([]);
 
-    useEffect(() => {
-        if (!storyService) {
-            setEntries([]);
-            return;
-        }
-        setEntries([...storyService.listAnimationAssets()]);
-        return storyService.onAnimationsChanged(index => setEntries([...index.animations]));
-    }, [storyService]);
+  useEffect(() => {
+    if (!storyService) {
+      setEntries([]);
+      return;
+    }
+    setEntries([...storyService.listAnimationAssets()]);
+    return storyService.onAnimationsChanged((index) => setEntries([...index.animations]));
+  }, [storyService]);
 
-    const byId = useMemo(() => {
-        const table = new Map<string, string>();
-        for (const entry of entries) {
-            table.set(entry.id, entry.name);
-        }
-        return table;
-    }, [entries]);
+  const byId = useMemo(() => {
+    const table = new Map<string, string>();
+    for (const entry of entries) {
+      table.set(entry.id, entry.name);
+    }
+    return table;
+  }, [entries]);
 
-    return useCallback((animationId: string) => byId.get(animationId) ?? null, [byId]);
+  return useCallback((animationId: string) => byId.get(animationId) ?? null, [byId]);
 }

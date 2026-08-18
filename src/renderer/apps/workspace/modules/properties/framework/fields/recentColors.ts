@@ -8,26 +8,26 @@ import { RecentColorsService } from "@/lib/workspace/services/core/RecentColorsS
  * place of a static web-color list.
  */
 function service(): RecentColorsService {
-    return RecentColorsService.getInstance();
+  return RecentColorsService.getInstance();
 }
 
 // Module-level so the reference stays stable across renders (avoids useSyncExternalStore re-subscribes).
 function subscribe(listener: () => void): () => void {
-    return service().subscribe(listener);
+  return service().subscribe(listener);
 }
 
 function getSnapshot(): string[] {
-    return service().getColors();
+  return service().getColors();
 }
 
 export function addRecentColor(color: string): void {
-    service().addColor(color);
+  service().addColor(color);
 }
 
 export function getRecentColors(): string[] {
-    return service().getColors();
+  return service().getColors();
 }
 
 export function useRecentColors(): string[] {
-    return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }

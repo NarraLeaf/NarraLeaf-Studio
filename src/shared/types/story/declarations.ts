@@ -1,12 +1,12 @@
 import type {
-    StoryBlock,
-    StoryDeclarationBlock,
-    StoryDocument,
-    StoryLiteralValue,
-    StoryScene,
-    StorySceneVariableDefinition,
-    StorySavedVariableDefinition,
-    StoryVariableValueType,
+  StoryBlock,
+  StoryDeclarationBlock,
+  StoryDocument,
+  StoryLiteralValue,
+  StoryScene,
+  StorySceneVariableDefinition,
+  StorySavedVariableDefinition,
+  StoryVariableValueType
 } from "./document";
 import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder } from "./order";
 
@@ -34,7 +34,7 @@ import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder } from "./ord
  */
 
 export function isStoryDeclarationBlock(block: StoryBlock): block is StoryDeclarationBlock {
-    return block.kind === "declaration";
+  return block.kind === "declaration";
 }
 
 /**
@@ -47,9 +47,9 @@ export function isStoryDeclarationBlock(block: StoryBlock): block is StoryDeclar
  * those surfaces carry it on the row's badge.
  */
 export function describeDeclaration(block: StoryDeclarationBlock): string {
-    return block.payload.defaultValue !== undefined
-        ? `${block.payload.name}: ${block.payload.valueType} = ${JSON.stringify(block.payload.defaultValue)}`
-        : `${block.payload.name}: ${block.payload.valueType}`;
+  return block.payload.defaultValue !== undefined
+    ? `${block.payload.name}: ${block.payload.valueType} = ${JSON.stringify(block.payload.defaultValue)}`
+    : `${block.payload.name}: ${block.payload.valueType}`;
 }
 
 /**
@@ -66,20 +66,20 @@ export function describeDeclaration(block: StoryDeclarationBlock): string {
  * default is a literal an author will edit — and an empty object is something to edit, `null` is not.
  */
 export function declarationDefaultForType(valueType: StoryVariableValueType): StoryLiteralValue {
-    if (valueType === "boolean") return false;
-    if (valueType === "number") return 0;
-    if (valueType === "json") return {};
-    return "";
+  if (valueType === "boolean") return false;
+  if (valueType === "number") return 0;
+  if (valueType === "json") return {};
+  return "";
 }
 
 function defOf(block: StoryDeclarationBlock): StorySceneVariableDefinition {
-    return {
-        id: block.id,
-        name: block.payload.name,
-        valueType: block.payload.valueType,
-        defaultValue: block.payload.defaultValue,
-        storageKey: block.payload.storageKey || block.id,
-    };
+  return {
+    id: block.id,
+    name: block.payload.name,
+    valueType: block.payload.valueType,
+    defaultValue: block.payload.defaultValue,
+    storageKey: block.payload.storageKey || block.id
+  };
 }
 
 /**
@@ -97,34 +97,36 @@ function defOf(block: StoryDeclarationBlock): StorySceneVariableDefinition {
  * table is a far smaller wrong than disappearing from it.
  */
 export function listSceneDeclarationBlocks(scene: StoryScene): StoryDeclarationBlock[] {
-    const reached = listSceneBlocksInDocumentOrder(scene);
-    const rows = reached.filter(isStoryDeclarationBlock);
-    if (reached.length === Object.keys(scene.blocks).length) {
-        return rows;
-    }
-    const reachedIds = new Set(reached.map(block => block.id));
-    for (const block of Object.values(scene.blocks)) {
-        if (!reachedIds.has(block.id) && isStoryDeclarationBlock(block)) {
-            rows.push(block);
-        }
-    }
+  const reached = listSceneBlocksInDocumentOrder(scene);
+  const rows = reached.filter(isStoryDeclarationBlock);
+  if (reached.length === Object.keys(scene.blocks).length) {
     return rows;
+  }
+  const reachedIds = new Set(reached.map((block) => block.id));
+  for (const block of Object.values(scene.blocks)) {
+    if (!reachedIds.has(block.id) && isStoryDeclarationBlock(block)) {
+      rows.push(block);
+    }
+  }
+  return rows;
 }
 
 /** The scene-scope variable table of one scene - what `StoryScene.sceneVariables` used to persist. */
 export function sceneVariableDefs(scene: StoryScene): Record<string, StorySceneVariableDefinition> {
-    const defs: Record<string, StorySceneVariableDefinition> = {};
-    for (const block of listSceneDeclarationBlocks(scene)) {
-        if (block.payload.scope === "scene") {
-            defs[block.id] = defOf(block);
-        }
+  const defs: Record<string, StorySceneVariableDefinition> = {};
+  for (const block of listSceneDeclarationBlocks(scene)) {
+    if (block.payload.scope === "scene") {
+      defs[block.id] = defOf(block);
     }
-    return defs;
+  }
+  return defs;
 }
 
 /** The saved (per-save-file) variable table of a document - what `StoryDocument.savedVariables` used to persist. */
-export function savedVariableDefs(document: StoryDocument): Record<string, StorySavedVariableDefinition> {
-    return documentWideDefs(document, "saved");
+export function savedVariableDefs(
+  document: StoryDocument
+): Record<string, StorySavedVariableDefinition> {
+  return documentWideDefs(document, "saved");
 }
 
 /**
@@ -132,32 +134,40 @@ export function savedVariableDefs(document: StoryDocument): Record<string, Story
  * is these merged with the blueprint-declared ones - the merge happens where the blueprint document
  * is in reach (the command context), not here.
  */
-export function storyPersistentDefs(document: StoryDocument): Record<string, StorySavedVariableDefinition> {
-    return documentWideDefs(document, "persistent");
+export function storyPersistentDefs(
+  document: StoryDocument
+): Record<string, StorySavedVariableDefinition> {
+  return documentWideDefs(document, "persistent");
 }
 
-function documentWideDefs(document: StoryDocument, scope: "saved" | "persistent"): Record<string, StorySavedVariableDefinition> {
-    const defs: Record<string, StorySavedVariableDefinition> = {};
-    for (const scene of listScenesInDocumentOrder(document)) {
-        for (const block of listSceneDeclarationBlocks(scene)) {
-            if (block.payload.scope === scope) {
-                defs[block.id] = defOf(block);
-            }
-        }
+function documentWideDefs(
+  document: StoryDocument,
+  scope: "saved" | "persistent"
+): Record<string, StorySavedVariableDefinition> {
+  const defs: Record<string, StorySavedVariableDefinition> = {};
+  for (const scene of listScenesInDocumentOrder(document)) {
+    for (const block of listSceneDeclarationBlocks(scene)) {
+      if (block.payload.scope === scope) {
+        defs[block.id] = defOf(block);
+      }
     }
-    return defs;
+  }
+  return defs;
 }
 
 /** The declaration row backing a variable id, or null - how an editor jumps from a ref to its row. */
-export function findDeclarationBlock(document: StoryDocument, variableId: string): { sceneId: string; block: StoryDeclarationBlock } | null {
-    // Document order, not key order: if a damaged document held the same block id in two scenes, the
-    // one an author would call "the" row is the earlier one, and it must not change per save.
-    for (const scene of listScenesInDocumentOrder(document)) {
-        const sceneId = scene.id;
-        const block = scene.blocks[variableId];
-        if (block && isStoryDeclarationBlock(block)) {
-            return { sceneId, block };
-        }
+export function findDeclarationBlock(
+  document: StoryDocument,
+  variableId: string
+): { sceneId: string; block: StoryDeclarationBlock } | null {
+  // Document order, not key order: if a damaged document held the same block id in two scenes, the
+  // one an author would call "the" row is the earlier one, and it must not change per save.
+  for (const scene of listScenesInDocumentOrder(document)) {
+    const sceneId = scene.id;
+    const block = scene.blocks[variableId];
+    if (block && isStoryDeclarationBlock(block)) {
+      return { sceneId, block };
     }
-    return null;
+  }
+  return null;
 }

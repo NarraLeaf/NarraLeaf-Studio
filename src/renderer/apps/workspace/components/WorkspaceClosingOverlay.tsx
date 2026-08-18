@@ -6,9 +6,9 @@ import type { TranslationKey } from "@shared/i18n";
 import { WorkspaceProgressCard, useSettledWait } from "./WorkspaceProgressOverlay";
 
 const STAGE_MESSAGE: Record<WorkspaceCloseStage, TranslationKey> = {
-    saving: "workspace.shell.closing.saving",
-    checkpoint: "workspace.shell.closing.checkpoint",
-    launcher: "workspace.shell.closing.launcher",
+  saving: "workspace.shell.closing.saving",
+  checkpoint: "workspace.shell.closing.checkpoint",
+  launcher: "workspace.shell.closing.launcher"
 };
 
 /**
@@ -26,30 +26,30 @@ const STAGE_MESSAGE: Record<WorkspaceCloseStage, TranslationKey> = {
  * The opening half of this pair is {@link WorkspaceOpeningOverlay}; both wear the same card.
  */
 export function WorkspaceClosingOverlay() {
-    const { t } = useTranslation();
-    const [stage, setStage] = useState<WorkspaceCloseStage | null>(null);
+  const { t } = useTranslation();
+  const [stage, setStage] = useState<WorkspaceCloseStage | null>(null);
 
-    useEffect(() => {
-        const token = getInterface().workspace.onCloseProgress(setStage);
-        return () => token.cancel();
-    }, []);
+  useEffect(() => {
+    const token = getInterface().workspace.onCloseProgress(setStage);
+    return () => token.cancel();
+  }, []);
 
-    const visible = useSettledWait(stage !== null);
+  const visible = useSettledWait(stage !== null);
 
-    if (!stage || !visible) {
-        return null;
-    }
+  if (!stage || !visible) {
+    return null;
+  }
 
-    return (
-        <div className="nl-window-content-layer z-[60] flex items-center justify-center p-4">
-            {/* Swallows clicks as well as covering the window: every edit from here on would land
+  return (
+    <div className="nl-window-content-layer z-[60] flex items-center justify-center p-4">
+      {/* Swallows clicks as well as covering the window: every edit from here on would land
                 after the flush that was supposed to persist it. */}
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" />
 
-            <WorkspaceProgressCard
-                title={t("workspace.shell.closing.title")}
-                message={t(STAGE_MESSAGE[stage])}
-            />
-        </div>
-    );
+      <WorkspaceProgressCard
+        title={t("workspace.shell.closing.title")}
+        message={t(STAGE_MESSAGE[stage])}
+      />
+    </div>
+  );
 }

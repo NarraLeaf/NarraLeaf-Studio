@@ -1,20 +1,20 @@
 import {
-    DEFAULT_UI_TEMPLATE_REGISTRY_URL,
-    UI_TEMPLATE_MAX_ASSET_BYTES,
-    UI_TEMPLATE_MAX_ASSETS,
-    UI_TEMPLATE_MAX_DOCUMENT_BYTES,
-    UI_TEMPLATE_REGISTRY_FETCH_TIMEOUT_MS,
-    UI_TEMPLATE_REGISTRY_FORMAT_VERSION,
+  DEFAULT_UI_TEMPLATE_REGISTRY_URL,
+  UI_TEMPLATE_MAX_ASSET_BYTES,
+  UI_TEMPLATE_MAX_ASSETS,
+  UI_TEMPLATE_MAX_DOCUMENT_BYTES,
+  UI_TEMPLATE_REGISTRY_FETCH_TIMEOUT_MS,
+  UI_TEMPLATE_REGISTRY_FORMAT_VERSION
 } from "@shared/constants/uiTemplateRegistry";
 import type {
-    UITemplateAssetRef,
-    UITemplateBundle,
-    UITemplateFetchedAsset,
-    UITemplatePreview,
-    UIThemeDescriptor,
-    UITemplateRegistryEntry,
-    UITemplateRegistryIndex,
-    UITemplateSurfacePlacement,
+  UITemplateAssetRef,
+  UITemplateBundle,
+  UITemplateFetchedAsset,
+  UITemplatePreview,
+  UIThemeDescriptor,
+  UITemplateRegistryEntry,
+  UITemplateRegistryIndex,
+  UITemplateSurfacePlacement
 } from "@shared/types/uiTemplateRegistry";
 import { isSafeRelativeEntry } from "@shared/utils/pluginManifest";
 import { normalizeLocalizedTextPack } from "@shared/types/localizedText";
@@ -36,20 +36,20 @@ import { applyDownloadRewrite } from "./downloadRewrites";
 const STAGE_SLOT_IDS = new Set(["onStage", "dialog", "notification", "choice", "nvl"]);
 
 const MIME_BY_EXTENSION: Record<string, string> = {
-    png: "image/png",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    gif: "image/gif",
-    webp: "image/webp",
-    svg: "image/svg+xml",
-    avif: "image/avif",
-    bmp: "image/bmp",
-    ico: "image/x-icon",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  avif: "image/avif",
+  bmp: "image/bmp",
+  ico: "image/x-icon"
 };
 
 /** Resolve the effective registry URL: a configured value, else the official default. */
 export function resolveTemplateRegistryUrl(configured: string | undefined | null): string {
-    return resolveDownloadSource(configured, DEFAULT_UI_TEMPLATE_REGISTRY_URL);
+  return resolveDownloadSource(configured, DEFAULT_UI_TEMPLATE_REGISTRY_URL);
 }
 
 /**
@@ -59,52 +59,62 @@ export function resolveTemplateRegistryUrl(configured: string | undefined | null
  * would rather redirect the official host than restate it.
  */
 async function fetchWithTimeout(url: string): Promise<Response> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), UI_TEMPLATE_REGISTRY_FETCH_TIMEOUT_MS);
-    try {
-        return await fetch(applyDownloadRewrite(url), { redirect: "follow", signal: controller.signal });
-    } finally {
-        clearTimeout(timer);
-    }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), UI_TEMPLATE_REGISTRY_FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(applyDownloadRewrite(url), {
+      redirect: "follow",
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function asString(value: unknown): string {
-    return typeof value === "string" ? value : "";
+  return typeof value === "string" ? value : "";
 }
 
 function asStringArray(value: unknown): string[] {
-    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
 }
 
 function normalizeSurfacePlacement(raw: unknown): UITemplateSurfacePlacement {
-    const record = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-    const kind = record.kind === "stageSurface" ? "stageSurface" : "appSurface";
-    if (kind === "stageSurface") {
-        const slotId = asString(record.slotId);
-        return { kind, slotId: STAGE_SLOT_IDS.has(slotId) ? (slotId as UITemplateSurfacePlacement["slotId"]) : "onStage" };
-    }
-    return { kind };
+  const record = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const kind = record.kind === "stageSurface" ? "stageSurface" : "appSurface";
+  if (kind === "stageSurface") {
+    const slotId = asString(record.slotId);
+    return {
+      kind,
+      slotId: STAGE_SLOT_IDS.has(slotId)
+        ? (slotId as UITemplateSurfacePlacement["slotId"])
+        : "onStage"
+    };
+  }
+  return { kind };
 }
 
 function normalizeAssets(raw: unknown): UITemplateAssetRef[] {
-    if (!Array.isArray(raw)) {
-        return [];
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const assets: UITemplateAssetRef[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") {
+      continue;
     }
-    const assets: UITemplateAssetRef[] = [];
-    for (const item of raw) {
-        if (!item || typeof item !== "object") {
-            continue;
-        }
-        const record = item as Record<string, unknown>;
-        const id = asString(record.id);
-        const path = asString(record.path);
-        // Drop anything unsafe here so the fetch step never sees a traversal path.
-        if (!id || !path || !isSafeRelativeEntry(path)) {
-            continue;
-        }
-        assets.push({ id, path });
+    const record = item as Record<string, unknown>;
+    const id = asString(record.id);
+    const path = asString(record.path);
+    // Drop anything unsafe here so the fetch step never sees a traversal path.
+    if (!id || !path || !isSafeRelativeEntry(path)) {
+      continue;
     }
-    return assets;
+    assets.push({ id, path });
+  }
+  return assets;
 }
 
 /**
@@ -113,42 +123,42 @@ function normalizeAssets(raw: unknown): UITemplateAssetRef[] {
  * graphs). Being lenient here keeps one malformed entry from blanking the store.
  */
 function normalizeUITemplateEntry(raw: unknown): UITemplateRegistryEntry | null {
-    if (!raw || typeof raw !== "object") {
-        return null;
-    }
-    const record = raw as Record<string, unknown>;
-    const id = asString(record.id);
-    const path = asString(record.path);
-    const document = asString(record.document);
-    const graphs = asString(record.graphs);
-    const preview = asString(record.preview);
-    // The document/graphs/preview paths must stay inside the template directory.
-    if (!id || !path || !document || !graphs) {
-        return null;
-    }
-    if (!isSafeRelativeEntry(document) || !isSafeRelativeEntry(graphs)) {
-        return null;
-    }
-    if (preview && !isSafeRelativeEntry(preview)) {
-        return null;
-    }
-    const theme = asString(record.theme);
-    return {
-        id,
-        theme: theme || undefined,
-        name: asString(record.name) || id,
-        version: asString(record.version),
-        description: asString(record.description),
-        publisher: asString(record.publisher),
-        categories: asStringArray(record.categories),
-        path,
-        document,
-        graphs,
-        preview: preview || undefined,
-        surface: normalizeSurfacePlacement(record.surface),
-        assets: normalizeAssets(record.assets),
-        locales: normalizeLocalizedTextPack(record.locales),
-    };
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  const id = asString(record.id);
+  const path = asString(record.path);
+  const document = asString(record.document);
+  const graphs = asString(record.graphs);
+  const preview = asString(record.preview);
+  // The document/graphs/preview paths must stay inside the template directory.
+  if (!id || !path || !document || !graphs) {
+    return null;
+  }
+  if (!isSafeRelativeEntry(document) || !isSafeRelativeEntry(graphs)) {
+    return null;
+  }
+  if (preview && !isSafeRelativeEntry(preview)) {
+    return null;
+  }
+  const theme = asString(record.theme);
+  return {
+    id,
+    theme: theme || undefined,
+    name: asString(record.name) || id,
+    version: asString(record.version),
+    description: asString(record.description),
+    publisher: asString(record.publisher),
+    categories: asStringArray(record.categories),
+    path,
+    document,
+    graphs,
+    preview: preview || undefined,
+    surface: normalizeSurfacePlacement(record.surface),
+    assets: normalizeAssets(record.assets),
+    locales: normalizeLocalizedTextPack(record.locales)
+  };
 }
 
 /**
@@ -157,30 +167,30 @@ function normalizeUITemplateEntry(raw: unknown): UITemplateRegistryEntry | null 
  * entries it actually has rather than relying on it.
  */
 function normalizeThemeDescriptor(raw: unknown): UIThemeDescriptor | null {
-    if (!raw || typeof raw !== "object") {
-        return null;
-    }
-    const record = raw as Record<string, unknown>;
-    const id = asString(record.id);
-    const path = asString(record.path);
-    const preview = asString(record.preview);
-    if (!id || !path) {
-        return null;
-    }
-    if (preview && !isSafeRelativeEntry(preview)) {
-        return null;
-    }
-    return {
-        id,
-        name: asString(record.name) || id,
-        version: asString(record.version),
-        description: asString(record.description),
-        publisher: asString(record.publisher),
-        path,
-        preview: preview || undefined,
-        templateCount: typeof record.templateCount === "number" ? record.templateCount : 0,
-        locales: normalizeLocalizedTextPack(record.locales),
-    };
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  const id = asString(record.id);
+  const path = asString(record.path);
+  const preview = asString(record.preview);
+  if (!id || !path) {
+    return null;
+  }
+  if (preview && !isSafeRelativeEntry(preview)) {
+    return null;
+  }
+  return {
+    id,
+    name: asString(record.name) || id,
+    version: asString(record.version),
+    description: asString(record.description),
+    publisher: asString(record.publisher),
+    path,
+    preview: preview || undefined,
+    templateCount: typeof record.templateCount === "number" ? record.templateCount : 0,
+    locales: normalizeLocalizedTextPack(record.locales)
+  };
 }
 
 /**
@@ -195,59 +205,59 @@ function normalizeThemeDescriptor(raw: unknown): UIThemeDescriptor | null {
 const indexMemo = new Map<string, { at: number; index: UITemplateRegistryIndex }>();
 
 export async function fetchTemplateIndex(
-    url: string,
-    options: { maxAgeMs?: number } = {},
+  url: string,
+  options: { maxAgeMs?: number } = {}
 ): Promise<UITemplateRegistryIndex> {
-    const maxAgeMs = options.maxAgeMs ?? 0;
-    if (maxAgeMs > 0) {
-        const cached = indexMemo.get(url);
-        if (cached && Date.now() - cached.at <= maxAgeMs) {
-            return cached.index;
-        }
+  const maxAgeMs = options.maxAgeMs ?? 0;
+  if (maxAgeMs > 0) {
+    const cached = indexMemo.get(url);
+    if (cached && Date.now() - cached.at <= maxAgeMs) {
+      return cached.index;
     }
-    const index = await readTemplateIndex(url);
-    indexMemo.set(url, { at: Date.now(), index });
-    return index;
+  }
+  const index = await readTemplateIndex(url);
+  indexMemo.set(url, { at: Date.now(), index });
+  return index;
 }
 
 async function readTemplateIndex(url: string): Promise<UITemplateRegistryIndex> {
-    const response = await fetchWithTimeout(url);
-    if (!response.ok) {
-        throw new Error(`Template registry request failed (${response.status} ${response.statusText})`);
-    }
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(await response.text());
-    } catch {
-        throw new Error("Template registry index is not valid JSON");
-    }
-    if (!parsed || typeof parsed !== "object") {
-        throw new Error("Template registry index is not an object");
-    }
-    const record = parsed as Record<string, unknown>;
-    if (record.formatVersion !== UI_TEMPLATE_REGISTRY_FORMAT_VERSION) {
-        throw new Error(
-            `Unsupported template registry format version ${String(record.formatVersion)} (expected ${UI_TEMPLATE_REGISTRY_FORMAT_VERSION})`,
-        );
-    }
-    const templates = Array.isArray(record.templates)
-        ? record.templates
-            .map(normalizeUITemplateEntry)
-            .filter((entry): entry is UITemplateRegistryEntry => entry !== null)
-        : [];
-    // Additive: a registry that predates themes simply has none, and the store
-    // falls back to one flat shelf rather than showing an empty browse level.
-    const themes = Array.isArray(record.themes)
-        ? record.themes
-            .map(normalizeThemeDescriptor)
-            .filter((theme): theme is UIThemeDescriptor => theme !== null)
-        : [];
-    return {
-        formatVersion: UI_TEMPLATE_REGISTRY_FORMAT_VERSION,
-        repository: asString(record.repository),
-        themes,
-        templates,
-    };
+  const response = await fetchWithTimeout(url);
+  if (!response.ok) {
+    throw new Error(`Template registry request failed (${response.status} ${response.statusText})`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await response.text());
+  } catch {
+    throw new Error("Template registry index is not valid JSON");
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Template registry index is not an object");
+  }
+  const record = parsed as Record<string, unknown>;
+  if (record.formatVersion !== UI_TEMPLATE_REGISTRY_FORMAT_VERSION) {
+    throw new Error(
+      `Unsupported template registry format version ${String(record.formatVersion)} (expected ${UI_TEMPLATE_REGISTRY_FORMAT_VERSION})`
+    );
+  }
+  const templates = Array.isArray(record.templates)
+    ? record.templates
+        .map(normalizeUITemplateEntry)
+        .filter((entry): entry is UITemplateRegistryEntry => entry !== null)
+    : [];
+  // Additive: a registry that predates themes simply has none, and the store
+  // falls back to one flat shelf rather than showing an empty browse level.
+  const themes = Array.isArray(record.themes)
+    ? record.themes
+        .map(normalizeThemeDescriptor)
+        .filter((theme): theme is UIThemeDescriptor => theme !== null)
+    : [];
+  return {
+    formatVersion: UI_TEMPLATE_REGISTRY_FORMAT_VERSION,
+    repository: asString(record.repository),
+    themes,
+    templates
+  };
 }
 
 /**
@@ -257,71 +267,74 @@ async function readTemplateIndex(url: string): Promise<UITemplateRegistryIndex> 
  * traversal checks.
  */
 function registryBaseDir(indexUrl: string): string {
-    const url = new URL(indexUrl);
-    url.hash = "";
-    url.search = "";
-    url.pathname = url.pathname.replace(/[^/]*$/, "");
-    return url.toString();
+  const url = new URL(indexUrl);
+  url.hash = "";
+  url.search = "";
+  url.pathname = url.pathname.replace(/[^/]*$/, "");
+  return url.toString();
 }
 
 /** Resolve a template-relative file to an absolute raw URL, guarding traversal. */
 function resolveTemplateFileUrl(baseDir: string, entryPath: string, relativePath: string): string {
-    if (!isSafeRelativeEntry(entryPath) || !isSafeRelativeEntry(relativePath)) {
-        throw new Error(`Unsafe template path: ${entryPath}/${relativePath}`);
-    }
-    const joined = `${entryPath.replace(/\/+$/, "")}/${relativePath.replace(/^\/+/, "")}`;
-    const resolved = new URL(joined, baseDir).toString();
-    if (!resolved.startsWith(baseDir)) {
-        throw new Error(`Template path escapes the registry directory: ${joined}`);
-    }
-    return resolved;
+  if (!isSafeRelativeEntry(entryPath) || !isSafeRelativeEntry(relativePath)) {
+    throw new Error(`Unsafe template path: ${entryPath}/${relativePath}`);
+  }
+  const joined = `${entryPath.replace(/\/+$/, "")}/${relativePath.replace(/^\/+/, "")}`;
+  const resolved = new URL(joined, baseDir).toString();
+  if (!resolved.startsWith(baseDir)) {
+    throw new Error(`Template path escapes the registry directory: ${joined}`);
+  }
+  return resolved;
 }
 
 async function fetchJsonFile(url: string): Promise<unknown> {
-    const response = await fetchWithTimeout(url);
-    if (!response.ok) {
-        throw new Error(`Template file request failed (${response.status} ${response.statusText})`);
-    }
-    const declaredLength = Number(response.headers.get("content-length"));
-    if (Number.isFinite(declaredLength) && declaredLength > UI_TEMPLATE_MAX_DOCUMENT_BYTES) {
-        throw new Error("Template document exceeds the maximum size");
-    }
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.byteLength > UI_TEMPLATE_MAX_DOCUMENT_BYTES) {
-        throw new Error("Template document exceeds the maximum size");
-    }
-    try {
-        return JSON.parse(buffer.toString("utf-8"));
-    } catch {
-        throw new Error("Template document is not valid JSON");
-    }
+  const response = await fetchWithTimeout(url);
+  if (!response.ok) {
+    throw new Error(`Template file request failed (${response.status} ${response.statusText})`);
+  }
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > UI_TEMPLATE_MAX_DOCUMENT_BYTES) {
+    throw new Error("Template document exceeds the maximum size");
+  }
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.byteLength > UI_TEMPLATE_MAX_DOCUMENT_BYTES) {
+    throw new Error("Template document exceeds the maximum size");
+  }
+  try {
+    return JSON.parse(buffer.toString("utf-8"));
+  } catch {
+    throw new Error("Template document is not valid JSON");
+  }
 }
 
 function inferMime(fileName: string): string {
-    const ext = fileName.slice(fileName.lastIndexOf(".") + 1).toLowerCase();
-    return MIME_BY_EXTENSION[ext] ?? "application/octet-stream";
+  const ext = fileName.slice(fileName.lastIndexOf(".") + 1).toLowerCase();
+  return MIME_BY_EXTENSION[ext] ?? "application/octet-stream";
 }
 
-async function fetchAssetFile(url: string, ref: UITemplateAssetRef): Promise<UITemplateFetchedAsset> {
-    const response = await fetchWithTimeout(url);
-    if (!response.ok) {
-        throw new Error(`Template resource request failed (${response.status} ${response.statusText})`);
-    }
-    const declaredLength = Number(response.headers.get("content-length"));
-    if (Number.isFinite(declaredLength) && declaredLength > UI_TEMPLATE_MAX_ASSET_BYTES) {
-        throw new Error("Template resource exceeds the maximum size");
-    }
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.byteLength > UI_TEMPLATE_MAX_ASSET_BYTES) {
-        throw new Error("Template resource exceeds the maximum size");
-    }
-    const fileName = ref.path.slice(ref.path.lastIndexOf("/") + 1) || ref.id;
-    return {
-        id: ref.id,
-        fileName,
-        mime: inferMime(fileName),
-        dataBase64: buffer.toString("base64"),
-    };
+async function fetchAssetFile(
+  url: string,
+  ref: UITemplateAssetRef
+): Promise<UITemplateFetchedAsset> {
+  const response = await fetchWithTimeout(url);
+  if (!response.ok) {
+    throw new Error(`Template resource request failed (${response.status} ${response.statusText})`);
+  }
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > UI_TEMPLATE_MAX_ASSET_BYTES) {
+    throw new Error("Template resource exceeds the maximum size");
+  }
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.byteLength > UI_TEMPLATE_MAX_ASSET_BYTES) {
+    throw new Error("Template resource exceeds the maximum size");
+  }
+  const fileName = ref.path.slice(ref.path.lastIndexOf("/") + 1) || ref.id;
+  return {
+    id: ref.id,
+    fileName,
+    mime: inferMime(fileName),
+    dataBase64: buffer.toString("base64")
+  };
 }
 
 /**
@@ -334,24 +347,24 @@ async function fetchAssetFile(url: string, ref: UITemplateAssetRef): Promise<UIT
 export type FetchedThemePoster = { id: string; mime: string; dataBase64: string };
 
 export async function fetchThemePreviews(
-    themes: UIThemeDescriptor[],
-    indexUrl: string,
+  themes: UIThemeDescriptor[],
+  indexUrl: string
 ): Promise<FetchedThemePoster[]> {
-    const baseDir = registryBaseDir(indexUrl);
-    const previews: FetchedThemePoster[] = [];
-    for (const theme of themes) {
-        if (!theme.preview) {
-            continue;
-        }
-        try {
-            const url = resolveTemplateFileUrl(baseDir, theme.path, theme.preview);
-            const fetched = await fetchAssetFile(url, { id: theme.id, path: theme.preview });
-            previews.push({ id: theme.id, mime: fetched.mime, dataBase64: fetched.dataBase64 });
-        } catch (error) {
-            console.warn(`[uiTemplates] theme poster unavailable for ${theme.id}`, error);
-        }
+  const baseDir = registryBaseDir(indexUrl);
+  const previews: FetchedThemePoster[] = [];
+  for (const theme of themes) {
+    if (!theme.preview) {
+      continue;
     }
-    return previews;
+    try {
+      const url = resolveTemplateFileUrl(baseDir, theme.path, theme.preview);
+      const fetched = await fetchAssetFile(url, { id: theme.id, path: theme.preview });
+      previews.push({ id: theme.id, mime: fetched.mime, dataBase64: fetched.dataBase64 });
+    } catch (error) {
+      console.warn(`[uiTemplates] theme poster unavailable for ${theme.id}`, error);
+    }
+  }
+  return previews;
 }
 
 /**
@@ -364,20 +377,22 @@ export async function fetchThemePreviews(
  * that cannot open.
  */
 export async function fetchTemplatePreviews(
-    entries: UITemplateRegistryEntry[],
-    indexUrl: string,
+  entries: UITemplateRegistryEntry[],
+  indexUrl: string
 ): Promise<UITemplatePreview[]> {
-    const baseDir = registryBaseDir(indexUrl);
-    const previews: UITemplatePreview[] = [];
-    for (const entry of entries) {
-        try {
-            const document = await fetchJsonFile(resolveTemplateFileUrl(baseDir, entry.path, entry.document));
-            previews.push({ id: entry.id, document });
-        } catch (error) {
-            console.warn(`[uiTemplates] preview unavailable for ${entry.id}`, error);
-        }
+  const baseDir = registryBaseDir(indexUrl);
+  const previews: UITemplatePreview[] = [];
+  for (const entry of entries) {
+    try {
+      const document = await fetchJsonFile(
+        resolveTemplateFileUrl(baseDir, entry.path, entry.document)
+      );
+      previews.push({ id: entry.id, document });
+    } catch (error) {
+      console.warn(`[uiTemplates] preview unavailable for ${entry.id}`, error);
     }
-    return previews;
+  }
+  return previews;
 }
 
 /**
@@ -386,28 +401,28 @@ export async function fetchTemplatePreviews(
  * the renderer migrates and applies the result into the open project.
  */
 export async function fetchTemplateBundle(
-    entry: UITemplateRegistryEntry,
-    indexUrl: string,
+  entry: UITemplateRegistryEntry,
+  indexUrl: string
 ): Promise<UITemplateBundle> {
-    const baseDir = registryBaseDir(indexUrl);
+  const baseDir = registryBaseDir(indexUrl);
 
-    const document = await fetchJsonFile(resolveTemplateFileUrl(baseDir, entry.path, entry.document));
-    const graphs = await fetchJsonFile(resolveTemplateFileUrl(baseDir, entry.path, entry.graphs));
+  const document = await fetchJsonFile(resolveTemplateFileUrl(baseDir, entry.path, entry.document));
+  const graphs = await fetchJsonFile(resolveTemplateFileUrl(baseDir, entry.path, entry.graphs));
 
-    if (entry.assets.length > UI_TEMPLATE_MAX_ASSETS) {
-        throw new Error("Template declares too many resources");
-    }
-    const assets: UITemplateFetchedAsset[] = [];
-    for (const ref of entry.assets) {
-        const url = resolveTemplateFileUrl(baseDir, entry.path, ref.path);
-        assets.push(await fetchAssetFile(url, ref));
-    }
+  if (entry.assets.length > UI_TEMPLATE_MAX_ASSETS) {
+    throw new Error("Template declares too many resources");
+  }
+  const assets: UITemplateFetchedAsset[] = [];
+  for (const ref of entry.assets) {
+    const url = resolveTemplateFileUrl(baseDir, entry.path, ref.path);
+    assets.push(await fetchAssetFile(url, ref));
+  }
 
-    return {
-        id: entry.id,
-        surface: entry.surface,
-        document,
-        graphs,
-        assets,
-    };
+  return {
+    id: entry.id,
+    surface: entry.surface,
+    document,
+    graphs,
+    assets
+  };
 }

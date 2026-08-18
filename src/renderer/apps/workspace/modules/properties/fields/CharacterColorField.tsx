@@ -39,54 +39,54 @@ const DEFAULT_CHARACTER_COLOR = "#40A8C4";
  * it — so a colour this field accepts may show in the game and not in the editor's rows.
  */
 export function CharacterColorField({ data }: CustomFieldProps<CharacterEditorContext>) {
-    const { t } = useTranslation();
-    const profile = data.character.profile;
-    const [stored, setStored] = useState<string | undefined>(() => profile.getColor());
-    // Live while the panel is open, committed to the model when it closes: `onChange` fires on every
-    // frame of a drag across the colour map, and each one would be a project write.
-    const [draft, setDraft] = useState<ColorValue | null>(null);
+  const { t } = useTranslation();
+  const profile = data.character.profile;
+  const [stored, setStored] = useState<string | undefined>(() => profile.getColor());
+  // Live while the panel is open, committed to the model when it closes: `onChange` fires on every
+  // frame of a drag across the colour map, and each one would be a project write.
+  const [draft, setDraft] = useState<ColorValue | null>(null);
 
-    const commit = (next: string | undefined): void => {
-        setDraft(null);
-        setStored(next);
-        profile.setColor(next);
-        // Literals only — a link is not recorded at all, and the resolved literal is not recorded in
-        // its place. The strip paints each entry by dropping the string straight into
-        // `backgroundColor` (`ProjectPalette`), so the token itself would paint nothing; and a
-        // resolved copy would sit there as a bare square indistinguishable from the palette's own,
-        // except that picking it hands back a hex that has stopped following the brand. Recents
-        // exist to bring back a colour that is otherwise hard to find again, and a palette entry has
-        // its own labelled row in this very picker.
-        if (next && !isBrandLink(next)) {
-            addRecentColor(next);
-        }
-    };
+  const commit = (next: string | undefined): void => {
+    setDraft(null);
+    setStored(next);
+    profile.setColor(next);
+    // Literals only — a link is not recorded at all, and the resolved literal is not recorded in
+    // its place. The strip paints each entry by dropping the string straight into
+    // `backgroundColor` (`ProjectPalette`), so the token itself would paint nothing; and a
+    // resolved copy would sit there as a bare square indistinguishable from the palette's own,
+    // except that picking it hands back a hex that has stopped following the brand. Recents
+    // exist to bring back a colour that is otherwise hard to find again, and a palette entry has
+    // its own labelled row in this very picker.
+    if (next && !isBrandLink(next)) {
+      addRecentColor(next);
+    }
+  };
 
-    // A link is resolved for display and its id kept on the result, which is what carries it back
-    // out through `serializeColorValue` when the author only nudges the opacity or reopens the panel.
-    const parsed = stored
-        ? parseColorValue(stored, { hex: DEFAULT_CHARACTER_COLOR, alpha: 1 })
-        : null;
+  // A link is resolved for display and its id kept on the result, which is what carries it back
+  // out through `serializeColorValue` when the author only nudges the opacity or reopens the panel.
+  const parsed = stored
+    ? parseColorValue(stored, { hex: DEFAULT_CHARACTER_COLOR, alpha: 1 })
+    : null;
 
-    return (
-        <div className="flex items-center gap-2">
-            <ColorPickerTrigger
-                value={draft ?? parsed ?? { hex: DEFAULT_CHARACTER_COLOR, alpha: 1 }}
-                displayMode="icon-hex"
-                allowOpacity={false}
-                brandPalette
-                onChange={setDraft}
-                onCommit={next => commit(serializeColorValue(next))}
-            />
-            {stored && (
-                <button
-                    type="button"
-                    className="text-xs text-danger hover:text-danger/80"
-                    onClick={() => commit(undefined)}
-                >
-                    {t("common.clear")}
-                </button>
-            )}
-        </div>
-    );
+  return (
+    <div className="flex items-center gap-2">
+      <ColorPickerTrigger
+        value={draft ?? parsed ?? { hex: DEFAULT_CHARACTER_COLOR, alpha: 1 }}
+        displayMode="icon-hex"
+        allowOpacity={false}
+        brandPalette
+        onChange={setDraft}
+        onCommit={(next) => commit(serializeColorValue(next))}
+      />
+      {stored && (
+        <button
+          type="button"
+          className="text-xs text-danger hover:text-danger/80"
+          onClick={() => commit(undefined)}
+        >
+          {t("common.clear")}
+        </button>
+      )}
+    </div>
+  );
 }

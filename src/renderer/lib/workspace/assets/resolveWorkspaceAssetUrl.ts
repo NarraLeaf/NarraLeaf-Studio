@@ -3,23 +3,29 @@ import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { Services, WorkspaceContext } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
-import { Asset, AssetSource } from "@/lib/workspace/services/assets/types";
+import { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
-import { characterAvatarBakePath, parseCharacterAvatarAssetId } from "@shared/utils/characterAvatar";
+import {
+  characterAvatarBakePath,
+  parseCharacterAvatarAssetId
+} from "@shared/utils/characterAvatar";
 import { getInterface } from "@/lib/app/bridge";
 import { recordAssetUrlToken } from "./assetUrlTokens";
 
 export type WorkspaceAssetUrlResult =
-    | { success: true; url: string }
-    | { success: false; error: string };
+  | { success: true; url: string }
+  | { success: false; error: string };
 
-export type WorkspaceAssetUrlResolver = (assetId: string, assetType?: string) => Promise<WorkspaceAssetUrlResult>;
+export type WorkspaceAssetUrlResolver = (
+  assetId: string,
+  assetType?: string
+) => Promise<WorkspaceAssetUrlResult>;
 
 export type WorkspaceBlobUrlResolver = {
-    resolve: (assetId: string, assetType?: string) => Promise<string | null>;
-    /** Revoke every object URL this resolver created. Call once the consumer unmounts. */
-    dispose: () => void;
+  resolve: (assetId: string, assetType?: string) => Promise<string | null>;
+  /** Revoke every object URL this resolver created. Call once the consumer unmounts. */
+  dispose: () => void;
 };
 
 /**
@@ -48,46 +54,50 @@ export type WorkspaceBlobUrlResolver = {
  * they are addressed by a parsed id and resolved off the project tree instead of the asset store.
  */
 function characterAvatarProjectPath(assetId: string): string | null {
-    const parsed = parseCharacterAvatarAssetId(assetId);
-    return parsed ? characterAvatarBakePath(parsed.characterId, parsed.key) : null;
+  const parsed = parseCharacterAvatarAssetId(assetId);
+  return parsed ? characterAvatarBakePath(parsed.characterId, parsed.key) : null;
 }
 
-export function createWorkspaceAssetUrlResolver(context: WorkspaceContext): WorkspaceAssetUrlResolver {
-    const assetsService = context.services.get<AssetsService>(Services.Assets);
+export function createWorkspaceAssetUrlResolver(
+  context: WorkspaceContext
+): WorkspaceAssetUrlResolver {
+  const assetsService = context.services.get<AssetsService>(Services.Assets);
 
-    return async (assetId: string, assetType?: string): Promise<WorkspaceAssetUrlResult> => {
-        const avatarPath = characterAvatarProjectPath(assetId);
-        if (avatarPath) {
-            const request = await appPrivilegedFacade.fs.requestReadRaw(context.project.resolve(avatarPath));
-            if (!request.success || !request.data?.ok) {
-                return { success: false, error: request.error ?? "Baked avatar not found" };
-            }
-            return { success: true, url: `${AppProtocol}://${AppHost.Fs}/${request.data.data}` };
-        }
+  return async (assetId: string, assetType?: string): Promise<WorkspaceAssetUrlResult> => {
+    const avatarPath = characterAvatarProjectPath(assetId);
+    if (avatarPath) {
+      const request = await appPrivilegedFacade.fs.requestReadRaw(
+        context.project.resolve(avatarPath)
+      );
+      if (!request.success || !request.data?.ok) {
+        return { success: false, error: request.error ?? "Baked avatar not found" };
+      }
+      return { success: true, url: `${AppProtocol}://${AppHost.Fs}/${request.data.data}` };
+    }
 
-        const asset = findAsset(assetsService, assetId, assetType);
-        if (!asset) {
-            return { success: false, error: "Asset not found" };
-        }
+    const asset = findAsset(assetsService, assetId, assetType);
+    if (!asset) {
+      return { success: false, error: "Asset not found" };
+    }
 
-        if (asset.type === AssetType.Model) {
-            return resolveModelBundleUrl(context, asset as Asset<AssetType.Model>);
-        }
+    if (asset.type === AssetType.Model) {
+      return resolveModelBundleUrl(context, asset as Asset<AssetType.Model>);
+    }
 
-        const assetPath = context.project.resolve(ProjectNameConvention.AssetsDataShard(assetId));
-        const request = await appPrivilegedFacade.fs.requestReadRaw(assetPath);
+    const assetPath = context.project.resolve(ProjectNameConvention.AssetsDataShard(assetId));
+    const request = await appPrivilegedFacade.fs.requestReadRaw(assetPath);
 
-        if (!request.success || !request.data?.ok) {
-            return { success: false, error: request.error ?? "Failed to resolve asset file" };
-        }
+    if (!request.success || !request.data?.ok) {
+      return { success: false, error: request.error ?? "Failed to resolve asset file" };
+    }
 
-        // The one instant at which "this token" and "this asset" are both known and both true. A
-        // grant token carries no information about the file it opens, so a URL that reaches a
-        // document is traceable back to an asset only if it was written down here - see
-        // assetUrlTokens.ts.
-        recordAssetUrlToken(request.data.data, asset.id);
-        return { success: true, url: `${AppProtocol}://${AppHost.Fs}/${request.data.data}` };
-    };
+    // The one instant at which "this token" and "this asset" are both known and both true. A
+    // grant token carries no information about the file it opens, so a URL that reaches a
+    // document is traceable back to an asset only if it was written down here - see
+    // assetUrlTokens.ts.
+    recordAssetUrlToken(request.data.data, asset.id);
+    return { success: true, url: `${AppProtocol}://${AppHost.Fs}/${request.data.data}` };
+  };
 }
 
 /**
@@ -110,54 +120,61 @@ export function createWorkspaceAssetUrlResolver(context: WorkspaceContext): Work
  * of "nobody has said which file is the entry".
  */
 async function resolveModelBundleUrl(
-    context: WorkspaceContext,
-    asset: Asset<AssetType.Model>,
+  context: WorkspaceContext,
+  asset: Asset<AssetType.Model>
 ): Promise<WorkspaceAssetUrlResult> {
-    const assetsService = context.services.get<AssetsService>(Services.Assets);
-    const modelService = assetsService.modelService;
-    if (!modelService) {
-        return { success: false, error: "Model service is not initialized" };
-    }
+  const assetsService = context.services.get<AssetsService>(Services.Assets);
+  const modelService = assetsService.modelService;
+  if (!modelService) {
+    return { success: false, error: "Model service is not initialized" };
+  }
 
-    const root = modelService.getBundleRoot(asset.id);
-    const listing = await modelService.listBundle(root);
-    if (!listing.success || !listing.data) {
-        return { success: false, error: listing.error ?? "Failed to read model bundle" };
-    }
+  const root = modelService.getBundleRoot(asset.id);
+  const listing = await modelService.listBundle(root);
+  if (!listing.success || !listing.data) {
+    return { success: false, error: listing.error ?? "Failed to read model bundle" };
+  }
 
-    const resolved = modelService.resolveEntry(asset, listing.data.files);
-    if (!resolved.entry) {
-        return {
-            success: false,
-            error: resolved.unresolved === "ambiguous"
-                ? `Model bundle "${asset.name}" has more than one possible entry file; choose one in the asset inspector.`
-                : `Model bundle "${asset.name}" has no entry file; choose one in the asset inspector.`,
-        };
-    }
+  const resolved = modelService.resolveEntry(asset, listing.data.files);
+  if (!resolved.entry) {
+    return {
+      success: false,
+      error:
+        resolved.unresolved === "ambiguous"
+          ? `Model bundle "${asset.name}" has more than one possible entry file; choose one in the asset inspector.`
+          : `Model bundle "${asset.name}" has no entry file; choose one in the asset inspector.`
+    };
+  }
 
-    const grant = await getInterface().fs.requestReadDir(root);
-    if (!grant.success || !grant.data?.ok) {
-        return { success: false, error: grant.error ?? "Failed to grant access to the model bundle" };
-    }
+  const grant = await getInterface().fs.requestReadDir(root);
+  if (!grant.success || !grant.data?.ok) {
+    return { success: false, error: grant.error ?? "Failed to grant access to the model bundle" };
+  }
 
-    // Each segment is encoded on its own so the separators stay separators - encoding the whole
-    // relative path would turn "Hiyori.2048/texture_00.png" into a single opaque segment and break
-    // the very sibling arithmetic this URL exists for.
-    const encodedEntry = resolved.entry.split("/").map(encodeURIComponent).join("/");
-    // Recorded for the same reason the per-file grant above is: a bundle's directory token is just
-    // as opaque, and the entry path after it belongs to the bundle rather than to the token.
-    recordAssetUrlToken(grant.data.data, asset.id);
-    return { success: true, url: `${AppProtocol}://${AppHost.Fs}/${grant.data.data}/${encodedEntry}` };
+  // Each segment is encoded on its own so the separators stay separators - encoding the whole
+  // relative path would turn "Hiyori.2048/texture_00.png" into a single opaque segment and break
+  // the very sibling arithmetic this URL exists for.
+  const encodedEntry = resolved.entry.split("/").map(encodeURIComponent).join("/");
+  // Recorded for the same reason the per-file grant above is: a bundle's directory token is just
+  // as opaque, and the entry path after it belongs to the bundle rather than to the token.
+  recordAssetUrlToken(grant.data.data, asset.id);
+  return {
+    success: true,
+    url: `${AppProtocol}://${AppHost.Fs}/${grant.data.data}/${encodedEntry}`
+  };
 }
 
 function findAsset(assetsService: AssetsService, assetId: string, assetType?: string) {
-    const assets = assetsService.getAssets();
-    const typedAsset = Object.values(AssetType).includes(assetType as AssetType)
-        ? assets[assetType as AssetType]?.[assetId]
-        : undefined;
-    return typedAsset ?? Object.values(AssetType)
-        .map(type => assets[type]?.[assetId])
-        .find(Boolean);
+  const assets = assetsService.getAssets();
+  const typedAsset = Object.values(AssetType).includes(assetType as AssetType)
+    ? assets[assetType as AssetType]?.[assetId]
+    : undefined;
+  return (
+    typedAsset ??
+    Object.values(AssetType)
+      .map((type) => assets[type]?.[assetId])
+      .find(Boolean)
+  );
 }
 
 /**
@@ -172,79 +189,88 @@ function findAsset(assetsService: AssetsService, assetId: string, assetType?: st
  * Results are cached per resolver instance; binary changes to an asset show up after the next
  * `dispose()`/re-create cycle.
  */
-export function createWorkspaceBlobUrlResolver(context: WorkspaceContext): WorkspaceBlobUrlResolver {
-    const assetsService = context.services.get<AssetsService>(Services.Assets);
-    const cache = new Map<string, Promise<string | null>>();
-    const objectUrls: string[] = [];
-    let disposed = false;
+export function createWorkspaceBlobUrlResolver(
+  context: WorkspaceContext
+): WorkspaceBlobUrlResolver {
+  const assetsService = context.services.get<AssetsService>(Services.Assets);
+  const cache = new Map<string, Promise<string | null>>();
+  const objectUrls: string[] = [];
+  let disposed = false;
 
-    /** Hand back a minted URL, or revoke it when the resolver was disposed mid-flight. */
-    const trackObjectUrl = (url: string): string | null => {
-        if (disposed) {
-            URL.revokeObjectURL(url);
-            return null;
+  /** Hand back a minted URL, or revoke it when the resolver was disposed mid-flight. */
+  const trackObjectUrl = (url: string): string | null => {
+    if (disposed) {
+      URL.revokeObjectURL(url);
+      return null;
+    }
+    objectUrls.push(url);
+    return url;
+  };
+
+  const resolve = (assetId: string, assetType?: string): Promise<string | null> => {
+    const existing = cache.get(assetId);
+    if (existing) {
+      return existing;
+    }
+    const promise = (async (): Promise<string | null> => {
+      const avatarPath = characterAvatarProjectPath(assetId);
+      if (avatarPath) {
+        const filesystemService = context.services.get<FileSystemService>(Services.FileSystem);
+        const read = await filesystemService.readRaw(context.project.resolve(avatarPath));
+        if (!read.ok || !read.data?.byteLength) {
+          return null;
         }
-        objectUrls.push(url);
-        return url;
-    };
+        return trackObjectUrl(URL.createObjectURL(new Blob([new Uint8Array(read.data)])));
+      }
 
-    const resolve = (assetId: string, assetType?: string): Promise<string | null> => {
-        const existing = cache.get(assetId);
-        if (existing) {
-            return existing;
+      const asset = findAsset(assetsService, assetId, assetType);
+      if (!asset) {
+        return null;
+      }
+      if (asset.type === AssetType.Model) {
+        // A bundle has no single blob to wrap in an object URL, and it does not need one:
+        // its directory grant is already session-lived and repeatable, which is the only
+        // property this resolver exists to add.
+        const resolved = await resolveModelBundleUrl(context, asset as Asset<AssetType.Model>);
+        return resolved.success ? resolved.url : null;
+      }
+      const result = await assetsService.fetch(asset);
+      if (!result.success || !result.data) {
+        return null;
+      }
+      return trackObjectUrl(
+        URL.createObjectURL(
+          new Blob([new Uint8Array((result.data as { data: ArrayLike<number> }).data)])
+        )
+      );
+    })();
+    cache.set(assetId, promise);
+    // Only successes stay cached: a transient fetch failure must not pin the asset to null
+    // for the rest of the pane's lifetime (it black-screens every row that references it).
+    // Evicting lets the next compile retry.
+    promise.then(
+      (url) => {
+        if (url === null && cache.get(assetId) === promise) {
+          cache.delete(assetId);
         }
-        const promise = (async (): Promise<string | null> => {
-            const avatarPath = characterAvatarProjectPath(assetId);
-            if (avatarPath) {
-                const filesystemService = context.services.get<FileSystemService>(Services.FileSystem);
-                const read = await filesystemService.readRaw(context.project.resolve(avatarPath));
-                if (!read.ok || !read.data?.byteLength) {
-                    return null;
-                }
-                return trackObjectUrl(URL.createObjectURL(new Blob([new Uint8Array(read.data)])));
-            }
-
-            const asset = findAsset(assetsService, assetId, assetType);
-            if (!asset) {
-                return null;
-            }
-            if (asset.type === AssetType.Model) {
-                // A bundle has no single blob to wrap in an object URL, and it does not need one:
-                // its directory grant is already session-lived and repeatable, which is the only
-                // property this resolver exists to add.
-                const resolved = await resolveModelBundleUrl(context, asset as Asset<AssetType.Model>);
-                return resolved.success ? resolved.url : null;
-            }
-            const result = await assetsService.fetch(asset);
-            if (!result.success || !result.data) {
-                return null;
-            }
-            return trackObjectUrl(URL.createObjectURL(new Blob([new Uint8Array((result.data as { data: ArrayLike<number> }).data)])));
-        })();
-        cache.set(assetId, promise);
-        // Only successes stay cached: a transient fetch failure must not pin the asset to null
-        // for the rest of the pane's lifetime (it black-screens every row that references it).
-        // Evicting lets the next compile retry.
-        promise.then(url => {
-            if (url === null && cache.get(assetId) === promise) {
-                cache.delete(assetId);
-            }
-        }, () => {
-            if (cache.get(assetId) === promise) {
-                cache.delete(assetId);
-            }
-        });
-        return promise;
-    };
-
-    const dispose = (): void => {
-        disposed = true;
-        cache.clear();
-        for (const url of objectUrls) {
-            URL.revokeObjectURL(url);
+      },
+      () => {
+        if (cache.get(assetId) === promise) {
+          cache.delete(assetId);
         }
-        objectUrls.length = 0;
-    };
+      }
+    );
+    return promise;
+  };
 
-    return { resolve, dispose };
+  const dispose = (): void => {
+    disposed = true;
+    cache.clear();
+    for (const url of objectUrls) {
+      URL.revokeObjectURL(url);
+    }
+    objectUrls.length = 0;
+  };
+
+  return { resolve, dispose };
 }

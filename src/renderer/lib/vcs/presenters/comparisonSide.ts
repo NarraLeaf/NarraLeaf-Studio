@@ -43,9 +43,8 @@ import { useWorkspace } from "@/apps/workspace/context";
 
 /** Where one side's bytes come from. */
 export type ComparisonSide =
-    /** The project as it is on disk now. */
-    | { readonly at: "working-tree" }
-    | { readonly at: "revision"; readonly revision: RevisionId };
+  /** The project as it is on disk now. */
+  { readonly at: "working-tree" } | { readonly at: "revision"; readonly revision: RevisionId };
 
 /**
  * The two sides one comparison is between.
@@ -54,48 +53,48 @@ export type ComparisonSide =
  * tree compared against a project with no versions recorded yet, where every file is an addition.
  */
 export interface ComparisonSides {
-    readonly before: ComparisonSide | null;
-    readonly after: ComparisonSide;
+  readonly before: ComparisonSide | null;
+  readonly after: ComparisonSide;
 }
 
 export type SideBytesStatus =
-    /** Nothing was asked for: this side does not hold the file, or there is no such side. */
-    | "absent"
-    | "loading"
-    /** {@link SideBytes.url} is live. */
-    | "ready"
-    /** The file is there and past the ceiling the read applies. */
-    | "tooLarge"
-    /** Read in full, and not a format this can be drawn from. */
-    | "unsupported"
-    | "failed";
+  /** Nothing was asked for: this side does not hold the file, or there is no such side. */
+  | "absent"
+  | "loading"
+  /** {@link SideBytes.url} is live. */
+  | "ready"
+  /** The file is there and past the ceiling the read applies. */
+  | "tooLarge"
+  /** Read in full, and not a format this can be drawn from. */
+  | "unsupported"
+  | "failed";
 
 export interface SideBytes {
-    readonly status: SideBytesStatus;
-    /** Live only while this hook is mounted with this side and path. Null unless `ready`. */
-    readonly url: string | null;
-    /** What was read, so a caller can state a file's size. Zero unless something was read. */
-    readonly size: number;
-    /** The read's own message, when it failed. */
-    readonly error: string | null;
+  readonly status: SideBytesStatus;
+  /** Live only while this hook is mounted with this side and path. Null unless `ready`. */
+  readonly url: string | null;
+  /** What was read, so a caller can state a file's size. Zero unless something was read. */
+  readonly size: number;
+  /** The read's own message, when it failed. */
+  readonly error: string | null;
 }
 
 /** One side's read, as whatever the caller turned the bytes into. */
 export interface SideContent<T> {
-    readonly status: SideBytesStatus;
-    /** Null unless `ready`. */
-    readonly value: T | null;
-    /** What was read, so a caller can state a file's size. Zero unless something was read. */
-    readonly size: number;
-    readonly error: string | null;
+  readonly status: SideBytesStatus;
+  /** Null unless `ready`. */
+  readonly value: T | null;
+  /** What was read, so a caller can state a file's size. Zero unless something was read. */
+  readonly size: number;
+  readonly error: string | null;
 }
 
 const NOTHING: SideContent<never> = { status: "absent", value: null, size: 0, error: null };
 
 /** One side as a value, so an effect can depend on it without depending on an object literal. */
 export function comparisonSideKey(side: ComparisonSide | null): string {
-    if (!side) return "none";
-    return side.at === "revision" ? `revision:${side.revision}` : "working-tree";
+  if (!side) return "none";
+  return side.at === "revision" ? `revision:${side.revision}` : "working-tree";
 }
 
 /**
@@ -111,25 +110,25 @@ export function comparisonSideKey(side: ComparisonSide | null): string {
  *  of a stated reason. Read on every read; identity changes do not cause one.
  */
 export function useSideObjectUrl(
-    side: ComparisonSide | null,
-    path: string,
-    mediaTypeOf: (bytes: Uint8Array) => string | null,
+  side: ComparisonSide | null,
+  path: string,
+  mediaTypeOf: (bytes: Uint8Array) => string | null
 ): SideBytes {
-    const state = useSideRead<string>(
-        side,
-        path,
-        // The cast is what every other blob in the renderer does with a `Uint8Array`: the DOM
-        // types want a buffer whose backing store is not shared, and nothing here can hand over a
-        // `SharedArrayBuffer` in the first place.
-        bytes => {
-            const type = mediaTypeOf(bytes);
-            return type === null ? null : URL.createObjectURL(new Blob([bytes as BlobPart], { type }));
-        },
-        // The one line this hook exists for. It runs when the selection moves and when the pane
-        // goes away, which are the only two ways a URL stops being wanted.
-        url => URL.revokeObjectURL(url),
-    );
-    return { status: state.status, url: state.value, size: state.size, error: state.error };
+  const state = useSideRead<string>(
+    side,
+    path,
+    // The cast is what every other blob in the renderer does with a `Uint8Array`: the DOM
+    // types want a buffer whose backing store is not shared, and nothing here can hand over a
+    // `SharedArrayBuffer` in the first place.
+    (bytes) => {
+      const type = mediaTypeOf(bytes);
+      return type === null ? null : URL.createObjectURL(new Blob([bytes as BlobPart], { type }));
+    },
+    // The one line this hook exists for. It runs when the selection moves and when the pane
+    // goes away, which are the only two ways a URL stops being wanted.
+    (url) => URL.revokeObjectURL(url)
+  );
+  return { status: state.status, url: state.value, size: state.size, error: state.error };
 }
 
 /**
@@ -145,7 +144,7 @@ export function useSideObjectUrl(
  * table and produces a reason the caller can put on screen.
  */
 export function useSideBytes(side: ComparisonSide | null, path: string): SideContent<Uint8Array> {
-    return useSideRead<Uint8Array>(side, path, bytes => bytes);
+  return useSideRead<Uint8Array>(side, path, (bytes) => bytes);
 }
 
 /**
@@ -158,80 +157,81 @@ export function useSideBytes(side: ComparisonSide | null, path: string): SideCon
  * nothing is made or released for them.
  */
 function useSideRead<T>(
-    side: ComparisonSide | null,
-    path: string,
-    make: (bytes: Uint8Array) => T | null,
-    release?: (value: T) => void,
+  side: ComparisonSide | null,
+  path: string,
+  make: (bytes: Uint8Array) => T | null,
+  release?: (value: T) => void
 ): SideContent<T> {
-    const { context } = useWorkspace();
-    const [state, setState] = useState<SideContent<T>>(NOTHING);
+  const { context } = useWorkspace();
+  const [state, setState] = useState<SideContent<T>>(NOTHING);
 
-    const service = useMemo(
-        () => (context ? context.services.get<VersionControlService>(Services.VersionControl) : null),
-        [context],
-    );
+  const service = useMemo(
+    () => (context ? context.services.get<VersionControlService>(Services.VersionControl) : null),
+    [context]
+  );
 
-    // Held rather than depended on: both are written inline at nearly every call site, so
-    // depending on them would re-read the file on every render of the presenter.
-    const makeRef = useRef(make);
-    makeRef.current = make;
-    const releaseRef = useRef(release);
-    releaseRef.current = release;
+  // Held rather than depended on: both are written inline at nearly every call site, so
+  // depending on them would re-read the file on every render of the presenter.
+  const makeRef = useRef(make);
+  makeRef.current = make;
+  const releaseRef = useRef(release);
+  releaseRef.current = release;
 
-    const key = comparisonSideKey(side);
-    const revision = side?.at === "revision" ? side.revision : null;
+  const key = comparisonSideKey(side);
+  const revision = side?.at === "revision" ? side.revision : null;
 
-    useEffect(() => {
-        if (!service || !side) {
-            setState(NOTHING);
-            return;
+  useEffect(() => {
+    if (!service || !side) {
+      setState(NOTHING);
+      return;
+    }
+
+    let cancelled = false;
+    let made: T | null = null;
+    setState({ status: "loading", value: null, size: 0, error: null });
+
+    void (async () => {
+      try {
+        const bytes =
+          revision === null
+            ? await service.readWorkingFile(path)
+            : await service.readBlob(revision, path);
+        if (cancelled) return;
+        if (bytes === null) {
+          setState({ status: "tooLarge", value: null, size: 0, error: null });
+          return;
         }
+        const value = makeRef.current(bytes);
+        if (value === null) {
+          setState({ status: "unsupported", value: null, size: bytes.length, error: null });
+          return;
+        }
+        // Assigned before anything else can run: the cleanup below cannot interleave with
+        // these two statements, so a value that exists is always one the cleanup can see.
+        made = value;
+        setState({ status: "ready", value, size: bytes.length, error: null });
+      } catch (thrown) {
+        if (cancelled) return;
+        setState({
+          status: "failed",
+          value: null,
+          size: 0,
+          error: thrown instanceof Error ? thrown.message : String(thrown)
+        });
+      }
+    })();
 
-        let cancelled = false;
-        let made: T | null = null;
-        setState({ status: "loading", value: null, size: 0, error: null });
+    return () => {
+      cancelled = true;
+      if (made !== null) {
+        releaseRef.current?.(made);
+        made = null;
+      }
+    };
+    // `side` itself is excluded on purpose: it is written as an object literal at the call
+    // sites, and `key` plus `revision` carry everything about it that changes a read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [service, key, revision, path]);
 
-        void (async () => {
-            try {
-                const bytes = revision === null
-                    ? await service.readWorkingFile(path)
-                    : await service.readBlob(revision, path);
-                if (cancelled) return;
-                if (bytes === null) {
-                    setState({ status: "tooLarge", value: null, size: 0, error: null });
-                    return;
-                }
-                const value = makeRef.current(bytes);
-                if (value === null) {
-                    setState({ status: "unsupported", value: null, size: bytes.length, error: null });
-                    return;
-                }
-                // Assigned before anything else can run: the cleanup below cannot interleave with
-                // these two statements, so a value that exists is always one the cleanup can see.
-                made = value;
-                setState({ status: "ready", value, size: bytes.length, error: null });
-            } catch (thrown) {
-                if (cancelled) return;
-                setState({
-                    status: "failed",
-                    value: null,
-                    size: 0,
-                    error: thrown instanceof Error ? thrown.message : String(thrown),
-                });
-            }
-        })();
-
-        return () => {
-            cancelled = true;
-            if (made !== null) {
-                releaseRef.current?.(made);
-                made = null;
-            }
-        };
-        // `side` itself is excluded on purpose: it is written as an object literal at the call
-        // sites, and `key` plus `revision` carry everything about it that changes a read.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [service, key, revision, path]);
-
-    return state;
+  return state;
 }

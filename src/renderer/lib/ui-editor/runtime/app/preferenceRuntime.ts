@@ -27,12 +27,12 @@
  */
 
 import {
-    DEFAULT_PLAYER_PREFERENCES,
-    PLAYER_PREFERENCE_KEYS,
-    normalizePlayerPreference,
-    type PlayerPreferenceKey,
-    type PlayerPreferenceValue,
-    type PlayerPreferences,
+  DEFAULT_PLAYER_PREFERENCES,
+  PLAYER_PREFERENCE_KEYS,
+  normalizePlayerPreference,
+  type PlayerPreferenceKey,
+  type PlayerPreferenceValue,
+  type PlayerPreferences
 } from "@shared/types/preference";
 
 /**
@@ -48,22 +48,24 @@ export const PLAYER_PREFERENCES_PERSISTENCE_KEY = "game.preferences";
 
 /** The minimum of `Game.preference` this module needs; structural so tests need no engine. */
 export type PreferenceStoreLike = {
-    getPreferences: () => Record<string, unknown>;
-    importPreferences: (values: Record<string, unknown>) => void;
-    onPreferenceChange: (listener: (key: string, value: unknown) => void) => { cancel?: () => void } | void;
+  getPreferences: () => Record<string, unknown>;
+  importPreferences: (values: Record<string, unknown>) => void;
+  onPreferenceChange: (
+    listener: (key: string, value: unknown) => void
+  ) => { cancel?: () => void } | void;
 };
 
 export type PlayerPreferencePersistenceOptions = {
-    /** `game.preference`. */
-    preference: PreferenceStoreLike | undefined;
-    /**
-     * The project's authored defaults. Absent (a bundle assembled before the feature) means the
-     * engine's own, which is exactly how those bundles already behaved.
-     */
-    defaults?: PlayerPreferences;
-    read: (key: string) => Promise<unknown> | unknown;
-    write: (key: string, value: unknown) => Promise<void> | void;
-    log?: (level: "info" | "warning" | "error", message: string) => void;
+  /** `game.preference`. */
+  preference: PreferenceStoreLike | undefined;
+  /**
+   * The project's authored defaults. Absent (a bundle assembled before the feature) means the
+   * engine's own, which is exactly how those bundles already behaved.
+   */
+  defaults?: PlayerPreferences;
+  read: (key: string) => Promise<unknown> | unknown;
+  write: (key: string, value: unknown) => Promise<void> | void;
+  log?: (level: "info" | "warning" | "error", message: string) => void;
 };
 
 /**
@@ -79,30 +81,30 @@ export type PlayerPreferencePersistenceOptions = {
  * player on the authored defaults rather than throwing on the boot path.
  */
 export function readPersistedPlayerPreferences(raw: unknown): Partial<PlayerPreferences> {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        return {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {};
+  }
+  const record = raw as Record<string, unknown>;
+  const stored: Record<string, PlayerPreferenceValue> = {};
+  for (const key of PLAYER_PREFERENCE_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(record, key) && record[key] !== undefined) {
+      stored[key] = normalizePlayerPreference(key, record[key]);
     }
-    const record = raw as Record<string, unknown>;
-    const stored: Record<string, PlayerPreferenceValue> = {};
-    for (const key of PLAYER_PREFERENCE_KEYS) {
-        if (Object.prototype.hasOwnProperty.call(record, key) && record[key] !== undefined) {
-            stored[key] = normalizePlayerPreference(key, record[key]);
-        }
-    }
-    return stored as Partial<PlayerPreferences>;
+  }
+  return stored as Partial<PlayerPreferences>;
 }
 
 /** The known preferences out of a live store, ready to be written back. */
 function collectPlayerPreferences(preference: PreferenceStoreLike): Partial<PlayerPreferences> {
-    const current = preference.getPreferences();
-    const collected: Record<string, PlayerPreferenceValue> = {};
-    for (const key of PLAYER_PREFERENCE_KEYS) {
-        const value = current[key];
-        if (value !== undefined) {
-            collected[key] = normalizePlayerPreference(key, value);
-        }
+  const current = preference.getPreferences();
+  const collected: Record<string, PlayerPreferenceValue> = {};
+  for (const key of PLAYER_PREFERENCE_KEYS) {
+    const value = current[key];
+    if (value !== undefined) {
+      collected[key] = normalizePlayerPreference(key, value);
     }
-    return collected as Partial<PlayerPreferences>;
+  }
+  return collected as Partial<PlayerPreferences>;
 }
 
 /**
@@ -121,56 +123,56 @@ function collectPlayerPreferences(preference: PreferenceStoreLike): Partial<Play
  * Returns a disposer for the subscription.
  */
 export async function attachPlayerPreferences(
-    options: PlayerPreferencePersistenceOptions,
+  options: PlayerPreferencePersistenceOptions
 ): Promise<() => void> {
-    const { preference, defaults, read, write, log } = options;
-    if (!preference || typeof preference.importPreferences !== "function") {
-        return () => undefined;
-    }
+  const { preference, defaults, read, write, log } = options;
+  if (!preference || typeof preference.importPreferences !== "function") {
+    return () => undefined;
+  }
 
-    // The authored defaults first, unconditionally: they are the floor every launch starts from,
-    // and a store that has never been written must still move the game off the engine's values.
+  // The authored defaults first, unconditionally: they are the floor every launch starts from,
+  // and a store that has never been written must still move the game off the engine's values.
+  try {
+    preference.importPreferences({ ...DEFAULT_PLAYER_PREFERENCES, ...(defaults ?? {}) });
+  } catch (error) {
+    log?.("warning", `Preference defaults could not be applied: ${String(error)}`);
+  }
+
+  try {
+    const stored = readPersistedPlayerPreferences(await read(PLAYER_PREFERENCES_PERSISTENCE_KEY));
+    if (Object.keys(stored).length > 0) {
+      preference.importPreferences(stored as Record<string, unknown>);
+    }
+  } catch (error) {
+    // A store that cannot be read is a player who starts at the authored defaults, not a game
+    // that fails to boot.
+    log?.("warning", `Player preferences could not be restored: ${String(error)}`);
+  }
+
+  let disposed = false;
+  // Subscribed after both imports so the boot path writes nothing: the restore would otherwise
+  // fire a change per key and echo the store straight back at itself.
+  const token = preference.onPreferenceChange((key: string) => {
+    if (disposed || !isKnownPreference(key)) {
+      return;
+    }
     try {
-        preference.importPreferences({ ...DEFAULT_PLAYER_PREFERENCES, ...(defaults ?? {}) });
+      void write(PLAYER_PREFERENCES_PERSISTENCE_KEY, collectPlayerPreferences(preference));
     } catch (error) {
-        log?.("warning", `Preference defaults could not be applied: ${String(error)}`);
+      log?.("warning", `Player preferences could not be saved: ${String(error)}`);
     }
+    // Nothing is notified from here. The host already fans preference changes out to whoever
+    // has to re-read one (`subscribeGamePreferenceChanges` -> the blueprint event and the
+    // mixer listeners), and it subscribes to this same store - a second fan-out would deliver
+    // every volume change twice.
+  });
 
-    try {
-        const stored = readPersistedPlayerPreferences(await read(PLAYER_PREFERENCES_PERSISTENCE_KEY));
-        if (Object.keys(stored).length > 0) {
-            preference.importPreferences(stored as Record<string, unknown>);
-        }
-    } catch (error) {
-        // A store that cannot be read is a player who starts at the authored defaults, not a game
-        // that fails to boot.
-        log?.("warning", `Player preferences could not be restored: ${String(error)}`);
-    }
-
-    let disposed = false;
-    // Subscribed after both imports so the boot path writes nothing: the restore would otherwise
-    // fire a change per key and echo the store straight back at itself.
-    const token = preference.onPreferenceChange((key: string) => {
-        if (disposed || !isKnownPreference(key)) {
-            return;
-        }
-        try {
-            void write(PLAYER_PREFERENCES_PERSISTENCE_KEY, collectPlayerPreferences(preference));
-        } catch (error) {
-            log?.("warning", `Player preferences could not be saved: ${String(error)}`);
-        }
-        // Nothing is notified from here. The host already fans preference changes out to whoever
-        // has to re-read one (`subscribeGamePreferenceChanges` -> the blueprint event and the
-        // mixer listeners), and it subscribes to this same store - a second fan-out would deliver
-        // every volume change twice.
-    });
-
-    return () => {
-        disposed = true;
-        (token as { cancel?: () => void } | undefined)?.cancel?.();
-    };
+  return () => {
+    disposed = true;
+    (token as { cancel?: () => void } | undefined)?.cancel?.();
+  };
 }
 
 function isKnownPreference(key: string): key is PlayerPreferenceKey {
-    return (PLAYER_PREFERENCE_KEYS as readonly string[]).includes(key);
+  return (PLAYER_PREFERENCE_KEYS as readonly string[]).includes(key);
 }

@@ -4,7 +4,10 @@ import { getInterface } from "@/lib/app/bridge";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { NotificationType } from "@/lib/workspace/services/ui/types";
-import { observeWorkspaceAnomalies, type WorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
+import {
+  observeWorkspaceAnomalies,
+  type WorkspaceAnomaly
+} from "@/lib/workspace/recovery/anomalyLog";
 import { useWorkspace } from "../context";
 
 /**
@@ -31,46 +34,47 @@ import { useWorkspace } from "../context";
 let offered = false;
 
 export function useRecoveryOffer() {
-    const { context, recovery } = useWorkspace();
+  const { context, recovery } = useWorkspace();
 
-    useEffect(() => {
-        // Nothing to offer inside the shell itself, and the error screen has its own button.
-        if (!context || recovery) {
-            return;
-        }
+  useEffect(() => {
+    // Nothing to offer inside the shell itself, and the error screen has its own button.
+    if (!context || recovery) {
+      return;
+    }
 
-        const ui = context.services.get<UIService>(Services.UI);
+    const ui = context.services.get<UIService>(Services.UI);
 
-        return observeWorkspaceAnomalies((anomalies: readonly WorkspaceAnomaly[]) => {
-            if (offered) {
-                return;
+    return observeWorkspaceAnomalies((anomalies: readonly WorkspaceAnomaly[]) => {
+      if (offered) {
+        return;
+      }
+      const degraded = anomalies.filter((anomaly) => anomaly.severity === "degraded");
+      if (degraded.length === 0) {
+        return;
+      }
+      offered = true;
+
+      ui.notifications.showSticky({
+        type: NotificationType.Error,
+        message: translate("workspace.recovery.offer.message"),
+        detail:
+          degraded.length === 1
+            ? translate("workspace.recovery.offer.detailOne")
+            : translate("workspace.recovery.offer.detailMany", { count: degraded.length }),
+        actions: [
+          {
+            label: translate("workspace.recovery.offer.enter"),
+            primary: true,
+            onClick: () => {
+              // The reason is the first anomaly's own text rather than a summary: it
+              // is what the recovery panel leads with, and the panel's whole contract
+              // is that it repeats what happened rather than paraphrasing it.
+              const reason = `${degraded[0].source}: ${degraded[0].raw}`;
+              void getInterface().workspace.setRecoveryMode(true, reason);
             }
-            const degraded = anomalies.filter(anomaly => anomaly.severity === "degraded");
-            if (degraded.length === 0) {
-                return;
-            }
-            offered = true;
-
-            ui.notifications.showSticky({
-                type: NotificationType.Error,
-                message: translate("workspace.recovery.offer.message"),
-                detail: degraded.length === 1
-                    ? translate("workspace.recovery.offer.detailOne")
-                    : translate("workspace.recovery.offer.detailMany", { count: degraded.length }),
-                actions: [
-                    {
-                        label: translate("workspace.recovery.offer.enter"),
-                        primary: true,
-                        onClick: () => {
-                            // The reason is the first anomaly's own text rather than a summary: it
-                            // is what the recovery panel leads with, and the panel's whole contract
-                            // is that it repeats what happened rather than paraphrasing it.
-                            const reason = `${degraded[0].source}: ${degraded[0].raw}`;
-                            void getInterface().workspace.setRecoveryMode(true, reason);
-                        },
-                    },
-                ],
-            });
-        });
-    }, [context, recovery]);
+          }
+        ]
+      });
+    });
+  }, [context, recovery]);
 }

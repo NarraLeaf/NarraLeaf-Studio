@@ -33,35 +33,35 @@ const EDITOR_SERVICES_SEGMENTS = ["editor", "services"] as const;
  * descriptor field absent instead of shipping an empty object.
  */
 export async function readPublishedPluginData(input: {
-    projectPath: string;
-    manifest: NormalizedPluginManifestV2;
-    /** Reports a store that exists but could not be parsed. */
-    onWarning?: (message: string) => void;
+  projectPath: string;
+  manifest: NormalizedPluginManifestV2;
+  /** Reports a store that exists but could not be parsed. */
+  onWarning?: (message: string) => void;
 }): Promise<Record<string, unknown> | undefined> {
-    const namespaces = input.manifest.contributes.runtimeData;
-    if (namespaces.length === 0) {
-        return undefined;
-    }
+  const namespaces = input.manifest.contributes.runtimeData;
+  if (namespaces.length === 0) {
+    return undefined;
+  }
 
-    const collected: Record<string, unknown> = {};
-    for (const namespace of namespaces) {
-        const fileName = `${pluginStoreNamespace(input.manifest.id, namespace)}.json`;
-        const storePath = path.join(input.projectPath, ...EDITOR_SERVICES_SEGMENTS, fileName);
-        let raw: string;
-        try {
-            raw = await fs.readFile(storePath, "utf-8");
-        } catch {
-            continue; // never written - the plugin must tolerate absent data
-        }
-        try {
-            collected[namespace] = JSON.parse(raw) as unknown;
-        } catch (error) {
-            input.onWarning?.(
-                `[plugin:${input.manifest.id}] skipped unreadable runtime data "${namespace}" ` +
-                `(${storePath}): ${error instanceof Error ? error.message : String(error)}`,
-            );
-        }
+  const collected: Record<string, unknown> = {};
+  for (const namespace of namespaces) {
+    const fileName = `${pluginStoreNamespace(input.manifest.id, namespace)}.json`;
+    const storePath = path.join(input.projectPath, ...EDITOR_SERVICES_SEGMENTS, fileName);
+    let raw: string;
+    try {
+      raw = await fs.readFile(storePath, "utf-8");
+    } catch {
+      continue; // never written - the plugin must tolerate absent data
     }
+    try {
+      collected[namespace] = JSON.parse(raw) as unknown;
+    } catch (error) {
+      input.onWarning?.(
+        `[plugin:${input.manifest.id}] skipped unreadable runtime data "${namespace}" ` +
+          `(${storePath}): ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
 
-    return Object.keys(collected).length > 0 ? collected : undefined;
+  return Object.keys(collected).length > 0 ? collected : undefined;
 }

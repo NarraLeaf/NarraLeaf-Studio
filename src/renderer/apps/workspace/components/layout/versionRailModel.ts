@@ -1,9 +1,9 @@
 import type {
-    RevisionId,
-    VcsAvailability,
-    VcsFileChange,
-    VcsHistoryEntry,
-    VcsUnavailableReason,
+  RevisionId,
+  VcsAvailability,
+  VcsFileChange,
+  VcsHistoryEntry,
+  VcsUnavailableReason
 } from "@shared/types/vcs";
 import { VCS_DEFAULT_BRANCH, parseVcsRemoteUrl } from "@shared/types/vcs";
 import type { TranslationKey, Translator } from "@shared/i18n";
@@ -52,32 +52,32 @@ export type VersionRailPresence = "absent" | "strip" | "panel";
  * `DockEnv.versionRailWidth` is the whole contract.
  */
 export function versionRailWidth(presence: VersionRailPresence): number {
-    switch (presence) {
-        case "absent":
-            return 0;
-        case "strip":
-            return VERSION_RAIL_COLLAPSED_WIDTH;
-        case "panel":
-            return VERSION_RAIL_EXPANDED_WIDTH;
-    }
+  switch (presence) {
+    case "absent":
+      return 0;
+    case "strip":
+      return VERSION_RAIL_COLLAPSED_WIDTH;
+    case "panel":
+      return VERSION_RAIL_EXPANDED_WIDTH;
+  }
 }
 
 export interface VersionRailPresenceInputs {
-    /** Which of the six surface states this window is in. */
-    state: VersionSurfaceState;
-    /** The author has the panel open - the persisted `ui.versionRail.expanded` preference. */
-    expanded: boolean;
-    /**
-     * Project data is frozen right now, for ANY reason.
-     *
-     * A revision preview and the palette's manual freeze are treated alike deliberately. Both are a
-     * temporary state the author is standing in and has to be able to leave, and a manually frozen
-     * workspace with no visible way out is strictly worse than a strip nobody asked for: the author
-     * would be left with a project that silently refuses to save. Reading the freeze rather than
-     * `state.kind === "revision"` is what makes the manual case reachable at all - a manual freeze
-     * leaves the surface state on `current`.
-     */
-    frozen: boolean;
+  /** Which of the six surface states this window is in. */
+  state: VersionSurfaceState;
+  /** The author has the panel open - the persisted `ui.versionRail.expanded` preference. */
+  expanded: boolean;
+  /**
+   * Project data is frozen right now, for ANY reason.
+   *
+   * A revision preview and the palette's manual freeze are treated alike deliberately. Both are a
+   * temporary state the author is standing in and has to be able to leave, and a manually frozen
+   * workspace with no visible way out is strictly worse than a strip nobody asked for: the author
+   * would be left with a project that silently refuses to save. Reading the freeze rather than
+   * `state.kind === "revision"` is what makes the manual case reachable at all - a manual freeze
+   * leaves the surface state on `current`.
+   */
+  frozen: boolean;
 }
 
 /**
@@ -94,13 +94,13 @@ export interface VersionRailPresenceInputs {
  *    which is the correction, and the reason this returns `absent` in the ordinary case.
  */
 export function resolveVersionRailPresence(inputs: VersionRailPresenceInputs): VersionRailPresence {
-    if (!isVersionSurfaceVisible(inputs.state)) {
-        return "absent";
-    }
-    if (inputs.expanded) {
-        return "panel";
-    }
-    return inputs.frozen ? "strip" : "absent";
+  if (!isVersionSurfaceVisible(inputs.state)) {
+    return "absent";
+  }
+  if (inputs.expanded) {
+    return "panel";
+  }
+  return inputs.frozen ? "strip" : "absent";
 }
 
 /**
@@ -112,35 +112,35 @@ export function resolveVersionRailPresence(inputs: VersionRailPresenceInputs): V
  * distrust the whole feature.
  */
 export type VersionSurfaceState =
-    /** Nothing has answered yet. Availability is one IPC round trip, and it dlopens ~29MB. */
-    | { kind: "probing" }
-    /**
-     * This host cannot do version control. Every surface must render NOTHING in this state - not a
-     * disabled button, not an explanation. See {@link isVersionSurfaceVisible}.
-     */
-    | { kind: "unavailable"; reason: VcsUnavailableReason; detail?: string }
-    /** The backend works but this project has no repository. The surface offers to make one. */
-    | { kind: "not-a-repository" }
-    /** A repository with no revisions in it yet. */
-    | { kind: "empty" }
-    /** The working tree, which is the ordinary state. `number` is null until info has been read. */
-    | { kind: "current"; head: RevisionId; number: number | null }
-    /** A past revision is on screen and project data is frozen. `label` is usually `#4`. */
-    | { kind: "revision"; revision: RevisionId; label?: string };
+  /** Nothing has answered yet. Availability is one IPC round trip, and it dlopens ~29MB. */
+  | { kind: "probing" }
+  /**
+   * This host cannot do version control. Every surface must render NOTHING in this state - not a
+   * disabled button, not an explanation. See {@link isVersionSurfaceVisible}.
+   */
+  | { kind: "unavailable"; reason: VcsUnavailableReason; detail?: string }
+  /** The backend works but this project has no repository. The surface offers to make one. */
+  | { kind: "not-a-repository" }
+  /** A repository with no revisions in it yet. */
+  | { kind: "empty" }
+  /** The working tree, which is the ordinary state. `number` is null until info has been read. */
+  | { kind: "current"; head: RevisionId; number: number | null }
+  /** A past revision is on screen and project data is frozen. `label` is usually `#4`. */
+  | { kind: "revision"; revision: RevisionId; label?: string };
 
 export interface VersionSurfaceInputs {
-    /** Null until `getAvailability` has answered. */
-    availability: VcsAvailability | null;
-    /** Null until `isRepository` has answered. */
-    isRepository: boolean | null;
-    /** Head of the current branch, null in a repository with no revisions. */
-    head: RevisionId | null;
-    /** Head's revision number, null when info has not been read (or there is no head). */
-    headNumber: number | null;
-    /** The revision the editors are showing, from `VersionControlService.getShownRevision`. */
-    shownRevision: RevisionId | null;
-    /** How to name the shown revision; the freeze reason's own label. */
-    shownLabel?: string;
+  /** Null until `getAvailability` has answered. */
+  availability: VcsAvailability | null;
+  /** Null until `isRepository` has answered. */
+  isRepository: boolean | null;
+  /** Head of the current branch, null in a repository with no revisions. */
+  head: RevisionId | null;
+  /** Head's revision number, null when info has not been read (or there is no head). */
+  headNumber: number | null;
+  /** The revision the editors are showing, from `VersionControlService.getShownRevision`. */
+  shownRevision: RevisionId | null;
+  /** How to name the shown revision; the freeze reason's own label. */
+  shownLabel?: string;
 }
 
 /**
@@ -153,26 +153,26 @@ export interface VersionSurfaceInputs {
  * (docs/version-control.md; `VcsUnavailableReason`) and only one of them is worth offering a fix for.
  */
 export function resolveVersionSurfaceState(inputs: VersionSurfaceInputs): VersionSurfaceState {
-    const { availability } = inputs;
-    if (!availability) {
-        return { kind: "probing" };
-    }
-    if (!availability.available) {
-        return { kind: "unavailable", reason: availability.reason, detail: availability.detail };
-    }
-    if (inputs.shownRevision) {
-        return { kind: "revision", revision: inputs.shownRevision, label: inputs.shownLabel };
-    }
-    if (inputs.isRepository === null) {
-        return { kind: "probing" };
-    }
-    if (!inputs.isRepository) {
-        return { kind: "not-a-repository" };
-    }
-    if (!inputs.head) {
-        return { kind: "empty" };
-    }
-    return { kind: "current", head: inputs.head, number: inputs.headNumber };
+  const { availability } = inputs;
+  if (!availability) {
+    return { kind: "probing" };
+  }
+  if (!availability.available) {
+    return { kind: "unavailable", reason: availability.reason, detail: availability.detail };
+  }
+  if (inputs.shownRevision) {
+    return { kind: "revision", revision: inputs.shownRevision, label: inputs.shownLabel };
+  }
+  if (inputs.isRepository === null) {
+    return { kind: "probing" };
+  }
+  if (!inputs.isRepository) {
+    return { kind: "not-a-repository" };
+  }
+  if (!inputs.head) {
+    return { kind: "empty" };
+  }
+  return { kind: "current", head: inputs.head, number: inputs.headNumber };
 }
 
 /**
@@ -195,28 +195,28 @@ export function resolveVersionSurfaceState(inputs: VersionSurfaceInputs): Versio
  * a 29MB library load. It costs no layout reflow at all now that probing produces no column.
  */
 export function isVersionSurfaceVisible(state: VersionSurfaceState): boolean {
-    return state.kind !== "unavailable";
+  return state.kind !== "unavailable";
 }
 
 export interface CommitFormInputs {
-    /** Which of the six surface states this window is in. */
-    state: VersionSurfaceState;
-    /**
-     * Project data is frozen right now, for ANY reason - a revision preview or the palette's manual
-     * freeze. Read from the freeze latch rather than from {@link state}, for the reason
-     * {@link VersionRailPresenceInputs.frozen} gives: a manual freeze leaves the state on `current`.
-     */
-    frozen: boolean;
-    /** A long operation is in flight. */
-    busy: boolean;
-    /**
-     * How many files the last scan found, or null when nobody has scanned in this window.
-     *
-     * Null is the ordinary state and is NOT "clean": a scan is not a pure read (docs §4.17), so it
-     * only ever happens because someone asked - opening the rail, or pressing the refresh beside the
-     * change list. See {@link canCommit} for why the difference decides whether the button is live.
-     */
-    changedFiles?: number | null;
+  /** Which of the six surface states this window is in. */
+  state: VersionSurfaceState;
+  /**
+   * Project data is frozen right now, for ANY reason - a revision preview or the palette's manual
+   * freeze. Read from the freeze latch rather than from {@link state}, for the reason
+   * {@link VersionRailPresenceInputs.frozen} gives: a manual freeze leaves the state on `current`.
+   */
+  frozen: boolean;
+  /** A long operation is in flight. */
+  busy: boolean;
+  /**
+   * How many files the last scan found, or null when nobody has scanned in this window.
+   *
+   * Null is the ordinary state and is NOT "clean": a scan is not a pure read (docs §4.17), so it
+   * only ever happens because someone asked - opening the rail, or pressing the refresh beside the
+   * change list. See {@link canCommit} for why the difference decides whether the button is live.
+   */
+  changedFiles?: number | null;
 }
 
 /**
@@ -237,10 +237,10 @@ export interface CommitFormInputs {
  * IS the answer.
  */
 export function isCommitFormPresent(inputs: Pick<CommitFormInputs, "state" | "frozen">): boolean {
-    if (inputs.frozen) {
-        return false;
-    }
-    return inputs.state.kind === "current" || inputs.state.kind === "empty";
+  if (inputs.frozen) {
+    return false;
+  }
+  return inputs.state.kind === "current" || inputs.state.kind === "empty";
 }
 
 /**
@@ -263,10 +263,12 @@ export function isCommitFormPresent(inputs: Pick<CommitFormInputs, "state" | "fr
  * feature.
  */
 export function canCommit(inputs: CommitFormInputs): boolean {
-    if (!isCommitFormPresent(inputs) || inputs.busy) {
-        return false;
-    }
-    return inputs.changedFiles === undefined || inputs.changedFiles === null || inputs.changedFiles > 0;
+  if (!isCommitFormPresent(inputs) || inputs.busy) {
+    return false;
+  }
+  return (
+    inputs.changedFiles === undefined || inputs.changedFiles === null || inputs.changedFiles > 0
+  );
 }
 
 /**
@@ -278,32 +280,34 @@ export function canCommit(inputs: CommitFormInputs): boolean {
  * fix. Collapsing them into one string would send half the users to reinstall for nothing.
  */
 export function unavailableReasonKey(reason: VcsUnavailableReason): TranslationKey {
-    return (reason === "unsupported-platform"
-        ? "workspace.shell.versionControl.unavailable.platform"
-        : "workspace.shell.versionControl.unavailable.installation") as TranslationKey;
+  return (
+    reason === "unsupported-platform"
+      ? "workspace.shell.versionControl.unavailable.platform"
+      : "workspace.shell.versionControl.unavailable.installation"
+  ) as TranslationKey;
 }
 
 /** One row of the rail's linear history. */
 export interface FlatHistoryEntry {
-    revision: RevisionId;
-    number: number;
-    /** Only present when the caller asked for details. Absent is normal - see {@link isCheckpoint}. */
-    kind?: VcsHistoryEntry["kind"];
-    /**
-     * What the revision says it is. Absent when nobody wrote one, which is a real answer: the
-     * repository's first commit is written by `initRepository` and carries no message at all.
-     */
-    message?: VcsHistoryEntry["message"];
-    /** Epoch milliseconds, UTC. Absent when the revision records no time. */
-    timestamp?: VcsHistoryEntry["timestamp"];
-    /** Whatever identity the committing client was configured with. Absent when it had none. */
-    author?: VcsHistoryEntry["author"];
-    /**
-     * This revision has more than one parent, so the line the rail draws through it hides a second
-     * ancestry. Marked rather than expanded: the rail is a linear list by decision, and an
-     * unmarked merge would be a linear list that quietly lies.
-     */
-    merge: boolean;
+  revision: RevisionId;
+  number: number;
+  /** Only present when the caller asked for details. Absent is normal - see {@link isCheckpoint}. */
+  kind?: VcsHistoryEntry["kind"];
+  /**
+   * What the revision says it is. Absent when nobody wrote one, which is a real answer: the
+   * repository's first commit is written by `initRepository` and carries no message at all.
+   */
+  message?: VcsHistoryEntry["message"];
+  /** Epoch milliseconds, UTC. Absent when the revision records no time. */
+  timestamp?: VcsHistoryEntry["timestamp"];
+  /** Whatever identity the committing client was configured with. Absent when it had none. */
+  author?: VcsHistoryEntry["author"];
+  /**
+   * This revision has more than one parent, so the line the rail draws through it hides a second
+   * ancestry. Marked rather than expanded: the rail is a linear list by decision, and an
+   * unmarked merge would be a linear list that quietly lies.
+   */
+  merge: boolean;
 }
 
 /**
@@ -322,35 +326,35 @@ export interface FlatHistoryEntry {
  * and walking off the end is the ordinary case rather than an error.
  */
 export function flattenFirstParent(entries: readonly VcsHistoryEntry[]): FlatHistoryEntry[] {
-    if (entries.length === 0) {
-        return [];
-    }
-    const byRevision = new Map(entries.map(entry => [entry.revision, entry]));
-    // The newest entry: `getHistory` answers newest-first, but the walk asks for the highest revision
-    // number rather than trusting position, so a caller that sorted differently still gets a tip.
-    let cursor: VcsHistoryEntry | undefined = entries.reduce(
-        (best, entry) => (entry.number > best.number ? entry : best),
-        entries[0],
-    );
-    const out: FlatHistoryEntry[] = [];
-    const seen = new Set<RevisionId>();
-    while (cursor && !seen.has(cursor.revision)) {
-        seen.add(cursor.revision);
-        out.push({
-            revision: cursor.revision,
-            number: cursor.number,
-            kind: cursor.kind,
-            // Spread rather than four assignments, for the reason `VcsManager.getHistory` spreads:
-            // a key the revision does not carry has to stay ABSENT. Assigning `message: undefined`
-            // makes the key present, and a present-but-undefined author renders as a blank line
-            // where the honest answer is nothing at all.
-            ...pickMetadata(cursor),
-            merge: cursor.parents.length > 1,
-        });
-        const parent: RevisionId | undefined = cursor.parents[0];
-        cursor = parent ? byRevision.get(parent) : undefined;
-    }
-    return out;
+  if (entries.length === 0) {
+    return [];
+  }
+  const byRevision = new Map(entries.map((entry) => [entry.revision, entry]));
+  // The newest entry: `getHistory` answers newest-first, but the walk asks for the highest revision
+  // number rather than trusting position, so a caller that sorted differently still gets a tip.
+  let cursor: VcsHistoryEntry | undefined = entries.reduce(
+    (best, entry) => (entry.number > best.number ? entry : best),
+    entries[0]
+  );
+  const out: FlatHistoryEntry[] = [];
+  const seen = new Set<RevisionId>();
+  while (cursor && !seen.has(cursor.revision)) {
+    seen.add(cursor.revision);
+    out.push({
+      revision: cursor.revision,
+      number: cursor.number,
+      kind: cursor.kind,
+      // Spread rather than four assignments, for the reason `VcsManager.getHistory` spreads:
+      // a key the revision does not carry has to stay ABSENT. Assigning `message: undefined`
+      // makes the key present, and a present-but-undefined author renders as a blank line
+      // where the honest answer is nothing at all.
+      ...pickMetadata(cursor),
+      merge: cursor.parents.length > 1
+    });
+    const parent: RevisionId | undefined = cursor.parents[0];
+    cursor = parent ? byRevision.get(parent) : undefined;
+  }
+  return out;
 }
 
 /**
@@ -363,11 +367,11 @@ export function flattenFirstParent(entries: readonly VcsHistoryEntry[]): FlatHis
 export type RevisionMetadata = Pick<FlatHistoryEntry, "message" | "timestamp" | "author">;
 
 function pickMetadata(entry: VcsHistoryEntry): RevisionMetadata {
-    const out: RevisionMetadata = {};
-    if (entry.message !== undefined) out.message = entry.message;
-    if (entry.timestamp !== undefined) out.timestamp = entry.timestamp;
-    if (entry.author !== undefined) out.author = entry.author;
-    return out;
+  const out: RevisionMetadata = {};
+  if (entry.message !== undefined) out.message = entry.message;
+  if (entry.timestamp !== undefined) out.timestamp = entry.timestamp;
+  if (entry.author !== undefined) out.author = entry.author;
+  return out;
 }
 
 /**
@@ -377,13 +381,13 @@ function pickMetadata(entry: VcsHistoryEntry): RevisionMetadata {
  * repository - answer null, which is what stops the focused block from looking one up.
  */
 export function focusedRevision(state: VersionSurfaceState): RevisionId | null {
-    if (state.kind === "revision") {
-        return state.revision;
-    }
-    if (state.kind === "current") {
-        return state.head;
-    }
-    return null;
+  if (state.kind === "revision") {
+    return state.revision;
+  }
+  if (state.kind === "current") {
+    return state.head;
+  }
+  return null;
 }
 
 /**
@@ -395,13 +399,13 @@ export function focusedRevision(state: VersionSurfaceState): RevisionId | null {
  * a per-revision backend call from a render.
  */
 export function findRevisionRow(
-    rows: readonly FlatHistoryEntry[] | null,
-    revision: RevisionId | null,
+  rows: readonly FlatHistoryEntry[] | null,
+  revision: RevisionId | null
 ): FlatHistoryEntry | null {
-    if (!rows || !revision) {
-        return null;
-    }
-    return rows.find(row => row.revision === revision) ?? null;
+  if (!rows || !revision) {
+    return null;
+  }
+  return rows.find((row) => row.revision === revision) ?? null;
 }
 
 /**
@@ -414,19 +418,19 @@ export function findRevisionRow(
  * first when something went wrong.
  */
 export function isCheckpoint(entry: Pick<FlatHistoryEntry, "kind">): boolean {
-    return entry.kind === "checkpoint";
+  return entry.kind === "checkpoint";
 }
 
 export interface CollapseCheckpointsOptions {
-    /** Default false: a checkpoint is not a commit, and an interval timer makes many of them. */
-    showCheckpoints?: boolean;
-    /**
-     * Revisions that stay in the list whatever their kind - the one on screen, above all.
-     *
-     * Without it, an author viewing a checkpoint who collapses the list watches the row they are
-     * standing on disappear, leaving a rail that says they are nowhere.
-     */
-    keep?: ReadonlySet<RevisionId>;
+  /** Default false: a checkpoint is not a commit, and an interval timer makes many of them. */
+  showCheckpoints?: boolean;
+  /**
+   * Revisions that stay in the list whatever their kind - the one on screen, above all.
+   *
+   * Without it, an author viewing a checkpoint who collapses the list watches the row they are
+   * standing on disappear, leaving a rail that says they are nowhere.
+   */
+  keep?: ReadonlySet<RevisionId>;
 }
 
 /**
@@ -437,35 +441,35 @@ export interface CollapseCheckpointsOptions {
  * writing day there are dozens. A list where those are interleaved is a list nobody reads.
  */
 export function collapseCheckpoints(
-    entries: readonly FlatHistoryEntry[],
-    options: CollapseCheckpointsOptions = {},
+  entries: readonly FlatHistoryEntry[],
+  options: CollapseCheckpointsOptions = {}
 ): FlatHistoryEntry[] {
-    if (options.showCheckpoints) {
-        return [...entries];
-    }
-    return entries.filter(entry => !isCheckpoint(entry) || options.keep?.has(entry.revision));
+  if (options.showCheckpoints) {
+    return [...entries];
+  }
+  return entries.filter((entry) => !isCheckpoint(entry) || options.keep?.has(entry.revision));
 }
 
 /** How many rows the collapse is hiding, for the "show N checkpoints" affordance. */
 export function hiddenCheckpointCount(
-    entries: readonly FlatHistoryEntry[],
-    options: CollapseCheckpointsOptions = {},
+  entries: readonly FlatHistoryEntry[],
+  options: CollapseCheckpointsOptions = {}
 ): number {
-    return entries.length - collapseCheckpoints(entries, options).length;
+  return entries.length - collapseCheckpoints(entries, options).length;
 }
 
 /** One read of the history, described by what it asked for and what came back. */
 export interface HistoryPageRead {
-    /**
-     * How many revisions the read asked the service for. 0 means "all of them"
-     * (`VersionControlService.getHistory`), which is by definition the whole history.
-     */
-    limit: number;
-    /**
-     * How many entries came back - the RAW graph entries, counted before
-     * {@link flattenFirstParent} and {@link collapseCheckpoints} have touched them.
-     */
-    received: number;
+  /**
+   * How many revisions the read asked the service for. 0 means "all of them"
+   * (`VersionControlService.getHistory`), which is by definition the whole history.
+   */
+  limit: number;
+  /**
+   * How many entries came back - the RAW graph entries, counted before
+   * {@link flattenFirstParent} and {@link collapseCheckpoints} have touched them.
+   */
+  received: number;
 }
 
 /**
@@ -488,10 +492,10 @@ export interface HistoryPageRead {
  * history with no way to say so.
  */
 export function hasMoreHistory(read: HistoryPageRead): boolean {
-    if (read.limit <= 0) {
-        return false;
-    }
-    return read.received >= read.limit;
+  if (read.limit <= 0) {
+    return false;
+  }
+  return read.received >= read.limit;
 }
 
 /**
@@ -507,7 +511,7 @@ export function hasMoreHistory(read: HistoryPageRead): boolean {
  * short - which is every read at the end of a history - cannot shrink the window on the next press.
  */
 export function nextHistoryLimit(limit: number, step: number): number {
-    return Math.max(limit, 0) + step;
+  return Math.max(limit, 0) + step;
 }
 
 /**
@@ -530,13 +534,13 @@ export const VERSION_CHANGE_LIST_LIMIT = 50;
 
 /** A changed path, cut where the rail cuts it. */
 export interface ChangePathParts {
-    /**
-     * Everything above the file, with no trailing separator - `null` for a file at the repository
-     * root, which is a real case (`nl.config.json`) and not a degenerate one.
-     */
-    directory: string | null;
-    /** The last segment. Empty only for an empty or separator-only input. */
-    name: string;
+  /**
+   * Everything above the file, with no trailing separator - `null` for a file at the repository
+   * root, which is a real case (`nl.config.json`) and not a degenerate one.
+   */
+  directory: string | null;
+  /** The last segment. Empty only for an empty or separator-only input. */
+  name: string;
 }
 
 /**
@@ -552,12 +556,12 @@ export interface ChangePathParts {
  * separator is cheaper than being wrong about one of them in the one place a path is read by eye.
  */
 export function splitChangePath(path: string): ChangePathParts {
-    const normalized = path.replace(/[\\/]+/g, "/").replace(/\/+$/, "");
-    const cut = normalized.lastIndexOf("/");
-    if (cut < 0) {
-        return { directory: null, name: normalized };
-    }
-    return { directory: normalized.slice(0, cut), name: normalized.slice(cut + 1) };
+  const normalized = path.replace(/[\\/]+/g, "/").replace(/\/+$/, "");
+  const cut = normalized.lastIndexOf("/");
+  if (cut < 0) {
+    return { directory: null, name: normalized };
+  }
+  return { directory: normalized.slice(0, cut), name: normalized.slice(cut + 1) };
 }
 
 /**
@@ -579,36 +583,36 @@ export function splitChangePath(path: string): ChangePathParts {
  * only in case would otherwise come out in whatever order the scan happened to produce.
  */
 export function sortFileChanges(files: readonly VcsFileChange[]): VcsFileChange[] {
-    return [...files].sort((a, b) => {
-        if (a.conflictUnresolved !== b.conflictUnresolved) {
-            return a.conflictUnresolved ? -1 : 1;
-        }
-        const left = a.path.toLowerCase();
-        const right = b.path.toLowerCase();
-        if (left !== right) {
-            return left < right ? -1 : 1;
-        }
-        if (a.path !== b.path) {
-            return a.path < b.path ? -1 : 1;
-        }
-        return 0;
-    });
+  return [...files].sort((a, b) => {
+    if (a.conflictUnresolved !== b.conflictUnresolved) {
+      return a.conflictUnresolved ? -1 : 1;
+    }
+    const left = a.path.toLowerCase();
+    const right = b.path.toLowerCase();
+    if (left !== right) {
+      return left < right ? -1 : 1;
+    }
+    if (a.path !== b.path) {
+      return a.path < b.path ? -1 : 1;
+    }
+    return 0;
+  });
 }
 
 export interface ChangeListView {
-    /** The rows to draw: sorted, directories dropped, capped. */
-    rows: VcsFileChange[];
-    /** Sorted rows the cap left out. Zero when the list is complete; never hidden from the author. */
-    hidden: number;
-    /**
-     * Files in the scan, directories excluded - the one number this surface shows.
-     *
-     * Deliberately NOT `VcsStatus.counts`. Those are the backend's own totals and they COUNT
-     * DIRECTORIES (one new folder with one file in it is two), so the two disagree on purpose
-     * (`VersionControlService.getChangedFiles`). Showing both would make the panel argue with itself
-     * about a project's size, so it shows this one and nothing re-derives the other.
-     */
-    total: number;
+  /** The rows to draw: sorted, directories dropped, capped. */
+  rows: VcsFileChange[];
+  /** Sorted rows the cap left out. Zero when the list is complete; never hidden from the author. */
+  hidden: number;
+  /**
+   * Files in the scan, directories excluded - the one number this surface shows.
+   *
+   * Deliberately NOT `VcsStatus.counts`. Those are the backend's own totals and they COUNT
+   * DIRECTORIES (one new folder with one file in it is two), so the two disagree on purpose
+   * (`VersionControlService.getChangedFiles`). Showing both would make the panel argue with itself
+   * about a project's size, so it shows this one and nothing re-derives the other.
+   */
+  total: number;
 }
 
 /**
@@ -623,12 +627,12 @@ export interface ChangeListView {
  * blocking the commit.
  */
 export function buildChangeList(
-    files: readonly VcsFileChange[],
-    limit: number = VERSION_CHANGE_LIST_LIMIT,
+  files: readonly VcsFileChange[],
+  limit: number = VERSION_CHANGE_LIST_LIMIT
 ): ChangeListView {
-    const sorted = sortFileChanges(files.filter(file => !file.directory));
-    const rows = sorted.slice(0, Math.max(0, limit));
-    return { rows, hidden: sorted.length - rows.length, total: sorted.length };
+  const sorted = sortFileChanges(files.filter((file) => !file.directory));
+  const rows = sorted.slice(0, Math.max(0, limit));
+  return { rows, hidden: sorted.length - rows.length, total: sorted.length };
 }
 
 /**
@@ -637,31 +641,31 @@ export function buildChangeList(
  * `a91f3c8` does not.
  */
 export function shortRevision(revision: RevisionId, length = 7): string {
-    return revision.slice(0, length);
+  return revision.slice(0, length);
 }
 
 /** How the rail and every other surface names one revision: `#4`. */
 export function revisionLabel(number: number): string {
-    return `#${number}`;
+  return `#${number}`;
 }
 
 export interface RevisionHeadline {
-    /** What the surface draws. */
-    text: string;
-    /**
-     * True when {@link text} is a hash standing in for a message nobody wrote, which the caller
-     * draws in a monospace face rather than as prose.
-     */
-    isIdentity: boolean;
-    /**
-     * The message as it is stored, when that is not what is drawn - i.e. one of Studio's own
-     * sentences, read back in the author's language.
-     *
-     * Belongs in the `title`, and is not optional politeness: those bytes are what a collaborator's
-     * client shows and what the author's own `lore` CLI prints, so a surface that only ever showed
-     * the translation would leave them unable to match the two.
-     */
-    original: string | null;
+  /** What the surface draws. */
+  text: string;
+  /**
+   * True when {@link text} is a hash standing in for a message nobody wrote, which the caller
+   * draws in a monospace face rather than as prose.
+   */
+  isIdentity: boolean;
+  /**
+   * The message as it is stored, when that is not what is drawn - i.e. one of Studio's own
+   * sentences, read back in the author's language.
+   *
+   * Belongs in the `title`, and is not optional politeness: those bytes are what a collaborator's
+   * client shows and what the author's own `lore` CLI prints, so a surface that only ever showed
+   * the translation would leave them unable to match the two.
+   */
+  original: string | null;
 }
 
 /**
@@ -684,14 +688,14 @@ export interface RevisionHeadline {
  * and a row of blank space reads as a rendering fault.
  */
 export function historyRowHeadline(
-    row: Pick<FlatHistoryEntry, "message" | "revision">,
-    t: Translator["t"],
+  row: Pick<FlatHistoryEntry, "message" | "revision">,
+  t: Translator["t"]
 ): RevisionHeadline {
-    const line = revisionMessageLine(row.message, t);
-    if (!line) {
-        return { text: shortRevision(row.revision), isIdentity: true, original: null };
-    }
-    return { ...line, isIdentity: false };
+  const line = revisionMessageLine(row.message, t);
+  if (!line) {
+    return { text: shortRevision(row.revision), isIdentity: true, original: null };
+  }
+  return { ...line, isIdentity: false };
 }
 
 /**
@@ -709,23 +713,20 @@ export function historyRowHeadline(
  * this list an author can be sure of.
  */
 export function filterHistoryRows(
-    rows: readonly FlatHistoryEntry[],
-    query: string,
-    t: Translator["t"],
+  rows: readonly FlatHistoryEntry[],
+  query: string,
+  t: Translator["t"]
 ): FlatHistoryEntry[] {
-    const needle = query.trim().toLowerCase();
-    if (!needle) {
-        return [...rows];
-    }
-    return rows.filter(row => {
-        const headline = historyRowHeadline(row, t);
-        return [
-            headline.text,
-            headline.original,
-            row.author,
-            revisionLabel(row.number),
-        ].some(field => field?.toLowerCase().includes(needle));
-    });
+  const needle = query.trim().toLowerCase();
+  if (!needle) {
+    return [...rows];
+  }
+  return rows.filter((row) => {
+    const headline = historyRowHeadline(row, t);
+    return [headline.text, headline.original, row.author, revisionLabel(row.number)].some((field) =>
+      field?.toLowerCase().includes(needle)
+    );
+  });
 }
 
 /**
@@ -735,8 +736,8 @@ export function filterHistoryRows(
  * eleven at night would otherwise watch their evening's versions file themselves under tomorrow.
  */
 export function historyDayKey(timestamp: number): string {
-    const date = new Date(timestamp);
-    return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  const date = new Date(timestamp);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
 /**
@@ -750,27 +751,27 @@ export function historyDayKey(timestamp: number): string {
  * for - "3 days ago" is arithmetic they then have to do themselves.
  */
 export function historyDayLabel(
-    timestamp: number,
-    locale: string,
-    t: Translator["t"],
-    now: number,
+  timestamp: number,
+  locale: string,
+  t: Translator["t"],
+  now: number
 ): string {
-    const today = historyDayKey(now);
-    if (historyDayKey(timestamp) === today) {
-        return t("workspace.shell.versionControl.today");
-    }
-    const DAY_MS = 24 * 60 * 60 * 1000;
-    if (historyDayKey(timestamp) === historyDayKey(now - DAY_MS)) {
-        return t("workspace.shell.versionControl.yesterday");
-    }
-    // The year only once it stops being this one: a history spans years, and printing 2026 on every
-    // separator of a project written in 2026 is noise on every row that has one.
-    const sameYear = new Date(timestamp).getFullYear() === new Date(now).getFullYear();
-    return new Date(timestamp).toLocaleDateString(locale, {
-        year: sameYear ? undefined : "numeric",
-        month: "long",
-        day: "numeric",
-    });
+  const today = historyDayKey(now);
+  if (historyDayKey(timestamp) === today) {
+    return t("workspace.shell.versionControl.today");
+  }
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  if (historyDayKey(timestamp) === historyDayKey(now - DAY_MS)) {
+    return t("workspace.shell.versionControl.yesterday");
+  }
+  // The year only once it stops being this one: a history spans years, and printing 2026 on every
+  // separator of a project written in 2026 is noise on every row that has one.
+  const sameYear = new Date(timestamp).getFullYear() === new Date(now).getFullYear();
+  return new Date(timestamp).toLocaleDateString(locale, {
+    year: sameYear ? undefined : "numeric",
+    month: "long",
+    day: "numeric"
+  });
 }
 
 /**
@@ -782,18 +783,18 @@ export function historyDayLabel(
  * function answering both would have to know about states it has no business knowing about.
  */
 export function revisionMessageLine(
-    message: string | undefined,
-    t: Translator["t"],
+  message: string | undefined,
+  t: Translator["t"]
 ): { text: string; original: string | null } | null {
-    const trimmed = message?.trim();
-    if (!trimmed) {
-        return null;
-    }
-    const system = recogniseSystemRevisionMessage(trimmed);
-    if (system) {
-        return { text: t(system.key, system.params), original: trimmed };
-    }
-    return { text: trimmed, original: null };
+  const trimmed = message?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const system = recogniseSystemRevisionMessage(trimmed);
+  if (system) {
+    return { text: t(system.key, system.params), original: trimmed };
+  }
+  return { text: trimmed, original: null };
 }
 
 /**
@@ -816,39 +817,39 @@ const PROBING_FACE = "—";
 export const VERSION_BRANCH_MAX_CHARS = 14;
 
 export interface VersionFaceInputs {
-    /** Which of the six surface states this window is in. */
-    state: VersionSurfaceState;
-    /**
-     * The branch the repository is on, from `VcsRepositoryInfo.branch`.
-     *
-     * Shown only when it is NOT {@link VCS_DEFAULT_BRANCH}. An author who never left it would
-     * otherwise pay width on every surface for a fact that is always true, while an author who
-     * branched with their own `lore` CLI is exactly the person a bare `#12` misleads.
-     */
-    branch?: string | null;
-    /**
-     * The focused history row's number, for the states that carry no number of their own - the beat
-     * between opening the panel and the page arriving, and a preview entered without a label.
-     */
-    rowNumber?: number | null;
-    /**
-     * What names the version when no NUMBER is known.
-     *
-     * `hash` for the two narrow surfaces: the short hash is all they have, and something that
-     * identifies the revision beats nothing. `omit` for the rail, which prints the hash on its own
-     * line right beside this one and would otherwise print it twice.
-     */
-    unnumbered?: "hash" | "omit";
+  /** Which of the six surface states this window is in. */
+  state: VersionSurfaceState;
+  /**
+   * The branch the repository is on, from `VcsRepositoryInfo.branch`.
+   *
+   * Shown only when it is NOT {@link VCS_DEFAULT_BRANCH}. An author who never left it would
+   * otherwise pay width on every surface for a fact that is always true, while an author who
+   * branched with their own `lore` CLI is exactly the person a bare `#12` misleads.
+   */
+  branch?: string | null;
+  /**
+   * The focused history row's number, for the states that carry no number of their own - the beat
+   * between opening the panel and the page arriving, and a preview entered without a label.
+   */
+  rowNumber?: number | null;
+  /**
+   * What names the version when no NUMBER is known.
+   *
+   * `hash` for the two narrow surfaces: the short hash is all they have, and something that
+   * identifies the revision beats nothing. `omit` for the rail, which prints the hash on its own
+   * line right beside this one and would otherwise print it twice.
+   */
+  unnumbered?: "hash" | "omit";
 }
 
 export interface VersionFace {
-    /** What to render. Empty only under `unnumbered: "omit"`, where the caller draws nothing. */
-    text: string;
-    /**
-     * The same line with nothing cut, for the `title`. Equal to {@link text} when nothing was cut,
-     * which is how a caller decides whether a tooltip is owed at all.
-     */
-    full: string;
+  /** What to render. Empty only under `unnumbered: "omit"`, where the caller draws nothing. */
+  text: string;
+  /**
+   * The same line with nothing cut, for the `title`. Equal to {@link text} when nothing was cut,
+   * which is how a caller decides whether a tooltip is owed at all.
+   */
+  full: string;
 }
 
 /**
@@ -865,18 +866,19 @@ export interface VersionFace {
  * be re-implementing the decision this function exists to own. Tests pass an identity `t`.
  */
 export function versionFace(inputs: VersionFaceInputs, t: Translator["t"]): VersionFace {
-    const identity = versionIdentity(inputs, t);
-    const branch = shownBranch(inputs);
-    if (!branch || !identity) {
-        return { text: identity, full: identity };
-    }
-    const cut = branch.length > VERSION_BRANCH_MAX_CHARS
-        ? `${branch.slice(0, VERSION_BRANCH_MAX_CHARS - 1)}…`
-        : branch;
-    return {
-        text: `${cut}${BRANCH_SEPARATOR}${identity}`,
-        full: `${branch}${BRANCH_SEPARATOR}${identity}`,
-    };
+  const identity = versionIdentity(inputs, t);
+  const branch = shownBranch(inputs);
+  if (!branch || !identity) {
+    return { text: identity, full: identity };
+  }
+  const cut =
+    branch.length > VERSION_BRANCH_MAX_CHARS
+      ? `${branch.slice(0, VERSION_BRANCH_MAX_CHARS - 1)}…`
+      : branch;
+  return {
+    text: `${cut}${BRANCH_SEPARATOR}${identity}`,
+    full: `${branch}${BRANCH_SEPARATOR}${identity}`
+  };
 }
 
 /**
@@ -888,41 +890,44 @@ export function versionFace(inputs: VersionFaceInputs, t: Translator["t"]): Vers
  * the emptiness were somehow local to that branch.
  */
 function shownBranch(inputs: VersionFaceInputs): string | null {
-    if (inputs.state.kind !== "current" && inputs.state.kind !== "revision") {
-        return null;
-    }
-    const branch = inputs.branch?.trim();
-    if (!branch || branch === VCS_DEFAULT_BRANCH) {
-        return null;
-    }
-    return branch;
+  if (inputs.state.kind !== "current" && inputs.state.kind !== "revision") {
+    return null;
+  }
+  const branch = inputs.branch?.trim();
+  if (!branch || branch === VCS_DEFAULT_BRANCH) {
+    return null;
+  }
+  return branch;
 }
 
 /** What names this version on its own, before the branch is considered. */
 function versionIdentity(inputs: VersionFaceInputs, t: Translator["t"]): string {
-    const { state } = inputs;
-    const fromRow = inputs.rowNumber !== undefined && inputs.rowNumber !== null
-        ? revisionLabel(inputs.rowNumber)
-        : null;
-    switch (state.kind) {
-        case "revision":
-            return state.label ?? fromRow ?? unnumbered(state.revision, inputs);
-        case "current":
-            return (state.number !== null ? revisionLabel(state.number) : null)
-                ?? fromRow
-                ?? unnumbered(state.head, inputs);
-        case "not-a-repository":
-            return t("workspace.shell.versionControl.notVersioned");
-        case "empty":
-            return t("workspace.shell.versionControl.noHistory");
-        default:
-            // Probing, and the unreachable `unavailable` - every surface renders nothing there.
-            return PROBING_FACE;
-    }
+  const { state } = inputs;
+  const fromRow =
+    inputs.rowNumber !== undefined && inputs.rowNumber !== null
+      ? revisionLabel(inputs.rowNumber)
+      : null;
+  switch (state.kind) {
+    case "revision":
+      return state.label ?? fromRow ?? unnumbered(state.revision, inputs);
+    case "current":
+      return (
+        (state.number !== null ? revisionLabel(state.number) : null) ??
+        fromRow ??
+        unnumbered(state.head, inputs)
+      );
+    case "not-a-repository":
+      return t("workspace.shell.versionControl.notVersioned");
+    case "empty":
+      return t("workspace.shell.versionControl.noHistory");
+    default:
+      // Probing, and the unreachable `unavailable` - every surface renders nothing there.
+      return PROBING_FACE;
+  }
 }
 
 function unnumbered(revision: RevisionId, inputs: VersionFaceInputs): string {
-    return inputs.unnumbered === "omit" ? "" : shortRevision(revision);
+  return inputs.unnumbered === "omit" ? "" : shortRevision(revision);
 }
 
 /** The choice in the server dialog that is not one of the servers on this machine. */
@@ -949,11 +954,11 @@ export const NO_SERVER = "";
  * who they are has no account to add, so it is in no list and stays with the address field.
  */
 export function initialServerChoice(
-    servers: ReadonlyArray<{ remoteOrigin: string }>,
-    remote: string | null,
+  servers: ReadonlyArray<{ remoteOrigin: string }>,
+  remote: string | null
 ): string {
-    const address = remote?.trim() ?? "";
-    if (address === "") return NO_SERVER;
-    const origin = parseVcsRemoteUrl(address)?.origin ?? address;
-    return servers.some((server) => server.remoteOrigin === origin) ? origin : MANUAL_SERVER;
+  const address = remote?.trim() ?? "";
+  if (address === "") return NO_SERVER;
+  const origin = parseVcsRemoteUrl(address)?.origin ?? address;
+  return servers.some((server) => server.remoteOrigin === origin) ? origin : MANUAL_SERVER;
 }

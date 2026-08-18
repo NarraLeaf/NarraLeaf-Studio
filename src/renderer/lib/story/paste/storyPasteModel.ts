@@ -1,19 +1,19 @@
 import type { StoryBlock } from "@shared/types/story";
 import { assertValidStoryEntityId } from "@shared/utils/storyId";
 import type {
-    MaterializeContext,
-    MaterializedPaste,
-    PasteSeparatorChoice,
-    PasteSeparatorKind,
-    PasteSeparatorProblem,
-    PasteSpeakerTally,
-    PasteSplit,
-    PastedLine,
-    PastePlan,
-    PastePlanInput,
-    PastePlanRow,
-    PlainPasteAnchor,
-    StoryPasteRoute,
+  MaterializeContext,
+  MaterializedPaste,
+  PasteSeparatorChoice,
+  PasteSeparatorKind,
+  PasteSeparatorProblem,
+  PasteSpeakerTally,
+  PasteSplit,
+  PastedLine,
+  PastePlan,
+  PastePlanInput,
+  PastePlanRow,
+  PlainPasteAnchor,
+  StoryPasteRoute
 } from "./storyPasteTypes";
 import { STORY_SCRIPT_HEADER } from "./storyPasteTypes";
 
@@ -55,11 +55,11 @@ import { STORY_SCRIPT_HEADER } from "./storyPasteTypes";
  * CRLF's `\r` never reach a row's text.
  */
 function toPastedLines(text: string): string[] {
-    return text
-        .replace(/\r\n?/g, "\n")
-        .split("\n")
-        .map(line => line.trim())
-        .filter(line => line.length > 0);
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -82,12 +82,12 @@ type SeparatorMatch = { speaker: string; text: string };
  * `well-known` is a speaker called "well", and an English paste would be nothing but speakers.
  */
 const BUILTIN_SEPARATORS: { kind: BuiltinSeparatorKind; pattern: RegExp }[] = [
-    { kind: "colon", pattern: /^([^:]+):(.*)$/ },
-    { kind: "fullwidthColon", pattern: /^([^：]+)：(.*)$/ },
-    { kind: "dash", pattern: /^(.+?)[ \t　]+[-–—]+[ \t　]+(.*)$/ },
-    { kind: "lenticular", pattern: /^【([^】]+)】(.*)$/ },
-    { kind: "cornerBracket", pattern: /^「([^」]+)」(.*)$/ },
-    { kind: "tab", pattern: /^([^\t]+)\t(.*)$/ },
+  { kind: "colon", pattern: /^([^:]+):(.*)$/ },
+  { kind: "fullwidthColon", pattern: /^([^：]+)：(.*)$/ },
+  { kind: "dash", pattern: /^(.+?)[ \t　]+[-–—]+[ \t　]+(.*)$/ },
+  { kind: "lenticular", pattern: /^【([^】]+)】(.*)$/ },
+  { kind: "cornerBracket", pattern: /^「([^」]+)」(.*)$/ },
+  { kind: "tab", pattern: /^([^\t]+)\t(.*)$/ }
 ];
 
 /**
@@ -114,21 +114,23 @@ const TRAILING_PARENTHETICAL = /^(.*?)[ \t　]*([(（][^)）]*[)）])$/;
  * preview shows exactly where it went.
  */
 function toMatch(matched: RegExpMatchArray | null): SeparatorMatch | null {
-    if (!matched) {
-        return null;
-    }
-    const speaker = matched[1].trim();
-    const text = matched[2].trim();
-    if (speaker.length === 0 || text.length === 0) {
-        return null;
-    }
-    const aside = speaker.match(TRAILING_PARENTHETICAL);
-    const name = aside?.[1].trim() ?? "";
-    return aside && name.length > 0 ? { speaker: name, text: `${aside[2]} ${text}` } : { speaker, text };
+  if (!matched) {
+    return null;
+  }
+  const speaker = matched[1].trim();
+  const text = matched[2].trim();
+  if (speaker.length === 0 || text.length === 0) {
+    return null;
+  }
+  const aside = speaker.match(TRAILING_PARENTHETICAL);
+  const name = aside?.[1].trim() ?? "";
+  return aside && name.length > 0
+    ? { speaker: name, text: `${aside[2]} ${text}` }
+    : { speaker, text };
 }
 
 function matchPattern(pattern: RegExp, raw: string): SeparatorMatch | null {
-    return toMatch(raw.match(pattern));
+  return toMatch(raw.match(pattern));
 }
 
 // ---------------------------------------------------------------------------
@@ -182,7 +184,11 @@ const IMPLAUSIBLE_MATCH_WEIGHT = 1.5;
 const MIN_INFERENCE_SCORE = 0.2;
 
 function isPlausibleSpeakerLabel(label: string): boolean {
-    return label.length <= MAX_PLAUSIBLE_LABEL_LENGTH && !LABEL_SENTENCE_PUNCTUATION.test(label) && !NUMERIC_LABEL.test(label);
+  return (
+    label.length <= MAX_PLAUSIBLE_LABEL_LENGTH &&
+    !LABEL_SENTENCE_PUNCTUATION.test(label) &&
+    !NUMERIC_LABEL.test(label)
+  );
 }
 
 /**
@@ -194,7 +200,7 @@ function isPlausibleSpeakerLabel(label: string): boolean {
  * lines out of forty scores 0.1 and loses to `none`.
  */
 function coverageOf(plausible: number, implausible: number, lineCount: number): number {
-    return (plausible - IMPLAUSIBLE_MATCH_WEIGHT * implausible) / lineCount;
+  return (plausible - IMPLAUSIBLE_MATCH_WEIGHT * implausible) / lineCount;
 }
 
 /**
@@ -213,11 +219,11 @@ function coverageOf(plausible: number, implausible: number, lineCount: number): 
  * chance to repeat, and `A: hi` / `B: yo` is a real exchange.
  */
 function repetitionCreditOf(matched: number, distinct: number): number {
-    if (matched < MIN_REPETITION_SAMPLE) {
-        return 1;
-    }
-    const linesPerLabel = matched / distinct;
-    return Math.min(1, Math.max(0, (linesPerLabel - 1) / (FULL_CREDIT_LINES_PER_LABEL - 1)));
+  if (matched < MIN_REPETITION_SAMPLE) {
+    return 1;
+  }
+  const linesPerLabel = matched / distinct;
+  return Math.min(1, Math.max(0, (linesPerLabel - 1) / (FULL_CREDIT_LINES_PER_LABEL - 1)));
 }
 
 /**
@@ -231,49 +237,52 @@ function repetitionCreditOf(matched: number, distinct: number): number {
  * never turn a bad separator into a worse-than-nothing one twice over.
  */
 function scoreSeparator(pattern: RegExp, raws: string[]): number {
-    let plausible = 0;
-    let implausible = 0;
-    const distinct = new Set<string>();
-    for (const raw of raws) {
-        const matched = matchPattern(pattern, raw);
-        if (!matched) {
-            continue;
-        }
-        distinct.add(speakerMemoryKey(matched.speaker));
-        if (isPlausibleSpeakerLabel(matched.speaker)) {
-            plausible += 1;
-        } else {
-            implausible += 1;
-        }
+  let plausible = 0;
+  let implausible = 0;
+  const distinct = new Set<string>();
+  for (const raw of raws) {
+    const matched = matchPattern(pattern, raw);
+    if (!matched) {
+      continue;
     }
-    const matched = plausible + implausible;
-    if (matched === 0) {
-        return 0;
+    distinct.add(speakerMemoryKey(matched.speaker));
+    if (isPlausibleSpeakerLabel(matched.speaker)) {
+      plausible += 1;
+    } else {
+      implausible += 1;
     }
-    const coverage = coverageOf(plausible, implausible, raws.length);
-    if (coverage <= 0) {
-        return coverage;
-    }
-    const budget = Math.max(MIN_DISTINCT_LABEL_BUDGET, Math.round(raws.length * DISTINCT_LABEL_RATIO));
-    const glut = distinct.size <= budget ? 1 : (budget / distinct.size) ** 2;
-    return coverage * repetitionCreditOf(matched, distinct.size) * glut;
+  }
+  const matched = plausible + implausible;
+  if (matched === 0) {
+    return 0;
+  }
+  const coverage = coverageOf(plausible, implausible, raws.length);
+  if (coverage <= 0) {
+    return coverage;
+  }
+  const budget = Math.max(
+    MIN_DISTINCT_LABEL_BUDGET,
+    Math.round(raws.length * DISTINCT_LABEL_RATIO)
+  );
+  const glut = distinct.size <= budget ? 1 : (budget / distinct.size) ** 2;
+  return coverage * repetitionCreditOf(matched, distinct.size) * glut;
 }
 
 /** Score the built-in separators against the text and return the one that best explains it. */
 export function inferPasteSeparator(text: string): PasteSeparatorChoice {
-    const raws = toPastedLines(text);
-    if (raws.length === 0) {
-        return { kind: "none" };
+  const raws = toPastedLines(text);
+  if (raws.length === 0) {
+    return { kind: "none" };
+  }
+  let best: { kind: BuiltinSeparatorKind; score: number } | null = null;
+  for (const entry of BUILTIN_SEPARATORS) {
+    const score = scoreSeparator(entry.pattern, raws);
+    // Strictly greater, so a tie keeps the earlier - i.e. the declaration order of the union.
+    if (!best || score > best.score) {
+      best = { kind: entry.kind, score };
     }
-    let best: { kind: BuiltinSeparatorKind; score: number } | null = null;
-    for (const entry of BUILTIN_SEPARATORS) {
-        const score = scoreSeparator(entry.pattern, raws);
-        // Strictly greater, so a tie keeps the earlier - i.e. the declaration order of the union.
-        if (!best || score > best.score) {
-            best = { kind: entry.kind, score };
-        }
-    }
-    return best && best.score >= MIN_INFERENCE_SCORE ? { kind: best.kind } : { kind: "none" };
+  }
+  return best && best.score >= MIN_INFERENCE_SCORE ? { kind: best.kind } : { kind: "none" };
 }
 
 // ---------------------------------------------------------------------------
@@ -292,76 +301,78 @@ export function inferPasteSeparator(text: string): PasteSeparatorChoice {
  * and happens not to match the probe is still a *valid* pattern; only a pattern that cannot name them
  * at all is `missingGroups`.
  */
-function compileSpeakerRegex(source: string): { regex: RegExp } | { problem: PasteSeparatorProblem } {
-    let regex: RegExp;
-    try {
-        regex = new RegExp(source);
-    } catch {
-        return { problem: "invalidRegex" };
-    }
-    if (!regex.source.includes("(?<speaker>") || !regex.source.includes("(?<text>")) {
-        return { problem: "missingGroups" };
-    }
-    return { regex };
+function compileSpeakerRegex(
+  source: string
+): { regex: RegExp } | { problem: PasteSeparatorProblem } {
+  let regex: RegExp;
+  try {
+    regex = new RegExp(source);
+  } catch {
+    return { problem: "invalidRegex" };
+  }
+  if (!regex.source.includes("(?<speaker>") || !regex.source.includes("(?<text>")) {
+    return { problem: "missingGroups" };
+  }
+  return { regex };
 }
 
 function matchCustomRegex(regex: RegExp, raw: string): SeparatorMatch | null {
-    const matched = raw.match(regex);
-    if (!matched?.groups) {
-        return null;
-    }
-    const speaker = (matched.groups.speaker ?? "").trim();
-    const text = (matched.groups.text ?? "").trim();
-    // Same emptiness rule as the built-ins: a half-applied pattern produces narration, not a nameless
-    // speaker the mapping table would then have to offer a row for.
-    return speaker.length > 0 && text.length > 0 ? { speaker, text } : null;
+  const matched = raw.match(regex);
+  if (!matched?.groups) {
+    return null;
+  }
+  const speaker = (matched.groups.speaker ?? "").trim();
+  const text = (matched.groups.text ?? "").trim();
+  // Same emptiness rule as the built-ins: a half-applied pattern produces narration, not a nameless
+  // speaker the mapping table would then have to offer a row for.
+  return speaker.length > 0 && text.length > 0 ? { speaker, text } : null;
 }
 
 function buildSplit(raws: string[], match: (raw: string) => SeparatorMatch | null): PasteSplit {
-    const lines: PastedLine[] = [];
-    const tallies: PasteSpeakerTally[] = [];
-    const byKey = new Map<string, PasteSpeakerTally>();
-    let narrationCount = 0;
-    for (const raw of raws) {
-        const index = lines.length;
-        const matched = match(raw);
-        if (!matched) {
-            lines.push({ index, raw, text: raw });
-            narrationCount += 1;
-            continue;
-        }
-        lines.push({ index, raw, speaker: matched.speaker, text: matched.text });
-        // Grouped by the memory key, labelled by the first spelling seen: `Alice` and `ALICE` are one
-        // decision, and the author should not be asked it twice - nor see the table reshuffle when the
-        // second spelling turns up on line 300.
-        const key = speakerMemoryKey(matched.speaker);
-        const existing = byKey.get(key);
-        if (existing) {
-            existing.count += 1;
-            existing.lineIndices.push(index);
-        } else {
-            const tally: PasteSpeakerTally = { label: matched.speaker, count: 1, lineIndices: [index] };
-            byKey.set(key, tally);
-            tallies.push(tally);
-        }
+  const lines: PastedLine[] = [];
+  const tallies: PasteSpeakerTally[] = [];
+  const byKey = new Map<string, PasteSpeakerTally>();
+  let narrationCount = 0;
+  for (const raw of raws) {
+    const index = lines.length;
+    const matched = match(raw);
+    if (!matched) {
+      lines.push({ index, raw, text: raw });
+      narrationCount += 1;
+      continue;
     }
-    return { lines, speakers: tallies, narrationCount };
+    lines.push({ index, raw, speaker: matched.speaker, text: matched.text });
+    // Grouped by the memory key, labelled by the first spelling seen: `Alice` and `ALICE` are one
+    // decision, and the author should not be asked it twice - nor see the table reshuffle when the
+    // second spelling turns up on line 300.
+    const key = speakerMemoryKey(matched.speaker);
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.count += 1;
+      existing.lineIndices.push(index);
+    } else {
+      const tally: PasteSpeakerTally = { label: matched.speaker, count: 1, lineIndices: [index] };
+      byKey.set(key, tally);
+      tallies.push(tally);
+    }
+  }
+  return { lines, speakers: tallies, narrationCount };
 }
 
 /** Split pasted text into lines, applying one separator choice. Blank lines produce no line. */
 export function splitPastedText(text: string, choice: PasteSeparatorChoice): PasteSplit {
-    const raws = toPastedLines(text);
-    if (choice.kind === "regex") {
-        const compiled = compileSpeakerRegex(choice.source);
-        if ("problem" in compiled) {
-            return { ...buildSplit(raws, () => null), problem: compiled.problem };
-        }
-        return buildSplit(raws, raw => matchCustomRegex(compiled.regex, raw));
+  const raws = toPastedLines(text);
+  if (choice.kind === "regex") {
+    const compiled = compileSpeakerRegex(choice.source);
+    if ("problem" in compiled) {
+      return { ...buildSplit(raws, () => null), problem: compiled.problem };
     }
-    // `none` is the kind with no pattern, which is exactly the behaviour it asks for: every line stays
-    // whole and becomes narration.
-    const pattern = BUILTIN_SEPARATORS.find(entry => entry.kind === choice.kind)?.pattern;
-    return buildSplit(raws, raw => (pattern ? matchPattern(pattern, raw) : null));
+    return buildSplit(raws, (raw) => matchCustomRegex(compiled.regex, raw));
+  }
+  // `none` is the kind with no pattern, which is exactly the behaviour it asks for: every line stays
+  // whole and becomes narration.
+  const pattern = BUILTIN_SEPARATORS.find((entry) => entry.kind === choice.kind)?.pattern;
+  return buildSplit(raws, (raw) => (pattern ? matchPattern(pattern, raw) : null));
 }
 
 // ---------------------------------------------------------------------------
@@ -370,74 +381,81 @@ export function splitPastedText(text: string, choice: PasteSeparatorChoice): Pas
 
 /** Apply the author's speaker decisions to a split, yielding the rows a confirm would create. */
 export function planPastedRows(input: PastePlanInput): PastePlan {
-    // The tally's spelling wins over the line's own, for the same reason the tally groups by key: one
-    // row in the mapping table must mean one name, or `ALICE` on line 12 would create a second
-    // character next to the `Alice` the author actually approved.
-    const canonicalLabels = new Map(input.split.speakers.map(tally => [speakerMemoryKey(tally.label), tally.label]));
-    const rows: PastePlanRow[] = [];
-    const charactersToCreate: string[] = [];
-    for (const line of input.split.lines) {
-        if (line.speaker === undefined) {
-            rows.push({ kind: "narration", text: line.text });
-            continue;
-        }
-        const key = speakerMemoryKey(line.speaker);
-        const label = canonicalLabels.get(key) ?? line.speaker;
-        const target = input.mappings[key];
-        // Unmapped defaults to a temp speaker, never to character creation: see `SpeakerMappingTarget`.
-        if (target?.kind === "notASpeaker") {
-            // `raw`, not `${label}: ${text}` - the author is undoing a false positive, so the line has to
-            // come back exactly as they pasted it, including whatever spacing sat around the separator.
-            rows.push({ kind: "narration", text: line.raw });
-            continue;
-        }
-        if (target?.kind === "character" && target.characterId) {
-            rows.push({ kind: "dialogue", text: line.text, characterId: target.characterId });
-            continue;
-        }
-        if (target?.kind === "createCharacter") {
-            if (!charactersToCreate.includes(label)) {
-                charactersToCreate.push(label);
-            }
-            // `speakerName` rides along as well as `pendingCharacterName`: it is what
-            // `materializePastedRows` falls back to if the character never got created, and it is inert
-            // once `characterId` resolves (NarraLeaf ignores it then).
-            rows.push({ kind: "dialogue", text: line.text, speakerName: label, pendingCharacterName: label });
-            continue;
-        }
-        rows.push({ kind: "dialogue", text: line.text, speakerName: label });
+  // The tally's spelling wins over the line's own, for the same reason the tally groups by key: one
+  // row in the mapping table must mean one name, or `ALICE` on line 12 would create a second
+  // character next to the `Alice` the author actually approved.
+  const canonicalLabels = new Map(
+    input.split.speakers.map((tally) => [speakerMemoryKey(tally.label), tally.label])
+  );
+  const rows: PastePlanRow[] = [];
+  const charactersToCreate: string[] = [];
+  for (const line of input.split.lines) {
+    if (line.speaker === undefined) {
+      rows.push({ kind: "narration", text: line.text });
+      continue;
     }
-    return { rows, charactersToCreate, counts: countRows(rows) };
+    const key = speakerMemoryKey(line.speaker);
+    const label = canonicalLabels.get(key) ?? line.speaker;
+    const target = input.mappings[key];
+    // Unmapped defaults to a temp speaker, never to character creation: see `SpeakerMappingTarget`.
+    if (target?.kind === "notASpeaker") {
+      // `raw`, not `${label}: ${text}` - the author is undoing a false positive, so the line has to
+      // come back exactly as they pasted it, including whatever spacing sat around the separator.
+      rows.push({ kind: "narration", text: line.raw });
+      continue;
+    }
+    if (target?.kind === "character" && target.characterId) {
+      rows.push({ kind: "dialogue", text: line.text, characterId: target.characterId });
+      continue;
+    }
+    if (target?.kind === "createCharacter") {
+      if (!charactersToCreate.includes(label)) {
+        charactersToCreate.push(label);
+      }
+      // `speakerName` rides along as well as `pendingCharacterName`: it is what
+      // `materializePastedRows` falls back to if the character never got created, and it is inert
+      // once `characterId` resolves (NarraLeaf ignores it then).
+      rows.push({
+        kind: "dialogue",
+        text: line.text,
+        speakerName: label,
+        pendingCharacterName: label
+      });
+      continue;
+    }
+    rows.push({ kind: "dialogue", text: line.text, speakerName: label });
+  }
+  return { rows, charactersToCreate, counts: countRows(rows) };
 }
 
 /** The no-wizard path: every line becomes a row shaped by wherever the caret was. */
 export function planPlainPaste(text: string, anchor: PlainPasteAnchor): PastePlan {
-    // No separator is applied at all, deliberately: a plain paste that guessed speakers would be the
-    // wizard with none of the wizard's ways to say "no, that is not a name".
-    const rows: PastePlanRow[] = toPastedLines(text).map(raw =>
-        anchor.kind === "dialogue"
-            ? {
-                  kind: "dialogue",
-                  text: raw,
-                  ...(anchor.characterId ? { characterId: anchor.characterId } : {}),
-                  ...(anchor.speakerName ? { speakerName: anchor.speakerName } : {}),
-              }
-            : { kind: "narration", text: raw },
-    );
-    return { rows, charactersToCreate: [], counts: countRows(rows) };
+  // No separator is applied at all, deliberately: a plain paste that guessed speakers would be the
+  // wizard with none of the wizard's ways to say "no, that is not a name".
+  const rows: PastePlanRow[] = toPastedLines(text).map((raw) =>
+    anchor.kind === "dialogue"
+      ? {
+          kind: "dialogue",
+          text: raw,
+          ...(anchor.characterId ? { characterId: anchor.characterId } : {}),
+          ...(anchor.speakerName ? { speakerName: anchor.speakerName } : {})
+        }
+      : { kind: "narration", text: raw }
+  );
+  return { rows, charactersToCreate: [], counts: countRows(rows) };
 }
 
 function countRows(rows: PastePlanRow[]): PastePlan["counts"] {
-    let dialogue = 0;
-    let narration = 0;
-    for (const row of rows) {
-        if (row.kind === "dialogue") {
-            dialogue += 1;
-        } else {
-            narration += 1;
-        }
+  let dialogue = 0;
+  let narration = 0;
+  for (const row of rows) {
+    if (row.kind === "dialogue") {
+      dialogue += 1;
+    } else {
+      narration += 1;
     }
-    return { dialogue, narration };
+  }
+  return { dialogue, narration };
 }
 
 // ---------------------------------------------------------------------------
@@ -453,40 +471,51 @@ function countRows(rows: PastePlanRow[]): PastePlan["counts"] {
  * a cause.
  */
 function mintId(generateId: MaterializeContext["generateId"], label: string): string {
-    const id = generateId();
-    assertValidStoryEntityId(id, label);
-    return id;
+  const id = generateId();
+  assertValidStoryEntityId(id, label);
+  return id;
 }
 
 /** Turn a plan into real blocks. Ids are minted here, so this is the only step that is not pure. */
-export function materializePastedRows(plan: PastePlan, context: MaterializeContext): MaterializedPaste {
-    const blocks: StoryBlock[] = plan.rows.map(row => {
-        const id = mintId(context.generateId, "Story block id");
-        // A fresh `textId` per row, never a reused one: it is the key rich-text runs, find/replace and
-        // the voice map address a line by, and two rows sharing one would silently alias.
-        const textId = mintId(context.generateId, "Story text id");
-        const base = { id, parentId: null, childrenIds: [] };
-        if (row.kind === "narration") {
-            return { ...base, kind: "nodeAction", payload: { action: "narration", text: { textId, role: "narration", value: row.text } } };
-        }
-        const characterId = row.characterId ?? (row.pendingCharacterName ? context.createdCharacterIds[row.pendingCharacterName] : undefined);
-        // A pending name that is not in the map means the confirm step did not create it (the author
-        // backed out, or the character service refused). Falling back to the bare name keeps the line
-        // readable and correct; writing the unresolved id would leave a dialogue row pointing at a
-        // character that does not exist, which nothing downstream can repair.
-        const speakerName = characterId ? undefined : (row.speakerName ?? row.pendingCharacterName);
-        return {
-            ...base,
-            kind: "nodeAction",
-            payload: {
-                action: "dialogue",
-                ...(characterId ? { characterId } : {}),
-                ...(speakerName ? { speakerName } : {}),
-                text: { textId, role: "dialogue", value: row.text },
-            },
-        };
-    });
-    return { blocks };
+export function materializePastedRows(
+  plan: PastePlan,
+  context: MaterializeContext
+): MaterializedPaste {
+  const blocks: StoryBlock[] = plan.rows.map((row) => {
+    const id = mintId(context.generateId, "Story block id");
+    // A fresh `textId` per row, never a reused one: it is the key rich-text runs, find/replace and
+    // the voice map address a line by, and two rows sharing one would silently alias.
+    const textId = mintId(context.generateId, "Story text id");
+    const base = { id, parentId: null, childrenIds: [] };
+    if (row.kind === "narration") {
+      return {
+        ...base,
+        kind: "nodeAction",
+        payload: { action: "narration", text: { textId, role: "narration", value: row.text } }
+      };
+    }
+    const characterId =
+      row.characterId ??
+      (row.pendingCharacterName
+        ? context.createdCharacterIds[row.pendingCharacterName]
+        : undefined);
+    // A pending name that is not in the map means the confirm step did not create it (the author
+    // backed out, or the character service refused). Falling back to the bare name keeps the line
+    // readable and correct; writing the unresolved id would leave a dialogue row pointing at a
+    // character that does not exist, which nothing downstream can repair.
+    const speakerName = characterId ? undefined : (row.speakerName ?? row.pendingCharacterName);
+    return {
+      ...base,
+      kind: "nodeAction",
+      payload: {
+        action: "dialogue",
+        ...(characterId ? { characterId } : {}),
+        ...(speakerName ? { speakerName } : {}),
+        text: { textId, role: "dialogue", value: row.text }
+      }
+    };
+  });
+  return { blocks };
 }
 
 // ---------------------------------------------------------------------------
@@ -503,38 +532,48 @@ export function materializePastedRows(plan: PastePlan, context: MaterializeConte
 export const STORY_ACTIONS_CLIPBOARD_KIND = "narraleaf.story.actions";
 
 function isStoryBlocksPayload(raw: string): boolean {
-    if (!raw.trim()) {
-        return false;
-    }
-    try {
-        const parsed = JSON.parse(raw) as { kind?: unknown; roots?: unknown };
-        return parsed?.kind === STORY_ACTIONS_CLIPBOARD_KIND && Array.isArray(parsed.roots) && parsed.roots.length > 0;
-    } catch {
-        return false;
-    }
+  if (!raw.trim()) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(raw) as { kind?: unknown; roots?: unknown };
+    return (
+      parsed?.kind === STORY_ACTIONS_CLIPBOARD_KIND &&
+      Array.isArray(parsed.roots) &&
+      parsed.roots.length > 0
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** Decide which of the five paste paths a clipboard payload takes. */
-export function routeStoryPaste(input: { storyBlocksPayload: string; plainText: string; plainRequested: boolean }): StoryPasteRoute {
-    // Order is the whole content of this function. Blocks first because a copy from Studio must never
-    // be reinterpreted as prose; the script header next because a Story Script's `#data` footer would
-    // otherwise bury a scene under its own serialisation (and `#nlscript` alone is also a single line,
-    // so it has to outrank `single` too).
-    if (isStoryBlocksPayload(input.storyBlocksPayload)) {
-        return { kind: "blocks" };
-    }
-    if (input.plainText.trimStart().startsWith(STORY_SCRIPT_HEADER)) {
-        return { kind: "scriptFile" };
-    }
-    // Zero lines lands here as well: an empty paste has nothing for either the wizard or the plain path
-    // to do, and the single-line path already inserts nothing gracefully.
-    if (toPastedLines(input.plainText).length <= 1) {
-        return { kind: "single" };
-    }
-    return input.plainRequested ? { kind: "plain", text: input.plainText } : { kind: "wizard", text: input.plainText };
+export function routeStoryPaste(input: {
+  storyBlocksPayload: string;
+  plainText: string;
+  plainRequested: boolean;
+}): StoryPasteRoute {
+  // Order is the whole content of this function. Blocks first because a copy from Studio must never
+  // be reinterpreted as prose; the script header next because a Story Script's `#data` footer would
+  // otherwise bury a scene under its own serialisation (and `#nlscript` alone is also a single line,
+  // so it has to outrank `single` too).
+  if (isStoryBlocksPayload(input.storyBlocksPayload)) {
+    return { kind: "blocks" };
+  }
+  if (input.plainText.trimStart().startsWith(STORY_SCRIPT_HEADER)) {
+    return { kind: "scriptFile" };
+  }
+  // Zero lines lands here as well: an empty paste has nothing for either the wizard or the plain path
+  // to do, and the single-line path already inserts nothing gracefully.
+  if (toPastedLines(input.plainText).length <= 1) {
+    return { kind: "single" };
+  }
+  return input.plainRequested
+    ? { kind: "plain", text: input.plainText }
+    : { kind: "wizard", text: input.plainText };
 }
 
 /** The key {@link StoryPasteMemory.speakers} and `PastePlanInput.mappings` are both keyed by. */
 export function speakerMemoryKey(label: string): string {
-    return label.trim().toLowerCase();
+  return label.trim().toLowerCase();
 }

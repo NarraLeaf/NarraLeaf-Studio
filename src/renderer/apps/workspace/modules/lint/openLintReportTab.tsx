@@ -11,13 +11,13 @@ import { LINT_REPORT_TAB_ID } from "./lintIds";
  * and the workspace already opens documents in tabs.
  */
 export function createLintReportTab(): EditorTabDefinition<void> {
-    return {
-        id: LINT_REPORT_TAB_ID,
-        title: translate("lint.report.title"),
-        icon: <ListChecks className="h-4 w-4" />,
-        component: LintReportTab,
-        closable: true,
-    };
+  return {
+    id: LINT_REPORT_TAB_ID,
+    title: translate("lint.report.title"),
+    icon: <ListChecks className="h-4 w-4" />,
+    component: LintReportTab,
+    closable: true
+  };
 }
 
 /**
@@ -28,5 +28,5 @@ export function createLintReportTab(): EditorTabDefinition<void> {
  * instance - so re-running does not reset the reader's filter or grouping.
  */
 export function openLintReportTab(ctx: WorkspaceContext, groupId?: string): void {
-    ctx.services.get<UIService>(Services.UI).editor.openOrUpdate(createLintReportTab(), groupId);
+  ctx.services.get<UIService>(Services.UI).editor.openOrUpdate(createLintReportTab(), groupId);
 }

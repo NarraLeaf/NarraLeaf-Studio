@@ -23,36 +23,36 @@ import type { ReactNode } from "react";
  * button belongs to, not the paragraph below it.
  */
 export function SettingsGroup({
-    title,
-    description,
-    trailing,
-    helpTopic,
-    children,
+  title,
+  description,
+  trailing,
+  helpTopic,
+  children
 }: {
-    title: string;
-    /** One line under the heading, for a part whose rows do not say it between them. */
-    description?: string;
-    /** The part's own actions, on the heading row. */
-    trailing?: ReactNode;
-    /** Tags the whole part for `F1`. */
-    helpTopic?: string;
-    children: ReactNode;
+  title: string;
+  /** One line under the heading, for a part whose rows do not say it between them. */
+  description?: string;
+  /** The part's own actions, on the heading row. */
+  trailing?: ReactNode;
+  /** Tags the whole part for `F1`. */
+  helpTopic?: string;
+  children: ReactNode;
 }) {
-    return (
-        <section
-            className="grid gap-2.5 border-t border-edge pt-3 first:border-t-0 first:pt-0 [&>*]:min-w-0"
-            data-help-topic={helpTopic}
-        >
-            <div className="group/help min-w-0">
-                <div className="flex min-w-0 items-center justify-between gap-2">
-                    <h3 className="min-w-0 truncate text-xs font-medium text-fg">{title}</h3>
-                    {trailing ? <div className="flex shrink-0 items-center gap-1">{trailing}</div> : null}
-                </div>
-                {description ? (
-                    <p className="mt-1 text-2xs leading-relaxed text-fg-subtle">{description}</p>
-                ) : null}
-            </div>
-            {children}
-        </section>
-    );
+  return (
+    <section
+      className="grid gap-2.5 border-t border-edge pt-3 first:border-t-0 first:pt-0 [&>*]:min-w-0"
+      data-help-topic={helpTopic}
+    >
+      <div className="group/help min-w-0">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <h3 className="min-w-0 truncate text-xs font-medium text-fg">{title}</h3>
+          {trailing ? <div className="flex shrink-0 items-center gap-1">{trailing}</div> : null}
+        </div>
+        {description ? (
+          <p className="mt-1 text-2xs leading-relaxed text-fg-subtle">{description}</p>
+        ) : null}
+      </div>
+      {children}
+    </section>
+  );
 }

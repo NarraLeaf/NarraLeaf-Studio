@@ -73,8 +73,8 @@ export const STORY_VISITED_OPTIONS_KEY = "options";
 
 /** The two collections, as they sit in the namespace. */
 export type StoryVisitedContent = {
-    [STORY_VISITED_SCENES_KEY]: string[];
-    [STORY_VISITED_OPTIONS_KEY]: string[];
+  [STORY_VISITED_SCENES_KEY]: string[];
+  [STORY_VISITED_OPTIONS_KEY]: string[];
 };
 
 export type StoryVisitedKey = typeof STORY_VISITED_SCENES_KEY | typeof STORY_VISITED_OPTIONS_KEY;
@@ -88,39 +88,41 @@ export type StoryVisitedKey = typeof STORY_VISITED_SCENES_KEY | typeof STORY_VIS
  * as the "empty" default by the next.
  */
 export function createStoryVisitedPersistent(story: Story): Persistent<StoryVisitedContent> {
-    // The literal is annotated rather than inferred: bare `[]` infers `never[]`, which makes the
-    // resulting `Persistent<{scenes: never[]}>` incompatible with the declared content type.
-    const defaults: StoryVisitedContent = {
-        [STORY_VISITED_SCENES_KEY]: [],
-        [STORY_VISITED_OPTIONS_KEY]: [],
-    };
-    return story.createPersistent(STORY_VISITED_NAMESPACE, defaults);
+  // The literal is annotated rather than inferred: bare `[]` infers `never[]`, which makes the
+  // resulting `Persistent<{scenes: never[]}>` incompatible with the declared content type.
+  const defaults: StoryVisitedContent = {
+    [STORY_VISITED_SCENES_KEY]: [],
+    [STORY_VISITED_OPTIONS_KEY]: []
+  };
+  return story.createPersistent(STORY_VISITED_NAMESPACE, defaults);
 }
 
 /** Read one collection off a live `Storable`, tolerating a namespace that is not there yet. */
 export function readStoryVisitedIds(
-    storable: StoryVisitedStore,
-    namespaceName: string,
-    key: StoryVisitedKey,
+  storable: StoryVisitedStore,
+  namespaceName: string,
+  key: StoryVisitedKey
 ): string[] {
-    if (!namespaceName || !storable.hasNamespace(namespaceName)) {
-        return [];
-    }
-    const value = storable.getNamespace(namespaceName).get(key);
-    return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+  if (!namespaceName || !storable.hasNamespace(namespaceName)) {
+    return [];
+  }
+  const value = storable.getNamespace(namespaceName).get(key);
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
 }
 
 /** Membership test for one collection. An empty id is "not visited", never an error. */
 export function isStoryVisited(
-    storable: StoryVisitedStore,
-    namespaceName: string,
-    key: StoryVisitedKey,
-    id: string,
+  storable: StoryVisitedStore,
+  namespaceName: string,
+  key: StoryVisitedKey,
+  id: string
 ): boolean {
-    if (!id) {
-        return false;
-    }
-    return readStoryVisitedIds(storable, namespaceName, key).includes(id);
+  if (!id) {
+    return false;
+  }
+  return readStoryVisitedIds(storable, namespaceName, key).includes(id);
 }
 
 /**
@@ -140,20 +142,20 @@ export function isStoryVisited(
  * a hand-built prefix would silently desynchronize on an engine bump.
  */
 export function markStoryVisitedStatement(
-    visited: Persistent<StoryVisitedContent>,
-    key: StoryVisitedKey,
-    id: string,
+  visited: Persistent<StoryVisitedContent>,
+  key: StoryVisitedKey,
+  id: string
 ): unknown {
-    const namespaceName = DevTools.getNamespaceName(visited);
-    return Script.execute(({ storable }) => {
-        const namespace = storable.getNamespace(namespaceName);
-        const current = namespace.get(key);
-        const ids = Array.isArray(current) ? (current as string[]) : [];
-        if (ids.includes(id)) {
-            return;
-        }
-        // A new array, not a push: `Namespace.set` compares the value it is given against the one it
-        // holds, and mutating the stored array in place would make both sides the same object.
-        namespace.set(key, [...ids, id]);
-    });
+  const namespaceName = DevTools.getNamespaceName(visited);
+  return Script.execute(({ storable }) => {
+    const namespace = storable.getNamespace(namespaceName);
+    const current = namespace.get(key);
+    const ids = Array.isArray(current) ? (current as string[]) : [];
+    if (ids.includes(id)) {
+      return;
+    }
+    // A new array, not a push: `Namespace.set` compares the value it is given against the one it
+    // holds, and mutating the stored array in place would make both sides the same object.
+    namespace.set(key, [...ids, id]);
+  });
 }

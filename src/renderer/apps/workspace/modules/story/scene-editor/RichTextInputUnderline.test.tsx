@@ -23,64 +23,81 @@ const RANGES: SpellcheckRange[] = [{ start: 5, end: 12, word: "recieve" }];
 const check = vi.fn(async () => ({ success: true as const, data: { ranges: RANGES } }));
 
 vi.mock("@/lib/app/bridge", () => ({
-    getInterface: () => ({ app: { spellcheck: { check } } }),
-    getPrivilegedInterface: () => ({}),
+  getInterface: () => ({ app: { spellcheck: { check } } }),
+  getPrivilegedInterface: () => ({})
 }));
 
 /** One rect per range, so a mark that is measured produces exactly one underline. */
 const originalGetClientRects = Range.prototype.getClientRects;
 beforeEach(() => {
-    check.mockClear();
-    Range.prototype.getClientRects = function stub(this: Range) {
-        const rects = [{ left: 10, top: 4, right: 60, bottom: 20, width: 50, height: 16, x: 10, y: 4, toJSON: () => ({}) }];
-        return Object.assign(rects, { item: (index: number) => rects[index] ?? null }) as unknown as DOMRectList;
-    };
+  check.mockClear();
+  Range.prototype.getClientRects = function stub(this: Range) {
+    const rects = [
+      {
+        left: 10,
+        top: 4,
+        right: 60,
+        bottom: 20,
+        width: 50,
+        height: 16,
+        x: 10,
+        y: 4,
+        toJSON: () => ({})
+      }
+    ];
+    return Object.assign(rects, {
+      item: (index: number) => rects[index] ?? null
+    }) as unknown as DOMRectList;
+  };
 });
 afterEach(() => {
-    Range.prototype.getClientRects = originalGetClientRects;
-    cleanup();
+  Range.prototype.getClientRects = originalGetClientRects;
+  cleanup();
 });
 
 const RUNS: StoryRichRun[] = [{ text: "I am recieve" }];
 
 function field(props: { language: string | null; strict?: boolean }) {
-    const ref = createRef<RichTextInputHandle>();
-    const element = (
-        <RichTextInput
-            ref={ref}
-            initialRuns={RUNS}
-            spellcheck={{ language: props.language, isKnownWord: () => false, revision: 1 }}
-            onChange={() => {}}
-            onShiftEnter={() => {}}
-            onEnter={() => {}}
-            onExit={() => {}}
-            onBlur={() => {}}
-        />
-    );
-    return render(props.strict ? <StrictMode>{element}</StrictMode> : element);
+  const ref = createRef<RichTextInputHandle>();
+  const element = (
+    <RichTextInput
+      ref={ref}
+      initialRuns={RUNS}
+      spellcheck={{ language: props.language, isKnownWord: () => false, revision: 1 }}
+      onChange={() => {}}
+      onShiftEnter={() => {}}
+      onEnter={() => {}}
+      onExit={() => {}}
+      onBlur={() => {}}
+    />
+  );
+  return render(props.strict ? <StrictMode>{element}</StrictMode> : element);
 }
 
-const underlines = (view: ReturnType<typeof render>) => view.container.querySelectorAll(".story-rt-spell");
+const underlines = (view: ReturnType<typeof render>) =>
+  view.container.querySelectorAll(".story-rt-spell");
 
 describe("the underline overlay", () => {
-    it("draws an underline once the checker answers", async () => {
-        const view = field({ language: "en" });
-        await waitFor(() => expect(check).toHaveBeenCalledWith("I am recieve", "en"));
-        await waitFor(() => expect(underlines(view).length).toBe(1));
-    });
+  it("draws an underline once the checker answers", async () => {
+    const view = field({ language: "en" });
+    await waitFor(() => expect(check).toHaveBeenCalledWith("I am recieve", "en"));
+    await waitFor(() => expect(underlines(view).length).toBe(1));
+  });
 
-    it("still draws after a StrictMode remount, which is how the app runs in development", async () => {
-        // The defect this was written for: the runner was built once into a ref and disposed by the
-        // throwaway mount's cleanup. React keeps refs across that remount, so the second mount reused
-        // an instance that had latched itself shut, and every answer after it was discarded.
-        const view = field({ language: "en", strict: true });
-        await waitFor(() => expect(underlines(view).length).toBe(1));
-    });
+  it("still draws after a StrictMode remount, which is how the app runs in development", async () => {
+    // The defect this was written for: the runner was built once into a ref and disposed by the
+    // throwaway mount's cleanup. React keeps refs across that remount, so the second mount reused
+    // an instance that had latched itself shut, and every answer after it was discarded.
+    const view = field({ language: "en", strict: true });
+    await waitFor(() => expect(underlines(view).length).toBe(1));
+  });
 
-    it("asks for nothing and draws nothing when no dictionary covers the language", async () => {
-        const view = field({ language: null });
-        await act(async () => { await Promise.resolve(); });
-        expect(check).not.toHaveBeenCalled();
-        expect(underlines(view).length).toBe(0);
+  it("asks for nothing and draws nothing when no dictionary covers the language", async () => {
+    const view = field({ language: null });
+    await act(async () => {
+      await Promise.resolve();
     });
+    expect(check).not.toHaveBeenCalled();
+    expect(underlines(view).length).toBe(0);
+  });
 });

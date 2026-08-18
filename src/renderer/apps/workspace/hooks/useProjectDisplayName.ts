@@ -9,10 +9,10 @@ import { useWorkspace } from "../context";
  * the switcher and anywhere else (search placeholder, etc.) always agree.
  */
 export function useProjectDisplayName(): string {
-    const { t } = useTranslation();
-    const { context } = useWorkspace();
-    const name = context
-        ? context.services.get<ProjectService>(Services.Project).getProjectConfig().name
-        : "";
-    return name?.trim() || t("workspace.shell.projectSwitcher.untitled");
+  const { t } = useTranslation();
+  const { context } = useWorkspace();
+  const name = context
+    ? context.services.get<ProjectService>(Services.Project).getProjectConfig().name
+    : "";
+  return name?.trim() || t("workspace.shell.projectSwitcher.untitled");
 }

@@ -4,21 +4,21 @@ import { useLiveTextStyles } from "@/lib/ui-editor/widget-modules/shared/text/us
 import { TextRenderer } from "../text/renderer";
 
 function isLiveDialogRuntime(props: WidgetRendererProps): boolean {
-    return props.hostAdapter.gameUiRuntime?.slotId === "dialog";
+  return props.hostAdapter.gameUiRuntime?.slotId === "dialog";
 }
 
 function LiveSentenceRenderer(props: WidgetRendererProps) {
-    const { outerStyle, textStyle, textAppearanceProps } = useLiveTextStyles(props);
-    return (
-        <div style={outerStyle}>
-            <Texts {...textAppearanceProps} style={textStyle} />
-        </div>
-    );
+  const { outerStyle, textStyle, textAppearanceProps } = useLiveTextStyles(props);
+  return (
+    <div style={outerStyle}>
+      <Texts {...textAppearanceProps} style={textStyle} />
+    </div>
+  );
 }
 
 export function DialogSentenceRenderer(props: WidgetRendererProps) {
-    if (!isLiveDialogRuntime(props)) {
-        return <TextRenderer {...props} />;
-    }
-    return <LiveSentenceRenderer {...props} />;
+  if (!isLiveDialogRuntime(props)) {
+    return <TextRenderer {...props} />;
+  }
+  return <LiveSentenceRenderer {...props} />;
 }

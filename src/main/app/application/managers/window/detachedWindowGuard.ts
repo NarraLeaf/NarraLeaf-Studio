@@ -17,40 +17,40 @@ const DETACHED_FRAME_NAME_PREFIX = "nls-detached:";
 
 /** Frame name for a detached window, given the caller's own key for it (e.g. an editor tab id). */
 export function detachedWindowFrameName(key: string): string {
-    return `${DETACHED_FRAME_NAME_PREFIX}${key}`;
+  return `${DETACHED_FRAME_NAME_PREFIX}${key}`;
 }
 
 /** Window types whose renderer may detach part of itself into a popup. */
 const DETACHABLE_WINDOW_TYPES: ReadonlySet<WindowAppType> = new Set([WindowAppType.Workspace]);
 
 export type DetachedWindowRequest = {
-    url: string;
-    frameName: string;
-    windowType: WindowAppType;
+  url: string;
+  frameName: string;
+  windowType: WindowAppType;
 };
 
 export type DetachedWindowDecision =
-    | { allowed: true; key: string }
-    | { allowed: false; reason: string };
+  | { allowed: true; key: string }
+  | { allowed: false; reason: string };
 
 export function decideDetachedWindowOpen(request: DetachedWindowRequest): DetachedWindowDecision {
-    if (!DETACHABLE_WINDOW_TYPES.has(request.windowType)) {
-        return { allowed: false, reason: `The ${request.windowType} window cannot detach editors` };
-    }
+  if (!DETACHABLE_WINDOW_TYPES.has(request.windowType)) {
+    return { allowed: false, reason: `The ${request.windowType} window cannot detach editors` };
+  }
 
-    // Electron reports `window.open("")` as "about:blank"; anything else is a load, not a detach.
-    if (request.url !== "" && request.url !== "about:blank") {
-        return { allowed: false, reason: "A detached window must stay blank" };
-    }
+  // Electron reports `window.open("")` as "about:blank"; anything else is a load, not a detach.
+  if (request.url !== "" && request.url !== "about:blank") {
+    return { allowed: false, reason: "A detached window must stay blank" };
+  }
 
-    if (!request.frameName.startsWith(DETACHED_FRAME_NAME_PREFIX)) {
-        return { allowed: false, reason: "Not a detached-window frame name" };
-    }
+  if (!request.frameName.startsWith(DETACHED_FRAME_NAME_PREFIX)) {
+    return { allowed: false, reason: "Not a detached-window frame name" };
+  }
 
-    const key = request.frameName.slice(DETACHED_FRAME_NAME_PREFIX.length);
-    if (!key) {
-        return { allowed: false, reason: "A detached window needs a key" };
-    }
+  const key = request.frameName.slice(DETACHED_FRAME_NAME_PREFIX.length);
+  if (!key) {
+    return { allowed: false, reason: "A detached window needs a key" };
+  }
 
-    return { allowed: true, key };
+  return { allowed: true, key };
 }

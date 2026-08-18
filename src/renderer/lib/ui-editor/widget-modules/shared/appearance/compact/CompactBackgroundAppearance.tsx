@@ -1,51 +1,63 @@
 import { useTranslation } from "@/lib/i18n";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { ImageFillField } from "@/apps/workspace/modules/properties/framework/fields/ImageFillField";
-import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
-import type { ColorValue, ImageFillFieldDefinition } from "@/apps/workspace/modules/properties/framework/types";
+import {
+  parseColorValue,
+  serializeColorValue
+} from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import type {
+  ColorValue,
+  ImageFillFieldDefinition
+} from "@/apps/workspace/modules/properties/framework/types";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { Select } from "@/lib/components/elements/Select";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import type {
-    AppearanceFieldTransition,
-    AppearancePropertyKey,
-    AppearanceRowValue,
-    AppearanceVariant,
+  AppearanceFieldTransition,
+  AppearancePropertyKey,
+  AppearanceRowValue,
+  AppearanceVariant
 } from "@shared/types/ui-editor/appearance";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import { Droplets, Eye, EyeOff } from "lucide-react";
-import { FILL_TYPE_OPTIONS, controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
+import {
+  FILL_TYPE_OPTIONS,
+  controlButtonClass
+} from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import { formatPercentDisplay, readFiniteNumber } from "./appearanceCompactHelpers";
 import {
-    getRowValueForModuleEdit,
-    type ModuleEditMode,
-    updateRowValueForModuleEditOrEnsure,
+  getRowValueForModuleEdit,
+  type ModuleEditMode,
+  updateRowValueForModuleEditOrEnsure
 } from "./appearanceModuleState";
 import { CompactModuleCard } from "./CompactModuleCard";
 import { CompactModuleStateHeader } from "./CompactModuleStateHeader";
 import { AppearanceFieldMotionButton, ModuleMotionMenuButton } from "./AppearanceMotionControls";
 
 export type CompactBackgroundAppearanceProps = {
-    variant: AppearanceVariant;
-    commitVariant: (v: AppearanceVariant) => void;
-    inspectorData: UIInspectorData;
-    draftResetKey: string;
-    onSaving: (saving: boolean) => void;
-    /** Keys owned by this module (used for conditional state rows). */
-    moduleKeys: readonly string[];
-    editMode: ModuleEditMode;
-    onModeChange: (mode: ModuleEditMode) => void;
-    /** Baseline for `normalizeImageFill` when `imageFill` row is empty (container: element props; button: synthesized). */
-    imageFillBaseline: RectangleLikeProps;
-    /** Stable id for the nested ImageFillField definition. */
-    imageFillFieldId: string;
-    motionVisible: boolean;
-    onMotionVisibleChange: (visible: boolean) => void;
-    /** Any variant has a motion config on an animatable key in this module. */
-    moduleMotionFieldsConfigured: boolean;
-    setFieldTransition: (groupKey: AppearancePropertyKey, transition: AppearanceFieldTransition | null) => void;
+  variant: AppearanceVariant;
+  commitVariant: (v: AppearanceVariant) => void;
+  inspectorData: UIInspectorData;
+  draftResetKey: string;
+  onSaving: (saving: boolean) => void;
+  /** Keys owned by this module (used for conditional state rows). */
+  moduleKeys: readonly string[];
+  editMode: ModuleEditMode;
+  onModeChange: (mode: ModuleEditMode) => void;
+  /** Baseline for `normalizeImageFill` when `imageFill` row is empty (container: element props; button: synthesized). */
+  imageFillBaseline: RectangleLikeProps;
+  /** Stable id for the nested ImageFillField definition. */
+  imageFillFieldId: string;
+  motionVisible: boolean;
+  onMotionVisibleChange: (visible: boolean) => void;
+  /** Any variant has a motion config on an animatable key in this module. */
+  moduleMotionFieldsConfigured: boolean;
+  setFieldTransition: (
+    groupKey: AppearancePropertyKey,
+    transition: AppearanceFieldTransition | null
+  ) => void;
 };
 
 /**
@@ -56,241 +68,245 @@ export type CompactBackgroundAppearanceProps = {
  * would leave the picker unable to ring the swatch the row is actually following.
  */
 function backgroundColorPickerValue(raw: AppearanceRowValue | undefined): ColorValue {
-    const s = String(raw ?? "").trim();
-    if (!s || s.toLowerCase() === "transparent") {
-        return { hex: "#ffffff", alpha: 1 };
-    }
-    const parsed = parseColorValue(s, { hex: "#ffffff", alpha: 1 });
-    return { hex: parsed.hex, alpha: 1, ...(parsed.link ? { link: parsed.link } : {}) };
+  const s = String(raw ?? "").trim();
+  if (!s || s.toLowerCase() === "transparent") {
+    return { hex: "#ffffff", alpha: 1 };
+  }
+  const parsed = parseColorValue(s, { hex: "#ffffff", alpha: 1 });
+  return { hex: parsed.hex, alpha: 1, ...(parsed.link ? { link: parsed.link } : {}) };
 }
 
 function patchManyBackground(
-    variant: AppearanceVariant,
-    moduleKeys: readonly string[],
-    editMode: ModuleEditMode,
-    updates: { key: string; value: AppearanceRowValue }[]
+  variant: AppearanceVariant,
+  moduleKeys: readonly string[],
+  editMode: ModuleEditMode,
+  updates: { key: string; value: AppearanceRowValue }[]
 ): AppearanceVariant {
-    let v = variant;
-    for (const u of updates) {
-        v = updateRowValueForModuleEditOrEnsure(v, moduleKeys, u.key, editMode, u.value);
-    }
-    return v;
+  let v = variant;
+  for (const u of updates) {
+    v = updateRowValueForModuleEditOrEnsure(v, moduleKeys, u.key, editMode, u.value);
+  }
+  return v;
 }
 
 export function CompactBackgroundAppearance({
-    variant,
-    commitVariant,
-    inspectorData,
-    draftResetKey,
-    onSaving,
-    moduleKeys,
-    editMode,
-    onModeChange,
-    imageFillBaseline,
-    imageFillFieldId,
-    motionVisible,
-    onMotionVisibleChange,
-    moduleMotionFieldsConfigured,
-    setFieldTransition,
+  variant,
+  commitVariant,
+  inspectorData,
+  draftResetKey,
+  onSaving,
+  moduleKeys,
+  editMode,
+  onModeChange,
+  imageFillBaseline,
+  imageFillFieldId,
+  motionVisible,
+  onMotionVisibleChange,
+  moduleMotionFieldsConfigured,
+  setFieldTransition
 }: CompactBackgroundAppearanceProps) {
-    const { t } = useTranslation();
-    const getBg = (key: string) => getRowValueForModuleEdit(variant, key, editMode);
+  const { t } = useTranslation();
+  const getBg = (key: string) => getRowValueForModuleEdit(variant, key, editMode);
 
-    const patchBg = (key: string, value: AppearanceRowValue) => {
-        commitVariant(updateRowValueForModuleEditOrEnsure(variant, moduleKeys, key, editMode, value));
-    };
+  const patchBg = (key: string, value: AppearanceRowValue) => {
+    commitVariant(updateRowValueForModuleEditOrEnsure(variant, moduleKeys, key, editMode, value));
+  };
 
-    const fillTypeRaw = String(getBg("fillType") ?? "color");
-    const fillType: RectangleLikeProps["fillType"] = fillTypeRaw === "image" ? "image" : "color";
+  const fillTypeRaw = String(getBg("fillType") ?? "color");
+  const fillType: RectangleLikeProps["fillType"] = fillTypeRaw === "image" ? "image" : "color";
 
-    const imageFillFieldDef: ImageFillFieldDefinition<UIInspectorData> = {
-        type: "imageFill",
-        id: imageFillFieldId,
-        label: t("widgetAppearance.fields.imageFill"),
-        getValue: () => {
-            const raw = getBg("imageFill");
-            if (raw && typeof raw === "object" && "mode" in (raw as object)) {
-                return raw as ImageFill;
-            }
-            return normalizeImageFill(imageFillBaseline);
-        },
-        setValue: (_d, imgVal) => {
-            commitVariant(
-                patchManyBackground(variant, moduleKeys, editMode, [
-                    { key: "fillType", value: "image" },
-                    { key: "imageFill", value: imgVal },
-                ])
-            );
-        },
-    };
+  const imageFillFieldDef: ImageFillFieldDefinition<UIInspectorData> = {
+    type: "imageFill",
+    id: imageFillFieldId,
+    label: t("widgetAppearance.fields.imageFill"),
+    getValue: () => {
+      const raw = getBg("imageFill");
+      if (raw && typeof raw === "object" && "mode" in (raw as object)) {
+        return raw as ImageFill;
+      }
+      return normalizeImageFill(imageFillBaseline);
+    },
+    setValue: (_d, imgVal) => {
+      commitVariant(
+        patchManyBackground(variant, moduleKeys, editMode, [
+          { key: "fillType", value: "image" },
+          { key: "imageFill", value: imgVal }
+        ])
+      );
+    }
+  };
 
-    return (
-        <CompactModuleCard
-            title={t("widgetAppearance.background.title")}
-            headerHoverAction={
-                <ModuleMotionMenuButton
-                    enabled={motionVisible}
-                    hasConfiguredFields={moduleMotionFieldsConfigured}
-                    onEnabledChange={onMotionVisibleChange}
-                />
-            }
-            headerRight={
-                <CompactModuleStateHeader
-                    variant={variant}
-                    commitVariant={commitVariant}
-                    moduleKeys={moduleKeys}
-                    mode={editMode}
-                    onModeChange={onModeChange}
-                />
-            }
-        >
-            <Select
-                value={fillType}
-                options={FILL_TYPE_OPTIONS}
-                fullWidth
-                onChange={next => {
-                    const s = String(next) as RectangleLikeProps["fillType"];
-                    patchBg("fillType", s);
-                }}
+  return (
+    <CompactModuleCard
+      title={t("widgetAppearance.background.title")}
+      headerHoverAction={
+        <ModuleMotionMenuButton
+          enabled={motionVisible}
+          hasConfiguredFields={moduleMotionFieldsConfigured}
+          onEnabledChange={onMotionVisibleChange}
+        />
+      }
+      headerRight={
+        <CompactModuleStateHeader
+          variant={variant}
+          commitVariant={commitVariant}
+          moduleKeys={moduleKeys}
+          mode={editMode}
+          onModeChange={onModeChange}
+        />
+      }
+    >
+      <Select
+        value={fillType}
+        options={FILL_TYPE_OPTIONS}
+        fullWidth
+        onChange={(next) => {
+          const s = String(next) as RectangleLikeProps["fillType"];
+          patchBg("fillType", s);
+        }}
+      />
+
+      {fillType === "color" && (
+        <div className="flex flex-wrap gap-2 items-center min-w-0 mt-2">
+          <div className="flex items-center gap-1 shrink-0">
+            <ColorPickerTrigger
+              value={backgroundColorPickerValue(getBg("backgroundColor"))}
+              displayMode="icon"
+              brandPalette
+              allowOpacity={false}
+              onChange={(next: ColorValue) =>
+                // Alpha pinned to 1 for the same reason the picker hides the slider:
+                // this row's transparency is `fillOpacity`. A link survives that -
+                // `serializeColorValue` writes the id, not the colour it resolves to.
+                patchBg(
+                  "backgroundColor",
+                  serializeColorValue({
+                    hex: next.hex,
+                    alpha: 1,
+                    ...(next.link ? { link: next.link } : {})
+                  })
+                )
+              }
             />
+            {motionVisible ? (
+              <AppearanceFieldMotionButton
+                variant={variant}
+                setFieldTransition={setFieldTransition}
+                groupKey="backgroundColor"
+                draftResetKey={draftResetKey}
+              />
+            ) : null}
+          </div>
+          <div className="flex-1 min-w-[6rem]">
+            <div className="flex items-center gap-1 min-w-0">
+              <NumericDraftEnhancedInput
+                committedDisplay={formatPercentDisplay(readFiniteNumber(getBg("fillOpacity"), 1))}
+                draftResetKey={`${draftResetKey}-bg-fill-op`}
+                onFiniteNumber={(value) => {
+                  const clamped = Math.min(100, Math.max(0, value));
+                  patchBg("fillOpacity", clamped / 100);
+                }}
+                inputMode="decimal"
+                unit="%"
+                min={0}
+                max={100}
+                precision={null}
+                leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
+                className="w-full min-w-0"
+              />
+              {motionVisible ? (
+                <AppearanceFieldMotionButton
+                  variant={variant}
+                  setFieldTransition={setFieldTransition}
+                  groupKey="fillOpacity"
+                  draftResetKey={draftResetKey}
+                />
+              ) : null}
+            </div>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => patchBg("fillVisible", !(getBg("fillVisible") ?? true))}
+              aria-pressed={Boolean(getBg("fillVisible") ?? true)}
+              aria-label={t("widgetAppearance.background.toggleVisibilityAria")}
+              className={controlButtonClass(Boolean(getBg("fillVisible") ?? true))}
+            >
+              {(getBg("fillVisible") ?? true) ? (
+                <Eye className="w-4 h-4" />
+              ) : (
+                <EyeOff className="w-4 h-4" />
+              )}
+            </button>
+            {motionVisible ? (
+              <AppearanceFieldMotionButton
+                variant={variant}
+                setFieldTransition={setFieldTransition}
+                groupKey="fillVisible"
+                draftResetKey={draftResetKey}
+              />
+            ) : null}
+          </div>
+        </div>
+      )}
 
-            {fillType === "color" && (
-                <div className="flex flex-wrap gap-2 items-center min-w-0 mt-2">
-                    <div className="flex items-center gap-1 shrink-0">
-                        <ColorPickerTrigger
-                            value={backgroundColorPickerValue(getBg("backgroundColor"))}
-                            displayMode="icon"
-                            brandPalette
-                            allowOpacity={false}
-                            onChange={(next: ColorValue) =>
-                                // Alpha pinned to 1 for the same reason the picker hides the slider:
-                                // this row's transparency is `fillOpacity`. A link survives that -
-                                // `serializeColorValue` writes the id, not the colour it resolves to.
-                                patchBg(
-                                    "backgroundColor",
-                                    serializeColorValue({ hex: next.hex, alpha: 1, ...(next.link ? { link: next.link } : {}) })
-                                )
-                            }
-                        />
-                        {motionVisible ? (
-                            <AppearanceFieldMotionButton
-                                variant={variant}
-                                setFieldTransition={setFieldTransition}
-                                groupKey="backgroundColor"
-                                draftResetKey={draftResetKey}
-                            />
-                        ) : null}
-                    </div>
-                    <div className="flex-1 min-w-[6rem]">
-                        <div className="flex items-center gap-1 min-w-0">
-                            <NumericDraftEnhancedInput
-                                committedDisplay={formatPercentDisplay(readFiniteNumber(getBg("fillOpacity"), 1))}
-                                draftResetKey={`${draftResetKey}-bg-fill-op`}
-                                onFiniteNumber={value => {
-                                    const clamped = Math.min(100, Math.max(0, value));
-                                    patchBg("fillOpacity", clamped / 100);
-                                }}
-                                inputMode="decimal"
-                                unit="%"
-                                min={0}
-                                max={100}
-                                precision={null}
-                                leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
-                                className="w-full min-w-0"
-                            />
-                            {motionVisible ? (
-                                <AppearanceFieldMotionButton
-                                    variant={variant}
-                                    setFieldTransition={setFieldTransition}
-                                    groupKey="fillOpacity"
-                                    draftResetKey={draftResetKey}
-                                />
-                            ) : null}
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                        <button
-                            type="button"
-                            onClick={() => patchBg("fillVisible", !Boolean(getBg("fillVisible") ?? true))}
-                            aria-pressed={Boolean(getBg("fillVisible") ?? true)}
-                            aria-label={t("widgetAppearance.background.toggleVisibilityAria")}
-                            className={controlButtonClass(Boolean(getBg("fillVisible") ?? true))}
-                        >
-                            {Boolean(getBg("fillVisible") ?? true) ? (
-                                <Eye className="w-4 h-4" />
-                            ) : (
-                                <EyeOff className="w-4 h-4" />
-                            )}
-                        </button>
-                        {motionVisible ? (
-                            <AppearanceFieldMotionButton
-                                variant={variant}
-                                setFieldTransition={setFieldTransition}
-                                groupKey="fillVisible"
-                                draftResetKey={draftResetKey}
-                            />
-                        ) : null}
-                    </div>
-                </div>
-            )}
-
-            {fillType === "image" && (
-                <div className="space-y-2 min-w-0 mt-2">
-                    <ImageFillField field={imageFillFieldDef} data={inspectorData} onSaving={onSaving} />
-                    <div className="flex flex-wrap gap-2 items-center min-w-0">
-                        <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1 min-w-0">
-                                <NumericDraftEnhancedInput
-                                    committedDisplay={formatPercentDisplay(readFiniteNumber(getBg("fillOpacity"), 1))}
-                                    draftResetKey={`${draftResetKey}-bg-img-op`}
-                                    onFiniteNumber={value => {
-                                        const clamped = Math.min(100, Math.max(0, value));
-                                        patchBg("fillOpacity", clamped / 100);
-                                    }}
-                                    inputMode="decimal"
-                                    unit="%"
-                                    min={0}
-                                    max={100}
-                                    precision={null}
-                                    leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
-                                    className="w-full min-w-0"
-                                />
-                                {motionVisible ? (
-                                    <AppearanceFieldMotionButton
-                                        variant={variant}
-                                        setFieldTransition={setFieldTransition}
-                                        groupKey="fillOpacity"
-                                        draftResetKey={draftResetKey}
-                                    />
-                                ) : null}
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                            <button
-                                type="button"
-                                onClick={() => patchBg("fillVisible", !Boolean(getBg("fillVisible") ?? true))}
-                                aria-pressed={Boolean(getBg("fillVisible") ?? true)}
-                                aria-label={t("widgetAppearance.background.toggleVisibilityAria")}
-                                className={controlButtonClass(Boolean(getBg("fillVisible") ?? true))}
-                            >
-                                {Boolean(getBg("fillVisible") ?? true) ? (
-                                    <Eye className="w-4 h-4" />
-                                ) : (
-                                    <EyeOff className="w-4 h-4" />
-                                )}
-                            </button>
-                            {motionVisible ? (
-                                <AppearanceFieldMotionButton
-                                    variant={variant}
-                                    setFieldTransition={setFieldTransition}
-                                    groupKey="fillVisible"
-                                    draftResetKey={draftResetKey}
-                                />
-                            ) : null}
-                        </div>
-                    </div>
-                </div>
-            )}
-        </CompactModuleCard>
-    );
+      {fillType === "image" && (
+        <div className="space-y-2 min-w-0 mt-2">
+          <ImageFillField field={imageFillFieldDef} data={inspectorData} onSaving={onSaving} />
+          <div className="flex flex-wrap gap-2 items-center min-w-0">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1 min-w-0">
+                <NumericDraftEnhancedInput
+                  committedDisplay={formatPercentDisplay(readFiniteNumber(getBg("fillOpacity"), 1))}
+                  draftResetKey={`${draftResetKey}-bg-img-op`}
+                  onFiniteNumber={(value) => {
+                    const clamped = Math.min(100, Math.max(0, value));
+                    patchBg("fillOpacity", clamped / 100);
+                  }}
+                  inputMode="decimal"
+                  unit="%"
+                  min={0}
+                  max={100}
+                  precision={null}
+                  leftIcon={<Droplets className="w-4 h-4 text-fg-muted" />}
+                  className="w-full min-w-0"
+                />
+                {motionVisible ? (
+                  <AppearanceFieldMotionButton
+                    variant={variant}
+                    setFieldTransition={setFieldTransition}
+                    groupKey="fillOpacity"
+                    draftResetKey={draftResetKey}
+                  />
+                ) : null}
+              </div>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => patchBg("fillVisible", !(getBg("fillVisible") ?? true))}
+                aria-pressed={Boolean(getBg("fillVisible") ?? true)}
+                aria-label={t("widgetAppearance.background.toggleVisibilityAria")}
+                className={controlButtonClass(Boolean(getBg("fillVisible") ?? true))}
+              >
+                {(getBg("fillVisible") ?? true) ? (
+                  <Eye className="w-4 h-4" />
+                ) : (
+                  <EyeOff className="w-4 h-4" />
+                )}
+              </button>
+              {motionVisible ? (
+                <AppearanceFieldMotionButton
+                  variant={variant}
+                  setFieldTransition={setFieldTransition}
+                  groupKey="fillVisible"
+                  draftResetKey={draftResetKey}
+                />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+    </CompactModuleCard>
+  );
 }

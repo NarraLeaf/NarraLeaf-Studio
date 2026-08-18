@@ -5,9 +5,9 @@ import { Service } from "../Service";
 import { Services, WorkspaceContext } from "../services";
 import { UIService } from "../core/UIService";
 import {
-    collectPaletteCommands,
-    type CommandRegistration,
-    type PaletteCommand,
+  collectPaletteCommands,
+  type CommandRegistration,
+  type PaletteCommand
 } from "@/apps/workspace/components/layout/commandPaletteModel";
 
 /**
@@ -27,76 +27,79 @@ import {
  * Registered as a top-level service so `services.get(Services.Command)` reaches it from anywhere.
  */
 export class CommandService extends Service<CommandService> {
-    private commands: Map<string, CommandRegistration> = new Map();
+  private commands: Map<string, CommandRegistration> = new Map();
 
-    protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
-        // collect() reads the UI service's actions, keybindings, and focus, so it must be up first.
-        const uiService = ctx.services.get<UIService>(Services.UI);
-        await depend([uiService]);
-    }
+  protected async init(
+    ctx: WorkspaceContext,
+    depend: (services: Service[]) => Promise<void>
+  ): Promise<void> {
+    // collect() reads the UI service's actions, keybindings, and focus, so it must be up first.
+    const uiService = ctx.services.get<UIService>(Services.UI);
+    await depend([uiService]);
+  }
 
-    /**
-     * Register a command. Returns a disposer that unregisters it - mirrors the keybinding API so
-     * the two can be registered side by side from the same hook.
-     */
-    public register(command: CommandRegistration): () => void {
-        this.commands.set(command.id, command);
-        return () => this.unregister(command.id);
-    }
+  /**
+   * Register a command. Returns a disposer that unregisters it - mirrors the keybinding API so
+   * the two can be registered side by side from the same hook.
+   */
+  public register(command: CommandRegistration): () => void {
+    this.commands.set(command.id, command);
+    return () => this.unregister(command.id);
+  }
 
-    /** Register several commands at once; the returned disposer unregisters all of them. */
-    public registerMany(commands: CommandRegistration[]): () => void {
-        const disposers = commands.map(command => this.register(command));
-        return () => {
-            for (const dispose of disposers) {
-                dispose();
-            }
-        };
-    }
+  /** Register several commands at once; the returned disposer unregisters all of them. */
+  public registerMany(commands: CommandRegistration[]): () => void {
+    const disposers = commands.map((command) => this.register(command));
+    return () => {
+      for (const dispose of disposers) {
+        dispose();
+      }
+    };
+  }
 
-    public unregister(id: string): void {
-        this.commands.delete(id);
-    }
+  public unregister(id: string): void {
+    this.commands.delete(id);
+  }
 
-    /** All directly-registered commands (not the derived action/keybinding entries). */
-    public getRegistered(): CommandRegistration[] {
-        return Array.from(this.commands.values());
-    }
+  /** All directly-registered commands (not the derived action/keybinding entries). */
+  public getRegistered(): CommandRegistration[] {
+    return Array.from(this.commands.values());
+  }
 
-    public clear(): void {
-        this.commands.clear();
-    }
+  public clear(): void {
+    this.commands.clear();
+  }
 
-    /**
-     * Build the full, de-duplicated palette list for the current moment: registered commands plus
-     * the actions, menu groups, and keybindings currently live on the UI service, filtered to the
-     * present focus. `workspace` is passed in because it is created in the React layer and is what
-     * action `onClick` callbacks receive.
-     */
-    public collect(workspace: Workspace): PaletteCommand[] {
-        const uiService = this.getContext().services.get<UIService>(Services.UI);
-        const store = uiService.getStore();
+  /**
+   * Build the full, de-duplicated palette list for the current moment: registered commands plus
+   * the actions, menu groups, and keybindings currently live on the UI service, filtered to the
+   * present focus. `workspace` is passed in because it is created in the React layer and is what
+   * action `onClick` callbacks receive.
+   */
+  public collect(workspace: Workspace): PaletteCommand[] {
+    const uiService = this.getContext().services.get<UIService>(Services.UI);
+    const store = uiService.getStore();
 
-        return collectPaletteCommands({
-            registered: this.getRegistered(),
-            actions: store.getActions(),
-            actionGroups: store.getActionGroups(),
-            keybindings: uiService.keybindings.getAll(),
-            panels: store.getPanels(),
-            openBodyPanel: panelId => store.setPanelVisibility(panelId, true),
-            panelCategory: translate("workspace.shell.commandPalette.categoryView"),
-            keybindingOverrides: uiService.keybindings.getOverridesSnapshot(),
-            workspace,
-            focusContext: uiService.focus.getFocus(),
-            translate,
-            // Read straight off the latch rather than through WorkspaceFreezeService: this is a
-            // per-window module and the palette is collected on every keystroke, so the freshest
-            // answer with no subscription to keep in sync is the right one here.
-            frozen: getProjectWriteFreeze() !== null,
-        });
-    }
+    return collectPaletteCommands({
+      registered: this.getRegistered(),
+      actions: store.getActions(),
+      actionGroups: store.getActionGroups(),
+      keybindings: uiService.keybindings.getAll(),
+      panels: store.getPanels(),
+      openBodyPanel: (panelId) => store.setPanelVisibility(panelId, true),
+      panelCategory: translate("workspace.shell.commandPalette.categoryView"),
+      keybindingOverrides: uiService.keybindings.getOverridesSnapshot(),
+      workspace,
+      focusContext: uiService.focus.getFocus(),
+      translate,
+      // Read straight off the latch rather than through WorkspaceFreezeService: this is a
+      // per-window module and the palette is collected on every keystroke, so the freshest
+      // answer with no subscription to keep in sync is the right one here.
+      frozen: getProjectWriteFreeze() !== null
+    });
+  }
 
-    public override dispose(_ctx: WorkspaceContext): void {
-        this.commands.clear();
-    }
+  public override dispose(_ctx: WorkspaceContext): void {
+    this.commands.clear();
+  }
 }

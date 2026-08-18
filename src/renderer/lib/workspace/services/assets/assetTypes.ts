@@ -1,23 +1,23 @@
 export enum AssetType {
-    Image = "image",
-    Audio = "audio",
-    Video = "video",
-    JSON = "json",
-    /** Shared blueprint asset (M2); content is {@link import("@shared/types/blueprint/document").SharedBlueprintAsset} JSON */
-    Blueprint = "blueprint",
-    Font = "font",
-    /**
-     * A **model bundle**: many files that form one authored thing (a Live2D or Spine character),
-     * stored as a directory rather than a single blob.
-     *
-     * The reason it cannot be flattened into per-file assets: a model's manifest references its
-     * siblings by relative path (`Hiyori.2048/texture_00.png`), and the alternative to keeping the
-     * tree is rewriting those manifests - which would mean Studio learning to parse every model
-     * format there is. So the imported tree is preserved verbatim under the asset id, and the entry
-     * file is served from a URL those relative names resolve against.
-     */
-    Model = "model",
-    Other = "other",
+  Image = "image",
+  Audio = "audio",
+  Video = "video",
+  JSON = "json",
+  /** Shared blueprint asset (M2); content is {@link import("@shared/types/blueprint/document").SharedBlueprintAsset} JSON */
+  Blueprint = "blueprint",
+  Font = "font",
+  /**
+   * A **model bundle**: many files that form one authored thing (a Live2D or Spine character),
+   * stored as a directory rather than a single blob.
+   *
+   * The reason it cannot be flattened into per-file assets: a model's manifest references its
+   * siblings by relative path (`Hiyori.2048/texture_00.png`), and the alternative to keeping the
+   * tree is rewriting those manifests - which would mean Studio learning to parse every model
+   * format there is. So the imported tree is preserved verbatim under the asset id, and the entry
+   * file is served from a URL those relative names resolve against.
+   */
+  Model = "model",
+  Other = "other"
 }
 
 /**
@@ -30,22 +30,22 @@ export enum AssetType {
  * one heading, and a folder under that heading holds either.
  */
 export enum AssetCategory {
-    Image = "image",
-    Media = "media",
-    Data = "data",
-    Font = "font",
-    Model = "model",
-    Other = "other",
+  Image = "image",
+  Media = "media",
+  Data = "data",
+  Font = "font",
+  Model = "model",
+  Other = "other"
 }
 
 /** Sidebar order. Fixed, not derived from the enum, so reordering is a one-line decision. */
 export const ASSET_CATEGORY_ORDER: readonly AssetCategory[] = [
-    AssetCategory.Image,
-    AssetCategory.Media,
-    AssetCategory.Data,
-    AssetCategory.Font,
-    AssetCategory.Model,
-    AssetCategory.Other,
+  AssetCategory.Image,
+  AssetCategory.Media,
+  AssetCategory.Data,
+  AssetCategory.Font,
+  AssetCategory.Model,
+  AssetCategory.Other
 ];
 
 /**
@@ -56,78 +56,78 @@ export const ASSET_CATEGORY_ORDER: readonly AssetCategory[] = [
  * (a remote URL with no recognisable extension, say).
  */
 export const ASSET_CATEGORY_TYPES: Record<AssetCategory, AssetType[]> = {
-    [AssetCategory.Image]: [AssetType.Image],
-    [AssetCategory.Media]: [AssetType.Audio, AssetType.Video],
-    [AssetCategory.Data]: [AssetType.JSON, AssetType.Blueprint],
-    [AssetCategory.Font]: [AssetType.Font],
-    [AssetCategory.Model]: [AssetType.Model],
-    [AssetCategory.Other]: [AssetType.Other],
+  [AssetCategory.Image]: [AssetType.Image],
+  [AssetCategory.Media]: [AssetType.Audio, AssetType.Video],
+  [AssetCategory.Data]: [AssetType.JSON, AssetType.Blueprint],
+  [AssetCategory.Font]: [AssetType.Font],
+  [AssetCategory.Model]: [AssetType.Model],
+  [AssetCategory.Other]: [AssetType.Other]
 };
 
 const ASSET_TYPE_CATEGORY: Record<AssetType, AssetCategory> = {
-    [AssetType.Image]: AssetCategory.Image,
-    [AssetType.Audio]: AssetCategory.Media,
-    [AssetType.Video]: AssetCategory.Media,
-    [AssetType.JSON]: AssetCategory.Data,
-    [AssetType.Blueprint]: AssetCategory.Data,
-    [AssetType.Font]: AssetCategory.Font,
-    [AssetType.Model]: AssetCategory.Model,
-    [AssetType.Other]: AssetCategory.Other,
+  [AssetType.Image]: AssetCategory.Image,
+  [AssetType.Audio]: AssetCategory.Media,
+  [AssetType.Video]: AssetCategory.Media,
+  [AssetType.JSON]: AssetCategory.Data,
+  [AssetType.Blueprint]: AssetCategory.Data,
+  [AssetType.Font]: AssetCategory.Font,
+  [AssetType.Model]: AssetCategory.Model,
+  [AssetType.Other]: AssetCategory.Other
 };
 
 /** The category a type is filed under. Total over {@link AssetType}. */
 export function categoryOfAssetType(type: AssetType): AssetCategory {
-    return ASSET_TYPE_CATEGORY[type] ?? AssetCategory.Other;
+  return ASSET_TYPE_CATEGORY[type] ?? AssetCategory.Other;
 }
 
 export type ImageAssetMetadata = {
-    width: number;
-    height: number;
-    format: string;
-    size: number;
+  width: number;
+  height: number;
+  format: string;
+  size: number;
 };
 
 export type AudioAssetMetadata = {
-    duration: number;
-    sampleRate: number;
-    channels: number;
-    format: string;
-    size: number;
+  duration: number;
+  sampleRate: number;
+  channels: number;
+  format: string;
+  size: number;
 };
 
 export type VideoAssetMetadata = {
-    duration: number;
-    width: number;
-    height: number;
-    format: string;
-    frameRate?: number;
-    size: number;
+  duration: number;
+  width: number;
+  height: number;
+  format: string;
+  frameRate?: number;
+  size: number;
 };
 
 export type JSONAssetMetadata = {
-    size: number;
-    isValid: boolean;
-    schema?: string;
+  size: number;
+  isValid: boolean;
+  schema?: string;
 };
 
 export type BlueprintAssetMetadata = {
-    size: number;
-    isValid: boolean;
-    /** Logical schema version of the on-disk JSON wrapper; not the instance BlueprintDocument schema */
-    schemaVersion?: number;
+  size: number;
+  isValid: boolean;
+  /** Logical schema version of the on-disk JSON wrapper; not the instance BlueprintDocument schema */
+  schemaVersion?: number;
 };
 
 export type FontAssetMetadata = {
-    family?: string;
-    style?: string;
-    weight?: string;
-    format: string;
-    size: number;
+  family?: string;
+  style?: string;
+  weight?: string;
+  format: string;
+  size: number;
 };
 
 export type OtherAssetMetadata = {
-    mimeType?: string;
-    size: number;
+  mimeType?: string;
+  size: number;
 };
 
 /**
@@ -137,18 +137,18 @@ export type OtherAssetMetadata = {
  * an observation.
  */
 export type ModelAssetMetadata = {
-    /**
-     * The entry file, relative to the asset root. e.g. "Hiyori.model3.json"
-     *
-     * Empty when neither detection nor an author override could name one. A read still succeeds in
-     * that state - the bundle's files are on disk and intact, the author just has to say which one
-     * is the entry - and it is the inspector's job to show that, not the reader's job to fail.
-     */
-    entry: string;
-    /** Every file in the bundle, relative to the asset root, stable order. */
-    files: string[];
-    /** Total bytes. */
-    size: number;
+  /**
+   * The entry file, relative to the asset root. e.g. "Hiyori.model3.json"
+   *
+   * Empty when neither detection nor an author override could name one. A read still succeeds in
+   * that state - the bundle's files are on disk and intact, the author just has to say which one
+   * is the entry - and it is the inspector's job to show that, not the reader's job to fail.
+   */
+  entry: string;
+  /** Every file in the bundle, relative to the asset root, stable order. */
+  files: string[];
+  /** Total bytes. */
+  size: number;
 };
 
 /**
@@ -159,43 +159,59 @@ export type ModelAssetMetadata = {
  * or hand the engine a URL. Bytes are reached through the served entry URL instead.
  */
 export type ModelBundleContents = {
-    entry: string;
-    /** Same list as {@link ModelAssetMetadata.files}. */
-    files: string[];
-    /** Format guessed from the file tree, for display only. Never parsed from the model itself. */
-    format: import("@shared/utils/modelBundle").ModelBundleFormat;
-    /**
-     * Present when the entry could not be determined from the tree. The record is still valid and
-     * its files are intact - the author simply has to say which file is the entry.
-     */
-    entryUnresolved?: "ambiguous" | "none";
+  entry: string;
+  /** Same list as {@link ModelAssetMetadata.files}. */
+  files: string[];
+  /** Format guessed from the file tree, for display only. Never parsed from the model itself. */
+  format: import("@shared/utils/modelBundle").ModelBundleFormat;
+  /**
+   * Present when the entry could not be determined from the tree. The record is still valid and
+   * its files are intact - the author simply has to say which file is the entry.
+   */
+  entryUnresolved?: "ambiguous" | "none";
 };
 
-export type AssetData<Type extends AssetType> = Type extends AssetType.Image ? {
-    data: Uint8Array;
-    metadata: ImageAssetMetadata;
-} : Type extends AssetType.Audio ? {
-    data: Uint8Array;
-    metadata: AudioAssetMetadata;
-} : Type extends AssetType.Video ? {
-    data: Uint8Array;
-    metadata: VideoAssetMetadata;
-} : Type extends AssetType.JSON ? {
-    data: Record<string, any>;
-    metadata: JSONAssetMetadata;
-} : Type extends AssetType.Blueprint ? {
-    data: import("@shared/types/blueprint/document").SharedBlueprintAsset;
-    metadata: BlueprintAssetMetadata;
-} : Type extends AssetType.Font ? {
-    data: Uint8Array;
-    metadata: FontAssetMetadata;
-} : Type extends AssetType.Model ? {
-    data: ModelBundleContents;
-    metadata: ModelAssetMetadata;
-} : Type extends AssetType.Other ? {
-    data: Uint8Array;
-    metadata: OtherAssetMetadata;
-} : never;
+export type AssetData<Type extends AssetType> = Type extends AssetType.Image
+  ? {
+      data: Uint8Array;
+      metadata: ImageAssetMetadata;
+    }
+  : Type extends AssetType.Audio
+    ? {
+        data: Uint8Array;
+        metadata: AudioAssetMetadata;
+      }
+    : Type extends AssetType.Video
+      ? {
+          data: Uint8Array;
+          metadata: VideoAssetMetadata;
+        }
+      : Type extends AssetType.JSON
+        ? {
+            data: Record<string, any>;
+            metadata: JSONAssetMetadata;
+          }
+        : Type extends AssetType.Blueprint
+          ? {
+              data: import("@shared/types/blueprint/document").SharedBlueprintAsset;
+              metadata: BlueprintAssetMetadata;
+            }
+          : Type extends AssetType.Font
+            ? {
+                data: Uint8Array;
+                metadata: FontAssetMetadata;
+              }
+            : Type extends AssetType.Model
+              ? {
+                  data: ModelBundleContents;
+                  metadata: ModelAssetMetadata;
+                }
+              : Type extends AssetType.Other
+                ? {
+                    data: Uint8Array;
+                    metadata: OtherAssetMetadata;
+                  }
+                : never;
 
 /**
  * What the file dialog offers for each type — deliberately wider than what actually plays.
@@ -213,47 +229,107 @@ export type AssetData<Type extends AssetType> = Type extends AssetType.Image ? {
  * Kept in step with `FORMAT_EXTENSIONS` by a test: every extension that table names must appear here.
  */
 export const AssetExtensions = {
-    [AssetType.Image]: [
-        // Raster images
-        "png", "apng", "avif", "jpg", "jpeg", "jpe", "jfif", "pjpeg", "pjp", "bmp", "dib", "gif", "webp", "tif", "tiff", "ico", "cur", "xbm",
-        // Vector images
-        "svg"
-    ],
-    [AssetType.Audio]: [
-        // Common codecs/containers (Chromium native)
-        "mp3", "wav", "wave", "ogg", "oga", "opus", "aac", "m4a", "flac", "weba", "mka",
-        // Visible in the picker, refused on import: Chromium has no demuxer for these
-        "aiff", "aif", "aifc", "mp2"
-    ],
-    [AssetType.Video]: [
-        // Modern web formats
-        "mp4", "m4v", "m4b", "m4r", "mov", "qt", "webm", "mkv",
-        // ISO-BMFF relatives and Ogg, which Chromium demuxes
-        "3gp", "3g2", "f4v", "ogv", "ogm", "ogx",
-        // Visible in the picker, refused on import: Chromium has no demuxer for these
-        "avi", "flv", "wmv", "asf", "mpg", "mpeg", "mpe", "mpv", "m2v", "ts", "m2ts", "mts", "m2t", "vob"
-    ],
-    [AssetType.JSON]: [
-        // Standard JSON and JSON with comments (supported by many editors)
-        "json", "jsonc"
-    ],
-    [AssetType.Blueprint]: ["json", "nlbp"],
-    [AssetType.Font]: [
-        // Font formats loadable in Chromium
-        "ttf", "otf", "ttc", // TrueType / OpenType collections
-        "woff", "woff2",       // Web optimised font formats
-        "eot",                 // Embedded OpenType (legacy IE but harmless)
-        "svg", "otc"           // SVG fonts & OpenType collections (rare but supported)
-    ],
-    /**
-     * A model bundle is picked as a *directory*, not by extension, so this list is never handed to a
-     * file dialog (the import path branches to `fs.selectDirectory`). It stays `["*"]` because the
-     * contents of a bundle are whatever the exporting tool wrote - filtering by extension is exactly
-     * the behaviour that would break it.
-     */
-    [AssetType.Model]: ["*"],
-    // Allow any file for the Other type
-    [AssetType.Other]: ["*"],
+  [AssetType.Image]: [
+    // Raster images
+    "png",
+    "apng",
+    "avif",
+    "jpg",
+    "jpeg",
+    "jpe",
+    "jfif",
+    "pjpeg",
+    "pjp",
+    "bmp",
+    "dib",
+    "gif",
+    "webp",
+    "tif",
+    "tiff",
+    "ico",
+    "cur",
+    "xbm",
+    // Vector images
+    "svg"
+  ],
+  [AssetType.Audio]: [
+    // Common codecs/containers (Chromium native)
+    "mp3",
+    "wav",
+    "wave",
+    "ogg",
+    "oga",
+    "opus",
+    "aac",
+    "m4a",
+    "flac",
+    "weba",
+    "mka",
+    // Visible in the picker, refused on import: Chromium has no demuxer for these
+    "aiff",
+    "aif",
+    "aifc",
+    "mp2"
+  ],
+  [AssetType.Video]: [
+    // Modern web formats
+    "mp4",
+    "m4v",
+    "m4b",
+    "m4r",
+    "mov",
+    "qt",
+    "webm",
+    "mkv",
+    // ISO-BMFF relatives and Ogg, which Chromium demuxes
+    "3gp",
+    "3g2",
+    "f4v",
+    "ogv",
+    "ogm",
+    "ogx",
+    // Visible in the picker, refused on import: Chromium has no demuxer for these
+    "avi",
+    "flv",
+    "wmv",
+    "asf",
+    "mpg",
+    "mpeg",
+    "mpe",
+    "mpv",
+    "m2v",
+    "ts",
+    "m2ts",
+    "mts",
+    "m2t",
+    "vob"
+  ],
+  [AssetType.JSON]: [
+    // Standard JSON and JSON with comments (supported by many editors)
+    "json",
+    "jsonc"
+  ],
+  [AssetType.Blueprint]: ["json", "nlbp"],
+  [AssetType.Font]: [
+    // Font formats loadable in Chromium
+    "ttf",
+    "otf",
+    "ttc", // TrueType / OpenType collections
+    "woff",
+    "woff2", // Web optimised font formats
+    "eot", // Embedded OpenType (legacy IE but harmless)
+    "svg",
+    "otc" // SVG fonts & OpenType collections (rare but supported)
+  ],
+  /**
+   * A model bundle is picked as a *directory*, not by extension, so this list is never handed to a
+   * file dialog (the import path branches to `fs.selectDirectory`). It stays `["*"]` because the
+   * contents of a bundle are whatever the exporting tool wrote - filtering by extension is exactly
+   * the behaviour that would break it.
+   */
+  [AssetType.Model]: ["*"],
+  // Allow any file for the Other type
+  [AssetType.Other]: ["*"]
 };
 
 /**
@@ -263,29 +339,29 @@ export const AssetExtensions = {
  * wildcard would hide files the category can in fact import.
  */
 export const ASSET_CATEGORY_EXTENSIONS: Record<AssetCategory, string[]> = Object.fromEntries(
-    ASSET_CATEGORY_ORDER.map(category => {
-        const types = ASSET_CATEGORY_TYPES[category];
-        if (types.some(type => AssetExtensions[type].includes("*"))) {
-            return [category, ["*"]];
+  ASSET_CATEGORY_ORDER.map((category) => {
+    const types = ASSET_CATEGORY_TYPES[category];
+    if (types.some((type) => AssetExtensions[type].includes("*"))) {
+      return [category, ["*"]];
+    }
+    const merged: string[] = [];
+    for (const type of types) {
+      for (const ext of AssetExtensions[type]) {
+        if (!merged.includes(ext)) {
+          merged.push(ext);
         }
-        const merged: string[] = [];
-        for (const type of types) {
-            for (const ext of AssetExtensions[type]) {
-                if (!merged.includes(ext)) {
-                    merged.push(ext);
-                }
-            }
-        }
-        return [category, merged];
-    }),
+      }
+    }
+    return [category, merged];
+  })
 ) as Record<AssetCategory, string[]>;
 
 /** Whether assets of this type are a directory tree rather than a single file. */
 export function isBundleAssetType(type: AssetType): boolean {
-    return type === AssetType.Model;
+  return type === AssetType.Model;
 }
 
 /** Whether the category's assets are directory trees — the picker asks for folders, not files. */
 export function isBundleAssetCategory(category: AssetCategory): boolean {
-    return ASSET_CATEGORY_TYPES[category].every(isBundleAssetType);
+  return ASSET_CATEGORY_TYPES[category].every(isBundleAssetType);
 }

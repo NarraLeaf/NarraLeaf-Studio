@@ -11,28 +11,35 @@ import { conditionKindOf } from "./ConditionEditor";
  * that maps to the wrong tier is not a cosmetic problem; it silently destroys the author's work.
  */
 describe("conditionKindOf", () => {
-    it("opens each stored kind in its own tier", () => {
-        const expression: StoryConditionRef = { kind: "expression", expression: { source: "gold >= 100", ast: { kind: "literal", value: true } } };
-        const variable: StoryConditionRef = { kind: "variable", target: { scope: "scene", variableId: "v" }, operator: "isTrue" };
-        const blueprint: StoryConditionRef = { kind: "blueprint", blueprintId: "bp-1" };
+  it("opens each stored kind in its own tier", () => {
+    const expression: StoryConditionRef = {
+      kind: "expression",
+      expression: { source: "gold >= 100", ast: { kind: "literal", value: true } }
+    };
+    const variable: StoryConditionRef = {
+      kind: "variable",
+      target: { scope: "scene", variableId: "v" },
+      operator: "isTrue"
+    };
+    const blueprint: StoryConditionRef = { kind: "blueprint", blueprintId: "bp-1" };
 
-        expect(conditionKindOf(expression)).toBe("expression");
-        expect(conditionKindOf(variable)).toBe("variable");
-        expect(conditionKindOf(blueprint)).toBe("blueprint");
-    });
+    expect(conditionKindOf(expression)).toBe("expression");
+    expect(conditionKindOf(variable)).toBe("variable");
+    expect(conditionKindOf(blueprint)).toBe("blueprint");
+  });
 
-    it("starts a brand-new condition in the expression tier", () => {
-        // Same tier `/if` writes into, so a condition built by clicking and one built by typing are
-        // the same object and each can edit the other's work.
-        expect(conditionKindOf(undefined)).toBe("expression");
-    });
+  it("starts a brand-new condition in the expression tier", () => {
+    // Same tier `/if` writes into, so a condition built by clicking and one built by typing are
+    // the same object and each can edit the other's work.
+    expect(conditionKindOf(undefined)).toBe("expression");
+  });
 
-    it("never maps a kind onto a tier that cannot represent it", () => {
-        // The guard against the original bug returning: every member of the union must land somewhere
-        // that renders it, so adding a fourth kind without a tier fails here rather than in the field.
-        const kinds: StoryConditionRef["kind"][] = ["variable", "blueprint", "expression"];
-        for (const kind of kinds) {
-            expect(conditionKindOf({ kind } as StoryConditionRef)).toBe(kind);
-        }
-    });
+  it("never maps a kind onto a tier that cannot represent it", () => {
+    // The guard against the original bug returning: every member of the union must land somewhere
+    // that renders it, so adding a fourth kind without a tier fails here rather than in the field.
+    const kinds: StoryConditionRef["kind"][] = ["variable", "blueprint", "expression"];
+    for (const kind of kinds) {
+      expect(conditionKindOf({ kind } as StoryConditionRef)).toBe(kind);
+    }
+  });
 });

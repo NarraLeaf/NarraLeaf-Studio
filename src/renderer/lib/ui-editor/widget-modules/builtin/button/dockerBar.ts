@@ -19,9 +19,9 @@ export function createButtonDockerBarItems(ctx: DockerBarContext): DockerBarItem
       onChange: (value: number) => {
         documentService.updateElementProps(element.id, {
           ...element.props,
-          paddingX: Math.max(0, value),
+          paddingX: Math.max(0, value)
         });
-      },
-    },
+      }
+    }
   ];
 }

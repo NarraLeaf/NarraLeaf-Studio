@@ -10,25 +10,32 @@ import type { DevModeConsoleLogPayload } from "@shared/types/devMode";
  * project open. Silently drops the line when no such window exists (build or
  * preview may outlive the window that started it).
  */
-export function emitWorkspaceConsoleLog(app: App, projectPath: string, payload: DevModeConsoleLogPayload): void {
-    const workspaceWindow = findWorkspaceWindow(app, projectPath);
-    if (!workspaceWindow) {
-        return;
-    }
-    workspaceWindow.sendIpcEvent(IPCEventType.workspaceDevModeConsoleLog, {
-        timestamp: Date.now(),
-        ...payload,
-    });
+export function emitWorkspaceConsoleLog(
+  app: App,
+  projectPath: string,
+  payload: DevModeConsoleLogPayload
+): void {
+  const workspaceWindow = findWorkspaceWindow(app, projectPath);
+  if (!workspaceWindow) {
+    return;
+  }
+  workspaceWindow.sendIpcEvent(IPCEventType.workspaceDevModeConsoleLog, {
+    timestamp: Date.now(),
+    ...payload
+  });
 }
 
-export function findWorkspaceWindow(app: App, projectPath: string): AppWindow<WindowAppType.Workspace> | undefined {
-    return app.windowManager
-        .getWindows()
-        .find(
-            w =>
-                w.getWindowType() === WindowAppType.Workspace &&
-                !w.isDestroyed() &&
-                !w.isClosed() &&
-                path.normalize(w.getProps().projectPath) === path.normalize(projectPath),
-        ) as AppWindow<WindowAppType.Workspace> | undefined;
+export function findWorkspaceWindow(
+  app: App,
+  projectPath: string
+): AppWindow<WindowAppType.Workspace> | undefined {
+  return app.windowManager
+    .getWindows()
+    .find(
+      (w) =>
+        w.getWindowType() === WindowAppType.Workspace &&
+        !w.isDestroyed() &&
+        !w.isClosed() &&
+        path.normalize(w.getProps().projectPath) === path.normalize(projectPath)
+    ) as AppWindow<WindowAppType.Workspace> | undefined;
 }

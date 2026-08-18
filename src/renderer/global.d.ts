@@ -5,3 +5,8 @@
  * release builds.
  */
 declare const __NLS_STUDIO_DEV__: boolean;
+
+declare module "*.css" {
+  const stylesheet: Record<string, string>;
+  export default stylesheet;
+}

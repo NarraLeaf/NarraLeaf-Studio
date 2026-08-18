@@ -26,10 +26,10 @@ export type ProjectFlow = "create" | "import" | "clone";
  * every template shipped made the origins harder to find.
  */
 export interface ProjectOrigin {
-    flow: ProjectFlow;
-    labelKey: TranslationKey;
-    descriptionKey: TranslationKey;
-    icon: LucideIcon;
+  flow: ProjectFlow;
+  labelKey: TranslationKey;
+  descriptionKey: TranslationKey;
+  icon: LucideIcon;
 }
 
 /**
@@ -40,26 +40,26 @@ export interface ProjectOrigin {
  * from the same list.
  */
 export interface ProjectTemplate {
-    id: string;
-    name: string;
-    /** i18n key; when set, overrides `name` at render time (falls back to `name`). */
-    nameKey?: TranslationKey;
-    description: string;
-    /** i18n key; when set, overrides `description` at render time (falls back to `description`). */
-    descriptionKey?: TranslationKey;
-    /**
-     * The bundled template whose content this entry scaffolds from, when it has one.
-     *
-     * Absent on `blank`, which writes only the generated skeleton.
-     */
-    contentTemplateId?: string;
-    /**
-     * The stage sizes this template's content is laid out for, in offer order.
-     *
-     * Empty means the template constrains nothing and the author picks from the full preset list -
-     * which is what `blank` means, and what a template that declares no size means.
-     */
-    stageSizes: StageSize[];
+  id: string;
+  name: string;
+  /** i18n key; when set, overrides `name` at render time (falls back to `name`). */
+  nameKey?: TranslationKey;
+  description: string;
+  /** i18n key; when set, overrides `description` at render time (falls back to `description`). */
+  descriptionKey?: TranslationKey;
+  /**
+   * The bundled template whose content this entry scaffolds from, when it has one.
+   *
+   * Absent on `blank`, which writes only the generated skeleton.
+   */
+  contentTemplateId?: string;
+  /**
+   * The stage sizes this template's content is laid out for, in offer order.
+   *
+   * Empty means the template constrains nothing and the author picks from the full preset list -
+   * which is what `blank` means, and what a template that declares no size means.
+   */
+  stageSizes: StageSize[];
 }
 
 /**
@@ -76,75 +76,75 @@ export type VersionControlChoice = "lore" | "none";
  * Project data structure
  */
 export interface ProjectData {
-    name: string;
-    description: string;
-    /** The template entry the author picked, by id. `blank` when they picked none of the content ones. */
-    template: string;
-    location: string;
-    author: string;
-    /** Project homepage; written to `metadata.website`. */
-    website: string;
-    /**
-     * The version the first build ships as, `1.0.0` unless the author changes it.
-     *
-     * Asked here because leaving it unset is not neutral: the build refuses outright on a missing
-     * version (`version-missing` in the build preflight), so every project created before this
-     * field existed had to be sent back to the project panel before it could be packaged once.
-     */
-    version: string;
-    /** Stage size as `WxH`; see @shared/types/stageSize. */
-    resolution: string;
-    appId: string;
-    /**
-     * The language the story is written in, written to `app.localization.sourceLocale`.
-     *
-     * A prefill, not a commitment: the localization panel is where languages are added, removed
-     * and re-sourced. What it buys is that the panel has something to work from on first open,
-     * rather than refusing everything until a source language is named.
-     */
-    sourceLocale: string;
-    versionControl: VersionControlChoice;
-    /**
-     * The bundled template to copy content from after the skeleton is written.
-     *
-     * Kept separate from `template` - which is the *entry* the author picked - because only some
-     * entries bring content. Deriving one from the other would mean `createProject` matching ids
-     * against the entry list, and an entry renamed later would silently stop scaffolding.
-     */
-    contentTemplateId?: string;
-    /**
-     * The server address a cloned project comes from, e.g. `lore://studio.example.lan:41337/my-game`.
-     *
-     * Only the `clone` flow reads it, and it is the ONLY thing that flow asks about the project
-     * itself: name, app id, stage size and author are all already recorded in what the server
-     * sends, and asking again would let the author give answers that the clone then overwrites.
-     */
-    remoteUrl: string;
-    /**
-     * The `.nlspkg` an import unpacks, as the file picker returned it.
-     *
-     * Only the `import` flow reads it. Held here rather than in the page so it survives stepping
-     * back to the first page and returning, the same way the clone flow's address does.
-     */
-    packagePath: string;
+  name: string;
+  description: string;
+  /** The template entry the author picked, by id. `blank` when they picked none of the content ones. */
+  template: string;
+  location: string;
+  author: string;
+  /** Project homepage; written to `metadata.website`. */
+  website: string;
+  /**
+   * The version the first build ships as, `1.0.0` unless the author changes it.
+   *
+   * Asked here because leaving it unset is not neutral: the build refuses outright on a missing
+   * version (`version-missing` in the build preflight), so every project created before this
+   * field existed had to be sent back to the project panel before it could be packaged once.
+   */
+  version: string;
+  /** Stage size as `WxH`; see @shared/types/stageSize. */
+  resolution: string;
+  appId: string;
+  /**
+   * The language the story is written in, written to `app.localization.sourceLocale`.
+   *
+   * A prefill, not a commitment: the localization panel is where languages are added, removed
+   * and re-sourced. What it buys is that the panel has something to work from on first open,
+   * rather than refusing everything until a source language is named.
+   */
+  sourceLocale: string;
+  versionControl: VersionControlChoice;
+  /**
+   * The bundled template to copy content from after the skeleton is written.
+   *
+   * Kept separate from `template` - which is the *entry* the author picked - because only some
+   * entries bring content. Deriving one from the other would mean `createProject` matching ids
+   * against the entry list, and an entry renamed later would silently stop scaffolding.
+   */
+  contentTemplateId?: string;
+  /**
+   * The server address a cloned project comes from, e.g. `lore://studio.example.lan:41337/my-game`.
+   *
+   * Only the `clone` flow reads it, and it is the ONLY thing that flow asks about the project
+   * itself: name, app id, stage size and author are all already recorded in what the server
+   * sends, and asking again would let the author give answers that the clone then overwrites.
+   */
+  remoteUrl: string;
+  /**
+   * The `.nlspkg` an import unpacks, as the file picker returned it.
+   *
+   * Only the `import` flow reads it. Held here rather than in the page so it survives stepping
+   * back to the first page and returning, the same way the clone flow's address does.
+   */
+  packagePath: string;
 }
 
 /**
  * Directory validation result
  */
 export interface DirectoryValidationResult {
-    isEmpty: boolean;
-    exists: boolean;
-    isDirectory: boolean;
-    canWrite: boolean;
+  isEmpty: boolean;
+  exists: boolean;
+  isDirectory: boolean;
+  canWrite: boolean;
 }
 
 /**
  * Validation errors
  */
 export interface ValidationErrors {
-    location?: string;
-    directory?: string;
+  location?: string;
+  directory?: string;
 }
 
 /**
@@ -172,8 +172,8 @@ export type CloneStatus = "idle" | "cloning";
  * picked is no longer empty, so the next attempt needs a different one.
  */
 export type CloneFailure =
-    | { kind: "failed"; message: string }
-    | { kind: "notAProject"; destination: string };
+  | { kind: "failed"; message: string }
+  | { kind: "notAProject"; destination: string };
 
 /**
  * How an import is going.
@@ -192,23 +192,23 @@ export type ImportStatus = "idle" | "unpacking";
  * cleanly can still contain something Studio cannot open, and the files are on disk either way.
  */
 export type ImportFailure =
-    | { kind: "failed"; message: string }
-    | { kind: "notAProject"; destination: string };
+  | { kind: "failed"; message: string }
+  | { kind: "notAProject"; destination: string };
 
 /**
  * Step configuration
  */
 export interface StepConfig {
-    key: WizardStep;
-    label: string;
+  key: WizardStep;
+  label: string;
 }
 
 /**
  * Version control option
  */
 export interface VersionControlOption {
-    value: VersionControlChoice;
-    label: string;
-    /** i18n key; when set, overrides `label` at render time (falls back to `label`). */
-    labelKey?: TranslationKey;
+  value: VersionControlChoice;
+  label: string;
+  /** i18n key; when set, overrides `label` at render time (falls back to `label`). */
+  labelKey?: TranslationKey;
 }

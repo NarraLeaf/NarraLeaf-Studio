@@ -15,10 +15,10 @@ import { createSurfaceEditorTab } from "../ui-editor/UISurfacesPanel";
 import { openSceneFlowTab } from "../story-flow/openSceneFlowTab";
 
 export interface SearchJumpDeps {
-    openEditorTab: (tab: EditorTabDefinition<any>) => void;
-    setPanelVisibility: (panelId: string, visible: boolean) => void;
-    /** Needed by asset hits (live asset lookup + preview tabs); other targets work without it. */
-    context?: WorkspaceContext | null;
+  openEditorTab: (tab: EditorTabDefinition<any>) => void;
+  setPanelVisibility: (panelId: string, visible: boolean) => void;
+  /** Needed by asset hits (live asset lookup + preview tabs); other targets work without it. */
+  context?: WorkspaceContext | null;
 }
 
 const LOCALIZATION_PANEL_ID = "narraleaf-studio:localization";
@@ -34,107 +34,113 @@ const CHARACTERS_PANEL_ID = "narraleaf-studio:characters";
  * keys reveal the localization panel. Returns false when the target cannot be resolved.
  */
 export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDeps): boolean {
-    switch (target.kind) {
-        case "storyBlock":
-            deps.openEditorTab(
-                createStorySceneEditorTab(
-                    { storyId: target.storyId, sceneId: target.sceneId, activeBlockId: target.blockId },
-                    target.sceneName || target.storyName,
-                ),
-            );
-            return true;
-        case "storyScene":
-            deps.openEditorTab(
-                createStorySceneEditorTab(
-                    { storyId: target.storyId, sceneId: target.sceneId },
-                    target.sceneName || target.storyName,
-                ),
-            );
-            return true;
-        case "storyFlow": {
-            // A story has no single editor; its flow map is the view OF a story rather than of one
-            // of its scenes, which is what makes it the right landing place for the story's name.
-            if (!deps.context) {
-                return false;
-            }
-            openSceneFlowTab(deps.context, target.storyId, target.storyName);
-            return true;
-        }
-        case "character": {
-            const context = deps.context;
-            if (!context) {
-                return false;
-            }
-            const character = context.services
-                .get<CharacterService>(Services.Character)
-                .getCharacter(target.characterId);
-            if (!character) {
-                return false;
-            }
-            // Characters have no editor tab — the panel selection IS how one is opened.
-            deps.setPanelVisibility(CHARACTERS_PANEL_ID, true);
-            context.services.get<UIService>(Services.UI).getStore().setSelection({ type: "character", data: character });
-            return true;
-        }
-        case "uiSurface": {
-            const context = deps.context;
-            if (!context) {
-                return false;
-            }
-            const surface = context.services
-                .get<UIDocumentService>(Services.UIDocument)
-                .getDocument()
-                .surfaces.find(candidate => candidate.id === target.surfaceId);
-            if (!surface) {
-                return false;
-            }
-            deps.openEditorTab(createSurfaceEditorTab(surface));
-            return true;
-        }
-        case "blueprint": {
-            const owner = parseBlueprintOwnerKey(target.ownerKey);
-            if (!owner) {
-                return false;
-            }
-            deps.openEditorTab(
-                createBlueprintEntryEditorTab({
-                    blueprintId: target.blueprintId,
-                    ownerKind: owner.ownerKind,
-                    surfaceId: owner.surfaceId,
-                    componentId: owner.componentId,
-                    elementId: owner.elementId,
-                    propPath: owner.propPath,
-                    focusEventId: target.focusEventId,
-                    focusFunctionId: target.focusFunctionId,
-                    focusNodeId: target.focusNodeId,
-                }),
-            );
-            return true;
-        }
-        case "localizationKey":
-            deps.setPanelVisibility(LOCALIZATION_PANEL_ID, true);
-            return true;
-        case "asset": {
-            const context = deps.context;
-            if (!context) {
-                return false;
-            }
-            // Resolve the live asset - the index only carries ids, and the asset may be gone.
-            const assetsMap = context.services.get<AssetsService>(Services.Assets).getAssets();
-            const asset = Object.values(assetsMap)
-                .flatMap(byId => Object.values(byId) as Asset[])
-                .find(candidate => candidate.id === target.assetId);
-            if (!asset) {
-                return false;
-            }
-            if (asset.type === AssetType.Image || asset.type === AssetType.Audio) {
-                openAssetPreviewTabsInEditor(context, [asset]);
-                return true;
-            }
-            // No preview editor for this type - reveal it selected in the assets panel instead.
-            deps.setPanelVisibility(ASSETS_PANEL_ID, true);
-            context.services.get<UIService>(Services.UI).getStore().setSelection({ type: "asset", data: asset });
-            return true;
-        }
+  switch (target.kind) {
+    case "storyBlock":
+      deps.openEditorTab(
+        createStorySceneEditorTab(
+          { storyId: target.storyId, sceneId: target.sceneId, activeBlockId: target.blockId },
+          target.sceneName || target.storyName
+        )
+      );
+      return true;
+    case "storyScene":
+      deps.openEditorTab(
+        createStorySceneEditorTab(
+          { storyId: target.storyId, sceneId: target.sceneId },
+          target.sceneName || target.storyName
+        )
+      );
+      return true;
+    case "storyFlow": {
+      // A story has no single editor; its flow map is the view OF a story rather than of one
+      // of its scenes, which is what makes it the right landing place for the story's name.
+      if (!deps.context) {
+        return false;
+      }
+      openSceneFlowTab(deps.context, target.storyId, target.storyName);
+      return true;
     }
+    case "character": {
+      const context = deps.context;
+      if (!context) {
+        return false;
+      }
+      const character = context.services
+        .get<CharacterService>(Services.Character)
+        .getCharacter(target.characterId);
+      if (!character) {
+        return false;
+      }
+      // Characters have no editor tab — the panel selection IS how one is opened.
+      deps.setPanelVisibility(CHARACTERS_PANEL_ID, true);
+      context.services
+        .get<UIService>(Services.UI)
+        .getStore()
+        .setSelection({ type: "character", data: character });
+      return true;
+    }
+    case "uiSurface": {
+      const context = deps.context;
+      if (!context) {
+        return false;
+      }
+      const surface = context.services
+        .get<UIDocumentService>(Services.UIDocument)
+        .getDocument()
+        .surfaces.find((candidate) => candidate.id === target.surfaceId);
+      if (!surface) {
+        return false;
+      }
+      deps.openEditorTab(createSurfaceEditorTab(surface));
+      return true;
+    }
+    case "blueprint": {
+      const owner = parseBlueprintOwnerKey(target.ownerKey);
+      if (!owner) {
+        return false;
+      }
+      deps.openEditorTab(
+        createBlueprintEntryEditorTab({
+          blueprintId: target.blueprintId,
+          ownerKind: owner.ownerKind,
+          surfaceId: owner.surfaceId,
+          componentId: owner.componentId,
+          elementId: owner.elementId,
+          propPath: owner.propPath,
+          focusEventId: target.focusEventId,
+          focusFunctionId: target.focusFunctionId,
+          focusNodeId: target.focusNodeId
+        })
+      );
+      return true;
+    }
+    case "localizationKey":
+      deps.setPanelVisibility(LOCALIZATION_PANEL_ID, true);
+      return true;
+    case "asset": {
+      const context = deps.context;
+      if (!context) {
+        return false;
+      }
+      // Resolve the live asset - the index only carries ids, and the asset may be gone.
+      const assetsMap = context.services.get<AssetsService>(Services.Assets).getAssets();
+      const asset = Object.values(assetsMap)
+        .flatMap((byId) => Object.values(byId) as Asset[])
+        .find((candidate) => candidate.id === target.assetId);
+      if (!asset) {
+        return false;
+      }
+      if (asset.type === AssetType.Image || asset.type === AssetType.Audio) {
+        openAssetPreviewTabsInEditor(context, [asset]);
+        return true;
+      }
+      // No preview editor for this type - reveal it selected in the assets panel instead.
+      deps.setPanelVisibility(ASSETS_PANEL_ID, true);
+      context.services
+        .get<UIService>(Services.UI)
+        .getStore()
+        .setSelection({ type: "asset", data: asset });
+      return true;
+    }
+  }
 }

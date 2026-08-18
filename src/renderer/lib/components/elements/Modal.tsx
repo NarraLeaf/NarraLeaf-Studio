@@ -14,21 +14,22 @@ import { cn } from "../../utils/cn";
  * body rather than happening to come out the same because of its padding.
  */
 export function dialogFooterButtonClass(options: {
-    variant: "secondary" | "primary" | "danger";
-    disabled?: boolean;
+  variant: "secondary" | "primary" | "danger";
+  disabled?: boolean;
 }): string {
-    const base = `inline-flex items-center justify-center ${CONTROL_HEIGHT_CLASS.md} `
-        + "px-4 py-1 text-sm rounded-md transition-colors cursor-default";
-    if (options.disabled) {
-        return `${base} bg-fill-strong text-fg-subtle cursor-not-allowed`;
-    }
-    if (options.variant === "primary") {
-        return `${base} bg-primary hover:brightness-110 text-on-primary font-medium`;
-    }
-    if (options.variant === "danger") {
-        return `${base} bg-danger hover:brightness-110 text-white font-medium`;
-    }
-    return `${base} bg-fill-subtle hover:bg-fill text-fg-muted`;
+  const base =
+    `inline-flex items-center justify-center ${CONTROL_HEIGHT_CLASS.md} ` +
+    "px-4 py-1 text-sm rounded-md transition-colors cursor-default";
+  if (options.disabled) {
+    return `${base} bg-fill-strong text-fg-subtle cursor-not-allowed`;
+  }
+  if (options.variant === "primary") {
+    return `${base} bg-primary hover:brightness-110 text-on-primary font-medium`;
+  }
+  if (options.variant === "danger") {
+    return `${base} bg-danger hover:brightness-110 text-white font-medium`;
+  }
+  return `${base} bg-fill-subtle hover:bg-fill text-fg-muted`;
 }
 
 /**
@@ -45,99 +46,99 @@ export function dialogFooterButtonClass(options: {
  * exactly as it would inside a `Modal`.
  */
 export function useEscapeToClose(active: boolean, onClose: () => void): void {
-    // The document this overlay is drawn in, which is not the renderer's own when the caller sits
-    // inside a detached editor window - and a key pressed over there never reaches this one.
-    const doc = useHostDocument();
-    useEffect(() => {
-        if (!active) {
-            return;
-        }
-        const handleEscape = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                onClose();
-            }
-        };
-        doc.addEventListener("keydown", handleEscape);
-        return () => doc.removeEventListener("keydown", handleEscape);
-    }, [active, doc, onClose]);
+  // The document this overlay is drawn in, which is not the renderer's own when the caller sits
+  // inside a detached editor window - and a key pressed over there never reaches this one.
+  const doc = useHostDocument();
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    doc.addEventListener("keydown", handleEscape);
+    return () => doc.removeEventListener("keydown", handleEscape);
+  }, [active, doc, onClose]);
 }
 
 export interface ModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    title?: string;
-    children: React.ReactNode;
-    size?: "sm" | "md" | "lg" | "xl";
-    closeOnOverlayClick?: boolean;
-    closeOnEscape?: boolean;
-    showCloseButton?: boolean;
-    footer?: React.ReactNode;
-    className?: string;
-    /**
-     * Tags the dialog for `F1` and puts a `?` beside its close button.
-     *
-     * Opt-in per dialog and left off by default: most dialogs ask one question that their own
-     * words answer, and a `?` on every one of them is a glyph the author learns to ignore. Set it
-     * where the dialog decides something the author cannot see from the controls in it.
-     */
-    helpTopic?: HelpTopicId;
+  isOpen: boolean;
+  onClose: () => void;
+  title?: string;
+  children: React.ReactNode;
+  size?: "sm" | "md" | "lg" | "xl";
+  closeOnOverlayClick?: boolean;
+  closeOnEscape?: boolean;
+  showCloseButton?: boolean;
+  footer?: React.ReactNode;
+  className?: string;
+  /**
+   * Tags the dialog for `F1` and puts a `?` beside its close button.
+   *
+   * Opt-in per dialog and left off by default: most dialogs ask one question that their own
+   * words answer, and a `?` on every one of them is a glyph the author learns to ignore. Set it
+   * where the dialog decides something the author cannot see from the controls in it.
+   */
+  helpTopic?: HelpTopicId;
 }
 
 const sizeStyles = {
-    /** Align with DialogContainer default width (500px). */
-    sm: "max-w-[500px]",
-    md: "max-w-lg",
-    lg: "max-w-2xl",
-    xl: "max-w-4xl",
+  /** Align with DialogContainer default width (500px). */
+  sm: "max-w-[500px]",
+  md: "max-w-lg",
+  lg: "max-w-2xl",
+  xl: "max-w-4xl"
 };
 
 /**
  * Modal shell aligned with workspace DialogContainer (layout, colors, motion).
  */
 export function Modal({
-    isOpen,
-    onClose,
-    title,
-    children,
-    size = "md",
-    closeOnOverlayClick = true,
-    closeOnEscape = true,
-    showCloseButton = true,
-    footer,
-    className = "",
-    helpTopic,
+  isOpen,
+  onClose,
+  title,
+  children,
+  size = "md",
+  closeOnOverlayClick = true,
+  closeOnEscape = true,
+  showCloseButton = true,
+  footer,
+  className = "",
+  helpTopic
 }: ModalProps) {
-    const { t } = useTranslation();
-    const overlayHost = useWindowOverlayHost();
-    const doc = useHostDocument();
-    useEscapeToClose(isOpen && closeOnEscape, onClose);
-    useEffect(() => {
-        if (isOpen) {
-            doc.body.style.overflow = "hidden";
-        }
-        return () => {
-            doc.body.style.overflow = "unset";
-        };
-    }, [doc, isOpen]);
-
-    if (!isOpen) return null;
-
-    const handleOverlayClick = (e: React.MouseEvent) => {
-        if (closeOnOverlayClick && e.target === e.currentTarget) {
-            onClose();
-        }
+  const { t } = useTranslation();
+  const overlayHost = useWindowOverlayHost();
+  const doc = useHostDocument();
+  useEscapeToClose(isOpen && closeOnEscape, onClose);
+  useEffect(() => {
+    if (isOpen) {
+      doc.body.style.overflow = "hidden";
+    }
+    return () => {
+      doc.body.style.overflow = "unset";
     };
+  }, [doc, isOpen]);
 
-    /*
-     * Raised into the window's overlay layer rather than left where the caller sits: `z-50` is only
-     * a rank within the nearest stacking context, and callers live inside panels. The project
-     * panel's slide-in sub-page is `absolute inset-0 z-10`, so the Live2D / Spine installer raised
-     * from it had a ceiling of 10 and the dock seams (15) and editor split sash (10) painted across
-     * it. See `useWindowOverlayHost` for why the layer goes there and not to `document.body`.
-     */
-    return createPortal(
-        <div className="nl-window-content-layer z-50 flex items-center justify-center p-4">
-            {/* Backdrop. Full *window* (`fixed inset-0`), not just this layer: the layer starts
+  if (!isOpen) return null;
+
+  const handleOverlayClick = (e: React.MouseEvent) => {
+    if (closeOnOverlayClick && e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
+  /*
+   * Raised into the window's overlay layer rather than left where the caller sits: `z-50` is only
+   * a rank within the nearest stacking context, and callers live inside panels. The project
+   * panel's slide-in sub-page is `absolute inset-0 z-10`, so the Live2D / Spine installer raised
+   * from it had a ceiling of 10 and the dock seams (15) and editor split sash (10) painted across
+   * it. See `useWindowOverlayHost` for why the layer goes there and not to `document.body`.
+   */
+  return createPortal(
+    <div className="nl-window-content-layer z-50 flex items-center justify-center p-4">
+      {/* Backdrop. Full *window* (`fixed inset-0`), not just this layer: the layer starts
                 below the titlebar, and the launcher's titlebar covers only the right column, so an
                 `absolute inset-0` backdrop leaves the top 40px of its sidebar - logo included -
                 undimmed. That strip is bare content on Windows, where the sidebar gets no macOS
@@ -145,207 +146,209 @@ export function Modal({
                 already fills the strip and paints above this at `z-[20000]`, so nothing changes
                 there and its window controls stay bright and clickable. The panel keeps centering
                 inside the layer, below the titlebar, so the titlebar never crosses it. */}
-            <div
-                className="bg-black/60 backdrop-blur-sm animate-fade-in fixed inset-0"
-                onClick={handleOverlayClick}
-            />
+      <div
+        className="bg-black/60 backdrop-blur-sm animate-fade-in fixed inset-0"
+        onClick={handleOverlayClick}
+      />
 
-            {/* Modal panel */}
-            <div
-                className={cn(
-                    "relative bg-surface-raised border border-edge rounded-lg shadow-2xl animate-scale-in",
-                    sizeStyles[size], "w-full max-h-[90vh] overflow-hidden",
-                    className,
-                )}
-                data-help-topic={helpTopic}
-            >
-                {/* Header */}
-                {(title || showCloseButton) && (
-                    <div className="group/help flex items-center justify-between gap-1 px-6 py-4 border-b border-edge">
-                        {/* `flex-1` so the two trailing controls sit together on the right rather
+      {/* Modal panel */}
+      <div
+        className={cn(
+          "relative bg-surface-raised border border-edge rounded-lg shadow-2xl animate-scale-in",
+          sizeStyles[size],
+          "w-full max-h-[90vh] overflow-hidden",
+          className
+        )}
+        data-help-topic={helpTopic}
+      >
+        {/* Header */}
+        {(title || showCloseButton) && (
+          <div className="group/help flex items-center justify-between gap-1 px-6 py-4 border-b border-edge">
+            {/* `flex-1` so the two trailing controls sit together on the right rather
                             than being spread apart by the close button's own `ml-auto`. */}
-                        {title && <h2 className="min-w-0 flex-1 text-lg font-semibold text-fg">{title}</h2>}
-                        {helpTopic && <HelpTrigger topic={helpTopic} />}
-                        {showCloseButton && (
-                            <button
-                                type="button"
-                                onClick={onClose}
-                                className="p-1 rounded-md hover:bg-fill transition-colors ml-auto"
-                                aria-label={t("dialogs.modal.close")}
-                            >
-                                <X className="w-5 h-5 text-fg-muted" strokeWidth={2} />
-                            </button>
-                        )}
-                    </div>
-                )}
+            {title && <h2 className="min-w-0 flex-1 text-lg font-semibold text-fg">{title}</h2>}
+            {helpTopic && <HelpTrigger topic={helpTopic} />}
+            {showCloseButton && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1 rounded-md hover:bg-fill transition-colors ml-auto"
+                aria-label={t("dialogs.modal.close")}
+              >
+                <X className="w-5 h-5 text-fg-muted" strokeWidth={2} />
+              </button>
+            )}
+          </div>
+        )}
 
-                {/* Content */}
-                <div className="px-6 py-4 overflow-y-auto max-h-[calc(90vh-140px)] text-fg">
-                    {children}
-                </div>
+        {/* Content */}
+        <div className="px-6 py-4 overflow-y-auto max-h-[calc(90vh-140px)] text-fg">{children}</div>
 
-                {/* Footer */}
-                {footer && (
-                    <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-edge bg-surface-overlay">
-                        {footer}
-                    </div>
-                )}
-            </div>
-        </div>,
-        overlayHost,
-    );
+        {/* Footer */}
+        {footer && (
+          <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-edge bg-surface-overlay">
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>,
+    overlayHost
+  );
 }
 
 /**
  * Confirm dialog modal with preset actions
  */
 export function ConfirmModal({
-    isOpen,
-    onClose,
-    onConfirm,
-    title,
-    message,
-    confirmText,
-    cancelText,
-    variant = "danger",
-    isLoading = false,
+  isOpen,
+  onClose,
+  onConfirm,
+  title,
+  message,
+  confirmText,
+  cancelText,
+  variant = "danger",
+  isLoading = false
 }: {
-    isOpen: boolean;
-    onClose: () => void;
-    onConfirm: () => void;
-    title?: string;
-    message: string;
-    confirmText?: string;
-    cancelText?: string;
-    variant?: "primary" | "danger";
-    isLoading?: boolean;
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title?: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  variant?: "primary" | "danger";
+  isLoading?: boolean;
 }) {
-    const { t } = useTranslation();
-    const resolvedTitle = title ?? t("dialogs.modal.confirmTitle");
-    const resolvedConfirmText = confirmText ?? t("common.confirm");
-    const resolvedCancelText = cancelText ?? t("common.cancel");
-    return (
-        <Modal
-            isOpen={isOpen}
-            onClose={onClose}
-            title={resolvedTitle}
-            size="sm"
-            footer={
-                <div className="flex items-center gap-2">
-                    <button
-                        type="button"
-                        className={dialogFooterButtonClass({ variant: "secondary", disabled: isLoading })}
-                        onClick={onClose}
-                        disabled={isLoading}
-                    >
-                        {resolvedCancelText}
-                    </button>
-                    <button
-                        type="button"
-                        className={dialogFooterButtonClass({
-                            variant: variant === "danger" ? "danger" : "primary",
-                            disabled: isLoading,
-                        })}
-                        onClick={onConfirm}
-                        disabled={isLoading}
-                    >
-                        {resolvedConfirmText}
-                    </button>
-                </div>
-            }
-        >
-            <p className="text-sm text-fg whitespace-pre-wrap">{message}</p>
-        </Modal>
-    );
+  const { t } = useTranslation();
+  const resolvedTitle = title ?? t("dialogs.modal.confirmTitle");
+  const resolvedConfirmText = confirmText ?? t("common.confirm");
+  const resolvedCancelText = cancelText ?? t("common.cancel");
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={resolvedTitle}
+      size="sm"
+      footer={
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className={dialogFooterButtonClass({ variant: "secondary", disabled: isLoading })}
+            onClick={onClose}
+            disabled={isLoading}
+          >
+            {resolvedCancelText}
+          </button>
+          <button
+            type="button"
+            className={dialogFooterButtonClass({
+              variant: variant === "danger" ? "danger" : "primary",
+              disabled: isLoading
+            })}
+            onClick={onConfirm}
+            disabled={isLoading}
+          >
+            {resolvedConfirmText}
+          </button>
+        </div>
+      }
+    >
+      <p className="text-sm text-fg whitespace-pre-wrap">{message}</p>
+    </Modal>
+  );
 }
 
 /**
  * Alert modal for simple notifications
  */
 export function AlertModal({
-    isOpen,
-    onClose,
-    title,
-    message,
-    confirmText,
+  isOpen,
+  onClose,
+  title,
+  message,
+  confirmText
 }: {
-    isOpen: boolean;
-    onClose: () => void;
-    title?: string;
-    message: string;
-    confirmText?: string;
+  isOpen: boolean;
+  onClose: () => void;
+  title?: string;
+  message: string;
+  confirmText?: string;
 }) {
-    const { t } = useTranslation();
-    const resolvedTitle = title ?? t("dialogs.modal.alertTitle");
-    const resolvedConfirmText = confirmText ?? t("common.ok");
-    return (
-        <Modal
-            isOpen={isOpen}
-            onClose={onClose}
-            title={resolvedTitle}
-            size="sm"
-            footer={
-                <button
-                    type="button"
-                    className={dialogFooterButtonClass({ variant: "primary" })}
-                    onClick={onClose}
-                >
-                    {resolvedConfirmText}
-                </button>
-            }
+  const { t } = useTranslation();
+  const resolvedTitle = title ?? t("dialogs.modal.alertTitle");
+  const resolvedConfirmText = confirmText ?? t("common.ok");
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={resolvedTitle}
+      size="sm"
+      footer={
+        <button
+          type="button"
+          className={dialogFooterButtonClass({ variant: "primary" })}
+          onClick={onClose}
         >
-            <p className="text-sm text-fg whitespace-pre-wrap">{message}</p>
-        </Modal>
-    );
+          {resolvedConfirmText}
+        </button>
+      }
+    >
+      <p className="text-sm text-fg whitespace-pre-wrap">{message}</p>
+    </Modal>
+  );
 }
 
 /**
  * Modal header component for consistent styling
  */
 export function ModalHeader({
-    className = "",
-    children,
+  className = "",
+  children
 }: {
-    className?: string;
-    children: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
 }) {
-    return (
-        <div className={cn("flex items-center justify-between px-6 py-4 border-b border-edge", className)}>
-            {children}
-        </div>
-    );
+  return (
+    <div
+      className={cn("flex items-center justify-between px-6 py-4 border-b border-edge", className)}
+    >
+      {children}
+    </div>
+  );
 }
 
 /**
  * Modal body component
  */
 export function ModalBody({
-    className = "",
-    children,
+  className = "",
+  children
 }: {
-    className?: string;
-    children: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
 }) {
-    return (
-        <div className={cn("px-6 py-4 text-fg", className)}>
-            {children}
-        </div>
-    );
+  return <div className={cn("px-6 py-4 text-fg", className)}>{children}</div>;
 }
 
 /**
  * Modal footer component
  */
 export function ModalFooter({
-    className = "",
-    children,
+  className = "",
+  children
 }: {
-    className?: string;
-    children: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
 }) {
-    return (
-        <div className={cn("flex items-center justify-end gap-2 px-6 py-4 border-t border-edge bg-surface-overlay", className)}>
-            {children}
-        </div>
-    );
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-end gap-2 px-6 py-4 border-t border-edge bg-surface-overlay",
+        className
+      )}
+    >
+      {children}
+    </div>
+  );
 }

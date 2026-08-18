@@ -13,5 +13,5 @@ import { isReduceMotionEnabled, subscribeReduceMotion } from "./index";
  * media query in JS is how the theme layer broke once before (see `isReduceMotionEnabled`).
  */
 export function useReduceMotion(): boolean {
-    return useSyncExternalStore(subscribeReduceMotion, isReduceMotionEnabled, isReduceMotionEnabled);
+  return useSyncExternalStore(subscribeReduceMotion, isReduceMotionEnabled, isReduceMotionEnabled);
 }

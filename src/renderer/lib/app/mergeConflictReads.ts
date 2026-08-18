@@ -43,9 +43,9 @@ import { versionedProjectRelativePath } from "./writeFreeze";
 const MINE_SIDECAR_SUFFIX = "~mine";
 
 type ActiveSubstitution = {
-    projectPath: string;
-    /** Repository-relative, forward slashes - the spelling `versionedProjectRelativePath` answers. */
-    paths: ReadonlySet<string>;
+  projectPath: string;
+  /** Repository-relative, forward slashes - the spelling `versionedProjectRelativePath` answers. */
+  paths: ReadonlySet<string>;
 };
 
 let active: ActiveSubstitution | null = null;
@@ -58,11 +58,11 @@ let active: ActiveSubstitution | null = null;
  * is the merge result, and is what the commit that closes it will record.
  */
 export function setMergeConflictReads(projectPath: string, relativePaths: readonly string[]): void {
-    if (relativePaths.length === 0) {
-        active = null;
-        return;
-    }
-    active = { projectPath, paths: new Set(relativePaths.map(normalize)) };
+  if (relativePaths.length === 0) {
+    active = null;
+    return;
+  }
+  active = { projectPath, paths: new Set(relativePaths.map(normalize)) };
 }
 
 /**
@@ -74,12 +74,12 @@ export function setMergeConflictReads(projectPath: string, relativePaths: readon
  * the author's resolved work replaced by defaults, one save away from being written.
  */
 export function clearMergeConflictReads(): void {
-    active = null;
+  active = null;
 }
 
 /** Whether anything is being substituted. For a surface that wants to say so, not for a reader. */
 export function hasMergeConflictReads(): boolean {
-    return active !== null;
+  return active !== null;
 }
 
 /**
@@ -89,19 +89,19 @@ export function hasMergeConflictReads(): boolean {
  * outside the versioned working set, since `versionedProjectRelativePath` answers null there.
  */
 export function mergeConflictReadPath(absolutePath: string): string | null {
-    const current = active;
-    if (!current) {
-        return null;
-    }
-    const relative = versionedProjectRelativePath(current.projectPath, absolutePath);
-    if (relative === null || !current.paths.has(normalize(relative))) {
-        return null;
-    }
-    // The sidecar is beside the file, so appending the suffix to the ABSOLUTE path is the whole
-    // mapping - and it lands outside the substituted set, so the read of it does not recurse.
-    return `${absolutePath}${MINE_SIDECAR_SUFFIX}`;
+  const current = active;
+  if (!current) {
+    return null;
+  }
+  const relative = versionedProjectRelativePath(current.projectPath, absolutePath);
+  if (relative === null || !current.paths.has(normalize(relative))) {
+    return null;
+  }
+  // The sidecar is beside the file, so appending the suffix to the ABSOLUTE path is the whole
+  // mapping - and it lands outside the substituted set, so the read of it does not recurse.
+  return `${absolutePath}${MINE_SIDECAR_SUFFIX}`;
 }
 
 function normalize(path: string): string {
-    return path.replace(/\\/g, "/").replace(/^\.\//, "");
+  return path.replace(/\\/g, "/").replace(/^\.\//, "");
 }

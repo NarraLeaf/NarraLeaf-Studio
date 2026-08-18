@@ -1,17 +1,17 @@
 import {
-    Aperture,
-    Database,
-    Image,
-    Images,
-    Layers,
-    MonitorPlay,
-    Music,
-    Settings2,
-    StickyNote,
-    Type,
-    UserRound,
-    Video,
-    Wind,
+  Aperture,
+  Database,
+  Image,
+  Images,
+  Layers,
+  MonitorPlay,
+  Music,
+  Settings2,
+  StickyNote,
+  Type,
+  UserRound,
+  Video,
+  Wind
 } from "lucide-react";
 import type { TranslationKey } from "@shared/i18n";
 import type { StoryCommandTargetKind } from "./storyCommandValues";
@@ -37,14 +37,14 @@ import type { StoryCommandTargetKind } from "./storyCommandValues";
 
 /** The eight top-level categories, in browse order. */
 export type StoryCommandCategoryId =
-    | "character"
-    | "stage"
-    | "camera"
-    | "scene"
-    | "sound"
-    | "data"
-    | "flow"
-    | "utils";
+  | "character"
+  | "stage"
+  | "camera"
+  | "scene"
+  | "sound"
+  | "data"
+  | "flow"
+  | "utils";
 
 /** 舞台's second-level subjects - the only category that has one. */
 export type StoryStageSubjectId = "image" | "text" | "layer" | "video" | "vfx";
@@ -56,16 +56,16 @@ export type StoryStageSubjectId = "image" | "text" | "layer" | "video" | "vfx";
 export type StoryCommandGroupId = Exclude<StoryCommandCategoryId, "stage"> | StoryStageSubjectId;
 
 export type StoryCommandCategory = {
-    id: StoryCommandCategoryId;
-    icon: typeof Settings2;
-    iconColor: string;
+  id: StoryCommandCategoryId;
+  icon: typeof Settings2;
+  iconColor: string;
 };
 
 export type StoryCommandGroup = {
-    id: StoryCommandGroupId;
-    category: StoryCommandCategoryId;
-    icon: typeof Settings2;
-    iconColor: string;
+  id: StoryCommandGroupId;
+  category: StoryCommandCategoryId;
+  icon: typeof Settings2;
+  iconColor: string;
 };
 
 /**
@@ -77,14 +77,14 @@ export type StoryCommandGroup = {
  * hue freed by dissolving `effects`, which no longer competes for it.
  */
 export const STORY_COMMAND_CATEGORIES: readonly StoryCommandCategory[] = [
-    { id: "character", icon: UserRound, iconColor: "var(--narraleaf-accent, #40a8c4)" },
-    { id: "stage", icon: Images, iconColor: "#96b8a0" },
-    { id: "camera", icon: Aperture, iconColor: "#d1a176" },
-    { id: "scene", icon: MonitorPlay, iconColor: "#8fa9c7" },
-    { id: "sound", icon: Music, iconColor: "#bd97a3" },
-    { id: "data", icon: Database, iconColor: "#b8aa86" },
-    { id: "flow", icon: Settings2, iconColor: "#b2a6c9" },
-    { id: "utils", icon: StickyNote, iconColor: "#a8adb5" },
+  { id: "character", icon: UserRound, iconColor: "var(--narraleaf-accent, #40a8c4)" },
+  { id: "stage", icon: Images, iconColor: "#96b8a0" },
+  { id: "camera", icon: Aperture, iconColor: "#d1a176" },
+  { id: "scene", icon: MonitorPlay, iconColor: "#8fa9c7" },
+  { id: "sound", icon: Music, iconColor: "#bd97a3" },
+  { id: "data", icon: Database, iconColor: "#b8aa86" },
+  { id: "flow", icon: Settings2, iconColor: "#b2a6c9" },
+  { id: "utils", icon: StickyNote, iconColor: "#a8adb5" }
 ];
 
 /**
@@ -93,40 +93,49 @@ export const STORY_COMMAND_CATEGORIES: readonly StoryCommandCategory[] = [
  * purpose (`/blink` `/vignette` → 场景, `/blueprint` → 工具).
  */
 export const STORY_COMMAND_GROUPS: readonly StoryCommandGroup[] = [
-    { id: "character", category: "character", icon: UserRound, iconColor: "var(--narraleaf-accent, #40a8c4)" },
-    { id: "image", category: "stage", icon: Image, iconColor: "#96b8a0" },
-    { id: "text", category: "stage", icon: Type, iconColor: "#9bb7d8" },
-    { id: "layer", category: "stage", icon: Layers, iconColor: "#92b9b0" },
-    { id: "video", category: "stage", icon: Video, iconColor: "#b59dcc" },
-    // The one hue nothing else claimed, for the one subject that is pure light: 氛围特效 sits under
-    // 舞台 because a vfx IS a stage object - just not a Displayable one (it takes no /transform).
-    { id: "vfx", category: "stage", icon: Wind, iconColor: "#d3c07c" },
-    { id: "camera", category: "camera", icon: Aperture, iconColor: "#d1a176" },
-    { id: "scene", category: "scene", icon: MonitorPlay, iconColor: "#8fa9c7" },
-    { id: "sound", category: "sound", icon: Music, iconColor: "#bd97a3" },
-    { id: "data", category: "data", icon: Database, iconColor: "#b8aa86" },
-    { id: "flow", category: "flow", icon: Settings2, iconColor: "#b2a6c9" },
-    { id: "utils", category: "utils", icon: StickyNote, iconColor: "#a8adb5" },
+  {
+    id: "character",
+    category: "character",
+    icon: UserRound,
+    iconColor: "var(--narraleaf-accent, #40a8c4)"
+  },
+  { id: "image", category: "stage", icon: Image, iconColor: "#96b8a0" },
+  { id: "text", category: "stage", icon: Type, iconColor: "#9bb7d8" },
+  { id: "layer", category: "stage", icon: Layers, iconColor: "#92b9b0" },
+  { id: "video", category: "stage", icon: Video, iconColor: "#b59dcc" },
+  // The one hue nothing else claimed, for the one subject that is pure light: 氛围特效 sits under
+  // 舞台 because a vfx IS a stage object - just not a Displayable one (it takes no /transform).
+  { id: "vfx", category: "stage", icon: Wind, iconColor: "#d3c07c" },
+  { id: "camera", category: "camera", icon: Aperture, iconColor: "#d1a176" },
+  { id: "scene", category: "scene", icon: MonitorPlay, iconColor: "#8fa9c7" },
+  { id: "sound", category: "sound", icon: Music, iconColor: "#bd97a3" },
+  { id: "data", category: "data", icon: Database, iconColor: "#b8aa86" },
+  { id: "flow", category: "flow", icon: Settings2, iconColor: "#b2a6c9" },
+  { id: "utils", category: "utils", icon: StickyNote, iconColor: "#a8adb5" }
 ];
 
-const GROUP_BY_ID = new Map<string, StoryCommandGroup>(STORY_COMMAND_GROUPS.map(group => [group.id, group]));
-const CATEGORY_BY_ID = new Map<string, StoryCommandCategory>(STORY_COMMAND_CATEGORIES.map(category => [category.id, category]));
+const GROUP_BY_ID = new Map<string, StoryCommandGroup>(
+  STORY_COMMAND_GROUPS.map((group) => [group.id, group])
+);
+const CATEGORY_BY_ID = new Map<string, StoryCommandCategory>(
+  STORY_COMMAND_CATEGORIES.map((category) => [category.id, category])
+);
 
 /**
  * A group by id. Falls back to 工具 rather than to a colourless placeholder: an unknown id can only
  * come from a plugin, and a plugin action IS a tool - a grey-holed row would read as broken.
  */
 export function getCommandGroup(groupId: StoryCommandGroupId): StoryCommandGroup {
-    return GROUP_BY_ID.get(groupId) ?? GROUP_BY_ID.get("utils")!;
+  return GROUP_BY_ID.get(groupId) ?? GROUP_BY_ID.get("utils")!;
 }
 
 export function getCommandCategory(categoryId: StoryCommandCategoryId): StoryCommandCategory {
-    return CATEGORY_BY_ID.get(categoryId) ?? CATEGORY_BY_ID.get("utils")!;
+  return CATEGORY_BY_ID.get(categoryId) ?? CATEGORY_BY_ID.get("utils")!;
 }
 
 /** The groups under a category, in table order. Only 舞台 returns more than one. */
 export function groupsOfCategory(categoryId: StoryCommandCategoryId): readonly StoryCommandGroup[] {
-    return STORY_COMMAND_GROUPS.filter(group => group.category === categoryId);
+  return STORY_COMMAND_GROUPS.filter((group) => group.category === categoryId);
 }
 
 /**
@@ -135,10 +144,12 @@ export function groupsOfCategory(categoryId: StoryCommandCategoryId): readonly S
  * menu needs no second catalogue: `/show` accepting five kinds IS `/show` appearing under five subjects.
  */
 export function subjectGroupId(targetKind: StoryCommandTargetKind): StoryCommandGroupId {
-    return targetKind === "audio" ? "sound" : targetKind;
+  return targetKind === "audio" ? "sound" : targetKind;
 }
 
 /** Localized name of a category or a group - one key space, since group ids never collide with category ids. */
-export function commandCategoryLabelKey(id: StoryCommandCategoryId | StoryCommandGroupId): TranslationKey {
-    return `story.actionCategory.${id}` as TranslationKey;
+export function commandCategoryLabelKey(
+  id: StoryCommandCategoryId | StoryCommandGroupId
+): TranslationKey {
+  return `story.actionCategory.${id}` as TranslationKey;
 }

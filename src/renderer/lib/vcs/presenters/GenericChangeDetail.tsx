@@ -27,42 +27,42 @@ import type { ChangePresenter, ChangePresenterProps } from "./registry";
 export const DOCUMENT_ROW_CEILING = 200;
 
 export function GenericChangeDetail({ entry, change }: ChangePresenterProps) {
-    /**
-     * One change selected out of the document reads as a diff of its own.
-     *
-     * Rebuilt rather than filtered in the list, so `DocumentChangeList` cannot tell the difference
-     * between "this document has one change" and "one change is being looked at" - and so the
-     * counts it draws are about what is on screen. The tier is carried over unchanged, because how
-     * this change was produced is a property of the comparison and not of the selection.
-     */
-    const diff = useMemo<DocumentDiff>(() => {
-        if (!change) {
-            return entry.diff;
-        }
-        return {
-            changes: [change],
-            complete: (change.truncated ?? 0) === 0,
-            total: countDocumentChanges([change]),
-            tier: entry.diff.tier,
-        };
-    }, [entry.diff, change]);
+  /**
+   * One change selected out of the document reads as a diff of its own.
+   *
+   * Rebuilt rather than filtered in the list, so `DocumentChangeList` cannot tell the difference
+   * between "this document has one change" and "one change is being looked at" - and so the
+   * counts it draws are about what is on screen. The tier is carried over unchanged, because how
+   * this change was produced is a property of the comparison and not of the selection.
+   */
+  const diff = useMemo<DocumentDiff>(() => {
+    if (!change) {
+      return entry.diff;
+    }
+    return {
+      changes: [change],
+      complete: (change.truncated ?? 0) === 0,
+      total: countDocumentChanges([change]),
+      tier: entry.diff.tier
+    };
+  }, [entry.diff, change]);
 
-    return (
-        <DocumentChangeList
-            diff={diff}
-            limit={DOCUMENT_ROW_CEILING}
-            // A document that appeared, disappeared or moved has one row and no caveat to make about
-            // it; the caption would otherwise claim it was unreadable. Suppressed only for the whole
-            // document, never when one change inside it is selected.
-            wholeDocument={change === undefined && isWholeDocumentChange(entry.kind)}
-        />
-    );
+  return (
+    <DocumentChangeList
+      diff={diff}
+      limit={DOCUMENT_ROW_CEILING}
+      // A document that appeared, disappeared or moved has one row and no caveat to make about
+      // it; the caption would otherwise claim it was unreadable. Suppressed only for the whole
+      // document, never when one change inside it is selected.
+      wholeDocument={change === undefined && isWholeDocumentChange(entry.kind)}
+    />
+  );
 }
 
 export const genericChangePresenter: ChangePresenter = {
-    id: "generic",
-    // Anything, which is what makes it the fallback rather than a competitor: a presenter that
-    // matched only what nothing else claimed would have to know what else exists.
-    matches: () => true,
-    Detail: GenericChangeDetail,
+  id: "generic",
+  // Anything, which is what makes it the fallback rather than a competitor: a presenter that
+  // matched only what nothing else claimed would have to know what else exists.
+  matches: () => true,
+  Detail: GenericChangeDetail
 };

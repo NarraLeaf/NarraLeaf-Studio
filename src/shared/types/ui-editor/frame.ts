@@ -1,156 +1,168 @@
 import type { UIDocument, UIElement, UIElementId, UISurface, UISurfaceId } from "./document";
-import { normalizeOptionalUIPageAnimationSettings, type UIPageAnimationSettings } from "./pageAnimation";
+import {
+  normalizeOptionalUIPageAnimationSettings,
+  type UIPageAnimationSettings
+} from "./pageAnimation";
 
 export const UI_FRAME_ELEMENT_TYPE = "nl.frame" as const;
 
 export type UIFrameNavigationMode = "static";
 
 export type UIFrameWidgetProps = {
-    targetSurfaceId: UISurfaceId | null;
-    params: Record<string, unknown>;
-    navigationMode: UIFrameNavigationMode;
-    /** Undefined means this Page component inherits the target Page animation settings. */
-    animation?: UIPageAnimationSettings;
+  targetSurfaceId: UISurfaceId | null;
+  params: Record<string, unknown>;
+  navigationMode: UIFrameNavigationMode;
+  /** Undefined means this Page component inherits the target Page animation settings. */
+  animation?: UIPageAnimationSettings;
 };
 
 export type UIFrameTargetInvalidReason = "missing" | "not_page" | "self" | "cycle";
 
 export const DEFAULT_UI_FRAME_WIDGET_PROPS: UIFrameWidgetProps = {
-    targetSurfaceId: null,
-    params: {},
-    navigationMode: "static",
+  targetSurfaceId: null,
+  params: {},
+  navigationMode: "static"
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 export function normalizeUIFrameWidgetProps(raw: unknown): UIFrameWidgetProps {
-    const input = isRecord(raw) ? raw : {};
-    const target =
-        typeof input.targetSurfaceId === "string" && input.targetSurfaceId.trim().length > 0
-            ? input.targetSurfaceId.trim()
-            : null;
-    const params = isRecord(input.params) ? input.params : {};
-    const animation = normalizeOptionalUIPageAnimationSettings(input.animation);
-    return {
-        targetSurfaceId: target,
-        params,
-        navigationMode: "static",
-        ...(animation ? { animation } : {}),
-    };
+  const input = isRecord(raw) ? raw : {};
+  const target =
+    typeof input.targetSurfaceId === "string" && input.targetSurfaceId.trim().length > 0
+      ? input.targetSurfaceId.trim()
+      : null;
+  const params = isRecord(input.params) ? input.params : {};
+  const animation = normalizeOptionalUIPageAnimationSettings(input.animation);
+  return {
+    targetSurfaceId: target,
+    params,
+    navigationMode: "static",
+    ...(animation ? { animation } : {})
+  };
 }
 
 export function getUIFrameWidgetProps(element: Pick<UIElement, "props">): UIFrameWidgetProps {
-    return normalizeUIFrameWidgetProps(element.props);
+  return normalizeUIFrameWidgetProps(element.props);
 }
 
-function getSurface(document: UIDocument, surfaceId: UISurfaceId | null | undefined): UISurface | undefined {
-    return surfaceId ? document.surfaces.find(surface => surface.id === surfaceId) : undefined;
+function getSurface(
+  document: UIDocument,
+  surfaceId: UISurfaceId | null | undefined
+): UISurface | undefined {
+  return surfaceId ? document.surfaces.find((surface) => surface.id === surfaceId) : undefined;
 }
 
 export function findUIElementSurfaceId(
-    document: UIDocument,
-    elementId: UIElementId | null | undefined,
+  document: UIDocument,
+  elementId: UIElementId | null | undefined
 ): UISurfaceId | null {
-    let current = elementId ? document.elements[elementId] : undefined;
-    while (current) {
-        const currentElement = current;
-        const surface = document.surfaces.find(item => item.rootElementId === currentElement.id);
-        if (surface) {
-            return surface.id;
-        }
-        current = currentElement.parentId ? document.elements[currentElement.parentId] : undefined;
+  let current = elementId ? document.elements[elementId] : undefined;
+  while (current) {
+    const currentElement = current;
+    const surface = document.surfaces.find((item) => item.rootElementId === currentElement.id);
+    if (surface) {
+      return surface.id;
     }
-    return null;
+    current = currentElement.parentId ? document.elements[currentElement.parentId] : undefined;
+  }
+  return null;
 }
 
 function collectSurfaceFrameTargets(
-    document: UIDocument,
-    surfaceId: UISurfaceId,
-    ignoredFrameElementId: UIElementId | null,
+  document: UIDocument,
+  surfaceId: UISurfaceId,
+  ignoredFrameElementId: UIElementId | null
 ): UISurfaceId[] {
-    const rootId = getSurface(document, surfaceId)?.rootElementId;
-    if (!rootId) {
-        return [];
+  const rootId = getSurface(document, surfaceId)?.rootElementId;
+  if (!rootId) {
+    return [];
+  }
+  const out: UISurfaceId[] = [];
+  const visit = (elementId: UIElementId) => {
+    const element = document.elements[elementId];
+    if (!element) {
+      return;
     }
-    const out: UISurfaceId[] = [];
-    const visit = (elementId: UIElementId) => {
-        const element = document.elements[elementId];
-        if (!element) {
-            return;
-        }
-        if (element.type === UI_FRAME_ELEMENT_TYPE && element.id !== ignoredFrameElementId) {
-            const target = getUIFrameWidgetProps(element).targetSurfaceId;
-            if (target) {
-                out.push(target);
-            }
-        }
-        for (const childId of element.childrenIds ?? []) {
-            visit(childId);
-        }
-    };
-    visit(rootId);
-    return out;
+    if (element.type === UI_FRAME_ELEMENT_TYPE && element.id !== ignoredFrameElementId) {
+      const target = getUIFrameWidgetProps(element).targetSurfaceId;
+      if (target) {
+        out.push(target);
+      }
+    }
+    for (const childId of element.childrenIds ?? []) {
+      visit(childId);
+    }
+  };
+  visit(rootId);
+  return out;
 }
 
 function surfaceCanReachSurface(
-    document: UIDocument,
-    startSurfaceId: UISurfaceId,
-    targetSurfaceId: UISurfaceId,
-    ignoredFrameElementId: UIElementId | null,
-    seen: Set<UISurfaceId>,
+  document: UIDocument,
+  startSurfaceId: UISurfaceId,
+  targetSurfaceId: UISurfaceId,
+  ignoredFrameElementId: UIElementId | null,
+  seen: Set<UISurfaceId>
 ): boolean {
-    if (startSurfaceId === targetSurfaceId) {
-        return true;
-    }
-    if (seen.has(startSurfaceId)) {
-        return false;
-    }
-    seen.add(startSurfaceId);
-    for (const nextSurfaceId of collectSurfaceFrameTargets(document, startSurfaceId, ignoredFrameElementId)) {
-        if (surfaceCanReachSurface(document, nextSurfaceId, targetSurfaceId, ignoredFrameElementId, seen)) {
-            return true;
-        }
-    }
+  if (startSurfaceId === targetSurfaceId) {
+    return true;
+  }
+  if (seen.has(startSurfaceId)) {
     return false;
+  }
+  seen.add(startSurfaceId);
+  for (const nextSurfaceId of collectSurfaceFrameTargets(
+    document,
+    startSurfaceId,
+    ignoredFrameElementId
+  )) {
+    if (
+      surfaceCanReachSurface(document, nextSurfaceId, targetSurfaceId, ignoredFrameElementId, seen)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function getUIFrameTargetInvalidReason(input: {
-    document: UIDocument;
-    sourceSurfaceId: UISurfaceId;
-    frameElementId: UIElementId | null;
-    targetSurfaceId: UISurfaceId | null | undefined;
+  document: UIDocument;
+  sourceSurfaceId: UISurfaceId;
+  frameElementId: UIElementId | null;
+  targetSurfaceId: UISurfaceId | null | undefined;
 }): UIFrameTargetInvalidReason | null {
-    const target = getSurface(input.document, input.targetSurfaceId);
-    if (!target) {
-        return input.targetSurfaceId ? "missing" : null;
-    }
-    if (target.kind !== "appSurface") {
-        return "not_page";
-    }
-    if (target.id === input.sourceSurfaceId) {
-        return "self";
-    }
-    if (
-        surfaceCanReachSurface(
-            input.document,
-            target.id,
-            input.sourceSurfaceId,
-            input.frameElementId,
-            new Set(),
-        )
-    ) {
-        return "cycle";
-    }
-    return null;
+  const target = getSurface(input.document, input.targetSurfaceId);
+  if (!target) {
+    return input.targetSurfaceId ? "missing" : null;
+  }
+  if (target.kind !== "appSurface") {
+    return "not_page";
+  }
+  if (target.id === input.sourceSurfaceId) {
+    return "self";
+  }
+  if (
+    surfaceCanReachSurface(
+      input.document,
+      target.id,
+      input.sourceSurfaceId,
+      input.frameElementId,
+      new Set()
+    )
+  ) {
+    return "cycle";
+  }
+  return null;
 }
 
 export function isValidUIFrameTarget(input: {
-    document: UIDocument;
-    sourceSurfaceId: UISurfaceId;
-    frameElementId: UIElementId | null;
-    targetSurfaceId: UISurfaceId | null | undefined;
+  document: UIDocument;
+  sourceSurfaceId: UISurfaceId;
+  frameElementId: UIElementId | null;
+  targetSurfaceId: UISurfaceId | null | undefined;
 }): boolean {
-    return getUIFrameTargetInvalidReason(input) === null;
+  return getUIFrameTargetInvalidReason(input) === null;
 }

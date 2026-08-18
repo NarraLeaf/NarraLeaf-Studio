@@ -15,12 +15,16 @@ import { createProjectDiagnosticsTest } from "./projectDiagnostics";
  * closed.
  */
 export type BuiltInTestHost = {
-    services(): ServiceRegistry;
+  services(): ServiceRegistry;
 };
 
 /** Every test Studio ships. Phase 1 has one (ruling R11). */
 export function createBuiltInTests(host: BuiltInTestHost): TestDefinition[] {
-    return [createProjectDiagnosticsTest(host)];
+  return [createProjectDiagnosticsTest(host)];
 }
 
-export { PROJECT_DIAGNOSTICS_SLUG, PROJECT_DIAGNOSTICS_TEST_ID, createProjectDiagnosticsTest } from "./projectDiagnostics";
+export {
+  PROJECT_DIAGNOSTICS_SLUG,
+  PROJECT_DIAGNOSTICS_TEST_ID,
+  createProjectDiagnosticsTest
+} from "./projectDiagnostics";

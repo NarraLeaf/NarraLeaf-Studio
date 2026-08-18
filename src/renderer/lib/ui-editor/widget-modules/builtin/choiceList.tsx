@@ -10,17 +10,17 @@ import { defaultListWidgetProps, type ListWidgetProps } from "./list/types";
 const CHOICE_LIST_TYPE = "nl.choice.list";
 
 function createDefaultChoiceListProps(): ListWidgetProps {
-    const props: ListWidgetProps = JSON.parse(JSON.stringify(defaultListWidgetProps));
-    props.itemKeyPath = "index";
-    props.itemGap = 16;
-    props.previewItems = [
-        { text: translate("widgets.defaults.choiceList.choiceA"), index: 0, disabled: false },
-        { text: translate("widgets.defaults.choiceList.choiceB"), index: 1, disabled: false },
-        { text: translate("widgets.defaults.choiceList.choiceC"), index: 2, disabled: true },
-    ];
-    props.scrollbar.enabled = false;
-    props.scrollbar.visibility = "hidden";
-    return props;
+  const props: ListWidgetProps = JSON.parse(JSON.stringify(defaultListWidgetProps));
+  props.itemKeyPath = "index";
+  props.itemGap = 16;
+  props.previewItems = [
+    { text: translate("widgets.defaults.choiceList.choiceA"), index: 0, disabled: false },
+    { text: translate("widgets.defaults.choiceList.choiceB"), index: 1, disabled: false },
+    { text: translate("widgets.defaults.choiceList.choiceC"), index: 2, disabled: true }
+  ];
+  props.scrollbar.enabled = false;
+  props.scrollbar.visibility = "hidden";
+  return props;
 }
 
 /**
@@ -29,32 +29,32 @@ function createDefaultChoiceListProps(): ListWidgetProps {
  * `Select Choice` blueprint node through the seeded Choice widget blueprint.
  */
 export const ChoiceListWidgetModule: UIWidgetModule = {
+  type: CHOICE_LIST_TYPE,
+  logicApi: getWidgetLogicApi(CHOICE_LIST_TYPE),
+  get displayName() {
+    return translate("widgets.defaults.choiceList.name");
+  },
+  icon: ListChecks,
+
+  createDefaultElement: () => ({
     type: CHOICE_LIST_TYPE,
-    logicApi: getWidgetLogicApi(CHOICE_LIST_TYPE),
-    get displayName() {
-        return translate("widgets.defaults.choiceList.name");
+    name: translate("widgets.defaults.choiceList.name"),
+    layout: {
+      x: 0,
+      y: 0,
+      width: 640,
+      height: 360,
+      opacity: 1,
+      visible: true
     },
-    icon: ListChecks,
+    props: createDefaultChoiceListProps()
+  }),
 
-    createDefaultElement: () => ({
-        type: CHOICE_LIST_TYPE,
-        name: translate("widgets.defaults.choiceList.name"),
-        layout: {
-            x: 0,
-            y: 0,
-            width: 640,
-            height: 360,
-            opacity: 1,
-            visible: true,
-        },
-        props: createDefaultChoiceListProps(),
-    }),
+  render: (props: WidgetRendererProps) => <ListRenderer {...props} />,
 
-    render: (props: WidgetRendererProps) => <ListRenderer {...props} />,
+  createInspector: createListInspector,
 
-    createInspector: createListInspector,
+  createDockerBarItems: createListDockerBarItems,
 
-    createDockerBarItems: createListDockerBarItems,
-
-    createMultiSelectDockerBarItems: createListDockerBarItems,
+  createMultiSelectDockerBarItems: createListDockerBarItems
 };

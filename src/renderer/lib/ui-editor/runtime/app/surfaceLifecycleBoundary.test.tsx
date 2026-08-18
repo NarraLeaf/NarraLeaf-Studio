@@ -12,33 +12,33 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import {
-    createRecordingCore,
-    ensureAnimationFramePolyfill,
-    flushAnimationFrame,
-    makeBlueprintHostAdapter,
-    makeStateAccessors,
-    makeTestBundle,
-    makeTestSurface,
-    type LifecycleEventLog,
+  createRecordingCore,
+  ensureAnimationFramePolyfill,
+  flushAnimationFrame,
+  makeBlueprintHostAdapter,
+  makeStateAccessors,
+  makeTestBundle,
+  makeTestSurface,
+  type LifecycleEventLog
 } from "@/lib/ui-editor/runtime/testing/lifecycleTestKit";
 import { SurfaceLifecycleOrchestrator } from "./lifecycle/surfaceLifecycleOrchestrator";
 import { LayerStackController, mountSurfaceLayer } from "./layers/LayerStackController";
 
 const hoisted = vi.hoisted(() => ({ log: [] as string[] }));
 
-vi.mock("@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher", async importOriginal => {
-    const actual = await importOriginal<Record<string, unknown>>();
-    return {
-        ...actual,
-        dispatchSurfaceBlueprintEvent: (input: { eventName: string; runtimeScopeId: string }) => {
-            hoisted.log.push(`dispatch:${input.eventName}:${input.runtimeScopeId}`);
-            return Promise.resolve();
-        },
-        dispatchGlobalBlueprintEvent: (input: { eventName: string }) => {
-            hoisted.log.push(`dispatchGlobal:${input.eventName}`);
-            return Promise.resolve();
-        },
-    };
+vi.mock("@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    dispatchSurfaceBlueprintEvent: (input: { eventName: string; runtimeScopeId: string }) => {
+      hoisted.log.push(`dispatch:${input.eventName}:${input.runtimeScopeId}`);
+      return Promise.resolve();
+    },
+    dispatchGlobalBlueprintEvent: (input: { eventName: string }) => {
+      hoisted.log.push(`dispatchGlobal:${input.eventName}`);
+      return Promise.resolve();
+    }
+  };
 });
 
 import { SurfaceLifecycleBoundary } from "./SurfaceLifecycleBoundary";
@@ -46,129 +46,120 @@ import { SurfaceLifecycleBoundary } from "./SurfaceLifecycleBoundary";
 const blueprintDocument = makeTestBundle().ui.localBlueprints as BlueprintDocument;
 
 function mountBoundary(input: {
-    log: LifecycleEventLog;
-    strict?: boolean;
-    lifecycleRef?: { current: SurfaceLifecycleOrchestrator };
-    core?: ReturnType<typeof createRecordingCore> | null;
+  log: LifecycleEventLog;
+  strict?: boolean;
+  lifecycleRef?: { current: SurfaceLifecycleOrchestrator };
+  core?: ReturnType<typeof createRecordingCore> | null;
 }) {
-    const core = input.core === undefined ? createRecordingCore(input.log) : input.core;
-    const lifecycleRef = input.lifecycleRef ?? { current: new SurfaceLifecycleOrchestrator() };
-    const accessors = makeStateAccessors();
-    const element = (
-        <SurfaceLifecycleBoundary
-            core={core}
-            blueprintDocument={blueprintDocument}
-            persistentVariables={{}}
-            surface={makeTestSurface("surface-a")}
-            runtimeScopeId="scope-1"
-            hostAdapter={makeBlueprintHostAdapter()}
-            lifecycleRef={lifecycleRef}
-            makeStateAccessors={() => accessors}
-        >
-            <div data-testid="content" />
-        </SurfaceLifecycleBoundary>
-    );
-    const wrap = (node: ReactNode) => (input.strict ? <StrictMode>{node}</StrictMode> : node);
-    const utils = render(wrap(element));
-    return { ...utils, core, lifecycleRef };
+  const core = input.core === undefined ? createRecordingCore(input.log) : input.core;
+  const lifecycleRef = input.lifecycleRef ?? { current: new SurfaceLifecycleOrchestrator() };
+  const accessors = makeStateAccessors();
+  const element = (
+    <SurfaceLifecycleBoundary
+      core={core}
+      blueprintDocument={blueprintDocument}
+      persistentVariables={{}}
+      surface={makeTestSurface("surface-a")}
+      runtimeScopeId="scope-1"
+      hostAdapter={makeBlueprintHostAdapter()}
+      lifecycleRef={lifecycleRef}
+      makeStateAccessors={() => accessors}
+    >
+      <div data-testid="content" />
+    </SurfaceLifecycleBoundary>
+  );
+  const wrap = (node: ReactNode) => (input.strict ? <StrictMode>{node}</StrictMode> : node);
+  const utils = render(wrap(element));
+  return { ...utils, core, lifecycleRef };
 }
 
 beforeAll(() => {
-    ensureAnimationFramePolyfill();
+  ensureAnimationFramePolyfill();
 });
 
 afterEach(() => {
-    cleanup();
-    hoisted.log.length = 0;
+  cleanup();
+  hoisted.log.length = 0;
 });
 
 describe("SurfaceLifecycleBoundary dispatch order", () => {
-    it("defers openScope + surfaceInit by one animation frame", async () => {
-        mountBoundary({ log: hoisted.log });
-        expect(hoisted.log).toEqual([]);
-        await act(async () => {
-            await flushAnimationFrame();
-        });
-        expect(hoisted.log).toEqual([
-            "openScope:scope-1",
-            "dispatch:surfaceInit:scope-1",
-        ]);
+  it("defers openScope + surfaceInit by one animation frame", async () => {
+    mountBoundary({ log: hoisted.log });
+    expect(hoisted.log).toEqual([]);
+    await act(async () => {
+      await flushAnimationFrame();
     });
+    expect(hoisted.log).toEqual(["openScope:scope-1", "dispatch:surfaceInit:scope-1"]);
+  });
 
-    it("dispatches closeScope + surfaceUnmount on unmount", async () => {
-        const { unmount } = mountBoundary({ log: hoisted.log });
-        await act(async () => {
-            await flushAnimationFrame();
-        });
-        hoisted.log.length = 0;
-        unmount();
-        expect(hoisted.log).toEqual([
-            "closeScope:scope-1:Surface unmounted",
-            "dispatch:surfaceUnmount:scope-1",
-        ]);
+  it("dispatches closeScope + surfaceUnmount on unmount", async () => {
+    const { unmount } = mountBoundary({ log: hoisted.log });
+    await act(async () => {
+      await flushAnimationFrame();
     });
+    hoisted.log.length = 0;
+    unmount();
+    expect(hoisted.log).toEqual([
+      "closeScope:scope-1:Surface unmounted",
+      "dispatch:surfaceUnmount:scope-1"
+    ]);
+  });
 
-    it("re-dispatches surfaceInit when the same scope remounts after exit", async () => {
-        const lifecycleRef = { current: new SurfaceLifecycleOrchestrator() };
-        const first = mountBoundary({ log: hoisted.log, lifecycleRef });
-        await act(async () => {
-            await flushAnimationFrame();
-        });
-        first.unmount();
-        hoisted.log.length = 0;
-        mountBoundary({ log: hoisted.log, lifecycleRef });
-        await act(async () => {
-            await flushAnimationFrame();
-        });
-        expect(hoisted.log).toEqual([
-            "openScope:scope-1",
-            "dispatch:surfaceInit:scope-1",
-        ]);
+  it("re-dispatches surfaceInit when the same scope remounts after exit", async () => {
+    const lifecycleRef = { current: new SurfaceLifecycleOrchestrator() };
+    const first = mountBoundary({ log: hoisted.log, lifecycleRef });
+    await act(async () => {
+      await flushAnimationFrame();
     });
+    first.unmount();
+    hoisted.log.length = 0;
+    mountBoundary({ log: hoisted.log, lifecycleRef });
+    await act(async () => {
+      await flushAnimationFrame();
+    });
+    expect(hoisted.log).toEqual(["openScope:scope-1", "dispatch:surfaceInit:scope-1"]);
+  });
 
-    it("does nothing while core is null and initializes once core arrives", async () => {
-        const { rerender } = mountBoundary({ log: hoisted.log, core: null });
-        await act(async () => {
-            await flushAnimationFrame();
-        });
-        expect(hoisted.log).toEqual([]);
-        const core = createRecordingCore(hoisted.log);
-        const accessors = makeStateAccessors();
-        rerender(
-            <SurfaceLifecycleBoundary
-                core={core}
-                blueprintDocument={blueprintDocument}
-            persistentVariables={{}}
-                surface={makeTestSurface("surface-a")}
-                runtimeScopeId="scope-1"
-                hostAdapter={makeBlueprintHostAdapter()}
-                lifecycleRef={{ current: new SurfaceLifecycleOrchestrator() }}
-                makeStateAccessors={() => accessors}
-            >
-                <div />
-            </SurfaceLifecycleBoundary>,
-        );
-        await act(async () => {
-            await flushAnimationFrame();
-        });
-        expect(hoisted.log).toEqual([
-            "openScope:scope-1",
-            "dispatch:surfaceInit:scope-1",
-        ]);
+  it("does nothing while core is null and initializes once core arrives", async () => {
+    const { rerender } = mountBoundary({ log: hoisted.log, core: null });
+    await act(async () => {
+      await flushAnimationFrame();
     });
+    expect(hoisted.log).toEqual([]);
+    const core = createRecordingCore(hoisted.log);
+    const accessors = makeStateAccessors();
+    rerender(
+      <SurfaceLifecycleBoundary
+        core={core}
+        blueprintDocument={blueprintDocument}
+        persistentVariables={{}}
+        surface={makeTestSurface("surface-a")}
+        runtimeScopeId="scope-1"
+        hostAdapter={makeBlueprintHostAdapter()}
+        lifecycleRef={{ current: new SurfaceLifecycleOrchestrator() }}
+        makeStateAccessors={() => accessors}
+      >
+        <div />
+      </SurfaceLifecycleBoundary>
+    );
+    await act(async () => {
+      await flushAnimationFrame();
+    });
+    expect(hoisted.log).toEqual(["openScope:scope-1", "dispatch:surfaceInit:scope-1"]);
+  });
 
-    it("StrictMode double-effect: cancelled guard suppresses the phantom surfaceInit", async () => {
-        mountBoundary({ log: hoisted.log, strict: true });
-        await act(async () => {
-            await flushAnimationFrame();
-        });
-        expect(hoisted.log).toEqual([
-            "closeScope:scope-1:Surface unmounted",
-            "dispatch:surfaceUnmount:scope-1",
-            "openScope:scope-1",
-            "dispatch:surfaceInit:scope-1",
-        ]);
+  it("StrictMode double-effect: cancelled guard suppresses the phantom surfaceInit", async () => {
+    mountBoundary({ log: hoisted.log, strict: true });
+    await act(async () => {
+      await flushAnimationFrame();
     });
+    expect(hoisted.log).toEqual([
+      "closeScope:scope-1:Surface unmounted",
+      "dispatch:surfaceUnmount:scope-1",
+      "openScope:scope-1",
+      "dispatch:surfaceInit:scope-1"
+    ]);
+  });
 });
 
 /**
@@ -178,20 +169,20 @@ describe("SurfaceLifecycleBoundary dispatch order", () => {
  * the connection, not the removal.
  */
 describe("a surface leaving takes the layers it showed", () => {
-    it("drops the layers owned by the scope that just closed", async () => {
-        const stack = new LayerStackController();
-        const core = createRecordingCore(hoisted.log);
-        core.executionManager.subscribeScopeClosed(scopeId => {
-            stack.hideOwnedBy(scopeId);
-        });
-        mountSurfaceLayer(stack, { surfaceId: "confirm", ownerScopeId: "scope-1" });
-        mountSurfaceLayer(stack, { surfaceId: "hud", ownerScopeId: "scope-elsewhere" });
-        const { unmount } = mountBoundary({ log: hoisted.log, core });
-        await act(async () => {
-            await flushAnimationFrame();
-        });
-        expect(stack.getState()).toHaveLength(2);
-        unmount();
-        expect(stack.getState().map(layer => layer.ownerScopeId)).toEqual(["scope-elsewhere"]);
+  it("drops the layers owned by the scope that just closed", async () => {
+    const stack = new LayerStackController();
+    const core = createRecordingCore(hoisted.log);
+    core.executionManager.subscribeScopeClosed((scopeId) => {
+      stack.hideOwnedBy(scopeId);
     });
+    mountSurfaceLayer(stack, { surfaceId: "confirm", ownerScopeId: "scope-1" });
+    mountSurfaceLayer(stack, { surfaceId: "hud", ownerScopeId: "scope-elsewhere" });
+    const { unmount } = mountBoundary({ log: hoisted.log, core });
+    await act(async () => {
+      await flushAnimationFrame();
+    });
+    expect(stack.getState()).toHaveLength(2);
+    unmount();
+    expect(stack.getState().map((layer) => layer.ownerScopeId)).toEqual(["scope-elsewhere"]);
+  });
 });

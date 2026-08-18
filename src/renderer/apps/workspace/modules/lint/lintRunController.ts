@@ -26,36 +26,36 @@ const listeners = new Set<RunningListener>();
 let inFlight: Promise<LintReport> | null = null;
 
 function publish(running: boolean): void {
-    for (const listener of [...listeners]) {
-        listener(running);
-    }
+  for (const listener of [...listeners]) {
+    listener(running);
+  }
 }
 
 export function isLintRunning(): boolean {
-    return inFlight !== null;
+  return inFlight !== null;
 }
 
 export function subscribeLintRunning(listener: RunningListener): () => void {
-    listeners.add(listener);
-    return () => {
-        listeners.delete(listener);
-    };
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 /** Start a sweep, or hand back the one already running. Rejects the way `LintService.run` does. */
 export function runProjectLint(ctx: WorkspaceContext): Promise<LintReport> {
-    if (inFlight) {
-        return inFlight;
-    }
-    const service = ctx.services.get<LintService>(Services.Lint);
-    const started = service.run().finally(() => {
-        inFlight = null;
-        publish(false);
-    });
-    // The rejection is the caller's to report; this arm only keeps a caller-less failure from
-    // surfacing as an unhandled rejection.
-    started.catch(() => undefined);
-    inFlight = started;
-    publish(true);
-    return started;
+  if (inFlight) {
+    return inFlight;
+  }
+  const service = ctx.services.get<LintService>(Services.Lint);
+  const started = service.run().finally(() => {
+    inFlight = null;
+    publish(false);
+  });
+  // The rejection is the caller's to report; this arm only keeps a caller-less failure from
+  // surfacing as an unhandled rejection.
+  started.catch(() => undefined);
+  inFlight = started;
+  publish(true);
+  return started;
 }

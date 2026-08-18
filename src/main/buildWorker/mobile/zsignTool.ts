@@ -36,15 +36,15 @@ export const ZSIGN_PATH_ENV = "NLS_ZSIGN_PATH";
  * which matters because the build worker runs outside the main process.
  */
 export type ZsignResolverApp = {
-    isPackaged(): boolean;
-    resolveResource(p: string): string;
+  isPackaged(): boolean;
+  resolveResource(p: string): string;
 };
 
 export type ZsignHostTarget = {
-    /** Directory name under resources/codesign/, keyed by process.platform. */
-    platformKey: string;
-    /** File name the staging script writes the binary under. */
-    binaryName: string;
+  /** Directory name under resources/codesign/, keyed by process.platform. */
+  platformKey: string;
+  /** File name the staging script writes the binary under. */
+  binaryName: string;
 };
 
 /**
@@ -66,42 +66,42 @@ export type ZsignHostTarget = {
  * being signed is a separate axis and never reaches this table.
  */
 export function zsignHostTarget(
-    platform: string = process.platform,
-    arch: string = process.arch,
+  platform: string = process.platform,
+  arch: string = process.arch
 ): ZsignHostTarget | null {
-    if (platform === "win32" && arch === "x64") {
-        return { platformKey: "win32", binaryName: "zsign.exe" };
-    }
-    if (platform === "linux" && arch === "x64") {
-        return { platformKey: "linux", binaryName: "zsign" };
-    }
-    if (platform === "darwin" && arch === "arm64") {
-        return { platformKey: "darwin", binaryName: "zsign" };
-    }
-    return null;
+  if (platform === "win32" && arch === "x64") {
+    return { platformKey: "win32", binaryName: "zsign.exe" };
+  }
+  if (platform === "linux" && arch === "x64") {
+    return { platformKey: "linux", binaryName: "zsign" };
+  }
+  if (platform === "darwin" && arch === "arm64") {
+    return { platformKey: "darwin", binaryName: "zsign" };
+  }
+  return null;
 }
 
 export type ZsignUnavailableReason =
-    /** No upstream asset for this platform/arch pair; nothing was ever staged. */
-    | "host-unsupported"
-    /** Supported host, but the binary is not on disk (staging step never ran). */
-    | "not-staged";
+  /** No upstream asset for this platform/arch pair; nothing was ever staged. */
+  | "host-unsupported"
+  /** Supported host, but the binary is not on disk (staging step never ran). */
+  | "not-staged";
 
 export type ZsignTool =
-    | { available: true; path: string }
-    | {
-        available: false;
-        reason: ZsignUnavailableReason;
-        /** One sentence for a build log. UI copy is the caller's business. */
-        detail: string;
-        /** Absolute paths that were looked at, in order. Empty when unsupported. */
-        searched: string[];
+  | { available: true; path: string }
+  | {
+      available: false;
+      reason: ZsignUnavailableReason;
+      /** One sentence for a build log. UI copy is the caller's business. */
+      detail: string;
+      /** Absolute paths that were looked at, in order. Empty when unsupported. */
+      searched: string[];
     };
 
 export type ZsignResolveOptions = {
-    platform?: string;
-    arch?: string;
-    env?: Record<string, string | undefined>;
+  platform?: string;
+  arch?: string;
+  env?: Record<string, string | undefined>;
 };
 
 /**
@@ -109,22 +109,24 @@ export type ZsignResolveOptions = {
  * candidate; development adds the .dev cache fallback.
  */
 export function zsignSearchPaths(app: ZsignResolverApp, target: ZsignHostTarget): string[] {
-    const staged = app.resolveResource(path.join("codesign", target.platformKey, target.binaryName));
-    if (app.isPackaged()) {
-        return [staged];
-    }
-    return [
-        staged,
-        app.resolveResource(path.join("..", ".dev", "cache", "codesign", target.platformKey, target.binaryName)),
-    ];
+  const staged = app.resolveResource(path.join("codesign", target.platformKey, target.binaryName));
+  if (app.isPackaged()) {
+    return [staged];
+  }
+  return [
+    staged,
+    app.resolveResource(
+      path.join("..", ".dev", "cache", "codesign", target.platformKey, target.binaryName)
+    )
+  ];
 }
 
 async function isFile(candidate: string): Promise<boolean> {
-    try {
-        return (await fs.stat(candidate)).isFile();
-    } catch {
-        return false;
-    }
+  try {
+    return (await fs.stat(candidate)).isFile();
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -136,50 +138,50 @@ async function isFile(candidate: string): Promise<boolean> {
  * optional, and a Studio that cannot do it still builds everything else.
  */
 export async function resolveZsignTool(
-    app: ZsignResolverApp,
-    options: ZsignResolveOptions = {},
+  app: ZsignResolverApp,
+  options: ZsignResolveOptions = {}
 ): Promise<ZsignTool> {
-    const platform = options.platform ?? process.platform;
-    const arch = options.arch ?? process.arch;
-    const env = options.env ?? process.env;
+  const platform = options.platform ?? process.platform;
+  const arch = options.arch ?? process.arch;
+  const env = options.env ?? process.env;
 
-    const override = env[ZSIGN_PATH_ENV]?.trim();
-    if (override) {
-        if (await isFile(override)) {
-            return { available: true, path: override };
-        }
-        return {
-            available: false,
-            reason: "not-staged",
-            detail: `${ZSIGN_PATH_ENV} points at ${override}, which is not a file`,
-            searched: [override],
-        };
-    }
-
-    const target = zsignHostTarget(platform, arch);
-    if (target === null) {
-        return {
-            available: false,
-            reason: "host-unsupported",
-            detail:
-                `zsign ${ZSIGN_VERSION} publishes no build for ${platform}-${arch}, so no iOS signing tool `
-                + `was bundled; set ${ZSIGN_PATH_ENV} to a zsign binary built for this host to sign anyway`,
-            searched: [],
-        };
-    }
-
-    const searched = zsignSearchPaths(app, target);
-    for (const candidate of searched) {
-        if (await isFile(candidate)) {
-            return { available: true, path: candidate };
-        }
+  const override = env[ZSIGN_PATH_ENV]?.trim();
+  if (override) {
+    if (await isFile(override)) {
+      return { available: true, path: override };
     }
     return {
-        available: false,
-        reason: "not-staged",
-        detail:
-            `the bundled iOS signing tool is missing (looked in ${searched.join(", ")}); `
-            + "run project/build/prepare-codesign-tools.js to stage it",
-        searched,
+      available: false,
+      reason: "not-staged",
+      detail: `${ZSIGN_PATH_ENV} points at ${override}, which is not a file`,
+      searched: [override]
     };
+  }
+
+  const target = zsignHostTarget(platform, arch);
+  if (target === null) {
+    return {
+      available: false,
+      reason: "host-unsupported",
+      detail:
+        `zsign ${ZSIGN_VERSION} publishes no build for ${platform}-${arch}, so no iOS signing tool ` +
+        `was bundled; set ${ZSIGN_PATH_ENV} to a zsign binary built for this host to sign anyway`,
+      searched: []
+    };
+  }
+
+  const searched = zsignSearchPaths(app, target);
+  for (const candidate of searched) {
+    if (await isFile(candidate)) {
+      return { available: true, path: candidate };
+    }
+  }
+  return {
+    available: false,
+    reason: "not-staged",
+    detail:
+      `the bundled iOS signing tool is missing (looked in ${searched.join(", ")}); ` +
+      "run project/build/prepare-codesign-tools.js to stage it",
+    searched
+  };
 }

@@ -9,20 +9,20 @@ import { pluginActionToPaletteCommand, type PaletteActionCommand } from "./story
  * Action Creator panel and the insert-row slash chooser.
  */
 export function useStoryPluginActionCommands(): PaletteActionCommand[] {
-    const { context, isInitialized } = useWorkspace();
-    const storyService = useMemo(
-        () => context && isInitialized ? context.services.get<StoryService>(Services.Story) : null,
-        [context, isInitialized],
-    );
-    const [actions, setActions] = useState<StoryPluginActionRegistration[]>([]);
+  const { context, isInitialized } = useWorkspace();
+  const storyService = useMemo(
+    () => (context && isInitialized ? context.services.get<StoryService>(Services.Story) : null),
+    [context, isInitialized]
+  );
+  const [actions, setActions] = useState<StoryPluginActionRegistration[]>([]);
 
-    useEffect(() => {
-        if (!storyService) {
-            return;
-        }
-        setActions(storyService.listPluginActions());
-        return storyService.onPluginActionsChanged(setActions);
-    }, [storyService]);
+  useEffect(() => {
+    if (!storyService) {
+      return;
+    }
+    setActions(storyService.listPluginActions());
+    return storyService.onPluginActionsChanged(setActions);
+  }, [storyService]);
 
-    return useMemo(() => actions.map(pluginActionToPaletteCommand), [actions]);
+  return useMemo(() => actions.map(pluginActionToPaletteCommand), [actions]);
 }

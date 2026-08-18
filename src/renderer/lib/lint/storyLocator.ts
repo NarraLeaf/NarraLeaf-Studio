@@ -25,7 +25,11 @@ const EXCERPT_MAX_CHARS = 64;
 export type StoryRowLocation = { line: number; excerpt?: string };
 
 /** Resolves `(storyId, sceneId, blockId)` to a row number, memoised per scene. */
-export type StoryRowLocator = (storyId: string, sceneId: string, blockId: string) => StoryRowLocation | null;
+export type StoryRowLocator = (
+  storyId: string,
+  sceneId: string,
+  blockId: string
+) => StoryRowLocation | null;
 
 /**
  * One locator over a whole sweep.
@@ -35,38 +39,38 @@ export type StoryRowLocator = (storyId: string, sceneId: string, blockId: string
  * what keeps a rule that reports four hundred rows from being four hundred traversals.
  */
 export function createStoryRowLocator(stories: readonly LintStoryEntry[]): StoryRowLocator {
-    const byStory = new Map<string, LintStoryEntry>();
-    for (const entry of stories) {
-        byStory.set(entry.id, entry);
+  const byStory = new Map<string, LintStoryEntry>();
+  for (const entry of stories) {
+    byStory.set(entry.id, entry);
+  }
+
+  const indexed = new Map<string, Map<string, StoryRowLocation>>();
+
+  const indexFor = (storyId: string, sceneId: string): Map<string, StoryRowLocation> | null => {
+    const key = `${storyId}\u0000${sceneId}`;
+    const cached = indexed.get(key);
+    if (cached) {
+      return cached;
     }
+    const scene = byStory.get(storyId)?.document.scenes[sceneId];
+    if (!scene) {
+      return null;
+    }
+    const index = indexScene(scene);
+    indexed.set(key, index);
+    return index;
+  };
 
-    const indexed = new Map<string, Map<string, StoryRowLocation>>();
-
-    const indexFor = (storyId: string, sceneId: string): Map<string, StoryRowLocation> | null => {
-        const key = `${storyId}\u0000${sceneId}`;
-        const cached = indexed.get(key);
-        if (cached) {
-            return cached;
-        }
-        const scene = byStory.get(storyId)?.document.scenes[sceneId];
-        if (!scene) {
-            return null;
-        }
-        const index = indexScene(scene);
-        indexed.set(key, index);
-        return index;
-    };
-
-    return (storyId, sceneId, blockId) => indexFor(storyId, sceneId)?.get(blockId) ?? null;
+  return (storyId, sceneId, blockId) => indexFor(storyId, sceneId)?.get(blockId) ?? null;
 }
 
 function indexScene(scene: StoryScene): Map<string, StoryRowLocation> {
-    const index = new Map<string, StoryRowLocation>();
-    listSceneBlocksInDocumentOrder(scene).forEach((block, position) => {
-        const excerpt = excerptOf(block);
-        index.set(block.id, excerpt ? { line: position + 1, excerpt } : { line: position + 1 });
-    });
-    return index;
+  const index = new Map<string, StoryRowLocation>();
+  listSceneBlocksInDocumentOrder(scene).forEach((block, position) => {
+    const excerpt = excerptOf(block);
+    index.set(block.id, excerpt ? { line: position + 1, excerpt } : { line: position + 1 });
+  });
+  return index;
 }
 
 /**
@@ -82,11 +86,11 @@ function indexScene(scene: StoryScene): Map<string, StoryRowLocation> {
  * says nothing.
  */
 function excerptOf(block: Parameters<typeof getStoryTextSegment>[0]): string | undefined {
-    const value = getStoryTextSegment(block)?.value.replace(/\s+/g, " ").trim();
-    if (!value) {
-        return undefined;
-    }
-    return value.length > EXCERPT_MAX_CHARS ? `${value.slice(0, EXCERPT_MAX_CHARS - 1)}…` : value;
+  const value = getStoryTextSegment(block)?.value.replace(/\s+/g, " ").trim();
+  if (!value) {
+    return undefined;
+  }
+  return value.length > EXCERPT_MAX_CHARS ? `${value.slice(0, EXCERPT_MAX_CHARS - 1)}…` : value;
 }
 
 /**
@@ -96,20 +100,26 @@ function excerptOf(block: Parameters<typeof getStoryTextSegment>[0]): string | u
  * since gone (a context built from one snapshot, a finding held from another): a missing number is a
  * missing number, and inventing one would put the reader on the wrong row.
  */
-export function annotateStoryLocation<T extends { location: LintLocation }>(finding: T, locate: StoryRowLocator): T {
-    const location = finding.location;
-    if (location.kind !== "story" || !location.sceneId || !location.blockId) {
-        return finding;
-    }
-    const resolved = locate(location.storyId, location.sceneId, location.blockId);
-    if (!resolved) {
-        return finding;
-    }
-    return { ...finding, location: { ...location, ...resolved } };
+export function annotateStoryLocation<T extends { location: LintLocation }>(
+  finding: T,
+  locate: StoryRowLocator
+): T {
+  const location = finding.location;
+  if (location.kind !== "story" || !location.sceneId || !location.blockId) {
+    return finding;
+  }
+  const resolved = locate(location.storyId, location.sceneId, location.blockId);
+  if (!resolved) {
+    return finding;
+  }
+  return { ...finding, location: { ...location, ...resolved } };
 }
 
 /** Convenience for callers holding a whole context: `annotateStoryLocation` over a rule's output. */
-export function annotateStoryLocations(ctx: LintContext, findings: readonly LintFinding[]): LintFinding[] {
-    const locate = createStoryRowLocator(ctx.stories);
-    return findings.map(finding => annotateStoryLocation(finding, locate));
+export function annotateStoryLocations(
+  ctx: LintContext,
+  findings: readonly LintFinding[]
+): LintFinding[] {
+  const locate = createStoryRowLocator(ctx.stories);
+  return findings.map((finding) => annotateStoryLocation(finding, locate));
 }

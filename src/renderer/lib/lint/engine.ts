@@ -2,17 +2,17 @@ import type { LintContext } from "./context";
 import { LINT_RULES } from "./rules";
 import { annotateStoryLocation, createStoryRowLocator } from "./storyLocator";
 import {
-    LINT_CATEGORY_ORDER,
-    LINT_SEVERITY_ORDER,
-    type LintFinding,
-    type LintLocation,
-    type LintReport,
-    type LintReportEntry,
-    type LintRule,
-    type LintRuleId,
-    type LintRuleOptionSpec,
-    type LintRuleOptions,
-    type LintSeverity,
+  LINT_CATEGORY_ORDER,
+  LINT_SEVERITY_ORDER,
+  type LintFinding,
+  type LintLocation,
+  type LintReport,
+  type LintReportEntry,
+  type LintRule,
+  type LintRuleId,
+  type LintRuleOptionSpec,
+  type LintRuleOptions,
+  type LintSeverity
 } from "./types";
 
 /**
@@ -35,102 +35,105 @@ import {
  */
 
 export type LintProgress = {
-    done: number;
-    total: number;
-    ruleId: LintRuleId;
+  done: number;
+  total: number;
+  ruleId: LintRuleId;
 };
 
 export type LintRunOptions = {
-    signal?: AbortSignal;
-    onProgress?: (progress: LintProgress) => void;
-    /** Override the rule set. Tests only - production always sweeps the whole registry. */
-    rules?: readonly LintRule[];
+  signal?: AbortSignal;
+  onProgress?: (progress: LintProgress) => void;
+  /** Override the rule set. Tests only - production always sweeps the whole registry. */
+  rules?: readonly LintRule[];
 };
 
 /** Message key used when a rule throws; params: `rule`. */
 export const LINT_RULE_FAILED_MESSAGE_KEY = "lint.message.ruleFailed" as const;
 
-export async function runLintRules(ctx: LintContext, options: LintRunOptions = {}): Promise<LintReport> {
-    const rules = options.rules ?? LINT_RULES;
-    const startedAt = Date.now();
-    const locate = createStoryRowLocator(ctx.stories);
-    const entries: LintReportEntry[] = [];
-    const rulesRun: LintRuleId[] = [];
-    const skipped: LintRuleId[] = [];
+export async function runLintRules(
+  ctx: LintContext,
+  options: LintRunOptions = {}
+): Promise<LintReport> {
+  const rules = options.rules ?? LINT_RULES;
+  const startedAt = Date.now();
+  const locate = createStoryRowLocator(ctx.stories);
+  const entries: LintReportEntry[] = [];
+  const rulesRun: LintRuleId[] = [];
+  const skipped: LintRuleId[] = [];
 
-    // Resolved up front so `skipped` is complete even if the sweep is cancelled halfway: a rule the
-    // project turned off is skipped whether or not we ever reached it.
-    const scheduled: { rule: LintRule; severity: LintSeverity }[] = [];
-    for (const rule of rules) {
-        const severity = resolveSeverity(ctx, rule);
-        if (severity === "off") {
-            skipped.push(rule.id);
-            continue;
-        }
-        scheduled.push({ rule, severity });
+  // Resolved up front so `skipped` is complete even if the sweep is cancelled halfway: a rule the
+  // project turned off is skipped whether or not we ever reached it.
+  const scheduled: { rule: LintRule; severity: LintSeverity }[] = [];
+  for (const rule of rules) {
+    const severity = resolveSeverity(ctx, rule);
+    if (severity === "off") {
+      skipped.push(rule.id);
+      continue;
+    }
+    scheduled.push({ rule, severity });
+  }
+
+  let done = 0;
+  for (let index = 0; index < scheduled.length; index++) {
+    const { rule, severity } = scheduled[index];
+    if (options.signal?.aborted) {
+      for (let rest = index; rest < scheduled.length; rest++) {
+        skipped.push(scheduled[rest].rule.id);
+      }
+      break;
     }
 
-    let done = 0;
-    for (let index = 0; index < scheduled.length; index++) {
-        const { rule, severity } = scheduled[index];
-        if (options.signal?.aborted) {
-            for (let rest = index; rest < scheduled.length; rest++) {
-                skipped.push(scheduled[rest].rule.id);
-            }
-            break;
-        }
-
-        // Between rules, not after the last one: the final yield would only delay the report.
-        if (index > 0) {
-            await yieldToEventLoop();
-        }
-
-        rulesRun.push(rule.id);
-        let findings: LintFinding[];
-        try {
-            findings = await rule.run(ctx, resolveRuleOptions(rule));
-        } catch (error) {
-            console.error(`[lint] rule ${rule.id} failed`, error);
-            findings = [
-                {
-                    ruleId: rule.id,
-                    messageKey: LINT_RULE_FAILED_MESSAGE_KEY,
-                    messageParams: { rule: rule.id },
-                    location: { kind: "project" },
-                },
-            ];
-            // A rule that blew up is a defect in Studio, not a style preference the project
-            // configured - it is reported at `error` regardless of the rule's own severity.
-            for (const finding of findings) {
-                entries.push({ ...finding, severity: "error" });
-            }
-            done += 1;
-            options.onProgress?.({ done, total: scheduled.length, ruleId: rule.id });
-            continue;
-        }
-
-        for (const finding of findings) {
-            entries.push({ ...annotateStoryLocation(finding, locate), severity });
-        }
-        done += 1;
-        options.onProgress?.({ done, total: scheduled.length, ruleId: rule.id });
+    // Between rules, not after the last one: the final yield would only delay the report.
+    if (index > 0) {
+      await yieldToEventLoop();
     }
 
-    entries.sort(compareEntries);
+    rulesRun.push(rule.id);
+    let findings: LintFinding[];
+    try {
+      findings = await rule.run(ctx, resolveRuleOptions(rule));
+    } catch (error) {
+      console.error(`[lint] rule ${rule.id} failed`, error);
+      findings = [
+        {
+          ruleId: rule.id,
+          messageKey: LINT_RULE_FAILED_MESSAGE_KEY,
+          messageParams: { rule: rule.id },
+          location: { kind: "project" }
+        }
+      ];
+      // A rule that blew up is a defect in Studio, not a style preference the project
+      // configured - it is reported at `error` regardless of the rule's own severity.
+      for (const finding of findings) {
+        entries.push({ ...finding, severity: "error" });
+      }
+      done += 1;
+      options.onProgress?.({ done, total: scheduled.length, ruleId: rule.id });
+      continue;
+    }
 
-    return {
-        startedAt,
-        finishedAt: Date.now(),
-        entries,
-        counts: countBySeverity(entries),
-        rulesRun,
-        skipped,
-    };
+    for (const finding of findings) {
+      entries.push({ ...annotateStoryLocation(finding, locate), severity });
+    }
+    done += 1;
+    options.onProgress?.({ done, total: scheduled.length, ruleId: rule.id });
+  }
+
+  entries.sort(compareEntries);
+
+  return {
+    startedAt,
+    finishedAt: Date.now(),
+    entries,
+    counts: countBySeverity(entries),
+    rulesRun,
+    skipped
+  };
 }
 
 /** `config.severities[id]` when the project set one, the rule's own default otherwise. */
 export function resolveSeverity(ctx: LintContext, rule: LintRule) {
-    return ctx.config.severities[rule.id] ?? rule.defaultSeverity;
+  return ctx.config.severities[rule.id] ?? rule.defaultSeverity;
 }
 
 /**
@@ -139,59 +142,62 @@ export function resolveSeverity(ctx: LintContext, rule: LintRule) {
  * config was hand-edited or predates a spec change, and the default is the only value we know is
  * meaningful.
  */
-export function resolveRuleOptions(rule: LintRule, stored?: Record<string, string | number>): LintRuleOptions {
-    const specs = rule.options;
-    if (!specs) {
-        return {};
-    }
-    const configured = stored ?? {};
-    const resolved: LintRuleOptions = {};
-    for (const [key, spec] of Object.entries(specs)) {
-        resolved[key] = coerceOption(spec, configured[key]);
-    }
-    return resolved;
+export function resolveRuleOptions(
+  rule: LintRule,
+  stored?: Record<string, string | number>
+): LintRuleOptions {
+  const specs = rule.options;
+  if (!specs) {
+    return {};
+  }
+  const configured = stored ?? {};
+  const resolved: LintRuleOptions = {};
+  for (const [key, spec] of Object.entries(specs)) {
+    resolved[key] = coerceOption(spec, configured[key]);
+  }
+  return resolved;
 }
 
 function coerceOption(spec: LintRuleOptionSpec, value: unknown): string | number {
-    if (spec.kind === "number") {
-        if (typeof value !== "number" || !Number.isFinite(value)) {
-            return spec.default;
-        }
-        if (spec.min !== undefined && value < spec.min) {
-            return spec.default;
-        }
-        if (spec.max !== undefined && value > spec.max) {
-            return spec.default;
-        }
-        return value;
+  if (spec.kind === "number") {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return spec.default;
     }
-    return typeof value === "string" && spec.values.includes(value) ? value : spec.default;
+    if (spec.min !== undefined && value < spec.min) {
+      return spec.default;
+    }
+    if (spec.max !== undefined && value > spec.max) {
+      return spec.default;
+    }
+    return value;
+  }
+  return typeof value === "string" && spec.values.includes(value) ? value : spec.default;
 }
 
 function countBySeverity(entries: readonly LintReportEntry[]): LintReport["counts"] {
-    const counts = { error: 0, warning: 0, info: 0 };
-    for (const entry of entries) {
-        counts[entry.severity] += 1;
-    }
-    return counts;
+  const counts = { error: 0, warning: 0, info: 0 };
+  for (const entry of entries) {
+    counts[entry.severity] += 1;
+  }
+  return counts;
 }
 
 /** Severity, then category, then rule id, then location - stable and locale-independent. */
 function compareEntries(a: LintReportEntry, b: LintReportEntry): number {
-    const bySeverity = LINT_SEVERITY_ORDER[a.severity] - LINT_SEVERITY_ORDER[b.severity];
-    if (bySeverity !== 0) {
-        return bySeverity;
-    }
-    const byCategory = categoryRank(a.ruleId) - categoryRank(b.ruleId);
-    if (byCategory !== 0) {
-        return byCategory;
-    }
-    if (a.ruleId !== b.ruleId) {
-        return a.ruleId < b.ruleId ? -1 : 1;
-    }
-    const aKey = locationSortKey(a.location);
-    const bKey = locationSortKey(b.location);
-    return aKey === bKey ? 0 : aKey < bKey ? -1 : 1;
+  const bySeverity = LINT_SEVERITY_ORDER[a.severity] - LINT_SEVERITY_ORDER[b.severity];
+  if (bySeverity !== 0) {
+    return bySeverity;
+  }
+  const byCategory = categoryRank(a.ruleId) - categoryRank(b.ruleId);
+  if (byCategory !== 0) {
+    return byCategory;
+  }
+  if (a.ruleId !== b.ruleId) {
+    return a.ruleId < b.ruleId ? -1 : 1;
+  }
+  const aKey = locationSortKey(a.location);
+  const bKey = locationSortKey(b.location);
+  return aKey === bKey ? 0 : aKey < bKey ? -1 : 1;
 }
 
 /**
@@ -200,45 +206,51 @@ function compareEntries(a: LintReportEntry, b: LintReportEntry): number {
  * registry does not contain, which is exactly the case in the engine tests.
  */
 function categoryRank(ruleId: LintRuleId): number {
-    const prefix = ruleId.split("/")[0];
-    const index = LINT_CATEGORY_ORDER.indexOf(prefix as (typeof LINT_CATEGORY_ORDER)[number]);
-    return index === -1 ? LINT_CATEGORY_ORDER.length : index;
+  const prefix = ruleId.split("/")[0];
+  const index = LINT_CATEGORY_ORDER.indexOf(prefix as (typeof LINT_CATEGORY_ORDER)[number]);
+  return index === -1 ? LINT_CATEGORY_ORDER.length : index;
 }
 
 export function locationSortKey(location: LintLocation): string {
-    switch (location.kind) {
-        case "project":
-            return "project";
-        case "asset":
-            return `asset ${location.assetName} ${location.assetId}`;
-        case "story":
-            return [
-                "story",
-                location.storyName,
-                location.storyId,
-                location.sceneName ?? "",
-                location.sceneId ?? "",
-                // By row, not by block id: a UUID sorts at random, so one rule's findings inside one
-                // scene used to arrive shuffled - unreadable next to a scene the reader walks top
-                // down. Padded so 9 sorts before 10; a scene-wide finding (no row) leads its scene.
-                String(location.line ?? 0).padStart(6, "0"),
-                location.blockId ?? "",
-            ].join(" ");
-        case "blueprint":
-            return [
-                "blueprint",
-                location.blueprintName ?? "",
-                location.blueprintId,
-                location.graphId ?? "",
-                location.nodeId ?? "",
-            ].join(" ");
-        case "surface":
-            return ["surface", location.surfaceName, location.surfaceId, location.elementName ?? "", location.elementId ?? ""].join(" ");
-        case "character":
-            return `character ${location.characterName} ${location.characterId}`;
-    }
+  switch (location.kind) {
+    case "project":
+      return "project";
+    case "asset":
+      return `asset ${location.assetName} ${location.assetId}`;
+    case "story":
+      return [
+        "story",
+        location.storyName,
+        location.storyId,
+        location.sceneName ?? "",
+        location.sceneId ?? "",
+        // By row, not by block id: a UUID sorts at random, so one rule's findings inside one
+        // scene used to arrive shuffled - unreadable next to a scene the reader walks top
+        // down. Padded so 9 sorts before 10; a scene-wide finding (no row) leads its scene.
+        String(location.line ?? 0).padStart(6, "0"),
+        location.blockId ?? ""
+      ].join(" ");
+    case "blueprint":
+      return [
+        "blueprint",
+        location.blueprintName ?? "",
+        location.blueprintId,
+        location.graphId ?? "",
+        location.nodeId ?? ""
+      ].join(" ");
+    case "surface":
+      return [
+        "surface",
+        location.surfaceName,
+        location.surfaceId,
+        location.elementName ?? "",
+        location.elementId ?? ""
+      ].join(" ");
+    case "character":
+      return `character ${location.characterName} ${location.characterId}`;
+  }
 }
 
 function yieldToEventLoop(): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, 0));
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }

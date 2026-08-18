@@ -11,6 +11,7 @@ Element 版使用 `blueprint.element.<widget>.*`，带 typed Element 输入，�
 ## Common
 
 所有内建控件提供：
+
 - `blueprint.<widget>.getVisible` / `blueprint.element.<widget>.getVisible` - 读取可见状态
 - `blueprint.<widget>.setVisible` / `blueprint.element.<widget>.setVisible` - 设置可见状态
 - `blueprint.<widget>.getEnabled` / `blueprint.element.<widget>.getEnabled` - 读取可交互状态
@@ -21,11 +22,13 @@ Element 版使用 `blueprint.element.<widget>.*`，带 typed Element 输入，�
 ## Variant
 
 通用 Appearance Variant 推荐使用 Displayable 节点：
+
 - `blueprint.displayable.setVariant` / `blueprint.element.displayable.setVariant`
 
 `Set Variant` 节点统一显示在 `Displayable` 分类中。Self 版默认绑定当前蓝图所属控件，只有当前控件支持 Appearance Variant 时出现；派生版 `Set Element Variant` 才通过 Element 引用目标控件。卡片会在能推断目标元素时列出该元素已有 Variants，并提供是否等待 Variant transition 的下拉。Variant UUID 不作为数据 pin 或手输参数暴露给作者。
 
 以下旧版控件专用 Variant 节点仅保留兼容旧图，并在创建浮窗中隐藏；新图不再提供读取或手动传入 Variant UUID 的入口：
+
 - `blueprint.button.getVariant` / `blueprint.button.setVariant`
 - `blueprint.container.getVariant` / `blueprint.container.setVariant`
 - `blueprint.element.button.getVariant` / `blueprint.element.button.setVariant`
@@ -40,6 +43,7 @@ Appearance Variant 的 `transformOpacity` 会投影到同一套 Displayable `opa
 ## Button
 
 `nl.button` 提供：
+
 - `blueprint.button.getLabel` / `blueprint.element.button.getLabel` - 读取按钮文本
 - `blueprint.button.setLabel` / `blueprint.element.button.setLabel` - 设置按钮文本
 - `blueprint.button.setPointer` / `blueprint.element.button.setPointer` - 设置按钮默认指针形态。卡片字段 `Pointer` 使用和按钮 Appearance 检视器 Mouse 区相同的带图标下拉框，可选 `Auto`、`Default`、`Pointer`、`Text`、`Move`、`Grab`、`Grabbing`、`Crosshair`、`Help`、`Wait`、`Progress`、`Not allowed`。`Auto` 会在运行时按按钮是否可点击解析为常规点击指针或默认指针；禁用按钮仍由渲染器显示 `not-allowed`
@@ -49,6 +53,7 @@ Appearance Variant 的 `transformOpacity` 会投影到同一套 Displayable `opa
 ## Container
 
 `nl.container` 提供：
+
 - `blueprint.container.getClipContent` / `blueprint.element.container.getClipContent` - 读取内容裁剪状态
 - `blueprint.container.setClipContent` / `blueprint.element.container.setClipContent` - 设置内容裁剪状态
 - Common Visible / Enabled
@@ -57,6 +62,7 @@ Appearance Variant 的 `transformOpacity` 会投影到同一套 Displayable `opa
 ## Image
 
 `nl.image` 提供：
+
 - `blueprint.image.getImageAsset` / `blueprint.element.image.getImageAsset` - 读取 `ImageAsset|null`
 - `blueprint.image.setImageAsset` / `blueprint.element.image.setImageAsset` - 设置 `ImageAsset|null`；`null` 清除图片资源，未接线时可使用节点内图片选择卡片
 - `blueprint.image.clearImageAsset` / `blueprint.element.image.clearImageAsset` - 清除图片资源
@@ -88,6 +94,7 @@ Appearance Variant 的 `transformOpacity` 会投影到同一套 Displayable `opa
 ## Frame
 
 Frame Widget Property 用于操作 `nl.frame` 组件自身的目标 Page 和参数：
+
 - `blueprint.frameWidget.getTargetPage` / `blueprint.element.frame.getTargetPage` - 读取目标 Page surface id
 - `blueprint.frameWidget.setTargetPage` / `blueprint.element.frame.setTargetPage` - `Set Frame Page`，设置目标 Page surface id；卡片内的 `Page` 参数使用 Page 下拉选择，空选项清除目标。下拉框会过滤该 Frame 所在 Page 和会形成循环嵌套的 Page；Element 形态在连接了 Frame Element Ref 时按该 Ref 所在 Page 过滤。可选 `Page props` 输入会写入该 Frame 的 `params`，作为被嵌入目标 Page 的 props；未连接时保留当前 `params`。Self 形态只在 `nl.frame` 私有蓝图中出现；Element 形态可从绑定到 `nl.frame` 的 Element Literal / Element Flush / Element Click 派生，调用目标就是该 Frame 引用。切换后由 Frame 控件走现有进场/出场动画。
 - `blueprint.frameWidget.getParams` / `blueprint.element.frame.getParams` - 读取传给目标 Page 的参数 object

@@ -20,7 +20,7 @@ import type { PuppetBackendModuleSource } from "@/lib/ui-editor/runtime/game/pup
  * the desktop scheme there is the same choice the loading path has always made.
  */
 function packUrl(bridge: GameRuntimePreloadBridge | null, relativePath: string): string {
-    return bridge?.pluginEntryUrl(relativePath) ?? `nlgame://runtime/${relativePath}`;
+  return bridge?.pluginEntryUrl(relativePath) ?? `nlgame://runtime/${relativePath}`;
 }
 
 /**
@@ -30,39 +30,39 @@ function packUrl(bridge: GameRuntimePreloadBridge | null, relativePath: string):
  * names its own siblings and nothing else.
  */
 function packBackendSource(
-    bridge: GameRuntimePreloadBridge | null,
-    runtime: NonNullable<GameRuntimePackV1["puppetRuntimes"]>[number],
+  bridge: GameRuntimePreloadBridge | null,
+  runtime: NonNullable<GameRuntimePackV1["puppetRuntimes"]>[number]
 ): PuppetBackendModuleSource {
-    const directory = runtime.entryRelativePath.slice(0, runtime.entryRelativePath.lastIndexOf("/"));
-    return {
-        id: runtime.name,
-        url: packUrl(bridge, runtime.entryRelativePath),
-        resolveFile: (relativePath: string) => {
-            const normalized = relativePath.replace(/\\/g, "/").replace(/^\.\//, "");
-            if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
-                return Promise.reject(new Error(`Path escapes the backend directory: ${relativePath}`));
-            }
-            return Promise.resolve(packUrl(bridge, `${directory}/${normalized}`));
-        },
-    };
+  const directory = runtime.entryRelativePath.slice(0, runtime.entryRelativePath.lastIndexOf("/"));
+  return {
+    id: runtime.name,
+    url: packUrl(bridge, runtime.entryRelativePath),
+    resolveFile: (relativePath: string) => {
+      const normalized = relativePath.replace(/\\/g, "/").replace(/^\.\//, "");
+      if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
+        return Promise.reject(new Error(`Path escapes the backend directory: ${relativePath}`));
+      }
+      return Promise.resolve(packUrl(bridge, `${directory}/${normalized}`));
+    }
+  };
 }
 
 /** Every backend published with this game, in pack order. Empty is the normal case. */
 export function listPackPuppetBackendSources(
-    bridge: GameRuntimePreloadBridge | null,
-    pack: GameRuntimePackV1 | null,
+  bridge: GameRuntimePreloadBridge | null,
+  pack: GameRuntimePackV1 | null
 ): PuppetBackendModuleSource[] {
-    return (pack?.puppetRuntimes ?? []).map(runtime => packBackendSource(bridge, runtime));
+  return (pack?.puppetRuntimes ?? []).map((runtime) => packBackendSource(bridge, runtime));
 }
 
 /** One named backend, or null when this game published none under that name. */
 export function findPackPuppetBackendSource(
-    bridge: GameRuntimePreloadBridge | null,
-    pack: GameRuntimePackV1 | null,
-    backend: string,
+  bridge: GameRuntimePreloadBridge | null,
+  pack: GameRuntimePackV1 | null,
+  backend: string
 ): PuppetBackendModuleSource | null {
-    const runtime = (pack?.puppetRuntimes ?? []).find(entry => entry.name === backend);
-    return runtime ? packBackendSource(bridge, runtime) : null;
+  const runtime = (pack?.puppetRuntimes ?? []).find((entry) => entry.name === backend);
+  return runtime ? packBackendSource(bridge, runtime) : null;
 }
 
 /**
@@ -77,16 +77,16 @@ export function findPackPuppetBackendSource(
  * Null when the asset is not in the pack — a model that was removed after the widget referenced it.
  */
 export function resolvePackModelBundleUrl(
-    bridge: GameRuntimePreloadBridge | null,
-    pack: GameRuntimePackV1 | null,
-    assetId: string,
+  bridge: GameRuntimePreloadBridge | null,
+  pack: GameRuntimePackV1 | null,
+  assetId: string
 ): string | null {
-    if (!bridge) {
-        return null;
-    }
-    const item = pack?.assets.items[assetId];
-    if (!item) {
-        return null;
-    }
-    return bridge.assetUrl(item.bundleEntry ? `${assetId}/${item.bundleEntry}` : assetId);
+  if (!bridge) {
+    return null;
+  }
+  const item = pack?.assets.items[assetId];
+  if (!item) {
+    return null;
+  }
+  return bridge.assetUrl(item.bundleEntry ? `${assetId}/${item.bundleEntry}` : assetId);
 }

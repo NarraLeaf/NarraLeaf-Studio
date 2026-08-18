@@ -20,38 +20,40 @@
 type Ref<T> = { readonly current: T };
 
 export type SessionGateRefs<TLiveGame> = {
-    /** The mounted session, or null between sessions. */
-    sessionId: Ref<string | null>;
-    /**
-     * The session the live game below belongs to. A mismatch means what is in `liveGame` outlived
-     * the session that created it — a relaunch in flight — and must not be handed out.
-     */
-    liveGameSessionId: Ref<string | null>;
-    liveGame: Ref<TLiveGame | null>;
-    /** Whether the stage is on screen: the difference between "mounted" and "being played". */
-    stageVisible: Ref<boolean>;
+  /** The mounted session, or null between sessions. */
+  sessionId: Ref<string | null>;
+  /**
+   * The session the live game below belongs to. A mismatch means what is in `liveGame` outlived
+   * the session that created it — a relaunch in flight — and must not be handed out.
+   */
+  liveGameSessionId: Ref<string | null>;
+  liveGame: Ref<TLiveGame | null>;
+  /** Whether the stage is on screen: the difference between "mounted" and "being played". */
+  stageVisible: Ref<boolean>;
 };
 
 export type SessionGate<TLiveGame> = {
-    /**
-     * The mounted session's live game, or a throw naming the operation that wanted it. The message
-     * is what an author sees in the Dev Mode issues panel, so it leads with their node's name.
-     */
-    requireLiveGame: (operation: string) => TLiveGame;
-    /** Whether a session is mounted and its stage is on screen. */
-    isInGame: () => boolean;
+  /**
+   * The mounted session's live game, or a throw naming the operation that wanted it. The message
+   * is what an author sees in the Dev Mode issues panel, so it leads with their node's name.
+   */
+  requireLiveGame: (operation: string) => TLiveGame;
+  /** Whether a session is mounted and its stage is on screen. */
+  isInGame: () => boolean;
 };
 
-export function createSessionGate<TLiveGame>(refs: SessionGateRefs<TLiveGame>): SessionGate<TLiveGame> {
-    return {
-        requireLiveGame: (operation: string): TLiveGame => {
-            const sessionId = refs.sessionId.current;
-            const liveGame = refs.liveGame.current;
-            if (!sessionId || refs.liveGameSessionId.current !== sessionId || !liveGame) {
-                throw new Error(`${operation}: game runtime is not available`);
-            }
-            return liveGame;
-        },
-        isInGame: (): boolean => Boolean(refs.stageVisible.current && refs.sessionId.current),
-    };
+export function createSessionGate<TLiveGame>(
+  refs: SessionGateRefs<TLiveGame>
+): SessionGate<TLiveGame> {
+  return {
+    requireLiveGame: (operation: string): TLiveGame => {
+      const sessionId = refs.sessionId.current;
+      const liveGame = refs.liveGame.current;
+      if (!sessionId || refs.liveGameSessionId.current !== sessionId || !liveGame) {
+        throw new Error(`${operation}: game runtime is not available`);
+      }
+      return liveGame;
+    },
+    isInGame: (): boolean => Boolean(refs.stageVisible.current && refs.sessionId.current)
+  };
 }

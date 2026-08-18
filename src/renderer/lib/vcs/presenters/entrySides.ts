@@ -22,7 +22,7 @@ import type { ComparisonSide, ComparisonSides } from "./comparisonSide";
  * The name is the fallback for an entry produced by something that did not classify it.
  */
 export function contentClassOfEntry(entry: DocumentDiffEntry): ContentClass {
-    return entry.contentClass ?? contentClassOf(entry.path);
+  return entry.contentClass ?? contentClassOf(entry.path);
 }
 
 /**
@@ -36,20 +36,20 @@ export function contentClassOfEntry(entry: DocumentDiffEntry): ContentClass {
  * hold identical bytes, so there is nothing to compare and the file is drawn once.
  */
 export function sidesOfEntry(
-    entry: DocumentDiffEntry,
-    sides: ComparisonSides | undefined,
+  entry: DocumentDiffEntry,
+  sides: ComparisonSides | undefined
 ): { before: ComparisonSide | null; after: ComparisonSide | null } {
-    if (!sides) {
-        return { before: null, after: null };
-    }
-    switch (entry.kind) {
-        case "added":
-            return { before: null, after: sides.after };
-        case "removed":
-            return { before: sides.before, after: null };
-        case "moved":
-            return { before: null, after: sides.after };
-        case "changed":
-            return { before: sides.before, after: sides.after };
-    }
+  if (!sides) {
+    return { before: null, after: null };
+  }
+  switch (entry.kind) {
+    case "added":
+      return { before: null, after: sides.after };
+    case "removed":
+      return { before: sides.before, after: null };
+    case "moved":
+      return { before: null, after: sides.after };
+    case "changed":
+      return { before: sides.before, after: sides.after };
+  }
 }

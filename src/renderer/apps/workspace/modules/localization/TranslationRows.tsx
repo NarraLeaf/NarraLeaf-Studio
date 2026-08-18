@@ -16,51 +16,52 @@ import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 
 /** Minimal row shape both modes render; the tab supplies story/UI/key rows alike. */
 export type TranslationTableRow = {
-    unitId: string;
-    sourceText: string;
-    interpolationCount: number;
-    /** Named-key rows: the source text is editable in place (translate mode). */
-    editableSource?: boolean;
-    /** Named-key rows: the key's registry name (drives edit/remove callbacks). */
-    keyName?: string;
+  unitId: string;
+  sourceText: string;
+  interpolationCount: number;
+  /** Named-key rows: the source text is editable in place (translate mode). */
+  editableSource?: boolean;
+  /** Named-key rows: the key's registry name (drives edit/remove callbacks). */
+  keyName?: string;
 };
 
 /** Muted status tint for the row indicator bar — never a loud chip. */
 const STATE_INDICATOR_CLASS: Record<LocalizationUnitState, string> = {
-    untranslated: "bg-edge",
-    machine: "bg-primary/40",
-    translated: "bg-primary/40",
-    reviewed: "bg-success/60",
-    stale: "bg-warning/70",
+  untranslated: "bg-edge",
+  machine: "bg-primary/40",
+  translated: "bg-primary/40",
+  reviewed: "bg-success/60",
+  stale: "bg-warning/70"
 };
 
-export function stateLabelKey(state: LocalizationUnitState): `workspace.localization.table.${"statusUntranslated" | "statusMachine" | "statusTranslated" | "statusReviewed" | "statusStale"}` {
-    switch (state) {
-        case "machine":
-            return "workspace.localization.table.statusMachine";
-        case "translated":
-            return "workspace.localization.table.statusTranslated";
-        case "reviewed":
-            return "workspace.localization.table.statusReviewed";
-        case "stale":
-            return "workspace.localization.table.statusStale";
-        default:
-            return "workspace.localization.table.statusUntranslated";
-    }
+export function stateLabelKey(
+  state: LocalizationUnitState
+): `workspace.localization.table.${"statusUntranslated" | "statusMachine" | "statusTranslated" | "statusReviewed" | "statusStale"}` {
+  switch (state) {
+    case "machine":
+      return "workspace.localization.table.statusMachine";
+    case "translated":
+      return "workspace.localization.table.statusTranslated";
+    case "reviewed":
+      return "workspace.localization.table.statusReviewed";
+    case "stale":
+      return "workspace.localization.table.statusStale";
+    default:
+      return "workspace.localization.table.statusUntranslated";
+  }
 }
 
 /** 2px status bar on the row's left edge; the tooltip carries the details. */
 function StateIndicator({ state }: { state: LocalizationUnitState }) {
-    const { t } = useTranslation();
-    const label = t(stateLabelKey(state));
-    const title = state === "stale"
-        ? `${label}: ${t("workspace.localization.table.staleHint")}`
-        : label;
-    return (
-        <span className="absolute inset-y-0 left-0 flex w-2 justify-center py-3" data-tip={title}>
-            <span aria-hidden className={`w-0.5 rounded-full ${STATE_INDICATOR_CLASS[state]}`} />
-        </span>
-    );
+  const { t } = useTranslation();
+  const label = t(stateLabelKey(state));
+  const title =
+    state === "stale" ? `${label}: ${t("workspace.localization.table.staleHint")}` : label;
+  return (
+    <span className="absolute inset-y-0 left-0 flex w-2 justify-center py-3" data-tip={title}>
+      <span aria-hidden className={`w-0.5 rounded-full ${STATE_INDICATOR_CLASS[state]}`} />
+    </span>
+  );
 }
 
 /**
@@ -69,50 +70,50 @@ function StateIndicator({ state }: { state: LocalizationUnitState }) {
  * scrolling, no max height), so long lines are always readable.
  */
 function AutosizeTextarea(props: {
-    value: string;
-    placeholder?: string;
-    ariaLabel?: string;
-    onChange: (value: string) => void;
-    onFocus?: () => void;
-    onBlur?: () => void;
+  value: string;
+  placeholder?: string;
+  ariaLabel?: string;
+  onChange: (value: string) => void;
+  onFocus?: () => void;
+  onBlur?: () => void;
 }) {
-    // Both boxes this renders - the translation and a named key's source text - rewrite the
-    // localization document. `readOnly` rather than `disabled`, the same bargain the story-variable
-    // rows make: the text is exactly what a reader of a past version came to see, and a disabled
-    // textarea is dimmed past reading. Unguarded, a frozen project took the edit, showed it in the
-    // row, and threw it away on thaw.
-    const freeze = useFreezeGuard();
-    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // Both boxes this renders - the translation and a named key's source text - rewrite the
+  // localization document. `readOnly` rather than `disabled`, the same bargain the story-variable
+  // rows make: the text is exactly what a reader of a past version came to see, and a disabled
+  // textarea is dimmed past reading. Unguarded, a frozen project took the edit, showed it in the
+  // row, and threw it away on thaw.
+  const freeze = useFreezeGuard();
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-    // Auto-size on mount and whenever the value changes (filter/mode switches
-    // remount rows, so freshly visible rows measure themselves immediately).
-    useLayoutEffect(() => {
-        const el = textareaRef.current;
-        if (!el) {
-            return;
-        }
-        el.style.height = "auto";
-        const contentHeight = el.scrollHeight;
-        if (contentHeight > 0) {
-            // scrollHeight excludes borders; add them so border-box height fits.
-            el.style.height = `${contentHeight + el.offsetHeight - el.clientHeight}px`;
-        }
-    }, [props.value]);
+  // Auto-size on mount and whenever the value changes (filter/mode switches
+  // remount rows, so freshly visible rows measure themselves immediately).
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) {
+      return;
+    }
+    el.style.height = "auto";
+    const contentHeight = el.scrollHeight;
+    if (contentHeight > 0) {
+      // scrollHeight excludes borders; add them so border-box height fits.
+      el.style.height = `${contentHeight + el.offsetHeight - el.clientHeight}px`;
+    }
+  }, [props.value]);
 
-    return (
-        <textarea
-            ref={textareaRef}
-            value={props.value}
-            placeholder={props.placeholder}
-            aria-label={props.ariaLabel}
-            onChange={event => props.onChange(event.target.value)}
-            onFocus={props.onFocus}
-            onBlur={props.onBlur}
-            readOnly={freeze.frozen}
-            data-tip={freeze.frozen ? freeze.reason : undefined}
-            className="min-h-[3.25rem] w-full resize-none overflow-hidden rounded-md border border-edge-subtle bg-transparent px-2 py-1.5 text-sm leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-primary/50 focus:bg-surface-raised"
-        />
-    );
+  return (
+    <textarea
+      ref={textareaRef}
+      value={props.value}
+      placeholder={props.placeholder}
+      aria-label={props.ariaLabel}
+      onChange={(event) => props.onChange(event.target.value)}
+      onFocus={props.onFocus}
+      onBlur={props.onBlur}
+      readOnly={freeze.frozen}
+      data-tip={freeze.frozen ? freeze.reason : undefined}
+      className="min-h-[3.25rem] w-full resize-none overflow-hidden rounded-md border border-edge-subtle bg-transparent px-2 py-1.5 text-sm leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-primary/50 focus:bg-surface-raised"
+    />
+  );
 }
 
 /**
@@ -120,31 +121,31 @@ function AutosizeTextarea(props: {
  * only appears while the textarea is focused, keeping rows quiet otherwise.
  */
 function TargetEditor(props: {
-    row: TranslationTableRow;
-    target: string;
-    onTargetChange: (row: TranslationTableRow, target: string) => void;
+  row: TranslationTableRow;
+  target: string;
+  onTargetChange: (row: TranslationTableRow, target: string) => void;
 }) {
-    const { t } = useTranslation();
-    const [focused, setFocused] = useState(false);
+  const { t } = useTranslation();
+  const [focused, setFocused] = useState(false);
 
-    return (
-        <div className="flex min-w-0 flex-col gap-1">
-            <AutosizeTextarea
-                value={props.target}
-                placeholder={t("workspace.localization.table.targetPlaceholder")}
-                ariaLabel={t("workspace.localization.table.targetColumn")}
-                onChange={value => props.onTargetChange(props.row, value)}
-                onFocus={() => setFocused(true)}
-                onBlur={() => setFocused(false)}
-            />
-            {focused && props.row.interpolationCount > 0 ? (
-                <div className="px-2 text-2xs leading-relaxed text-fg-subtle">
-                    {`{0}…{${props.row.interpolationCount - 1}} · `}
-                    {t("workspace.localization.table.placeholderHint")}
-                </div>
-            ) : null}
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <AutosizeTextarea
+        value={props.target}
+        placeholder={t("workspace.localization.table.targetPlaceholder")}
+        ariaLabel={t("workspace.localization.table.targetColumn")}
+        onChange={(value) => props.onTargetChange(props.row, value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+      />
+      {focused && props.row.interpolationCount > 0 ? (
+        <div className="px-2 text-2xs leading-relaxed text-fg-subtle">
+          {`{0}…{${props.row.interpolationCount - 1}} · `}
+          {t("workspace.localization.table.placeholderHint")}
         </div>
-    );
+      ) : null}
+    </div>
+  );
 }
 
 /**
@@ -155,56 +156,56 @@ function TargetEditor(props: {
  * button on hover.
  */
 export function TranslateRow(props: {
-    row: TranslationTableRow;
-    speaker: string;
-    state: LocalizationUnitState;
-    target: string;
-    onTargetChange: (row: TranslationTableRow, target: string) => void;
-    onSourceChange?: (row: TranslationTableRow, sourceText: string) => void;
-    onRemove?: (row: TranslationTableRow) => void;
+  row: TranslationTableRow;
+  speaker: string;
+  state: LocalizationUnitState;
+  target: string;
+  onTargetChange: (row: TranslationTableRow, target: string) => void;
+  onSourceChange?: (row: TranslationTableRow, sourceText: string) => void;
+  onRemove?: (row: TranslationTableRow) => void;
 }) {
-    const { t } = useTranslation();
-    // Removing a key deletes it from the localization document. The row itself, its source text and
-    // its translation stay readable - browsing a past version is the point - so only the trash is off.
-    const freeze = useFreezeGuard();
-    const sourceEditable = props.row.editableSource === true && !!props.onSourceChange;
-    const removable = props.row.editableSource === true && !!props.onRemove;
+  const { t } = useTranslation();
+  // Removing a key deletes it from the localization document. The row itself, its source text and
+  // its translation stay readable - browsing a past version is the point - so only the trash is off.
+  const freeze = useFreezeGuard();
+  const sourceEditable = props.row.editableSource === true && !!props.onSourceChange;
+  const removable = props.row.editableSource === true && !!props.onRemove;
 
-    return (
-        <div className="group relative grid grid-cols-2 gap-x-6 gap-y-0.5 border-b border-edge-subtle px-4 py-3 hover:bg-fill-subtle">
-            <StateIndicator state={props.state} />
-            <div className="col-start-1 row-start-1 truncate px-2 text-2xs text-fg-subtle">
-                <span className="select-text">{props.speaker}</span>
-            </div>
-            {sourceEditable ? (
-                <div className="col-start-1 row-start-2 min-w-0">
-                    <AutosizeTextarea
-                        value={props.row.sourceText}
-                        placeholder={t("workspace.localization.table.keySourcePlaceholder")}
-                        ariaLabel={t("workspace.localization.table.sourceColumn")}
-                        onChange={value => props.onSourceChange?.(props.row, value)}
-                    />
-                </div>
-            ) : (
-                <div className="col-start-1 row-start-2 min-w-0 cursor-text select-text whitespace-pre-wrap rounded-md border border-transparent px-2 py-1.5 text-sm leading-relaxed text-fg">
-                    {props.row.sourceText}
-                </div>
-            )}
-            <div className="col-start-2 row-start-2 min-w-0">
-                <TargetEditor row={props.row} target={props.target} onTargetChange={props.onTargetChange} />
-            </div>
-            {removable ? (
-                <button
-                    type="button"
-                    className="absolute right-3 top-2 flex h-6 w-6 items-center justify-center rounded-md text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
-                    onClick={() => props.onRemove?.(props.row)}
-                    {...freeze.writes(false, t("workspace.localization.table.removeKey"))}
-                >
-                    <Trash2 className="h-3.5 w-3.5" />
-                </button>
-            ) : null}
+  return (
+    <div className="group relative grid grid-cols-2 gap-x-6 gap-y-0.5 border-b border-edge-subtle px-4 py-3 hover:bg-fill-subtle">
+      <StateIndicator state={props.state} />
+      <div className="col-start-1 row-start-1 truncate px-2 text-2xs text-fg-subtle">
+        <span className="select-text">{props.speaker}</span>
+      </div>
+      {sourceEditable ? (
+        <div className="col-start-1 row-start-2 min-w-0">
+          <AutosizeTextarea
+            value={props.row.sourceText}
+            placeholder={t("workspace.localization.table.keySourcePlaceholder")}
+            ariaLabel={t("workspace.localization.table.sourceColumn")}
+            onChange={(value) => props.onSourceChange?.(props.row, value)}
+          />
         </div>
-    );
+      ) : (
+        <div className="col-start-1 row-start-2 min-w-0 cursor-text select-text whitespace-pre-wrap rounded-md border border-transparent px-2 py-1.5 text-sm leading-relaxed text-fg">
+          {props.row.sourceText}
+        </div>
+      )}
+      <div className="col-start-2 row-start-2 min-w-0">
+        <TargetEditor row={props.row} target={props.target} onTargetChange={props.onTargetChange} />
+      </div>
+      {removable ? (
+        <button
+          type="button"
+          className="absolute right-3 top-2 flex h-6 w-6 items-center justify-center rounded-md text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+          onClick={() => props.onRemove?.(props.row)}
+          {...freeze.writes(false, t("workspace.localization.table.removeKey"))}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 /**
@@ -213,68 +214,70 @@ export function TranslateRow(props: {
  * reviewers can fix small things in place.
  */
 export function ReviewRow(props: {
-    row: TranslationTableRow;
-    speaker: string;
-    state: LocalizationUnitState;
-    target: string;
-    onTargetChange: (row: TranslationTableRow, target: string) => void;
-    onApprove: (row: TranslationTableRow) => void;
-    onReturn: (row: TranslationTableRow) => void;
+  row: TranslationTableRow;
+  speaker: string;
+  state: LocalizationUnitState;
+  target: string;
+  onTargetChange: (row: TranslationTableRow, target: string) => void;
+  onApprove: (row: TranslationTableRow) => void;
+  onReturn: (row: TranslationTableRow) => void;
 }) {
-    const { t } = useTranslation();
-    // Approving and returning both restate the unit in the localization document, so both are off
-    // while frozen - each keeping its own reason when the row's state is already why it is disabled.
-    const freeze = useFreezeGuard();
-    const { row, speaker, state, target } = props;
-    const canApprove = state !== "reviewed" && state !== "untranslated";
-    const canReturn = state === "reviewed" || state === "stale" || state === "machine";
+  const { t } = useTranslation();
+  // Approving and returning both restate the unit in the localization document, so both are off
+  // while frozen - each keeping its own reason when the row's state is already why it is disabled.
+  const freeze = useFreezeGuard();
+  const { row, speaker, state, target } = props;
+  const canApprove = state !== "reviewed" && state !== "untranslated";
+  const canReturn = state === "reviewed" || state === "stale" || state === "machine";
 
-    return (
-        <div className="relative grid grid-cols-2 gap-x-6 gap-y-0.5 border-b border-edge-subtle px-4 py-3 hover:bg-fill-subtle">
-            <StateIndicator state={state} />
-            <div className="col-start-1 row-start-1 flex min-w-0 items-baseline gap-2 px-2">
-                <span className="select-text truncate text-2xs text-fg-subtle">{speaker}</span>
-                <span aria-hidden className="text-2xs text-fg-subtle">·</span>
-                <span className="shrink-0 text-2xs text-fg-muted">{t(stateLabelKey(state))}</span>
-            </div>
-            <div className="col-start-1 row-start-2 min-w-0 cursor-text select-text whitespace-pre-wrap rounded-md border border-transparent px-2 py-1.5 text-sm leading-relaxed text-fg">
-                {row.sourceText}
-            </div>
-            <div className="col-start-2 row-start-2 flex min-w-0 flex-col gap-1.5">
-                {state === "stale" ? (
-                    <div className="flex items-start gap-1.5 rounded-md bg-warning/10 px-2 py-1 text-2xs leading-relaxed text-warning">
-                        <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
-                        {t("workspace.localization.table.staleHint")}
-                    </div>
-                ) : null}
-                <TargetEditor row={row} target={target} onTargetChange={props.onTargetChange} />
-                <div className="flex items-center gap-1.5">
-                    <button
-                        type="button"
-                        onClick={() => props.onApprove(row)}
-                        className="inline-flex h-6 items-center gap-1.5 rounded-md bg-success/15 px-2.5 text-xs font-medium text-success transition-colors hover:bg-success/25 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-success/15"
-                        {...freeze.writes(!canApprove, t("workspace.localization.table.markReviewed"))}
-                    >
-                        <Check className="h-3.5 w-3.5" />
-                        {t("workspace.localization.table.reviewApprove")}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => props.onReturn(row)}
-                        className="inline-flex h-6 items-center gap-1.5 rounded-md bg-fill px-2.5 text-xs font-medium text-fg-muted transition-colors hover:bg-fill-strong hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-fill disabled:hover:text-fg-muted"
-                        {...freeze.writes(!canReturn, t("workspace.localization.table.unmarkReviewed"))}
-                    >
-                        <Undo2 className="h-3.5 w-3.5" />
-                        {t("workspace.localization.table.reviewReturn")}
-                    </button>
-                </div>
-            </div>
+  return (
+    <div className="relative grid grid-cols-2 gap-x-6 gap-y-0.5 border-b border-edge-subtle px-4 py-3 hover:bg-fill-subtle">
+      <StateIndicator state={state} />
+      <div className="col-start-1 row-start-1 flex min-w-0 items-baseline gap-2 px-2">
+        <span className="select-text truncate text-2xs text-fg-subtle">{speaker}</span>
+        <span aria-hidden className="text-2xs text-fg-subtle">
+          ·
+        </span>
+        <span className="shrink-0 text-2xs text-fg-muted">{t(stateLabelKey(state))}</span>
+      </div>
+      <div className="col-start-1 row-start-2 min-w-0 cursor-text select-text whitespace-pre-wrap rounded-md border border-transparent px-2 py-1.5 text-sm leading-relaxed text-fg">
+        {row.sourceText}
+      </div>
+      <div className="col-start-2 row-start-2 flex min-w-0 flex-col gap-1.5">
+        {state === "stale" ? (
+          <div className="flex items-start gap-1.5 rounded-md bg-warning/10 px-2 py-1 text-2xs leading-relaxed text-warning">
+            <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
+            {t("workspace.localization.table.staleHint")}
+          </div>
+        ) : null}
+        <TargetEditor row={row} target={target} onTargetChange={props.onTargetChange} />
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => props.onApprove(row)}
+            className="inline-flex h-6 items-center gap-1.5 rounded-md bg-success/15 px-2.5 text-xs font-medium text-success transition-colors hover:bg-success/25 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-success/15"
+            {...freeze.writes(!canApprove, t("workspace.localization.table.markReviewed"))}
+          >
+            <Check className="h-3.5 w-3.5" />
+            {t("workspace.localization.table.reviewApprove")}
+          </button>
+          <button
+            type="button"
+            onClick={() => props.onReturn(row)}
+            className="inline-flex h-6 items-center gap-1.5 rounded-md bg-fill px-2.5 text-xs font-medium text-fg-muted transition-colors hover:bg-fill-strong hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-fill disabled:hover:text-fg-muted"
+            {...freeze.writes(!canReturn, t("workspace.localization.table.unmarkReviewed"))}
+          >
+            <Undo2 className="h-3.5 w-3.5" />
+            {t("workspace.localization.table.reviewReturn")}
+          </button>
         </div>
-    );
+      </div>
+    </div>
+  );
 }
 
 const ADD_KEY_INPUT_CLASS =
-    "h-7 min-w-0 rounded-md border border-edge bg-surface-raised px-2 text-xs text-fg outline-none placeholder:text-fg-subtle focus:border-primary/50";
+  "h-7 min-w-0 rounded-md border border-edge bg-surface-raised px-2 text-xs text-fg outline-none placeholder:text-fg-subtle focus:border-primary/50";
 
 /**
  * Ghost row at the end of the named-keys group (translate mode only).
@@ -283,82 +286,83 @@ const ADD_KEY_INPUT_CLASS =
  * returns whether the key was created (so failed submits keep the form).
  */
 export function AddKeyRow(props: { onSubmit: (name: string, sourceText: string) => boolean }) {
-    const { t } = useTranslation();
-    // Declaring a UI key writes the localization document. Guarded at the collapsed "+" so the draft
-    // row never opens - a form that accepts a name and then throws it away is the measured failure this
-    // milestone exists to remove.
-    const freeze = useFreezeGuard();
-    const [expanded, setExpanded] = useState(false);
-    const [nameDraft, setNameDraft] = useState("");
-    const [sourceDraft, setSourceDraft] = useState("");
+  const { t } = useTranslation();
+  // Declaring a UI key writes the localization document. Guarded at the collapsed "+" so the draft
+  // row never opens - a form that accepts a name and then throws it away is the measured failure this
+  // milestone exists to remove.
+  const freeze = useFreezeGuard();
+  const [expanded, setExpanded] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [sourceDraft, setSourceDraft] = useState("");
 
-    const cancel = () => {
-        setExpanded(false);
-        setNameDraft("");
-        setSourceDraft("");
-    };
+  const cancel = () => {
+    setExpanded(false);
+    setNameDraft("");
+    setSourceDraft("");
+  };
 
-    const submit = () => {
-        if (props.onSubmit(nameDraft, sourceDraft)) {
-            cancel();
-        }
-    };
-
-    if (!expanded) {
-        return (
-            <div className="px-4 py-2">
-                <button
-                    type="button"
-                    className="flex h-7 w-full items-center justify-center gap-1 rounded-md border border-dashed border-edge text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
-                    onClick={() => setExpanded(true)}
-                    {...freeze.writes()}
-                >
-                    <Plus className="h-3 w-3" /> {t("workspace.localization.table.addKey")}
-                </button>
-            </div>
-        );
+  const submit = () => {
+    if (props.onSubmit(nameDraft, sourceDraft)) {
+      cancel();
     }
+  };
 
+  if (!expanded) {
     return (
-        <div
-            className="flex items-center gap-1.5 px-4 py-2"
-            onKeyDown={event => {
-                if (event.key === "Escape") {
-                    cancel();
-                } else if (event.key === "Enter") {
-                    event.preventDefault();
-                    submit();
-                }
-            }}
-            onBlur={event => {
-                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                    cancel();
-                }
-            }}
+      <div className="px-4 py-2">
+        <button
+          type="button"
+          className="flex h-7 w-full items-center justify-center gap-1 rounded-md border border-dashed border-edge text-2xs text-fg-subtle transition-colors hover:border-edge-strong hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={() => setExpanded(true)}
+          {...freeze.writes()}
         >
-            <input
-                autoFocus
-                className={`${ADD_KEY_INPUT_CLASS} w-48 flex-none`}
-                value={nameDraft}
-                placeholder={t("workspace.localization.table.keyNamePlaceholder")}
-                onChange={event => setNameDraft(event.target.value)}
-                aria-label={t("workspace.localization.table.keyNamePlaceholder")}
-            />
-            <input
-                className={`${ADD_KEY_INPUT_CLASS} flex-1`}
-                value={sourceDraft}
-                placeholder={t("workspace.localization.table.keySourcePlaceholder")}
-                onChange={event => setSourceDraft(event.target.value)}
-                aria-label={t("workspace.localization.table.keySourcePlaceholder")}
-            />
-            <button
-                type="button"
-                className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-edge text-fg-muted hover:border-primary/50 hover:text-fg"
-                onClick={submit}
-                data-tip={t("workspace.localization.table.addKey")} aria-label={t("workspace.localization.table.addKey")}
-            >
-                <Check className="h-3.5 w-3.5" />
-            </button>
-        </div>
+          <Plus className="h-3 w-3" /> {t("workspace.localization.table.addKey")}
+        </button>
+      </div>
     );
+  }
+
+  return (
+    <div
+      className="flex items-center gap-1.5 px-4 py-2"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          cancel();
+        } else if (event.key === "Enter") {
+          event.preventDefault();
+          submit();
+        }
+      }}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          cancel();
+        }
+      }}
+    >
+      <input
+        autoFocus
+        className={`${ADD_KEY_INPUT_CLASS} w-48 flex-none`}
+        value={nameDraft}
+        placeholder={t("workspace.localization.table.keyNamePlaceholder")}
+        onChange={(event) => setNameDraft(event.target.value)}
+        aria-label={t("workspace.localization.table.keyNamePlaceholder")}
+      />
+      <input
+        className={`${ADD_KEY_INPUT_CLASS} flex-1`}
+        value={sourceDraft}
+        placeholder={t("workspace.localization.table.keySourcePlaceholder")}
+        onChange={(event) => setSourceDraft(event.target.value)}
+        aria-label={t("workspace.localization.table.keySourcePlaceholder")}
+      />
+      <button
+        type="button"
+        className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-edge text-fg-muted hover:border-primary/50 hover:text-fg"
+        onClick={submit}
+        data-tip={t("workspace.localization.table.addKey")}
+        aria-label={t("workspace.localization.table.addKey")}
+      >
+        <Check className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
 }

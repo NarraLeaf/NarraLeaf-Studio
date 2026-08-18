@@ -40,14 +40,14 @@ export const BUNDLETOOL_FORMAT_VERSION = "1.18.1";
  * dropping it ships a bundle whose native code is missing on those devices.
  */
 const ABI_ALIAS_BY_DIRECTORY: Readonly<Record<string, number>> = {
-    "armeabi": 1,
-    "armeabi-v7a": 2,
-    "arm64-v8a": 3,
-    "x86": 4,
-    "x86_64": 5,
-    "mips": 6,
-    "mips64": 7,
-    "riscv64": 8,
+  armeabi: 1,
+  "armeabi-v7a": 2,
+  "arm64-v8a": 3,
+  x86: 4,
+  x86_64: 5,
+  mips: 6,
+  mips64: 7,
+  riscv64: 8
 };
 
 const DEX_ENTRY = /^classes\d*\.dex$/;
@@ -62,49 +62,55 @@ const DEX_ENTRY = /^classes\d*\.dex$/;
  * rule as the template's own entries.
  */
 export function bundleModulePath(apkEntryName: string): string {
-    if (apkEntryName === "AndroidManifest.xml") {
-        return "manifest/AndroidManifest.xml";
-    }
-    if (apkEntryName === "resources.arsc") {
-        return "resources.pb";
-    }
-    if (DEX_ENTRY.test(apkEntryName)) {
-        return `dex/${apkEntryName}`;
-    }
-    if (apkEntryName.startsWith("res/") || apkEntryName.startsWith("lib/") || apkEntryName.startsWith("assets/")) {
-        return apkEntryName;
-    }
-    // Anything the bundle format has no home for - kotlin metadata, META-INF,
-    // stray json - is carried verbatim under root/ and restored to the APK's
-    // top level when bundletool builds APKs from the bundle.
-    return `root/${apkEntryName}`;
+  if (apkEntryName === "AndroidManifest.xml") {
+    return "manifest/AndroidManifest.xml";
+  }
+  if (apkEntryName === "resources.arsc") {
+    return "resources.pb";
+  }
+  if (DEX_ENTRY.test(apkEntryName)) {
+    return `dex/${apkEntryName}`;
+  }
+  if (
+    apkEntryName.startsWith("res/") ||
+    apkEntryName.startsWith("lib/") ||
+    apkEntryName.startsWith("assets/")
+  ) {
+    return apkEntryName;
+  }
+  // Anything the bundle format has no home for - kotlin metadata, META-INF,
+  // stray json - is carried verbatim under root/ and restored to the APK's
+  // top level when bundletool builds APKs from the bundle.
+  return `root/${apkEntryName}`;
 }
 
 /** BundleConfig{ bundletool: Bundletool{ version } }. */
 export function encodeBundleConfig(version: string = BUNDLETOOL_FORMAT_VERSION): Buffer {
-    // Bundletool.version is field 2, not 1: field 1 is reserved in config.proto.
-    return encodeMessage(config => config.message(1, bundletool => bundletool.string(2, version)));
+  // Bundletool.version is field 2, not 1: field 1 is reserved in config.proto.
+  return encodeMessage((config) =>
+    config.message(1, (bundletool) => bundletool.string(2, version))
+  );
 }
 
 /** The distinct `lib/<abi>` directories the module's files live in, in order. */
 export function nativeDirectoriesOf(modulePaths: Iterable<string>): string[] {
-    const directories: string[] = [];
-    const seen = new Set<string>();
-    for (const path of modulePaths) {
-        if (!path.startsWith("lib/")) {
-            continue;
-        }
-        const segments = path.split("/");
-        if (segments.length < 3) {
-            throw new Error(`Template has a native library outside an ABI directory: "${path}"`);
-        }
-        const directory = `${segments[0]}/${segments[1]}`;
-        if (!seen.has(directory)) {
-            seen.add(directory);
-            directories.push(directory);
-        }
+  const directories: string[] = [];
+  const seen = new Set<string>();
+  for (const path of modulePaths) {
+    if (!path.startsWith("lib/")) {
+      continue;
     }
-    return directories;
+    const segments = path.split("/");
+    if (segments.length < 3) {
+      throw new Error(`Template has a native library outside an ABI directory: "${path}"`);
+    }
+    const directory = `${segments[0]}/${segments[1]}`;
+    if (!seen.has(directory)) {
+      seen.add(directory);
+      directories.push(directory);
+    }
+  }
+  return directories;
 }
 
 /**
@@ -119,49 +125,51 @@ export function nativeDirectoriesOf(modulePaths: Iterable<string>): string[] {
  * assets/www/js and not assets/www.
  */
 export function assetDirectoriesOf(modulePaths: Iterable<string>): string[] {
-    const directories: string[] = [];
-    const seen = new Set<string>();
-    for (const path of modulePaths) {
-        if (!path.startsWith("assets/")) {
-            continue;
-        }
-        const directory = path.slice(0, path.lastIndexOf("/"));
-        if (!seen.has(directory)) {
-            seen.add(directory);
-            directories.push(directory);
-        }
+  const directories: string[] = [];
+  const seen = new Set<string>();
+  for (const path of modulePaths) {
+    if (!path.startsWith("assets/")) {
+      continue;
     }
-    return directories;
+    const directory = path.slice(0, path.lastIndexOf("/"));
+    if (!seen.has(directory)) {
+      seen.add(directory);
+      directories.push(directory);
+    }
+  }
+  return directories;
 }
 
 /** NativeLibraries{ directory: [ TargetedNativeDirectory{ path, targeting } ] }. */
 export function encodeNativeLibraries(directories: readonly string[]): Buffer {
-    return encodeMessage(libraries => {
-        for (const directory of directories) {
-            const abi = directory.slice(directory.indexOf("/") + 1);
-            const alias = ABI_ALIAS_BY_DIRECTORY[abi];
-            if (alias === undefined) {
-                throw new Error(`Template has native libraries for an unknown ABI: "${abi}"`);
-            }
-            libraries.message(1, targeted => {
-                targeted.string(1, directory);
-                targeted.message(2, targeting => targeting.message(1, pbAbi => pbAbi.enumValue(1, alias)));
-            });
-        }
-    });
+  return encodeMessage((libraries) => {
+    for (const directory of directories) {
+      const abi = directory.slice(directory.indexOf("/") + 1);
+      const alias = ABI_ALIAS_BY_DIRECTORY[abi];
+      if (alias === undefined) {
+        throw new Error(`Template has native libraries for an unknown ABI: "${abi}"`);
+      }
+      libraries.message(1, (targeted) => {
+        targeted.string(1, directory);
+        targeted.message(2, (targeting) =>
+          targeting.message(1, (pbAbi) => pbAbi.enumValue(1, alias))
+        );
+      });
+    }
+  });
 }
 
 /** Assets{ directory: [ TargetedAssetsDirectory{ path, targeting } ] }. */
 export function encodeAssets(directories: readonly string[]): Buffer {
-    return encodeMessage(assets => {
-        for (const directory of directories) {
-            assets.message(1, targeted => {
-                targeted.string(1, directory);
-                // Present but empty: Studio never targets assets by ABI,
-                // texture format or language, and bundletool writes the empty
-                // submessage rather than omitting the required field.
-                targeted.message(2, () => undefined);
-            });
-        }
-    });
+  return encodeMessage((assets) => {
+    for (const directory of directories) {
+      assets.message(1, (targeted) => {
+        targeted.string(1, directory);
+        // Present but empty: Studio never targets assets by ABI,
+        // texture format or language, and bundletool writes the empty
+        // submessage rather than omitting the required field.
+        targeted.message(2, () => undefined);
+      });
+    }
+  });
 }

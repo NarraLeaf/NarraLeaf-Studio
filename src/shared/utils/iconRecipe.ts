@@ -1,7 +1,7 @@
 import {
-    resolveIconBackground,
-    type ProjectIconOutput,
-    type ProjectIconSpec,
+  resolveIconBackground,
+  type ProjectIconOutput,
+  type ProjectIconSpec
 } from "@shared/types/projectIcons";
 
 /**
@@ -13,15 +13,15 @@ import {
  * If they did not, the tiles would be a picture of something Studio never ships.
  */
 export type IconDrawPlan = {
-    /** Edge length of the square output, in pixels. */
-    canvas: number;
-    /** Painted first, or null to leave the output transparent. */
-    background: string | null;
-    /** The artwork's rect inside the canvas, in pixels. */
-    x: number;
-    y: number;
-    width: number;
-    height: number;
+  /** Edge length of the square output, in pixels. */
+  canvas: number;
+  /** Painted first, or null to leave the output transparent. */
+  background: string | null;
+  /** The artwork's rect inside the canvas, in pixels. */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };
 
 /**
@@ -32,34 +32,34 @@ export type IconDrawPlan = {
  * that was not already square.
  */
 export function planIconDraw(input: {
-    sourceWidth: number;
-    sourceHeight: number;
-    spec: ProjectIconSpec;
-    output: ProjectIconOutput;
+  sourceWidth: number;
+  sourceHeight: number;
+  spec: ProjectIconSpec;
+  output: ProjectIconOutput;
 }): IconDrawPlan {
-    const { spec, output } = input;
-    const canvas = output.size;
-    const background = resolveIconBackground(spec, output);
+  const { spec, output } = input;
+  const canvas = output.size;
+  const background = resolveIconBackground(spec, output);
 
-    const inset = Math.min(Math.max(spec.inset, 0), 0.49);
-    const box = canvas * (1 - inset * 2);
+  const inset = Math.min(Math.max(spec.inset, 0), 0.49);
+  const box = canvas * (1 - inset * 2);
 
-    // A source whose dimensions could not be read is treated as square: filling
-    // the box is a better guess than refusing to draw.
-    const sourceWidth = input.sourceWidth > 0 ? input.sourceWidth : 1;
-    const sourceHeight = input.sourceHeight > 0 ? input.sourceHeight : 1;
-    const scale = box / Math.max(sourceWidth, sourceHeight);
-    const width = sourceWidth * scale;
-    const height = sourceHeight * scale;
+  // A source whose dimensions could not be read is treated as square: filling
+  // the box is a better guess than refusing to draw.
+  const sourceWidth = input.sourceWidth > 0 ? input.sourceWidth : 1;
+  const sourceHeight = input.sourceHeight > 0 ? input.sourceHeight : 1;
+  const scale = box / Math.max(sourceWidth, sourceHeight);
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
 
-    return {
-        canvas,
-        background,
-        x: (canvas - width) / 2,
-        y: (canvas - height) / 2,
-        width,
-        height,
-    };
+  return {
+    canvas,
+    background,
+    x: (canvas - width) / 2,
+    y: (canvas - height) / 2,
+    width,
+    height
+  };
 }
 
 /**
@@ -71,10 +71,10 @@ export const MIN_ICON_SOURCE_EDGE = 512;
 
 /** Whether a source has to be upscaled to fill the outputs it feeds. */
 export function iconSourceIsLowResolution(sourceWidth: number, sourceHeight: number): boolean {
-    if (sourceWidth <= 0 || sourceHeight <= 0) {
-        return true;
-    }
-    return Math.max(sourceWidth, sourceHeight) < MIN_ICON_SOURCE_EDGE;
+  if (sourceWidth <= 0 || sourceHeight <= 0) {
+    return true;
+  }
+  return Math.max(sourceWidth, sourceHeight) < MIN_ICON_SOURCE_EDGE;
 }
 
 /**
@@ -86,11 +86,11 @@ export function iconSourceIsLowResolution(sourceWidth: number, sourceHeight: num
  * as noise. Halving repeatedly keeps every pixel contributing.
  */
 export function halvingSteps(sourceEdge: number, targetEdge: number): number[] {
-    const steps: number[] = [];
-    let edge = Math.floor(sourceEdge / 2);
-    while (edge > targetEdge) {
-        steps.push(edge);
-        edge = Math.floor(edge / 2);
-    }
-    return steps;
+  const steps: number[] = [];
+  let edge = Math.floor(sourceEdge / 2);
+  while (edge > targetEdge) {
+    steps.push(edge);
+    edge = Math.floor(edge / 2);
+  }
+  return steps;
 }

@@ -2,7 +2,10 @@ import { useMemo } from "react";
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
 import { selfReadOnly } from "@/apps/workspace/modules/properties/framework/fields/fieldReadOnlyStrategy";
 import { blueprintEntryContextMenu } from "@/apps/workspace/modules/blueprint-lite/hooks/blueprintEntryGesture";
-import { useOpenBlueprintTarget, type BlueprintOpenOptions } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
+import {
+  useOpenBlueprintTarget,
+  type BlueprintOpenOptions
+} from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { useBlueprintDocumentRevision } from "@/apps/workspace/modules/blueprint-lite/hooks/useBlueprintDocumentRevision";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
@@ -27,64 +30,75 @@ const widgetOwnerLabel = getOwnerLabel("widgetMain");
  * framework's `<fieldset disabled>` clamp reaches every `<button>` under a `custom` field.
  */
 export const ReadonlyBlueprintSection = selfReadOnly(function ReadonlyBlueprintSection({
-    data,
+  data
 }: CustomFieldProps<UIInspectorData>) {
-    const { t, tn } = useTranslation();
-    const { context, isInitialized } = useWorkspace();
-    const surfaceId = data.surfaceId;
-    const componentId = parseComponentEditorSurfaceId(surfaceId);
-    const element = data.element;
-    const summary = useReadonlyBlueprintSummary(null, surfaceId, element);
-    const blueprintRevision = useBlueprintDocumentRevision();
-    const openBlueprint = useOpenBlueprintTarget();
-    const localBp =
-        isInitialized && context ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint) : null;
-    const nodeCatalog =
-        isInitialized && context ? context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog) : null;
-    const previewModel = useMemo(
-        () => resolveFirstBlueprintLayerPreview(localBp, nodeCatalog, summary.blueprintId),
-        [localBp, nodeCatalog, summary.blueprintId, blueprintRevision],
-    );
+  const { t, tn } = useTranslation();
+  const { context, isInitialized } = useWorkspace();
+  const surfaceId = data.surfaceId;
+  const componentId = parseComponentEditorSurfaceId(surfaceId);
+  const element = data.element;
+  const summary = useReadonlyBlueprintSummary(null, surfaceId, element);
+  const blueprintRevision = useBlueprintDocumentRevision();
+  const openBlueprint = useOpenBlueprintTarget();
+  const localBp =
+    isInitialized && context
+      ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint)
+      : null;
+  const nodeCatalog =
+    isInitialized && context
+      ? context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog)
+      : null;
+  const previewModel = useMemo(
+    () => resolveFirstBlueprintLayerPreview(localBp, nodeCatalog, summary.blueprintId),
+    [localBp, nodeCatalog, summary.blueprintId, blueprintRevision]
+  );
 
-    const openEntry = (options?: BlueprintOpenOptions) => {
-        if (!summary.blueprintId || !surfaceId) {
-            return;
+  const openEntry = (options?: BlueprintOpenOptions) => {
+    if (!summary.blueprintId || !surfaceId) {
+      return;
+    }
+    openBlueprint(
+      {
+        blueprintId: summary.blueprintId,
+        ownerKind: componentId ? "componentWidgetMain" : "widgetMain",
+        surfaceId,
+        componentId: componentId ?? undefined,
+        elementId: element.id,
+        title: `${widgetOwnerLabel.titlePrefix} - ${element.name ?? element.type}`
+      },
+      options
+    );
+  };
+
+  const canOpenEntry = summary.hasWidgetMain && Boolean(summary.blueprintId);
+
+  return (
+    <div className="rounded-lg border border-edge bg-surface px-3 py-3 space-y-2">
+      <button
+        type="button"
+        className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/70 disabled:cursor-default"
+        disabled={!canOpenEntry}
+        onClick={() => openEntry()}
+        onContextMenu={blueprintEntryContextMenu(openEntry)}
+        data-tip={canOpenEntry ? t("blueprint.entry.openInWindow") : undefined}
+        aria-label={
+          canOpenEntry
+            ? t("widgetChrome.blueprint.openControlBlueprint")
+            : t("widgetChrome.blueprint.noBlueprintForControl")
         }
-        openBlueprint({
-            blueprintId: summary.blueprintId,
-            ownerKind: componentId ? "componentWidgetMain" : "widgetMain",
-            surfaceId,
-            componentId: componentId ?? undefined,
-            elementId: element.id,
-            title: `${widgetOwnerLabel.titlePrefix} - ${element.name ?? element.type}`,
-        }, options);
-    };
-
-    const canOpenEntry = summary.hasWidgetMain && Boolean(summary.blueprintId);
-
-    return (
-        <div className="rounded-lg border border-edge bg-surface px-3 py-3 space-y-2">
-            <button
-                type="button"
-                className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/70 disabled:cursor-default"
-                disabled={!canOpenEntry}
-                onClick={() => openEntry()}
-                onContextMenu={blueprintEntryContextMenu(openEntry)}
-                data-tip={canOpenEntry ? t("blueprint.entry.openInWindow") : undefined}
-                aria-label={canOpenEntry ? t("widgetChrome.blueprint.openControlBlueprint") : t("widgetChrome.blueprint.noBlueprintForControl")}
-            >
-                <BlueprintLayerPreview model={previewModel} />
-            </button>
-            {summary.legacyHookCount > 0 ? (
-                <p className="text-2xs text-warning rounded-md border border-warning/25 bg-warning/10 px-2 py-1.5">
-                    {tn("widgetChrome.blueprint.legacyHookCount", summary.legacyHookCount)}
-                </p>
-            ) : null}
-            {summary.eventSchemaIssueCount > 0 ? (
-                <p className="text-2xs text-warning rounded-md border border-warning/25 bg-warning/10 px-2 py-1.5">
-                    {t("widgetChrome.blueprint.eventSchemaMismatch")}
-                </p>
-            ) : null}
-        </div>
-    );
+      >
+        <BlueprintLayerPreview model={previewModel} />
+      </button>
+      {summary.legacyHookCount > 0 ? (
+        <p className="text-2xs text-warning rounded-md border border-warning/25 bg-warning/10 px-2 py-1.5">
+          {tn("widgetChrome.blueprint.legacyHookCount", summary.legacyHookCount)}
+        </p>
+      ) : null}
+      {summary.eventSchemaIssueCount > 0 ? (
+        <p className="text-2xs text-warning rounded-md border border-warning/25 bg-warning/10 px-2 py-1.5">
+          {t("widgetChrome.blueprint.eventSchemaMismatch")}
+        </p>
+      ) : null}
+    </div>
+  );
 });

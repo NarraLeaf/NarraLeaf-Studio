@@ -13,19 +13,24 @@ import { vcsChangesTabId, type VcsChangesPayload } from "./vcsChangesIds";
  * where it is - this is where the author goes when eight rows are not enough, and where a conflict is
  * resolved, which a 320px column cannot hold.
  */
-export function createVcsChangesTab(payload: VcsChangesPayload): EditorTabDefinition<VcsChangesPayload> {
-    return {
-        id: vcsChangesTabId(payload),
-        title: tabTitle(payload),
-        // The one tab in this family that can change the project wears a different mark, so a strip
-        // holding both does not read as two copies of the same thing.
-        icon: payload.mode === "resolve"
-            ? <GitMerge className="h-4 w-4" />
-            : <GitCompare className="h-4 w-4" />,
-        component: VcsChangesTab,
-        closable: true,
-        payload,
-    };
+export function createVcsChangesTab(
+  payload: VcsChangesPayload
+): EditorTabDefinition<VcsChangesPayload> {
+  return {
+    id: vcsChangesTabId(payload),
+    title: tabTitle(payload),
+    // The one tab in this family that can change the project wears a different mark, so a strip
+    // holding both does not read as two copies of the same thing.
+    icon:
+      payload.mode === "resolve" ? (
+        <GitMerge className="h-4 w-4" />
+      ) : (
+        <GitCompare className="h-4 w-4" />
+      ),
+    component: VcsChangesTab,
+    closable: true,
+    payload
+  };
 }
 
 /**
@@ -35,8 +40,14 @@ export function createVcsChangesTab(payload: VcsChangesPayload): EditorTabDefini
  * already showing the working tree instead of stacking another copy of the same list - the ids in
  * `vcsChangesIds` are what decide which comparisons share a tab.
  */
-export function openVcsChangesTab(ctx: WorkspaceContext, payload: VcsChangesPayload, groupId?: string): void {
-    ctx.services.get<UIService>(Services.UI).editor.openOrUpdate(createVcsChangesTab(payload), groupId);
+export function openVcsChangesTab(
+  ctx: WorkspaceContext,
+  payload: VcsChangesPayload,
+  groupId?: string
+): void {
+  ctx.services
+    .get<UIService>(Services.UI)
+    .editor.openOrUpdate(createVcsChangesTab(payload), groupId);
 }
 
 /**
@@ -47,15 +58,15 @@ export function openVcsChangesTab(ctx: WorkspaceContext, payload: VcsChangesPayl
  * the tab and leaves the strip until it is reopened - the same bargain every other tab here makes.
  */
 function tabTitle(payload: VcsChangesPayload): string {
-    switch (payload.mode) {
-        case "working-tree":
-            return translate("documentDiff.tab.workingTree");
-        case "between":
-            return translate("documentDiff.tab.between", {
-                from: payload.fromLabel ?? shortRevision(payload.from),
-                to: payload.toLabel ?? shortRevision(payload.to),
-            });
-        case "resolve":
-            return translate("documentDiff.resolve.tab");
-    }
+  switch (payload.mode) {
+    case "working-tree":
+      return translate("documentDiff.tab.workingTree");
+    case "between":
+      return translate("documentDiff.tab.between", {
+        from: payload.fromLabel ?? shortRevision(payload.from),
+        to: payload.toLabel ?? shortRevision(payload.to)
+      });
+    case "resolve":
+      return translate("documentDiff.resolve.tab");
+  }
 }

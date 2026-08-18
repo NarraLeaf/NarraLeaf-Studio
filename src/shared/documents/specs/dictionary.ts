@@ -1,10 +1,10 @@
 import {
-    migrateProjectDictionaryDocument,
-    PROJECT_DICTIONARY_SCHEMA_VERSION,
-    type ProjectDictionaryDocument,
+  migrateProjectDictionaryDocument,
+  PROJECT_DICTIONARY_SCHEMA_VERSION,
+  type ProjectDictionaryDocument
 } from "../../types/dictionary";
-import {defineDocumentSpec} from "../registry";
-import {rejectNewerSchema, requireDocumentObject} from "./parseHelpers";
+import { defineDocumentSpec } from "../registry";
+import { rejectNewerSchema, requireDocumentObject } from "./parseHelpers";
 
 /**
  * `editor/dictionary.json` - the words this project spells on purpose.
@@ -22,23 +22,23 @@ import {rejectNewerSchema, requireDocumentObject} from "./parseHelpers";
 export const DICTIONARY_DOCUMENT_PATH = "editor/dictionary.json";
 
 export const dictionarySpec = defineDocumentSpec<ProjectDictionaryDocument>({
-    kind: "dictionary",
-    version: PROJECT_DICTIONARY_SCHEMA_VERSION,
-    paths: [DICTIONARY_DOCUMENT_PATH],
-    parse: (raw, context) => {
-        const record = requireDocumentObject(raw, context, "a project dictionary");
-        rejectNewerSchema(record, context, PROJECT_DICTIONARY_SCHEMA_VERSION);
-        // A present-but-wrong `words` is corrupt rather than "no words": the normalizer answers an
-        // empty list for anything it cannot read, and the first added word would write that back
-        // over every term the project had.
-        if (record.words !== undefined && !Array.isArray(record.words)) {
-            context.corrupt(`"words" must be an array, got ${typeof record.words}`);
-        }
-        return migrateProjectDictionaryDocument(record);
-    },
-    // No authored name: there is one of these per project and the history UI labels it by kind.
-    summarize: document => ({
-        title: "",
-        counts: [{key: "dictionaryWords", value: document.words.length}],
-    }),
+  kind: "dictionary",
+  version: PROJECT_DICTIONARY_SCHEMA_VERSION,
+  paths: [DICTIONARY_DOCUMENT_PATH],
+  parse: (raw, context) => {
+    const record = requireDocumentObject(raw, context, "a project dictionary");
+    rejectNewerSchema(record, context, PROJECT_DICTIONARY_SCHEMA_VERSION);
+    // A present-but-wrong `words` is corrupt rather than "no words": the normalizer answers an
+    // empty list for anything it cannot read, and the first added word would write that back
+    // over every term the project had.
+    if (record.words !== undefined && !Array.isArray(record.words)) {
+      context.corrupt(`"words" must be an array, got ${typeof record.words}`);
+    }
+    return migrateProjectDictionaryDocument(record);
+  },
+  // No authored name: there is one of these per project and the history UI labels it by kind.
+  summarize: (document) => ({
+    title: "",
+    counts: [{ key: "dictionaryWords", value: document.words.length }]
+  })
 });

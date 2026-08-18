@@ -30,6 +30,6 @@ export const BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE = "audioTracks";
 
 /** Empty is a real state (nothing picked yet); callers decide what it means for them. */
 export function readBlueprintAudioTrackParam(params: Record<string, unknown> | undefined): string {
-    const value = params?.[BLUEPRINT_SOUND_PARAM_TRACK];
-    return typeof value === "string" ? value.trim() : "";
+  const value = params?.[BLUEPRINT_SOUND_PARAM_TRACK];
+  return typeof value === "string" ? value.trim() : "";
 }

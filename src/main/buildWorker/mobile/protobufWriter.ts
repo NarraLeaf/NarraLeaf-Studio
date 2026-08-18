@@ -33,14 +33,14 @@ const MAX_FIELD_NUMBER = 0x1fffffff;
 
 /** Base-128 varint of a non-negative safe integer. */
 function encodeVarint(value: number): Buffer {
-    const bytes: number[] = [];
-    let remaining = value;
-    do {
-        const byte = remaining % 0x80;
-        remaining = Math.floor(remaining / 0x80);
-        bytes.push(remaining > 0 ? byte | 0x80 : byte);
-    } while (remaining > 0);
-    return Buffer.from(bytes);
+  const bytes: number[] = [];
+  let remaining = value;
+  do {
+    const byte = remaining % 0x80;
+    remaining = Math.floor(remaining / 0x80);
+    bytes.push(remaining > 0 ? byte | 0x80 : byte);
+  } while (remaining > 0);
+  return Buffer.from(bytes);
 }
 
 /**
@@ -50,23 +50,23 @@ function encodeVarint(value: number): Buffer {
  * schemas, and a binary Res_value of 0xffffffff really does mean -1 there.)
  */
 function encodeSignedVarint(value: number): Buffer {
-    if (value >= 0) {
-        return encodeVarint(value);
-    }
-    let remaining = BigInt.asUintN(64, BigInt(value));
-    const bytes: number[] = [];
-    do {
-        const byte = Number(remaining & 0x7fn);
-        remaining >>= 7n;
-        bytes.push(remaining > 0n ? byte | 0x80 : byte);
-    } while (remaining > 0n);
-    return Buffer.from(bytes);
+  if (value >= 0) {
+    return encodeVarint(value);
+  }
+  let remaining = BigInt.asUintN(64, BigInt(value));
+  const bytes: number[] = [];
+  do {
+    const byte = Number(remaining & 0x7fn);
+    remaining >>= 7n;
+    bytes.push(remaining > 0n ? byte | 0x80 : byte);
+  } while (remaining > 0n);
+  return Buffer.from(bytes);
 }
 
 function assertField(field: number): void {
-    if (!Number.isInteger(field) || field < 1 || field > MAX_FIELD_NUMBER) {
-        throw new Error(`Invalid protobuf field number: ${field}`);
-    }
+  if (!Number.isInteger(field) || field < 1 || field > MAX_FIELD_NUMBER) {
+    throw new Error(`Invalid protobuf field number: ${field}`);
+  }
 }
 
 /**
@@ -75,80 +75,92 @@ function assertField(field: number): void {
  * message is the file's whole content).
  */
 export class ProtoWriter {
-    private readonly parts: Buffer[] = [];
+  private readonly parts: Buffer[] = [];
 
-    private push(field: number, wireType: number, payload: Buffer): this {
-        assertField(field);
-        this.parts.push(encodeVarint(field * 8 + wireType), payload);
-        return this;
-    }
+  private push(field: number, wireType: number, payload: Buffer): this {
+    assertField(field);
+    this.parts.push(encodeVarint(field * 8 + wireType), payload);
+    return this;
+  }
 
-    public uint32(field: number, value: number): this {
-        if (!Number.isInteger(value) || value < 0 || value > MAX_UINT32) {
-            throw new Error(`Field ${field} is not a uint32: ${value}`);
-        }
-        return value === 0 ? this : this.push(field, WIRE_VARINT, encodeVarint(value));
+  public uint32(field: number, value: number): this {
+    if (!Number.isInteger(value) || value < 0 || value > MAX_UINT32) {
+      throw new Error(`Field ${field} is not a uint32: ${value}`);
     }
+    return value === 0 ? this : this.push(field, WIRE_VARINT, encodeVarint(value));
+  }
 
-    public int32(field: number, value: number): this {
-        if (!Number.isInteger(value) || value < MIN_INT32 || value > 0x7fffffff) {
-            throw new Error(`Field ${field} is not an int32: ${value}`);
-        }
-        return value === 0 ? this : this.push(field, WIRE_VARINT, encodeSignedVarint(value));
+  public int32(field: number, value: number): this {
+    if (!Number.isInteger(value) || value < MIN_INT32 || value > 0x7fffffff) {
+      throw new Error(`Field ${field} is not an int32: ${value}`);
     }
+    return value === 0 ? this : this.push(field, WIRE_VARINT, encodeSignedVarint(value));
+  }
 
-    /** Enum fields are varints; the zero-valued member is always "UNSET". */
-    public enumValue(field: number, value: number): this {
-        return this.uint32(field, value);
-    }
+  /** Enum fields are varints; the zero-valued member is always "UNSET". */
+  public enumValue(field: number, value: number): this {
+    return this.uint32(field, value);
+  }
 
-    public bool(field: number, value: boolean): this {
-        return value ? this.push(field, WIRE_VARINT, encodeVarint(1)) : this;
-    }
+  public bool(field: number, value: boolean): this {
+    return value ? this.push(field, WIRE_VARINT, encodeVarint(1)) : this;
+  }
 
-    public float(field: number, value: number): this {
-        if (value === 0) {
-            return this;
-        }
-        const payload = Buffer.alloc(4);
-        payload.writeFloatLE(value, 0);
-        return this.push(field, WIRE_FIXED32, payload);
+  public float(field: number, value: number): this {
+    if (value === 0) {
+      return this;
     }
+    const payload = Buffer.alloc(4);
+    payload.writeFloatLE(value, 0);
+    return this.push(field, WIRE_FIXED32, payload);
+  }
 
-    public string(field: number, value: string): this {
-        return value === "" ? this : this.bytes(field, Buffer.from(value, "utf8"));
-    }
+  public string(field: number, value: string): this {
+    return value === "" ? this : this.bytes(field, Buffer.from(value, "utf8"));
+  }
 
-    /** Raw length-delimited bytes; an empty value is a default and is omitted. */
-    public bytes(field: number, value: Buffer): this {
-        if (value.length === 0) {
-            return this;
-        }
-        return this.push(field, WIRE_LENGTH_DELIMITED, Buffer.concat([encodeVarint(value.length), value]));
+  /** Raw length-delimited bytes; an empty value is a default and is omitted. */
+  public bytes(field: number, value: Buffer): this {
+    if (value.length === 0) {
+      return this;
     }
+    return this.push(
+      field,
+      WIRE_LENGTH_DELIMITED,
+      Buffer.concat([encodeVarint(value.length), value])
+    );
+  }
 
-    /**
-     * A present submessage. Always emitted, empty body included - see the file
-     * header: presence is the payload for several fields in these schemas.
-     */
-    public message(field: number, build: (writer: ProtoWriter) => void): this {
-        const body = encodeMessage(build);
-        return this.push(field, WIRE_LENGTH_DELIMITED, Buffer.concat([encodeVarint(body.length), body]));
-    }
+  /**
+   * A present submessage. Always emitted, empty body included - see the file
+   * header: presence is the payload for several fields in these schemas.
+   */
+  public message(field: number, build: (writer: ProtoWriter) => void): this {
+    const body = encodeMessage(build);
+    return this.push(
+      field,
+      WIRE_LENGTH_DELIMITED,
+      Buffer.concat([encodeVarint(body.length), body])
+    );
+  }
 
-    /** A present submessage whose body is already encoded. */
-    public messageBytes(field: number, body: Buffer): this {
-        return this.push(field, WIRE_LENGTH_DELIMITED, Buffer.concat([encodeVarint(body.length), body]));
-    }
+  /** A present submessage whose body is already encoded. */
+  public messageBytes(field: number, body: Buffer): this {
+    return this.push(
+      field,
+      WIRE_LENGTH_DELIMITED,
+      Buffer.concat([encodeVarint(body.length), body])
+    );
+  }
 
-    public toBuffer(): Buffer {
-        return Buffer.concat(this.parts);
-    }
+  public toBuffer(): Buffer {
+    return Buffer.concat(this.parts);
+  }
 }
 
 /** Encode one message body. */
 export function encodeMessage(build: (writer: ProtoWriter) => void): Buffer {
-    const writer = new ProtoWriter();
-    build(writer);
-    return writer.toBuffer();
+  const writer = new ProtoWriter();
+  build(writer);
+  return writer.toBuffer();
 }

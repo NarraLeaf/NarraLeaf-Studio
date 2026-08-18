@@ -25,25 +25,22 @@ import { isWindowsPlatform, win32 } from "@shared/utils/path";
  * so `/games/a\` is not `/games/a`, and case is significant.
  */
 export function normalizeProjectPath(projectPath: string): string {
-    return projectPathIdentity(projectPath, isWindowsPlatform);
+  return projectPathIdentity(projectPath, isWindowsPlatform);
 }
 
 /** {@link normalizeProjectPath} with the platform named, so both sets of rules can be tested. */
 export function projectPathIdentity(projectPath: string, windows: boolean): string {
-    // A hand-edited `global.json` can hold anything. Throwing here would take out the window
-    // lookup, and with it every way to open a project at all.
-    if (typeof projectPath !== "string" || projectPath === "") {
-        return "";
-    }
-    if (!windows) {
-        return projectPath.replace(/\/+$/, "");
-    }
-    // `win32.normalize` collapses repeated separators and `.`/`..` while leaving the UNC root's
-    // leading pair alone; it writes back whichever separator the input used, so fold afterwards.
-    return win32.normalize(projectPath)
-        .replace(/\//g, "\\")
-        .replace(/\\+$/, "")
-        .toLowerCase();
+  // A hand-edited `global.json` can hold anything. Throwing here would take out the window
+  // lookup, and with it every way to open a project at all.
+  if (typeof projectPath !== "string" || projectPath === "") {
+    return "";
+  }
+  if (!windows) {
+    return projectPath.replace(/\/+$/, "");
+  }
+  // `win32.normalize` collapses repeated separators and `.`/`..` while leaving the UNC root's
+  // leading pair alone; it writes back whichever separator the input used, so fold afterwards.
+  return win32.normalize(projectPath).replace(/\//g, "\\").replace(/\\+$/, "").toLowerCase();
 }
 
 /**
@@ -54,7 +51,7 @@ export function projectPathIdentity(projectPath: string, windows: boolean): stri
  * Windows, which would have renamed "Game One" to "game one" in every list that shows it.
  */
 function stripTrailingSeparators(path: string): string {
-    return path.replace(/[\\/]+$/, "");
+  return path.replace(/[\\/]+$/, "");
 }
 
 /** Last resort when a record has neither a usable name nor a usable path. */
@@ -74,14 +71,17 @@ const UNNAMED_PROJECT = "Untitled Project";
  * its author calls it anyway. Used on the way in AND on the way out (see `RecentlyOpened` and
  * `useRecentProjects`), which is what heals a store that is already holding a broken record.
  */
-export function recentProjectDisplayName(project: { name?: string | null; path?: string | null }): string {
-    const named = typeof project.name === "string" ? project.name.trim() : "";
-    if (named) {
-        return named;
-    }
-    const path = typeof project.path === "string" ? stripTrailingSeparators(project.path.trim()) : "";
-    const folder = path.split(/[\\/]/).pop()?.trim();
-    return folder || path || UNNAMED_PROJECT;
+export function recentProjectDisplayName(project: {
+  name?: string | null;
+  path?: string | null;
+}): string {
+  const named = typeof project.name === "string" ? project.name.trim() : "";
+  if (named) {
+    return named;
+  }
+  const path = typeof project.path === "string" ? stripTrailingSeparators(project.path.trim()) : "";
+  const folder = path.split(/[\\/]/).pop()?.trim();
+  return folder || path || UNNAMED_PROJECT;
 }
 
 /**
@@ -97,18 +97,20 @@ export function recentProjectDisplayName(project: { name?: string | null; path?:
  * offering both until one of them happened to be opened again. The list is newest-first, so the
  * first spelling of a project wins - the one it was last opened by.
  */
-export function withRecentProjectNames(projects: readonly RecentlyOpenedProject[]): RecentlyOpenedProject[] {
-    const seen = new Set<string>();
-    const unique: RecentlyOpenedProject[] = [];
-    for (const project of projects) {
-        const identity = normalizeProjectPath(project?.path);
-        if (seen.has(identity)) {
-            continue;
-        }
-        seen.add(identity);
-        unique.push({ ...project, name: recentProjectDisplayName(project) });
+export function withRecentProjectNames(
+  projects: readonly RecentlyOpenedProject[]
+): RecentlyOpenedProject[] {
+  const seen = new Set<string>();
+  const unique: RecentlyOpenedProject[] = [];
+  for (const project of projects) {
+    const identity = normalizeProjectPath(project?.path);
+    if (seen.has(identity)) {
+      continue;
     }
-    return unique;
+    seen.add(identity);
+    unique.push({ ...project, name: recentProjectDisplayName(project) });
+  }
+  return unique;
 }
 
 /**
@@ -118,17 +120,17 @@ export function withRecentProjectNames(projects: readonly RecentlyOpenedProject[
  * the home directory, so it simply shows the full path.
  */
 export function collapseHomePath(path: string, homeDir?: string): string {
-    if (!homeDir) {
-        return path;
-    }
-    const home = stripTrailingSeparators(homeDir);
-    if (path === home) {
-        return "~";
-    }
-    if (path.startsWith(home + "/") || path.startsWith(home + "\\")) {
-        return "~" + path.slice(home.length);
-    }
+  if (!homeDir) {
     return path;
+  }
+  const home = stripTrailingSeparators(homeDir);
+  if (path === home) {
+    return "~";
+  }
+  if (path.startsWith(home + "/") || path.startsWith(home + "\\")) {
+    return "~" + path.slice(home.length);
+  }
+  return path;
 }
 
 /**
@@ -137,5 +139,5 @@ export function collapseHomePath(path: string, homeDir?: string): string {
  * switcher shows name and path on separate lines instead and does not use this.
  */
 export function formatRecentProjectLabel(project: RecentlyOpenedProject, homeDir?: string): string {
-    return `${project.name} (${collapseHomePath(project.path, homeDir)})`;
+  return `${project.name} (${collapseHomePath(project.path, homeDir)})`;
 }

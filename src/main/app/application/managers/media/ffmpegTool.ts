@@ -50,15 +50,15 @@ export type FfmpegBinaryName = "ffmpeg" | "ffprobe";
  * stub.
  */
 export type FfmpegResolverApp = {
-    isPackaged(): boolean;
-    resolveResource(p: string): string;
+  isPackaged(): boolean;
+  resolveResource(p: string): string;
 };
 
 export type FfmpegHostTarget = {
-    /** Directory name under `resources/ffmpeg/`, keyed by `process.platform`. */
-    platformKey: string;
-    /** Suffix the staging script writes the binaries under. */
-    executableSuffix: string;
+  /** Directory name under `resources/ffmpeg/`, keyed by `process.platform`. */
+  platformKey: string;
+  /** Suffix the staging script writes the binaries under. */
+  executableSuffix: string;
 };
 
 /**
@@ -85,42 +85,42 @@ export type FfmpegHostTarget = {
  * Kept in step with the ASSETS table in `project/build/prepare-ffmpeg.js`.
  */
 export function ffmpegHostTarget(
-    platform: string = process.platform,
-    arch: string = process.arch,
+  platform: string = process.platform,
+  arch: string = process.arch
 ): FfmpegHostTarget | null {
-    if (platform === "win32" && arch === "x64") {
-        return { platformKey: "win32", executableSuffix: ".exe" };
-    }
-    if (platform === "linux" && arch === "x64") {
-        return { platformKey: "linux", executableSuffix: "" };
-    }
-    if (platform === "darwin" && arch === "arm64") {
-        return { platformKey: "darwin", executableSuffix: "" };
-    }
-    return null;
+  if (platform === "win32" && arch === "x64") {
+    return { platformKey: "win32", executableSuffix: ".exe" };
+  }
+  if (platform === "linux" && arch === "x64") {
+    return { platformKey: "linux", executableSuffix: "" };
+  }
+  if (platform === "darwin" && arch === "arm64") {
+    return { platformKey: "darwin", executableSuffix: "" };
+  }
+  return null;
 }
 
 export type FfmpegUnavailableReason =
-    /** No LGPL build exists for this platform/arch pair; nothing was ever staged. */
-    | "host-unsupported"
-    /** Supported host, but the binary is not on disk (the staging step never ran). */
-    | "not-staged";
+  /** No LGPL build exists for this platform/arch pair; nothing was ever staged. */
+  | "host-unsupported"
+  /** Supported host, but the binary is not on disk (the staging step never ran). */
+  | "not-staged";
 
 export type FfmpegTool =
-    | { available: true; path: string }
-    | {
-        available: false;
-        reason: FfmpegUnavailableReason;
-        /** One sentence for a log. UI copy is the caller's business. */
-        detail: string;
-        /** Absolute paths that were looked at, in order. Empty when the host is unsupported. */
-        searched: string[];
+  | { available: true; path: string }
+  | {
+      available: false;
+      reason: FfmpegUnavailableReason;
+      /** One sentence for a log. UI copy is the caller's business. */
+      detail: string;
+      /** Absolute paths that were looked at, in order. Empty when the host is unsupported. */
+      searched: string[];
     };
 
 export type FfmpegResolveOptions = {
-    platform?: string;
-    arch?: string;
-    env?: Record<string, string | undefined>;
+  platform?: string;
+  arch?: string;
+  env?: Record<string, string | undefined>;
 };
 
 /**
@@ -130,27 +130,27 @@ export type FfmpegResolveOptions = {
  * touching a tracked path.
  */
 export function ffmpegSearchPaths(
-    app: FfmpegResolverApp,
-    target: FfmpegHostTarget,
-    binary: FfmpegBinaryName,
+  app: FfmpegResolverApp,
+  target: FfmpegHostTarget,
+  binary: FfmpegBinaryName
 ): string[] {
-    const fileName = `${binary}${target.executableSuffix}`;
-    const staged = app.resolveResource(path.join("ffmpeg", target.platformKey, fileName));
-    if (app.isPackaged()) {
-        return [staged];
-    }
-    return [
-        staged,
-        app.resolveResource(path.join("..", ".dev", "cache", "ffmpeg", target.platformKey, fileName)),
-    ];
+  const fileName = `${binary}${target.executableSuffix}`;
+  const staged = app.resolveResource(path.join("ffmpeg", target.platformKey, fileName));
+  if (app.isPackaged()) {
+    return [staged];
+  }
+  return [
+    staged,
+    app.resolveResource(path.join("..", ".dev", "cache", "ffmpeg", target.platformKey, fileName))
+  ];
 }
 
 async function isFile(candidate: string): Promise<boolean> {
-    try {
-        return (await fs.stat(candidate)).isFile();
-    } catch {
-        return false;
-    }
+  try {
+    return (await fs.stat(candidate)).isFile();
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -161,56 +161,56 @@ async function isFile(candidate: string): Promise<boolean> {
  * the import flow needs a verdict while a dialog is open rather than an exception.
  */
 export async function resolveFfmpegBinary(
-    app: FfmpegResolverApp,
-    binary: FfmpegBinaryName,
-    options: FfmpegResolveOptions = {},
+  app: FfmpegResolverApp,
+  binary: FfmpegBinaryName,
+  options: FfmpegResolveOptions = {}
 ): Promise<FfmpegTool> {
-    const platform = options.platform ?? process.platform;
-    const arch = options.arch ?? process.arch;
-    const env = options.env ?? process.env;
+  const platform = options.platform ?? process.platform;
+  const arch = options.arch ?? process.arch;
+  const env = options.env ?? process.env;
 
-    const overrideDir = env[FFMPEG_DIR_ENV]?.trim();
-    if (overrideDir) {
-        // The suffix follows the *host*, not the staging table: the override exists precisely for
-        // hosts with no row, and on Windows the binary is still `.exe` there.
-        const suffix = platform === "win32" ? ".exe" : "";
-        const candidate = path.join(overrideDir, `${binary}${suffix}`);
-        if (await isFile(candidate)) {
-            return { available: true, path: candidate };
-        }
-        return {
-            available: false,
-            reason: "not-staged",
-            detail: `${FFMPEG_DIR_ENV} points at ${overrideDir}, which holds no ${binary}${suffix}`,
-            searched: [candidate],
-        };
-    }
-
-    const target = ffmpegHostTarget(platform, arch);
-    if (target === null) {
-        return {
-            available: false,
-            reason: "host-unsupported",
-            detail:
-                `no LGPL-licensed FFmpeg build is vendored for ${platform}-${arch}, so media conversion `
-                + `is unavailable here; set ${FFMPEG_DIR_ENV} to a directory holding ffmpeg and ffprobe `
-                + "to enable it",
-            searched: [],
-        };
-    }
-
-    const searched = ffmpegSearchPaths(app, target, binary);
-    for (const candidate of searched) {
-        if (await isFile(candidate)) {
-            return { available: true, path: candidate };
-        }
+  const overrideDir = env[FFMPEG_DIR_ENV]?.trim();
+  if (overrideDir) {
+    // The suffix follows the *host*, not the staging table: the override exists precisely for
+    // hosts with no row, and on Windows the binary is still `.exe` there.
+    const suffix = platform === "win32" ? ".exe" : "";
+    const candidate = path.join(overrideDir, `${binary}${suffix}`);
+    if (await isFile(candidate)) {
+      return { available: true, path: candidate };
     }
     return {
-        available: false,
-        reason: "not-staged",
-        detail:
-            `the bundled ${binary} is missing (looked in ${searched.join(", ")}); `
-            + "run project/build/prepare-ffmpeg.js to stage it",
-        searched,
+      available: false,
+      reason: "not-staged",
+      detail: `${FFMPEG_DIR_ENV} points at ${overrideDir}, which holds no ${binary}${suffix}`,
+      searched: [candidate]
     };
+  }
+
+  const target = ffmpegHostTarget(platform, arch);
+  if (target === null) {
+    return {
+      available: false,
+      reason: "host-unsupported",
+      detail:
+        `no LGPL-licensed FFmpeg build is vendored for ${platform}-${arch}, so media conversion ` +
+        `is unavailable here; set ${FFMPEG_DIR_ENV} to a directory holding ffmpeg and ffprobe ` +
+        "to enable it",
+      searched: []
+    };
+  }
+
+  const searched = ffmpegSearchPaths(app, target, binary);
+  for (const candidate of searched) {
+    if (await isFile(candidate)) {
+      return { available: true, path: candidate };
+    }
+  }
+  return {
+    available: false,
+    reason: "not-staged",
+    detail:
+      `the bundled ${binary} is missing (looked in ${searched.join(", ")}); ` +
+      "run project/build/prepare-ffmpeg.js to stage it",
+    searched
+  };
 }

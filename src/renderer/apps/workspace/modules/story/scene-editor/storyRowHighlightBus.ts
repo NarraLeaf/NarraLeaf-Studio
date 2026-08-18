@@ -11,18 +11,18 @@ type Listener = (highlight: DevModeStoryRowHighlight) => void;
 const listeners = new Set<Listener>();
 
 export function emitStoryRowHighlight(highlight: DevModeStoryRowHighlight): void {
-    for (const listener of listeners) {
-        try {
-            listener(highlight);
-        } catch {
-            // A misbehaving subscriber must not stop the others from following the play head.
-        }
+  for (const listener of listeners) {
+    try {
+      listener(highlight);
+    } catch {
+      // A misbehaving subscriber must not stop the others from following the play head.
     }
+  }
 }
 
 export function subscribeStoryRowHighlight(listener: Listener): () => void {
-    listeners.add(listener);
-    return () => {
-        listeners.delete(listener);
-    };
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }

@@ -2,9 +2,9 @@ import { Logger } from "@shared/utils/logger";
 import type { DownloadRewriteRule } from "@shared/types/downloadSource";
 import { DOWNLOAD_REWRITES_KEY } from "@shared/types/downloadSource";
 import {
-    describeRewrite,
-    normalizeRewriteRules,
-    rewriteDownloadUrl,
+  describeRewrite,
+  normalizeRewriteRules,
+  rewriteDownloadUrl
 } from "@shared/utils/downloadSource";
 
 /**
@@ -32,19 +32,19 @@ let source: RuleSource | null = null;
 
 /** Wired once by `App`, from global state. Tests set their own. */
 export function setDownloadRewriteSource(fn: RuleSource | null): void {
-    source = fn;
+  source = fn;
 }
 
 /** The rules as stored, normalized. Never throws - an unreadable store means no rewrites. */
 export function currentDownloadRewrites(): DownloadRewriteRule[] {
-    if (!source) {
-        return [];
-    }
-    try {
-        return normalizeRewriteRules(source());
-    } catch {
-        return [];
-    }
+  if (!source) {
+    return [];
+  }
+  try {
+    return normalizeRewriteRules(source());
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -55,16 +55,16 @@ export function currentDownloadRewrites(): DownloadRewriteRule[] {
  * diagnostics bundle carries.
  */
 export function applyDownloadRewrite(url: string, log?: (message: string) => void): string {
-    const outcome = rewriteDownloadUrl(url, currentDownloadRewrites());
-    const line = describeRewrite(url, outcome);
-    if (line) {
-        if (log) {
-            log(line);
-        } else {
-            logger.info(`[Network] ${line}`);
-        }
+  const outcome = rewriteDownloadUrl(url, currentDownloadRewrites());
+  const line = describeRewrite(url, outcome);
+  if (line) {
+    if (log) {
+      log(line);
+    } else {
+      logger.info(`[Network] ${line}`);
     }
-    return outcome.url;
+  }
+  return outcome.url;
 }
 
 /** The global-state key this module reads, re-exported so callers do not restate the string. */

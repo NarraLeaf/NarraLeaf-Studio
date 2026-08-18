@@ -18,43 +18,40 @@ import type { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
  */
 
 export async function createProjectFromWizard(): Promise<string | null> {
-    const result = await getInterface().app.launchProjectWizard({});
-    if (!result.success) {
-        return result.error ?? "";
-    }
-    if (!result.data?.created) {
-        // User cancelled the wizard.
-        return null;
-    }
-
-    await getInterface().workspace.launch(
-        { projectPath: result.data.projectPath },
-        true, // Close launcher window after opening workspace
-    );
+  const result = await getInterface().app.launchProjectWizard({});
+  if (!result.success) {
+    return result.error ?? "";
+  }
+  if (!result.data?.created) {
+    // User cancelled the wizard.
     return null;
+  }
+
+  await getInterface().workspace.launch(
+    { projectPath: result.data.projectPath },
+    true // Close launcher window after opening workspace
+  );
+  return null;
 }
 
 export async function openProjectFromFolder(): Promise<string | null> {
-    const result = await getInterface().selectFolder();
-    if (!result.success) {
-        return result.error ?? "";
-    }
-    if (!result.data.path) {
-        // User cancelled the folder picker.
-        return null;
-    }
-
-    await getInterface().workspace.launch(
-        { projectPath: result.data.path },
-        true,
-    );
+  const result = await getInterface().selectFolder();
+  if (!result.success) {
+    return result.error ?? "";
+  }
+  if (!result.data.path) {
+    // User cancelled the folder picker.
     return null;
+  }
+
+  await getInterface().workspace.launch({ projectPath: result.data.path }, true);
+  return null;
 }
 
 export type RelocateProjectResult =
-    | { status: "relocated" }
-    | { status: "cancelled" }
-    | { status: "error"; message: string };
+  | { status: "relocated" }
+  | { status: "cancelled" }
+  | { status: "error"; message: string };
 
 /**
  * Point a recent-list entry at where its project lives now, then open it.
@@ -67,25 +64,30 @@ export type RelocateProjectResult =
  * new path anyway (see WorkspaceContext) - and removing has to happen first, since launching
  * retires the launcher window and anything queued after it may never run.
  */
-export async function relocateRecentProject(project: RecentlyOpenedProject): Promise<RelocateProjectResult> {
-    const picked = await getInterface().selectFolder();
-    if (!picked.success) {
-        return { status: "error", message: picked.error || translate("launcher.projects.errorOpenFolder") };
-    }
-    if (!picked.data.path) {
-        return { status: "cancelled" };
-    }
+export async function relocateRecentProject(
+  project: RecentlyOpenedProject
+): Promise<RelocateProjectResult> {
+  const picked = await getInterface().selectFolder();
+  if (!picked.success) {
+    return {
+      status: "error",
+      message: picked.error || translate("launcher.projects.errorOpenFolder")
+    };
+  }
+  if (!picked.data.path) {
+    return { status: "cancelled" };
+  }
 
-    const newPath = picked.data.path;
-    const listed = await getInterface().fs.list(newPath);
-    if (!listed.success || !listed.data.ok) {
-        return { status: "error", message: translate("launcher.projects.errorOpenFolder") };
-    }
-    if (!findProjectConfigFileName(listed.data.data)) {
-        return { status: "error", message: translate("launcher.projects.missing.errorNotAProject") };
-    }
+  const newPath = picked.data.path;
+  const listed = await getInterface().fs.list(newPath);
+  if (!listed.success || !listed.data.ok) {
+    return { status: "error", message: translate("launcher.projects.errorOpenFolder") };
+  }
+  if (!findProjectConfigFileName(listed.data.data)) {
+    return { status: "error", message: translate("launcher.projects.missing.errorNotAProject") };
+  }
 
-    await getInterface().app.removeRecentProject(project.path);
-    await getInterface().workspace.launch({ projectPath: newPath }, true);
-    return { status: "relocated" };
+  await getInterface().app.removeRecentProject(project.path);
+  await getInterface().workspace.launch({ projectPath: newPath }, true);
+  return { status: "relocated" };
 }

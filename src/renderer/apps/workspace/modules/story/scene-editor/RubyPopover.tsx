@@ -22,118 +22,123 @@ import { useTranslation } from "@/lib/i18n";
  * behind is work lost, and there is no second copy of it anywhere.
  */
 export function RubyPopover(props: {
-    anchor: { top: number; left: number; bottom: number };
-    /**
-     * The button this opened from. It counts as inside for light dismiss, the way the palette's
-     * trigger does: without that, pressing it to close fires the outside-pointerdown first, and the
-     * button's own handler then finds the popover already gone and opens a second one.
-     */
-    anchorRef?: RefObject<HTMLElement | null>;
-    /** The reading already on the text, or undefined when there is none yet. */
-    value?: string;
-    /** Write the draft. Trimmed, or null when the author emptied the field. */
-    onCommit: (ruby: string | null) => void;
-    /** Remove the reading. Only offered when there is one. Closes on its own. */
-    onRemove: () => void;
-    /** Take the popover down. The caller clears the state that renders it. */
-    onClose: () => void;
+  anchor: { top: number; left: number; bottom: number };
+  /**
+   * The button this opened from. It counts as inside for light dismiss, the way the palette's
+   * trigger does: without that, pressing it to close fires the outside-pointerdown first, and the
+   * button's own handler then finds the popover already gone and opens a second one.
+   */
+  anchorRef?: RefObject<HTMLElement | null>;
+  /** The reading already on the text, or undefined when there is none yet. */
+  value?: string;
+  /** Write the draft. Trimmed, or null when the author emptied the field. */
+  onCommit: (ruby: string | null) => void;
+  /** Remove the reading. Only offered when there is one. Closes on its own. */
+  onRemove: () => void;
+  /** Take the popover down. The caller clears the state that renders it. */
+  onClose: () => void;
 }) {
-    const { t } = useTranslation();
-    const [draft, setDraft] = useState(props.value ?? "");
-    const panelRef = useRef<HTMLDivElement | null>(null);
-    /**
-     * The draft and the callback as the unmount effect sees them. That effect is bound once - it has
-     * to be, or every keystroke would tear it down and rebuild it, and a close landing in that gap
-     * would commit nothing - so what it reads cannot be a closure over this render.
-     */
-    const draftRef = useRef(draft);
-    draftRef.current = draft;
-    const commitRef = useRef(props.onCommit);
-    commitRef.current = props.onCommit;
-    /** Set by the two exits that have already written their own outcome. */
-    const settledRef = useRef(false);
+  const { t } = useTranslation();
+  const [draft, setDraft] = useState(props.value ?? "");
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * The draft and the callback as the unmount effect sees them. That effect is bound once - it has
+   * to be, or every keystroke would tear it down and rebuild it, and a close landing in that gap
+   * would commit nothing - so what it reads cannot be a closure over this render.
+   */
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const commitRef = useRef(props.onCommit);
+  commitRef.current = props.onCommit;
+  /** Set by the two exits that have already written their own outcome. */
+  const settledRef = useRef(false);
 
-    useEffect(() => () => {
-        if (!settledRef.current) {
-            commitRef.current(draftRef.current.trim() || null);
-        }
-    }, []);
+  useEffect(
+    () => () => {
+      if (!settledRef.current) {
+        commitRef.current(draftRef.current.trim() || null);
+      }
+    },
+    []
+  );
 
-    useEffect(() => {
-        const onKey = (event: KeyboardEvent) => {
-            if (event.key !== "Escape") {
-                return;
-            }
-            // One rung per press: this takes the popover down and leaves the text as it was. The
-            // `stopPropagation` is because the row's own Escape leaves edit mode entirely.
-            event.stopPropagation();
-            settledRef.current = true;
-            props.onClose();
-        };
-        window.addEventListener("keydown", onKey, true);
-        return () => window.removeEventListener("keydown", onKey, true);
-    }, [props]);
-
-    // Light dismiss: close on any pointerdown outside the panel, letting the event through to
-    // whatever was clicked so leaving the popover keeps the author's place. The trigger counts as
-    // inside - closing from there is the button's job, and doing it twice reopens the popover.
-    useEffect(() => {
-        const onDown = (event: MouseEvent) => {
-            const target = event.target as Node;
-            if (panelRef.current?.contains(target) || props.anchorRef?.current?.contains(target)) {
-                return;
-            }
-            props.onClose();
-        };
-        globalThis.document.addEventListener("mousedown", onDown, true);
-        return () => globalThis.document.removeEventListener("mousedown", onDown, true);
-    }, [props]);
-
-    const onInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-        // The field sits inside the row being edited and `KeybindingService` listens on `window`,
-        // where Enter commits the row and Tab indents it. Both have to stop here, or typing a reading
-        // would end the line it annotates.
-        event.stopPropagation();
-        if (event.key === "Enter") {
-            event.preventDefault();
-            props.onClose();
-        }
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      // One rung per press: this takes the popover down and leaves the text as it was. The
+      // `stopPropagation` is because the row's own Escape leaves edit mode entirely.
+      event.stopPropagation();
+      settledRef.current = true;
+      props.onClose();
     };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [props]);
 
-    const top = Math.min(props.anchor.bottom + 6, window.innerHeight - 140);
-    const left = Math.min(props.anchor.left, window.innerWidth - 236);
+  // Light dismiss: close on any pointerdown outside the panel, letting the event through to
+  // whatever was clicked so leaving the popover keeps the author's place. The trigger counts as
+  // inside - closing from there is the button's job, and doing it twice reopens the popover.
+  useEffect(() => {
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (panelRef.current?.contains(target) || props.anchorRef?.current?.contains(target)) {
+        return;
+      }
+      props.onClose();
+    };
+    globalThis.document.addEventListener("mousedown", onDown, true);
+    return () => globalThis.document.removeEventListener("mousedown", onDown, true);
+  }, [props]);
 
-    return createPortal(
-        <div
-            ref={panelRef}
-            className="fixed z-[70] w-56 rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl"
-            style={{ top, left: Math.max(8, left) }}
-            onMouseDown={event => event.stopPropagation()}
+  const onInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    // The field sits inside the row being edited and `KeybindingService` listens on `window`,
+    // where Enter commits the row and Tab indents it. Both have to stop here, or typing a reading
+    // would end the line it annotates.
+    event.stopPropagation();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      props.onClose();
+    }
+  };
+
+  const top = Math.min(props.anchor.bottom + 6, window.innerHeight - 140);
+  const left = Math.min(props.anchor.left, window.innerWidth - 236);
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      className="fixed z-[70] w-56 rounded-lg border border-edge bg-surface-raised p-2 shadow-2xl"
+      style={{ top, left: Math.max(8, left) }}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
+      <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">
+        {t("story.ruby.title")}
+      </div>
+      <Input
+        size="sm"
+        fullWidth
+        autoFocus
+        value={draft}
+        placeholder={t("story.ruby.placeholder")}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={onInputKeyDown}
+      />
+      {props.value !== undefined ? (
+        <button
+          type="button"
+          className="mt-2 flex items-center gap-1 text-xs text-fg-muted transition-colors hover:text-danger"
+          onClick={() => {
+            settledRef.current = true;
+            props.onRemove();
+          }}
         >
-            <div className="mb-1.5 text-2xs font-medium tracking-wide text-fg-muted">{t("story.ruby.title")}</div>
-            <Input
-                size="sm"
-                fullWidth
-                autoFocus
-                value={draft}
-                placeholder={t("story.ruby.placeholder")}
-                onChange={event => setDraft(event.target.value)}
-                onKeyDown={onInputKeyDown}
-            />
-            {props.value !== undefined ? (
-                <button
-                    type="button"
-                    className="mt-2 flex items-center gap-1 text-xs text-fg-muted transition-colors hover:text-danger"
-                    onClick={() => {
-                        settledRef.current = true;
-                        props.onRemove();
-                    }}
-                >
-                    <Trash2 className="h-3 w-3" />
-                    {t("story.ruby.remove")}
-                </button>
-            ) : null}
-        </div>,
-        document.body,
-    );
+          <Trash2 className="h-3 w-3" />
+          {t("story.ruby.remove")}
+        </button>
+      ) : null}
+    </div>,
+    document.body
+  );
 }

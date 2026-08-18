@@ -15,41 +15,41 @@ export type RunModeKind = "devMode" | "preview" | "production" | "test";
 
 /** The one mode currently surfaced by the status bar, or null when nothing is running. */
 export interface ActiveRunMode {
-    kind: RunModeKind;
-    /** Mode name shown before the divider. */
-    labelKey: TranslationKey;
-    /** Current phase shown after the divider. */
-    phaseKey: TranslationKey;
-    /** Transient work (show a spinner) rather than the steady "running" state. */
-    busy: boolean;
+  kind: RunModeKind;
+  /** Mode name shown before the divider. */
+  labelKey: TranslationKey;
+  /** Current phase shown after the divider. */
+  phaseKey: TranslationKey;
+  /** Transient work (show a spinner) rather than the steady "running" state. */
+  busy: boolean;
 }
 
 const PHASE = (name: string) => `workspace.shell.statusBar.phase.${name}` as TranslationKey;
 
 const DEV_MODE_PHASE: Partial<Record<DevModeStatus, TranslationKey>> = {
-    starting: PHASE("starting"),
-    compiling: PHASE("compiling"),
-    running: PHASE("running"),
-    reloading: PHASE("reloading"),
-    stopping: PHASE("stopping"),
+  starting: PHASE("starting"),
+  compiling: PHASE("compiling"),
+  running: PHASE("running"),
+  reloading: PHASE("reloading"),
+  stopping: PHASE("stopping")
 };
 
 const PREVIEW_PHASE: Partial<Record<PreviewStatus, TranslationKey>> = {
-    preparing: PHASE("preparing"),
-    compiling: PHASE("compiling"),
-    launching: PHASE("launching"),
-    running: PHASE("running"),
-    stopping: PHASE("stopping"),
+  preparing: PHASE("preparing"),
+  compiling: PHASE("compiling"),
+  launching: PHASE("launching"),
+  running: PHASE("running"),
+  stopping: PHASE("stopping")
 };
 
 const BUILD_PHASE: Partial<Record<GameBuildStatus, TranslationKey>> = {
-    preparing: PHASE("preparing"),
-    compiling: PHASE("compiling"),
-    packaging: PHASE("packaging"),
+  preparing: PHASE("preparing"),
+  compiling: PHASE("compiling"),
+  packaging: PHASE("packaging")
 };
 
 function isBuildActive(status: GameBuildStatus): boolean {
-    return status === "preparing" || status === "compiling" || status === "packaging";
+  return status === "preparing" || status === "compiling" || status === "packaging";
 }
 
 /**
@@ -66,84 +66,84 @@ function isBuildActive(status: GameBuildStatus): boolean {
  * name the thing the Stop button would actually stop.
  */
 export function useActiveRunMode(): ActiveRunMode | null {
-    const { context } = useWorkspace();
-    const [devStatus, setDevStatus] = useState<DevModeStatus>("idle");
-    const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
-    const [buildStatus, setBuildStatus] = useState<GameBuildStatus>("idle");
-    const [testRunning, setTestRunning] = useState(false);
+  const { context } = useWorkspace();
+  const [devStatus, setDevStatus] = useState<DevModeStatus>("idle");
+  const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
+  const [buildStatus, setBuildStatus] = useState<GameBuildStatus>("idle");
+  const [testRunning, setTestRunning] = useState(false);
 
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const devMode = context.services.get<DevModeService>(Services.DevMode);
-        setDevStatus(devMode.getStatus());
-        return devMode.onStatusChanged(setDevStatus);
-    }, [context]);
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const preview = context.services.get<PreviewService>(Services.Preview);
-        setPreviewStatus(preview.getStatus());
-        return preview.onStatusChanged(setPreviewStatus);
-    }, [context]);
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const build = context.services.get<BuildService>(Services.Build);
-        setBuildStatus(build.getStatus());
-        return build.onStateChanged(state => setBuildStatus(state.status));
-    }, [context]);
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const testRun = getTestRunService(context);
-        const sync = () => setTestRunning(testRun.getActiveRun() !== null);
-        sync();
-        return testRun.onChanged(sync);
-    }, [context]);
-
-    if (testRunning) {
-        return {
-            kind: "test",
-            labelKey: "test.statusBar.label",
-            // The one phase a run record can be in that is not terminal - and terminal states are
-            // reported by the report tab, not by a cell that is meant to vanish when nothing runs.
-            phaseKey: PHASE("running"),
-            // A test run is bounded work in progress rather than a steady state like a launched
-            // preview, so it spins.
-            busy: true,
-        };
+  useEffect(() => {
+    if (!context) {
+      return;
     }
-    if (isDevModeRuntimeActive(devStatus)) {
-        return {
-            kind: "devMode",
-            labelKey: "workspace.shell.statusBar.devMode",
-            phaseKey: DEV_MODE_PHASE[devStatus] ?? PHASE("running"),
-            busy: devStatus !== "running",
-        };
+    const devMode = context.services.get<DevModeService>(Services.DevMode);
+    setDevStatus(devMode.getStatus());
+    return devMode.onStatusChanged(setDevStatus);
+  }, [context]);
+
+  useEffect(() => {
+    if (!context) {
+      return;
     }
-    if (isPreviewRuntimeActive(previewStatus)) {
-        return {
-            kind: "preview",
-            labelKey: "workspace.shell.statusBar.preview",
-            phaseKey: PREVIEW_PHASE[previewStatus] ?? PHASE("running"),
-            busy: previewStatus !== "running",
-        };
+    const preview = context.services.get<PreviewService>(Services.Preview);
+    setPreviewStatus(preview.getStatus());
+    return preview.onStatusChanged(setPreviewStatus);
+  }, [context]);
+
+  useEffect(() => {
+    if (!context) {
+      return;
     }
-    if (isBuildActive(buildStatus)) {
-        return {
-            kind: "production",
-            labelKey: "workspace.shell.statusBar.production",
-            phaseKey: BUILD_PHASE[buildStatus] ?? PHASE("packaging"),
-            busy: true,
-        };
+    const build = context.services.get<BuildService>(Services.Build);
+    setBuildStatus(build.getStatus());
+    return build.onStateChanged((state) => setBuildStatus(state.status));
+  }, [context]);
+
+  useEffect(() => {
+    if (!context) {
+      return;
     }
-    return null;
+    const testRun = getTestRunService(context);
+    const sync = () => setTestRunning(testRun.getActiveRun() !== null);
+    sync();
+    return testRun.onChanged(sync);
+  }, [context]);
+
+  if (testRunning) {
+    return {
+      kind: "test",
+      labelKey: "test.statusBar.label",
+      // The one phase a run record can be in that is not terminal - and terminal states are
+      // reported by the report tab, not by a cell that is meant to vanish when nothing runs.
+      phaseKey: PHASE("running"),
+      // A test run is bounded work in progress rather than a steady state like a launched
+      // preview, so it spins.
+      busy: true
+    };
+  }
+  if (isDevModeRuntimeActive(devStatus)) {
+    return {
+      kind: "devMode",
+      labelKey: "workspace.shell.statusBar.devMode",
+      phaseKey: DEV_MODE_PHASE[devStatus] ?? PHASE("running"),
+      busy: devStatus !== "running"
+    };
+  }
+  if (isPreviewRuntimeActive(previewStatus)) {
+    return {
+      kind: "preview",
+      labelKey: "workspace.shell.statusBar.preview",
+      phaseKey: PREVIEW_PHASE[previewStatus] ?? PHASE("running"),
+      busy: previewStatus !== "running"
+    };
+  }
+  if (isBuildActive(buildStatus)) {
+    return {
+      kind: "production",
+      labelKey: "workspace.shell.statusBar.production",
+      phaseKey: BUILD_PHASE[buildStatus] ?? PHASE("packaging"),
+      busy: true
+    };
+  }
+  return null;
 }

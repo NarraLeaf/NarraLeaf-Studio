@@ -1,5 +1,10 @@
 import type { TranslationKey } from "@shared/i18n/catalog";
-import type { GameTestEvent, GameTestExit, GameTestExitReason, GameTestLogLevel } from "@shared/types/gameTest";
+import type {
+  GameTestEvent,
+  GameTestExit,
+  GameTestExitReason,
+  GameTestLogLevel
+} from "@shared/types/gameTest";
 import type { SearchJumpTarget } from "../workspace/services/search/searchIndexModel";
 
 /**
@@ -52,10 +57,10 @@ export type TestCategory = "integrity" | "runtime" | "compatibility" | "custom";
 
 /** Fixed presentation (and sort) order of categories. */
 export const TEST_CATEGORY_ORDER: readonly TestCategory[] = [
-    "integrity",
-    "runtime",
-    "compatibility",
-    "custom",
+  "integrity",
+  "runtime",
+  "compatibility",
+  "custom"
 ] as const;
 
 /**
@@ -74,12 +79,15 @@ export type TestPresentation = "headless" | "windowed";
  * API is nominally narrow but hands out a reference that reaches everything.
  */
 export type TestCapability =
-    /** Read the project's stories and scenes. Read-only by construction: there is no write half. */
-    | "project.read"
-    /** Launch, observe and stop a game process. Implies a window unless the launch asks otherwise. */
-    | "game.launch";
+  /** Read the project's stories and scenes. Read-only by construction: there is no write half. */
+  | "project.read"
+  /** Launch, observe and stop a game process. Implies a window unless the launch asks otherwise. */
+  | "game.launch";
 
-export const TEST_CAPABILITIES: readonly TestCapability[] = ["project.read", "game.launch"] as const;
+export const TEST_CAPABILITIES: readonly TestCapability[] = [
+  "project.read",
+  "game.launch"
+] as const;
 
 /**
  * An author-visible string.
@@ -89,17 +97,17 @@ export const TEST_CAPABILITIES: readonly TestCapability[] = ["project.read", "ga
  * space of its own and hands over whatever its own translator already produced.
  */
 export type TestText =
-    | { key: TranslationKey; params?: Record<string, string | number>; text?: undefined }
-    | { text: string; key?: undefined };
+  | { key: TranslationKey; params?: Record<string, string | number>; text?: undefined }
+  | { text: string; key?: undefined };
 
 /** Same ladder as the workspace console, so a test log line needs no translation at the boundary. */
 export type TestLogLevel = GameTestLogLevel;
 
 export type TestLogEntry = {
-    level: TestLogLevel;
-    message: TestText;
-    /** Milliseconds since epoch, stamped by the host when the line is accepted. */
-    timestamp: number;
+  level: TestLogLevel;
+  message: TestText;
+  /** Milliseconds since epoch, stamped by the host when the line is accepted. */
+  timestamp: number;
 };
 
 /**
@@ -110,25 +118,25 @@ export type TestLogEntry = {
  * the build uses rather than a fake fraction.
  */
 export type TestProgress = {
-    completed: number;
-    total?: number;
-    label?: TestText;
+  completed: number;
+  total?: number;
+  label?: TestText;
 };
 
 export type TestFindingSeverity = "error" | "warning" | "info";
 
 /** One piece of evidence. `target` reuses the global-search navigation layer, so the report tab's click-to-jump is existing machinery. */
 export type TestFinding = {
-    severity: TestFindingSeverity;
-    message: TestText;
-    target?: SearchJumpTarget;
+  severity: TestFindingSeverity;
+  message: TestText;
+  target?: SearchJumpTarget;
 };
 
 /** Error first, info last - the order findings are reported and rendered in. */
 export const TEST_FINDING_SEVERITY_ORDER: Record<TestFindingSeverity, number> = {
-    error: 0,
-    warning: 1,
-    info: 2,
+  error: 0,
+  warning: 1,
+  info: 2
 };
 
 /**
@@ -139,20 +147,20 @@ export const TEST_FINDING_SEVERITY_ORDER: Record<TestFindingSeverity, number> = 
  * before it starts should say so from `checkAvailability` instead, so the picker greys it out.
  */
 export type TestVerdict =
-    | { status: "passed"; summary?: TestText }
-    | { status: "failed"; summary: TestText }
-    | { status: "skipped"; summary: TestText };
+  | { status: "passed"; summary?: TestText }
+  | { status: "failed"; summary: TestText }
+  | { status: "skipped"; summary: TestText };
 
 /** Every state a run record can be in: what a test may claim, plus the three the host owns. */
 export type TestRunStatus = TestVerdict["status"] | "running" | "cancelled" | "errored";
 
 /** Terminal states, for the report tab's verdict banner and the status bar. */
 export const TEST_TERMINAL_STATUSES: readonly TestRunStatus[] = [
-    "passed",
-    "failed",
-    "skipped",
-    "cancelled",
-    "errored",
+  "passed",
+  "failed",
+  "skipped",
+  "cancelled",
+  "errored"
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -175,9 +183,9 @@ export type TestSceneRef = { id: string; name: string };
  * `services.ui.panels`. This handle exists so a *plugin* has a bounded way in.
  */
 export type TestProjectHandle = {
-    readonly projectPath: string;
-    listStories(): Promise<TestStoryRef[]>;
-    listScenes(storyId: string): Promise<TestSceneRef[]>;
+  readonly projectPath: string;
+  listStories(): Promise<TestStoryRef[]>;
+  listScenes(storyId: string): Promise<TestSceneRef[]>;
 };
 
 /**
@@ -194,21 +202,21 @@ export type TestGameExit = GameTestExit;
 export type TestGameEvent = GameTestEvent;
 
 export type TestGameLaunchOptions = {
-    /**
-     * `"blocked"` starts the game with no network access at all - the host applies it to the
-     * launched process, so a game that reaches for the network fails there rather than in a mock.
-     */
-    network?: "allow" | "blocked";
+  /**
+   * `"blocked"` starts the game with no network access at all - the host applies it to the
+   * launched process, so a game that reaches for the network fails there rather than in a mock.
+   */
+  network?: "allow" | "blocked";
 };
 
 export type TestGameSession = {
-    readonly id: string;
-    /** Returns an unsubscribe. Events emitted before the first listener are replayed to it. */
-    onEvent(listener: (event: TestGameEvent) => void): () => void;
-    /** Resolves once the process is gone, whatever the reason. Safe to call more than once. */
-    waitForExit(): Promise<TestGameExit>;
-    /** Graceful shutdown, then force. Resolves when the process is gone. */
-    stop(): Promise<void>;
+  readonly id: string;
+  /** Returns an unsubscribe. Events emitted before the first listener are replayed to it. */
+  onEvent(listener: (event: TestGameEvent) => void): () => void;
+  /** Resolves once the process is gone, whatever the reason. Safe to call more than once. */
+  waitForExit(): Promise<TestGameExit>;
+  /** Graceful shutdown, then force. Resolves when the process is gone. */
+  stop(): Promise<void>;
 };
 
 /**
@@ -219,7 +227,7 @@ export type TestGameSession = {
  * silently win.
  */
 export type TestGameHandle = {
-    launch(options?: TestGameLaunchOptions): Promise<TestGameSession>;
+  launch(options?: TestGameLaunchOptions): Promise<TestGameSession>;
 };
 
 // ---------------------------------------------------------------------------
@@ -227,53 +235,53 @@ export type TestGameHandle = {
 // ---------------------------------------------------------------------------
 
 export type TestRunContext = {
-    readonly runId: string;
-    readonly protocolVersion: typeof TEST_PROTOCOL_VERSION;
-    /**
-     * Aborted when the author cancels. A test that ignores it is killed anyway once its promise
-     * settles, but its findings are kept - a cancelled run is still evidence.
-     */
-    readonly signal: AbortSignal;
-    log(level: TestLogLevel, message: TestText): void;
-    progress(progress: TestProgress | null): void;
-    report(finding: TestFinding): void;
-    /** Present iff `project.read` was declared. */
-    readonly project?: TestProjectHandle;
-    /** Present iff `game.launch` was declared. */
-    readonly game?: TestGameHandle;
+  readonly runId: string;
+  readonly protocolVersion: typeof TEST_PROTOCOL_VERSION;
+  /**
+   * Aborted when the author cancels. A test that ignores it is killed anyway once its promise
+   * settles, but its findings are kept - a cancelled run is still evidence.
+   */
+  readonly signal: AbortSignal;
+  log(level: TestLogLevel, message: TestText): void;
+  progress(progress: TestProgress | null): void;
+  report(finding: TestFinding): void;
+  /** Present iff `project.read` was declared. */
+  readonly project?: TestProjectHandle;
+  /** Present iff `game.launch` was declared. */
+  readonly game?: TestGameHandle;
 };
 
 /** Everything `checkAvailability` is allowed to look at - deliberately cheap, it runs on every picker open. */
 export type TestAvailabilityContext = {
-    readonly projectPath: string;
-    /** A frozen workspace (VCS revision view or a manual freeze) forbids launching a game. */
-    readonly frozen: boolean;
+  readonly projectPath: string;
+  /** A frozen workspace (VCS revision view or a manual freeze) forbids launching a game. */
+  readonly frozen: boolean;
 };
 
 export type TestAvailability =
-    | { available: true }
-    /** Greys the row out and says why. Not an error: an unavailable test is a normal state. */
-    | { available: false; reason: TestText };
+  | { available: true }
+  /** Greys the row out and says why. Not an error: an unavailable test is a normal state. */
+  | { available: false; reason: TestText };
 
 // ---------------------------------------------------------------------------
 // Definition
 // ---------------------------------------------------------------------------
 
 export type TestDefinition = {
-    id: TestId;
-    title: TestText;
-    description?: TestText;
-    category?: TestCategory;
-    presentation: TestPresentation;
-    /** Omitted means "nothing" - a pure computation over what it was given. */
-    requires?: readonly TestCapability[];
-    /**
-     * Evaluated when the picker opens, so keep it synchronous and cheap. Absent means always
-     * available; the host still applies its own gates (a `windowed` test is unavailable while the
-     * workspace is frozen no matter what this returns).
-     */
-    checkAvailability?(ctx: TestAvailabilityContext): TestAvailability;
-    run(ctx: TestRunContext): Promise<TestVerdict> | TestVerdict;
+  id: TestId;
+  title: TestText;
+  description?: TestText;
+  category?: TestCategory;
+  presentation: TestPresentation;
+  /** Omitted means "nothing" - a pure computation over what it was given. */
+  requires?: readonly TestCapability[];
+  /**
+   * Evaluated when the picker opens, so keep it synchronous and cheap. Absent means always
+   * available; the host still applies its own gates (a `windowed` test is unavailable while the
+   * workspace is frozen no matter what this returns).
+   */
+  checkAvailability?(ctx: TestAvailabilityContext): TestAvailability;
+  run(ctx: TestRunContext): Promise<TestVerdict> | TestVerdict;
 };
 
 /**
@@ -283,8 +291,8 @@ export type TestDefinition = {
  * the definition, which a plugin controls.
  */
 export type RegisteredTest = {
-    definition: TestDefinition;
-    ownerPluginId?: string;
+  definition: TestDefinition;
+  ownerPluginId?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -292,31 +300,31 @@ export type RegisteredTest = {
 // ---------------------------------------------------------------------------
 
 export type TestRunRecord = {
-    runId: string;
-    testId: TestId;
-    /** Snapshotted at start: the definition can be unregistered by a plugin reload mid-run. */
-    title: TestText;
-    ownerPluginId?: string;
-    protocolVersion: number;
-    status: TestRunStatus;
-    startedAt: number;
-    finishedAt?: number;
-    summary?: TestText;
-    findings: TestFinding[];
-    log: TestLogEntry[];
-    progress: TestProgress | null;
-    /** Set when `status` is `errored`: the thrown value, stringified. */
-    error?: string;
+  runId: string;
+  testId: TestId;
+  /** Snapshotted at start: the definition can be unregistered by a plugin reload mid-run. */
+  title: TestText;
+  ownerPluginId?: string;
+  protocolVersion: number;
+  status: TestRunStatus;
+  startedAt: number;
+  finishedAt?: number;
+  summary?: TestText;
+  findings: TestFinding[];
+  log: TestLogEntry[];
+  progress: TestProgress | null;
+  /** Set when `status` is `errored`: the thrown value, stringified. */
+  error?: string;
 };
 
 export type TestRunCounts = Record<TestFindingSeverity, number>;
 
 export function countTestFindings(findings: readonly TestFinding[]): TestRunCounts {
-    const counts: TestRunCounts = { error: 0, warning: 0, info: 0 };
-    for (const finding of findings) {
-        counts[finding.severity] += 1;
-    }
-    return counts;
+  const counts: TestRunCounts = { error: 0, warning: 0, info: 0 };
+  for (const finding of findings) {
+    counts[finding.severity] += 1;
+  }
+  return counts;
 }
 
 /**
@@ -327,9 +335,9 @@ export function countTestFindings(findings: readonly TestFinding[]): TestRunCoun
  * `deriveLintRuleSlug`.
  */
 export function deriveBuiltInTestSlug(id: TestId): string {
-    const local = id.includes(":") ? id.slice(id.indexOf(":") + 1) : id;
-    const words = local.split(/[/\-_.]/).filter(Boolean);
-    return words
-        .map((word, index) => (index === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1)))
-        .join("");
+  const local = id.includes(":") ? id.slice(id.indexOf(":") + 1) : id;
+  const words = local.split(/[/\-_.]/).filter(Boolean);
+  return words
+    .map((word, index) => (index === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1)))
+    .join("");
 }

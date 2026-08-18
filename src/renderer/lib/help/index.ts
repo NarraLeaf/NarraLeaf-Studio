@@ -10,25 +10,25 @@ export { HelpOverlay } from "./HelpOverlay";
 export type { HelpOverlayProps } from "./HelpOverlay";
 export { HelpTrigger } from "./HelpTrigger";
 export {
-    HELP_TOPIC_ATTRIBUTE,
-    openHelpTopic,
-    requestContextHelp,
-    resolveHelpTopicElement,
+  HELP_TOPIC_ATTRIBUTE,
+  openHelpTopic,
+  requestContextHelp,
+  resolveHelpTopicElement
 } from "./helpController";
 export { parseHelpBody } from "./helpBody";
 export type { HelpBlock } from "./helpBody";
 export { currentTopic, popTopic, previousTopic, pushTopic, startTrail } from "./helpTrail";
 export type { HelpTrail } from "./helpTrail";
 export {
-    filterHelpTopics,
-    getHelpTopic,
-    HELP_SECTIONS,
-    HELP_TOPIC_IDS,
-    HELP_TOPICS,
-    helpBodyKey,
-    helpSectionKey,
-    helpTitleKey,
-    helpTopicsBySection,
-    isHelpTopicId,
+  filterHelpTopics,
+  getHelpTopic,
+  HELP_SECTIONS,
+  HELP_TOPIC_IDS,
+  HELP_TOPICS,
+  helpBodyKey,
+  helpSectionKey,
+  helpTitleKey,
+  helpTopicsBySection,
+  isHelpTopicId
 } from "./helpTopics";
 export type { HelpSectionId, HelpTopic, HelpTopicId } from "./helpTopics";

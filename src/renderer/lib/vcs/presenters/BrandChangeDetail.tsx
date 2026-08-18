@@ -3,10 +3,20 @@ import type { TranslationKey } from "@shared/i18n";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { GenericChangeDetail } from "./GenericChangeDetail";
-import { registerChangePresenter, type ChangePresenter, type ChangePresenterProps } from "./registry";
+import {
+  registerChangePresenter,
+  type ChangePresenter,
+  type ChangePresenterProps
+} from "./registry";
 import { useSideBytes, type ComparisonSide, type SideBytesStatus } from "./comparisonSide";
 import { sidesOfEntry } from "./entrySides";
-import { comparePalettes, isBrandEntry, readPalette, type SwatchRow, type SwatchSide } from "./brandPalette";
+import {
+  comparePalettes,
+  isBrandEntry,
+  readPalette,
+  type SwatchRow,
+  type SwatchSide
+} from "./brandPalette";
 
 /**
  * The project's palette, before and after, in two columns.
@@ -22,73 +32,76 @@ import { comparePalettes, isBrandEntry, readPalette, type SwatchRow, type Swatch
  */
 
 export function BrandChangeDetail({ entry, change, sides }: ChangePresenterProps) {
-    const { t } = useTranslation();
-    const requested = useMemo(() => sidesOfEntry(entry, sides), [entry, sides]);
-    const before = usePaletteSide(requested.before, entry.path);
-    const after = usePaletteSide(requested.after, entry.path);
+  const { t } = useTranslation();
+  const requested = useMemo(() => sidesOfEntry(entry, sides), [entry, sides]);
+  const before = usePaletteSide(requested.before, entry.path);
+  const after = usePaletteSide(requested.after, entry.path);
 
-    const comparison = useMemo(
-        () => comparePalettes(before.colors, after.colors),
-        [before.colors, after.colors],
-    );
-    const settled = isSettled(before) && isSettled(after);
-    /**
-     * A side the comparison expects to hold a palette and that did not produce one.
-     *
-     * **Either side missing takes the whole table down**, which is not what the image and sound
-     * presenters do, and the difference is in the shape: those draw one frame per side, so an
-     * unreadable side is a frame with a reason in it. Here the two sides are merged into rows, and
-     * a missing older side would come out as every colour in the file being newly added.
-     */
-    const unreadable = missingSide(requested.after, after) ?? missingSide(requested.before, before);
+  const comparison = useMemo(
+    () => comparePalettes(before.colors, after.colors),
+    [before.colors, after.colors]
+  );
+  const settled = isSettled(before) && isSettled(after);
+  /**
+   * A side the comparison expects to hold a palette and that did not produce one.
+   *
+   * **Either side missing takes the whole table down**, which is not what the image and sound
+   * presenters do, and the difference is in the shape: those draw one frame per side, so an
+   * unreadable side is a frame with a reason in it. Here the two sides are merged into rows, and
+   * a missing older side would come out as every colour in the file being newly added.
+   */
+  const unreadable = missingSide(requested.after, after) ?? missingSide(requested.before, before);
 
-    if (settled && unreadable) {
-        return (
-            <div className="flex flex-col gap-2">
-                <p className="text-2xs text-fg-muted">{t(failureKey(unreadable))}</p>
-                <GenericChangeDetail entry={entry} change={change} />
-            </div>
-        );
-    }
-
-    if (!settled) {
-        return <p className="py-1 text-2xs text-fg-muted">{t("documentDiff.rows.loading")}</p>;
-    }
-
+  if (settled && unreadable) {
     return (
-        <div className="flex flex-col gap-2 py-1">
-            <div className="grid grid-cols-[minmax(5rem,auto)_1fr_1fr] items-center gap-x-3 gap-y-1">
-                <span />
-                <span className="text-2xs text-fg-subtle">{t("documentDiff.presenter.before")}</span>
-                <span className="text-2xs text-fg-subtle">{t("documentDiff.presenter.after")}</span>
-                {comparison.rows.map(row => <Row key={row.id} row={row} />)}
-            </div>
-            {/* Stated rather than left out: a palette carries seventeen seeded entries, and a list
-                of two rows with nothing said about the rest reads as a comparison that stopped. */}
-            {comparison.unchanged > 0 && (
-                <p className="text-2xs text-fg-subtle">
-                    {comparison.unchanged === 1
-                        ? t("documentDiff.presenter.brand.unchangedOne")
-                        : t("documentDiff.presenter.brand.unchangedMany", { count: comparison.unchanged })}
-                </p>
-            )}
-        </div>
+      <div className="flex flex-col gap-2">
+        <p className="text-2xs text-fg-muted">{t(failureKey(unreadable))}</p>
+        <GenericChangeDetail entry={entry} change={change} />
+      </div>
     );
+  }
+
+  if (!settled) {
+    return <p className="py-1 text-2xs text-fg-muted">{t("documentDiff.rows.loading")}</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-2 py-1">
+      <div className="grid grid-cols-[minmax(5rem,auto)_1fr_1fr] items-center gap-x-3 gap-y-1">
+        <span />
+        <span className="text-2xs text-fg-subtle">{t("documentDiff.presenter.before")}</span>
+        <span className="text-2xs text-fg-subtle">{t("documentDiff.presenter.after")}</span>
+        {comparison.rows.map((row) => (
+          <Row key={row.id} row={row} />
+        ))}
+      </div>
+      {/* Stated rather than left out: a palette carries seventeen seeded entries, and a list
+                of two rows with nothing said about the rest reads as a comparison that stopped. */}
+      {comparison.unchanged > 0 && (
+        <p className="text-2xs text-fg-subtle">
+          {comparison.unchanged === 1
+            ? t("documentDiff.presenter.brand.unchangedOne")
+            : t("documentDiff.presenter.brand.unchangedMany", { count: comparison.unchanged })}
+        </p>
+      )}
+    </div>
+  );
 }
 
 function Row({ row }: { row: SwatchRow }) {
-    const { t } = useTranslation();
-    return (
-        <>
-            <span className="truncate font-mono text-2xs text-fg-muted" data-tip={row.id}>{row.id}</span>
-            <Cell side={row.before} absent="documentDiff.presenter.brand.added" />
-            <Cell
-                side={row.after}
-                absent="documentDiff.presenter.brand.removed"
-                tinted={row.state === "changed"}
-            />
-        </>
-    );
+  return (
+    <>
+      <span className="truncate font-mono text-2xs text-fg-muted" data-tip={row.id}>
+        {row.id}
+      </span>
+      <Cell side={row.before} absent="documentDiff.presenter.brand.added" />
+      <Cell
+        side={row.after}
+        absent="documentDiff.presenter.brand.removed"
+        tinted={row.state === "changed"}
+      />
+    </>
+  );
 }
 
 /**
@@ -99,37 +112,41 @@ function Row({ row }: { row: SwatchRow }) {
  * empty one on the newer side means it was removed.
  */
 function Cell({
-    side,
-    absent,
-    tinted = false,
+  side,
+  absent,
+  tinted = false
 }: {
-    side: SwatchSide | null;
-    absent: TranslationKey;
-    tinted?: boolean;
+  side: SwatchSide | null;
+  absent: TranslationKey;
+  tinted?: boolean;
 }) {
-    const { t } = useTranslation();
-    if (!side) {
-        return <span className="text-2xs text-fg-subtle">{t(absent)}</span>;
-    }
-    return (
-        <span className="flex min-w-0 items-center gap-1.5">
-            {side.css
-                ? (
-                    <span
-                        aria-hidden
-                        // `edge-strong` and not `edge`: this border is the only thing separating a
-                        // near-background colour from the panel it sits on.
-                        className="h-3.5 w-3.5 shrink-0 rounded-sm border border-edge-strong"
-                        style={{ backgroundColor: side.css }}
-                    />
-                )
-                : <span className="shrink-0 text-2xs text-fg-subtle">{t("documentDiff.presenter.brand.unresolved")}</span>}
-            <span className={cn("truncate font-mono text-2xs", tinted ? "text-warning" : "text-fg-muted")}>
-                {side.value}
-            </span>
-            {side.name && <span className="truncate text-2xs text-fg-subtle">{side.name}</span>}
+  const { t } = useTranslation();
+  if (!side) {
+    return <span className="text-2xs text-fg-subtle">{t(absent)}</span>;
+  }
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      {side.css ? (
+        <span
+          aria-hidden
+          // `edge-strong` and not `edge`: this border is the only thing separating a
+          // near-background colour from the panel it sits on.
+          className="h-3.5 w-3.5 shrink-0 rounded-sm border border-edge-strong"
+          style={{ backgroundColor: side.css }}
+        />
+      ) : (
+        <span className="shrink-0 text-2xs text-fg-subtle">
+          {t("documentDiff.presenter.brand.unresolved")}
         </span>
-    );
+      )}
+      <span
+        className={cn("truncate font-mono text-2xs", tinted ? "text-warning" : "text-fg-muted")}
+      >
+        {side.value}
+      </span>
+      {side.name && <span className="truncate text-2xs text-fg-subtle">{side.name}</span>}
+    </span>
+  );
 }
 
 /* ---------------------------------------------------------------------------------------- */
@@ -137,17 +154,17 @@ function Cell({
 /* ---------------------------------------------------------------------------------------- */
 
 interface PaletteSide {
-    readonly status: SideBytesStatus;
-    /** The entries this side stores, or null while there are none to show. */
-    readonly colors: ReturnType<typeof readPalette>;
-    /** True when the bytes arrived and were not a palette. */
-    readonly broken: boolean;
+  readonly status: SideBytesStatus;
+  /** The entries this side stores, or null while there are none to show. */
+  readonly colors: ReturnType<typeof readPalette>;
+  /** True when the bytes arrived and were not a palette. */
+  readonly broken: boolean;
 }
 
 function usePaletteSide(side: ComparisonSide | null, path: string): PaletteSide {
-    const read = useSideBytes(side, path);
-    const colors = useMemo(() => (read.value ? readPalette(read.value) : null), [read.value]);
-    return { status: read.status, colors, broken: read.status === "ready" && colors === null };
+  const read = useSideBytes(side, path);
+  const colors = useMemo(() => (read.value ? readPalette(read.value) : null), [read.value]);
+  return { status: read.status, colors, broken: read.status === "ready" && colors === null };
 }
 
 /* ---------------------------------------------------------------------------------------- */
@@ -161,27 +178,27 @@ function usePaletteSide(side: ComparisonSide | null, path: string): PaletteSide 
  * read that has not finished.
  */
 function failureKey(side: PaletteSide): TranslationKey {
-    if (side.status === "tooLarge") return "documentDiff.presenter.brand.tooLarge";
-    if (side.status === "failed" || side.status === "unsupported" || side.broken) {
-        return "documentDiff.presenter.brand.unreadable";
-    }
-    return "documentDiff.rows.loading";
+  if (side.status === "tooLarge") return "documentDiff.presenter.brand.tooLarge";
+  if (side.status === "failed" || side.status === "unsupported" || side.broken) {
+    return "documentDiff.presenter.brand.unreadable";
+  }
+  return "documentDiff.rows.loading";
 }
 
 /** Whether this side has finished trying. Parsing is synchronous, so `ready` really is the end. */
 function isSettled(side: PaletteSide): boolean {
-    return side.status !== "loading";
+  return side.status !== "loading";
 }
 
 /** The side, when the comparison expects a palette from it and did not get one. */
 function missingSide(requested: ComparisonSide | null, side: PaletteSide): PaletteSide | null {
-    return requested !== null && !side.colors ? side : null;
+  return requested !== null && !side.colors ? side : null;
 }
 
 export const brandChangePresenter: ChangePresenter = {
-    id: "brand",
-    matches: isBrandEntry,
-    Detail: BrandChangeDetail,
+  id: "brand",
+  matches: isBrandEntry,
+  Detail: BrandChangeDetail
 };
 
 // Registered on import, and imported for that effect by `ChangeDetailHost`. A presenter that is

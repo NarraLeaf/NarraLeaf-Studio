@@ -10,48 +10,46 @@
  * a space, which is wrong in Chinese, and the authored bodies already put one paragraph per line.
  */
 
-export type HelpBlock =
-    | { kind: "paragraph"; text: string }
-    | { kind: "list"; items: string[] };
+export type HelpBlock = { kind: "paragraph"; text: string } | { kind: "list"; items: string[] };
 
 const BULLET_MARK = "-";
 const BULLET = `${BULLET_MARK} `;
 
 export function parseHelpBody(body: string): HelpBlock[] {
-    const blocks: HelpBlock[] = [];
-    let list: string[] | null = null;
+  const blocks: HelpBlock[] = [];
+  let list: string[] | null = null;
 
-    const closeList = () => {
-        if (list && list.length > 0) {
-            blocks.push({ kind: "list", items: list });
-        }
-        list = null;
-    };
+  const closeList = () => {
+    if (list && list.length > 0) {
+      blocks.push({ kind: "list", items: list });
+    }
+    list = null;
+  };
 
-    for (const rawLine of body.split("\n")) {
-        const line = rawLine.trim();
-        if (!line) {
-            closeList();
-            continue;
-        }
-        // `line` is already trimmed, so an empty bullet arrives as a bare "-" rather than "- ".
-        // Recognising it as a bullet is what keeps it from rendering as a paragraph of one dash.
-        if (line === BULLET_MARK || line.startsWith(BULLET)) {
-            const item = line.slice(BULLET_MARK.length).trim();
-            if (!item) {
-                continue;
-            }
-            if (list) {
-                list.push(item);
-            } else {
-                list = [item];
-            }
-            continue;
-        }
-        closeList();
-        blocks.push({ kind: "paragraph", text: line });
+  for (const rawLine of body.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) {
+      closeList();
+      continue;
+    }
+    // `line` is already trimmed, so an empty bullet arrives as a bare "-" rather than "- ".
+    // Recognising it as a bullet is what keeps it from rendering as a paragraph of one dash.
+    if (line === BULLET_MARK || line.startsWith(BULLET)) {
+      const item = line.slice(BULLET_MARK.length).trim();
+      if (!item) {
+        continue;
+      }
+      if (list) {
+        list.push(item);
+      } else {
+        list = [item];
+      }
+      continue;
     }
     closeList();
+    blocks.push({ kind: "paragraph", text: line });
+  }
+  closeList();
 
-    return blocks;
+  return blocks;
 }

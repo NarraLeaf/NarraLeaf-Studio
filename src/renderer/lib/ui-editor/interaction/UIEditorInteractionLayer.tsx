@@ -21,15 +21,15 @@ import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/W
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { SnapGuidesOverlay } from "@/lib/ui-editor/snapping/SnapGuidesOverlay";
 import {
-    hasSuppressNextCanvasWidgetDoubleClick,
-    markSuppressNextCanvasWidgetDoubleClick,
-    promoteHitToDirectChildOfSurfaceRoot,
-    resolveUiContainerDrillTarget,
-    shouldPromoteToSurfaceRootChild,
+  hasSuppressNextCanvasWidgetDoubleClick,
+  markSuppressNextCanvasWidgetDoubleClick,
+  promoteHitToDirectChildOfSurfaceRoot,
+  resolveUiContainerDrillTarget,
+  shouldPromoteToSurfaceRootChild
 } from "./containerDrillSelection";
 import {
-    getSingleSelectedElementId,
-    isMoveableInteractionTarget,
+  getSingleSelectedElementId,
+  isMoveableInteractionTarget
 } from "./surfaceInlineTextEditActivation";
 import { beginInlineTextEdit, isInlineTextEditableElement } from "./inlineTextEdit";
 import { beginImageCropEdit } from "./imageCropEdit";
@@ -37,853 +37,911 @@ import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryIns
 import type { FloatingToolbarItem } from "@/lib/ui-editor/widget-modules/types";
 import { resolveFloatingToolbarPosition } from "./floatingToolbarPosition";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
-import { filterSelectionToTopLevelMovers, selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
+import {
+  filterSelectionToTopLevelMovers,
+  selectSurfaceForProperties
+} from "@/lib/ui-editor/commands/uiEditorSelection";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 import {
-    isSurfaceGestureEnabled,
-    toReadOnlyFloatingToolbarItems,
-    toReadOnlyMoveableProps,
-    UI_EDITOR_WRITABLE,
-    type UIEditorReadOnly,
+  isSurfaceGestureEnabled,
+  toReadOnlyFloatingToolbarItems,
+  toReadOnlyMoveableProps,
+  UI_EDITOR_WRITABLE,
+  type UIEditorReadOnly
 } from "./readOnlyInteraction";
 
-function InsertPreviewOverlay({ preview, viewport }: { preview: InsertPreview; viewport: ViewportTransform }) {
-    const x = Math.min(preview.startX, preview.currentX);
-    const y = Math.min(preview.startY, preview.currentY);
-    const width = Math.abs(preview.currentX - preview.startX);
-    const height = Math.abs(preview.currentY - preview.startY);
+function InsertPreviewOverlay({
+  preview,
+  viewport
+}: {
+  preview: InsertPreview;
+  viewport: ViewportTransform;
+}) {
+  const x = Math.min(preview.startX, preview.currentX);
+  const y = Math.min(preview.startY, preview.currentY);
+  const width = Math.abs(preview.currentX - preview.startX);
+  const height = Math.abs(preview.currentY - preview.startY);
 
-    // Convert surface coordinates to viewport(screen) coordinates.
-    // The canvas transform is: translate(offsetX, offsetY) scale(scale).
-    // Therefore: viewport = surface * scale + offset.
-    const screenX = x * viewport.scale + viewport.offsetX;
-    const screenY = y * viewport.scale + viewport.offsetY;
-    const screenWidth = width * viewport.scale;
-    const screenHeight = height * viewport.scale;
+  // Convert surface coordinates to viewport(screen) coordinates.
+  // The canvas transform is: translate(offsetX, offsetY) scale(scale).
+  // Therefore: viewport = surface * scale + offset.
+  const screenX = x * viewport.scale + viewport.offsetX;
+  const screenY = y * viewport.scale + viewport.offsetY;
+  const screenWidth = width * viewport.scale;
+  const screenHeight = height * viewport.scale;
 
-    return (
-        <div
-            className="absolute pointer-events-none border-2 border-dashed border-primary bg-primary/10 rounded-none"
-            style={{
-                left: screenX,
-                top: screenY,
-                width: screenWidth,
-                height: screenHeight,
-            }}
-        >
-            <div className="absolute -top-6 left-0 text-2xs text-primary font-mono whitespace-nowrap">
-                {Math.round(width)} × {Math.round(height)}
-            </div>
-        </div>
-    );
+  return (
+    <div
+      className="absolute pointer-events-none border-2 border-dashed border-primary bg-primary/10 rounded-none"
+      style={{
+        left: screenX,
+        top: screenY,
+        width: screenWidth,
+        height: screenHeight
+      }}
+    >
+      <div className="absolute -top-6 left-0 text-2xs text-primary font-mono whitespace-nowrap">
+        {Math.round(width)} × {Math.round(height)}
+      </div>
+    </div>
+  );
 }
 
 type Props = {
-    surfaceId: string;
-    surface: UISurface;
-    containerRef: React.RefObject<HTMLElement | null>;
-    stateService: UIEditorStateService;
-    documentService: UIDocumentService;
-    uiService?: UIService | null;
-    showOutlines?: boolean;
-    openSurfaceEditor?: (surfaceId: string) => void;
-    openComponentEditor?: (componentId: string) => void;
-    /**
-     * Makes every editing gesture on this surface inert while leaving selection, hover, drill-in, pan
-     * and zoom alone. The workspace passes its freeze state down; see `./readOnlyInteraction`.
-     */
-    readOnly?: UIEditorReadOnly;
+  surfaceId: string;
+  surface: UISurface;
+  containerRef: React.RefObject<HTMLElement | null>;
+  stateService: UIEditorStateService;
+  documentService: UIDocumentService;
+  uiService?: UIService | null;
+  showOutlines?: boolean;
+  openSurfaceEditor?: (surfaceId: string) => void;
+  openComponentEditor?: (componentId: string) => void;
+  /**
+   * Makes every editing gesture on this surface inert while leaving selection, hover, drill-in, pan
+   * and zoom alone. The workspace passes its freeze state down; see `./readOnlyInteraction`.
+   */
+  readOnly?: UIEditorReadOnly;
 };
 export function UIEditorInteractionLayer({
+  surfaceId,
+  surface,
+  containerRef,
+  stateService,
+  documentService,
+  uiService,
+  showOutlines = true,
+  openSurfaceEditor,
+  openComponentEditor,
+  readOnly = UI_EDITOR_WRITABLE
+}: Props) {
+  const [selection, setSelection] = useState(stateService.getSelection());
+  const previousSelectedTargets = useRef<HTMLElement[]>([]);
+  const outlineCache = useRef<WeakMap<HTMLElement, { outline?: string; outlineOffset?: string }>>(
+    new WeakMap()
+  );
+  const documentRevision = useUIDocumentRevision(documentService);
+  type MoveableInstance = React.ElementRef<typeof Moveable>;
+  const moveableRef = useRef<MoveableInstance | null>(null);
+
+  // Insert mode drag-to-create state
+  const [insertPreview, setInsertPreview] = useState<InsertPreview | null>(null);
+  const insertPreviewRef = useRef<InsertPreview | null>(null);
+  const insertState = useRef<InsertToolDragState | null>(null);
+
+  const [snapGuides, setSnapGuidesState] = useState<ActiveSnapGuides | null>(() =>
+    stateService.getSnapGuides()
+  );
+  const altKeyRef = useRef(false);
+
+  const scheduleMoveableRectUpdate = useCallback(() => {
+    // Keep the overlay controller aligned after DOM/layout updates.
+    requestAnimationFrame(() => {
+      moveableRef.current?.updateRect?.();
+    });
+  }, []);
+  const updateMoveableRectNow = useCallback(() => {
+    moveableRef.current?.updateRect?.();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = stateService.on("selectionChanged", setSelection);
+    return () => unsubscribe();
+  }, [stateService]);
+
+  useEffect(() => {
+    if (!isUIElementSelection(selection) || selection.data.surfaceId !== surfaceId) {
+      return;
+    }
+    const document = documentService.getDocument();
+    const rootId = resolveSurfaceRootElementId(document, surfaceId);
+    if (!rootId) {
+      selectSurfaceForProperties(stateService, surfaceId, uiService);
+      return;
+    }
+    const allowed = collectSubtreeElementIds(document, rootId);
+    const nextIds = selection.data.elementIds.filter((id) => {
+      const element = document.elements[id];
+      return allowed.has(id) && element != null && !isComponentEditorRootElement(element);
+    });
+    if (nextIds.length === 0) {
+      selectSurfaceForProperties(stateService, surfaceId, uiService);
+      return;
+    }
+    const currentPrimary =
+      selection.data.primaryId ?? selection.data.elementIds[selection.data.elementIds.length - 1];
+    const nextPrimary =
+      selection.data.primaryId && nextIds.includes(selection.data.primaryId)
+        ? selection.data.primaryId
+        : nextIds[nextIds.length - 1];
+    const sameIds =
+      nextIds.length === selection.data.elementIds.length &&
+      nextIds.every((id, index) => id === selection.data.elementIds[index]);
+    if (sameIds && nextPrimary === currentPrimary) {
+      return;
+    }
+    stateService.setUIElementSelection({
+      editor: "ui",
+      surfaceId,
+      elementIds: nextIds,
+      primaryId: nextPrimary
+    });
+  }, [documentRevision, documentService, selection, stateService, surfaceId, uiService]);
+
+  const [tool, setTool] = useState<UITool>(stateService.getTool());
+  const [viewport, setViewport] = useState<ViewportTransform>(stateService.getViewportTransform());
+
+  useEffect(() => {
+    const unsubscribe = stateService.on("toolChanged", setTool);
+    return () => unsubscribe();
+  }, [stateService]);
+
+  useEffect(() => {
+    const unsubscribe = stateService.on("viewportChanged", setViewport);
+    return () => unsubscribe();
+  }, [stateService]);
+
+  useEffect(() => {
+    setSnapGuidesState(stateService.getSnapGuides());
+    return stateService.on("snapGuidesChanged", setSnapGuidesState);
+  }, [stateService]);
+
+  useEffect(() => {
+    const isAltKey = (e: KeyboardEvent) =>
+      e.key === "Alt" || e.code === "AltLeft" || e.code === "AltRight";
+
+    const down = (e: KeyboardEvent) => {
+      if (isAltKey(e)) {
+        altKeyRef.current = true;
+      }
+    };
+    const up = (e: KeyboardEvent) => {
+      if (isAltKey(e)) {
+        altKeyRef.current = false;
+      }
+    };
+    const resetAlt = () => {
+      altKeyRef.current = false;
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", resetAlt);
+    document.addEventListener("visibilitychange", resetAlt);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", resetAlt);
+      document.removeEventListener("visibilitychange", resetAlt);
+    };
+  }, []);
+
+  // containerRef.current is often null on the first render (sibling viewport not committed yet).
+  // Reading it only during render leaves Selecto's dragContainer stuck on the pointer-events-none
+  // overlay parent, so mousedown never reaches the listener. Sync after layout so Selecto/Moveable
+  // attach to the real viewport.
+  const [surfaceElement, setSurfaceElement] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    setSurfaceElement(containerRef.current);
+  }, [containerRef]);
+
+  const widgetRuntimeStore = useWidgetRuntimeStateStore();
+
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root || !widgetRuntimeStore) {
+      return undefined;
+    }
+    const down = (e: PointerEvent) => {
+      if (e.button !== 0) {
+        return;
+      }
+      const t = e.target as HTMLElement | null;
+      const el = t?.closest("[data-ui-element-id]") as HTMLElement | null;
+      const id = el?.dataset.uiElementId ?? null;
+      widgetRuntimeStore.setActivePointerTarget(id);
+    };
+    const up = () => widgetRuntimeStore.setActivePointerTarget(null);
+    root.addEventListener("pointerdown", down, true);
+    window.addEventListener("pointerup", up, true);
+    window.addEventListener("pointercancel", up, true);
+    return () => {
+      root.removeEventListener("pointerdown", down, true);
+      window.removeEventListener("pointerup", up, true);
+      window.removeEventListener("pointercancel", up, true);
+    };
+  }, [containerRef, widgetRuntimeStore]);
+
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root || !widgetRuntimeStore) {
+      return undefined;
+    }
+    const focusIn = (e: FocusEvent) => {
+      const t = e.target as HTMLElement | null;
+      const el = t?.closest("[data-ui-element-id]") as HTMLElement | null;
+      widgetRuntimeStore.setFocusedTarget(el?.dataset.uiElementId ?? null);
+    };
+    const focusOut = (e: FocusEvent) => {
+      const next = e.relatedTarget as Node | null;
+      if (next && root.contains(next)) {
+        return;
+      }
+      widgetRuntimeStore.setFocusedTarget(null);
+    };
+    root.addEventListener("focusin", focusIn, true);
+    root.addEventListener("focusout", focusOut, true);
+    return () => {
+      root.removeEventListener("focusin", focusIn, true);
+      root.removeEventListener("focusout", focusOut, true);
+    };
+  }, [containerRef, widgetRuntimeStore]);
+
+  // Resolve DOM nodes after commit: querySelector during render cannot see widgets inserted in the same commit.
+  const [selectedTargets, setSelectedTargets] = useState<HTMLElement[]>([]);
+  useLayoutEffect(() => {
+    if (
+      !isUIElementSelection(selection) ||
+      selection.data.surfaceId !== surfaceId ||
+      !surfaceElement
+    ) {
+      setSelectedTargets([]);
+      scheduleMoveableRectUpdate();
+      return;
+    }
+    const ids = selection.data.elementIds;
+    const next = ids
+      .map((id) => surfaceElement.querySelector(`[data-ui-element-id="${id}"]`))
+      .filter(isHTMLElement);
+    setSelectedTargets((prev) => {
+      if (prev.length === next.length && prev.every((el, i) => el === next[i])) {
+        return prev;
+      }
+      return next;
+    });
+    // Defer: Moveable reads `targets` after this commit; avoid flushSync inside useLayoutEffect (React warning).
+    scheduleMoveableRectUpdate();
+  }, [selection, surfaceElement, surfaceId, documentRevision, scheduleMoveableRectUpdate]);
+
+  const selectionData = isUIElementSelection(selection) ? selection.data : null;
+  const selectionIds = selectionData?.elementIds ?? [];
+  const primaryId = selectionData?.primaryId ?? selectionIds[selectionIds.length - 1];
+  const transformSelectionIds = useMemo(() => {
+    if (
+      !selectionData ||
+      selectionData.surfaceId !== surfaceId ||
+      selectionData.elementIds.length === 0
+    ) {
+      return [];
+    }
+    return filterSelectionToTopLevelMovers(documentService.getDocument(), selectionData);
+  }, [documentRevision, documentService, selectionData, surfaceId]);
+  const transformTargetIds = useMemo(() => new Set(transformSelectionIds), [transformSelectionIds]);
+  const transformTargets = useMemo(
+    () =>
+      selectedTargets.filter((target) => {
+        const elementId = target.dataset.uiElementId;
+        return Boolean(elementId && transformTargetIds.has(elementId));
+      }),
+    [selectedTargets, transformTargetIds]
+  );
+  const isGroupSelection = transformSelectionIds.length > 1;
+  const transformLocks = useRef(0);
+  const [selectionEnabled, setSelectionEnabled] = useState(true);
+  const [interactionOverride, setInteractionOverride] = useState(() =>
+    stateService.getInteractionOverride()
+  );
+
+  useEffect(() => {
+    const unsub = stateService.on("interactionOverrideChanged", (payload) => {
+      setInteractionOverride(payload.next);
+    });
+    return unsub;
+  }, [stateService]);
+
+  // An override that was already open when the surface went read-only would leave a live
+  // `contenteditable` (or the crop handles) on screen, taking keystrokes nothing will keep. Close it
+  // rather than gate it: the author becomes read-only in the middle of a gesture, not before it.
+  useEffect(() => {
+    if (!readOnly.active) {
+      return;
+    }
+    if (stateService.getInteractionOverride()) {
+      stateService.setInteractionOverride(null);
+    }
+    // The insert tool armed before the freeze would leave the canvas genuinely dead: the select
+    // tool's whole overlay is unmounted under it, and pointerdown only selects while it is chosen.
+    // The tool is editor state, so putting it back is not a write the freeze has to refuse.
+    if (stateService.getTool().kind === "insert") {
+      stateService.setTool({ kind: "select" });
+    }
+  }, [readOnly.active, stateService]);
+
+  const inlineTextEditElementId =
+    interactionOverride?.kind === "textEdit" && interactionOverride.surfaceId === surfaceId
+      ? interactionOverride.elementId
+      : null;
+  const isInlineTextEditing =
+    Boolean(inlineTextEditElementId) &&
+    !isGroupSelection &&
+    selectionIds.length === 1 &&
+    selectionIds[0] === inlineTextEditElementId;
+  const selectedSingleElementId =
+    selectionData?.surfaceId === surfaceId && selectionIds.length === 1
+      ? (selectionIds[0] ?? null)
+      : null;
+  const selectedSingleElement = selectedSingleElementId
+    ? documentService.getDocument().elements[selectedSingleElementId]
+    : null;
+  const effectiveSelectedSingleElement = isComponentEditorRootElement(selectedSingleElement)
+    ? null
+    : selectedSingleElement;
+  const isInlineTextEditableSelection = isInlineTextEditableElement(effectiveSelectedSingleElement);
+  const floatingToolbarItems = useMemo<FloatingToolbarItem[]>(() => {
+    if (!effectiveSelectedSingleElement) {
+      return [];
+    }
+    const componentLink = getUIComponentLink(effectiveSelectedSingleElement);
+    if (componentLink) {
+      const component = documentService.getComponent(componentLink.componentId);
+      return [
+        {
+          kind: "button",
+          id: "open-linked-component",
+          icon: Share2,
+          tooltip: component ? `Open ${component.name}` : "Open component",
+          disabled: !component || !openComponentEditor,
+          onClick: () => {
+            if (component) {
+              openComponentEditor?.(component.id);
+            }
+          }
+        },
+        {
+          kind: "button",
+          id: "unlink-component",
+          icon: Unlink,
+          tooltip: "Unlink component",
+          onClick: () => {
+            const ids = documentService.unlinkComponentInstance(effectiveSelectedSingleElement.id);
+            const primary = ids[0] ?? effectiveSelectedSingleElement.id;
+            stateService.setUIElementSelection({
+              editor: "ui",
+              surfaceId,
+              elementIds: [primary],
+              primaryId: primary
+            });
+          }
+        }
+      ];
+    }
+    const module = widgetModuleRegistry.get(effectiveSelectedSingleElement.type);
+    return (
+      module?.createFloatingToolbarItems?.({
+        element: effectiveSelectedSingleElement,
+        documentService,
+        surfaceId,
+        openSurfaceEditor
+      }) ?? []
+    );
+  }, [
+    documentRevision,
+    documentService,
+    effectiveSelectedSingleElement,
+    openComponentEditor,
+    openSurfaceEditor,
+    stateService,
+    surfaceId
+  ]);
+  const effectiveFloatingToolbarItems = useMemo(
+    () => toReadOnlyFloatingToolbarItems(floatingToolbarItems, readOnly),
+    [floatingToolbarItems, readOnly]
+  );
+  const hasFloatingToolbar = effectiveFloatingToolbarItems.length > 0;
+  const [floatingToolbarPosition, setFloatingToolbarPosition] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+
+  const beginTransform = () => {
+    transformLocks.current += 1;
+    if (transformLocks.current === 1) {
+      setSelectionEnabled(false);
+    }
+  };
+
+  const endTransform = () => {
+    transformLocks.current = Math.max(0, transformLocks.current - 1);
+    if (transformLocks.current === 0) {
+      setSelectionEnabled(true);
+    }
+  };
+
+  useEffect(() => {
+    previousSelectedTargets.current.forEach((target) => {
+      const cached = outlineCache.current.get(target);
+      if (cached) {
+        target.style.outline = cached.outline ?? "";
+        target.style.outlineOffset = cached.outlineOffset ?? "";
+        outlineCache.current.delete(target);
+      }
+    });
+
+    if (showOutlines) {
+      selectedTargets.forEach((target) => {
+        if (!outlineCache.current.has(target)) {
+          outlineCache.current.set(target, {
+            outline: target.style.outline,
+            outlineOffset: target.style.outlineOffset
+          });
+        }
+        const elementId = target.dataset.uiElementId ?? "";
+        target.style.outline =
+          elementId === primaryId
+            ? `1px solid ${PRIMARY_OUTLINE_STRONG}`
+            : `1px dashed ${PRIMARY_OUTLINE_WEAK}`;
+        target.style.outlineOffset = "0px";
+      });
+      previousSelectedTargets.current = selectedTargets;
+    } else {
+      previousSelectedTargets.current = [];
+    }
+  }, [selectedTargets, primaryId, showOutlines]);
+
+  const updateFloatingToolbarPosition = useCallback(() => {
+    if (!hasFloatingToolbar || selectedTargets.length !== 1 || !surfaceElement) {
+      setFloatingToolbarPosition(null);
+      return;
+    }
+    const targetRect = selectedTargets[0].getBoundingClientRect();
+    const surfaceRect = surfaceElement.getBoundingClientRect();
+    const next = resolveFloatingToolbarPosition({ targetRect, surfaceRect });
+    setFloatingToolbarPosition((prev) => {
+      if (prev && Math.abs(prev.left - next.left) < 0.25 && Math.abs(prev.top - next.top) < 0.25) {
+        return prev;
+      }
+      return next;
+    });
+  }, [hasFloatingToolbar, selectedTargets, surfaceElement]);
+
+  useLayoutEffect(() => {
+    updateFloatingToolbarPosition();
+  }, [
+    updateFloatingToolbarPosition,
+    viewport.scale,
+    viewport.offsetX,
+    viewport.offsetY,
+    documentRevision
+  ]);
+
+  useEffect(() => {
+    if (!hasFloatingToolbar) {
+      return undefined;
+    }
+    window.addEventListener("resize", updateFloatingToolbarPosition);
+    return () => {
+      window.removeEventListener("resize", updateFloatingToolbarPosition);
+    };
+  }, [hasFloatingToolbar, updateFloatingToolbarPosition]);
+
+  useEffect(() => {
+    if (!hasFloatingToolbar) {
+      return undefined;
+    }
+    let frameId = 0;
+    let disposed = false;
+    const tick = () => {
+      updateFloatingToolbarPosition();
+      if (!disposed) {
+        frameId = requestAnimationFrame(tick);
+      }
+    };
+    frameId = requestAnimationFrame(tick);
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(frameId);
+    };
+  }, [hasFloatingToolbar, updateFloatingToolbarPosition]);
+
+  useLayoutEffect(() => {
+    moveableRef.current?.updateRect?.();
+  }, [
+    interactionOverride,
+    selectedTargets,
+    viewport.scale,
+    viewport.offsetX,
+    viewport.offsetY,
+    showOutlines
+  ]);
+
+  const handleSelectEnd = useCallback(
+    (e: any) => {
+      if (!surfaceElement) {
+        return;
+      }
+      const targets = e.selected as HTMLElement[];
+      const doc = documentService.getDocument();
+      const targetIds = targets
+        .map((target) => target.dataset.uiElementId)
+        .filter((id): id is string => {
+          if (!id) {
+            return false;
+          }
+          return !isComponentEditorRootElement(doc.elements[id]);
+        });
+      if (targetIds.length === 0) {
+        selectSurfaceForProperties(stateService, surfaceId, uiService);
+        return;
+      }
+
+      const input = e.inputEvent as MouseEvent | PointerEvent | undefined;
+      const multiIntent = Boolean(input?.shiftKey || input?.metaKey || input?.ctrlKey);
+      if (
+        !multiIntent &&
+        targetIds.length === 1 &&
+        input?.type === "mousedown" &&
+        e.isDouble &&
+        hasSuppressNextCanvasWidgetDoubleClick()
+      ) {
+        return;
+      }
+      const prev = stateService.getSelection();
+
+      let elementIds = targetIds;
+      let primaryId = targetIds[targetIds.length - 1];
+      let handledDrillSelection = false;
+
+      if (
+        !multiIntent &&
+        targetIds.length === 1 &&
+        isUIElementSelection(prev) &&
+        prev.data.surfaceId === surfaceId &&
+        prev.data.elementIds.length === 1
+      ) {
+        const hitId = targetIds[0];
+        const drillTargetId = resolveUiContainerDrillTarget(doc, surfaceId, prev.data, hitId);
+        // `useSurfaceInteractionEvents` pointerdown also updates selection; drill lock is applied there too.
+        // Selecto immediate click ends on mousedown (not mouseup); marquee ends on mouseup — only block mousedown.
+        const immediateClickEnd = input?.type === "mousedown";
+        if (immediateClickEnd && !e.isDouble && drillTargetId) {
+          return;
+        }
+        if (e.isDouble && drillTargetId) {
+          markSuppressNextCanvasWidgetDoubleClick();
+          elementIds = [drillTargetId];
+          primaryId = drillTargetId;
+          handledDrillSelection = true;
+        }
+      }
+
+      if (!multiIntent && targetIds.length === 1 && !handledDrillSelection) {
+        const hitId = targetIds[0];
+        const selData =
+          isUIElementSelection(prev) && prev.data.surfaceId === surfaceId ? prev.data : null;
+        if (shouldPromoteToSurfaceRootChild(doc, selData, surfaceId, hitId)) {
+          const promoted = promoteHitToDirectChildOfSurfaceRoot(doc, surfaceId, hitId);
+          elementIds = [promoted];
+          primaryId = promoted;
+        }
+      }
+
+      stateService.setUIElementSelection({
+        editor: "ui",
+        surfaceId,
+        elementIds,
+        primaryId
+      });
+    },
+    [documentService, stateService, surfaceElement, surfaceId, uiService]
+  );
+
+  const isMoveableControlTarget = useCallback((target: Element | null | undefined) => {
+    return isMoveableInteractionTarget(target);
+  }, []);
+
+  const isTargetInsideSelection = useCallback(
+    (target: Element | null | undefined) => {
+      if (!target) {
+        return false;
+      }
+      return selectedTargets.some((selected) => selected.contains(target));
+    },
+    [selectedTargets]
+  );
+
+  const transformEnabled = isSurfaceGestureEnabled("transform", readOnly);
+
+  const handleSelectionDragStart = useCallback(
+    (e: any) => {
+      const eventTarget = e.inputEvent?.target as Element | null;
+      if (isMoveableControlTarget(eventTarget)) {
+        return false;
+      }
+      // Yielding a drag that starts inside the selection exists only so Moveable can move it.
+      // With no transform to hand it to, keep Selecto: dragging there marquees like anywhere else
+      // instead of doing nothing at all.
+      if (transformEnabled && isTargetInsideSelection(eventTarget)) {
+        return false;
+      }
+    },
+    [isMoveableControlTarget, isTargetInsideSelection, transformEnabled]
+  );
+  const panState = useRef<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    startOffsetX: number;
+    startOffsetY: number;
+  }>({ active: false, startX: 0, startY: 0, startOffsetX: 0, startOffsetY: 0 });
+
+  // Helper to convert client coords to surface coords
+  const clientToSurfaceCoords = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!surfaceElement) return { x: 0, y: 0 };
+      const rect = surfaceElement.getBoundingClientRect();
+      const containerRect: Rect2D = {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height
+      };
+      return clientToSurface({ x: clientX, y: clientY }, viewport, containerRect);
+    },
+    [surfaceElement, viewport]
+  );
+
+  const insertSnapEnabled = useCallback(() => stateService.getSmartSnapEnabled(), [stateService]);
+  const insertSnapSuspended = useCallback(() => altKeyRef.current, []);
+  const transformSnapSuspended = useCallback(() => altKeyRef.current, []);
+
+  useSurfaceInteractionEvents({
+    surfaceElement,
     surfaceId,
     surface,
-    containerRef,
-    stateService,
+    tool,
+    viewport,
+    selectionData,
+    clientToSurfaceCoords,
+    setInsertPreview,
+    insertPreviewRef,
+    insertStateRef: insertState,
+    panStateRef: panState,
     documentService,
+    stateService,
     uiService,
-    showOutlines = true,
-    openSurfaceEditor,
-    openComponentEditor,
-    readOnly = UI_EDITOR_WRITABLE,
-}: Props) {
-    const [selection, setSelection] = useState(stateService.getSelection());
-    const previousSelectedTargets = useRef<HTMLElement[]>([]);
-    const outlineCache = useRef<WeakMap<HTMLElement, { outline?: string; outlineOffset?: string }>>(new WeakMap());
-    const documentRevision = useUIDocumentRevision(documentService);
-    type MoveableInstance = React.ElementRef<typeof Moveable>;
-    const moveableRef = useRef<MoveableInstance | null>(null);
+    insertSnapEnabled,
+    insertSnapSuspended,
+    readOnly
+  });
 
-    // Insert mode drag-to-create state
-    const [insertPreview, setInsertPreview] = useState<InsertPreview | null>(null);
-    const insertPreviewRef = useRef<InsertPreview | null>(null);
-    const insertState = useRef<InsertToolDragState | null>(null);
+  const transformController = useTransformController({
+    documentService,
+    selectionIds: transformSelectionIds,
+    snapExcludedElementIds: selectionIds,
+    selectedTargets: transformTargets,
+    isGroupSelection,
+    viewportScale: viewport.scale,
+    scheduleMoveableRectUpdate,
+    beginTransform,
+    endTransform,
+    inlineTextEditElementId,
+    surfaceId,
+    surfaceDesignSize: surface.designSize,
+    stateService,
+    snapSuspended: transformSnapSuspended
+  });
+  const imageCropController = useImageCropController({
+    documentService,
+    stateService,
+    selectedTargets,
+    viewportScale: viewport.scale,
+    scheduleMoveableRectUpdate,
+    updateMoveableRectNow,
+    beginTransform,
+    endTransform,
+    surfaceId
+  });
 
-    const [snapGuides, setSnapGuidesState] = useState<ActiveSnapGuides | null>(() => stateService.getSnapGuides());
-    const altKeyRef = useRef(false);
+  const activeController = useMemo(() => {
+    const candidates = [imageCropController, transformController]
+      .filter((controller) => controller.match && controller.targets.length > 0)
+      .sort((a, b) => b.priority - a.priority);
+    return candidates[0] ?? transformController;
+  }, [imageCropController, transformController]);
 
-    const scheduleMoveableRectUpdate = useCallback(() => {
-        // Keep the overlay controller aligned after DOM/layout updates.
-        requestAnimationFrame(() => {
-            moveableRef.current?.updateRect?.();
-        });
-    }, []);
-    const updateMoveableRectNow = useCallback(() => {
-        moveableRef.current?.updateRect?.();
-    }, []);
+  const inlineTextEditEnabled = isSurfaceGestureEnabled("inlineTextEdit", readOnly);
+  const imageCropEnabled = isSurfaceGestureEnabled("imageCrop", readOnly);
 
-    useEffect(() => {
-        const unsubscribe = stateService.on("selectionChanged", setSelection);
-        return () => unsubscribe();
-    }, [stateService]);
+  const handleMoveableInlineTextClick = useCallback(
+    (event: OnClick | OnClickGroup) => {
+      if (!event.isDouble || activeController.id !== "transform") {
+        return;
+      }
+      const liveSelection = stateService.getSelection();
+      const liveSelectionData = isUIElementSelection(liveSelection) ? liveSelection.data : null;
+      const liveSelectedSingleElementId = getSingleSelectedElementId(liveSelectionData, surfaceId);
+      if (!liveSelectedSingleElementId) {
+        return;
+      }
+      const inputTarget = event.inputTarget as Element | null | undefined;
+      if (inputTarget?.closest?.("textarea, input, [contenteditable='true']")) {
+        return;
+      }
 
-    useEffect(() => {
-        if (!isUIElementSelection(selection) || selection.data.surfaceId !== surfaceId) {
-            return;
-        }
-        const document = documentService.getDocument();
-        const rootId = resolveSurfaceRootElementId(document, surfaceId);
-        if (!rootId) {
-            selectSurfaceForProperties(stateService, surfaceId, uiService);
-            return;
-        }
-        const allowed = collectSubtreeElementIds(document, rootId);
-        const nextIds = selection.data.elementIds.filter(id => {
-            const element = document.elements[id];
-            return allowed.has(id) && element != null && !isComponentEditorRootElement(element);
-        });
-        if (nextIds.length === 0) {
-            selectSurfaceForProperties(stateService, surfaceId, uiService);
-            return;
-        }
-        const currentPrimary =
-            selection.data.primaryId ?? selection.data.elementIds[selection.data.elementIds.length - 1];
-        const nextPrimary =
-            selection.data.primaryId && nextIds.includes(selection.data.primaryId)
-                ? selection.data.primaryId
-                : nextIds[nextIds.length - 1];
-        const sameIds =
-            nextIds.length === selection.data.elementIds.length &&
-            nextIds.every((id, index) => id === selection.data.elementIds[index]);
-        if (sameIds && nextPrimary === currentPrimary) {
-            return;
-        }
-        stateService.setUIElementSelection({
-            editor: "ui",
-            surfaceId,
-            elementIds: nextIds,
-            primaryId: nextPrimary,
-        });
-    }, [documentRevision, documentService, selection, stateService, surfaceId, uiService]);
+      const element = documentService.getDocument().elements[liveSelectedSingleElementId];
+      if (inlineTextEditEnabled && isInlineTextEditableElement(element)) {
+        event.inputEvent?.preventDefault?.();
+        event.inputEvent?.stopPropagation?.();
+        beginInlineTextEdit(stateService, surfaceId, liveSelectedSingleElementId);
+        return;
+      }
 
-    const [tool, setTool] = useState<UITool>(stateService.getTool());
-    const [viewport, setViewport] = useState<ViewportTransform>(stateService.getViewportTransform());
+      if (
+        imageCropEnabled &&
+        beginImageCropEdit({
+          documentService,
+          stateService,
+          surfaceId,
+          elementId: liveSelectedSingleElementId,
+          source: "moveableDoubleClick"
+        })
+      ) {
+        event.inputEvent?.preventDefault?.();
+        event.inputEvent?.stopPropagation?.();
+      }
+    },
+    [
+      activeController.id,
+      documentService,
+      imageCropEnabled,
+      inlineTextEditEnabled,
+      stateService,
+      surfaceId
+    ]
+  );
 
-    useEffect(() => {
-        const unsubscribe = stateService.on("toolChanged", setTool);
-        return () => unsubscribe();
-    }, [stateService]);
+  const SELECTO_CLASS_NAME = "narraleaf-selecto";
 
-    useEffect(() => {
-        const unsubscribe = stateService.on("viewportChanged", setViewport);
-        return () => unsubscribe();
-    }, [stateService]);
+  // Read-only borrows the trick inline text editing already uses: with the overlay transparent to
+  // the pointer, clicks and hovers reach the elements underneath, so selection and the properties
+  // panel keep working. It is also what makes the stripped overlay provably inert rather than
+  // merely handler-less.
+  const moveablePointerClass =
+    isInlineTextEditing || !transformEnabled ? "pointer-events-none" : "pointer-events-auto";
+  const isInlineTextMoveableTarget =
+    activeController.id === "transform" &&
+    isInlineTextEditableSelection &&
+    !isInlineTextEditing &&
+    inlineTextEditEnabled;
+  const moveableModeClass =
+    activeController.id === "imageCrop"
+      ? "narraleaf-moveable--crop"
+      : isInlineTextMoveableTarget
+        ? "narraleaf-moveable--inline-text-target"
+        : "";
+  const moveableProps = transformEnabled
+    ? activeController.moveableProps
+    : toReadOnlyMoveableProps(activeController.moveableProps);
 
-    useEffect(() => {
-        setSnapGuidesState(stateService.getSnapGuides());
-        return stateService.on("snapGuidesChanged", setSnapGuidesState);
-    }, [stateService]);
-
-    useEffect(() => {
-        const isAltKey = (e: KeyboardEvent) => e.key === "Alt" || e.code === "AltLeft" || e.code === "AltRight";
-
-        const down = (e: KeyboardEvent) => {
-            if (isAltKey(e)) {
-                altKeyRef.current = true;
+  return (
+    <>
+      {tool.kind === "select" && surfaceElement && (
+        <div className="pointer-events-none absolute inset-0 z-[9]">
+          {snapGuides && snapGuides.surfaceId === surfaceId ? (
+            <SnapGuidesOverlay guides={snapGuides} viewport={viewport} />
+          ) : null}
+          <Selecto
+            className={SELECTO_CLASS_NAME}
+            container={surfaceElement}
+            rootContainer={surfaceElement}
+            dragContainer={surfaceElement}
+            boundContainer={surfaceElement}
+            checkOverflow={true}
+            selectableTargets={selectionEnabled ? [SELECTABLE_TARGET] : []}
+            hitRate={0}
+            selectByClick={true}
+            selectFromInside={false}
+            toggleContinueSelect={["shift"]}
+            ratio={0}
+            onSelectEnd={handleSelectEnd}
+            onDragStart={handleSelectionDragStart}
+          />
+          <Moveable
+            ref={moveableRef}
+            targets={activeController.targets}
+            container={surfaceElement}
+            flushSync={flushSync}
+            className={`narraleaf-moveable ${moveableModeClass} ${moveablePointerClass}`.trim()}
+            {...moveableProps}
+            clickable={isInlineTextMoveableTarget ? true : moveableProps.clickable}
+            onClick={
+              inlineTextEditEnabled || imageCropEnabled ? handleMoveableInlineTextClick : undefined
             }
-        };
-        const up = (e: KeyboardEvent) => {
-            if (isAltKey(e)) {
-                altKeyRef.current = false;
+            onClickGroup={
+              inlineTextEditEnabled || imageCropEnabled ? handleMoveableInlineTextClick : undefined
             }
-        };
-        const resetAlt = () => {
-            altKeyRef.current = false;
-        };
-        window.addEventListener("keydown", down);
-        window.addEventListener("keyup", up);
-        window.addEventListener("blur", resetAlt);
-        document.addEventListener("visibilitychange", resetAlt);
-        return () => {
-            window.removeEventListener("keydown", down);
-            window.removeEventListener("keyup", up);
-            window.removeEventListener("blur", resetAlt);
-            document.removeEventListener("visibilitychange", resetAlt);
-        };
-    }, []);
+          />
+          {hasFloatingToolbar && floatingToolbarPosition ? (
+            <div
+              className="pointer-events-auto absolute z-[10000] flex -translate-y-full overflow-hidden rounded-md border border-edge bg-surface-overlay/90 text-fg shadow-lg shadow-black/30"
+              style={{
+                left: floatingToolbarPosition.left,
+                top: floatingToolbarPosition.top
+              }}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+              }}
+              onMouseDown={(event) => {
+                event.stopPropagation();
+              }}
+            >
+              {effectiveFloatingToolbarItems.map((item, index) => {
+                const Icon = item.icon;
+                const label = item.label ?? item.tooltip ?? item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`flex h-7 items-center justify-center text-xs transition-colors hover:bg-fill hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 ${
+                      Icon ? "w-7" : "min-w-7 px-2"
+                    } ${
+                      index < effectiveFloatingToolbarItems.length - 1 ? "border-r border-edge" : ""
+                    }`}
+                    data-tip={item.tooltip ?? label}
+                    aria-label={item.tooltip ?? label}
+                    disabled={item.disabled}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (!item.disabled) {
+                        item.onClick();
+                      }
+                    }}
+                  >
+                    {Icon ? <Icon className="h-4 w-4" /> : label}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+          {activeController.overlay ? (
+            <div className="pointer-events-auto">{activeController.overlay}</div>
+          ) : null}
+        </div>
+      )}
 
-    // containerRef.current is often null on the first render (sibling viewport not committed yet).
-    // Reading it only during render leaves Selecto's dragContainer stuck on the pointer-events-none
-    // overlay parent, so mousedown never reaches the listener. Sync after layout so Selecto/Moveable
-    // attach to the real viewport.
-    const [surfaceElement, setSurfaceElement] = useState<HTMLElement | null>(null);
-    useLayoutEffect(() => {
-        setSurfaceElement(containerRef.current);
-    }, [containerRef]);
-
-    const widgetRuntimeStore = useWidgetRuntimeStateStore();
-
-    useEffect(() => {
-        const root = containerRef.current;
-        if (!root || !widgetRuntimeStore) {
-            return undefined;
-        }
-        const down = (e: PointerEvent) => {
-            if (e.button !== 0) {
-                return;
-            }
-            const t = e.target as HTMLElement | null;
-            const el = t?.closest("[data-ui-element-id]") as HTMLElement | null;
-            const id = el?.dataset.uiElementId ?? null;
-            widgetRuntimeStore.setActivePointerTarget(id);
-        };
-        const up = () => widgetRuntimeStore.setActivePointerTarget(null);
-        root.addEventListener("pointerdown", down, true);
-        window.addEventListener("pointerup", up, true);
-        window.addEventListener("pointercancel", up, true);
-        return () => {
-            root.removeEventListener("pointerdown", down, true);
-            window.removeEventListener("pointerup", up, true);
-            window.removeEventListener("pointercancel", up, true);
-        };
-    }, [containerRef, widgetRuntimeStore]);
-
-    useEffect(() => {
-        const root = containerRef.current;
-        if (!root || !widgetRuntimeStore) {
-            return undefined;
-        }
-        const focusIn = (e: FocusEvent) => {
-            const t = e.target as HTMLElement | null;
-            const el = t?.closest("[data-ui-element-id]") as HTMLElement | null;
-            widgetRuntimeStore.setFocusedTarget(el?.dataset.uiElementId ?? null);
-        };
-        const focusOut = (e: FocusEvent) => {
-            const next = e.relatedTarget as Node | null;
-            if (next && root.contains(next)) {
-                return;
-            }
-            widgetRuntimeStore.setFocusedTarget(null);
-        };
-        root.addEventListener("focusin", focusIn, true);
-        root.addEventListener("focusout", focusOut, true);
-        return () => {
-            root.removeEventListener("focusin", focusIn, true);
-            root.removeEventListener("focusout", focusOut, true);
-        };
-    }, [containerRef, widgetRuntimeStore]);
-
-    // Resolve DOM nodes after commit: querySelector during render cannot see widgets inserted in the same commit.
-    const [selectedTargets, setSelectedTargets] = useState<HTMLElement[]>([]);
-    useLayoutEffect(() => {
-        if (!isUIElementSelection(selection) || selection.data.surfaceId !== surfaceId || !surfaceElement) {
-            setSelectedTargets([]);
-            scheduleMoveableRectUpdate();
-            return;
-        }
-        const ids = selection.data.elementIds;
-        const next = ids
-            .map(id => surfaceElement.querySelector(`[data-ui-element-id="${id}"]`))
-            .filter(isHTMLElement);
-        setSelectedTargets(prev => {
-            if (prev.length === next.length && prev.every((el, i) => el === next[i])) {
-                return prev;
-            }
-            return next;
-        });
-        // Defer: Moveable reads `targets` after this commit; avoid flushSync inside useLayoutEffect (React warning).
-        scheduleMoveableRectUpdate();
-    }, [selection, surfaceElement, surfaceId, documentRevision, scheduleMoveableRectUpdate]);
-
-    const selectionData = isUIElementSelection(selection) ? selection.data : null;
-    const selectionIds = selectionData?.elementIds ?? [];
-    const primaryId = selectionData?.primaryId ?? selectionIds[selectionIds.length - 1];
-    const transformSelectionIds = useMemo(() => {
-        if (!selectionData || selectionData.surfaceId !== surfaceId || selectionData.elementIds.length === 0) {
-            return [];
-        }
-        return filterSelectionToTopLevelMovers(documentService.getDocument(), selectionData);
-    }, [documentRevision, documentService, selectionData, surfaceId]);
-    const transformTargetIds = useMemo(() => new Set(transformSelectionIds), [transformSelectionIds]);
-    const transformTargets = useMemo(
-        () =>
-            selectedTargets.filter(target => {
-                const elementId = target.dataset.uiElementId;
-                return Boolean(elementId && transformTargetIds.has(elementId));
-            }),
-        [selectedTargets, transformTargetIds],
-    );
-    const isGroupSelection = transformSelectionIds.length > 1;
-    const transformLocks = useRef(0);
-    const [selectionEnabled, setSelectionEnabled] = useState(true);
-    const [interactionOverride, setInteractionOverride] = useState(() => stateService.getInteractionOverride());
-
-    useEffect(() => {
-        const unsub = stateService.on("interactionOverrideChanged", payload => {
-            setInteractionOverride(payload.next);
-        });
-        return unsub;
-    }, [stateService]);
-
-    // An override that was already open when the surface went read-only would leave a live
-    // `contenteditable` (or the crop handles) on screen, taking keystrokes nothing will keep. Close it
-    // rather than gate it: the author becomes read-only in the middle of a gesture, not before it.
-    useEffect(() => {
-        if (!readOnly.active) {
-            return;
-        }
-        if (stateService.getInteractionOverride()) {
-            stateService.setInteractionOverride(null);
-        }
-        // The insert tool armed before the freeze would leave the canvas genuinely dead: the select
-        // tool's whole overlay is unmounted under it, and pointerdown only selects while it is chosen.
-        // The tool is editor state, so putting it back is not a write the freeze has to refuse.
-        if (stateService.getTool().kind === "insert") {
-            stateService.setTool({ kind: "select" });
-        }
-    }, [readOnly.active, stateService]);
-
-    const inlineTextEditElementId =
-        interactionOverride?.kind === "textEdit" && interactionOverride.surfaceId === surfaceId
-            ? interactionOverride.elementId
-            : null;
-    const isInlineTextEditing =
-        Boolean(inlineTextEditElementId) &&
-        !isGroupSelection &&
-        selectionIds.length === 1 &&
-        selectionIds[0] === inlineTextEditElementId;
-    const selectedSingleElementId =
-        selectionData?.surfaceId === surfaceId && selectionIds.length === 1
-            ? selectionIds[0] ?? null
-            : null;
-    const selectedSingleElement = selectedSingleElementId
-        ? documentService.getDocument().elements[selectedSingleElementId]
-        : null;
-    const effectiveSelectedSingleElement = isComponentEditorRootElement(selectedSingleElement)
-        ? null
-        : selectedSingleElement;
-    const isInlineTextEditableSelection = isInlineTextEditableElement(effectiveSelectedSingleElement);
-    const floatingToolbarItems = useMemo<FloatingToolbarItem[]>(() => {
-        if (!effectiveSelectedSingleElement) {
-            return [];
-        }
-        const componentLink = getUIComponentLink(effectiveSelectedSingleElement);
-        if (componentLink) {
-            const component = documentService.getComponent(componentLink.componentId);
-            return [
-                {
-                    kind: "button",
-                    id: "open-linked-component",
-                    icon: Share2,
-                    tooltip: component ? `Open ${component.name}` : "Open component",
-                    disabled: !component || !openComponentEditor,
-                    onClick: () => {
-                        if (component) {
-                            openComponentEditor?.(component.id);
-                        }
-                    },
-                },
-                {
-                    kind: "button",
-                    id: "unlink-component",
-                    icon: Unlink,
-                    tooltip: "Unlink component",
-                    onClick: () => {
-                        const ids = documentService.unlinkComponentInstance(effectiveSelectedSingleElement.id);
-                        const primary = ids[0] ?? effectiveSelectedSingleElement.id;
-                        stateService.setUIElementSelection({
-                            editor: "ui",
-                            surfaceId,
-                            elementIds: [primary],
-                            primaryId: primary,
-                        });
-                    },
-                },
-            ];
-        }
-        const module = widgetModuleRegistry.get(effectiveSelectedSingleElement.type);
-        return module?.createFloatingToolbarItems?.({
-            element: effectiveSelectedSingleElement,
-            documentService,
-            surfaceId,
-            openSurfaceEditor,
-        }) ?? [];
-    }, [documentRevision, documentService, effectiveSelectedSingleElement, openComponentEditor, openSurfaceEditor, stateService, surfaceId]);
-    const effectiveFloatingToolbarItems = useMemo(
-        () => toReadOnlyFloatingToolbarItems(floatingToolbarItems, readOnly),
-        [floatingToolbarItems, readOnly],
-    );
-    const hasFloatingToolbar = effectiveFloatingToolbarItems.length > 0;
-    const [floatingToolbarPosition, setFloatingToolbarPosition] = useState<{ left: number; top: number } | null>(null);
-
-    const beginTransform = () => {
-        transformLocks.current += 1;
-        if (transformLocks.current === 1) {
-            setSelectionEnabled(false);
-        }
-    };
-
-    const endTransform = () => {
-        transformLocks.current = Math.max(0, transformLocks.current - 1);
-        if (transformLocks.current === 0) {
-            setSelectionEnabled(true);
-        }
-    };
-
-    useEffect(() => {
-        previousSelectedTargets.current.forEach(target => {
-            const cached = outlineCache.current.get(target);
-            if (cached) {
-                target.style.outline = cached.outline ?? "";
-                target.style.outlineOffset = cached.outlineOffset ?? "";
-                outlineCache.current.delete(target);
-            }
-        });
-
-        if (showOutlines) {
-            selectedTargets.forEach(target => {
-                if (!outlineCache.current.has(target)) {
-                    outlineCache.current.set(target, {
-                        outline: target.style.outline,
-                        outlineOffset: target.style.outlineOffset,
-                    });
-                }
-                const elementId = target.dataset.uiElementId ?? "";
-                target.style.outline = elementId === primaryId
-                    ? `1px solid ${PRIMARY_OUTLINE_STRONG}`
-                    : `1px dashed ${PRIMARY_OUTLINE_WEAK}`;
-                target.style.outlineOffset = "0px";
-            });
-            previousSelectedTargets.current = selectedTargets;
-        } else {
-            previousSelectedTargets.current = [];
-        }
-    }, [selectedTargets, primaryId, showOutlines]);
-
-    const updateFloatingToolbarPosition = useCallback(() => {
-        if (!hasFloatingToolbar || selectedTargets.length !== 1 || !surfaceElement) {
-            setFloatingToolbarPosition(null);
-            return;
-        }
-        const targetRect = selectedTargets[0].getBoundingClientRect();
-        const surfaceRect = surfaceElement.getBoundingClientRect();
-        const next = resolveFloatingToolbarPosition({ targetRect, surfaceRect });
-        setFloatingToolbarPosition(prev => {
-            if (
-                prev &&
-                Math.abs(prev.left - next.left) < 0.25 &&
-                Math.abs(prev.top - next.top) < 0.25
-            ) {
-                return prev;
-            }
-            return next;
-        });
-    }, [hasFloatingToolbar, selectedTargets, surfaceElement]);
-
-    useLayoutEffect(() => {
-        updateFloatingToolbarPosition();
-    }, [
-        updateFloatingToolbarPosition,
-        viewport.scale,
-        viewport.offsetX,
-        viewport.offsetY,
-        documentRevision,
-    ]);
-
-    useEffect(() => {
-        if (!hasFloatingToolbar) {
-            return undefined;
-        }
-        window.addEventListener("resize", updateFloatingToolbarPosition);
-        return () => {
-            window.removeEventListener("resize", updateFloatingToolbarPosition);
-        };
-    }, [hasFloatingToolbar, updateFloatingToolbarPosition]);
-
-    useEffect(() => {
-        if (!hasFloatingToolbar) {
-            return undefined;
-        }
-        let frameId = 0;
-        let disposed = false;
-        const tick = () => {
-            updateFloatingToolbarPosition();
-            if (!disposed) {
-                frameId = requestAnimationFrame(tick);
-            }
-        };
-        frameId = requestAnimationFrame(tick);
-        return () => {
-            disposed = true;
-            cancelAnimationFrame(frameId);
-        };
-    }, [hasFloatingToolbar, updateFloatingToolbarPosition]);
-
-    useLayoutEffect(() => {
-        moveableRef.current?.updateRect?.();
-    }, [
-        interactionOverride,
-        selectedTargets,
-        viewport.scale,
-        viewport.offsetX,
-        viewport.offsetY,
-        showOutlines,
-    ]);
-
-    const handleSelectEnd = useCallback(
-        (e: any) => {
-            if (!surfaceElement) {
-                return;
-            }
-            const targets = e.selected as HTMLElement[];
-            const doc = documentService.getDocument();
-            const targetIds = targets
-                .map(target => target.dataset.uiElementId)
-                .filter((id): id is string => {
-                    if (!id) {
-                        return false;
-                    }
-                    return !isComponentEditorRootElement(doc.elements[id]);
-                });
-            if (targetIds.length === 0) {
-                selectSurfaceForProperties(stateService, surfaceId, uiService);
-                return;
-            }
-
-            const input = e.inputEvent as MouseEvent | PointerEvent | undefined;
-            const multiIntent = Boolean(input?.shiftKey || input?.metaKey || input?.ctrlKey);
-            if (
-                !multiIntent &&
-                targetIds.length === 1 &&
-                input?.type === "mousedown" &&
-                e.isDouble &&
-                hasSuppressNextCanvasWidgetDoubleClick()
-            ) {
-                return;
-            }
-            const prev = stateService.getSelection();
-
-            let elementIds = targetIds;
-            let primaryId = targetIds[targetIds.length - 1];
-            let handledDrillSelection = false;
-
-            if (
-                !multiIntent &&
-                targetIds.length === 1 &&
-                isUIElementSelection(prev) &&
-                prev.data.surfaceId === surfaceId &&
-                prev.data.elementIds.length === 1
-            ) {
-                const hitId = targetIds[0];
-                const drillTargetId = resolveUiContainerDrillTarget(doc, surfaceId, prev.data, hitId);
-                // `useSurfaceInteractionEvents` pointerdown also updates selection; drill lock is applied there too.
-                // Selecto immediate click ends on mousedown (not mouseup); marquee ends on mouseup — only block mousedown.
-                const immediateClickEnd = input?.type === "mousedown";
-                if (immediateClickEnd && !e.isDouble && drillTargetId) {
-                    return;
-                }
-                if (e.isDouble && drillTargetId) {
-                    markSuppressNextCanvasWidgetDoubleClick();
-                    elementIds = [drillTargetId];
-                    primaryId = drillTargetId;
-                    handledDrillSelection = true;
-                }
-            }
-
-            if (!multiIntent && targetIds.length === 1 && !handledDrillSelection) {
-                const hitId = targetIds[0];
-                const selData = isUIElementSelection(prev) && prev.data.surfaceId === surfaceId ? prev.data : null;
-                if (shouldPromoteToSurfaceRootChild(doc, selData, surfaceId, hitId)) {
-                    const promoted = promoteHitToDirectChildOfSurfaceRoot(doc, surfaceId, hitId);
-                    elementIds = [promoted];
-                    primaryId = promoted;
-                }
-            }
-
-            stateService.setUIElementSelection({
-                editor: "ui",
-                surfaceId,
-                elementIds,
-                primaryId,
-            });
-        },
-        [documentService, stateService, surfaceElement, surfaceId, uiService],
-    );
-
-    const isMoveableControlTarget = useCallback((target: Element | null | undefined) => {
-        return isMoveableInteractionTarget(target);
-    }, []);
-
-    const isTargetInsideSelection = useCallback(
-        (target: Element | null | undefined) => {
-            if (!target) {
-                return false;
-            }
-            return selectedTargets.some(selected => selected.contains(target));
-        },
-        [selectedTargets],
-    );
-
-    const transformEnabled = isSurfaceGestureEnabled("transform", readOnly);
-
-    const handleSelectionDragStart = useCallback(
-        (e: any) => {
-            const eventTarget = e.inputEvent?.target as Element | null;
-            if (isMoveableControlTarget(eventTarget)) {
-                return false;
-            }
-            // Yielding a drag that starts inside the selection exists only so Moveable can move it.
-            // With no transform to hand it to, keep Selecto: dragging there marquees like anywhere else
-            // instead of doing nothing at all.
-            if (transformEnabled && isTargetInsideSelection(eventTarget)) {
-                return false;
-            }
-        },
-        [isMoveableControlTarget, isTargetInsideSelection, transformEnabled],
-    );
-    const panState = useRef<{
-        active: boolean;
-        startX: number;
-        startY: number;
-        startOffsetX: number;
-        startOffsetY: number;
-    }>({ active: false, startX: 0, startY: 0, startOffsetX: 0, startOffsetY: 0 });
-
-    // Helper to convert client coords to surface coords
-    const clientToSurfaceCoords = useCallback((clientX: number, clientY: number) => {
-        if (!surfaceElement) return { x: 0, y: 0 };
-        const rect = surfaceElement.getBoundingClientRect();
-        const containerRect: Rect2D = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-        return clientToSurface({ x: clientX, y: clientY }, viewport, containerRect);
-    }, [surfaceElement, viewport]);
-
-    const insertSnapEnabled = useCallback(() => stateService.getSmartSnapEnabled(), [stateService]);
-    const insertSnapSuspended = useCallback(() => altKeyRef.current, []);
-    const transformSnapSuspended = useCallback(() => altKeyRef.current, []);
-
-    useSurfaceInteractionEvents({
-        surfaceElement,
-        surfaceId,
-        surface,
-        tool,
-        viewport,
-        selectionData,
-        clientToSurfaceCoords,
-        setInsertPreview,
-        insertPreviewRef,
-        insertStateRef: insertState,
-        panStateRef: panState,
-        documentService,
-        stateService,
-        uiService,
-        insertSnapEnabled,
-        insertSnapSuspended,
-        readOnly,
-    });
-
-    const transformController = useTransformController({
-        documentService,
-        selectionIds: transformSelectionIds,
-        snapExcludedElementIds: selectionIds,
-        selectedTargets: transformTargets,
-        isGroupSelection,
-        viewportScale: viewport.scale,
-        scheduleMoveableRectUpdate,
-        beginTransform,
-        endTransform,
-        inlineTextEditElementId,
-        surfaceId,
-        surfaceDesignSize: surface.designSize,
-        stateService,
-        snapSuspended: transformSnapSuspended,
-    });
-    const imageCropController = useImageCropController({
-        documentService,
-        stateService,
-        selectedTargets,
-        viewportScale: viewport.scale,
-        scheduleMoveableRectUpdate,
-        updateMoveableRectNow,
-        beginTransform,
-        endTransform,
-        surfaceId,
-    });
-
-    const activeController = useMemo(() => {
-        const candidates = [imageCropController, transformController]
-            .filter(controller => controller.match && controller.targets.length > 0)
-            .sort((a, b) => b.priority - a.priority);
-        return candidates[0] ?? transformController;
-    }, [imageCropController, transformController]);
-
-    const inlineTextEditEnabled = isSurfaceGestureEnabled("inlineTextEdit", readOnly);
-    const imageCropEnabled = isSurfaceGestureEnabled("imageCrop", readOnly);
-
-    const handleMoveableInlineTextClick = useCallback(
-        (event: OnClick | OnClickGroup) => {
-            if (!event.isDouble || activeController.id !== "transform") {
-                return;
-            }
-            const liveSelection = stateService.getSelection();
-            const liveSelectionData = isUIElementSelection(liveSelection) ? liveSelection.data : null;
-            const liveSelectedSingleElementId = getSingleSelectedElementId(liveSelectionData, surfaceId);
-            if (!liveSelectedSingleElementId) {
-                return;
-            }
-            const inputTarget = event.inputTarget as Element | null | undefined;
-            if (inputTarget?.closest?.("textarea, input, [contenteditable='true']")) {
-                return;
-            }
-
-            const element = documentService.getDocument().elements[liveSelectedSingleElementId];
-            if (inlineTextEditEnabled && isInlineTextEditableElement(element)) {
-                event.inputEvent?.preventDefault?.();
-                event.inputEvent?.stopPropagation?.();
-                beginInlineTextEdit(stateService, surfaceId, liveSelectedSingleElementId);
-                return;
-            }
-
-            if (
-                imageCropEnabled &&
-                beginImageCropEdit({
-                    documentService,
-                    stateService,
-                    surfaceId,
-                    elementId: liveSelectedSingleElementId,
-                    source: "moveableDoubleClick",
-                })
-            ) {
-                event.inputEvent?.preventDefault?.();
-                event.inputEvent?.stopPropagation?.();
-            }
-        },
-        [activeController.id, documentService, imageCropEnabled, inlineTextEditEnabled, stateService, surfaceId],
-    );
-
-    const SELECTO_CLASS_NAME = "narraleaf-selecto";
-
-    // Read-only borrows the trick inline text editing already uses: with the overlay transparent to
-    // the pointer, clicks and hovers reach the elements underneath, so selection and the properties
-    // panel keep working. It is also what makes the stripped overlay provably inert rather than
-    // merely handler-less.
-    const moveablePointerClass =
-        isInlineTextEditing || !transformEnabled ? "pointer-events-none" : "pointer-events-auto";
-    const isInlineTextMoveableTarget =
-        activeController.id === "transform" &&
-        isInlineTextEditableSelection &&
-        !isInlineTextEditing &&
-        inlineTextEditEnabled;
-    const moveableModeClass = activeController.id === "imageCrop"
-        ? "narraleaf-moveable--crop"
-        : isInlineTextMoveableTarget
-          ? "narraleaf-moveable--inline-text-target"
-          : "";
-    const moveableProps = transformEnabled
-        ? activeController.moveableProps
-        : toReadOnlyMoveableProps(activeController.moveableProps);
-
-    return (
-        <>
-            {tool.kind === "select" && surfaceElement && (
-                <div className="pointer-events-none absolute inset-0 z-[9]">
-                    {snapGuides && snapGuides.surfaceId === surfaceId ? (
-                        <SnapGuidesOverlay guides={snapGuides} viewport={viewport} />
-                    ) : null}
-                    <Selecto
-                        className={SELECTO_CLASS_NAME}
-                        container={surfaceElement}
-                        rootContainer={surfaceElement}
-                        dragContainer={surfaceElement}
-                        boundContainer={surfaceElement}
-                        checkOverflow={true}
-                        selectableTargets={selectionEnabled ? [SELECTABLE_TARGET] : []}
-                        hitRate={0}
-                        selectByClick={true}
-                        selectFromInside={false}
-                        toggleContinueSelect={["shift"]}
-                        ratio={0}
-                        onSelectEnd={handleSelectEnd}
-                        onDragStart={handleSelectionDragStart}
-                    />
-                    <Moveable
-                        ref={moveableRef}
-                        targets={activeController.targets}
-                        container={surfaceElement}
-                        flushSync={flushSync}
-                        className={`narraleaf-moveable ${moveableModeClass} ${moveablePointerClass}`.trim()}
-                        {...moveableProps}
-                        clickable={isInlineTextMoveableTarget ? true : moveableProps.clickable}
-                        onClick={inlineTextEditEnabled || imageCropEnabled ? handleMoveableInlineTextClick : undefined}
-                        onClickGroup={inlineTextEditEnabled || imageCropEnabled ? handleMoveableInlineTextClick : undefined}
-                    />
-                    {hasFloatingToolbar && floatingToolbarPosition ? (
-                        <div
-                            className="pointer-events-auto absolute z-[10000] flex -translate-y-full overflow-hidden rounded-md border border-edge bg-surface-overlay/90 text-fg shadow-lg shadow-black/30"
-                            style={{
-                                left: floatingToolbarPosition.left,
-                                top: floatingToolbarPosition.top,
-                            }}
-                            onPointerDown={event => {
-                                event.stopPropagation();
-                            }}
-                            onMouseDown={event => {
-                                event.stopPropagation();
-                            }}
-                        >
-                            {effectiveFloatingToolbarItems.map((item, index) => {
-                                const Icon = item.icon;
-                                const label = item.label ?? item.tooltip ?? item.id;
-                                return (
-                                    <button
-                                        key={item.id}
-                                        type="button"
-                                        className={`flex h-7 items-center justify-center text-xs transition-colors hover:bg-fill hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 ${
-                                            Icon ? "w-7" : "min-w-7 px-2"
-                                        } ${
-                                            index < effectiveFloatingToolbarItems.length - 1 ? "border-r border-edge" : ""
-                                        }`}
-                                        data-tip={item.tooltip ?? label}
-                                        aria-label={item.tooltip ?? label}
-                                        disabled={item.disabled}
-                                        onClick={event => {
-                                            event.preventDefault();
-                                            event.stopPropagation();
-                                            if (!item.disabled) {
-                                                item.onClick();
-                                            }
-                                        }}
-                                    >
-                                        {Icon ? <Icon className="h-4 w-4" /> : label}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    ) : null}
-                    {activeController.overlay ? (
-                        <div className="pointer-events-auto">{activeController.overlay}</div>
-                    ) : null}
-                </div>
-            )}
-
-            {/* Insert mode preview overlay */}
-            {tool.kind === "insert" && surfaceElement && snapGuides && snapGuides.surfaceId === surfaceId ? (
-                <div className="pointer-events-none absolute inset-0 z-[9]">
-                    <SnapGuidesOverlay guides={snapGuides} viewport={viewport} />
-                </div>
-            ) : null}
-            {tool.kind === "insert" && insertPreview && (
-                <InsertPreviewOverlay preview={insertPreview} viewport={viewport} />
-            )}
-        </>
-    );
+      {/* Insert mode preview overlay */}
+      {tool.kind === "insert" &&
+      surfaceElement &&
+      snapGuides &&
+      snapGuides.surfaceId === surfaceId ? (
+        <div className="pointer-events-none absolute inset-0 z-[9]">
+          <SnapGuidesOverlay guides={snapGuides} viewport={viewport} />
+        </div>
+      ) : null}
+      {tool.kind === "insert" && insertPreview && (
+        <InsertPreviewOverlay preview={insertPreview} viewport={viewport} />
+      )}
+    </>
+  );
 }

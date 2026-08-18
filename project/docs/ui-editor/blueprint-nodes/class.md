@@ -3,6 +3,7 @@
 节点分类是节点在图形界面中显示的操作分类，并能够在创建浮窗中导航。
 
 Self 节点和 Element 节点通常使用不同分类：
+
 - Self 节点操作当前私有蓝图所属控件，不带 Element/ref 输入，显示在对应控件分类中，例如 `Button`、`Slider`、`List`。
 - Element 节点操作显式传入的 Element 引用，带 typed Element 输入，统一显示在 `Element` 分类中。
 - Element 节点只有在当前图里已有兼容的 `Element`、`Element Flush` 或 `Element Click` 绑定节点时才会出现在创建浮窗中。同一节点类型在创建浮窗中只显示一项；若兼容来源唯一，创建时会自动连到该来源，若有多个兼容来源则保留目标输入由作者选择。
@@ -10,28 +11,33 @@ Self 节点和 Element 节点通常使用不同分类：
 ## Events
 
 Events分类具有：
+
 - Events节点，包括生命周期、`App Boot`、`On Game Ready`、元素交互、Surface 点击/右键、Surface 进入/退出动画事件、列表/滑块事件、Page Event，以及 Global / Surface / 控件的 On Key / Any Key 键盘事件
 - Broadcast节点
 
 ## Flow
 
 Flow分类具有：
+
 - Flow节点
 
 ## Debug
 
 Debug分类具有：
+
 - Debug节点
 - 图内注释节点
 
 ## Network
 
 Network分类具有：
+
 - Network节点
 
 ## Displayable
 
 Displayable分类具有：
+
 - 当前控件自己的 Displayable `Get Display` / `Set Display`
 - 当前控件自己的 Displayable `Get Property` / `Set Property`
 - Appearance Variant 节点：Self `Set Variant` 默认绑定当前控件；派生 `Set Element Variant` 才通过 Element 引用目标控件
@@ -46,6 +52,7 @@ Displayable `display` 是运行时渲染开关。`Set Display false` 会给元�
 ## Page
 
 Page分类具有：
+
 - Page节点
 - `Go Page` 页面导航尾节点，可选传入 Page props；选择 `None` 会清除当前顶层 Page 叠层，游戏状态中打开的 Page 会叠加在游戏舞台之上
 - `Get Page Props` 读取当前 Page props；Global 蓝图不可用
@@ -55,6 +62,7 @@ Page分类具有：
 ## Game
 
 Game 分类具有：
+
 - `Start Game` 游戏启动尾节点
 - 游戏状态节点：`Is In Game`、`Is Game Overlay`、`Quit Game`
 - Dialog 节点：`Get Nametag`、`Next`、`Skip`、`Show Dialog`、`Hide Dialog`、`Toggle Dialog Display`、`Set Sentence Speed`、`Get Sentence Speed`
@@ -66,6 +74,7 @@ Game 分类具有：
 Data 分类同时包含 Collection 节点；Array / JSON / Object 处理都保留在 Data 分类下。
 
 Data分类具有：
+
 - Data节点
 - JSON节点
 - String节点
@@ -73,6 +82,7 @@ Data分类具有：
 ## Variables
 
 Variables 分类具有：
+
 - `Var` 图内变量声明节点
 - `Get Var` / `Set Var` 本地变量读写节点
 - `Get Persistent` / `Set Persistent` 项目级持久变量读写节点
@@ -80,6 +90,7 @@ Variables 分类具有：
 ## Math
 
 Math分类具有：
+
 - Math节点
 - Boolean节点
 - Compare节点
@@ -87,11 +98,13 @@ Math分类具有：
 ## Text
 
 Text分类具有：
+
 - 当前 `nl.text` 自己的 Text 节点
 
 ## Element
 
 Element 分类具有：
+
 - Element Literal 节点
 - Element Flush / Element Click 事件节点
 - `Continue Event Bubble` 在当前 Widget 事件图中把接入的事件继续派发给父元素
@@ -102,17 +115,20 @@ Element 分类具有：
 ## List
 
 List 分类具有：
+
 - 当前 `nl.list` 自己的 List 节点
 - List item context 节点
 
 ## Slider
 
 Slider分类具有：
+
 - 当前 `nl.slider` 自己的 Slider 节点
 
 ## Image
 
 Image分类具有：
+
 - ImageAsset 字面量卡片
 - 当前 `nl.image` 自己的 Image 节点，用于 asset、fit mode、crop rect、flipX、flipY
 

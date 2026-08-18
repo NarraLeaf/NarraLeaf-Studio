@@ -16,21 +16,21 @@ import { STORY_COMMAND_PINYIN } from "./storyCommandPinyin.generated";
 
 /** English tokens the parser accepts for a command id - its canonical token plus every alias. */
 const KEYWORDS_BY_COMMAND_ID: ReadonlyMap<string, readonly string[]> = new Map(
-    listCommandDefs().map(def => [
-        def.commandId.toLowerCase(),
-        [def.token, ...(def.aliases ?? [])].map(keyword => keyword.toLowerCase()),
-    ]),
+  listCommandDefs().map((def) => [
+    def.commandId.toLowerCase(),
+    [def.token, ...(def.aliases ?? [])].map((keyword) => keyword.toLowerCase())
+  ])
 );
 
 /** Are all of `needle`'s characters present in `haystack`, in order? Both must be lower-cased already. */
 function isSubsequence(needle: string, haystack: string): boolean {
-    let index = 0;
-    for (const char of haystack) {
-        if (index < needle.length && needle[index] === char) {
-            index += 1;
-        }
+  let index = 0;
+  for (const char of haystack) {
+    if (index < needle.length && needle[index] === char) {
+      index += 1;
     }
-    return index === needle.length;
+  }
+  return index === needle.length;
 }
 
 /**
@@ -47,34 +47,38 @@ function isSubsequence(needle: string, haystack: string): boolean {
  * is matched separately by the parser's localized-token table, so both spellings resolve.
  */
 function scoreCommand(command: PaletteActionCommand, query: string): number | null {
-    const pinyin = STORY_COMMAND_PINYIN[command.id];
-    const keywords = new Set<string>([
-        ...(KEYWORDS_BY_COMMAND_ID.get(command.id.toLowerCase()) ?? []),
-        ...(command.aliases ?? []).map(alias => alias.toLowerCase()),
-        ...(pinyin ? [pinyin.full, pinyin.initials] : []),
-    ]);
-    const slashed = new Set([...keywords].map(keyword => (keyword.startsWith("/") ? keyword : `/${keyword}`)));
-    const texts = [command.label, command.id, command.detail, command.nlrCapability ?? ""].map(text => text.toLowerCase());
+  const pinyin = STORY_COMMAND_PINYIN[command.id];
+  const keywords = new Set<string>([
+    ...(KEYWORDS_BY_COMMAND_ID.get(command.id.toLowerCase()) ?? []),
+    ...(command.aliases ?? []).map((alias) => alias.toLowerCase()),
+    ...(pinyin ? [pinyin.full, pinyin.initials] : [])
+  ]);
+  const slashed = new Set(
+    [...keywords].map((keyword) => (keyword.startsWith("/") ? keyword : `/${keyword}`))
+  );
+  const texts = [command.label, command.id, command.detail, command.nlrCapability ?? ""].map(
+    (text) => text.toLowerCase()
+  );
 
-    if (keywords.has(query) || slashed.has(query)) {
-        return 100;
-    }
-    if ([...keywords].some(keyword => keyword.startsWith(query))) {
-        return 85;
-    }
-    if (texts.some(text => text.startsWith(query))) {
-        return 75;
-    }
-    if ([...keywords].some(keyword => keyword.includes(query))) {
-        return 65;
-    }
-    if (texts.some(text => text.includes(query))) {
-        return 55;
-    }
-    if ([...keywords, ...texts].some(text => isSubsequence(query, text))) {
-        return 40;
-    }
-    return null;
+  if (keywords.has(query) || slashed.has(query)) {
+    return 100;
+  }
+  if ([...keywords].some((keyword) => keyword.startsWith(query))) {
+    return 85;
+  }
+  if (texts.some((text) => text.startsWith(query))) {
+    return 75;
+  }
+  if ([...keywords].some((keyword) => keyword.includes(query))) {
+    return 65;
+  }
+  if (texts.some((text) => text.includes(query))) {
+    return 55;
+  }
+  if ([...keywords, ...texts].some((text) => isSubsequence(query, text))) {
+    return 40;
+  }
+  return null;
 }
 
 /**
@@ -82,14 +86,20 @@ function scoreCommand(command: PaletteActionCommand, query: string): number | nu
  * for ties and returned as-is for an empty query. Pass commands already localized - the label is
  * matched as given, which is what lets a translated label answer a query in the author's language.
  */
-export function searchActionCommands(commands: readonly PaletteActionCommand[], rawQuery: string): PaletteActionCommand[] {
-    const query = rawQuery.trim().toLowerCase();
-    if (!query) {
-        return [...commands];
-    }
-    return commands
-        .map((command, index) => ({ command, index, score: scoreCommand(command, query) }))
-        .filter((entry): entry is { command: PaletteActionCommand; index: number; score: number } => entry.score !== null)
-        .sort((left, right) => right.score - left.score || left.index - right.index)
-        .map(entry => entry.command);
+export function searchActionCommands(
+  commands: readonly PaletteActionCommand[],
+  rawQuery: string
+): PaletteActionCommand[] {
+  const query = rawQuery.trim().toLowerCase();
+  if (!query) {
+    return [...commands];
+  }
+  return commands
+    .map((command, index) => ({ command, index, score: scoreCommand(command, query) }))
+    .filter(
+      (entry): entry is { command: PaletteActionCommand; index: number; score: number } =>
+        entry.score !== null
+    )
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .map((entry) => entry.command);
 }

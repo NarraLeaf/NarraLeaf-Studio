@@ -4,12 +4,12 @@ import { en } from "./en";
 export type Messages = typeof en;
 
 type DeepPartial<T> = {
-    [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K];
+  [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K];
 };
 
 /** Same tree as {@link Messages} but every leaf widened to `string`. */
 type Stringify<T> = {
-    [K in keyof T]: T[K] extends string ? string : Stringify<T[K]>;
+  [K in keyof T]: T[K] extends string ? string : Stringify<T[K]>;
 };
 
 /**
@@ -28,9 +28,7 @@ export type LocaleMessages = DeepPartial<Stringify<Messages>>;
 export type LocaleNamespace<K extends keyof Messages> = DeepPartial<Stringify<Messages[K]>>;
 
 type Flatten<T, Prefix extends string = ""> = {
-    [K in keyof T & string]: T[K] extends string
-        ? `${Prefix}${K}`
-        : Flatten<T[K], `${Prefix}${K}.`>;
+  [K in keyof T & string]: T[K] extends string ? `${Prefix}${K}` : Flatten<T[K], `${Prefix}${K}.`>;
 }[keyof T & string];
 
 /** Every valid dotted message key, derived from the source catalog. */

@@ -1,22 +1,22 @@
 import {
-    useCallback,
-    useContext,
-    useEffect,
-    useId,
-    useLayoutEffect,
-    useMemo,
-    useRef,
-    useState,
-    type ContextType,
-    type CSSProperties,
-    type ReactNode,
-    type RefObject,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ContextType,
+  type CSSProperties,
+  type ReactNode,
+  type RefObject
 } from "react";
 import { motion, PresenceContext, usePresence } from "motion/react";
 import {
-    scalePageMotionDistances,
-    type PageAnimationMotion,
-    type PageAnimationNavigationDirection,
+  scalePageMotionDistances,
+  type PageAnimationMotion,
+  type PageAnimationNavigationDirection
 } from "@/lib/ui-editor/runtime/pageAnimation";
 import { SurfaceEnterReadyContext } from "@/lib/ui-editor/runtime/surface/ElementAnimationLayer";
 
@@ -47,107 +47,109 @@ const SURFACE_ENTER_COMPLETE_FALLBACK_MS = 80;
 const SURFACE_EXIT_COMPLETE_FALLBACK_MS = 80;
 
 type SurfaceAnimationLayerProps = {
-    prepaintKey: string;
-    direction: PageAnimationNavigationDirection;
-    pageMotion: PageAnimationMotion;
-    /**
-     * Render scale applied to the page-animation travel distances (see
-     * {@link scalePageMotionDistances}). Layers rendered OUTSIDE the design→backing scale
-     * transform (the top-level surface stack) pass the host's render scale; layers inside the
-     * scaled tree (nested surface frames) keep the default 1 so distances stay in design px.
-     */
-    scale?: number;
-    className?: string;
-    style?: CSSProperties;
-    contentClassName?: string;
-    contentStyle?: CSSProperties;
-    surfaceId?: string;
-    surfaceKind?: string;
-    interactive?: boolean;
-    presentZIndex?: number;
-    exitZIndex?: number;
-    /**
-     * How long this layer's whole departure takes, its elements included - `exitMs` off the
-     * animation plan. Defaults to the layer's own exit duration, which is the right answer for a
-     * host whose elements do not animate.
-     */
-    exitHoldMs?: number;
-    resolveExit?: (direction: PageAnimationNavigationDirection) => Record<string, unknown>;
-    onPrepaintReady?: (key: string) => void;
-    onBeforeExit?: (key: string) => void;
-    onEnterComplete?: (key: string) => void;
-    children: ReactNode;
+  prepaintKey: string;
+  direction: PageAnimationNavigationDirection;
+  pageMotion: PageAnimationMotion;
+  /**
+   * Render scale applied to the page-animation travel distances (see
+   * {@link scalePageMotionDistances}). Layers rendered OUTSIDE the design→backing scale
+   * transform (the top-level surface stack) pass the host's render scale; layers inside the
+   * scaled tree (nested surface frames) keep the default 1 so distances stay in design px.
+   */
+  scale?: number;
+  className?: string;
+  style?: CSSProperties;
+  contentClassName?: string;
+  contentStyle?: CSSProperties;
+  surfaceId?: string;
+  surfaceKind?: string;
+  interactive?: boolean;
+  presentZIndex?: number;
+  exitZIndex?: number;
+  /**
+   * How long this layer's whole departure takes, its elements included - `exitMs` off the
+   * animation plan. Defaults to the layer's own exit duration, which is the right answer for a
+   * host whose elements do not animate.
+   */
+  exitHoldMs?: number;
+  resolveExit?: (direction: PageAnimationNavigationDirection) => Record<string, unknown>;
+  onPrepaintReady?: (key: string) => void;
+  onBeforeExit?: (key: string) => void;
+  onEnterComplete?: (key: string) => void;
+  children: ReactNode;
 };
 
 function now(): number {
-    return typeof performance !== "undefined" && typeof performance.now === "function"
-        ? performance.now()
-        : Date.now();
+  return typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
 }
 
 function waitForAnimationFrame(): Promise<void> {
-    return new Promise(resolve => {
-        let resolved = false;
-        const timeoutId = setTimeout(() => {
-            resolved = true;
-            resolve();
-        }, SURFACE_PREPAINT_FRAME_TIMEOUT_MS);
+  return new Promise((resolve) => {
+    let resolved = false;
+    const timeoutId = setTimeout(() => {
+      resolved = true;
+      resolve();
+    }, SURFACE_PREPAINT_FRAME_TIMEOUT_MS);
 
-        if (typeof requestAnimationFrame !== "function") {
-            return;
-        }
+    if (typeof requestAnimationFrame !== "function") {
+      return;
+    }
 
-        requestAnimationFrame(() => {
-            if (resolved) {
-                return;
-            }
-            resolved = true;
-            clearTimeout(timeoutId);
-            resolve();
-        });
+    requestAnimationFrame(() => {
+      if (resolved) {
+        return;
+      }
+      resolved = true;
+      clearTimeout(timeoutId);
+      resolve();
     });
+  });
 }
 
 function waitWithTimeout(promise: Promise<unknown>, timeoutMs: number): Promise<void> {
-    return new Promise(resolve => {
-        const timeoutId = setTimeout(resolve, timeoutMs);
-        void promise
-            .catch(() => undefined)
-            .finally(() => {
-                clearTimeout(timeoutId);
-                resolve();
-            });
-    });
+  return new Promise((resolve) => {
+    const timeoutId = setTimeout(resolve, timeoutMs);
+    void promise
+      .catch(() => undefined)
+      .finally(() => {
+        clearTimeout(timeoutId);
+        resolve();
+      });
+  });
 }
 
 function waitForDocumentFonts(): Promise<unknown> {
-    if (typeof document === "undefined") {
-        return Promise.resolve();
-    }
-    const fontSet = document.fonts;
-    return fontSet?.ready ?? Promise.resolve();
+  if (typeof document === "undefined") {
+    return Promise.resolve();
+  }
+  const fontSet = document.fonts;
+  return fontSet?.ready ?? Promise.resolve();
 }
 
 function waitForImages(root: HTMLElement | null): Promise<unknown> {
-    if (!root) {
+  if (!root) {
+    return Promise.resolve();
+  }
+  const images = Array.from(root.querySelectorAll("img"));
+  if (images.length === 0) {
+    return Promise.resolve();
+  }
+  return Promise.all(
+    images.map((image) => {
+      if (image.complete && image.naturalWidth > 0) {
         return Promise.resolve();
-    }
-    const images = Array.from(root.querySelectorAll("img"));
-    if (images.length === 0) {
-        return Promise.resolve();
-    }
-    return Promise.all(images.map(image => {
-        if (image.complete && image.naturalWidth > 0) {
-            return Promise.resolve();
-        }
-        if (typeof image.decode === "function") {
-            return image.decode().catch(() => undefined);
-        }
-        return new Promise<void>(resolve => {
-            image.addEventListener("load", () => resolve(), { once: true });
-            image.addEventListener("error", () => resolve(), { once: true });
-        });
-    }));
+      }
+      if (typeof image.decode === "function") {
+        return image.decode().catch(() => undefined);
+      }
+      return new Promise<void>((resolve) => {
+        image.addEventListener("load", () => resolve(), { once: true });
+        image.addEventListener("error", () => resolve(), { once: true });
+      });
+    })
+  );
 }
 
 /**
@@ -159,38 +161,38 @@ function waitForImages(root: HTMLElement | null): Promise<unknown> {
 const PREPAINT_ASSET_WAIT_SIGNIFICANT_MS = 16;
 
 function useSurfacePrepaint(prepaintKey: string, rootRef: RefObject<HTMLDivElement | null>) {
-    const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(false);
 
-    useEffect(() => {
-        let cancelled = false;
-        setReady(false);
-        void (async () => {
-            // One frame to let the freshly mounted (still hidden) surface lay out and paint. This is
-            // the expensive one: on a busy page the browser needs 100ms+ to produce it, and that -
-            // not asset loading - is what a page switch actually costs.
-            await waitForAnimationFrame();
-            const assetWaitStart = now();
-            await Promise.all([
-                waitWithTimeout(waitForDocumentFonts(), SURFACE_PREPAINT_TIMEOUT_MS),
-                waitWithTimeout(waitForImages(rootRef.current), SURFACE_PREPAINT_IMAGE_TIMEOUT_MS),
-            ]);
-            // A second frame, but only when the waits above actually held something back. They
-            // usually do not (fonts load once per session, images are decoded by the time the layer
-            // is laid out), and waiting for a frame that has nothing to reveal cost another 100ms of
-            // "the click did nothing" on exactly the pages that were already the slowest.
-            if (now() - assetWaitStart >= PREPAINT_ASSET_WAIT_SIGNIFICANT_MS) {
-                await waitForAnimationFrame();
-            }
-            if (!cancelled) {
-                setReady(true);
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [prepaintKey, rootRef]);
+  useEffect(() => {
+    let cancelled = false;
+    setReady(false);
+    void (async () => {
+      // One frame to let the freshly mounted (still hidden) surface lay out and paint. This is
+      // the expensive one: on a busy page the browser needs 100ms+ to produce it, and that -
+      // not asset loading - is what a page switch actually costs.
+      await waitForAnimationFrame();
+      const assetWaitStart = now();
+      await Promise.all([
+        waitWithTimeout(waitForDocumentFonts(), SURFACE_PREPAINT_TIMEOUT_MS),
+        waitWithTimeout(waitForImages(rootRef.current), SURFACE_PREPAINT_IMAGE_TIMEOUT_MS)
+      ]);
+      // A second frame, but only when the waits above actually held something back. They
+      // usually do not (fonts load once per session, images are decoded by the time the layer
+      // is laid out), and waiting for a frame that has nothing to reveal cost another 100ms of
+      // "the click did nothing" on exactly the pages that were already the slowest.
+      if (now() - assetWaitStart >= PREPAINT_ASSET_WAIT_SIGNIFICANT_MS) {
+        await waitForAnimationFrame();
+      }
+      if (!cancelled) {
+        setReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [prepaintKey, rootRef]);
 
-    return ready;
+  return ready;
 }
 
 type PresenceValue = NonNullable<ContextType<typeof PresenceContext>>;
@@ -212,239 +214,240 @@ type PresenceValue = NonNullable<ContextType<typeof PresenceContext>>;
  * nothing here invents a duration.
  */
 function useContentPresence(input: {
-    isPresent: boolean;
-    safeToRemove: (() => void) | null | undefined;
-    exitHoldMs: number;
+  isPresent: boolean;
+  safeToRemove: (() => void) | null | undefined;
+  exitHoldMs: number;
 }): PresenceValue {
-    const { isPresent, safeToRemove, exitHoldMs } = input;
-    const parentPresence = useContext(PresenceContext);
-    const fallbackId = useId();
-    const registeredRef = useRef<Map<string | number, boolean> | null>(null);
-    if (registeredRef.current === null) {
-        registeredRef.current = new Map();
+  const { isPresent, safeToRemove, exitHoldMs } = input;
+  const parentPresence = useContext(PresenceContext);
+  const fallbackId = useId();
+  const registeredRef = useRef<Map<string | number, boolean> | null>(null);
+  if (registeredRef.current === null) {
+    registeredRef.current = new Map();
+  }
+  const registered = registeredRef.current;
+  const reportedRef = useRef(false);
+  const isPresentRef = useRef(isPresent);
+  const safeToRemoveRef = useRef(safeToRemove);
+  useEffect(() => {
+    safeToRemoveRef.current = safeToRemove;
+  });
+
+  const report = useCallback(() => {
+    if (reportedRef.current) {
+      return;
     }
-    const registered = registeredRef.current;
-    const reportedRef = useRef(false);
-    const isPresentRef = useRef(isPresent);
-    const safeToRemoveRef = useRef(safeToRemove);
-    useEffect(() => {
-        safeToRemoveRef.current = safeToRemove;
-    });
+    reportedRef.current = true;
+    safeToRemoveRef.current?.();
+  }, []);
 
-    const report = useCallback(() => {
-        if (reportedRef.current) {
-            return;
-        }
-        reportedRef.current = true;
-        safeToRemoveRef.current?.();
-    }, []);
+  const reportWhenSettled = useCallback(() => {
+    if (isPresentRef.current) {
+      return;
+    }
+    for (const settled of registered.values()) {
+      if (!settled) {
+        return;
+      }
+    }
+    report();
+  }, [registered, report]);
 
-    const reportWhenSettled = useCallback(() => {
-        if (isPresentRef.current) {
-            return;
-        }
-        for (const settled of registered.values()) {
-            if (!settled) {
-                return;
-            }
-        }
-        report();
-    }, [registered, report]);
+  useLayoutEffect(() => {
+    isPresentRef.current = isPresent;
+    if (isPresent) {
+      reportedRef.current = false;
+    }
+    // Everything under the layer leaves again on the leaving pass, so what settled during its
+    // stay says nothing about this departure.
+    registered.forEach((_, key) => registered.set(key, false));
+  }, [isPresent, registered]);
 
-    useLayoutEffect(() => {
-        isPresentRef.current = isPresent;
-        if (isPresent) {
-            reportedRef.current = false;
-        }
-        // Everything under the layer leaves again on the leaving pass, so what settled during its
-        // stay says nothing about this departure.
-        registered.forEach((_, key) => registered.set(key, false));
-    }, [isPresent, registered]);
-
-    useEffect(() => {
-        if (isPresent) {
-            return undefined;
-        }
-        // A layer with nothing animated under it is already done, and must not sit out the slack.
-        reportWhenSettled();
-        const timeoutId = setTimeout(report, exitHoldMs > 0 ? exitHoldMs + SURFACE_EXIT_COMPLETE_FALLBACK_MS : 0);
-        return () => clearTimeout(timeoutId);
-    }, [exitHoldMs, isPresent, report, reportWhenSettled]);
-
-    /**
-     * Everything but the bookkeeping is the presence above, verbatim: the contents still leave when
-     * the layer does, and still skip the animations an arriving group skips. Read field by field so
-     * this value survives a render of the group above - that one is rebuilt every time by design,
-     * to drive layout animations no Surface has.
-     */
-    const parentId = parentPresence?.id;
-    const parentInitial = parentPresence?.initial;
-    const parentCustom = parentPresence?.custom;
-    return useMemo<PresenceValue>(
-        () => ({
-            id: parentId ?? fallbackId,
-            initial: parentInitial,
-            custom: parentCustom,
-            isPresent,
-            onExitComplete: childId => {
-                if (registered.has(childId)) {
-                    registered.set(childId, true);
-                }
-                reportWhenSettled();
-            },
-            register: childId => {
-                registered.set(childId, false);
-                return () => {
-                    registered.delete(childId);
-                    reportWhenSettled();
-                };
-            },
-        }),
-        [fallbackId, isPresent, parentCustom, parentId, parentInitial, registered, reportWhenSettled],
+  useEffect(() => {
+    if (isPresent) {
+      return undefined;
+    }
+    // A layer with nothing animated under it is already done, and must not sit out the slack.
+    reportWhenSettled();
+    const timeoutId = setTimeout(
+      report,
+      exitHoldMs > 0 ? exitHoldMs + SURFACE_EXIT_COMPLETE_FALLBACK_MS : 0
     );
+    return () => clearTimeout(timeoutId);
+  }, [exitHoldMs, isPresent, report, reportWhenSettled]);
+
+  /**
+   * Everything but the bookkeeping is the presence above, verbatim: the contents still leave when
+   * the layer does, and still skip the animations an arriving group skips. Read field by field so
+   * this value survives a render of the group above - that one is rebuilt every time by design,
+   * to drive layout animations no Surface has.
+   */
+  const parentId = parentPresence?.id;
+  const parentInitial = parentPresence?.initial;
+  const parentCustom = parentPresence?.custom;
+  return useMemo<PresenceValue>(
+    () => ({
+      id: parentId ?? fallbackId,
+      initial: parentInitial,
+      custom: parentCustom,
+      isPresent,
+      onExitComplete: (childId) => {
+        if (registered.has(childId)) {
+          registered.set(childId, true);
+        }
+        reportWhenSettled();
+      },
+      register: (childId) => {
+        registered.set(childId, false);
+        return () => {
+          registered.delete(childId);
+          reportWhenSettled();
+        };
+      }
+    }),
+    [fallbackId, isPresent, parentCustom, parentId, parentInitial, registered, reportWhenSettled]
+  );
 }
 
 export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
-    const {
-        prepaintKey,
-        direction,
-        pageMotion,
-        scale = 1,
-        className,
-        style,
-        contentClassName,
-        contentStyle,
-        surfaceId,
-        surfaceKind,
-        interactive = true,
-        presentZIndex = 10,
-        exitZIndex = 20,
-        exitHoldMs,
-        resolveExit,
-        onPrepaintReady,
-        onBeforeExit,
-        onEnterComplete,
-        children,
-    } = props;
-    const contentRef = useRef<HTMLDivElement | null>(null);
-    const beforeExitReportedRef = useRef<string | null>(null);
-    const enterCompleteReportedRef = useRef<string | null>(null);
-    const [isPresent, safeToRemove] = usePresence();
-    const contentPresence = useContentPresence({
-        isPresent,
-        safeToRemove,
-        exitHoldMs: Math.max(0, exitHoldMs ?? pageMotion.exitDurationMs),
-    });
-    const prepaintReady = useSurfacePrepaint(prepaintKey, contentRef);
-    // Snapshot of `prepaintReady` taken while the layer was still present. Exit visibility uses
-    // this instead of live state: a layer removed before its prepaint ever completed has never
-    // been shown, and forcing it visible for the exit would flash never-painted content (still
-    // posed at its enter-initial target) for the duration of the exit animation.
-    const prepaintReadyWhilePresentRef = useRef(false);
-    useLayoutEffect(() => {
-        if (isPresent) {
-            prepaintReadyWhilePresentRef.current = prepaintReady;
-        }
-    }, [isPresent, prepaintReady]);
+  const {
+    prepaintKey,
+    direction,
+    pageMotion,
+    scale = 1,
+    className,
+    style,
+    contentClassName,
+    contentStyle,
+    surfaceId,
+    surfaceKind,
+    interactive = true,
+    presentZIndex = 10,
+    exitZIndex = 20,
+    exitHoldMs,
+    resolveExit,
+    onPrepaintReady,
+    onBeforeExit,
+    onEnterComplete,
+    children
+  } = props;
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const beforeExitReportedRef = useRef<string | null>(null);
+  const enterCompleteReportedRef = useRef<string | null>(null);
+  const [isPresent, safeToRemove] = usePresence();
+  const contentPresence = useContentPresence({
+    isPresent,
+    safeToRemove,
+    exitHoldMs: Math.max(0, exitHoldMs ?? pageMotion.exitDurationMs)
+  });
+  const prepaintReady = useSurfacePrepaint(prepaintKey, contentRef);
+  // Snapshot of `prepaintReady` taken while the layer was still present. Exit visibility uses
+  // this instead of live state: a layer removed before its prepaint ever completed has never
+  // been shown, and forcing it visible for the exit would flash never-painted content (still
+  // posed at its enter-initial target) for the duration of the exit animation.
+  const prepaintReadyWhilePresentRef = useRef(false);
+  useLayoutEffect(() => {
+    if (isPresent) {
+      prepaintReadyWhilePresentRef.current = prepaintReady;
+    }
+  }, [isPresent, prepaintReady]);
 
-    const reportEnterComplete = useCallback(() => {
-        if (enterCompleteReportedRef.current === prepaintKey) {
-            return;
-        }
-        enterCompleteReportedRef.current = prepaintKey;
-        onEnterComplete?.(prepaintKey);
-    }, [onEnterComplete, prepaintKey]);
+  const reportEnterComplete = useCallback(() => {
+    if (enterCompleteReportedRef.current === prepaintKey) {
+      return;
+    }
+    enterCompleteReportedRef.current = prepaintKey;
+    onEnterComplete?.(prepaintKey);
+  }, [onEnterComplete, prepaintKey]);
 
-    useEffect(() => {
-        beforeExitReportedRef.current = null;
-        enterCompleteReportedRef.current = null;
-    }, [prepaintKey]);
+  useEffect(() => {
+    beforeExitReportedRef.current = null;
+    enterCompleteReportedRef.current = null;
+  }, [prepaintKey]);
 
-    useLayoutEffect(() => {
-        if (isPresent || beforeExitReportedRef.current === prepaintKey) {
-            return;
-        }
-        beforeExitReportedRef.current = prepaintKey;
-        onBeforeExit?.(prepaintKey);
-    }, [isPresent, onBeforeExit, prepaintKey]);
+  useLayoutEffect(() => {
+    if (isPresent || beforeExitReportedRef.current === prepaintKey) {
+      return;
+    }
+    beforeExitReportedRef.current = prepaintKey;
+    onBeforeExit?.(prepaintKey);
+  }, [isPresent, onBeforeExit, prepaintKey]);
 
-    useEffect(() => {
-        if (prepaintReady) {
-            onPrepaintReady?.(prepaintKey);
-        }
-    }, [onPrepaintReady, prepaintKey, prepaintReady]);
+  useEffect(() => {
+    if (prepaintReady) {
+      onPrepaintReady?.(prepaintKey);
+    }
+  }, [onPrepaintReady, prepaintKey, prepaintReady]);
 
-    useEffect(() => {
-        if (prepaintReady && isPresent && pageMotion.enterDurationMs <= 0) {
-            reportEnterComplete();
-        }
-    }, [isPresent, pageMotion.enterDurationMs, prepaintReady, reportEnterComplete]);
+  useEffect(() => {
+    if (prepaintReady && isPresent && pageMotion.enterDurationMs <= 0) {
+      reportEnterComplete();
+    }
+  }, [isPresent, pageMotion.enterDurationMs, prepaintReady, reportEnterComplete]);
 
-    useEffect(() => {
-        if (!prepaintReady || !isPresent || pageMotion.enterDurationMs <= 0) {
-            return undefined;
-        }
-        const timeoutId = setTimeout(
-            reportEnterComplete,
-            pageMotion.enterDurationMs + SURFACE_ENTER_COMPLETE_FALLBACK_MS,
-        );
-        return () => clearTimeout(timeoutId);
-    }, [isPresent, pageMotion.enterDurationMs, prepaintReady, reportEnterComplete]);
-
-    const variants = useMemo(() => {
-        const prepaintTarget = {
-            ...scalePageMotionDistances(pageMotion.initial, scale),
-            transition: { type: "tween", duration: 0 },
-        };
-        const exitForDirection = (navDirection: PageAnimationNavigationDirection) => ({
-            ...scalePageMotionDistances(resolveExit?.(navDirection) ?? pageMotion.exit, scale),
-            pointerEvents: "none",
-        });
-        return {
-            prepaint: prepaintTarget,
-            animate: scalePageMotionDistances(pageMotion.animate, scale),
-            exit: exitForDirection,
-        };
-    }, [pageMotion.animate, pageMotion.exit, pageMotion.initial, resolveExit, scale]);
-
-    const mergedStyle: CSSProperties = {
-        ...style,
-        zIndex: isPresent ? presentZIndex : exitZIndex,
-        pointerEvents: isPresent && prepaintReady && interactive ? style?.pointerEvents : "none",
-    };
-    const contentVisible = isPresent ? prepaintReady : prepaintReadyWhilePresentRef.current;
-    const mergedContentStyle: CSSProperties = {
-        ...contentStyle,
-        opacity: contentVisible ? contentStyle?.opacity ?? 1 : 0,
-    };
-
-    return (
-        <motion.div
-            className={className}
-            style={mergedStyle}
-            custom={direction}
-            variants={variants}
-            initial={false}
-            animate={prepaintReady ? "animate" : "prepaint"}
-            exit="exit"
-            data-ui-surface-id={surfaceId}
-            data-ui-surface-kind={surfaceKind}
-            data-ui-surface-prepaint={prepaintReady ? "ready" : "pending"}
-            onAnimationComplete={definition => {
-                if (definition === "animate" && prepaintReady && isPresent) {
-                    reportEnterComplete();
-                }
-            }}
-        >
-            <div ref={contentRef} className={contentClassName} style={mergedContentStyle}>
-                {/* Elements on this Surface start their own enter animations from the same instant
-                    this layer becomes visible, not from when they mounted behind the curtain. */}
-                <SurfaceEnterReadyContext.Provider value={prepaintReady}>
-                    <PresenceContext.Provider value={contentPresence}>
-                        {children}
-                    </PresenceContext.Provider>
-                </SurfaceEnterReadyContext.Provider>
-            </div>
-        </motion.div>
+  useEffect(() => {
+    if (!prepaintReady || !isPresent || pageMotion.enterDurationMs <= 0) {
+      return undefined;
+    }
+    const timeoutId = setTimeout(
+      reportEnterComplete,
+      pageMotion.enterDurationMs + SURFACE_ENTER_COMPLETE_FALLBACK_MS
     );
+    return () => clearTimeout(timeoutId);
+  }, [isPresent, pageMotion.enterDurationMs, prepaintReady, reportEnterComplete]);
+
+  const variants = useMemo(() => {
+    const prepaintTarget = {
+      ...scalePageMotionDistances(pageMotion.initial, scale),
+      transition: { type: "tween", duration: 0 }
+    };
+    const exitForDirection = (navDirection: PageAnimationNavigationDirection) => ({
+      ...scalePageMotionDistances(resolveExit?.(navDirection) ?? pageMotion.exit, scale),
+      pointerEvents: "none"
+    });
+    return {
+      prepaint: prepaintTarget,
+      animate: scalePageMotionDistances(pageMotion.animate, scale),
+      exit: exitForDirection
+    };
+  }, [pageMotion.animate, pageMotion.exit, pageMotion.initial, resolveExit, scale]);
+
+  const mergedStyle: CSSProperties = {
+    ...style,
+    zIndex: isPresent ? presentZIndex : exitZIndex,
+    pointerEvents: isPresent && prepaintReady && interactive ? style?.pointerEvents : "none"
+  };
+  const contentVisible = isPresent ? prepaintReady : prepaintReadyWhilePresentRef.current;
+  const mergedContentStyle: CSSProperties = {
+    ...contentStyle,
+    opacity: contentVisible ? (contentStyle?.opacity ?? 1) : 0
+  };
+
+  return (
+    <motion.div
+      className={className}
+      style={mergedStyle}
+      custom={direction}
+      variants={variants}
+      initial={false}
+      animate={prepaintReady ? "animate" : "prepaint"}
+      exit="exit"
+      data-ui-surface-id={surfaceId}
+      data-ui-surface-kind={surfaceKind}
+      data-ui-surface-prepaint={prepaintReady ? "ready" : "pending"}
+      onAnimationComplete={(definition) => {
+        if (definition === "animate" && prepaintReady && isPresent) {
+          reportEnterComplete();
+        }
+      }}
+    >
+      <div ref={contentRef} className={contentClassName} style={mergedContentStyle}>
+        {/* Elements on this Surface start their own enter animations from the same instant
+                    this layer becomes visible, not from when they mounted behind the curtain. */}
+        <SurfaceEnterReadyContext.Provider value={prepaintReady}>
+          <PresenceContext.Provider value={contentPresence}>{children}</PresenceContext.Provider>
+        </SurfaceEnterReadyContext.Provider>
+      </div>
+    </motion.div>
+  );
 }

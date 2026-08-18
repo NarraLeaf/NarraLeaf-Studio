@@ -10,8 +10,8 @@
  * so the muted one can win.
  */
 export const ICON_BTN =
-    "p-1 rounded-md text-fg-muted hover:text-fg hover:bg-fill transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+  "p-1 rounded-md text-fg-muted hover:text-fg hover:bg-fill transition-colors disabled:cursor-not-allowed disabled:opacity-50";
 
 /** The same button, lit — an override is in force, a mode is on. */
 export const ICON_BTN_ON =
-    "p-1 rounded-md text-primary hover:bg-fill transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+  "p-1 rounded-md text-primary hover:bg-fill transition-colors disabled:cursor-not-allowed disabled:opacity-50";

@@ -19,39 +19,39 @@ import { flushPendingSaves } from "@/lib/workspace/services/autosave/flushPendin
 import type { WorkspaceStartupStage } from "../components/WorkspaceOpeningOverlay";
 
 interface WorkspaceProviderProps {
-    children: React.ReactNode;
+  children: React.ReactNode;
 }
 
 interface WorkspaceContextValue {
-    workspace: Workspace | null;
-    context: WorkspaceCtx | null;
-    isInitialized: boolean;
-    error: Error | null;
-    /**
-     * Whether this window is a recovery shell rather than a workspace.
-     *
-     * Read from the window's props, so it is settled before the first service starts and cannot
-     * change while the window lives - switching modes is a reload. Everything downstream keys off
-     * this: no plugins, a different shell, a different set of services.
-     */
-    recovery: boolean;
-    /** What sent the author into recovery mode, when something did. Shown first in the panel. */
-    recoveryReason: string | null;
-    /**
-     * Which part of the startup is running, for as long as one is.
-     *
-     * Only the overlay reads it, but it belongs to the provider: the provider is what performs the
-     * steps, and a window that stays blank through all of them is the thing being fixed.
-     */
-    startupStage: WorkspaceStartupStage;
-    /**
-     * Start the whole initialization over.
-     *
-     * Worth having because most of what makes this fail is not the project: a file still being
-     * written by another tool, a network volume that had not woken up, a plugin that threw once.
-     * Before this existed the only way to try again was to kill the window.
-     */
-    retry: () => void;
+  workspace: Workspace | null;
+  context: WorkspaceCtx | null;
+  isInitialized: boolean;
+  error: Error | null;
+  /**
+   * Whether this window is a recovery shell rather than a workspace.
+   *
+   * Read from the window's props, so it is settled before the first service starts and cannot
+   * change while the window lives - switching modes is a reload. Everything downstream keys off
+   * this: no plugins, a different shell, a different set of services.
+   */
+  recovery: boolean;
+  /** What sent the author into recovery mode, when something did. Shown first in the panel. */
+  recoveryReason: string | null;
+  /**
+   * Which part of the startup is running, for as long as one is.
+   *
+   * Only the overlay reads it, but it belongs to the provider: the provider is what performs the
+   * steps, and a window that stays blank through all of them is the thing being fixed.
+   */
+  startupStage: WorkspaceStartupStage;
+  /**
+   * Start the whole initialization over.
+   *
+   * Worth having because most of what makes this fail is not the project: a file still being
+   * written by another tool, a network volume that had not woken up, a plugin that threw once.
+   * Before this existed the only way to try again was to kill the window.
+   */
+  retry: () => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
@@ -59,12 +59,12 @@ const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 let workspaceInitQueue: Promise<void> = Promise.resolve();
 
 function enqueueWorkspaceInit<T>(task: () => Promise<T>): Promise<T> {
-    const run = workspaceInitQueue.then(task, task);
-    workspaceInitQueue = run.then(
-        () => undefined,
-        () => undefined,
-    );
-    return run;
+  const run = workspaceInitQueue.then(task, task);
+  workspaceInitQueue = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
 }
 
 /**
@@ -80,19 +80,19 @@ function enqueueWorkspaceInit<T>(task: () => Promise<T>): Promise<T> {
  * hidden or fully occluded gets no frames at all, and the open must not hang on one.
  */
 function yieldToPaint(): Promise<void> {
-    return new Promise<void>(resolve => {
-        let settled = false;
-        const finish = () => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            window.clearTimeout(fallback);
-            resolve();
-        };
-        const fallback = window.setTimeout(finish, 120);
-        requestAnimationFrame(() => requestAnimationFrame(finish));
-    });
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      window.clearTimeout(fallback);
+      resolve();
+    };
+    const fallback = window.setTimeout(finish, 120);
+    requestAnimationFrame(() => requestAnimationFrame(finish));
+  });
 }
 
 /**
@@ -100,281 +100,300 @@ function yieldToPaint(): Promise<void> {
  * Initializes workspace and all services
  */
 export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
-    const [workspace, setWorkspace] = useState<Workspace | null>(null);
-    const [context, setContext] = useState<WorkspaceCtx | null>(null);
-    const [isInitialized, setIsInitialized] = useState(false);
-    const [error, setError] = useState<Error | null>(null);
-    const [startupStage, setStartupStage] = useState<WorkspaceStartupStage>("preparing");
-    const [attempt, setAttempt] = useState(0);
-    const [recovery, setRecovery] = useState(false);
-    const [recoveryReason, setRecoveryReason] = useState<string | null>(null);
-    const contextRef = useRef<WorkspaceCtx | null>(null);
-    contextRef.current = context;
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [context, setContext] = useState<WorkspaceCtx | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const [startupStage, setStartupStage] = useState<WorkspaceStartupStage>("preparing");
+  const [attempt, setAttempt] = useState(0);
+  const [recovery, setRecovery] = useState(false);
+  const [recoveryReason, setRecoveryReason] = useState<string | null>(null);
+  const contextRef = useRef<WorkspaceCtx | null>(null);
+  contextRef.current = context;
 
-    const retry = React.useCallback(() => {
-        setError(null);
-        setIsInitialized(false);
-        setWorkspace(null);
-        setContext(null);
-        setStartupStage("preparing");
-        setAttempt(previous => previous + 1);
-    }, []);
+  const retry = React.useCallback(() => {
+    setError(null);
+    setIsInitialized(false);
+    setWorkspace(null);
+    setContext(null);
+    setStartupStage("preparing");
+    setAttempt((previous) => previous + 1);
+  }, []);
 
-    useEffect(() => {
-        let mounted = true;
-        let cleanupContext: WorkspaceCtx | null = null;
-        let canDispose = false;
-        let disposed = false;
+  useEffect(() => {
+    let mounted = true;
+    let cleanupContext: WorkspaceCtx | null = null;
+    let canDispose = false;
+    let disposed = false;
 
-        const disposeWorkspace = async () => {
-            if (!cleanupContext || disposed) {
-                return;
+    const disposeWorkspace = async () => {
+      if (!cleanupContext || disposed) {
+        return;
+      }
+      disposed = true;
+      await Service.disposeAll(cleanupContext);
+    };
+
+    const initWorkspace = async () => {
+      try {
+        await enqueueWorkspaceInit(async () => {
+          // Create workspace context
+          setStartupStage("preparing");
+          const ctx = await Workspace.createContext();
+          cleanupContext = ctx;
+
+          // The anomaly log is deliberately NOT reset here, and the reasoning is worth
+          // keeping: "clear the old attempt's failures" sounds obviously right and is
+          // exactly backwards. Several load paths repair what they could not read - a
+          // corrupt asset shard is set aside and replaced with `{}` - so the *second*
+          // attempt finds a healthy file and reports nothing. Clearing first would then
+          // leave a window whose assets are silently gone and whose log is empty, which is
+          // the precise failure this whole feature exists to end. A failure that happened
+          // stays a fact about this session; repeats collapse in the log itself.
+          const props = throwException(
+            await getInterface().getWindowProps<WindowAppType.Workspace>()
+          );
+          if (props.recovery) {
+            setRecovery(true);
+            setRecoveryReason(props.recoveryReason ?? null);
+            if (props.recoveryReason) {
+              // Carried across the reload because the reload is what destroyed it: the
+              // renderer that hit this error is gone, and re-deriving it is not always
+              // possible - a read that failed once can succeed the next time.
+              reportWorkspaceAnomaly({
+                source: "startup",
+                operationKey: "workspace.recovery.operations.enteredBecause",
+                error: props.recoveryReason,
+                severity: "degraded"
+              });
             }
-            disposed = true;
-            await Service.disposeAll(cleanupContext);
-        };
 
-        const initWorkspace = async () => {
+            setStartupStage("services");
+            canDispose = true;
+            await startRecoveryShell(ctx);
+
+            // The preflight runs *after* the shell rather than as a gate. Its answer is
+            // worth having - "this folder has no .nlproj", "a merge is unfinished" - but
+            // in this mode it must never be the reason the window does not open, since a
+            // project that fails preflight is exactly the one somebody is here to fix.
             try {
-                await enqueueWorkspaceInit(async () => {
-                    // Create workspace context
-                    setStartupStage("preparing");
-                    const ctx = await Workspace.createContext();
-                    cleanupContext = ctx;
-
-                    // The anomaly log is deliberately NOT reset here, and the reasoning is worth
-                    // keeping: "clear the old attempt's failures" sounds obviously right and is
-                    // exactly backwards. Several load paths repair what they could not read - a
-                    // corrupt asset shard is set aside and replaced with `{}` - so the *second*
-                    // attempt finds a healthy file and reports nothing. Clearing first would then
-                    // leave a window whose assets are silently gone and whose log is empty, which is
-                    // the precise failure this whole feature exists to end. A failure that happened
-                    // stays a fact about this session; repeats collapse in the log itself.
-                    const props = throwException(await getInterface().getWindowProps<WindowAppType.Workspace>());
-                    if (props.recovery) {
-                        setRecovery(true);
-                        setRecoveryReason(props.recoveryReason ?? null);
-                        if (props.recoveryReason) {
-                            // Carried across the reload because the reload is what destroyed it: the
-                            // renderer that hit this error is gone, and re-deriving it is not always
-                            // possible - a read that failed once can succeed the next time.
-                            reportWorkspaceAnomaly({
-                                source: "startup",
-                                operationKey: "workspace.recovery.operations.enteredBecause",
-                                error: props.recoveryReason,
-                                severity: "degraded",
-                            });
-                        }
-
-                        setStartupStage("services");
-                        canDispose = true;
-                        await startRecoveryShell(ctx);
-
-                        // The preflight runs *after* the shell rather than as a gate. Its answer is
-                        // worth having - "this folder has no .nlproj", "a merge is unfinished" - but
-                        // in this mode it must never be the reason the window does not open, since a
-                        // project that fails preflight is exactly the one somebody is here to fix.
-                        try {
-                            await ensureWorkspaceProjectCanStart(ctx.project.getConfig().projectPath);
-                        } catch (preflightError) {
-                            reportWorkspaceAnomaly({
-                                source: "startup",
-                                operationKey: "workspace.recovery.operations.preflight",
-                                path: ctx.project.getConfig().projectPath,
-                                error: preflightError,
-                                severity: "degraded",
-                            });
-                        }
-                        // Preflight arms a merge freeze of its own on a half-finished merge. Freezing
-                        // twice is harmless - both refuse the same writes - but the reason is what
-                        // the banner reads, and in this window the true answer is recovery mode.
-                        freezeProjectWrites({
-                            projectPath: ctx.project.getConfig().projectPath,
-                            reason: { kind: "recovery" },
-                        });
-
-                        if (!mounted) {
-                            await disposeWorkspace();
-                            return;
-                        }
-
-                        setStartupStage("interface");
-                        await yieldToPaint();
-                        if (!mounted) {
-                            await disposeWorkspace();
-                            return;
-                        }
-
-                        setContext(ctx);
-                        setWorkspace(Workspace.create(ctx));
-                        setIsInitialized(true);
-                        // Deliberately not added to the recent list: this window arrived by reloading
-                        // one that was already open, so the project is in that list already - and
-                        // `ProjectService` may be one of the things that did not come up, which is
-                        // where the name would have come from.
-                        getInterface().workspace.reportLoadResult(true);
-                        return;
-                    }
-
-                    // Validate the selected folder before booting workspace services.
-                    await ensureWorkspaceProjectCanStart(ctx.project.getConfig().projectPath);
-
-                    // Initialize all services
-                    setStartupStage("services");
-                    await Service.initializeAll(ctx);
-
-                    // Activate all services
-                    for (const service of ctx.services.getAll()) {
-                        await service.activate(ctx);
-                    }
-                    canDispose = true;
-
-                    if (!mounted) {
-                        await disposeWorkspace();
-                        return;
-                    }
-
-                    // Create workspace instance
-                    const ws = Workspace.create(ctx);
-
-                    // Say what the next stage is and let it reach the screen *before* handing over:
-                    // everything after this line renders the editor synchronously, so this is the
-                    // last chance to describe the wait the author is about to sit through.
-                    setStartupStage("interface");
-                    await yieldToPaint();
-                    if (!mounted) {
-                        await disposeWorkspace();
-                        return;
-                    }
-
-                    setContext(ctx);
-                    setWorkspace(ws);
-                    setIsInitialized(true);
-
-                    // Add to recent projects only when successfully loaded
-                    const projectService = ctx.services.get<ProjectService>(Services.Project);
-                    const projectConfig = projectService.getProjectConfig();
-                    const projectPath = ctx.project.getConfig().projectPath;
-                    getInterface().app.addRecentProject(projectConfig.name, projectPath);
-
-                    // Replace-style launches wait on this before retiring the opener window.
-                    getInterface().workspace.reportLoadResult(true);
-                });
-            } catch (err) {
-                console.error("Failed to initialize workspace:", err);
-                // Tells a pending replace-launch to keep its opener: this window failed to
-                // become a workspace (e.g. the folder is not a project).
-                getInterface().workspace.reportLoadResult(false);
-                await disposeWorkspace();
-                if (mounted) {
-                    setError(err instanceof Error ? err : new Error(String(err)));
-                }
+              await ensureWorkspaceProjectCanStart(ctx.project.getConfig().projectPath);
+            } catch (preflightError) {
+              reportWorkspaceAnomaly({
+                source: "startup",
+                operationKey: "workspace.recovery.operations.preflight",
+                path: ctx.project.getConfig().projectPath,
+                error: preflightError,
+                severity: "degraded"
+              });
             }
-        };
+            // Preflight arms a merge freeze of its own on a half-finished merge. Freezing
+            // twice is harmless - both refuse the same writes - but the reason is what
+            // the banner reads, and in this window the true answer is recovery mode.
+            freezeProjectWrites({
+              projectPath: ctx.project.getConfig().projectPath,
+              reason: { kind: "recovery" }
+            });
 
-        initWorkspace();
-
-        return () => {
-            mounted = false;
-            if (canDispose) {
-                void enqueueWorkspaceInit(disposeWorkspace);
+            if (!mounted) {
+              await disposeWorkspace();
+              return;
             }
-        };
-    }, [attempt]);
 
-    useEffect(() => {
-        if (!context) {
+            setStartupStage("interface");
+            await yieldToPaint();
+            if (!mounted) {
+              await disposeWorkspace();
+              return;
+            }
+
+            setContext(ctx);
+            setWorkspace(Workspace.create(ctx));
+            setIsInitialized(true);
+            // Deliberately not added to the recent list: this window arrived by reloading
+            // one that was already open, so the project is in that list already - and
+            // `ProjectService` may be one of the things that did not come up, which is
+            // where the name would have come from.
+            getInterface().workspace.reportLoadResult(true);
             return;
+          }
+
+          // Validate the selected folder before booting workspace services.
+          await ensureWorkspaceProjectCanStart(ctx.project.getConfig().projectPath);
+
+          // Initialize all services
+          setStartupStage("services");
+          await Service.initializeAll(ctx);
+
+          // Activate all services
+          for (const service of ctx.services.getAll()) {
+            await service.activate(ctx);
+          }
+          canDispose = true;
+
+          if (!mounted) {
+            await disposeWorkspace();
+            return;
+          }
+
+          // Create workspace instance
+          const ws = Workspace.create(ctx);
+
+          // Say what the next stage is and let it reach the screen *before* handing over:
+          // everything after this line renders the editor synchronously, so this is the
+          // last chance to describe the wait the author is about to sit through.
+          setStartupStage("interface");
+          await yieldToPaint();
+          if (!mounted) {
+            await disposeWorkspace();
+            return;
+          }
+
+          setContext(ctx);
+          setWorkspace(ws);
+          setIsInitialized(true);
+
+          // Add to recent projects only when successfully loaded
+          const projectService = ctx.services.get<ProjectService>(Services.Project);
+          const projectConfig = projectService.getProjectConfig();
+          const projectPath = ctx.project.getConfig().projectPath;
+          getInterface().app.addRecentProject(projectConfig.name, projectPath);
+
+          // Replace-style launches wait on this before retiring the opener window.
+          getInterface().workspace.reportLoadResult(true);
+        });
+      } catch (err) {
+        console.error("Failed to initialize workspace:", err);
+        // Tells a pending replace-launch to keep its opener: this window failed to
+        // become a workspace (e.g. the folder is not a project).
+        getInterface().workspace.reportLoadResult(false);
+        await disposeWorkspace();
+        if (mounted) {
+          setError(err instanceof Error ? err : new Error(String(err)));
         }
+      }
+    };
 
-        const resolveAssetUrl = createWorkspaceAssetUrlResolver(context);
-        const handler = async ({ assetId, assetType }: { assetId: string; assetType?: string }): Promise<RequestStatus<{ url: string }>> => {
-            const result = await resolveAssetUrl(assetId, assetType);
-            if (!result.success) {
-                return {
-                    success: false,
-                    error: result.error,
-                };
-            }
-            return {
-                success: true,
-                data: { url: result.url },
-            };
+    initWorkspace();
+
+    return () => {
+      mounted = false;
+      if (canDispose) {
+        void enqueueWorkspaceInit(disposeWorkspace);
+      }
+    };
+  }, [attempt]);
+
+  useEffect(() => {
+    if (!context) {
+      return;
+    }
+
+    const resolveAssetUrl = createWorkspaceAssetUrlResolver(context);
+    const handler = async ({
+      assetId,
+      assetType
+    }: {
+      assetId: string;
+      assetType?: string;
+    }): Promise<RequestStatus<{ url: string }>> => {
+      const result = await resolveAssetUrl(assetId, assetType);
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.error
         };
+      }
+      return {
+        success: true,
+        data: { url: result.url }
+      };
+    };
 
-        const assetToken = getInterface().workspace.onResolveAssetUrl(handler);
-        const imageToken = getInterface().workspace.onResolveImageAssetUrl(handler);
-        return () => {
-            assetToken.cancel();
-            imageToken.cancel();
-        };
-    }, [context]);
+    const assetToken = getInterface().workspace.onResolveAssetUrl(handler);
+    const imageToken = getInterface().workspace.onResolveImageAssetUrl(handler);
+    return () => {
+      assetToken.cancel();
+      imageToken.cancel();
+    };
+  }, [context]);
 
-    // The window's close guard lives in the main process, but the prompt has to look like every
-    // other Studio dialog, so main asks us to render it and waits for the answer.
-    //
-    // Registered on mount rather than with the context, because main blocks the close until this
-    // replies: closing while the workspace is still starting up must not hang on a handler that
-    // does not exist yet. Until there is a context there is also nothing to lose, so it just
-    // agrees to close.
-    useEffect(() => {
-        const token = getInterface().workspace.onConfirmClose(async () => {
-            const currentContext = contextRef.current;
-            if (!currentContext) {
-                return { success: true, data: { confirmed: true } };
-            }
+  // The window's close guard lives in the main process, but the prompt has to look like every
+  // other Studio dialog, so main asks us to render it and waits for the answer.
+  //
+  // Registered on mount rather than with the context, because main blocks the close until this
+  // replies: closing while the workspace is still starting up must not hang on a handler that
+  // does not exist yet. Until there is a context there is also nothing to lose, so it just
+  // agrees to close.
+  useEffect(() => {
+    const token = getInterface().workspace.onConfirmClose(async () => {
+      const currentContext = contextRef.current;
+      if (!currentContext) {
+        return { success: true, data: { confirmed: true } };
+      }
 
-            const uiService = currentContext.services.get<UIService>(Services.UI);
-            const confirmed = await uiService.showConfirm(
-                translate("workspace.shell.closeConfirm.message"),
-                translate("workspace.shell.closeConfirm.detail"),
-            );
-            return { success: true, data: { confirmed } };
-        });
+      const uiService = currentContext.services.get<UIService>(Services.UI);
+      const confirmed = await uiService.showConfirm(
+        translate("workspace.shell.closeConfirm.message"),
+        translate("workspace.shell.closeConfirm.detail")
+      );
+      return { success: true, data: { confirmed } };
+    });
 
-        // Registered in the same mount effect as the close guard, and for the same reason: main
-        // blocks the close (and the quit) waiting for this reply. A handler that only exists once
-        // the workspace has finished starting up would leave main sitting out its full timeout
-        // every time someone closes a window during startup - when there is nothing to save at all.
-        const flushToken = getInterface().workspace.onFlushPendingSaves(async () => {
-            const currentContext = contextRef.current;
-            if (!currentContext) {
-                return { success: true, data: { flushed: true } };
-            }
-            const result = await flushPendingSaves(currentContext);
-            return { success: true, data: { flushed: result.flushed } };
-        });
+    // Registered in the same mount effect as the close guard, and for the same reason: main
+    // blocks the close (and the quit) waiting for this reply. A handler that only exists once
+    // the workspace has finished starting up would leave main sitting out its full timeout
+    // every time someone closes a window during startup - when there is nothing to save at all.
+    const flushToken = getInterface().workspace.onFlushPendingSaves(async () => {
+      const currentContext = contextRef.current;
+      if (!currentContext) {
+        return { success: true, data: { flushed: true } };
+      }
+      const result = await flushPendingSaves(currentContext);
+      return { success: true, data: { flushed: result.flushed } };
+    });
 
-        return () => {
-            token.cancel();
-            flushToken.cancel();
-        };
-    }, []);
+    return () => {
+      token.cancel();
+      flushToken.cancel();
+    };
+  }, []);
 
-    // The same flush, for the one caller that arrives after this provider has been torn down: the
-    // crash screen. A render error replaces the whole tree, taking the handlers above with it,
-    // while the debounced saves it was holding are still only in memory. Registered without a
-    // cleanup on purpose - see `setCrashRecoveryFlush`.
-    useEffect(() => {
-        setCrashRecoveryFlush(context ? () => flushPendingSaves(context) : null);
-    }, [context]);
+  // The same flush, for the one caller that arrives after this provider has been torn down: the
+  // crash screen. A render error replaces the whole tree, taking the handlers above with it,
+  // while the debounced saves it was holding are still only in memory. Registered without a
+  // cleanup on purpose - see `setCrashRecoveryFlush`.
+  useEffect(() => {
+    setCrashRecoveryFlush(context ? () => flushPendingSaves(context) : null);
+  }, [context]);
 
-    return (
-        <WorkspaceContext.Provider value={{ workspace, context, isInitialized, error, startupStage, retry, recovery, recoveryReason }}>
-            {children}
-        </WorkspaceContext.Provider>
-    );
+  return (
+    <WorkspaceContext.Provider
+      value={{
+        workspace,
+        context,
+        isInitialized,
+        error,
+        startupStage,
+        retry,
+        recovery,
+        recoveryReason
+      }}
+    >
+      {children}
+    </WorkspaceContext.Provider>
+  );
 }
 
 /**
  * Hook to access workspace context
  */
 export function useWorkspace() {
-    const ctx = useContext(WorkspaceContext);
-    if (!ctx) {
-        throw new Error("useWorkspace must be used within WorkspaceProvider");
-    }
-    return ctx;
+  const ctx = useContext(WorkspaceContext);
+  if (!ctx) {
+    throw new Error("useWorkspace must be used within WorkspaceProvider");
+  }
+  return ctx;
 }
 
 /**
@@ -386,5 +405,5 @@ export function useWorkspace() {
  * capture and all, once per element per render: 1424 of them in a single Dev Mode page switch.
  */
 export function useOptionalWorkspace() {
-    return useContext(WorkspaceContext) ?? null;
+  return useContext(WorkspaceContext) ?? null;
 }

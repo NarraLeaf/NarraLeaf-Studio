@@ -10,5 +10,5 @@ import { flushPendingSaves } from "@/lib/workspace/services/autosave/flushPendin
  * translations were still sitting in a debounce timer.
  */
 export async function flushUIDocAndGraphIfDirty(workspace: Workspace): Promise<void> {
-    await flushPendingSaves(workspace.getContext());
+  await flushPendingSaves(workspace.getContext());
 }

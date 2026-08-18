@@ -11,22 +11,22 @@ import type { Asset } from "@/lib/workspace/services/assets/types";
  * category still has to behave the way it does today.
  */
 export const TEXT_EDITABLE_EXTENSIONS: readonly string[] = [
-    "txt",
-    "md",
-    "markdown",
-    "ini",
-    "cfg",
-    "conf",
-    "toml",
-    "yaml",
-    "yml",
-    "csv",
-    "tsv",
-    "log",
-    "properties",
-    "env",
-    "gitignore",
-    "xml",
+  "txt",
+  "md",
+  "markdown",
+  "ini",
+  "cfg",
+  "conf",
+  "toml",
+  "yaml",
+  "yml",
+  "csv",
+  "tsv",
+  "log",
+  "properties",
+  "env",
+  "gitignore",
+  "xml"
 ];
 
 const TEXT_EDITABLE_EXTENSION_SET = new Set(TEXT_EDITABLE_EXTENSIONS);
@@ -41,18 +41,18 @@ const TEXT_EDITABLE_EXTENSION_SET = new Set(TEXT_EDITABLE_EXTENSIONS);
  * plaintext, which is strictly less readable and no more honest.
  */
 const MONACO_LANGUAGE_BY_EXTENSION: Record<string, string> = {
-    md: "markdown",
-    markdown: "markdown",
-    ini: "ini",
-    cfg: "ini",
-    conf: "ini",
-    properties: "ini",
-    env: "ini",
-    gitignore: "ini",
-    toml: "ini",
-    yaml: "yaml",
-    yml: "yaml",
-    xml: "xml",
+  md: "markdown",
+  markdown: "markdown",
+  ini: "ini",
+  cfg: "ini",
+  conf: "ini",
+  properties: "ini",
+  env: "ini",
+  gitignore: "ini",
+  toml: "ini",
+  yaml: "yaml",
+  yml: "yaml",
+  xml: "xml"
 };
 
 /**
@@ -63,21 +63,21 @@ const MONACO_LANGUAGE_BY_EXTENSION: Record<string, string> = {
  * extension at all in its record while its name says exactly what it is.
  */
 export function textFileExtension(name: string): string {
-    const dot = name.lastIndexOf(".");
-    return dot < 0 ? "" : name.slice(dot + 1).toLowerCase();
+  const dot = name.lastIndexOf(".");
+  return dot < 0 ? "" : name.slice(dot + 1).toLowerCase();
 }
 
 export function isTextEditableExtension(extension: string): boolean {
-    return TEXT_EDITABLE_EXTENSION_SET.has(extension.toLowerCase());
+  return TEXT_EDITABLE_EXTENSION_SET.has(extension.toLowerCase());
 }
 
 /** Whether this asset opens in the built-in text editor. */
 export function isTextEditableAsset(asset: Asset): boolean {
-    return asset.type === AssetType.Other && isTextEditableExtension(textFileExtension(asset.name));
+  return asset.type === AssetType.Other && isTextEditableExtension(textFileExtension(asset.name));
 }
 
 export function monacoLanguageForFileName(name: string): string {
-    return MONACO_LANGUAGE_BY_EXTENSION[textFileExtension(name)] ?? "plaintext";
+  return MONACO_LANGUAGE_BY_EXTENSION[textFileExtension(name)] ?? "plaintext";
 }
 
 export type LineEnding = "LF" | "CRLF";
@@ -96,7 +96,7 @@ export type LineEnding = "LF" | "CRLF";
  * module-level constant would freeze whatever the test environment happened to report first.
  */
 export function platformDefaultLineEnding(): LineEnding {
-    return navigator.platform.startsWith("Win") ? "CRLF" : "LF";
+  return navigator.platform.startsWith("Win") ? "CRLF" : "LF";
 }
 
 /**
@@ -108,10 +108,10 @@ export function platformDefaultLineEnding(): LineEnding {
  * record and then to the platform instead of quietly converting an empty file to Unix endings.
  */
 export function detectLineEnding(text: string): LineEnding | null {
-    const crlf = (text.match(/\r\n/g) ?? []).length;
-    const lf = (text.match(/\n/g) ?? []).length - crlf;
-    if (crlf === 0 && lf === 0) {
-        return null;
-    }
-    return crlf > lf ? "CRLF" : "LF";
+  const crlf = (text.match(/\r\n/g) ?? []).length;
+  const lf = (text.match(/\n/g) ?? []).length - crlf;
+  if (crlf === 0 && lf === 0) {
+    return null;
+  }
+  return crlf > lf ? "CRLF" : "LF";
 }

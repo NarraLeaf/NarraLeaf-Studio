@@ -18,9 +18,12 @@ import type { PluginRegistryEntry } from "@shared/types/pluginRegistry";
  */
 
 /** Whether a registry entry offers a newer version than what is installed. */
-export function hasUpdate(installed: PluginListItem | null | undefined, entry: PluginRegistryEntry | null | undefined): boolean {
-    if (!installed || !entry) return false;
-    return compareSemver(entry.version, installed.manifest.version) > 0;
+export function hasUpdate(
+  installed: PluginListItem | null | undefined,
+  entry: PluginRegistryEntry | null | undefined
+): boolean {
+  if (!installed || !entry) return false;
+  return compareSemver(entry.version, installed.manifest.version) > 0;
 }
 
 /**
@@ -30,31 +33,32 @@ export function hasUpdate(installed: PluginListItem | null | undefined, entry: P
  * button that the main process would refuse.
  */
 export function isCompatible(entry: PluginRegistryEntry | null | undefined): boolean {
-    if (!entry?.studioVersion) return true;
-    return satisfiesRange(getAppInfo().version, entry.studioVersion);
+  if (!entry?.studioVersion) return true;
+  return satisfiesRange(getAppInfo().version, entry.studioVersion);
 }
 
 export function statusText(status: PluginStatus, t: Translator["t"]): string {
-    switch (status) {
-        case "enabled":
-            return t("plugins.status.enabled");
-        case "disabled":
-            return t("plugins.status.disabled");
-        case "needsAuthorization":
-            return t("plugins.status.needsAuthorization");
-        case "error":
-            return t("common.error");
-        default:
-            return status;
-    }
+  switch (status) {
+    case "enabled":
+      return t("plugins.status.enabled");
+    case "disabled":
+      return t("plugins.status.disabled");
+    case "needsAuthorization":
+      return t("plugins.status.needsAuthorization");
+    case "error":
+      return t("common.error");
+    default:
+      return status;
+  }
 }
 
 /** Status pill, only rendered for states worth flagging (enabled is the quiet default). */
 export function PluginStatusBadge({ status }: { status: PluginStatus }) {
-    const { t } = useTranslation();
-    if (status === "enabled") return null;
-    const tone = status === "error" ? "danger" : status === "needsAuthorization" ? "warning" : "neutral";
-    return <Badge tone={tone}>{statusText(status, t)}</Badge>;
+  const { t } = useTranslation();
+  if (status === "enabled") return null;
+  const tone =
+    status === "error" ? "danger" : status === "needsAuthorization" ? "warning" : "neutral";
+  return <Badge tone={tone}>{statusText(status, t)}</Badge>;
 }
 
 /**
@@ -67,32 +71,40 @@ export function PluginStatusBadge({ status }: { status: PluginStatus }) {
  * its row by what it ships, and anything that still fails to decode falls back
  * to the monogram rather than to a broken-image glyph.
  */
-export function PluginAvatar({ name, src, size = 36 }: { name: string; src?: string | null; size?: number }) {
-    const [failedSrc, setFailedSrc] = useState<string | null>(null);
+export function PluginAvatar({
+  name,
+  src,
+  size = 36
+}: {
+  name: string;
+  src?: string | null;
+  size?: number;
+}) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
-    if (src && failedSrc !== src) {
-        return (
-            <img
-                src={src}
-                alt=""
-                aria-hidden
-                width={size}
-                height={size}
-                decoding="async"
-                onError={() => setFailedSrc(src)}
-                className="shrink-0 rounded-lg object-cover"
-                style={{ width: size, height: size }}
-            />
-        );
-    }
-
+  if (src && failedSrc !== src) {
     return (
-        <span
-            aria-hidden
-            className="flex shrink-0 items-center justify-center rounded-lg text-xs font-medium text-white/90"
-            style={{ width: size, height: size, backgroundColor: nameMonogramColor(name) }}
-        >
-            {nameInitials(name)}
-        </span>
+      <img
+        src={src}
+        alt=""
+        aria-hidden
+        width={size}
+        height={size}
+        decoding="async"
+        onError={() => setFailedSrc(src)}
+        className="shrink-0 rounded-lg object-cover"
+        style={{ width: size, height: size }}
+      />
     );
+  }
+
+  return (
+    <span
+      aria-hidden
+      className="flex shrink-0 items-center justify-center rounded-lg text-xs font-medium text-white/90"
+      style={{ width: size, height: size, backgroundColor: nameMonogramColor(name) }}
+    >
+      {nameInitials(name)}
+    </span>
+  );
 }

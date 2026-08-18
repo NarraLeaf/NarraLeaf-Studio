@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { Image as ImageIcon } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { PropertyEditorProps } from "./PropertyEditorBase";
 import { BasePropertyEditor } from "./BasePropertyEditor";
@@ -13,61 +12,62 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
  * Allows editing name, tags, and description for image assets
  */
 export function ImagePropertyEditor({ asset, onChange }: PropertyEditorProps<AssetType.Image>) {
-    const { t } = useTranslation();
-    const { context } = useWorkspace();
-    const [imageData, setImageData] = useState<AssetData<AssetType.Image> | null>(null);
+  const { t } = useTranslation();
+  const { context } = useWorkspace();
+  const [imageData, setImageData] = useState<AssetData<AssetType.Image> | null>(null);
 
-    // Load image metadata
-    useEffect(() => {
-        if (!context) return;
+  // Load image metadata
+  useEffect(() => {
+    if (!context) return;
 
-        const loadMetadata = async () => {
-            try {
-                const assetsService = context.services.get<AssetsService>(Services.Assets);
-                const result = await assetsService.fetch(asset);
+    const loadMetadata = async () => {
+      try {
+        const assetsService = context.services.get<AssetsService>(Services.Assets);
+        const result = await assetsService.fetch(asset);
 
-                if (result.success) {
-                    setImageData(result.data);
-                }
-            } catch (err) {
-                console.error("Failed to load image metadata:", err);
-            }
-        };
+        if (result.success) {
+          setImageData(result.data);
+        }
+      } catch (err) {
+        console.error("Failed to load image metadata:", err);
+      }
+    };
 
-        loadMetadata();
-    }, [context, asset]);
+    loadMetadata();
+  }, [context, asset]);
 
-    return (
-        <BasePropertyEditor asset={asset} onChange={onChange}>
-            {/* Technical Info (Read-only) */}
-            {imageData && (
-                <div>
-                    <label className="block text-xs font-medium text-fg-muted mb-1">
-                        {t("properties.asset.image.info")}
-                    </label>
-                    <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-1">
-                        <div className="flex justify-between text-xs">
-                            <span className="text-fg-muted">{t("properties.asset.info.dimensions")}:</span>
-                            <span className="text-fg-muted">
-                                {imageData.metadata.width} × {imageData.metadata.height}
-                            </span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                            <span className="text-fg-muted">{t("properties.asset.info.format")}:</span>
-                            <span className="text-fg-muted">{imageData.metadata.format.toUpperCase()}</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                            <span className="text-fg-muted">{t("properties.asset.info.size")}:</span>
-                            <span className="text-fg-muted">{(imageData.metadata.size / 1024).toFixed(1)} KB</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                            <span className="text-fg-muted">{t("properties.asset.info.hash")}:</span>
-                            <span className="text-fg-muted font-mono text-2xs">{asset.hash.slice(0, 16)}...</span>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </BasePropertyEditor>
-    );
+  return (
+    <BasePropertyEditor asset={asset} onChange={onChange}>
+      {/* Technical Info (Read-only) */}
+      {imageData && (
+        <div>
+          <label className="block text-xs font-medium text-fg-muted mb-1">
+            {t("properties.asset.image.info")}
+          </label>
+          <div className="bg-surface-raised border border-edge rounded-md p-3 space-y-1">
+            <div className="flex justify-between text-xs">
+              <span className="text-fg-muted">{t("properties.asset.info.dimensions")}:</span>
+              <span className="text-fg-muted">
+                {imageData.metadata.width} × {imageData.metadata.height}
+              </span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-fg-muted">{t("properties.asset.info.format")}:</span>
+              <span className="text-fg-muted">{imageData.metadata.format.toUpperCase()}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-fg-muted">{t("properties.asset.info.size")}:</span>
+              <span className="text-fg-muted">
+                {(imageData.metadata.size / 1024).toFixed(1)} KB
+              </span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-fg-muted">{t("properties.asset.info.hash")}:</span>
+              <span className="text-fg-muted font-mono text-2xs">{asset.hash.slice(0, 16)}...</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </BasePropertyEditor>
+  );
 }
-

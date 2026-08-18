@@ -182,14 +182,7 @@ The components follow a consistent dark theme:
 Import components from the main index:
 
 ```tsx
-import {
-    Button,
-    Progress,
-    Input,
-    Card,
-    Modal,
-    Select
-} from "@/lib/components/elements";
+import { Button, Progress, Input, Card, Modal, Select } from "@/lib/components/elements";
 ```
 
 All components are built with React 19 and TypeScript, providing full type safety and modern React patterns.

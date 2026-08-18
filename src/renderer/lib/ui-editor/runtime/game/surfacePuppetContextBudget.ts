@@ -77,13 +77,13 @@ const claims: string[] = [];
 const listeners = new Set<() => void>();
 
 function emit(): void {
-    for (const listener of [...listeners]) {
-        try {
-            listener();
-        } catch {
-            // A subscriber's own failure is not this registry's to propagate.
-        }
+  for (const listener of [...listeners]) {
+    try {
+      listener();
+    } catch {
+      // A subscriber's own failure is not this registry's to propagate.
     }
+  }
 }
 
 /**
@@ -94,59 +94,61 @@ function emit(): void {
  * from `useId()`, so no two live claimants can collide and no claimant can be named by another.
  */
 export function claimSurfacePuppetContext(holderId: string): void {
-    if (claims.includes(holderId)) {
-        return;
-    }
-    claims.push(holderId);
-    emit();
+  if (claims.includes(holderId)) {
+    return;
+  }
+  claims.push(holderId);
+  emit();
 }
 
 export function releaseSurfacePuppetContext(holderId: string): void {
-    const at = claims.indexOf(holderId);
-    if (at < 0) {
-        return;
-    }
-    claims.splice(at, 1);
-    emit();
+  const at = claims.indexOf(holderId);
+  if (at < 0) {
+    return;
+  }
+  claims.splice(at, 1);
+  emit();
 }
 
 export function isSurfacePuppetContextGranted(holderId: string): boolean {
-    const at = claims.indexOf(holderId);
-    return at >= 0 && at < SURFACE_PUPPET_CONTEXT_BUDGET;
+  const at = claims.indexOf(holderId);
+  return at >= 0 && at < SURFACE_PUPPET_CONTEXT_BUDGET;
 }
 
 /** How many widgets asked and were turned down. For the "not drawn" box's own wording. */
 export function surfacePuppetContextsDenied(): number {
-    return Math.max(0, claims.length - SURFACE_PUPPET_CONTEXT_BUDGET);
+  return Math.max(0, claims.length - SURFACE_PUPPET_CONTEXT_BUDGET);
 }
 
 /** How many leases are out. Exported for tests and for anything that wants to report the load. */
 export function surfacePuppetContextsGranted(): number {
-    return Math.min(claims.length, SURFACE_PUPPET_CONTEXT_BUDGET);
+  return Math.min(claims.length, SURFACE_PUPPET_CONTEXT_BUDGET);
 }
 
 export function subscribeSurfacePuppetContexts(listener: () => void): () => void {
-    listeners.add(listener);
-    return () => { listeners.delete(listener); };
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 /** Test seam. A module-level queue would otherwise leak one test's holders into the next. */
 export function __resetSurfacePuppetContextBudget(): void {
-    claims.length = 0;
+  claims.length = 0;
 }
 
 export interface SurfacePuppetLease {
-    /** Whether this instance may mount a backend. */
-    granted: boolean;
-    /**
-     * How many models are drawn in this window *right now*.
-     *
-     * Read from the queue rather than assumed to be the budget. The two are equal in a correct system -
-     * a denial can only happen once the queue is full - which is exactly why the constant made a fine
-     * substitute right up until the accounting was wrong, and then the box confidently told the author
-     * that eight models were drawn while one was. A number that comes from the store cannot do that.
-     */
-    drawn: number;
+  /** Whether this instance may mount a backend. */
+  granted: boolean;
+  /**
+   * How many models are drawn in this window *right now*.
+   *
+   * Read from the queue rather than assumed to be the budget. The two are equal in a correct system -
+   * a denial can only happen once the queue is full - which is exactly why the constant made a fine
+   * substitute right up until the accounting was wrong, and then the box confidently told the author
+   * that eight models were drawn while one was. A number that comes from the store cannot do that.
+   */
+  drawn: number;
 }
 
 /**
@@ -163,34 +165,36 @@ export interface SurfacePuppetLease {
  * written from a render pass.
  */
 export function useSurfacePuppetContextLease(wanted: boolean): SurfacePuppetLease {
-    const holderId = useId();
-    // Two subscriptions rather than one returning an object: `getSnapshot` must return a value that
-    // compares equal across calls, and a fresh object every time is an infinite render loop.
-    const granted = useSyncExternalStore(
-        subscribeSurfacePuppetContexts,
-        () => wanted && isSurfacePuppetContextGranted(holderId),
-        () => false,
-    );
-    const drawn = useSyncExternalStore(
-        subscribeSurfacePuppetContexts,
-        surfacePuppetContextsGranted,
-        () => 0,
-    );
+  const holderId = useId();
+  // Two subscriptions rather than one returning an object: `getSnapshot` must return a value that
+  // compares equal across calls, and a fresh object every time is an infinite render loop.
+  const granted = useSyncExternalStore(
+    subscribeSurfacePuppetContexts,
+    () => wanted && isSurfacePuppetContextGranted(holderId),
+    () => false
+  );
+  const drawn = useSyncExternalStore(
+    subscribeSurfacePuppetContexts,
+    surfacePuppetContextsGranted,
+    () => 0
+  );
 
-    useEffect(() => {
-        if (!wanted) {
-            return;
-        }
-        claimSurfacePuppetContext(holderId);
-        // Releasing on the way out is what makes the budget breathe: a widget scrolled off the canvas
-        // or emptied by the author hands its context to whoever was waiting. Only ever its own.
-        return () => { releaseSurfacePuppetContext(holderId); };
-    }, [holderId, wanted]);
+  useEffect(() => {
+    if (!wanted) {
+      return;
+    }
+    claimSurfacePuppetContext(holderId);
+    // Releasing on the way out is what makes the budget breathe: a widget scrolled off the canvas
+    // or emptied by the author hands its context to whoever was waiting. Only ever its own.
+    return () => {
+      releaseSurfacePuppetContext(holderId);
+    };
+  }, [holderId, wanted]);
 
-    return { granted, drawn };
+  return { granted, drawn };
 }
 
 /** The queue, in order, including the denied tail. Test seam for the promotion behaviour. */
 export function surfacePuppetContextClaims(): readonly string[] {
-    return [...claims];
+  return [...claims];
 }

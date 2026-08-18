@@ -13,17 +13,18 @@
  * let the runtime reach into `@/lib/workspace`.
  */
 export function encodeStableJson(value: unknown): string {
-    if (value === null) return "null";
-    if (value === undefined) return "?";
-    const type = typeof value;
-    if (type === "number") return Number.isFinite(value as number) ? String(value) : "?num";
-    if (type === "boolean" || type === "bigint") return String(value);
-    if (type === "string") return JSON.stringify(value);
-    if (type === "function" || type === "symbol") return "?opaque";
-    if (Array.isArray(value)) {
-        return `[${value.map(encodeStableJson).join(",")}]`;
-    }
-    const entries = Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
-    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${encodeStableJson(item)}`).join(",")}}`;
+  if (value === null) return "null";
+  if (value === undefined) return "?";
+  const type = typeof value;
+  if (type === "number") return Number.isFinite(value as number) ? String(value) : "?num";
+  if (type === "boolean" || type === "bigint") return String(value);
+  if (type === "string") return JSON.stringify(value);
+  if (type === "function" || type === "symbol") return "?opaque";
+  if (Array.isArray(value)) {
+    return `[${value.map(encodeStableJson).join(",")}]`;
+  }
+  const entries = Object.entries(value as Record<string, unknown>).sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0
+  );
+  return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${encodeStableJson(item)}`).join(",")}}`;
 }

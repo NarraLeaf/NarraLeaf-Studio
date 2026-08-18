@@ -1,5 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronRight, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, Play, Square } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  FlaskConical,
+  GitBranch,
+  Loader2,
+  MonitorPlay,
+  Package,
+  Play,
+  Square
+} from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
 import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
@@ -15,20 +26,23 @@ import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsSe
 import { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
-import { readProjectMobileOrientation, readProjectViewportConfig } from "@/apps/workspace/modules/ui-editor/editors/projectMobileOrientation";
+import {
+  readProjectMobileOrientation,
+  readProjectViewportConfig
+} from "@/apps/workspace/modules/ui-editor/editors/projectMobileOrientation";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
 import { openBuildDialog } from "./BuildDialog";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "./runtimeActionStatus";
 import {
-    getTestRunService,
-    isTerminalTestStatus,
-    openTestDialog,
-    openTestReportTab,
-    resolveTestText,
-    TEST_RUN_COMMAND_ID,
-    TEST_TOAST_KEYS,
-    TEST_TOAST_TONE,
+  getTestRunService,
+  isTerminalTestStatus,
+  openTestDialog,
+  openTestReportTab,
+  resolveTestText,
+  TEST_RUN_COMMAND_ID,
+  TEST_TOAST_KEYS,
+  TEST_TOAST_TONE
 } from "../testing";
 import type { TestRunRecord } from "@/lib/testing/types";
 import type { DevModeStatus } from "@shared/types/devMode";
@@ -57,28 +71,31 @@ const RUN_MODE_SETTINGS_KEY = "ui.runMode";
 const RUN_VARIANT_SETTINGS_KEY = "ui.runVariantByProject";
 const RUN_MODES: readonly RunMode[] = ["devMode", "preview"];
 
-const RUN_MODE_META: Record<RunMode, {
+const RUN_MODE_META: Record<
+  RunMode,
+  {
     icon: React.ReactNode;
     labelKey: TranslationKey;
     runKey: TranslationKey;
     stopKey: TranslationKey;
-}> = {
-    devMode: {
-        icon: <Play className="h-4 w-4" />,
-        labelKey: "actions.run.devMode",
-        runKey: "actions.run.runDevMode",
-        stopKey: "workspace.shell.stopDevMode",
-    },
-    preview: {
-        icon: <MonitorPlay className="h-4 w-4" />,
-        labelKey: "actions.run.preview",
-        runKey: "actions.run.runPreview",
-        stopKey: "workspace.shell.stopPreview",
-    },
+  }
+> = {
+  devMode: {
+    icon: <Play className="h-4 w-4" />,
+    labelKey: "actions.run.devMode",
+    runKey: "actions.run.runDevMode",
+    stopKey: "workspace.shell.stopDevMode"
+  },
+  preview: {
+    icon: <MonitorPlay className="h-4 w-4" />,
+    labelKey: "actions.run.preview",
+    runKey: "actions.run.runPreview",
+    stopKey: "workspace.shell.stopPreview"
+  }
 };
 
 function normalizeRunMode(value: unknown): RunMode {
-    return value === "preview" ? "preview" : "devMode";
+  return value === "preview" ? "preview" : "devMode";
 }
 
 /**
@@ -99,586 +116,642 @@ function normalizeRunMode(value: unknown): RunMode {
  * `components/ui/freezeActionPolicy` does not reach it and the rules are spelled out below instead.
  */
 export function RunControl() {
-    const { t } = useTranslation();
-    const { workspace, context } = useWorkspace();
-    const frozen = useWorkspaceFrozen();
-    const [mode, setMode] = useState<RunMode>("devMode");
-    const [devStatus, setDevStatus] = useState<DevModeStatus>("idle");
-    const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
-    const [buildStatus, setBuildStatus] = useState<GameBuildStatus>("idle");
-    const [activeRun, setActiveRun] = useState<TestRunRecord | null>(null);
-    const [menuOpen, setMenuOpen] = useState(false);
-    const [variantOpen, setVariantOpen] = useState(false);
-    const [variants, setVariants] = useState<ProjectAppTag[]>([]);
-    const [variantId, setVariantId] = useState<string | null>(null);
+  const { t } = useTranslation();
+  const { workspace, context } = useWorkspace();
+  const frozen = useWorkspaceFrozen();
+  const [mode, setMode] = useState<RunMode>("devMode");
+  const [devStatus, setDevStatus] = useState<DevModeStatus>("idle");
+  const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
+  const [buildStatus, setBuildStatus] = useState<GameBuildStatus>("idle");
+  const [activeRun, setActiveRun] = useState<TestRunRecord | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [variantOpen, setVariantOpen] = useState(false);
+  const [variants, setVariants] = useState<ProjectAppTag[]>([]);
+  const [variantId, setVariantId] = useState<string | null>(null);
 
-    // The selected mode is a global UI habit; follow live changes so a second window stays in sync.
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
-        setMode(normalizeRunMode(settings.getSync(RUN_MODE_SETTINGS_KEY)));
-        const token = getInterface().app.state.onGlobalStateChanged?.(change => {
-            if (change.key === RUN_MODE_SETTINGS_KEY) {
-                setMode(normalizeRunMode(change.value));
-            }
-        });
-        return () => token?.cancel();
-    }, [context]);
+  // The selected mode is a global UI habit; follow live changes so a second window stays in sync.
+  useEffect(() => {
+    if (!context) {
+      return;
+    }
+    const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+    setMode(normalizeRunMode(settings.getSync(RUN_MODE_SETTINGS_KEY)));
+    const token = getInterface().app.state.onGlobalStateChanged?.((change) => {
+      if (change.key === RUN_MODE_SETTINGS_KEY) {
+        setMode(normalizeRunMode(change.value));
+      }
+    });
+    return () => token?.cancel();
+  }, [context]);
 
-    // The project's variants, followed live: an author who builds one in the Project panel and comes
-    // straight back here must find it in the list. `AppTagService` emits on every mutation, so this
-    // is the whole subscription.
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const tags = context.services.get<AppTagService>(Services.AppTags);
-        const read = () => setVariants(tags.listAuthoredTags());
-        read();
-        return tags.onTagsChanged(read);
-    }, [context]);
+  // The project's variants, followed live: an author who builds one in the Project panel and comes
+  // straight back here must find it in the list. `AppTagService` emits on every mutation, so this
+  // is the whole subscription.
+  useEffect(() => {
+    if (!context) {
+      return;
+    }
+    const tags = context.services.get<AppTagService>(Services.AppTags);
+    const read = () => setVariants(tags.listAuthoredTags());
+    read();
+    return tags.onTagsChanged(read);
+  }, [context]);
 
-    // Which one is selected, from the same store the main process reads.
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
-        const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
-        const read = (value: unknown) => {
-            const record = value && typeof value === "object" && !Array.isArray(value)
-                ? value as Record<string, unknown>
-                : {};
-            const stored = record[projectKey];
-            setVariantId(typeof stored === "string" && stored ? stored : null);
-        };
-        read(settings.getSync(RUN_VARIANT_SETTINGS_KEY));
-        const token = getInterface().app.state.onGlobalStateChanged?.(change => {
-            if (change.key === RUN_VARIANT_SETTINGS_KEY) {
-                read(change.value);
-            }
-        });
-        return () => token?.cancel();
-    }, [context]);
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const dev = context.services.get<DevModeService>(Services.DevMode);
-        setDevStatus(dev.getStatus());
-        return dev.onStatusChanged(setDevStatus);
-    }, [context]);
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const preview = context.services.get<PreviewService>(Services.Preview);
-        setPreviewStatus(preview.getStatus());
-        return preview.onStatusChanged(setPreviewStatus);
-    }, [context]);
-
-    // The build's status, and the toasts that report its end. Moved here from the Build icon because
-    // this control is mounted for the whole session while an icon is mounted once per surface that
-    // draws it - and the icon was drawn in the command palette too, so a build finishing with the
-    // palette open announced itself twice.
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const build = context.services.get<BuildService>(Services.Build);
-        const uiService = context.services.get<UIService>(Services.UI);
-        let previous = build.getStatus();
-        setBuildStatus(previous);
-        return build.onStateChanged(state => {
-            setBuildStatus(state.status);
-            if (state.status !== previous) {
-                if (state.status === "done") {
-                    uiService.showNotification(translate("build.toast.done"), "success");
-                } else if (state.status === "error") {
-                    uiService.showNotification(state.error ?? translate("build.toast.failed"), "error");
-                }
-            }
-            previous = state.status;
-        });
-    }, [context]);
-
-    /**
-     * The test run: what the button is holding, and the one announcement a finished run makes.
-     *
-     * Raised here for the same reason the build's toasts moved here - this control is mounted for
-     * the whole session, while anything that could plausibly own the announcement instead (the
-     * picker, the report tab) is transient, and a dialog that closed at Start cannot report an
-     * outcome it is not around for. Opening the report tab rides along for the same reason.
-     *
-     * `announced` is seeded with every run that had already settled before this subscription
-     * existed, so remounting the top bar does not re-toast a run the author read about ten minutes
-     * ago. It is keyed by run id rather than by "the newest one changed", because a run's record
-     * keeps being written to (findings, log lines) after it settles.
-     */
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const testRun = getTestRunService(context);
-        const uiService = context.services.get<UIService>(Services.UI);
-        const announced = new Set(
-            testRun.listRuns().filter(run => isTerminalTestStatus(run.status)).map(run => run.runId),
-        );
-        const sync = () => {
-            setActiveRun(testRun.getActiveRun());
-            for (const run of testRun.listRuns()) {
-                if (!isTerminalTestStatus(run.status) || announced.has(run.runId)) {
-                    continue;
-                }
-                announced.add(run.runId);
-                const title = resolveTestText(run.title, translate);
-                uiService.showNotification(
-                    translate(TEST_TOAST_KEYS[run.status], { title }),
-                    TEST_TOAST_TONE[run.status],
-                );
-                openTestReportTab(context, run.runId);
-            }
-        };
-        sync();
-        return testRun.onChanged(sync);
-    }, [context]);
-
-    const devActive = isDevModeRuntimeActive(devStatus);
-    const previewActive = isPreviewRuntimeActive(previewStatus);
-    const testActive = activeRun !== null;
-    const activeMode: RunMode | null = devActive ? "devMode" : previewActive ? "preview" : null;
-    // A test holds the run slot exactly as a mode does (ruling R7): the mode rows go inert, and this
-    // button becomes the Stop control for it.
-    const running = activeMode !== null || testActive;
-    // The face reflects whatever is actually running; when nothing is, the selected mode.
-    const shownMode = activeMode ?? mode;
-    const meta = RUN_MODE_META[shownMode];
-    const errored = !running && (shownMode === "devMode" ? devStatus === "error" : previewStatus === "error");
-
-    /**
-     * Preview is off while frozen; Dev Mode stays on.
-     *
-     * Preview builds and runs the project the way a player would receive it, and that is the thing a
-     * frozen workspace is specifically not claiming to be. Dev Mode runs what is on disk, which while
-     * a freeze is manual IS the working tree - correct as it stands. Pointing Dev Mode at the focused
-     * revision instead is future work; nothing here anticipates it.
-     *
-     * Never applied while something is running: whatever the freeze says, a launched process must
-     * always be stoppable, and this same button is the stop control.
-     */
-    const previewBlocked = frozen && !running && shownMode === "preview";
-    const frozenTitle = t("workspace.shell.freeze.unavailable");
-    const building = buildStatus === "preparing" || buildStatus === "compiling" || buildStatus === "packaging";
-    /**
-     * Production Build is off while frozen, exactly as it was when it had its own button - the same
-     * answer `resolveFrozenActionDisabled` gives for `buildAction`, which is still what the palette
-     * and the macOS menu consult. A frozen workspace is not claiming to be shippable, and main refuses
-     * the build a second time anyway (greying a renderer control is affordance, not enforcement).
-     */
-    const buildBlocked = frozen;
-
-    /** Start one mode. Shared with the palette's run commands so the flush-then-launch order is not copied. */
-    const launchMode = (target: RunMode) => {
-        if (!workspace || !context) {
-            return;
-        }
-        if (target === "preview") {
-            void context.services.get<PreviewService>(Services.Preview)
-                .launch({ kind: "surface", surfaceId: MAIN_APP_SURFACE_ID });
-            return;
-        }
-        const dev = context.services.get<DevModeService>(Services.DevMode);
-        void (async () => {
-            try {
-                await flushUIDocAndGraphIfDirty(workspace);
-            } catch (e) {
-                console.error("[DevMode] flush before launch failed", e);
-            }
-                // No safeAreaId on purpose: the top bar runs the game the way a player gets it. The
-            // orientation is project context rather than a design aid, and the Dev Mode window's
-            // own safe-area picker needs it to resolve a device onto the right edge.
-            await dev.launch({
-                kind: "surface",
-                surfaceId: MAIN_APP_SURFACE_ID,
-                mobileOrientation: readProjectMobileOrientation(context),
-                viewport: readProjectViewportConfig(context),
-            });
-        })();
+  // Which one is selected, from the same store the main process reads.
+  useEffect(() => {
+    if (!context) {
+      return;
+    }
+    const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+    const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
+    const read = (value: unknown) => {
+      const record =
+        value && typeof value === "object" && !Array.isArray(value)
+          ? (value as Record<string, unknown>)
+          : {};
+      const stored = record[projectKey];
+      setVariantId(typeof stored === "string" && stored ? stored : null);
     };
+    read(settings.getSync(RUN_VARIANT_SETTINGS_KEY));
+    const token = getInterface().app.state.onGlobalStateChanged?.((change) => {
+      if (change.key === RUN_VARIANT_SETTINGS_KEY) {
+        read(change.value);
+      }
+    });
+    return () => token?.cancel();
+  }, [context]);
 
-    const runOrStop = () => {
-        if (!workspace || !context) {
-            return;
-        }
-        if (activeRun) {
-            getTestRunService(context).cancel(activeRun.runId);
-            return;
-        }
-        if (devActive) {
-            void context.services.get<DevModeService>(Services.DevMode).stop();
-            return;
-        }
-        if (previewActive) {
-            void context.services.get<PreviewService>(Services.Preview).stop();
-            return;
-        }
-        launchMode(mode);
-    };
+  useEffect(() => {
+    if (!context) {
+      return;
+    }
+    const dev = context.services.get<DevModeService>(Services.DevMode);
+    setDevStatus(dev.getStatus());
+    return dev.onStatusChanged(setDevStatus);
+  }, [context]);
 
-    const selectMode = (next: RunMode) => {
-        setMenuOpen(false);
-        if (next === mode) {
-            return;
+  useEffect(() => {
+    if (!context) {
+      return;
+    }
+    const preview = context.services.get<PreviewService>(Services.Preview);
+    setPreviewStatus(preview.getStatus());
+    return preview.onStatusChanged(setPreviewStatus);
+  }, [context]);
+
+  // The build's status, and the toasts that report its end. Moved here from the Build icon because
+  // this control is mounted for the whole session while an icon is mounted once per surface that
+  // draws it - and the icon was drawn in the command palette too, so a build finishing with the
+  // palette open announced itself twice.
+  useEffect(() => {
+    if (!context) {
+      return;
+    }
+    const build = context.services.get<BuildService>(Services.Build);
+    const uiService = context.services.get<UIService>(Services.UI);
+    let previous = build.getStatus();
+    setBuildStatus(previous);
+    return build.onStateChanged((state) => {
+      setBuildStatus(state.status);
+      if (state.status !== previous) {
+        if (state.status === "done") {
+          uiService.showNotification(translate("build.toast.done"), "success");
+        } else if (state.status === "error") {
+          uiService.showNotification(state.error ?? translate("build.toast.failed"), "error");
         }
-        setMode(next);
-        void getInterface().app.state.setGlobalState(RUN_MODE_SETTINGS_KEY, next);
-    };
+      }
+      previous = state.status;
+    });
+  }, [context]);
 
-    /**
-     * The same launches, by name.
-     *
-     * This control is a fixed part of the top bar rather than a registered action, so nothing about
-     * it reached the command palette - running the project was mouse-only. Registered here rather
-     * than in a commands module because the launch sequence (flush dirty UI docs, then launch the
-     * main surface) lives here, and a second copy of it would drift.
-     *
-     * One entry per state, like the freeze commands: an author searching "run" should read off the
-     * list what is running, and a single Run/Stop toggle whose meaning depends on invisible state is
-     * the opposite of that. `when` reads live status through the ref, since the palette re-evaluates
-     * it on every keystroke.
-     */
-    const openTest = () => {
-        if (workspace) {
-            openTestDialog(workspace);
-        }
-    };
-
-    const runStateRef = useRef({ devActive, previewActive, testActive, frozen, runOrStop, launchMode, openTest });
-    runStateRef.current = { devActive, previewActive, testActive, frozen, runOrStop, launchMode, openTest };
-
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const commandService = context.services.get<CommandService>(Services.Command);
-        const idle = () => !runStateRef.current.devActive && !runStateRef.current.previewActive;
-        const launch = (target: RunMode) => runStateRef.current.launchMode(target);
-        return commandService.registerMany([
-            {
-                id: WorkspaceRunCommand.RunDevMode,
-                titleKey: "actions.run.runDevMode",
-                categoryKey: "workspace.shell.commandPalette.categoryRun",
-                // The run modes already own a glyph each (RUN_MODE_META) - reused here rather than
-                // chosen again, so the palette row and the button that does the same thing match.
-                icon: RUN_MODE_META.devMode.icon,
-                when: idle,
-                run: () => launch("devMode"),
-            },
-            {
-                id: WorkspaceRunCommand.RunPreview,
-                titleKey: "actions.run.runPreview",
-                categoryKey: "workspace.shell.commandPalette.categoryRun",
-                icon: RUN_MODE_META.preview.icon,
-                // Preview is what a frozen workspace is specifically not claiming to be; see above.
-                when: () => idle() && !runStateRef.current.frozen,
-                run: () => launch("preview"),
-            },
-            {
-                id: WorkspaceRunCommand.StopDevMode,
-                titleKey: "workspace.shell.stopDevMode",
-                categoryKey: "workspace.shell.commandPalette.categoryRun",
-                // Stopping is one act with one glyph, whatever is running - the same square the
-                // button turns into.
-                icon: <Square className="w-4 h-4" />,
-                when: () => runStateRef.current.devActive,
-                run: () => runStateRef.current.runOrStop(),
-            },
-            {
-                id: WorkspaceRunCommand.StopPreview,
-                titleKey: "workspace.shell.stopPreview",
-                categoryKey: "workspace.shell.commandPalette.categoryRun",
-                icon: <Square className="w-4 h-4" />,
-                when: () => runStateRef.current.previewActive,
-                run: () => runStateRef.current.runOrStop(),
-            },
-            {
-                // Not gated on `idle()`, unlike the two launches above: this opens the picker rather
-                // than starting anything, and the picker is where an author reads WHY every test is
-                // greyed out while something else runs. Not gated on the freeze either - a headless
-                // test is a read-only observer and runs while frozen (ruling R9), and which tests
-                // those are is `getAvailability`'s answer to give, not this predicate's.
-                id: TEST_RUN_COMMAND_ID,
-                titleKey: "test.action.run",
-                categoryKey: "workspace.shell.commandPalette.categoryRun",
-                icon: <FlaskConical className="w-4 h-4" />,
-                when: () => !runStateRef.current.testActive,
-                run: () => runStateRef.current.openTest(),
-            },
-            {
-                id: WorkspaceRunCommand.StopTest,
-                titleKey: "test.action.stop",
-                categoryKey: "workspace.shell.commandPalette.categoryRun",
-                icon: <Square className="w-4 h-4" />,
-                when: () => runStateRef.current.testActive,
-                run: () => runStateRef.current.runOrStop(),
-            },
-            // Production Build is deliberately absent: `buildAction` is a registered action, so the
-            // palette already derives it (and drops it while frozen). A second entry would be a
-            // duplicate row that the freeze policy does not reach.
-        ]);
-    }, [context]);
-
-    /**
-     * The variant a run assembles as, or null for the whole game.
-     *
-     * A stored id whose variant has since been deleted reads as null rather than as an error, which
-     * is the same answer the main process gives: deleting a variant must not leave every run of the
-     * project refusing to start.
-     */
-    const selectedVariant = useMemo(
-        () => variants.find(variant => variant.id === variantId) ?? null,
-        [variants, variantId],
+  /**
+   * The test run: what the button is holding, and the one announcement a finished run makes.
+   *
+   * Raised here for the same reason the build's toasts moved here - this control is mounted for
+   * the whole session, while anything that could plausibly own the announcement instead (the
+   * picker, the report tab) is transient, and a dialog that closed at Start cannot report an
+   * outcome it is not around for. Opening the report tab rides along for the same reason.
+   *
+   * `announced` is seeded with every run that had already settled before this subscription
+   * existed, so remounting the top bar does not re-toast a run the author read about ten minutes
+   * ago. It is keyed by run id rather than by "the newest one changed", because a run's record
+   * keeps being written to (findings, log lines) after it settles.
+   */
+  useEffect(() => {
+    if (!context) {
+      return;
+    }
+    const testRun = getTestRunService(context);
+    const uiService = context.services.get<UIService>(Services.UI);
+    const announced = new Set(
+      testRun
+        .listRuns()
+        .filter((run) => isTerminalTestStatus(run.status))
+        .map((run) => run.runId)
     );
-
-    const selectVariant = useCallback((id: string | null): void => {
-        if (!context) {
-            return;
+    const sync = () => {
+      setActiveRun(testRun.getActiveRun());
+      for (const run of testRun.listRuns()) {
+        if (!isTerminalTestStatus(run.status) || announced.has(run.runId)) {
+          continue;
         }
-        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
-        const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
-        const current = settings.getSync(RUN_VARIANT_SETTINGS_KEY);
-        const record: Record<string, unknown> = current && typeof current === "object" && !Array.isArray(current)
-            ? { ...current as Record<string, unknown> }
-            : {};
-        if (id) {
-            record[projectKey] = id;
-        } else {
-            // Deleted rather than stored as the release id, so "runs the whole game" and "never
-            // chose" are one state - the same rule the variant overrides themselves follow.
-            delete record[projectKey];
-        }
-        void settings.set(RUN_VARIANT_SETTINGS_KEY, record);
-        setVariantId(id);
-        setVariantOpen(false);
-    }, [context]);
+        announced.add(run.runId);
+        const title = resolveTestText(run.title, translate);
+        uiService.showNotification(
+          translate(TEST_TOAST_KEYS[run.status], { title }),
+          TEST_TOAST_TONE[run.status]
+        );
+        openTestReportTab(context, run.runId);
+      }
+    };
+    sync();
+    return testRun.onChanged(sync);
+  }, [context]);
 
-    // A test owns the face while it runs: showing "Dev Mode" over a Stop square would name the wrong
-    // thing to stop.
-    const runTitle = testActive ? t("test.action.stop") : running ? t(meta.stopKey) : t(meta.runKey);
-    // The variant rides on the face whenever it is not the whole game. "Dev Mode is the preview you
-    // can trust at any moment" only holds while it cannot quietly have become something else, and a
-    // setting one click deep in a menu is quiet.
-    const runLabel = testActive
-        ? t("test.statusBar.label")
-        : selectedVariant
-            ? `${t(meta.labelKey)} · ${selectedVariant.name}`
-            : t(meta.labelKey);
+  const devActive = isDevModeRuntimeActive(devStatus);
+  const previewActive = isPreviewRuntimeActive(previewStatus);
+  const testActive = activeRun !== null;
+  const activeMode: RunMode | null = devActive ? "devMode" : previewActive ? "preview" : null;
+  // A test holds the run slot exactly as a mode does (ruling R7): the mode rows go inert, and this
+  // button becomes the Stop control for it.
+  const running = activeMode !== null || testActive;
+  // The face reflects whatever is actually running; when nothing is, the selected mode.
+  const shownMode = activeMode ?? mode;
+  const meta = RUN_MODE_META[shownMode];
+  const errored =
+    !running && (shownMode === "devMode" ? devStatus === "error" : previewStatus === "error");
 
-    return (
-        <div className="relative flex items-center">
-            <div className={cn("flex h-8 items-stretch overflow-hidden rounded-md", running && "bg-danger text-white")}>
-                <button
-                    type="button"
-                    onClick={runOrStop}
-                    disabled={previewBlocked}
-                    data-tip={previewBlocked ? frozenTitle : runTitle}
-                    aria-label={runTitle}
-                    aria-pressed={running || undefined}
-                    className={cn(
-                        "flex cursor-default items-center gap-1.5 px-2 text-sm transition-colors",
-                        previewBlocked
-                            ? "cursor-not-allowed text-fg-subtle"
-                            : running ? "hover:bg-danger/80" : "text-fg-muted hover:bg-fill hover:text-fg",
-                    )}
-                >
-                    <span className={cn("flex h-4 w-4 items-center justify-center", errored && "text-danger")}>
-                        {running ? <Square className="h-3.5 w-3.5 fill-current" /> : meta.icon}
-                    </span>
-                    <span>{runLabel}</span>
-                </button>
+  /**
+   * Preview is off while frozen; Dev Mode stays on.
+   *
+   * Preview builds and runs the project the way a player would receive it, and that is the thing a
+   * frozen workspace is specifically not claiming to be. Dev Mode runs what is on disk, which while
+   * a freeze is manual IS the working tree - correct as it stands. Pointing Dev Mode at the focused
+   * revision instead is future work; nothing here anticipates it.
+   *
+   * Never applied while something is running: whatever the freeze says, a launched process must
+   * always be stoppable, and this same button is the stop control.
+   */
+  const previewBlocked = frozen && !running && shownMode === "preview";
+  const frozenTitle = t("workspace.shell.freeze.unavailable");
+  const building =
+    buildStatus === "preparing" || buildStatus === "compiling" || buildStatus === "packaging";
+  /**
+   * Production Build is off while frozen, exactly as it was when it had its own button - the same
+   * answer `resolveFrozenActionDisabled` gives for `buildAction`, which is still what the palette
+   * and the macOS menu consult. A frozen workspace is not claiming to be shippable, and main refuses
+   * the build a second time anyway (greying a renderer control is affordance, not enforcement).
+   */
+  const buildBlocked = frozen;
 
-                {/* Stays live while a mode runs, unlike before: the menu is no longer only "switch
+  /** Start one mode. Shared with the palette's run commands so the flush-then-launch order is not copied. */
+  const launchMode = (target: RunMode) => {
+    if (!workspace || !context) {
+      return;
+    }
+    if (target === "preview") {
+      void context.services
+        .get<PreviewService>(Services.Preview)
+        .launch({ kind: "surface", surfaceId: MAIN_APP_SURFACE_ID });
+      return;
+    }
+    const dev = context.services.get<DevModeService>(Services.DevMode);
+    void (async () => {
+      try {
+        await flushUIDocAndGraphIfDirty(workspace);
+      } catch (e) {
+        console.error("[DevMode] flush before launch failed", e);
+      }
+      // No safeAreaId on purpose: the top bar runs the game the way a player gets it. The
+      // orientation is project context rather than a design aid, and the Dev Mode window's
+      // own safe-area picker needs it to resolve a device onto the right edge.
+      await dev.launch({
+        kind: "surface",
+        surfaceId: MAIN_APP_SURFACE_ID,
+        mobileOrientation: readProjectMobileOrientation(context),
+        viewport: readProjectViewportConfig(context)
+      });
+    })();
+  };
+
+  const runOrStop = () => {
+    if (!workspace || !context) {
+      return;
+    }
+    if (activeRun) {
+      getTestRunService(context).cancel(activeRun.runId);
+      return;
+    }
+    if (devActive) {
+      void context.services.get<DevModeService>(Services.DevMode).stop();
+      return;
+    }
+    if (previewActive) {
+      void context.services.get<PreviewService>(Services.Preview).stop();
+      return;
+    }
+    launchMode(mode);
+  };
+
+  const selectMode = (next: RunMode) => {
+    setMenuOpen(false);
+    if (next === mode) {
+      return;
+    }
+    setMode(next);
+    void getInterface().app.state.setGlobalState(RUN_MODE_SETTINGS_KEY, next);
+  };
+
+  /**
+   * The same launches, by name.
+   *
+   * This control is a fixed part of the top bar rather than a registered action, so nothing about
+   * it reached the command palette - running the project was mouse-only. Registered here rather
+   * than in a commands module because the launch sequence (flush dirty UI docs, then launch the
+   * main surface) lives here, and a second copy of it would drift.
+   *
+   * One entry per state, like the freeze commands: an author searching "run" should read off the
+   * list what is running, and a single Run/Stop toggle whose meaning depends on invisible state is
+   * the opposite of that. `when` reads live status through the ref, since the palette re-evaluates
+   * it on every keystroke.
+   */
+  const openTest = () => {
+    if (workspace) {
+      openTestDialog(workspace);
+    }
+  };
+
+  const runStateRef = useRef({
+    devActive,
+    previewActive,
+    testActive,
+    frozen,
+    runOrStop,
+    launchMode,
+    openTest
+  });
+  runStateRef.current = {
+    devActive,
+    previewActive,
+    testActive,
+    frozen,
+    runOrStop,
+    launchMode,
+    openTest
+  };
+
+  useEffect(() => {
+    if (!context) {
+      return;
+    }
+    const commandService = context.services.get<CommandService>(Services.Command);
+    const idle = () => !runStateRef.current.devActive && !runStateRef.current.previewActive;
+    const launch = (target: RunMode) => runStateRef.current.launchMode(target);
+    return commandService.registerMany([
+      {
+        id: WorkspaceRunCommand.RunDevMode,
+        titleKey: "actions.run.runDevMode",
+        categoryKey: "workspace.shell.commandPalette.categoryRun",
+        // The run modes already own a glyph each (RUN_MODE_META) - reused here rather than
+        // chosen again, so the palette row and the button that does the same thing match.
+        icon: RUN_MODE_META.devMode.icon,
+        when: idle,
+        run: () => launch("devMode")
+      },
+      {
+        id: WorkspaceRunCommand.RunPreview,
+        titleKey: "actions.run.runPreview",
+        categoryKey: "workspace.shell.commandPalette.categoryRun",
+        icon: RUN_MODE_META.preview.icon,
+        // Preview is what a frozen workspace is specifically not claiming to be; see above.
+        when: () => idle() && !runStateRef.current.frozen,
+        run: () => launch("preview")
+      },
+      {
+        id: WorkspaceRunCommand.StopDevMode,
+        titleKey: "workspace.shell.stopDevMode",
+        categoryKey: "workspace.shell.commandPalette.categoryRun",
+        // Stopping is one act with one glyph, whatever is running - the same square the
+        // button turns into.
+        icon: <Square className="w-4 h-4" />,
+        when: () => runStateRef.current.devActive,
+        run: () => runStateRef.current.runOrStop()
+      },
+      {
+        id: WorkspaceRunCommand.StopPreview,
+        titleKey: "workspace.shell.stopPreview",
+        categoryKey: "workspace.shell.commandPalette.categoryRun",
+        icon: <Square className="w-4 h-4" />,
+        when: () => runStateRef.current.previewActive,
+        run: () => runStateRef.current.runOrStop()
+      },
+      {
+        // Not gated on `idle()`, unlike the two launches above: this opens the picker rather
+        // than starting anything, and the picker is where an author reads WHY every test is
+        // greyed out while something else runs. Not gated on the freeze either - a headless
+        // test is a read-only observer and runs while frozen (ruling R9), and which tests
+        // those are is `getAvailability`'s answer to give, not this predicate's.
+        id: TEST_RUN_COMMAND_ID,
+        titleKey: "test.action.run",
+        categoryKey: "workspace.shell.commandPalette.categoryRun",
+        icon: <FlaskConical className="w-4 h-4" />,
+        when: () => !runStateRef.current.testActive,
+        run: () => runStateRef.current.openTest()
+      },
+      {
+        id: WorkspaceRunCommand.StopTest,
+        titleKey: "test.action.stop",
+        categoryKey: "workspace.shell.commandPalette.categoryRun",
+        icon: <Square className="w-4 h-4" />,
+        when: () => runStateRef.current.testActive,
+        run: () => runStateRef.current.runOrStop()
+      }
+      // Production Build is deliberately absent: `buildAction` is a registered action, so the
+      // palette already derives it (and drops it while frozen). A second entry would be a
+      // duplicate row that the freeze policy does not reach.
+    ]);
+  }, [context]);
+
+  /**
+   * The variant a run assembles as, or null for the whole game.
+   *
+   * A stored id whose variant has since been deleted reads as null rather than as an error, which
+   * is the same answer the main process gives: deleting a variant must not leave every run of the
+   * project refusing to start.
+   */
+  const selectedVariant = useMemo(
+    () => variants.find((variant) => variant.id === variantId) ?? null,
+    [variants, variantId]
+  );
+
+  const selectVariant = useCallback(
+    (id: string | null): void => {
+      if (!context) {
+        return;
+      }
+      const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+      const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
+      const current = settings.getSync(RUN_VARIANT_SETTINGS_KEY);
+      const record: Record<string, unknown> =
+        current && typeof current === "object" && !Array.isArray(current)
+          ? { ...(current as Record<string, unknown>) }
+          : {};
+      if (id) {
+        record[projectKey] = id;
+      } else {
+        // Deleted rather than stored as the release id, so "runs the whole game" and "never
+        // chose" are one state - the same rule the variant overrides themselves follow.
+        delete record[projectKey];
+      }
+      void settings.set(RUN_VARIANT_SETTINGS_KEY, record);
+      setVariantId(id);
+      setVariantOpen(false);
+    },
+    [context]
+  );
+
+  // A test owns the face while it runs: showing "Dev Mode" over a Stop square would name the wrong
+  // thing to stop.
+  const runTitle = testActive ? t("test.action.stop") : running ? t(meta.stopKey) : t(meta.runKey);
+  // The variant rides on the face whenever it is not the whole game. "Dev Mode is the preview you
+  // can trust at any moment" only holds while it cannot quietly have become something else, and a
+  // setting one click deep in a menu is quiet.
+  const runLabel = testActive
+    ? t("test.statusBar.label")
+    : selectedVariant
+      ? `${t(meta.labelKey)} · ${selectedVariant.name}`
+      : t(meta.labelKey);
+
+  return (
+    <div className="relative flex items-center">
+      <div
+        className={cn(
+          "flex h-8 items-stretch overflow-hidden rounded-md",
+          running && "bg-danger text-white"
+        )}
+      >
+        <button
+          type="button"
+          onClick={runOrStop}
+          disabled={previewBlocked}
+          data-tip={previewBlocked ? frozenTitle : runTitle}
+          aria-label={runTitle}
+          aria-pressed={running || undefined}
+          className={cn(
+            "flex cursor-default items-center gap-1.5 px-2 text-sm transition-colors",
+            previewBlocked
+              ? "cursor-not-allowed text-fg-subtle"
+              : running
+                ? "hover:bg-danger/80"
+                : "text-fg-muted hover:bg-fill hover:text-fg"
+          )}
+        >
+          <span
+            className={cn("flex h-4 w-4 items-center justify-center", errored && "text-danger")}
+          >
+            {running ? <Square className="h-3.5 w-3.5 fill-current" /> : meta.icon}
+          </span>
+          <span>{runLabel}</span>
+        </button>
+
+        {/* Stays live while a mode runs, unlike before: the menu is no longer only "switch
                     mode", it is also the only way to reach Production Build, and folding that in must
                     not take away an entry point that used to be a click away. The mode rows below go
                     inert instead, which is where the "no switching mid-run" rule actually belongs. */}
+        <button
+          type="button"
+          onClick={() => setMenuOpen((open) => !open)}
+          data-tip={t("actions.run.menu")}
+          aria-label={t("actions.run.menu")}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          className={cn(
+            "flex cursor-default items-center justify-center px-1 transition-colors",
+            running ? "text-white hover:bg-danger/80" : "text-fg-muted hover:bg-fill hover:text-fg"
+          )}
+        >
+          <ChevronDown className={cn("h-3 w-3 transition-transform", menuOpen && "rotate-180")} />
+        </button>
+      </div>
+
+      {menuOpen && (
+        <>
+          <div
+            className="nl-window-content-layer z-10"
+            onClick={() => {
+              setMenuOpen(false);
+              setVariantOpen(false);
+            }}
+          />
+          <div
+            role="menu"
+            aria-label={t("actions.run.menu")}
+            className="absolute left-0 top-full z-20 mt-1 min-w-52 rounded-md border border-edge-strong bg-surface-overlay py-1 shadow-lg"
+          >
+            {RUN_MODES.map((option) => {
+              const optionMeta = RUN_MODE_META[option];
+              const selected = option === mode;
+              // Selecting a mode whose run button is dead would be a dead end, so the
+              // frozen mode is disabled here too - and stays listed, so the author can
+              // see that Preview exists and why it is off. Everything is inert while
+              // something runs: the mode cannot change under a running process.
+              const optionBlocked = running || (frozen && option === "preview");
+              return (
                 <button
-                    type="button"
-                    onClick={() => setMenuOpen(open => !open)}
-                    data-tip={t("actions.run.menu")}
-                    aria-label={t("actions.run.menu")}
-                    aria-haspopup="menu"
-                    aria-expanded={menuOpen}
-                    className={cn(
-                        "flex cursor-default items-center justify-center px-1 transition-colors",
-                        running ? "text-white hover:bg-danger/80" : "text-fg-muted hover:bg-fill hover:text-fg",
-                    )}
+                  key={option}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={selected}
+                  aria-disabled={optionBlocked || undefined}
+                  disabled={optionBlocked}
+                  data-tip={frozen && option === "preview" ? frozenTitle : undefined}
+                  onClick={() => selectMode(option)}
+                  className={cn(
+                    "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
+                    optionBlocked
+                      ? "cursor-not-allowed text-fg-subtle"
+                      : selected
+                        ? "text-fg"
+                        : "text-fg-muted hover:bg-fill hover:text-fg"
+                  )}
                 >
-                    <ChevronDown className={cn("h-3 w-3 transition-transform", menuOpen && "rotate-180")} />
+                  <span className="flex h-4 w-4 items-center justify-center">
+                    {optionMeta.icon}
+                  </span>
+                  <span className="flex-1 text-left">{t(optionMeta.labelKey)}</span>
+                  <span className="w-3">{selected && <Check className="h-3 w-3" />}</span>
                 </button>
-            </div>
+              );
+            })}
 
-            {menuOpen && (
-                <>
-                    <div
-                        className="nl-window-content-layer z-10"
-                        onClick={() => {
-                            setMenuOpen(false);
-                            setVariantOpen(false);
-                        }}
-                    />
-                    <div
-                        role="menu"
-                        aria-label={t("actions.run.menu")}
-                        className="absolute left-0 top-full z-20 mt-1 min-w-52 rounded-md border border-edge-strong bg-surface-overlay py-1 shadow-lg"
-                    >
-                        {RUN_MODES.map(option => {
-                            const optionMeta = RUN_MODE_META[option];
-                            const selected = option === mode;
-                            // Selecting a mode whose run button is dead would be a dead end, so the
-                            // frozen mode is disabled here too - and stays listed, so the author can
-                            // see that Preview exists and why it is off. Everything is inert while
-                            // something runs: the mode cannot change under a running process.
-                            const optionBlocked = running || (frozen && option === "preview");
-                            return (
-                                <button
-                                    key={option}
-                                    type="button"
-                                    role="menuitemradio"
-                                    aria-checked={selected}
-                                    aria-disabled={optionBlocked || undefined}
-                                    disabled={optionBlocked}
-                                    data-tip={frozen && option === "preview" ? frozenTitle : undefined}
-                                    onClick={() => selectMode(option)}
-                                    className={cn(
-                                        "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
-                                        optionBlocked
-                                            ? "cursor-not-allowed text-fg-subtle"
-                                            : selected ? "text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
-                                    )}
-                                >
-                                    <span className="flex h-4 w-4 items-center justify-center">{optionMeta.icon}</span>
-                                    <span className="flex-1 text-left">{t(optionMeta.labelKey)}</span>
-                                    <span className="w-3">{selected && <Check className="h-3 w-3" />}</span>
-                                </button>
-                            );
-                        })}
-
-                        {/* Which edition the three run entries above assemble as. Only where there is
+            {/* Which edition the three run entries above assemble as. Only where there is
                             something to pick: a project with no variant of its own has one answer, and
                             a row offering it would be a control that cannot do anything. */}
-                        {variants.length > 0 && (
-                            <>
-                                <div className="my-1 mx-2 h-px bg-fill-strong" />
-                                <button
-                                    type="button"
-                                    role="menuitem"
-                                    aria-expanded={variantOpen}
-                                    aria-label={t("actions.run.runAs")}
-                                    onClick={() => setVariantOpen(open => !open)}
-                                    className={cn(
-                                        "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
-                                        "text-fg-muted hover:bg-fill hover:text-fg",
-                                    )}
-                                >
-                                    <span className="flex h-4 w-4 items-center justify-center">
-                                        <GitBranch className="h-4 w-4" />
-                                    </span>
-                                    <span className="flex-1 text-left">{t("actions.run.runAs")}</span>
-                                    <span className="text-fg-subtle">
-                                        {selectedVariant?.name ?? RELEASE_APP_TAG.name}
-                                    </span>
-                                    <span className="w-3">
-                                        <ChevronRight className={cn("h-3 w-3 transition-transform", variantOpen && "rotate-90")} />
-                                    </span>
-                                </button>
-                                {variantOpen && [null, ...variants].map(variant => {
-                                    const id = variant?.id ?? null;
-                                    const selected = id === (selectedVariant?.id ?? null);
-                                    return (
-                                        <button
-                                            key={id ?? RELEASE_APP_TAG.id}
-                                            type="button"
-                                            role="menuitemradio"
-                                            aria-checked={selected}
-                                            onClick={() => selectVariant(id)}
-                                            className={cn(
-                                                "flex w-full cursor-default items-center gap-2 py-1.5 pl-9 pr-3 text-sm transition-colors",
-                                                selected ? "text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
-                                            )}
-                                        >
-                                            <span className="flex-1 text-left">{variant?.name ?? RELEASE_APP_TAG.name}</span>
-                                            <span className="w-3">{selected && <Check className="h-3 w-3" />}</span>
-                                        </button>
-                                    );
-                                })}
-                            </>
+            {variants.length > 0 && (
+              <>
+                <div className="my-1 mx-2 h-px bg-fill-strong" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-expanded={variantOpen}
+                  aria-label={t("actions.run.runAs")}
+                  onClick={() => setVariantOpen((open) => !open)}
+                  className={cn(
+                    "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
+                    "text-fg-muted hover:bg-fill hover:text-fg"
+                  )}
+                >
+                  <span className="flex h-4 w-4 items-center justify-center">
+                    <GitBranch className="h-4 w-4" />
+                  </span>
+                  <span className="flex-1 text-left">{t("actions.run.runAs")}</span>
+                  <span className="text-fg-subtle">
+                    {selectedVariant?.name ?? RELEASE_APP_TAG.name}
+                  </span>
+                  <span className="w-3">
+                    <ChevronRight
+                      className={cn("h-3 w-3 transition-transform", variantOpen && "rotate-90")}
+                    />
+                  </span>
+                </button>
+                {variantOpen &&
+                  [null, ...variants].map((variant) => {
+                    const id = variant?.id ?? null;
+                    const selected = id === (selectedVariant?.id ?? null);
+                    return (
+                      <button
+                        key={id ?? RELEASE_APP_TAG.id}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={selected}
+                        onClick={() => selectVariant(id)}
+                        className={cn(
+                          "flex w-full cursor-default items-center gap-2 py-1.5 pl-9 pr-3 text-sm transition-colors",
+                          selected ? "text-fg" : "text-fg-muted hover:bg-fill hover:text-fg"
                         )}
+                      >
+                        <span className="flex-1 text-left">
+                          {variant?.name ?? RELEASE_APP_TAG.name}
+                        </span>
+                        <span className="w-3">{selected && <Check className="h-3 w-3" />}</span>
+                      </button>
+                    );
+                  })}
+              </>
+            )}
 
-                        <div className="my-1 mx-2 h-px bg-fill-strong" />
+            <div className="my-1 mx-2 h-px bg-fill-strong" />
 
-                        {/* Production Build. Not a run mode - it produces a package rather than
+            {/* Production Build. Not a run mode - it produces a package rather than
                             launching anything - so it is a plain row below the radio group rather than
                             a third option, and it stays reachable while a mode runs. */}
-                        <button
-                            type="button"
-                            role="menuitem"
-                            aria-disabled={buildBlocked || undefined}
-                            disabled={buildBlocked}
-                            data-tip={buildBlocked ? frozenTitle : undefined}
-                            onClick={() => {
-                                setMenuOpen(false);
-                                if (workspace) {
-                                    void openBuildDialog(workspace);
-                                }
-                            }}
-                            className={cn(
-                                "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
-                                buildBlocked
-                                    ? "cursor-not-allowed text-fg-subtle"
-                                    : "text-fg-muted hover:bg-fill hover:text-fg",
-                            )}
-                        >
-                            <span className={cn("flex h-4 w-4 items-center justify-center", buildStatus === "error" && "text-danger")}>
-                                {building ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Package className="h-4 w-4" />}
-                            </span>
-                            <span className="flex-1 text-left">{t("actions.run.productionBuild")}</span>
-                            <span className="w-3" />
-                        </button>
+            <button
+              type="button"
+              role="menuitem"
+              aria-disabled={buildBlocked || undefined}
+              disabled={buildBlocked}
+              data-tip={buildBlocked ? frozenTitle : undefined}
+              onClick={() => {
+                setMenuOpen(false);
+                if (workspace) {
+                  void openBuildDialog(workspace);
+                }
+              }}
+              className={cn(
+                "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
+                buildBlocked
+                  ? "cursor-not-allowed text-fg-subtle"
+                  : "text-fg-muted hover:bg-fill hover:text-fg"
+              )}
+            >
+              <span
+                className={cn(
+                  "flex h-4 w-4 items-center justify-center",
+                  buildStatus === "error" && "text-danger"
+                )}
+              >
+                {building ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Package className="h-4 w-4" />
+                )}
+              </span>
+              <span className="flex-1 text-left">{t("actions.run.productionBuild")}</span>
+              <span className="w-3" />
+            </button>
 
-                        {/* Test. Beside Production Build rather than among the mode rows above,
+            {/* Test. Beside Production Build rather than among the mode rows above,
                             because it is not a mode either - it checks the project instead of
                             launching it, and the picker is what decides what runs. Never gated
                             here: a headless test runs on a frozen workspace (ruling R9) and every
                             other refusal - the freeze, a run already in flight - is `getAvailability`'s
                             to state, per row, with its reason. Greying this row would replace all of
                             that with silence. */}
-                        <button
-                            type="button"
-                            role="menuitem"
-                            aria-label={t("test.action.open")}
-                            onClick={() => {
-                                setMenuOpen(false);
-                                if (workspace) {
-                                    openTestDialog(workspace);
-                                }
-                            }}
-                            className="flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm text-fg-muted transition-colors hover:bg-fill hover:text-fg"
-                        >
-                            <span className="flex h-4 w-4 items-center justify-center">
-                                {testActive
-                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    : <FlaskConical className="h-4 w-4" />}
-                            </span>
-                            <span className="flex-1 text-left">{t("test.action.open")}</span>
-                            <span className="w-3" />
-                        </button>
-                    </div>
-                </>
-            )}
-        </div>
-    );
+            <button
+              type="button"
+              role="menuitem"
+              aria-label={t("test.action.open")}
+              onClick={() => {
+                setMenuOpen(false);
+                if (workspace) {
+                  openTestDialog(workspace);
+                }
+              }}
+              className="flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm text-fg-muted transition-colors hover:bg-fill hover:text-fg"
+            >
+              <span className="flex h-4 w-4 items-center justify-center">
+                {testActive ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <FlaskConical className="h-4 w-4" />
+                )}
+              </span>
+              <span className="flex-1 text-left">{t("test.action.open")}</span>
+              <span className="w-3" />
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }

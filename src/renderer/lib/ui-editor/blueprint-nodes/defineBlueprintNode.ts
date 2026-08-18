@@ -7,9 +7,9 @@ import type { BlueprintNodeDef } from "./types";
 import { blueprintNodeRegistry } from "./BlueprintNodeRegistry";
 
 export function defineBlueprintNode(def: BlueprintNodeDef): void {
-    blueprintNodeRegistry.register(def);
+  blueprintNodeRegistry.register(def);
 }
 
 export function defineBlueprintNodes(defs: BlueprintNodeDef[]): void {
-    blueprintNodeRegistry.registerMany(defs);
+  blueprintNodeRegistry.registerMany(defs);
 }

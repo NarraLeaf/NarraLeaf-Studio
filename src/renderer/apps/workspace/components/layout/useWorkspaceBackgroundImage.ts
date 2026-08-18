@@ -4,10 +4,10 @@ import { getInterface } from "@/lib/app/bridge";
 import { Services } from "@/lib/workspace/services/services";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import {
-    BACKGROUND_KEYS,
-    DEFAULT_BACKGROUND,
-    readBackgroundSettings,
-    type BackgroundSettings,
+  BACKGROUND_KEYS,
+  DEFAULT_BACKGROUND,
+  readBackgroundSettings,
+  type BackgroundSettings
 } from "@/lib/workspace/services/ui/backgroundSettings";
 
 /**
@@ -23,22 +23,22 @@ const URL_CACHE_LIMIT = 4;
 
 /** Look one up, moving it to the front of the queue so what is on screen is never what gets evicted. */
 function takeCachedUrl(file: string): string | undefined {
-    const url = urlCache.get(file);
-    if (url) {
-        urlCache.delete(file);
-        urlCache.set(file, url);
-    }
-    return url;
+  const url = urlCache.get(file);
+  if (url) {
+    urlCache.delete(file);
+    urlCache.set(file, url);
+  }
+  return url;
 }
 
 function cacheUrl(file: string, url: string): void {
-    urlCache.set(file, url);
-    // Map iterates in insertion order, so the first key is the least recently used.
-    while (urlCache.size > URL_CACHE_LIMIT) {
-        const oldest = urlCache.keys().next().value as string;
-        URL.revokeObjectURL(urlCache.get(oldest)!);
-        urlCache.delete(oldest);
-    }
+  urlCache.set(file, url);
+  // Map iterates in insertion order, so the first key is the least recently used.
+  while (urlCache.size > URL_CACHE_LIMIT) {
+    const oldest = urlCache.keys().next().value as string;
+    URL.revokeObjectURL(urlCache.get(oldest)!);
+    urlCache.delete(oldest);
+  }
 }
 
 /**
@@ -50,54 +50,59 @@ function cacheUrl(file: string, url: string): void {
  * washed out every panel and editor below it; keeping it strictly behind opaque surfaces is what
  * lets real content (a scene's background image, panels, toolbars) stay fully opaque.
  */
-export function useWorkspaceBackgroundImage(): { settings: BackgroundSettings; url: string | null } {
-    const { context } = useWorkspace();
-    const [settings, setSettings] = useState<BackgroundSettings>(DEFAULT_BACKGROUND);
-    const [url, setUrl] = useState<string | null>(null);
+export function useWorkspaceBackgroundImage(): {
+  settings: BackgroundSettings;
+  url: string | null;
+} {
+  const { context } = useWorkspace();
+  const [settings, setSettings] = useState<BackgroundSettings>(DEFAULT_BACKGROUND);
+  const [url, setUrl] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (!context) {
-            return;
-        }
-        const globalSettings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
-        setSettings(readBackgroundSettings(key => globalSettings.getSync(key)));
-        const watched = new Set(Object.values(BACKGROUND_KEYS));
-        const token = getInterface().app.state.onGlobalStateChanged?.(change => {
-            if (watched.has(change.key)) {
-                setSettings(readBackgroundSettings(key => globalSettings.getSync(key)));
-            }
-        });
-        return () => token?.cancel();
-    }, [context]);
+  useEffect(() => {
+    if (!context) {
+      return;
+    }
+    const globalSettings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+    setSettings(readBackgroundSettings((key) => globalSettings.getSync(key)));
+    const watched = new Set(Object.values(BACKGROUND_KEYS));
+    const token = getInterface().app.state.onGlobalStateChanged?.((change) => {
+      if (watched.has(change.key)) {
+        setSettings(readBackgroundSettings((key) => globalSettings.getSync(key)));
+      }
+    });
+    return () => token?.cancel();
+  }, [context]);
 
-    useEffect(() => {
-        const file = settings.image;
-        if (!file) {
-            setUrl(null);
-            return;
+  useEffect(() => {
+    const file = settings.image;
+    if (!file) {
+      setUrl(null);
+      return;
+    }
+    const cached = takeCachedUrl(file);
+    if (cached) {
+      setUrl(cached);
+      return;
+    }
+    let mounted = true;
+    void getInterface()
+      .app.readBackgroundImage(file)
+      .then((result) => {
+        if (!mounted) {
+          return;
         }
-        const cached = takeCachedUrl(file);
-        if (cached) {
-            setUrl(cached);
-            return;
+        if (result.success && result.data.data) {
+          const created = URL.createObjectURL(new Blob([result.data.data as BlobPart]));
+          cacheUrl(file, created);
+          setUrl(created);
+        } else {
+          setUrl(null);
         }
-        let mounted = true;
-        void getInterface().app.readBackgroundImage(file).then(result => {
-            if (!mounted) {
-                return;
-            }
-            if (result.success && result.data.data) {
-                const created = URL.createObjectURL(new Blob([result.data.data as BlobPart]));
-                cacheUrl(file, created);
-                setUrl(created);
-            } else {
-                setUrl(null);
-            }
-        });
-        return () => {
-            mounted = false;
-        };
-    }, [settings.image]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [settings.image]);
 
-    return { settings, url };
+  return { settings, url };
 }

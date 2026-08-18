@@ -1,17 +1,17 @@
 import {
-    resolveSpellcheckLanguage,
-    SPELLCHECK_LANGUAGE_DEFAULT,
-    SPELLCHECK_MAX_SUGGESTIONS,
-    type AvailableSpellcheckDictionary,
-    type InstalledSpellcheckDictionary,
-    type SpellcheckRange,
-    type SpellcheckStatus,
+  resolveSpellcheckLanguage,
+  SPELLCHECK_LANGUAGE_DEFAULT,
+  SPELLCHECK_MAX_SUGGESTIONS,
+  type AvailableSpellcheckDictionary,
+  type InstalledSpellcheckDictionary,
+  type SpellcheckRange,
+  type SpellcheckStatus
 } from "@shared/types/spellcheck";
 import { DictionaryCache } from "./dictionaryCache";
 import {
-    downloadDictionary,
-    fetchDictionaryIndex,
-    resolveDictionaryRegistryUrl,
+  downloadDictionary,
+  fetchDictionaryIndex,
+  resolveDictionaryRegistryUrl
 } from "./dictionaryRegistryClient";
 import { extractWords } from "./tokenizer";
 import { WordList } from "./wordList";
@@ -31,9 +31,9 @@ export type SpellcheckSettingReader = () => string | undefined;
 export type SpellcheckRegistryReader = () => string | undefined;
 
 export type SpellcheckManagerOptions = {
-    userDataDir: () => string;
-    readSetting: SpellcheckSettingReader;
-    readRegistryUrl?: SpellcheckRegistryReader;
+  userDataDir: () => string;
+  readSetting: SpellcheckSettingReader;
+  readRegistryUrl?: SpellcheckRegistryReader;
 };
 
 /**
@@ -45,9 +45,9 @@ export type SpellcheckManagerOptions = {
  * one's and a name from the other project was marked wrong. Nothing is shared here, so nothing can.
  */
 type ProjectContext = {
-    sourceLocale: string;
-    /** Lower-cased, because that is the only form {@link SpellcheckManager.check} compares against. */
-    words: Set<string>;
+  sourceLocale: string;
+  /** Lower-cased, because that is the only form {@link SpellcheckManager.check} compares against. */
+  words: Set<string>;
 };
 
 /** How many languages stay parsed in memory at once. */
@@ -79,237 +79,241 @@ const MAX_RESIDENT_LANGUAGES = 3;
  * the word-list sense, and the settings row says so.
  */
 export class SpellcheckManager {
-    private readonly options: SpellcheckManagerOptions;
-    /**
-     * Built on first use, not in the constructor.
-     *
-     * `App` constructs this manager before Electron is ready, and `app.getPath("userData")` has no
-     * answer until it is - the same reason the previous implementation resolved its session through
-     * a function rather than capturing it.
-     */
-    private cacheInstance: DictionaryCache | null = null;
-    /**
-     * The project each window is working on.
-     *
-     * Weak, so a window that closes without its workspace calling {@link clear} - a crash, a
-     * `destroy()` - takes its words with it rather than leaving a list nothing will ever collect.
-     */
-    private readonly projects = new WeakMap<object, ProjectContext>();
-    /** Parsed word lists, by language code. Bounded: a list is tens of megabytes once expanded. */
-    private readonly loaded = new Map<string, WordList>();
-    /** In-flight loads, so a burst of `check` calls on one language parses the file once. */
-    private readonly loading = new Map<string, Promise<WordList | null>>();
-    private status: SpellcheckStatus = {
-        sourceLocale: "",
-        setting: SPELLCHECK_LANGUAGE_DEFAULT,
-        language: null,
-        available: [],
+  private readonly options: SpellcheckManagerOptions;
+  /**
+   * Built on first use, not in the constructor.
+   *
+   * `App` constructs this manager before Electron is ready, and `app.getPath("userData")` has no
+   * answer until it is - the same reason the previous implementation resolved its session through
+   * a function rather than capturing it.
+   */
+  private cacheInstance: DictionaryCache | null = null;
+  /**
+   * The project each window is working on.
+   *
+   * Weak, so a window that closes without its workspace calling {@link clear} - a crash, a
+   * `destroy()` - takes its words with it rather than leaving a list nothing will ever collect.
+   */
+  private readonly projects = new WeakMap<object, ProjectContext>();
+  /** Parsed word lists, by language code. Bounded: a list is tens of megabytes once expanded. */
+  private readonly loaded = new Map<string, WordList>();
+  /** In-flight loads, so a burst of `check` calls on one language parses the file once. */
+  private readonly loading = new Map<string, Promise<WordList | null>>();
+  private status: SpellcheckStatus = {
+    sourceLocale: "",
+    setting: SPELLCHECK_LANGUAGE_DEFAULT,
+    language: null,
+    available: []
+  };
+
+  constructor(options: SpellcheckManagerOptions) {
+    this.options = options;
+  }
+
+  private get cache(): DictionaryCache {
+    if (!this.cacheInstance) {
+      this.cacheInstance = new DictionaryCache(this.options.userDataDir());
+    }
+    return this.cacheInstance;
+  }
+
+  /**
+   * Take one window's project: the language of its script, and the words it spells on purpose.
+   *
+   * Idempotent and cheap to call again - the workspace calls it on load, on every dictionary edit
+   * and whenever the setting changes, and re-sending the same list only replaces a set.
+   */
+  public async configure(
+    owner: object,
+    input: { sourceLocale: string; words: readonly string[] }
+  ): Promise<SpellcheckStatus> {
+    this.projects.set(owner, {
+      sourceLocale: input.sourceLocale,
+      words: new Set(input.words.map((word) => word.toLowerCase()))
+    });
+    this.status = await this.buildStatus(input.sourceLocale);
+    return this.status;
+  }
+
+  /** Forget one window's project. Called when a workspace closes or switches project. */
+  public clear(owner: object): void {
+    this.projects.delete(owner);
+  }
+
+  /**
+   * What spellchecking is doing now.
+   *
+   * Read by the Settings window, which has no project and therefore no way to work this out for
+   * itself. Before any project has configured anything it reports the empty state, whose
+   * `sourceLocale` of `""` is what makes `projectLanguageHasNoDictionary` answer false - so the
+   * settings row states nothing rather than guessing.
+   */
+  public async getStatus(): Promise<SpellcheckStatus> {
+    // Rebuilt rather than returned as stored: a dictionary downloaded since the last configure
+    // changes the answer, and the Settings window is exactly where that download happens.
+    this.status = await this.buildStatus(this.status.sourceLocale);
+    return this.status;
+  }
+
+  /**
+   * Every misspelling in `text`, as offsets into it.
+   *
+   * Answers an empty list rather than failing when the language has no dictionary installed:
+   * "nothing is marked" is what the author sees either way, and a text field is not a place to
+   * report that a download has not happened.
+   */
+  public async check(
+    owner: object,
+    text: string,
+    language: string
+  ): Promise<{ ranges: SpellcheckRange[] }> {
+    const list = await this.wordListFor(language);
+    if (!list || !text) {
+      return { ranges: [] };
+    }
+    const project = this.projects.get(owner);
+    const ranges: SpellcheckRange[] = [];
+    for (const candidate of extractWords(text)) {
+      if (list.has(candidate.word)) {
+        continue;
+      }
+      // The project's own vocabulary: character names, places, invented terms. Checked after
+      // the dictionary because it is the smaller set and the rarer hit.
+      if (project?.words.has(candidate.word.toLowerCase())) {
+        continue;
+      }
+      ranges.push(candidate);
+    }
+    return { ranges };
+  }
+
+  /** Replacements for one word, nearest first. Never more than {@link SPELLCHECK_MAX_SUGGESTIONS}. */
+  public async suggest(word: string, language: string): Promise<{ suggestions: string[] }> {
+    const list = await this.wordListFor(language);
+    if (!list || !word) {
+      return { suggestions: [] };
+    }
+    return { suggestions: list.suggest(word, SPELLCHECK_MAX_SUGGESTIONS) };
+  }
+
+  public async listInstalled(): Promise<{ languages: InstalledSpellcheckDictionary[] }> {
+    return { languages: await this.cache.listInstalled() };
+  }
+
+  /**
+   * What the registry offers.
+   *
+   * Goes to the network every time. There is no memo here on purpose: the only caller is an
+   * author looking at a list of downloads, and a list that answers from a snapshot is a list
+   * whose Refresh does nothing.
+   */
+  public async listAvailable(): Promise<{ entries: AvailableSpellcheckDictionary[] }> {
+    const index = await fetchDictionaryIndex(this.registryUrl());
+    return {
+      entries: index.dictionaries.map((entry) => ({
+        code: entry.code,
+        name: entry.name,
+        bytes: entry.bytes,
+        license: entry.license
+      }))
     };
+  }
 
-    constructor(options: SpellcheckManagerOptions) {
-        this.options = options;
+  /**
+   * Fetch one dictionary into the cache.
+   *
+   * Author-initiated only. The address comes out of the index rather than from the caller, so a
+   * renderer cannot name what is downloaded - it can only name which of the registry's entries.
+   */
+  public async download(code: string): Promise<{ ok: boolean }> {
+    const index = await fetchDictionaryIndex(this.registryUrl());
+    const entry = index.dictionaries.find((candidate) => candidate.code === code);
+    if (!entry) {
+      throw new Error(`The dictionary registry has no entry for "${code}"`);
+    }
+    const compressed = await downloadDictionary(entry);
+    await this.cache.write(entry, compressed);
+    // A language already parsed is now the wrong bytes. Dropping it means the next check
+    // reloads, which is a few milliseconds once rather than a stale list forever.
+    this.loaded.delete(entry.code);
+    this.loading.delete(entry.code);
+    return { ok: true };
+  }
+
+  /** Delete one dictionary. `ok: false` means there was nothing installed under that code. */
+  public async remove(code: string): Promise<{ ok: boolean }> {
+    const removed = await this.cache.remove(code);
+    this.loaded.delete(code);
+    this.loading.delete(code);
+    return { ok: removed };
+  }
+
+  /** Where the dictionaries live, for the cache inventory. */
+  public cacheDirectory(): string {
+    return this.cache.directory();
+  }
+
+  private registryUrl(): string {
+    return resolveDictionaryRegistryUrl(this.options.readRegistryUrl?.());
+  }
+
+  private async buildStatus(sourceLocale: string): Promise<SpellcheckStatus> {
+    const setting = this.options.readSetting() || SPELLCHECK_LANGUAGE_DEFAULT;
+    const available = (await this.cache.listInstalled()).map((entry) => entry.code);
+    return {
+      sourceLocale,
+      setting,
+      language: resolveSpellcheckLanguage(setting, sourceLocale, available),
+      available
+    };
+  }
+
+  /**
+   * The parsed list for one language, or `null` when it is not installed.
+   *
+   * Loads are shared through {@link loading} because the first keystroke in a freshly opened
+   * scene produces several `check` calls at once, and each one would otherwise gunzip and parse
+   * the same file.
+   */
+  private async wordListFor(language: string): Promise<WordList | null> {
+    const code = language.trim();
+    if (!code) {
+      return null;
+    }
+    const resident = this.loaded.get(code);
+    if (resident) {
+      return resident;
+    }
+    const inFlight = this.loading.get(code);
+    if (inFlight) {
+      return inFlight;
     }
 
-    private get cache(): DictionaryCache {
-        if (!this.cacheInstance) {
-            this.cacheInstance = new DictionaryCache(this.options.userDataDir());
+    const load = this.cache
+      .readWords(code)
+      .then((text) => {
+        if (text === null) {
+          return null;
         }
-        return this.cacheInstance;
-    }
-
-    /**
-     * Take one window's project: the language of its script, and the words it spells on purpose.
-     *
-     * Idempotent and cheap to call again - the workspace calls it on load, on every dictionary edit
-     * and whenever the setting changes, and re-sending the same list only replaces a set.
-     */
-    public async configure(
-        owner: object,
-        input: { sourceLocale: string; words: readonly string[] },
-    ): Promise<SpellcheckStatus> {
-        this.projects.set(owner, {
-            sourceLocale: input.sourceLocale,
-            words: new Set(input.words.map(word => word.toLowerCase())),
-        });
-        this.status = await this.buildStatus(input.sourceLocale);
-        return this.status;
-    }
-
-    /** Forget one window's project. Called when a workspace closes or switches project. */
-    public clear(owner: object): void {
-        this.projects.delete(owner);
-    }
-
-    /**
-     * What spellchecking is doing now.
-     *
-     * Read by the Settings window, which has no project and therefore no way to work this out for
-     * itself. Before any project has configured anything it reports the empty state, whose
-     * `sourceLocale` of `""` is what makes `projectLanguageHasNoDictionary` answer false - so the
-     * settings row states nothing rather than guessing.
-     */
-    public async getStatus(): Promise<SpellcheckStatus> {
-        // Rebuilt rather than returned as stored: a dictionary downloaded since the last configure
-        // changes the answer, and the Settings window is exactly where that download happens.
-        this.status = await this.buildStatus(this.status.sourceLocale);
-        return this.status;
-    }
-
-    /**
-     * Every misspelling in `text`, as offsets into it.
-     *
-     * Answers an empty list rather than failing when the language has no dictionary installed:
-     * "nothing is marked" is what the author sees either way, and a text field is not a place to
-     * report that a download has not happened.
-     */
-    public async check(owner: object, text: string, language: string): Promise<{ ranges: SpellcheckRange[] }> {
-        const list = await this.wordListFor(language);
-        if (!list || !text) {
-            return { ranges: [] };
+        const list = WordList.fromText(text);
+        this.loaded.set(code, list);
+        // Oldest first, because a Map iterates in insertion order and the language being
+        // typed in was inserted last.
+        while (this.loaded.size > MAX_RESIDENT_LANGUAGES) {
+          const oldest = this.loaded.keys().next();
+          if (oldest.done) {
+            break;
+          }
+          this.loaded.delete(oldest.value);
         }
-        const project = this.projects.get(owner);
-        const ranges: SpellcheckRange[] = [];
-        for (const candidate of extractWords(text)) {
-            if (list.has(candidate.word)) {
-                continue;
-            }
-            // The project's own vocabulary: character names, places, invented terms. Checked after
-            // the dictionary because it is the smaller set and the rarer hit.
-            if (project?.words.has(candidate.word.toLowerCase())) {
-                continue;
-            }
-            ranges.push(candidate);
-        }
-        return { ranges };
-    }
-
-    /** Replacements for one word, nearest first. Never more than {@link SPELLCHECK_MAX_SUGGESTIONS}. */
-    public async suggest(word: string, language: string): Promise<{ suggestions: string[] }> {
-        const list = await this.wordListFor(language);
-        if (!list || !word) {
-            return { suggestions: [] };
-        }
-        return { suggestions: list.suggest(word, SPELLCHECK_MAX_SUGGESTIONS) };
-    }
-
-    public async listInstalled(): Promise<{ languages: InstalledSpellcheckDictionary[] }> {
-        return { languages: await this.cache.listInstalled() };
-    }
-
-    /**
-     * What the registry offers.
-     *
-     * Goes to the network every time. There is no memo here on purpose: the only caller is an
-     * author looking at a list of downloads, and a list that answers from a snapshot is a list
-     * whose Refresh does nothing.
-     */
-    public async listAvailable(): Promise<{ entries: AvailableSpellcheckDictionary[] }> {
-        const index = await fetchDictionaryIndex(this.registryUrl());
-        return {
-            entries: index.dictionaries.map(entry => ({
-                code: entry.code,
-                name: entry.name,
-                bytes: entry.bytes,
-                license: entry.license,
-            })),
-        };
-    }
-
-    /**
-     * Fetch one dictionary into the cache.
-     *
-     * Author-initiated only. The address comes out of the index rather than from the caller, so a
-     * renderer cannot name what is downloaded - it can only name which of the registry's entries.
-     */
-    public async download(code: string): Promise<{ ok: boolean }> {
-        const index = await fetchDictionaryIndex(this.registryUrl());
-        const entry = index.dictionaries.find(candidate => candidate.code === code);
-        if (!entry) {
-            throw new Error(`The dictionary registry has no entry for "${code}"`);
-        }
-        const compressed = await downloadDictionary(entry);
-        await this.cache.write(entry, compressed);
-        // A language already parsed is now the wrong bytes. Dropping it means the next check
-        // reloads, which is a few milliseconds once rather than a stale list forever.
-        this.loaded.delete(entry.code);
-        this.loading.delete(entry.code);
-        return { ok: true };
-    }
-
-    /** Delete one dictionary. `ok: false` means there was nothing installed under that code. */
-    public async remove(code: string): Promise<{ ok: boolean }> {
-        const removed = await this.cache.remove(code);
-        this.loaded.delete(code);
+        return list;
+      })
+      .catch(() => null)
+      .finally(() => {
         this.loading.delete(code);
-        return { ok: removed };
-    }
+      });
 
-    /** Where the dictionaries live, for the cache inventory. */
-    public cacheDirectory(): string {
-        return this.cache.directory();
-    }
-
-    private registryUrl(): string {
-        return resolveDictionaryRegistryUrl(this.options.readRegistryUrl?.());
-    }
-
-    private async buildStatus(sourceLocale: string): Promise<SpellcheckStatus> {
-        const setting = this.options.readSetting() || SPELLCHECK_LANGUAGE_DEFAULT;
-        const available = (await this.cache.listInstalled()).map(entry => entry.code);
-        return {
-            sourceLocale,
-            setting,
-            language: resolveSpellcheckLanguage(setting, sourceLocale, available),
-            available,
-        };
-    }
-
-    /**
-     * The parsed list for one language, or `null` when it is not installed.
-     *
-     * Loads are shared through {@link loading} because the first keystroke in a freshly opened
-     * scene produces several `check` calls at once, and each one would otherwise gunzip and parse
-     * the same file.
-     */
-    private async wordListFor(language: string): Promise<WordList | null> {
-        const code = language.trim();
-        if (!code) {
-            return null;
-        }
-        const resident = this.loaded.get(code);
-        if (resident) {
-            return resident;
-        }
-        const inFlight = this.loading.get(code);
-        if (inFlight) {
-            return inFlight;
-        }
-
-        const load = this.cache
-            .readWords(code)
-            .then(text => {
-                if (text === null) {
-                    return null;
-                }
-                const list = WordList.fromText(text);
-                this.loaded.set(code, list);
-                // Oldest first, because a Map iterates in insertion order and the language being
-                // typed in was inserted last.
-                while (this.loaded.size > MAX_RESIDENT_LANGUAGES) {
-                    const oldest = this.loaded.keys().next();
-                    if (oldest.done) {
-                        break;
-                    }
-                    this.loaded.delete(oldest.value);
-                }
-                return list;
-            })
-            .catch(() => null)
-            .finally(() => {
-                this.loading.delete(code);
-            });
-
-        this.loading.set(code, load);
-        return load;
-    }
+    this.loading.set(code, load);
+    return load;
+  }
 }

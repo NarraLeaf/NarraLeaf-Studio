@@ -5,5 +5,5 @@
 export const NEW_TAB_ID_PREFIX = "narraleaf-studio:new-tab-";
 
 export function getNewTabId(token: string): string {
-    return `${NEW_TAB_ID_PREFIX}${token}`;
+  return `${NEW_TAB_ID_PREFIX}${token}`;
 }

@@ -1,4 +1,17 @@
-import { Bookmark, CornerUpLeft, Flag, GitBranch, ListChecks, ListOrdered, LogOut, Repeat, Repeat2, Rows3, SeparatorHorizontal, Workflow } from "lucide-react";
+import {
+  Bookmark,
+  CornerUpLeft,
+  Flag,
+  GitBranch,
+  ListChecks,
+  ListOrdered,
+  LogOut,
+  Repeat,
+  Repeat2,
+  Rows3,
+  SeparatorHorizontal,
+  Workflow
+} from "lucide-react";
 import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import type { StoryBlock, StoryConditionRef } from "@shared/types/story";
 import { createBlockForCommand } from "../../storyActionCommands";
@@ -10,43 +23,55 @@ import { appTagParam, asAppTagId, asNumber, asText, defineStoryCommand } from ".
  */
 
 export const ifCommand = defineStoryCommand({
-    id: "if",
-    token: "if",
-    category: "flow",
-    icon: GitBranch,
-    examples: ["/if gold > 10", "/if met"],
-    params: {
-        test: { hint: "condition", type: { kind: "expression", expects: "boolean" }, positional: true, greedy: true, core: true },
-    },
-    // The expression rides on the *branch*, which does not exist yet - the controller's scaffolding
-    // creates it right after insert and reads the resolved `test` off this line. Nothing to write
-    // onto the container itself.
-    build: (_args, ctx) => createBlockForCommand("condition", ctx.generateId),
-    scaffold: "condition",
+  id: "if",
+  token: "if",
+  category: "flow",
+  icon: GitBranch,
+  examples: ["/if gold > 10", "/if met"],
+  params: {
+    test: {
+      hint: "condition",
+      type: { kind: "expression", expects: "boolean" },
+      positional: true,
+      greedy: true,
+      core: true
+    }
+  },
+  // The expression rides on the *branch*, which does not exist yet - the controller's scaffolding
+  // creates it right after insert and reads the resolved `test` off this line. Nothing to write
+  // onto the container itself.
+  build: (_args, ctx) => createBlockForCommand("condition", ctx.generateId),
+  scaffold: "condition"
 });
 
 export const menu = defineStoryCommand({
-    id: "menu",
-    token: "menu",
-    aliases: ["choice"],
-    category: "flow",
-    icon: ListChecks,
-    examples: ["/menu Which way?"],
-    params: {
-        text: { hint: "content", type: { kind: "text" }, positional: true, greedy: true },
-    },
-    build(args, ctx) {
-        const block = createBlockForCommand("choice", ctx.generateId);
-        if (block.kind !== "nodeAction" || block.payload.action !== "choice" || !block.payload.prompt) {
-            return block;
-        }
-        if (args.text?.kind !== "text") {
-            return block;
-        }
-        // Typed on one line, so the prompt is plain - drop any `rich` the placeholder carried.
-        return { ...block, payload: { ...block.payload, prompt: { ...block.payload.prompt, value: args.text.value, rich: undefined } } };
-    },
-    scaffold: "choice",
+  id: "menu",
+  token: "menu",
+  aliases: ["choice"],
+  category: "flow",
+  icon: ListChecks,
+  examples: ["/menu Which way?"],
+  params: {
+    text: { hint: "content", type: { kind: "text" }, positional: true, greedy: true }
+  },
+  build(args, ctx) {
+    const block = createBlockForCommand("choice", ctx.generateId);
+    if (block.kind !== "nodeAction" || block.payload.action !== "choice" || !block.payload.prompt) {
+      return block;
+    }
+    if (args.text?.kind !== "text") {
+      return block;
+    }
+    // Typed on one line, so the prompt is plain - drop any `rich` the placeholder carried.
+    return {
+      ...block,
+      payload: {
+        ...block.payload,
+        prompt: { ...block.payload.prompt, value: args.text.value, rich: undefined }
+      }
+    };
+  },
+  scaffold: "choice"
 });
 
 /**
@@ -65,47 +90,51 @@ export const menu = defineStoryCommand({
  * line already written with it.
  */
 export const repeat = defineStoryCommand({
-    id: "repeat",
-    token: "repeat",
-    aliases: ["loop"],
-    category: "flow",
-    icon: Repeat,
-    examples: ["/repeat 3"],
-    params: {
-        // `times` is deliberately NOT `core` any more. Core is a per-param flag and cannot say "one
-        // of these two", so leaving it on would have made `/repeat until=…` uncommittable - a line
-        // the parser accepts, the resolver approves and Enter refuses, for a slot the author
-        // deliberately did not fill. What core was buying is bought elsewhere: a bare `/repeat`
-        // builds a two-pass loop whose count is printed on the row header with a stepper beside it,
-        // so nothing about it is hidden or has to be guessed at.
-        times: { hint: "times", type: { kind: "number", min: 1, integer: true }, positional: true },
-        until: { hint: "condition", type: { kind: "expression", expects: "boolean" } },
-    },
-    // Not "prefer one" - a line naming both has two answers to when the loop stops and no rule can
-    // pick the one the author meant, so it must not commit at all.
-    validate(args, ctx) {
-        if (args.times === undefined || args.until === undefined) {
-            return [];
+  id: "repeat",
+  token: "repeat",
+  aliases: ["loop"],
+  category: "flow",
+  icon: Repeat,
+  examples: ["/repeat 3"],
+  params: {
+    // `times` is deliberately NOT `core` any more. Core is a per-param flag and cannot say "one
+    // of these two", so leaving it on would have made `/repeat until=…` uncommittable - a line
+    // the parser accepts, the resolver approves and Enter refuses, for a slot the author
+    // deliberately did not fill. What core was buying is bought elsewhere: a bare `/repeat`
+    // builds a two-pass loop whose count is printed on the row header with a stepper beside it,
+    // so nothing about it is hidden or has to be guessed at.
+    times: { hint: "times", type: { kind: "number", min: 1, integer: true }, positional: true },
+    until: { hint: "condition", type: { kind: "expression", expects: "boolean" } }
+  },
+  // Not "prefer one" - a line naming both has two answers to when the loop stops and no rule can
+  // pick the one the author meant, so it must not commit at all.
+  validate(args, ctx) {
+    if (args.times === undefined || args.until === undefined) {
+      return [];
+    }
+    const span = ctx.spanOf("until") ?? ctx.spanOf("times");
+    return span ? [{ code: "repeatTimesAndUntil", span }] : [];
+  },
+  build(args, ctx) {
+    const block = createBlockForCommand("repeat", ctx.generateId);
+    if (block.kind !== "control" || block.payload.control !== "repeat") {
+      return block;
+    }
+    // `until` wins the `times` the default block carries, so a conditional loop never ships a
+    // stale count the inspector would then offer to edit.
+    if (args.until?.kind === "expression") {
+      return {
+        ...block,
+        payload: {
+          control: "repeat",
+          mode: block.payload.mode,
+          until: { kind: "expression", expression: args.until.expression }
         }
-        const span = ctx.spanOf("until") ?? ctx.spanOf("times");
-        return span ? [{ code: "repeatTimesAndUntil", span }] : [];
-    },
-    build(args, ctx) {
-        const block = createBlockForCommand("repeat", ctx.generateId);
-        if (block.kind !== "control" || block.payload.control !== "repeat") {
-            return block;
-        }
-        // `until` wins the `times` the default block carries, so a conditional loop never ships a
-        // stale count the inspector would then offer to edit.
-        if (args.until?.kind === "expression") {
-            return {
-                ...block,
-                payload: { control: "repeat", mode: block.payload.mode, until: { kind: "expression", expression: args.until.expression } },
-            };
-        }
-        const times = asNumber(args.times);
-        return times === undefined ? block : { ...block, payload: { ...block.payload, times } };
-    },
+      };
+    }
+    const times = asNumber(args.times);
+    return times === undefined ? block : { ...block, payload: { ...block.payload, times } };
+  }
 });
 
 /**
@@ -120,32 +149,39 @@ export const repeat = defineStoryCommand({
  * `whileLoop`. The detail line says so, because the token alone cannot.
  */
 export const until = defineStoryCommand({
-    id: "until",
-    token: "until",
-    category: "flow",
-    icon: Repeat2,
-    examples: ["/until gold >= 10", "/until met"],
-    params: {
-        // Core: a loop with no stop condition is the one shape this command must never commit - it
-        // has no count to fall back on, so an unfilled line would build a group that never ends.
-        condition: { hint: "condition", type: { kind: "expression", expects: "boolean" }, positional: true, greedy: true, core: true },
-    },
-    build(args, ctx): StoryBlock {
-        return {
-            id: ctx.generateId(),
-            parentId: null,
-            childrenIds: [],
-            kind: "control",
-            // No `times`: the two forms are exclusive in the payload, and a count riding along under
-            // an `until` is a number the header would offer to edit and the compiler would never read.
-            payload: {
-                control: "repeat",
-                until: args.condition?.kind === "expression"
-                    ? { kind: "expression", expression: args.condition.expression }
-                    : EMPTY_UNTIL_CONDITION,
-            },
-        };
-    },
+  id: "until",
+  token: "until",
+  category: "flow",
+  icon: Repeat2,
+  examples: ["/until gold >= 10", "/until met"],
+  params: {
+    // Core: a loop with no stop condition is the one shape this command must never commit - it
+    // has no count to fall back on, so an unfilled line would build a group that never ends.
+    condition: {
+      hint: "condition",
+      type: { kind: "expression", expects: "boolean" },
+      positional: true,
+      greedy: true,
+      core: true
+    }
+  },
+  build(args, ctx): StoryBlock {
+    return {
+      id: ctx.generateId(),
+      parentId: null,
+      childrenIds: [],
+      kind: "control",
+      // No `times`: the two forms are exclusive in the payload, and a count riding along under
+      // an `until` is a number the header would offer to edit and the compiler would never read.
+      payload: {
+        control: "repeat",
+        until:
+          args.condition?.kind === "expression"
+            ? { kind: "expression", expression: args.condition.expression }
+            : EMPTY_UNTIL_CONDITION
+      }
+    };
+  }
 });
 
 /**
@@ -157,58 +193,58 @@ export const until = defineStoryCommand({
  * emit a loop whose condition cannot resolve.
  */
 const EMPTY_UNTIL_CONDITION = {
-    kind: "expression",
-    expression: { source: "", ast: { kind: "invalid", source: "" } },
+  kind: "expression",
+  expression: { source: "", ast: { kind: "invalid", source: "" } }
 } as const satisfies StoryConditionRef;
 
 /** `/break` - leave the innermost loop. A single instruction, so it builds its block inline. */
 export const breakLoop = defineStoryCommand({
-    id: "break",
-    token: "break",
-    category: "flow",
-    icon: LogOut,
-    examples: ["/break"],
-    params: {},
-    build(_args, ctx): StoryBlock {
-        return {
-            id: ctx.generateId(),
-            parentId: null,
-            childrenIds: [],
-            kind: "control",
-            payload: { control: "break" },
-        };
-    },
+  id: "break",
+  token: "break",
+  category: "flow",
+  icon: LogOut,
+  examples: ["/break"],
+  params: {},
+  build(_args, ctx): StoryBlock {
+    return {
+      id: ctx.generateId(),
+      parentId: null,
+      childrenIds: [],
+      kind: "control",
+      payload: { control: "break" }
+    };
+  }
 });
 
 export const parallel = defineStoryCommand({
-    id: "parallel",
-    token: "parallel",
-    category: "flow",
-    icon: Rows3,
-    examples: ["/parallel"],
-    params: {},
-    build: (_args, ctx) => createBlockForCommand("parallel", ctx.generateId),
+  id: "parallel",
+  token: "parallel",
+  category: "flow",
+  icon: Rows3,
+  examples: ["/parallel"],
+  params: {},
+  build: (_args, ctx) => createBlockForCommand("parallel", ctx.generateId)
 });
 
 export const race = defineStoryCommand({
-    id: "race",
-    token: "race",
-    category: "flow",
-    icon: Flag,
-    examples: ["/race"],
-    params: {},
-    build: (_args, ctx) => createBlockForCommand("race", ctx.generateId),
+  id: "race",
+  token: "race",
+  category: "flow",
+  icon: Flag,
+  examples: ["/race"],
+  params: {},
+  build: (_args, ctx) => createBlockForCommand("race", ctx.generateId)
 });
 
 export const sequence = defineStoryCommand({
-    id: "sequence",
-    token: "sequence",
-    aliases: ["seq"],
-    category: "flow",
-    icon: ListOrdered,
-    examples: ["/sequence"],
-    params: {},
-    build: (_args, ctx) => createBlockForCommand("sequence", ctx.generateId),
+  id: "sequence",
+  token: "sequence",
+  aliases: ["seq"],
+  category: "flow",
+  icon: ListOrdered,
+  examples: ["/sequence"],
+  params: {},
+  build: (_args, ctx) => createBlockForCommand("sequence", ctx.generateId)
 });
 
 /**
@@ -222,46 +258,49 @@ export const sequence = defineStoryCommand({
  * not one of them - the same scan the compiler validates against, so a completed line always builds.
  */
 export const label = defineStoryCommand({
-    id: "label",
-    token: "label",
-    aliases: ["mark"],
-    category: "flow",
-    icon: Bookmark,
-    examples: ["/label after refusal"],
-    params: {
-        // Greedy: a label is a note to the author ("after the first refusal"), not an identifier.
-        name: { hint: "labelName", type: { kind: "text" }, positional: true, greedy: true, core: true },
-    },
-    build(args, ctx): StoryBlock {
-        return {
-            id: ctx.generateId(),
-            parentId: null,
-            childrenIds: [],
-            kind: "control",
-            payload: { control: "label", name: asText(args.name) ?? "" },
-        };
-    },
+  id: "label",
+  token: "label",
+  aliases: ["mark"],
+  category: "flow",
+  icon: Bookmark,
+  examples: ["/label after refusal"],
+  params: {
+    // Greedy: a label is a note to the author ("after the first refusal"), not an identifier.
+    name: { hint: "labelName", type: { kind: "text" }, positional: true, greedy: true, core: true }
+  },
+  build(args, ctx): StoryBlock {
+    return {
+      id: ctx.generateId(),
+      parentId: null,
+      childrenIds: [],
+      kind: "control",
+      payload: { control: "label", name: asText(args.name) ?? "" }
+    };
+  }
 });
 
 export const goto = defineStoryCommand({
-    id: "goto",
-    token: "goto",
-    aliases: ["jumpto"],
-    category: "flow",
-    icon: CornerUpLeft,
-    examples: ["/goto intro"],
-    params: {
-        target: { hint: "labelName", type: { kind: "label" }, positional: true, core: true },
-    },
-    build(args, ctx): StoryBlock {
-        return {
-            id: ctx.generateId(),
-            parentId: null,
-            childrenIds: [],
-            kind: "control",
-            payload: { control: "goto", targetLabel: args.target?.kind === "label" ? args.target.name : "" },
-        };
-    },
+  id: "goto",
+  token: "goto",
+  aliases: ["jumpto"],
+  category: "flow",
+  icon: CornerUpLeft,
+  examples: ["/goto intro"],
+  params: {
+    target: { hint: "labelName", type: { kind: "label" }, positional: true, core: true }
+  },
+  build(args, ctx): StoryBlock {
+    return {
+      id: ctx.generateId(),
+      parentId: null,
+      childrenIds: [],
+      kind: "control",
+      payload: {
+        control: "goto",
+        targetLabel: args.target?.kind === "label" ? args.target.name : ""
+      }
+    };
+  }
 });
 
 /**
@@ -280,39 +319,52 @@ export const goto = defineStoryCommand({
  * have nothing to name.
  */
 export const cut = defineStoryCommand({
-    id: "cut",
-    token: "cut",
-    category: "flow",
-    icon: SeparatorHorizontal,
-    examples: ["/cut Demo"],
-    params: {
-        tag: appTagParam(),
-    },
-    available: context => context.appTags.some(tag => tag.id !== APP_TAG_ID_RELEASE),
-    build(args, ctx): StoryBlock {
-        return {
-            id: ctx.generateId(),
-            parentId: null,
-            childrenIds: [],
-            kind: "control",
-            // The id, never the typed name: the row has to keep naming the same variant after a
-            // rename, and the reference count reads this very field.
-            payload: { control: "cut", appTagId: asAppTagId(args.tag) ?? "" },
-        };
-    },
+  id: "cut",
+  token: "cut",
+  category: "flow",
+  icon: SeparatorHorizontal,
+  examples: ["/cut Demo"],
+  params: {
+    tag: appTagParam()
+  },
+  available: (context) => context.appTags.some((tag) => tag.id !== APP_TAG_ID_RELEASE),
+  build(args, ctx): StoryBlock {
+    return {
+      id: ctx.generateId(),
+      parentId: null,
+      childrenIds: [],
+      kind: "control",
+      // The id, never the typed name: the row has to keep naming the same variant after a
+      // rename, and the reference count reads this very field.
+      payload: { control: "cut", appTagId: asAppTagId(args.tag) ?? "" }
+    };
+  }
 });
 
 /** A Story Action Blueprint call - the blueprint itself is picked in the inspector. */
 export const blueprint = defineStoryCommand({
-    id: "blueprint",
-    token: "blueprint",
-    aliases: ["executescript", "bp"],
-    category: "utils",
-    icon: Workflow,
-    examples: ["/blueprint"],
-    params: {},
-    build: (_args, ctx) => createBlockForCommand("executeScript", ctx.generateId),
-    inspectorAfterCommit: true,
+  id: "blueprint",
+  token: "blueprint",
+  aliases: ["executescript", "bp"],
+  category: "utils",
+  icon: Workflow,
+  examples: ["/blueprint"],
+  params: {},
+  build: (_args, ctx) => createBlockForCommand("executeScript", ctx.generateId),
+  inspectorAfterCommit: true
 });
 
-export const LOGIC_COMMANDS = [ifCommand, menu, repeat, until, breakLoop, parallel, race, sequence, label, goto, cut, blueprint];
+export const LOGIC_COMMANDS = [
+  ifCommand,
+  menu,
+  repeat,
+  until,
+  breakLoop,
+  parallel,
+  race,
+  sequence,
+  label,
+  goto,
+  cut,
+  blueprint
+];

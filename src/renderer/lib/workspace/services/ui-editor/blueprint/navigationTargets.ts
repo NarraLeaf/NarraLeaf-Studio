@@ -5,21 +5,21 @@ import type { BlueprintEntryOwnerKind } from "@/apps/workspace/modules/blueprint
  * Navigation target for opening / focusing the Blueprint entry tab (M4-full).
  */
 export type BlueprintEditorOpenTarget = {
-    blueprintId: string;
-    ownerKind: BlueprintEntryOwnerKind;
-    /** Absent for surface-less owners (e.g. storyAction). */
-    surfaceId?: UISurfaceId;
-    componentId?: string;
-    elementId?: UIElementId;
-    propPath?: string;
-    /** Optional tab title when opening from workspace. */
-    title?: string;
-    /** Focus an event graph by id */
-    focusEventId?: string;
-    /** Focus a function graph by id */
-    focusFunctionId?: string;
-    /** Focus a field in the member tree / inspector */
-    focusFieldId?: string;
-    /** Focus a node on the current graph canvas */
-    focusNodeId?: string;
+  blueprintId: string;
+  ownerKind: BlueprintEntryOwnerKind;
+  /** Absent for surface-less owners (e.g. storyAction). */
+  surfaceId?: UISurfaceId;
+  componentId?: string;
+  elementId?: UIElementId;
+  propPath?: string;
+  /** Optional tab title when opening from workspace. */
+  title?: string;
+  /** Focus an event graph by id */
+  focusEventId?: string;
+  /** Focus a function graph by id */
+  focusFunctionId?: string;
+  /** Focus a field in the member tree / inspector */
+  focusFieldId?: string;
+  /** Focus a node on the current graph canvas */
+  focusNodeId?: string;
 };

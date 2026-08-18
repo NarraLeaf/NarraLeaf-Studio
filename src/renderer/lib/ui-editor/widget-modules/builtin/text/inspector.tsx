@@ -1,6 +1,4 @@
-import {
-  useLayoutEffect,
-} from "react";
+import { useLayoutEffect } from "react";
 import {
   AlignCenter,
   AlignLeft,
@@ -10,16 +8,23 @@ import {
   AlignVerticalJustifyStart,
   Baseline,
   Italic,
-  Type,
+  Type
 } from "lucide-react";
-import type { AppearanceModel, AppearanceRowValue, TextAppearancePropertyKey } from "@shared/types/ui-editor/appearance";
+import type {
+  AppearanceModel,
+  AppearanceRowValue,
+  TextAppearancePropertyKey
+} from "@shared/types/ui-editor/appearance";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
-import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
+import {
+  createPropertyEditorSchema,
+  defineField
+} from "@/apps/workspace/modules/properties/framework";
 import { createLocalizationKeyField } from "@/lib/ui-editor/widget-modules/shared/LocalizationKeyField";
 import type {
   CustomFieldProps,
   IconButtonSelection,
-  InlineRowItemContext,
+  InlineRowItemContext
 } from "@/apps/workspace/modules/properties/framework/types";
 import { DraftTextInput } from "@/lib/components/inputs/DraftTextInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
@@ -29,7 +34,7 @@ import {
   createInitialTextAppearance,
   ensureTextAppearanceHasAllKeys,
   isUsableAppearanceModel,
-  patchTextAppearanceDefaultRows,
+  patchTextAppearanceDefaultRows
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
@@ -68,10 +73,12 @@ function patchTextPropsWithAppearance(data: UIInspectorData, patch: Partial<Text
   const nextFlat: TextWidgetProps = {
     ...flat,
     ...patch,
-    effects: patch.effects ?? flat.effects,
+    effects: patch.effects ?? flat.effects
   };
   const rawAppearance = (live.props as { appearance?: unknown } | undefined)?.appearance;
-  const baseAppearance: AppearanceModel | null = isAppearanceModel(rawAppearance) ? rawAppearance : null;
+  const baseAppearance: AppearanceModel | null = isAppearanceModel(rawAppearance)
+    ? rawAppearance
+    : null;
   const rows = textAppearanceRowsForPatch(nextFlat, patch);
   const hasAppearanceRows = Object.keys(rows).length > 0;
   let nextAppearance: AppearanceModel | null = baseAppearance;
@@ -84,14 +91,17 @@ function patchTextPropsWithAppearance(data: UIInspectorData, patch: Partial<Text
   data.documentService.updateElementProps(live.id, {
     ...live.props,
     ...patch,
-    ...(nextAppearance ? { appearance: nextAppearance } : {}),
+    ...(nextAppearance ? { appearance: nextAppearance } : {})
   });
 }
 
 function TextAppearanceField(props: CustomFieldProps<UIInspectorData>) {
   const flat = getTextProps(props.data.element);
-  const rawAppearance = (props.data.element.props as { appearance?: unknown } | undefined)?.appearance;
-  const appearance: AppearanceModel | null = isAppearanceModel(rawAppearance) ? rawAppearance : null;
+  const rawAppearance = (props.data.element.props as { appearance?: unknown } | undefined)
+    ?.appearance;
+  const appearance: AppearanceModel | null = isAppearanceModel(rawAppearance)
+    ? rawAppearance
+    : null;
   const { documentService } = props.data;
   const element = props.data.element;
 
@@ -108,21 +118,23 @@ function TextAppearanceField(props: CustomFieldProps<UIInspectorData>) {
       : createInitialTextAppearance(f);
     if (next !== appearance) {
       documentService.updateElementProps(element.id, {
-        appearance: next,
+        appearance: next
       });
     }
   }, [appearance, documentService, element, props.readOnly]);
 
-  const panelAppearance = isUsableAppearanceModel(appearance) ? appearance : createInitialTextAppearance(flat);
+  const panelAppearance = isUsableAppearanceModel(appearance)
+    ? appearance
+    : createInitialTextAppearance(flat);
 
   return (
     <AppearanceAuthoringPanel
       key={element.id}
       kind="text"
       appearance={panelAppearance}
-      onReplace={next => {
+      onReplace={(next) => {
         documentService.updateElementProps(element.id, {
-          appearance: next,
+          appearance: next
         });
       }}
       inspectorData={props.data}
@@ -133,11 +145,11 @@ function TextAppearanceField(props: CustomFieldProps<UIInspectorData>) {
 }
 
 const TextLocalizationKeyField = createLocalizationKeyField({
-  getKey: element => getTextProps(element).localizationKey ?? "",
+  getKey: (element) => getTextProps(element).localizationKey ?? "",
   setKey: (data, value) => {
     const live = data.documentService.getDocument().elements[data.element.id] ?? data.element;
     data.documentService.updateElementProps(live.id, { localizationKey: value });
-  },
+  }
 });
 
 const TextBlueprintValueField = createBlueprintValueField({
@@ -147,7 +159,7 @@ const TextBlueprintValueField = createBlueprintValueField({
   title: "widgets.blueprintValue.textTitle",
   getDisplayName: ({ liveElement }) =>
     translate("widgets.blueprintValue.nameText", {
-      name: liveElement.name ?? translate("widgets.defaults.text.name"),
+      name: liveElement.name ?? translate("widgets.defaults.text.name")
     }),
   getLiteralValue: ({ liveElement }) => getTextProps(liveElement).text,
   renderLiteralEditor: ({ data, liveElement }) => {
@@ -160,14 +172,15 @@ const TextBlueprintValueField = createBlueprintValueField({
         rows={4}
         draftResetKey={liveElement.id}
         readCommittedValue={() =>
-          getTextProps(data.documentService.getDocument().elements[liveElement.id] ?? liveElement).text
+          getTextProps(data.documentService.getDocument().elements[liveElement.id] ?? liveElement)
+            .text
         }
-        onCommit={next => {
+        onCommit={(next) => {
           data.documentService.updateElementProps(liveElement.id, { text: next });
         }}
       />
     );
-  },
+  }
 });
 
 export function createTextInspector(ctx: InspectorContext) {
@@ -181,7 +194,7 @@ export function createTextInspector(ctx: InspectorContext) {
       {
         element: liveElement,
         elements: Object.values(documentService.getDocument().elements),
-        documentService,
+        documentService
       },
       patch
     );
@@ -205,9 +218,9 @@ export function createTextInspector(ctx: InspectorContext) {
                 id: "text.content",
                 type: "custom",
                 label: t("widgets.textLabel"),
-                component: TextBlueprintValueField,
-              }),
-            ],
+                component: TextBlueprintValueField
+              })
+            ]
           }),
           defineField<D, any>({
             id: "section.localization",
@@ -221,15 +234,15 @@ export function createTextInspector(ctx: InspectorContext) {
                 type: "checkbox",
                 label: t("widgets.text.localizeText"),
                 getValue: (d: D) => Boolean(getTextProps(d.element).localizable),
-                setValue: (_d: D, value: boolean) => patchProps({ localizable: value }),
+                setValue: (_d: D, value: boolean) => patchProps({ localizable: value })
               }),
               defineField<D, any>({
                 id: "text.localizationKey",
                 type: "custom",
                 label: t("widgets.localization.textKey"),
-                component: TextLocalizationKeyField,
-              }),
-            ],
+                component: TextLocalizationKeyField
+              })
+            ]
           }),
           defineField<D, any>({
             id: "section.typography",
@@ -243,7 +256,7 @@ export function createTextInspector(ctx: InspectorContext) {
                 getValue: (d: D) => getTextProps(d.element).fontAssetId,
                 setValue: (_d: D, value: string | null) => {
                   patchProps({ fontAssetId: value });
-                },
+                }
               }),
               defineField<D, any>({
                 id: "text.typographyRow",
@@ -277,7 +290,7 @@ export function createTextInspector(ctx: InspectorContext) {
                           leftIcon={<Type className="w-4 h-4 text-fg-muted" />}
                         />
                       );
-                    },
+                    }
                   },
                   {
                     id: "text.lineHeight",
@@ -308,7 +321,7 @@ export function createTextInspector(ctx: InspectorContext) {
                           data-tip={t("widgets.typography.lineHeightHint")}
                         />
                       );
-                    },
+                    }
                   },
                   {
                     id: "text.fontStyle",
@@ -323,9 +336,13 @@ export function createTextInspector(ctx: InspectorContext) {
                             "flex h-9 min-h-[34px] w-9 items-center justify-center rounded-md border border-edge transition",
                             isItalic
                               ? "bg-fill text-fg"
-                              : "bg-surface-raised text-fg-muted hover:bg-fill hover:text-fg",
+                              : "bg-surface-raised text-fg-muted hover:bg-fill hover:text-fg"
                           ].join(" ")}
-                          aria-label={isItalic ? t("widgets.typography.disableItalic") : t("widgets.typography.enableItalic")}
+                          aria-label={
+                            isItalic
+                              ? t("widgets.typography.disableItalic")
+                              : t("widgets.typography.enableItalic")
+                          }
                           aria-pressed={isItalic}
                           data-tip={t("widgets.typography.italic")}
                           onClick={() => {
@@ -340,9 +357,9 @@ export function createTextInspector(ctx: InspectorContext) {
                           <Italic className="h-4 w-4" />
                         </button>
                       );
-                    },
-                  },
-                ],
+                    }
+                  }
+                ]
               }),
               defineField<D, any>({
                 id: "text.weight",
@@ -351,14 +368,14 @@ export function createTextInspector(ctx: InspectorContext) {
                 options: [
                   { value: "normal", label: t("widgets.typography.regular") },
                   { value: "600", label: t("widgets.typography.semibold") },
-                  { value: "bold", label: t("widgets.typography.bold") },
+                  { value: "bold", label: t("widgets.typography.bold") }
                 ],
                 getValue: (d: D) => getTextProps(d.element).fontWeight,
                 setValue: (_d: D, v: string | number) => {
                   patchProps({
-                    fontWeight: v as TextWidgetProps["fontWeight"],
+                    fontWeight: v as TextWidgetProps["fontWeight"]
                   });
-                },
+                }
               }),
               defineField<D, any>({
                 id: "text.wrapMode",
@@ -367,12 +384,12 @@ export function createTextInspector(ctx: InspectorContext) {
                 options: [
                   { value: "word", label: t("widgets.typography.wrapWords") },
                   { value: "character", label: t("widgets.typography.wrapCharacters") },
-                  { value: "nowrap", label: t("widgets.typography.wrapNone") },
+                  { value: "nowrap", label: t("widgets.typography.wrapNone") }
                 ],
                 getValue: (d: D) => getTextProps(d.element).textWrapMode,
                 setValue: (_d: D, v: string | number) => {
                   patchProps({ textWrapMode: String(v) as TextWrapMode });
-                },
+                }
               }),
               defineField<D, any>({
                 id: "text.align",
@@ -381,15 +398,27 @@ export function createTextInspector(ctx: InspectorContext) {
                 label: t("widgets.typography.alignment"),
                 showLabels: false,
                 options: [
-                  { id: "left", icon: <AlignLeft className="w-4 h-4" />, label: t("widgets.typography.alignLeft") },
-                  { id: "center", icon: <AlignCenter className="w-4 h-4" />, label: t("widgets.typography.alignCenter") },
-                  { id: "right", icon: <AlignRight className="w-4 h-4" />, label: t("widgets.typography.alignRight") },
+                  {
+                    id: "left",
+                    icon: <AlignLeft className="w-4 h-4" />,
+                    label: t("widgets.typography.alignLeft")
+                  },
+                  {
+                    id: "center",
+                    icon: <AlignCenter className="w-4 h-4" />,
+                    label: t("widgets.typography.alignCenter")
+                  },
+                  {
+                    id: "right",
+                    icon: <AlignRight className="w-4 h-4" />,
+                    label: t("widgets.typography.alignRight")
+                  }
                 ],
                 getValue: (d: D) => getTextProps(d.element).textAlign,
                 setValue: (_d: D, value: IconButtonSelection) => {
                   if (typeof value !== "string") return;
                   patchProps({ textAlign: value as TextAlign });
-                },
+                }
               }),
               defineField<D, any>({
                 id: "text.verticalAlign",
@@ -398,17 +427,29 @@ export function createTextInspector(ctx: InspectorContext) {
                 label: t("widgets.typography.verticalAlignment"),
                 showLabels: false,
                 options: [
-                  { id: "start", icon: <AlignVerticalJustifyStart className="w-4 h-4" />, label: t("widgets.typography.alignTop") },
-                  { id: "center", icon: <AlignVerticalJustifyCenter className="w-4 h-4" />, label: t("widgets.typography.alignMiddle") },
-                  { id: "end", icon: <AlignVerticalJustifyEnd className="w-4 h-4" />, label: t("widgets.typography.alignBottom") },
+                  {
+                    id: "start",
+                    icon: <AlignVerticalJustifyStart className="w-4 h-4" />,
+                    label: t("widgets.typography.alignTop")
+                  },
+                  {
+                    id: "center",
+                    icon: <AlignVerticalJustifyCenter className="w-4 h-4" />,
+                    label: t("widgets.typography.alignMiddle")
+                  },
+                  {
+                    id: "end",
+                    icon: <AlignVerticalJustifyEnd className="w-4 h-4" />,
+                    label: t("widgets.typography.alignBottom")
+                  }
                 ],
                 getValue: (d: D) => getTextProps(d.element).textVerticalAlign,
                 setValue: (_d: D, value: IconButtonSelection) => {
                   if (typeof value !== "string") return;
                   patchProps({ textVerticalAlign: value as TextVerticalAlign });
-                },
-              }),
-            ],
+                }
+              })
+            ]
           }),
           defineField<D, any>({
             id: "section.appearanceAuthoring",
@@ -421,11 +462,11 @@ export function createTextInspector(ctx: InspectorContext) {
               defineField<D, any>({
                 id: "text.appearance.panel",
                 type: "custom",
-                component: TextAppearanceField,
-              }),
-            ],
-          }),
-        ],
+                component: TextAppearanceField
+              })
+            ]
+          })
+        ]
       },
       {
         id: "interaction",
@@ -435,10 +476,10 @@ export function createTextInspector(ctx: InspectorContext) {
             id: "interaction.blueprint.readonly",
             type: "custom",
             label: t("widgets.blueprint.controlLabel"),
-            component: ReadonlyBlueprintSection,
-          }),
-        ],
-      },
-    ],
+            component: ReadonlyBlueprintSection
+          })
+        ]
+      }
+    ]
   });
 }

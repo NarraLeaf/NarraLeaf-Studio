@@ -10,35 +10,35 @@
  */
 
 export interface SemVer {
-    major: number;
-    minor: number;
-    patch: number;
-    /** Dot-separated prerelease identifiers, empty when the version is a release. */
-    prerelease: string[];
-    /** Raw build metadata (ignored for precedence, per semver). */
-    build: string;
-    raw: string;
+  major: number;
+  minor: number;
+  patch: number;
+  /** Dot-separated prerelease identifiers, empty when the version is a release. */
+  prerelease: string[];
+  /** Raw build metadata (ignored for precedence, per semver). */
+  build: string;
+  raw: string;
 }
 
 const SEMVER_PATTERN = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$/;
 
 export function parseSemver(value: unknown): SemVer | null {
-    if (typeof value !== "string") {
-        return null;
-    }
-    const match = SEMVER_PATTERN.exec(value.trim());
-    if (!match) {
-        return null;
-    }
-    const [, major, minor, patch, prerelease, build] = match;
-    return {
-        major: Number(major),
-        minor: Number(minor),
-        patch: Number(patch),
-        prerelease: prerelease ? prerelease.split(".") : [],
-        build: build ?? "",
-        raw: value.trim(),
-    };
+  if (typeof value !== "string") {
+    return null;
+  }
+  const match = SEMVER_PATTERN.exec(value.trim());
+  if (!match) {
+    return null;
+  }
+  const [, major, minor, patch, prerelease, build] = match;
+  return {
+    major: Number(major),
+    minor: Number(minor),
+    patch: Number(patch),
+    prerelease: prerelease ? prerelease.split(".") : [],
+    build: build ?? "",
+    raw: value.trim()
+  };
 }
 
 /**
@@ -47,46 +47,46 @@ export function parseSemver(value: unknown): SemVer | null {
  * Build metadata is ignored; prerelease precedence follows the semver spec.
  */
 export function compareSemver(a: string, b: string): number {
-    const left = parseSemver(a);
-    const right = parseSemver(b);
-    if (!left && !right) return 0;
-    if (!left) return -1;
-    if (!right) return 1;
+  const left = parseSemver(a);
+  const right = parseSemver(b);
+  if (!left && !right) return 0;
+  if (!left) return -1;
+  if (!right) return 1;
 
-    if (left.major !== right.major) return left.major < right.major ? -1 : 1;
-    if (left.minor !== right.minor) return left.minor < right.minor ? -1 : 1;
-    if (left.patch !== right.patch) return left.patch < right.patch ? -1 : 1;
+  if (left.major !== right.major) return left.major < right.major ? -1 : 1;
+  if (left.minor !== right.minor) return left.minor < right.minor ? -1 : 1;
+  if (left.patch !== right.patch) return left.patch < right.patch ? -1 : 1;
 
-    return comparePrerelease(left.prerelease, right.prerelease);
+  return comparePrerelease(left.prerelease, right.prerelease);
 }
 
 function comparePrerelease(a: string[], b: string[]): number {
-    // A release (no prerelease) has higher precedence than any prerelease.
-    if (a.length === 0 && b.length === 0) return 0;
-    if (a.length === 0) return 1;
-    if (b.length === 0) return -1;
+  // A release (no prerelease) has higher precedence than any prerelease.
+  if (a.length === 0 && b.length === 0) return 0;
+  if (a.length === 0) return 1;
+  if (b.length === 0) return -1;
 
-    const length = Math.min(a.length, b.length);
-    for (let index = 0; index < length; index += 1) {
-        const cmp = comparePrereleaseIdentifier(a[index], b[index]);
-        if (cmp !== 0) return cmp;
-    }
-    if (a.length === b.length) return 0;
-    return a.length < b.length ? -1 : 1;
+  const length = Math.min(a.length, b.length);
+  for (let index = 0; index < length; index += 1) {
+    const cmp = comparePrereleaseIdentifier(a[index], b[index]);
+    if (cmp !== 0) return cmp;
+  }
+  if (a.length === b.length) return 0;
+  return a.length < b.length ? -1 : 1;
 }
 
 function comparePrereleaseIdentifier(a: string, b: string): number {
-    const aNumeric = /^\d+$/.test(a);
-    const bNumeric = /^\d+$/.test(b);
-    if (aNumeric && bNumeric) {
-        const an = Number(a);
-        const bn = Number(b);
-        return an === bn ? 0 : an < bn ? -1 : 1;
-    }
-    // Numeric identifiers always have lower precedence than alphanumeric ones.
-    if (aNumeric) return -1;
-    if (bNumeric) return 1;
-    return a === b ? 0 : a < b ? -1 : 1;
+  const aNumeric = /^\d+$/.test(a);
+  const bNumeric = /^\d+$/.test(b);
+  if (aNumeric && bNumeric) {
+    const an = Number(a);
+    const bn = Number(b);
+    return an === bn ? 0 : an < bn ? -1 : 1;
+  }
+  // Numeric identifiers always have lower precedence than alphanumeric ones.
+  if (aNumeric) return -1;
+  if (bNumeric) return 1;
+  return a === b ? 0 : a < b ? -1 : 1;
 }
 
 /**
@@ -108,55 +108,53 @@ function comparePrereleaseIdentifier(a: string, b: string): number {
  *    lock every beta user out of the store.
  */
 export function satisfiesRange(version: string, range: string | undefined | null): boolean {
-    const parsed = parseSemver(version);
-    if (!parsed) {
-        return true;
-    }
-    const text = typeof range === "string" ? range.trim() : "";
-    if (!text || text === "*" || text.toLowerCase() === "x") {
-        return true;
-    }
-    // Glue each operator to its version so a clause splits cleanly on whitespace.
-    const normalized = text.replace(/([<>=^~]+)\s+/g, "$1");
-    return normalized
-        .split("||")
-        .some(clause => {
-            const comparators = clause.trim().split(/\s+/).filter(Boolean);
-            return comparators.every(comparator => satisfiesComparator(version, comparator));
-        });
+  const parsed = parseSemver(version);
+  if (!parsed) {
+    return true;
+  }
+  const text = typeof range === "string" ? range.trim() : "";
+  if (!text || text === "*" || text.toLowerCase() === "x") {
+    return true;
+  }
+  // Glue each operator to its version so a clause splits cleanly on whitespace.
+  const normalized = text.replace(/([<>=^~]+)\s+/g, "$1");
+  return normalized.split("||").some((clause) => {
+    const comparators = clause.trim().split(/\s+/).filter(Boolean);
+    return comparators.every((comparator) => satisfiesComparator(version, comparator));
+  });
 }
 
 /** One comparator of a range. An unrecognized comparator is treated as satisfied. */
 function satisfiesComparator(version: string, comparator: string): boolean {
-    if (comparator === "*" || comparator.toLowerCase() === "x") {
-        return true;
-    }
-    const match = /^(\^|~|>=|<=|>|<|=)?(.+)$/.exec(comparator);
-    if (!match) {
-        return true;
-    }
-    const [, operator = "=", operand] = match;
-    const target = parseSemver(operand);
-    if (!target) {
-        return true;
-    }
-    const cmp = compareSemver(version, target.raw);
-    switch (operator) {
-        case ">":
-            return cmp > 0;
-        case ">=":
-            return cmp >= 0;
-        case "<":
-            return cmp < 0;
-        case "<=":
-            return cmp <= 0;
-        case "^":
-            return cmp >= 0 && compareSemver(version, caretCeiling(target)) < 0;
-        case "~":
-            return cmp >= 0 && compareSemver(version, `${target.major}.${target.minor + 1}.0`) < 0;
-        default:
-            return cmp === 0;
-    }
+  if (comparator === "*" || comparator.toLowerCase() === "x") {
+    return true;
+  }
+  const match = /^(\^|~|>=|<=|>|<|=)?(.+)$/.exec(comparator);
+  if (!match) {
+    return true;
+  }
+  const [, operator = "=", operand] = match;
+  const target = parseSemver(operand);
+  if (!target) {
+    return true;
+  }
+  const cmp = compareSemver(version, target.raw);
+  switch (operator) {
+    case ">":
+      return cmp > 0;
+    case ">=":
+      return cmp >= 0;
+    case "<":
+      return cmp < 0;
+    case "<=":
+      return cmp <= 0;
+    case "^":
+      return cmp >= 0 && compareSemver(version, caretCeiling(target)) < 0;
+    case "~":
+      return cmp >= 0 && compareSemver(version, `${target.major}.${target.minor + 1}.0`) < 0;
+    default:
+      return cmp === 0;
+  }
 }
 
 /**
@@ -165,13 +163,13 @@ function satisfiesComparator(version: string, comparator: string): boolean {
  * 0.2.x but not 0.3.0, and `^0.0.3` allows nothing but 0.0.3.
  */
 function caretCeiling(target: SemVer): string {
-    if (target.major > 0) {
-        return `${target.major + 1}.0.0`;
-    }
-    if (target.minor > 0) {
-        return `0.${target.minor + 1}.0`;
-    }
-    return `0.0.${target.patch + 1}`;
+  if (target.major > 0) {
+    return `${target.major + 1}.0.0`;
+  }
+  if (target.minor > 0) {
+    return `0.${target.minor + 1}.0`;
+  }
+  return `0.0.${target.patch + 1}`;
 }
 
 export type CompatibilityVerdict = "satisfied" | "outdated" | "incompatible";
@@ -187,17 +185,20 @@ export type CompatibilityVerdict = "satisfied" | "outdated" | "incompatible";
  * we cannot prove the installed plugin is safe, and the cost of a false
  * positive (a warning) is far lower than loading a truly broken plugin.
  */
-export function classifyCompatibility(authoredVersion: string, installedVersion: string): CompatibilityVerdict {
-    const authored = parseSemver(authoredVersion);
-    const installed = parseSemver(installedVersion);
-    if (!authored || !installed) {
-        return "incompatible";
-    }
-    if (authored.major !== installed.major) {
-        return "incompatible";
-    }
-    if (compareSemver(installedVersion, authoredVersion) < 0) {
-        return "outdated";
-    }
-    return "satisfied";
+export function classifyCompatibility(
+  authoredVersion: string,
+  installedVersion: string
+): CompatibilityVerdict {
+  const authored = parseSemver(authoredVersion);
+  const installed = parseSemver(installedVersion);
+  if (!authored || !installed) {
+    return "incompatible";
+  }
+  if (authored.major !== installed.major) {
+    return "incompatible";
+  }
+  if (compareSemver(installedVersion, authoredVersion) < 0) {
+    return "outdated";
+  }
+  return "satisfied";
 }

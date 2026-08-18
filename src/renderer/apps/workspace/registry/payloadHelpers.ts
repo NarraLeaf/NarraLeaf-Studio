@@ -1,6 +1,6 @@
 /**
  * Type-safe payload helpers for panels and editor tabs
- * 
+ *
  * This file provides utilities to work with strongly-typed payloads
  * for panels and editor tabs, ensuring type safety throughout the application.
  */
@@ -11,14 +11,14 @@ import { PanelComponentProps, EditorTabComponentProps } from "@/lib/workspace/se
 
 /**
  * Create a type-safe panel definition with payload
- * 
+ *
  * Usage:
  * ```typescript
  * interface MyPanelPayload {
  *   userId: string;
  *   viewMode: 'grid' | 'list';
  * }
- * 
+ *
  * const myPanel = createPanel<MyPanelPayload>({
  *   id: 'my-panel',
  *   title: 'My Panel',
@@ -33,16 +33,16 @@ import { PanelComponentProps, EditorTabComponentProps } from "@/lib/workspace/se
  * ```
  */
 export function createPanel<TPayload = any>(
-    definition: Omit<PanelDefinition<TPayload>, 'component'> & {
-        component: ComponentType<PanelComponentProps<TPayload>>;
-    }
+  definition: Omit<PanelDefinition<TPayload>, "component"> & {
+    component: ComponentType<PanelComponentProps<TPayload>>;
+  }
 ): PanelDefinition<TPayload> {
-    return definition as PanelDefinition<TPayload>;
+  return definition as PanelDefinition<TPayload>;
 }
 
 /**
  * Create a type-safe editor tab definition with payload
- * 
+ *
  * Usage:
  * ```typescript
  * interface FileEditorPayload {
@@ -50,7 +50,7 @@ export function createPanel<TPayload = any>(
  *   lineNumber?: number;
  *   readOnly?: boolean;
  * }
- * 
+ *
  * const fileTab = createEditorTab<FileEditorPayload>({
  *   id: 'file-editor-123',
  *   title: 'config.json',
@@ -65,48 +65,47 @@ export function createPanel<TPayload = any>(
  * ```
  */
 export function createEditorTab<TPayload = any>(
-    definition: Omit<EditorTabDefinition<TPayload>, 'component'> & {
-        component: ComponentType<EditorTabComponentProps<TPayload>>;
-    }
+  definition: Omit<EditorTabDefinition<TPayload>, "component"> & {
+    component: ComponentType<EditorTabComponentProps<TPayload>>;
+  }
 ): EditorTabDefinition<TPayload> {
-    return definition as EditorTabDefinition<TPayload>;
+  return definition as EditorTabDefinition<TPayload>;
 }
 
 /**
  * Type guard to check if a panel has a payload
  */
 export function hasPayload<TPayload>(
-    definition: PanelDefinition<TPayload> | EditorTabDefinition<TPayload>
-): definition is (PanelDefinition<TPayload> | EditorTabDefinition<TPayload>) & { payload: TPayload } {
-    return definition.payload !== undefined && definition.payload !== null;
+  definition: PanelDefinition<TPayload> | EditorTabDefinition<TPayload>
+): definition is (PanelDefinition<TPayload> | EditorTabDefinition<TPayload>) & {
+  payload: TPayload;
+} {
+  return definition.payload !== undefined && definition.payload !== null;
 }
 
 /**
  * Extract payload type from a panel or editor tab definition
- * 
+ *
  * Usage:
  * ```typescript
  * type MyPayload = PayloadOf<typeof myPanel>;
  * ```
  */
-export type PayloadOf<T> = T extends PanelDefinition<infer P>
-    ? P
-    : T extends EditorTabDefinition<infer P>
-    ? P
-    : never;
+export type PayloadOf<T> =
+  T extends PanelDefinition<infer P> ? P : T extends EditorTabDefinition<infer P> ? P : never;
 
 /**
  * Helper to update payload in a type-safe manner
  * Returns a new definition with the updated payload
  */
 export function withPayload<TPayload>(
-    definition: PanelDefinition<TPayload> | EditorTabDefinition<TPayload>,
-    payload: TPayload
+  definition: PanelDefinition<TPayload> | EditorTabDefinition<TPayload>,
+  payload: TPayload
 ): typeof definition {
-    return {
-        ...definition,
-        payload,
-    };
+  return {
+    ...definition,
+    payload
+  };
 }
 
 /**
@@ -114,28 +113,28 @@ export function withPayload<TPayload>(
  * Performs a shallow merge of the new payload with the existing one
  */
 export function mergePayload<TPayload extends Record<string, any>>(
-    definition: PanelDefinition<TPayload> | EditorTabDefinition<TPayload>,
-    partialPayload: Partial<TPayload>
+  definition: PanelDefinition<TPayload> | EditorTabDefinition<TPayload>,
+  partialPayload: Partial<TPayload>
 ): typeof definition {
-    return {
-        ...definition,
-        payload: {
-            ...(definition.payload || {} as TPayload),
-            ...partialPayload,
-        },
-    };
+  return {
+    ...definition,
+    payload: {
+      ...(definition.payload || ({} as TPayload)),
+      ...partialPayload
+    }
+  };
 }
 
 /**
  * Create a typed panel component
  * Ensures the component receives the correct payload type
- * 
+ *
  * Usage:
  * ```typescript
  * interface MyPayload {
  *   data: string[];
  * }
- * 
+ *
  * const MyPanel = createPanelComponent<MyPayload>(({ panelId, payload }) => {
  *   // payload is strongly typed as MyPayload | undefined
  *   const data = payload?.data || [];
@@ -144,22 +143,22 @@ export function mergePayload<TPayload extends Record<string, any>>(
  * ```
  */
 export function createPanelComponent<TPayload>(
-    component: ComponentType<PanelComponentProps<TPayload>>
+  component: ComponentType<PanelComponentProps<TPayload>>
 ): ComponentType<PanelComponentProps<TPayload>> {
-    return component;
+  return component;
 }
 
 /**
  * Create a typed editor tab component
  * Ensures the component receives the correct payload type
- * 
+ *
  * Usage:
  * ```typescript
  * interface EditorPayload {
  *   content: string;
  *   language: string;
  * }
- * 
+ *
  * const MyEditor = createEditorComponent<EditorPayload>(({ tabId, payload }) => {
  *   // payload is strongly typed as EditorPayload | undefined
  *   const content = payload?.content || '';
@@ -169,8 +168,7 @@ export function createPanelComponent<TPayload>(
  * ```
  */
 export function createEditorComponent<TPayload>(
-    component: ComponentType<EditorTabComponentProps<TPayload>>
+  component: ComponentType<EditorTabComponentProps<TPayload>>
 ): ComponentType<EditorTabComponentProps<TPayload>> {
-    return component;
+  return component;
 }
-

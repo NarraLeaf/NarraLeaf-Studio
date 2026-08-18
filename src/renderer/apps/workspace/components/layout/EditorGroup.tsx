@@ -8,17 +8,21 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui";
 import type { FocusContext } from "@/lib/workspace/services/ui/types";
 import { useKeybinding, contextual, whenEditorTabsFocused, useMaxActiveEditors } from "../../hooks";
-import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import {
+  ContextMenu,
+  useContextMenu,
+  type ContextMenuDef
+} from "@/lib/components/elements/ContextMenu";
 import { hasClosedTabs, reopenLastClosedTab } from "../../session/workspaceClosedTabsStore";
 import { openNewTab } from "../../modules/new-tab/openNewTab";
 import { useEditorGroupDrop } from "./useEditorGroupDrop";
 import { EditorGroupDropOverlay } from "./EditorGroupDropOverlay";
 import { tabStripRevealScrollLeft } from "./tabStripReveal";
 import {
-    EDITOR_TAB_DRAG_MIME,
-    beginEditorTabDrag,
-    encodeEditorTabDragPayload,
-    endEditorTabDrag,
+  EDITOR_TAB_DRAG_MIME,
+  beginEditorTabDrag,
+  encodeEditorTabDragPayload,
+  endEditorTabDrag
 } from "@/apps/workspace/dnd/editorTabDragContract";
 import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
 import { useWorkspaceReloadGeneration } from "@/lib/workspace/hooks/useWorkspaceReloadGeneration";
@@ -28,7 +32,7 @@ import { useTranslation } from "@/lib/i18n";
 const TAB_REVEAL_MARGIN = 12;
 
 interface EditorGroupProps {
-    group: EditorGroupType;
+  group: EditorGroupType;
 }
 
 /**
@@ -37,558 +41,561 @@ interface EditorGroupProps {
  * Manages focus state and visual focus indicator
  */
 export function EditorGroup({ group }: EditorGroupProps) {
-    const { t } = useTranslation();
-    const { closeEditorTab, closeEditorTabs, setActiveEditorTab, editorLayout } = useRegistry();
-    const { context } = useWorkspace();
-    // True when THIS group owns the active editor focus — either the editor body (a tab is
-    // focused) or its tab strip. Drives the accent edge on this group's active tab so the whole
-    // workspace shows exactly one "globally active" tab.
-    const [isEditorGroupActive, setIsEditorGroupActive] = useState(false);
-    const [selectedTabIds, setSelectedTabIds] = useState<Set<string>>(() => new Set());
-    // The tab currently being dragged out of this strip, ghosted so its old slot reads as vacated
-    // while the caret shows where it would land.
-    const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
-    const rangeAnchorTabIdRef = useRef<string | null>(null);
-    const { dropTargetProps, stripRef, zone: dropZone, insertion } = useEditorGroupDrop(group);
+  const { t } = useTranslation();
+  const { closeEditorTab, closeEditorTabs, setActiveEditorTab, editorLayout } = useRegistry();
+  const { context } = useWorkspace();
+  // True when THIS group owns the active editor focus — either the editor body (a tab is
+  // focused) or its tab strip. Drives the accent edge on this group's active tab so the whole
+  // workspace shows exactly one "globally active" tab.
+  const [isEditorGroupActive, setIsEditorGroupActive] = useState(false);
+  const [selectedTabIds, setSelectedTabIds] = useState<Set<string>>(() => new Set());
+  // The tab currently being dragged out of this strip, ghosted so its old slot reads as vacated
+  // while the caret shows where it would land.
+  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
+  const rangeAnchorTabIdRef = useRef<string | null>(null);
+  const { dropTargetProps, stripRef, zone: dropZone, insertion } = useEditorGroupDrop(group);
 
-    const activeTab = group.tabs.find((tab) => tab.id === group.focus);
+  const activeTab = group.tabs.find((tab) => tab.id === group.focus);
 
-    const maxActiveEditors = useMaxActiveEditors();
-    // Part of every mounted tab's key. A working-tree reload replaces the documents under these tabs,
-    // so a tab whose scene/graph/asset is gone has to re-resolve rather than keep rendering what it
-    // loaded before; see useWorkspaceReloadGeneration.
-    const reloadGeneration = useWorkspaceReloadGeneration(context);
+  const maxActiveEditors = useMaxActiveEditors();
+  // Part of every mounted tab's key. A working-tree reload replaces the documents under these tabs,
+  // so a tab whose scene/graph/asset is gone has to re-resolve rather than keep rendering what it
+  // loaded before; see useWorkspaceReloadGeneration.
+  const reloadGeneration = useWorkspaceReloadGeneration(context);
 
-    // Keep-alive: keep up to `maxActiveEditors` most-recently-active tabs mounted (hidden with
-    // display:none) so their DOM scroll position, focus, and in-memory state survive a tab switch
-    // instead of being reconstructed on a cold remount. The active tab is always mounted; the
-    // least-recently-active tabs beyond the cap are unmounted and cold-restore when reopened.
-    const [mru, setMru] = useState<string[]>(() => (group.focus ? [group.focus] : []));
+  // Keep-alive: keep up to `maxActiveEditors` most-recently-active tabs mounted (hidden with
+  // display:none) so their DOM scroll position, focus, and in-memory state survive a tab switch
+  // instead of being reconstructed on a cold remount. The active tab is always mounted; the
+  // least-recently-active tabs beyond the cap are unmounted and cold-restore when reopened.
+  const [mru, setMru] = useState<string[]>(() => (group.focus ? [group.focus] : []));
 
-    useEffect(() => {
-        setMru((prev) => {
-            const existing = new Set(group.tabs.map((t) => t.id));
-            const ordered: string[] = [];
-            const seen = new Set<string>();
-            for (const id of [group.focus, ...prev]) {
-                if (id && existing.has(id) && !seen.has(id)) {
-                    seen.add(id);
-                    ordered.push(id);
-                }
-            }
-            if (ordered.length === prev.length && ordered.every((id, i) => id === prev[i])) {
-                return prev;
-            }
-            return ordered;
-        });
-    }, [group.focus, group.tabs]);
-
-    const mountedTabIds = useMemo(() => {
-        const set = new Set<string>();
-        if (group.focus) {
-            set.add(group.focus);
+  useEffect(() => {
+    setMru((prev) => {
+      const existing = new Set(group.tabs.map((t) => t.id));
+      const ordered: string[] = [];
+      const seen = new Set<string>();
+      for (const id of [group.focus, ...prev]) {
+        if (id && existing.has(id) && !seen.has(id)) {
+          seen.add(id);
+          ordered.push(id);
         }
-        for (const id of mru) {
-            if (set.size >= maxActiveEditors) {
-                break;
-            }
-            set.add(id);
-        }
-        return set;
-    }, [group.focus, mru, maxActiveEditors]);
-
-    const tabIds = useMemo(() => new Set(group.tabs.map((t) => t.id)), [group.tabs]);
-    const closeTabShortcut = "mod+w";
-
-    // Drop stale selection entries when tabs change
-    useEffect(() => {
-        setSelectedTabIds((prev) => {
-            const next = new Set([...prev].filter((id) => tabIds.has(id)));
-            return next.size === prev.size && [...next].every((id) => prev.has(id)) ? prev : next;
-        });
-        if (rangeAnchorTabIdRef.current && !tabIds.has(rangeAnchorTabIdRef.current)) {
-            rangeAnchorTabIdRef.current = group.focus;
-        }
-    }, [group.tabs, group.focus, tabIds]);
-
-    useEffect(() => {
-        if (!context) return;
-
-        const uiService = context.services.get<UIService>(Services.UI);
-
-        const sync = (focusContext: FocusContext) => {
-            const bodyFocused =
-                focusContext.area === FocusArea.Editor &&
-                focusContext.targetId !== undefined &&
-                tabIds.has(focusContext.targetId);
-            const tabStripFocused =
-                focusContext.area === FocusArea.EditorTabs &&
-                focusContext.targetId === group.id;
-            setIsEditorGroupActive(bodyFocused || tabStripFocused);
-        };
-
-        sync(uiService.focus.getFocus());
-
-        return uiService.focus.onFocusChange(sync);
-    }, [context, group.id, tabIds]);
-
-    // Keep the active tab visible. When focus lands on a tab scrolled out of an overflowing strip
-    // - after a command, the quick-switcher, or a close that reactivated a neighbour - reveal it so
-    // the user never has to scroll the strip by hand to find where they are. Also runs on tab-count
-    // changes, since a freshly opened active tab is appended past the right edge. useLayoutEffect so
-    // the strip is already positioned before the first paint, avoiding a visible scroll jump.
-    useLayoutEffect(() => {
-        const strip = stripRef.current;
-        if (!strip || !group.focus) {
-            return;
-        }
-        const header = Array.from(
-            strip.querySelectorAll<HTMLElement>("[data-editor-tab-id]"),
-        ).find((el) => el.dataset.editorTabId === group.focus);
-        if (!header) {
-            return;
-        }
-        const stripRect = strip.getBoundingClientRect();
-        const headerRect = header.getBoundingClientRect();
-        const next = tabStripRevealScrollLeft(
-            { scrollLeft: strip.scrollLeft, clientWidth: strip.clientWidth, scrollWidth: strip.scrollWidth },
-            { offsetLeft: headerRect.left - stripRect.left + strip.scrollLeft, width: headerRect.width },
-            TAB_REVEAL_MARGIN,
-        );
-        if (next !== null) {
-            strip.scrollLeft = next;
-        }
-    }, [group.focus, group.tabs.length, stripRef]);
-
-    const focusTabStrip = useCallback(() => {
-        if (!context) return;
-        const uiService = context.services.get<UIService>(Services.UI);
-        uiService.focus.setFocus(FocusArea.EditorTabs, group.id);
-    }, [context, group.id]);
-
-    // The "+" at the end of the strip works like a browser's: it opens a fresh blank tab in this
-    // group, showing the same idle canvas as an empty editor pane.
-    const handleNewTab = useCallback(() => {
-        if (!context) return;
-        openNewTab(context, group.id);
-        focusTabStrip();
-    }, [context, focusTabStrip, group.id]);
-
-    const handleCloseTab = (tabId: string, e: React.MouseEvent) => {
-        e.stopPropagation();
-        closeEditorTab(tabId, group.id);
-    };
-
-    // ---- Tab context menu (close others / to the right / all, reopen closed) ----
-
-    const { menuState, showMenu, hideMenu } = useContextMenu();
-    const [menuTabId, setMenuTabId] = useState<string | null>(null);
-
-    const handleTabContextMenu = (tabId: string, e: React.MouseEvent) => {
-        e.stopPropagation();
-        setMenuTabId(tabId);
-        showMenu(e);
-    };
-
-    // Split actions on the clicked tab (the palette commands act on the focused one instead).
-    const splitGroup = useCallback(
-        (direction: "horizontal" | "vertical", tabId: string) => {
-            if (!context) return;
-            context.services.get<UIService>(Services.UI).getStore().splitEditorGroup(group.id, direction, tabId);
-        },
-        [context, group.id],
-    );
-    const closeOtherGroups = useCallback(() => {
-        if (!context) return;
-        context.services.get<UIService>(Services.UI).getStore().closeOtherEditorGroups(group.id);
-    }, [context, group.id]);
-    const hasSplit = !("tabs" in editorLayout);
-
-    const tabMenuItems = useMemo<ContextMenuDef>(() => {
-        const tabs = group.tabs;
-        const targetIndex = tabs.findIndex((tab) => tab.id === menuTabId);
-        if (targetIndex < 0) {
-            return [];
-        }
-        const target = tabs[targetIndex];
-        const closableIds = (list: typeof tabs) => list.filter((tab) => tab.closable !== false).map((tab) => tab.id);
-        const others = closableIds(tabs.filter((_, index) => index !== targetIndex));
-        const toRight = closableIds(tabs.slice(targetIndex + 1));
-        const all = closableIds(tabs);
-
-        return [
-            {
-                id: "close",
-                label: t("workspace.shell.tabMenu.close"),
-                disabled: target.closable === false,
-                onClick: () => closeEditorTab(target.id, group.id),
-            },
-            {
-                id: "close-others",
-                label: t("workspace.shell.tabMenu.closeOthers"),
-                disabled: others.length === 0,
-                onClick: () => closeEditorTabs(others, group.id),
-            },
-            {
-                id: "close-right",
-                label: t("workspace.shell.tabMenu.closeToRight"),
-                disabled: toRight.length === 0,
-                onClick: () => closeEditorTabs(toRight, group.id),
-            },
-            {
-                id: "close-all",
-                label: t("workspace.shell.tabMenu.closeAll"),
-                disabled: all.length === 0,
-                onClick: () => closeEditorTabs(all, group.id),
-            },
-            { separator: true, id: "sep-split" },
-            {
-                id: "split-right",
-                label: t("workspace.shell.tabMenu.splitRight"),
-                // Splitting moves this tab out of its group; with only one tab that would leave
-                // an empty pane behind, so the group needs a second tab to stay behind.
-                disabled: !context || tabs.length < 2,
-                onClick: () => splitGroup("horizontal", target.id),
-            },
-            {
-                id: "split-down",
-                label: t("workspace.shell.tabMenu.splitDown"),
-                disabled: !context || tabs.length < 2,
-                onClick: () => splitGroup("vertical", target.id),
-            },
-            {
-                id: "close-split",
-                label: t("workspace.shell.tabMenu.closeSplit"),
-                disabled: !context || !hasSplit,
-                onClick: () => closeOtherGroups(),
-            },
-            { separator: true, id: "sep-reopen" },
-            {
-                id: "reopen-closed",
-                label: t("workspace.shell.tabMenu.reopenClosed"),
-                disabled: !hasClosedTabs() || !context,
-                onClick: () => {
-                    if (!context) {
-                        return;
-                    }
-                    reopenLastClosedTab(context, context.services.get<UIService>(Services.UI));
-                },
-            },
-        ];
-    }, [
-        closeEditorTab,
-        closeEditorTabs,
-        context,
-        group.id,
-        group.tabs,
-        menuTabId,
-        t,
-        splitGroup,
-        closeOtherGroups,
-        hasSplit,
-    ]);
-
-    const activateTabFromStrip = useCallback((tabId: string) => {
-        setActiveEditorTab(tabId, group.id);
-        focusTabStrip();
-    }, [focusTabStrip, group.id, setActiveEditorTab]);
-
-    const handleTabClick = (tabId: string, e: React.MouseEvent) => {
-        e.stopPropagation();
-
-        const idx = group.tabs.findIndex((t) => t.id === tabId);
-        if (idx < 0) {
-            return;
-        }
-
-        if (e.shiftKey && rangeAnchorTabIdRef.current != null) {
-            const a = group.tabs.findIndex((t) => t.id === rangeAnchorTabIdRef.current);
-            const from = Math.min(a, idx);
-            const to = Math.max(a, idx);
-            const range = new Set(group.tabs.slice(from, to + 1).map((t) => t.id));
-            setSelectedTabIds(range);
-            activateTabFromStrip(tabId);
-            return;
-        }
-
-        if (e.ctrlKey || e.metaKey) {
-            setSelectedTabIds((prev) => {
-                const next = new Set(prev);
-                if (next.has(tabId)) {
-                    next.delete(tabId);
-                } else {
-                    next.add(tabId);
-                }
-                return next;
-            });
-            activateTabFromStrip(tabId);
-            rangeAnchorTabIdRef.current = tabId;
-            return;
-        }
-
-        setSelectedTabIds(new Set([tabId]));
-        rangeAnchorTabIdRef.current = tabId;
-        activateTabFromStrip(tabId);
-    };
-
-    const handleEditorBodyClick = () => {
-        if (!context || !group.focus) return;
-        const uiService = context.services.get<UIService>(Services.UI);
-        uiService.focus.setFocus(FocusArea.Editor, group.focus);
-    };
-
-    const handleCloseActiveTab = useCallback(() => {
-        if (group.focus) {
-            const tab = group.tabs.find((t) => t.id === group.focus);
-            if (tab && tab.closable !== false) {
-                closeEditorTab(group.focus, group.id);
-            }
-        }
-    }, [group.focus, group.tabs, group.id, closeEditorTab]);
-
-    const handleCloseTabStripSelection = useCallback(() => {
-        const closableSelected = [...selectedTabIds].filter((id) => {
-            const t = group.tabs.find((x) => x.id === id);
-            return t && t.closable !== false;
-        });
-        if (closableSelected.length > 0) {
-            closeEditorTabs(closableSelected, group.id);
-            setSelectedTabIds(new Set());
-            return;
-        }
-        if (group.focus) {
-            const t = group.tabs.find((x) => x.id === group.focus);
-            if (t && t.closable !== false) {
-                closeEditorTab(group.focus, group.id);
-            }
-        }
-    }, [selectedTabIds, group.tabs, group.focus, group.id, closeEditorTabs, closeEditorTab]);
-
-    const whenGroupEditorBodyFocused = useMemo(
-        () =>
-            contextual(
-                (ctx) =>
-                    ctx.area === FocusArea.Editor &&
-                    ctx.targetId !== undefined &&
-                    tabIds.has(ctx.targetId)
-            ),
-        [tabIds]
-    );
-
-    // Close shortcut: tab strip closes multi-selection (or active if none selected)
-    useKeybinding({
-        id: `editor-group-${group.id}-close-tabs-strip`,
-        // Registration is per group; the catalog id is what the palette and any rebind key on.
-        catalogId: "editor.close-selected-tabs",
-        key: closeTabShortcut,
-        description: "Close selected editor tabs",
-        handler: handleCloseTabStripSelection,
-        when: whenEditorTabsFocused(group.id),
-        enabled: group.tabs.length > 0,
+      }
+      if (ordered.length === prev.length && ordered.every((id, i) => id === prev[i])) {
+        return prev;
+      }
+      return ordered;
     });
+  }, [group.focus, group.tabs]);
 
-    // Close shortcut: editor body closes active tab only
-    useKeybinding({
-        id: `editor-group-${group.id}-close-tab-editor-body`,
-        catalogId: "editor.close-active-tab",
-        key: closeTabShortcut,
-        description: "Close active editor tab",
-        handler: handleCloseActiveTab,
-        when: whenGroupEditorBodyFocused,
-        enabled: group.tabs.length > 0,
+  const mountedTabIds = useMemo(() => {
+    const set = new Set<string>();
+    if (group.focus) {
+      set.add(group.focus);
+    }
+    for (const id of mru) {
+      if (set.size >= maxActiveEditors) {
+        break;
+      }
+      set.add(id);
+    }
+    return set;
+  }, [group.focus, mru, maxActiveEditors]);
+
+  const tabIds = useMemo(() => new Set(group.tabs.map((t) => t.id)), [group.tabs]);
+  const closeTabShortcut = "mod+w";
+
+  // Drop stale selection entries when tabs change
+  useEffect(() => {
+    setSelectedTabIds((prev) => {
+      const next = new Set([...prev].filter((id) => tabIds.has(id)));
+      return next.size === prev.size && [...next].every((id) => prev.has(id)) ? prev : next;
     });
+    if (rangeAnchorTabIdRef.current && !tabIds.has(rangeAnchorTabIdRef.current)) {
+      rangeAnchorTabIdRef.current = group.focus;
+    }
+  }, [group.tabs, group.focus, tabIds]);
 
-    // The accent edge now lives on the single globally-active TAB, not on the whole group chrome,
-    // so the group frame stays neutral.
-    return (
+  useEffect(() => {
+    if (!context) return;
+
+    const uiService = context.services.get<UIService>(Services.UI);
+
+    const sync = (focusContext: FocusContext) => {
+      const bodyFocused =
+        focusContext.area === FocusArea.Editor &&
+        focusContext.targetId !== undefined &&
+        tabIds.has(focusContext.targetId);
+      const tabStripFocused =
+        focusContext.area === FocusArea.EditorTabs && focusContext.targetId === group.id;
+      setIsEditorGroupActive(bodyFocused || tabStripFocused);
+    };
+
+    sync(uiService.focus.getFocus());
+
+    return uiService.focus.onFocusChange(sync);
+  }, [context, group.id, tabIds]);
+
+  // Keep the active tab visible. When focus lands on a tab scrolled out of an overflowing strip
+  // - after a command, the quick-switcher, or a close that reactivated a neighbour - reveal it so
+  // the user never has to scroll the strip by hand to find where they are. Also runs on tab-count
+  // changes, since a freshly opened active tab is appended past the right edge. useLayoutEffect so
+  // the strip is already positioned before the first paint, avoiding a visible scroll jump.
+  useLayoutEffect(() => {
+    const strip = stripRef.current;
+    if (!strip || !group.focus) {
+      return;
+    }
+    const header = Array.from(strip.querySelectorAll<HTMLElement>("[data-editor-tab-id]")).find(
+      (el) => el.dataset.editorTabId === group.focus
+    );
+    if (!header) {
+      return;
+    }
+    const stripRect = strip.getBoundingClientRect();
+    const headerRect = header.getBoundingClientRect();
+    const next = tabStripRevealScrollLeft(
+      {
+        scrollLeft: strip.scrollLeft,
+        clientWidth: strip.clientWidth,
+        scrollWidth: strip.scrollWidth
+      },
+      { offsetLeft: headerRect.left - stripRect.left + strip.scrollLeft, width: headerRect.width },
+      TAB_REVEAL_MARGIN
+    );
+    if (next !== null) {
+      strip.scrollLeft = next;
+    }
+  }, [group.focus, group.tabs.length, stripRef]);
+
+  const focusTabStrip = useCallback(() => {
+    if (!context) return;
+    const uiService = context.services.get<UIService>(Services.UI);
+    uiService.focus.setFocus(FocusArea.EditorTabs, group.id);
+  }, [context, group.id]);
+
+  // The "+" at the end of the strip works like a browser's: it opens a fresh blank tab in this
+  // group, showing the same idle canvas as an empty editor pane.
+  const handleNewTab = useCallback(() => {
+    if (!context) return;
+    openNewTab(context, group.id);
+    focusTabStrip();
+  }, [context, focusTabStrip, group.id]);
+
+  const handleCloseTab = (tabId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    closeEditorTab(tabId, group.id);
+  };
+
+  // ---- Tab context menu (close others / to the right / all, reopen closed) ----
+
+  const { menuState, showMenu, hideMenu } = useContextMenu();
+  const [menuTabId, setMenuTabId] = useState<string | null>(null);
+
+  const handleTabContextMenu = (tabId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMenuTabId(tabId);
+    showMenu(e);
+  };
+
+  // Split actions on the clicked tab (the palette commands act on the focused one instead).
+  const splitGroup = useCallback(
+    (direction: "horizontal" | "vertical", tabId: string) => {
+      if (!context) return;
+      context.services
+        .get<UIService>(Services.UI)
+        .getStore()
+        .splitEditorGroup(group.id, direction, tabId);
+    },
+    [context, group.id]
+  );
+  const closeOtherGroups = useCallback(() => {
+    if (!context) return;
+    context.services.get<UIService>(Services.UI).getStore().closeOtherEditorGroups(group.id);
+  }, [context, group.id]);
+  const hasSplit = !("tabs" in editorLayout);
+
+  const tabMenuItems = useMemo<ContextMenuDef>(() => {
+    const tabs = group.tabs;
+    const targetIndex = tabs.findIndex((tab) => tab.id === menuTabId);
+    if (targetIndex < 0) {
+      return [];
+    }
+    const target = tabs[targetIndex];
+    const closableIds = (list: typeof tabs) =>
+      list.filter((tab) => tab.closable !== false).map((tab) => tab.id);
+    const others = closableIds(tabs.filter((_, index) => index !== targetIndex));
+    const toRight = closableIds(tabs.slice(targetIndex + 1));
+    const all = closableIds(tabs);
+
+    return [
+      {
+        id: "close",
+        label: t("workspace.shell.tabMenu.close"),
+        disabled: target.closable === false,
+        onClick: () => closeEditorTab(target.id, group.id)
+      },
+      {
+        id: "close-others",
+        label: t("workspace.shell.tabMenu.closeOthers"),
+        disabled: others.length === 0,
+        onClick: () => closeEditorTabs(others, group.id)
+      },
+      {
+        id: "close-right",
+        label: t("workspace.shell.tabMenu.closeToRight"),
+        disabled: toRight.length === 0,
+        onClick: () => closeEditorTabs(toRight, group.id)
+      },
+      {
+        id: "close-all",
+        label: t("workspace.shell.tabMenu.closeAll"),
+        disabled: all.length === 0,
+        onClick: () => closeEditorTabs(all, group.id)
+      },
+      { separator: true, id: "sep-split" },
+      {
+        id: "split-right",
+        label: t("workspace.shell.tabMenu.splitRight"),
+        // Splitting moves this tab out of its group; with only one tab that would leave
+        // an empty pane behind, so the group needs a second tab to stay behind.
+        disabled: !context || tabs.length < 2,
+        onClick: () => splitGroup("horizontal", target.id)
+      },
+      {
+        id: "split-down",
+        label: t("workspace.shell.tabMenu.splitDown"),
+        disabled: !context || tabs.length < 2,
+        onClick: () => splitGroup("vertical", target.id)
+      },
+      {
+        id: "close-split",
+        label: t("workspace.shell.tabMenu.closeSplit"),
+        disabled: !context || !hasSplit,
+        onClick: () => closeOtherGroups()
+      },
+      { separator: true, id: "sep-reopen" },
+      {
+        id: "reopen-closed",
+        label: t("workspace.shell.tabMenu.reopenClosed"),
+        disabled: !hasClosedTabs() || !context,
+        onClick: () => {
+          if (!context) {
+            return;
+          }
+          reopenLastClosedTab(context, context.services.get<UIService>(Services.UI));
+        }
+      }
+    ];
+  }, [
+    closeEditorTab,
+    closeEditorTabs,
+    context,
+    group.id,
+    group.tabs,
+    menuTabId,
+    t,
+    splitGroup,
+    closeOtherGroups,
+    hasSplit
+  ]);
+
+  const activateTabFromStrip = useCallback(
+    (tabId: string) => {
+      setActiveEditorTab(tabId, group.id);
+      focusTabStrip();
+    },
+    [focusTabStrip, group.id, setActiveEditorTab]
+  );
+
+  const handleTabClick = (tabId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    const idx = group.tabs.findIndex((t) => t.id === tabId);
+    if (idx < 0) {
+      return;
+    }
+
+    if (e.shiftKey && rangeAnchorTabIdRef.current != null) {
+      const a = group.tabs.findIndex((t) => t.id === rangeAnchorTabIdRef.current);
+      const from = Math.min(a, idx);
+      const to = Math.max(a, idx);
+      const range = new Set(group.tabs.slice(from, to + 1).map((t) => t.id));
+      setSelectedTabIds(range);
+      activateTabFromStrip(tabId);
+      return;
+    }
+
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedTabIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(tabId)) {
+          next.delete(tabId);
+        } else {
+          next.add(tabId);
+        }
+        return next;
+      });
+      activateTabFromStrip(tabId);
+      rangeAnchorTabIdRef.current = tabId;
+      return;
+    }
+
+    setSelectedTabIds(new Set([tabId]));
+    rangeAnchorTabIdRef.current = tabId;
+    activateTabFromStrip(tabId);
+  };
+
+  const handleEditorBodyClick = () => {
+    if (!context || !group.focus) return;
+    const uiService = context.services.get<UIService>(Services.UI);
+    uiService.focus.setFocus(FocusArea.Editor, group.focus);
+  };
+
+  const handleCloseActiveTab = useCallback(() => {
+    if (group.focus) {
+      const tab = group.tabs.find((t) => t.id === group.focus);
+      if (tab && tab.closable !== false) {
+        closeEditorTab(group.focus, group.id);
+      }
+    }
+  }, [group.focus, group.tabs, group.id, closeEditorTab]);
+
+  const handleCloseTabStripSelection = useCallback(() => {
+    const closableSelected = [...selectedTabIds].filter((id) => {
+      const t = group.tabs.find((x) => x.id === id);
+      return t && t.closable !== false;
+    });
+    if (closableSelected.length > 0) {
+      closeEditorTabs(closableSelected, group.id);
+      setSelectedTabIds(new Set());
+      return;
+    }
+    if (group.focus) {
+      const t = group.tabs.find((x) => x.id === group.focus);
+      if (t && t.closable !== false) {
+        closeEditorTab(group.focus, group.id);
+      }
+    }
+  }, [selectedTabIds, group.tabs, group.focus, group.id, closeEditorTabs, closeEditorTab]);
+
+  const whenGroupEditorBodyFocused = useMemo(
+    () =>
+      contextual(
+        (ctx) =>
+          ctx.area === FocusArea.Editor && ctx.targetId !== undefined && tabIds.has(ctx.targetId)
+      ),
+    [tabIds]
+  );
+
+  // Close shortcut: tab strip closes multi-selection (or active if none selected)
+  useKeybinding({
+    id: `editor-group-${group.id}-close-tabs-strip`,
+    // Registration is per group; the catalog id is what the palette and any rebind key on.
+    catalogId: "editor.close-selected-tabs",
+    key: closeTabShortcut,
+    description: "Close selected editor tabs",
+    handler: handleCloseTabStripSelection,
+    when: whenEditorTabsFocused(group.id),
+    enabled: group.tabs.length > 0
+  });
+
+  // Close shortcut: editor body closes active tab only
+  useKeybinding({
+    id: `editor-group-${group.id}-close-tab-editor-body`,
+    catalogId: "editor.close-active-tab",
+    key: closeTabShortcut,
+    description: "Close active editor tab",
+    handler: handleCloseActiveTab,
+    when: whenGroupEditorBodyFocused,
+    enabled: group.tabs.length > 0
+  });
+
+  // The accent edge now lives on the single globally-active TAB, not on the whole group chrome,
+  // so the group frame stays neutral.
+  return (
+    <div
+      {...dropTargetProps}
+      className="relative h-full flex flex-col border border-transparent border-b-edge transition-colors"
+    >
+      {/* Tab Bar */}
+      {group.tabs.length > 0 && (
         <div
-            {...dropTargetProps}
-            className="relative h-full flex flex-col border border-transparent border-b-edge transition-colors"
+          ref={stripRef}
+          className="relative bg-surface-sunken border-b border-edge overflow-x-auto outline-none"
+          tabIndex={0}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            focusTabStrip();
+          }}
+          onFocus={() => focusTabStrip()}
+          onWheel={(e) => {
+            e.preventDefault();
+            e.currentTarget.scrollLeft += e.deltaY;
+          }}
         >
-            {/* Tab Bar */}
-            {group.tabs.length > 0 && (
-                <div
-                    ref={stripRef}
-                    className="relative bg-surface-sunken border-b border-edge overflow-x-auto outline-none"
-                    tabIndex={0}
-                    onMouseDown={(e) => {
-                        e.stopPropagation();
-                        focusTabStrip();
-                    }}
-                    onFocus={() => focusTabStrip()}
-                    onWheel={(e) => {
-                        e.preventDefault();
-                        e.currentTarget.scrollLeft += e.deltaY;
-                    }}
-                >
-                    <div className="relative flex items-stretch">
-                        {insertion && (
-                            <span
-                                className="pointer-events-none absolute top-0 bottom-0 z-[2] w-0.5 -translate-x-1/2 bg-primary"
-                                style={{ left: insertion.offset }}
-                                aria-hidden
-                            />
-                        )}
-                        {group.tabs.map((tab) => {
-                            const isActive = tab.id === group.focus;
-                            const isSelected = selectedTabIds.has(tab.id);
-                            // The single globally-active tab: this group's current tab AND this
-                            // group owns editor focus. It gets the accent edge; every group's
-                            // current tab gets the low-contrast themed fill.
-                            const isGloballyActive = isActive && isEditorGroupActive;
-                            const closable = tab.closable !== false;
+          <div className="relative flex items-stretch">
+            {insertion && (
+              <span
+                className="pointer-events-none absolute top-0 bottom-0 z-[2] w-0.5 -translate-x-1/2 bg-primary"
+                style={{ left: insertion.offset }}
+                aria-hidden
+              />
+            )}
+            {group.tabs.map((tab) => {
+              const isActive = tab.id === group.focus;
+              const isSelected = selectedTabIds.has(tab.id);
+              // The single globally-active tab: this group's current tab AND this
+              // group owns editor focus. It gets the accent edge; every group's
+              // current tab gets the low-contrast themed fill.
+              const isGloballyActive = isActive && isEditorGroupActive;
+              const closable = tab.closable !== false;
 
-                            return (
-                                <div
-                                    key={tab.id}
-                                    data-editor-tab-id={tab.id}
-                                    draggable
-                                    onDragStart={(e) => {
-                                        e.stopPropagation();
-                                        e.dataTransfer.effectAllowed = "move";
-                                        e.dataTransfer.setData(
-                                            EDITOR_TAB_DRAG_MIME,
-                                            encodeEditorTabDragPayload(tab.id, group.id),
-                                        );
-                                        e.dataTransfer.setData("text/plain", String(tab.title));
-                                        beginEditorTabDrag({ tabId: tab.id, groupId: group.id });
-                                        setDraggingTabId(tab.id);
-                                    }}
-                                    onDragEnd={() => {
-                                        endEditorTabDrag();
-                                        setDraggingTabId(null);
-                                    }}
-                                    className={`
+              return (
+                <div
+                  key={tab.id}
+                  data-editor-tab-id={tab.id}
+                  draggable
+                  onDragStart={(e) => {
+                    e.stopPropagation();
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData(
+                      EDITOR_TAB_DRAG_MIME,
+                      encodeEditorTabDragPayload(tab.id, group.id)
+                    );
+                    e.dataTransfer.setData("text/plain", String(tab.title));
+                    beginEditorTabDrag({ tabId: tab.id, groupId: group.id });
+                    setDraggingTabId(tab.id);
+                  }}
+                  onDragEnd={() => {
+                    endEditorTabDrag();
+                    setDraggingTabId(null);
+                  }}
+                  className={`
                                         nl-drag-source
                                         group relative flex items-center gap-2 px-3 h-9 border-r border-edge cursor-default
                                         transition-colors
                                         ${draggingTabId === tab.id ? "opacity-40" : ""}
                                         ${
-                                            isGloballyActive
-                                                ? "bg-primary/[0.15] text-fg"
-                                                : isActive
-                                                  ? "bg-primary/[0.08] text-fg"
-                                                  : isSelected
-                                                    ? "bg-fill text-fg"
-                                                    : "bg-surface-sunken text-fg-muted hover:bg-surface hover:text-fg"
+                                          isGloballyActive
+                                            ? "bg-primary/[0.15] text-fg"
+                                            : isActive
+                                              ? "bg-primary/[0.08] text-fg"
+                                              : isSelected
+                                                ? "bg-fill text-fg"
+                                                : "bg-surface-sunken text-fg-muted hover:bg-surface hover:text-fg"
                                         }
                                     `}
-                                    onClick={(e) => handleTabClick(tab.id, e)}
-                                    onContextMenu={(e) => handleTabContextMenu(tab.id, e)}
-                                    onAuxClick={(e) => {
-                                        // Middle click closes, the muscle memory every browser/IDE trains.
-                                        if (e.button === 1 && closable) {
-                                            handleCloseTab(tab.id, e);
-                                        }
-                                    }}
-                                >
-                                    {isGloballyActive && (
-                                        <span
-                                            className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-0.5 bg-primary"
-                                            aria-hidden
-                                        />
-                                    )}
-                                    {tab.icon && <span className="w-4 h-4 flex-shrink-0">{tab.icon}</span>}
+                  onClick={(e) => handleTabClick(tab.id, e)}
+                  onContextMenu={(e) => handleTabContextMenu(tab.id, e)}
+                  onAuxClick={(e) => {
+                    // Middle click closes, the muscle memory every browser/IDE trains.
+                    if (e.button === 1 && closable) {
+                      handleCloseTab(tab.id, e);
+                    }
+                  }}
+                >
+                  {isGloballyActive && (
+                    <span
+                      className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-0.5 bg-primary"
+                      aria-hidden
+                    />
+                  )}
+                  {tab.icon && <span className="w-4 h-4 flex-shrink-0">{tab.icon}</span>}
 
-                                    <span className="text-sm whitespace-nowrap">{String(tab.title)}</span>
+                  <span className="text-sm whitespace-nowrap">{String(tab.title)}</span>
 
-                                    {tab.modified && (
-                                        <Circle className="w-2 h-2 fill-current text-primary" />
-                                    )}
+                  {tab.modified && <Circle className="w-2 h-2 fill-current text-primary" />}
 
-                                    {closable && (
-                                        <button
-                                            type="button"
-                                            onClick={(e) => handleCloseTab(tab.id, e)}
-                                            className={`
+                  {closable && (
+                    <button
+                      type="button"
+                      onClick={(e) => handleCloseTab(tab.id, e)}
+                      className={`
                                                 w-4 h-4 cursor-default rounded-md flex items-center justify-center transition-colors
                                                 ${
-                                                    isActive
-                                                        ? "hover:bg-fill-strong"
-                                                        : "opacity-0 group-hover:opacity-100 hover:bg-fill"
+                                                  isActive
+                                                    ? "hover:bg-fill-strong"
+                                                    : "opacity-0 group-hover:opacity-100 hover:bg-fill"
                                                 }
                                             `}
-                                            aria-label={t("workspace.shell.closeTab", { name: String(tab.title) })}
-                                        >
-                                            <X className="w-3 h-3" />
-                                        </button>
-                                    )}
-                                </div>
-                            );
-                        })}
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleNewTab();
-                            }}
-                            className="flex cursor-default items-center justify-center w-9 h-9 flex-shrink-0 text-fg-subtle hover:text-fg hover:bg-surface transition-colors"
-                            aria-label={t("workspace.shell.newTab")}
-                            data-tip={t("workspace.shell.newTab")}
-                        >
-                            <Plus className="w-4 h-4" />
-                        </button>
-                    </div>
-                    <ContextMenu
-                        items={tabMenuItems}
-                        position={menuState.position}
-                        visible={menuState.visible}
-                        onClose={hideMenu}
-                    />
+                      aria-label={t("workspace.shell.closeTab", { name: String(tab.title) })}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
-            )}
+              );
+            })}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleNewTab();
+              }}
+              className="flex cursor-default items-center justify-center w-9 h-9 flex-shrink-0 text-fg-subtle hover:text-fg hover:bg-surface transition-colors"
+              aria-label={t("workspace.shell.newTab")}
+              data-tip={t("workspace.shell.newTab")}
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+          <ContextMenu
+            items={tabMenuItems}
+            position={menuState.position}
+            visible={menuState.visible}
+            onClose={hideMenu}
+          />
+        </div>
+      )}
 
-            {/* Editor Content with payload support. Every editor tab sizes itself to h-full and
+      {/* Editor Content with payload support. Every editor tab sizes itself to h-full and
                 brings its own scroller, so this host must never scroll: a scrollbar here steals ~8px
                 of client width from the tab, which re-clamps any absolutely-positioned overlay inside
                 it, which removes the scrollbar again — a self-sustaining oscillation that ends with
                 Chrome's ResizeObserver loop guard stranding the overlay outside its container. */}
+      <div
+        className="flex-1 min-h-0 overflow-hidden outline-none"
+        tabIndex={-1}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={handleEditorBodyClick}
+      >
+        {group.tabs.map((tab) => {
+          if (!mountedTabIds.has(tab.id)) {
+            return null;
+          }
+          const isActive = tab.id === group.focus;
+          return (
             <div
-                className="flex-1 min-h-0 overflow-hidden outline-none"
-                tabIndex={-1}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={handleEditorBodyClick}
+              key={`${tab.id}:${reloadGeneration}`}
+              className="h-full w-full"
+              style={{ display: isActive ? undefined : "none" }}
+              aria-hidden={isActive ? undefined : true}
             >
-                {group.tabs.map((tab) => {
-                    if (!mountedTabIds.has(tab.id)) {
-                        return null;
-                    }
-                    const isActive = tab.id === group.focus;
-                    return (
-                        <div
-                            key={`${tab.id}:${reloadGeneration}`}
-                            className="h-full w-full"
-                            style={{ display: isActive ? undefined : "none" }}
-                            aria-hidden={isActive ? undefined : true}
-                        >
-                            <WorkspacePanelErrorBoundary
-                                regionLabel={String(tab.title)}
-                                isolationKey={tab.id}
-                            >
-                                <tab.component tabId={tab.id} payload={tab.payload} active={isActive} />
-                            </WorkspacePanelErrorBoundary>
-                        </div>
-                    );
-                })}
-                {!activeTab && (
-                    <div className="h-full flex flex-col items-center justify-center gap-3 text-fg-subtle">
-                        <p>{t("workspace.shell.noActiveEditor")}</p>
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleNewTab();
-                            }}
-                            className="flex items-center gap-2 px-3 h-9 rounded-md border border-edge text-sm text-fg-muted hover:text-fg hover:bg-surface transition-colors"
-                        >
-                            <Plus className="w-4 h-4" />
-                            <span>{t("workspace.shell.newTab")}</span>
-                        </button>
-                    </div>
-                )}
+              <WorkspacePanelErrorBoundary regionLabel={String(tab.title)} isolationKey={tab.id}>
+                <tab.component tabId={tab.id} payload={tab.payload} active={isActive} />
+              </WorkspacePanelErrorBoundary>
             </div>
+          );
+        })}
+        {!activeTab && (
+          <div className="h-full flex flex-col items-center justify-center gap-3 text-fg-subtle">
+            <p>{t("workspace.shell.noActiveEditor")}</p>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleNewTab();
+              }}
+              className="flex items-center gap-2 px-3 h-9 rounded-md border border-edge text-sm text-fg-muted hover:text-fg hover:bg-surface transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{t("workspace.shell.newTab")}</span>
+            </button>
+          </div>
+        )}
+      </div>
 
-            <EditorGroupDropOverlay zone={dropZone} />
-        </div>
-    );
+      <EditorGroupDropOverlay zone={dropZone} />
+    </div>
+  );
 }

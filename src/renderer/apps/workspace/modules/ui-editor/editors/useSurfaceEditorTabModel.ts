@@ -6,9 +6,9 @@ import { DEFAULT_SMART_SNAP_DETAIL_SETTINGS } from "@/lib/ui-editor/snapping/typ
 import { useUISurfaceEditorServices } from "@/apps/workspace/modules/ui-editor/editors/useUISurfaceEditorServices";
 
 export type ViewportTransform = {
-    scale: number;
-    offsetX: number;
-    offsetY: number;
+  scale: number;
+  offsetX: number;
+  offsetY: number;
 };
 
 export const DEFAULT_VIEWPORT: ViewportTransform = { scale: 1, offsetX: 0, offsetY: 0 };
@@ -19,134 +19,139 @@ export type EditorDocumentService = UISurfaceEditorServicesBundle["documentServi
 export type EditorUIService = UISurfaceEditorServicesBundle["uiService"];
 
 export function useEditorToolState(stateService: EditorStateService) {
-    const [tool, setToolState] = useState<UITool>(() => stateService?.getTool() ?? { kind: "select" });
+  const [tool, setToolState] = useState<UITool>(
+    () => stateService?.getTool() ?? { kind: "select" }
+  );
 
-    useEffect(() => {
-        if (!stateService) return;
-        setToolState(stateService.getTool());
-        const unsubscribe = stateService.on("toolChanged", setToolState);
-        return () => unsubscribe();
-    }, [stateService]);
+  useEffect(() => {
+    if (!stateService) return;
+    setToolState(stateService.getTool());
+    const unsubscribe = stateService.on("toolChanged", setToolState);
+    return () => unsubscribe();
+  }, [stateService]);
 
-    return tool;
+  return tool;
 }
 
 export function useViewportTransform(stateService: EditorStateService) {
-    const [viewport, setViewport] = useState<ViewportTransform>(DEFAULT_VIEWPORT);
+  const [viewport, setViewport] = useState<ViewportTransform>(DEFAULT_VIEWPORT);
 
-    useEffect(() => {
-        if (!stateService) return;
-        setViewport(stateService.getViewportTransform());
-        const unsub = stateService.on("viewportChanged", setViewport);
-        return unsub;
-    }, [stateService]);
+  useEffect(() => {
+    if (!stateService) return;
+    setViewport(stateService.getViewportTransform());
+    const unsub = stateService.on("viewportChanged", setViewport);
+    return unsub;
+  }, [stateService]);
 
-    return viewport;
+  return viewport;
 }
 
 export function useSmartSnapEnabled(stateService: EditorStateService | null | undefined) {
-    const [enabled, setEnabled] = useState(() => stateService?.getSmartSnapEnabled() ?? true);
+  const [enabled, setEnabled] = useState(() => stateService?.getSmartSnapEnabled() ?? true);
 
-    useEffect(() => {
-        if (!stateService) {
-            return;
-        }
-        setEnabled(stateService.getSmartSnapEnabled());
-        return stateService.on("smartSnapEnabledChanged", setEnabled);
-    }, [stateService]);
+  useEffect(() => {
+    if (!stateService) {
+      return;
+    }
+    setEnabled(stateService.getSmartSnapEnabled());
+    return stateService.on("smartSnapEnabledChanged", setEnabled);
+  }, [stateService]);
 
-    return enabled;
+  return enabled;
 }
 
 export function useSmartSnapDetailSettings(stateService: EditorStateService | null | undefined) {
-    const [detail, setDetail] = useState<SmartSnapDetailSettings>(
-        () => stateService?.getSmartSnapDetailSettings() ?? DEFAULT_SMART_SNAP_DETAIL_SETTINGS,
-    );
+  const [detail, setDetail] = useState<SmartSnapDetailSettings>(
+    () => stateService?.getSmartSnapDetailSettings() ?? DEFAULT_SMART_SNAP_DETAIL_SETTINGS
+  );
 
-    useEffect(() => {
-        if (!stateService) {
-            setDetail(DEFAULT_SMART_SNAP_DETAIL_SETTINGS);
-            return undefined;
-        }
-        setDetail(stateService.getSmartSnapDetailSettings());
-        return stateService.on("smartSnapDetailSettingsChanged", setDetail);
-    }, [stateService]);
+  useEffect(() => {
+    if (!stateService) {
+      setDetail(DEFAULT_SMART_SNAP_DETAIL_SETTINGS);
+      return undefined;
+    }
+    setDetail(stateService.getSmartSnapDetailSettings());
+    return stateService.on("smartSnapDetailSettingsChanged", setDetail);
+  }, [stateService]);
 
-    return detail;
+  return detail;
 }
 
 /** Screen-ratio preview frame preset id (`null` = off). Pure view state — never dirties the project. */
 export function usePreviewAspectId(stateService: EditorStateService | null | undefined) {
-    const [aspectId, setAspectId] = useState<string | null>(
-        () => stateService?.getPreviewAspectId() ?? null,
-    );
+  const [aspectId, setAspectId] = useState<string | null>(
+    () => stateService?.getPreviewAspectId() ?? null
+  );
 
-    useEffect(() => {
-        if (!stateService) {
-            setAspectId(null);
-            return undefined;
-        }
-        setAspectId(stateService.getPreviewAspectId());
-        return stateService.on("previewAspectChanged", setAspectId);
-    }, [stateService]);
+  useEffect(() => {
+    if (!stateService) {
+      setAspectId(null);
+      return undefined;
+    }
+    setAspectId(stateService.getPreviewAspectId());
+    return stateService.on("previewAspectChanged", setAspectId);
+  }, [stateService]);
 
-    return aspectId;
+  return aspectId;
 }
 
 /** Safe-area preview frame device preset id (`null` = off). Pure view state — never dirties the project. */
 export function usePreviewSafeAreaId(stateService: EditorStateService | null | undefined) {
-    const [safeAreaId, setSafeAreaId] = useState<string | null>(
-        () => stateService?.getPreviewSafeAreaId() ?? null,
-    );
+  const [safeAreaId, setSafeAreaId] = useState<string | null>(
+    () => stateService?.getPreviewSafeAreaId() ?? null
+  );
 
-    useEffect(() => {
-        if (!stateService) {
-            setSafeAreaId(null);
-            return undefined;
-        }
-        setSafeAreaId(stateService.getPreviewSafeAreaId());
-        return stateService.on("previewSafeAreaChanged", setSafeAreaId);
-    }, [stateService]);
+  useEffect(() => {
+    if (!stateService) {
+      setSafeAreaId(null);
+      return undefined;
+    }
+    setSafeAreaId(stateService.getPreviewSafeAreaId());
+    return stateService.on("previewSafeAreaChanged", setSafeAreaId);
+  }, [stateService]);
 
-    return safeAreaId;
+  return safeAreaId;
 }
 
 export function useSurfaceDocument(
-    surfaceId: string | undefined,
-    stateService: EditorStateService,
-    documentService: EditorDocumentService
+  surfaceId: string | undefined,
+  stateService: EditorStateService,
+  documentService: EditorDocumentService
 ) {
-    const subscribe = useCallback(
-        (onStoreChange: () => void) => {
-            if (!documentService) {
-                return () => {};
-            }
-            return documentService.onDocumentChanged(() => onStoreChange());
-        },
-        [documentService]
-    );
-    const getSnapshot = useCallback(() => documentService?.getRevision() ?? 0, [documentService]);
-    const documentVersion = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (!documentService) {
+        return () => {};
+      }
+      return documentService.onDocumentChanged(() => onStoreChange());
+    },
+    [documentService]
+  );
+  const getSnapshot = useCallback(() => documentService?.getRevision() ?? 0, [documentService]);
+  const documentVersion = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
-    const document = documentService?.getDocument() ?? stateService?.getDocument();
-    const surface = surfaceId && document ? document.surfaces.find((s: UISurface) => s.id === surfaceId) : undefined;
+  const document = documentService?.getDocument() ?? stateService?.getDocument();
+  const surface =
+    surfaceId && document
+      ? document.surfaces.find((s: UISurface) => s.id === surfaceId)
+      : undefined;
 
-    return { surface, documentVersion };
+  return { surface, documentVersion };
 }
 
 export function useDocumentDirtyIndicator(
-    documentService: EditorDocumentService,
-    uiService: EditorUIService,
-    tabId?: string
+  documentService: EditorDocumentService,
+  uiService: EditorUIService,
+  tabId?: string
 ) {
-    useEffect(() => {
-        if (!documentService || !uiService || !tabId) {
-            return undefined;
-        }
-        uiService.editor.setModified(tabId, documentService.isDirty());
-        const unsubscribe = documentService.onDirtyChanged((dirty: boolean) => {
-            uiService.editor.setModified(tabId, dirty);
-        });
-        return () => unsubscribe();
-    }, [documentService, uiService, tabId]);
+  useEffect(() => {
+    if (!documentService || !uiService || !tabId) {
+      return undefined;
+    }
+    uiService.editor.setModified(tabId, documentService.isDirty());
+    const unsubscribe = documentService.onDirtyChanged((dirty: boolean) => {
+      uiService.editor.setModified(tabId, dirty);
+    });
+    return () => unsubscribe();
+  }, [documentService, uiService, tabId]);
 }

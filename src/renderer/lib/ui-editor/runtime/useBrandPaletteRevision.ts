@@ -1,5 +1,8 @@
 import { useSyncExternalStore } from "react";
-import { getActiveBrandPaletteRevision, subscribeActiveBrandPalette } from "@shared/brand/brandRegistry";
+import {
+  getActiveBrandPaletteRevision,
+  subscribeActiveBrandPalette
+} from "@shared/brand/brandRegistry";
 
 /**
  * Re-render when the project palette changes.
@@ -18,9 +21,9 @@ import { getActiveBrandPaletteRevision, subscribeActiveBrandPalette } from "@sha
  * Inert in a packaged game: the palette is published once from the pack and never changes again.
  */
 export function useBrandPaletteRevision(): number {
-    return useSyncExternalStore(
-        subscribeActiveBrandPalette,
-        getActiveBrandPaletteRevision,
-        getActiveBrandPaletteRevision,
-    );
+  return useSyncExternalStore(
+    subscribeActiveBrandPalette,
+    getActiveBrandPaletteRevision,
+    getActiveBrandPaletteRevision
+  );
 }

@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { Loader2, RotateCcw } from "lucide-react";
 import type { Translator } from "@shared/i18n";
-import { cn } from "@/lib/utils/cn";
 import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
 import { EmptyState } from "@/lib/components/elements";
@@ -62,195 +61,221 @@ import type { VcsChangesPayload } from "./vcsChangesIds";
 const TAB_ROW_BUDGET = 1000;
 
 export function VcsChangesTab({ payload }: { payload?: VcsChangesPayload }) {
-    // A tab restored from a persisted layout can arrive without one; the working tree is the answer
-    // that is always meaningful, where a revision pair invented here would name versions at random.
-    const mode: VcsChangesPayload = payload ?? { mode: "working-tree" };
-    // Dispatched here rather than branched inside one body, because the two halves must not share
-    // hooks: a comparison SCANS (docs §4.17), and a resolve view that mounted the comparison hook
-    // would run that scan every time an author opened the merge - for a list it never draws.
-    return mode.mode === "resolve" ? <VcsResolvePanel /> : <DocumentComparison mode={mode} />;
+  // A tab restored from a persisted layout can arrive without one; the working tree is the answer
+  // that is always meaningful, where a revision pair invented here would name versions at random.
+  const mode: VcsChangesPayload = payload ?? { mode: "working-tree" };
+  // Dispatched here rather than branched inside one body, because the two halves must not share
+  // hooks: a comparison SCANS (docs §4.17), and a resolve view that mounted the comparison hook
+  // would run that scan every time an author opened the merge - for a list it never draws.
+  return mode.mode === "resolve" ? <VcsResolvePanel /> : <DocumentComparison mode={mode} />;
 }
 
 function DocumentComparison({ mode }: { mode: Exclude<VcsChangesPayload, { mode: "resolve" }> }) {
-    const { t } = useTranslation();
-    const request = useMemo<DocumentDiffRequest>(
-        () => (mode.mode === "between" ? { mode: "between", from: mode.from, to: mode.to } : { mode: "working-tree" }),
-        [mode.mode, mode.mode === "between" ? mode.from : null, mode.mode === "between" ? mode.to : null],
-    );
-    const diff = useDocumentDiff(request, { enabled: true });
-    const result = diff.result;
+  const { t } = useTranslation();
+  const request = useMemo<DocumentDiffRequest>(
+    () =>
+      mode.mode === "between"
+        ? { mode: "between", from: mode.from, to: mode.to }
+        : { mode: "working-tree" },
+    [
+      mode.mode,
+      mode.mode === "between" ? mode.from : null,
+      mode.mode === "between" ? mode.to : null
+    ]
+  );
+  const diff = useDocumentDiff(request, { enabled: true });
+  const result = diff.result;
 
-    const index = useMemo(
-        () => buildChangeIndex(result?.documents ?? [], { rowBudget: TAB_ROW_BUDGET }),
-        [result],
-    );
+  const index = useMemo(
+    () => buildChangeIndex(result?.documents ?? [], { rowBudget: TAB_ROW_BUDGET }),
+    [result]
+  );
 
-    /**
-     * Which groups the author has opened or closed, over the model's default.
-     *
-     * An override rather than a copy of the whole open/closed state, so a group that arrives in a
-     * later comparison starts at whatever its size says it should - the author's decision about the
-     * assets group is not a decision about a group they have not seen yet.
-     */
-    const [openOverrides, setOpenOverrides] = useState<Partial<Record<ChangeCategory, boolean>>>({});
-    const isOpen = useCallback(
-        (group: ChangeIndexGroup) => openOverrides[group.category] ?? !group.collapsed,
-        [openOverrides],
-    );
+  /**
+   * Which groups the author has opened or closed, over the model's default.
+   *
+   * An override rather than a copy of the whole open/closed state, so a group that arrives in a
+   * later comparison starts at whatever its size says it should - the author's decision about the
+   * assets group is not a decision about a group they have not seen yet.
+   */
+  const [openOverrides, setOpenOverrides] = useState<Partial<Record<ChangeCategory, boolean>>>({});
+  const isOpen = useCallback(
+    (group: ChangeIndexGroup) => openOverrides[group.category] ?? !group.collapsed,
+    [openOverrides]
+  );
 
-    /**
-     * The selected file, resolved against the current index rather than stored as truth.
-     *
-     * A re-read can drop the file that was selected, and a selection kept in state would then point
-     * at a document the comparison no longer carries. The fallback is the first file of the first
-     * OPEN heading, so the pane is never blank on arrival and the fallback is never a file with
-     * nothing on screen pointing at it. A file the author picked and then closed the heading over
-     * stays selected, because closing a heading is not a decision about what to look at.
-     */
-    const [selectedPath, setSelectedPath] = useState<string | null>(null);
-    const firstVisible = index.groups.find(isOpen)?.rows[0] ?? null;
-    const selected = index.rows.find(row => row.path === selectedPath) ?? firstVisible;
+  /**
+   * The selected file, resolved against the current index rather than stored as truth.
+   *
+   * A re-read can drop the file that was selected, and a selection kept in state would then point
+   * at a document the comparison no longer carries. The fallback is the first file of the first
+   * OPEN heading, so the pane is never blank on arrival and the fallback is never a file with
+   * nothing on screen pointing at it. A file the author picked and then closed the heading over
+   * stays selected, because closing a heading is not a decision about what to look at.
+   */
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const firstVisible = index.groups.find(isOpen)?.rows[0] ?? null;
+  const selected = index.rows.find((row) => row.path === selectedPath) ?? firstVisible;
 
-    /**
-     * The two versions this tab is between, for a presenter that shows the file itself.
-     *
-     * Named here because this is the only place that knows: the change model says what differs and
-     * deliberately not where it came from. The working tree's older side is the revision it was
-     * compared against, which a repository with nothing recorded yet does not have - and then
-     * there is no older side at all rather than one to guess at.
-     */
-    const comparison = useMemo<ComparisonSides>(
-        () => (mode.mode === "between"
-            ? { before: { at: "revision", revision: mode.from }, after: { at: "revision", revision: mode.to } }
-            : {
-                before: result?.head ? { at: "revision", revision: result.head } : null,
-                after: { at: "working-tree" },
-            }),
-        [mode.mode, mode.mode === "between" ? mode.from : null, mode.mode === "between" ? mode.to : null, result?.head],
-    );
+  /**
+   * The two versions this tab is between, for a presenter that shows the file itself.
+   *
+   * Named here because this is the only place that knows: the change model says what differs and
+   * deliberately not where it came from. The working tree's older side is the revision it was
+   * compared against, which a repository with nothing recorded yet does not have - and then
+   * there is no older side at all rather than one to guess at.
+   */
+  const comparison = useMemo<ComparisonSides>(
+    () =>
+      mode.mode === "between"
+        ? {
+            before: { at: "revision", revision: mode.from },
+            after: { at: "revision", revision: mode.to }
+          }
+        : {
+            before: result?.head ? { at: "revision", revision: result.head } : null,
+            after: { at: "working-tree" }
+          },
+    [
+      mode.mode,
+      mode.mode === "between" ? mode.from : null,
+      mode.mode === "between" ? mode.to : null,
+      result?.head
+    ]
+  );
 
-    const [indexWidth, setIndexWidth] = useState(INDEX_DEFAULT_WIDTH);
-    const heading = comparisonHeading(mode, result?.head, t);
-    const hasRows = index.rows.length > 0;
+  const [indexWidth, setIndexWidth] = useState(INDEX_DEFAULT_WIDTH);
+  const heading = comparisonHeading(mode, result?.head, t);
+  const hasRows = index.rows.length > 0;
 
-    return (
-        <div
-            className="flex h-full min-h-0 flex-col overflow-hidden bg-surface"
-            data-help-topic="versionChanges"
-        >
-            <PanelHeader size="sm" className="group/help">
-                <span className="min-w-0 flex-1 truncate text-xs text-fg-subtle">{heading}</span>
-                {/* Only the working tree can have moved. A revision pair is immutable and answered
+  return (
+    <div
+      className="flex h-full min-h-0 flex-col overflow-hidden bg-surface"
+      data-help-topic="versionChanges"
+    >
+      <PanelHeader size="sm" className="group/help">
+        <span className="min-w-0 flex-1 truncate text-xs text-fg-subtle">{heading}</span>
+        {/* Only the working tree can have moved. A revision pair is immutable and answered
                     from the main process's cache, so a button here would be a control that cannot
                     change what it is beside. */}
-                {mode.mode === "working-tree" && (
-                    <ToolbarButton
-                        size="xs"
-                        onClick={diff.reload}
-                        disabled={diff.loading}
-                        data-tip={t("documentDiff.tab.refresh")}
-                        aria-label={t("documentDiff.tab.refresh")}
-                    >
-                        {diff.loading
-                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            : <RotateCcw className="h-3.5 w-3.5" />}
-                    </ToolbarButton>
-                )}
-                <HelpTrigger topic="versionChanges" />
-            </PanelHeader>
+        {mode.mode === "working-tree" && (
+          <ToolbarButton
+            size="xs"
+            onClick={diff.reload}
+            disabled={diff.loading}
+            data-tip={t("documentDiff.tab.refresh")}
+            aria-label={t("documentDiff.tab.refresh")}
+          >
+            {diff.loading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RotateCcw className="h-3.5 w-3.5" />
+            )}
+          </ToolbarButton>
+        )}
+        <HelpTrigger topic="versionChanges" />
+      </PanelHeader>
 
-            {/* Said once for the whole comparison, above both panes: these are facts about the read,
+      {/* Said once for the whole comparison, above both panes: these are facts about the read,
                 not about any one file, and a pane is the wrong place for them. */}
-            {result?.readFailure && (
-                // Above everything, because the empty list underneath it means the opposite of what
-                // an empty list usually means (docs §4.29).
-                <p className="shrink-0 px-3 pt-2 text-xs text-danger">
-                    {t("documentDiff.tab.readFailure", { error: result.readFailure })}
-                </p>
-            )}
-            {result && !result.complete && (
-                <p className="shrink-0 px-3 pt-2 text-2xs text-warning">
-                    {t("documentDiff.tab.incomplete", {
-                        shown: String(result.documents.length),
-                        total: String(result.pathCount),
-                    })}
-                </p>
-            )}
+      {result?.readFailure && (
+        // Above everything, because the empty list underneath it means the opposite of what
+        // an empty list usually means (docs §4.29).
+        <p className="shrink-0 px-3 pt-2 text-xs text-danger">
+          {t("documentDiff.tab.readFailure", { error: result.readFailure })}
+        </p>
+      )}
+      {result && !result.complete && (
+        <p className="shrink-0 px-3 pt-2 text-2xs text-warning">
+          {t("documentDiff.tab.incomplete", {
+            shown: String(result.documents.length),
+            total: String(result.pathCount)
+          })}
+        </p>
+      )}
 
-            {diff.loading && result === null && (
-                <p className="flex shrink-0 items-center gap-2 px-3 py-2 text-xs text-fg-subtle">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    {t("documentDiff.rows.loading")}
-                </p>
-            )}
-            {diff.error && <p className="shrink-0 px-3 py-2 text-xs text-danger">{diff.error}</p>}
-            {/* Null with no error is the one answer that is about the INSTALLATION rather than
+      {diff.loading && result === null && (
+        <p className="flex shrink-0 items-center gap-2 px-3 py-2 text-xs text-fg-subtle">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          {t("documentDiff.rows.loading")}
+        </p>
+      )}
+      {diff.error && <p className="shrink-0 px-3 py-2 text-xs text-danger">{diff.error}</p>}
+      {/* Null with no error is the one answer that is about the INSTALLATION rather than
                 about this project: version control ships no backend for some hosts, and that is
                 a fact rather than a failure. */}
-            {!diff.loading && !diff.error && result === null && (
-                <p className="shrink-0 px-3 py-2 text-xs text-fg-subtle">{t("documentDiff.tab.unavailable")}</p>
-            )}
-            {result && !hasRows && !result.readFailure && (
-                <EmptyState
-                    size="sm"
-                    className="flex-1"
-                    description={mode.mode === "working-tree"
-                        ? t("documentDiff.tab.emptyWorkingTree")
-                        : t("documentDiff.tab.empty")}
-                />
-            )}
+      {!diff.loading && !diff.error && result === null && (
+        <p className="shrink-0 px-3 py-2 text-xs text-fg-subtle">
+          {t("documentDiff.tab.unavailable")}
+        </p>
+      )}
+      {result && !hasRows && !result.readFailure && (
+        <EmptyState
+          size="sm"
+          className="flex-1"
+          description={
+            mode.mode === "working-tree"
+              ? t("documentDiff.tab.emptyWorkingTree")
+              : t("documentDiff.tab.empty")
+          }
+        />
+      )}
 
-            {hasRows && (
-                <div className="flex min-h-0 flex-1">
-                    <ChangeIndexPane
-                        index={index}
-                        isOpen={isOpen}
-                        onToggle={group => setOpenOverrides(current => ({
-                            ...current,
-                            [group.category]: !isOpen(group),
-                        }))}
-                        selectedPath={selected?.path ?? null}
-                        onSelect={setSelectedPath}
-                        style={{ width: `${indexWidth}px` }}
-                        className="shrink-0 border-r border-edge"
-                    />
+      {hasRows && (
+        <div className="flex min-h-0 flex-1">
+          <ChangeIndexPane
+            index={index}
+            isOpen={isOpen}
+            onToggle={(group) =>
+              setOpenOverrides((current) => ({
+                ...current,
+                [group.category]: !isOpen(group)
+              }))
+            }
+            selectedPath={selected?.path ?? null}
+            onSelect={setSelectedPath}
+            style={{ width: `${indexWidth}px` }}
+            className="shrink-0 border-r border-edge"
+          />
 
-                    <IndexDivider width={indexWidth} onWidth={setIndexWidth} />
+          <IndexDivider width={indexWidth} onWidth={setIndexWidth} />
 
-                    <div className="min-h-0 min-w-0 flex-1">
-                        {selected
-                            ? <ChangeDetailHost key={selected.path} entry={selected.entry} sides={comparison} />
-                            : <EmptyState size="sm" description={t("documentDiff.shell.selectPrompt")} />}
-                    </div>
-                </div>
+          <div className="min-h-0 min-w-0 flex-1">
+            {selected ? (
+              <ChangeDetailHost key={selected.path} entry={selected.entry} sides={comparison} />
+            ) : (
+              <EmptyState size="sm" description={t("documentDiff.shell.selectPrompt")} />
             )}
+          </div>
         </div>
-    );
+      )}
+    </div>
+  );
 }
 
 /** What the header says this tab is comparing. Both sides are always named, or the tab is a mystery. */
 function comparisonHeading(
-    payload: Exclude<VcsChangesPayload, { mode: "resolve" }>,
-    head: string | undefined,
-    t: Translator["t"],
+  payload: Exclude<VcsChangesPayload, { mode: "resolve" }>,
+  head: string | undefined,
+  t: Translator["t"]
 ): string {
-    switch (payload.mode) {
-        case "working-tree":
-            return head
-                // `#36` when the opener knew it, which is every path an author can actually take to
-                // this tab; the hash only for a tab restored from a persisted layout, where nobody
-                // is left to ask. Naming it the way the rail, the status cell and the switcher menu
-                // all name it is the whole point - one version with two names reads as two versions.
-                ? t("documentDiff.tab.comparingWorkingTree", {
-                    version: payload.headLabel ?? shortRevision(head),
-                })
-                // A repository with no revisions: there is no version to have changed since, and
-                // saying so beats naming one that does not exist.
-                : t("documentDiff.tab.comparingWorkingTreeUnknown");
-        case "between":
-            return t("documentDiff.tab.comparingRevisions", {
-                from: payload.fromLabel ?? shortRevision(payload.from),
-                to: payload.toLabel ?? shortRevision(payload.to),
-            });
-    }
+  switch (payload.mode) {
+    case "working-tree":
+      return head
+        ? // `#36` when the opener knew it, which is every path an author can actually take to
+          // this tab; the hash only for a tab restored from a persisted layout, where nobody
+          // is left to ask. Naming it the way the rail, the status cell and the switcher menu
+          // all name it is the whole point - one version with two names reads as two versions.
+          t("documentDiff.tab.comparingWorkingTree", {
+            version: payload.headLabel ?? shortRevision(head)
+          })
+        : // A repository with no revisions: there is no version to have changed since, and
+          // saying so beats naming one that does not exist.
+          t("documentDiff.tab.comparingWorkingTreeUnknown");
+    case "between":
+      return t("documentDiff.tab.comparingRevisions", {
+        from: payload.fromLabel ?? shortRevision(payload.from),
+        to: payload.toLabel ?? shortRevision(payload.to)
+      });
+  }
 }

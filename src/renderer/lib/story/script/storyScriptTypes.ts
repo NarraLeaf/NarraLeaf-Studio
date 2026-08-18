@@ -59,146 +59,148 @@ export type StoryScriptSpeakerLabeller = (scene: StoryScene, blockId: StoryBlock
  * {@link StoryScriptPlanInput}. `character -> display name` is neither total nor injective, so asking
  * this what an *unedited* label means is how a round trip with no edits in it destroys a binding.
  */
-export type StoryScriptSpeakerResolver = (label: string) => { characterId: string } | { speakerName: string };
+export type StoryScriptSpeakerResolver = (
+  label: string
+) => { characterId: string } | { speakerName: string };
 
 export type StoryScriptExportMode =
-    /** Anchors + `#data` footer. Importable, and the only mode that round-trips. */
-    | "roundtrip"
-    /** Prose only - no anchors, no footer. Byte-stable for the same document, so `git diff` between
-     *  two exports is meaningful. Deliberately NOT importable: a file with no snapshot cannot restore
-     *  an action, and guessing one would be worse than refusing. */
-    | "review";
+  /** Anchors + `#data` footer. Importable, and the only mode that round-trips. */
+  | "roundtrip"
+  /** Prose only - no anchors, no footer. Byte-stable for the same document, so `git diff` between
+   *  two exports is meaningful. Deliberately NOT importable: a file with no snapshot cannot restore
+   *  an action, and guessing one would be worse than refusing. */
+  | "review";
 
 export type StoryScriptExportOptions = {
-    mode: StoryScriptExportMode;
-    label: StoryScriptLabeller;
-    speaker: StoryScriptSpeakerLabeller;
+  mode: StoryScriptExportMode;
+  label: StoryScriptLabeller;
+  speaker: StoryScriptSpeakerLabeller;
 };
 
 export type StoryScriptLineShape = "narration" | "dialogue" | "note" | "choiceOption" | "opaque";
 
 export type StoryScriptParseErrorCode =
-    | "notAScript"
-    | "unsupportedVersion"
-    | "dataMissing"
-    | "dataCorrupt"
-    | "malformed";
+  | "notAScript"
+  | "unsupportedVersion"
+  | "dataMissing"
+  | "dataCorrupt"
+  | "malformed";
 
 export type StoryScriptParseError = {
-    code: StoryScriptParseErrorCode;
-    /** Developer-facing English. The UI renders `story.script.parseError.<code>` instead. */
-    message: string;
-    line?: number;
+  code: StoryScriptParseErrorCode;
+  /** Developer-facing English. The UI renders `story.script.parseError.<code>` instead. */
+  message: string;
+  line?: number;
 };
 
 export type ParsedStoryScriptLine = {
-    /** 1-based, counted within the whole file. */
-    lineNumber: number;
-    /** Nesting depth, from the leading indent (2 spaces per level). */
-    depth: number;
-    /** Absent for a line the author typed themselves - which is exactly how a new row is detected. */
-    anchor?: number;
-    shape: StoryScriptLineShape;
-    /** `dialogue` only. The label as written; resolution back to a character happens at merge time. */
-    speaker?: string;
-    /** Editable shapes only, still carrying its rich-run markers. */
-    text?: string;
+  /** 1-based, counted within the whole file. */
+  lineNumber: number;
+  /** Nesting depth, from the leading indent (2 spaces per level). */
+  depth: number;
+  /** Absent for a line the author typed themselves - which is exactly how a new row is detected. */
+  anchor?: number;
+  shape: StoryScriptLineShape;
+  /** `dialogue` only. The label as written; resolution back to a character happens at merge time. */
+  speaker?: string;
+  /** Editable shapes only, still carrying its rich-run markers. */
+  text?: string;
 };
 
 export type ParsedStoryScriptScene = {
-    sceneId: StorySceneId;
-    name: string;
-    /**
-     * Hash of the canonical scene JSON at export time (see `storyScriptCodec.ts` for the digest, which
-     * is an integrity check and not a security boundary). Drives the staleness warning.
-     */
-    origin: string;
-    /** The verbatim scene as exported. Every non-edited field on every row comes from here. */
-    snapshot: StoryScene;
-    lines: ParsedStoryScriptLine[];
+  sceneId: StorySceneId;
+  name: string;
+  /**
+   * Hash of the canonical scene JSON at export time (see `storyScriptCodec.ts` for the digest, which
+   * is an integrity check and not a security boundary). Drives the staleness warning.
+   */
+  origin: string;
+  /** The verbatim scene as exported. Every non-edited field on every row comes from here. */
+  snapshot: StoryScene;
+  lines: ParsedStoryScriptLine[];
 };
 
 export type ParsedStoryScript = {
-    formatVersion: number;
-    storyId: string;
-    scenes: ParsedStoryScriptScene[];
+  formatVersion: number;
+  storyId: string;
+  scenes: ParsedStoryScriptScene[];
 };
 
 export type StoryScriptParseResult =
-    | { ok: true; script: ParsedStoryScript }
-    | { ok: false; error: StoryScriptParseError };
+  | { ok: true; script: ParsedStoryScript }
+  | { ok: false; error: StoryScriptParseError };
 
 export type StoryScriptDiagnosticCode =
-    /** A `»` line with no anchor: the text cannot say what action it was, so no row is created. */
-    | "opaqueWithoutAnchor"
-    /** An anchor naming a row that is not in the snapshot. */
-    | "unknownAnchor"
-    /** An anchor whose row is an action, on a line the author rewrote as prose. The row is kept and
-     *  the edit is dropped - never the other way around. */
-    | "shapeMismatchAction"
-    /** The mirror image: an anchor whose row is text, on a line the author rewrote as a `»` action.
-     *  Kept apart from {@link shapeMismatchAction} because the two sentences differ in *which* half
-     *  of the file survived, which is the only thing the author needs to know to fix it. */
-    | "shapeMismatchText"
-    /** The same anchor twice: the author copied a line. The first keeps its identity; the rest are
-     *  cloned with fresh ids, because two rows cannot share a `textId` without merging their
-     *  translations and their voice takes. */
-    | "duplicateAnchor"
-    /** A rich-run marker naming a run the snapshot does not have. The marker is dropped. */
-    | "unknownRun"
-    /** A new line whose shape cannot carry an author-typed row (e.g. an option outside a choice). */
-    | "unplaceableLine"
-    /**
-     * A speaker label the author changed, with no {@link StoryScriptSpeakerResolver} supplied to turn
-     * it back into a binding. The change is ignored - guessing would unbind the row - while the text
-     * edit on the same line still applies.
-     *
-     * Reported only for a change that is *visible* without the project's characters, i.e. on a row
-     * carrying a bare `speakerName`. A row bound to a `characterId` was exported under a display name
-     * this file cannot recompute, so a change to it is not merely unresolvable but undetectable, and
-     * a diagnostic on every such line would say "unverified", not "changed".
-     */
-    | "speakerUnresolved";
+  /** A `»` line with no anchor: the text cannot say what action it was, so no row is created. */
+  | "opaqueWithoutAnchor"
+  /** An anchor naming a row that is not in the snapshot. */
+  | "unknownAnchor"
+  /** An anchor whose row is an action, on a line the author rewrote as prose. The row is kept and
+   *  the edit is dropped - never the other way around. */
+  | "shapeMismatchAction"
+  /** The mirror image: an anchor whose row is text, on a line the author rewrote as a `»` action.
+   *  Kept apart from {@link shapeMismatchAction} because the two sentences differ in *which* half
+   *  of the file survived, which is the only thing the author needs to know to fix it. */
+  | "shapeMismatchText"
+  /** The same anchor twice: the author copied a line. The first keeps its identity; the rest are
+   *  cloned with fresh ids, because two rows cannot share a `textId` without merging their
+   *  translations and their voice takes. */
+  | "duplicateAnchor"
+  /** A rich-run marker naming a run the snapshot does not have. The marker is dropped. */
+  | "unknownRun"
+  /** A new line whose shape cannot carry an author-typed row (e.g. an option outside a choice). */
+  | "unplaceableLine"
+  /**
+   * A speaker label the author changed, with no {@link StoryScriptSpeakerResolver} supplied to turn
+   * it back into a binding. The change is ignored - guessing would unbind the row - while the text
+   * edit on the same line still applies.
+   *
+   * Reported only for a change that is *visible* without the project's characters, i.e. on a row
+   * carrying a bare `speakerName`. A row bound to a `characterId` was exported under a display name
+   * this file cannot recompute, so a change to it is not merely unresolvable but undetectable, and
+   * a diagnostic on every such line would say "unverified", not "changed".
+   */
+  | "speakerUnresolved";
 
 export type StoryScriptDiagnostic = {
-    severity: "error" | "warning";
-    code: StoryScriptDiagnosticCode;
-    line?: number;
-    /** Developer-facing English; the UI renders `story.script.diag.<code>`. */
-    message: string;
+  severity: "error" | "warning";
+  code: StoryScriptDiagnosticCode;
+  line?: number;
+  /** Developer-facing English; the UI renders `story.script.diag.<code>`. */
+  message: string;
 };
 
 export type StoryScriptSceneStats = {
-    unchanged: number;
-    edited: number;
-    added: number;
-    removed: number;
-    cloned: number;
-    /** Rows whose position or nesting changed but whose payload did not. */
-    moved: number;
+  unchanged: number;
+  edited: number;
+  added: number;
+  removed: number;
+  cloned: number;
+  /** Rows whose position or nesting changed but whose payload did not. */
+  moved: number;
 };
 
 export type StoryScriptScenePlan = {
-    sceneId: StorySceneId;
-    sceneName: string;
-    /**
-     * The merged scene, structurally valid and ready to hand to `replaceScene` as-is.
-     * `replaceScene` performs no validation of its own, so this must be correct by construction.
-     */
-    scene: StoryScene;
-    stats: StoryScriptSceneStats;
-    /** The live scene no longer hashes to `origin`: importing will discard whatever changed since. */
-    stale: boolean;
-    /** True when the scene is absent from the live document entirely. */
-    missing: boolean;
-    diagnostics: StoryScriptDiagnostic[];
+  sceneId: StorySceneId;
+  sceneName: string;
+  /**
+   * The merged scene, structurally valid and ready to hand to `replaceScene` as-is.
+   * `replaceScene` performs no validation of its own, so this must be correct by construction.
+   */
+  scene: StoryScene;
+  stats: StoryScriptSceneStats;
+  /** The live scene no longer hashes to `origin`: importing will discard whatever changed since. */
+  stale: boolean;
+  /** True when the scene is absent from the live document entirely. */
+  missing: boolean;
+  diagnostics: StoryScriptDiagnostic[];
 };
 
 export type StoryScriptImportPlan = {
-    /** The file's `#story` id matches the open document. False is a warning, not a refusal. */
-    storyMatches: boolean;
-    scenes: StoryScriptScenePlan[];
-    diagnostics: StoryScriptDiagnostic[];
+  /** The file's `#story` id matches the open document. False is a warning, not a refusal. */
+  storyMatches: boolean;
+  scenes: StoryScriptScenePlan[];
+  diagnostics: StoryScriptDiagnostic[];
 };
 
 /**
@@ -208,26 +210,26 @@ export type StoryScriptImportPlan = {
 export type StoryScriptIdFactory = () => string;
 
 export type StoryScriptPlanInput = {
-    script: ParsedStoryScript;
-    live: StoryDocument;
-    generateId: StoryScriptIdFactory;
-    /**
-     * Optional. Absent means speaker labels are read-only: a changed label on a character-bound row is
-     * ignored with a `speakerUnresolved` diagnostic rather than guessed at.
-     */
-    resolveSpeaker?: StoryScriptSpeakerResolver;
-    /**
-     * The labeller the file was **exported** through, so import can ask the only question it can answer
-     * correctly: *did the author change this label?*
-     *
-     * Without it, the only available question is "what does this label resolve to?", and that answer is
-     * wrong on three states no display name can express - a binding to a deleted character (which
-     * prints nothing), two characters sharing a name (first-wins rebinds the row to the wrong one), and
-     * a temp speaker spelled like a character (silently promoted into a binding). All three are edits
-     * the author did not make, on a file they did not touch.
-     *
-     * Optional so the codec stays usable without a project, but a caller that has the export's labeller
-     * and does not pass it is asking for those three corruptions.
-     */
-    speakerLabel?: StoryScriptSpeakerLabeller;
+  script: ParsedStoryScript;
+  live: StoryDocument;
+  generateId: StoryScriptIdFactory;
+  /**
+   * Optional. Absent means speaker labels are read-only: a changed label on a character-bound row is
+   * ignored with a `speakerUnresolved` diagnostic rather than guessed at.
+   */
+  resolveSpeaker?: StoryScriptSpeakerResolver;
+  /**
+   * The labeller the file was **exported** through, so import can ask the only question it can answer
+   * correctly: *did the author change this label?*
+   *
+   * Without it, the only available question is "what does this label resolve to?", and that answer is
+   * wrong on three states no display name can express - a binding to a deleted character (which
+   * prints nothing), two characters sharing a name (first-wins rebinds the row to the wrong one), and
+   * a temp speaker spelled like a character (silently promoted into a binding). All three are edits
+   * the author did not make, on a file they did not touch.
+   *
+   * Optional so the codec stays usable without a project, but a caller that has the export's labeller
+   * and does not pass it is asking for those three corruptions.
+   */
+  speakerLabel?: StoryScriptSpeakerLabeller;
 };

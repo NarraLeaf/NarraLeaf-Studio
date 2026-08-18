@@ -1,7 +1,10 @@
 import type { CSSProperties } from "react";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
-import { getSurfaceBackgroundImage, surfaceBackgroundImageStyle } from "@/lib/ui-editor/runtime/surfaceBackground";
+import {
+  getSurfaceBackgroundImage,
+  surfaceBackgroundImageStyle
+} from "@/lib/ui-editor/runtime/surfaceBackground";
 
 /**
  * The Surface's background picture, as its own layer under the element tree.
@@ -18,25 +21,27 @@ import { getSurfaceBackgroundImage, surfaceBackgroundImageStyle } from "@/lib/ui
  * document order. Giving this a stacking index instead would put it in a fight with widget effects.
  */
 export function SurfaceBackgroundImageLayer({
-    surface,
-    opacity = 1,
+  surface,
+  opacity = 1
 }: {
-    surface: UISurface;
-    /** Thins the picture for a page presented over a running game. */
-    opacity?: number;
+  surface: UISurface;
+  /** Thins the picture for a page presented over a running game. */
+  opacity?: number;
 }) {
-    const background = getSurfaceBackgroundImage(surface);
-    const { url } = useAssetObjectUrl(background?.assetId ?? null);
-    if (!background || !url) {
-        return null;
-    }
+  const background = getSurfaceBackgroundImage(surface);
+  const { url } = useAssetObjectUrl(background?.assetId ?? null);
+  if (!background || !url) {
+    return null;
+  }
 
-    const style: CSSProperties = {
-        position: "absolute",
-        inset: 0,
-        pointerEvents: "none",
-        ...surfaceBackgroundImageStyle(url, background.fillMode),
-        ...(opacity < 1 ? { opacity } : {}),
-    };
-    return <div aria-hidden="true" data-ui-surface-background-image={background.fillMode} style={style} />;
+  const style: CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    pointerEvents: "none",
+    ...surfaceBackgroundImageStyle(url, background.fillMode),
+    ...(opacity < 1 ? { opacity } : {})
+  };
+  return (
+    <div aria-hidden="true" data-ui-surface-background-image={background.fillMode} style={style} />
+  );
 }

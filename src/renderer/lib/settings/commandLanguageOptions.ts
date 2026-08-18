@@ -30,5 +30,5 @@ export const LOCALIZED_COMMANDS_DEFAULT = true;
  * where they were before this setting existed.
  */
 export function resolveCommandLocale(localized: unknown, uiLocale: LocaleCode): LocaleCode {
-    return localized === false ? SOURCE_LOCALE : uiLocale;
+  return localized === false ? SOURCE_LOCALE : uiLocale;
 }

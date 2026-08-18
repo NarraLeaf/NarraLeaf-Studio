@@ -40,126 +40,126 @@ import { changeLeafCount, changeMaskTone, maskColumns, type ChangeMaskTone } fro
 
 /** A page's size in the coordinates its elements are laid out in. */
 export interface CanvasSize {
-    readonly width: number;
-    readonly height: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 /** What a mark is drawn on. A page's own row marks the frame rather than anything inside it. */
 export type SurfaceMaskTarget =
-    | { readonly kind: "element"; readonly surfaceId: string; readonly elementId: string }
-    | { readonly kind: "surface"; readonly surfaceId: string };
+  | { readonly kind: "element"; readonly surfaceId: string; readonly elementId: string }
+  | { readonly kind: "surface"; readonly surfaceId: string };
 
 export interface SurfaceMask {
-    /**
-     * The change's index in `DocumentDiff.changes`.
-     *
-     * The handle a click hands back, rather than the change object: a selection compared by
-     * identity survives nothing, and the path is an array. One index names one row for as long as
-     * the diff is the same diff, which is exactly as long as this pane is open.
-     */
-    readonly index: number;
-    readonly change: DocumentChange;
-    readonly target: SurfaceMaskTarget;
-    readonly tone: ChangeMaskTone;
-    /** Changes this one mark stands for - a group of five property edits is one mark and five. */
-    readonly leaves: number;
-    readonly onBase: boolean;
-    readonly onHead: boolean;
+  /**
+   * The change's index in `DocumentDiff.changes`.
+   *
+   * The handle a click hands back, rather than the change object: a selection compared by
+   * identity survives nothing, and the path is an array. One index names one row for as long as
+   * the diff is the same diff, which is exactly as long as this pane is open.
+   */
+  readonly index: number;
+  readonly change: DocumentChange;
+  readonly target: SurfaceMaskTarget;
+  readonly tone: ChangeMaskTone;
+  /** Changes this one mark stands for - a group of five property edits is one mark and five. */
+  readonly leaves: number;
+  readonly onBase: boolean;
+  readonly onHead: boolean;
 }
 
 export type OffCanvasReason = "component" | "detached" | "document";
 
 export interface OffCanvasChange {
-    readonly index: number;
-    readonly change: DocumentChange;
-    readonly reason: OffCanvasReason;
-    readonly leaves: number;
+  readonly index: number;
+  readonly change: DocumentChange;
+  readonly reason: OffCanvasReason;
+  readonly leaves: number;
 }
 
 /** One page an author can look at, on either side of the comparison. */
 export interface SurfaceOption {
-    readonly id: string;
-    /** The author's own name for it, or null when it has none or the page is gone from both sides. */
-    readonly name: string | null;
-    readonly designSize: CanvasSize | null;
-    readonly baseSize: CanvasSize | null;
-    readonly headSize: CanvasSize | null;
-    readonly inBase: boolean;
-    readonly inHead: boolean;
-    /** Changes on this page, counted by leaf, so it is the same unit the index shows. */
-    readonly changes: number;
+  readonly id: string;
+  /** The author's own name for it, or null when it has none or the page is gone from both sides. */
+  readonly name: string | null;
+  readonly designSize: CanvasSize | null;
+  readonly baseSize: CanvasSize | null;
+  readonly headSize: CanvasSize | null;
+  readonly inBase: boolean;
+  readonly inHead: boolean;
+  /** Changes on this page, counted by leaf, so it is the same unit the index shows. */
+  readonly changes: number;
 }
 
 export interface SurfaceDiffPlan {
-    readonly surfaces: readonly SurfaceOption[];
-    readonly masks: readonly SurfaceMask[];
-    readonly offCanvas: readonly OffCanvasChange[];
-    /** The page to open on: the one with the most changes. Null when there are no pages at all. */
-    readonly defaultSurfaceId: string | null;
+  readonly surfaces: readonly SurfaceOption[];
+  readonly masks: readonly SurfaceMask[];
+  readonly offCanvas: readonly OffCanvasChange[];
+  /** The page to open on: the one with the most changes. Null when there are no pages at all. */
+  readonly defaultSurfaceId: string | null;
 }
 
 export function buildSurfaceDiffPlan(
-    changes: readonly DocumentChange[],
-    base: UIDocument | null,
-    head: UIDocument | null,
+  changes: readonly DocumentChange[],
+  base: UIDocument | null,
+  head: UIDocument | null
 ): SurfaceDiffPlan {
-    const baseSurfaces = readSurfaces(base);
-    const headSurfaces = readSurfaces(head);
+  const baseSurfaces = readSurfaces(base);
+  const headSurfaces = readSurfaces(head);
 
-    const masks: SurfaceMask[] = [];
-    const offCanvas: OffCanvasChange[] = [];
-    const changesBySurface = new Map<string, number>();
+  const masks: SurfaceMask[] = [];
+  const offCanvas: OffCanvasChange[] = [];
+  const changesBySurface = new Map<string, number>();
 
-    changes.forEach((change, index) => {
-        const leaves = changeLeafCount(change);
-        const target = surfaceMaskTarget(change.path);
-        if (!target) {
-            offCanvas.push({ index, change, reason: offCanvasReason(change.path), leaves });
-            return;
-        }
-        masks.push({
-            index,
-            change,
-            target,
-            tone: changeMaskTone(change),
-            leaves,
-            ...maskColumns(change.kind),
-        });
-        changesBySurface.set(target.surfaceId, (changesBySurface.get(target.surfaceId) ?? 0) + leaves);
+  changes.forEach((change, index) => {
+    const leaves = changeLeafCount(change);
+    const target = surfaceMaskTarget(change.path);
+    if (!target) {
+      offCanvas.push({ index, change, reason: offCanvasReason(change.path), leaves });
+      return;
+    }
+    masks.push({
+      index,
+      change,
+      target,
+      tone: changeMaskTone(change),
+      leaves,
+      ...maskColumns(change.kind)
     });
+    changesBySurface.set(target.surfaceId, (changesBySurface.get(target.surfaceId) ?? 0) + leaves);
+  });
 
-    // Head's pages first and in the order that document lists them, then the ones only the older
-    // side had, then any a change names that neither document holds. Head first because it is what
-    // the author is looking at now; a deleted page still appears, after them, rather than nowhere.
-    const ids: string[] = [];
-    const take = (id: string): void => {
-        if (!ids.includes(id)) {
-            ids.push(id);
-        }
+  // Head's pages first and in the order that document lists them, then the ones only the older
+  // side had, then any a change names that neither document holds. Head first because it is what
+  // the author is looking at now; a deleted page still appears, after them, rather than nowhere.
+  const ids: string[] = [];
+  const take = (id: string): void => {
+    if (!ids.includes(id)) {
+      ids.push(id);
+    }
+  };
+  for (const surface of headSurfaces.values()) take(surface.id);
+  for (const surface of baseSurfaces.values()) take(surface.id);
+  for (const id of changesBySurface.keys()) take(id);
+
+  const surfaces = ids.map<SurfaceOption>((id) => {
+    const inHead = headSurfaces.get(id);
+    const inBase = baseSurfaces.get(id);
+    return {
+      id,
+      name: inHead?.name ?? inBase?.name ?? null,
+      // The page is drawn at the size the side it is being drawn FOR declares, and the
+      // fallback is the other side rather than nothing: a page whose design size changed is
+      // two different boxes, and that difference is a thing the author came here to see.
+      designSize: inHead?.designSize ?? inBase?.designSize ?? null,
+      baseSize: inBase?.designSize ?? null,
+      headSize: inHead?.designSize ?? null,
+      inBase: inBase !== undefined,
+      inHead: inHead !== undefined,
+      changes: changesBySurface.get(id) ?? 0
     };
-    for (const surface of headSurfaces.values()) take(surface.id);
-    for (const surface of baseSurfaces.values()) take(surface.id);
-    for (const id of changesBySurface.keys()) take(id);
+  });
 
-    const surfaces = ids.map<SurfaceOption>(id => {
-        const inHead = headSurfaces.get(id);
-        const inBase = baseSurfaces.get(id);
-        return {
-            id,
-            name: inHead?.name ?? inBase?.name ?? null,
-            // The page is drawn at the size the side it is being drawn FOR declares, and the
-            // fallback is the other side rather than nothing: a page whose design size changed is
-            // two different boxes, and that difference is a thing the author came here to see.
-            designSize: inHead?.designSize ?? inBase?.designSize ?? null,
-            baseSize: inBase?.designSize ?? null,
-            headSize: inHead?.designSize ?? null,
-            inBase: inBase !== undefined,
-            inHead: inHead !== undefined,
-            changes: changesBySurface.get(id) ?? 0,
-        };
-    });
-
-    return { surfaces, masks, offCanvas, defaultSurfaceId: busiestSurfaceId(surfaces) };
+  return { surfaces, masks, offCanvas, defaultSurfaceId: busiestSurfaceId(surfaces) };
 }
 
 /**
@@ -171,13 +171,13 @@ export function buildSurfaceDiffPlan(
  * nothing, because an empty pane is a worse answer than a page with no marks on it.
  */
 function busiestSurfaceId(surfaces: readonly SurfaceOption[]): string | null {
-    let best: SurfaceOption | null = null;
-    for (const surface of surfaces) {
-        if (!best || surface.changes > best.changes) {
-            best = surface;
-        }
+  let best: SurfaceOption | null = null;
+  for (const surface of surfaces) {
+    if (!best || surface.changes > best.changes) {
+      best = surface;
     }
-    return best?.id ?? null;
+  }
+  return best?.id ?? null;
 }
 
 /**
@@ -189,20 +189,20 @@ function busiestSurfaceId(surfaces: readonly SurfaceOption[]): string | null {
  * being about its element rather than refused, because the element is still the thing to mark.
  */
 export function surfaceMaskTarget(path: readonly string[]): SurfaceMaskTarget | null {
-    if (path[0] !== "surfaces" || typeof path[1] !== "string") {
-        return null;
-    }
-    if (path[2] === "elements" && typeof path[3] === "string") {
-        return { kind: "element", surfaceId: path[1], elementId: path[3] };
-    }
-    return { kind: "surface", surfaceId: path[1] };
+  if (path[0] !== "surfaces" || typeof path[1] !== "string") {
+    return null;
+  }
+  if (path[2] === "elements" && typeof path[3] === "string") {
+    return { kind: "element", surfaceId: path[1], elementId: path[3] };
+  }
+  return { kind: "surface", surfaceId: path[1] };
 }
 
 function offCanvasReason(path: readonly string[]): OffCanvasReason {
-    if (path[0] === "components") {
-        return "component";
-    }
-    return path[0] === "elements" ? "detached" : "document";
+  if (path[0] === "components") {
+    return "component";
+  }
+  return path[0] === "elements" ? "detached" : "document";
 }
 
 /**
@@ -212,39 +212,42 @@ function offCanvasReason(path: readonly string[]): OffCanvasReason {
  * that parsed them is a shape gate and runs no migration - so every field is checked rather than
  * assumed, on the same terms the diff itself is written.
  */
-export function readSurfaces(document: UIDocument | null): Map<string, {
+export function readSurfaces(document: UIDocument | null): Map<
+  string,
+  {
     id: string;
     name: string | null;
     designSize: CanvasSize | null;
-}> {
-    const out = new Map<string, { id: string; name: string | null; designSize: CanvasSize | null }>();
-    const surfaces = Array.isArray(document?.surfaces) ? (document?.surfaces as UISurface[]) : [];
-    for (const surface of surfaces) {
-        const id = (surface as { id?: unknown } | null)?.id;
-        if (typeof id !== "string" || id.length === 0 || out.has(id)) {
-            continue;
-        }
-        const name = (surface as { name?: unknown }).name;
-        out.set(id, {
-            id,
-            name: typeof name === "string" && name.trim().length > 0 ? name : null,
-            designSize: readCanvasSize((surface as { designSize?: unknown }).designSize),
-        });
+  }
+> {
+  const out = new Map<string, { id: string; name: string | null; designSize: CanvasSize | null }>();
+  const surfaces = Array.isArray(document?.surfaces) ? (document?.surfaces as UISurface[]) : [];
+  for (const surface of surfaces) {
+    const id = (surface as { id?: unknown } | null)?.id;
+    if (typeof id !== "string" || id.length === 0 || out.has(id)) {
+      continue;
     }
-    return out;
+    const name = (surface as { name?: unknown }).name;
+    out.set(id, {
+      id,
+      name: typeof name === "string" && name.trim().length > 0 ? name : null,
+      designSize: readCanvasSize((surface as { designSize?: unknown }).designSize)
+    });
+  }
+  return out;
 }
 
 function readCanvasSize(value: unknown): CanvasSize | null {
-    const size = value as { width?: unknown; height?: unknown } | null;
-    const width = size?.width;
-    const height = size?.height;
-    if (typeof width !== "number" || typeof height !== "number") {
-        return null;
-    }
-    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-        return null;
-    }
-    return { width, height };
+  const size = value as { width?: unknown; height?: unknown } | null;
+  const width = size?.width;
+  const height = size?.height;
+  if (typeof width !== "number" || typeof height !== "number") {
+    return null;
+  }
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null;
+  }
+  return { width, height };
 }
 
 /**
@@ -259,16 +262,16 @@ function readCanvasSize(value: unknown): CanvasSize | null {
  * author an interface at a size that exists nowhere.
  */
 export function sharedSurfaceScale(
-    sizes: readonly (CanvasSize | null)[],
-    viewport: { readonly width: number; readonly height: number },
+  sizes: readonly (CanvasSize | null)[],
+  viewport: { readonly width: number; readonly height: number }
 ): number {
-    const present = sizes.filter((size): size is CanvasSize => size !== null);
-    if (present.length === 0 || viewport.width <= 0 || viewport.height <= 0) {
-        return 1;
-    }
-    const width = Math.max(...present.map(size => size.width));
-    const height = Math.max(...present.map(size => size.height));
-    return Math.min(1, viewport.width / width, viewport.height / height);
+  const present = sizes.filter((size): size is CanvasSize => size !== null);
+  if (present.length === 0 || viewport.width <= 0 || viewport.height <= 0) {
+    return 1;
+  }
+  const width = Math.max(...present.map((size) => size.width));
+  const height = Math.max(...present.map((size) => size.height));
+  return Math.min(1, viewport.width / width, viewport.height / height);
 }
 
 /**
@@ -278,7 +281,10 @@ export function sharedSurfaceScale(
  * "11 accounted for, 12 in the diff" says where to look.
  */
 export function accountedChanges(plan: SurfaceDiffPlan): { rows: number; leaves: number } {
-    const rows = plan.masks.length + plan.offCanvas.length;
-    const leaves = [...plan.masks, ...plan.offCanvas].reduce((total, entry) => total + entry.leaves, 0);
-    return { rows, leaves };
+  const rows = plan.masks.length + plan.offCanvas.length;
+  const leaves = [...plan.masks, ...plan.offCanvas].reduce(
+    (total, entry) => total + entry.leaves,
+    0
+  );
+  return { rows, leaves };
 }

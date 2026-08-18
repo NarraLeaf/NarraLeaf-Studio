@@ -1,8 +1,8 @@
 import iconv from "iconv-lite";
 import {
-    type FsTextEncoding,
-    type TextEncodingId,
-    isTextEncodingId,
+  type FsTextEncoding,
+  type TextEncodingId,
+  isTextEncodingId
 } from "@shared/types/textEncoding";
 
 /**
@@ -30,12 +30,12 @@ import {
  */
 
 type TextCodecSpec = {
-    /** Node's own name, when Node can do it faster and identically. */
-    node?: BufferEncoding;
-    /** iconv-lite's canonical name, for everything Node cannot name. */
-    iconv?: string;
-    /** The byte-order mark written on encode and stripped on decode. */
-    bom?: readonly number[];
+  /** Node's own name, when Node can do it faster and identically. */
+  node?: BufferEncoding;
+  /** iconv-lite's canonical name, for everything Node cannot name. */
+  iconv?: string;
+  /** The byte-order mark written on encode and stripped on decode. */
+  bom?: readonly number[];
 };
 
 const UTF8_BOM = [0xef, 0xbb, 0xbf] as const;
@@ -43,17 +43,17 @@ const UTF16LE_BOM = [0xff, 0xfe] as const;
 const UTF16BE_BOM = [0xfe, 0xff] as const;
 
 const TEXT_CODECS: Record<TextEncodingId, TextCodecSpec> = {
-    utf8: { node: "utf8" },
-    utf8bom: { node: "utf8", bom: UTF8_BOM },
-    utf16le: { node: "utf16le", bom: UTF16LE_BOM },
-    utf16be: { iconv: "utf16-be", bom: UTF16BE_BOM },
-    gbk: { iconv: "gbk" },
-    gb18030: { iconv: "gb18030" },
-    big5: { iconv: "big5" },
-    shiftjis: { iconv: "shift_jis" },
-    euckr: { iconv: "euc-kr" },
-    windows1252: { iconv: "windows-1252" },
-    iso88591: { iconv: "iso-8859-1" },
+  utf8: { node: "utf8" },
+  utf8bom: { node: "utf8", bom: UTF8_BOM },
+  utf16le: { node: "utf16le", bom: UTF16LE_BOM },
+  utf16be: { iconv: "utf16-be", bom: UTF16BE_BOM },
+  gbk: { iconv: "gbk" },
+  gb18030: { iconv: "gb18030" },
+  big5: { iconv: "big5" },
+  shiftjis: { iconv: "shift_jis" },
+  euckr: { iconv: "euc-kr" },
+  windows1252: { iconv: "windows-1252" },
+  iso88591: { iconv: "iso-8859-1" }
 };
 
 /**
@@ -65,31 +65,31 @@ const TEXT_CODECS: Record<TextEncodingId, TextCodecSpec> = {
  * behaviour (silent truncation above U+00FF) that existing callers already depend on.
  */
 export function resolveTextEncodingId(encoding: FsTextEncoding | undefined): TextEncodingId | null {
-    if (encoding === undefined) {
-        return null;
-    }
-    if (isTextEncodingId(encoding)) {
-        return encoding;
-    }
-    if (encoding === "utf-8") {
-        return "utf8";
-    }
-    if (encoding === "utf-16le") {
-        return "utf16le";
-    }
+  if (encoding === undefined) {
     return null;
+  }
+  if (isTextEncodingId(encoding)) {
+    return encoding;
+  }
+  if (encoding === "utf-8") {
+    return "utf8";
+  }
+  if (encoding === "utf-16le") {
+    return "utf16le";
+  }
+  return null;
 }
 
 function stripBom(bytes: Buffer, bom: readonly number[] | undefined): Buffer {
-    if (!bom || bytes.length < bom.length) {
-        return bytes;
+  if (!bom || bytes.length < bom.length) {
+    return bytes;
+  }
+  for (let i = 0; i < bom.length; i++) {
+    if (bytes[i] !== bom[i]) {
+      return bytes;
     }
-    for (let i = 0; i < bom.length; i++) {
-        if (bytes[i] !== bom[i]) {
-            return bytes;
-        }
-    }
-    return bytes.subarray(bom.length);
+  }
+  return bytes.subarray(bom.length);
 }
 
 /**
@@ -100,13 +100,13 @@ function stripBom(bytes: Buffer, bom: readonly number[] | undefined): Buffer {
  * distinguishes them is only what {@link encodeTextBytes} writes back.
  */
 export function decodeTextBytes(bytes: Buffer | Uint8Array, encoding: TextEncodingId): string {
-    const spec = TEXT_CODECS[encoding];
-    const buffer = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
-    const body = stripBom(stripBom(buffer, spec.bom), encoding === "utf8" ? UTF8_BOM : undefined);
-    if (spec.node) {
-        return body.toString(spec.node);
-    }
-    return iconv.decode(body, spec.iconv!);
+  const spec = TEXT_CODECS[encoding];
+  const buffer = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
+  const body = stripBom(stripBom(buffer, spec.bom), encoding === "utf8" ? UTF8_BOM : undefined);
+  if (spec.node) {
+    return body.toString(spec.node);
+  }
+  return iconv.decode(body, spec.iconv!);
 }
 
 /**
@@ -117,8 +117,8 @@ export function decodeTextBytes(bytes: Buffer | Uint8Array, encoding: TextEncodi
  * as content would grow a second mark on every save.
  */
 export function encodeTextBytes(text: string, encoding: TextEncodingId): Buffer {
-    const spec = TEXT_CODECS[encoding];
-    const body = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
-    const encoded = spec.node ? Buffer.from(body, spec.node) : iconv.encode(body, spec.iconv!);
-    return spec.bom ? Buffer.concat([Buffer.from(spec.bom), encoded]) : encoded;
+  const spec = TEXT_CODECS[encoding];
+  const body = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  const encoded = spec.node ? Buffer.from(body, spec.node) : iconv.encode(body, spec.iconv!);
+  return spec.bom ? Buffer.concat([Buffer.from(spec.bom), encoded]) : encoded;
 }

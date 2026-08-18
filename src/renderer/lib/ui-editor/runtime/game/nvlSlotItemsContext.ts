@@ -7,10 +7,10 @@ import type { EntryTextsProps } from "narraleaf-react";
  * `EntryTextsProps` fields plus the proxy `index`.
  */
 export type NvlSlotDialogProxy = Pick<
-    EntryTextsProps,
-    "entry" | "gameState" | "words" | "useTypeEffect" | "isActive"
+  EntryTextsProps,
+  "entry" | "gameState" | "words" | "useTypeEffect" | "isActive"
 > & {
-    index: number;
+  index: number;
 };
 
 /**
@@ -21,5 +21,5 @@ export type NvlSlotDialogProxy = Pick<
 export const NvlSlotItemsContext = createContext<readonly NvlSlotDialogProxy[] | null>(null);
 
 export function useNvlSlotItems(): readonly NvlSlotDialogProxy[] | null {
-    return useContext(NvlSlotItemsContext);
+  return useContext(NvlSlotItemsContext);
 }

@@ -22,15 +22,15 @@ const MACOS_TRAFFIC_LIGHT_SAFE_AREA = "calc(66px / var(--nl-zoom, 1) + 24px)";
 const TITLEBAR_EDGE_GAP = 5;
 
 export interface TitleBarProps {
-    title: string;
-    iconSrc: string;
-    className?: string;
-    actionBar?: ReactNode;
-    /** Interactive content for the centered slot; takes the place of `title` when provided. */
-    center?: ReactNode;
-    controlBar?: ReactNode;
-    initialControlAbility?: WindowControlAbility;
-    windowControlPolicy?: WindowControlPolicy;
+  title: string;
+  iconSrc: string;
+  className?: string;
+  actionBar?: ReactNode;
+  /** Interactive content for the centered slot; takes the place of `title` when provided. */
+  center?: ReactNode;
+  controlBar?: ReactNode;
+  initialControlAbility?: WindowControlAbility;
+  windowControlPolicy?: WindowControlPolicy;
 }
 
 /**
@@ -38,149 +38,150 @@ export interface TitleBarProps {
  * Can be reused across different applications
  */
 export function TitleBar({
-    title,
-    iconSrc,
-    className = "",
-    actionBar,
-    center,
-    controlBar,
-    initialControlAbility,
-    windowControlPolicy = WindowControlPolicy.Standard,
+  title,
+  iconSrc,
+  className = "",
+  actionBar,
+  center,
+  controlBar,
+  initialControlAbility,
+  windowControlPolicy = WindowControlPolicy.Standard
 }: TitleBarProps) {
-    const { t } = useTranslation();
-    const isMac = isMacPlatform();
-    const isFullscreen = useWindowFullscreen();
-    const usesInlineMacControls = isMac && windowControlPolicy === WindowControlPolicy.Standard;
-    const hasWindowControls = windowControlPolicy !== WindowControlPolicy.None;
-    const shouldRenderCustomControls = hasWindowControls && !isMac;
-    // macOS hides the traffic lights in fullscreen, so the space reserved for them becomes dead —
-    // stop reserving it and let the content sit flush against the window edge.
-    const reserveMacTrafficLights = usesInlineMacControls && !isFullscreen;
-    const leftInset = reserveMacTrafficLights ? MACOS_TRAFFIC_LIGHT_SAFE_AREA : 0;
-    const rightInset = usesInlineMacControls
-        ? (controlBar || iconSrc ? `${TITLEBAR_EDGE_GAP}px` : (reserveMacTrafficLights ? MACOS_TRAFFIC_LIGHT_SAFE_AREA : 0))
-        : 0;
-    const leftSafeAreaStyle = leftInset ? { paddingLeft: leftInset } : undefined;
-    const rightSafeAreaStyle = rightInset ? { paddingRight: rightInset } : undefined;
-    // The title overlay spans the whole bar, so `justify-center` centres it on the *window*.
-    // Padding it by each side's own inset breaks that: the traffic lights reserve ~90px on the
-    // left while the right only asks for an edge gap, and the title drifts right by half the
-    // difference. Reserve the larger inset on both sides instead — the centre stays the window's
-    // centre, and the title still cannot slide under either cluster before it truncates.
-    const titleInset = leftInset && rightInset
-        ? (leftInset === rightInset ? leftInset : `max(${leftInset}, ${rightInset})`)
-        : (leftInset || rightInset);
-    const titleSafeAreaStyle = titleInset
-        ? { paddingLeft: titleInset, paddingRight: titleInset }
-        : undefined;
+  const { t } = useTranslation();
+  const isMac = isMacPlatform();
+  const isFullscreen = useWindowFullscreen();
+  const usesInlineMacControls = isMac && windowControlPolicy === WindowControlPolicy.Standard;
+  const hasWindowControls = windowControlPolicy !== WindowControlPolicy.None;
+  const shouldRenderCustomControls = hasWindowControls && !isMac;
+  // macOS hides the traffic lights in fullscreen, so the space reserved for them becomes dead —
+  // stop reserving it and let the content sit flush against the window edge.
+  const reserveMacTrafficLights = usesInlineMacControls && !isFullscreen;
+  const leftInset = reserveMacTrafficLights ? MACOS_TRAFFIC_LIGHT_SAFE_AREA : 0;
+  const rightInset = usesInlineMacControls
+    ? controlBar || iconSrc
+      ? `${TITLEBAR_EDGE_GAP}px`
+      : reserveMacTrafficLights
+        ? MACOS_TRAFFIC_LIGHT_SAFE_AREA
+        : 0
+    : 0;
+  const leftSafeAreaStyle = leftInset ? { paddingLeft: leftInset } : undefined;
+  const rightSafeAreaStyle = rightInset ? { paddingRight: rightInset } : undefined;
+  // The title overlay spans the whole bar, so `justify-center` centres it on the *window*.
+  // Padding it by each side's own inset breaks that: the traffic lights reserve ~90px on the
+  // left while the right only asks for an edge gap, and the title drifts right by half the
+  // difference. Reserve the larger inset on both sides instead — the centre stays the window's
+  // centre, and the title still cannot slide under either cluster before it truncates.
+  const titleInset =
+    leftInset && rightInset
+      ? leftInset === rightInset
+        ? leftInset
+        : `max(${leftInset}, ${rightInset})`
+      : leftInset || rightInset;
+  const titleSafeAreaStyle = titleInset
+    ? { paddingLeft: titleInset, paddingRight: titleInset }
+    : undefined;
 
-    return (
-        <div className={cn("titlebar-drag relative z-[20000] flex h-10 min-h-10 shrink-0 items-center bg-surface-sunken border-b border-edge", className)}>
-            {/* Left side - App Icon and Action Bar */}
-            <div className="no-drag flex h-full min-w-0 items-center" style={leftSafeAreaStyle}>
-                {!usesInlineMacControls && iconSrc && (
-                    <div className="flex h-full shrink-0 items-center px-4">
-                        <img
-                            src={iconSrc}
-                            alt={t("dialogs.window.appIcon")}
-                            className="w-5 h-5"
-                        />
-                    </div>
-                )}
-                {actionBar && (
-                    <ErrorBoundary fallback={() => null}>
-                        <div className="flex items-center">{actionBar}</div>
-                    </ErrorBoundary>
-                )}
-            </div>
+  return (
+    <div
+      className={cn(
+        "titlebar-drag relative z-[20000] flex h-10 min-h-10 shrink-0 items-center bg-surface-sunken border-b border-edge",
+        className
+      )}
+    >
+      {/* Left side - App Icon and Action Bar */}
+      <div className="no-drag flex h-full min-w-0 items-center" style={leftSafeAreaStyle}>
+        {!usesInlineMacControls && iconSrc && (
+          <div className="flex h-full shrink-0 items-center px-4">
+            <img src={iconSrc} alt={t("dialogs.window.appIcon")} className="w-5 h-5" />
+          </div>
+        )}
+        {actionBar && (
+          <ErrorBoundary fallback={() => null}>
+            <div className="flex items-center">{actionBar}</div>
+          </ErrorBoundary>
+        )}
+      </div>
 
-            {/* Center. An interactive slot participates in the flex row (flex-1 = it gets exactly
+      {/* Center. An interactive slot participates in the flex row (flex-1 = it gets exactly
                 the space the side clusters leave, so a w-full child can stretch without ever
                 overlapping them); the plain title keeps the absolute overlay so it stays visually
                 centered regardless of asymmetric sides. */}
-            {center ? (
-                <div className="flex h-full min-w-0 flex-1 items-center justify-center px-3">
-                    <ErrorBoundary fallback={() => null}>
-                        <>{center}</>
-                    </ErrorBoundary>
-                </div>
-            ) : (
-                <div
-                    className="pointer-events-none absolute inset-y-0 left-0 right-0 flex min-w-0 items-center justify-center px-2"
-                    style={titleSafeAreaStyle}
-                >
-                    {title && (
-                        <span className="text-sm text-fg-muted truncate">
-                            {title}
-                        </span>
-                    )}
-                </div>
-            )}
-
-            {/* Right side - Control Bar and Window Controls */}
-            <div className="no-drag ml-auto flex h-full shrink-0 items-center" style={rightSafeAreaStyle}>
-                {controlBar ? (
-                    <ErrorBoundary fallback={() => null}>
-                        <>{controlBar}</>
-                    </ErrorBoundary>
-                ) : null}
-                {usesInlineMacControls && iconSrc && (
-                    <div className="flex h-full shrink-0 items-center px-4">
-                        <img
-                            src={iconSrc}
-                            alt={t("dialogs.window.appIcon")}
-                            className="w-5 h-5"
-                        />
-                    </div>
-                )}
-                {shouldRenderCustomControls && (
-                    <CustomWindowControls initialAbility={initialControlAbility} />
-                )}
-            </div>
+      {center ? (
+        <div className="flex h-full min-w-0 flex-1 items-center justify-center px-3">
+          <ErrorBoundary fallback={() => null}>
+            <>{center}</>
+          </ErrorBoundary>
         </div>
-    );
+      ) : (
+        <div
+          className="pointer-events-none absolute inset-y-0 left-0 right-0 flex min-w-0 items-center justify-center px-2"
+          style={titleSafeAreaStyle}
+        >
+          {title && <span className="text-sm text-fg-muted truncate">{title}</span>}
+        </div>
+      )}
+
+      {/* Right side - Control Bar and Window Controls */}
+      <div className="no-drag ml-auto flex h-full shrink-0 items-center" style={rightSafeAreaStyle}>
+        {controlBar ? (
+          <ErrorBoundary fallback={() => null}>
+            <>{controlBar}</>
+          </ErrorBoundary>
+        ) : null}
+        {usesInlineMacControls && iconSrc && (
+          <div className="flex h-full shrink-0 items-center px-4">
+            <img src={iconSrc} alt={t("dialogs.window.appIcon")} className="w-5 h-5" />
+          </div>
+        )}
+        {shouldRenderCustomControls && (
+          <CustomWindowControls initialAbility={initialControlAbility} />
+        )}
+      </div>
+    </div>
+  );
 }
 
 interface CustomWindowControlsProps {
-    initialAbility?: WindowControlAbility;
+  initialAbility?: WindowControlAbility;
 }
 
 function CustomWindowControls({ initialAbility }: CustomWindowControlsProps) {
-    const { t } = useTranslation();
-    const { isMaximized, ability, minimize, toggleMaximize, close } = useWindowControls(initialAbility);
+  const { t } = useTranslation();
+  const { isMaximized, ability, minimize, toggleMaximize, close } =
+    useWindowControls(initialAbility);
 
-    return (
-        <div className="flex h-full items-center">
-            {ability.minimizable && (
-                <button
-                    onClick={minimize}
-                    className="h-10 w-10 grid place-items-center text-fg-muted hover:bg-fill rounded-sm transition-colors cursor-default"
-                    aria-label={t("dialogs.window.minimize")}
-                    data-tip={t("dialogs.window.minimize")}
-                >
-                    <Minus className="w-4 h-4" />
-                </button>
-            )}
-            {ability.maximizable && (
-                <button
-                    onClick={toggleMaximize}
-                    className="h-10 w-10 grid place-items-center text-fg-muted hover:bg-fill rounded-sm transition-colors cursor-default"
-                    aria-label={isMaximized ? t("dialogs.window.restore") : t("dialogs.window.maximize")}
-                    data-tip={isMaximized ? t("dialogs.window.restore") : t("dialogs.window.maximize")}
-                >
-                    <Square className="w-3 h-3" />
-                </button>
-            )}
-            {ability.closable && (
-                <button
-                    onClick={close}
-                    className="h-10 w-10 grid place-items-center text-fg-muted hover:bg-danger/80 hover:text-white rounded-sm transition-colors cursor-default"
-                    aria-label={t("common.close")}
-                    data-tip={t("common.close")}
-                >
-                    <X className="w-4 h-4" />
-                </button>
-            )}
-        </div>
-    );
+  return (
+    <div className="flex h-full items-center">
+      {ability.minimizable && (
+        <button
+          onClick={minimize}
+          className="h-10 w-10 grid place-items-center text-fg-muted hover:bg-fill rounded-sm transition-colors cursor-default"
+          aria-label={t("dialogs.window.minimize")}
+          data-tip={t("dialogs.window.minimize")}
+        >
+          <Minus className="w-4 h-4" />
+        </button>
+      )}
+      {ability.maximizable && (
+        <button
+          onClick={toggleMaximize}
+          className="h-10 w-10 grid place-items-center text-fg-muted hover:bg-fill rounded-sm transition-colors cursor-default"
+          aria-label={isMaximized ? t("dialogs.window.restore") : t("dialogs.window.maximize")}
+          data-tip={isMaximized ? t("dialogs.window.restore") : t("dialogs.window.maximize")}
+        >
+          <Square className="w-3 h-3" />
+        </button>
+      )}
+      {ability.closable && (
+        <button
+          onClick={close}
+          className="h-10 w-10 grid place-items-center text-fg-muted hover:bg-danger/80 hover:text-white rounded-sm transition-colors cursor-default"
+          aria-label={t("common.close")}
+          data-tip={t("common.close")}
+        >
+          <X className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+  );
 }

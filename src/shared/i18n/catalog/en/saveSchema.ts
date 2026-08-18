@@ -6,23 +6,23 @@
  * to "what does a slot carry", and a paragraph saying so would be one more thing to read every time.
  */
 export const saveSchema = {
-    title: "Save fields",
-    open: "Save fields",
-    type: {
-        string: "String",
-        integer: "Integer",
-        float: "Float",
-        boolean: "Boolean",
-        json: "JSON",
-        array: "Array",
-    },
-    field: {
-        name: "Name",
-        type: "Type",
-        default: "Default",
-        defaultPlaceholder: "default",
-        add: "Add field",
-        remove: "Remove field",
-        newName: "Field",
-    },
+  title: "Save fields",
+  open: "Save fields",
+  type: {
+    string: "String",
+    integer: "Integer",
+    float: "Float",
+    boolean: "Boolean",
+    json: "JSON",
+    array: "Array"
+  },
+  field: {
+    name: "Name",
+    type: "Type",
+    default: "Default",
+    defaultPlaceholder: "default",
+    add: "Add field",
+    remove: "Remove field",
+    newName: "Field"
+  }
 } as const;

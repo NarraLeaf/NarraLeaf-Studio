@@ -20,7 +20,10 @@ export type DetachedEditorOnClose = "restoreTab" | "close";
 export const DETACHED_EDITOR_ON_CLOSE_KEY = "editor.detachedEditorOnClose" as const;
 
 /** The two values, in the order the settings page offers them. */
-export const DETACHED_EDITOR_ON_CLOSE_OPTIONS: readonly DetachedEditorOnClose[] = ["restoreTab", "close"];
+export const DETACHED_EDITOR_ON_CLOSE_OPTIONS: readonly DetachedEditorOnClose[] = [
+  "restoreTab",
+  "close"
+];
 
 /**
  * Back to a tab, by default.
@@ -32,7 +35,7 @@ export const DETACHED_EDITOR_ON_CLOSE_DEFAULT: DetachedEditorOnClose = "restoreT
 
 /** Narrow an unknown stored value, falling back to the default. */
 export function resolveDetachedEditorOnClose(stored: unknown): DetachedEditorOnClose {
-    return DETACHED_EDITOR_ON_CLOSE_OPTIONS.includes(stored as DetachedEditorOnClose)
-        ? stored as DetachedEditorOnClose
-        : DETACHED_EDITOR_ON_CLOSE_DEFAULT;
+  return DETACHED_EDITOR_ON_CLOSE_OPTIONS.includes(stored as DetachedEditorOnClose)
+    ? (stored as DetachedEditorOnClose)
+    : DETACHED_EDITOR_ON_CLOSE_DEFAULT;
 }

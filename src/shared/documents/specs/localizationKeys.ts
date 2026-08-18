@@ -1,10 +1,10 @@
 import {
-    LOCALIZATION_KEYS_SCHEMA_VERSION,
-    LocalizationKeysDocument,
-    normalizeLocalizationKeysDocument,
+  LOCALIZATION_KEYS_SCHEMA_VERSION,
+  LocalizationKeysDocument,
+  normalizeLocalizationKeysDocument
 } from "../../types/localization";
-import {defineDocumentSpec} from "../registry";
-import {rejectNewerSchema, requireDocumentObject, requireOptionalMap} from "./parseHelpers";
+import { defineDocumentSpec } from "../registry";
+import { rejectNewerSchema, requireDocumentObject, requireOptionalMap } from "./parseHelpers";
 
 /**
  * `editor/localization/keys.json` - the developer-authored named-string registry.
@@ -17,17 +17,17 @@ import {rejectNewerSchema, requireDocumentObject, requireOptionalMap} from "./pa
 export const LOCALIZATION_KEYS_DOCUMENT_PATH = "editor/localization/keys.json";
 
 export const localizationKeysSpec = defineDocumentSpec<LocalizationKeysDocument>({
-    kind: "localization-keys",
-    version: LOCALIZATION_KEYS_SCHEMA_VERSION,
-    paths: [LOCALIZATION_KEYS_DOCUMENT_PATH],
-    parse: (raw, context) => {
-        const record = requireDocumentObject(raw, context, "a localization key registry");
-        rejectNewerSchema(record, context, LOCALIZATION_KEYS_SCHEMA_VERSION);
-        requireOptionalMap(record, "keys", context);
-        return normalizeLocalizationKeysDocument(record);
-    },
-    summarize: document => ({
-        title: "",
-        counts: [{key: "localizationKeys", value: Object.keys(document.keys).length}],
-    }),
+  kind: "localization-keys",
+  version: LOCALIZATION_KEYS_SCHEMA_VERSION,
+  paths: [LOCALIZATION_KEYS_DOCUMENT_PATH],
+  parse: (raw, context) => {
+    const record = requireDocumentObject(raw, context, "a localization key registry");
+    rejectNewerSchema(record, context, LOCALIZATION_KEYS_SCHEMA_VERSION);
+    requireOptionalMap(record, "keys", context);
+    return normalizeLocalizationKeysDocument(record);
+  },
+  summarize: (document) => ({
+    title: "",
+    counts: [{ key: "localizationKeys", value: Object.keys(document.keys).length }]
+  })
 });

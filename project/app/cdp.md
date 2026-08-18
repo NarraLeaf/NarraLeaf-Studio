@@ -69,19 +69,19 @@ Prefer `withCdp` for short scripts. It connects to the target and always closes
 the socket afterward.
 
 ```js
-const { withCdp } = require('./project/app/cdp');
+const { withCdp } = require("./project/app/cdp");
 
 await withCdp(async (cdp) => {
-    await cdp.reload();
-    console.log(await cdp.evaluate('document.readyState'));
+  await cdp.reload();
+  console.log(await cdp.evaluate("document.readyState"));
 });
 ```
 
 Pass options when the target is not the default workspace window:
 
 ```js
-await withCdp({ target: 'launcher', port: 9222 }, async (cdp) => {
-    console.log(await cdp.evaluate('document.title'));
+await withCdp({ target: "launcher", port: 9222 }, async (cdp) => {
+  console.log(await cdp.evaluate("document.title"));
 });
 ```
 
@@ -89,10 +89,10 @@ For lower-level work:
 
 ```js
 await withCdp(async (cdp) => {
-    await cdp.enable('Runtime', 'Page');
-    await cdp.send('Page.reload', { ignoreCache: true });
-    const href = await cdp.evaluate('location.href');
-    console.log(href);
+  await cdp.enable("Runtime", "Page");
+  await cdp.send("Page.reload", { ignoreCache: true });
+  const href = await cdp.evaluate("location.href");
+  console.log(href);
 });
 ```
 

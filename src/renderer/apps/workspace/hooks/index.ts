@@ -13,15 +13,15 @@ export { useWorkspaceFrozen } from "./useWorkspaceFrozen";
 
 // UI Service hooks
 export {
-    useUIService,
-    useNotifications,
-    useActionBarItems,
-    usePanels,
-    usePanelVisibility,
-    useEditorTabs,
-    useActiveEditorTab,
-    useDialogs,
-    useStatusBarItems,
+  useUIService,
+  useNotifications,
+  useActionBarItems,
+  usePanels,
+  usePanelVisibility,
+  useEditorTabs,
+  useActiveEditorTab,
+  useDialogs,
+  useStatusBarItems
 } from "./useUIService";
 
 // Focus management hooks
@@ -32,27 +32,27 @@ export { useHistoryScope } from "./useHistoryScope";
 
 // Keybinding hooks and utilities
 export {
-    // Hooks
-    useKeybinding,
-    useKeybindings,
-    useKeybindingRegistry,
-    // Types
-    type UseKeybindingOptions,
-    type UseKeybindingsOptions,
-    type KeybindingDefinition,
-    type KeybindingCondition,
-    // Condition utilities
-    whenFocused,
-    whenTargetFocused,
-    whenEditorFocused,
-    whenEditorTabsFocused,
-    whenNoDialog,
-    whenNotIn,
-    always,
-    never,
-    and,
-    or,
-    not,
-    fromGetter,
-    contextual,
+  // Hooks
+  useKeybinding,
+  useKeybindings,
+  useKeybindingRegistry,
+  // Types
+  type UseKeybindingOptions,
+  type UseKeybindingsOptions,
+  type KeybindingDefinition,
+  type KeybindingCondition,
+  // Condition utilities
+  whenFocused,
+  whenTargetFocused,
+  whenEditorFocused,
+  whenEditorTabsFocused,
+  whenNoDialog,
+  whenNotIn,
+  always,
+  never,
+  and,
+  or,
+  not,
+  fromGetter,
+  contextual
 } from "./keybinding";

@@ -13,9 +13,9 @@ import type { Asset } from "@/lib/workspace/services/assets/types";
 export const TEXT_EDITOR_TAB_PREFIX = "narraleaf-studio:assets:text-editor-";
 
 export function getTextEditorTabId(assetId: string): string {
-    return `${TEXT_EDITOR_TAB_PREFIX}${assetId}`;
+  return `${TEXT_EDITOR_TAB_PREFIX}${assetId}`;
 }
 
 export interface TextEditorTabPayload {
-    asset: Asset<AssetType.Other>;
+  asset: Asset<AssetType.Other>;
 }

@@ -60,36 +60,36 @@ export type GameBuildCompression = "store" | "normal" | "maximum";
  * "universal" already covers the both-arches case.
  */
 export type GameBuildTarget = {
-    platform: GameBuildPlatform;
-    formats: GameBuildFormat[];
-    /**
-     * Ignored for "web" and the mobile platforms: a static site has no CPU
-     * arch, and the WebView shell templates are ABI-independent.
-     */
-    arch?: GameBuildArch;
+  platform: GameBuildPlatform;
+  formats: GameBuildFormat[];
+  /**
+   * Ignored for "web" and the mobile platforms: a static site has no CPU
+   * arch, and the WebView shell templates are ABI-independent.
+   */
+  arch?: GameBuildArch;
 };
 
 export type GameBuildRequest = {
-    targets: GameBuildTarget[];
-    /**
-     * Which build variant this build is. Absent, or the release id, means the project's own values.
-     *
-     * A variant states its own application name, identifier and version and inherits the rest, so
-     * this is what decides the identity the artifacts carry. An id naming a variant the project does
-     * not have is refused rather than fallen back on: falling back would ship the release identity
-     * under the name of a variant the author selected, which is the one way this can be wrong
-     * without anyone noticing.
-     */
-    appTagId?: string;
-    /**
-     * Absolute output directory for finished artifacts (chosen via the native
-     * folder picker). When absent, defaults to "<project>/dist".
-     */
-    outputDir?: string;
-    /** Payload compression; defaults to "maximum" (electron-builder's own default). */
-    compression?: GameBuildCompression;
-    /** Reveal the output folder when the build finishes. Defaults to true. */
-    openWhenDone?: boolean;
+  targets: GameBuildTarget[];
+  /**
+   * Which build variant this build is. Absent, or the release id, means the project's own values.
+   *
+   * A variant states its own application name, identifier and version and inherits the rest, so
+   * this is what decides the identity the artifacts carry. An id naming a variant the project does
+   * not have is refused rather than fallen back on: falling back would ship the release identity
+   * under the name of a variant the author selected, which is the one way this can be wrong
+   * without anyone noticing.
+   */
+  appTagId?: string;
+  /**
+   * Absolute output directory for finished artifacts (chosen via the native
+   * folder picker). When absent, defaults to "<project>/dist".
+   */
+  outputDir?: string;
+  /** Payload compression; defaults to "maximum" (electron-builder's own default). */
+  compression?: GameBuildCompression;
+  /** Reveal the output folder when the build finishes. Defaults to true. */
+  openWhenDone?: boolean;
 };
 
 /**
@@ -99,7 +99,13 @@ export type GameBuildRequest = {
  * plugin declares a value for the platforms being built. That is safe because a finding in it can
  * only come from a declared field, which is the same fact that puts the page there.
  */
-export type BuildPreflightSection = "targets" | "identity" | "content" | "plugins" | "signing" | "output";
+export type BuildPreflightSection =
+  | "targets"
+  | "identity"
+  | "content"
+  | "plugins"
+  | "signing"
+  | "output";
 
 /**
  * "error" blocks the build (the pipeline would throw); "warning" ships but
@@ -108,114 +114,114 @@ export type BuildPreflightSection = "targets" | "identity" | "content" | "plugin
 export type BuildPreflightSeverity = "error" | "warning";
 
 export type BuildPreflightCode =
-    | "no-targets"
-    | "unbuildable-platform"
-    | "version-invalid"
-    | "version-missing"
-    | "identifier-missing"
-    /**
-     * The project's build variants are on disk but could not be read, so nothing here knows which
-     * identity this build would carry. The build itself refuses the same file, so this is an error
-     * rather than a note about a degraded reading.
-     */
-    | "variants-unreadable"
-    | "icon-missing"
-    | "icon-unusable"
-    | "icon-low-resolution"
-    | "icon-stale"
-    | "plugins-invalid"
-    /**
-     * A plugin declared a value the build cannot ship without, and the variant being built has none.
-     * Reported once per value asked for, so a field taking one value per platform names the platform
-     * it is missing for.
-     */
-    | "plugin-config-missing"
-    /**
-     * A plugin secret the project names by handle whose value is not sealed on this machine. The
-     * ordinary state of a project a collaborator configured - key material never travels with a
-     * project - rather than a damaged one.
-     */
-    | "plugin-secret-unavailable"
-    /**
-     * A `/cut` row naming the variant being built that would take nothing with it - the last row of
-     * its scene, or one below an unconditional jump. It reads on the page as an ending and produces
-     * a package identical to the one without it, so the author believes their demo stops there while
-     * every line of the book ships.
-     */
-    | "cut-point-inert"
-    /**
-     * The variant shortens the story and nobody has said what the player sees when it ends. The
-     * story simply runs out of rows and the last frame stays on screen, which is what an author
-     * discovers by playing the build to the end. Picking "show nothing" on the variant answers it.
-     */
-    | "variant-ending-missing"
-    /**
-     * The story parts into routes and only some of them end for this variant. Not a mistake by
-     * itself - a demo may ship one route whole on purpose - so it ships, and says so.
-     */
-    | "variant-branch-uncut"
-    | "build-dependency-unavailable"
-    | "sidecar-target-missing"
-    | "sidecar-crossbuild-exec-bit"
-    | "encryption-key-unavailable"
-    | "web-unprotected"
-    /**
-     * The project carries progress between editions, and this target's shell cannot: a page has no
-     * shared file to write, and the mobile shells serve that same page.
-     */
-    | "progress-carry-unsupported"
-    | "web-lossy-images"
-    | "mobile-template-missing"
-    | "mobile-payload-too-large"
-    | "version-uncodable"
-    | "appid-android-adjusted"
-    | "bundleid-ios-adjusted"
-    // Reported only for a platform the project has NOT pointed at a signing
-    // credential: once one is configured, the specific signing-* codes below
-    // carry whatever is wrong with it instead.
-    | "unsigned"
-    | "unsigned-android"
-    | "unsigned-ios"
-    // The project names a credential this machine does not hold - the expected
-    // shape when a version-controlled project is opened somewhere else, since
-    // the key material never travels with it.
-    | "signing-credential-missing"
-    | "signing-credential-expired"
-    | "signing-credential-expiring"
-    /** The password is on disk but cannot be unsealed here (keyring gone, or another OS account). */
-    | "signing-secret-unavailable"
-    /** Configured, but the host lacks the program that does the signing (gpg, the Azure module). */
-    | "signing-tool-missing"
-    /** The host cannot drive this credential at all - e.g. the Windows certificate store off Windows. */
-    | "signing-host-unsupported"
-    /** Signing reaches the network (timestamping, cloud signing, fetching signtool). */
-    | "signing-needs-network"
-    /**
-     * The Android target is producing only an APK, which Google Play does not
-     * accept. Reported against a configured release keystore, because that is
-     * the point at which an author means to publish; selecting the AAB format
-     * alongside answers it.
-     */
-    | "signing-android-not-play"
-    | "signing-ios-profile-mismatch"
-    /** The keychain identity the macOS credential names is not on this machine. */
-    | "signing-macos-identity-missing"
-    /**
-     * The identity is in the keychain but `security` will not offer it: expired,
-     * missing its private key, or not chaining to a trusted root. A distinct
-     * code from "missing" because the author has to fix the certificate they
-     * have rather than go looking for one they do not.
-     */
-    | "signing-macos-identity-unusable"
-    /**
-     * The macOS identity is not a `Developer ID Application` one, so Gatekeeper
-     * will reject the result on a player's machine and Apple will refuse to
-     * notarize it.
-     */
-    | "signing-macos-not-developer-id"
-    | "cross-build-download"
-    | "output-not-writable"
-    | "output-not-empty";
+  | "no-targets"
+  | "unbuildable-platform"
+  | "version-invalid"
+  | "version-missing"
+  | "identifier-missing"
+  /**
+   * The project's build variants are on disk but could not be read, so nothing here knows which
+   * identity this build would carry. The build itself refuses the same file, so this is an error
+   * rather than a note about a degraded reading.
+   */
+  | "variants-unreadable"
+  | "icon-missing"
+  | "icon-unusable"
+  | "icon-low-resolution"
+  | "icon-stale"
+  | "plugins-invalid"
+  /**
+   * A plugin declared a value the build cannot ship without, and the variant being built has none.
+   * Reported once per value asked for, so a field taking one value per platform names the platform
+   * it is missing for.
+   */
+  | "plugin-config-missing"
+  /**
+   * A plugin secret the project names by handle whose value is not sealed on this machine. The
+   * ordinary state of a project a collaborator configured - key material never travels with a
+   * project - rather than a damaged one.
+   */
+  | "plugin-secret-unavailable"
+  /**
+   * A `/cut` row naming the variant being built that would take nothing with it - the last row of
+   * its scene, or one below an unconditional jump. It reads on the page as an ending and produces
+   * a package identical to the one without it, so the author believes their demo stops there while
+   * every line of the book ships.
+   */
+  | "cut-point-inert"
+  /**
+   * The variant shortens the story and nobody has said what the player sees when it ends. The
+   * story simply runs out of rows and the last frame stays on screen, which is what an author
+   * discovers by playing the build to the end. Picking "show nothing" on the variant answers it.
+   */
+  | "variant-ending-missing"
+  /**
+   * The story parts into routes and only some of them end for this variant. Not a mistake by
+   * itself - a demo may ship one route whole on purpose - so it ships, and says so.
+   */
+  | "variant-branch-uncut"
+  | "build-dependency-unavailable"
+  | "sidecar-target-missing"
+  | "sidecar-crossbuild-exec-bit"
+  | "encryption-key-unavailable"
+  | "web-unprotected"
+  /**
+   * The project carries progress between editions, and this target's shell cannot: a page has no
+   * shared file to write, and the mobile shells serve that same page.
+   */
+  | "progress-carry-unsupported"
+  | "web-lossy-images"
+  | "mobile-template-missing"
+  | "mobile-payload-too-large"
+  | "version-uncodable"
+  | "appid-android-adjusted"
+  | "bundleid-ios-adjusted"
+  // Reported only for a platform the project has NOT pointed at a signing
+  // credential: once one is configured, the specific signing-* codes below
+  // carry whatever is wrong with it instead.
+  | "unsigned"
+  | "unsigned-android"
+  | "unsigned-ios"
+  // The project names a credential this machine does not hold - the expected
+  // shape when a version-controlled project is opened somewhere else, since
+  // the key material never travels with it.
+  | "signing-credential-missing"
+  | "signing-credential-expired"
+  | "signing-credential-expiring"
+  /** The password is on disk but cannot be unsealed here (keyring gone, or another OS account). */
+  | "signing-secret-unavailable"
+  /** Configured, but the host lacks the program that does the signing (gpg, the Azure module). */
+  | "signing-tool-missing"
+  /** The host cannot drive this credential at all - e.g. the Windows certificate store off Windows. */
+  | "signing-host-unsupported"
+  /** Signing reaches the network (timestamping, cloud signing, fetching signtool). */
+  | "signing-needs-network"
+  /**
+   * The Android target is producing only an APK, which Google Play does not
+   * accept. Reported against a configured release keystore, because that is
+   * the point at which an author means to publish; selecting the AAB format
+   * alongside answers it.
+   */
+  | "signing-android-not-play"
+  | "signing-ios-profile-mismatch"
+  /** The keychain identity the macOS credential names is not on this machine. */
+  | "signing-macos-identity-missing"
+  /**
+   * The identity is in the keychain but `security` will not offer it: expired,
+   * missing its private key, or not chaining to a trusted root. A distinct
+   * code from "missing" because the author has to fix the certificate they
+   * have rather than go looking for one they do not.
+   */
+  | "signing-macos-identity-unusable"
+  /**
+   * The macOS identity is not a `Developer ID Application` one, so Gatekeeper
+   * will reject the result on a player's machine and Apple will refuse to
+   * notarize it.
+   */
+  | "signing-macos-not-developer-id"
+  | "cross-build-download"
+  | "output-not-writable"
+  | "output-not-empty";
 
 /**
  * One thing the build would complain about, found before the user commits.
@@ -223,20 +229,14 @@ export type BuildPreflightCode =
  * renders English, the dialog renders the user's language from the same finding.
  */
 export type BuildPreflightFinding = {
-    code: BuildPreflightCode;
-    severity: BuildPreflightSeverity;
-    section: BuildPreflightSection;
-    /** Values the message interpolates (platform name, bad version, …). */
-    detail?: Record<string, string>;
+  code: BuildPreflightCode;
+  severity: BuildPreflightSeverity;
+  section: BuildPreflightSection;
+  /** Values the message interpolates (platform name, bad version, …). */
+  detail?: Record<string, string>;
 };
 
-export type GameBuildStatus =
-    | "idle"
-    | "preparing"
-    | "compiling"
-    | "packaging"
-    | "done"
-    | "error";
+export type GameBuildStatus = "idle" | "preparing" | "compiling" | "packaging" | "done" | "error";
 
 /**
  * What one produced artifact came to on disk.
@@ -247,13 +247,13 @@ export type GameBuildStatus =
  * wrong size is worse than no size.
  */
 export type GameBuildArtifactSize = {
-    /** Absolute path; matches the entry of `artifacts` this size belongs to. */
-    path: string;
-    /**
-     * Total bytes. For an artifact that is a directory (the web export, a macOS `.app`) this is the
-     * sum of the whole tree, not what `stat` reports for the directory entry itself.
-     */
-    bytes?: number;
+  /** Absolute path; matches the entry of `artifacts` this size belongs to. */
+  path: string;
+  /**
+   * Total bytes. For an artifact that is a directory (the web export, a macOS `.app`) this is the
+   * sum of the whole tree, not what `stat` reports for the directory entry itself.
+   */
+  bytes?: number;
 };
 
 /**
@@ -262,47 +262,47 @@ export type GameBuildArtifactSize = {
  * of measured artifacts when showing it.
  */
 export function totalGameBuildArtifactBytes(sizes: GameBuildArtifactSize[]): number {
-    return sizes.reduce((total, size) => total + (size.bytes ?? 0), 0);
+  return sizes.reduce((total, size) => total + (size.bytes ?? 0), 0);
 }
 
 /** Snapshot returned by build.getStatus; the renderer polls this. */
 export type GameBuildStateSnapshot = {
-    status: GameBuildStatus;
-    startedAt?: number;
-    finishedAt?: number;
-    /**
-     * Platforms this build was asked to produce, deduplicated in request order. Carried on the
-     * snapshot rather than left to the caller because the renderer only ever sees the snapshot -
-     * the dashboard archives finished builds off this poll and has no other route to the request.
-     *
-     * Absent on the idle snapshot, which describes no build.
-     */
-    platforms?: GameBuildPlatform[];
-    /** Absolute paths of produced artifacts (installers/archives/app dirs). */
-    artifacts?: string[];
-    /**
-     * What each of those artifacts came to on disk, in `artifacts` order.
-     *
-     * Carried on the snapshot rather than left in the console line that prints it, because the
-     * console line is not the only place an author meets a finished build - anything polling the
-     * status can show what was shipped without walking the output folder a second time.
-     *
-     * Absent on any snapshot that is not a finished build, and an individual entry may carry no
-     * size (see {@link GameBuildArtifactSize}).
-     */
-    artifactSizes?: GameBuildArtifactSize[];
-    /** Absolute output directory of the finished build. */
-    outputDir?: string;
-    error?: string;
+  status: GameBuildStatus;
+  startedAt?: number;
+  finishedAt?: number;
+  /**
+   * Platforms this build was asked to produce, deduplicated in request order. Carried on the
+   * snapshot rather than left to the caller because the renderer only ever sees the snapshot -
+   * the dashboard archives finished builds off this poll and has no other route to the request.
+   *
+   * Absent on the idle snapshot, which describes no build.
+   */
+  platforms?: GameBuildPlatform[];
+  /** Absolute paths of produced artifacts (installers/archives/app dirs). */
+  artifacts?: string[];
+  /**
+   * What each of those artifacts came to on disk, in `artifacts` order.
+   *
+   * Carried on the snapshot rather than left in the console line that prints it, because the
+   * console line is not the only place an author meets a finished build - anything polling the
+   * status can show what was shipped without walking the output folder a second time.
+   *
+   * Absent on any snapshot that is not a finished build, and an individual entry may carry no
+   * size (see {@link GameBuildArtifactSize}).
+   */
+  artifactSizes?: GameBuildArtifactSize[];
+  /** Absolute output directory of the finished build. */
+  outputDir?: string;
+  error?: string;
 };
 
 export const GAME_BUILD_FORMATS_BY_PLATFORM: Record<GameBuildPlatform, GameBuildFormat[]> = {
-    windows: ["zip", "nsis", "dir"],
-    macos: ["zip", "dmg", "dir"],
-    linux: ["zip", "appimage", "dir"],
-    web: ["zip", "dir"],
-    android: ["apk", "aab"],
-    ios: ["ipa"],
+  windows: ["zip", "nsis", "dir"],
+  macos: ["zip", "dmg", "dir"],
+  linux: ["zip", "appimage", "dir"],
+  web: ["zip", "dir"],
+  android: ["apk", "aab"],
+  ios: ["ipa"]
 };
 
 /**
@@ -311,16 +311,21 @@ export const GAME_BUILD_FORMATS_BY_PLATFORM: Record<GameBuildPlatform, GameBuild
  * grew, every "not web means desktop" site silently misrouted mobile targets
  * into the electron-builder path. Keeping the one exhaustive answer here.
  */
-export function isDesktopBuildPlatform(platform: GameBuildPlatform): platform is GameBuildDesktopPlatform {
-    return platform === "windows" || platform === "macos" || platform === "linux";
+export function isDesktopBuildPlatform(
+  platform: GameBuildPlatform
+): platform is GameBuildDesktopPlatform {
+  return platform === "windows" || platform === "macos" || platform === "linux";
 }
 
-export function isMobileBuildPlatform(platform: GameBuildPlatform): platform is GameBuildMobilePlatform {
-    return platform === "android" || platform === "ios";
+export function isMobileBuildPlatform(
+  platform: GameBuildPlatform
+): platform is GameBuildMobilePlatform {
+  return platform === "android" || platform === "ios";
 }
 
 /** Reverse-domain identifiers usable as a bundle/app id verbatim. */
-const APP_ID_PATTERN = /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$/;
+const APP_ID_PATTERN =
+  /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$/;
 
 /**
  * Derive the packager app id from the project identifier. An identifier that is
@@ -332,15 +337,16 @@ const APP_ID_PATTERN = /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A
  * with the one that actually packages.
  */
 export function deriveGameAppId(identifier: string | undefined, projectName: string): string {
-    const trimmed = identifier?.trim();
-    if (trimmed && APP_ID_PATTERN.test(trimmed)) {
-        return trimmed;
-    }
-    const sanitized = sanitizeProjectFileName(trimmed || projectName)
-        .toLowerCase()
-        .replace(/[^a-z0-9-]+/g, "-")
-        .replace(/^-+|-+$/g, "") || "game";
-    return `com.narraleaf.games.${sanitized}`;
+  const trimmed = identifier?.trim();
+  if (trimmed && APP_ID_PATTERN.test(trimmed)) {
+    return trimmed;
+  }
+  const sanitized =
+    sanitizeProjectFileName(trimmed || projectName)
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "game";
+  return `com.narraleaf.games.${sanitized}`;
 }
 
 /**
@@ -363,9 +369,9 @@ export function deriveGameAppId(identifier: string | undefined, projectName: str
  * asserts it stays.
  */
 export const GAME_BUILD_ARCHS_BY_PLATFORM: Record<GameBuildDesktopPlatform, GameBuildArch[]> = {
-    windows: ["x64", "arm64"],
-    macos: ["arm64", "x64", "universal"],
-    linux: ["x64", "arm64"],
+  windows: ["x64", "arm64"],
+  macos: ["arm64", "x64", "universal"],
+  linux: ["x64", "arm64"]
 };
 
 /**
@@ -374,20 +380,23 @@ export const GAME_BUILD_ARCHS_BY_PLATFORM: Record<GameBuildDesktopPlatform, Game
  * pipeline hardcoded before arch became selectable.
  */
 export function defaultGameBuildArch(
-    platform: GameBuildDesktopPlatform,
-    hostPlatform: GameBuildDesktopPlatform,
-    hostArch: string,
+  platform: GameBuildDesktopPlatform,
+  hostPlatform: GameBuildDesktopPlatform,
+  hostArch: string
 ): GameBuildArch {
-    if (platform !== hostPlatform) {
-        return "x64";
-    }
-    return hostArch === "arm64" ? "arm64" : "x64";
+  if (platform !== hostPlatform) {
+    return "x64";
+  }
+  return hostArch === "arm64" ? "arm64" : "x64";
 }
 
 /** Keep only archs the platform actually offers, falling back to its first. */
-export function normalizeGameBuildArch(platform: GameBuildDesktopPlatform, arch: unknown): GameBuildArch {
-    const allowed = GAME_BUILD_ARCHS_BY_PLATFORM[platform];
-    return allowed.find(candidate => candidate === arch) ?? allowed[0];
+export function normalizeGameBuildArch(
+  platform: GameBuildDesktopPlatform,
+  arch: unknown
+): GameBuildArch {
+  const allowed = GAME_BUILD_ARCHS_BY_PLATFORM[platform];
+  return allowed.find((candidate) => candidate === arch) ?? allowed[0];
 }
 
 /**
@@ -395,9 +404,9 @@ export function normalizeGameBuildArch(platform: GameBuildDesktopPlatform, arch:
  * Windows is "win", not "windows".
  */
 const BUILDER_OS_TOKEN: Record<GameBuildDesktopPlatform, string> = {
-    windows: "win",
-    macos: "mac",
-    linux: "linux",
+  windows: "win",
+  macos: "mac",
+  linux: "linux"
 };
 
 /**
@@ -406,13 +415,13 @@ const BUILDER_OS_TOKEN: Record<GameBuildDesktopPlatform, string> = {
  * `mobileExportFileName`); they are listed to keep the map total.
  */
 const BUILDER_EXT_TOKEN: Record<Exclude<GameBuildFormat, "dir">, string> = {
-    zip: "zip",
-    nsis: "exe",
-    dmg: "dmg",
-    appimage: "AppImage",
-    apk: "apk",
-    aab: "aab",
-    ipa: "ipa",
+  zip: "zip",
+  nsis: "exe",
+  dmg: "dmg",
+  appimage: "AppImage",
+  apk: "apk",
+  aab: "aab",
+  ipa: "ipa"
 };
 
 /**
@@ -429,8 +438,8 @@ const BUILDER_EXT_TOKEN: Record<Exclude<GameBuildFormat, "dir">, string> = {
  * therefore exactly what they were before variants existed.
  */
 export function gameBuildArtifactBaseName(projectName: string, variantName: string | null): string {
-    const base = sanitizeProjectFileName(projectName);
-    return variantName === null ? base : `${base}-${sanitizeProjectFileName(variantName)}`;
+  const base = sanitizeProjectFileName(projectName);
+  return variantName === null ? base : `${base}-${sanitizeProjectFileName(variantName)}`;
 }
 
 /**
@@ -439,17 +448,17 @@ export function gameBuildArtifactBaseName(projectName: string, variantName: stri
  * from the same rules: two copies would drift the moment either side changed.
  */
 export function gameBuildArtifactNamePattern(artifactBaseName: string): string {
-    return `${artifactBaseName}-\${version}-\${os}-\${arch}.\${ext}`;
+  return `${artifactBaseName}-\${version}-\${os}-\${arch}.\${ext}`;
 }
 
 /** Folder the web export's "dir" format is written to, under the output dir. */
 export function webExportDirName(artifactBaseName: string, version: string): string {
-    return `${artifactBaseName}-${version}-web`;
+  return `${artifactBaseName}-${version}-web`;
 }
 
 /** File the web export's "zip" format is written to, under the output dir. */
 export function webExportZipName(artifactBaseName: string, version: string): string {
-    return `${webExportDirName(artifactBaseName, version)}.zip`;
+  return `${webExportDirName(artifactBaseName, version)}.zip`;
 }
 
 /**
@@ -464,12 +473,12 @@ export function webExportZipName(artifactBaseName: string, version: string): str
  * to be able to end in either.
  */
 export function mobileExportFileName(
-    platform: GameBuildMobilePlatform,
-    format: GameBuildMobileFormat,
-    artifactBaseName: string,
-    version: string,
+  platform: GameBuildMobilePlatform,
+  format: GameBuildMobileFormat,
+  artifactBaseName: string,
+  version: string
 ): string {
-    return `${artifactBaseName}-${version}-${platform}.${format}`;
+  return `${artifactBaseName}-${version}-${platform}.${format}`;
 }
 
 /**
@@ -483,13 +492,13 @@ export function mobileExportFileName(
  * than asserted through a type predicate (whose body TypeScript never checks).
  */
 function mobilePackageFormat(
-    platform: GameBuildMobilePlatform,
-    format: GameBuildFormat,
+  platform: GameBuildMobilePlatform,
+  format: GameBuildFormat
 ): GameBuildMobileFormat | null {
-    if (!GAME_BUILD_FORMATS_BY_PLATFORM[platform].includes(format)) {
-        return null;
-    }
-    return format === "apk" || format === "aab" || format === "ipa" ? format : null;
+  if (!GAME_BUILD_FORMATS_BY_PLATFORM[platform].includes(format)) {
+    return null;
+  }
+  return format === "apk" || format === "aab" || format === "ipa" ? format : null;
 }
 
 /**
@@ -504,19 +513,19 @@ function mobilePackageFormat(
  * an error rather than silently truncating and breaking monotonicity.
  */
 export function deriveAndroidVersionCode(version: string): number | null {
-    const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version.trim());
-    if (!match) {
-        return null;
-    }
-    const major = Number(match[1]);
-    const minor = Number(match[2]);
-    const patch = Number(match[3]);
-    if (major > 2099 || minor > 999 || patch > 999) {
-        return null;
-    }
-    // 0.0.0 (the no-version fallback) still needs a valid code; installers
-    // reject versionCode 0.
-    return Math.max(1, major * 1_000_000 + minor * 1_000 + patch);
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version.trim());
+  if (!match) {
+    return null;
+  }
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  const patch = Number(match[3]);
+  if (major > 2099 || minor > 999 || patch > 999) {
+    return null;
+  }
+  // 0.0.0 (the no-version fallback) still needs a valid code; installers
+  // reject versionCode 0.
+  return Math.max(1, major * 1_000_000 + minor * 1_000 + patch);
 }
 
 /**
@@ -529,10 +538,10 @@ export function deriveAndroidVersionCode(version: string): number | null {
  * one shipped. The store batch gives CFBundleVersion its own meaning.
  */
 export function deriveIosBundleVersion(version: string): string {
-    const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version.trim());
-    // Callers validate the version first (isValidProjectVersion), so the
-    // fallback only guards non-UI callers passing something unparseable.
-    return match ? `${Number(match[1])}.${Number(match[2])}.${Number(match[3])}` : "0.0.0";
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version.trim());
+  // Callers validate the version first (isValidProjectVersion), so the
+  // fallback only guards non-UI callers passing something unparseable.
+  return match ? `${Number(match[1])}.${Number(match[2])}.${Number(match[3])}` : "0.0.0";
 }
 
 /**
@@ -544,12 +553,12 @@ export function deriveIosBundleVersion(version: string): string {
  * author when the shipped package name differs from the displayed app id.
  */
 export function normalizeAndroidPackageName(appId: string): string {
-    const segments = appId.split(".").map(segment => {
-        const cleaned = segment.replace(/[^A-Za-z0-9_]/g, "_");
-        return /^[A-Za-z]/.test(cleaned) ? cleaned : `n${cleaned}`;
-    });
-    // deriveGameAppId always emits at least two segments; guard non-UI callers.
-    return segments.length >= 2 ? segments.join(".") : `com.narraleaf.games.${segments[0]}`;
+  const segments = appId.split(".").map((segment) => {
+    const cleaned = segment.replace(/[^A-Za-z0-9_]/g, "_");
+    return /^[A-Za-z]/.test(cleaned) ? cleaned : `n${cleaned}`;
+  });
+  // deriveGameAppId always emits at least two segments; guard non-UI callers.
+  return segments.length >= 2 ? segments.join(".") : `com.narraleaf.games.${segments[0]}`;
 }
 
 /**
@@ -558,10 +567,10 @@ export function normalizeAndroidPackageName(appId: string): string {
  * rule, which is why the two normalizations are separate functions.
  */
 export function normalizeIosBundleId(appId: string): string {
-    return appId
-        .split(".")
-        .map(segment => segment.replace(/[^A-Za-z0-9-]/g, "-") || "app")
-        .join(".");
+  return appId
+    .split(".")
+    .map((segment) => segment.replace(/[^A-Za-z0-9-]/g, "-") || "app")
+    .join(".");
 }
 
 /**
@@ -571,10 +580,10 @@ export function normalizeIosBundleId(appId: string): string {
  * which is the one thing the artifact preview must not do.
  */
 function artifactArchToken(arch: GameBuildArch, extToken: string): string {
-    if (arch === "x64" && extToken === "AppImage") {
-        return "x86_64";
-    }
-    return arch;
+  if (arch === "x64" && extToken === "AppImage") {
+    return "x86_64";
+  }
+  return arch;
 }
 
 /**
@@ -583,16 +592,16 @@ function artifactArchToken(arch: GameBuildArch, extToken: string): string {
  * arch suffix is empty for the default arch (x64).
  */
 function unpackedDirName(platform: GameBuildDesktopPlatform, arch: GameBuildArch): string {
-    const archSuffix = arch === "x64" ? "" : `-${arch}`;
-    return `${BUILDER_OS_TOKEN[platform]}${archSuffix}${platform === "macos" ? "" : "-unpacked"}`;
+  const archSuffix = arch === "x64" ? "" : `-${arch}`;
+  return `${BUILDER_OS_TOKEN[platform]}${archSuffix}${platform === "macos" ? "" : "-unpacked"}`;
 }
 
 export type PredictedGameBuildArtifact = {
-    /** Name as it will appear directly under the output directory. */
-    name: string;
-    kind: "file" | "folder";
-    platform: GameBuildPlatform;
-    format: GameBuildFormat;
+  /** Name as it will appear directly under the output directory. */
+  name: string;
+  kind: "file" | "folder";
+  platform: GameBuildPlatform;
+  format: GameBuildFormat;
 };
 
 /**
@@ -602,93 +611,93 @@ export type PredictedGameBuildArtifact = {
  * from the same helpers used here.
  */
 export function predictGameBuildArtifacts(input: {
-    artifactBaseName: string;
-    version: string;
-    targets: GameBuildTarget[];
+  artifactBaseName: string;
+  version: string;
+  targets: GameBuildTarget[];
 }): PredictedGameBuildArtifact[] {
-    const { artifactBaseName, version, targets } = input;
-    const predicted: PredictedGameBuildArtifact[] = [];
-    for (const target of targets) {
-        const { platform } = target;
-        if (platform === "web") {
-            for (const format of target.formats) {
-                if (format === "dir") {
-                    predicted.push({
-                        name: webExportDirName(artifactBaseName, version),
-                        kind: "folder",
-                        platform: "web",
-                        format,
-                    });
-                } else if (format === "zip") {
-                    predicted.push({
-                        name: webExportZipName(artifactBaseName, version),
-                        kind: "file",
-                        platform: "web",
-                        format,
-                    });
-                }
-            }
-            continue;
+  const { artifactBaseName, version, targets } = input;
+  const predicted: PredictedGameBuildArtifact[] = [];
+  for (const target of targets) {
+    const { platform } = target;
+    if (platform === "web") {
+      for (const format of target.formats) {
+        if (format === "dir") {
+          predicted.push({
+            name: webExportDirName(artifactBaseName, version),
+            kind: "folder",
+            platform: "web",
+            format
+          });
+        } else if (format === "zip") {
+          predicted.push({
+            name: webExportZipName(artifactBaseName, version),
+            kind: "file",
+            platform: "web",
+            format
+          });
         }
-        if (platform === "android" || platform === "ios") {
-            // One artifact per selected format, not one per platform: an Android
-            // target asked for both packages writes both, off the same repack.
-            for (const format of target.formats) {
-                const packageFormat = mobilePackageFormat(platform, format);
-                if (!packageFormat) {
-                    continue;
-                }
-                predicted.push({
-                    name: mobileExportFileName(platform, packageFormat, artifactBaseName, version),
-                    kind: "file",
-                    platform,
-                    format,
-                });
-            }
-            continue;
-        }
-        // The narrowing above (not web, not mobile) is what makes `platform`
-        // desktop here - no cast, so the next platform addition fails to
-        // compile instead of falling into the desktop path at runtime (the
-        // old cast let non-desktop platforms through, crashing in the arch
-        // lookup below before any name was produced).
-        const arch = normalizeGameBuildArch(platform, target.arch);
-        for (const format of target.formats) {
-            if (format === "dir") {
-                predicted.push({
-                    name: unpackedDirName(platform, arch),
-                    kind: "folder",
-                    platform,
-                    format,
-                });
-                continue;
-            }
-            const extToken = BUILDER_EXT_TOKEN[format];
-            predicted.push({
-                name: `${artifactBaseName}-${version}-${BUILDER_OS_TOKEN[platform]}-${artifactArchToken(arch, extToken)}.${extToken}`,
-                kind: "file",
-                platform,
-                format,
-            });
-        }
+      }
+      continue;
     }
-    return predicted;
+    if (platform === "android" || platform === "ios") {
+      // One artifact per selected format, not one per platform: an Android
+      // target asked for both packages writes both, off the same repack.
+      for (const format of target.formats) {
+        const packageFormat = mobilePackageFormat(platform, format);
+        if (!packageFormat) {
+          continue;
+        }
+        predicted.push({
+          name: mobileExportFileName(platform, packageFormat, artifactBaseName, version),
+          kind: "file",
+          platform,
+          format
+        });
+      }
+      continue;
+    }
+    // The narrowing above (not web, not mobile) is what makes `platform`
+    // desktop here - no cast, so the next platform addition fails to
+    // compile instead of falling into the desktop path at runtime (the
+    // old cast let non-desktop platforms through, crashing in the arch
+    // lookup below before any name was produced).
+    const arch = normalizeGameBuildArch(platform, target.arch);
+    for (const format of target.formats) {
+      if (format === "dir") {
+        predicted.push({
+          name: unpackedDirName(platform, arch),
+          kind: "folder",
+          platform,
+          format
+        });
+        continue;
+      }
+      const extToken = BUILDER_EXT_TOKEN[format];
+      predicted.push({
+        name: `${artifactBaseName}-${version}-${BUILDER_OS_TOKEN[platform]}-${artifactArchToken(arch, extToken)}.${extToken}`,
+        kind: "file",
+        platform,
+        format
+      });
+    }
+  }
+  return predicted;
 }
 
 /** The platform value describing the machine Studio itself runs on. */
 export function currentGameBuildPlatform(): GameBuildDesktopPlatform {
-    return platformFromSystem(process.platform);
+  return platformFromSystem(process.platform);
 }
 
 /** Map a Node `process.platform` string to a build platform. */
 export function platformFromSystem(system: string): GameBuildDesktopPlatform {
-    if (system === "darwin") {
-        return "macos";
-    }
-    if (system === "win32") {
-        return "windows";
-    }
-    return "linux";
+  if (system === "darwin") {
+    return "macos";
+  }
+  if (system === "win32") {
+    return "windows";
+  }
+  return "linux";
 }
 
 /**
@@ -701,15 +710,15 @@ export function platformFromSystem(system: string): GameBuildDesktopPlatform {
  * so the next platform addition must state its answer explicitly.
  */
 export function hostCanBuildTarget(host: GameBuildPlatform, target: GameBuildPlatform): boolean {
-    switch (target) {
-        case "web":
-        case "android":
-        case "ios":
-        case "windows":
-            return true;
-        case "macos":
-            return host === "macos";
-        case "linux":
-            return host !== "windows";
-    }
+  switch (target) {
+    case "web":
+    case "android":
+    case "ios":
+    case "windows":
+      return true;
+    case "macos":
+      return host === "macos";
+    case "linux":
+      return host !== "windows";
+  }
 }

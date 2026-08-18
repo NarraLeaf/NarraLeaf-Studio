@@ -1,1 +1,1 @@
-export { InputDialog, createInputDialog, type InputDialogOptions } from './InputDialog';
+export { InputDialog, createInputDialog, type InputDialogOptions } from "./InputDialog";

@@ -6,149 +6,148 @@ import type { TranslationKey } from "@shared/i18n";
 import { translate } from "@/lib/i18n";
 
 export enum AssetLockReason {
-    UsedByCharacter = "character",
-    UsedByScene = "scene",
-    UsedByEditor = "editor",
+  UsedByCharacter = "character",
+  UsedByScene = "scene",
+  UsedByEditor = "editor"
 }
 
 // Human-readable lock reason text, resolved against the active locale at call time.
 function lockReasonText(reason: AssetLockReason): string {
-    return translate(`assets.lockReason.${reason}` as TranslationKey);
+  return translate(`assets.lockReason.${reason}` as TranslationKey);
 }
 
 export interface AssetLock {
-    assetId: string;
-    reason: AssetLockReason;
-    /** Optional metadata about the lock (e.g., character ID, scene ID) */
-    metadata?: Record<string, any>;
+  assetId: string;
+  reason: AssetLockReason;
+  /** Optional metadata about the lock (e.g., character ID, scene ID) */
+  metadata?: Record<string, any>;
 }
 
 export class AssetLockManager {
-    // Map: assetId -> Set of locks on that asset
-    private locks: Map<string, Set<AssetLock>> = new Map();
+  // Map: assetId -> Set of locks on that asset
+  private locks: Map<string, Set<AssetLock>> = new Map();
 
-    /**
-     * Lock an asset with a specific reason
-     */
-    public lock(assetId: string, reason: AssetLockReason, metadata?: Record<string, any>): void {
-        if (!this.locks.has(assetId)) {
-            this.locks.set(assetId, new Set());
+  /**
+   * Lock an asset with a specific reason
+   */
+  public lock(assetId: string, reason: AssetLockReason, metadata?: Record<string, any>): void {
+    if (!this.locks.has(assetId)) {
+      this.locks.set(assetId, new Set());
+    }
+
+    const lock: AssetLock = {
+      assetId,
+      reason,
+      metadata
+    };
+
+    this.locks.get(assetId)!.add(lock);
+  }
+
+  /**
+   * Unlock an asset for a specific reason
+   */
+  public unlock(assetId: string, reason: AssetLockReason, metadata?: Record<string, any>): void {
+    const lockSet = this.locks.get(assetId);
+    if (!lockSet) return;
+
+    // Find and remove the lock with matching reason and metadata
+    for (const lock of lockSet) {
+      if (lock.reason === reason) {
+        // If metadata is provided, check if it matches
+        if (metadata) {
+          const metadataMatches = Object.entries(metadata).every(
+            ([key, value]) => lock.metadata?.[key] === value
+          );
+          if (!metadataMatches) continue;
         }
-        
-        const lock: AssetLock = {
-            assetId,
-            reason,
-            metadata,
-        };
-        
-        this.locks.get(assetId)!.add(lock);
+        lockSet.delete(lock);
+        break;
+      }
     }
 
-    /**
-     * Unlock an asset for a specific reason
-     */
-    public unlock(assetId: string, reason: AssetLockReason, metadata?: Record<string, any>): void {
-        const lockSet = this.locks.get(assetId);
-        if (!lockSet) return;
+    // Clean up empty sets
+    if (lockSet.size === 0) {
+      this.locks.delete(assetId);
+    }
+  }
 
-        // Find and remove the lock with matching reason and metadata
-        for (const lock of lockSet) {
-            if (lock.reason === reason) {
-                // If metadata is provided, check if it matches
-                if (metadata) {
-                    const metadataMatches = Object.entries(metadata).every(
-                        ([key, value]) => lock.metadata?.[key] === value
-                    );
-                    if (!metadataMatches) continue;
-                }
-                lockSet.delete(lock);
-                break;
-            }
-        }
+  /**
+   * Unlock all locks on an asset
+   */
+  public unlockAll(assetId: string): void {
+    this.locks.delete(assetId);
+  }
 
-        // Clean up empty sets
-        if (lockSet.size === 0) {
-            this.locks.delete(assetId);
-        }
+  /**
+   * Check if an asset is locked
+   */
+  public isLocked(assetId: string): boolean {
+    const lockSet = this.locks.get(assetId);
+    return lockSet !== undefined && lockSet.size > 0;
+  }
+
+  /**
+   * Get all locks on an asset
+   */
+  public getLocks(assetId: string): AssetLock[] {
+    const lockSet = this.locks.get(assetId);
+    return lockSet ? Array.from(lockSet) : [];
+  }
+
+  /**
+   * Get human-readable lock reasons for an asset
+   */
+  public getLockReasons(assetId: string): string[] {
+    const locks = this.getLocks(assetId);
+    const reasons = new Set<string>();
+
+    for (const lock of locks) {
+      const text = lockReasonText(lock.reason);
+      reasons.add(text);
     }
 
-    /**
-     * Unlock all locks on an asset
-     */
-    public unlockAll(assetId: string): void {
-        this.locks.delete(assetId);
+    return Array.from(reasons);
+  }
+
+  /**
+   * Get a formatted message describing all locks on an asset
+   */
+  public getLockMessage(assetId: string): string | null {
+    if (!this.isLocked(assetId)) {
+      return null;
     }
 
-    /**
-     * Check if an asset is locked
-     */
-    public isLocked(assetId: string): boolean {
-        const lockSet = this.locks.get(assetId);
-        return lockSet !== undefined && lockSet.size > 0;
+    const reasons = this.getLockReasons(assetId);
+    return reasons.join("\n");
+  }
+
+  /**
+   * Check if an asset has a specific lock reason
+   */
+  public hasLockReason(assetId: string, reason: AssetLockReason): boolean {
+    const lockSet = this.locks.get(assetId);
+    if (!lockSet) return false;
+
+    for (const lock of lockSet) {
+      if (lock.reason === reason) {
+        return true;
+      }
     }
+    return false;
+  }
 
-    /**
-     * Get all locks on an asset
-     */
-    public getLocks(assetId: string): AssetLock[] {
-        const lockSet = this.locks.get(assetId);
-        return lockSet ? Array.from(lockSet) : [];
-    }
+  /**
+   * Get all locked asset IDs
+   */
+  public getLockedAssets(): string[] {
+    return Array.from(this.locks.keys());
+  }
 
-    /**
-     * Get human-readable lock reasons for an asset
-     */
-    public getLockReasons(assetId: string): string[] {
-        const locks = this.getLocks(assetId);
-        const reasons = new Set<string>();
-        
-        for (const lock of locks) {
-            const text = lockReasonText(lock.reason);
-            reasons.add(text);
-        }
-        
-        return Array.from(reasons);
-    }
-
-    /**
-     * Get a formatted message describing all locks on an asset
-     */
-    public getLockMessage(assetId: string): string | null {
-        if (!this.isLocked(assetId)) {
-            return null;
-        }
-
-        const reasons = this.getLockReasons(assetId);
-        return reasons.join("\n");
-    }
-
-    /**
-     * Check if an asset has a specific lock reason
-     */
-    public hasLockReason(assetId: string, reason: AssetLockReason): boolean {
-        const lockSet = this.locks.get(assetId);
-        if (!lockSet) return false;
-
-        for (const lock of lockSet) {
-            if (lock.reason === reason) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Get all locked asset IDs
-     */
-    public getLockedAssets(): string[] {
-        return Array.from(this.locks.keys());
-    }
-
-    /**
-     * Clear all locks (useful for testing or reset)
-     */
-    public clearAll(): void {
-        this.locks.clear();
-    }
+  /**
+   * Clear all locks (useful for testing or reset)
+   */
+  public clearAll(): void {
+    this.locks.clear();
+  }
 }
-

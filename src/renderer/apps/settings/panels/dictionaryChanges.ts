@@ -10,15 +10,15 @@ const listeners = new Set<() => void>();
 
 /** Subscribe; the returned function unsubscribes. */
 export function onDictionariesChanged(handler: () => void): () => void {
-    listeners.add(handler);
-    return () => {
-        listeners.delete(handler);
-    };
+  listeners.add(handler);
+  return () => {
+    listeners.delete(handler);
+  };
 }
 
 /** Announce a download or a removal that has already finished. */
 export function notifyDictionariesChanged(): void {
-    for (const handler of [...listeners]) {
-        handler();
-    }
+  for (const handler of [...listeners]) {
+    handler();
+  }
 }

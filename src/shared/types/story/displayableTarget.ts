@@ -1,22 +1,29 @@
 import type {
-    StoryActionPayload,
-    StoryBlock,
-    StoryDisplayableBuiltin,
-    StoryDisplayableTargetKind,
-    StoryDisplayableTargetRef,
-    StoryScene,
+  StoryActionPayload,
+  StoryBlock,
+  StoryDisplayableBuiltin,
+  StoryDisplayableTargetKind,
+  StoryDisplayableTargetRef,
+  StoryScene
 } from "./document";
 
 /** Author-facing label + transform kind for each built-in stage singleton. */
-export const DISPLAYABLE_BUILTIN_META: Record<StoryDisplayableBuiltin, { label: string; kind: StoryDisplayableTargetKind; hint: string }> = {
-    background: { label: "Scene background", kind: "image", hint: "The scene's background image" },
-    backgroundLayer: { label: "Background layer", kind: "layer", hint: "Built-in layer, behind everything" },
-    displayableLayer: { label: "Displayable layer", kind: "layer", hint: "Built-in default layer" },
+export const DISPLAYABLE_BUILTIN_META: Record<
+  StoryDisplayableBuiltin,
+  { label: string; kind: StoryDisplayableTargetKind; hint: string }
+> = {
+  background: { label: "Scene background", kind: "image", hint: "The scene's background image" },
+  backgroundLayer: {
+    label: "Background layer",
+    kind: "layer",
+    hint: "Built-in layer, behind everything"
+  },
+  displayableLayer: { label: "Displayable layer", kind: "layer", hint: "Built-in default layer" }
 };
 
 /** Fallback stage name for a displayable whose `objectName` is blank. Mirrors the compiler. */
 export function normalizeStageObjectName(value: string | undefined): string {
-    return value?.trim() || "object";
+  return value?.trim() || "object";
 }
 
 /**
@@ -28,8 +35,10 @@ export function normalizeStageObjectName(value: string | undefined): string {
  * This is THE rule for character stage naming - the compiler, the stage snapshot and every target
  * reference resolve through it, so they cannot drift apart. See `displayableSourceIdentity`.
  */
-export function characterStageObjectName(payload: Extract<StoryActionPayload, { action: "character" }>): string {
-    return characterStageName(payload.characterId, payload.objectName);
+export function characterStageObjectName(
+  payload: Extract<StoryActionPayload, { action: "character" }>
+): string {
+  return characterStageName(payload.characterId, payload.objectName);
 }
 
 /**
@@ -39,11 +48,11 @@ export function characterStageObjectName(payload: Extract<StoryActionPayload, { 
  * than hand-rolling `normalizeStageObjectName(characterId)` and drifting the moment the rule changes.
  */
 export function characterStageName(characterId: string | undefined, objectName?: string): string {
-    const explicitName = objectName?.trim();
-    if (explicitName && explicitName !== "character") {
-        return normalizeStageObjectName(explicitName);
-    }
-    return normalizeStageObjectName(characterId || explicitName || "character");
+  const explicitName = objectName?.trim();
+  if (explicitName && explicitName !== "character") {
+    return normalizeStageObjectName(explicitName);
+  }
+  return normalizeStageObjectName(characterId || explicitName || "character");
 }
 
 /**
@@ -58,29 +67,45 @@ export function characterStageName(characterId: string | undefined, objectName?:
  * name keys on its `characterId`, which is a UUID and must never reach the UI.
  */
 export function displayableSourceIdentity(
-    block: StoryBlock,
+  block: StoryBlock
 ): { kind: StoryDisplayableTargetKind; name: string; label: string } | null {
-    if (block.kind !== "action") {
-        return null;
-    }
-    const payload = block.payload;
-    if (payload.action === "character") {
-        return { kind: "character", name: characterStageObjectName(payload), label: payload.objectName?.trim() || "Character" };
-    }
-    if (payload.action === "image") {
-        return { kind: "image", name: normalizeStageObjectName(payload.objectName), label: payload.objectName?.trim() || "Image" };
-    }
-    if (payload.action === "text") {
-        return { kind: "text", name: normalizeStageObjectName(payload.objectName), label: payload.objectName?.trim() || "Text" };
-    }
-    if (payload.action === "layer") {
-        // Only a `create` op introduces a layer; other ops (transform / z-index / show / hide)
-        // reference an existing one via `target`, so they are not a source of stage identity.
-        return payload.operation === "create"
-            ? { kind: "layer", name: normalizeStageObjectName(payload.objectName), label: payload.objectName?.trim() || "Layer" }
-            : null;
-    }
+  if (block.kind !== "action") {
     return null;
+  }
+  const payload = block.payload;
+  if (payload.action === "character") {
+    return {
+      kind: "character",
+      name: characterStageObjectName(payload),
+      label: payload.objectName?.trim() || "Character"
+    };
+  }
+  if (payload.action === "image") {
+    return {
+      kind: "image",
+      name: normalizeStageObjectName(payload.objectName),
+      label: payload.objectName?.trim() || "Image"
+    };
+  }
+  if (payload.action === "text") {
+    return {
+      kind: "text",
+      name: normalizeStageObjectName(payload.objectName),
+      label: payload.objectName?.trim() || "Text"
+    };
+  }
+  if (payload.action === "layer") {
+    // Only a `create` op introduces a layer; other ops (transform / z-index / show / hide)
+    // reference an existing one via `target`, so they are not a source of stage identity.
+    return payload.operation === "create"
+      ? {
+          kind: "layer",
+          name: normalizeStageObjectName(payload.objectName),
+          label: payload.objectName?.trim() || "Layer"
+        }
+      : null;
+  }
+  return null;
 }
 
 /**
@@ -93,20 +118,20 @@ export function displayableSourceIdentity(
  * an author typed (see `displayableSourceIdentity`).
  */
 export function resolveDisplayableTargetRef(
-    scene: StoryScene | null | undefined,
-    target: StoryDisplayableTargetRef,
+  scene: StoryScene | null | undefined,
+  target: StoryDisplayableTargetRef
 ): { name: string; kind?: StoryDisplayableTargetKind; label: string } {
-    if (target.builtin) {
-        const meta = DISPLAYABLE_BUILTIN_META[target.builtin];
-        return { name: meta.label, kind: meta.kind, label: meta.label };
+  if (target.builtin) {
+    const meta = DISPLAYABLE_BUILTIN_META[target.builtin];
+    return { name: meta.label, kind: meta.kind, label: meta.label };
+  }
+  if (target.sourceBlockId) {
+    const source = scene?.blocks[target.sourceBlockId];
+    const identity = source ? displayableSourceIdentity(source) : null;
+    if (identity) {
+      return { name: identity.name, kind: identity.kind, label: identity.label };
     }
-    if (target.sourceBlockId) {
-        const source = scene?.blocks[target.sourceBlockId];
-        const identity = source ? displayableSourceIdentity(source) : null;
-        if (identity) {
-            return { name: identity.name, kind: identity.kind, label: identity.label };
-        }
-    }
-    // Legacy / dangling ref: the stored name is all we have, and it is what the author last saw.
-    return { name: target.name ?? "", kind: target.kind, label: target.name ?? "" };
+  }
+  // Legacy / dangling ref: the stored name is all we have, and it is what the author last saw.
+  return { name: target.name ?? "", kind: target.kind, label: target.name ?? "" };
 }

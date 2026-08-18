@@ -20,7 +20,7 @@ export const CRASH_LOOP_LIMIT = 3;
  * to reload.
  */
 export function recordCrash(history: readonly number[], now: number): number[] {
-    return [...history, now].filter(at => now - at < CRASH_LOOP_WINDOW_MS);
+  return [...history, now].filter((at) => now - at < CRASH_LOOP_WINDOW_MS);
 }
 
 /**
@@ -31,5 +31,5 @@ export function recordCrash(history: readonly number[], now: number): number[] {
  * deaths are a single page running out of memory, and it comes back fine.
  */
 export function isCrashLooping(history: readonly number[]): boolean {
-    return history.length >= CRASH_LOOP_LIMIT;
+  return history.length >= CRASH_LOOP_LIMIT;
 }

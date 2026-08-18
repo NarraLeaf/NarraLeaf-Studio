@@ -14,20 +14,22 @@
  * debug template is ~0.9 MB.
  */
 
-const fs = require('fs');
-const path = require('path');
-const { rootDir } = require('./utils');
+const fs = require("fs");
+const path = require("path");
+const { rootDir } = require("./utils");
 
-const shellPackageDir = path.dirname(require.resolve('@narraleaf/studio-shell/package.json'));
-const targetDir = path.join(rootDir, 'resources', 'mobile-shell');
+const shellPackageDir = path.dirname(require.resolve("@narraleaf/studio-shell/package.json"));
+const targetDir = path.join(rootDir, "resources", "mobile-shell");
 // Mirrors the package's own `files` list, minus the docs.
-const payload = ['android', 'ios', 'manifest.json'];
+const payload = ["android", "ios", "manifest.json"];
 
 for (const item of payload) {
-    if (!fs.existsSync(path.join(shellPackageDir, item))) {
-        console.error(`[mobile-shell] Missing "${item}" in ${shellPackageDir}; is @narraleaf/studio-shell installed?`);
-        process.exit(1);
-    }
+  if (!fs.existsSync(path.join(shellPackageDir, item))) {
+    console.error(
+      `[mobile-shell] Missing "${item}" in ${shellPackageDir}; is @narraleaf/studio-shell installed?`
+    );
+    process.exit(1);
+  }
 }
 
 // Wipe rather than merge: a stale template left behind by an older version of
@@ -36,14 +38,16 @@ for (const item of payload) {
 // has.
 fs.mkdirSync(targetDir, { recursive: true });
 for (const existing of fs.readdirSync(targetDir)) {
-    if (existing === '.gitignore') {
-        continue;
-    }
-    fs.rmSync(path.join(targetDir, existing), { recursive: true, force: true });
+  if (existing === ".gitignore") {
+    continue;
+  }
+  fs.rmSync(path.join(targetDir, existing), { recursive: true, force: true });
 }
 for (const item of payload) {
-    fs.cpSync(path.join(shellPackageDir, item), path.join(targetDir, item), { recursive: true });
+  fs.cpSync(path.join(shellPackageDir, item), path.join(targetDir, item), { recursive: true });
 }
 
-const { version } = require('@narraleaf/studio-shell/package.json');
-console.log(`[mobile-shell] Staged shell templates v${version} to ${path.relative(rootDir, targetDir)}`);
+const { version } = require("@narraleaf/studio-shell/package.json");
+console.log(
+  `[mobile-shell] Staged shell templates v${version} to ${path.relative(rootDir, targetDir)}`
+);

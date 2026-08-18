@@ -10,7 +10,7 @@ import { trafficLightPositionForZoom, zoomPercentToFactor } from "@shared/consta
  * `.nl-studio` scope on the light theme (see src/renderer/styles/styles.css).
  */
 export function windowTypeUsesZoom(type: WindowAppType): boolean {
-    return type !== WindowAppType.DevMode;
+  return type !== WindowAppType.DevMode;
 }
 
 /**
@@ -19,8 +19,11 @@ export function windowTypeUsesZoom(type: WindowAppType): boolean {
  * Must run after the page has loaded: Electron resets the zoom factor on every
  * navigation, so a value set before `did-finish-load` is silently dropped.
  */
-export function applyZoomFactorToWebContents(webContents: Electron.WebContents, percent: unknown): void {
-    webContents.setZoomFactor(zoomPercentToFactor(percent));
+export function applyZoomFactorToWebContents(
+  webContents: Electron.WebContents,
+  percent: unknown
+): void {
+  webContents.setZoomFactor(zoomPercentToFactor(percent));
 }
 
 /**
@@ -32,12 +35,12 @@ export function applyZoomFactorToWebContents(webContents: Electron.WebContents, 
  * this is a no-op.
  */
 export function applyTrafficLightPositionForZoom(
-    browserWindow: Electron.BrowserWindow,
-    controlPolicy: WindowControlPolicy,
-    percent: unknown,
+  browserWindow: Electron.BrowserWindow,
+  controlPolicy: WindowControlPolicy,
+  percent: unknown
 ): void {
-    if (process.platform !== "darwin" || controlPolicy === WindowControlPolicy.None) {
-        return;
-    }
-    browserWindow.setWindowButtonPosition(trafficLightPositionForZoom(percent));
+  if (process.platform !== "darwin" || controlPolicy === WindowControlPolicy.None) {
+    return;
+  }
+  browserWindow.setWindowButtonPosition(trafficLightPositionForZoom(percent));
 }

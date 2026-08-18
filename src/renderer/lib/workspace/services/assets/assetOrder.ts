@@ -22,13 +22,13 @@
 
 /** Contents of one `assets.order.<type>.json`. Absent entries mean "no opinion", never "empty". */
 export interface AssetOrderDocument {
-    assetIds: string[];
-    groupIds: string[];
+  assetIds: string[];
+  groupIds: string[];
 }
 
 function readIdArray(source: Record<string, unknown>, key: string): string[] {
-    const raw = source[key];
-    return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : [];
+  const raw = source[key];
+  return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : [];
 }
 
 /**
@@ -37,14 +37,14 @@ function readIdArray(source: Record<string, unknown>, key: string): string[] {
  * than into an empty library.
  */
 export function parseAssetOrderDocument(parsed: unknown): AssetOrderDocument {
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-        return { assetIds: [], groupIds: [] };
-    }
-    const source = parsed as Record<string, unknown>;
-    return {
-        assetIds: readIdArray(source, "assetIds"),
-        groupIds: readIdArray(source, "groupIds"),
-    };
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return { assetIds: [], groupIds: [] };
+  }
+  const source = parsed as Record<string, unknown>;
+  return {
+    assetIds: readIdArray(source, "assetIds"),
+    groupIds: readIdArray(source, "groupIds")
+  };
 }
 
 /**
@@ -61,33 +61,37 @@ export function parseAssetOrderDocument(parsed: unknown): AssetOrderDocument {
  * read and again on every write rather than trusting each mutation site to maintain the arrays.
  */
 export function reconcileAssetOrder(
-    ids: readonly unknown[] | undefined,
-    record: Readonly<Record<string, unknown>>,
+  ids: readonly unknown[] | undefined,
+  record: Readonly<Record<string, unknown>>
 ): string[] {
-    const ordered: string[] = [];
-    const placed = new Set<string>();
+  const ordered: string[] = [];
+  const placed = new Set<string>();
 
-    for (const id of ids ?? []) {
-        if (typeof id !== "string" || placed.has(id) || !Object.prototype.hasOwnProperty.call(record, id)) {
-            continue;
-        }
-        placed.add(id);
-        ordered.push(id);
+  for (const id of ids ?? []) {
+    if (
+      typeof id !== "string" ||
+      placed.has(id) ||
+      !Object.prototype.hasOwnProperty.call(record, id)
+    ) {
+      continue;
     }
+    placed.add(id);
+    ordered.push(id);
+  }
 
-    for (const id of Object.keys(record)) {
-        if (placed.has(id)) {
-            continue;
-        }
-        placed.add(id);
-        ordered.push(id);
+  for (const id of Object.keys(record)) {
+    if (placed.has(id)) {
+      continue;
     }
+    placed.add(id);
+    ordered.push(id);
+  }
 
-    return ordered;
+  return ordered;
 }
 
 export function serializeAssetOrderDocument(document: AssetOrderDocument): string {
-    return JSON.stringify(document);
+  return JSON.stringify(document);
 }
 
 /** The text a fresh order file is created with, so a new project starts with the file present. */

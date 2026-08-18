@@ -30,8 +30,8 @@ import type { MediaSupportTarget } from "@shared/utils/mediaSupport";
  * editor cannot open this" would silently degrade artwork the author believes was merely relabelled.
  */
 export type MediaImageTarget = {
-    kind: "image";
-    container: "png";
+  kind: "image";
+  container: "png";
 };
 
 /** Everything the transcoder knows how to produce. */
@@ -55,9 +55,9 @@ export const CONVERTIBLE_IMAGE_EXTENSIONS: ReadonlySet<string> = new Set(["tif",
 
 /** Lowercased extension without the dot, from a full path or a bare name. Empty when there is none. */
 export function fileExtensionOf(fileName: string): string {
-    const base = fileName.replace(/\\/g, "/").split("/").pop() ?? "";
-    const dot = base.lastIndexOf(".");
-    return dot <= 0 ? "" : base.slice(dot + 1).toLowerCase();
+  const base = fileName.replace(/\\/g, "/").split("/").pop() ?? "";
+  const dot = base.lastIndexOf(".");
+  return dot <= 0 ? "" : base.slice(dot + 1).toLowerCase();
 }
 
 /**
@@ -69,9 +69,9 @@ export function fileExtensionOf(fileName: string): string {
  * codec axis to be wrong about.
  */
 export function imageConvertTargetFor(fileName: string): MediaImageTarget | null {
-    return CONVERTIBLE_IMAGE_EXTENSIONS.has(fileExtensionOf(fileName))
-        ? { kind: "image", container: "png" }
-        : null;
+  return CONVERTIBLE_IMAGE_EXTENSIONS.has(fileExtensionOf(fileName))
+    ? { kind: "image", container: "png" }
+    : null;
 }
 
 /**
@@ -93,16 +93,16 @@ export function imageConvertTargetFor(fileName: string): MediaImageTarget | null
  * `video` being null, `remux` from its `audioOnly` flag.
  */
 export function mediaConvertTargetExtension(target: MediaConvertTarget): string {
-    if (target.kind === "image") {
-        return target.container;
-    }
-    if (target.container === "mp4") {
-        const audioOnly = target.kind === "reencode" ? target.video === null : target.audioOnly;
-        if (audioOnly) {
-            return "m4a";
-        }
-    }
+  if (target.kind === "image") {
     return target.container;
+  }
+  if (target.container === "mp4") {
+    const audioOnly = target.kind === "reencode" ? target.video === null : target.audioOnly;
+    if (audioOnly) {
+      return "m4a";
+    }
+  }
+  return target.container;
 }
 
 /* -------------------------------------------------------------------------------------------- */
@@ -119,12 +119,12 @@ export function mediaConvertTargetExtension(target: MediaConvertTarget): string 
  * hung conversion. Showing no percentage is the accurate thing to show.
  */
 export type MediaConvertProgress = {
-    /** Microseconds of output written so far, straight from ffmpeg's `out_time_us`. */
-    outTimeUs: number | null;
-    /** Source duration in microseconds, as the probe reported it. */
-    durationUs: number | null;
-    /** `outTimeUs / durationUs`, clamped to 0..1. `null` when the duration is unknown. */
-    fraction: number | null;
+  /** Microseconds of output written so far, straight from ffmpeg's `out_time_us`. */
+  outTimeUs: number | null;
+  /** Source duration in microseconds, as the probe reported it. */
+  durationUs: number | null;
+  /** `outTimeUs / durationUs`, clamped to 0..1. `null` when the duration is unknown. */
+  fraction: number | null;
 };
 
 /* -------------------------------------------------------------------------------------------- */
@@ -132,17 +132,17 @@ export type MediaConvertProgress = {
 /* -------------------------------------------------------------------------------------------- */
 
 export type MediaConvertRequest = {
-    /** Absolute path to read. Never written to, under any outcome. */
-    sourcePath: string;
-    /** Absolute path to create. Must not already exist. */
-    targetPath: string;
-    target: MediaConvertTarget;
-    /**
-     * Source duration in microseconds from the probe that produced `target`, or `null` when it had
-     * none. Passing `null` costs a progress percentage and nothing else; passing a wrong number
-     * costs a progress bar that lies, so callers that are unsure should pass `null`.
-     */
-    durationUs: number | null;
+  /** Absolute path to read. Never written to, under any outcome. */
+  sourcePath: string;
+  /** Absolute path to create. Must not already exist. */
+  targetPath: string;
+  target: MediaConvertTarget;
+  /**
+   * Source duration in microseconds from the probe that produced `target`, or `null` when it had
+   * none. Passing `null` costs a progress percentage and nothing else; passing a wrong number
+   * costs a progress bar that lies, so callers that are unsure should pass `null`.
+   */
+  durationUs: number | null;
 };
 
 /**
@@ -152,30 +152,30 @@ export type MediaConvertRequest = {
  * caught exception.
  */
 export type MediaConvertFailureReason =
-    /** The source is gone or is not a file. Checked before spawning, and reachable again mid-run. */
-    | "source-missing"
-    /** Something is already at the target path. Nothing is overwritten, ever. */
-    | "target-exists"
-    /** The binary is present but would not start (permissions, wrong architecture). */
-    | "spawn-failed"
-    /** ffmpeg ran and exited non-zero. `detail` carries the tail of its stderr. */
-    | "exited"
-    /** The conversion produced a file that could not be moved into place. */
-    | "write-failed";
+  /** The source is gone or is not a file. Checked before spawning, and reachable again mid-run. */
+  | "source-missing"
+  /** Something is already at the target path. Nothing is overwritten, ever. */
+  | "target-exists"
+  /** The binary is present but would not start (permissions, wrong architecture). */
+  | "spawn-failed"
+  /** ffmpeg ran and exited non-zero. `detail` carries the tail of its stderr. */
+  | "exited"
+  /** The conversion produced a file that could not be moved into place. */
+  | "write-failed";
 
 export type MediaConvertStatus =
-    /** No such job — the id is unknown, or its record has aged out. */
-    | "idle"
-    | "converting"
-    | "done"
-    | "cancelled"
-    | "error"
-    /**
-     * No ffmpeg on this host. Distinct from `error` for the same reason the probe distinguishes it:
-     * nothing is wrong with the file, and the author should be told conversion is unavailable here
-     * rather than that their video is broken.
-     */
-    | "unavailable";
+  /** No such job — the id is unknown, or its record has aged out. */
+  | "idle"
+  | "converting"
+  | "done"
+  | "cancelled"
+  | "error"
+  /**
+   * No ffmpeg on this host. Distinct from `error` for the same reason the probe distinguishes it:
+   * nothing is wrong with the file, and the author should be told conversion is unavailable here
+   * rather than that their video is broken.
+   */
+  | "unavailable";
 
 /**
  * A conversion as the renderer sees it.
@@ -188,24 +188,24 @@ export type MediaConvertStatus =
  * again from its id alone.
  */
 export type MediaConvertStateSnapshot = {
-    /** Opaque handle from `start`. The only thing `cancel` and `getStatus` are keyed by. */
-    jobId: string;
-    status: MediaConvertStatus;
-    startedAt?: number;
-    finishedAt?: number;
-    /**
-     * Absent until ffmpeg has reported at least once.
-     *
-     * **Completion is `status`, never `fraction`.** The last progress block is emitted before the
-     * process exits, and for a short file it may be the only one — a measured remux finished `done`
-     * with a final fraction of 0.72, because the source's declared duration was longer than the
-     * position of the last block ffmpeg got round to printing. A bar driven off this number alone
-     * stops short on exactly the conversions that were fastest.
-     */
-    progress?: MediaConvertProgress;
-    /** Set only on `done`, and only once the file is at its final path. */
-    outputPath?: string;
-    reason?: MediaConvertFailureReason;
-    /** One human-readable sentence. On `exited`, the tail of ffmpeg's stderr. */
-    error?: string;
+  /** Opaque handle from `start`. The only thing `cancel` and `getStatus` are keyed by. */
+  jobId: string;
+  status: MediaConvertStatus;
+  startedAt?: number;
+  finishedAt?: number;
+  /**
+   * Absent until ffmpeg has reported at least once.
+   *
+   * **Completion is `status`, never `fraction`.** The last progress block is emitted before the
+   * process exits, and for a short file it may be the only one — a measured remux finished `done`
+   * with a final fraction of 0.72, because the source's declared duration was longer than the
+   * position of the last block ffmpeg got round to printing. A bar driven off this number alone
+   * stops short on exactly the conversions that were fastest.
+   */
+  progress?: MediaConvertProgress;
+  /** Set only on `done`, and only once the file is at its final path. */
+  outputPath?: string;
+  reason?: MediaConvertFailureReason;
+  /** One human-readable sentence. On `exited`, the tail of ffmpeg's stderr. */
+  error?: string;
 };

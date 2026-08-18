@@ -1,4 +1,4 @@
-const esbuild = require('esbuild');
+const esbuild = require("esbuild");
 
 /**
  * Generic helper to build & watch with esbuild.
@@ -10,7 +10,7 @@ const esbuild = require('esbuild');
 async function watchBuild(options, onSuccess = () => {}) {
   // Rebuild duration logger plugin
   const rebuildLogPlugin = {
-    name: 'rebuild-log',
+    name: "rebuild-log",
     setup(build) {
       let startTime;
       build.onStart(() => {
@@ -22,13 +22,13 @@ async function watchBuild(options, onSuccess = () => {}) {
         }
         onSuccess();
       });
-    },
+    }
   };
 
   // Ensure plugins array exists and append the logger
   const ctx = await esbuild.context({
     ...options,
-    plugins: [...(options.plugins || []), rebuildLogPlugin],
+    plugins: [...(options.plugins || []), rebuildLogPlugin]
   });
 
   // Trigger the initial build explicitly and invoke success callback
@@ -44,5 +44,5 @@ async function watchBuild(options, onSuccess = () => {}) {
 }
 
 module.exports = {
-  watchBuild,
+  watchBuild
 };

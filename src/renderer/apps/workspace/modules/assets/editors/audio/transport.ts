@@ -8,7 +8,7 @@ import type { SampleRange } from "./audioClip";
  * the two coincide - a plain loop, and what a selection audition has always done.
  */
 export interface PlayRange extends SampleRange {
-    loopStart?: number;
+  loopStart?: number;
 }
 
 /**
@@ -22,13 +22,13 @@ export interface PlayRange extends SampleRange {
  * express an intro→loop at all.
  */
 export interface PlaybackGeometry {
-    /** Sample this run started at - not necessarily where it returns to. */
-    start: number;
-    /** Where playback stops, or turns around when {@link looping}. */
-    end: number;
-    /** Where each repeat resumes from. Equals the range's start for a plain loop. */
-    loopStart: number;
-    looping: boolean;
+  /** Sample this run started at - not necessarily where it returns to. */
+  start: number;
+  /** Where playback stops, or turns around when {@link looping}. */
+  end: number;
+  /** Where each repeat resumes from. Equals the range's start for a plain loop. */
+  loopStart: number;
+  looping: boolean;
 }
 
 /**
@@ -40,18 +40,18 @@ export interface PlaybackGeometry {
  * that by quietly looping the entire buffer instead.
  */
 export function resolvePlaybackGeometry(options: {
-    from: number;
-    range: PlayRange | null;
-    totalSamples: number;
-    looping: boolean;
+  from: number;
+  range: PlayRange | null;
+  totalSamples: number;
+  looping: boolean;
 }): PlaybackGeometry {
-    const { from, range, totalSamples, looping } = options;
-    const start = Math.max(0, Math.min(Math.max(0, totalSamples - 1), from));
-    if (!range || range.end <= range.start) {
-        return { start, end: totalSamples, loopStart: 0, looping };
-    }
-    const loopStart = Math.min(Math.max(range.loopStart ?? range.start, range.start), range.end - 1);
-    return { start, end: range.end, loopStart, looping };
+  const { from, range, totalSamples, looping } = options;
+  const start = Math.max(0, Math.min(Math.max(0, totalSamples - 1), from));
+  if (!range || range.end <= range.start) {
+    return { start, end: totalSamples, loopStart: 0, looping };
+  }
+  const loopStart = Math.min(Math.max(range.loopStart ?? range.start, range.start), range.end - 1);
+  return { start, end: range.end, loopStart, looping };
 }
 
 /**
@@ -63,21 +63,21 @@ export function resolvePlaybackGeometry(options: {
  * again - and only then enters a cycle whose period is the loop, not the clip.
  */
 export function playbackPosition(geometry: PlaybackGeometry, elapsedSamples: number): number {
-    const raw = geometry.start + Math.max(0, elapsedSamples);
-    // Not looping: the source stops at the end, so the line parks there rather than wrapping to
-    // the head of the file for the frame or two before `onended` lands.
-    if (!geometry.looping) {
-        return Math.min(raw, geometry.end);
-    }
-    // Still on the first pass, which is the only pass that can start before the loop point.
-    if (raw < geometry.end) {
-        return raw;
-    }
-    const period = geometry.end - geometry.loopStart;
-    if (period <= 0) {
-        return geometry.loopStart;
-    }
-    return geometry.loopStart + ((raw - geometry.end) % period);
+  const raw = geometry.start + Math.max(0, elapsedSamples);
+  // Not looping: the source stops at the end, so the line parks there rather than wrapping to
+  // the head of the file for the frame or two before `onended` lands.
+  if (!geometry.looping) {
+    return Math.min(raw, geometry.end);
+  }
+  // Still on the first pass, which is the only pass that can start before the loop point.
+  if (raw < geometry.end) {
+    return raw;
+  }
+  const period = geometry.end - geometry.loopStart;
+  if (period <= 0) {
+    return geometry.loopStart;
+  }
+  return geometry.loopStart + ((raw - geometry.end) % period);
 }
 
 /**
@@ -94,21 +94,21 @@ export function playbackPosition(geometry: PlaybackGeometry, elapsedSamples: num
  * distinguishes that from a deliberate seek to the same spot.
  */
 export function resolvePlayStart(options: {
-    position: number;
-    selection: SampleRange | null;
-    totalSamples: number;
-    /** True when the previous run ended by reaching the end, rather than being stopped or seeked. */
-    finished: boolean;
+  position: number;
+  selection: SampleRange | null;
+  totalSamples: number;
+  /** True when the previous run ended by reaching the end, rather than being stopped or seeked. */
+  finished: boolean;
 }): number {
-    const { position, selection, totalSamples, finished } = options;
-    const hasSelection = Boolean(selection && selection.end > selection.start);
-    const start = hasSelection && selection ? selection.start : 0;
-    const end = hasSelection && selection ? selection.end : totalSamples;
+  const { position, selection, totalSamples, finished } = options;
+  const hasSelection = Boolean(selection && selection.end > selection.start);
+  const start = hasSelection && selection ? selection.start : 0;
+  const end = hasSelection && selection ? selection.end : totalSamples;
 
-    if (finished || position >= end) {
-        return start;
-    }
-    // Inside or before the range: resume, but never behind its start - pressing play with the
-    // playhead parked ahead of a selection should audition the selection, not the run-up to it.
-    return Math.max(start, position);
+  if (finished || position >= end) {
+    return start;
+  }
+  // Inside or before the range: resume, but never behind its start - pressing play with the
+  // playhead parked ahead of a selection should audition the selection, not the run-up to it.
+  return Math.max(start, position);
 }

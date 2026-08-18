@@ -18,9 +18,19 @@ const AppearanceReadOnlyContext = createContext(false);
  * Reads `false` outside a panel, which is the writable default every other host already gets.
  */
 export function useAppearanceReadOnly(): boolean {
-    return useContext(AppearanceReadOnlyContext);
+  return useContext(AppearanceReadOnlyContext);
 }
 
-export function AppearanceReadOnlyProvider({ value, children }: { value: boolean; children: ReactNode }) {
-    return <AppearanceReadOnlyContext.Provider value={value}>{children}</AppearanceReadOnlyContext.Provider>;
+export function AppearanceReadOnlyProvider({
+  value,
+  children
+}: {
+  value: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <AppearanceReadOnlyContext.Provider value={value}>
+      {children}
+    </AppearanceReadOnlyContext.Provider>
+  );
 }

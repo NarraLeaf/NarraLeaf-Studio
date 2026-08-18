@@ -13,13 +13,13 @@ import { DictionariesPanel } from "./DictionariesPanel";
  * The registry lives here, not in `lib/settings`, so the definitions stay plain data.
  */
 export const SETTING_PANELS: Record<SettingPanelId, ComponentType> = {
-    keybindings: KeybindingsPanel,
-    downloadSources: DownloadSourcesPanel,
-    cacheInventory: CacheInventoryPanel,
-    settingsTransfer: SettingsTransferPanel,
-    softwareUpdate: SoftwareUpdatePanel,
-    servers: ServersPanel,
-    dictionaries: DictionariesPanel,
+  keybindings: KeybindingsPanel,
+  downloadSources: DownloadSourcesPanel,
+  cacheInventory: CacheInventoryPanel,
+  settingsTransfer: SettingsTransferPanel,
+  softwareUpdate: SoftwareUpdatePanel,
+  servers: ServersPanel,
+  dictionaries: DictionariesPanel
 };
 
 export { KeybindingsPanel } from "./KeybindingsPanel";

@@ -7,12 +7,12 @@ import { emitStoryRowHighlight } from "./storyRowHighlightBus";
  * renderer-local bus. Mounted once at the workspace root; open story editors follow along in place.
  */
 export function StoryRowHighlightBridge(): null {
-    useEffect(() => {
-        const token = getInterface().devMode.onStoryRowHighlight(highlight => {
-            emitStoryRowHighlight(highlight);
-        });
-        return () => token.cancel();
-    }, []);
+  useEffect(() => {
+    const token = getInterface().devMode.onStoryRowHighlight((highlight) => {
+      emitStoryRowHighlight(highlight);
+    });
+    return () => token.cancel();
+  }, []);
 
-    return null;
+  return null;
 }

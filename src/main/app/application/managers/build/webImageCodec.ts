@@ -37,27 +37,27 @@ import { BrowserWindow } from "electron";
 export type WebImageSourceType = "image/png" | "image/jpeg";
 
 export type WebImageEncodeRequest = {
-    bytes: Buffer;
-    sourceType: WebImageSourceType;
-    /** Lossless mode. When false, `quality` (1-100) applies. */
-    lossless: boolean;
-    quality?: number;
+  bytes: Buffer;
+  sourceType: WebImageSourceType;
+  /** Lossless mode. When false, `quality` (1-100) applies. */
+  lossless: boolean;
+  quality?: number;
 };
 
 export type WebImageEncodeResult = {
-    bytes: Buffer;
-    /**
-     * Whether the encoded bytes decode to exactly the source pixels. Always
-     * checked for a lossless request and always false for a lossy one, where the
-     * whole point is that they do not.
-     */
-    verifiedLossless: boolean;
+  bytes: Buffer;
+  /**
+   * Whether the encoded bytes decode to exactly the source pixels. Always
+   * checked for a lossless request and always false for a lossy one, where the
+   * whole point is that they do not.
+   */
+  verifiedLossless: boolean;
 };
 
 export type WebImageCodec = {
-    /** The encoded image, or null when this image could not be converted at all. */
-    encode(request: WebImageEncodeRequest): Promise<WebImageEncodeResult | null>;
-    close(): Promise<void>;
+  /** The encoded image, or null when this image could not be converted at all. */
+  encode(request: WebImageEncodeRequest): Promise<WebImageEncodeResult | null>;
+  close(): Promise<void>;
 };
 
 /**
@@ -153,8 +153,8 @@ window.__nlWebImageEncode = async function (base64, sourceType, lossless, qualit
 `;
 
 type PageResponse =
-    | { ok: true; bytes: Uint8Array; verifiedLossless: boolean }
-    | { ok: false; message: string };
+  | { ok: true; bytes: Uint8Array; verifiedLossless: boolean }
+  | { ok: false; message: string };
 
 /**
  * Start a codec window. `scratchDir` is where the page file is written; it is
@@ -162,60 +162,61 @@ type PageResponse =
  * the running Studio rather than of anything the author made.
  */
 export async function openWebImageCodec(scratchDir: string): Promise<WebImageCodec> {
-    await fs.mkdir(scratchDir, { recursive: true });
-    const pagePath = path.join(scratchDir, CODEC_PAGE_FILENAME);
-    await fs.writeFile(pagePath, CODEC_PAGE_SOURCE, "utf-8");
+  await fs.mkdir(scratchDir, { recursive: true });
+  const pagePath = path.join(scratchDir, CODEC_PAGE_FILENAME);
+  await fs.writeFile(pagePath, CODEC_PAGE_SOURCE, "utf-8");
 
-    const window = new BrowserWindow({
-        show: false,
-        webPreferences: {
-            // No Node, no preload, no remote content: the page's whole job is to
-            // call two web APIs on bytes it is handed.
-            nodeIntegration: false,
-            contextIsolation: false,
-            sandbox: false,
-            // A hidden window is a background window, and Chromium throttles
-            // those. The encode itself runs off-thread and would survive it, but
-            // the promise plumbing around it does not need the extra latency.
-            backgroundThrottling: false,
-        },
-    });
-    try {
-        await window.loadFile(pagePath);
-    } catch (error) {
-        window.destroy();
-        throw error;
+  const window = new BrowserWindow({
+    show: false,
+    webPreferences: {
+      // No Node, no preload, no remote content: the page's whole job is to
+      // call two web APIs on bytes it is handed.
+      nodeIntegration: false,
+      contextIsolation: false,
+      sandbox: false,
+      // A hidden window is a background window, and Chromium throttles
+      // those. The encode itself runs off-thread and would survive it, but
+      // the promise plumbing around it does not need the extra latency.
+      backgroundThrottling: false
     }
+  });
+  try {
+    await window.loadFile(pagePath);
+  } catch (error) {
+    window.destroy();
+    throw error;
+  }
 
-    let closed = false;
-    return {
-        async encode(request: WebImageEncodeRequest): Promise<WebImageEncodeResult | null> {
-            if (closed) {
-                throw new Error("The web image codec has been closed");
-            }
-            const call = `window.__nlWebImageEncode(${JSON.stringify(request.bytes.toString("base64"))},`
-                + `${JSON.stringify(request.sourceType)},${request.lossless},${request.quality ?? 100})`;
-            const response = await window.webContents.executeJavaScript(call, true) as PageResponse;
-            if (!response?.ok) {
-                // A decode or encode failure is about this one image (a format
-                // Chromium will not take, a size past the canvas ceiling), never
-                // about the build. The caller keeps the original and moves on.
-                return null;
-            }
-            return {
-                bytes: Buffer.from(response.bytes),
-                verifiedLossless: response.verifiedLossless === true,
-            };
-        },
-        async close(): Promise<void> {
-            if (closed) {
-                return;
-            }
-            closed = true;
-            if (!window.isDestroyed()) {
-                window.destroy();
-            }
-            await fs.rm(pagePath, { force: true }).catch(() => undefined);
-        },
-    };
+  let closed = false;
+  return {
+    async encode(request: WebImageEncodeRequest): Promise<WebImageEncodeResult | null> {
+      if (closed) {
+        throw new Error("The web image codec has been closed");
+      }
+      const call =
+        `window.__nlWebImageEncode(${JSON.stringify(request.bytes.toString("base64"))},` +
+        `${JSON.stringify(request.sourceType)},${request.lossless},${request.quality ?? 100})`;
+      const response = (await window.webContents.executeJavaScript(call, true)) as PageResponse;
+      if (!response?.ok) {
+        // A decode or encode failure is about this one image (a format
+        // Chromium will not take, a size past the canvas ceiling), never
+        // about the build. The caller keeps the original and moves on.
+        return null;
+      }
+      return {
+        bytes: Buffer.from(response.bytes),
+        verifiedLossless: response.verifiedLossless === true
+      };
+    },
+    async close(): Promise<void> {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      if (!window.isDestroyed()) {
+        window.destroy();
+      }
+      await fs.rm(pagePath, { force: true }).catch(() => undefined);
+    }
+  };
 }

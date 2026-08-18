@@ -15,29 +15,29 @@ import { createProjectFromWizard, openProjectFromFolder } from "./projectActions
  * the Projects tab would silently stop working whenever the user switched tabs.
  */
 export function useLauncherMenuActions(): void {
-    useEffect(() => {
-        if (!isMacPlatform()) return;
+  useEffect(() => {
+    if (!isMacPlatform()) return;
 
-        const token = getInterface().workspace.onMenuAction((action) => {
-            void (async () => {
-                let error: string | null = null;
+    const token = getInterface().workspace.onMenuAction((action) => {
+      void (async () => {
+        let error: string | null = null;
 
-                if (action === WorkspaceMenuAction.NewWorkspace) {
-                    error = await createProjectFromWizard();
-                } else if (action === WorkspaceMenuAction.OpenWorkspace) {
-                    error = await openProjectFromFolder();
-                } else {
-                    return;
-                }
+        if (action === WorkspaceMenuAction.NewWorkspace) {
+          error = await createProjectFromWizard();
+        } else if (action === WorkspaceMenuAction.OpenWorkspace) {
+          error = await openProjectFromFolder();
+        } else {
+          return;
+        }
 
-                if (error !== null) {
-                    console.error(`[MenuAction] ${action} failed: ${error}`);
-                }
-            })();
-        });
+        if (error !== null) {
+          console.error(`[MenuAction] ${action} failed: ${error}`);
+        }
+      })();
+    });
 
-        return () => {
-            token.cancel();
-        };
-    }, []);
+    return () => {
+      token.cancel();
+    };
+  }, []);
 }

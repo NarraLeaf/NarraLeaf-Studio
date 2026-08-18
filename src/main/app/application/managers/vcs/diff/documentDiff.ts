@@ -1,9 +1,9 @@
 import {
-    buildDocumentDiff,
-    countDocumentChanges,
-    type DocumentChange,
-    type DocumentDiff,
-    type DocumentDiffTier,
+  buildDocumentDiff,
+  countDocumentChanges,
+  type DocumentChange,
+  type DocumentDiff,
+  type DocumentDiffTier
 } from "@shared/documents/diff";
 import { diffJsonStructural } from "@shared/documents/jsonStructuralDiff";
 import { resolveDocumentSpecForPath } from "@shared/documents/registry";
@@ -16,12 +16,16 @@ import { resolveDocumentSpecForPath } from "@shared/documents/registry";
 // `documentRegistry.test.ts` asserts both halves: that this populates the registry, and that the
 // main entry point statically reaches this module.
 import "@shared/documents/specs";
-import { DocumentCorruptError, type AnyDocumentSpec, type DocumentParseContext } from "@shared/documents/types";
 import {
-    contentClassIsReadable,
-    contentClassOf,
-    contentClassOfBytes,
-    type ContentClass,
+  DocumentCorruptError,
+  type AnyDocumentSpec,
+  type DocumentParseContext
+} from "@shared/documents/types";
+import {
+  contentClassIsReadable,
+  contentClassOf,
+  contentClassOfBytes,
+  type ContentClass
 } from "@shared/vcs/contentClass";
 import { contentProviderFor, type ContentSide } from "./contentDiff";
 
@@ -138,15 +142,15 @@ const LABEL_SUMMARY_COUNT = "documentDiff.summary.count";
 const LABEL_SUMMARY_OTHER = "documentDiff.summary.other";
 
 export interface DocumentDiffRequest {
-    /** Repository-relative, forward slashes. Only used to build a parse context's message. */
-    readonly path: string;
-    /** Bytes on the older side, or null when the document did not exist there. */
-    readonly base: Buffer | null;
-    readonly head: Buffer | null;
-    /** The spec owning {@link path}, when one does - see {@link specForDocumentPath}. */
-    readonly spec?: AnyDocumentSpec;
-    /** Defaults to what {@link path} implies. Passed in where the caller already worked it out. */
-    readonly contentClass?: ContentClass;
+  /** Repository-relative, forward slashes. Only used to build a parse context's message. */
+  readonly path: string;
+  /** Bytes on the older side, or null when the document did not exist there. */
+  readonly base: Buffer | null;
+  readonly head: Buffer | null;
+  /** The spec owning {@link path}, when one does - see {@link specForDocumentPath}. */
+  readonly spec?: AnyDocumentSpec;
+  /** Defaults to what {@link path} implies. Passed in where the caller already worked it out. */
+  readonly contentClass?: ContentClass;
 }
 
 /**
@@ -157,24 +161,24 @@ export interface DocumentDiffRequest {
  * walk plus, at most, a header the caller could afford. See `contentDiff.ts`.
  */
 export interface ContentDiffRequest {
-    readonly path: string;
-    /** Defaults to what {@link path} implies. */
-    readonly contentClass?: ContentClass;
-    readonly base: ContentSide | null;
-    readonly head: ContentSide | null;
+  readonly path: string;
+  /** Defaults to what {@link path} implies. */
+  readonly contentClass?: ContentClass;
+  readonly base: ContentSide | null;
+  readonly head: ContentSide | null;
 }
 
 export interface DocumentDiffOptions {
-    readonly limit?: number;
-    /**
-     * Told why a document came back at a lower tier than its spec promised.
-     *
-     * A port rather than a logger so this module keeps no dependencies, and it exists at
-     * all because a silent degradation is indistinguishable from a document that simply
-     * did not change much: the tier says which rung was reached, never which one was
-     * missed.
-     */
-    readonly onDegrade?: (reason: string) => void;
+  readonly limit?: number;
+  /**
+   * Told why a document came back at a lower tier than its spec promised.
+   *
+   * A port rather than a logger so this module keeps no dependencies, and it exists at
+   * all because a silent degradation is indistinguishable from a document that simply
+   * did not change much: the tier says which rung was reached, never which one was
+   * missed.
+   */
+  readonly onDegrade?: (reason: string) => void;
 }
 
 /**
@@ -186,11 +190,11 @@ export interface DocumentDiffOptions {
  * a tree into a failure to diff the revision at all.
  */
 export function specForDocumentPath(path: string): AnyDocumentSpec | undefined {
-    try {
-        return resolveDocumentSpecForPath(path)?.spec;
-    } catch {
-        return undefined;
-    }
+  try {
+    return resolveDocumentSpecForPath(path)?.spec;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -247,23 +251,26 @@ export const COMPARISON_PREVIEW_BYTE_CEILING = 16 * 1024 * 1024;
  * which reads as "might be JSON" and buys the whole file on both sides.
  */
 export function planPathRead(
-    path: string,
-    baseSize: number,
-    headSize: number,
-    knownClass?: ContentClass,
+  path: string,
+  baseSize: number,
+  headSize: number,
+  knownClass?: ContentClass
 ): number {
-    const largest = Math.max(baseSize, headSize);
-    if (largest === 0) {
-        return 0;
-    }
-    const contentClass = knownClass ?? contentClassOf(path);
-    if (specForDocumentPath(path) || contentClassIsReadable(contentClass)) {
-        return largest <= DIFF_PARSE_BYTE_CEILING ? baseSize + headSize : 0;
-    }
-    if (contentProviderFor(path, contentClass).headBytes === 0 || largest > CONTENT_HEAD_READ_CEILING) {
-        return 0;
-    }
-    return baseSize + headSize;
+  const largest = Math.max(baseSize, headSize);
+  if (largest === 0) {
+    return 0;
+  }
+  const contentClass = knownClass ?? contentClassOf(path);
+  if (specForDocumentPath(path) || contentClassIsReadable(contentClass)) {
+    return largest <= DIFF_PARSE_BYTE_CEILING ? baseSize + headSize : 0;
+  }
+  if (
+    contentProviderFor(path, contentClass).headBytes === 0 ||
+    largest > CONTENT_HEAD_READ_CEILING
+  ) {
+    return 0;
+  }
+  return baseSize + headSize;
 }
 
 /**
@@ -279,94 +286,108 @@ export function planPathRead(
  * comparison sniffs a bounded prefix off disk before it plans anything.
  */
 export function classOfReadSides(
-    path: string,
-    head: Buffer | null,
-    base: Buffer | null,
-    declared?: ContentClass,
+  path: string,
+  head: Buffer | null,
+  base: Buffer | null,
+  declared?: ContentClass
 ): ContentClass {
-    const named = declared ?? contentClassOf(path);
-    if (named !== "unknown") {
-        return named;
-    }
-    return (head ? contentClassOfBytes(head) : null) ?? (base ? contentClassOfBytes(base) : null) ?? named;
+  const named = declared ?? contentClassOf(path);
+  if (named !== "unknown") {
+    return named;
+  }
+  return (
+    (head ? contentClassOfBytes(head) : null) ?? (base ? contentClassOfBytes(base) : null) ?? named
+  );
 }
 
 /** Compare two versions of one document, degrading through the four tiers as needed. */
-export function diffDocumentBytes(request: DocumentDiffRequest, options: DocumentDiffOptions = {}): DocumentDiff {
-    const limit = options.limit ?? DOCUMENT_DIFF_CHANGE_LIMIT;
-    const { base, head, spec } = request;
+export function diffDocumentBytes(
+  request: DocumentDiffRequest,
+  options: DocumentDiffOptions = {}
+): DocumentDiff {
+  const limit = options.limit ?? DOCUMENT_DIFF_CHANGE_LIMIT;
+  const { base, head, spec } = request;
 
-    if (!base && !head) {
-        // Reachable: `changedPaths` reports directories too, and neither side holds bytes
-        // for one. Nothing happened to a document that exists on neither side.
-        return buildDocumentDiff([], { tier: "opaque", limit });
-    }
+  if (!base && !head) {
+    // Reachable: `changedPaths` reports directories too, and neither side holds bytes
+    // for one. Nothing happened to a document that exists on neither side.
+    return buildDocumentDiff([], { tier: "opaque", limit });
+  }
 
-    if (!base || !head) {
-        return presenceDiff(request, base ? "removed" : "added", limit);
-    }
+  if (!base || !head) {
+    return presenceDiff(request, base ? "removed" : "added", limit);
+  }
 
-    if (base.equals(head)) {
-        // Claimed as opaque rather than as the tier a full comparison would have reached:
-        // an empty list is the same list at every tier, and saying "semantic" here would
-        // put a semantic badge on a document nothing ever looked inside.
-        return buildDocumentDiff([], { tier: "opaque", limit });
-    }
+  if (base.equals(head)) {
+    // Claimed as opaque rather than as the tier a full comparison would have reached:
+    // an empty list is the same list at every tier, and saying "semantic" here would
+    // put a semantic badge on a document nothing ever looked inside.
+    return buildDocumentDiff([], { tier: "opaque", limit });
+  }
 
-    if (base.length > DIFF_PARSE_BYTE_CEILING || head.length > DIFF_PARSE_BYTE_CEILING) {
-        options.onDegrade?.(
-            `${request.path} is ${Math.max(base.length, head.length)} bytes, over the ${DIFF_PARSE_BYTE_CEILING}`
-            + " byte parse ceiling, so it is reported by size only",
-        );
-        return opaqueDiff(base, head, limit);
-    }
-
-    if (spec) {
-        const parsedBase = tryParse(spec, request.path, base);
-        const parsedHead = tryParse(spec, request.path, head);
-        if (parsedBase.ok && parsedHead.ok) {
-            if (spec.diff) {
-                const semantic = trySpecDiff(spec, parsedBase.document, parsedHead.document, limit, options);
-                if (semantic) {
-                    return semantic;
-                }
-            } else {
-                return summaryDiff(spec, parsedBase.document, parsedHead.document, limit);
-            }
-        } else {
-            // The one honest failure path: a document its own spec cannot read still has to
-            // appear in the change list, so it falls through to the generic tiers below.
-            const rejected = parsedBase.ok ? parsedHead : parsedBase;
-            options.onDegrade?.(
-                `${request.path} could not be read as a ${spec.kind} document`
-                + `${rejected.ok ? "" : ` (${rejected.reason})`}, so it is compared generically`,
-            );
-        }
-    }
-
-    const jsonBase = tryJson(base);
-    const jsonHead = tryJson(head);
-    if (jsonBase.ok && jsonHead.ok) {
-        return diffJsonStructural(jsonBase.value, jsonHead.value, { limit });
-    }
-
-    // The content step, between structural and opaque. Only for the classes whose bytes are
-    // NOT worth parsing - a `.txt` that reached here is a text file nobody could diff, and
-    // handing it to a header reader would produce "Studio does not recognise this format"
-    // about a format Studio recognises perfectly well.
-    //
-    const contentClass = classOfReadSides(request.path, head, base, request.contentClass);
-    if (!contentClassIsReadable(contentClass)) {
-        return diffDocumentContent({
-            path: request.path,
-            contentClass,
-            // The whole file was read, so the header is certainly inside it.
-            base: { probe: { size: base.length }, head: base },
-            head: { probe: { size: head.length }, head },
-        }, { limit });
-    }
-
+  if (base.length > DIFF_PARSE_BYTE_CEILING || head.length > DIFF_PARSE_BYTE_CEILING) {
+    options.onDegrade?.(
+      `${request.path} is ${Math.max(base.length, head.length)} bytes, over the ${DIFF_PARSE_BYTE_CEILING}` +
+        " byte parse ceiling, so it is reported by size only"
+    );
     return opaqueDiff(base, head, limit);
+  }
+
+  if (spec) {
+    const parsedBase = tryParse(spec, request.path, base);
+    const parsedHead = tryParse(spec, request.path, head);
+    if (parsedBase.ok && parsedHead.ok) {
+      if (spec.diff) {
+        const semantic = trySpecDiff(
+          spec,
+          parsedBase.document,
+          parsedHead.document,
+          limit,
+          options
+        );
+        if (semantic) {
+          return semantic;
+        }
+      } else {
+        return summaryDiff(spec, parsedBase.document, parsedHead.document, limit);
+      }
+    } else {
+      // The one honest failure path: a document its own spec cannot read still has to
+      // appear in the change list, so it falls through to the generic tiers below.
+      const rejected = parsedBase.ok ? parsedHead : parsedBase;
+      options.onDegrade?.(
+        `${request.path} could not be read as a ${spec.kind} document` +
+          `${rejected.ok ? "" : ` (${rejected.reason})`}, so it is compared generically`
+      );
+    }
+  }
+
+  const jsonBase = tryJson(base);
+  const jsonHead = tryJson(head);
+  if (jsonBase.ok && jsonHead.ok) {
+    return diffJsonStructural(jsonBase.value, jsonHead.value, { limit });
+  }
+
+  // The content step, between structural and opaque. Only for the classes whose bytes are
+  // NOT worth parsing - a `.txt` that reached here is a text file nobody could diff, and
+  // handing it to a header reader would produce "Studio does not recognise this format"
+  // about a format Studio recognises perfectly well.
+  //
+  const contentClass = classOfReadSides(request.path, head, base, request.contentClass);
+  if (!contentClassIsReadable(contentClass)) {
+    return diffDocumentContent(
+      {
+        path: request.path,
+        contentClass,
+        // The whole file was read, so the header is certainly inside it.
+        base: { probe: { size: base.length }, head: base },
+        head: { probe: { size: head.length }, head }
+      },
+      { limit }
+    );
+  }
+
+  return opaqueDiff(base, head, limit);
 }
 
 /**
@@ -377,50 +398,52 @@ export function diffDocumentBytes(request: DocumentDiffRequest, options: Documen
  * is the only one that cannot overclaim.
  */
 export function diffDocumentContent(
-    request: ContentDiffRequest,
-    options: DocumentDiffOptions = {},
+  request: ContentDiffRequest,
+  options: DocumentDiffOptions = {}
 ): DocumentDiff {
-    const limit = options.limit ?? DOCUMENT_DIFF_CHANGE_LIMIT;
-    const { base, head } = request;
+  const limit = options.limit ?? DOCUMENT_DIFF_CHANGE_LIMIT;
+  const { base, head } = request;
 
-    if (!base && !head) {
-        return buildDocumentDiff([], { tier: "opaque", limit });
-    }
-    if (!base || !head) {
-        const probe = (head ?? base) as ContentSide;
-        return buildDocumentDiff(
-            [{
-                path: [],
-                kind: base ? "removed" : "added",
-                label: {
-                    key: base ? LABEL_REMOVED : LABEL_ADDED,
-                    params: { bytes: probe.probe.size },
-                },
-            }],
-            { tier: "opaque", limit },
-        );
-    }
+  if (!base && !head) {
+    return buildDocumentDiff([], { tier: "opaque", limit });
+  }
+  if (!base || !head) {
+    const probe = (head ?? base) as ContentSide;
+    return buildDocumentDiff(
+      [
+        {
+          path: [],
+          kind: base ? "removed" : "added",
+          label: {
+            key: base ? LABEL_REMOVED : LABEL_ADDED,
+            params: { bytes: probe.probe.size }
+          }
+        }
+      ],
+      { tier: "opaque", limit }
+    );
+  }
 
-    const contentClass = request.contentClass ?? contentClassOf(request.path);
-    const provider = contentProviderFor(request.path, contentClass);
-    let changes: readonly DocumentChange[];
-    try {
-        changes = provider.describe(base, head);
-    } catch (error) {
-        // Same guard, same reason, as `trySpecDiff`: this runs inside the loop that builds a
-        // whole comparison, and a header reader thrown off by a truncated or hostile file must
-        // cost its own row rather than the other forty. The tier drops with it: nothing was
-        // read, so the caption that says so is the true one.
-        options.onDegrade?.(`the ${provider.id} content provider threw: ${messageOf(error)}`);
-        return buildDocumentDiff(
-            [{ path: [], kind: "changed", label: { key: LABEL_OPAQUE_UNREAD } }],
-            { tier: "opaque", limit },
-        );
-    }
-    // A provider that reads no header knows nothing this file did not already announce by
-    // existing at a size, and `opaque`'s caption ("only its size is reported") is exactly that
-    // claim. Only a provider that opens the header may say it compared what the file reports.
-    return buildDocumentDiff(changes, { tier: provider.headBytes > 0 ? "content" : "opaque", limit });
+  const contentClass = request.contentClass ?? contentClassOf(request.path);
+  const provider = contentProviderFor(request.path, contentClass);
+  let changes: readonly DocumentChange[];
+  try {
+    changes = provider.describe(base, head);
+  } catch (error) {
+    // Same guard, same reason, as `trySpecDiff`: this runs inside the loop that builds a
+    // whole comparison, and a header reader thrown off by a truncated or hostile file must
+    // cost its own row rather than the other forty. The tier drops with it: nothing was
+    // read, so the caption that says so is the true one.
+    options.onDegrade?.(`the ${provider.id} content provider threw: ${messageOf(error)}`);
+    return buildDocumentDiff([{ path: [], kind: "changed", label: { key: LABEL_OPAQUE_UNREAD } }], {
+      tier: "opaque",
+      limit
+    });
+  }
+  // A provider that reads no header knows nothing this file did not already announce by
+  // existing at a size, and `opaque`'s caption ("only its size is reported") is exactly that
+  // claim. Only a provider that opens the header may say it compared what the file reports.
+  return buildDocumentDiff(changes, { tier: provider.headBytes > 0 ? "content" : "opaque", limit });
 }
 
 /**
@@ -431,26 +454,32 @@ export function diffDocumentContent(
  * whole budget restating one act. The summary is read where a spec can read it, because
  * "12 variables" beside the row is what makes it worth having.
  */
-function presenceDiff(request: DocumentDiffRequest, kind: "added" | "removed", limit: number): DocumentDiff {
-    const bytes = (request.head ?? request.base) as Buffer;
-    // The ceiling applies here too, and this is the likeliest path to meet a large file: a
-    // newly imported asset is an addition, and reading one for a title nobody asked for would
-    // decode a whole video into a string to find out it is not a document.
-    const parsed = request.spec && bytes.length <= DIFF_PARSE_BYTE_CEILING
-        ? tryParse(request.spec, request.path, bytes)
-        : undefined;
-    const summary = parsed?.ok && request.spec ? summarizeQuietly(request.spec, parsed.document) : undefined;
+function presenceDiff(
+  request: DocumentDiffRequest,
+  kind: "added" | "removed",
+  limit: number
+): DocumentDiff {
+  const bytes = (request.head ?? request.base) as Buffer;
+  // The ceiling applies here too, and this is the likeliest path to meet a large file: a
+  // newly imported asset is an addition, and reading one for a title nobody asked for would
+  // decode a whole video into a string to find out it is not a document.
+  const parsed =
+    request.spec && bytes.length <= DIFF_PARSE_BYTE_CEILING
+      ? tryParse(request.spec, request.path, bytes)
+      : undefined;
+  const summary =
+    parsed?.ok && request.spec ? summarizeQuietly(request.spec, parsed.document) : undefined;
 
-    const change: DocumentChange = {
-        path: [],
-        kind,
-        label: {
-            key: kind === "added" ? LABEL_ADDED : LABEL_REMOVED,
-            params: { bytes: bytes.length },
-        },
-        ...(summary?.title ? { subject: summary.title } : {}),
-    };
-    return buildDocumentDiff([change], { tier: summary ? "summary" : "opaque", limit });
+  const change: DocumentChange = {
+    path: [],
+    kind,
+    label: {
+      key: kind === "added" ? LABEL_ADDED : LABEL_REMOVED,
+      params: { bytes: bytes.length }
+    },
+    ...(summary?.title ? { subject: summary.title } : {})
+  };
+  return buildDocumentDiff([change], { tier: summary ? "summary" : "opaque", limit });
 }
 
 /**
@@ -464,50 +493,55 @@ function presenceDiff(request: DocumentDiffRequest, kind: "added" | "removed", l
  * nothing happened to a file they can see is dirty. One row saying "changed, and the
  * summary does not show how" is the truthful version of that.
  */
-function summaryDiff(spec: AnyDocumentSpec, base: unknown, head: unknown, limit: number): DocumentDiff {
-    const before = summarizeQuietly(spec, base);
-    const after = summarizeQuietly(spec, head);
-    if (!before || !after) {
-        return buildDocumentDiff(
-            [{ path: [], kind: "changed", label: { key: LABEL_SUMMARY_OTHER } }],
-            { tier: "summary", limit },
-        );
-    }
+function summaryDiff(
+  spec: AnyDocumentSpec,
+  base: unknown,
+  head: unknown,
+  limit: number
+): DocumentDiff {
+  const before = summarizeQuietly(spec, base);
+  const after = summarizeQuietly(spec, head);
+  if (!before || !after) {
+    return buildDocumentDiff([{ path: [], kind: "changed", label: { key: LABEL_SUMMARY_OTHER } }], {
+      tier: "summary",
+      limit
+    });
+  }
 
-    const changes: DocumentChange[] = [];
-    if (before.title !== after.title) {
-        changes.push({
-            path: ["title"],
-            kind: "changed",
-            label: { key: LABEL_SUMMARY_TITLE, params: { from: before.title, to: after.title } },
-            // The author's own words on both sides; the new one is what the row is about.
-            subject: after.title || before.title,
-        });
-    }
+  const changes: DocumentChange[] = [];
+  if (before.title !== after.title) {
+    changes.push({
+      path: ["title"],
+      kind: "changed",
+      label: { key: LABEL_SUMMARY_TITLE, params: { from: before.title, to: after.title } },
+      // The author's own words on both sides; the new one is what the row is about.
+      subject: after.title || before.title
+    });
+  }
 
-    const counts = new Map(before.counts.map(count => [count.key, count.value]));
-    const seen = new Set<string>();
-    for (const count of after.counts) {
-        seen.add(count.key);
-        const was = counts.get(count.key);
-        if (was === count.value) {
-            continue;
-        }
-        changes.push(countChange(count.key, was, count.value));
+  const counts = new Map(before.counts.map((count) => [count.key, count.value]));
+  const seen = new Set<string>();
+  for (const count of after.counts) {
+    seen.add(count.key);
+    const was = counts.get(count.key);
+    if (was === count.value) {
+      continue;
     }
-    for (const count of before.counts) {
-        if (!seen.has(count.key)) {
-            changes.push(countChange(count.key, count.value, undefined));
-        }
+    changes.push(countChange(count.key, was, count.value));
+  }
+  for (const count of before.counts) {
+    if (!seen.has(count.key)) {
+      changes.push(countChange(count.key, count.value, undefined));
     }
+  }
 
-    // Sorted by the count's own key, which is stable across runs; the order `summarize`
-    // happens to build its array in is not something a spec promises.
-    changes.sort(compareChanges);
-    if (changes.length === 0) {
-        changes.push({ path: [], kind: "changed", label: { key: LABEL_SUMMARY_OTHER } });
-    }
-    return buildDocumentDiff(changes, { tier: "summary", limit });
+  // Sorted by the count's own key, which is stable across runs; the order `summarize`
+  // happens to build its array in is not something a spec promises.
+  changes.sort(compareChanges);
+  if (changes.length === 0) {
+    changes.push({ path: [], kind: "changed", label: { key: LABEL_SUMMARY_OTHER } });
+  }
+  return buildDocumentDiff(changes, { tier: "summary", limit });
 }
 
 /**
@@ -517,19 +551,23 @@ function summaryDiff(spec: AnyDocumentSpec, base: unknown, head: unknown, limit:
  * {@link DocumentSummaryCount} is defined to hold - so the surface resolves it rather
  * than printing `audioTracks` at the author.
  */
-function countChange(key: string, from: number | undefined, to: number | undefined): DocumentChange {
-    return {
-        path: ["counts", key],
-        kind: from === undefined ? "added" : to === undefined ? "removed" : "changed",
-        label: {
-            key: LABEL_SUMMARY_COUNT,
-            params: {
-                name: key,
-                ...(from === undefined ? {} : { from }),
-                ...(to === undefined ? {} : { to }),
-            },
-        },
-    };
+function countChange(
+  key: string,
+  from: number | undefined,
+  to: number | undefined
+): DocumentChange {
+  return {
+    path: ["counts", key],
+    kind: from === undefined ? "added" : to === undefined ? "removed" : "changed",
+    label: {
+      key: LABEL_SUMMARY_COUNT,
+      params: {
+        name: key,
+        ...(from === undefined ? {} : { from }),
+        ...(to === undefined ? {} : { to })
+      }
+    }
+  };
 }
 
 /**
@@ -545,22 +583,27 @@ function countChange(key: string, from: number | undefined, to: number | undefin
  * changed" looks like.
  */
 export function unreadDocumentDiff(kind: DocumentChange["kind"] = "changed"): DocumentDiff {
-    return buildDocumentDiff(
-        [{ path: [], kind, label: { key: LABEL_OPAQUE_UNREAD } }],
-        { tier: "opaque", limit: 1 },
-    );
+  return buildDocumentDiff([{ path: [], kind, label: { key: LABEL_OPAQUE_UNREAD } }], {
+    tier: "opaque",
+    limit: 1
+  });
 }
 
 /** Tier 4: it changed, and these are the two sizes. Everything else would be invented. */
 function opaqueDiff(base: Buffer, head: Buffer, limit: number): DocumentDiff {
-    return buildDocumentDiff(
-        [{
-            path: [],
-            kind: "changed",
-            label: { key: LABEL_OPAQUE_CHANGED, params: { fromBytes: base.length, toBytes: head.length } },
-        }],
-        { tier: "opaque", limit },
-    );
+  return buildDocumentDiff(
+    [
+      {
+        path: [],
+        kind: "changed",
+        label: {
+          key: LABEL_OPAQUE_CHANGED,
+          params: { fromBytes: base.length, toBytes: head.length }
+        }
+      }
+    ],
+    { tier: "opaque", limit }
+  );
 }
 
 /**
@@ -574,37 +617,35 @@ function opaqueDiff(base: Buffer, head: Buffer, limit: number): DocumentDiff {
  * ignores `limit` would otherwise put ten thousand rows on an IPC message.
  */
 function trySpecDiff(
-    spec: AnyDocumentSpec,
-    base: unknown,
-    head: unknown,
-    limit: number,
-    options: DocumentDiffOptions,
+  spec: AnyDocumentSpec,
+  base: unknown,
+  head: unknown,
+  limit: number,
+  options: DocumentDiffOptions
 ): DocumentDiff | undefined {
-    let produced: DocumentDiff;
-    try {
-        produced = spec.diff?.(base, head, { limit }) as DocumentDiff;
-    } catch (error) {
-        options.onDegrade?.(`the ${spec.kind} spec threw while diffing: ${messageOf(error)}`);
-        return undefined;
-    }
+  let produced: DocumentDiff;
+  try {
+    produced = spec.diff?.(base, head, { limit }) as DocumentDiff;
+  } catch (error) {
+    options.onDegrade?.(`the ${spec.kind} spec threw while diffing: ${messageOf(error)}`);
+    return undefined;
+  }
 
-    if (!produced || !Array.isArray(produced.changes)) {
-        options.onDegrade?.(`the ${spec.kind} spec returned no usable diff`);
-        return undefined;
-    }
-    if (countDocumentChanges(produced.changes) <= limit) {
-        return produced;
-    }
-    return buildDocumentDiff(produced.changes, {
-        tier: isTier(produced.tier) ? produced.tier : "semantic",
-        limit,
-        total: Math.max(produced.total ?? 0, countDocumentChanges(produced.changes)),
-    });
+  if (!produced || !Array.isArray(produced.changes)) {
+    options.onDegrade?.(`the ${spec.kind} spec returned no usable diff`);
+    return undefined;
+  }
+  if (countDocumentChanges(produced.changes) <= limit) {
+    return produced;
+  }
+  return buildDocumentDiff(produced.changes, {
+    tier: isTier(produced.tier) ? produced.tier : "semantic",
+    limit,
+    total: Math.max(produced.total ?? 0, countDocumentChanges(produced.changes))
+  });
 }
 
-type ParseResult =
-    | { ok: true; document: unknown }
-    | { ok: false; reason: string };
+type ParseResult = { ok: true; document: unknown } | { ok: false; reason: string };
 
 /**
  * Parse with a spec, without any of `loadDocument`'s behaviour.
@@ -615,63 +656,68 @@ type ParseResult =
  * author a file they cannot change is broken, with no way to withdraw the claim.
  */
 function tryParse(spec: AnyDocumentSpec, path: string, bytes: Buffer): ParseResult {
-    let raw: unknown;
-    try {
-        raw = JSON.parse(bytes.toString("utf-8"));
-    } catch (error) {
-        return { ok: false, reason: `not valid JSON: ${messageOf(error)}` };
-    }
-    try {
-        return { ok: true, document: spec.parse(raw, parseContextFor(spec, path, bytes)) };
-    } catch (error) {
-        return { ok: false, reason: messageOf(error) };
-    }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(bytes.toString("utf-8"));
+  } catch (error) {
+    return { ok: false, reason: `not valid JSON: ${messageOf(error)}` };
+  }
+  try {
+    return { ok: true, document: spec.parse(raw, parseContextFor(spec, path, bytes)) };
+  } catch (error) {
+    return { ok: false, reason: messageOf(error) };
+  }
 }
 
 function parseContextFor(spec: AnyDocumentSpec, path: string, bytes: Buffer): DocumentParseContext {
-    return {
+  return {
+    path,
+    corrupt(reason: string, options?: { cause?: unknown }): never {
+      throw new DocumentCorruptError({
+        kind: spec.kind,
         path,
-        corrupt(reason: string, options?: { cause?: unknown }): never {
-            throw new DocumentCorruptError({
-                kind: spec.kind,
-                path,
-                reason,
-                text: bytes.toString("utf-8"),
-                cause: options?.cause,
-            });
-        },
-    };
+        reason,
+        text: bytes.toString("utf-8"),
+        cause: options?.cause
+      });
+    }
+  };
 }
 
 /** `summarize` is not on the no-throw contract that `diff` is, so it gets the same guard. */
-function summarizeQuietly(spec: AnyDocumentSpec, document: unknown): { title: string; counts: readonly { key: string; value: number }[] } | undefined {
-    try {
-        const summary = spec.summarize(document);
-        return summary && Array.isArray(summary.counts) ? summary : undefined;
-    } catch {
-        return undefined;
-    }
+function summarizeQuietly(
+  spec: AnyDocumentSpec,
+  document: unknown
+): { title: string; counts: readonly { key: string; value: number }[] } | undefined {
+  try {
+    const summary = spec.summarize(document);
+    return summary && Array.isArray(summary.counts) ? summary : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function tryJson(bytes: Buffer): { ok: true; value: unknown } | { ok: false } {
-    try {
-        return { ok: true, value: JSON.parse(bytes.toString("utf-8")) };
-    } catch {
-        return { ok: false };
-    }
+  try {
+    return { ok: true, value: JSON.parse(bytes.toString("utf-8")) };
+  } catch {
+    return { ok: false };
+  }
 }
 
 /** Path order, so a list built from a map is the same list on every run. */
 function compareChanges(a: DocumentChange, b: DocumentChange): number {
-    const left = a.path.join("/");
-    const right = b.path.join("/");
-    return left < right ? -1 : left > right ? 1 : 0;
+  const left = a.path.join("/");
+  const right = b.path.join("/");
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function isTier(value: unknown): value is DocumentDiffTier {
-    return value === "semantic" || value === "summary" || value === "structural" || value === "opaque";
+  return (
+    value === "semantic" || value === "summary" || value === "structural" || value === "opaque"
+  );
 }
 
 function messageOf(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+  return error instanceof Error ? error.message : String(error);
 }

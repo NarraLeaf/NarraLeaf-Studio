@@ -1,10 +1,10 @@
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
 import {
-    clampTextInputValue,
-    defaultTextInputWidgetProps,
-    normalizeTextInputProps,
-    type UITextInputWidgetProps,
+  clampTextInputValue,
+  defaultTextInputWidgetProps,
+  normalizeTextInputProps,
+  type UITextInputWidgetProps
 } from "@shared/types/ui-editor/textInput";
 import { defaultButtonWidgetProps, type ButtonWidgetProps } from "../button/types";
 
@@ -19,54 +19,54 @@ import { defaultButtonWidgetProps, type ButtonWidgetProps } from "../button/type
  * a single-line field has one line of text and its player-facing string is the runtime value.
  */
 export type TextInputWidgetProps = UITextInputWidgetProps &
-    Omit<
-        ButtonWidgetProps,
-        "label" | "localizable" | "localizationKey" | "textVerticalAlign" | "textWrapMode"
-    >;
+  Omit<
+    ButtonWidgetProps,
+    "label" | "localizable" | "localizationKey" | "textVerticalAlign" | "textWrapMode"
+  >;
 
 export const defaultTextInputElementProps: TextInputWidgetProps = {
-    ...defaultTextInputWidgetProps,
+  ...defaultTextInputWidgetProps,
 
-    fontSize: 16,
-    color: "#e5e7eb",
-    fontWeight: "normal",
-    lineHeight: 1.4,
-    fontAssetId: null,
+  fontSize: 16,
+  color: "#e5e7eb",
+  fontWeight: "normal",
+  lineHeight: 1.4,
+  fontAssetId: null,
 
-    backgroundColor: "#1f2937",
-    fillType: "color",
-    fillOpacity: 1,
-    fillVisible: true,
-    imageFill: undefined,
-    backgroundImage: "",
-    backgroundFit: "cover",
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#4b5563",
-    borderStyle: "solid",
-    paddingX: 10,
-    paddingY: 6,
-    clipContent: true,
-    cursor: "auto",
+  backgroundColor: "#1f2937",
+  fillType: "color",
+  fillOpacity: 1,
+  fillVisible: true,
+  imageFill: undefined,
+  backgroundImage: "",
+  backgroundFit: "cover",
+  borderRadius: 6,
+  borderWidth: 1,
+  borderColor: "#4b5563",
+  borderStyle: "solid",
+  paddingX: 10,
+  paddingY: 6,
+  clipContent: true,
+  cursor: "auto",
 
-    transformOffsetX: 0,
-    transformOffsetY: 0,
-    transformScale: 1,
-    transformRotation: 0,
-    transformOpacity: 1,
+  transformOffsetX: 0,
+  transformOffsetY: 0,
+  transformScale: 1,
+  transformRotation: 0,
+  transformOpacity: 1,
 
-    effects: { ...defaultButtonWidgetProps.effects },
+  effects: { ...defaultButtonWidgetProps.effects }
 };
 
 export function getTextInputProps(element: UIElement): TextInputWidgetProps {
-    const raw = (element.props ?? {}) as Partial<TextInputWidgetProps>;
-    return {
-        ...defaultTextInputElementProps,
-        ...raw,
-        // Normalized last: the shared contract owns clamping (value vs. max length, input mode, align).
-        ...normalizeTextInputProps(element.props),
-        effects: normalizeElementEffectValues(raw.effects ?? defaultTextInputElementProps.effects),
-    };
+  const raw = (element.props ?? {}) as Partial<TextInputWidgetProps>;
+  return {
+    ...defaultTextInputElementProps,
+    ...raw,
+    // Normalized last: the shared contract owns clamping (value vs. max length, input mode, align).
+    ...normalizeTextInputProps(element.props),
+    effects: normalizeElementEffectValues(raw.effects ?? defaultTextInputElementProps.effects)
+  };
 }
 
 /**
@@ -76,18 +76,18 @@ export function getTextInputProps(element: UIElement): TextInputWidgetProps {
  * re-clamped `value` when either side of the value/max-length pair moves.
  */
 export function patchTextInputProps(
-    element: UIElement,
-    partial: Partial<TextInputWidgetProps>,
+  element: UIElement,
+  partial: Partial<TextInputWidgetProps>
 ): Record<string, unknown> {
-    const next: Record<string, unknown> = { ...partial };
-    if ("value" in partial || "maxLength" in partial) {
-        const current = getTextInputProps(element);
-        next.value = clampTextInputValue(
-            partial.value ?? current.value,
-            partial.maxLength ?? current.maxLength,
-        );
-    }
-    return next;
+  const next: Record<string, unknown> = { ...partial };
+  if ("value" in partial || "maxLength" in partial) {
+    const current = getTextInputProps(element);
+    next.value = clampTextInputValue(
+      partial.value ?? current.value,
+      partial.maxLength ?? current.maxLength
+    );
+  }
+  return next;
 }
 
 /**
@@ -96,9 +96,9 @@ export function patchTextInputProps(
  * Only the chrome keys in `BUTTON_KEY_ORDER` are ever read from the result.
  */
 export function textInputButtonBaselineProps(p: TextInputWidgetProps): ButtonWidgetProps {
-    return {
-        ...defaultButtonWidgetProps,
-        ...p,
-        label: "",
-    };
+  return {
+    ...defaultButtonWidgetProps,
+    ...p,
+    label: ""
+  };
 }

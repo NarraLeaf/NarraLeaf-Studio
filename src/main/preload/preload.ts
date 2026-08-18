@@ -20,12 +20,16 @@ import { RendererInterfaceKey } from "@shared/types/constants";
 const isDetachedChildDocument = window.opener !== null || location.href === "about:blank";
 
 if (!isDetachedChildDocument) {
-    contextBridge.exposeInMainWorld(RendererInterfaceKey, IPCInterface);
+  contextBridge.exposeInMainWorld(RendererInterfaceKey, IPCInterface);
 }
 
 // Prevent default navigation when external files dropped on window
-const prevent = (e: DragEvent) => { e.preventDefault(); };
-window.addEventListener('dragover', prevent);
-window.addEventListener('drop', prevent);
+const prevent = (e: DragEvent) => {
+  e.preventDefault();
+};
+window.addEventListener("dragover", prevent);
+window.addEventListener("drop", prevent);
 
-console.log(`[Preload.js] Preload script loaded${isDetachedChildDocument ? " (detached window: no bridge)" : ""}`);
+console.log(
+  `[Preload.js] Preload script loaded${isDetachedChildDocument ? " (detached window: no bridge)" : ""}`
+);

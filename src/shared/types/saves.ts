@@ -14,16 +14,16 @@
  */
 
 export type AutoSaveConfiguration = {
-    /** Write an autosave on a timer while a game is running. */
-    enabled: boolean;
-    /**
-     * Seconds between autosave writes. The scheduler only writes when the story
-     * advanced since the last one, so an idle game costs nothing regardless of
-     * how short this is.
-     */
-    intervalSeconds: number;
-    /** How many rotating slots the ring keeps; the oldest is overwritten. */
-    slots: number;
+  /** Write an autosave on a timer while a game is running. */
+  enabled: boolean;
+  /**
+   * Seconds between autosave writes. The scheduler only writes when the story
+   * advanced since the last one, so an idle game costs nothing regardless of
+   * how short this is.
+   */
+  intervalSeconds: number;
+  /** How many rotating slots the ring keeps; the oldest is overwritten. */
+  slots: number;
 };
 
 /**
@@ -31,9 +31,9 @@ export type AutoSaveConfiguration = {
  * the player, and an author who does not want it can say so in one click.
  */
 export const DEFAULT_AUTO_SAVE_CONFIGURATION: AutoSaveConfiguration = {
-    enabled: true,
-    intervalSeconds: 5,
-    slots: 3,
+  enabled: true,
+  intervalSeconds: 5,
+  slots: 3
 };
 
 /** Guard rails for the authored numbers; the UI offers the same range. */
@@ -51,12 +51,12 @@ export const AUTO_SAVE_ID_PREFIX = "@autosave.";
 
 /** The reserved id of one ring slot. */
 export function autoSaveSlotId(index: number): string {
-    return `${AUTO_SAVE_ID_PREFIX}${Math.max(0, Math.trunc(index))}`;
+  return `${AUTO_SAVE_ID_PREFIX}${Math.max(0, Math.trunc(index))}`;
 }
 
 /** Whether a save id belongs to the reserved autosave ring. */
 export function isAutoSaveId(id: string): boolean {
-    return id.startsWith(AUTO_SAVE_ID_PREFIX);
+  return id.startsWith(AUTO_SAVE_ID_PREFIX);
 }
 
 /**
@@ -65,22 +65,22 @@ export function isAutoSaveId(id: string): boolean {
  * parse fine; the caller decides whether they are still in range.
  */
 export function parseAutoSaveSlotIndex(id: string): number | null {
-    if (!isAutoSaveId(id)) {
-        return null;
-    }
-    const raw = id.slice(AUTO_SAVE_ID_PREFIX.length);
-    if (!/^\d+$/.test(raw)) {
-        return null;
-    }
-    return Number.parseInt(raw, 10);
+  if (!isAutoSaveId(id)) {
+    return null;
+  }
+  const raw = id.slice(AUTO_SAVE_ID_PREFIX.length);
+  if (!/^\d+$/.test(raw)) {
+    return null;
+  }
+  return Number.parseInt(raw, 10);
 }
 
 function clampInteger(value: unknown, fallback: number, min: number, max: number): number {
-    const parsed = typeof value === "number" ? value : Number(value);
-    if (!Number.isFinite(parsed)) {
-        return fallback;
-    }
-    return Math.min(max, Math.max(min, Math.trunc(parsed)));
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.trunc(parsed)));
 }
 
 /**
@@ -89,27 +89,28 @@ function clampInteger(value: unknown, fallback: number, min: number, max: number
  * and get the defaults - which is the point of the default being "on".
  */
 export function normalizeAutoSaveConfiguration(value: unknown): AutoSaveConfiguration {
-    if (!value || typeof value !== "object") {
-        return { ...DEFAULT_AUTO_SAVE_CONFIGURATION };
-    }
-    const record = value as Record<string, unknown>;
-    return {
-        enabled: typeof record.enabled === "boolean"
-            ? record.enabled
-            : DEFAULT_AUTO_SAVE_CONFIGURATION.enabled,
-        intervalSeconds: clampInteger(
-            record.intervalSeconds,
-            DEFAULT_AUTO_SAVE_CONFIGURATION.intervalSeconds,
-            AUTO_SAVE_INTERVAL_SECONDS_MIN,
-            AUTO_SAVE_INTERVAL_SECONDS_MAX,
-        ),
-        slots: clampInteger(
-            record.slots,
-            DEFAULT_AUTO_SAVE_CONFIGURATION.slots,
-            AUTO_SAVE_SLOTS_MIN,
-            AUTO_SAVE_SLOTS_MAX,
-        ),
-    };
+  if (!value || typeof value !== "object") {
+    return { ...DEFAULT_AUTO_SAVE_CONFIGURATION };
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    enabled:
+      typeof record.enabled === "boolean"
+        ? record.enabled
+        : DEFAULT_AUTO_SAVE_CONFIGURATION.enabled,
+    intervalSeconds: clampInteger(
+      record.intervalSeconds,
+      DEFAULT_AUTO_SAVE_CONFIGURATION.intervalSeconds,
+      AUTO_SAVE_INTERVAL_SECONDS_MIN,
+      AUTO_SAVE_INTERVAL_SECONDS_MAX
+    ),
+    slots: clampInteger(
+      record.slots,
+      DEFAULT_AUTO_SAVE_CONFIGURATION.slots,
+      AUTO_SAVE_SLOTS_MIN,
+      AUTO_SAVE_SLOTS_MAX
+    )
+  };
 }
 
 /**
@@ -130,10 +131,10 @@ export function normalizeAutoSaveConfiguration(value: unknown): AutoSaveConfigur
  * field it is missing, which is a real slot with an unknown time - not the same thing.
  */
 export type SaveRecordTimes = {
-    /** When this slot was last written, epoch milliseconds; 0 when the record carries no stamp. */
-    savedAt: number;
-    /** When this slot was first written, epoch milliseconds; 0 when the record carries no stamp. */
-    createdAt: number;
+  /** When this slot was last written, epoch milliseconds; 0 when the record carries no stamp. */
+  savedAt: number;
+  /** When this slot was first written, epoch milliseconds; 0 when the record carries no stamp. */
+  createdAt: number;
 };
 
 /**
@@ -151,20 +152,20 @@ export type SaveRecordTimes = {
  * nothing to quote.
  */
 export type SaveRecordLine = {
-    /** The last sentence shown, or "" when the record carries none. */
-    line: string;
-    /** Who spoke it, or "" when the record carries no speaker (narration, or none yet). */
-    speaker: string;
+  /** The last sentence shown, or "" when the record carries none. */
+  line: string;
+  /** Who spoke it, or "" when the record carries no speaker (narration, or none yet). */
+  speaker: string;
 };
 
 export type AutoSaveEntry = {
-    id: string;
-    /** Slot index within the ring. */
-    slot: number;
-    /** When this slot was last written, epoch milliseconds. */
-    timestamp: number;
-    /** When this slot was first written, epoch milliseconds. */
-    createdAt: number;
-    /** Whatever the writer attached as user metadata (null when none). */
-    metadata: unknown;
+  id: string;
+  /** Slot index within the ring. */
+  slot: number;
+  /** When this slot was last written, epoch milliseconds. */
+  timestamp: number;
+  /** When this slot was first written, epoch milliseconds. */
+  createdAt: number;
+  /** Whatever the writer attached as user metadata (null when none). */
+  metadata: unknown;
 };

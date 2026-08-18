@@ -1,15 +1,18 @@
 import React from "react";
 import { cn } from "../../utils/cn";
 
-export interface SliderProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange" | "value" | "type"> {
-    value: number;
-    onValueChange?: (value: number) => void;
-    /** Fires once the drag settles — use for anything expensive, e.g. persisting. */
-    onValueCommit?: (value: number) => void;
-    min?: number;
-    max?: number;
-    step?: number;
-    disabled?: boolean;
+export interface SliderProps extends Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  "onChange" | "value" | "type"
+> {
+  value: number;
+  onValueChange?: (value: number) => void;
+  /** Fires once the drag settles — use for anything expensive, e.g. persisting. */
+  onValueCommit?: (value: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  disabled?: boolean;
 }
 
 /**
@@ -23,33 +26,35 @@ export interface SliderProps extends Omit<React.InputHTMLAttributes<HTMLInputEle
  * live preview), `onValueCommit` fires when the drag ends.
  */
 export function Slider({
-    value,
-    onValueChange,
-    onValueCommit,
-    min = 0,
-    max = 100,
-    step = 1,
-    disabled = false,
-    className = "",
-    ...props
+  value,
+  onValueChange,
+  onValueCommit,
+  min = 0,
+  max = 100,
+  step = 1,
+  disabled = false,
+  className = "",
+  ...props
 }: SliderProps) {
-    const clamp = (next: number) => Math.min(max, Math.max(min, next));
+  const clamp = (next: number) => Math.min(max, Math.max(min, next));
 
-    return (
-        <input
-            type="range"
-            className={cn("nl-slider", disabled && "opacity-50 cursor-not-allowed", className)}
-            min={min}
-            max={max}
-            step={step}
-            value={clamp(value)}
-            disabled={disabled}
-            onChange={(event) => onValueChange?.(clamp(Number(event.target.value)))}
-            // Pointer release and keyboard both land on change/keyUp; `input` already
-            // covered the live updates, so these only mark the end of an interaction.
-            onPointerUp={(event) => onValueCommit?.(clamp(Number((event.target as HTMLInputElement).value)))}
-            onKeyUp={(event) => onValueCommit?.(clamp(Number((event.target as HTMLInputElement).value)))}
-            {...props}
-        />
-    );
+  return (
+    <input
+      type="range"
+      className={cn("nl-slider", disabled && "opacity-50 cursor-not-allowed", className)}
+      min={min}
+      max={max}
+      step={step}
+      value={clamp(value)}
+      disabled={disabled}
+      onChange={(event) => onValueChange?.(clamp(Number(event.target.value)))}
+      // Pointer release and keyboard both land on change/keyUp; `input` already
+      // covered the live updates, so these only mark the end of an interaction.
+      onPointerUp={(event) =>
+        onValueCommit?.(clamp(Number((event.target as HTMLInputElement).value)))
+      }
+      onKeyUp={(event) => onValueCommit?.(clamp(Number((event.target as HTMLInputElement).value)))}
+      {...props}
+    />
+  );
 }

@@ -24,9 +24,9 @@ import type { Asset } from "@/lib/workspace/services/assets/types";
  * full image must not be handed the tile's downscale.
  */
 export type BadgeImageSource =
-    | { kind: "project"; asset: Asset<AssetType.Image> }
-    | { kind: "thumbnail"; asset: Asset<AssetType.Image> }
-    | { kind: "editor"; fileId: string };
+  | { kind: "project"; asset: Asset<AssetType.Image> }
+  | { kind: "thumbnail"; asset: Asset<AssetType.Image> }
+  | { kind: "editor"; fileId: string };
 
 /**
  * One shared object URL per asset. `refs` counts the mounted rows subscribed to it; `disposed` guards
@@ -36,31 +36,31 @@ export type BadgeImageSource =
  * for the entry's whole life. `load` is stored so an asset-content change can re-run it in place.
  */
 type Entry = {
-    url: string | null;
-    refs: number;
-    disposed: boolean;
-    loading: boolean;
-    failed: boolean;
-    /** Bumped by every (re)load and by an invalidation. A load that settles after its generation was
-     *  superseded (the asset was replaced or deleted mid-fetch) drops its bytes instead of re-minting a
-     *  stale URL — which would otherwise resurrect a deleted image or clobber a newer replacement. */
-    generation: number;
-    load: () => Promise<Uint8Array | null>;
+  url: string | null;
+  refs: number;
+  disposed: boolean;
+  loading: boolean;
+  failed: boolean;
+  /** Bumped by every (re)load and by an invalidation. A load that settles after its generation was
+   *  superseded (the asset was replaced or deleted mid-fetch) drops its bytes instead of re-minting a
+   *  stale URL — which would otherwise resurrect a deleted image or clobber a newer replacement. */
+  generation: number;
+  load: () => Promise<Uint8Array | null>;
 };
 
 const entries = new Map<string, Entry>();
 const listeners = new Map<string, Set<() => void>>();
 
 function sourceKey(source: BadgeImageSource): string {
-    return source.kind === "editor" ? `editor:${source.fileId}` : `${source.kind}:${source.asset.id}`;
+  return source.kind === "editor" ? `editor:${source.fileId}` : `${source.kind}:${source.asset.id}`;
 }
 
 function emit(key: string): void {
-    const set = listeners.get(key);
-    if (!set) return;
-    for (const listener of set) {
-        listener();
-    }
+  const set = listeners.get(key);
+  if (!set) return;
+  for (const listener of set) {
+    listener();
+  }
 }
 
 /**
@@ -69,59 +69,68 @@ function emit(key: string): void {
  * (missing/unreadable) leaves the entry icon-only but `failed`, so a later subscriber can retry.
  */
 function beginLoad(key: string, entry: Entry): void {
-    // This load owns `entry.generation`; a later load or invalidation bumps it, marking this one stale.
-    const generation = ++entry.generation;
-    entry.loading = true;
-    entry.failed = false;
-    void entry.load()
-        .then(bytes => {
-            // Released (disposed) or superseded (asset replaced/deleted mid-fetch): drop the bytes rather
-            // than mint a URL that would leak, clobber a newer image, or resurrect a deleted one.
-            if (entry.disposed || entry.generation !== generation) {
-                return;
-            }
-            if (!bytes || bytes.byteLength === 0) {
-                entry.failed = true;
-                return;
-            }
-            // Copy into a fresh Uint8Array so the Blob part is backed by a plain ArrayBuffer (not the
-            // SharedArrayBuffer-permitting `ArrayBufferLike` the reader returns).
-            const nextUrl = URL.createObjectURL(new Blob([new Uint8Array(bytes)]));
-            if (entry.url) {
-                URL.revokeObjectURL(entry.url);
-            }
-            entry.url = nextUrl;
-            emit(key);
-        })
-        .catch(() => {
-            if (!entry.disposed && entry.generation === generation) {
-                entry.failed = true;
-            }
-        })
-        .finally(() => {
-            // Only the current generation's load owns `loading`; a superseded one must not clear it.
-            if (entry.generation === generation) {
-                entry.loading = false;
-            }
-        });
+  // This load owns `entry.generation`; a later load or invalidation bumps it, marking this one stale.
+  const generation = ++entry.generation;
+  entry.loading = true;
+  entry.failed = false;
+  void entry
+    .load()
+    .then((bytes) => {
+      // Released (disposed) or superseded (asset replaced/deleted mid-fetch): drop the bytes rather
+      // than mint a URL that would leak, clobber a newer image, or resurrect a deleted one.
+      if (entry.disposed || entry.generation !== generation) {
+        return;
+      }
+      if (!bytes || bytes.byteLength === 0) {
+        entry.failed = true;
+        return;
+      }
+      // Copy into a fresh Uint8Array so the Blob part is backed by a plain ArrayBuffer (not the
+      // SharedArrayBuffer-permitting `ArrayBufferLike` the reader returns).
+      const nextUrl = URL.createObjectURL(new Blob([new Uint8Array(bytes)]));
+      if (entry.url) {
+        URL.revokeObjectURL(entry.url);
+      }
+      entry.url = nextUrl;
+      emit(key);
+    })
+    .catch(() => {
+      if (!entry.disposed && entry.generation === generation) {
+        entry.failed = true;
+      }
+    })
+    .finally(() => {
+      // Only the current generation's load owns `loading`; a superseded one must not clear it.
+      if (entry.generation === generation) {
+        entry.loading = false;
+      }
+    });
 }
 
 function retain(key: string, load: () => Promise<Uint8Array | null>): void {
-    const existing = entries.get(key);
-    if (existing) {
-        existing.refs++;
-        // Keep the freshest loader (services/source may have re-resolved) and, if the last attempt
-        // came up empty, give this new subscriber a fresh try instead of the pinned fallback icon.
-        existing.load = load;
-        if (existing.failed && !existing.loading) {
-            beginLoad(key, existing);
-        }
-        return;
+  const existing = entries.get(key);
+  if (existing) {
+    existing.refs++;
+    // Keep the freshest loader (services/source may have re-resolved) and, if the last attempt
+    // came up empty, give this new subscriber a fresh try instead of the pinned fallback icon.
+    existing.load = load;
+    if (existing.failed && !existing.loading) {
+      beginLoad(key, existing);
     }
+    return;
+  }
 
-    const entry: Entry = { url: null, refs: 1, disposed: false, loading: false, failed: false, generation: 0, load };
-    entries.set(key, entry);
-    beginLoad(key, entry);
+  const entry: Entry = {
+    url: null,
+    refs: 1,
+    disposed: false,
+    loading: false,
+    failed: false,
+    generation: 0,
+    load
+  };
+  entries.set(key, entry);
+  beginLoad(key, entry);
 }
 
 /**
@@ -130,25 +139,25 @@ function retain(key: string, load: () => Promise<Uint8Array | null>): void {
  * stale URL and mark the entry for retry should the id come back.
  */
 function invalidate(key: string, gone: boolean): void {
-    const entry = entries.get(key);
-    if (!entry) {
-        return;
+  const entry = entries.get(key);
+  if (!entry) {
+    return;
+  }
+  if (gone) {
+    // Supersede any in-flight load (so it cannot re-mint the deleted image) and drop the URL. A
+    // returning id reloads on the next subscribe via `failed`.
+    entry.generation++;
+    entry.loading = false;
+    if (entry.url) {
+      URL.revokeObjectURL(entry.url);
+      entry.url = null;
     }
-    if (gone) {
-        // Supersede any in-flight load (so it cannot re-mint the deleted image) and drop the URL. A
-        // returning id reloads on the next subscribe via `failed`.
-        entry.generation++;
-        entry.loading = false;
-        if (entry.url) {
-            URL.revokeObjectURL(entry.url);
-            entry.url = null;
-        }
-        entry.failed = true;
-        emit(key);
-        return;
-    }
-    // Replaced content: a fresh load supersedes any in-flight one and swaps the URL on success.
-    beginLoad(key, entry);
+    entry.failed = true;
+    emit(key);
+    return;
+  }
+  // Replaced content: a fresh load supersedes any in-flight one and swaps the URL on success.
+  beginLoad(key, entry);
 }
 
 /**
@@ -162,57 +171,57 @@ function invalidate(key: string, gone: boolean): void {
  */
 let wiredAssets: AssetsService | null = null;
 function ensureAssetInvalidationWired(assets: AssetsService): void {
-    if (wiredAssets === assets) {
-        return;
-    }
-    wiredAssets = assets;
-    const events = assets.getEvents();
-    // Both readings of the same asset have to be told: a row showing the full image and a tile
-    // showing its downscale are separate entries, and refreshing only one leaves the other stale.
-    events.on("updated", asset => {
-        invalidate(`project:${asset.id}`, false);
-        invalidate(`thumbnail:${asset.id}`, false);
-    });
-    events.on("deleted", asset => {
-        invalidate(`project:${asset.id}`, true);
-        invalidate(`thumbnail:${asset.id}`, true);
-    });
+  if (wiredAssets === assets) {
+    return;
+  }
+  wiredAssets = assets;
+  const events = assets.getEvents();
+  // Both readings of the same asset have to be told: a row showing the full image and a tile
+  // showing its downscale are separate entries, and refreshing only one leaves the other stale.
+  events.on("updated", (asset) => {
+    invalidate(`project:${asset.id}`, false);
+    invalidate(`thumbnail:${asset.id}`, false);
+  });
+  events.on("deleted", (asset) => {
+    invalidate(`project:${asset.id}`, true);
+    invalidate(`thumbnail:${asset.id}`, true);
+  });
 }
 
 function release(key: string): void {
-    const entry = entries.get(key);
-    if (!entry) {
-        return;
-    }
-    entry.refs--;
-    if (entry.refs > 0) {
-        return;
-    }
-    entry.disposed = true;
-    if (entry.url) {
-        URL.revokeObjectURL(entry.url);
-    }
-    entries.delete(key);
+  const entry = entries.get(key);
+  if (!entry) {
+    return;
+  }
+  entry.refs--;
+  if (entry.refs > 0) {
+    return;
+  }
+  entry.disposed = true;
+  if (entry.url) {
+    URL.revokeObjectURL(entry.url);
+  }
+  entries.delete(key);
 }
 
 function addListener(key: string, listener: () => void): void {
-    let set = listeners.get(key);
-    if (!set) {
-        set = new Set();
-        listeners.set(key, set);
-    }
-    set.add(listener);
+  let set = listeners.get(key);
+  if (!set) {
+    set = new Set();
+    listeners.set(key, set);
+  }
+  set.add(listener);
 }
 
 function removeListener(key: string, listener: () => void): void {
-    const set = listeners.get(key);
-    if (!set) {
-        return;
-    }
-    set.delete(listener);
-    if (set.size === 0) {
-        listeners.delete(key);
-    }
+  const set = listeners.get(key);
+  if (!set) {
+    return;
+  }
+  set.delete(listener);
+  if (set.size === 0) {
+    listeners.delete(key);
+  }
 }
 
 /**
@@ -222,67 +231,70 @@ function removeListener(key: string, listener: () => void): void {
  * The URL is revoked when the last subscribing row unmounts.
  */
 export function useBadgeImageUrl(source: BadgeImageSource | null): string | null {
-    const { context, isInitialized } = useWorkspace();
-    const services = useMemo(() => {
-        if (!context || !isInitialized) {
-            return null;
-        }
-        return {
-            assets: context.services.get<AssetsService>(Services.Assets),
-            serviceAssets: context.services.get<ServiceAssetsService>(Services.ServiceAssets),
-            fileSystem: context.services.get<FileSystemService>(Services.FileSystem),
-        };
-    }, [context, isInitialized]);
-
-    // Wire the cache to project-asset changes once the services are up, so a live sprite replacement
-    // invalidates the shared entry (idempotent per service instance).
-    useEffect(() => {
-        if (services) {
-            ensureAssetInvalidationWired(services.assets);
-        }
-    }, [services]);
-
-    const key = source && services ? sourceKey(source) : null;
-
-    // The loader closes over the current source; held in a ref so the memoized `subscribe` (which only
-    // re-runs when `key` changes) always reads a fresh loader without re-subscribing every render.
-    const loadRef = useRef<() => Promise<Uint8Array | null>>(() => Promise.resolve(null));
-    loadRef.current = async () => {
-        if (!source || !services) {
-            return null;
-        }
-        if (source.kind === "editor") {
-            const result = await services.serviceAssets.readRaw(source.fileId);
-            return result.ok ? result.data : null;
-        }
-        if (source.kind === "thumbnail") {
-            const path = await services.assets.getThumbnailPath(source.asset);
-            if (path.success && path.data) {
-                const raw = await services.fileSystem.readRaw(path.data);
-                if (raw.ok && raw.data && raw.data.byteLength > 0) {
-                    return raw.data;
-                }
-            }
-            // The downscale could not be produced or read (unsupported codec, cache directory gone).
-            // Fall through to the full bytes: a heavier decode still shows the asset, an icon does not.
-        }
-        const result = await services.assets.fetch(source.asset);
-        return result.success ? new Uint8Array(result.data.data) : null;
+  const { context, isInitialized } = useWorkspace();
+  const services = useMemo(() => {
+    if (!context || !isInitialized) {
+      return null;
+    }
+    return {
+      assets: context.services.get<AssetsService>(Services.Assets),
+      serviceAssets: context.services.get<ServiceAssetsService>(Services.ServiceAssets),
+      fileSystem: context.services.get<FileSystemService>(Services.FileSystem)
     };
+  }, [context, isInitialized]);
 
-    const subscribe = useCallback((onChange: () => void) => {
-        if (!key) {
-            return () => {};
+  // Wire the cache to project-asset changes once the services are up, so a live sprite replacement
+  // invalidates the shared entry (idempotent per service instance).
+  useEffect(() => {
+    if (services) {
+      ensureAssetInvalidationWired(services.assets);
+    }
+  }, [services]);
+
+  const key = source && services ? sourceKey(source) : null;
+
+  // The loader closes over the current source; held in a ref so the memoized `subscribe` (which only
+  // re-runs when `key` changes) always reads a fresh loader without re-subscribing every render.
+  const loadRef = useRef<() => Promise<Uint8Array | null>>(() => Promise.resolve(null));
+  loadRef.current = async () => {
+    if (!source || !services) {
+      return null;
+    }
+    if (source.kind === "editor") {
+      const result = await services.serviceAssets.readRaw(source.fileId);
+      return result.ok ? result.data : null;
+    }
+    if (source.kind === "thumbnail") {
+      const path = await services.assets.getThumbnailPath(source.asset);
+      if (path.success && path.data) {
+        const raw = await services.fileSystem.readRaw(path.data);
+        if (raw.ok && raw.data && raw.data.byteLength > 0) {
+          return raw.data;
         }
-        addListener(key, onChange);
-        retain(key, () => loadRef.current());
-        return () => {
-            removeListener(key, onChange);
-            release(key);
-        };
-    }, [key]);
+      }
+      // The downscale could not be produced or read (unsupported codec, cache directory gone).
+      // Fall through to the full bytes: a heavier decode still shows the asset, an icon does not.
+    }
+    const result = await services.assets.fetch(source.asset);
+    return result.success ? new Uint8Array(result.data.data) : null;
+  };
 
-    const getSnapshot = useCallback(() => (key ? entries.get(key)?.url ?? null : null), [key]);
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      if (!key) {
+        return () => {};
+      }
+      addListener(key, onChange);
+      retain(key, () => loadRef.current());
+      return () => {
+        removeListener(key, onChange);
+        release(key);
+      };
+    },
+    [key]
+  );
 
-    return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const getSnapshot = useCallback(() => (key ? (entries.get(key)?.url ?? null) : null), [key]);
+
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }

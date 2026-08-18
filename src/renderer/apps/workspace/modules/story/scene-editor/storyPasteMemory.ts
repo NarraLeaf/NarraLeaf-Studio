@@ -1,9 +1,9 @@
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import {
-    STORY_PASTE_MEMORY_PANEL_ID,
-    type PasteSeparatorChoice,
-    type SpeakerMappingTarget,
-    type StoryPasteMemory,
+  STORY_PASTE_MEMORY_PANEL_ID,
+  type PasteSeparatorChoice,
+  type SpeakerMappingTarget,
+  type StoryPasteMemory
 } from "@/lib/story/paste/storyPasteTypes";
 
 /**
@@ -34,15 +34,15 @@ const SEPARATOR_PRESET_LIMIT = 12;
  * wizard still opens, it just opens with no pre-fills, which is exactly the first-paste experience.
  */
 export function getStoryPasteMemory(panelState: PanelStateService | null): StoryPasteMemory {
-    const stored = panelState?.getPanelState<StoryPasteMemory>(STORY_PASTE_MEMORY_PANEL_ID);
-    if (!stored || stored.version !== 1) {
-        return EMPTY_MEMORY;
-    }
-    return {
-        version: 1,
-        speakers: stored.speakers && typeof stored.speakers === "object" ? { ...stored.speakers } : {},
-        separators: Array.isArray(stored.separators) ? stored.separators.filter(isSeparatorPreset) : [],
-    };
+  const stored = panelState?.getPanelState<StoryPasteMemory>(STORY_PASTE_MEMORY_PANEL_ID);
+  if (!stored || stored.version !== 1) {
+    return EMPTY_MEMORY;
+  }
+  return {
+    version: 1,
+    speakers: stored.speakers && typeof stored.speakers === "object" ? { ...stored.speakers } : {},
+    separators: Array.isArray(stored.separators) ? stored.separators.filter(isSeparatorPreset) : []
+  };
 }
 
 /**
@@ -53,17 +53,17 @@ export function getStoryPasteMemory(panelState: PanelStateService | null): Story
  * earlier chapter would be forgotten.
  */
 export function rememberStoryPasteSpeakers(
-    panelState: PanelStateService | null,
-    mappings: Record<string, SpeakerMappingTarget>,
+  panelState: PanelStateService | null,
+  mappings: Record<string, SpeakerMappingTarget>
 ): void {
-    if (!panelState || Object.keys(mappings).length === 0) {
-        return;
-    }
-    const memory = getStoryPasteMemory(panelState);
-    panelState.setPanelState<StoryPasteMemory>(STORY_PASTE_MEMORY_PANEL_ID, {
-        version: 1,
-        speakers: { ...memory.speakers, ...mappings },
-    });
+  if (!panelState || Object.keys(mappings).length === 0) {
+    return;
+  }
+  const memory = getStoryPasteMemory(panelState);
+  panelState.setPanelState<StoryPasteMemory>(STORY_PASTE_MEMORY_PANEL_ID, {
+    version: 1,
+    speakers: { ...memory.speakers, ...mappings }
+  });
 }
 
 /**
@@ -73,40 +73,45 @@ export function rememberStoryPasteSpeakers(
  * rows reading "Chapter files" and doing different things is not a list the author can use.
  */
 export function saveStoryPasteSeparator(
-    panelState: PanelStateService | null,
-    name: string,
-    choice: PasteSeparatorChoice,
+  panelState: PanelStateService | null,
+  name: string,
+  choice: PasteSeparatorChoice
 ): void {
-    const trimmed = name.trim();
-    if (!panelState || !trimmed) {
-        return;
-    }
-    const memory = getStoryPasteMemory(panelState);
-    const rest = memory.separators.filter(preset => preset.name !== trimmed);
-    panelState.setPanelState<StoryPasteMemory>(STORY_PASTE_MEMORY_PANEL_ID, {
-        version: 1,
-        separators: [{ name: trimmed, choice }, ...rest].slice(0, SEPARATOR_PRESET_LIMIT),
-    });
+  const trimmed = name.trim();
+  if (!panelState || !trimmed) {
+    return;
+  }
+  const memory = getStoryPasteMemory(panelState);
+  const rest = memory.separators.filter((preset) => preset.name !== trimmed);
+  panelState.setPanelState<StoryPasteMemory>(STORY_PASTE_MEMORY_PANEL_ID, {
+    version: 1,
+    separators: [{ name: trimmed, choice }, ...rest].slice(0, SEPARATOR_PRESET_LIMIT)
+  });
 }
 
 /** Drop one named preset. */
-export function forgetStoryPasteSeparator(panelState: PanelStateService | null, name: string): void {
-    if (!panelState) {
-        return;
-    }
-    const memory = getStoryPasteMemory(panelState);
-    panelState.setPanelState<StoryPasteMemory>(STORY_PASTE_MEMORY_PANEL_ID, {
-        version: 1,
-        separators: memory.separators.filter(preset => preset.name !== name),
-    });
+export function forgetStoryPasteSeparator(
+  panelState: PanelStateService | null,
+  name: string
+): void {
+  if (!panelState) {
+    return;
+  }
+  const memory = getStoryPasteMemory(panelState);
+  panelState.setPanelState<StoryPasteMemory>(STORY_PASTE_MEMORY_PANEL_ID, {
+    version: 1,
+    separators: memory.separators.filter((preset) => preset.name !== name)
+  });
 }
 
 function isSeparatorPreset(value: unknown): value is StoryPasteMemory["separators"][number] {
-    if (!value || typeof value !== "object") {
-        return false;
-    }
-    const preset = value as { name?: unknown; choice?: unknown };
-    return typeof preset.name === "string"
-        && Boolean(preset.choice)
-        && typeof (preset.choice as { kind?: unknown }).kind === "string";
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const preset = value as { name?: unknown; choice?: unknown };
+  return (
+    typeof preset.name === "string" &&
+    Boolean(preset.choice) &&
+    typeof (preset.choice as { kind?: unknown }).kind === "string"
+  );
 }

@@ -15,21 +15,21 @@ import { PROJECT_STATS_SETTINGS_KEY_PREFIX, createEmptyProjectStats } from "@sha
  * broadcast, so its in-memory counters cannot resurrect what was just cleared.
  */
 export async function clearAllProjectStats(): Promise<void> {
-    const state = getInterface().app.state;
+  const state = getInterface().app.state;
 
-    const all = await state.getAllGlobalState();
-    if (!all.success) {
-        throw new Error(all.error ?? translate("settings.persistFailed"));
+  const all = await state.getAllGlobalState();
+  if (!all.success) {
+    throw new Error(all.error ?? translate("settings.persistFailed"));
+  }
+
+  const keys = Object.keys(all.data.settings).filter((key) =>
+    key.startsWith(`${PROJECT_STATS_SETTINGS_KEY_PREFIX}.`)
+  );
+
+  for (const key of keys) {
+    const response = await state.setGlobalState(key, createEmptyProjectStats());
+    if (!response.success) {
+      throw new Error(response.error ?? translate("settings.persistFailed"));
     }
-
-    const keys = Object.keys(all.data.settings).filter(key =>
-        key.startsWith(`${PROJECT_STATS_SETTINGS_KEY_PREFIX}.`),
-    );
-
-    for (const key of keys) {
-        const response = await state.setGlobalState(key, createEmptyProjectStats());
-        if (!response.success) {
-            throw new Error(response.error ?? translate("settings.persistFailed"));
-        }
-    }
+  }
 }

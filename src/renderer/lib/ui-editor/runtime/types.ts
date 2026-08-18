@@ -1,7 +1,12 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintHostApiContractVersion } from "@shared/types/blueprint/hostApi";
-import type { UIDocument, UIComponentId, UISurfaceId, UIStageSlotId } from "@shared/types/ui-editor/document";
+import type {
+  UIDocument,
+  UIComponentId,
+  UISurfaceId,
+  UIStageSlotId
+} from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
@@ -22,13 +27,13 @@ export type UIHost = "app" | "player";
  * an empty map, so nothing changes for content that has no params.
  */
 export type UIHostAdapterElementEventOptions = {
-    listItemScope?: UIListItemScope | null;
-    instanceKey?: string;
-    componentId?: UIComponentId;
-    /** Resolved values by param id: the instance's own, falling back to the declared default. */
-    componentParams?: Record<string, string>;
-    eventControl?: BehaviorGraphEventControl;
-    allowClosedScopeExecution?: boolean;
+  listItemScope?: UIListItemScope | null;
+  instanceKey?: string;
+  componentId?: UIComponentId;
+  /** Resolved values by param id: the instance's own, falling back to the declared default. */
+  componentParams?: Record<string, string>;
+  eventControl?: BehaviorGraphEventControl;
+  allowClosedScopeExecution?: boolean;
 };
 
 /**
@@ -36,47 +41,50 @@ export type UIHostAdapterElementEventOptions = {
  * Editor preview typically omits this field (no-op behavior in widgets).
  */
 export type UIHostAdapterBlueprintRuntime = {
-    surfaceId: string;
-    /** Instance-specific scope id. Defaults to `surfaceId` for top-level surfaces. */
-    runtimeScopeId?: string;
-    setSurfaceState: (key: string, value: unknown) => void;
-    getSurfaceState: (key: string) => unknown;
-    emitDebug: (event: BlueprintDebugEvent) => void;
-    getSurfaceTransitionState?: () => { isEntering: boolean; isExiting: boolean };
-    /** Dispatch a widget private event slot (for example `init` or `mouseClick`) on the owner-local blueprint. */
-    dispatchElementBlueprintEvent: (
-        elementId: string,
-        eventName: string,
-        payload?: Record<string, unknown>,
-        options?: UIHostAdapterElementEventOptions,
-    ) => Promise<void>;
-    /** Continue the current widget event from this element to its structural parent. */
-    continueElementEventBubble?: (
-        elementId: string,
-        eventName: string,
-        payload?: Record<string, unknown>,
-        options?: UIHostAdapterElementEventOptions,
-    ) => Promise<boolean>;
-    /** Dispatch a surface-level event on the current surfaceMain blueprint. */
-    dispatchSurfaceBlueprintEvent?: (eventName: string, payload?: Record<string, unknown>) => Promise<void>;
-    dispatchBroadcastEvent?: (eventName: string, data: unknown, sender?: string) => Promise<void>;
-    getBroadcastListenerCount?: (eventName: string) => number;
-    /** Invoke a declared blueprint fn (Call Fn node); awaits the fn body and returns its Fn Return values. */
-    invokeBlueprintFn?: (input: {
-        fnRef: string;
-        args: Record<string, unknown>;
-        depth: number;
-        /** Surface of the calling execution; global callers omit it and only see global fns. */
-        callerSurfaceId?: string;
-        signal?: AbortSignal;
-        callerExecutionId?: string;
-    }) => Promise<{ returns: Record<string, unknown> }>;
-    frame?: {
-        getParam: (key: string) => unknown;
-        emit: (eventName: string, data: unknown) => Promise<void> | void;
-    };
-    /** M3-full: Dev Mode host API (graphs + TS ctx); absent in editor preview. */
-    hostApi?: BlueprintHostApiRuntime;
+  surfaceId: string;
+  /** Instance-specific scope id. Defaults to `surfaceId` for top-level surfaces. */
+  runtimeScopeId?: string;
+  setSurfaceState: (key: string, value: unknown) => void;
+  getSurfaceState: (key: string) => unknown;
+  emitDebug: (event: BlueprintDebugEvent) => void;
+  getSurfaceTransitionState?: () => { isEntering: boolean; isExiting: boolean };
+  /** Dispatch a widget private event slot (for example `init` or `mouseClick`) on the owner-local blueprint. */
+  dispatchElementBlueprintEvent: (
+    elementId: string,
+    eventName: string,
+    payload?: Record<string, unknown>,
+    options?: UIHostAdapterElementEventOptions
+  ) => Promise<void>;
+  /** Continue the current widget event from this element to its structural parent. */
+  continueElementEventBubble?: (
+    elementId: string,
+    eventName: string,
+    payload?: Record<string, unknown>,
+    options?: UIHostAdapterElementEventOptions
+  ) => Promise<boolean>;
+  /** Dispatch a surface-level event on the current surfaceMain blueprint. */
+  dispatchSurfaceBlueprintEvent?: (
+    eventName: string,
+    payload?: Record<string, unknown>
+  ) => Promise<void>;
+  dispatchBroadcastEvent?: (eventName: string, data: unknown, sender?: string) => Promise<void>;
+  getBroadcastListenerCount?: (eventName: string) => number;
+  /** Invoke a declared blueprint fn (Call Fn node); awaits the fn body and returns its Fn Return values. */
+  invokeBlueprintFn?: (input: {
+    fnRef: string;
+    args: Record<string, unknown>;
+    depth: number;
+    /** Surface of the calling execution; global callers omit it and only see global fns. */
+    callerSurfaceId?: string;
+    signal?: AbortSignal;
+    callerExecutionId?: string;
+  }) => Promise<{ returns: Record<string, unknown> }>;
+  frame?: {
+    getParam: (key: string) => unknown;
+    emit: (eventName: string, data: unknown) => Promise<void> | void;
+  };
+  /** M3-full: Dev Mode host API (graphs + TS ctx); absent in editor preview. */
+  hostApi?: BlueprintHostApiRuntime;
 };
 
 /**
@@ -84,70 +92,70 @@ export type UIHostAdapterBlueprintRuntime = {
  * M3+ implementations extend behavior toward @shared/types/blueprint host capabilities.
  */
 export type UIHostAdapter = {
-    host: UIHost;
-    navigate?: (target: unknown) => Promise<void> | void;
-    resolveSlot?: (slotId: string) => { mount: (node: ReactNode) => void } | null;
-    gameUiRuntime?: {
-        slotId: UIStageSlotId;
-    };
-    /**
-     * M1 latch: which frozen BlueprintHostApiContract generation this adapter targets.
-     * Does not imply all capabilities are implemented yet.
-     */
-    blueprintHostApiVersion?: BlueprintHostApiContractVersion;
-    /** M3-min: optional Blueprint runtime surface (Dev Mode). */
-    blueprintRuntime?: UIHostAdapterBlueprintRuntime;
-    /**
-     * Story Action Blueprint runtime surface. Present only while a story-action blueprint graph
-     * runs inside a compiled NLR `Script`; resolves scene/saved variable ids to their NLR backing
-     * (`Scene.local` / `Storable`). Absent for UI blueprints.
-     */
-    storyRuntime?: UIHostAdapterStoryRuntime;
-    /** Editor preview: use the active workspace service instance for canvas-local interaction overrides. */
-    editorStateService?: UIEditorStateService;
-    /** Editor preview: use the active document service, including component-editor adapters. */
-    editorDocumentService?: UIDocumentService;
-    /**
-     * Whether the surface this adapter renders is read-only right now (a frozen workspace).
-     *
-     * The two services above are the only thing a widget renderer needs in order to write the
-     * document from inside its own markup, and the interaction layer's gesture table cannot reach
-     * those handlers - a widget's `onDoubleClick` is attached by the widget, not by the canvas. So
-     * the state travels on the adapter beside them, and {@link resolveInlineTextEditHost} is where
-     * the two are read together.
-     */
-    editorReadOnly?: UIEditorReadOnly;
+  host: UIHost;
+  navigate?: (target: unknown) => Promise<void> | void;
+  resolveSlot?: (slotId: string) => { mount: (node: ReactNode) => void } | null;
+  gameUiRuntime?: {
+    slotId: UIStageSlotId;
+  };
+  /**
+   * M1 latch: which frozen BlueprintHostApiContract generation this adapter targets.
+   * Does not imply all capabilities are implemented yet.
+   */
+  blueprintHostApiVersion?: BlueprintHostApiContractVersion;
+  /** M3-min: optional Blueprint runtime surface (Dev Mode). */
+  blueprintRuntime?: UIHostAdapterBlueprintRuntime;
+  /**
+   * Story Action Blueprint runtime surface. Present only while a story-action blueprint graph
+   * runs inside a compiled NLR `Script`; resolves scene/saved variable ids to their NLR backing
+   * (`Scene.local` / `Storable`). Absent for UI blueprints.
+   */
+  storyRuntime?: UIHostAdapterStoryRuntime;
+  /** Editor preview: use the active workspace service instance for canvas-local interaction overrides. */
+  editorStateService?: UIEditorStateService;
+  /** Editor preview: use the active document service, including component-editor adapters. */
+  editorDocumentService?: UIDocumentService;
+  /**
+   * Whether the surface this adapter renders is read-only right now (a frozen workspace).
+   *
+   * The two services above are the only thing a widget renderer needs in order to write the
+   * document from inside its own markup, and the interaction layer's gesture table cannot reach
+   * those handlers - a widget's `onDoubleClick` is attached by the widget, not by the canvas. So
+   * the state travels on the adapter beside them, and {@link resolveInlineTextEditHost} is where
+   * the two are read together.
+   */
+  editorReadOnly?: UIEditorReadOnly;
 };
 
 /** Read/write access to one class of Story variables, resolving ids to their NLR backing store. */
 export type StoryVariableRuntimeAccess = {
-    /** Resolve `variableId` to its stored value, or the declared default when unset. */
-    get: (variableId: string) => unknown;
-    /** Resolve `variableId` and write `value` to the backing store. */
-    set: (variableId: string, value: unknown) => void;
+  /** Resolve `variableId` to its stored value, or the declared default when unset. */
+  get: (variableId: string) => unknown;
+  /** Resolve `variableId` and write `value` to the backing store. */
+  set: (variableId: string, value: unknown) => void;
 };
 
 export type UIHostAdapterStoryRuntime = {
-    sceneVar: StoryVariableRuntimeAccess;
-    savedVar: StoryVariableRuntimeAccess;
+  sceneVar: StoryVariableRuntimeAccess;
+  savedVar: StoryVariableRuntimeAccess;
 };
 
 export type RenderSurfaceOptions = {
-    surfaceId: UISurfaceId;
-    hostAdapter: UIHostAdapter;
-    className?: string;
-    style?: CSSProperties;
-    editorChrome?: boolean;
+  surfaceId: UISurfaceId;
+  hostAdapter: UIHostAdapter;
+  className?: string;
+  style?: CSSProperties;
+  editorChrome?: boolean;
 };
 
 export type RenderDocumentSurfaceOptions = RenderSurfaceOptions & {
-    document: UIDocument;
+  document: UIDocument;
 };
 
 export type RenderComponentOptions = {
-    componentId: UIComponentId;
-    hostAdapter: UIHostAdapter;
-    className?: string;
-    style?: CSSProperties;
-    editorChrome?: boolean;
+  componentId: UIComponentId;
+  hostAdapter: UIHostAdapter;
+  className?: string;
+  style?: CSSProperties;
+  editorChrome?: boolean;
 };

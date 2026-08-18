@@ -24,16 +24,16 @@
  */
 
 export type VoiceNameTokens = {
-    /** Scene display name. */
-    scene: string;
-    /** 1-based position among the voiceable lines of its scene. */
-    index: number;
-    /** Speaker display name (or the narration label). */
-    character: string;
-    /** Voice language code. */
-    locale: string;
-    /** Stable translation-unit id (story textId). */
-    unitId: string;
+  /** Scene display name. */
+  scene: string;
+  /** 1-based position among the voiceable lines of its scene. */
+  index: number;
+  /** Speaker display name (or the narration label). */
+  character: string;
+  /** Voice language code. */
+  locale: string;
+  /** Stable translation-unit id (story textId). */
+  unitId: string;
 };
 
 const RESERVED_CHARS = /["|<>:?*]/g;
@@ -42,26 +42,33 @@ const WHITESPACE = /\s+/g;
 const NON_ALNUM = /[^\p{L}\p{N}]+/gu;
 
 /** Every pattern token, including the aliases the type's own field names imply. */
-export const VOICE_NAME_TOKENS = ["scene", "index", "character", "locale", "unit", "unitId"] as const;
+export const VOICE_NAME_TOKENS = [
+  "scene",
+  "index",
+  "character",
+  "locale",
+  "unit",
+  "unitId"
+] as const;
 
 /** Reduce one token value to a safe, space-free path segment (no separators/reserved chars). */
 function sanitizeSegment(value: string): string {
-    const cleaned = value
-        .replace(SEPARATORS, "")
-        .replace(WHITESPACE, "")
-        .replace(RESERVED_CHARS, "")
-        .trim();
-    return cleaned || "_";
+  const cleaned = value
+    .replace(SEPARATORS, "")
+    .replace(WHITESPACE, "")
+    .replace(RESERVED_CHARS, "")
+    .trim();
+  return cleaned || "_";
 }
 
 /** Collapse and trim path separators produced by empty pattern segments. */
 function normalizeRelativePath(path: string): string {
-    return path
-        .replace(/\\+/g, "/")
-        .split("/")
-        .map(segment => segment.trim())
-        .filter(segment => segment.length > 0)
-        .join("/");
+  return path
+    .replace(/\\+/g, "/")
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0)
+    .join("/");
 }
 
 /**
@@ -70,23 +77,23 @@ function normalizeRelativePath(path: string): string {
  * tokens are left as literal text.
  */
 export function formatVoiceFilename(pattern: string, tokens: VoiceNameTokens): string {
-    const unit = sanitizeSegment(tokens.unitId);
-    const values: Record<string, string> = {
-        scene: sanitizeSegment(tokens.scene),
-        index: String(Math.max(0, Math.trunc(tokens.index))).padStart(3, "0"),
-        character: sanitizeSegment(tokens.character),
-        locale: sanitizeSegment(tokens.locale),
-        unit,
-        // The token's own type field is `unitId`, and the documentation said so, while the formatter
-        // only ever understood `{unit}` - so the spelling a reader would copy came out as the literal
-        // text "{unitId}" in every filename. Both spell the same thing now.
-        unitid: unit,
-    };
-    const replaced = pattern.replace(/\{(\w+)\}/g, (whole, token: string) => {
-        const key = token.toLowerCase();
-        return key in values ? values[key] : whole;
-    });
-    return normalizeRelativePath(replaced) || sanitizeSegment(tokens.unitId);
+  const unit = sanitizeSegment(tokens.unitId);
+  const values: Record<string, string> = {
+    scene: sanitizeSegment(tokens.scene),
+    index: String(Math.max(0, Math.trunc(tokens.index))).padStart(3, "0"),
+    character: sanitizeSegment(tokens.character),
+    locale: sanitizeSegment(tokens.locale),
+    unit,
+    // The token's own type field is `unitId`, and the documentation said so, while the formatter
+    // only ever understood `{unit}` - so the spelling a reader would copy came out as the literal
+    // text "{unitId}" in every filename. Both spell the same thing now.
+    unitid: unit
+  };
+  const replaced = pattern.replace(/\{(\w+)\}/g, (whole, token: string) => {
+    const key = token.toLowerCase();
+    return key in values ? values[key] : whole;
+  });
+  return normalizeRelativePath(replaced) || sanitizeSegment(tokens.unitId);
 }
 
 /**
@@ -97,7 +104,7 @@ export function formatVoiceFilename(pattern: string, tokens: VoiceNameTokens): s
  * folder layout never affect matching.
  */
 export function matchKeyForFilename(filename: string): string {
-    const base = filename.replace(/\\+/g, "/").split("/").pop() ?? filename;
-    const withoutExt = base.replace(/\.[^.]+$/, "");
-    return withoutExt.normalize("NFKC").toLowerCase().replace(NON_ALNUM, "");
+  const base = filename.replace(/\\+/g, "/").split("/").pop() ?? filename;
+  const withoutExt = base.replace(/\.[^.]+$/, "");
+  return withoutExt.normalize("NFKC").toLowerCase().replace(NON_ALNUM, "");
 }

@@ -10,9 +10,9 @@ import { knownPuppetRuntimeFor } from "@shared/utils/puppetRuntimes";
  * translating it would be wrong rather than merely unnecessary.
  */
 const KIND_LABELS = {
-    preset: "characters.editor.kind.preset",
-    layered: "characters.editor.kind.layered",
-    puppet: "characters.editor.kind.puppet",
+  preset: "characters.editor.kind.preset",
+  layered: "characters.editor.kind.layered",
+  puppet: "characters.editor.kind.puppet"
 } as const satisfies Partial<Record<CharacterAppearanceKind, TranslationKey>>;
 
 /**
@@ -24,13 +24,13 @@ const KIND_LABELS = {
  * disagreeing is how "External runtime" became unrecognisable in the first place.
  */
 export function characterKindLabel(
-    kind: CharacterAppearanceKind,
-    t: (key: TranslationKey) => string,
+  kind: CharacterAppearanceKind,
+  t: (key: TranslationKey) => string
 ): string {
-    const runtime = knownPuppetRuntimeFor(kind);
-    if (runtime) {
-        return runtime.productName;
-    }
-    // Every remaining kind has a key; the cast is the price of a table that deliberately omits some.
-    return t(KIND_LABELS[kind as keyof typeof KIND_LABELS]);
+  const runtime = knownPuppetRuntimeFor(kind);
+  if (runtime) {
+    return runtime.productName;
+  }
+  // Every remaining kind has a key; the cast is the price of a table that deliberately omits some.
+  return t(KIND_LABELS[kind as keyof typeof KIND_LABELS]);
 }

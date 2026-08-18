@@ -1,8 +1,17 @@
 import type { TranslationKey } from "@shared/i18n";
-import { missingCoreParams, parseCommandLine, type StoryCommandIssue, type StoryCommandLine } from "./storyCommandParser";
+import {
+  missingCoreParams,
+  parseCommandLine,
+  type StoryCommandIssue,
+  type StoryCommandLine
+} from "./storyCommandParser";
 import { paramHintKey } from "./storyCommandGrammar";
 import type { StoryExpressionIssue } from "@shared/utils/storyExpressionParser";
-import { resolveCommandLine, type StoryCommandContext, type StoryCommandResolutionIssue } from "./storyCommandResolution";
+import {
+  resolveCommandLine,
+  type StoryCommandContext,
+  type StoryCommandResolutionIssue
+} from "./storyCommandResolution";
 
 /**
  * Why a command line will not commit, in one sentence.
@@ -18,39 +27,42 @@ import { resolveCommandLine, type StoryCommandContext, type StoryCommandResoluti
  */
 
 export type StoryCommandReason = {
-    key: TranslationKey;
-    params: Record<string, string | number>;
-    /**
-     * When set, the caller translates this hint key and substitutes it for `params.slot` — in the
-     * COMMAND language, not the interface one. `params.slot` carries the untranslated fallback so a
-     * caller that does not care still renders something.
-     */
-    paramHintKey?: TranslationKey;
+  key: TranslationKey;
+  params: Record<string, string | number>;
+  /**
+   * When set, the caller translates this hint key and substitutes it for `params.slot` — in the
+   * COMMAND language, not the interface one. `params.slot` carries the untranslated fallback so a
+   * caller that does not care still renders something.
+   */
+  paramHintKey?: TranslationKey;
 };
 
 const reasonKey = (code: string): TranslationKey => `storyExpr.reason.${code}` as TranslationKey;
 
 /** The first problem with this line, or null when it is fine (or is not a command at all). */
-export function getCommandLineReason(source: string, context: StoryCommandContext): StoryCommandReason | null {
-    if (!source.startsWith("/")) {
-        return null;
-    }
-    const line = parseCommandLine(source);
-    if (line.kind !== "command") {
-        return null;
-    }
-    // An unfinished command token is not an error — the author is still choosing. Complaining about
-    // `/va` while they type toward `/var` would put a red line under every keystroke.
-    if (!line.def) {
-        const unknown = line.issues.find(issue => issue.code === "unknownCommand");
-        return unknown && looksComplete(source) ? parserReason(line, unknown) : null;
-    }
-    const parserIssue = line.issues[0];
-    if (parserIssue) {
-        return parserReason(line, parserIssue);
-    }
-    const resolutionIssue = resolveCommandLine(line, context).issues[0];
-    return resolutionIssue ? resolutionReason(resolutionIssue) : null;
+export function getCommandLineReason(
+  source: string,
+  context: StoryCommandContext
+): StoryCommandReason | null {
+  if (!source.startsWith("/")) {
+    return null;
+  }
+  const line = parseCommandLine(source);
+  if (line.kind !== "command") {
+    return null;
+  }
+  // An unfinished command token is not an error — the author is still choosing. Complaining about
+  // `/va` while they type toward `/var` would put a red line under every keystroke.
+  if (!line.def) {
+    const unknown = line.issues.find((issue) => issue.code === "unknownCommand");
+    return unknown && looksComplete(source) ? parserReason(line, unknown) : null;
+  }
+  const parserIssue = line.issues[0];
+  if (parserIssue) {
+    return parserReason(line, parserIssue);
+  }
+  const resolutionIssue = resolveCommandLine(line, context).issues[0];
+  return resolutionIssue ? resolutionReason(resolutionIssue) : null;
 }
 
 /**
@@ -61,25 +73,28 @@ export function getCommandLineReason(source: string, context: StoryCommandContex
  * slot) but is exactly what the draft row must say. `paramHintKey` names the missing slot's hint for
  * the caller to translate.
  */
-export function getCommandLineDraftReason(source: string, context: StoryCommandContext): StoryCommandReason | null {
-    const live = getCommandLineReason(source, context);
-    if (live) {
-        return live;
-    }
-    const line = parseCommandLine(source);
-    if (line.kind !== "command" || !line.def) {
-        return null;
-    }
-    const missing = missingCoreParams(line);
-    if (missing.length === 0) {
-        return null;
-    }
-    const hint = paramHintKey(missing[0]);
-    return {
-        key: "storyExpr.reason.missingCore" as TranslationKey,
-        params: { token: line.token ?? "", slot: hint },
-        paramHintKey: `story.paramHint.${hint}` as TranslationKey,
-    };
+export function getCommandLineDraftReason(
+  source: string,
+  context: StoryCommandContext
+): StoryCommandReason | null {
+  const live = getCommandLineReason(source, context);
+  if (live) {
+    return live;
+  }
+  const line = parseCommandLine(source);
+  if (line.kind !== "command" || !line.def) {
+    return null;
+  }
+  const missing = missingCoreParams(line);
+  if (missing.length === 0) {
+    return null;
+  }
+  const hint = paramHintKey(missing[0]);
+  return {
+    key: "storyExpr.reason.missingCore" as TranslationKey,
+    params: { token: line.token ?? "", slot: hint },
+    paramHintKey: `story.paramHint.${hint}` as TranslationKey
+  };
 }
 
 /**
@@ -89,96 +104,111 @@ export function getCommandLineDraftReason(source: string, context: StoryCommandC
  * would report "there is no /v command" on the first keystroke after the slash.
  */
 function looksComplete(source: string): boolean {
-    return source.trimEnd().length < source.length;
+  return source.trimEnd().length < source.length;
 }
 
-function parserReason(line: Extract<StoryCommandLine, { kind: "command" }>, issue: StoryCommandIssue): StoryCommandReason {
-    const token = line.token ?? "";
-    switch (issue.code) {
-        case "unknownCommand":
-            return { key: reasonKey(issue.code), params: { token: issue.token } };
-        case "unknownParam":
-        case "duplicateParam":
-            return { key: reasonKey(issue.code), params: { token, key: issue.key } };
-        case "extraPositional":
-        case "badValue":
-            return { key: reasonKey(issue.code), params: { token, value: issue.value } };
-        case "unterminatedQuote":
-            return { key: reasonKey(issue.code), params: {} };
-    }
+function parserReason(
+  line: Extract<StoryCommandLine, { kind: "command" }>,
+  issue: StoryCommandIssue
+): StoryCommandReason {
+  const token = line.token ?? "";
+  switch (issue.code) {
+    case "unknownCommand":
+      return { key: reasonKey(issue.code), params: { token: issue.token } };
+    case "unknownParam":
+    case "duplicateParam":
+      return { key: reasonKey(issue.code), params: { token, key: issue.key } };
+    case "extraPositional":
+    case "badValue":
+      return { key: reasonKey(issue.code), params: { token, value: issue.value } };
+    case "unterminatedQuote":
+      return { key: reasonKey(issue.code), params: {} };
+  }
 }
 
 /** The expression language's own issues, which carry their own params. */
 function expressionReason(issue: StoryExpressionIssue): StoryCommandReason {
-    const key = `storyExpr.issue.${issue.code}` as TranslationKey;
-    switch (issue.code) {
-        case "unexpectedToken":
-            return { key, params: { text: issue.text } };
-        case "unknownVariable":
-        case "unknownFunction":
-        // Reachable only through a surface that renders advisory issues: the command line filters
-        // them out before a reason is asked for, because this one does not stop a line committing.
-        case "unknownAppTagName":
-            return { key, params: { name: issue.name } };
-        case "unknownQualifiedVariable":
-            return { key, params: { name: issue.name, scope: issue.scope } };
-        case "unknownScopePrefix":
-            return { key, params: { prefix: issue.prefix } };
-        case "badArity":
-            return { key, params: { fn: issue.fn, expected: issue.expected, received: issue.received } };
-        case "unknownVisitedTarget":
-            // `call` is the author's own word (`visited` / `picked`), not a translated label: it is
-            // what they typed, and echoing it is what makes the message point at their line.
-            return { key, params: { call: issue.call, name: issue.name } };
-        case "unknownBlueprint":
-        case "blueprintTakesNoArguments":
-        case "ambiguousReference":
-        case "blueprintShadowsFunction":
-            return { key, params: { name: issue.name } };
-        case "unexpectedEnd":
-        case "unterminatedString":
-        case "unbalancedParen":
-            return { key, params: {} };
-    }
+  const key = `storyExpr.issue.${issue.code}` as TranslationKey;
+  switch (issue.code) {
+    case "unexpectedToken":
+      return { key, params: { text: issue.text } };
+    case "unknownVariable":
+    case "unknownFunction":
+    // Reachable only through a surface that renders advisory issues: the command line filters
+    // them out before a reason is asked for, because this one does not stop a line committing.
+    case "unknownAppTagName":
+      return { key, params: { name: issue.name } };
+    case "unknownQualifiedVariable":
+      return { key, params: { name: issue.name, scope: issue.scope } };
+    case "unknownScopePrefix":
+      return { key, params: { prefix: issue.prefix } };
+    case "badArity":
+      return { key, params: { fn: issue.fn, expected: issue.expected, received: issue.received } };
+    case "unknownVisitedTarget":
+      // `call` is the author's own word (`visited` / `picked`), not a translated label: it is
+      // what they typed, and echoing it is what makes the message point at their line.
+      return { key, params: { call: issue.call, name: issue.name } };
+    case "unknownBlueprint":
+    case "blueprintTakesNoArguments":
+    case "ambiguousReference":
+    case "blueprintShadowsFunction":
+      return { key, params: { name: issue.name } };
+    case "unexpectedEnd":
+    case "unterminatedString":
+    case "unbalancedParen":
+      return { key, params: {} };
+  }
 }
 
 function resolutionReason(issue: StoryCommandResolutionIssue): StoryCommandReason {
-    switch (issue.code) {
-        case "unknownAsset":
-            return { key: reasonKey(issue.code), params: { value: issue.value, assetType: issue.assetType } };
-        case "unknownCharacter":
-        case "unknownScene":
-        case "unknownAudioTrack":
-        case "unknownLabel":
-        case "unknownAppTag":
-        case "unknownVariable":
-        case "duplicateVariable":
-        case "reservedVariableName":
-            return { key: reasonKey(issue.code), params: { value: issue.value } };
-        case "unknownForm":
-            return { key: reasonKey(issue.code), params: { value: issue.value, characterName: issue.characterName } };
-        case "unknownTarget":
-        case "ambiguousName":
-        case "notPuppetCharacter":
-            return { key: reasonKey(issue.code), params: { value: issue.value } };
-        case "unsupportedOption":
-            return { key: reasonKey(issue.code), params: { value: issue.value, allowed: issue.allowed.join(", ") } };
-        case "conflictingParams":
-            return { key: reasonKey(issue.code), params: { keys: issue.keys.join(" / ") } };
-        case "repeatTimesAndUntil":
-            return { key: reasonKey(issue.code), params: {} };
-        case "expressionError":
-            // Report the *inner* issue directly rather than wrapping it: "no variable named gold" is
-            // the whole message, and a generic "invalid expression: …" prefix adds nothing.
-            return expressionReason(issue.issue);
-        case "expressionNotBoolean":
-            return { key: reasonKey(issue.code), params: {} };
-        case "compoundWithoutTarget":
-            return { key: "storyExpr.check.compoundWithoutTarget" as TranslationKey, params: {} };
-        case "expressionTypeMismatch":
-            // `variable`, not `value`: the variable is what holds a declared type. The message used to
-            // fill that role with the expression source and read back as a contradiction
-            // (`This produces string, but "upper("a")" holds number.`).
-            return { key: reasonKey(issue.code), params: { variable: issue.variable, expected: issue.expected, received: issue.received } };
-    }
+  switch (issue.code) {
+    case "unknownAsset":
+      return {
+        key: reasonKey(issue.code),
+        params: { value: issue.value, assetType: issue.assetType }
+      };
+    case "unknownCharacter":
+    case "unknownScene":
+    case "unknownAudioTrack":
+    case "unknownLabel":
+    case "unknownAppTag":
+    case "unknownVariable":
+    case "duplicateVariable":
+    case "reservedVariableName":
+      return { key: reasonKey(issue.code), params: { value: issue.value } };
+    case "unknownForm":
+      return {
+        key: reasonKey(issue.code),
+        params: { value: issue.value, characterName: issue.characterName }
+      };
+    case "unknownTarget":
+    case "ambiguousName":
+    case "notPuppetCharacter":
+      return { key: reasonKey(issue.code), params: { value: issue.value } };
+    case "unsupportedOption":
+      return {
+        key: reasonKey(issue.code),
+        params: { value: issue.value, allowed: issue.allowed.join(", ") }
+      };
+    case "conflictingParams":
+      return { key: reasonKey(issue.code), params: { keys: issue.keys.join(" / ") } };
+    case "repeatTimesAndUntil":
+      return { key: reasonKey(issue.code), params: {} };
+    case "expressionError":
+      // Report the *inner* issue directly rather than wrapping it: "no variable named gold" is
+      // the whole message, and a generic "invalid expression: …" prefix adds nothing.
+      return expressionReason(issue.issue);
+    case "expressionNotBoolean":
+      return { key: reasonKey(issue.code), params: {} };
+    case "compoundWithoutTarget":
+      return { key: "storyExpr.check.compoundWithoutTarget" as TranslationKey, params: {} };
+    case "expressionTypeMismatch":
+      // `variable`, not `value`: the variable is what holds a declared type. The message used to
+      // fill that role with the expression source and read back as a contradiction
+      // (`This produces string, but "upper("a")" holds number.`).
+      return {
+        key: reasonKey(issue.code),
+        params: { variable: issue.variable, expected: issue.expected, received: issue.received }
+      };
+  }
 }

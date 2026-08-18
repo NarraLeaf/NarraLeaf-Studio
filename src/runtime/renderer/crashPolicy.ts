@@ -12,19 +12,19 @@
  */
 
 import {
-    DEFAULT_GAME_CRASH_POLICY,
-    normalizeGameCrashPolicy,
-    type GameCrashPolicy,
+  DEFAULT_GAME_CRASH_POLICY,
+  normalizeGameCrashPolicy,
+  type GameCrashPolicy
 } from "@shared/types/gameRuntime";
 
 let policy: GameCrashPolicy = DEFAULT_GAME_CRASH_POLICY;
 
 export function setRuntimeCrashPolicy(next: unknown): void {
-    policy = normalizeGameCrashPolicy(next);
+  policy = normalizeGameCrashPolicy(next);
 }
 
 export function getRuntimeCrashPolicy(): GameCrashPolicy {
-    return policy;
+  return policy;
 }
 
 /**
@@ -39,22 +39,22 @@ const AUTO_RESTART_KEY = "nl.crash.autoRestarts";
 let inMemoryAutoRestarts = 0;
 
 function readAutoRestarts(): number {
-    try {
-        const raw = window.sessionStorage.getItem(AUTO_RESTART_KEY);
-        const parsed = raw === null ? 0 : Number.parseInt(raw, 10);
-        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-    } catch {
-        return inMemoryAutoRestarts;
-    }
+  try {
+    const raw = window.sessionStorage.getItem(AUTO_RESTART_KEY);
+    const parsed = raw === null ? 0 : Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  } catch {
+    return inMemoryAutoRestarts;
+  }
 }
 
 function writeAutoRestarts(value: number): void {
-    inMemoryAutoRestarts = value;
-    try {
-        window.sessionStorage.setItem(AUTO_RESTART_KEY, String(value));
-    } catch {
-        /* Private mode, a storage quota, a shell that has none. The counter above still bounds. */
-    }
+  inMemoryAutoRestarts = value;
+  try {
+    window.sessionStorage.setItem(AUTO_RESTART_KEY, String(value));
+  } catch {
+    /* Private mode, a storage quota, a shell that has none. The counter above still bounds. */
+  }
 }
 
 /**
@@ -65,20 +65,20 @@ function writeAutoRestarts(value: number): void {
  * the only state from which a person can act.
  */
 export function claimAutomaticRestart(limit: number): boolean {
-    const attempts = readAutoRestarts();
-    if (attempts >= limit) {
-        return false;
-    }
-    writeAutoRestarts(attempts + 1);
-    return true;
+  const attempts = readAutoRestarts();
+  if (attempts >= limit) {
+    return false;
+  }
+  writeAutoRestarts(attempts + 1);
+  return true;
 }
 
 /** Called once the game is up: the next failure is a new incident, not a continuing loop. */
 export function clearAutomaticRestarts(): void {
-    inMemoryAutoRestarts = 0;
-    try {
-        window.sessionStorage.removeItem(AUTO_RESTART_KEY);
-    } catch {
-        /* Nothing to clear where there is no storage. */
-    }
+  inMemoryAutoRestarts = 0;
+  try {
+    window.sessionStorage.removeItem(AUTO_RESTART_KEY);
+  } catch {
+    /* Nothing to clear where there is no storage. */
+  }
 }

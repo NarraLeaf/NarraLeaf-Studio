@@ -8,10 +8,10 @@ import type { VcsServerAuthority } from "./vcs";
  * to answer a different one.
  */
 export interface ServerTrustPromptProps {
-    /** The server the answer is about, e.g. `lore://studio.example.lan:41337`. */
-    address: string;
-    /** The authority answering at that address, read off the connection. */
-    authority: VcsServerAuthority;
+  /** The server the answer is about, e.g. `lore://studio.example.lan:41337`. */
+  address: string;
+  /** The authority answering at that address, read off the connection. */
+  authority: VcsServerAuthority;
 }
 
 /**

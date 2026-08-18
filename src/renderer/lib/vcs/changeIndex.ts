@@ -1,4 +1,8 @@
-import type { DocumentChangeKind, DocumentDiffEntry, DocumentDiffTier } from "@shared/documents/diff";
+import type {
+  DocumentChangeKind,
+  DocumentDiffEntry,
+  DocumentDiffTier
+} from "@shared/documents/diff";
 import { CHANGE_CATEGORY_ORDER, changeCategoryOf, type ChangeCategory } from "./changeCategory";
 import { isWholeDocumentChange } from "./documentChangeView";
 
@@ -21,26 +25,26 @@ import { isWholeDocumentChange } from "./documentChangeView";
 
 /** One file, as one line. Deliberately holds nothing that could render as a second line. */
 export interface ChangeIndexRow {
-    /** The document path: unique within a comparison, so it is also the selection handle. */
-    readonly path: string;
-    /** The file name - what identifies a document in this project. */
-    readonly name: string;
-    /** Where it sits, or null at the project root. Shown dimmed beside the name, never instead. */
-    readonly directory: string | null;
-    /** What happened to the file itself, as opposed to what changed inside it. */
-    readonly kind: DocumentChangeKind;
-    /** Changes this file stands for - `DocumentDiff.total`, including any the producer dropped. */
-    readonly changeCount: number;
-    /**
-     * Whether what happened is a fact about the whole file - see {@link isWholeDocumentChange}.
-     *
-     * A count is the wrong thing to say about one: an added file is reported as a single change
-     * (there is nothing to compare it against), and "1 change" for a new chapter is a worse answer
-     * than "Added". `changeIndexRowSummary` already words all three that way.
-     */
-    readonly wholeDocument: boolean;
-    /** The entry itself, for the detail pane. Carried rather than re-looked-up by path. */
-    readonly entry: DocumentDiffEntry;
+  /** The document path: unique within a comparison, so it is also the selection handle. */
+  readonly path: string;
+  /** The file name - what identifies a document in this project. */
+  readonly name: string;
+  /** Where it sits, or null at the project root. Shown dimmed beside the name, never instead. */
+  readonly directory: string | null;
+  /** What happened to the file itself, as opposed to what changed inside it. */
+  readonly kind: DocumentChangeKind;
+  /** Changes this file stands for - `DocumentDiff.total`, including any the producer dropped. */
+  readonly changeCount: number;
+  /**
+   * Whether what happened is a fact about the whole file - see {@link isWholeDocumentChange}.
+   *
+   * A count is the wrong thing to say about one: an added file is reported as a single change
+   * (there is nothing to compare it against), and "1 change" for a new chapter is a worse answer
+   * than "Added". `changeIndexRowSummary` already words all three that way.
+   */
+  readonly wholeDocument: boolean;
+  /** The entry itself, for the detail pane. Carried rather than re-looked-up by path. */
+  readonly entry: DocumentDiffEntry;
 }
 
 /**
@@ -51,50 +55,50 @@ export interface ChangeIndexRow {
  * sentence a hundred times is how the old list became unreadable.
  */
 export interface ChangeIndexCaveats {
-    /**
-     * The non-semantic tiers present in this group, deduped, in {@link CAVEAT_TIER_ORDER}.
-     *
-     * Kept as the evidence behind {@link partialDocuments} rather than rendered as a list: which
-     * tier answered is a fact about one file and is stated in that file's detail, where there is
-     * room to say what it means.
-     */
-    readonly tiers: readonly DocumentDiffTier[];
-    /**
-     * Files in this group that are not described in full: compared below the semantic tier, or
-     * carrying a change list that was cut short. One number, because the author's next move is the
-     * same for both - open the file and read what its detail says.
-     */
-    readonly partialDocuments: number;
+  /**
+   * The non-semantic tiers present in this group, deduped, in {@link CAVEAT_TIER_ORDER}.
+   *
+   * Kept as the evidence behind {@link partialDocuments} rather than rendered as a list: which
+   * tier answered is a fact about one file and is stated in that file's detail, where there is
+   * room to say what it means.
+   */
+  readonly tiers: readonly DocumentDiffTier[];
+  /**
+   * Files in this group that are not described in full: compared below the semantic tier, or
+   * carrying a change list that was cut short. One number, because the author's next move is the
+   * same for both - open the file and read what its detail says.
+   */
+  readonly partialDocuments: number;
 }
 
 export interface ChangeIndexGroup {
-    readonly category: ChangeCategory;
-    readonly rows: readonly ChangeIndexRow[];
-    /**
-     * Rows in this group, which is also the number its heading shows.
-     *
-     * Files rather than changes, deliberately: the number beside a heading is read as "this is what
-     * opening it will cost me", and a heading that says 200 over a group that opens to three lines
-     * teaches the author to distrust every other number on the surface.
-     */
-    readonly count: number;
-    /** Whether the group starts closed. See {@link GROUP_COLLAPSE_THRESHOLD}. */
-    readonly collapsed: boolean;
-    readonly caveats: ChangeIndexCaveats;
+  readonly category: ChangeCategory;
+  readonly rows: readonly ChangeIndexRow[];
+  /**
+   * Rows in this group, which is also the number its heading shows.
+   *
+   * Files rather than changes, deliberately: the number beside a heading is read as "this is what
+   * opening it will cost me", and a heading that says 200 over a group that opens to three lines
+   * teaches the author to distrust every other number on the surface.
+   */
+  readonly count: number;
+  /** Whether the group starts closed. See {@link GROUP_COLLAPSE_THRESHOLD}. */
+  readonly collapsed: boolean;
+  readonly caveats: ChangeIndexCaveats;
 }
 
 export interface ChangeIndex {
-    /** Non-empty groups only, in {@link CHANGE_CATEGORY_ORDER}. */
-    readonly groups: readonly ChangeIndexGroup[];
-    /** Every row across every group, in group order. The selection moves along this list. */
-    readonly rows: readonly ChangeIndexRow[];
-    /**
-     * Files the budget left out entirely.
-     *
-     * Stated once for the whole index rather than per group, and never silently: a list that stops
-     * at its limit with nothing said is read as the complete list.
-     */
-    readonly omitted: number;
+  /** Non-empty groups only, in {@link CHANGE_CATEGORY_ORDER}. */
+  readonly groups: readonly ChangeIndexGroup[];
+  /** Every row across every group, in group order. The selection moves along this list. */
+  readonly rows: readonly ChangeIndexRow[];
+  /**
+   * Files the budget left out entirely.
+   *
+   * Stated once for the whole index rather than per group, and never silently: a list that stops
+   * at its limit with nothing said is read as the complete list.
+   */
+  readonly omitted: number;
 }
 
 /**
@@ -108,19 +112,24 @@ export interface ChangeIndex {
 export const GROUP_COLLAPSE_THRESHOLD = 12;
 
 /** Weakest last, so a group's evidence reads in a stable order rather than in arrival order. */
-const CAVEAT_TIER_ORDER: readonly DocumentDiffTier[] = ["semantic", "summary", "structural", "opaque"];
+const CAVEAT_TIER_ORDER: readonly DocumentDiffTier[] = [
+  "semantic",
+  "summary",
+  "structural",
+  "opaque"
+];
 
 export interface BuildChangeIndexOptions {
-    /**
-     * Files the index will list before it stops adding them.
-     *
-     * The index is not virtualised, and this is what makes that safe rather than lucky: a comparison
-     * may carry up to `DIFF_PATH_LIMIT` (2000) documents, which is a first commit or a bulk import
-     * rather than an edit.
-     */
-    readonly rowBudget: number;
-    /** Overrides {@link GROUP_COLLAPSE_THRESHOLD}; the tests set it, the tab does not. */
-    readonly collapseThreshold?: number;
+  /**
+   * Files the index will list before it stops adding them.
+   *
+   * The index is not virtualised, and this is what makes that safe rather than lucky: a comparison
+   * may carry up to `DIFF_PATH_LIMIT` (2000) documents, which is a first commit or a bulk import
+   * rather than an edit.
+   */
+  readonly rowBudget: number;
+  /** Overrides {@link GROUP_COLLAPSE_THRESHOLD}; the tests set it, the tab does not. */
+  readonly collapseThreshold?: number;
 }
 
 /**
@@ -132,60 +141,60 @@ export interface BuildChangeIndexOptions {
  * that happened to fall in a small category.
  */
 export function buildChangeIndex(
-    entries: readonly DocumentDiffEntry[],
-    options: BuildChangeIndexOptions,
+  entries: readonly DocumentDiffEntry[],
+  options: BuildChangeIndexOptions
 ): ChangeIndex {
-    const budget = Math.max(0, options.rowBudget);
-    const threshold = options.collapseThreshold ?? GROUP_COLLAPSE_THRESHOLD;
-    const listed = entries.slice(0, budget);
+  const budget = Math.max(0, options.rowBudget);
+  const threshold = options.collapseThreshold ?? GROUP_COLLAPSE_THRESHOLD;
+  const listed = entries.slice(0, budget);
 
-    const byCategory = new Map<ChangeCategory, ChangeIndexRow[]>();
-    const tiersByCategory = new Map<ChangeCategory, Set<DocumentDiffTier>>();
-    const partialByCategory = new Map<ChangeCategory, number>();
+  const byCategory = new Map<ChangeCategory, ChangeIndexRow[]>();
+  const tiersByCategory = new Map<ChangeCategory, Set<DocumentDiffTier>>();
+  const partialByCategory = new Map<ChangeCategory, number>();
 
-    for (const entry of listed) {
-        const category = changeCategoryOf(entry);
-        const rows = byCategory.get(category) ?? [];
-        rows.push(indexRow(entry));
-        byCategory.set(category, rows);
+  for (const entry of listed) {
+    const category = changeCategoryOf(entry);
+    const rows = byCategory.get(category) ?? [];
+    rows.push(indexRow(entry));
+    byCategory.set(category, rows);
 
-        // The tier set is the evidence behind the count and is gated on the same answer, so a
-        // group cannot report a caveat's tier while reporting nothing to caveat about.
-        const partial = isPartial(entry);
-        if (partial && entry.diff.tier !== "semantic") {
-            const tiers = tiersByCategory.get(category) ?? new Set<DocumentDiffTier>();
-            tiers.add(entry.diff.tier);
-            tiersByCategory.set(category, tiers);
-        }
-        if (partial) {
-            partialByCategory.set(category, (partialByCategory.get(category) ?? 0) + 1);
-        }
+    // The tier set is the evidence behind the count and is gated on the same answer, so a
+    // group cannot report a caveat's tier while reporting nothing to caveat about.
+    const partial = isPartial(entry);
+    if (partial && entry.diff.tier !== "semantic") {
+      const tiers = tiersByCategory.get(category) ?? new Set<DocumentDiffTier>();
+      tiers.add(entry.diff.tier);
+      tiersByCategory.set(category, tiers);
     }
-
-    const groups: ChangeIndexGroup[] = [];
-    for (const category of CHANGE_CATEGORY_ORDER) {
-        const rows = byCategory.get(category);
-        if (!rows || rows.length === 0) {
-            continue;
-        }
-        const tiers = tiersByCategory.get(category) ?? new Set<DocumentDiffTier>();
-        groups.push({
-            category,
-            rows,
-            count: rows.length,
-            collapsed: rows.length > threshold,
-            caveats: {
-                tiers: CAVEAT_TIER_ORDER.filter(tier => tiers.has(tier)),
-                partialDocuments: partialByCategory.get(category) ?? 0,
-            },
-        });
+    if (partial) {
+      partialByCategory.set(category, (partialByCategory.get(category) ?? 0) + 1);
     }
+  }
 
-    return {
-        groups,
-        rows: groups.flatMap(group => group.rows),
-        omitted: Math.max(0, entries.length - listed.length),
-    };
+  const groups: ChangeIndexGroup[] = [];
+  for (const category of CHANGE_CATEGORY_ORDER) {
+    const rows = byCategory.get(category);
+    if (!rows || rows.length === 0) {
+      continue;
+    }
+    const tiers = tiersByCategory.get(category) ?? new Set<DocumentDiffTier>();
+    groups.push({
+      category,
+      rows,
+      count: rows.length,
+      collapsed: rows.length > threshold,
+      caveats: {
+        tiers: CAVEAT_TIER_ORDER.filter((tier) => tiers.has(tier)),
+        partialDocuments: partialByCategory.get(category) ?? 0
+      }
+    });
+  }
+
+  return {
+    groups,
+    rows: groups.flatMap((group) => group.rows),
+    omitted: Math.max(0, entries.length - listed.length)
+  };
 }
 
 /**
@@ -203,23 +212,23 @@ export function buildChangeIndex(
  * the detail pane's, from the same predicate, so the two cannot drift apart again.
  */
 function isPartial(entry: DocumentDiffEntry): boolean {
-    if (isWholeDocumentChange(entry.kind)) {
-        return false;
-    }
-    return entry.diff.tier !== "semantic" || !entry.diff.complete;
+  if (isWholeDocumentChange(entry.kind)) {
+    return false;
+  }
+  return entry.diff.tier !== "semantic" || !entry.diff.complete;
 }
 
 function indexRow(entry: DocumentDiffEntry): ChangeIndexRow {
-    const { directory, name } = splitDocumentPath(entry.path);
-    return {
-        path: entry.path,
-        name,
-        directory,
-        kind: entry.kind,
-        changeCount: entry.diff.total,
-        wholeDocument: isWholeDocumentChange(entry.kind),
-        entry,
-    };
+  const { directory, name } = splitDocumentPath(entry.path);
+  return {
+    path: entry.path,
+    name,
+    directory,
+    kind: entry.kind,
+    changeCount: entry.diff.total,
+    wholeDocument: isWholeDocumentChange(entry.kind),
+    entry
+  };
 }
 
 /**
@@ -230,10 +239,10 @@ function indexRow(entry: DocumentDiffEntry): ChangeIndexRow {
  * workspace in it and importing a layout component's helper would give it both.
  */
 export function splitDocumentPath(path: string): { directory: string | null; name: string } {
-    const normalized = path.replace(/[\\/]+/g, "/").replace(/\/+$/, "");
-    const cut = normalized.lastIndexOf("/");
-    if (cut < 0) {
-        return { directory: null, name: normalized };
-    }
-    return { directory: normalized.slice(0, cut), name: normalized.slice(cut + 1) };
+  const normalized = path.replace(/[\\/]+/g, "/").replace(/\/+$/, "");
+  const cut = normalized.lastIndexOf("/");
+  if (cut < 0) {
+    return { directory: null, name: normalized };
+  }
+  return { directory: normalized.slice(0, cut), name: normalized.slice(cut + 1) };
 }

@@ -11,42 +11,44 @@
  */
 
 import {
-    BLUEPRINT_MEMO_RECORD_KEY,
-    BLUEPRINT_MEMO_SLOT_PREFIX,
+  BLUEPRINT_MEMO_RECORD_KEY,
+  BLUEPRINT_MEMO_SLOT_PREFIX
 } from "../blueprint-runtime/blueprintWidgetLocals";
 
-function readRecord(blueprintLocals: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
-    const raw = blueprintLocals?.[BLUEPRINT_MEMO_RECORD_KEY];
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        return undefined;
-    }
-    return raw as Record<string, unknown>;
+function readRecord(
+  blueprintLocals: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  const raw = blueprintLocals?.[BLUEPRINT_MEMO_RECORD_KEY];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return undefined;
+  }
+  return raw as Record<string, unknown>;
 }
 
 function slot(nodeId: string): string {
-    return `${BLUEPRINT_MEMO_SLOT_PREFIX}${nodeId}`;
+  return `${BLUEPRINT_MEMO_SLOT_PREFIX}${nodeId}`;
 }
 
 export function writeBlueprintMemoValue(
-    blueprintLocals: Record<string, unknown> | undefined,
-    nodeId: string,
-    value: unknown,
+  blueprintLocals: Record<string, unknown> | undefined,
+  nodeId: string,
+  value: unknown
 ): void {
-    const record = readRecord(blueprintLocals);
-    if (!record) {
-        return;
-    }
-    record[slot(nodeId)] = value === undefined ? null : value;
+  const record = readRecord(blueprintLocals);
+  if (!record) {
+    return;
+  }
+  record[slot(nodeId)] = value === undefined ? null : value;
 }
 
 export function readBlueprintMemoValue(
-    blueprintLocals: Record<string, unknown> | undefined,
-    nodeId: string,
+  blueprintLocals: Record<string, unknown> | undefined,
+  nodeId: string
 ): unknown {
-    const record = readRecord(blueprintLocals);
-    if (!record) {
-        return null;
-    }
-    const key = slot(nodeId);
-    return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : null;
+  const record = readRecord(blueprintLocals);
+  if (!record) {
+    return null;
+  }
+  const key = slot(nodeId);
+  return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : null;
 }

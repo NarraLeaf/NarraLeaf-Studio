@@ -5,35 +5,35 @@ import { useNvlSlotItems } from "@/lib/ui-editor/runtime/game/nvlSlotItemsContex
 import { TextRenderer } from "../text/renderer";
 
 function isLiveNvlRuntime(props: WidgetRendererProps): boolean {
-    return props.hostAdapter.gameUiRuntime?.slotId === "nvl";
+  return props.hostAdapter.gameUiRuntime?.slotId === "nvl";
 }
 
 function LiveNvlTextsRenderer(props: WidgetRendererProps) {
-    const { outerStyle, textStyle, textAppearanceProps } = useLiveTextStyles(props);
-    const proxies = useNvlSlotItems();
-    const index = props.listItemScope?.index;
-    const proxy = typeof index === "number" ? proxies?.[index] : undefined;
-    if (!proxy) {
-        return null;
-    }
-    return (
-        <div style={outerStyle}>
-            <Texts
-                {...textAppearanceProps}
-                style={textStyle}
-                entry={proxy.entry}
-                gameState={proxy.gameState}
-                words={proxy.words}
-                useTypeEffect={proxy.useTypeEffect}
-                isActive={proxy.isActive}
-            />
-        </div>
-    );
+  const { outerStyle, textStyle, textAppearanceProps } = useLiveTextStyles(props);
+  const proxies = useNvlSlotItems();
+  const index = props.listItemScope?.index;
+  const proxy = typeof index === "number" ? proxies?.[index] : undefined;
+  if (!proxy) {
+    return null;
+  }
+  return (
+    <div style={outerStyle}>
+      <Texts
+        {...textAppearanceProps}
+        style={textStyle}
+        entry={proxy.entry}
+        gameState={proxy.gameState}
+        words={proxy.words}
+        useTypeEffect={proxy.useTypeEffect}
+        isActive={proxy.isActive}
+      />
+    </div>
+  );
 }
 
 export function NvlTextsRenderer(props: WidgetRendererProps) {
-    if (!isLiveNvlRuntime(props)) {
-        return <TextRenderer {...props} />;
-    }
-    return <LiveNvlTextsRenderer {...props} />;
+  if (!isLiveNvlRuntime(props)) {
+    return <TextRenderer {...props} />;
+  }
+  return <LiveNvlTextsRenderer {...props} />;
 }

@@ -10,7 +10,7 @@ const TOOLTIP_MARGIN_PX = 8;
 
 /** Keep a coordinate on screen along the axis the tooltip is centred on. */
 function clamp(value: number, extent: number, available: number): number {
-    return Math.max(TOOLTIP_MARGIN_PX, Math.min(value, available - TOOLTIP_MARGIN_PX - extent));
+  return Math.max(TOOLTIP_MARGIN_PX, Math.min(value, available - TOOLTIP_MARGIN_PX - extent));
 }
 
 /**
@@ -22,35 +22,37 @@ function clamp(value: number, extent: number, available: number): number {
  * instead, so its tooltips open into the app rather than onto the icon above.
  */
 function place(
-    side: TooltipSide,
-    anchor: DOMRect,
-    size: DOMRect,
-    viewWidth: number,
-    viewHeight: number,
+  side: TooltipSide,
+  anchor: DOMRect,
+  size: DOMRect,
+  viewWidth: number,
+  viewHeight: number
 ): { top: number; left: number } {
-    if (side === "left" || side === "right") {
-        const before = anchor.left - TOOLTIP_GAP_PX - size.width;
-        const after = anchor.right + TOOLTIP_GAP_PX;
-        const wanted = side === "left" ? before : after;
-        const fits = side === "left"
-            ? wanted >= TOOLTIP_MARGIN_PX
-            : wanted + size.width <= viewWidth - TOOLTIP_MARGIN_PX;
-        return {
-            left: fits ? wanted : side === "left" ? after : before,
-            top: clamp(anchor.top + anchor.height / 2 - size.height / 2, size.height, viewHeight),
-        };
-    }
-
-    const above = anchor.top - TOOLTIP_GAP_PX - size.height;
-    const below = anchor.bottom + TOOLTIP_GAP_PX;
-    const wanted = side === "bottom" ? below : above;
-    const fits = side === "bottom"
-        ? wanted + size.height <= viewHeight - TOOLTIP_MARGIN_PX
-        : wanted >= TOOLTIP_MARGIN_PX;
+  if (side === "left" || side === "right") {
+    const before = anchor.left - TOOLTIP_GAP_PX - size.width;
+    const after = anchor.right + TOOLTIP_GAP_PX;
+    const wanted = side === "left" ? before : after;
+    const fits =
+      side === "left"
+        ? wanted >= TOOLTIP_MARGIN_PX
+        : wanted + size.width <= viewWidth - TOOLTIP_MARGIN_PX;
     return {
-        top: fits ? wanted : side === "bottom" ? above : below,
-        left: clamp(anchor.left + anchor.width / 2 - size.width / 2, size.width, viewWidth),
+      left: fits ? wanted : side === "left" ? after : before,
+      top: clamp(anchor.top + anchor.height / 2 - size.height / 2, size.height, viewHeight)
     };
+  }
+
+  const above = anchor.top - TOOLTIP_GAP_PX - size.height;
+  const below = anchor.bottom + TOOLTIP_GAP_PX;
+  const wanted = side === "bottom" ? below : above;
+  const fits =
+    side === "bottom"
+      ? wanted + size.height <= viewHeight - TOOLTIP_MARGIN_PX
+      : wanted >= TOOLTIP_MARGIN_PX;
+  return {
+    top: fits ? wanted : side === "bottom" ? above : below,
+    left: clamp(anchor.left + anchor.width / 2 - size.width / 2, size.width, viewWidth)
+  };
 }
 
 /**
@@ -69,45 +71,45 @@ function place(
  * it is really drawn in.
  */
 export function TooltipHost() {
-    const doc = useHostDocument();
-    const bubbleRef = useRef<HTMLDivElement | null>(null);
-    const [target, setTarget] = useState<TooltipTarget | null>(null);
-    const [style, setStyle] = useState<React.CSSProperties | null>(null);
+  const doc = useHostDocument();
+  const bubbleRef = useRef<HTMLDivElement | null>(null);
+  const [target, setTarget] = useState<TooltipTarget | null>(null);
+  const [style, setStyle] = useState<React.CSSProperties | null>(null);
 
-    useEffect(() => startTooltipTracking(doc, setTarget), [doc]);
+  useEffect(() => startTooltipTracking(doc, setTarget), [doc]);
 
-    useLayoutEffect(() => {
-        if (!target) {
-            setStyle(null);
-            return;
-        }
-        const bubble = bubbleRef.current;
-        const view = doc.defaultView;
-        if (!bubble || !view) {
-            return;
-        }
-        const anchor = target.anchor.getBoundingClientRect();
-        const size = bubble.getBoundingClientRect();
-        const placed = place(target.side, anchor, size, view.innerWidth, view.innerHeight);
-        setStyle({ position: "fixed", top: Math.round(placed.top), left: Math.round(placed.left) });
-    }, [doc, target]);
-
+  useLayoutEffect(() => {
     if (!target) {
-        return null;
+      setStyle(null);
+      return;
     }
+    const bubble = bubbleRef.current;
+    const view = doc.defaultView;
+    if (!bubble || !view) {
+      return;
+    }
+    const anchor = target.anchor.getBoundingClientRect();
+    const size = bubble.getBoundingClientRect();
+    const placed = place(target.side, anchor, size, view.innerWidth, view.innerHeight);
+    setStyle({ position: "fixed", top: Math.round(placed.top), left: Math.round(placed.left) });
+  }, [doc, target]);
 
-    return createPortal(
-        <div
-            ref={bubbleRef}
-            role="tooltip"
-            // Measured before it is placed, so the first pass draws it at the origin. Hidden rather
-            // than transparent for that one frame: a transparent box still has to be composited, and
-            // this one is thrown away every time the pointer moves to the next control.
-            style={style ?? { position: "fixed", top: 0, left: 0, visibility: "hidden" }}
-            className="pointer-events-none z-[20010] max-w-[240px] whitespace-pre-line break-words rounded-md border border-edge bg-surface-overlay px-2 py-1 text-2xs leading-snug text-fg shadow-lg"
-        >
-            {target.text}
-        </div>,
-        doc.body,
-    );
+  if (!target) {
+    return null;
+  }
+
+  return createPortal(
+    <div
+      ref={bubbleRef}
+      role="tooltip"
+      // Measured before it is placed, so the first pass draws it at the origin. Hidden rather
+      // than transparent for that one frame: a transparent box still has to be composited, and
+      // this one is thrown away every time the pointer moves to the next control.
+      style={style ?? { position: "fixed", top: 0, left: 0, visibility: "hidden" }}
+      className="pointer-events-none z-[20010] max-w-[240px] whitespace-pre-line break-words rounded-md border border-edge bg-surface-overlay px-2 py-1 text-2xs leading-snug text-fg shadow-lg"
+    >
+      {target.text}
+    </div>,
+    doc.body
+  );
 }

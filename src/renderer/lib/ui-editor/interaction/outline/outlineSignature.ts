@@ -16,36 +16,36 @@ import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoo
  * the document and not on screen.
  */
 export function computeOutlineSignature(document: UIDocument, surfaceId: string): string {
-    const rootElementId = resolveSurfaceRootElementId(document, surfaceId);
-    if (!rootElementId) {
-        return "";
+  const rootElementId = resolveSurfaceRootElementId(document, surfaceId);
+  if (!rootElementId) {
+    return "";
+  }
+
+  const parts: string[] = [];
+  const visited = new Set<string>();
+  const walk = (elementId: string) => {
+    if (visited.has(elementId)) {
+      return;
     }
+    visited.add(elementId);
+    const element = document.elements[elementId];
+    if (!element) {
+      parts.push(`${elementId}|missing`);
+      return;
+    }
+    parts.push(
+      [
+        elementId,
+        element.type,
+        element.name ?? "",
+        element.layout.visible === false ? "0" : "1",
+        isComponentEditorRootElement(element) ? "c" : "",
+        element.childrenIds.join(",")
+      ].join("|")
+    );
+    element.childrenIds.forEach(walk);
+  };
+  walk(rootElementId);
 
-    const parts: string[] = [];
-    const visited = new Set<string>();
-    const walk = (elementId: string) => {
-        if (visited.has(elementId)) {
-            return;
-        }
-        visited.add(elementId);
-        const element = document.elements[elementId];
-        if (!element) {
-            parts.push(`${elementId}|missing`);
-            return;
-        }
-        parts.push(
-            [
-                elementId,
-                element.type,
-                element.name ?? "",
-                element.layout.visible === false ? "0" : "1",
-                isComponentEditorRootElement(element) ? "c" : "",
-                element.childrenIds.join(","),
-            ].join("|"),
-        );
-        element.childrenIds.forEach(walk);
-    };
-    walk(rootElementId);
-
-    return parts.join("\n");
+  return parts.join("\n");
 }

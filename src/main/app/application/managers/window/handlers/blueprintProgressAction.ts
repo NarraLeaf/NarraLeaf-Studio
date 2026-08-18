@@ -25,15 +25,15 @@ import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { gameProgressKey } from "@shared/types/gameProgress";
 import type {
-    GameProgressExportRequest,
-    GameProgressExportResult,
-    GameProgressImportResult,
+  GameProgressExportRequest,
+  GameProgressExportResult,
+  GameProgressImportResult
 } from "@shared/types/gameProgress";
 import type { AppTagBaseIdentity } from "@shared/types/appTag";
 import {
-    readGameProgressFile,
-    writeGameProgressFile,
-    type GameProgressEnvironment,
+  readGameProgressFile,
+  writeGameProgressFile,
+  type GameProgressEnvironment
 } from "@shared/utils/gameProgressFile";
 import path from "path";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
@@ -41,35 +41,35 @@ import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
 export class BlueprintProgressWriteHandler extends IPCHandler<IPCEventType.blueprintProgressWrite> {
-    readonly name = IPCEventType.blueprintProgressWrite;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.blueprintProgressWrite;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        _window: AppWindow,
-        data: IPCEvents[IPCEventType.blueprintProgressWrite]["data"],
-    ): Promise<RequestStatus<{ result: GameProgressExportResult }>> {
-        try {
-            return this.success({ result: await writeProjectProgress(data.projectPath, data.request) });
-        } catch (err) {
-            return this.failed(err);
-        }
+  public async handle(
+    _window: AppWindow,
+    data: IPCEvents[IPCEventType.blueprintProgressWrite]["data"]
+  ): Promise<RequestStatus<{ result: GameProgressExportResult }>> {
+    try {
+      return this.success({ result: await writeProjectProgress(data.projectPath, data.request) });
+    } catch (err) {
+      return this.failed(err);
     }
+  }
 }
 
 export class BlueprintProgressReadHandler extends IPCHandler<IPCEventType.blueprintProgressRead> {
-    readonly name = IPCEventType.blueprintProgressRead;
-    readonly type = IPCMessageType.request;
+  readonly name = IPCEventType.blueprintProgressRead;
+  readonly type = IPCMessageType.request;
 
-    public async handle(
-        _window: AppWindow,
-        data: IPCEvents[IPCEventType.blueprintProgressRead]["data"],
-    ): Promise<RequestStatus<{ result: GameProgressImportResult }>> {
-        try {
-            return this.success({ result: await readProjectProgress(data.projectPath) });
-        } catch (err) {
-            return this.failed(err);
-        }
+  public async handle(
+    _window: AppWindow,
+    data: IPCEvents[IPCEventType.blueprintProgressRead]["data"]
+  ): Promise<RequestStatus<{ result: GameProgressImportResult }>> {
+    try {
+      return this.success({ result: await readProjectProgress(data.projectPath) });
+    } catch (err) {
+      return this.failed(err);
     }
+  }
 }
 
 /**
@@ -80,12 +80,12 @@ export class BlueprintProgressReadHandler extends IPCHandler<IPCEventType.bluepr
  * folder the packaged game will.
  */
 function environment(): GameProgressEnvironment {
-    return {
-        platform: process.platform,
-        appDataDir: app.getPath("appData"),
-        homeDir: os.homedir(),
-        ...(process.env.XDG_DATA_HOME ? { xdgDataHome: process.env.XDG_DATA_HOME } : {}),
-    };
+  return {
+    platform: process.platform,
+    appDataDir: app.getPath("appData"),
+    homeDir: os.homedir(),
+    ...(process.env.XDG_DATA_HOME ? { xdgDataHome: process.env.XDG_DATA_HOME } : {})
+  };
 }
 
 /**
@@ -99,41 +99,41 @@ function environment(): GameProgressEnvironment {
  * so there is no variant to resolve here, and nothing a tag could change.
  */
 async function resolveProjectProgressKey(projectPath: string): Promise<string> {
-    const config = await readProjectConfigFromDir(projectPath);
-    const base: AppTagBaseIdentity = {
-        displayName: config?.name?.trim() || path.basename(projectPath) || "",
-        identifier: config?.identifier?.trim() ?? "",
-        version: typeof config?.metadata?.version === "string" ? config.metadata.version.trim() : "",
-    };
-    return gameProgressKey(base);
+  const config = await readProjectConfigFromDir(projectPath);
+  const base: AppTagBaseIdentity = {
+    displayName: config?.name?.trim() || path.basename(projectPath) || "",
+    identifier: config?.identifier?.trim() ?? "",
+    version: typeof config?.metadata?.version === "string" ? config.metadata.version.trim() : ""
+  };
+  return gameProgressKey(base);
 }
 
 async function writeProjectProgress(
-    projectPath: string,
-    request: GameProgressExportRequest,
+  projectPath: string,
+  request: GameProgressExportRequest
 ): Promise<GameProgressExportResult> {
-    let key: string;
-    try {
-        key = await resolveProjectProgressKey(projectPath);
-    } catch (error) {
-        return {
-            outcome: "failed",
-            error: `Could not read the project's identity: ${error instanceof Error ? error.message : String(error)}`,
-        };
-    }
-    return writeGameProgressFile(environment(), key, request);
+  let key: string;
+  try {
+    key = await resolveProjectProgressKey(projectPath);
+  } catch (error) {
+    return {
+      outcome: "failed",
+      error: `Could not read the project's identity: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+  return writeGameProgressFile(environment(), key, request);
 }
 
 async function readProjectProgress(projectPath: string): Promise<GameProgressImportResult> {
-    let key: string;
-    try {
-        key = await resolveProjectProgressKey(projectPath);
-    } catch (error) {
-        return {
-            outcome: "failed",
-            document: null,
-            error: `Could not read the project's identity: ${error instanceof Error ? error.message : String(error)}`,
-        };
-    }
-    return readGameProgressFile(environment(), key);
+  let key: string;
+  try {
+    key = await resolveProjectProgressKey(projectPath);
+  } catch (error) {
+    return {
+      outcome: "failed",
+      document: null,
+      error: `Could not read the project's identity: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+  return readGameProgressFile(environment(), key);
 }

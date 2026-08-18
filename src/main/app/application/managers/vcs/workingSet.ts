@@ -14,9 +14,9 @@ import { isVersioned } from "@shared/vcs/workingSet";
  * Re-exported below so existing importers keep their path.
  */
 export {
-    isVersioned,
-    renderWorkingSetIgnoreFile,
-    workingSetIgnorePatterns,
+  isVersioned,
+  renderWorkingSetIgnoreFile,
+  workingSetIgnorePatterns
 } from "@shared/vcs/workingSet";
 
 /**
@@ -39,20 +39,20 @@ export {
  * which documents to normalise before that commit, and what a test should expect.
  */
 export async function collectWorkingSet(root: string): Promise<string[]> {
-    const found: string[] = [];
-    await walk(root, "", found);
-    return found;
+  const found: string[] = [];
+  await walk(root, "", found);
+  return found;
 }
 
 async function walk(root: string, relative: string, found: string[]): Promise<void> {
-    const entries = await fs.readdir(path.join(root, relative), { withFileTypes: true });
-    for (const entry of entries) {
-        const childRelative = relative ? `${relative}/${entry.name}` : entry.name;
-        if (!isVersioned(childRelative)) continue;
-        if (entry.isDirectory()) {
-            await walk(root, childRelative, found);
-        } else {
-            found.push(path.join(root, childRelative));
-        }
+  const entries = await fs.readdir(path.join(root, relative), { withFileTypes: true });
+  for (const entry of entries) {
+    const childRelative = relative ? `${relative}/${entry.name}` : entry.name;
+    if (!isVersioned(childRelative)) continue;
+    if (entry.isDirectory()) {
+      await walk(root, childRelative, found);
+    } else {
+      found.push(path.join(root, childRelative));
     }
+  }
 }

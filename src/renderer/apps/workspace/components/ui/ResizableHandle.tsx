@@ -1,9 +1,9 @@
 import React, { useRef, useEffect, useState } from "react";
 
 interface ResizableHandleProps {
-    direction: "horizontal" | "vertical";
-    onResize: (delta: number) => number;
-    className?: string;
+  direction: "horizontal" | "vertical";
+  onResize: (delta: number) => number;
+  className?: string;
 }
 
 /**
@@ -16,47 +16,47 @@ interface ResizableHandleProps {
  * that spill past the 1px box without occupying layout — see `.nl-dock-divider` in styles.css.
  */
 export function ResizableHandle({ direction, onResize, className = "" }: ResizableHandleProps) {
-    const [isDragging, setIsDragging] = useState(false);
-    const startPosRef = useRef<number>(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const startPosRef = useRef<number>(0);
 
-    useEffect(() => {
-        if (!isDragging) return;
+  useEffect(() => {
+    if (!isDragging) return;
 
-        const handleMouseMove = (e: MouseEvent) => {
-            const currentPos = direction === "horizontal" ? e.clientX : e.clientY;
-            const delta = currentPos - startPosRef.current;
+    const handleMouseMove = (e: MouseEvent) => {
+      const currentPos = direction === "horizontal" ? e.clientX : e.clientY;
+      const delta = currentPos - startPosRef.current;
 
-            const result = onResize(delta);
-            startPosRef.current = currentPos + result;
-        };
-
-        const handleMouseUp = () => {
-            setIsDragging(false);
-        };
-
-        document.addEventListener("mousemove", handleMouseMove);
-        document.addEventListener("mouseup", handleMouseUp);
-
-        return () => {
-            document.removeEventListener("mousemove", handleMouseMove);
-            document.removeEventListener("mouseup", handleMouseUp);
-        };
-    }, [isDragging, direction, onResize]);
-
-    const handleMouseDown = (e: React.MouseEvent) => {
-        e.preventDefault();
-        startPosRef.current = direction === "horizontal" ? e.clientX : e.clientY;
-        setIsDragging(true);
+      const result = onResize(delta);
+      startPosRef.current = currentPos + result;
     };
 
-    const axisClass = direction === "horizontal" ? "nl-dock-divider--x" : "nl-dock-divider--y";
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
 
-    return (
-        <div
-            role="separator"
-            aria-orientation={direction === "horizontal" ? "vertical" : "horizontal"}
-            className={`nl-dock-divider ${axisClass}${isDragging ? " nl-dock-divider--active" : ""} ${className}`.trim()}
-            onMouseDown={handleMouseDown}
-        />
-    );
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging, direction, onResize]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    startPosRef.current = direction === "horizontal" ? e.clientX : e.clientY;
+    setIsDragging(true);
+  };
+
+  const axisClass = direction === "horizontal" ? "nl-dock-divider--x" : "nl-dock-divider--y";
+
+  return (
+    <div
+      role="separator"
+      aria-orientation={direction === "horizontal" ? "vertical" : "horizontal"}
+      className={`nl-dock-divider ${axisClass}${isDragging ? " nl-dock-divider--active" : ""} ${className}`.trim()}
+      onMouseDown={handleMouseDown}
+    />
+  );
 }

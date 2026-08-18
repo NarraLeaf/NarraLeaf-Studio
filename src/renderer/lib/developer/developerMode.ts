@@ -35,32 +35,32 @@ let subscribed = false;
 const listeners = new Set<() => void>();
 
 function apply(value: unknown): void {
-    // An unset key broadcasts `undefined`, which resolves to the default like every other reader.
-    const next = value === true;
-    if (next === enabled) {
-        return;
-    }
-    enabled = next;
-    for (const listener of listeners) {
-        listener();
-    }
+  // An unset key broadcasts `undefined`, which resolves to the default like every other reader.
+  const next = value === true;
+  if (next === enabled) {
+    return;
+  }
+  enabled = next;
+  for (const listener of listeners) {
+    listener();
+  }
 }
 
 /** Whether developer options are on right now. Safe to call from an event handler. */
 export function isDeveloperModeEnabled(): boolean {
-    return enabled;
+  return enabled;
 }
 
 function subscribe(listener: () => void): () => void {
-    listeners.add(listener);
-    return () => {
-        listeners.delete(listener);
-    };
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 /** The same value for components, re-rendering when it is switched in the Settings window. */
 export function useDeveloperMode(): boolean {
-    return useSyncExternalStore(subscribe, isDeveloperModeEnabled, () => DEVELOPER_MODE_DEFAULT);
+  return useSyncExternalStore(subscribe, isDeveloperModeEnabled, () => DEVELOPER_MODE_DEFAULT);
 }
 
 /**
@@ -70,25 +70,25 @@ export function useDeveloperMode(): boolean {
  * refuses to start, and the broadcast subscription below still corrects it the moment it changes.
  */
 export async function initDeveloperMode(): Promise<void> {
-    const state = getInterface().app.state;
+  const state = getInterface().app.state;
 
-    try {
-        const result = await state.getGlobalState(DEVELOPER_MODE_KEY);
-        if (result.success) {
-            apply(result.data.value);
-        }
-    } catch (error) {
-        console.warn("[developer] Failed to load developer options; leaving them off.", error);
+  try {
+    const result = await state.getGlobalState(DEVELOPER_MODE_KEY);
+    if (result.success) {
+      apply(result.data.value);
     }
+  } catch (error) {
+    console.warn("[developer] Failed to load developer options; leaving them off.", error);
+  }
 
-    if (!subscribed) {
-        subscribed = true;
-        state.onGlobalStateChanged?.((change) => {
-            if (change.key === DEVELOPER_MODE_KEY) {
-                apply(change.value);
-            }
-        });
-    }
+  if (!subscribed) {
+    subscribed = true;
+    state.onGlobalStateChanged?.((change) => {
+      if (change.key === DEVELOPER_MODE_KEY) {
+        apply(change.value);
+      }
+    });
+  }
 }
 
 /**
@@ -98,5 +98,5 @@ export async function initDeveloperMode(): Promise<void> {
  * moves what this window believes.
  */
 export function setDeveloperModeForTesting(value: boolean): void {
-    apply(value);
+  apply(value);
 }

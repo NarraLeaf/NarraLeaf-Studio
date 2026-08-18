@@ -19,9 +19,9 @@ import { CARD_REVEAL_STYLE, WorkspaceProgressCard } from "./WorkspaceProgressOve
 export type WorkspaceStartupStage = "preparing" | "services" | "interface";
 
 const STAGE_MESSAGE: Record<WorkspaceStartupStage, TranslationKey> = {
-    preparing: "workspace.shell.opening.preparing",
-    services: "workspace.shell.opening.services",
-    interface: "workspace.shell.opening.interface",
+  preparing: "workspace.shell.opening.preparing",
+  services: "workspace.shell.opening.services",
+  interface: "workspace.shell.opening.interface"
 };
 
 /**
@@ -44,23 +44,23 @@ const STAGE_MESSAGE: Record<WorkspaceStartupStage, TranslationKey> = {
  * clicks, and dimming an empty window would only make the wait look worse than it is.
  */
 export function WorkspaceOpeningOverlay({ stage }: { stage: WorkspaceStartupStage }) {
-    const { t } = useTranslation();
+  const { t } = useTranslation();
 
-    return (
-        <div
-            data-workspace-startup-stage={stage}
-            className="fixed inset-0 bg-surface flex items-center justify-center p-4"
-        >
-            {/* The real title bar mounts with the editor, so until then this window cannot be moved
+  return (
+    <div
+      data-workspace-startup-stage={stage}
+      className="fixed inset-0 bg-surface flex items-center justify-center p-4"
+    >
+      {/* The real title bar mounts with the editor, so until then this window cannot be moved
                 at all. A strip of drag region where the title bar is about to be keeps a slow open
                 from also being a pinned window. */}
-            <div className="titlebar-drag absolute inset-x-0 top-0 h-[var(--nl-window-titlebar-height)]" />
+      <div className="titlebar-drag absolute inset-x-0 top-0 h-[var(--nl-window-titlebar-height)]" />
 
-            <WorkspaceProgressCard
-                title={t("workspace.shell.opening.title")}
-                message={t(STAGE_MESSAGE[stage])}
-                style={CARD_REVEAL_STYLE}
-            />
-        </div>
-    );
+      <WorkspaceProgressCard
+        title={t("workspace.shell.opening.title")}
+        message={t(STAGE_MESSAGE[stage])}
+        style={CARD_REVEAL_STYLE}
+      />
+    </div>
+  );
 }

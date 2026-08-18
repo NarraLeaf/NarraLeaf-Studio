@@ -26,7 +26,11 @@ export type StoryRowHighlight = "none" | "script" | "command";
 export const STORY_ROW_HIGHLIGHT_KEY = "editor.storyRowHighlight" as const;
 
 /** The three values, in the order the settings page offers them. */
-export const STORY_ROW_HIGHLIGHT_OPTIONS: readonly StoryRowHighlight[] = ["none", "script", "command"];
+export const STORY_ROW_HIGHLIGHT_OPTIONS: readonly StoryRowHighlight[] = [
+  "none",
+  "script",
+  "command"
+];
 
 /**
  * Neither layer, by default.
@@ -41,7 +45,7 @@ export const STORY_ROW_HIGHLIGHT_DEFAULT: StoryRowHighlight = "none";
 
 /** Narrow an unknown stored value to a highlight mode, falling back to the default. */
 export function resolveStoryRowHighlight(stored: unknown): StoryRowHighlight {
-    return STORY_ROW_HIGHLIGHT_OPTIONS.includes(stored as StoryRowHighlight)
-        ? stored as StoryRowHighlight
-        : STORY_ROW_HIGHLIGHT_DEFAULT;
+  return STORY_ROW_HIGHLIGHT_OPTIONS.includes(stored as StoryRowHighlight)
+    ? (stored as StoryRowHighlight)
+    : STORY_ROW_HIGHLIGHT_DEFAULT;
 }

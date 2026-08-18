@@ -10,19 +10,19 @@ import { PanelPosition } from "../../registry/types";
  * Displays and edits properties of selected items
  */
 export const propertiesModule: PanelModule = {
-    metadata: {
-        id: PROPERTIES_PANEL_ID,
-        // Resolved lazily on read (module registration runs after i18n init).
-        titleKey: "placeholders.moduleTitles.properties",
-        get title() {
-            return translate("placeholders.moduleTitles.properties");
-        },
-        icon: <Settings className="w-4 h-4" />,
-        position: PanelPosition.Right,
-        defaultVisible: true,
-        order: 0,
+  metadata: {
+    id: PROPERTIES_PANEL_ID,
+    // Resolved lazily on read (module registration runs after i18n init).
+    titleKey: "placeholders.moduleTitles.properties",
+    get title() {
+      return translate("placeholders.moduleTitles.properties");
     },
-    component: PropertiesPanel,
+    icon: <Settings className="w-4 h-4" />,
+    position: PanelPosition.Right,
+    defaultVisible: true,
+    order: 0
+  },
+  component: PropertiesPanel
 };
 
 export * from "./propertiesPanelId";
@@ -32,4 +32,3 @@ export * from "./framework";
 
 // Export schemas
 export * from "./schemas";
-

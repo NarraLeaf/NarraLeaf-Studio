@@ -17,28 +17,28 @@
 
 import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
 import {
-    normalizeBlueprintImageAssetValue,
-    normalizeBlueprintRGBAColor,
-    type BlueprintImageAsset,
-    type BlueprintRGBAColor,
+  normalizeBlueprintImageAssetValue,
+  normalizeBlueprintRGBAColor,
+  type BlueprintImageAsset,
+  type BlueprintRGBAColor
 } from "./valueTypes";
 
 export type BlueprintCharacterInfo = {
-    id: string;
-    /** Author-facing display name. Empty when the character is unnamed - never falls back to `id`, which is a UUID. */
-    name: string;
-    /**
-     * The author's accent colour, already in pin shape. Null when the character has no colour set,
-     * which is a different thing from "white" - see {@link blueprintCharacterColorOrDefault} for
-     * what a non-nullable colour pin does with it.
-     */
-    color: BlueprintRGBAColor | null;
-    /** The character's default dialog avatar, or null when it has none. */
-    avatar: BlueprintImageAsset | null;
+  id: string;
+  /** Author-facing display name. Empty when the character is unnamed - never falls back to `id`, which is a UUID. */
+  name: string;
+  /**
+   * The author's accent colour, already in pin shape. Null when the character has no colour set,
+   * which is a different thing from "white" - see {@link blueprintCharacterColorOrDefault} for
+   * what a non-nullable colour pin does with it.
+   */
+  color: BlueprintRGBAColor | null;
+  /** The character's default dialog avatar, or null when it has none. */
+  avatar: BlueprintImageAsset | null;
 };
 
 function trimmed(value: unknown): string {
-    return typeof value === "string" ? value.trim() : "";
+  return typeof value === "string" ? value.trim() : "";
 }
 
 /**
@@ -58,8 +58,8 @@ function trimmed(value: unknown): string {
  * which is the same "no colour" a character without one has.
  */
 export function toBlueprintCharacterColor(value: unknown): BlueprintRGBAColor | null {
-    const raw = typeof value === "string" ? resolveBrandColorValue(value) : null;
-    return raw ? normalizeBlueprintRGBAColor(raw) : null;
+  const raw = typeof value === "string" ? resolveBrandColorValue(value) : null;
+  return raw ? normalizeBlueprintRGBAColor(raw) : null;
 }
 
 /**
@@ -69,32 +69,39 @@ export function toBlueprintCharacterColor(value: unknown): BlueprintRGBAColor | 
  * colour pin in the system falls back to. A nullable colour would need a new pin type; the round
  * that added these nodes deliberately did not add one.
  */
-export function blueprintCharacterColorOrDefault(color: BlueprintRGBAColor | null | undefined): BlueprintRGBAColor {
-    return color ?? normalizeBlueprintRGBAColor(undefined);
+export function blueprintCharacterColorOrDefault(
+  color: BlueprintRGBAColor | null | undefined
+): BlueprintRGBAColor {
+  return color ?? normalizeBlueprintRGBAColor(undefined);
 }
 
 /** Defensive read of one mirrored table entry. Returns null for anything that is not a usable record. */
 export function normalizeBlueprintCharacterInfo(value: unknown): BlueprintCharacterInfo | null {
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-        return null;
-    }
-    const raw = value as { id?: unknown; name?: unknown; color?: unknown; avatar?: unknown };
-    const id = trimmed(raw.id);
-    if (!id) {
-        return null;
-    }
-    return {
-        id,
-        name: trimmed(raw.name),
-        // Accepts both shapes on purpose: the mirror writes an already-parsed RGBA record, but a
-        // host that mirrored the raw profile hex still resolves correctly.
-        color: raw.color === null || raw.color === undefined ? null : toBlueprintCharacterColorValue(raw.color),
-        avatar: normalizeBlueprintImageAssetValue(raw.avatar),
-    };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const raw = value as { id?: unknown; name?: unknown; color?: unknown; avatar?: unknown };
+  const id = trimmed(raw.id);
+  if (!id) {
+    return null;
+  }
+  return {
+    id,
+    name: trimmed(raw.name),
+    // Accepts both shapes on purpose: the mirror writes an already-parsed RGBA record, but a
+    // host that mirrored the raw profile hex still resolves correctly.
+    color:
+      raw.color === null || raw.color === undefined
+        ? null
+        : toBlueprintCharacterColorValue(raw.color),
+    avatar: normalizeBlueprintImageAssetValue(raw.avatar)
+  };
 }
 
 function toBlueprintCharacterColorValue(value: unknown): BlueprintRGBAColor | null {
-    return typeof value === "string" ? toBlueprintCharacterColor(value) : normalizeBlueprintRGBAColor(value);
+  return typeof value === "string"
+    ? toBlueprintCharacterColor(value)
+    : normalizeBlueprintRGBAColor(value);
 }
 
 /**
@@ -104,34 +111,37 @@ function toBlueprintCharacterColorValue(value: unknown): BlueprintRGBAColor | nu
  * helper must keep compiling (and keep degrading to "no colour") on a bundle that predates it.
  */
 export function toBlueprintCharacterInfo(input: {
-    id: unknown;
-    name?: unknown;
-    color?: unknown;
-    avatarAssetId?: unknown;
+  id: unknown;
+  name?: unknown;
+  color?: unknown;
+  avatarAssetId?: unknown;
 }): BlueprintCharacterInfo | null {
-    const id = trimmed(input.id);
-    if (!id) {
-        return null;
-    }
-    return {
-        id,
-        name: trimmed(input.name),
-        color: toBlueprintCharacterColor(input.color),
-        avatar: normalizeBlueprintImageAssetValue(trimmed(input.avatarAssetId) || null),
-    };
+  const id = trimmed(input.id);
+  if (!id) {
+    return null;
+  }
+  return {
+    id,
+    name: trimmed(input.name),
+    color: toBlueprintCharacterColor(input.color),
+    avatar: normalizeBlueprintImageAssetValue(trimmed(input.avatarAssetId) || null)
+  };
 }
 
 /** Look one character up in a mirrored table. Null when the table is missing, or the id is not in it. */
-export function findBlueprintCharacterInfo(table: unknown, characterId: string): BlueprintCharacterInfo | null {
-    const id = trimmed(characterId);
-    if (!id || !Array.isArray(table)) {
-        return null;
-    }
-    for (const entry of table) {
-        const info = normalizeBlueprintCharacterInfo(entry);
-        if (info && info.id === id) {
-            return info;
-        }
-    }
+export function findBlueprintCharacterInfo(
+  table: unknown,
+  characterId: string
+): BlueprintCharacterInfo | null {
+  const id = trimmed(characterId);
+  if (!id || !Array.isArray(table)) {
     return null;
+  }
+  for (const entry of table) {
+    const info = normalizeBlueprintCharacterInfo(entry);
+    if (info && info.id === id) {
+      return info;
+    }
+  }
+  return null;
 }

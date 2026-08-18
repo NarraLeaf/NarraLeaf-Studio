@@ -1,4 +1,8 @@
-import type { CharacterAppearanceSummary, CharacterAvatarSummaryEntry, DevModeCharacterSummary } from "@shared/types/devMode";
+import type {
+  CharacterAppearanceSummary,
+  CharacterAvatarSummaryEntry,
+  DevModeCharacterSummary
+} from "@shared/types/devMode";
 import { resolveTagSelection } from "@shared/utils/characterVariant";
 
 /**
@@ -21,7 +25,7 @@ export const CHARACTER_AVATAR_ASSET_ID_PREFIX = "character-avatar:" as const;
 
 /** Relative path (POSIX) of the baked PNG for one avatar key, inside the project. */
 export function characterAvatarBakePath(characterId: string, key: string): string {
-    return `resources/characters/avatars/${characterId}/${key}.png`;
+  return `resources/characters/avatars/${characterId}/${key}.png`;
 }
 
 /**
@@ -33,35 +37,40 @@ export function characterAvatarBakePath(characterId: string, key: string): strin
  * through its own arm.
  */
 export function characterAvatarAssetId(characterId: string, key: string): string {
-    return `${CHARACTER_AVATAR_ASSET_ID_PREFIX}${encodeURIComponent(characterId)}:${encodeURIComponent(key)}`;
+  return `${CHARACTER_AVATAR_ASSET_ID_PREFIX}${encodeURIComponent(characterId)}:${encodeURIComponent(key)}`;
 }
 
-export function parseCharacterAvatarAssetId(assetId: string): { characterId: string; key: string } | null {
-    if (!assetId.startsWith(CHARACTER_AVATAR_ASSET_ID_PREFIX)) {
-        return null;
-    }
-    const rest = assetId.slice(CHARACTER_AVATAR_ASSET_ID_PREFIX.length);
-    const separator = rest.indexOf(":");
-    if (separator <= 0) {
-        return null;
-    }
-    try {
-        const characterId = decodeURIComponent(rest.slice(0, separator));
-        const key = decodeURIComponent(rest.slice(separator + 1));
-        return characterId && key ? { characterId, key } : null;
-    } catch {
-        return null;
-    }
+export function parseCharacterAvatarAssetId(
+  assetId: string
+): { characterId: string; key: string } | null {
+  if (!assetId.startsWith(CHARACTER_AVATAR_ASSET_ID_PREFIX)) {
+    return null;
+  }
+  const rest = assetId.slice(CHARACTER_AVATAR_ASSET_ID_PREFIX.length);
+  const separator = rest.indexOf(":");
+  if (separator <= 0) {
+    return null;
+  }
+  try {
+    const characterId = decodeURIComponent(rest.slice(0, separator));
+    const key = decodeURIComponent(rest.slice(separator + 1));
+    return characterId && key ? { characterId, key } : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The axes a layered character's avatar varies with. Absent/empty declaration means every axis. */
-export function characterAvatarAxisIds(appearance: CharacterAppearanceSummary | undefined): string[] {
-    if (appearance?.kind !== "layered") {
-        return [];
-    }
-    const declared = (appearance.avatarAxisIds ?? []).filter(axisId =>
-        appearance.axes.some(axis => axis.id === axisId));
-    return declared.length > 0 ? declared : appearance.axes.map(axis => axis.id);
+export function characterAvatarAxisIds(
+  appearance: CharacterAppearanceSummary | undefined
+): string[] {
+  if (appearance?.kind !== "layered") {
+    return [];
+  }
+  const declared = (appearance.avatarAxisIds ?? []).filter((axisId) =>
+    appearance.axes.some((axis) => axis.id === axisId)
+  );
+  return declared.length > 0 ? declared : appearance.axes.map((axis) => axis.id);
 }
 
 /**
@@ -75,23 +84,23 @@ export function characterAvatarAxisIds(appearance: CharacterAppearanceSummary | 
  * character whose avatar axes contribute no tags).
  */
 export function characterAvatarKey(
-    appearance: CharacterAppearanceSummary | undefined,
-    selection: { poseId?: string | null; tags?: Record<string, string> | null },
+  appearance: CharacterAppearanceSummary | undefined,
+  selection: { poseId?: string | null; tags?: Record<string, string> | null }
 ): string | null {
-    if (appearance?.kind === "preset") {
-        const poseId = selection.poseId ?? appearance.defaultPoseId ?? appearance.poses[0]?.id;
-        return poseId && appearance.poses.some(pose => pose.id === poseId) ? poseId : null;
-    }
-    if (appearance?.kind !== "layered") {
-        return null;
-    }
-    const resolved = resolveTagSelection(appearance, selection.tags ?? undefined);
-    const axisIds = new Set(characterAvatarAxisIds(appearance));
-    const tagIds = Object.entries(resolved)
-        .filter(([axisId]) => axisIds.has(axisId))
-        .map(([, tagId]) => tagId)
-        .sort();
-    return tagIds.length > 0 ? tagIds.join(AVATAR_KEY_SEPARATOR) : null;
+  if (appearance?.kind === "preset") {
+    const poseId = selection.poseId ?? appearance.defaultPoseId ?? appearance.poses[0]?.id;
+    return poseId && appearance.poses.some((pose) => pose.id === poseId) ? poseId : null;
+  }
+  if (appearance?.kind !== "layered") {
+    return null;
+  }
+  const resolved = resolveTagSelection(appearance, selection.tags ?? undefined);
+  const axisIds = new Set(characterAvatarAxisIds(appearance));
+  const tagIds = Object.entries(resolved)
+    .filter(([axisId]) => axisIds.has(axisId))
+    .map(([, tagId]) => tagId)
+    .sort();
+  return tagIds.length > 0 ? tagIds.join(AVATAR_KEY_SEPARATOR) : null;
 }
 
 /**
@@ -102,31 +111,31 @@ export function characterAvatarKey(
  * than guessed at — a stale tag would otherwise mint a key that nothing was ever baked for.
  */
 export function characterAvatarKeyFromTags(
-    appearance: CharacterAppearanceSummary | undefined,
-    tags: readonly string[] | null | undefined,
+  appearance: CharacterAppearanceSummary | undefined,
+  tags: readonly string[] | null | undefined
 ): string | null {
-    if (appearance?.kind !== "layered" || !tags?.length) {
-        return null;
+  if (appearance?.kind !== "layered" || !tags?.length) {
+    return null;
+  }
+  const axisIds = new Set(characterAvatarAxisIds(appearance));
+  const active = new Set(tags);
+  const selection: Record<string, string> = {};
+  for (const axis of appearance.axes) {
+    if (!axisIds.has(axis.id)) {
+      continue;
     }
-    const axisIds = new Set(characterAvatarAxisIds(appearance));
-    const active = new Set(tags);
-    const selection: Record<string, string> = {};
-    for (const axis of appearance.axes) {
-        if (!axisIds.has(axis.id)) {
-            continue;
-        }
-        const tag = axis.tags.find(candidate => active.has(candidate.id));
-        if (tag) {
-            selection[axis.id] = tag.id;
-        }
+    const tag = axis.tags.find((candidate) => active.has(candidate.id));
+    if (tag) {
+      selection[axis.id] = tag.id;
     }
-    return characterAvatarKey(appearance, { tags: selection });
+  }
+  return characterAvatarKey(appearance, { tags: selection });
 }
 
 /** One differential the baker has to render: its key, and the selection that draws it. */
 export type CharacterAvatarTarget = {
-    key: string;
-    selection: { poseId?: string; tags?: Record<string, string> };
+  key: string;
+  selection: { poseId?: string; tags?: Record<string, string> };
 };
 
 /**
@@ -137,42 +146,46 @@ export type CharacterAvatarTarget = {
  * contain the separator, and for a layered character the key is sorted while the selection is keyed
  * by axis.
  */
-export function characterAvatarTargets(appearance: CharacterAppearanceSummary | undefined): CharacterAvatarTarget[] {
-    if (appearance?.kind === "preset") {
-        return appearance.poses.map(pose => ({ key: pose.id, selection: { poseId: pose.id } }));
-    }
-    if (appearance?.kind !== "layered") {
-        return [];
-    }
-    const axisIds = new Set(characterAvatarAxisIds(appearance));
-    const axes = appearance.axes.filter(axis => axisIds.has(axis.id) && axis.tags.length > 0);
-    // Cartesian product of the avatar axes' tags. The key is sorted per combination, not here, so
-    // an enumerated combination produces the byte-identical key a live tag set does.
-    let selections: Record<string, string>[] = [{}];
-    for (const axis of axes) {
-        selections = selections.flatMap(prefix => axis.tags.map(tag => ({ ...prefix, [axis.id]: tag.id })));
-    }
-    return selections
-        .filter(selection => Object.keys(selection).length > 0)
-        .map(selection => ({
-            key: Object.values(selection).sort().join(AVATAR_KEY_SEPARATOR),
-            selection: { tags: selection },
-        }));
+export function characterAvatarTargets(
+  appearance: CharacterAppearanceSummary | undefined
+): CharacterAvatarTarget[] {
+  if (appearance?.kind === "preset") {
+    return appearance.poses.map((pose) => ({ key: pose.id, selection: { poseId: pose.id } }));
+  }
+  if (appearance?.kind !== "layered") {
+    return [];
+  }
+  const axisIds = new Set(characterAvatarAxisIds(appearance));
+  const axes = appearance.axes.filter((axis) => axisIds.has(axis.id) && axis.tags.length > 0);
+  // Cartesian product of the avatar axes' tags. The key is sorted per combination, not here, so
+  // an enumerated combination produces the byte-identical key a live tag set does.
+  let selections: Record<string, string>[] = [{}];
+  for (const axis of axes) {
+    selections = selections.flatMap((prefix) =>
+      axis.tags.map((tag) => ({ ...prefix, [axis.id]: tag.id }))
+    );
+  }
+  return selections
+    .filter((selection) => Object.keys(selection).length > 0)
+    .map((selection) => ({
+      key: Object.values(selection).sort().join(AVATAR_KEY_SEPARATOR),
+      selection: { tags: selection }
+    }));
 }
 
 /** Every avatar key a character can wear — what the baker enumerates. */
 export function characterAvatarKeys(appearance: CharacterAppearanceSummary | undefined): string[] {
-    return characterAvatarTargets(appearance).map(target => target.key);
+  return characterAvatarTargets(appearance).map((target) => target.key);
 }
 
 function avatarEntry(
-    appearance: CharacterAppearanceSummary | undefined,
-    key: string | null,
+  appearance: CharacterAppearanceSummary | undefined,
+  key: string | null
 ): CharacterAvatarSummaryEntry | undefined {
-    if (!key || !appearance || !("avatars" in appearance)) {
-        return undefined;
-    }
-    return appearance.avatars?.[key];
+  if (!key || !appearance || !("avatars" in appearance)) {
+    return undefined;
+  }
+  return appearance.avatars?.[key];
 }
 
 /**
@@ -183,19 +196,21 @@ function avatarEntry(
  * image in a 96px box, and for a layered character there is no sprite to fall back to at all.
  */
 export function resolveCharacterAvatarAssetId(
-    character: Pick<DevModeCharacterSummary, "id" | "appearance" | "defaultAvatarAssetId"> | undefined,
-    key: string | null,
+  character:
+    | Pick<DevModeCharacterSummary, "id" | "appearance" | "defaultAvatarAssetId">
+    | undefined,
+  key: string | null
 ): string | null {
-    if (!character) {
-        return null;
-    }
-    const entry = avatarEntry(character.appearance, key);
-    const override = entry?.overrideAssetId?.trim();
-    if (override) {
-        return override;
-    }
-    if (entry?.baked && key) {
-        return characterAvatarAssetId(character.id, key);
-    }
-    return character.defaultAvatarAssetId?.trim() || null;
+  if (!character) {
+    return null;
+  }
+  const entry = avatarEntry(character.appearance, key);
+  const override = entry?.overrideAssetId?.trim();
+  if (override) {
+    return override;
+  }
+  if (entry?.baked && key) {
+    return characterAvatarAssetId(character.id, key);
+  }
+  return character.defaultAvatarAssetId?.trim() || null;
 }

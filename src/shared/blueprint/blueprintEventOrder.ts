@@ -11,14 +11,14 @@ import type { BlueprintGraphIndex } from "../types/blueprint/document";
 
 /** Tolerates raw parsed JSON: this runs on documents before they have been validated. */
 type GraphOrderCarrier = {
-    eventIds?: unknown;
-    events?: unknown;
-    functionIds?: unknown;
-    functions?: unknown;
+  eventIds?: unknown;
+  events?: unknown;
+  functionIds?: unknown;
+  functions?: unknown;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -40,33 +40,37 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * v10, where key order still is the authored order.
  */
 function reconcileOrder(listed: unknown, record: unknown): string[] {
-    if (!isRecord(record)) {
-        return [];
+  if (!isRecord(record)) {
+    return [];
+  }
+
+  const ordered: string[] = [];
+  const taken = new Set<string>();
+
+  for (const id of Array.isArray(listed) ? (listed as unknown[]) : []) {
+    // `hasOwnProperty` rather than a truthiness check on `record[id]`: "constructor" and
+    // "toString" are perfectly legal slot ids, and an `in` test would resolve them to
+    // Object.prototype and list a graph that does not exist.
+    if (
+      typeof id !== "string" ||
+      taken.has(id) ||
+      !Object.prototype.hasOwnProperty.call(record, id)
+    ) {
+      continue;
     }
+    taken.add(id);
+    ordered.push(id);
+  }
 
-    const ordered: string[] = [];
-    const taken = new Set<string>();
-
-    for (const id of Array.isArray(listed) ? (listed as unknown[]) : []) {
-        // `hasOwnProperty` rather than a truthiness check on `record[id]`: "constructor" and
-        // "toString" are perfectly legal slot ids, and an `in` test would resolve them to
-        // Object.prototype and list a graph that does not exist.
-        if (typeof id !== "string" || taken.has(id) || !Object.prototype.hasOwnProperty.call(record, id)) {
-            continue;
-        }
-        taken.add(id);
-        ordered.push(id);
+  for (const id of Object.keys(record)) {
+    if (taken.has(id)) {
+      continue;
     }
+    taken.add(id);
+    ordered.push(id);
+  }
 
-    for (const id of Object.keys(record)) {
-        if (taken.has(id)) {
-            continue;
-        }
-        taken.add(id);
-        ordered.push(id);
-    }
-
-    return ordered;
+  return ordered;
 }
 
 /**
@@ -74,8 +78,10 @@ function reconcileOrder(listed: unknown, record: unknown): string[] {
  *
  * This is the list the member tree draws, and `[0]` is the layer the editor opens.
  */
-export function listBlueprintEventIds(graphs: BlueprintGraphIndex | GraphOrderCarrier | undefined | null): string[] {
-    return reconcileOrder(graphs?.eventIds, graphs?.events);
+export function listBlueprintEventIds(
+  graphs: BlueprintGraphIndex | GraphOrderCarrier | undefined | null
+): string[] {
+  return reconcileOrder(graphs?.eventIds, graphs?.events);
 }
 
 /**
@@ -87,8 +93,10 @@ export function listBlueprintEventIds(graphs: BlueprintGraphIndex | GraphOrderCa
  * so without a carrier, which graph a blueprint opens on becomes a function of UUID sort
  * order. It would change under the author for no reason visible to them, and stay changed.
  */
-export function listBlueprintFunctionIds(graphs: BlueprintGraphIndex | GraphOrderCarrier | undefined | null): string[] {
-    return reconcileOrder(graphs?.functionIds, graphs?.functions);
+export function listBlueprintFunctionIds(
+  graphs: BlueprintGraphIndex | GraphOrderCarrier | undefined | null
+): string[] {
+  return reconcileOrder(graphs?.functionIds, graphs?.functions);
 }
 
 /**
@@ -98,12 +106,12 @@ export function listBlueprintFunctionIds(graphs: BlueprintGraphIndex | GraphOrde
  * adds land at the end, deletes drop out, and everything else keeps its place.
  */
 export function captureBlueprintEventOrder(graphs: BlueprintGraphIndex): void {
-    graphs.eventIds = listBlueprintEventIds(graphs);
+  graphs.eventIds = listBlueprintEventIds(graphs);
 }
 
 /** As {@link captureBlueprintEventOrder}, for `functions`. Call after any mutation of it. */
 export function captureBlueprintFunctionOrder(graphs: BlueprintGraphIndex): void {
-    graphs.functionIds = listBlueprintFunctionIds(graphs);
+  graphs.functionIds = listBlueprintFunctionIds(graphs);
 }
 
 /**
@@ -114,21 +122,24 @@ export function captureBlueprintFunctionOrder(graphs: BlueprintGraphIndex): void
  * "expected object" from an order pass would, and a throw here would turn a project that
  * merely has an odd blueprint into a project that cannot be opened at all.
  */
-function forEachBlueprintGraphIndex(raw: unknown, visit: (graphs: BlueprintGraphIndex) => void): void {
-    if (!isRecord(raw) || !isRecord(raw.blueprints)) {
-        return;
-    }
+function forEachBlueprintGraphIndex(
+  raw: unknown,
+  visit: (graphs: BlueprintGraphIndex) => void
+): void {
+  if (!isRecord(raw) || !isRecord(raw.blueprints)) {
+    return;
+  }
 
-    for (const blueprint of Object.values(raw.blueprints)) {
-        if (!isRecord(blueprint) || !isRecord(blueprint.program)) {
-            continue;
-        }
-        const graphs = blueprint.program.graphs;
-        if (!isRecord(graphs)) {
-            continue;
-        }
-        visit(graphs as unknown as BlueprintGraphIndex);
+  for (const blueprint of Object.values(raw.blueprints)) {
+    if (!isRecord(blueprint) || !isRecord(blueprint.program)) {
+      continue;
     }
+    const graphs = blueprint.program.graphs;
+    if (!isRecord(graphs)) {
+      continue;
+    }
+    visit(graphs as unknown as BlueprintGraphIndex);
+  }
 }
 
 /**
@@ -143,18 +154,18 @@ function forEachBlueprintGraphIndex(raw: unknown, visit: (graphs: BlueprintGraph
  * recoverable and not distinguishable from the real thing.
  */
 export function captureBlueprintDocumentEventOrder(raw: unknown): void {
-    forEachBlueprintGraphIndex(raw, graphs => {
-        if (isRecord(graphs.events)) {
-            captureBlueprintEventOrder(graphs);
-        }
-    });
+  forEachBlueprintGraphIndex(raw, (graphs) => {
+    if (isRecord(graphs.events)) {
+      captureBlueprintEventOrder(graphs);
+    }
+  });
 }
 
 /** As {@link captureBlueprintDocumentEventOrder}, for `functions`, and on the same terms. */
 export function captureBlueprintDocumentFunctionOrder(raw: unknown): void {
-    forEachBlueprintGraphIndex(raw, graphs => {
-        if (isRecord(graphs.functions)) {
-            captureBlueprintFunctionOrder(graphs);
-        }
-    });
+  forEachBlueprintGraphIndex(raw, (graphs) => {
+    if (isRecord(graphs.functions)) {
+      captureBlueprintFunctionOrder(graphs);
+    }
+  });
 }

@@ -20,6 +20,6 @@ export type PsdWorkerErrorMessage = { type: "error"; message: string };
 export type PsdWorkerInboundMessage = PsdWorkerReadMessage | PsdWorkerBakeMessage;
 
 export type PsdWorkerOutboundMessage =
-    | PsdWorkerReadDoneMessage
-    | PsdWorkerBakeDoneMessage
-    | PsdWorkerErrorMessage;
+  | PsdWorkerReadDoneMessage
+  | PsdWorkerBakeDoneMessage
+  | PsdWorkerErrorMessage;

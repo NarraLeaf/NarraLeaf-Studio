@@ -14,79 +14,79 @@ import { ensureAnimationFramePolyfill } from "@/lib/ui-editor/runtime/testing/li
 import { SurfaceAnimationLayer } from "./SurfaceAnimationLayer";
 
 beforeAll(() => {
-    ensureAnimationFramePolyfill();
+  ensureAnimationFramePolyfill();
 });
 
 afterEach(cleanup);
 
 const pageMotion: PageAnimationMotion = {
-    initial: { opacity: 0, x: 48, y: 0, scale: 1, filter: "blur(0px)" },
-    animate: {
-        opacity: 1,
-        x: 0,
-        y: 0,
-        scale: 1,
-        filter: "blur(0px)",
-        transition: { type: "tween", duration: 0.2 },
-    },
-    exit: {
-        opacity: 0,
-        x: -48,
-        y: 0,
-        scale: 1,
-        filter: "blur(0px)",
-        transition: { type: "tween", duration: 0.2 },
-    },
-    enterDurationMs: 200,
-    exitDurationMs: 200,
-    exitBlocking: false,
+  initial: { opacity: 0, x: 48, y: 0, scale: 1, filter: "blur(0px)" },
+  animate: {
+    opacity: 1,
+    x: 0,
+    y: 0,
+    scale: 1,
+    filter: "blur(0px)",
+    transition: { type: "tween", duration: 0.2 }
+  },
+  exit: {
+    opacity: 0,
+    x: -48,
+    y: 0,
+    scale: 1,
+    filter: "blur(0px)",
+    transition: { type: "tween", duration: 0.2 }
+  },
+  enterDurationMs: 200,
+  exitDurationMs: 200,
+  exitBlocking: false
 };
 
 function ui(show: boolean) {
-    return (
-        <AnimatePresence>
-            {show ? (
-                <SurfaceAnimationLayer
-                    key="layer"
-                    prepaintKey="layer"
-                    direction="forward"
-                    pageMotion={pageMotion}
-                    contentClassName="layer-content"
-                >
-                    <span>content</span>
-                </SurfaceAnimationLayer>
-            ) : null}
-        </AnimatePresence>
-    );
+  return (
+    <AnimatePresence>
+      {show ? (
+        <SurfaceAnimationLayer
+          key="layer"
+          prepaintKey="layer"
+          direction="forward"
+          pageMotion={pageMotion}
+          contentClassName="layer-content"
+        >
+          <span>content</span>
+        </SurfaceAnimationLayer>
+      ) : null}
+    </AnimatePresence>
+  );
 }
 
 function contentOpacity(container: HTMLElement): string {
-    const content = container.querySelector<HTMLElement>(".layer-content");
-    if (!content) {
-        throw new Error("content wrapper not found (layer already unmounted)");
-    }
-    return content.style.opacity;
+  const content = container.querySelector<HTMLElement>(".layer-content");
+  if (!content) {
+    throw new Error("content wrapper not found (layer already unmounted)");
+  }
+  return content.style.opacity;
 }
 
 describe("SurfaceAnimationLayer exit visibility", () => {
-    it("keeps a layer hidden through its exit when it never finished prepaint", () => {
-        const { container, rerender } = render(ui(true));
-        // Prepaint is still pending on the first synchronous pass → content hidden.
-        expect(contentOpacity(container)).toBe("0");
+  it("keeps a layer hidden through its exit when it never finished prepaint", () => {
+    const { container, rerender } = render(ui(true));
+    // Prepaint is still pending on the first synchronous pass → content hidden.
+    expect(contentOpacity(container)).toBe("0");
 
-        // Remove the layer before prepaint ever completes; AnimatePresence keeps it
-        // mounted for the exit animation.
-        rerender(ui(false));
-        expect(contentOpacity(container)).toBe("0");
+    // Remove the layer before prepaint ever completes; AnimatePresence keeps it
+    // mounted for the exit animation.
+    rerender(ui(false));
+    expect(contentOpacity(container)).toBe("0");
+  });
+
+  it("keeps a layer visible through its exit when it had been shown", async () => {
+    const { container, rerender } = render(ui(true));
+    await waitFor(() => {
+      expect(contentOpacity(container)).toBe("1");
     });
 
-    it("keeps a layer visible through its exit when it had been shown", async () => {
-        const { container, rerender } = render(ui(true));
-        await waitFor(() => {
-            expect(contentOpacity(container)).toBe("1");
-        });
-
-        rerender(ui(false));
-        expect(contentOpacity(container)).toBe("1");
-    });
+    rerender(ui(false));
+    expect(contentOpacity(container)).toBe("1");
+  });
 });

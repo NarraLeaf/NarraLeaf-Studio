@@ -1,20 +1,20 @@
 import fs from "fs";
 import path from "path";
 import type {
-    VcsConflictChoice,
-    VcsMergeResolveResult,
-    VcsMergeSideChoice,
-    VcsMergeState,
+  VcsConflictChoice,
+  VcsMergeResolveResult,
+  VcsMergeSideChoice,
+  VcsMergeState
 } from "@shared/types/vcs";
 import {
-    branchMergeAbort,
-    branchMergeResolve,
-    branchMergeRestart,
-    branchMergeUnresolve,
-    flushRepository,
-    repositoryPath,
-    repositoryStatus,
-    type LoreGlobals,
+  branchMergeAbort,
+  branchMergeResolve,
+  branchMergeRestart,
+  branchMergeUnresolve,
+  flushRepository,
+  repositoryPath,
+  repositoryStatus,
+  type LoreGlobals
 } from "./lore";
 import { collectWorkingSet } from "./workingSet";
 
@@ -110,20 +110,20 @@ const SIDECAR_SUFFIXES = { base: "~base", mine: "~mine", theirs: "~theirs" } as 
  * asked.
  */
 export async function readMergeState(globals: LoreGlobals, root: string): Promise<VcsMergeState> {
-    const { revision } = await repositoryStatus(globals, { scan: false, revisionOnly: true });
-    // Both, not either. See the note above: `revisionMerged` outlives the merge commit
-    // and would report a finished merge as an open one.
-    const headerSaysMerge = Boolean(revision?.revisionMerged && revision?.revisionStaged);
-    const conflicts = await findConflictedPaths(root);
-    const inProgress = headerSaysMerge || conflicts.length > 0;
-    return {
-        inProgress,
-        // Gated on the whole answer rather than on the header alone: the field keeps its
-        // value after the merge is recorded, and naming an incoming revision for a merge
-        // that is over is worse than not naming one.
-        incoming: inProgress ? revision?.revisionMerged : undefined,
-        conflicts,
-    };
+  const { revision } = await repositoryStatus(globals, { scan: false, revisionOnly: true });
+  // Both, not either. See the note above: `revisionMerged` outlives the merge commit
+  // and would report a finished merge as an open one.
+  const headerSaysMerge = Boolean(revision?.revisionMerged && revision?.revisionStaged);
+  const conflicts = await findConflictedPaths(root);
+  const inProgress = headerSaysMerge || conflicts.length > 0;
+  return {
+    inProgress,
+    // Gated on the whole answer rather than on the header alone: the field keeps its
+    // value after the merge is recorded, and naming an incoming revision for a merge
+    // that is over is worse than not naming one.
+    incoming: inProgress ? revision?.revisionMerged : undefined,
+    conflicts
+  };
 }
 
 /**
@@ -140,21 +140,21 @@ export async function readMergeState(globals: LoreGlobals, root: string): Promis
  * A settled path is still on this list; see the note on {@link readMergeState}.
  */
 async function findConflictedPaths(root: string): Promise<string[]> {
-    const present = new Set(await collectWorkingSet(root));
-    const conflicts: string[] = [];
-    for (const absolute of present) {
-        if (!absolute.endsWith(SIDECAR_SUFFIXES.mine)) continue;
-        const subject = absolute.slice(0, -SIDECAR_SUFFIXES.mine.length);
-        if (!present.has(`${subject}${SIDECAR_SUFFIXES.theirs}`)) continue;
-        if (!fs.existsSync(subject)) continue;
-        conflicts.push(toRepositoryRelative(root, subject));
-    }
-    return conflicts.sort();
+  const present = new Set(await collectWorkingSet(root));
+  const conflicts: string[] = [];
+  for (const absolute of present) {
+    if (!absolute.endsWith(SIDECAR_SUFFIXES.mine)) continue;
+    const subject = absolute.slice(0, -SIDECAR_SUFFIXES.mine.length);
+    if (!present.has(`${subject}${SIDECAR_SUFFIXES.theirs}`)) continue;
+    if (!fs.existsSync(subject)) continue;
+    conflicts.push(toRepositoryRelative(root, subject));
+  }
+  return conflicts.sort();
 }
 
 /** Forward slashes, because that is the spelling every other output path uses. */
 function toRepositoryRelative(root: string, absolute: string): string {
-    return path.relative(root, absolute).split(path.sep).join("/");
+  return path.relative(root, absolute).split(path.sep).join("/");
 }
 
 /**
@@ -199,20 +199,20 @@ function toRepositoryRelative(root: string, absolute: string): string {
  * Does NOT commit. See the note at the top of this module.
  */
 export async function resolveConflicts(
-    globals: LoreGlobals,
-    root: string,
-    relativePaths: readonly string[],
-    choice: VcsConflictChoice,
+  globals: LoreGlobals,
+  root: string,
+  relativePaths: readonly string[],
+  choice: VcsConflictChoice
 ): Promise<VcsMergeResolveResult> {
-    const absolute = relativePaths.map((relative) => repositoryPath(root, relative));
-    if (choice !== "working-tree") {
-        // Every path first, then one settle call: a copy that fails must not leave half the
-        // selection settled and the other half not, which is a state nothing can read back.
-        for (const file of absolute) takeSide(file, choice);
-    }
-    const result = await branchMergeResolve(globals, absolute);
-    await flushRepository(globals);
-    return { files: result.files, state: await readMergeState(globals, root) };
+  const absolute = relativePaths.map((relative) => repositoryPath(root, relative));
+  if (choice !== "working-tree") {
+    // Every path first, then one settle call: a copy that fails must not leave half the
+    // selection settled and the other half not, which is a state nothing can read back.
+    for (const file of absolute) takeSide(file, choice);
+  }
+  const result = await branchMergeResolve(globals, absolute);
+  await flushRepository(globals);
+  return { files: result.files, state: await readMergeState(globals, root) };
 }
 
 /**
@@ -224,22 +224,22 @@ export async function resolveConflicts(
  * anyway would record the file with the conflict markers still in it.
  */
 export class MergeSideMissingError extends Error {
-    constructor(readonly file: string) {
-        super(`The merge's copy of this side is missing: ${file}`);
-        this.name = "MergeSideMissingError";
-    }
+  constructor(readonly file: string) {
+    super(`The merge's copy of this side is missing: ${file}`);
+    this.name = "MergeSideMissingError";
+  }
 }
 
 /** Copy one recorded side over the conflicted file. See {@link resolveConflicts}. */
 function takeSide(absolute: string, choice: VcsMergeSideChoice): void {
-    const source = `${absolute}${SIDECAR_SUFFIXES[choice]}`;
-    if (!fs.existsSync(source)) {
-        throw new MergeSideMissingError(source);
-    }
-    // A plain copy rather than Studio's atomic writer, for `revisionRestore`'s reason: the
-    // operation as a whole is not atomic (it is one file per conflict), so per-file atomicity
-    // buys nothing the merge's own three copies on disk do not already provide.
-    fs.copyFileSync(source, absolute);
+  const source = `${absolute}${SIDECAR_SUFFIXES[choice]}`;
+  if (!fs.existsSync(source)) {
+    throw new MergeSideMissingError(source);
+  }
+  // A plain copy rather than Studio's atomic writer, for `revisionRestore`'s reason: the
+  // operation as a whole is not atomic (it is one file per conflict), so per-file atomicity
+  // buys nothing the merge's own three copies on disk do not already provide.
+  fs.copyFileSync(source, absolute);
 }
 
 /**
@@ -250,16 +250,16 @@ function takeSide(absolute: string, choice: VcsMergeSideChoice): void {
  * three sides are still on disk beside the file, so the decision is recoverable.
  */
 export async function unresolveConflicts(
-    globals: LoreGlobals,
-    root: string,
-    relativePaths: readonly string[],
+  globals: LoreGlobals,
+  root: string,
+  relativePaths: readonly string[]
 ): Promise<VcsMergeResolveResult> {
-    const files = await branchMergeUnresolve(
-        globals,
-        relativePaths.map((relative) => repositoryPath(root, relative)),
-    );
-    await flushRepository(globals);
-    return { files, state: await readMergeState(globals, root) };
+  const files = await branchMergeUnresolve(
+    globals,
+    relativePaths.map((relative) => repositoryPath(root, relative))
+  );
+  await flushRepository(globals);
+  return { files, state: await readMergeState(globals, root) };
 }
 
 /**
@@ -270,13 +270,16 @@ export async function unresolveConflicts(
  * The one way back from a half-edited merge result.
  */
 export async function restartConflicts(
-    globals: LoreGlobals,
-    root: string,
-    relativePaths: readonly string[],
+  globals: LoreGlobals,
+  root: string,
+  relativePaths: readonly string[]
 ): Promise<VcsMergeState> {
-    await branchMergeRestart(globals, relativePaths.map((relative) => repositoryPath(root, relative)));
-    await flushRepository(globals);
-    return readMergeState(globals, root);
+  await branchMergeRestart(
+    globals,
+    relativePaths.map((relative) => repositoryPath(root, relative))
+  );
+  await flushRepository(globals);
+  return readMergeState(globals, root);
 }
 
 /**
@@ -293,7 +296,7 @@ export async function restartConflicts(
  * written by the merge and have just been written over again.
  */
 export async function abortMerge(globals: LoreGlobals, root: string): Promise<VcsMergeState> {
-    await branchMergeAbort(globals);
-    await flushRepository(globals);
-    return readMergeState(globals, root);
+  await branchMergeAbort(globals);
+  await flushRepository(globals);
+  return readMergeState(globals, root);
 }

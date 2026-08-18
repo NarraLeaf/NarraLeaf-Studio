@@ -33,62 +33,62 @@ import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
  * gesture (drag starts, drop does nothing) is worse than either, because it reads as a bug.
  */
 export type FrozenControlProps = {
-    disabled: boolean;
-    /**
-     * Tooltip: the freeze reason when the freeze is why, the caller's own otherwise.
-     *
-     * `data-tip` rather than `title`, so a greyed control's reason is drawn by Studio's own tooltip
-     * (`lib/tooltip`) like every other one. It matters most here: pointer events do not reach a
-     * disabled control at all, so the tooltip is resolved by hit-testing the pointer instead.
-     */
-    "data-tip": string | undefined;
+  disabled: boolean;
+  /**
+   * Tooltip: the freeze reason when the freeze is why, the caller's own otherwise.
+   *
+   * `data-tip` rather than `title`, so a greyed control's reason is drawn by Studio's own tooltip
+   * (`lib/tooltip`) like every other one. It matters most here: pointer events do not reach a
+   * disabled control at all, so the tooltip is resolved by hit-testing the pointer instead.
+   */
+  "data-tip": string | undefined;
 };
 
 export type FreezeGuard = {
-    /** Whether this window's project data is frozen right now. */
-    readonly frozen: boolean;
-    /**
-     * The single hover string for everything the freeze switches off.
-     *
-     * Exposed for the call sites that build their own tooltip (a control that already composes one);
-     * prefer {@link writes}, which picks between this and the caller's own.
-     */
-    readonly reason: string;
-    /**
-     * Render props for a control whose action writes project data.
-     *
-     * `ownDisabled` / `ownTooltip` are the control's existing state, kept intact: a button that was
-     * already disabled for its own reason must not start claiming the freeze is why, because that
-     * lie outlives the thaw.
-     */
-    writes(ownDisabled?: boolean, ownTooltip?: string): FrozenControlProps;
-    /**
-     * The render fields for a menu row that writes project data.
-     *
-     * The row still renders, so the author can see the action exists - the same bargain the top bar's
-     * menus make - and `tooltip` says why it is off. That field only exists because this pass added it
-     * to `ContextMenuItemDef`; before it, a greyed row carried no reason at all, and the explanation
-     * could not go in the label without turning a disabled menu into a paragraph.
-     */
-    menuRow(ownDisabled?: boolean): { disabled: boolean; tooltip: string | undefined };
-    /**
-     * A drag/pointer handler, or `undefined` while frozen - so the gesture is never half-attached.
-     *
-     * Returning `undefined` rather than a no-op is deliberate: `draggable`, `onDragOver` and React
-     * Flow's `nodesDraggable` all key off whether a handler is there, and a present-but-inert
-     * `onDragStart` produces a drag that picks up and refuses to drop. Pass the whole set through
-     * this, or none of it.
-     */
-    gesture<F>(handler: F): F | undefined;
-    /**
-     * A handler that has no control to grey out - a keybinding, a dialog's confirm, a drop target -
-     * wrapped so it does nothing while frozen.
-     *
-     * The author is not told here. They will be: the write boundary announces the refusal through
-     * `SaveStatusService` the moment anything tries to save, and a toast per blocked keystroke would
-     * bury that one useful message under a dozen.
-     */
-    run<A extends unknown[], R>(handler: (...args: A) => R): (...args: A) => R | undefined;
+  /** Whether this window's project data is frozen right now. */
+  readonly frozen: boolean;
+  /**
+   * The single hover string for everything the freeze switches off.
+   *
+   * Exposed for the call sites that build their own tooltip (a control that already composes one);
+   * prefer {@link writes}, which picks between this and the caller's own.
+   */
+  readonly reason: string;
+  /**
+   * Render props for a control whose action writes project data.
+   *
+   * `ownDisabled` / `ownTooltip` are the control's existing state, kept intact: a button that was
+   * already disabled for its own reason must not start claiming the freeze is why, because that
+   * lie outlives the thaw.
+   */
+  writes(ownDisabled?: boolean, ownTooltip?: string): FrozenControlProps;
+  /**
+   * The render fields for a menu row that writes project data.
+   *
+   * The row still renders, so the author can see the action exists - the same bargain the top bar's
+   * menus make - and `tooltip` says why it is off. That field only exists because this pass added it
+   * to `ContextMenuItemDef`; before it, a greyed row carried no reason at all, and the explanation
+   * could not go in the label without turning a disabled menu into a paragraph.
+   */
+  menuRow(ownDisabled?: boolean): { disabled: boolean; tooltip: string | undefined };
+  /**
+   * A drag/pointer handler, or `undefined` while frozen - so the gesture is never half-attached.
+   *
+   * Returning `undefined` rather than a no-op is deliberate: `draggable`, `onDragOver` and React
+   * Flow's `nodesDraggable` all key off whether a handler is there, and a present-but-inert
+   * `onDragStart` produces a drag that picks up and refuses to drop. Pass the whole set through
+   * this, or none of it.
+   */
+  gesture<F>(handler: F): F | undefined;
+  /**
+   * A handler that has no control to grey out - a keybinding, a dialog's confirm, a drop target -
+   * wrapped so it does nothing while frozen.
+   *
+   * The author is not told here. They will be: the write boundary announces the refusal through
+   * `SaveStatusService` the moment anything tries to save, and a toast per blocked keystroke would
+   * bury that one useful message under a dozen.
+   */
+  run<A extends unknown[], R>(handler: (...args: A) => R): (...args: A) => R | undefined;
 };
 
 /**
@@ -96,29 +96,32 @@ export type FreezeGuard = {
  * mounting an editor. {@link useFreezeGuard} is the only thing that should build one in app code.
  */
 export function makeFreezeGuard(frozen: boolean, reason: string): FreezeGuard {
-    return {
-        frozen,
-        reason,
-        writes(ownDisabled = false, ownTooltip) {
-            return {
-                disabled: ownDisabled || frozen,
-                // The caller's own reason wins when it is the one that applies: an already-disabled
-                // control is disabled for its own cause, freeze or no freeze.
-                "data-tip": ownDisabled ? ownTooltip : frozen ? reason : ownTooltip,
-            };
-        },
-        menuRow(ownDisabled = false) {
-            // Same rule as `writes`: a row that was already disabled owns its reason, so the freeze
-            // does not claim to be it.
-            return { disabled: ownDisabled || frozen, tooltip: !ownDisabled && frozen ? reason : undefined };
-        },
-        gesture(handler) {
-            return frozen ? undefined : handler;
-        },
-        run(handler) {
-            return (...args) => (frozen ? undefined : handler(...args));
-        },
-    };
+  return {
+    frozen,
+    reason,
+    writes(ownDisabled = false, ownTooltip) {
+      return {
+        disabled: ownDisabled || frozen,
+        // The caller's own reason wins when it is the one that applies: an already-disabled
+        // control is disabled for its own cause, freeze or no freeze.
+        "data-tip": ownDisabled ? ownTooltip : frozen ? reason : ownTooltip
+      };
+    },
+    menuRow(ownDisabled = false) {
+      // Same rule as `writes`: a row that was already disabled owns its reason, so the freeze
+      // does not claim to be it.
+      return {
+        disabled: ownDisabled || frozen,
+        tooltip: !ownDisabled && frozen ? reason : undefined
+      };
+    },
+    gesture(handler) {
+      return frozen ? undefined : handler;
+    },
+    run(handler) {
+      return (...args) => (frozen ? undefined : handler(...args));
+    }
+  };
 }
 
 /**
@@ -135,7 +138,7 @@ export function makeFreezeGuard(frozen: boolean, reason: string): FreezeGuard {
  * only sound because every such write is fingerprint-driven: whatever was out of date still is.
  */
 export function isDeferredWriteAllowed(frozen: boolean): boolean {
-    return !frozen;
+  return !frozen;
 }
 
 /**
@@ -154,32 +157,37 @@ export function isDeferredWriteAllowed(frozen: boolean): boolean {
  * opened would hide what the freeze is doing, and the author is here to look.
  */
 export function freezeContextMenuRows(
-    items: ContextMenuDef,
-    frozen: boolean,
-    readOnlyIds: ReadonlySet<string>,
-    /** Hover text for the rows this switches off. The caller passes {@link FreezeGuard.reason}. */
-    reason?: string,
+  items: ContextMenuDef,
+  frozen: boolean,
+  readOnlyIds: ReadonlySet<string>,
+  /** Hover text for the rows this switches off. The caller passes {@link FreezeGuard.reason}. */
+  reason?: string
 ): ContextMenuDef {
-    if (!frozen) {
-        return items;
+  if (!frozen) {
+    return items;
+  }
+  return items.map((item) => {
+    if ("separator" in item && item.separator) {
+      return item;
     }
-    return items.map(item => {
-        if ("separator" in item && item.separator) {
-            return item;
-        }
-        if ("submenu" in item && item.submenu) {
-            return {
-                ...item,
-                submenu: freezeContextMenuRows(item.submenu, true, readOnlyIds, reason) as typeof item.submenu,
-            };
-        }
-        if (readOnlyIds.has(item.id)) {
-            return item;
-        }
-        // The row's own tooltip wins if it has one: it describes the action, which is still what the
-        // author is looking at.
-        return { ...item, disabled: true, tooltip: item.tooltip ?? reason };
-    });
+    if ("submenu" in item && item.submenu) {
+      return {
+        ...item,
+        submenu: freezeContextMenuRows(
+          item.submenu,
+          true,
+          readOnlyIds,
+          reason
+        ) as typeof item.submenu
+      };
+    }
+    if (readOnlyIds.has(item.id)) {
+      return item;
+    }
+    // The row's own tooltip wins if it has one: it describes the action, which is still what the
+    // author is looking at.
+    return { ...item, disabled: true, tooltip: item.tooltip ?? reason };
+  });
 }
 
 /**
@@ -190,8 +198,8 @@ export function freezeContextMenuRows(
  * workspace-scoped face of the latch, not the module latch, so it thaws on a project switch.
  */
 export function useFreezeGuard(): FreezeGuard {
-    const frozen = useWorkspaceFrozen();
-    const { t } = useTranslation();
-    const reason = t("workspace.shell.freeze.unavailable");
-    return useMemo(() => makeFreezeGuard(frozen, reason), [frozen, reason]);
+  const frozen = useWorkspaceFrozen();
+  const { t } = useTranslation();
+  const reason = t("workspace.shell.freeze.unavailable");
+  return useMemo(() => makeFreezeGuard(frozen, reason), [frozen, reason]);
 }

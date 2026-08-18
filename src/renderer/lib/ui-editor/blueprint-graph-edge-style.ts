@@ -23,8 +23,8 @@ export const BLUEPRINT_EDGE_STROKE_WIDTH = 1.5;
 
 /** The inline style for one edge, by what it carries. */
 export function blueprintEdgeStyle(isData: boolean): { stroke: string; strokeWidth: number } {
-    return {
-        stroke: isData ? BLUEPRINT_DATA_EDGE_COLOR : BLUEPRINT_EXEC_EDGE_COLOR,
-        strokeWidth: BLUEPRINT_EDGE_STROKE_WIDTH,
-    };
+  return {
+    stroke: isData ? BLUEPRINT_DATA_EDGE_COLOR : BLUEPRINT_EXEC_EDGE_COLOR,
+    strokeWidth: BLUEPRINT_EDGE_STROKE_WIDTH
+  };
 }

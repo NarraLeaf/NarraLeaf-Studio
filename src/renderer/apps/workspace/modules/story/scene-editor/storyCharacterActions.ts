@@ -49,16 +49,18 @@ const STAGING_OPERATIONS: ReadonlySet<string> = new Set(["enter", "exit", "show"
  * a plugin that files itself under 角色 is taken at its word, exactly as the sidebar takes it.
  */
 export function isCharacterScopedAction(command: PaletteActionCommand): boolean {
-    if (STAGING_COMMAND_IDS.has(command.id)) {
-        return false;
-    }
-    const spec = getCommandSpec(command.id);
-    return spec ? specGroupIds(spec).includes(CHARACTER_GROUP) : command.group === CHARACTER_GROUP;
+  if (STAGING_COMMAND_IDS.has(command.id)) {
+    return false;
+  }
+  const spec = getCommandSpec(command.id);
+  return spec ? specGroupIds(spec).includes(CHARACTER_GROUP) : command.group === CHARACTER_GROUP;
 }
 
 /** The character-scoped entries of a palette list, in the order they arrived. */
-export function characterScopedActions(commands: readonly PaletteActionCommand[]): PaletteActionCommand[] {
-    return commands.filter(isCharacterScopedAction);
+export function characterScopedActions(
+  commands: readonly PaletteActionCommand[]
+): PaletteActionCommand[] {
+  return commands.filter(isCharacterScopedAction);
 }
 
 /**
@@ -69,12 +71,12 @@ export function characterScopedActions(commands: readonly PaletteActionCommand[]
  * moment the author stopped typing.
  */
 export function characterScopedSidebarGroups(
-    groups: readonly StoryCommandSidebarGroup[],
+  groups: readonly StoryCommandSidebarGroup[]
 ): readonly StoryCommandSidebarGroup[] {
-    return groups
-        .filter(entry => entry.group.id === CHARACTER_GROUP)
-        .map(entry => ({ ...entry, commands: entry.commands.filter(isCharacterScopedAction) }))
-        .filter(entry => entry.commands.length > 0);
+  return groups
+    .filter((entry) => entry.group.id === CHARACTER_GROUP)
+    .map((entry) => ({ ...entry, commands: entry.commands.filter(isCharacterScopedAction) }))
+    .filter((entry) => entry.commands.length > 0);
 }
 
 /**
@@ -85,12 +87,15 @@ export function characterScopedSidebarGroups(
  * cares that the next word the author would type is a character's name.
  */
 export function commandLeadsWithCharacter(def: StoryCommandDef): boolean {
-    const first = positionalParams(def)[0];
-    if (!first) {
-        return false;
-    }
-    return paramTypes(first).some(type =>
-        type.kind === "character" || (type.kind === "target" && type.accepts.includes(CHARACTER_GROUP)));
+  const first = positionalParams(def)[0];
+  if (!first) {
+    return false;
+  }
+  return paramTypes(first).some(
+    (type) =>
+      type.kind === "character" ||
+      (type.kind === "target" && type.accepts.includes(CHARACTER_GROUP))
+  );
 }
 
 /**
@@ -106,7 +111,7 @@ export function commandLeadsWithCharacter(def: StoryCommandDef): boolean {
  * one), so an unfillable line is left alone rather than fed a word its grammar has no slot for.
  */
 export function characterScopeLead(def: StoryCommandDef, name: string): string {
-    return commandLeadsWithCharacter(def) ? `${quoteEntityValue(name)} ` : "";
+  return commandLeadsWithCharacter(def) ? `${quoteEntityValue(name)} ` : "";
 }
 
 /**
@@ -134,25 +139,43 @@ export function characterScopeLead(def: StoryCommandDef, name: string): string {
  *
  * Staging is excluded on both paths: see {@link STAGING_OPERATIONS}.
  */
-export function paragraphActionCharacterId(block: StoryBlock, characters: readonly Character[]): string | null {
-    if (block.kind !== "action") {
-        return null;
-    }
-    const payload = block.payload;
-    if (payload.action === "character") {
-        return !STAGING_OPERATIONS.has(payload.operation) && payload.characterId ? payload.characterId : null;
-    }
-    if (payload.action === "displayable" && payload.target.kind === "character" && !STAGING_OPERATIONS.has(payload.operation)) {
-        const name = payload.target.name;
-        return characters.find(character => character.profile.getName() === name)?.profile.getId() ?? null;
-    }
+export function paragraphActionCharacterId(
+  block: StoryBlock,
+  characters: readonly Character[]
+): string | null {
+  if (block.kind !== "action") {
     return null;
+  }
+  const payload = block.payload;
+  if (payload.action === "character") {
+    return !STAGING_OPERATIONS.has(payload.operation) && payload.characterId
+      ? payload.characterId
+      : null;
+  }
+  if (
+    payload.action === "displayable" &&
+    payload.target.kind === "character" &&
+    !STAGING_OPERATIONS.has(payload.operation)
+  ) {
+    const name = payload.target.name;
+    return (
+      characters.find((character) => character.profile.getName() === name)?.profile.getId() ?? null
+    );
+  }
+  return null;
 }
 
-export function dialogueActionCharacter(block: StoryBlock, characters: readonly Character[]): Character | null {
-    if (block.kind !== "nodeAction" || block.payload.action !== "dialogue" || !block.payload.characterId) {
-        return null;
-    }
-    const characterId = block.payload.characterId;
-    return characters.find(character => character.profile.getId() === characterId) ?? null;
+export function dialogueActionCharacter(
+  block: StoryBlock,
+  characters: readonly Character[]
+): Character | null {
+  if (
+    block.kind !== "nodeAction" ||
+    block.payload.action !== "dialogue" ||
+    !block.payload.characterId
+  ) {
+    return null;
+  }
+  const characterId = block.payload.characterId;
+  return characters.find((character) => character.profile.getId() === characterId) ?? null;
 }

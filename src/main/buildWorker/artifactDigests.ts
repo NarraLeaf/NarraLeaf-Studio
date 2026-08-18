@@ -22,43 +22,43 @@ import path from "path";
 export const ARTIFACT_DIGEST_FILE_NAME = "SHA256SUMS";
 
 export type ArtifactDigest = {
-    /** Path relative to the output directory, forward slashes. */
-    name: string;
-    sha256: string;
+  /** Path relative to the output directory, forward slashes. */
+  name: string;
+  sha256: string;
 };
 
 /** The exact bytes of a `SHA256SUMS` file, digests already computed. */
 export function formatArtifactDigests(entries: ArtifactDigest[]): string {
-    return [...entries]
-        .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-        .map(entry => `${entry.sha256}  ${entry.name}\n`)
-        .join("");
+  return [...entries]
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .map((entry) => `${entry.sha256}  ${entry.name}\n`)
+    .join("");
 }
 
 /** The name an artifact is listed under, relative to the output directory. */
 export function artifactDigestName(artifact: string, outputDir: string): string {
-    return path.relative(outputDir, artifact).split(path.sep).join("/");
+  return path.relative(outputDir, artifact).split(path.sep).join("/");
 }
 
 async function sha256OfFile(file: string): Promise<string> {
-    const hash = createHash("sha256");
-    for await (const chunk of createReadStream(file)) {
-        hash.update(chunk as Buffer);
-    }
-    return hash.digest("hex");
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(file)) {
+    hash.update(chunk as Buffer);
+  }
+  return hash.digest("hex");
 }
 
 type Log = (level: "info" | "warning" | "error", message: string) => void;
 
 export type ArtifactDigestResult = {
-    /** Absolute path of the written file, or null when nothing was hashable. */
-    path: string | null;
-    /**
-     * The artifacts that went into it, absolute and deduplicated - i.e. every
-     * artifact that is a regular file on disk. The GPG step signs exactly this
-     * set, so the two never disagree about what "the artifacts" are.
-     */
-    files: string[];
+  /** Absolute path of the written file, or null when nothing was hashable. */
+  path: string | null;
+  /**
+   * The artifacts that went into it, absolute and deduplicated - i.e. every
+   * artifact that is a regular file on disk. The GPG step signs exactly this
+   * set, so the two never disagree about what "the artifacts" are.
+   */
+  files: string[];
 };
 
 /**
@@ -71,41 +71,44 @@ export type ArtifactDigestResult = {
  * the digests.
  */
 export async function writeArtifactDigests(
-    artifacts: string[],
-    outputDir: string,
-    log: Log,
+  artifacts: string[],
+  outputDir: string,
+  log: Log
 ): Promise<ArtifactDigestResult> {
-    const seen = new Set<string>();
-    const entries: ArtifactDigest[] = [];
-    const files: string[] = [];
-    for (const artifact of artifacts) {
-        const resolved = path.resolve(artifact);
-        if (seen.has(resolved)) {
-            continue;
-        }
-        seen.add(resolved);
-        const name = artifactDigestName(resolved, outputDir);
-        if (name === ARTIFACT_DIGEST_FILE_NAME || name.endsWith(".asc")) {
-            continue;
-        }
-        let stats;
-        try {
-            stats = await fs.stat(resolved);
-        } catch {
-            log("warning", `skipping ${name} in ${ARTIFACT_DIGEST_FILE_NAME}: it is no longer on disk`);
-            continue;
-        }
-        if (!stats.isFile()) {
-            continue;
-        }
-        entries.push({ name, sha256: await sha256OfFile(resolved) });
-        files.push(resolved);
+  const seen = new Set<string>();
+  const entries: ArtifactDigest[] = [];
+  const files: string[] = [];
+  for (const artifact of artifacts) {
+    const resolved = path.resolve(artifact);
+    if (seen.has(resolved)) {
+      continue;
     }
-    if (entries.length === 0) {
-        return { path: null, files };
+    seen.add(resolved);
+    const name = artifactDigestName(resolved, outputDir);
+    if (name === ARTIFACT_DIGEST_FILE_NAME || name.endsWith(".asc")) {
+      continue;
     }
-    const sumsPath = path.join(outputDir, ARTIFACT_DIGEST_FILE_NAME);
-    await fs.writeFile(sumsPath, formatArtifactDigests(entries), "utf8");
-    log("info", `wrote ${ARTIFACT_DIGEST_FILE_NAME} (${entries.length} artifact${entries.length === 1 ? "" : "s"})`);
-    return { path: sumsPath, files };
+    let stats;
+    try {
+      stats = await fs.stat(resolved);
+    } catch {
+      log("warning", `skipping ${name} in ${ARTIFACT_DIGEST_FILE_NAME}: it is no longer on disk`);
+      continue;
+    }
+    if (!stats.isFile()) {
+      continue;
+    }
+    entries.push({ name, sha256: await sha256OfFile(resolved) });
+    files.push(resolved);
+  }
+  if (entries.length === 0) {
+    return { path: null, files };
+  }
+  const sumsPath = path.join(outputDir, ARTIFACT_DIGEST_FILE_NAME);
+  await fs.writeFile(sumsPath, formatArtifactDigests(entries), "utf8");
+  log(
+    "info",
+    `wrote ${ARTIFACT_DIGEST_FILE_NAME} (${entries.length} artifact${entries.length === 1 ? "" : "s"})`
+  );
+  return { path: sumsPath, files };
 }

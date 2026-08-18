@@ -1,12 +1,12 @@
 import crypto from "crypto";
 import { describe, expect, it } from "vitest";
 import {
-    detectKeystoreFormat,
-    KeystoreError,
-    type KeystoreErrorCode,
-    listAliases,
-    readKeystore,
-    type KeystoreIdentity,
+  detectKeystoreFormat,
+  KeystoreError,
+  type KeystoreErrorCode,
+  listAliases,
+  readKeystore,
+  type KeystoreIdentity
 } from "./keystoreReader";
 import type { SigningIdentity } from "./signingIdentity";
 
@@ -30,7 +30,7 @@ import type { SigningIdentity } from "./signingIdentity";
  */
 
 const MODERN_P12 = Buffer.from(
-    "MIIKVgIBAzCCCgAGCSqGSIb3DQEHAaCCCfEEggntMIIJ6TCCBbAGCSqGSIb3DQEHAaCCBaEEggWdMIIFmTCCBZUGCyqGSIb3DQEMCgECoIIFQDCCBTww" +
+  "MIIKVgIBAzCCCgAGCSqGSIb3DQEHAaCCCfEEggntMIIJ6TCCBbAGCSqGSIb3DQEHAaCCBaEEggWdMIIFmTCCBZUGCyqGSIb3DQEMCgECoIIFQDCCBTww" +
     "ZgYJKoZIhvcNAQUNMFkwOAYJKoZIhvcNAQUMMCsEFGsJuaQI38w7hvWY8AclNERrJ/pUAgInEAIBIDAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQBKgQQ" +
     "3NbavznKS2mjBGgh1W3aowSCBNDqLbglHJOHw5zh4+xVBzrgwjcfP6qTbfsHWsWORZttnP4gtciS1DDmzUSuFQcMjdbG6FStJ+NmpDAiyHTw1h1b/d/y" +
     "6oKecCG0JltZhxEcnZpod6zQCnZPb706MzlYM/U69ZED6wnTIQmxcyFbIrkJH2yIRa0sMPEaA0pWQAlhIuiasBskbDjBLqblBIq54OjQQI4F9SnOwUNH" +
@@ -61,11 +61,11 @@ const MODERN_P12 = Buffer.from(
     "5DuL8zQLtR8KDjyu/c3EeVIyFXHpFTZS3kVuaNSadxUzw3fzh2ZAxgk4iAcRlkVVT8XF5J7V1c+3+B8nKgGsFERQClK5gnS8vFc8XFdd+Zdh2HrcH8n5" +
     "4zdKdzq0rVyIi9MdbjbCTTNB2134Vk2rcFwjzaCaS1u9TbUK/eN273VX+9xHlMA9ME0wMTANBglghkgBZQMEAgEFAAQgcWLkweEp4wbNqxmo42fBALuA" +
     "v79y6rliMtFPfnNMiYIEFM4zilAHGQEeLttyZvks0tsMO1U9AgInEA==",
-    "base64",
+  "base64"
 );
 
 const LEGACY_P12 = Buffer.from(
-    "MIIJugIBAzCCCXQGCSqGSIb3DQEHAaCCCWUEgglhMIIJXTCCBWoGCSqGSIb3DQEHAaCCBVsEggVXMIIFUzCCBU8GCyqGSIb3DQEMCgECoIIE+jCCBPYw" +
+  "MIIJugIBAzCCCXQGCSqGSIb3DQEHAaCCCWUEgglhMIIJXTCCBWoGCSqGSIb3DQEHAaCCBVsEggVXMIIFUzCCBU8GCyqGSIb3DQEMCgECoIIE+jCCBPYw" +
     "KAYKKoZIhvcNAQwBAzAaBBScm0URMZ6i4Xi2lDVTsn+qEKkG6QICJxAEggTIrJJh9xc2tfuC4QIiZg+iVg6UCINc1RZQksUpwp7m5VWyQ4ZYCFXEpOxV" +
     "zhh2gjEXNaNweGRev/SwgY+vXTty8uNRIt+64RKKWGkcxmGPos6J1VPggL9nbTwdsWrJSbs6yaTIx6h2AP4WEKHXxGNQaN/MVH/y+7FNIDQxL8DDdhHP" +
     "OTq2uY4uZAqJd8fG36mkc/syToHcEUlo0FR2BbnNvM1vLi4ju9XMW/BDOusUUnClf/jrcplVu77vbxY8uvLTLdLCgkZxqx7AdadElkhzU81vzxMJB6AB" +
@@ -94,11 +94,11 @@ const LEGACY_P12 = Buffer.from(
     "JW2qfgxRJfD03Q9ZOGNuPAs5KauA7q9CBnbHS+jRK8JlSeuGlH/taqt701JQLFs0iyBfiDTA6fuzdnafaBU1CaWenDEpaIIBNkCXrziooR4wosunjBpG" +
     "tF72aPTfbt1n2X6SCLX/MAQ6iy8qjQXxIvaF9DthsloTUihJUIxbxy1cViES4TZTnuDGlx68cuYYp/FNoNK9FQvcqZA+6wI0HgewPSoOKw+bIDA9MCEw" +
     "CQYFKw4DAhoFAAQUUnJHeRkhSsTJL/45klVNktoCvC8EFPlHWK+lHat8XGtYGoDvlngz1SfRAgInEA==",
-    "base64",
+  "base64"
 );
 
 const CHAIN_P12 = Buffer.from(
-    "MIINtgIBAzCCDXQGCSqGSIb3DQEHAaCCDWUEgg1hMIINXTCCB6oGCSqGSIb3DQEHBqCCB5swggeXAgEAMIIHkAYJKoZIhvcNAQcBMF8GCSqGSIb3DQEF" +
+  "MIINtgIBAzCCDXQGCSqGSIb3DQEHAaCCDWUEgg1hMIINXTCCB6oGCSqGSIb3DQEHBqCCB5swggeXAgEAMIIHkAYJKoZIhvcNAQcBMF8GCSqGSIb3DQEF" +
     "DTBSMDEGCSqGSIb3DQEFDDAkBBDitTWonFHxInfb0BAs3QojAgIIADAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQBAgQQO13JzOvtGrJEPrLcH9QdkoCC" +
     "ByCrOY2TaTDWcC1n/xp1lIPNaz/Vba1BESVVfmpMditerb2PCoeOfASuWXqFN9xqvxi2SyuSP6IkmrMlVQRnhW6s9TYRL8kBNDxdcmK5ylBUrSFoBNsc" +
     "E3WnuCPW6B5BwueYhW6ocs9Q2D9IE1+UaVgr5CruZcYL/Gv7yYcsOH3ltDAf3RAuepYXQQTn9DMBBR7eiKi0NHCj/TnuwkVO66ziEyYFx2XIKnSQ3Rpl" +
@@ -139,11 +139,11 @@ const CHAIN_P12 = Buffer.from(
     "/lkROpJD9zxV1lUXIqCHV/afV04OlHZErf/C3dr2yx2+1WYS0jwgLPS+YJFPNQjZeqCg89YP7fwR0vhjwh58rGti45BG8UjBy13xdXAvkzFEMB0GCSqG" +
     "SIb3DQEJFDEQHg4AcgBlAGwAZQBhAHMAZTAjBgkqhkiG9w0BCRUxFgQU7PIDW53j2ZRjMOIq2QLzkcuCrxkwOTAhMAkGBSsOAwIaBQAEFJfLOiB2Oj2q" +
     "dLvaAf1ItshtYiVjBBDTQZ7H36Qh352+/HCHqZJxAgIIAA==",
-    "base64",
+  "base64"
 );
 
 const TWO_ENTRY_P12 = Buffer.from(
-    "MIITNQIBAzCCEt8GCSqGSIb3DQEHAaCCEtAEghLMMIISyDCCCz8GCSqGSIb3DQEHAaCCCzAEggssMIILKDCCBZEGCyqGSIb3DQEMCgECoIIFQDCCBTww" +
+  "MIITNQIBAzCCEt8GCSqGSIb3DQEHAaCCEtAEghLMMIISyDCCCz8GCSqGSIb3DQEHAaCCCzAEggssMIILKDCCBZEGCyqGSIb3DQEMCgECoIIFQDCCBTww" +
     "ZgYJKoZIhvcNAQUNMFkwOAYJKoZIhvcNAQUMMCsEFIoumY8+Uh3mtxkfFC4aKCNQAVNvAgInEAIBIDAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQBKgQQ" +
     "oh1S/BSP7WIznuGheV2WnQSCBNAaNTf/FOVuYoEXgzkqL08O6KvzplqIQY7+hpEpnXfyZcOfxb5602nlXYyCTeF6AKeypQDbaZvS9nmdt/6tDhTpaW6O" +
     "FTtLsV6OYVqzUGJfK4poK8bY8acphN4h80QbjdGpminYlhkNl2etVyr3yK9QHoP37/8uJRKQbkXamO/mo7dEyakhNH1QvyCZ/gtYNFEV68htbS7dZlH6" +
@@ -200,11 +200,11 @@ const TWO_ENTRY_P12 = Buffer.from(
     "ZKChFMAoiyHU7aNw11+WNAGRbOq25pg/vWJAj44TaTDJk/d0RLhvNfrk5uFORMU8DsbTy6ZZ7SLscaSr0jK9qOryoGUEcz54V2h56GDQdrCss4XG8y/q" +
     "SnWjSxQPtsqW17cpQOm2Qr9zVYg/j1GMGJvXwEHEClYA9m/vmC6MUYMJFppae2TWLtkRE/TjHZTfME0wMTANBglghkgBZQMEAgEFAAQgJmd29T10fx/l" +
     "FDwxYxJ1dooPWQtg25C3ZCvVnHN24hUEFD0f0VYHpe672ClYFK/kdkp3yfeVAgInEA==",
-    "base64",
+  "base64"
 );
 
 const BASIC_JKS = Buffer.from(
-    "/u3+7QAAAAIAAAABAAAAAQAHcmVsZWFzZQAAAZ+qqOzrAAAFADCCBPwwDgYKKwYBBAEqAhEBAQUABIIE6INMNIF2kheYHzpyh+yPA0pbDmrlq5FRAeL+" +
+  "/u3+7QAAAAIAAAABAAAAAQAHcmVsZWFzZQAAAZ+qqOzrAAAFADCCBPwwDgYKKwYBBAEqAhEBAQUABIIE6INMNIF2kheYHzpyh+yPA0pbDmrlq5FRAeL+" +
     "kl1N6kl1Y52RiMbwr87fxMLkHhTs6f3/XtRp+GqbodZRjl0Ot107u7APSRgEZT6D3+Wix0zUWTnnee3KW7v/XTdmMMj+2HZWb8yKZqtuBCNKaUYsGqaT" +
     "BpWCXYQAVu0eO1kDbjU5XNwMyOxYCrPj4PQN5qAs1toeNX4+YsXcU64iMx8bUU+qalTTlNgEX4LbTA0FXXrwXR6XV9kEkIvpC2doFed2EdaJ0oOblGu/" +
     "DArkjeZHE+N0EcVu2Rd5K/vCIb5db4fmCLN+MjEIbahFbL7297pM4H9kK2RZVOQLnRTfhXbHp/HU5iPZ/607qmVprfsQN4MTtJonLu5J0eQf6VncVN76" +
@@ -229,11 +229,11 @@ const BASIC_JKS = Buffer.from(
     "es8WrkNmD1q5333ImF2V8UQFf4D4S2+6yYaN8V79iSHlTNw8td0LkuYyUGw01fbwHCt1vBLTJYeUwrs+PIxXeY44eVMnMO4V6X9KfWOYm8b8tkLErd6E" +
     "uQAv3vZRnVhHRI6HIN/ep5XSiiQsSuHpxhhsczL7fmQnAeqSfMA2RRNIktdiwzx99u1ISvoDkeyyutkSvFBr6qHeZI6E2MpujpHBE4XMVPH/eDuPzeeL" +
     "C032MdJ7mmq14VrB9gbRfjdlbx9FdqsK1VwPApFkdZpNOJdypJQBK1qkH8bOds3/bBxQ5CtDLrXCjw==",
-    "base64",
+  "base64"
 );
 
 const SPLIT_PASSWORD_JKS = Buffer.from(
-    "/u3+7QAAAAIAAAABAAAAAQAHcmVsZWFzZQAAAZ+qqO7BAAAFATCCBP0wDgYKKwYBBAEqAhEBAQUABIIE6bUBRPw3CYzdIEF/0cuH+tmYc8UMVd9ar9N0" +
+  "/u3+7QAAAAIAAAABAAAAAQAHcmVsZWFzZQAAAZ+qqO7BAAAFATCCBP0wDgYKKwYBBAEqAhEBAQUABIIE6bUBRPw3CYzdIEF/0cuH+tmYc8UMVd9ar9N0" +
     "W/IjeiqWl6V7B9z7TIE8EkYiypf3Q7d5jaEcV8ph6k9Mr2UGcqSVnw59AffqH2bncshICXIvRpfKk2wpnnVBmBHVL0jly5QZKrWIJWMcwwj0M8vZxziz" +
     "3diXsWvRARSEuGtTok3s30eqMuw50ICR2T/H+9N0A29+eJwqrNehRO+vBzE21j82ZcXME3tcBUKWYpI4qLvASw4wTm3epNSdkezAy4vhk2q4vQCN09+v" +
     "pFQcBpk3pbDQQGWqSQoJbFOv0mbMRzkSb2jZZE/RfTM5iWYEH2CbdZgCzAthVQqDsO4Vqg7bO9UirH/PKYWdpq/gccyEhRnt2VG779xy/Gv/OoXKTT26" +
@@ -258,7 +258,7 @@ const SPLIT_PASSWORD_JKS = Buffer.from(
     "PLk0IGCSWAqIMG/LkmwSNpwvIl3KkiRayj0FDRpj8qLpJgNAvut8B6tRV+2hf2SAQa0zoTUOtSWGXwzWcnLwGqi6FwBxymTEVlfU1SlhS8AyWrkJReSb" +
     "BxjPrp4VgaWgEPqn3iISslubOwJ+WlUDKwLy3OkXNFyNCYGnr9iFme38RjtmJMJJ2HgjWGs/F+yyXmbp6MLY+f2BJXeMqydIRSKD2qNU9Hgbpli43jt4" +
     "eGGnNR4msYEQ1V+DDjXjX3a5WGTuUa7fVHdhavMIe7lEKn4BSZKX4nEw4I6iSkIaS75OAlfDnG8DTy5T+Z5/n10zxRB9DA==",
-    "base64",
+  "base64"
 );
 
 /**
@@ -267,7 +267,7 @@ const SPLIT_PASSWORD_JKS = Buffer.from(
  * Picking a certificate export instead of a keystore is a real mistake to make.
  */
 const CERTIFICATE_ONLY_JKS = Buffer.from(
-    "/u3+7QAAAAIAAAABAAAAAgAHdHJ1c3RlZAAAAZ+quTbIAAVYLjUwOQAAA0UwggNBMIICKaADAgECAggBAgMEBQYHCDANBgkqhkiG9w0BAQsFADA9MQsw" +
+  "/u3+7QAAAAIAAAABAAAAAgAHdHJ1c3RlZAAAAZ+quTbIAAVYLjUwOQAAA0UwggNBMIICKaADAgECAggBAgMEBQYHCDANBgkqhkiG9w0BAQsFADA9MQsw" +
     "CQYDVQQGEwJVUzESMBAGA1UECgwJTmFycmFMZWFmMRowGAYDVQQDDBFOYXJyYUxlYWYgVGVzdCBDQTAeFw0yNjA3MjgyMTM5MjZaFw0zNjA3MjUyMTM5" +
     "MjZaMEAxCzAJBgNVBAYTAlVTMRIwEAYDVQQKDAlOYXJyYUxlYWYxHTAbBgNVBAMMFE5hcnJhTGVhZiBDaGFpbiBMZWFmMIIBIjANBgkqhkiG9w0BAQEF" +
     "AAOCAQ8AMIIBCgKCAQEA6KeigRzYIprKsSdn7aKVA7nrORVFsbA6NEO3IPw2ftBOHjDhzZmVxKIRCAp8ioq7Hwz6n/3mTaGP1gcs/Zex95OKVh+R2QUg" +
@@ -278,19 +278,19 @@ const CERTIFICATE_ONLY_JKS = Buffer.from(
     "Rk/31Nvp6K0pekggmqgHSdaj5/q9b4h3yMrrZKmM/YMqvA6xf6nIaawBw3/KgtbP4cKmzVv3ojAj/CxPkPrgU1V7eR01AEi0uax6XSdmrGLj85f7Cuc9" +
     "bmoz7tPHoVexJziMay0wEItBg20azBJLzJmZAuGBSdikyVgVk3bj3Z7FP6Jejm321aYkxYHF/CW4/IFY5CrypbU4J13wuy7OQV4kxYfkYrCeHTH/OHMC" +
     "F62dxcrDKUhqqa0e67COCshWh8OVUMSFe24QkzsNWA==",
-    "base64",
+  "base64"
 );
 
 /* ------------------------------------------------------------- oracle data */
 
 type Expected = {
-    /** RSA modulus, upper-case hex, as printed by `openssl rsa -modulus`. */
-    modulus: string;
-    /** `openssl x509 -serial`. */
-    serial: string;
-    /** `openssl x509 -fingerprint -sha256`, colons and all. */
-    fingerprint: string;
-    commonName: string;
+  /** RSA modulus, upper-case hex, as printed by `openssl rsa -modulus`. */
+  modulus: string;
+  /** `openssl x509 -serial`. */
+  serial: string;
+  /** `openssl x509 -fingerprint -sha256`, colons and all. */
+  fingerprint: string;
+  commonName: string;
 };
 
 /**
@@ -300,419 +300,423 @@ type Expected = {
  *     -keystore <file> -storetype <PKCS12|JKS> -storepass <pw> -keypass <pw>
  */
 const KEYTOOL_DEFAULT: Expected = {
-    modulus:
-        "D69F87711A079B98F98C2D47A318A3BBE60E6E5EB43F492D489084E0D2C534B043E0EAC6F735A9D0ED391FE5B14AB" +
-        "E02F32B735C0CA38A697AE5EADAD66EDCEBCC05DC5999E578BFCB510E065A9F5B63BEECC23639DE833B5A57D91517" +
-        "C435818970B9F237613C522978B28BB6F0BE87FEC23A609ECFFE9B2EDF289E7D3588968CDFDFDFE217F93DDD1F0E5" +
-        "7FEDE79909896EA60FE2CFAC908A8A244B79F8B1738BBF29276A0AA86117921FF60844B18AB937F939640F0CCE5B7" +
-        "4FE37C3C0860E6B0D04B77C77A666CB8D4B2440D10C9F5E35DA0329C3831E5D605DAA5D6DAF9E00037181D521453D" +
-        "24A93CDFB6D520A882BE883BE18B39E8A3F1920210D5A93",
-    serial: "24A44A5081983C20",
-    fingerprint:
-        "82:61:B5:15:5D:A2:87:86:27:82:DB:32:46:3F:C6:FE:E4:DD:CC:94:34:82:86:91:5A:6E:15:88:A3:16:C4:17",
-    commonName: "NarraLeaf Test",
+  modulus:
+    "D69F87711A079B98F98C2D47A318A3BBE60E6E5EB43F492D489084E0D2C534B043E0EAC6F735A9D0ED391FE5B14AB" +
+    "E02F32B735C0CA38A697AE5EADAD66EDCEBCC05DC5999E578BFCB510E065A9F5B63BEECC23639DE833B5A57D91517" +
+    "C435818970B9F237613C522978B28BB6F0BE87FEC23A609ECFFE9B2EDF289E7D3588968CDFDFDFE217F93DDD1F0E5" +
+    "7FEDE79909896EA60FE2CFAC908A8A244B79F8B1738BBF29276A0AA86117921FF60844B18AB937F939640F0CCE5B7" +
+    "4FE37C3C0860E6B0D04B77C77A666CB8D4B2440D10C9F5E35DA0329C3831E5D605DAA5D6DAF9E00037181D521453D" +
+    "24A93CDFB6D520A882BE883BE18B39E8A3F1920210D5A93",
+  serial: "24A44A5081983C20",
+  fingerprint:
+    "82:61:B5:15:5D:A2:87:86:27:82:DB:32:46:3F:C6:FE:E4:DD:CC:94:34:82:86:91:5A:6E:15:88:A3:16:C4:17",
+  commonName: "NarraLeaf Test"
 };
 
 const TWO_ENTRY_ALPHA: Expected = {
-    modulus:
-        "BF5B374BDBB9F9F633D97D72B9FC56A44A60D4D6BD23AF757CE25EB8215005A20925AED367AC2D5B0744A6334403F" +
-        "01BB6F23DCE7880EB17017FE03650BD99BF0116BC7C128642E855B9FBEFEA84AECD1460CE23C27D054297A6BF5656" +
-        "21C19EAD5E75C9CC86FB9F71CEB8584F8AD793A85D742845AF53F290780C9A1845088F4703A934EC91490763BF2FC" +
-        "5A5A916E14E0759772ED01D35315C990E5E8C4305D85F0FB29BBFD0360D8C6D201DEE68DEB49EF252A7087EAAE1D7" +
-        "85DBB0F9E433EF19C8DD0945FD754334D07F16431DDD590C9914C13E33B3B0ABEDCB76D0FDFAE0BD9C1B9399BD191" +
-        "93E32BBD4F605AA138A55B06AE5A1E41E7BD63C274C3C23",
-    serial: "72FBCC9CB1E5EEC2",
-    fingerprint:
-        "E3:BD:0C:C5:6A:86:74:BC:00:DA:B5:8A:62:30:8C:34:00:D1:FD:22:CA:80:85:CE:55:D4:C7:FD:7D:9F:30:D1",
-    commonName: "Alpha",
+  modulus:
+    "BF5B374BDBB9F9F633D97D72B9FC56A44A60D4D6BD23AF757CE25EB8215005A20925AED367AC2D5B0744A6334403F" +
+    "01BB6F23DCE7880EB17017FE03650BD99BF0116BC7C128642E855B9FBEFEA84AECD1460CE23C27D054297A6BF5656" +
+    "21C19EAD5E75C9CC86FB9F71CEB8584F8AD793A85D742845AF53F290780C9A1845088F4703A934EC91490763BF2FC" +
+    "5A5A916E14E0759772ED01D35315C990E5E8C4305D85F0FB29BBFD0360D8C6D201DEE68DEB49EF252A7087EAAE1D7" +
+    "85DBB0F9E433EF19C8DD0945FD754334D07F16431DDD590C9914C13E33B3B0ABEDCB76D0FDFAE0BD9C1B9399BD191" +
+    "93E32BBD4F605AA138A55B06AE5A1E41E7BD63C274C3C23",
+  serial: "72FBCC9CB1E5EEC2",
+  fingerprint:
+    "E3:BD:0C:C5:6A:86:74:BC:00:DA:B5:8A:62:30:8C:34:00:D1:FD:22:CA:80:85:CE:55:D4:C7:FD:7D:9F:30:D1",
+  commonName: "Alpha"
 };
 
 const TWO_ENTRY_BETA: Expected = {
-    modulus:
-        "A49672579299EC6C148161CEC74F721A50E7D87B93DCFB970BDF6344D92D7A19209AE485CCA5426F3291E9A6DA1B6" +
-        "E6978CC2CB3F1F53D0BF74A7BAF19A59B9FF7C24B29213201714016A3C2404F1A39C6BF2083B95A3D2CEA2BB54279" +
-        "AE6B8548D4007856B59DC395086ECB9A91DE2E89A88C38E1FF4F6AF7DE33D4CB4EEB475BE344A034ECB6897B8EC33" +
-        "D06026A1F1B2443AB571AAE0531CEFBB586D05F46226C6FB46E55C097297AB6B0C63089FF4D6C93A5CE7F8EDB1157" +
-        "1C99CBAAA04D4257A206164D8BAEA050CB2788A9A84EA29642C366FED48166263A2FAB429D4B1A5BC47BD05AC9C80" +
-        "5582A0F4509AE6F1D3BA36F5EAE5A73AB856F2FC16E710D",
-    serial: "4D74BE4D67658BAA",
-    fingerprint:
-        "1D:3F:95:FA:A7:71:01:40:DC:B4:59:84:06:7F:60:19:37:B7:05:C2:C7:15:98:26:30:88:96:1E:B7:45:53:E0",
-    commonName: "Beta",
+  modulus:
+    "A49672579299EC6C148161CEC74F721A50E7D87B93DCFB970BDF6344D92D7A19209AE485CCA5426F3291E9A6DA1B6" +
+    "E6978CC2CB3F1F53D0BF74A7BAF19A59B9FF7C24B29213201714016A3C2404F1A39C6BF2083B95A3D2CEA2BB54279" +
+    "AE6B8548D4007856B59DC395086ECB9A91DE2E89A88C38E1FF4F6AF7DE33D4CB4EEB475BE344A034ECB6897B8EC33" +
+    "D06026A1F1B2443AB571AAE0531CEFBB586D05F46226C6FB46E55C097297AB6B0C63089FF4D6C93A5CE7F8EDB1157" +
+    "1C99CBAAA04D4257A206164D8BAEA050CB2788A9A84EA29642C366FED48166263A2FAB429D4B1A5BC47BD05AC9C80" +
+    "5582A0F4509AE6F1D3BA36F5EAE5A73AB856F2FC16E710D",
+  serial: "4D74BE4D67658BAA",
+  fingerprint:
+    "1D:3F:95:FA:A7:71:01:40:DC:B4:59:84:06:7F:60:19:37:B7:05:C2:C7:15:98:26:30:88:96:1E:B7:45:53:E0",
+  commonName: "Beta"
 };
 
 const BASIC_JKS_EXPECTED: Expected = {
-    modulus:
-        "D1FC901822BCAD2D50CDDE5240897C5C130A5F1701FFC7F7610FE7355F08704C6118DF06DDE945E9CCF0DAE55A8E8" +
-        "D3CDC12167689BB6AF27FDD6DA50DD9DEDC924FD69485209B127BE23E45E5BC8FCAC303426DB61A0CC33D446048F7" +
-        "1E41B452D5B97B8B555C36BF040B957EA98D6A4CE6D48A66E3DD57C30BC7E0B34619FC9C91AB5EA5C68DAADD8C424" +
-        "4A878EB5D73CF254543C0427E0B47A75F677BA1A27649A745A09EA7D4409910838762520956E2E3E1D003797CECB1" +
-        "786F3ED78B7DACCED086EEB7E21D0A7C659B70F306D491028DE952532A24FDCC767EFEF368E53E1F5DB59AD67780F" +
-        "4AA2407B383BED00FD4FF32179889ABC1FBC5A533BCCE09",
-    serial: "ABE201FAA9D3BFEF",
-    fingerprint:
-        "12:2F:39:AA:9C:FA:83:D3:29:F7:A7:9E:3A:F2:B5:85:15:BF:3C:B6:A8:6D:23:87:75:A2:4C:A3:CC:D5:C8:E2",
-    commonName: "NarraLeaf JKS",
+  modulus:
+    "D1FC901822BCAD2D50CDDE5240897C5C130A5F1701FFC7F7610FE7355F08704C6118DF06DDE945E9CCF0DAE55A8E8" +
+    "D3CDC12167689BB6AF27FDD6DA50DD9DEDC924FD69485209B127BE23E45E5BC8FCAC303426DB61A0CC33D446048F7" +
+    "1E41B452D5B97B8B555C36BF040B957EA98D6A4CE6D48A66E3DD57C30BC7E0B34619FC9C91AB5EA5C68DAADD8C424" +
+    "4A878EB5D73CF254543C0427E0B47A75F677BA1A27649A745A09EA7D4409910838762520956E2E3E1D003797CECB1" +
+    "786F3ED78B7DACCED086EEB7E21D0A7C659B70F306D491028DE952532A24FDCC767EFEF368E53E1F5DB59AD67780F" +
+    "4AA2407B383BED00FD4FF32179889ABC1FBC5A533BCCE09",
+  serial: "ABE201FAA9D3BFEF",
+  fingerprint:
+    "12:2F:39:AA:9C:FA:83:D3:29:F7:A7:9E:3A:F2:B5:85:15:BF:3C:B6:A8:6D:23:87:75:A2:4C:A3:CC:D5:C8:E2",
+  commonName: "NarraLeaf JKS"
 };
 
 const SPLIT_PASSWORD_JKS_EXPECTED: Expected = {
-    modulus:
-        "87B2A7C7BB3CF14C816B65859D63DE388350799A22EAA310487AFFEE231623272778856D129C131957D0EDE52A4E5" +
-        "C9D5CA16D3CB1BA3E9FCD4AC0B00DCF057EF97EC7A9584ADE825CF8CA50D77850B11A8FBC7D54C6C9CB8D4C970851" +
-        "97D4626DD0EF0AA1B4BE485FA22D01789D521C437837868F78F4D398A7B0E4E4D56A18BA5F2FF3740355447F6C5DD" +
-        "27826185FD8C1AA8D201FD6DF5F9846BFCB822A2F236146E86D751C093D610ACE6271B2A4F47CBEF3F6C7BD5DD9FE" +
-        "03ADA5756F044454FCB850F99074778E317FDB7ACB6E6C2F834058866B1963F71D279B8A0BEC6DCA78A1EFFB44445" +
-        "7AE89773910D3259354B63E986EE3DB7428AA06D051B859",
-    serial: "5156E7084CEC478C",
-    fingerprint:
-        "A1:22:54:98:37:4B:32:31:93:B0:75:8B:93:D2:89:B5:4C:AB:43:3B:EB:04:F5:24:4E:C5:ED:E6:15:A3:E0:FD",
-    commonName: "NarraLeaf SplitPass",
+  modulus:
+    "87B2A7C7BB3CF14C816B65859D63DE388350799A22EAA310487AFFEE231623272778856D129C131957D0EDE52A4E5" +
+    "C9D5CA16D3CB1BA3E9FCD4AC0B00DCF057EF97EC7A9584ADE825CF8CA50D77850B11A8FBC7D54C6C9CB8D4C970851" +
+    "97D4626DD0EF0AA1B4BE485FA22D01789D521C437837868F78F4D398A7B0E4E4D56A18BA5F2FF3740355447F6C5DD" +
+    "27826185FD8C1AA8D201FD6DF5F9846BFCB822A2F236146E86D751C093D610ACE6271B2A4F47CBEF3F6C7BD5DD9FE" +
+    "03ADA5756F044454FCB850F99074778E317FDB7ACB6E6C2F834058866B1963F71D279B8A0BEC6DCA78A1EFFB44445" +
+    "7AE89773910D3259354B63E986EE3DB7428AA06D051B859",
+  serial: "5156E7084CEC478C",
+  fingerprint:
+    "A1:22:54:98:37:4B:32:31:93:B0:75:8B:93:D2:89:B5:4C:AB:43:3B:EB:04:F5:24:4E:C5:ED:E6:15:A3:E0:FD",
+  commonName: "NarraLeaf SplitPass"
 };
 
 const CHAIN_LEAF: Expected = {
-    modulus:
-        "E8A7A2811CD8229ACAB12767EDA29503B9EB391545B1B03A3443B720FC367ED04E1E30E1CD9995C4A211080A7C8A8" +
-        "ABB1F0CFA9FFDE64DA18FD6072CFD97B1F7938A561F91D9052079322D72DC83BE0A4225F57FE479AE9DC0933C0C16" +
-        "A3F1B97A8EAF7B183E91AEC29F87D3A8456C9453AAB246D67E940C9F4BEA6B44148743316FC3B6ECEF0039963681D" +
-        "936A14D6D2325AB3883486C5CA68E8B14791F79208AA5231E1D6F5255FADD5348B0FF832E0C94AB43ED0666256BEB" +
-        "99C230216052DACAC381613C7DA81F07EDDDC76587B0880312237219987A9048F74684B3166673117B856C287C4BB" +
-        "CE61396DD389DEFC5C40F0969523B18C6F94346340CEA43",
-    serial: "0102030405060708",
-    fingerprint:
-        "2D:A4:A8:05:84:E6:20:BE:9D:6A:2F:94:D2:4C:2D:37:D9:42:A9:CF:70:65:4F:71:AA:E7:E7:59:5A:F3:EA:99",
-    commonName: "NarraLeaf Chain Leaf",
+  modulus:
+    "E8A7A2811CD8229ACAB12767EDA29503B9EB391545B1B03A3443B720FC367ED04E1E30E1CD9995C4A211080A7C8A8" +
+    "ABB1F0CFA9FFDE64DA18FD6072CFD97B1F7938A561F91D9052079322D72DC83BE0A4225F57FE479AE9DC0933C0C16" +
+    "A3F1B97A8EAF7B183E91AEC29F87D3A8456C9453AAB246D67E940C9F4BEA6B44148743316FC3B6ECEF0039963681D" +
+    "936A14D6D2325AB3883486C5CA68E8B14791F79208AA5231E1D6F5255FADD5348B0FF832E0C94AB43ED0666256BEB" +
+    "99C230216052DACAC381613C7DA81F07EDDDC76587B0880312237219987A9048F74684B3166673117B856C287C4BB" +
+    "CE61396DD389DEFC5C40F0969523B18C6F94346340CEA43",
+  serial: "0102030405060708",
+  fingerprint:
+    "2D:A4:A8:05:84:E6:20:BE:9D:6A:2F:94:D2:4C:2D:37:D9:42:A9:CF:70:65:4F:71:AA:E7:E7:59:5A:F3:EA:99",
+  commonName: "NarraLeaf Chain Leaf"
 };
 
 const CHAIN_ROOT_FINGERPRINT =
-    "96:76:7A:AB:8C:1B:91:60:36:25:14:57:80:12:FE:97:00:39:DD:A8:44:D0:7E:84:CE:B6:CC:55:E0:65:C8:BE";
+  "96:76:7A:AB:8C:1B:91:60:36:25:14:57:80:12:FE:97:00:39:DD:A8:44:D0:7E:84:CE:B6:CC:55:E0:65:C8:BE";
 
 const STORE_PASSWORD = "storepass";
 const SPLIT_KEY_PASSWORD = "keypass2";
 
 const EVERY_FIXTURE = [
-    MODERN_P12,
-    LEGACY_P12,
-    CHAIN_P12,
-    TWO_ENTRY_P12,
-    BASIC_JKS,
-    SPLIT_PASSWORD_JKS,
+  MODERN_P12,
+  LEGACY_P12,
+  CHAIN_P12,
+  TWO_ENTRY_P12,
+  BASIC_JKS,
+  SPLIT_PASSWORD_JKS
 ];
 
 /* ----------------------------------------------------------------- helpers */
 
 /** The modulus of the extracted key, in the shape `openssl rsa -modulus` prints. */
 function modulusOf(identity: KeystoreIdentity): string {
-    const jwk = crypto.createPublicKey(identity.privateKeyPem).export({ format: "jwk" });
-    return Buffer.from(jwk.n as string, "base64url").toString("hex").toUpperCase();
+  const jwk = crypto.createPublicKey(identity.privateKeyPem).export({ format: "jwk" });
+  return Buffer.from(jwk.n as string, "base64url")
+    .toString("hex")
+    .toUpperCase();
 }
 
 function leafOf(identity: KeystoreIdentity): crypto.X509Certificate {
-    return new crypto.X509Certificate(Buffer.from(identity.certificateDerBase64, "base64"));
+  return new crypto.X509Certificate(Buffer.from(identity.certificateDerBase64, "base64"));
 }
 
 /** Everything an outside tool already told us about one identity, checked at once. */
 function expectMatchesOracle(identity: KeystoreIdentity, expected: Expected): void {
-    expect(modulusOf(identity)).toBe(expected.modulus);
+  expect(modulusOf(identity)).toBe(expected.modulus);
 
-    const leaf = leafOf(identity);
-    expect(leaf.serialNumber).toBe(expected.serial);
-    expect(leaf.fingerprint256).toBe(expected.fingerprint);
-    expect(leaf.subject).toContain(`CN=${expected.commonName}`);
+  const leaf = leafOf(identity);
+  expect(leaf.serialNumber).toBe(expected.serial);
+  expect(leaf.fingerprint256).toBe(expected.fingerprint);
+  expect(leaf.subject).toContain(`CN=${expected.commonName}`);
 
-    // The leaf really does belong to the key we returned, and the pair signs.
-    const privateKey = crypto.createPrivateKey(identity.privateKeyPem);
-    expect(leaf.checkPrivateKey(privateKey)).toBe(true);
-    const message = Buffer.from("narraleaf release signing");
-    const signature = crypto.sign("sha256", message, privateKey);
-    expect(crypto.verify("sha256", message, leaf.publicKey, signature)).toBe(true);
+  // The leaf really does belong to the key we returned, and the pair signs.
+  const privateKey = crypto.createPrivateKey(identity.privateKeyPem);
+  expect(leaf.checkPrivateKey(privateKey)).toBe(true);
+  const message = Buffer.from("narraleaf release signing");
+  const signature = crypto.sign("sha256", message, privateKey);
+  expect(crypto.verify("sha256", message, leaf.publicKey, signature)).toBe(true);
 
-    // The chain leads with the leaf.
-    expect(identity.certificateChainDerBase64[0]).toBe(identity.certificateDerBase64);
+  // The chain leads with the leaf.
+  expect(identity.certificateChainDerBase64[0]).toBe(identity.certificateDerBase64);
 }
 
 function expectKeystoreError(run: () => unknown, code: KeystoreErrorCode): KeystoreError {
-    let thrown: unknown;
-    try {
-        run();
-    } catch (error) {
-        thrown = error;
-    }
-    expect(thrown).toBeInstanceOf(KeystoreError);
-    const error = thrown as KeystoreError;
-    expect(error.code).toBe(code);
-    return error;
+  let thrown: unknown;
+  try {
+    run();
+  } catch (error) {
+    thrown = error;
+  }
+  expect(thrown).toBeInstanceOf(KeystoreError);
+  const error = thrown as KeystoreError;
+  expect(error.code).toBe(code);
+  return error;
 }
 
 /** Flip one bit in the middle of the file, inside the protected payload. */
 function corrupt(file: Buffer): Buffer {
-    const copy = Buffer.from(file);
-    copy[Math.floor(copy.length / 2)] ^= 0x01;
-    return copy;
+  const copy = Buffer.from(file);
+  copy[Math.floor(copy.length / 2)] ^= 0x01;
+  return copy;
 }
 
 /* ------------------------------------------------------------------- tests */
 
 describe("detectKeystoreFormat", () => {
-    it("reads the format from the leading bytes, not the name", () => {
-        expect(detectKeystoreFormat(MODERN_P12)).toBe("pkcs12");
-        expect(detectKeystoreFormat(LEGACY_P12)).toBe("pkcs12");
-        expect(detectKeystoreFormat(CHAIN_P12)).toBe("pkcs12");
-        expect(detectKeystoreFormat(BASIC_JKS)).toBe("jks");
-        expect(detectKeystoreFormat(SPLIT_PASSWORD_JKS)).toBe("jks");
-    });
+  it("reads the format from the leading bytes, not the name", () => {
+    expect(detectKeystoreFormat(MODERN_P12)).toBe("pkcs12");
+    expect(detectKeystoreFormat(LEGACY_P12)).toBe("pkcs12");
+    expect(detectKeystoreFormat(CHAIN_P12)).toBe("pkcs12");
+    expect(detectKeystoreFormat(BASIC_JKS)).toBe("jks");
+    expect(detectKeystoreFormat(SPLIT_PASSWORD_JKS)).toBe("jks");
+  });
 
-    it("names JCEKS specifically, since the fix differs", () => {
-        const jceks = Buffer.concat([Buffer.from("cececece", "hex"), Buffer.alloc(64)]);
-        const error = expectKeystoreError(() => detectKeystoreFormat(jceks), "unsupported-format");
-        expect(error.message).toContain("JCEKS");
-        expect(error.message).toContain("keytool -importkeystore");
-    });
+  it("names JCEKS specifically, since the fix differs", () => {
+    const jceks = Buffer.concat([Buffer.from("cececece", "hex"), Buffer.alloc(64)]);
+    const error = expectKeystoreError(() => detectKeystoreFormat(jceks), "unsupported-format");
+    expect(error.message).toContain("JCEKS");
+    expect(error.message).toContain("keytool -importkeystore");
+  });
 
-    it("rejects a file that is not a keystore at all", () => {
-        const error = expectKeystoreError(
-            () => detectKeystoreFormat(Buffer.from("PK this is a zip file")),
-            "unsupported-format",
-        );
-        expect(error.message).toContain(".p12");
-        expect(error.message).toContain(".jks");
-    });
+  it("rejects a file that is not a keystore at all", () => {
+    const error = expectKeystoreError(
+      () => detectKeystoreFormat(Buffer.from("PK this is a zip file")),
+      "unsupported-format"
+    );
+    expect(error.message).toContain(".p12");
+    expect(error.message).toContain(".jks");
+  });
 });
 
 describe("readKeystore - PKCS#12 from modern keytool (PBES2, AES-256-CBC, HMAC-SHA256)", () => {
-    it("extracts the key and certificate OpenSSL reports for the same file", () => {
-        const identity = readKeystore(MODERN_P12, { storePassword: STORE_PASSWORD });
-        expectMatchesOracle(identity, KEYTOOL_DEFAULT);
-        expect(identity.alias).toBe("release");
-        expect(identity.certificateChainDerBase64).toHaveLength(1);
-    });
+  it("extracts the key and certificate OpenSSL reports for the same file", () => {
+    const identity = readKeystore(MODERN_P12, { storePassword: STORE_PASSWORD });
+    expectMatchesOracle(identity, KEYTOOL_DEFAULT);
+    expect(identity.alias).toBe("release");
+    expect(identity.certificateChainDerBase64).toHaveLength(1);
+  });
 
-    it("is assignable to the SigningIdentity the v2 signer already takes", () => {
-        const identity = readKeystore(MODERN_P12, { storePassword: STORE_PASSWORD });
-        const asSigningIdentity: SigningIdentity = identity;
-        expect(asSigningIdentity.privateKeyPem).toContain("BEGIN PRIVATE KEY");
-        expect(asSigningIdentity.certificateDerBase64).toBe(identity.certificateDerBase64);
-    });
+  it("is assignable to the SigningIdentity the v2 signer already takes", () => {
+    const identity = readKeystore(MODERN_P12, { storePassword: STORE_PASSWORD });
+    const asSigningIdentity: SigningIdentity = identity;
+    expect(asSigningIdentity.privateKeyPem).toContain("BEGIN PRIVATE KEY");
+    expect(asSigningIdentity.certificateDerBase64).toBe(identity.certificateDerBase64);
+  });
 
-    it("lists its alias", () => {
-        expect(listAliases(MODERN_P12, STORE_PASSWORD)).toEqual(["release"]);
-    });
+  it("lists its alias", () => {
+    expect(listAliases(MODERN_P12, STORE_PASSWORD)).toEqual(["release"]);
+  });
 });
 
 describe("readKeystore - legacy PKCS#12 (PBES1: 3DES for the key, 40-bit RC2 for the certificates)", () => {
-    it("uses a cipher Node itself does not offer, which is why RC2 is hand-rolled", () => {
-        expect(crypto.getCiphers()).not.toContain("rc2-40-cbc");
-    });
+  it("uses a cipher Node itself does not offer, which is why RC2 is hand-rolled", () => {
+    expect(crypto.getCiphers()).not.toContain("rc2-40-cbc");
+  });
 
-    it("yields the same key and certificate as the modern copy it was converted from", () => {
-        const identity = readKeystore(LEGACY_P12, { storePassword: STORE_PASSWORD });
-        expectMatchesOracle(identity, KEYTOOL_DEFAULT);
-        expect(identity.alias).toBe("release");
-    });
+  it("yields the same key and certificate as the modern copy it was converted from", () => {
+    const identity = readKeystore(LEGACY_P12, { storePassword: STORE_PASSWORD });
+    expectMatchesOracle(identity, KEYTOOL_DEFAULT);
+    expect(identity.alias).toBe("release");
+  });
 });
 
 describe("readKeystore - PKCS#12 holding a certificate chain (PBES2, AES-128-CBC)", () => {
-    it("returns the chain leaf first", () => {
-        const identity = readKeystore(CHAIN_P12, { storePassword: STORE_PASSWORD });
-        expectMatchesOracle(identity, CHAIN_LEAF);
+  it("returns the chain leaf first", () => {
+    const identity = readKeystore(CHAIN_P12, { storePassword: STORE_PASSWORD });
+    expectMatchesOracle(identity, CHAIN_LEAF);
 
-        expect(identity.certificateChainDerBase64).toHaveLength(2);
-        const [leaf, root] = identity.certificateChainDerBase64.map(
-            (der) => new crypto.X509Certificate(Buffer.from(der, "base64")),
-        );
-        expect(leaf.fingerprint256).toBe(CHAIN_LEAF.fingerprint);
-        expect(root.fingerprint256).toBe(CHAIN_ROOT_FINGERPRINT);
-        expect(leaf.issuer).toBe(root.subject);
-        expect(leaf.checkIssued(root)).toBe(true);
-    });
+    expect(identity.certificateChainDerBase64).toHaveLength(2);
+    const [leaf, root] = identity.certificateChainDerBase64.map(
+      (der) => new crypto.X509Certificate(Buffer.from(der, "base64"))
+    );
+    expect(leaf.fingerprint256).toBe(CHAIN_LEAF.fingerprint);
+    expect(root.fingerprint256).toBe(CHAIN_ROOT_FINGERPRINT);
+    expect(leaf.issuer).toBe(root.subject);
+    expect(leaf.checkIssued(root)).toBe(true);
+  });
 });
 
 describe("readKeystore - choosing between two keys", () => {
-    it("lists both aliases in file order", () => {
-        expect(listAliases(TWO_ENTRY_P12, STORE_PASSWORD)).toEqual(["alpha", "beta"]);
-    });
+  it("lists both aliases in file order", () => {
+    expect(listAliases(TWO_ENTRY_P12, STORE_PASSWORD)).toEqual(["alpha", "beta"]);
+  });
 
-    it("returns the key the caller asked for", () => {
-        expectMatchesOracle(
-            readKeystore(TWO_ENTRY_P12, { storePassword: STORE_PASSWORD, alias: "alpha" }),
-            TWO_ENTRY_ALPHA,
-        );
-        expectMatchesOracle(
-            readKeystore(TWO_ENTRY_P12, { storePassword: STORE_PASSWORD, alias: "beta" }),
-            TWO_ENTRY_BETA,
-        );
-    });
+  it("returns the key the caller asked for", () => {
+    expectMatchesOracle(
+      readKeystore(TWO_ENTRY_P12, { storePassword: STORE_PASSWORD, alias: "alpha" }),
+      TWO_ENTRY_ALPHA
+    );
+    expectMatchesOracle(
+      readKeystore(TWO_ENTRY_P12, { storePassword: STORE_PASSWORD, alias: "beta" }),
+      TWO_ENTRY_BETA
+    );
+  });
 
-    it("matches an alias without regard to case, as keytool does", () => {
-        const identity = readKeystore(TWO_ENTRY_P12, { storePassword: STORE_PASSWORD, alias: "BETA" });
-        expect(identity.alias).toBe("beta");
-    });
+  it("matches an alias without regard to case, as keytool does", () => {
+    const identity = readKeystore(TWO_ENTRY_P12, { storePassword: STORE_PASSWORD, alias: "BETA" });
+    expect(identity.alias).toBe("beta");
+  });
 
-    it("refuses to guess when no alias is given", () => {
-        const error = expectKeystoreError(
-            () => readKeystore(TWO_ENTRY_P12, { storePassword: STORE_PASSWORD }),
-            "ambiguous-alias",
-        );
-        expect(error.message).toContain("alpha");
-        expect(error.message).toContain("beta");
-    });
+  it("refuses to guess when no alias is given", () => {
+    const error = expectKeystoreError(
+      () => readKeystore(TWO_ENTRY_P12, { storePassword: STORE_PASSWORD }),
+      "ambiguous-alias"
+    );
+    expect(error.message).toContain("alpha");
+    expect(error.message).toContain("beta");
+  });
 
-    it("lists what is available when the alias is not there", () => {
-        const error = expectKeystoreError(
-            () => readKeystore(TWO_ENTRY_P12, { storePassword: STORE_PASSWORD, alias: "gamma" }),
-            "alias-not-found",
-        );
-        expect(error.message).toContain('"gamma"');
-        expect(error.message).toContain("alpha, beta");
-    });
+  it("lists what is available when the alias is not there", () => {
+    const error = expectKeystoreError(
+      () => readKeystore(TWO_ENTRY_P12, { storePassword: STORE_PASSWORD, alias: "gamma" }),
+      "alias-not-found"
+    );
+    expect(error.message).toContain('"gamma"');
+    expect(error.message).toContain("alpha, beta");
+  });
 });
 
 describe("readKeystore - JKS", () => {
-    it("extracts the key and certificate keytool and OpenSSL report for the same file", () => {
-        const identity = readKeystore(BASIC_JKS, { storePassword: STORE_PASSWORD });
-        expectMatchesOracle(identity, BASIC_JKS_EXPECTED);
-        expect(identity.alias).toBe("release");
-        expect(identity.certificateChainDerBase64).toHaveLength(1);
-    });
+  it("extracts the key and certificate keytool and OpenSSL report for the same file", () => {
+    const identity = readKeystore(BASIC_JKS, { storePassword: STORE_PASSWORD });
+    expectMatchesOracle(identity, BASIC_JKS_EXPECTED);
+    expect(identity.alias).toBe("release");
+    expect(identity.certificateChainDerBase64).toHaveLength(1);
+  });
 
-    it("lists its alias", () => {
-        expect(listAliases(BASIC_JKS, STORE_PASSWORD)).toEqual(["release"]);
-    });
+  it("lists its alias", () => {
+    expect(listAliases(BASIC_JKS, STORE_PASSWORD)).toEqual(["release"]);
+  });
 
-    it("opens a store whose key carries its own password", () => {
-        const identity = readKeystore(SPLIT_PASSWORD_JKS, {
-            storePassword: STORE_PASSWORD,
-            keyPassword: SPLIT_KEY_PASSWORD,
-        });
-        expectMatchesOracle(identity, SPLIT_PASSWORD_JKS_EXPECTED);
+  it("opens a store whose key carries its own password", () => {
+    const identity = readKeystore(SPLIT_PASSWORD_JKS, {
+      storePassword: STORE_PASSWORD,
+      keyPassword: SPLIT_KEY_PASSWORD
     });
+    expectMatchesOracle(identity, SPLIT_PASSWORD_JKS_EXPECTED);
+  });
 });
 
 describe("readKeystore - each failure says something different", () => {
-    it("names the store password when the store password is wrong", () => {
-        for (const file of EVERY_FIXTURE) {
-            const error = expectKeystoreError(
-                () => readKeystore(file, { storePassword: "not the password", alias: "alpha" }),
-                "wrong-store-password",
-            );
-            expect(error.message).toContain("keystore password is incorrect");
-        }
-    });
+  it("names the store password when the store password is wrong", () => {
+    for (const file of EVERY_FIXTURE) {
+      const error = expectKeystoreError(
+        () => readKeystore(file, { storePassword: "not the password", alias: "alpha" }),
+        "wrong-store-password"
+      );
+      expect(error.message).toContain("keystore password is incorrect");
+    }
+  });
 
-    it("reports a wrong store password from listAliases too", () => {
-        expectKeystoreError(() => listAliases(MODERN_P12, "wrong"), "wrong-store-password");
-        expectKeystoreError(() => listAliases(BASIC_JKS, "wrong"), "wrong-store-password");
-    });
+  it("reports a wrong store password from listAliases too", () => {
+    expectKeystoreError(() => listAliases(MODERN_P12, "wrong"), "wrong-store-password");
+    expectKeystoreError(() => listAliases(BASIC_JKS, "wrong"), "wrong-store-password");
+  });
 
-    it("says the key carries its own password when none was supplied", () => {
-        const error = expectKeystoreError(
-            () => readKeystore(SPLIT_PASSWORD_JKS, { storePassword: STORE_PASSWORD }),
-            "wrong-key-password",
-        );
-        expect(error.message).toContain("its own password");
-        expect(error.message).not.toContain("keystore password is incorrect");
-    });
+  it("says the key carries its own password when none was supplied", () => {
+    const error = expectKeystoreError(
+      () => readKeystore(SPLIT_PASSWORD_JKS, { storePassword: STORE_PASSWORD }),
+      "wrong-key-password"
+    );
+    expect(error.message).toContain("its own password");
+    expect(error.message).not.toContain("keystore password is incorrect");
+  });
 
-    it("says the key password is wrong when one was supplied and is wrong", () => {
-        const error = expectKeystoreError(
-            () =>
-                readKeystore(SPLIT_PASSWORD_JKS, {
-                    storePassword: STORE_PASSWORD,
-                    keyPassword: "nope",
-                }),
-            "wrong-key-password",
-        );
-        expect(error.message).toContain("key password");
-        expect(error.message).toContain("incorrect");
-    });
+  it("says the key password is wrong when one was supplied and is wrong", () => {
+    const error = expectKeystoreError(
+      () =>
+        readKeystore(SPLIT_PASSWORD_JKS, {
+          storePassword: STORE_PASSWORD,
+          keyPassword: "nope"
+        }),
+      "wrong-key-password"
+    );
+    expect(error.message).toContain("key password");
+    expect(error.message).toContain("incorrect");
+  });
 
-    it("tells a wrong key password apart from a wrong store password in PKCS#12 too", () => {
-        const error = expectKeystoreError(
-            () => readKeystore(MODERN_P12, { storePassword: STORE_PASSWORD, keyPassword: "nope" }),
-            "wrong-key-password",
-        );
-        expect(error.message).toContain("incorrect");
-    });
+  it("tells a wrong key password apart from a wrong store password in PKCS#12 too", () => {
+    const error = expectKeystoreError(
+      () => readKeystore(MODERN_P12, { storePassword: STORE_PASSWORD, keyPassword: "nope" }),
+      "wrong-key-password"
+    );
+    expect(error.message).toContain("incorrect");
+  });
 
-    it("never repeats a password back in an error message", () => {
-        const secret = "hunter2-do-not-echo-me";
-        for (const file of EVERY_FIXTURE) {
-            let message = "";
-            try {
-                readKeystore(file, { storePassword: secret, keyPassword: secret });
-            } catch (error) {
-                message = (error as Error).message;
-            }
-            expect(message).not.toBe("");
-            expect(message).not.toContain(secret);
-        }
-    });
+  it("never repeats a password back in an error message", () => {
+    const secret = "hunter2-do-not-echo-me";
+    for (const file of EVERY_FIXTURE) {
+      let message = "";
+      try {
+        readKeystore(file, { storePassword: secret, keyPassword: secret });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).not.toBe("");
+      expect(message).not.toContain(secret);
+    }
+  });
 
-    it("says so when the file holds certificates but no key", () => {
-        const error = expectKeystoreError(
-            () => readKeystore(CERTIFICATE_ONLY_JKS, { storePassword: STORE_PASSWORD }),
-            "no-key-entry",
-        );
-        expect(error.message).toContain("no signing keys");
-        expect(listAliases(CERTIFICATE_ONLY_JKS, STORE_PASSWORD)).toEqual([]);
-    });
+  it("says so when the file holds certificates but no key", () => {
+    const error = expectKeystoreError(
+      () => readKeystore(CERTIFICATE_ONLY_JKS, { storePassword: STORE_PASSWORD }),
+      "no-key-entry"
+    );
+    expect(error.message).toContain("no signing keys");
+    expect(listAliases(CERTIFICATE_ONLY_JKS, STORE_PASSWORD)).toEqual([]);
+  });
 
-    it("names an algorithm it cannot handle instead of failing vaguely", () => {
-        // Hand-built rather than generated: this is the only way to get a
-        // keystore whose integrity check uses MD5, which no shipping keytool
-        // writes but which older third-party tools do.
-        const der = (tag: number, ...parts: Buffer[]): Buffer => {
-            const body = Buffer.concat(parts);
-            return Buffer.concat([Buffer.from([tag, body.length]), body]);
-        };
-        const OID_MD5 = Buffer.from([0x06, 0x08, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x02, 0x05]);
-        const OID_PKCS7_DATA = Buffer.from([0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x07, 0x01]);
-        const md5MacKeystore = der(
-            0x30,
-            Buffer.from([0x02, 0x01, 0x03]), // version 3
-            der(0x30, OID_PKCS7_DATA, der(0xa0, der(0x04))), // authSafe, empty
-            der(
-                0x30, // MacData
-                der(0x30, der(0x30, OID_MD5, Buffer.from([0x05, 0x00])), der(0x04, Buffer.alloc(16))),
-                der(0x04, Buffer.alloc(8)), // salt
-                Buffer.from([0x02, 0x01, 0x01]), // iterations
-            ),
-        );
+  it("names an algorithm it cannot handle instead of failing vaguely", () => {
+    // Hand-built rather than generated: this is the only way to get a
+    // keystore whose integrity check uses MD5, which no shipping keytool
+    // writes but which older third-party tools do.
+    const der = (tag: number, ...parts: Buffer[]): Buffer => {
+      const body = Buffer.concat(parts);
+      return Buffer.concat([Buffer.from([tag, body.length]), body]);
+    };
+    const OID_MD5 = Buffer.from([0x06, 0x08, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x02, 0x05]);
+    const OID_PKCS7_DATA = Buffer.from([
+      0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x07, 0x01
+    ]);
+    const md5MacKeystore = der(
+      0x30,
+      Buffer.from([0x02, 0x01, 0x03]), // version 3
+      der(0x30, OID_PKCS7_DATA, der(0xa0, der(0x04))), // authSafe, empty
+      der(
+        0x30, // MacData
+        der(0x30, der(0x30, OID_MD5, Buffer.from([0x05, 0x00])), der(0x04, Buffer.alloc(16))),
+        der(0x04, Buffer.alloc(8)), // salt
+        Buffer.from([0x02, 0x01, 0x01]) // iterations
+      )
+    );
 
-        expect(detectKeystoreFormat(md5MacKeystore)).toBe("pkcs12");
-        const error = expectKeystoreError(
-            () => readKeystore(md5MacKeystore, { storePassword: STORE_PASSWORD }),
-            "unsupported-algorithm",
-        );
-        expect(error.message).toContain("1.2.840.113549.2.5");
-        expect(error.message).toContain("keytool -importkeystore");
-    });
+    expect(detectKeystoreFormat(md5MacKeystore)).toBe("pkcs12");
+    const error = expectKeystoreError(
+      () => readKeystore(md5MacKeystore, { storePassword: STORE_PASSWORD }),
+      "unsupported-algorithm"
+    );
+    expect(error.message).toContain("1.2.840.113549.2.5");
+    expect(error.message).toContain("keytool -importkeystore");
+  });
 });
 
 describe("readKeystore - a damaged file is refused, not parsed", () => {
-    it("rejects a one-bit change in the middle of every fixture", () => {
-        for (const file of EVERY_FIXTURE) {
-            const damaged = corrupt(file);
-            expect(damaged.length).toBe(file.length);
-            expect(damaged.equals(file)).toBe(false);
+  it("rejects a one-bit change in the middle of every fixture", () => {
+    for (const file of EVERY_FIXTURE) {
+      const damaged = corrupt(file);
+      expect(damaged.length).toBe(file.length);
+      expect(damaged.equals(file)).toBe(false);
 
-            let thrown: unknown;
-            try {
-                readKeystore(damaged, { storePassword: STORE_PASSWORD, alias: "alpha" });
-            } catch (error) {
-                thrown = error;
-            }
-            expect(thrown).toBeInstanceOf(KeystoreError);
-        }
-    });
+      let thrown: unknown;
+      try {
+        readKeystore(damaged, { storePassword: STORE_PASSWORD, alias: "alpha" });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(KeystoreError);
+    }
+  });
 
-    it("rejects a truncated file", () => {
-        expectKeystoreError(
-            () => readKeystore(MODERN_P12.subarray(0, 400), { storePassword: STORE_PASSWORD }),
-            "damaged-file",
-        );
-        expectKeystoreError(
-            () => readKeystore(BASIC_JKS.subarray(0, 40), { storePassword: STORE_PASSWORD }),
-            "wrong-store-password",
-        );
-    });
+  it("rejects a truncated file", () => {
+    expectKeystoreError(
+      () => readKeystore(MODERN_P12.subarray(0, 400), { storePassword: STORE_PASSWORD }),
+      "damaged-file"
+    );
+    expectKeystoreError(
+      () => readKeystore(BASIC_JKS.subarray(0, 40), { storePassword: STORE_PASSWORD }),
+      "wrong-store-password"
+    );
+  });
 });

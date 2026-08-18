@@ -3,7 +3,10 @@ import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import { AssetType } from "../assets/assetTypes";
 import { buildReferenceIndex, type AssetReference } from "../references/referenceModel";
 import { ReferenceService } from "../references/ReferenceService";
-import { DEFAULT_LINTING_CONFIGURATION, DEFAULT_NETWORK_CONFIGURATION } from "../../project/configuration";
+import {
+  DEFAULT_LINTING_CONFIGURATION,
+  DEFAULT_NETWORK_CONFIGURATION
+} from "../../project/configuration";
 import { Services, type WorkspaceContext } from "../services";
 import { LintService } from "./LintService";
 
@@ -19,15 +22,19 @@ import { LintService } from "./LintService";
  */
 
 const DANGLING: AssetReference = {
-    id: "story:s1:sc1:b1:background.assetId",
-    assetId: "gone",
-    kind: "story",
-    label: "Kitchen",
-    detail: "Chapter 1 › Kitchen",
-    field: "background.assetId",
+  id: "story:s1:sc1:b1:background.assetId",
+  assetId: "gone",
+  kind: "story",
+  label: "Kitchen",
+  detail: "Chapter 1 › Kitchen",
+  field: "background.assetId"
 };
 
-const LIVE: AssetReference = { ...DANGLING, id: "story:s1:sc1:b2:background.assetId", assetId: "present" };
+const LIVE: AssetReference = {
+  ...DANGLING,
+  id: "story:s1:sc1:b2:background.assetId",
+  assetId: "present"
+};
 
 /**
  * A real `ReferenceService` with a seeded index.
@@ -38,83 +45,86 @@ const LIVE: AssetReference = { ...DANGLING, id: "story:s1:sc1:b2:background.asse
  * of the thing the defect was in.
  */
 function referenceServiceWith(references: AssetReference[]): ReferenceService {
-    const service = new ReferenceService();
-    (service as unknown as { indexCache: Map<string, AssetReference[]> }).indexCache =
-        buildReferenceIndex(references);
-    vi.spyOn(service, "ensureReady").mockResolvedValue(undefined);
-    return service;
+  const service = new ReferenceService();
+  (service as unknown as { indexCache: Map<string, AssetReference[]> }).indexCache =
+    buildReferenceIndex(references);
+  vi.spyOn(service, "ensureReady").mockResolvedValue(undefined);
+  return service;
 }
 
 /** A LintService wired to fakes for every service `buildContext()` reaches. */
 function mount(options: { assetIds: string[]; references: AssetReference[] }): LintService {
-    const assets = Object.fromEntries(
-        options.assetIds.map(id => [id, { id, type: AssetType.Image, name: `${id}.png`, ext: "png", meta: {} }]),
-    );
-    const referenceService = referenceServiceWith(options.references);
+  const assets = Object.fromEntries(
+    options.assetIds.map((id) => [
+      id,
+      { id, type: AssetType.Image, name: `${id}.png`, ext: "png", meta: {} }
+    ])
+  );
+  const referenceService = referenceServiceWith(options.references);
 
-    const ctx = {
-        project: { resolve: (parts: string[]) => parts.join("/") },
-        services: {
-            get: (id: Services) => {
-                switch (id) {
-                    case Services.Project:
-                        return {
-                            getLintingConfiguration: () => ({ ...DEFAULT_LINTING_CONFIGURATION }),
-                            getNetworkConfiguration: () => ({ ...DEFAULT_NETWORK_CONFIGURATION }),
-                            getProjectConfig: () => ({}),
-                        };
-                    case Services.Story:
-                        return { getLibraryIndex: () => ({ stories: [] }) };
-                    case Services.Assets:
-                        return { getAssets: () => ({ [AssetType.Image]: assets }) };
-                    case Services.Reference:
-                        return referenceService;
-                    case Services.Character:
-                        return { listCharacter: () => [] };
-                    // `listTags` synthesizes the release variant, so this list is never empty.
-                    case Services.AppTags:
-                        return { listTags: () => [RELEASE_APP_TAG], listDeclaredExternalLinks: () => [] };
-                    case Services.VariableRegistry:
-                        return { listEntries: () => [], listEntriesInScope: () => [] };
-                    case Services.Localization:
-                        return { getConfiguration: () => ({ sourceLocale: "en", locales: [] }) };
-                    case Services.Voice:
-                        return { getConfiguration: () => ({ voicedLocales: [] }) };
-                    case Services.UIDocument:
-                        return { getDocument: () => null };
-                    case Services.UIGraph:
-                        return { getDocument: () => ({ blueprintDocument: null }) };
-                    default:
-                        throw new Error(`Unexpected service lookup: ${String(id)}`);
-                }
-            },
-        },
-    } as unknown as WorkspaceContext;
+  const ctx = {
+    project: { resolve: (parts: string[]) => parts.join("/") },
+    services: {
+      get: (id: Services) => {
+        switch (id) {
+          case Services.Project:
+            return {
+              getLintingConfiguration: () => ({ ...DEFAULT_LINTING_CONFIGURATION }),
+              getNetworkConfiguration: () => ({ ...DEFAULT_NETWORK_CONFIGURATION }),
+              getProjectConfig: () => ({})
+            };
+          case Services.Story:
+            return { getLibraryIndex: () => ({ stories: [] }) };
+          case Services.Assets:
+            return { getAssets: () => ({ [AssetType.Image]: assets }) };
+          case Services.Reference:
+            return referenceService;
+          case Services.Character:
+            return { listCharacter: () => [] };
+          // `listTags` synthesizes the release variant, so this list is never empty.
+          case Services.AppTags:
+            return { listTags: () => [RELEASE_APP_TAG], listDeclaredExternalLinks: () => [] };
+          case Services.VariableRegistry:
+            return { listEntries: () => [], listEntriesInScope: () => [] };
+          case Services.Localization:
+            return { getConfiguration: () => ({ sourceLocale: "en", locales: [] }) };
+          case Services.Voice:
+            return { getConfiguration: () => ({ voicedLocales: [] }) };
+          case Services.UIDocument:
+            return { getDocument: () => null };
+          case Services.UIGraph:
+            return { getDocument: () => ({ blueprintDocument: null }) };
+          default:
+            throw new Error(`Unexpected service lookup: ${String(id)}`);
+        }
+      }
+    }
+  } as unknown as WorkspaceContext;
 
-    const service = new LintService();
-    service.setContext(ctx);
-    return service;
+  const service = new LintService();
+  service.setContext(ctx);
+  return service;
 }
 
 describe("LintService.buildContext", () => {
-    it("keys assetReferences by the referenced ids, so a dangling one reaches the rules", async () => {
-        const service = mount({ assetIds: ["present"], references: [DANGLING, LIVE] });
+  it("keys assetReferences by the referenced ids, so a dangling one reaches the rules", async () => {
+    const service = mount({ assetIds: ["present"], references: [DANGLING, LIVE] });
 
-        const ctx = await service.buildContext();
+    const ctx = await service.buildContext();
 
-        expect([...ctx.assetReferences.keys()].sort()).toEqual(["gone", "present"]);
-        expect(ctx.assetReferences.get("gone")).toEqual([DANGLING]);
-        expect(ctx.referencedAssetIds.has("gone")).toBe(true);
-    });
+    expect([...ctx.assetReferences.keys()].sort()).toEqual(["gone", "present"]);
+    expect(ctx.assetReferences.get("gone")).toEqual([DANGLING]);
+    expect(ctx.referencedAssetIds.has("gone")).toBe(true);
+  });
 
-    it("leaves an unreferenced library row out of the map entirely", async () => {
-        const service = mount({ assetIds: ["present", "unused"], references: [LIVE] });
+  it("leaves an unreferenced library row out of the map entirely", async () => {
+    const service = mount({ assetIds: ["present", "unused"], references: [LIVE] });
 
-        const ctx = await service.buildContext();
+    const ctx = await service.buildContext();
 
-        expect([...ctx.assetReferences.keys()]).toEqual(["present"]);
-        expect(ctx.referencedAssetIds.has("unused")).toBe(false);
-        // The library row is still there for `assets/unused` to find; only the reference map is narrow.
-        expect(ctx.assets.map(asset => asset.id).sort()).toEqual(["present", "unused"]);
-    });
+    expect([...ctx.assetReferences.keys()]).toEqual(["present"]);
+    expect(ctx.referencedAssetIds.has("unused")).toBe(false);
+    // The library row is still there for `assets/unused` to find; only the reference map is narrow.
+    expect(ctx.assets.map((asset) => asset.id).sort()).toEqual(["present", "unused"]);
+  });
 });

@@ -33,13 +33,13 @@ isProject: false
 
 ## 阶段总览
 
-| 阶段 | 名称 | 对应主计划 Units | 核心交付 | 前置依赖 |
-|------|------|------------------|----------|----------|
-| **P1** | 注册真相源与 Container 统一 | Unit 1 + Unit 2 | 单一插入/渲染注册链；`Container` 吸收 Rectangle/Stack/Scroll/SpacerDivider；`layout.kind` 驱动 flow 语义 | — |
-| **P2** | Appearance 运行时与解析 | Unit 3 | `appearance` 类型、`AppearanceResolver`、`WidgetRuntimeStateStore`；Container/Button renderer 经 resolver 出图 | P1 |
-| **P3** | 变体与条件行创作 UI | Unit 4 | `shared/appearance/*`；Container/Button inspector 变体 + 条件属性行 | P2 |
-| **P4** | 蓝图边界与 List 语义 | Unit 5 + Unit 6 | `widget.setVariant` 等显式 API；移除 appearance 逐属性绑定 UI；`List` 取代 ListRepeater 用户概念 | P2（可与 P3并行启动接口设计，实现建议 P3 后接） |
-| **P5** | 壳层收口、硬切换与验证 | Unit 7 + Unit 8 | Docker/交互/诊断全面切新模型；`UI_DOCUMENT_SCHEMA_VERSION` 提升；删残余旧类型；按主计划验证矩阵收口 | P1–P4 |
+| 阶段   | 名称                        | 对应主计划 Units | 核心交付                                                                                                       | 前置依赖                                        |
+| ------ | --------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| **P1** | 注册真相源与 Container 统一 | Unit 1 + Unit 2  | 单一插入/渲染注册链；`Container` 吸收 Rectangle/Stack/Scroll/SpacerDivider；`layout.kind` 驱动 flow 语义       | —                                               |
+| **P2** | Appearance 运行时与解析     | Unit 3           | `appearance` 类型、`AppearanceResolver`、`WidgetRuntimeStateStore`；Container/Button renderer 经 resolver 出图 | P1                                              |
+| **P3** | 变体与条件行创作 UI         | Unit 4           | `shared/appearance/*`；Container/Button inspector 变体 + 条件属性行                                            | P2                                              |
+| **P4** | 蓝图边界与 List 语义        | Unit 5 + Unit 6  | `widget.setVariant` 等显式 API；移除 appearance 逐属性绑定 UI；`List` 取代 ListRepeater 用户概念               | P2（可与 P3并行启动接口设计，实现建议 P3 后接） |
+| **P5** | 壳层收口、硬切换与验证      | Unit 7 + Unit 8  | Docker/交互/诊断全面切新模型；`UI_DOCUMENT_SCHEMA_VERSION` 提升；删残余旧类型；按主计划验证矩阵收口            | P1–P4                                           |
 
 ---
 
@@ -53,24 +53,24 @@ isProject: false
 
 **主要文件：**
 
-| 动作 | 路径 |
-|------|------|
-| 改 | `src/renderer/lib/ui-editor/widget-modules/types.ts` |
-| 改 | `src/renderer/lib/ui-editor/widget-modules/registryInstance.ts` |
-| 改 | `src/renderer/lib/ui-editor/widget-modules/builtin/index.ts` |
-| 改 | `src/renderer/lib/ui-editor/runtime/builtin/index.ts` |
-| 改 | `src/renderer/lib/workspace/services/ui-editor/UIDocumentService.ts` |
-| 删或合并 | `src/renderer/lib/ui-editor/element-types/*` |
-| 改 | `src/shared/types/ui-editor/document.ts` |
-| 新建 | `src/shared/types/ui-editor/container.ts` |
-| 改 | `src/renderer/lib/ui-editor/widget-modules/builtin/container.tsx`、`container/types.ts`、`container/renderer.tsx` |
-| 改 | `src/renderer/lib/workspace/services/ui-editor/UIRuntimeBridgeService.tsx` |
-| 改 | `src/renderer/lib/ui-editor/runtime/EditorNodeWrapper.tsx` |
-| 改 | `src/renderer/lib/ui-editor/interaction/controllers/TransformController.ts` |
-| 改 | `src/renderer/lib/ui-editor/diagnostics/rules/layoutDiagnostics.ts`、`interactionDiagnostics.ts` |
-| 改 | `src/renderer/lib/ui-editor/docker/UIEditorDockerBar.tsx` |
-| 改 | `src/renderer/apps/workspace/modules/ui-editor/editors/UISurfaceEditorTab.tsx` |
-| 删 | `builtin/rectangle*`、`stack*`、`scroll*`、`spacerDivider*` |
+| 动作     | 路径                                                                                                              |
+| -------- | ----------------------------------------------------------------------------------------------------------------- |
+| 改       | `src/renderer/lib/ui-editor/widget-modules/types.ts`                                                              |
+| 改       | `src/renderer/lib/ui-editor/widget-modules/registryInstance.ts`                                                   |
+| 改       | `src/renderer/lib/ui-editor/widget-modules/builtin/index.ts`                                                      |
+| 改       | `src/renderer/lib/ui-editor/runtime/builtin/index.ts`                                                             |
+| 改       | `src/renderer/lib/workspace/services/ui-editor/UIDocumentService.ts`                                              |
+| 删或合并 | `src/renderer/lib/ui-editor/element-types/*`                                                                      |
+| 改       | `src/shared/types/ui-editor/document.ts`                                                                          |
+| 新建     | `src/shared/types/ui-editor/container.ts`                                                                         |
+| 改       | `src/renderer/lib/ui-editor/widget-modules/builtin/container.tsx`、`container/types.ts`、`container/renderer.tsx` |
+| 改       | `src/renderer/lib/workspace/services/ui-editor/UIRuntimeBridgeService.tsx`                                        |
+| 改       | `src/renderer/lib/ui-editor/runtime/EditorNodeWrapper.tsx`                                                        |
+| 改       | `src/renderer/lib/ui-editor/interaction/controllers/TransformController.ts`                                       |
+| 改       | `src/renderer/lib/ui-editor/diagnostics/rules/layoutDiagnostics.ts`、`interactionDiagnostics.ts`                  |
+| 改       | `src/renderer/lib/ui-editor/docker/UIEditorDockerBar.tsx`                                                         |
+| 改       | `src/renderer/apps/workspace/modules/ui-editor/editors/UISurfaceEditorTab.tsx`                                    |
+| 删       | `builtin/rectangle*`、`stack*`、`scroll*`、`spacerDivider*`                                                       |
 
 **验收要点：**
 
@@ -90,15 +90,15 @@ isProject: false
 
 **主要文件：**
 
-| 动作 | 路径 |
-|------|------|
-| 新建 | `src/shared/types/ui-editor/appearance.ts` |
-| 新建 | `src/renderer/lib/ui-editor/runtime/appearance/AppearanceResolver.ts` |
+| 动作 | 路径                                                                       |
+| ---- | -------------------------------------------------------------------------- |
+| 新建 | `src/shared/types/ui-editor/appearance.ts`                                 |
+| 新建 | `src/renderer/lib/ui-editor/runtime/appearance/AppearanceResolver.ts`      |
 | 新建 | `src/renderer/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore.ts` |
-| 新建 | `src/renderer/lib/ui-editor/runtime/appearance/SystemInteractionState.ts` |
-| 改 | `src/renderer/lib/ui-editor/runtime/types.ts` |
-| 改 | `container/renderer.tsx`、`button/renderer.tsx` |
-| 改 | `src/renderer/lib/ui-editor/interaction/UIEditorInteractionLayer.tsx` |
+| 新建 | `src/renderer/lib/ui-editor/runtime/appearance/SystemInteractionState.ts`  |
+| 改   | `src/renderer/lib/ui-editor/runtime/types.ts`                              |
+| 改   | `container/renderer.tsx`、`button/renderer.tsx`                            |
+| 改   | `src/renderer/lib/ui-editor/interaction/UIEditorInteractionLayer.tsx`      |
 
 **验收要点：**
 
@@ -117,13 +117,13 @@ isProject: false
 
 **主要文件：**
 
-| 动作 | 路径 |
-|------|------|
-| 新建 | `src/renderer/lib/ui-editor/widget-modules/shared/appearance/*` |
-| 改 | `src/renderer/lib/ui-editor/widget-modules/builtin/container/inspector.tsx` |
-| 改 | `src/renderer/lib/ui-editor/widget-modules/builtin/button/inspector.tsx` |
-| 改 | `src/renderer/apps/workspace/modules/properties/PropertiesPanel.tsx` |
-| 必要时改 | `.../properties/framework/fields/FieldRenderer.tsx` |
+| 动作     | 路径                                                                        |
+| -------- | --------------------------------------------------------------------------- |
+| 新建     | `src/renderer/lib/ui-editor/widget-modules/shared/appearance/*`             |
+| 改       | `src/renderer/lib/ui-editor/widget-modules/builtin/container/inspector.tsx` |
+| 改       | `src/renderer/lib/ui-editor/widget-modules/builtin/button/inspector.tsx`    |
+| 改       | `src/renderer/apps/workspace/modules/properties/PropertiesPanel.tsx`        |
+| 必要时改 | `.../properties/framework/fields/FieldRenderer.tsx`                         |
 
 **验收要点：**
 
@@ -141,22 +141,22 @@ isProject: false
 
 **主要文件（蓝图）：**
 
-| 动作 | 路径 |
-|------|------|
-| 改 | `src/renderer/lib/ui-editor/runtime/types.ts` |
-| 改 | `src/renderer/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge.ts` |
-| 改 | `src/renderer/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter.ts` |
-| 改 | `src/renderer/lib/ui-editor/blueprint-runtime/BindingEvaluator.ts` |
-| 改 | `.../properties/blueprint/usePropertyBindingState.ts`、`BindablePropertyField.tsx` |
-| 改 | `src/renderer/lib/ui-editor/behavior-graph/blueprintM3MinNodes.ts`、`blueprintM3FullNodes.ts`、`nodeEditorCatalog.ts` |
+| 动作 | 路径                                                                                                                  |
+| ---- | --------------------------------------------------------------------------------------------------------------------- |
+| 改   | `src/renderer/lib/ui-editor/runtime/types.ts`                                                                         |
+| 改   | `src/renderer/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge.ts`                                              |
+| 改   | `src/renderer/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter.ts`                                      |
+| 改   | `src/renderer/lib/ui-editor/blueprint-runtime/BindingEvaluator.ts`                                                    |
+| 改   | `.../properties/blueprint/usePropertyBindingState.ts`、`BindablePropertyField.tsx`                                    |
+| 改   | `src/renderer/lib/ui-editor/behavior-graph/blueprintM3MinNodes.ts`、`blueprintM3FullNodes.ts`、`nodeEditorCatalog.ts` |
 
 **主要文件（List）：**
 
-| 动作 | 路径 |
-|------|------|
+| 动作         | 路径                                                       |
+| ------------ | ---------------------------------------------------------- |
 | 新建或重命名 | `src/renderer/lib/ui-editor/widget-modules/builtin/list/*` |
-| 改或替换 | `builtin/listRepeater/*` |
-| 改 | `builtin/index.ts`、`document.ts`、`UIEditorDockerBar.tsx` |
+| 改或替换     | `builtin/listRepeater/*`                                   |
+| 改           | `builtin/index.ts`、`document.ts`、`UIEditorDockerBar.tsx` |
 
 **验收要点：**
 
@@ -173,14 +173,14 @@ isProject: false
 
 **主要文件：**
 
-| 动作 | 路径 |
-|------|------|
-| 改 | `UIEditorDockerBar.tsx`、`UISurfaceEditorTab.tsx` |
-| 改 | `UIEditorInteractionLayer.tsx`、`TransformController.ts`、`useMoveableHandlers.ts` |
-| 改 | `diagnostics/collectSurfaceDiagnostics.ts`、`diagnostics/rules/*` |
-| 改 | `src/shared/types/ui-editor/document.ts`（schema version） |
+| 动作 | 路径                                                                                      |
+| ---- | ----------------------------------------------------------------------------------------- |
+| 改   | `UIEditorDockerBar.tsx`、`UISurfaceEditorTab.tsx`                                         |
+| 改   | `UIEditorInteractionLayer.tsx`、`TransformController.ts`、`useMoveableHandlers.ts`        |
+| 改   | `diagnostics/collectSurfaceDiagnostics.ts`、`diagnostics/rules/*`                         |
+| 改   | `src/shared/types/ui-editor/document.ts`（schema version）                                |
 | 审阅 | `UIBlueprintLifecycleCoordinator.ts`、`DevModeSurfaceRenderer.tsx`、`PropertiesPanel.tsx` |
-| 删 | 废弃 widget、旧 registry 残留、旧常量与 type guard |
+| 删   | 废弃 widget、旧 registry 残留、旧常量与 type guard                                        |
 
 **验收要点：**
 
@@ -197,14 +197,14 @@ isProject: false
 
 ## 主计划 TODO 与阶段映射（便于同步跟踪）
 
-| 主计划 todo id | 建议阶段 |
-|----------------|----------|
-| `model-cutover` | P1 |
-| `container-unification` | P1（与 model-cutover 紧密重叠） |
-| `appearance-capability` | P2 |
-| `editor-shell-rewire` | P1 起步，P5 收口 |
-| `runtime-blueprint-boundary` | P4 |
-| `button-list-rework` | P2–P3（Button appearance），P4（List） |
-| `verification-matrix` | P5 |
+| 主计划 todo id               | 建议阶段                               |
+| ---------------------------- | -------------------------------------- |
+| `model-cutover`              | P1                                     |
+| `container-unification`      | P1（与 model-cutover 紧密重叠）        |
+| `appearance-capability`      | P2                                     |
+| `editor-shell-rewire`        | P1 起步，P5 收口                       |
+| `runtime-blueprint-boundary` | P4                                     |
+| `button-list-rework`         | P2–P3（Button appearance），P4（List） |
+| `verification-matrix`        | P5                                     |
 
 （主计划 YAML 中 `todos` 仍以主计划文件为准；本表为执行顺序建议。）

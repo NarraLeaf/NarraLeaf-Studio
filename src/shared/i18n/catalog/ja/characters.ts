@@ -2,300 +2,308 @@ import type { LocaleNamespace } from "../types";
 
 /** `characters` 日本語。キャラクターパネルと、キャラクターのプロパティ／見た目のエディタ。 */
 export const characters = {
-    errors: {
-        assetLoad: "アセットを読み込めなかった",
+  errors: {
+    assetLoad: "アセットを読み込めなかった"
+  },
+  panel: {
+    searchPlaceholder: "キャラクターを検索…",
+    loading: "キャラクターを読み込んでいる…",
+    empty: "絞り込みに一致するキャラクターがない",
+    ungrouped: "未分類",
+    groupEmpty: "このグループにキャラクターがない",
+    filterTags: "タグ",
+    addCharacter: "キャラクターを追加",
+    addGroup: "グループを追加",
+    newCharacter: "新規キャラクター",
+    newGroup: "新規グループ",
+    moveToUngrouped: "未分類に移す",
+    moveToGroup: "グループに移す",
+    renameGroup: "グループ名を変更",
+    deleteGroup: "グループを削除",
+    rowActions: "操作",
+    groupActions: "グループの操作",
+    namePlaceholder: "キャラクター名を入力",
+    groupNamePlaceholder: "グループ名を入力",
+    deleteCharacterConfirm: "キャラクター「{name}」を削除するか",
+    // 削除を取り消せるようになるまでは「元に戻せない」と書いてあった。いま量るべきは
+    // 取り返しのつかなさではなく結果のほう。このキャラクターを指す行は参照を保ったまま、
+    // 解決できなくなる。
+    deleteCharacterDetail: "このキャラクターを指す行は、復元するまで解決できなくなる",
+    deleteGroupConfirm: "グループ「{name}」を削除するか",
+    deleteGroupDetail: "このグループのキャラクターは未分類になる"
+  },
+  // これらの削除が履歴に残す名前（「キャラクター ひより の削除を元に戻す」）。
+  history: {
+    deleteCharacter: "キャラクター {name} の削除",
+    deleteGroup: "グループ {name} の削除"
+  },
+  // 「新規キャラクター」で開くダイアログ。作成時に決まるものはすべてここで聞く。色も含む。
+  // 最初の 1 行から、どの画面もその色でこのキャラクターを見分けるため。
+  create: {
+    nameRequired: "キャラクターに名前を付ける",
+    unnamed: "名前なし",
+    appearanceLabel: "見た目",
+    kindDescription: {
+      preset: "ポーズごとに 1 枚の完成した立ち絵",
+      layered: "レイヤーを重ね、タグで切り替える"
     },
-    panel: {
-        searchPlaceholder: "キャラクターを検索…",
-        loading: "キャラクターを読み込んでいる…",
-        empty: "絞り込みに一致するキャラクターがない",
-        ungrouped: "未分類",
-        groupEmpty: "このグループにキャラクターがない",
-        filterTags: "タグ",
-        addCharacter: "キャラクターを追加",
-        addGroup: "グループを追加",
-        newCharacter: "新規キャラクター",
-        newGroup: "新規グループ",
-        moveToUngrouped: "未分類に移す",
-        moveToGroup: "グループに移す",
-        renameGroup: "グループ名を変更",
-        deleteGroup: "グループを削除",
-        rowActions: "操作",
-        groupActions: "グループの操作",
-        namePlaceholder: "キャラクター名を入力",
-        groupNamePlaceholder: "グループ名を入力",
-        deleteCharacterConfirm: "キャラクター「{name}」を削除するか",
-        // 削除を取り消せるようになるまでは「元に戻せない」と書いてあった。いま量るべきは
-        // 取り返しのつかなさではなく結果のほう。このキャラクターを指す行は参照を保ったまま、
-        // 解決できなくなる。
-        deleteCharacterDetail: "このキャラクターを指す行は、復元するまで解決できなくなる",
-        deleteGroupConfirm: "グループ「{name}」を削除するか",
-        deleteGroupDetail: "このグループのキャラクターは未分類になる",
+    runtimeGroup: "ランタイムで描く",
+    runtimeHint:
+      "そのランタイムがこのプロジェクトに入っている必要がある。キャラクターエディタから入れる",
+    colorLabel: "色",
+    // 「既定の色」ではない。何も書き込まれず、そのままである限り名前が色を決め続ける。
+    // 名前を変えたときも同じ。説明はヒントに一度だけ置く。以前は見本の隣にあった同じ文から
+    // 理由を抜いたラベルが並んでいた。
+    colorAutoHint:
+      "色を選ばないと、キャラクターの名前が色を決める。同じ名前はどのプロジェクトでも同じ色になる",
+    colorReset: "名前から決める"
+  },
+  editor: {
+    // `live2d` / `spine` の項目は置かない。あれは製品自身の名前で、商標であり、
+    // ここではなくランタイムのレジストリから来る。
+    kind: { preset: "プリセットの立ち絵", layered: "レイヤー式の立ち絵", puppet: "外部ランタイム" },
+    puppet: {
+      model: "モデル",
+      noModel: "なし",
+      selectModel: "モデルを選ぶ",
+      clearModel: "モデルを外す",
+      backend: "ランタイム",
+      // 状況は 2 つあり、「未インストール」は前者を言うべきところで後者を言っていた。
+      // プロジェクトにランタイムが 2 つあり、どちらもクリック 1 つで選べる状態だった。
+      chooseBackend: "ランタイムを選ぶ",
+      noBackendInstalled: "ランタイムが入っていない",
+      noBackendInstalledHint:
+        "runtimes/puppet/ の下にフォルダとして置き、それぞれに index.js を入れる",
+      entry: "エントリ",
+      entryDefault: "既定",
+      size: "大きさ",
+      sizeStage: "ステージ",
+      motion: "モーション",
+      expression: "表情",
+      skin: "スキン",
+      stateNone: "なし",
+      skinDefault: "既定",
+      describing: "モデルを読んでいる…",
+      describeOk: "モデルから埋めた",
+      describeNoModel: "読むモデルがない",
+      describeNoBackend: "ランタイムを選んでいない",
+      describeBackendMissing: "このプロジェクトにランタイムが入っていない",
+      describeNotSupported: "このランタイムは何も列挙しない",
+      describeFailed: "モデルを読めなかった",
+      redescribe: "モデルを読み直す",
+      previewFailed: "このモデルは描けなかった",
+      // ランタイム式のキャラクターが最初に置かれる案内つきの状態。ランタイムとモデルが
+      // 両方そろうまで、その下の状態の項目は意味を持てないので出さない。
+      setupTitle: "用意するものが 2 つある",
+      stepRuntime: "描画ランタイム",
+      stepModel: "モデル",
+      runtimeInstalled: "インストール済み",
+      runtimeMissing: "このプロジェクトに入っていない",
+      runtimeIncomplete: "入っているが不完全",
+      runtimeUnchosen: "未選択",
+      install: "インストール…",
+      reinstall: "入れ直す…",
+      chooseRuntime: "ランタイムを選ぶ",
+      importModel: "モデルを読み込む…",
+      noModelAssets: "このプロジェクトにはまだモデルアセットがない",
+      modelHint: "モデルはフォルダ。マニフェストと、そこが名指しするテクスチャやモーションが入る"
     },
-    // これらの削除が履歴に残す名前（「キャラクター ひより の削除を元に戻す」）。
-    history: {
-        deleteCharacter: "キャラクター {name} の削除",
-        deleteGroup: "グループ {name} の削除",
+    // 作者が用意した描画ランタイムを入れる。製品名はランタイムのレジストリから来る。
+    // ここには置かない。商標であり、どの言語でも同じに読ませる。
+    runtime: {
+      title: "{product} をインストール",
+      installed: "{product} はインストール済み",
+      licenseTitle: "インストールの前に",
+      licenseAgree: "上の条件を読んだ",
+      vendorLink: "{product} のダウンロードページを開く",
+      docsLink: "{product} のガイドを読む",
+      customDocsLink: "ランタイムの書き方を読む",
+      neverDownloads:
+        "Studio はダウンロードしない。提供元から入手する。ライセンスに同意するのもその場",
+      live2dTerms:
+        "Live2D Cubism のライセンスは Live2D Inc. が出しており、NarraLeaf ではない。Cubism SDK のライセンスにはダウンロード時に同意することになり、ビルドしたゲームでそれを配布するのは作者自身。Live2D が定める年間売上の基準を超える商用リリースには、Live2D との別途の出版ライセンスが要る",
+      spineTerms:
+        "Spine Runtimes のライセンスは Esoteric Software が出している。Spine を扱う人はそれぞれ自分の Spine Editor ライセンスが必要で、配布するゲームには Spine Runtimes License を同梱しなければならない。NarraLeaf は Spine のライセンスを持たないため、Studio は Spine のコードを同梱せず、アダプタを代わりにビルドすることもできない",
+      sdkStep: "ダウンロードした {product} SDK のアーカイブを選ぶ。展開しないこと",
+      sdkPick: "SDK のアーカイブを選ぶ…",
+      prebuiltStep:
+        "ビルド済みのアダプタを選ぶ。フォルダはそのまま複製され、単一のファイルはランタイムの index.js になる",
+      prebuiltPickFolder: "フォルダを選ぶ…",
+      prebuiltPickFile: "ファイルを選ぶ…",
+      prebuiltName: "この名前で入れる",
+      building: "ランタイムをビルドしている…",
+      copying: "インストールしている…",
+      builtFrom: "SDK {version} からビルド",
+      renamed: "「{backend}」としてインストールした。キャラクターにはその名前を使う",
+      remove: "取り除く",
+      removeConfirm: "ランタイム「{backend}」を取り除くか",
+      removeDetail: "これを使うキャラクターは名前を保ったまま、入れ直すまで空の枠を描く",
+      customName: "ランタイム名",
+      customNameHint: "runtimes/puppet/ の下に置かれるフォルダ名にもなる"
     },
-    // 「新規キャラクター」で開くダイアログ。作成時に決まるものはすべてここで聞く。色も含む。
-    // 最初の 1 行から、どの画面もその色でこのキャラクターを見分けるため。
-    create: {
-        nameRequired: "キャラクターに名前を付ける",
-        unnamed: "名前なし",
-        appearanceLabel: "見た目",
-        kindDescription: {
-            preset: "ポーズごとに 1 枚の完成した立ち絵",
-            layered: "レイヤーを重ね、タグで切り替える",
-        },
-        runtimeGroup: "ランタイムで描く",
-        runtimeHint: "そのランタイムがこのプロジェクトに入っている必要がある。キャラクターエディタから入れる",
-        colorLabel: "色",
-        // 「既定の色」ではない。何も書き込まれず、そのままである限り名前が色を決め続ける。
-        // 名前を変えたときも同じ。説明はヒントに一度だけ置く。以前は見本の隣にあった同じ文から
-        // 理由を抜いたラベルが並んでいた。
-        colorAutoHint: "色を選ばないと、キャラクターの名前が色を決める。同じ名前はどのプロジェクトでも同じ色になる",
-        colorReset: "名前から決める",
+    poses: "ポーズ",
+    removePose: "ポーズを取り除く",
+    // 全部を「新規ポーズ」と呼ばずに番号を振る。ストーリー行のポーズ選択は名前で並べるので、
+    // 同じ名前が 5 つ並ぶと見分けられない。
+    defaultPoseName: "ポーズ {n}",
+    defaultAxisName: "軸 {n}",
+    defaultTagName: "タグ {n}",
+    defaultLayerName: "レイヤー {n}",
+    renameHint: "ダブルクリックまたは F2 で名前を変更",
+    avatar: "ダイアログのアバター",
+    avatarAxis: "この軸でアバターが変わる",
+    avatarClearOverride: "個別指定を取り除く",
+    rebake: "アバターを焼き直す",
+    bakeReceipt: "{written} 件を書き出し · {unresolved} 件は絵なし · {removed} 件を削除",
+    selectImage: "画像を選ぶ",
+    selectAvatarImage: "アバターの画像を選ぶ",
+    axes: "軸",
+    removeAxis: "軸を取り除く",
+    newTag: "新規タグ",
+    removeTag: "タグを取り除く",
+    // 1 つの印の裏表。既定になっているものに付く印と、それ以外に出る操作。以前は同じ語で、
+    // ある行では状態、次の行では命令を意味していた。
+    makeDefault: "既定にする",
+    isDefault: "既定",
+    changeImage: "画像を変える",
+    layers: "レイヤー",
+    removeLayer: "レイヤーを取り除く",
+    constantLayer: "常に描く",
+    layerAxis: "この軸でレイヤーが変わる",
+    hasImage: "画像あり",
+    noImage: "画像なし",
+    drawsNothing: "何も描かない",
+    layerCount: "{count} 枚を描画",
+    hideLayer: "隠す",
+    showLayer: "表示",
+    lockLayer: "ロック",
+    unlockLayer: "ロックを解除",
+    onionSkin: "オニオンスキン",
+    setCanvas: "キャンバスを決める",
+    problems: "問題",
+    snapshots: "スナップショット",
+    combinations: {
+      title: "組み合わせ",
+      name: "この組み合わせに名前を付ける",
+      missing: "ここに絵がない：{list}"
     },
-    editor: {
-        // `live2d` / `spine` の項目は置かない。あれは製品自身の名前で、商標であり、
-        // ここではなくランタイムのレジストリから来る。
-        kind: { preset: "プリセットの立ち絵", layered: "レイヤー式の立ち絵", puppet: "外部ランタイム" },
-        puppet: {
-            model: "モデル",
-            noModel: "なし",
-            selectModel: "モデルを選ぶ",
-            clearModel: "モデルを外す",
-            backend: "ランタイム",
-            // 状況は 2 つあり、「未インストール」は前者を言うべきところで後者を言っていた。
-            // プロジェクトにランタイムが 2 つあり、どちらもクリック 1 つで選べる状態だった。
-            chooseBackend: "ランタイムを選ぶ",
-            noBackendInstalled: "ランタイムが入っていない",
-            noBackendInstalledHint: "runtimes/puppet/ の下にフォルダとして置き、それぞれに index.js を入れる",
-            entry: "エントリ",
-            entryDefault: "既定",
-            size: "大きさ",
-            sizeStage: "ステージ",
-            motion: "モーション",
-            expression: "表情",
-            skin: "スキン",
-            stateNone: "なし",
-            skinDefault: "既定",
-            describing: "モデルを読んでいる…",
-            describeOk: "モデルから埋めた",
-            describeNoModel: "読むモデルがない",
-            describeNoBackend: "ランタイムを選んでいない",
-            describeBackendMissing: "このプロジェクトにランタイムが入っていない",
-            describeNotSupported: "このランタイムは何も列挙しない",
-            describeFailed: "モデルを読めなかった",
-            redescribe: "モデルを読み直す",
-            previewFailed: "このモデルは描けなかった",
-            // ランタイム式のキャラクターが最初に置かれる案内つきの状態。ランタイムとモデルが
-            // 両方そろうまで、その下の状態の項目は意味を持てないので出さない。
-            setupTitle: "用意するものが 2 つある",
-            stepRuntime: "描画ランタイム",
-            stepModel: "モデル",
-            runtimeInstalled: "インストール済み",
-            runtimeMissing: "このプロジェクトに入っていない",
-            runtimeIncomplete: "入っているが不完全",
-            runtimeUnchosen: "未選択",
-            install: "インストール…",
-            reinstall: "入れ直す…",
-            chooseRuntime: "ランタイムを選ぶ",
-            importModel: "モデルを読み込む…",
-            noModelAssets: "このプロジェクトにはまだモデルアセットがない",
-            modelHint: "モデルはフォルダ。マニフェストと、そこが名指しするテクスチャやモーションが入る",
-        },
-        // 作者が用意した描画ランタイムを入れる。製品名はランタイムのレジストリから来る。
-        // ここには置かない。商標であり、どの言語でも同じに読ませる。
-        runtime: {
-            title: "{product} をインストール",
-            installed: "{product} はインストール済み",
-            licenseTitle: "インストールの前に",
-            licenseAgree: "上の条件を読んだ",
-            vendorLink: "{product} のダウンロードページを開く",
-            docsLink: "{product} のガイドを読む",
-            customDocsLink: "ランタイムの書き方を読む",
-            neverDownloads: "Studio はダウンロードしない。提供元から入手する。ライセンスに同意するのもその場",
-            live2dTerms: "Live2D Cubism のライセンスは Live2D Inc. が出しており、NarraLeaf ではない。Cubism SDK のライセンスにはダウンロード時に同意することになり、ビルドしたゲームでそれを配布するのは作者自身。Live2D が定める年間売上の基準を超える商用リリースには、Live2D との別途の出版ライセンスが要る",
-            spineTerms: "Spine Runtimes のライセンスは Esoteric Software が出している。Spine を扱う人はそれぞれ自分の Spine Editor ライセンスが必要で、配布するゲームには Spine Runtimes License を同梱しなければならない。NarraLeaf は Spine のライセンスを持たないため、Studio は Spine のコードを同梱せず、アダプタを代わりにビルドすることもできない",
-            sdkStep: "ダウンロードした {product} SDK のアーカイブを選ぶ。展開しないこと",
-            sdkPick: "SDK のアーカイブを選ぶ…",
-            prebuiltStep: "ビルド済みのアダプタを選ぶ。フォルダはそのまま複製され、単一のファイルはランタイムの index.js になる",
-            prebuiltPickFolder: "フォルダを選ぶ…",
-            prebuiltPickFile: "ファイルを選ぶ…",
-            prebuiltName: "この名前で入れる",
-            building: "ランタイムをビルドしている…",
-            copying: "インストールしている…",
-            builtFrom: "SDK {version} からビルド",
-            renamed: "「{backend}」としてインストールした。キャラクターにはその名前を使う",
-            remove: "取り除く",
-            removeConfirm: "ランタイム「{backend}」を取り除くか",
-            removeDetail: "これを使うキャラクターは名前を保ったまま、入れ直すまで空の枠を描く",
-            customName: "ランタイム名",
-            customNameHint: "runtimes/puppet/ の下に置かれるフォルダ名にもなる",
-        },
-        poses: "ポーズ",
-        removePose: "ポーズを取り除く",
-        // 全部を「新規ポーズ」と呼ばずに番号を振る。ストーリー行のポーズ選択は名前で並べるので、
-        // 同じ名前が 5 つ並ぶと見分けられない。
-        defaultPoseName: "ポーズ {n}",
-        defaultAxisName: "軸 {n}",
-        defaultTagName: "タグ {n}",
-        defaultLayerName: "レイヤー {n}",
-        renameHint: "ダブルクリックまたは F2 で名前を変更",
-        avatar: "ダイアログのアバター",
-        avatarAxis: "この軸でアバターが変わる",
-        avatarClearOverride: "個別指定を取り除く",
-        rebake: "アバターを焼き直す",
-        bakeReceipt: "{written} 件を書き出し · {unresolved} 件は絵なし · {removed} 件を削除",
-        selectImage: "画像を選ぶ",
-        selectAvatarImage: "アバターの画像を選ぶ",
-        axes: "軸",
-        removeAxis: "軸を取り除く",
-        newTag: "新規タグ",
-        removeTag: "タグを取り除く",
-        // 1 つの印の裏表。既定になっているものに付く印と、それ以外に出る操作。以前は同じ語で、
-        // ある行では状態、次の行では命令を意味していた。
-        makeDefault: "既定にする",
-        isDefault: "既定",
-        changeImage: "画像を変える",
-        layers: "レイヤー",
-        removeLayer: "レイヤーを取り除く",
-        constantLayer: "常に描く",
-        layerAxis: "この軸でレイヤーが変わる",
-        hasImage: "画像あり",
-        noImage: "画像なし",
-        drawsNothing: "何も描かない",
-        layerCount: "{count} 枚を描画",
-        hideLayer: "隠す",
-        showLayer: "表示",
-        lockLayer: "ロック",
-        unlockLayer: "ロックを解除",
-        onionSkin: "オニオンスキン",
-        setCanvas: "キャンバスを決める",
-        problems: "問題",
-        snapshots: "スナップショット",
-        combinations: {
-            title: "組み合わせ",
-            name: "この組み合わせに名前を付ける",
-            missing: "ここに絵がない：{list}",
-        },
-        psd: {
-            title: "PSD を読み込む",
-            choose: "PSD を選ぶ…",
-            canvas: "ドキュメントの大きさ",
-            cost: "{layers} レイヤー · 約 {megabytes} MB",
-            mapping: "レイヤー",
-            axis: "軸、タグ {count} 個",
-            blends: "エンジンが再現できないブレンドモード",
-            merge: "下に統合",
-            skip: "スキップ",
-            mergeUnavailable: "{mode} は忠実に再現できないので、スキップするしかない",
-            mergedInto: "+ {name}（{mode}）を統合",
-            clippedInto: "+ {name} をクリッピングで統合",
-            dropped: "読み込まない",
-            nothing: "読み込むものがない",
-            undecided: "残り {count} 件の扱いを決める",
-            summary: "追加 {created} 件、更新 {refreshed} 件",
-            import: "読み込む",
-            importing: "読み込んでいる…",
-            failed: "読み込みに失敗",
-            reason: {
-                hidden: "Photoshop で非表示",
-                blendSkipped: "スキップ",
-                clipBaseDropped: "クリッピング先のレイヤーを読み込まなかった",
-            },
-        },
-        diagnostics: {
-            offCanvas: "{name} は {size}、キャンバスは {canvas}",
-            layerNoImage: "{name} はどのタグでも何も描かない",
-            constantNoImage: "{name} に画像がない",
-            axisNoTags: "{name} にタグがない",
-            axisUnused: "{name} はどのレイヤーも動かしていない",
-            duplicateTag: "{axis} に {name} という名前のタグが 2 つある",
-            duplicateAxis: "{name} という名前の軸が 2 つある",
-            axisDefaultMissing: "{axis} に既定のタグがないので、代わりに {name} を使う",
-            occluded: "{name} は上のレイヤーに完全に隠れている",
-            avatarCombinations: "ダイアログのアバターを {count} 枚焼くことになる。軸を絞ると枚数が減る",
-            combinationNoArt: "{name} は何も描かない",
-            snapshotStale: "{name} は、もう存在しないタグで保存されている",
-            poseNoImage: "{name} に画像がない",
-            noPoses: "このキャラクターにポーズがないので、何も描かれない",
-            defaultPoseMissing: "既定のポーズが削除された。代わりに {name} を使う",
-            duplicatePose: "{name} という名前のポーズが 2 つある",
-        },
-        header: {
-            fallbackName: "キャラクター",
-            subtitle: "キャラクターエディタ",
-        },
-        // `dialog` / `validation` / `notify` / `menu` の群は置かない。このエディタが置き換えた
-        // フォームとバリアントの仕組みの名前で、プリセットのキャラクターは恒久的に平坦（作者の裁定）。
-        confirm: {
-            // 見た目のエディタの中で何かを削除するとき。ここには履歴のサービスが無く、
-            // この確認が唯一の安全網。だから詳細は「元に戻せない」を 5 回繰り返さず、
-            // 何がどこまで波及するかを言う。
-            deleteTitle: "「{name}」を削除するか",
-            deletePoseDetail: "このポーズを指すストーリーの行は、ポーズを解決できなくなる",
-            deleteAxisDetail: "この軸に結びついたレイヤーは固定になり、タグごとの画像を失う",
-            deleteTagDetail: "このタグに割り当てた画像は外れる",
-            deleteLayerDetail: "そこに割り当てた画像は外れる",
-            deleteSnapshotDetail: "組み合わせ自体はそのまま。名前だけが消える",
-        },
+    psd: {
+      title: "PSD を読み込む",
+      choose: "PSD を選ぶ…",
+      canvas: "ドキュメントの大きさ",
+      cost: "{layers} レイヤー · 約 {megabytes} MB",
+      mapping: "レイヤー",
+      axis: "軸、タグ {count} 個",
+      blends: "エンジンが再現できないブレンドモード",
+      merge: "下に統合",
+      skip: "スキップ",
+      mergeUnavailable: "{mode} は忠実に再現できないので、スキップするしかない",
+      mergedInto: "+ {name}（{mode}）を統合",
+      clippedInto: "+ {name} をクリッピングで統合",
+      dropped: "読み込まない",
+      nothing: "読み込むものがない",
+      undecided: "残り {count} 件の扱いを決める",
+      summary: "追加 {created} 件、更新 {refreshed} 件",
+      import: "読み込む",
+      importing: "読み込んでいる…",
+      failed: "読み込みに失敗",
+      reason: {
+        hidden: "Photoshop で非表示",
+        blendSkipped: "スキップ",
+        clipBaseDropped: "クリッピング先のレイヤーを読み込まなかった"
+      }
     },
-    properties: {
-        editorTitle: "キャラクターのプロパティ",
-        thumbnail: "サムネイル",
-        preview: "プレビュー",
-        defaultAvatar: "ダイアログのアバター",
-        // このキャラクターのボイスが鳴るバス。ボイスのバスとその下のバスしか出さない。
-        // エンジンはそれ以外の場所でボイスのクリップを受け付けない。
-        voiceTrack: "ボイスのバス",
-        voiceTrackMissing: "バスが見つからない",
-        // ボイスの下に選べるものが何も無いときだけ出す。つまり、セレクトでは解決できず、
-        // 先にバスを作りに行くしかない場面。
-        voiceTrackEmpty: "このキャラクター専用の音量を持たせるには、「プロジェクト → オーディオ」でボイスの下にバスを足す",
-        select: "選択",
-        thumbnailAlt: "サムネイル",
-        color: "色",
-        namePlaceholder: "キャラクター名",
-        descriptionPlaceholder: "キャラクターの説明…",
-        tags: "タグ",
-        defaultPose: "既定のポーズ",
-        selectDefaultPose: "既定のポーズを選ぶ",
-        followFirstPose: "先頭のポーズに従う",
-        selectThumbnailTitle: "サムネイルを選択",
-        cropThumbnailTitle: "サムネイルを切り抜く",
-        removeTag: "タグを取り除く",
-        removeTagAria: "タグ {tag} を取り除く",
-        addTagPlaceholder: "タグを追加…",
-        addTag: "タグを追加",
-        error: {
-            workspaceNotReady: "ワークスペースの準備ができていない",
-            selectImageAsset: "画像アセットを選んでください",
-            deleteThumbnailFailed: "サムネイルを削除できなかった",
-            saveThumbnailFailed: "サムネイルを保存できなかった",
-            unknown: "原因不明のエラー",
-        },
+    diagnostics: {
+      offCanvas: "{name} は {size}、キャンバスは {canvas}",
+      layerNoImage: "{name} はどのタグでも何も描かない",
+      constantNoImage: "{name} に画像がない",
+      axisNoTags: "{name} にタグがない",
+      axisUnused: "{name} はどのレイヤーも動かしていない",
+      duplicateTag: "{axis} に {name} という名前のタグが 2 つある",
+      duplicateAxis: "{name} という名前の軸が 2 つある",
+      axisDefaultMissing: "{axis} に既定のタグがないので、代わりに {name} を使う",
+      occluded: "{name} は上のレイヤーに完全に隠れている",
+      avatarCombinations: "ダイアログのアバターを {count} 枚焼くことになる。軸を絞ると枚数が減る",
+      combinationNoArt: "{name} は何も描かない",
+      snapshotStale: "{name} は、もう存在しないタグで保存されている",
+      poseNoImage: "{name} に画像がない",
+      noPoses: "このキャラクターにポーズがないので、何も描かれない",
+      defaultPoseMissing: "既定のポーズが削除された。代わりに {name} を使う",
+      duplicatePose: "{name} という名前のポーズが 2 つある"
     },
-    preview: {
-        title: "プレビュー",
-        currentForm: "現在の形：{name}",
-        variant: "バリアント：{name}",
-        loading: "プレビューを読み込んでいる…",
-        failed: "プレビューに失敗",
-        placeholder: "プレビューするには画像のあるバリアントを選ぶ",
-        noSize: "大きさ不明",
-        noMetadata: "メタデータなし",
-        zoomOut: "縮小",
-        zoomIn: "拡大",
-        resetView: "表示をリセット",
-        alt: "バリアントのプレビュー",
-        setPortrait: "顔まわりの切り抜き",
-        resetPortrait: "自動で切り抜く",
-        portraitTitle: "顔まわりの切り抜き",
-        // スイッチのラベルなので、クリックの説明ではなく状態を言う。「ポーズ」ではなく「見た目」
-        // なのは、どちらの種類にもそれがあるから。プリセットならポーズ、レイヤー式ならタグの
-        // 組み合わせで、切り抜きはそのどちらかに紐づく。
-        portraitScoped: "この見た目にだけ適用",
+    header: {
+      fallbackName: "キャラクター",
+      subtitle: "キャラクターエディタ"
     },
+    // `dialog` / `validation` / `notify` / `menu` の群は置かない。このエディタが置き換えた
+    // フォームとバリアントの仕組みの名前で、プリセットのキャラクターは恒久的に平坦（作者の裁定）。
+    confirm: {
+      // 見た目のエディタの中で何かを削除するとき。ここには履歴のサービスが無く、
+      // この確認が唯一の安全網。だから詳細は「元に戻せない」を 5 回繰り返さず、
+      // 何がどこまで波及するかを言う。
+      deleteTitle: "「{name}」を削除するか",
+      deletePoseDetail: "このポーズを指すストーリーの行は、ポーズを解決できなくなる",
+      deleteAxisDetail: "この軸に結びついたレイヤーは固定になり、タグごとの画像を失う",
+      deleteTagDetail: "このタグに割り当てた画像は外れる",
+      deleteLayerDetail: "そこに割り当てた画像は外れる",
+      deleteSnapshotDetail: "組み合わせ自体はそのまま。名前だけが消える"
+    }
+  },
+  properties: {
+    editorTitle: "キャラクターのプロパティ",
+    thumbnail: "サムネイル",
+    preview: "プレビュー",
+    defaultAvatar: "ダイアログのアバター",
+    // このキャラクターのボイスが鳴るバス。ボイスのバスとその下のバスしか出さない。
+    // エンジンはそれ以外の場所でボイスのクリップを受け付けない。
+    voiceTrack: "ボイスのバス",
+    voiceTrackMissing: "バスが見つからない",
+    // ボイスの下に選べるものが何も無いときだけ出す。つまり、セレクトでは解決できず、
+    // 先にバスを作りに行くしかない場面。
+    voiceTrackEmpty:
+      "このキャラクター専用の音量を持たせるには、「プロジェクト → オーディオ」でボイスの下にバスを足す",
+    select: "選択",
+    thumbnailAlt: "サムネイル",
+    color: "色",
+    namePlaceholder: "キャラクター名",
+    descriptionPlaceholder: "キャラクターの説明…",
+    tags: "タグ",
+    defaultPose: "既定のポーズ",
+    selectDefaultPose: "既定のポーズを選ぶ",
+    followFirstPose: "先頭のポーズに従う",
+    selectThumbnailTitle: "サムネイルを選択",
+    cropThumbnailTitle: "サムネイルを切り抜く",
+    removeTag: "タグを取り除く",
+    removeTagAria: "タグ {tag} を取り除く",
+    addTagPlaceholder: "タグを追加…",
+    addTag: "タグを追加",
+    error: {
+      workspaceNotReady: "ワークスペースの準備ができていない",
+      selectImageAsset: "画像アセットを選んでください",
+      deleteThumbnailFailed: "サムネイルを削除できなかった",
+      saveThumbnailFailed: "サムネイルを保存できなかった",
+      unknown: "原因不明のエラー"
+    }
+  },
+  preview: {
+    title: "プレビュー",
+    currentForm: "現在の形：{name}",
+    variant: "バリアント：{name}",
+    loading: "プレビューを読み込んでいる…",
+    failed: "プレビューに失敗",
+    placeholder: "プレビューするには画像のあるバリアントを選ぶ",
+    noSize: "大きさ不明",
+    noMetadata: "メタデータなし",
+    zoomOut: "縮小",
+    zoomIn: "拡大",
+    resetView: "表示をリセット",
+    alt: "バリアントのプレビュー",
+    setPortrait: "顔まわりの切り抜き",
+    resetPortrait: "自動で切り抜く",
+    portraitTitle: "顔まわりの切り抜き",
+    // スイッチのラベルなので、クリックの説明ではなく状態を言う。「ポーズ」ではなく「見た目」
+    // なのは、どちらの種類にもそれがあるから。プリセットならポーズ、レイヤー式ならタグの
+    // 組み合わせで、切り抜きはそのどちらかに紐づく。
+    portraitScoped: "この見た目にだけ適用"
+  }
 } satisfies LocaleNamespace<"characters">;

@@ -25,19 +25,19 @@ const NAMESPACE: StudioStateStoreNamespace = "merge_decisions";
 const VERSION = 1;
 
 export interface MergeDecisionDraft {
-    version: number;
-    /**
-     * Which merge these choices belong to.
-     *
-     * A draft that outlived its merge is worse than no draft: it would pre-select sides in a merge
-     * the author has not looked at, which is the single most consequential thing this panel can get
-     * wrong. So the draft is only ever restored onto a merge that {@link mergeFingerprint} still
-     * matches, and dropped otherwise.
-     */
-    fingerprint: string;
-    decisions: Record<string, VcsMergeSideChoice>;
-    perChange: Record<string, true>;
-    changeChoices: Record<string, MergeChangeChoices>;
+  version: number;
+  /**
+   * Which merge these choices belong to.
+   *
+   * A draft that outlived its merge is worse than no draft: it would pre-select sides in a merge
+   * the author has not looked at, which is the single most consequential thing this panel can get
+   * wrong. So the draft is only ever restored onto a merge that {@link mergeFingerprint} still
+   * matches, and dropped otherwise.
+   */
+  fingerprint: string;
+  decisions: Record<string, VcsMergeSideChoice>;
+  perChange: Record<string, true>;
+  changeChoices: Record<string, MergeChangeChoices>;
 }
 
 /**
@@ -54,7 +54,7 @@ export interface MergeDecisionDraft {
  * spaces. It worked, and it was unreadable.
  */
 export function mergeFingerprint(state: VcsMergeState): string {
-    return [state.incoming ?? "", ...state.conflicts].join("\n");
+  return [state.incoming ?? "", ...state.conflicts].join("\n");
 }
 
 /**
@@ -65,31 +65,31 @@ export function mergeFingerprint(state: VcsMergeState): string {
  * they could do about it.
  */
 export async function readMergeDecisionDraft(
-    serviceAssets: ServiceAssetsService,
-    fingerprint: string,
+  serviceAssets: ServiceAssetsService,
+  fingerprint: string
 ): Promise<MergeDecisionDraft | null> {
-    const store = await serviceAssets.readStore<MergeDecisionDraft>(NAMESPACE);
-    if (!store.ok || !store.data) {
-        return null;
-    }
-    const draft = store.data;
-    if (draft.version !== VERSION || draft.fingerprint !== fingerprint) {
-        return null;
-    }
-    // Shape-checked rather than trusted: this file is on the author's disk and a hand-edited or
-    // truncated one must not reach `completeMerge`, which takes sides on their behalf.
-    if (!isRecord(draft.decisions) || !isRecord(draft.perChange) || !isRecord(draft.changeChoices)) {
-        return null;
-    }
-    return draft;
+  const store = await serviceAssets.readStore<MergeDecisionDraft>(NAMESPACE);
+  if (!store.ok || !store.data) {
+    return null;
+  }
+  const draft = store.data;
+  if (draft.version !== VERSION || draft.fingerprint !== fingerprint) {
+    return null;
+  }
+  // Shape-checked rather than trusted: this file is on the author's disk and a hand-edited or
+  // truncated one must not reach `completeMerge`, which takes sides on their behalf.
+  if (!isRecord(draft.decisions) || !isRecord(draft.perChange) || !isRecord(draft.changeChoices)) {
+    return null;
+  }
+  return draft;
 }
 
 /** Store the choices as they stand. One store per project, because a project has one open merge. */
 export async function writeMergeDecisionDraft(
-    serviceAssets: ServiceAssetsService,
-    draft: Omit<MergeDecisionDraft, "version">,
+  serviceAssets: ServiceAssetsService,
+  draft: Omit<MergeDecisionDraft, "version">
 ): Promise<void> {
-    await serviceAssets.writeStore<MergeDecisionDraft>(NAMESPACE, { version: VERSION, ...draft });
+  await serviceAssets.writeStore<MergeDecisionDraft>(NAMESPACE, { version: VERSION, ...draft });
 }
 
 /**
@@ -103,14 +103,14 @@ export async function writeMergeDecisionDraft(
  * it, so restoring one is a no-op either way.
  */
 export async function clearMergeDecisionDraft(serviceAssets: ServiceAssetsService): Promise<void> {
-    await writeMergeDecisionDraft(serviceAssets, {
-        fingerprint: "",
-        decisions: {},
-        perChange: {},
-        changeChoices: {},
-    });
+  await writeMergeDecisionDraft(serviceAssets, {
+    fingerprint: "",
+    decisions: {},
+    perChange: {},
+    changeChoices: {}
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

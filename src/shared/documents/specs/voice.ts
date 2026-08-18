@@ -1,7 +1,16 @@
-import {VOICE_DOCUMENT_SCHEMA_VERSION, VoiceDocument, normalizeVoiceDocument} from "../../types/voice";
-import {compileDocumentPathPattern} from "../documentPath";
-import {defineDocumentSpec} from "../registry";
-import {parameterFromPath, rejectNewerSchema, requireDocumentObject, requireOptionalMap} from "./parseHelpers";
+import {
+  VOICE_DOCUMENT_SCHEMA_VERSION,
+  VoiceDocument,
+  normalizeVoiceDocument
+} from "../../types/voice";
+import { compileDocumentPathPattern } from "../documentPath";
+import { defineDocumentSpec } from "../registry";
+import {
+  parameterFromPath,
+  rejectNewerSchema,
+  requireDocumentObject,
+  requireOptionalMap
+} from "./parseHelpers";
 
 /**
  * `editor/voice/<locale>.json` - one voice library per voice language.
@@ -16,18 +25,18 @@ export const VOICE_DOCUMENT_PATH = "editor/voice/<locale>.json";
 const VOICE_DOCUMENT_PATTERN = compileDocumentPathPattern(VOICE_DOCUMENT_PATH);
 
 export const voiceDocumentSpec = defineDocumentSpec<VoiceDocument>({
-    kind: "voice",
-    version: VOICE_DOCUMENT_SCHEMA_VERSION,
-    paths: [VOICE_DOCUMENT_PATH],
-    parse: (raw, context) => {
-        const locale = parameterFromPath(VOICE_DOCUMENT_PATTERN, "locale", context);
-        const record = requireDocumentObject(raw, context, "a voice library");
-        rejectNewerSchema(record, context, VOICE_DOCUMENT_SCHEMA_VERSION);
-        requireOptionalMap(record, "units", context);
-        return normalizeVoiceDocument(record, locale);
-    },
-    summarize: document => ({
-        title: document.locale,
-        counts: [{key: "voiceUnits", value: Object.keys(document.units).length}],
-    }),
+  kind: "voice",
+  version: VOICE_DOCUMENT_SCHEMA_VERSION,
+  paths: [VOICE_DOCUMENT_PATH],
+  parse: (raw, context) => {
+    const locale = parameterFromPath(VOICE_DOCUMENT_PATTERN, "locale", context);
+    const record = requireDocumentObject(raw, context, "a voice library");
+    rejectNewerSchema(record, context, VOICE_DOCUMENT_SCHEMA_VERSION);
+    requireOptionalMap(record, "units", context);
+    return normalizeVoiceDocument(record, locale);
+  },
+  summarize: (document) => ({
+    title: document.locale,
+    counts: [{ key: "voiceUnits", value: Object.keys(document.units).length }]
+  })
 });

@@ -46,39 +46,39 @@ const assetIdByToken = new Map<string, string>();
  * whose remainder addresses a file inside the granted directory.
  */
 export function parseAssetUrlToken(value: unknown): string | null {
-    if (typeof value !== "string") {
-        return null;
-    }
-    const trimmed = value.trim();
-    if (!trimmed.startsWith(APP_FS_URL_PREFIX)) {
-        return null;
-    }
-    const rest = trimmed.slice(APP_FS_URL_PREFIX.length);
-    const separator = rest.search(/[/?#]/);
-    const token = separator === -1 ? rest : rest.slice(0, separator);
-    return token || null;
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed.startsWith(APP_FS_URL_PREFIX)) {
+    return null;
+  }
+  const rest = trimmed.slice(APP_FS_URL_PREFIX.length);
+  const separator = rest.search(/[/?#]/);
+  const token = separator === -1 ? rest : rest.slice(0, separator);
+  return token || null;
 }
 
 /** Record that `token` was minted for `assetId`. Called only where both are known to be true. */
 export function recordAssetUrlToken(token: string, assetId: string): void {
-    if (!token || !assetId) {
-        return;
-    }
-    assetIdByToken.set(token, assetId);
+  if (!token || !assetId) {
+    return;
+  }
+  assetIdByToken.set(token, assetId);
 }
 
 /** The asset a URL token was minted for, or null when this session never minted it. */
 export function lookupAssetIdForToken(token: string): string | null {
-    return assetIdByToken.get(token) ?? null;
+  return assetIdByToken.get(token) ?? null;
 }
 
 /** The asset an `app://fs/…` URL points at, or null when the value is not one, or is unknown. */
 export function lookupAssetIdForUrl(value: unknown): string | null {
-    const token = parseAssetUrlToken(value);
-    return token ? lookupAssetIdForToken(token) : null;
+  const token = parseAssetUrlToken(value);
+  return token ? lookupAssetIdForToken(token) : null;
 }
 
 /** Drop every recorded token. Used when the workspace tears down, and by tests. */
 export function clearAssetUrlTokens(): void {
-    assetIdByToken.clear();
+  assetIdByToken.clear();
 }

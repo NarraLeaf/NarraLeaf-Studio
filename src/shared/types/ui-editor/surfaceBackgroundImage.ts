@@ -10,23 +10,27 @@
 export type UISurfaceBackgroundFillMode = "cover" | "contain" | "stretch" | "tile";
 
 export const UI_SURFACE_BACKGROUND_FILL_MODES: readonly UISurfaceBackgroundFillMode[] = [
-    "cover",
-    "contain",
-    "stretch",
-    "tile",
+  "cover",
+  "contain",
+  "stretch",
+  "tile"
 ];
 
 export const DEFAULT_UI_SURFACE_BACKGROUND_FILL_MODE: UISurfaceBackgroundFillMode = "cover";
 
 export type UISurfaceBackgroundImage = {
-    /** Image library asset id. Absent background = absent field, so this is never empty. */
-    assetId: string;
-    fillMode: UISurfaceBackgroundFillMode;
+  /** Image library asset id. Absent background = absent field, so this is never empty. */
+  assetId: string;
+  fillMode: UISurfaceBackgroundFillMode;
 };
 
-export function isUISurfaceBackgroundFillMode(value: unknown): value is UISurfaceBackgroundFillMode {
-    return typeof value === "string"
-        && (UI_SURFACE_BACKGROUND_FILL_MODES as readonly string[]).includes(value);
+export function isUISurfaceBackgroundFillMode(
+  value: unknown
+): value is UISurfaceBackgroundFillMode {
+  return (
+    typeof value === "string" &&
+    (UI_SURFACE_BACKGROUND_FILL_MODES as readonly string[]).includes(value)
+  );
 }
 
 /**
@@ -39,18 +43,18 @@ export function isUISurfaceBackgroundFillMode(value: unknown): value is UISurfac
  * later version should still show its background here.
  */
 export function normalizeUISurfaceBackgroundImage(value: unknown): UISurfaceBackgroundImage | null {
-    if (!value || typeof value !== "object") {
-        return null;
-    }
-    const record = value as Partial<UISurfaceBackgroundImage>;
-    const assetId = typeof record.assetId === "string" ? record.assetId.trim() : "";
-    if (!assetId) {
-        return null;
-    }
-    return {
-        assetId,
-        fillMode: isUISurfaceBackgroundFillMode(record.fillMode)
-            ? record.fillMode
-            : DEFAULT_UI_SURFACE_BACKGROUND_FILL_MODE,
-    };
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Partial<UISurfaceBackgroundImage>;
+  const assetId = typeof record.assetId === "string" ? record.assetId.trim() : "";
+  if (!assetId) {
+    return null;
+  }
+  return {
+    assetId,
+    fillMode: isUISurfaceBackgroundFillMode(record.fillMode)
+      ? record.fillMode
+      : DEFAULT_UI_SURFACE_BACKGROUND_FILL_MODE
+  };
 }

@@ -8,36 +8,36 @@ import { createListDockerBarItems } from "./list/dockerBar";
 import { defaultListWidgetProps } from "./list/types";
 
 function createDefaultListProps() {
-    return JSON.parse(JSON.stringify(defaultListWidgetProps));
+  return JSON.parse(JSON.stringify(defaultListWidgetProps));
 }
 
 export const ListWidgetModule: UIWidgetModule = {
+  type: "nl.list",
+  logicApi: getWidgetLogicApi("nl.list"),
+  get displayName() {
+    return translate("widgets.defaults.list.name");
+  },
+  icon: ListIcon,
+
+  createDefaultElement: () => ({
     type: "nl.list",
-    logicApi: getWidgetLogicApi("nl.list"),
-    get displayName() {
-        return translate("widgets.defaults.list.name");
+    name: translate("widgets.defaults.list.name"),
+    layout: {
+      x: 0,
+      y: 0,
+      width: 280,
+      height: 220,
+      opacity: 1,
+      visible: true
     },
-    icon: ListIcon,
+    props: createDefaultListProps()
+  }),
 
-    createDefaultElement: () => ({
-        type: "nl.list",
-        name: translate("widgets.defaults.list.name"),
-        layout: {
-            x: 0,
-            y: 0,
-            width: 280,
-            height: 220,
-            opacity: 1,
-            visible: true,
-        },
-        props: createDefaultListProps(),
-    }),
+  render: (props: WidgetRendererProps) => <ListRenderer {...props} />,
 
-    render: (props: WidgetRendererProps) => <ListRenderer {...props} />,
+  createInspector: createListInspector,
 
-    createInspector: createListInspector,
+  createDockerBarItems: createListDockerBarItems,
 
-    createDockerBarItems: createListDockerBarItems,
-
-    createMultiSelectDockerBarItems: createListDockerBarItems,
+  createMultiSelectDockerBarItems: createListDockerBarItems
 };

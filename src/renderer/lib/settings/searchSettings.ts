@@ -8,17 +8,17 @@ import { SettingCategory, SettingDescriptor } from "@/lib/settings/models";
 
 /** Whether a setting row matches; the query is expected pre-trimmed but is normalized anyway. */
 export function settingMatchesQuery(descriptor: SettingDescriptor, query: string): boolean {
-    const needle = query.trim().toLowerCase();
-    if (!needle) {
-        return true;
-    }
-    const targets = [
-        descriptor.label,
-        descriptor.description,
-        descriptor.id,
-        ...(descriptor.options ?? []),
-    ];
-    return targets.some(text => text?.toLowerCase().includes(needle));
+  const needle = query.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  const targets = [
+    descriptor.label,
+    descriptor.description,
+    descriptor.id,
+    ...(descriptor.options ?? [])
+  ];
+  return targets.some((text) => text?.toLowerCase().includes(needle));
 }
 
 /**
@@ -26,14 +26,14 @@ export function settingMatchesQuery(descriptor: SettingDescriptor, query: string
  * "editor" should show what the Editor category holds, not just the rows repeating the word.
  */
 export function categoryMatchesQuery(category: SettingCategory, query: string): boolean {
-    const needle = query.trim().toLowerCase();
-    if (!needle) {
-        return true;
-    }
-    return (
-        category.label.toLowerCase().includes(needle) ||
-        category.description.toLowerCase().includes(needle)
-    );
+  const needle = query.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  return (
+    category.label.toLowerCase().includes(needle) ||
+    category.description.toLowerCase().includes(needle)
+  );
 }
 
 /**
@@ -41,16 +41,16 @@ export function categoryMatchesQuery(category: SettingCategory, query: string): 
  * the query is empty, else only the matching rows. Returns null when the category drops out.
  */
 export function filterCategoryEntries<T extends { descriptor: SettingDescriptor }>(
-    category: SettingCategory,
-    entries: T[],
-    query: string,
+  category: SettingCategory,
+  entries: T[],
+  query: string
 ): T[] | null {
-    if (!query.trim()) {
-        return entries;
-    }
-    if (categoryMatchesQuery(category, query)) {
-        return entries;
-    }
-    const matched = entries.filter(entry => settingMatchesQuery(entry.descriptor, query));
-    return matched.length > 0 ? matched : null;
+  if (!query.trim()) {
+    return entries;
+  }
+  if (categoryMatchesQuery(category, query)) {
+    return entries;
+  }
+  const matched = entries.filter((entry) => settingMatchesQuery(entry.descriptor, query));
+  return matched.length > 0 ? matched : null;
 }

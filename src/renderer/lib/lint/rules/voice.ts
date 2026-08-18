@@ -3,14 +3,14 @@ import { isSourceHashStale } from "@shared/utils/localizationText";
 import type { LintContext } from "../context";
 import type { LintFinding, LintRule } from "../types";
 import {
-    isBlankSegment,
-    legacyVoiceAssetId,
-    listLiveTextSegments,
-    segmentSourceText,
-    storyBlockTarget,
-    storyLocation,
-    SPOKEN_TEXT_SEGMENT_KINDS,
-    type LintTextSegmentRef,
+  isBlankSegment,
+  legacyVoiceAssetId,
+  listLiveTextSegments,
+  segmentSourceText,
+  storyBlockTarget,
+  storyLocation,
+  SPOKEN_TEXT_SEGMENT_KINDS,
+  type LintTextSegmentRef
 } from "./text/textSegments";
 
 /**
@@ -31,11 +31,11 @@ import {
 
 /** A unit only counts once it actually points at an imported clip. */
 function hasClip(unit: VoiceUnit | undefined): unit is VoiceUnit {
-    return Boolean(unit && unit.assetId);
+  return Boolean(unit && unit.assetId);
 }
 
 function voicedSegments(ctx: LintContext): LintTextSegmentRef[] {
-    return listLiveTextSegments(ctx).filter(ref => !isBlankSegment(ref.segment));
+  return listLiveTextSegments(ctx).filter((ref) => !isBlankSegment(ref.segment));
 }
 
 /**
@@ -50,26 +50,26 @@ function voicedSegments(ctx: LintContext): LintTextSegmentRef[] {
  * that single clip is what every locale will play.
  */
 function runMissing(ctx: LintContext): LintFinding[] {
-    const voice = ctx.voice;
-    if (!voice || voice.voicedLocales.length === 0) {
-        return [];
+  const voice = ctx.voice;
+  if (!voice || voice.voicedLocales.length === 0) {
+    return [];
+  }
+  const findings: LintFinding[] = [];
+  for (const ref of voicedSegments(ctx)) {
+    if (!SPOKEN_TEXT_SEGMENT_KINDS.includes(ref.kind)) {
+      continue;
     }
-    const findings: LintFinding[] = [];
-    for (const ref of voicedSegments(ctx)) {
-        if (!SPOKEN_TEXT_SEGMENT_KINDS.includes(ref.kind)) {
-            continue;
-        }
-        if (legacyVoiceAssetId(ref.block)) {
-            continue;
-        }
-        for (const locale of voice.voicedLocales) {
-            if (hasClip(voice.documents.get(locale)?.units[ref.textId])) {
-                continue;
-            }
-            findings.push(finding(ref, "lint.rule.voiceMissing.message", locale, "voice/missing"));
-        }
+    if (legacyVoiceAssetId(ref.block)) {
+      continue;
     }
-    return findings;
+    for (const locale of voice.voicedLocales) {
+      if (hasClip(voice.documents.get(locale)?.units[ref.textId])) {
+        continue;
+      }
+      findings.push(finding(ref, "lint.rule.voiceMissing.message", locale, "voice/missing"));
+    }
+  }
+  return findings;
 }
 
 /**
@@ -81,23 +81,27 @@ function runMissing(ctx: LintContext): LintFinding[] {
  * own take looking current, and rewriting one source line reported every language as stale.
  */
 function runStale(ctx: LintContext): LintFinding[] {
-    const voice = ctx.voice;
-    if (!voice || voice.voicedLocales.length === 0) {
-        return [];
+  const voice = ctx.voice;
+  if (!voice || voice.voicedLocales.length === 0) {
+    return [];
+  }
+  const findings: LintFinding[] = [];
+  for (const ref of voicedSegments(ctx)) {
+    const sourceText = segmentSourceText(ref.segment);
+    for (const locale of voice.voicedLocales) {
+      const unit = voice.documents.get(locale)?.units[ref.textId];
+      const lineText = voiceLineText(
+        ctx.localization?.documents.get(locale),
+        ref.textId,
+        sourceText
+      );
+      if (!hasClip(unit) || !isSourceHashStale(unit.sourceHash, lineText)) {
+        continue;
+      }
+      findings.push(finding(ref, "lint.rule.voiceStale.message", locale, "voice/stale"));
     }
-    const findings: LintFinding[] = [];
-    for (const ref of voicedSegments(ctx)) {
-        const sourceText = segmentSourceText(ref.segment);
-        for (const locale of voice.voicedLocales) {
-            const unit = voice.documents.get(locale)?.units[ref.textId];
-            const lineText = voiceLineText(ctx.localization?.documents.get(locale), ref.textId, sourceText);
-            if (!hasClip(unit) || !isSourceHashStale(unit.sourceHash, lineText)) {
-                continue;
-            }
-            findings.push(finding(ref, "lint.rule.voiceStale.message", locale, "voice/stale"));
-        }
-    }
-    return findings;
+  }
+  return findings;
 }
 
 /**
@@ -113,66 +117,66 @@ function runStale(ctx: LintContext): LintFinding[] {
  * nothing.
  */
 function runOrphan(ctx: LintContext): LintFinding[] {
-    const voice = ctx.voice;
-    if (!voice || voice.voicedLocales.length === 0) {
-        return [];
+  const voice = ctx.voice;
+  if (!voice || voice.voicedLocales.length === 0) {
+    return [];
+  }
+  const liveTextIds = new Set(listLiveTextSegments(ctx).map((ref) => ref.textId));
+  const findings: LintFinding[] = [];
+  for (const locale of voice.voicedLocales) {
+    const document = voice.documents.get(locale);
+    if (!document) {
+      continue;
     }
-    const liveTextIds = new Set(listLiveTextSegments(ctx).map(ref => ref.textId));
-    const findings: LintFinding[] = [];
-    for (const locale of voice.voicedLocales) {
-        const document = voice.documents.get(locale);
-        if (!document) {
-            continue;
-        }
-        const count = Object.keys(document.units).filter(unitId => !liveTextIds.has(unitId)).length;
-        if (count === 0) {
-            continue;
-        }
-        findings.push({
-            ruleId: "voice/orphan",
-            messageKey: "lint.rule.voiceOrphan.message",
-            messageParams: { count, locale },
-            location: { kind: "project" },
-        });
+    const count = Object.keys(document.units).filter((unitId) => !liveTextIds.has(unitId)).length;
+    if (count === 0) {
+      continue;
     }
-    return findings;
+    findings.push({
+      ruleId: "voice/orphan",
+      messageKey: "lint.rule.voiceOrphan.message",
+      messageParams: { count, locale },
+      location: { kind: "project" }
+    });
+  }
+  return findings;
 }
 
 function finding(
-    ref: LintTextSegmentRef,
-    messageKey: LintFinding["messageKey"],
-    locale: string,
-    ruleId: LintFinding["ruleId"],
+  ref: LintTextSegmentRef,
+  messageKey: LintFinding["messageKey"],
+  locale: string,
+  ruleId: LintFinding["ruleId"]
 ): LintFinding {
-    return {
-        ruleId,
-        messageKey,
-        messageParams: { locale },
-        location: storyLocation(ref),
-        target: storyBlockTarget(ref),
-    };
+  return {
+    ruleId,
+    messageKey,
+    messageParams: { locale },
+    location: storyLocation(ref),
+    target: storyBlockTarget(ref)
+  };
 }
 
 export const VOICE_LINT_RULES: readonly LintRule[] = [
-    {
-        id: "voice/missing",
-        category: "voice",
-        defaultSeverity: "warning",
-        slug: "voiceMissing",
-        run: ctx => runMissing(ctx),
-    },
-    {
-        id: "voice/stale",
-        category: "voice",
-        defaultSeverity: "warning",
-        slug: "voiceStale",
-        run: ctx => runStale(ctx),
-    },
-    {
-        id: "voice/orphan",
-        category: "voice",
-        defaultSeverity: "info",
-        slug: "voiceOrphan",
-        run: ctx => runOrphan(ctx),
-    },
+  {
+    id: "voice/missing",
+    category: "voice",
+    defaultSeverity: "warning",
+    slug: "voiceMissing",
+    run: (ctx) => runMissing(ctx)
+  },
+  {
+    id: "voice/stale",
+    category: "voice",
+    defaultSeverity: "warning",
+    slug: "voiceStale",
+    run: (ctx) => runStale(ctx)
+  },
+  {
+    id: "voice/orphan",
+    category: "voice",
+    defaultSeverity: "info",
+    slug: "voiceOrphan",
+    run: (ctx) => runOrphan(ctx)
+  }
 ];

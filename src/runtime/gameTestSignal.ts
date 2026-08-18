@@ -18,8 +18,8 @@ import type { GameTestEvent } from "@shared/types/gameTest";
 export const GAME_RUNTIME_TEST_SIGNAL_CHANNEL = "runtime:test:signal" as const;
 
 export type GameRuntimeTestSignal =
-    | { kind: "runtime-error"; message: string; stack?: string }
-    | { kind: "game-end" };
+  | { kind: "runtime-error"; message: string; stack?: string }
+  | { kind: "game-end" };
 
 /**
  * Added to the preload bridge by the desktop shell only.
@@ -31,7 +31,7 @@ export type GameRuntimeTestSignal =
  * than by remembering to check.
  */
 export type GameRuntimeTestSignalBridge = {
-    reportTestSignal(signal: GameRuntimeTestSignal): void;
+  reportTestSignal(signal: GameRuntimeTestSignal): void;
 };
 
 /**
@@ -41,22 +41,23 @@ export type GameRuntimeTestSignalBridge = {
  * never die because the test harness on the other end went away mid-run.
  */
 export function readRuntimeTestSignalReporter(
-    // `object`, not `GameRuntimePreloadBridge`: this half is not on that contract (see above), and
-    // a parameter typed as the all-optional extension would trip TypeScript's weak-type check at
-    // every call site that passes the plain bridge.
-    bridge: object | null | undefined,
+  // `object`, not `GameRuntimePreloadBridge`: this half is not on that contract (see above), and
+  // a parameter typed as the all-optional extension would trip TypeScript's weak-type check at
+  // every call site that passes the plain bridge.
+  bridge: object | null | undefined
 ): ((signal: GameRuntimeTestSignal) => void) | null {
-    const report = (bridge as Partial<GameRuntimeTestSignalBridge> | null | undefined)?.reportTestSignal;
-    if (typeof report !== "function") {
-        return null;
+  const report = (bridge as Partial<GameRuntimeTestSignalBridge> | null | undefined)
+    ?.reportTestSignal;
+  if (typeof report !== "function") {
+    return null;
+  }
+  return (signal) => {
+    try {
+      report(signal);
+    } catch {
+      // Bridge torn down (window closing, context destroyed). Nothing to report to.
     }
-    return signal => {
-        try {
-            report(signal);
-        } catch {
-            // Bridge torn down (window closing, context destroyed). Nothing to report to.
-        }
-    };
+  };
 }
 
 /**
@@ -67,25 +68,26 @@ export function readRuntimeTestSignalReporter(
  * by definition the renderer - it is not something the payload gets a vote on.
  */
 export function toGameTestEvent(signal: unknown): GameTestEvent | null {
-    if (!signal || typeof signal !== "object") {
-        return null;
-    }
-    const kind = (signal as { kind?: unknown }).kind;
-    if (kind === "game-end") {
-        return { kind: "game-end" };
-    }
-    if (kind !== "runtime-error") {
-        return null;
-    }
-    const { message, stack } = signal as { message?: unknown; stack?: unknown };
-    return {
-        kind: "runtime-error",
-        scope: "renderer",
-        // An error with no message still has to arrive: a test reading "one uncaught error" from an
-        // empty string would report a pass on a game that threw.
-        message: typeof message === "string" && message.trim() !== ""
-            ? message
-            : "Uncaught error in the game renderer",
-        ...(typeof stack === "string" && stack !== "" ? { stack } : {}),
-    };
+  if (!signal || typeof signal !== "object") {
+    return null;
+  }
+  const kind = (signal as { kind?: unknown }).kind;
+  if (kind === "game-end") {
+    return { kind: "game-end" };
+  }
+  if (kind !== "runtime-error") {
+    return null;
+  }
+  const { message, stack } = signal as { message?: unknown; stack?: unknown };
+  return {
+    kind: "runtime-error",
+    scope: "renderer",
+    // An error with no message still has to arrive: a test reading "one uncaught error" from an
+    // empty string would report a pass on a game that threw.
+    message:
+      typeof message === "string" && message.trim() !== ""
+        ? message
+        : "Uncaught error in the game renderer",
+    ...(typeof stack === "string" && stack !== "" ? { stack } : {})
+  };
 }

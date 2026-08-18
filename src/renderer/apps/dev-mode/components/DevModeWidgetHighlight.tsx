@@ -20,67 +20,70 @@ type WidgetHighlightBox = { left: number; top: number; width: number; height: nu
 const NO_BOXES: WidgetHighlightBox[] = [];
 
 export function DevModeWidgetHighlight(props: { elementId: string | null }): ReactNode {
-    const { elementId } = props;
-    const layerRef = useRef<HTMLDivElement | null>(null);
-    const [boxes, setBoxes] = useState<WidgetHighlightBox[]>(NO_BOXES);
+  const { elementId } = props;
+  const layerRef = useRef<HTMLDivElement | null>(null);
+  const [boxes, setBoxes] = useState<WidgetHighlightBox[]>(NO_BOXES);
 
-    useEffect(() => {
-        const layer = layerRef.current;
-        const view = layer?.ownerDocument.defaultView;
-        if (!elementId || !layer || !view) {
-            setBoxes(previous => (previous.length === 0 ? previous : NO_BOXES));
-            return undefined;
+  useEffect(() => {
+    const layer = layerRef.current;
+    const view = layer?.ownerDocument.defaultView;
+    if (!elementId || !layer || !view) {
+      setBoxes((previous) => (previous.length === 0 ? previous : NO_BOXES));
+      return undefined;
+    }
+    // One element id can be on screen more than once: every row of a list renders the same
+    // authored widget. Each instance is a real place the blueprint runs, so each gets a box.
+    const selector = `[data-ui-element-id="${CSS.escape(elementId)}"]`;
+    let frame = 0;
+    const measure = (): void => {
+      frame = view.requestAnimationFrame(measure);
+      const base = layer.getBoundingClientRect();
+      const next: WidgetHighlightBox[] = [];
+      for (const node of layer.ownerDocument.querySelectorAll<HTMLElement>(selector)) {
+        const rect = node.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) {
+          continue;
         }
-        // One element id can be on screen more than once: every row of a list renders the same
-        // authored widget. Each instance is a real place the blueprint runs, so each gets a box.
-        const selector = `[data-ui-element-id="${CSS.escape(elementId)}"]`;
-        let frame = 0;
-        const measure = (): void => {
-            frame = view.requestAnimationFrame(measure);
-            const base = layer.getBoundingClientRect();
-            const next: WidgetHighlightBox[] = [];
-            for (const node of layer.ownerDocument.querySelectorAll<HTMLElement>(selector)) {
-                const rect = node.getBoundingClientRect();
-                if (rect.width <= 0 || rect.height <= 0) {
-                    continue;
-                }
-                next.push({
-                    left: rect.left - base.left,
-                    top: rect.top - base.top,
-                    width: rect.width,
-                    height: rect.height,
-                });
-            }
-            setBoxes(previous => (sameWidgetHighlightBoxes(previous, next) ? previous : next));
-        };
-        measure();
-        return () => view.cancelAnimationFrame(frame);
-    }, [elementId]);
+        next.push({
+          left: rect.left - base.left,
+          top: rect.top - base.top,
+          width: rect.width,
+          height: rect.height
+        });
+      }
+      setBoxes((previous) => (sameWidgetHighlightBoxes(previous, next) ? previous : next));
+    };
+    measure();
+    return () => view.cancelAnimationFrame(frame);
+  }, [elementId]);
 
-    return (
-        <div ref={layerRef} className="pointer-events-none absolute inset-0 z-[60]" aria-hidden>
-            {boxes.map((box, index) => (
-                <div
-                    key={index}
-                    className="absolute border border-primary bg-primary/25"
-                    style={{ left: box.left, top: box.top, width: box.width, height: box.height }}
-                />
-            ))}
-        </div>
-    );
+  return (
+    <div ref={layerRef} className="pointer-events-none absolute inset-0 z-[60]" aria-hidden>
+      {boxes.map((box, index) => (
+        <div
+          key={index}
+          className="absolute border border-primary bg-primary/25"
+          style={{ left: box.left, top: box.top, width: box.width, height: box.height }}
+        />
+      ))}
+    </div>
+  );
 }
 
-function sameWidgetHighlightBoxes(a: readonly WidgetHighlightBox[], b: readonly WidgetHighlightBox[]): boolean {
-    return (
-        a.length === b.length &&
-        a.every((box, index) => {
-            const other = b[index]!;
-            return (
-                box.left === other.left &&
-                box.top === other.top &&
-                box.width === other.width &&
-                box.height === other.height
-            );
-        })
-    );
+function sameWidgetHighlightBoxes(
+  a: readonly WidgetHighlightBox[],
+  b: readonly WidgetHighlightBox[]
+): boolean {
+  return (
+    a.length === b.length &&
+    a.every((box, index) => {
+      const other = b[index]!;
+      return (
+        box.left === other.left &&
+        box.top === other.top &&
+        box.width === other.width &&
+        box.height === other.height
+      );
+    })
+  );
 }

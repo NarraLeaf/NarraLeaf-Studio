@@ -23,27 +23,27 @@ import type { BlueprintNodeDef } from "../types";
 export const BLUEPRINT_APP_TAG_OUTPUT_PIN_ID = "appTag";
 
 export const appTagBlueprintNodes: BlueprintNodeDef[] = [
-    {
-        type: BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG,
-        displayName: "Get Build Variant",
-        category: "Game",
-        keywords: ["app", "tag", "variant", "edition", "build", "demo", "release", "main"],
-        graphKinds: ["event", "function", "macro"],
-        // Pure and non-latent for the reason the visited readers are: a function graph refuses any
-        // node that is either, and a variant check has to be available there too.
-        isPure: true,
-        isLatent: false,
-        pins: [
-            {
-                id: BLUEPRINT_APP_TAG_OUTPUT_PIN_ID,
-                kind: "output",
-                semantic: "data",
-                valueType: "string",
-                label: "Build Variant",
-            },
-        ],
-        // Never reached on the data path - a pure node's output is pulled through
-        // `resolveDataPinValue`, not by running this. See `resolveAppTagNodeOutput`.
-        execute: () => ({}),
-    },
+  {
+    type: BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG,
+    displayName: "Get Build Variant",
+    category: "Game",
+    keywords: ["app", "tag", "variant", "edition", "build", "demo", "release", "main"],
+    graphKinds: ["event", "function", "macro"],
+    // Pure and non-latent for the reason the visited readers are: a function graph refuses any
+    // node that is either, and a variant check has to be available there too.
+    isPure: true,
+    isLatent: false,
+    pins: [
+      {
+        id: BLUEPRINT_APP_TAG_OUTPUT_PIN_ID,
+        kind: "output",
+        semantic: "data",
+        valueType: "string",
+        label: "Build Variant"
+      }
+    ],
+    // Never reached on the data path - a pure node's output is pulled through
+    // `resolveDataPinValue`, not by running this. See `resolveAppTagNodeOutput`.
+    execute: () => ({})
+  }
 ];

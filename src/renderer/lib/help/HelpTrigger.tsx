@@ -15,24 +15,24 @@ import { helpTitleKey, type HelpTopicId } from "./helpTopics";
  * Put it inside a container that sets `group/help`; the header's own hover state then drives it.
  */
 export function HelpTrigger({ topic, className }: { topic: HelpTopicId; className?: string }) {
-    const { t } = useTranslation();
-    const ref = useRef<HTMLButtonElement | null>(null);
+  const { t } = useTranslation();
+  const ref = useRef<HTMLButtonElement | null>(null);
 
-    return (
-        <button
-            ref={ref}
-            type="button"
-            aria-label={t("help.ui.openTopic", { title: t(helpTitleKey(topic)) })}
-            onClick={() => openHelpTopic(topic, ref.current)}
-            className={cn(
-                "flex h-6 w-6 shrink-0 cursor-default items-center justify-center rounded-md text-fg-subtle",
-                "opacity-0 transition-opacity hover:bg-fill hover:text-fg-muted",
-                "group-hover/help:opacity-100 focus-visible:opacity-100",
-                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50",
-                className,
-            )}
-        >
-            <CircleQuestionMark className="h-3.5 w-3.5" />
-        </button>
-    );
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-label={t("help.ui.openTopic", { title: t(helpTitleKey(topic)) })}
+      onClick={() => openHelpTopic(topic, ref.current)}
+      className={cn(
+        "flex h-6 w-6 shrink-0 cursor-default items-center justify-center rounded-md text-fg-subtle",
+        "opacity-0 transition-opacity hover:bg-fill hover:text-fg-muted",
+        "group-hover/help:opacity-100 focus-visible:opacity-100",
+        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50",
+        className
+      )}
+    >
+      <CircleQuestionMark className="h-3.5 w-3.5" />
+    </button>
+  );
 }

@@ -27,27 +27,27 @@ import type { SurfacePuppetRequest } from "./surfacePuppetSession";
  * arbitrary.
  */
 export function surfacePuppetIdentity(request: SurfacePuppetRequest): string {
-    return encodeStableJson({
-        assetId: request.assetId ?? null,
-        backend: request.backend,
-        entry: request.entry ?? null,
-        options: request.options ?? {},
-    });
+  return encodeStableJson({
+    assetId: request.assetId ?? null,
+    backend: request.backend,
+    entry: request.entry ?? null,
+    options: request.options ?? {}
+  });
 }
 
 function sameRecord<T>(left: Record<string, T>, right: Record<string, T>): boolean {
-    const keys = Object.keys(left);
-    if (keys.length !== Object.keys(right).length) {
-        return false;
+  const keys = Object.keys(left);
+  if (keys.length !== Object.keys(right).length) {
+    return false;
+  }
+  for (const key of keys) {
+    // `in` rather than a truthiness check: `slots` uses an explicit `null` to mean "cleared", and a
+    // key present-with-null is a different state from a key that was never set.
+    if (!(key in right) || left[key] !== right[key]) {
+      return false;
     }
-    for (const key of keys) {
-        // `in` rather than a truthiness check: `slots` uses an explicit `null` to mean "cleared", and a
-        // key present-with-null is a different state from a key that was never set.
-        if (!(key in right) || left[key] !== right[key]) {
-            return false;
-        }
-    }
-    return true;
+  }
+  return true;
 }
 
 /**
@@ -59,13 +59,15 @@ function sameRecord<T>(left: Record<string, T>, right: Record<string, T>): boole
  * needs it.
  */
 export function surfacePuppetStateEquals(left: PuppetState, right: PuppetState): boolean {
-    return left.motion === right.motion
-        && left.expression === right.expression
-        && left.skin === right.skin
-        && sameRecord(left.params ?? {}, right.params ?? {})
-        && sameRecord(left.slots ?? {}, right.slots ?? {});
+  return (
+    left.motion === right.motion &&
+    left.expression === right.expression &&
+    left.skin === right.skin &&
+    sameRecord(left.params ?? {}, right.params ?? {}) &&
+    sameRecord(left.slots ?? {}, right.slots ?? {})
+  );
 }
 
 export function surfacePuppetSizeEquals(left: PuppetSize, right: PuppetSize): boolean {
-    return left.width === right.width && left.height === right.height;
+  return left.width === right.width && left.height === right.height;
 }

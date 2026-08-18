@@ -39,30 +39,30 @@ import type { ContentClass } from "@shared/vcs/contentClass";
 
 /** What is known about one side without opening it. Both fields come from the tree walk. */
 export interface ContentProbe {
-    readonly size: number;
-    /** Content address; equal on both sides means the same bytes. */
-    readonly hash?: string;
+  readonly size: number;
+  /** Content address; equal on both sides means the same bytes. */
+  readonly hash?: string;
 }
 
 /** One side of a comparison: what is known, plus the prefix that was affordable to read. */
 export interface ContentSide {
-    readonly probe: ContentProbe;
-    /**
-     * The first {@link ContentDiffProvider.headBytes} bytes, when the caller could get them.
-     *
-     * Absent is ordinary - see the note on this module - and a provider must degrade to what
-     * the probe says rather than treat it as an error.
-     */
-    readonly head?: Buffer;
+  readonly probe: ContentProbe;
+  /**
+   * The first {@link ContentDiffProvider.headBytes} bytes, when the caller could get them.
+   *
+   * Absent is ordinary - see the note on this module - and a provider must degrade to what
+   * the probe says rather than treat it as an error.
+   */
+  readonly head?: Buffer;
 }
 
 export interface ContentDiffProvider {
-    readonly id: string;
-    matches(path: string, contentClass: ContentClass): boolean;
-    /** Upper bound on the prefix this provider wants. Zero means it needs no bytes at all. */
-    readonly headBytes: number;
-    /** Both sides' probes, and their prefixes where there are any, as change rows. */
-    describe(a: ContentSide | null, b: ContentSide | null): readonly DocumentChange[];
+  readonly id: string;
+  matches(path: string, contentClass: ContentClass): boolean;
+  /** Upper bound on the prefix this provider wants. Zero means it needs no bytes at all. */
+  readonly headBytes: number;
+  /** Both sides' probes, and their prefixes where there are any, as change rows. */
+  describe(a: ContentSide | null, b: ContentSide | null): readonly DocumentChange[];
 }
 
 /**
@@ -98,47 +98,53 @@ export const LABEL_MOVED = "documentDiff.content.moved";
  * bigger is the least of it.
  */
 function sizeRow(a: ContentProbe, b: ContentProbe): DocumentChange[] {
-    if (a.size === b.size) {
-        return [];
+  if (a.size === b.size) {
+    return [];
+  }
+  return [
+    {
+      path: ["size"],
+      kind: "changed",
+      label: { key: LABEL_SIZE, params: { fromBytes: a.size, toBytes: b.size } }
     }
-    return [{
-        path: ["size"],
-        kind: "changed",
-        label: { key: LABEL_SIZE, params: { fromBytes: a.size, toBytes: b.size } },
-    }];
+  ];
 }
 
 function dimensionRow(
-    a: { width: number; height: number } | undefined,
-    b: { width: number; height: number } | undefined,
+  a: { width: number; height: number } | undefined,
+  b: { width: number; height: number } | undefined
 ): DocumentChange[] {
-    if (!a || !b || (a.width === b.width && a.height === b.height)) {
-        return [];
+  if (!a || !b || (a.width === b.width && a.height === b.height)) {
+    return [];
+  }
+  return [
+    {
+      path: ["dimensions"],
+      kind: "changed",
+      label: {
+        key: LABEL_DIMENSIONS,
+        params: { fromWidth: a.width, fromHeight: a.height, toWidth: b.width, toHeight: b.height }
+      }
     }
-    return [{
-        path: ["dimensions"],
-        kind: "changed",
-        label: {
-            key: LABEL_DIMENSIONS,
-            params: { fromWidth: a.width, fromHeight: a.height, toWidth: b.width, toHeight: b.height },
-        },
-    }];
+  ];
 }
 
 /** Seconds to one decimal, which is as much as a header's own precision supports. */
 function seconds(milliseconds: number): number {
-    return Math.round(milliseconds / 100) / 10;
+  return Math.round(milliseconds / 100) / 10;
 }
 
 function durationRow(a: number | undefined, b: number | undefined): DocumentChange[] {
-    if (a === undefined || b === undefined || seconds(a) === seconds(b)) {
-        return [];
+  if (a === undefined || b === undefined || seconds(a) === seconds(b)) {
+    return [];
+  }
+  return [
+    {
+      path: ["duration"],
+      kind: "changed",
+      label: { key: LABEL_DURATION, params: { fromSeconds: seconds(a), toSeconds: seconds(b) } }
     }
-    return [{
-        path: ["duration"],
-        kind: "changed",
-        label: { key: LABEL_DURATION, params: { fromSeconds: seconds(a), toSeconds: seconds(b) } },
-    }];
+  ];
 }
 
 /**
@@ -151,12 +157,12 @@ function durationRow(a: number | undefined, b: number | undefined): DocumentChan
  * would leave an author unable to tell a permanent limit from a budget.
  */
 function opaqueRow(key: string): DocumentChange {
-    return { path: [], kind: "changed", label: { key } };
+  return { path: [], kind: "changed", label: { key } };
 }
 
 /** What to say when a provider found nothing to report: it depends on whether it could look. */
 function nothingToReport(read: boolean): DocumentChange[] {
-    return [opaqueRow(read ? LABEL_CHANGED : LABEL_NOT_INSPECTED)];
+  return [opaqueRow(read ? LABEL_CHANGED : LABEL_NOT_INSPECTED)];
 }
 
 /* ---------------------------------------------------------------------------------------- */
@@ -173,20 +179,20 @@ function nothingToReport(read: boolean): DocumentChange[] {
  * detail, and a sprite that is suddenly half as wide is a broken scene.
  */
 const bitmapProvider: ContentDiffProvider = {
-    id: "bitmap",
-    headBytes: CONTENT_HEAD_BYTE_CEILING,
-    matches: (_path, contentClass) => contentClass === "bitmap",
-    describe(a, b) {
-        const pair = bothSides(a, b);
-        if (!pair) return [];
-        const before = pair.a.head ? readImageDimensions(pair.a.head) : null;
-        const after = pair.b.head ? readImageDimensions(pair.b.head) : null;
-        const rows = [
-            ...dimensionRow(before ?? undefined, after ?? undefined),
-            ...sizeRow(pair.a.probe, pair.b.probe),
-        ];
-        return rows.length > 0 ? rows : nothingToReport(Boolean(before && after));
-    },
+  id: "bitmap",
+  headBytes: CONTENT_HEAD_BYTE_CEILING,
+  matches: (_path, contentClass) => contentClass === "bitmap",
+  describe(a, b) {
+    const pair = bothSides(a, b);
+    if (!pair) return [];
+    const before = pair.a.head ? readImageDimensions(pair.a.head) : null;
+    const after = pair.b.head ? readImageDimensions(pair.b.head) : null;
+    const rows = [
+      ...dimensionRow(before ?? undefined, after ?? undefined),
+      ...sizeRow(pair.a.probe, pair.b.probe)
+    ];
+    return rows.length > 0 ? rows : nothingToReport(Boolean(before && after));
+  }
 };
 
 /**
@@ -199,32 +205,34 @@ const bitmapProvider: ContentDiffProvider = {
  * file.
  */
 const audioProvider: ContentDiffProvider = {
-    id: "audio",
-    headBytes: 16 * 1024,
-    matches: (_path, contentClass) => contentClass === "audio",
-    describe(a, b) {
-        const pair = bothSides(a, b);
-        if (!pair) return [];
-        const before = headerOf(pair.a);
-        const after = headerOf(pair.b);
-        const rows = [
-            ...durationRow(before?.durationMs, after?.durationMs),
-            ...rateRow(before?.sampleRate, after?.sampleRate),
-            ...sizeRow(pair.a.probe, pair.b.probe),
-        ];
-        return rows.length > 0 ? rows : nothingToReport(Boolean(before && after));
-    },
+  id: "audio",
+  headBytes: 16 * 1024,
+  matches: (_path, contentClass) => contentClass === "audio",
+  describe(a, b) {
+    const pair = bothSides(a, b);
+    if (!pair) return [];
+    const before = headerOf(pair.a);
+    const after = headerOf(pair.b);
+    const rows = [
+      ...durationRow(before?.durationMs, after?.durationMs),
+      ...rateRow(before?.sampleRate, after?.sampleRate),
+      ...sizeRow(pair.a.probe, pair.b.probe)
+    ];
+    return rows.length > 0 ? rows : nothingToReport(Boolean(before && after));
+  }
 };
 
 function rateRow(a: number | undefined, b: number | undefined): DocumentChange[] {
-    if (a === undefined || b === undefined || a === b) {
-        return [];
+  if (a === undefined || b === undefined || a === b) {
+    return [];
+  }
+  return [
+    {
+      path: ["sampleRate"],
+      kind: "changed",
+      label: { key: LABEL_SAMPLE_RATE, params: { fromHertz: a, toHertz: b } }
     }
-    return [{
-        path: ["sampleRate"],
-        kind: "changed",
-        label: { key: LABEL_SAMPLE_RATE, params: { fromHertz: a, toHertz: b } },
-    }];
+  ];
 }
 
 /**
@@ -235,27 +243,29 @@ function rateRow(a: number | undefined, b: number | undefined): DocumentChange[]
  * happen to be at the front and never guessed when they are not.
  */
 const videoProvider: ContentDiffProvider = {
-    id: "video",
-    headBytes: CONTENT_HEAD_BYTE_CEILING,
-    matches: (_path, contentClass) => contentClass === "video",
-    describe(a, b) {
-        const pair = bothSides(a, b);
-        if (!pair) return [];
-        const before = headerOf(pair.a);
-        const after = headerOf(pair.b);
-        const rows = [
-            ...dimensionRow(framesOf(before), framesOf(after)),
-            ...durationRow(before?.durationMs, after?.durationMs),
-            ...sizeRow(pair.a.probe, pair.b.probe),
-        ];
-        return rows.length > 0 ? rows : nothingToReport(Boolean(before && after));
-    },
+  id: "video",
+  headBytes: CONTENT_HEAD_BYTE_CEILING,
+  matches: (_path, contentClass) => contentClass === "video",
+  describe(a, b) {
+    const pair = bothSides(a, b);
+    if (!pair) return [];
+    const before = headerOf(pair.a);
+    const after = headerOf(pair.b);
+    const rows = [
+      ...dimensionRow(framesOf(before), framesOf(after)),
+      ...durationRow(before?.durationMs, after?.durationMs),
+      ...sizeRow(pair.a.probe, pair.b.probe)
+    ];
+    return rows.length > 0 ? rows : nothingToReport(Boolean(before && after));
+  }
 };
 
 function framesOf(
-    header: { width?: number; height?: number } | null | undefined,
+  header: { width?: number; height?: number } | null | undefined
 ): { width: number; height: number } | undefined {
-    return header?.width && header.height ? { width: header.width, height: header.height } : undefined;
+  return header?.width && header.height
+    ? { width: header.width, height: header.height }
+    : undefined;
 }
 
 /**
@@ -268,28 +278,28 @@ function framesOf(
  * a header-only reader exists to avoid.
  */
 const fontProvider: ContentDiffProvider = {
-    id: "font",
-    headBytes: CONTENT_HEAD_BYTE_CEILING,
-    matches: (_path, contentClass) => contentClass === "font",
-    describe(a, b) {
-        const pair = bothSides(a, b);
-        if (!pair) return [];
-        const before = pair.a.head ? readFontHeader(pair.a.head) : null;
-        const after = pair.b.head ? readFontHeader(pair.b.head) : null;
-        const rows: DocumentChange[] = [];
-        if (before?.family && after?.family && before.family !== after.family) {
-            rows.push({
-                path: ["family"],
-                kind: "changed",
-                label: { key: LABEL_FAMILY, params: { from: before.family, to: after.family } },
-                // The family is a string out of the author's own file, which is what `subject`
-                // is defined to carry - unlike a dimension, which Studio computed.
-                subject: after.family,
-            });
-        }
-        rows.push(...sizeRow(pair.a.probe, pair.b.probe));
-        return rows.length > 0 ? rows : nothingToReport(Boolean(before && after));
-    },
+  id: "font",
+  headBytes: CONTENT_HEAD_BYTE_CEILING,
+  matches: (_path, contentClass) => contentClass === "font",
+  describe(a, b) {
+    const pair = bothSides(a, b);
+    if (!pair) return [];
+    const before = pair.a.head ? readFontHeader(pair.a.head) : null;
+    const after = pair.b.head ? readFontHeader(pair.b.head) : null;
+    const rows: DocumentChange[] = [];
+    if (before?.family && after?.family && before.family !== after.family) {
+      rows.push({
+        path: ["family"],
+        kind: "changed",
+        label: { key: LABEL_FAMILY, params: { from: before.family, to: after.family } },
+        // The family is a string out of the author's own file, which is what `subject`
+        // is defined to carry - unlike a dimension, which Studio computed.
+        subject: after.family
+      });
+    }
+    rows.push(...sizeRow(pair.a.probe, pair.b.probe));
+    return rows.length > 0 ? rows : nothingToReport(Boolean(before && after));
+  }
 };
 
 /**
@@ -302,15 +312,15 @@ const fontProvider: ContentDiffProvider = {
  * another.
  */
 const modelProvider: ContentDiffProvider = {
-    id: "model",
-    headBytes: 0,
-    matches: (_path, contentClass) => contentClass === "model",
-    describe(a, b) {
-        const pair = bothSides(a, b);
-        if (!pair) return [];
-        const rows = sizeRow(pair.a.probe, pair.b.probe);
-        return rows.length > 0 ? rows : [opaqueRow(LABEL_UNRECOGNIZED)];
-    },
+  id: "model",
+  headBytes: 0,
+  matches: (_path, contentClass) => contentClass === "model",
+  describe(a, b) {
+    const pair = bothSides(a, b);
+    if (!pair) return [];
+    const rows = sizeRow(pair.a.probe, pair.b.probe);
+    return rows.length > 0 ? rows : [opaqueRow(LABEL_UNRECOGNIZED)];
+  }
 };
 
 /**
@@ -321,14 +331,14 @@ const modelProvider: ContentDiffProvider = {
  * only one of them is permanent.
  */
 const unknownProvider: ContentDiffProvider = {
-    id: "unknown",
-    headBytes: 0,
-    matches: (_path, contentClass) => contentClass === "unknown",
-    describe(a, b) {
-        const pair = bothSides(a, b);
-        if (!pair) return [];
-        return [opaqueRow(LABEL_UNRECOGNIZED), ...sizeRow(pair.a.probe, pair.b.probe)];
-    },
+  id: "unknown",
+  headBytes: 0,
+  matches: (_path, contentClass) => contentClass === "unknown",
+  describe(a, b) {
+    const pair = bothSides(a, b);
+    if (!pair) return [];
+    return [opaqueRow(LABEL_UNRECOGNIZED), ...sizeRow(pair.a.probe, pair.b.probe)];
+  }
 };
 
 /**
@@ -339,14 +349,14 @@ const unknownProvider: ContentDiffProvider = {
  * `.txt` would be false; saying its header was not read is exactly what happened.
  */
 const opaqueProvider: ContentDiffProvider = {
-    id: "opaque",
-    headBytes: 0,
-    matches: () => true,
-    describe(a, b) {
-        const pair = bothSides(a, b);
-        if (!pair) return [];
-        return [opaqueRow(LABEL_NOT_INSPECTED), ...sizeRow(pair.a.probe, pair.b.probe)];
-    },
+  id: "opaque",
+  headBytes: 0,
+  matches: () => true,
+  describe(a, b) {
+    const pair = bothSides(a, b);
+    if (!pair) return [];
+    return [opaqueRow(LABEL_NOT_INSPECTED), ...sizeRow(pair.a.probe, pair.b.probe)];
+  }
 };
 
 /**
@@ -356,18 +366,21 @@ const opaqueProvider: ContentDiffProvider = {
  * total - there is no path with no provider, and no caller has to have a fallback of its own.
  */
 export const CONTENT_DIFF_PROVIDERS: readonly ContentDiffProvider[] = [
-    bitmapProvider,
-    audioProvider,
-    videoProvider,
-    fontProvider,
-    modelProvider,
-    unknownProvider,
-    opaqueProvider,
+  bitmapProvider,
+  audioProvider,
+  videoProvider,
+  fontProvider,
+  modelProvider,
+  unknownProvider,
+  opaqueProvider
 ];
 
 /** The provider that will describe this path. Never undefined; see the note on the registry. */
 export function contentProviderFor(path: string, contentClass: ContentClass): ContentDiffProvider {
-    return CONTENT_DIFF_PROVIDERS.find((provider) => provider.matches(path, contentClass)) ?? opaqueProvider;
+  return (
+    CONTENT_DIFF_PROVIDERS.find((provider) => provider.matches(path, contentClass)) ??
+    opaqueProvider
+  );
 }
 
 /**
@@ -379,14 +392,14 @@ export function contentProviderFor(path: string, contentClass: ContentClass): Co
  * `documentDiff.ts`.
  */
 function bothSides(
-    a: ContentSide | null,
-    b: ContentSide | null,
+  a: ContentSide | null,
+  b: ContentSide | null
 ): { a: ContentSide; b: ContentSide } | null {
-    return a && b ? { a, b } : null;
+  return a && b ? { a, b } : null;
 }
 
 function headerOf(side: ContentSide): ReturnType<typeof readMediaHeader> {
-    return side.head ? readMediaHeader(side.head, side.probe.size) : null;
+  return side.head ? readMediaHeader(side.head, side.probe.size) : null;
 }
 
 /**
@@ -406,11 +419,13 @@ function headerOf(side: ContentSide): ReturnType<typeof readMediaHeader> {
  * never match, and must not: a length is not evidence of anything.
  */
 export function probesMatch(a: ContentProbe | undefined, b: ContentProbe | undefined): boolean {
-    // An empty file is excluded, and not because two of them differ - they do not. Emptiness is
-    // simply not evidence of identity: delete four empty placeholders, add three more, and every
-    // one of the twelve possible pairings is equally supported, so whichever this returned would
-    // be an invention presented to the author as a fact about where their file went.
-    return Boolean(a && b && a.size > 0 && a.hash && b.hash && a.hash === b.hash && a.size === b.size);
+  // An empty file is excluded, and not because two of them differ - they do not. Emptiness is
+  // simply not evidence of identity: delete four empty placeholders, add three more, and every
+  // one of the twelve possible pairings is equally supported, so whichever this returned would
+  // be an invention presented to the author as a fact about where their file went.
+  return Boolean(
+    a && b && a.size > 0 && a.hash && b.hash && a.hash === b.hash && a.size === b.size
+  );
 }
 
 /**
@@ -434,29 +449,29 @@ export function probesMatch(a: ContentProbe | undefined, b: ContentProbe | undef
  * @returns added path -> the removed path it came from.
  */
 export function pairMoves(
-    removed: ReadonlyMap<string, ContentProbe>,
-    added: ReadonlyMap<string, ContentProbe>,
+  removed: ReadonlyMap<string, ContentProbe>,
+  added: ReadonlyMap<string, ContentProbe>
 ): Map<string, string> {
-    const byContent = new Map<string, string[]>();
-    for (const path of [...removed.keys()].sort()) {
-        const probe = removed.get(path);
-        if (!probe?.hash) continue;
-        const key = `${probe.hash}:${probe.size}`;
-        byContent.set(key, [...(byContent.get(key) ?? []), path]);
-    }
+  const byContent = new Map<string, string[]>();
+  for (const path of [...removed.keys()].sort()) {
+    const probe = removed.get(path);
+    if (!probe?.hash) continue;
+    const key = `${probe.hash}:${probe.size}`;
+    byContent.set(key, [...(byContent.get(key) ?? []), path]);
+  }
 
-    const pairs = new Map<string, string>();
-    for (const path of [...added.keys()].sort()) {
-        const probe = added.get(path);
-        if (!probe?.hash) continue;
-        const candidates = byContent.get(`${probe.hash}:${probe.size}`);
-        const source = candidates?.shift();
-        // `probesMatch` rather than trusting the key: the key is built from the same two
-        // fields, and going through the predicate keeps the definition of "same bytes" in one
-        // place rather than in two spellings that can drift.
-        if (source && probesMatch(removed.get(source), probe)) {
-            pairs.set(path, source);
-        }
+  const pairs = new Map<string, string>();
+  for (const path of [...added.keys()].sort()) {
+    const probe = added.get(path);
+    if (!probe?.hash) continue;
+    const candidates = byContent.get(`${probe.hash}:${probe.size}`);
+    const source = candidates?.shift();
+    // `probesMatch` rather than trusting the key: the key is built from the same two
+    // fields, and going through the predicate keeps the definition of "same bytes" in one
+    // place rather than in two spellings that can drift.
+    if (source && probesMatch(removed.get(source), probe)) {
+      pairs.set(path, source);
     }
-    return pairs;
+  }
+  return pairs;
 }

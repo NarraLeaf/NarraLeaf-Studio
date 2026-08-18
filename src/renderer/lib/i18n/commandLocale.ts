@@ -1,11 +1,14 @@
 import {
-    createTranslator,
-    InterpolationParams,
-    LocaleCode,
-    TranslationKey,
-    Translator,
+  createTranslator,
+  InterpolationParams,
+  LocaleCode,
+  TranslationKey,
+  Translator
 } from "@shared/i18n";
-import { LOCALIZED_COMMANDS_DEFAULT, resolveCommandLocale } from "@/lib/settings/commandLanguageOptions";
+import {
+  LOCALIZED_COMMANDS_DEFAULT,
+  resolveCommandLocale
+} from "@/lib/settings/commandLanguageOptions";
 import { i18nStore } from "./store";
 
 /**
@@ -30,48 +33,48 @@ const listeners = new Set<() => void>();
 
 /** Recompute the effective locale; notify only when the resulting translator actually changed. */
 function reconcile(): void {
-    const next = resolveCommandLocale(preference, i18nStore.getLocale());
-    if (next === currentLocale) {
-        return;
-    }
-    currentLocale = next;
-    translator = createTranslator(next);
-    listeners.forEach((listener) => listener());
+  const next = resolveCommandLocale(preference, i18nStore.getLocale());
+  if (next === currentLocale) {
+    return;
+  }
+  currentLocale = next;
+  translator = createTranslator(next);
+  listeners.forEach((listener) => listener());
 }
 
 export const commandI18nStore = {
-    getLocale(): LocaleCode {
-        return currentLocale;
-    },
-    getTranslator(): Translator {
-        return translator;
-    },
-    subscribe(listener: () => void): () => void {
-        listeners.add(listener);
-        return () => {
-            listeners.delete(listener);
-        };
-    },
-    /**
-     * Store the `editor.localizedCommands` value and re-resolve. Wired in `bootstrap.ts` from the
-     * persisted value and the main process's global-state broadcast, so a change made in the Settings
-     * window reaches every open workspace with no reload.
-     */
-    setPreference(next: unknown): void {
-        preference = next;
-        reconcile();
-    },
-    /**
-     * Rebuild against the interface locale as it stands now. Called when `i18nStore` notifies: while
-     * translation is on the effective locale just moved, and even while it is off the catalog behind
-     * the source locale may have been swapped by a language pack.
-     */
-    refresh(): void {
-        const next = resolveCommandLocale(preference, i18nStore.getLocale());
-        currentLocale = next;
-        translator = createTranslator(next);
-        listeners.forEach((listener) => listener());
-    },
+  getLocale(): LocaleCode {
+    return currentLocale;
+  },
+  getTranslator(): Translator {
+    return translator;
+  },
+  subscribe(listener: () => void): () => void {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  },
+  /**
+   * Store the `editor.localizedCommands` value and re-resolve. Wired in `bootstrap.ts` from the
+   * persisted value and the main process's global-state broadcast, so a change made in the Settings
+   * window reaches every open workspace with no reload.
+   */
+  setPreference(next: unknown): void {
+    preference = next;
+    reconcile();
+  },
+  /**
+   * Rebuild against the interface locale as it stands now. Called when `i18nStore` notifies: while
+   * translation is on the effective locale just moved, and even while it is off the catalog behind
+   * the source locale may have been swapped by a language pack.
+   */
+  refresh(): void {
+    const next = resolveCommandLocale(preference, i18nStore.getLocale());
+    currentLocale = next;
+    translator = createTranslator(next);
+    listeners.forEach((listener) => listener());
+  }
 };
 
 i18nStore.subscribe(() => commandI18nStore.refresh());
@@ -82,5 +85,5 @@ i18nStore.subscribe(() => commandI18nStore.refresh());
  * same caveat applies (it is a snapshot, so mounted UI must use the hook).
  */
 export function translateCommand(key: TranslationKey, params?: InterpolationParams): string {
-    return translator.t(key, params);
+  return translator.t(key, params);
 }

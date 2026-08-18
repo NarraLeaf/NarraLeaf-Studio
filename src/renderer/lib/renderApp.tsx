@@ -16,24 +16,24 @@ import { initZoom } from "./zoom";
 import "@/styles/styles.css";
 
 function validateEnv() {
-    initializeRendererBridge();
+  initializeRendererBridge();
 }
 
 let appInfo: AppInfo | null = null;
 let platformInfo: PlatformInfo | null = null;
 
 export function getAppInfo() {
-    if (!appInfo) {
-        throw new Error("App info not found");
-    }
-    return appInfo;
+  if (!appInfo) {
+    throw new Error("App info not found");
+  }
+  return appInfo;
 }
 
 export function getPlatformInfo() {
-    if (!platformInfo) {
-        throw new Error("Platform info not found");
-    }
-    return platformInfo;
+  if (!platformInfo) {
+    throw new Error("Platform info not found");
+  }
+  return platformInfo;
 }
 
 /**
@@ -51,87 +51,81 @@ export function getPlatformInfo() {
  * `GameApp` and `NlrStageLayer`.
  */
 function MotionPreference({ children }: { children: React.ReactNode }) {
-    const [reduced, setReduced] = React.useState(isReduceMotionEnabled);
-    React.useEffect(() => subscribeReduceMotion(setReduced), []);
-    return (
-        <MotionConfig reducedMotion={reduced ? "always" : "never"}>
-            {children}
-        </MotionConfig>
-    );
+  const [reduced, setReduced] = React.useState(isReduceMotionEnabled);
+  React.useEffect(() => subscribeReduceMotion(setReduced), []);
+  return <MotionConfig reducedMotion={reduced ? "always" : "never"}>{children}</MotionConfig>;
 }
 
 async function renderApp(children: React.ReactNode) {
-    // Before anything else can print: a window that fails to start still has to be able to say what
-    // it printed on the way down. See `app/diagnostics/consoleBuffer`.
-    installConsoleBuffer();
+  // Before anything else can print: a window that fails to start still has to be able to say what
+  // it printed on the way down. See `app/diagnostics/consoleBuffer`.
+  installConsoleBuffer();
 
-    // Validate environment
-    validateEnv();
+  // Validate environment
+  validateEnv();
 
-    // Needs the bridge, so it comes after validateEnv: from here on a script error or a rejected
-    // promise reaches `main.log`, which outlives this window, instead of only the buffer above.
-    installGlobalErrorReporting();
+  // Needs the bridge, so it comes after validateEnv: from here on a script error or a rejected
+  // promise reaches `main.log`, which outlives this window, instead of only the buffer above.
+  installGlobalErrorReporting();
 
-    // Get platform info
-    const platformResult = await getInterface().getPlatform();
-    if (!platformResult.success) {
-        throw new Error("Failed to get platform info");
-    }
-    platformInfo = platformResult.data;
+  // Get platform info
+  const platformResult = await getInterface().getPlatform();
+  if (!platformResult.success) {
+    throw new Error("Failed to get platform info");
+  }
+  platformInfo = platformResult.data;
 
-    // Get app info
-    const appResult = await getInterface().getAppInfo();
-    if (!appResult.success) {
-        throw new Error("Failed to get app info");
-    }
-    appInfo = appResult.data;
+  // Get app info
+  const appResult = await getInterface().getAppInfo();
+  if (!appResult.success) {
+    throw new Error("Failed to get app info");
+  }
+  appInfo = appResult.data;
 
-    // Load the persisted language + subscribe to live changes before the first
-    // paint, so every window renders in the right language with no flash.
-    await initI18n();
+  // Load the persisted language + subscribe to live changes before the first
+  // paint, so every window renders in the right language with no flash.
+  await initI18n();
 
-    // Publishes `--nl-zoom` for the titlebar's traffic-light safe area.
-    await initZoom();
+  // Publishes `--nl-zoom` for the titlebar's traffic-light safe area.
+  await initZoom();
 
-    // Accent color and reduced motion, applied to the root element before the
-    // first paint so no window renders a frame in the wrong accent.
-    await initAppearance();
+  // Accent color and reduced motion, applied to the root element before the
+  // first paint so no window renders a frame in the wrong accent.
+  await initAppearance();
 
-    // Developer options. Loaded here rather than where it is read, because it is
-    // read from inside context-menu handlers, which have nowhere to await.
-    await initDeveloperMode();
+  // Developer options. Loaded here rather than where it is read, because it is
+  // read from inside context-menu handlers, which have nowhere to await.
+  await initDeveloperMode();
 
-    console.log("[renderer] platformInfo", platformInfo);
-    console.log("[renderer] appInfo", appInfo);
+  console.log("[renderer] platformInfo", platformInfo);
+  console.log("[renderer] appInfo", appInfo);
 
-    hardenRendererBridge();
+  hardenRendererBridge();
 
-    const root = createRoot(document.getElementById("root")!);
-    const content = (<>
-        <RenderingStatusAnnouncer />
-        <CriticalErrorBoundary platformInfo={platformResult.data}>
-            <MotionPreference>
-                {children as React.ReactElement}
-            </MotionPreference>
-        </CriticalErrorBoundary>
-    </>);
+  const root = createRoot(document.getElementById("root")!);
+  const content = (
+    <>
+      <RenderingStatusAnnouncer />
+      <CriticalErrorBoundary platformInfo={platformResult.data}>
+        <MotionPreference>{children as React.ReactElement}</MotionPreference>
+      </CriticalErrorBoundary>
+    </>
+  );
 
-    root.render(
-        platformInfo.isPackaged ? content : <React.StrictMode>{content}</React.StrictMode>
-    );
-    return root;
+  root.render(platformInfo.isPackaged ? content : <React.StrictMode>{content}</React.StrictMode>);
+  return root;
 }
 
 export async function render(module: AppComponentModule) {
-    const { default: Component } = await module;
+  const { default: Component } = await module;
 
-    try {
-        return await renderApp(<Component />);
-    } catch (error: unknown) {
-        const api = getInterface();
-        const message = error instanceof Error ? `${error.name}\n${error.message}` : String(error);
-        api.terminate(message);
-    }
+  try {
+    return await renderApp(<Component />);
+  } catch (error: unknown) {
+    const api = getInterface();
+    const message = error instanceof Error ? `${error.name}\n${error.message}` : String(error);
+    api.terminate(message);
+  }
 }
 
 type AppComponentFunction = React.FunctionComponent;

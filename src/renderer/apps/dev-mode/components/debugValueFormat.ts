@@ -19,28 +19,28 @@ export const MAX_DEBUG_VALUE_CHARS = 160;
 
 /** One line for a value in a scope / state list. Whatever the shape, this returns something short. */
 export function formatDebugValue(value: unknown): string {
-    if (value === undefined) {
-        return "undefined";
-    }
-    if (value === null) {
-        return "null";
-    }
-    if (typeof value === "string") {
-        return truncate(JSON.stringify(value));
-    }
-    if (typeof value === "number" || typeof value === "boolean") {
-        return String(value);
-    }
-    if (typeof value === "function") {
-        return "ƒ()";
-    }
-    try {
-        return truncate(JSON.stringify(value) ?? String(value));
-    } catch {
-        return "[unserializable]";
-    }
+  if (value === undefined) {
+    return "undefined";
+  }
+  if (value === null) {
+    return "null";
+  }
+  if (typeof value === "string") {
+    return truncate(JSON.stringify(value));
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (typeof value === "function") {
+    return "ƒ()";
+  }
+  try {
+    return truncate(JSON.stringify(value) ?? String(value));
+  } catch {
+    return "[unserializable]";
+  }
 }
 
 function truncate(text: string): string {
-    return text.length <= MAX_DEBUG_VALUE_CHARS ? text : `${text.slice(0, MAX_DEBUG_VALUE_CHARS)}…`;
+  return text.length <= MAX_DEBUG_VALUE_CHARS ? text : `${text.slice(0, MAX_DEBUG_VALUE_CHARS)}…`;
 }

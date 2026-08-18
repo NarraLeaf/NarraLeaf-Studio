@@ -1,7 +1,4 @@
-import type {
-    DownloadRewriteOutcome,
-    DownloadRewriteRule,
-} from "@shared/types/downloadSource";
+import type { DownloadRewriteOutcome, DownloadRewriteRule } from "@shared/types/downloadSource";
 
 /**
  * Applying the author's download rewrites to one URL.
@@ -19,7 +16,7 @@ import type {
 
 /** A rule is only usable if it is on and actually says something. */
 function isUsable(rule: DownloadRewriteRule): boolean {
-    return rule.enabled && rule.from.trim().length > 0 && rule.to.trim().length > 0;
+  return rule.enabled && rule.from.trim().length > 0 && rule.to.trim().length > 0;
 }
 
 /**
@@ -31,33 +28,33 @@ function isUsable(rule: DownloadRewriteRule): boolean {
  * the caller logs the refusal so it is not silent either.
  */
 export function rewriteDownloadUrl(
-    url: string,
-    rules: readonly DownloadRewriteRule[] | undefined | null,
+  url: string,
+  rules: readonly DownloadRewriteRule[] | undefined | null
 ): DownloadRewriteOutcome {
-    if (!Array.isArray(rules) || rules.length === 0) {
-        return { url };
-    }
-    for (const rule of rules) {
-        if (!isUsable(rule)) {
-            continue;
-        }
-        const from = rule.from.trim();
-        if (!url.startsWith(from)) {
-            continue;
-        }
-        const candidate = `${rule.to.trim()}${url.slice(from.length)}`;
-        let parsed: URL;
-        try {
-            parsed = new URL(candidate);
-        } catch {
-            return { url, refused: "unparseable" };
-        }
-        if (parsed.protocol !== "https:") {
-            return { url, refused: "not-https" };
-        }
-        return { url: candidate, applied: rule };
-    }
+  if (!Array.isArray(rules) || rules.length === 0) {
     return { url };
+  }
+  for (const rule of rules) {
+    if (!isUsable(rule)) {
+      continue;
+    }
+    const from = rule.from.trim();
+    if (!url.startsWith(from)) {
+      continue;
+    }
+    const candidate = `${rule.to.trim()}${url.slice(from.length)}`;
+    let parsed: URL;
+    try {
+      parsed = new URL(candidate);
+    } catch {
+      return { url, refused: "unparseable" };
+    }
+    if (parsed.protocol !== "https:") {
+      return { url, refused: "not-https" };
+    }
+    return { url: candidate, applied: rule };
+  }
+  return { url };
 }
 
 /**
@@ -68,23 +65,23 @@ export function rewriteDownloadUrl(
  * write path validating alone would leave the read path trusting whatever survived.
  */
 export function normalizeRewriteRules(value: unknown): DownloadRewriteRule[] {
-    if (!Array.isArray(value)) {
-        return [];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const rules: DownloadRewriteRule[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") {
+      continue;
     }
-    const rules: DownloadRewriteRule[] = [];
-    for (const raw of value) {
-        if (!raw || typeof raw !== "object") {
-            continue;
-        }
-        const record = raw as Record<string, unknown>;
-        const from = typeof record.from === "string" ? record.from.trim() : "";
-        const to = typeof record.to === "string" ? record.to.trim() : "";
-        if (!from || !to) {
-            continue;
-        }
-        rules.push({ from, to, enabled: record.enabled !== false });
+    const record = raw as Record<string, unknown>;
+    const from = typeof record.from === "string" ? record.from.trim() : "";
+    const to = typeof record.to === "string" ? record.to.trim() : "";
+    if (!from || !to) {
+      continue;
     }
-    return rules;
+    rules.push({ from, to, enabled: record.enabled !== false });
+  }
+  return rules;
 }
 
 /**
@@ -95,8 +92,8 @@ export function normalizeRewriteRules(value: unknown): DownloadRewriteRule[] {
  * documents it and three separate readers had grown their own copy.
  */
 export function resolveDownloadSource(configured: unknown, officialDefault: string): string {
-    const trimmed = typeof configured === "string" ? configured.trim() : "";
-    return trimmed.length > 0 ? trimmed : officialDefault;
+  const trimmed = typeof configured === "string" ? configured.trim() : "";
+  return trimmed.length > 0 ? trimmed : officialDefault;
 }
 
 /**
@@ -106,14 +103,14 @@ export function resolveDownloadSource(configured: unknown, officialDefault: stri
  * without deciding for itself what counts as worth saying.
  */
 export function describeRewrite(original: string, outcome: DownloadRewriteOutcome): string | null {
-    if (outcome.refused === "unparseable") {
-        return `download rewrite ignored for ${original}: the rewritten address is not a valid URL`;
-    }
-    if (outcome.refused === "not-https") {
-        return `download rewrite ignored for ${original}: the rewritten address is not https`;
-    }
-    if (outcome.applied) {
-        return `download rewritten: ${original} -> ${outcome.url}`;
-    }
-    return null;
+  if (outcome.refused === "unparseable") {
+    return `download rewrite ignored for ${original}: the rewritten address is not a valid URL`;
+  }
+  if (outcome.refused === "not-https") {
+    return `download rewrite ignored for ${original}: the rewritten address is not https`;
+  }
+  if (outcome.applied) {
+    return `download rewritten: ${original} -> ${outcome.url}`;
+  }
+  return null;
 }

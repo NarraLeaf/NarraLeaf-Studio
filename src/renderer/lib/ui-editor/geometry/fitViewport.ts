@@ -10,10 +10,10 @@ import type { ViewportTransform } from "./types";
  * still be missing an edge - which is the complaint this path exists to answer.
  */
 export type FitViewportInsets = {
-    left: number;
-    top: number;
-    right: number;
-    bottom: number;
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
 };
 
 /** Outline panel: `w-64` (256px) plus a hair of breathing room so the border is not flush. */
@@ -61,17 +61,19 @@ export const SURFACE_ZOOM_MAX_SCALE = 10;
 export const SURFACE_FIT_MAX_SCALE = 2;
 
 export type SurfaceFitChrome = {
-    /** When the outline panel is collapsed only its re-open button occupies the left band. */
-    outlineCollapsed: boolean;
+  /** When the outline panel is collapsed only its re-open button occupies the left band. */
+  outlineCollapsed: boolean;
 };
 
 export function resolveSurfaceFitInsets({ outlineCollapsed }: SurfaceFitChrome): FitViewportInsets {
-    return {
-        left: outlineCollapsed ? SURFACE_FIT_OUTLINE_TOGGLE_INSET_PX : SURFACE_FIT_OUTLINE_PANEL_INSET_PX,
-        top: SURFACE_FIT_TOOLBAR_INSET_PX,
-        right: SURFACE_FIT_EDGE_INSET_PX,
-        bottom: SURFACE_FIT_DOCKER_INSET_PX,
-    };
+  return {
+    left: outlineCollapsed
+      ? SURFACE_FIT_OUTLINE_TOGGLE_INSET_PX
+      : SURFACE_FIT_OUTLINE_PANEL_INSET_PX,
+    top: SURFACE_FIT_TOOLBAR_INSET_PX,
+    right: SURFACE_FIT_EDGE_INSET_PX,
+    bottom: SURFACE_FIT_DOCKER_INSET_PX
+  };
 }
 
 /**
@@ -94,19 +96,19 @@ export const CANVAS_FIT_MODES: readonly CanvasFitMode[] = ["actual", "contain", 
 
 /** A computed zoom, and whether the author asked for it or the editor decided. */
 export type SurfaceViewportFit = {
-    mode: CanvasFitMode;
-    /**
-     * True when the mode came from the zoom menu. It survives a resize the same way, and only this
-     * one escapes {@link SURFACE_FIT_MAX_SCALE}.
-     */
-    chosen: boolean;
+  mode: CanvasFitMode;
+  /**
+   * True when the mode came from the zoom menu. It survives a resize the same way, and only this
+   * one escapes {@link SURFACE_FIT_MAX_SCALE}.
+   */
+  chosen: boolean;
 };
 
 export type FitViewportBox = {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };
 
 /**
@@ -121,40 +123,40 @@ export type FitViewportBox = {
  * shown again.
  */
 export function resolveFitViewportBox(
-    container: { width: number; height: number },
-    insets?: FitViewportInsets,
+  container: { width: number; height: number },
+  insets?: FitViewportInsets
 ): FitViewportBox | null {
-    if (
-        !Number.isFinite(container.width) ||
-        !Number.isFinite(container.height) ||
-        container.width <= 0 ||
-        container.height <= 0
-    ) {
-        return null;
-    }
+  if (
+    !Number.isFinite(container.width) ||
+    !Number.isFinite(container.height) ||
+    container.width <= 0 ||
+    container.height <= 0
+  ) {
+    return null;
+  }
 
-    const applied = insets ?? { left: 0, top: 0, right: 0, bottom: 0 };
-    const box = {
-        x: applied.left,
-        y: applied.top,
-        width: container.width - applied.left - applied.right,
-        height: container.height - applied.top - applied.bottom,
-    };
-    if (box.width < SURFACE_FIT_MIN_BOX_PX || box.height < SURFACE_FIT_MIN_BOX_PX) {
-        return { x: 0, y: 0, width: container.width, height: container.height };
-    }
-    return box;
+  const applied = insets ?? { left: 0, top: 0, right: 0, bottom: 0 };
+  const box = {
+    x: applied.left,
+    y: applied.top,
+    width: container.width - applied.left - applied.right,
+    height: container.height - applied.top - applied.bottom
+  };
+  if (box.width < SURFACE_FIT_MIN_BOX_PX || box.height < SURFACE_FIT_MIN_BOX_PX) {
+    return { x: 0, y: 0, width: container.width, height: container.height };
+  }
+  return box;
 }
 
 export type ComputeFitViewportParams = {
-    /** Viewport element box, in CSS pixels. */
-    container: { width: number; height: number };
-    /** The interface's authored size, which is what the canvas node renders at scale 1. */
-    designSize: { width: number; height: number };
-    insets?: FitViewportInsets;
-    /** Defaults to `contain`, the answer to "show me all of it". */
-    mode?: CanvasFitMode;
-    maxScale?: number;
+  /** Viewport element box, in CSS pixels. */
+  container: { width: number; height: number };
+  /** The interface's authored size, which is what the canvas node renders at scale 1. */
+  designSize: { width: number; height: number };
+  insets?: FitViewportInsets;
+  /** Defaults to `contain`, the answer to "show me all of it". */
+  mode?: CanvasFitMode;
+  maxScale?: number;
 };
 
 /**
@@ -163,42 +165,45 @@ export type ComputeFitViewportParams = {
  * Returns `null` when there is nothing to fit into or nothing to fit.
  */
 export function computeFitViewportTransform({
-    container,
-    designSize,
-    insets,
-    mode = "contain",
-    maxScale = SURFACE_FIT_MAX_SCALE,
+  container,
+  designSize,
+  insets,
+  mode = "contain",
+  maxScale = SURFACE_FIT_MAX_SCALE
 }: ComputeFitViewportParams): ViewportTransform | null {
-    const box = resolveFitViewportBox(container, insets);
-    if (!box) {
-        return null;
-    }
-    if (
-        !Number.isFinite(designSize.width) ||
-        !Number.isFinite(designSize.height) ||
-        designSize.width <= 0 ||
-        designSize.height <= 0
-    ) {
-        return null;
-    }
+  const box = resolveFitViewportBox(container, insets);
+  if (!box) {
+    return null;
+  }
+  if (
+    !Number.isFinite(designSize.width) ||
+    !Number.isFinite(designSize.height) ||
+    designSize.width <= 0 ||
+    designSize.height <= 0
+  ) {
+    return null;
+  }
 
-    const byWidth = box.width / designSize.width;
-    const byHeight = box.height / designSize.height;
-    const rawScale =
-        mode === "actual" ? 1
-            : mode === "width" ? byWidth
-                : mode === "cover" ? Math.max(byWidth, byHeight)
-                    : Math.min(byWidth, byHeight);
-    const scale = clampSurfaceZoomScale(rawScale, maxScale);
+  const byWidth = box.width / designSize.width;
+  const byHeight = box.height / designSize.height;
+  const rawScale =
+    mode === "actual"
+      ? 1
+      : mode === "width"
+        ? byWidth
+        : mode === "cover"
+          ? Math.max(byWidth, byHeight)
+          : Math.min(byWidth, byHeight);
+  const scale = clampSurfaceZoomScale(rawScale, maxScale);
 
-    // Centred in every mode, including the ones that overflow: an interface wider than the box
-    // then runs past both edges by the same amount, which is the only placement that does not
-    // silently pick one edge of the author's layout to hide.
-    return {
-        scale,
-        offsetX: Math.round(box.x + (box.width - designSize.width * scale) / 2),
-        offsetY: Math.round(box.y + (box.height - designSize.height * scale) / 2),
-    };
+  // Centred in every mode, including the ones that overflow: an interface wider than the box
+  // then runs past both edges by the same amount, which is the only placement that does not
+  // silently pick one edge of the author's layout to hide.
+  return {
+    scale,
+    offsetX: Math.round(box.x + (box.width - designSize.width * scale) / 2),
+    offsetY: Math.round(box.y + (box.height - designSize.height * scale) / 2)
+  };
 }
 
 /**
@@ -208,44 +213,50 @@ export function computeFitViewportTransform({
  * panned to a corner and then asks for 150% wants that corner bigger, not the interface back.
  */
 export function computeZoomedViewportTransform({
-    current,
-    container,
-    insets,
-    nextScale,
+  current,
+  container,
+  insets,
+  nextScale
 }: {
-    current: ViewportTransform;
-    container: { width: number; height: number };
-    insets?: FitViewportInsets;
-    nextScale: number;
+  current: ViewportTransform;
+  container: { width: number; height: number };
+  insets?: FitViewportInsets;
+  nextScale: number;
 }): ViewportTransform | null {
-    const box = resolveFitViewportBox(container, insets);
-    if (!box || !Number.isFinite(nextScale)) {
-        return null;
-    }
-    const scale = clampSurfaceZoomScale(nextScale, SURFACE_ZOOM_MAX_SCALE);
-    const anchorX = box.x + box.width / 2;
-    const anchorY = box.y + box.height / 2;
-    // Where the anchor sits in the interface's own coordinates, which must not move.
-    const surfaceX = (anchorX - current.offsetX) / Math.max(current.scale, SURFACE_ZOOM_MIN_SCALE);
-    const surfaceY = (anchorY - current.offsetY) / Math.max(current.scale, SURFACE_ZOOM_MIN_SCALE);
-    return {
-        scale,
-        offsetX: Math.round(anchorX - surfaceX * scale),
-        offsetY: Math.round(anchorY - surfaceY * scale),
-    };
+  const box = resolveFitViewportBox(container, insets);
+  if (!box || !Number.isFinite(nextScale)) {
+    return null;
+  }
+  const scale = clampSurfaceZoomScale(nextScale, SURFACE_ZOOM_MAX_SCALE);
+  const anchorX = box.x + box.width / 2;
+  const anchorY = box.y + box.height / 2;
+  // Where the anchor sits in the interface's own coordinates, which must not move.
+  const surfaceX = (anchorX - current.offsetX) / Math.max(current.scale, SURFACE_ZOOM_MIN_SCALE);
+  const surfaceY = (anchorY - current.offsetY) / Math.max(current.scale, SURFACE_ZOOM_MIN_SCALE);
+  return {
+    scale,
+    offsetX: Math.round(anchorX - surfaceX * scale),
+    offsetY: Math.round(anchorY - surfaceY * scale)
+  };
 }
 
 /** The range a canvas accepts. Blueprint graphs run a much narrower one than the surface editor. */
 export type ZoomRange = { min: number; max: number };
 
-export const SURFACE_ZOOM_RANGE: ZoomRange = { min: SURFACE_ZOOM_MIN_SCALE, max: SURFACE_ZOOM_MAX_SCALE };
+export const SURFACE_ZOOM_RANGE: ZoomRange = {
+  min: SURFACE_ZOOM_MIN_SCALE,
+  max: SURFACE_ZOOM_MAX_SCALE
+};
 
 /** Holds a zoom inside the range the canvas accepts, whoever asked for it. */
-export function clampSurfaceZoomScale(scale: number, maxScale: number = SURFACE_ZOOM_MAX_SCALE): number {
-    if (!Number.isFinite(scale)) {
-        return SURFACE_ZOOM_MIN_SCALE;
-    }
-    return Math.max(SURFACE_ZOOM_MIN_SCALE, Math.min(maxScale, scale));
+export function clampSurfaceZoomScale(
+  scale: number,
+  maxScale: number = SURFACE_ZOOM_MAX_SCALE
+): number {
+  if (!Number.isFinite(scale)) {
+    return SURFACE_ZOOM_MIN_SCALE;
+  }
+  return Math.max(SURFACE_ZOOM_MIN_SCALE, Math.min(maxScale, scale));
 }
 
 /**
@@ -258,28 +269,31 @@ export function clampSurfaceZoomScale(scale: number, maxScale: number = SURFACE_
  *
  * `range` is the canvas's own; both canvases parse the same way and only disagree about the limits.
  */
-export function parseZoomPercent(input: string, range: ZoomRange = SURFACE_ZOOM_RANGE): number | null {
-    const cleaned = input.replace(/[%％\s,]/g, "");
-    if (!cleaned || !/^\d*\.?\d+$/.test(cleaned)) {
-        return null;
-    }
-    const percent = Number(cleaned);
-    if (!Number.isFinite(percent) || percent <= 0) {
-        return null;
-    }
-    return Math.max(range.min, Math.min(range.max, percent / 100));
+export function parseZoomPercent(
+  input: string,
+  range: ZoomRange = SURFACE_ZOOM_RANGE
+): number | null {
+  const cleaned = input.replace(/[%％\s,]/g, "");
+  if (!cleaned || !/^\d*\.?\d+$/.test(cleaned)) {
+    return null;
+  }
+  const percent = Number(cleaned);
+  if (!Number.isFinite(percent) || percent <= 0) {
+    return null;
+  }
+  return Math.max(range.min, Math.min(range.max, percent / 100));
 }
 
 /** The percentage a zoom control shows for a scale. */
 export function formatZoomPercent(scale: number): number {
-    return Math.round(scale * 100);
+  return Math.round(scale * 100);
 }
 
 /** Whether two transforms are the same to the precision the canvas can actually draw. */
 export function areViewportTransformsEqual(a: ViewportTransform, b: ViewportTransform): boolean {
-    return (
-        Math.abs(a.scale - b.scale) < 1e-4 &&
-        Math.abs(a.offsetX - b.offsetX) < 0.5 &&
-        Math.abs(a.offsetY - b.offsetY) < 0.5
-    );
+  return (
+    Math.abs(a.scale - b.scale) < 1e-4 &&
+    Math.abs(a.offsetX - b.offsetX) < 0.5 &&
+    Math.abs(a.offsetY - b.offsetY) < 0.5
+  );
 }

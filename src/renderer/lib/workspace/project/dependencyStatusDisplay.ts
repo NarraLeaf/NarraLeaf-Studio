@@ -20,17 +20,17 @@ import type { TranslationKey } from "@shared/i18n";
  * place instead of two.
  */
 export const DEPENDENCY_STATUS_TEXT_STYLES: Record<DependencyStatus, string> = {
-    satisfied: "text-success",
-    outdated: "text-warning",
-    missing: "text-danger",
-    incompatible: "text-danger",
+  satisfied: "text-success",
+  outdated: "text-warning",
+  missing: "text-danger",
+  incompatible: "text-danger"
 };
 
 export const DEPENDENCY_STATUS_LABEL_KEYS: Record<DependencyStatus, TranslationKey> = {
-    satisfied: "project.dependencies.status.ready",
-    outdated: "project.dependencies.status.outdated",
-    missing: "project.dependencies.status.missing",
-    incompatible: "project.dependencies.status.incompatible",
+  satisfied: "project.dependencies.status.ready",
+  outdated: "project.dependencies.status.outdated",
+  missing: "project.dependencies.status.missing",
+  incompatible: "project.dependencies.status.incompatible"
 };
 
 /**
@@ -40,5 +40,5 @@ export const DEPENDENCY_STATUS_LABEL_KEYS: Record<DependencyStatus, TranslationK
  * version, and "Ready" on every line is a column of noise that hides the one line that is not.
  */
 export function dependencyNeedsAttention(status: DependencyStatus, suppressed: boolean): boolean {
-    return suppressed || status !== "satisfied";
+  return suppressed || status !== "satisfied";
 }

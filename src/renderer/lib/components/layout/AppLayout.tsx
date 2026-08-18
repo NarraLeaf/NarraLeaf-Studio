@@ -6,12 +6,12 @@ import { TooltipHost } from "@/lib/tooltip";
 import { WindowControlPolicy, type WindowControlAbility } from "@shared/types/window";
 
 export interface AppLayoutProps {
-    title: string;
-    iconSrc: string;
-    children: React.ReactNode;
-    className?: string;
-    initialControlAbility?: WindowControlAbility;
-    windowControlPolicy?: WindowControlPolicy;
+  title: string;
+  iconSrc: string;
+  children: React.ReactNode;
+  className?: string;
+  initialControlAbility?: WindowControlAbility;
+  windowControlPolicy?: WindowControlPolicy;
 }
 
 /**
@@ -20,32 +20,30 @@ export interface AppLayoutProps {
  * Does not include navigation - that's handled by NavigationLayout
  */
 export function AppLayout({
-    title,
-    iconSrc,
-    children,
-    className = "",
-    initialControlAbility,
-    windowControlPolicy,
+  title,
+  iconSrc,
+  children,
+  className = "",
+  initialControlAbility,
+  windowControlPolicy
 }: AppLayoutProps) {
-    return (
-        <div {...windowRootProps} className={cn("h-screen w-screen text-fg bg-surface", className)}>
-            <TooltipHost />
-            <div className="grid grid-rows-[40px,1fr] h-full">
-                {/* Title Bar */}
-                <div className="col-span-full">
-                    <TitleBar
-                        title={title}
-                        iconSrc={iconSrc}
-                        initialControlAbility={initialControlAbility}
-                        windowControlPolicy={windowControlPolicy}
-                    />
-                </div>
-
-                {/* Main Content */}
-                <main className="h-full min-h-0 overflow-hidden">
-                    {children}
-                </main>
-            </div>
+  return (
+    <div {...windowRootProps} className={cn("h-screen w-screen text-fg bg-surface", className)}>
+      <TooltipHost />
+      <div className="grid grid-rows-[40px,1fr] h-full">
+        {/* Title Bar */}
+        <div className="col-span-full">
+          <TitleBar
+            title={title}
+            iconSrc={iconSrc}
+            initialControlAbility={initialControlAbility}
+            windowControlPolicy={windowControlPolicy}
+          />
         </div>
-    );
+
+        {/* Main Content */}
+        <main className="h-full min-h-0 overflow-hidden">{children}</main>
+      </div>
+    </div>
+  );
 }

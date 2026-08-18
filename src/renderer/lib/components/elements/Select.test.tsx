@@ -7,12 +7,12 @@ import { Select } from "./Select";
 afterEach(cleanup);
 
 const OPTIONS = [
-    { value: "a", label: "Alpha" },
-    { value: "b", label: "Beta" },
+  { value: "a", label: "Alpha" },
+  { value: "b", label: "Beta" }
 ];
 
 function openMenu(): void {
-    fireEvent.click(screen.getAllByRole("button")[0]!);
+  fireEvent.click(screen.getAllByRole("button")[0]!);
 }
 
 /**
@@ -31,44 +31,44 @@ function openMenu(): void {
  * than no test. The cancel IS the fix, so the cancel is what this pins.
  */
 describe("Select option activation", () => {
-    it("cancels the click, so an ancestor <label> cannot re-open the menu", () => {
-        render(<Select options={OPTIONS} value="a" onChange={() => undefined} />);
-        openMenu();
+  it("cancels the click, so an ancestor <label> cannot re-open the menu", () => {
+    render(<Select options={OPTIONS} value="a" onChange={() => undefined} />);
+    openMenu();
 
-        // Attached after the trigger click, so the only event it sees is the pick. The listener sits
-        // on `document`, above React's root, which is the same position a `<label>` ancestor would
-        // read the canceled flag from.
-        const onDocumentClick = vi.fn();
-        document.addEventListener("click", onDocumentClick);
-        fireEvent.click(screen.getByText("Beta"));
-        document.removeEventListener("click", onDocumentClick);
+    // Attached after the trigger click, so the only event it sees is the pick. The listener sits
+    // on `document`, above React's root, which is the same position a `<label>` ancestor would
+    // read the canceled flag from.
+    const onDocumentClick = vi.fn();
+    document.addEventListener("click", onDocumentClick);
+    fireEvent.click(screen.getByText("Beta"));
+    document.removeEventListener("click", onDocumentClick);
 
-        expect(onDocumentClick).toHaveBeenCalledTimes(1);
-        expect(onDocumentClick.mock.calls[0]![0].defaultPrevented).toBe(true);
-    });
+    expect(onDocumentClick).toHaveBeenCalledTimes(1);
+    expect(onDocumentClick.mock.calls[0]![0].defaultPrevented).toBe(true);
+  });
 
-    it("still reports the pick and closes", () => {
-        const onChange = vi.fn();
-        render(<Select options={OPTIONS} value="a" onChange={onChange} />);
-        openMenu();
-        expect(screen.getAllByText("Beta")).toHaveLength(1);
+  it("still reports the pick and closes", () => {
+    const onChange = vi.fn();
+    render(<Select options={OPTIONS} value="a" onChange={onChange} />);
+    openMenu();
+    expect(screen.getAllByText("Beta")).toHaveLength(1);
 
-        fireEvent.click(screen.getByText("Beta"));
+    fireEvent.click(screen.getByText("Beta"));
 
-        expect(onChange).toHaveBeenCalledWith("b");
-        expect(screen.queryByText("Beta")).toBeNull();
-    });
+    expect(onChange).toHaveBeenCalledWith("b");
+    expect(screen.queryByText("Beta")).toBeNull();
+  });
 
-    it("withholds the pick while read-only, and closes anyway", () => {
-        const onChange = vi.fn();
-        render(<Select options={OPTIONS} value="a" readOnly onChange={onChange} />);
-        openMenu();
-        // The menu opens so the options can be READ - that is the whole point of the read-only mode.
-        expect(screen.getAllByText("Beta")).toHaveLength(1);
+  it("withholds the pick while read-only, and closes anyway", () => {
+    const onChange = vi.fn();
+    render(<Select options={OPTIONS} value="a" readOnly onChange={onChange} />);
+    openMenu();
+    // The menu opens so the options can be READ - that is the whole point of the read-only mode.
+    expect(screen.getAllByText("Beta")).toHaveLength(1);
 
-        fireEvent.click(screen.getByText("Beta"));
+    fireEvent.click(screen.getByText("Beta"));
 
-        expect(onChange).not.toHaveBeenCalled();
-        expect(screen.queryByText("Beta")).toBeNull();
-    });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.queryByText("Beta")).toBeNull();
+  });
 });

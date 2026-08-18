@@ -23,23 +23,23 @@
  */
 
 import type {
-    StoryActionPayload,
-    StoryBlock,
-    StoryBlockId,
-    StoryDocument,
-    StoryScene,
-    StorySceneId,
-    StoryVariableRef,
-    StoryVariableScope,
+  StoryActionPayload,
+  StoryBlock,
+  StoryBlockId,
+  StoryDocument,
+  StoryScene,
+  StorySceneId,
+  StoryVariableRef,
+  StoryVariableScope
 } from "@shared/types/story";
 import {
-    findDeclarationBlock,
-    listSceneBlocksInDocumentOrder,
-    listScenesInDocumentOrder,
-    savedVariableDefs,
-    sceneVariableDefs,
-    storyPersistentDefs,
-    storyVariableRefKey,
+  findDeclarationBlock,
+  listSceneBlocksInDocumentOrder,
+  listScenesInDocumentOrder,
+  savedVariableDefs,
+  sceneVariableDefs,
+  storyPersistentDefs,
+  storyVariableRefKey
 } from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { SceneFlowBranchNodeModel, SceneFlowGraph } from "./sceneFlowModel";
@@ -52,16 +52,16 @@ import type { SceneFlowBranchNodeModel, SceneFlowGraph } from "./sceneFlowModel"
  * way to pin down, and each one is a place the map must say `?`.
  */
 export type SceneFlowDelta =
-    | { op: "add"; amount: number }
-    | { op: "set"; value: number }
-    | { op: "unknown" };
+  | { op: "add"; amount: number }
+  | { op: "set"; value: number }
+  | { op: "unknown" };
 
 export type SceneFlowVariableEffect = {
-    /** {@link storyVariableRefKey} of the row's target. */
-    variableKey: string;
-    delta: SceneFlowDelta;
-    /** false when the write sits under a fork *deeper* than the arm this effect is attributed to. */
-    certain: boolean;
+  /** {@link storyVariableRefKey} of the row's target. */
+  variableKey: string;
+  delta: SceneFlowDelta;
+  /** false when the write sits under a fork *deeper* than the arm this effect is attributed to. */
+  certain: boolean;
 };
 
 /**
@@ -72,19 +72,17 @@ export type SceneFlowVariableEffect = {
  * not answering this one, go look. `findReachable` in `sceneFlowModel` draws the same line by
  * returning `null` for "not a claim we can make".
  */
-export type SceneFlowRange =
-    | { kind: "known"; min: number; max: number }
-    | { kind: "unknown" };
+export type SceneFlowRange = { kind: "known"; min: number; max: number } | { kind: "unknown" };
 
 /** A numeric declaration, as the focus picker lists it. */
 export type SceneFlowNumericVariable = {
-    /** {@link storyVariableRefKey} — the key every API here takes and every effect carries. */
-    key: string;
-    scope: StoryVariableScope;
-    variableId: string;
-    name: string;
-    /** The declared default, or null when the row declares none or declares a non-number. */
-    defaultValue: number | null;
+  /** {@link storyVariableRefKey} — the key every API here takes and every effect carries. */
+  key: string;
+  scope: StoryVariableScope;
+  variableId: string;
+  name: string;
+  /** The declared default, or null when the row declares none or declares a non-number. */
+  defaultValue: number | null;
 };
 
 const UNKNOWN_RANGE: SceneFlowRange = { kind: "unknown" };
@@ -93,7 +91,7 @@ type SetVariablePayload = Extract<StoryActionPayload, { action: "setVariable" }>
 
 /** Only a finite number is a number here: `NaN`/`Infinity` cannot be added to or ranged over. */
 function numericLiteral(value: unknown): number | null {
-    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 /**
@@ -112,38 +110,41 @@ function numericLiteral(value: unknown): number | null {
  * evaluate the expression language, and half-evaluating it is how it would start guessing.
  */
 export function readSetVariableDelta(payload: SetVariablePayload): SceneFlowDelta {
-    const ast = payload.expression?.ast;
-    if (!ast) {
-        // No expression: `value` is the whole right-hand side (`/set gold 100`), which is also what a
-        // pure-literal expression folds back into when it is committed.
-        const literal = numericLiteral(payload.value);
-        return literal === null ? { op: "unknown" } : { op: "set", value: literal };
+  const ast = payload.expression?.ast;
+  if (!ast) {
+    // No expression: `value` is the whole right-hand side (`/set gold 100`), which is also what a
+    // pure-literal expression folds back into when it is committed.
+    const literal = numericLiteral(payload.value);
+    return literal === null ? { op: "unknown" } : { op: "set", value: literal };
+  }
+  if (ast.kind === "literal") {
+    const literal = numericLiteral(ast.value);
+    return literal === null ? { op: "unknown" } : { op: "set", value: literal };
+  }
+  if (
+    ast.kind === "binary" &&
+    (ast.op === "+" || ast.op === "-") &&
+    ast.left.kind === "var" &&
+    storyVariableRefKey(ast.left.target) === storyVariableRefKey(payload.target)
+  ) {
+    const step = ast.right.kind === "literal" ? numericLiteral(ast.right.value) : null;
+    if (step !== null) {
+      // `0 - step` rather than `-step`: negating a zero step yields `-0`, which compares equal
+      // to 0 everywhere except in a test matcher, and a fixture that fails on the sign of zero
+      // teaches nothing.
+      return { op: "add", amount: ast.op === "+" ? step : 0 - step };
     }
-    if (ast.kind === "literal") {
-        const literal = numericLiteral(ast.value);
-        return literal === null ? { op: "unknown" } : { op: "set", value: literal };
-    }
-    if (ast.kind === "binary" && (ast.op === "+" || ast.op === "-")
-        && ast.left.kind === "var"
-        && storyVariableRefKey(ast.left.target) === storyVariableRefKey(payload.target)) {
-        const step = ast.right.kind === "literal" ? numericLiteral(ast.right.value) : null;
-        if (step !== null) {
-            // `0 - step` rather than `-step`: negating a zero step yields `-0`, which compares equal
-            // to 0 everywhere except in a test matcher, and a fixture that fails on the sign of zero
-            // teaches nothing.
-            return { op: "add", amount: ast.op === "+" ? step : 0 - step };
-        }
-    }
-    return { op: "unknown" };
+  }
+  return { op: "unknown" };
 }
 
 /** One `setVariable` row, placed in the scene's fork structure. */
 type SceneFlowWrite = {
-    blockId: StoryBlockId;
-    variableKey: string;
-    delta: SceneFlowDelta;
-    /** The fork arms above this write, nearest first. Empty means the scene's own spine. */
-    armChain: StoryBlockId[];
+  blockId: StoryBlockId;
+  variableKey: string;
+  delta: SceneFlowDelta;
+  /** The fork arms above this write, nearest first. Empty means the scene's own spine. */
+  armChain: StoryBlockId[];
 };
 
 /**
@@ -154,17 +155,19 @@ type SceneFlowWrite = {
  * runs, so a write under a `sequence` is as certain as one at the top of the scene.
  */
 function isForkArm(block: StoryBlock): boolean {
-    return (block.kind === "nodeAction" && block.payload.action === "choiceOption")
-        || (block.kind === "control" && block.payload.control === "conditionBranch");
+  return (
+    (block.kind === "nodeAction" && block.payload.action === "choiceOption") ||
+    (block.kind === "control" && block.payload.control === "conditionBranch")
+  );
 }
 
 function isRepeat(block: StoryBlock): boolean {
-    return block.kind === "control" && block.payload.control === "repeat";
+  return block.kind === "control" && block.payload.control === "repeat";
 }
 
 type SceneFlowAncestry = {
-    armChain: StoryBlockId[];
-    insideRepeat: boolean;
+  armChain: StoryBlockId[];
+  insideRepeat: boolean;
 };
 
 /**
@@ -175,64 +178,66 @@ type SceneFlowAncestry = {
  * cycle is a document Studio still has to open in order to repair.
  */
 function readAncestry(scene: StoryScene, block: StoryBlock): SceneFlowAncestry {
-    const armChain: StoryBlockId[] = [];
-    let insideRepeat = false;
-    const seen = new Set<StoryBlockId>();
-    let parentId = block.parentId;
-    while (parentId && !seen.has(parentId)) {
-        seen.add(parentId);
-        const parent = scene.blocks[parentId];
-        if (!parent) {
-            break;
-        }
-        if (isForkArm(parent)) {
-            armChain.push(parent.id);
-        } else if (isRepeat(parent)) {
-            insideRepeat = true;
-        }
-        parentId = parent.parentId;
+  const armChain: StoryBlockId[] = [];
+  let insideRepeat = false;
+  const seen = new Set<StoryBlockId>();
+  let parentId = block.parentId;
+  while (parentId && !seen.has(parentId)) {
+    seen.add(parentId);
+    const parent = scene.blocks[parentId];
+    if (!parent) {
+      break;
     }
-    return { armChain, insideRepeat };
+    if (isForkArm(parent)) {
+      armChain.push(parent.id);
+    } else if (isRepeat(parent)) {
+      insideRepeat = true;
+    }
+    parentId = parent.parentId;
+  }
+  return { armChain, insideRepeat };
 }
 
 function collectSceneWrites(scene: StoryScene): SceneFlowWrite[] {
-    const writes: SceneFlowWrite[] = [];
-    // A disabled row is compiled out with its whole subtree (schema v7), so a write inside one never
-    // runs. Counting it would move a counter the shipped game never moves — the one lie a author
-    // greying a row out is explicitly trying to avoid.
-    const blocks = listSceneBlocksInDocumentOrder(scene, { skipSubtree: candidate => candidate.disabled === true });
-    for (const block of blocks) {
-        if (block.kind !== "action" || block.payload.action !== "setVariable") {
-            continue;
-        }
-        const ancestry = readAncestry(scene, block);
-        const delta = readSetVariableDelta(block.payload);
-        writes.push({
-            blockId: block.id,
-            variableKey: storyVariableRefKey(block.payload.target),
-            // A `repeat` runs its body an author-declared number of times — `times` is optional, and
-            // nothing here knows whether the loop was broken out of — so an accumulate inside one
-            // compounds an amount this module cannot count. A `set` survives: assigning the same
-            // literal N times leaves the same value, so the only thing at stake is whether the loop
-            // ran at all, and an author writing a loop means it to run.
-            delta: ancestry.insideRepeat && delta.op === "add" ? { op: "unknown" } : delta,
-            armChain: ancestry.armChain,
-        });
+  const writes: SceneFlowWrite[] = [];
+  // A disabled row is compiled out with its whole subtree (schema v7), so a write inside one never
+  // runs. Counting it would move a counter the shipped game never moves — the one lie a author
+  // greying a row out is explicitly trying to avoid.
+  const blocks = listSceneBlocksInDocumentOrder(scene, {
+    skipSubtree: (candidate) => candidate.disabled === true
+  });
+  for (const block of blocks) {
+    if (block.kind !== "action" || block.payload.action !== "setVariable") {
+      continue;
     }
-    return writes;
+    const ancestry = readAncestry(scene, block);
+    const delta = readSetVariableDelta(block.payload);
+    writes.push({
+      blockId: block.id,
+      variableKey: storyVariableRefKey(block.payload.target),
+      // A `repeat` runs its body an author-declared number of times — `times` is optional, and
+      // nothing here knows whether the loop was broken out of — so an accumulate inside one
+      // compounds an amount this module cannot count. A `set` survives: assigning the same
+      // literal N times leaves the same value, so the only thing at stake is whether the loop
+      // ran at all, and an author writing a loop means it to run.
+      delta: ancestry.insideRepeat && delta.op === "add" ? { op: "unknown" } : delta,
+      armChain: ancestry.armChain
+    });
+  }
+  return writes;
 }
 
 function collectWritesByScene(document: StoryDocument): Map<StorySceneId, SceneFlowWrite[]> {
-    const byScene = new Map<StorySceneId, SceneFlowWrite[]>();
-    for (const scene of listScenesInDocumentOrder(document)) {
-        byScene.set(scene.id, collectSceneWrites(scene));
-    }
-    return byScene;
+  const byScene = new Map<StorySceneId, SceneFlowWrite[]>();
+  for (const scene of listScenesInDocumentOrder(document)) {
+    byScene.set(scene.id, collectSceneWrites(scene));
+  }
+  return byScene;
 }
 
 type SceneFlowDocumentIndex = {
-    writesByScene: Map<StorySceneId, SceneFlowWrite[]>;
-    numericVariables: SceneFlowNumericVariable[];
+  writesByScene: Map<StorySceneId, SceneFlowWrite[]>;
+  numericVariables: SceneFlowNumericVariable[];
 };
 
 /**
@@ -251,16 +256,16 @@ type SceneFlowDocumentIndex = {
 const documentIndexCache = new WeakMap<StoryDocument, SceneFlowDocumentIndex>();
 
 function documentIndex(document: StoryDocument): SceneFlowDocumentIndex {
-    const cached = documentIndexCache.get(document);
-    if (cached) {
-        return cached;
-    }
-    const index: SceneFlowDocumentIndex = {
-        writesByScene: collectWritesByScene(document),
-        numericVariables: listNumericStoryVariables(document),
-    };
-    documentIndexCache.set(document, index);
-    return index;
+  const cached = documentIndexCache.get(document);
+  if (cached) {
+    return cached;
+  }
+  const index: SceneFlowDocumentIndex = {
+    writesByScene: collectWritesByScene(document),
+    numericVariables: listNumericStoryVariables(document)
+  };
+  documentIndexCache.set(document, index);
+  return index;
 }
 
 /**
@@ -272,16 +277,18 @@ function documentIndex(document: StoryDocument): SceneFlowDocumentIndex {
  * project's project-scoped variables) so scanning it per lookup costs nothing worth caching.
  */
 function findNumericDeclaration(
-    document: StoryDocument,
-    variableKey: string,
-    registry: readonly VariableRegistryEntry[],
+  document: StoryDocument,
+  variableKey: string,
+  registry: readonly VariableRegistryEntry[]
 ): SceneFlowNumericVariable | undefined {
-    return documentIndex(document).numericVariables.find(variable => variable.key === variableKey)
-        ?? registryNumericVariables(registry).find(variable => variable.key === variableKey);
+  return (
+    documentIndex(document).numericVariables.find((variable) => variable.key === variableKey) ??
+    registryNumericVariables(registry).find((variable) => variable.key === variableKey)
+  );
 }
 
 function effectOf(write: SceneFlowWrite, certain: boolean): SceneFlowVariableEffect {
-    return { variableKey: write.variableKey, delta: write.delta, certain };
+  return { variableKey: write.variableKey, delta: write.delta, certain };
 }
 
 /**
@@ -299,26 +306,26 @@ function effectOf(write: SceneFlowWrite, certain: boolean): SceneFlowVariableEff
  * `document` must be the document `graph` was built from; the branch ids are block ids of its scenes.
  */
 export function collectBranchEffects(
-    graph: SceneFlowGraph,
-    document: StoryDocument,
+  graph: SceneFlowGraph,
+  document: StoryDocument
 ): Map<string, SceneFlowVariableEffect[]> {
-    const { writesByScene } = documentIndex(document);
-    const effectsByBranch = new Map<string, SceneFlowVariableEffect[]>();
-    for (const branch of graph.branches) {
-        const effects: SceneFlowVariableEffect[] = [];
-        for (const write of writesByScene.get(branch.sceneId) ?? []) {
-            const depth = write.armChain.indexOf(branch.blockId);
-            if (depth < 0) {
-                continue;
-            }
-            // Index 0 is the nearest arm, so `depth === 0` is a write on this arm's own spine.
-            effects.push(effectOf(write, depth === 0));
-        }
-        if (effects.length > 0) {
-            effectsByBranch.set(branch.id, effects);
-        }
+  const { writesByScene } = documentIndex(document);
+  const effectsByBranch = new Map<string, SceneFlowVariableEffect[]>();
+  for (const branch of graph.branches) {
+    const effects: SceneFlowVariableEffect[] = [];
+    for (const write of writesByScene.get(branch.sceneId) ?? []) {
+      const depth = write.armChain.indexOf(branch.blockId);
+      if (depth < 0) {
+        continue;
+      }
+      // Index 0 is the nearest arm, so `depth === 0` is a write on this arm's own spine.
+      effects.push(effectOf(write, depth === 0));
     }
-    return effectsByBranch;
+    if (effects.length > 0) {
+      effectsByBranch.set(branch.id, effects);
+    }
+  }
+  return effectsByBranch;
 }
 
 /**
@@ -331,15 +338,19 @@ export function collectBranchEffects(
  *
  * Scenes with no spine writes are absent from the map; read `?? []`.
  */
-export function collectSceneEffects(document: StoryDocument): Map<StorySceneId, SceneFlowVariableEffect[]> {
-    const effectsByScene = new Map<StorySceneId, SceneFlowVariableEffect[]>();
-    for (const [sceneId, writes] of documentIndex(document).writesByScene) {
-        const effects = writes.filter(write => write.armChain.length === 0).map(write => effectOf(write, true));
-        if (effects.length > 0) {
-            effectsByScene.set(sceneId, effects);
-        }
+export function collectSceneEffects(
+  document: StoryDocument
+): Map<StorySceneId, SceneFlowVariableEffect[]> {
+  const effectsByScene = new Map<StorySceneId, SceneFlowVariableEffect[]>();
+  for (const [sceneId, writes] of documentIndex(document).writesByScene) {
+    const effects = writes
+      .filter((write) => write.armChain.length === 0)
+      .map((write) => effectOf(write, true));
+    if (effects.length > 0) {
+      effectsByScene.set(sceneId, effects);
     }
-    return effectsByScene;
+  }
+  return effectsByScene;
 }
 
 /**
@@ -354,29 +365,29 @@ export function collectSceneEffects(document: StoryDocument): Map<StorySceneId, 
  * the inner arm carries its own `+2` chip on its own row, so nothing is lost by admitting it here.
  */
 export function branchDeltaFor(
-    effects: SceneFlowVariableEffect[],
-    variableKey: string,
+  effects: SceneFlowVariableEffect[],
+  variableKey: string
 ): SceneFlowDelta | null {
-    const mine = effects.filter(effect => effect.variableKey === variableKey);
-    if (mine.length === 0) {
-        return null;
+  const mine = effects.filter((effect) => effect.variableKey === variableKey);
+  if (mine.length === 0) {
+    return null;
+  }
+  let net: { op: "add"; amount: number } | { op: "set"; value: number } = { op: "add", amount: 0 };
+  for (const effect of mine) {
+    if (effect.delta.op === "unknown" || !effect.certain) {
+      return { op: "unknown" };
     }
-    let net: { op: "add"; amount: number } | { op: "set"; value: number } = { op: "add", amount: 0 };
-    for (const effect of mine) {
-        if (effect.delta.op === "unknown" || !effect.certain) {
-            return { op: "unknown" };
-        }
-        if (effect.delta.op === "set") {
-            // A later `set` overwrites whatever the arm accumulated before it, which is why this folds
-            // in document order rather than summing the adds and reporting the last set.
-            net = { op: "set", value: effect.delta.value };
-        } else if (net.op === "set") {
-            net = { op: "set", value: net.value + effect.delta.amount };
-        } else {
-            net = { op: "add", amount: net.amount + effect.delta.amount };
-        }
+    if (effect.delta.op === "set") {
+      // A later `set` overwrites whatever the arm accumulated before it, which is why this folds
+      // in document order rather than summing the adds and reporting the last set.
+      net = { op: "set", value: effect.delta.value };
+    } else if (net.op === "set") {
+      net = { op: "set", value: net.value + effect.delta.amount };
+    } else {
+      net = { op: "add", amount: net.amount + effect.delta.amount };
     }
-    return net;
+  }
+  return net;
 }
 
 /**
@@ -396,58 +407,58 @@ export function branchDeltaFor(
  * migration is close to none of them — a picker about counters with the counters missing.
  */
 export function listNumericStoryVariables(
-    document: StoryDocument,
-    registry: readonly VariableRegistryEntry[] = [],
+  document: StoryDocument,
+  registry: readonly VariableRegistryEntry[] = []
 ): SceneFlowNumericVariable[] {
-    const variables: SceneFlowNumericVariable[] = [];
-    const take = (
-        scope: StoryVariableScope,
-        variableId: string,
-        def: { name: string; valueType: string; defaultValue?: unknown },
-    ): void => {
-        const projected = numericVariableOf(scope, variableId, def);
-        if (projected) {
-            variables.push(projected);
-        }
-    };
+  const variables: SceneFlowNumericVariable[] = [];
+  const take = (
+    scope: StoryVariableScope,
+    variableId: string,
+    def: { name: string; valueType: string; defaultValue?: unknown }
+  ): void => {
+    const projected = numericVariableOf(scope, variableId, def);
+    if (projected) {
+      variables.push(projected);
+    }
+  };
 
-    // Registry entries first: after the declaration migration the registry is the ONLY place a saved
-    // or persistent variable is declared. A `saved` entry is addressed by its id, which the migration
-    // seeds from the row's block id, so a `/set` written before the registry existed still produces
-    // the same `storyVariableRefKey` this list is matched on.
-    variables.push(...registryNumericVariables(registry));
-    for (const def of Object.values(savedVariableDefs(document))) {
-        take("saved", def.id, def);
+  // Registry entries first: after the declaration migration the registry is the ONLY place a saved
+  // or persistent variable is declared. A `saved` entry is addressed by its id, which the migration
+  // seeds from the row's block id, so a `/set` written before the registry existed still produces
+  // the same `storyVariableRefKey` this list is matched on.
+  variables.push(...registryNumericVariables(registry));
+  for (const def of Object.values(savedVariableDefs(document))) {
+    take("saved", def.id, def);
+  }
+  for (const def of Object.values(storyPersistentDefs(document))) {
+    take("persistent", def.storageKey, def);
+  }
+  for (const scene of listScenesInDocumentOrder(document)) {
+    for (const def of Object.values(sceneVariableDefs(scene))) {
+      take("scene", def.id, def);
     }
-    for (const def of Object.values(storyPersistentDefs(document))) {
-        take("persistent", def.storageKey, def);
-    }
-    for (const scene of listScenesInDocumentOrder(document)) {
-        for (const def of Object.values(sceneVariableDefs(scene))) {
-            take("scene", def.id, def);
-        }
-    }
-    return variables;
+  }
+  return variables;
 }
 
 /** One declaration projected onto the map's row shape, or `undefined` when it is not a number. */
 function numericVariableOf(
-    scope: StoryVariableScope,
-    variableId: string,
-    def: { name: string; valueType: string; defaultValue?: unknown },
+  scope: StoryVariableScope,
+  variableId: string,
+  def: { name: string; valueType: string; defaultValue?: unknown }
 ): SceneFlowNumericVariable | undefined {
-    if (def.valueType !== "number") {
-        return undefined;
-    }
-    return {
-        // The three arms of `StoryVariableRef` differ only in the literal type of `scope`, so the
-        // cast asserts nothing about the shape - it only tells TypeScript which arm this is.
-        key: storyVariableRefKey({ scope, variableId } as StoryVariableRef),
-        scope,
-        variableId,
-        name: def.name,
-        defaultValue: numericLiteral(def.defaultValue),
-    };
+  if (def.valueType !== "number") {
+    return undefined;
+  }
+  return {
+    // The three arms of `StoryVariableRef` differ only in the literal type of `scope`, so the
+    // cast asserts nothing about the shape - it only tells TypeScript which arm this is.
+    key: storyVariableRefKey({ scope, variableId } as StoryVariableRef),
+    scope,
+    variableId,
+    name: def.name,
+    defaultValue: numericLiteral(def.defaultValue)
+  };
 }
 
 /**
@@ -457,37 +468,39 @@ function numericVariableOf(
  * id, a `persistent` one the storage key - which is what lets one list cover both project scopes
  * rather than the caller pre-splitting it and the two halves drifting.
  */
-function registryNumericVariables(registry: readonly VariableRegistryEntry[]): SceneFlowNumericVariable[] {
-    const variables: SceneFlowNumericVariable[] = [];
-    for (const entry of registry) {
-        const projected = numericVariableOf(
-            entry.scope,
-            entry.scope === "persistent" ? entry.storageKey : entry.id,
-            entry,
-        );
-        if (projected) {
-            variables.push(projected);
-        }
+function registryNumericVariables(
+  registry: readonly VariableRegistryEntry[]
+): SceneFlowNumericVariable[] {
+  const variables: SceneFlowNumericVariable[] = [];
+  for (const entry of registry) {
+    const projected = numericVariableOf(
+      entry.scope,
+      entry.scope === "persistent" ? entry.storageKey : entry.id,
+      entry
+    );
+    if (projected) {
+      variables.push(projected);
     }
-    return variables;
+  }
+  return variables;
 }
 
 function rangesEqual(left: SceneFlowRange | undefined, right: SceneFlowRange): boolean {
-    if (!left) {
-        return false;
-    }
-    if (left.kind === "unknown" || right.kind === "unknown") {
-        return left.kind === right.kind;
-    }
-    return left.min === right.min && left.max === right.max;
+  if (!left) {
+    return false;
+  }
+  if (left.kind === "unknown" || right.kind === "unknown") {
+    return left.kind === right.kind;
+  }
+  return left.min === right.min && left.max === right.max;
 }
 
 /** Two ways into one scene widen the interval — the player could have arrived by either. */
 function unionRange(left: SceneFlowRange, right: SceneFlowRange): SceneFlowRange {
-    if (left.kind === "unknown" || right.kind === "unknown") {
-        return UNKNOWN_RANGE;
-    }
-    return { kind: "known", min: Math.min(left.min, right.min), max: Math.max(left.max, right.max) };
+  if (left.kind === "unknown" || right.kind === "unknown") {
+    return UNKNOWN_RANGE;
+  }
+  return { kind: "known", min: Math.min(left.min, right.min), max: Math.max(left.max, right.max) };
 }
 
 /**
@@ -502,38 +515,42 @@ function unionRange(left: SceneFlowRange, right: SceneFlowRange): SceneFlowRange
  * dropping it would hide a value the player can reach.
  */
 function applyEffects(
-    range: SceneFlowRange,
-    effects: readonly SceneFlowVariableEffect[],
-    variableKey: string,
+  range: SceneFlowRange,
+  effects: readonly SceneFlowVariableEffect[],
+  variableKey: string
 ): SceneFlowRange {
-    let current = range;
-    for (const effect of effects) {
-        if (effect.variableKey !== variableKey) {
-            continue;
-        }
-        if (current.kind === "unknown" || effect.delta.op === "unknown") {
-            return UNKNOWN_RANGE;
-        }
-        if (effect.delta.op === "add") {
-            const amount = effect.delta.amount;
-            current = effect.certain
-                ? { kind: "known", min: current.min + amount, max: current.max + amount }
-                : { kind: "known", min: current.min + Math.min(0, amount), max: current.max + Math.max(0, amount) };
-        } else {
-            const value = effect.delta.value;
-            current = effect.certain
-                ? { kind: "known", min: value, max: value }
-                : { kind: "known", min: Math.min(current.min, value), max: Math.max(current.max, value) };
-        }
+  let current = range;
+  for (const effect of effects) {
+    if (effect.variableKey !== variableKey) {
+      continue;
     }
-    return current;
+    if (current.kind === "unknown" || effect.delta.op === "unknown") {
+      return UNKNOWN_RANGE;
+    }
+    if (effect.delta.op === "add") {
+      const amount = effect.delta.amount;
+      current = effect.certain
+        ? { kind: "known", min: current.min + amount, max: current.max + amount }
+        : {
+            kind: "known",
+            min: current.min + Math.min(0, amount),
+            max: current.max + Math.max(0, amount)
+          };
+    } else {
+      const value = effect.delta.value;
+      current = effect.certain
+        ? { kind: "known", min: value, max: value }
+        : { kind: "known", min: Math.min(current.min, value), max: Math.max(current.max, value) };
+    }
+  }
+  return current;
 }
 
 /** One way of getting from one scene to another, and what it does to the variable on the way. */
 type SceneFlowTraversal = {
-    source: StorySceneId;
-    target: StorySceneId;
-    effects: SceneFlowVariableEffect[];
+  source: StorySceneId;
+  target: StorySceneId;
+  effects: SceneFlowVariableEffect[];
 };
 
 /**
@@ -543,11 +560,11 @@ type SceneFlowTraversal = {
  * arm and its owning option, `[C, A]` and `[B, A]` are two arms nobody takes together.
  */
 function isChainSuffix(shorter: readonly StoryBlockId[], longer: readonly StoryBlockId[]): boolean {
-    if (shorter.length > longer.length) {
-        return false;
-    }
-    const offset = longer.length - shorter.length;
-    return shorter.every((id, index) => longer[offset + index] === id);
+  if (shorter.length > longer.length) {
+    return false;
+  }
+  const offset = longer.length - shorter.length;
+  return shorter.every((id, index) => longer[offset + index] === id);
 }
 
 /**
@@ -564,37 +581,37 @@ function isChainSuffix(shorter: readonly StoryBlockId[], longer: readonly StoryB
  * different question about the same edge.
  */
 function armTraversalEffects(
-    document: StoryDocument,
-    writesByScene: Map<StorySceneId, SceneFlowWrite[]>,
-    branch: SceneFlowBranchNodeModel,
+  document: StoryDocument,
+  writesByScene: Map<StorySceneId, SceneFlowWrite[]>,
+  branch: SceneFlowBranchNodeModel
 ): SceneFlowVariableEffect[] {
-    const scene = document.scenes[branch.sceneId];
-    const armBlock = scene?.blocks[branch.blockId];
-    // Nearest first, and the arm itself is nearest of all: `[inner if, outer option]`.
-    const armChainWithSelf = armBlock
-        ? [branch.blockId, ...readAncestry(scene, armBlock).armChain]
-        : [branch.blockId];
-    return traversalEffects(writesByScene.get(branch.sceneId) ?? [], armChainWithSelf);
+  const scene = document.scenes[branch.sceneId];
+  const armBlock = scene?.blocks[branch.blockId];
+  // Nearest first, and the arm itself is nearest of all: `[inner if, outer option]`.
+  const armChainWithSelf = armBlock
+    ? [branch.blockId, ...readAncestry(scene, armBlock).armChain]
+    : [branch.blockId];
+  return traversalEffects(writesByScene.get(branch.sceneId) ?? [], armChainWithSelf);
 }
 
 function traversalEffects(
-    writes: readonly SceneFlowWrite[],
-    armChainWithSelf: readonly StoryBlockId[],
+  writes: readonly SceneFlowWrite[],
+  armChainWithSelf: readonly StoryBlockId[]
 ): SceneFlowVariableEffect[] {
-    const effects: SceneFlowVariableEffect[] = [];
-    for (const write of writes) {
-        if (write.armChain.length === 0) {
-            // Scene-spine writes are applied once per scene, before any arm, so they must not be
-            // counted a second time here.
-            continue;
-        }
-        if (isChainSuffix(write.armChain, armChainWithSelf)) {
-            effects.push(effectOf(write, true));
-        } else if (isChainSuffix(armChainWithSelf, write.armChain)) {
-            effects.push(effectOf(write, false));
-        }
+  const effects: SceneFlowVariableEffect[] = [];
+  for (const write of writes) {
+    if (write.armChain.length === 0) {
+      // Scene-spine writes are applied once per scene, before any arm, so they must not be
+      // counted a second time here.
+      continue;
     }
-    return effects;
+    if (isChainSuffix(write.armChain, armChainWithSelf)) {
+      effects.push(effectOf(write, true));
+    } else if (isChainSuffix(armChainWithSelf, write.armChain)) {
+      effects.push(effectOf(write, false));
+    }
+  }
+  return effects;
 }
 
 /**
@@ -604,59 +621,68 @@ function traversalEffects(
  * Over-approximating is fine and deliberate — a scene named here only earns an update *budget*, and a
  * scene that never loops never spends it. Under-approximating would let a loop iterate forever.
  */
-function findCyclicScenes(sceneIds: readonly StorySceneId[], links: readonly SceneFlowTraversal[]): Set<StorySceneId> {
-    const remaining = new Set(sceneIds);
-    const inDegree = new Map<StorySceneId, number>(sceneIds.map(id => [id, 0]));
-    const outDegree = new Map<StorySceneId, number>(sceneIds.map(id => [id, 0]));
-    const outgoing = new Map<StorySceneId, StorySceneId[]>();
-    const incoming = new Map<StorySceneId, StorySceneId[]>();
-    const push = (map: Map<StorySceneId, StorySceneId[]>, key: StorySceneId, value: StorySceneId): void => {
-        const list = map.get(key);
-        if (list) {
-            list.push(value);
-        } else {
-            map.set(key, [value]);
-        }
-    };
-    for (const link of links) {
-        if (!remaining.has(link.source) || !remaining.has(link.target)) {
-            continue;
-        }
-        outDegree.set(link.source, (outDegree.get(link.source) ?? 0) + 1);
-        inDegree.set(link.target, (inDegree.get(link.target) ?? 0) + 1);
-        push(outgoing, link.source, link.target);
-        push(incoming, link.target, link.source);
+function findCyclicScenes(
+  sceneIds: readonly StorySceneId[],
+  links: readonly SceneFlowTraversal[]
+): Set<StorySceneId> {
+  const remaining = new Set(sceneIds);
+  const inDegree = new Map<StorySceneId, number>(sceneIds.map((id) => [id, 0]));
+  const outDegree = new Map<StorySceneId, number>(sceneIds.map((id) => [id, 0]));
+  const outgoing = new Map<StorySceneId, StorySceneId[]>();
+  const incoming = new Map<StorySceneId, StorySceneId[]>();
+  const push = (
+    map: Map<StorySceneId, StorySceneId[]>,
+    key: StorySceneId,
+    value: StorySceneId
+  ): void => {
+    const list = map.get(key);
+    if (list) {
+      list.push(value);
+    } else {
+      map.set(key, [value]);
     }
+  };
+  for (const link of links) {
+    if (!remaining.has(link.source) || !remaining.has(link.target)) {
+      continue;
+    }
+    outDegree.set(link.source, (outDegree.get(link.source) ?? 0) + 1);
+    inDegree.set(link.target, (inDegree.get(link.target) ?? 0) + 1);
+    push(outgoing, link.source, link.target);
+    push(incoming, link.target, link.source);
+  }
 
-    const queue = sceneIds.filter(id => (inDegree.get(id) ?? 0) === 0 || (outDegree.get(id) ?? 0) === 0);
-    for (let cursor = 0; cursor < queue.length; cursor++) {
-        const sceneId = queue[cursor];
-        if (!remaining.has(sceneId)) {
-            continue;
-        }
-        remaining.delete(sceneId);
-        for (const next of outgoing.get(sceneId) ?? []) {
-            if (!remaining.has(next)) {
-                continue;
-            }
-            const degree = (inDegree.get(next) ?? 0) - 1;
-            inDegree.set(next, degree);
-            if (degree === 0) {
-                queue.push(next);
-            }
-        }
-        for (const previous of incoming.get(sceneId) ?? []) {
-            if (!remaining.has(previous)) {
-                continue;
-            }
-            const degree = (outDegree.get(previous) ?? 0) - 1;
-            outDegree.set(previous, degree);
-            if (degree === 0) {
-                queue.push(previous);
-            }
-        }
+  const queue = sceneIds.filter(
+    (id) => (inDegree.get(id) ?? 0) === 0 || (outDegree.get(id) ?? 0) === 0
+  );
+  for (let cursor = 0; cursor < queue.length; cursor++) {
+    const sceneId = queue[cursor];
+    if (!remaining.has(sceneId)) {
+      continue;
     }
-    return remaining;
+    remaining.delete(sceneId);
+    for (const next of outgoing.get(sceneId) ?? []) {
+      if (!remaining.has(next)) {
+        continue;
+      }
+      const degree = (inDegree.get(next) ?? 0) - 1;
+      inDegree.set(next, degree);
+      if (degree === 0) {
+        queue.push(next);
+      }
+    }
+    for (const previous of incoming.get(sceneId) ?? []) {
+      if (!remaining.has(previous)) {
+        continue;
+      }
+      const degree = (outDegree.get(previous) ?? 0) - 1;
+      outDegree.set(previous, degree);
+      if (degree === 0) {
+        queue.push(previous);
+      }
+    }
+  }
+  return remaining;
 }
 
 /**
@@ -681,131 +707,138 @@ function findCyclicScenes(sceneIds: readonly StorySceneId[], links: readonly Sce
  * "not computed".
  */
 export function computeVariableRanges(
-    graph: SceneFlowGraph,
-    document: StoryDocument,
-    variableKey: string,
-    registry: readonly VariableRegistryEntry[] = [],
+  graph: SceneFlowGraph,
+  document: StoryDocument,
+  variableKey: string,
+  registry: readonly VariableRegistryEntry[] = []
 ): Map<StorySceneId, SceneFlowRange> {
-    const sceneIds = graph.nodes.map(node => node.sceneId);
-    const ranges = new Map<StorySceneId, SceneFlowRange>(sceneIds.map(id => [id, UNKNOWN_RANGE]));
+  const sceneIds = graph.nodes.map((node) => node.sceneId);
+  const ranges = new Map<StorySceneId, SceneFlowRange>(sceneIds.map((id) => [id, UNKNOWN_RANGE]));
 
-    const declaration = findNumericDeclaration(document, variableKey, registry);
-    if (!declaration || declaration.defaultValue === null) {
-        // Either the key names nothing numeric in this document (a deleted row, a blueprint-declared
-        // persistent) or the row states no starting number. Both leave the walk with nothing to seed.
-        return ranges;
-    }
-    const seed: SceneFlowRange = { kind: "known", min: declaration.defaultValue, max: declaration.defaultValue };
+  const declaration = findNumericDeclaration(document, variableKey, registry);
+  if (!declaration || declaration.defaultValue === null) {
+    // Either the key names nothing numeric in this document (a deleted row, a blueprint-declared
+    // persistent) or the row states no starting number. Both leave the walk with nothing to seed.
+    return ranges;
+  }
+  const seed: SceneFlowRange = {
+    kind: "known",
+    min: declaration.defaultValue,
+    max: declaration.defaultValue
+  };
 
-    if (declaration.scope === "scene") {
-        // A scene-local is re-seeded on every entry to its scene and does not exist anywhere else, so
-        // a cumulative range across the map would be a number for a variable that is not there. The
-        // one scene that can answer is the declaring one, and its answer is always the default.
-        const owner = findDeclarationBlock(document, declaration.variableId);
-        if (owner && ranges.has(owner.sceneId)) {
-            ranges.set(owner.sceneId, seed);
-        }
-        return ranges;
-    }
-
-    const entrySceneId = document.entrySceneId && document.scenes[document.entrySceneId]
-        ? document.entrySceneId
-        : undefined;
-    if (!entrySceneId) {
-        return ranges;
-    }
-
-    const { writesByScene } = documentIndex(document);
-    const sceneEffects = collectSceneEffects(document);
-
-    // One traversal per way of getting from a scene to a scene, because that is the granularity the
-    // variable moves at: five options into one hallway are five different counters on arrival.
-    const traversals: SceneFlowTraversal[] = [];
-    const branchByNodeId = new Map(graph.branches.map(branch => [branch.id, branch]));
-    const coveredJumps = new Map<string, Set<StoryBlockId>>();
-    for (const branchEdge of graph.branchEdges) {
-        const branch = branchByNodeId.get(branchEdge.sourceBranchId);
-        if (!branch) {
-            continue;
-        }
-        const key = `${branchEdge.sourceSceneId}->${branchEdge.target}`;
-        const covered = coveredJumps.get(key) ?? new Set<StoryBlockId>();
-        for (const jump of branchEdge.jumps) {
-            covered.add(jump.blockId);
-        }
-        coveredJumps.set(key, covered);
-
-        traversals.push({
-            source: branchEdge.sourceSceneId,
-            target: branchEdge.target,
-            effects: armTraversalEffects(document, writesByScene, branch),
-        });
-    }
-    for (const edge of graph.edges) {
-        const covered = coveredJumps.get(`${edge.source}->${edge.target}`);
-        // Jumps no arm claimed: an unconditional one on the scene's spine, or one under a fork the
-        // model could not register. Both move the player with no arm effects to apply, and dropping
-        // them would strand every scene behind them as unreachable.
-        if (edge.jumps.some(jump => !covered?.has(jump.blockId))) {
-            traversals.push({ source: edge.source, target: edge.target, effects: [] });
-        }
-    }
-
-    const outgoing = new Map<StorySceneId, SceneFlowTraversal[]>();
-    const inboundCount = new Map<StorySceneId, number>();
-    for (const traversal of traversals) {
-        const list = outgoing.get(traversal.source);
-        if (list) {
-            list.push(traversal);
-        } else {
-            outgoing.set(traversal.source, [traversal]);
-        }
-        inboundCount.set(traversal.target, (inboundCount.get(traversal.target) ?? 0) + 1);
-    }
-
-    const cyclic = findCyclicScenes(sceneIds, traversals);
-    const updates = new Map<StorySceneId, number>();
-    const arrival = new Map<StorySceneId, SceneFlowRange>([[entrySceneId, seed]]);
-    const queue: StorySceneId[] = [entrySceneId];
-    // Monotone widening plus a per-scene budget already bounds this walk; the cap is the guard for a
-    // graph shape nobody predicted. It resolves to `?` everywhere rather than to a partial answer,
-    // because if it ever trips we do not know which scenes had settled.
-    const popLimit = 4096 + (sceneIds.length + traversals.length) * 16;
-
-    for (let cursor = 0; cursor < queue.length; cursor++) {
-        if (cursor > popLimit) {
-            return new Map(sceneIds.map(id => [id, UNKNOWN_RANGE]));
-        }
-        const sceneId = queue[cursor];
-        const current = arrival.get(sceneId) ?? UNKNOWN_RANGE;
-        const afterScene = applyEffects(current, sceneEffects.get(sceneId) ?? [], variableKey);
-        for (const traversal of outgoing.get(sceneId) ?? []) {
-            const candidate = applyEffects(afterScene, traversal.effects, variableKey);
-            const existing = arrival.get(traversal.target);
-            const merged = existing ? unionRange(existing, candidate) : candidate;
-            if (rangesEqual(existing, merged)) {
-                continue;
-            }
-            const count = (updates.get(traversal.target) ?? 0) + 1;
-            updates.set(traversal.target, count);
-            // Enough updates for every distinct way in to land, plus one lap of the loop. A counter
-            // that is still moving after that is moving because the loop moves it.
-            const budget = cyclic.has(traversal.target) ? (inboundCount.get(traversal.target) ?? 0) + 1 : null;
-            const next = budget !== null && count > budget ? UNKNOWN_RANGE : merged;
-            if (rangesEqual(existing, next)) {
-                continue;
-            }
-            arrival.set(traversal.target, next);
-            queue.push(traversal.target);
-        }
-    }
-
-    for (const [sceneId, range] of arrival) {
-        if (ranges.has(sceneId)) {
-            ranges.set(sceneId, range);
-        }
+  if (declaration.scope === "scene") {
+    // A scene-local is re-seeded on every entry to its scene and does not exist anywhere else, so
+    // a cumulative range across the map would be a number for a variable that is not there. The
+    // one scene that can answer is the declaring one, and its answer is always the default.
+    const owner = findDeclarationBlock(document, declaration.variableId);
+    if (owner && ranges.has(owner.sceneId)) {
+      ranges.set(owner.sceneId, seed);
     }
     return ranges;
+  }
+
+  const entrySceneId =
+    document.entrySceneId && document.scenes[document.entrySceneId]
+      ? document.entrySceneId
+      : undefined;
+  if (!entrySceneId) {
+    return ranges;
+  }
+
+  const { writesByScene } = documentIndex(document);
+  const sceneEffects = collectSceneEffects(document);
+
+  // One traversal per way of getting from a scene to a scene, because that is the granularity the
+  // variable moves at: five options into one hallway are five different counters on arrival.
+  const traversals: SceneFlowTraversal[] = [];
+  const branchByNodeId = new Map(graph.branches.map((branch) => [branch.id, branch]));
+  const coveredJumps = new Map<string, Set<StoryBlockId>>();
+  for (const branchEdge of graph.branchEdges) {
+    const branch = branchByNodeId.get(branchEdge.sourceBranchId);
+    if (!branch) {
+      continue;
+    }
+    const key = `${branchEdge.sourceSceneId}->${branchEdge.target}`;
+    const covered = coveredJumps.get(key) ?? new Set<StoryBlockId>();
+    for (const jump of branchEdge.jumps) {
+      covered.add(jump.blockId);
+    }
+    coveredJumps.set(key, covered);
+
+    traversals.push({
+      source: branchEdge.sourceSceneId,
+      target: branchEdge.target,
+      effects: armTraversalEffects(document, writesByScene, branch)
+    });
+  }
+  for (const edge of graph.edges) {
+    const covered = coveredJumps.get(`${edge.source}->${edge.target}`);
+    // Jumps no arm claimed: an unconditional one on the scene's spine, or one under a fork the
+    // model could not register. Both move the player with no arm effects to apply, and dropping
+    // them would strand every scene behind them as unreachable.
+    if (edge.jumps.some((jump) => !covered?.has(jump.blockId))) {
+      traversals.push({ source: edge.source, target: edge.target, effects: [] });
+    }
+  }
+
+  const outgoing = new Map<StorySceneId, SceneFlowTraversal[]>();
+  const inboundCount = new Map<StorySceneId, number>();
+  for (const traversal of traversals) {
+    const list = outgoing.get(traversal.source);
+    if (list) {
+      list.push(traversal);
+    } else {
+      outgoing.set(traversal.source, [traversal]);
+    }
+    inboundCount.set(traversal.target, (inboundCount.get(traversal.target) ?? 0) + 1);
+  }
+
+  const cyclic = findCyclicScenes(sceneIds, traversals);
+  const updates = new Map<StorySceneId, number>();
+  const arrival = new Map<StorySceneId, SceneFlowRange>([[entrySceneId, seed]]);
+  const queue: StorySceneId[] = [entrySceneId];
+  // Monotone widening plus a per-scene budget already bounds this walk; the cap is the guard for a
+  // graph shape nobody predicted. It resolves to `?` everywhere rather than to a partial answer,
+  // because if it ever trips we do not know which scenes had settled.
+  const popLimit = 4096 + (sceneIds.length + traversals.length) * 16;
+
+  for (let cursor = 0; cursor < queue.length; cursor++) {
+    if (cursor > popLimit) {
+      return new Map(sceneIds.map((id) => [id, UNKNOWN_RANGE]));
+    }
+    const sceneId = queue[cursor];
+    const current = arrival.get(sceneId) ?? UNKNOWN_RANGE;
+    const afterScene = applyEffects(current, sceneEffects.get(sceneId) ?? [], variableKey);
+    for (const traversal of outgoing.get(sceneId) ?? []) {
+      const candidate = applyEffects(afterScene, traversal.effects, variableKey);
+      const existing = arrival.get(traversal.target);
+      const merged = existing ? unionRange(existing, candidate) : candidate;
+      if (rangesEqual(existing, merged)) {
+        continue;
+      }
+      const count = (updates.get(traversal.target) ?? 0) + 1;
+      updates.set(traversal.target, count);
+      // Enough updates for every distinct way in to land, plus one lap of the loop. A counter
+      // that is still moving after that is moving because the loop moves it.
+      const budget = cyclic.has(traversal.target)
+        ? (inboundCount.get(traversal.target) ?? 0) + 1
+        : null;
+      const next = budget !== null && count > budget ? UNKNOWN_RANGE : merged;
+      if (rangesEqual(existing, next)) {
+        continue;
+      }
+      arrival.set(traversal.target, next);
+      queue.push(traversal.target);
+    }
+  }
+
+  for (const [sceneId, range] of arrival) {
+    if (ranges.has(sceneId)) {
+      ranges.set(sceneId, range);
+    }
+  }
+  return ranges;
 }
 
 /**
@@ -835,65 +868,65 @@ export function computeVariableRanges(
  * `sceneFlowRoutes.ts` (which already depends on this one's siblings).
  */
 export function foldRouteVariableValue(
-    graph: SceneFlowGraph,
-    document: StoryDocument,
-    variableKey: string,
-    route: { sceneIds: readonly StorySceneId[]; branchIds: readonly string[] },
-    registry: readonly VariableRegistryEntry[] = [],
+  graph: SceneFlowGraph,
+  document: StoryDocument,
+  variableKey: string,
+  route: { sceneIds: readonly StorySceneId[]; branchIds: readonly string[] },
+  registry: readonly VariableRegistryEntry[] = []
 ): SceneFlowRange {
-    const { writesByScene } = documentIndex(document);
-    const declaration = findNumericDeclaration(document, variableKey, registry);
-    if (!declaration || declaration.defaultValue === null) {
+  const { writesByScene } = documentIndex(document);
+  const declaration = findNumericDeclaration(document, variableKey, registry);
+  if (!declaration || declaration.defaultValue === null) {
+    return UNKNOWN_RANGE;
+  }
+
+  // Keyed by the scene the arm leaves. A route takes at most one arm per scene: `sceneIds` promises
+  // no repeats, each step's arm is the one that owns that scene's exit, and the trailing arm a
+  // route can end *on* belongs to the ending scene, which no step leaves.
+  const branchByNodeId = new Map(graph.branches.map((branch) => [branch.id, branch]));
+  const armBySceneId = new Map<StorySceneId, SceneFlowBranchNodeModel>();
+  for (const branchId of route.branchIds) {
+    const branch = branchByNodeId.get(branchId);
+    if (!branch) {
+      return UNKNOWN_RANGE;
+    }
+    armBySceneId.set(branch.sceneId, branch);
+  }
+
+  const sceneEffects = collectSceneEffects(document);
+  let value = declaration.defaultValue;
+  let armsApplied = 0;
+  const apply = (effects: readonly SceneFlowVariableEffect[]): boolean => {
+    for (const effect of effects) {
+      if (effect.variableKey !== variableKey) {
+        continue;
+      }
+      if (effect.delta.op === "unknown" || !effect.certain) {
+        return false;
+      }
+      value = effect.delta.op === "set" ? effect.delta.value : value + effect.delta.amount;
+    }
+    return true;
+  };
+
+  for (const sceneId of route.sceneIds) {
+    // Scene spine first, then the arm taken out of it — the order `computeVariableRanges` applies
+    // them in, and the order the author wrote them in.
+    if (!apply(sceneEffects.get(sceneId) ?? [])) {
+      return UNKNOWN_RANGE;
+    }
+    const arm = armBySceneId.get(sceneId);
+    if (arm) {
+      armsApplied += 1;
+      if (!apply(armTraversalEffects(document, writesByScene, arm))) {
         return UNKNOWN_RANGE;
+      }
     }
-
-    // Keyed by the scene the arm leaves. A route takes at most one arm per scene: `sceneIds` promises
-    // no repeats, each step's arm is the one that owns that scene's exit, and the trailing arm a
-    // route can end *on* belongs to the ending scene, which no step leaves.
-    const branchByNodeId = new Map(graph.branches.map(branch => [branch.id, branch]));
-    const armBySceneId = new Map<StorySceneId, SceneFlowBranchNodeModel>();
-    for (const branchId of route.branchIds) {
-        const branch = branchByNodeId.get(branchId);
-        if (!branch) {
-            return UNKNOWN_RANGE;
-        }
-        armBySceneId.set(branch.sceneId, branch);
-    }
-
-    const sceneEffects = collectSceneEffects(document);
-    let value = declaration.defaultValue;
-    let armsApplied = 0;
-    const apply = (effects: readonly SceneFlowVariableEffect[]): boolean => {
-        for (const effect of effects) {
-            if (effect.variableKey !== variableKey) {
-                continue;
-            }
-            if (effect.delta.op === "unknown" || !effect.certain) {
-                return false;
-            }
-            value = effect.delta.op === "set" ? effect.delta.value : value + effect.delta.amount;
-        }
-        return true;
-    };
-
-    for (const sceneId of route.sceneIds) {
-        // Scene spine first, then the arm taken out of it — the order `computeVariableRanges` applies
-        // them in, and the order the author wrote them in.
-        if (!apply(sceneEffects.get(sceneId) ?? [])) {
-            return UNKNOWN_RANGE;
-        }
-        const arm = armBySceneId.get(sceneId);
-        if (arm) {
-            armsApplied += 1;
-            if (!apply(armTraversalEffects(document, writesByScene, arm))) {
-                return UNKNOWN_RANGE;
-            }
-        }
-    }
-    if (armsApplied !== armBySceneId.size) {
-        // An arm on the route left a scene the route never lists. Nothing here can say where in the
-        // sequence its writes belong, and folding the rest would report a number missing one.
-        return UNKNOWN_RANGE;
-    }
-    return { kind: "known", min: value, max: value };
+  }
+  if (armsApplied !== armBySceneId.size) {
+    // An arm on the route left a scene the route never lists. Nothing here can say where in the
+    // sequence its writes belong, and folding the rest would report a number missing one.
+    return UNKNOWN_RANGE;
+  }
+  return { kind: "known", min: value, max: value };
 }

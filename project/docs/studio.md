@@ -35,28 +35,28 @@ const story = context.services.get<StoryService>(Services.Story);
 
 ## 当前 Workspace Services
 
-| Service | 入口文件 | 何时先读 |
-| --- | --- | --- |
-| `Project` | `services/core/ProjectService.ts` | 需要项目配置、`.nlproj` / legacy `project.json` 读取。 |
-| `FileSystem` | `services/core/FileSystem.ts` | 需要 renderer 到 main 的文件读写 IPC。 |
-| `Uuid` | `services/core/UuidService.ts` | 需要统一生成 id。 |
-| `UI` | `services/core/UIService.ts`、`services/ui/*` | 需要 panel、editor tab、dialog、notification、focus、keybinding。 |
-| `GlobalSettings` | `services/GlobalSettingsService.ts` | 需要 Studio/editor 设置、workspace tab/session 恢复，全部写入 `userData/state/global.json`。 |
-| `Assets` | `services/core/AssetsService.ts`、`services/assets/*` | 需要资产导入、分组、metadata、remote cache、asset lock。 |
-| `ServiceAssets` | `services/core/ServiceAssetsService.ts` | 需要 service 私有 JSON store 或私有文件。 |
-| `PanelState` | `services/core/PanelStateService.ts` | 需要按 panel 保存 UI 状态。 |
-| `Character` | `services/core/CharacterService.ts` | 需要角色、角色组、appearance、variant 资产锁。 |
-| `Story` | `services/story/StoryService.ts` | 需要 Story 文档、chapter/scene/block mutation。 |
-| `UIDocument` | `services/ui-editor/UIDocumentService.ts` | 需要 UI surface 和 element document。 |
-| `RuntimeBridge` | `services/ui-editor/UIRuntimeBridgeService.tsx` | 需要从 UIDocument 渲染 editor preview。 |
-| `UIEditorState` | `services/ui-editor/UIEditorStateService.ts` | 需要 selection、tool、viewport、snap、inspector 编辑态。 |
-| `UIEditorHistory` | `services/ui-editor/UIEditorHistoryService.ts` | 需要 UI surface undo/redo。 |
-| `UIGraph` | `services/ui-editor/UIGraphService.ts` | 需要 `uigraphs.json` 和 local blueprint document。 |
-| `LocalBlueprint` | `services/ui-editor/LocalBlueprintService.ts` | 需要编辑 private blueprint、fields、variables、event/function graph。 |
-| `UIBlueprintLifecycle` | `services/ui-editor/UIBlueprintLifecycleCoordinator.ts` | 需要 UIDocument 与 private blueprint owner 同步。 |
-| `DevMode` | `services/core/DevModeService.ts` | 需要启动/停止/reload Dev Mode。 |
-| `UIEditorFontFace` | `services/ui-editor/UIEditorFontFaceService.ts` | 需要 UI editor 字体 asset 加载。 |
-| `BlueprintNodeCatalog` | `services/ui-editor/BlueprintNodeCatalogService.ts` | 需要 Blueprint node palette/definition。 |
+| Service                | 入口文件                                                | 何时先读                                                                                     |
+| ---------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `Project`              | `services/core/ProjectService.ts`                       | 需要项目配置、`.nlproj` / legacy `project.json` 读取。                                       |
+| `FileSystem`           | `services/core/FileSystem.ts`                           | 需要 renderer 到 main 的文件读写 IPC。                                                       |
+| `Uuid`                 | `services/core/UuidService.ts`                          | 需要统一生成 id。                                                                            |
+| `UI`                   | `services/core/UIService.ts`、`services/ui/*`           | 需要 panel、editor tab、dialog、notification、focus、keybinding。                            |
+| `GlobalSettings`       | `services/GlobalSettingsService.ts`                     | 需要 Studio/editor 设置、workspace tab/session 恢复，全部写入 `userData/state/global.json`。 |
+| `Assets`               | `services/core/AssetsService.ts`、`services/assets/*`   | 需要资产导入、分组、metadata、remote cache、asset lock。                                     |
+| `ServiceAssets`        | `services/core/ServiceAssetsService.ts`                 | 需要 service 私有 JSON store 或私有文件。                                                    |
+| `PanelState`           | `services/core/PanelStateService.ts`                    | 需要按 panel 保存 UI 状态。                                                                  |
+| `Character`            | `services/core/CharacterService.ts`                     | 需要角色、角色组、appearance、variant 资产锁。                                               |
+| `Story`                | `services/story/StoryService.ts`                        | 需要 Story 文档、chapter/scene/block mutation。                                              |
+| `UIDocument`           | `services/ui-editor/UIDocumentService.ts`               | 需要 UI surface 和 element document。                                                        |
+| `RuntimeBridge`        | `services/ui-editor/UIRuntimeBridgeService.tsx`         | 需要从 UIDocument 渲染 editor preview。                                                      |
+| `UIEditorState`        | `services/ui-editor/UIEditorStateService.ts`            | 需要 selection、tool、viewport、snap、inspector 编辑态。                                     |
+| `UIEditorHistory`      | `services/ui-editor/UIEditorHistoryService.ts`          | 需要 UI surface undo/redo。                                                                  |
+| `UIGraph`              | `services/ui-editor/UIGraphService.ts`                  | 需要 `uigraphs.json` 和 local blueprint document。                                           |
+| `LocalBlueprint`       | `services/ui-editor/LocalBlueprintService.ts`           | 需要编辑 private blueprint、fields、variables、event/function graph。                        |
+| `UIBlueprintLifecycle` | `services/ui-editor/UIBlueprintLifecycleCoordinator.ts` | 需要 UIDocument 与 private blueprint owner 同步。                                            |
+| `DevMode`              | `services/core/DevModeService.ts`                       | 需要启动/停止/reload Dev Mode。                                                              |
+| `UIEditorFontFace`     | `services/ui-editor/UIEditorFontFaceService.ts`         | 需要 UI editor 字体 asset 加载。                                                             |
+| `BlueprintNodeCatalog` | `services/ui-editor/BlueprintNodeCatalogService.ts`     | 需要 Blueprint node palette/definition。                                                     |
 
 ## Agent 阅读规则
 

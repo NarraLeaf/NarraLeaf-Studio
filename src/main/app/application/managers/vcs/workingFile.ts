@@ -30,12 +30,12 @@ import { COMPARISON_PREVIEW_BYTE_CEILING } from "./diff/documentDiff";
 
 /** Why a read was refused. Each one is a different fact and the surface says a different thing. */
 export type WorkingFileRefusal =
-    /** The path would leave the project directory. */
-    | "escapes"
-    /** A real path, outside what version control covers. */
-    | "excluded"
-    /** A versioned file, past {@link COMPARISON_PREVIEW_BYTE_CEILING}. */
-    | "tooLarge";
+  /** The path would leave the project directory. */
+  | "escapes"
+  /** A real path, outside what version control covers. */
+  | "excluded"
+  /** A versioned file, past {@link COMPARISON_PREVIEW_BYTE_CEILING}. */
+  | "tooLarge";
 
 /**
  * A refusal, with which of the three it was.
@@ -45,15 +45,19 @@ export type WorkingFileRefusal =
  * says that in one place instead of an `instanceof` ladder.
  */
 export class WorkingFileRefusedError extends Error {
-    constructor(readonly refusal: WorkingFileRefusal, readonly offending: string, detail?: string) {
-        super(`Refused to read ${offending}: ${detail ?? refusal}`);
-        this.name = "WorkingFileRefusedError";
-    }
+  constructor(
+    readonly refusal: WorkingFileRefusal,
+    readonly offending: string,
+    detail?: string
+  ) {
+    super(`Refused to read ${offending}: ${detail ?? refusal}`);
+    this.name = "WorkingFileRefusedError";
+  }
 }
 
 export interface WorkingFileReadOptions {
-    /** Defaults to {@link COMPARISON_PREVIEW_BYTE_CEILING}. */
-    readonly limit?: number;
+  /** Defaults to {@link COMPARISON_PREVIEW_BYTE_CEILING}. */
+  readonly limit?: number;
 }
 
 /**
@@ -63,42 +67,42 @@ export interface WorkingFileReadOptions {
  * @param relativePath repository-relative, either separator. Untrusted.
  */
 export async function readWorkingSetFile(
-    projectPath: string,
-    relativePath: string,
-    options: WorkingFileReadOptions = {},
+  projectPath: string,
+  relativePath: string,
+  options: WorkingFileReadOptions = {}
 ): Promise<Buffer> {
-    const limit = options.limit ?? COMPARISON_PREVIEW_BYTE_CEILING;
-    // Before the working-set test, not after, and for the reason `planRevisionRestore` spells out:
-    // `isVersioned` answers false for a `..` segment and TRUE for `C:/Windows/System32/x`, so
-    // asking it first would turn the one input that has to be refused into an ordinary exclusion.
-    const relative = assertRepositoryRelative(relativePath);
-    if (!isVersioned(relative)) {
-        throw new WorkingFileRefusedError("excluded", relativePath, "it is not under version control");
-    }
+  const limit = options.limit ?? COMPARISON_PREVIEW_BYTE_CEILING;
+  // Before the working-set test, not after, and for the reason `planRevisionRestore` spells out:
+  // `isVersioned` answers false for a `..` segment and TRUE for `C:/Windows/System32/x`, so
+  // asking it first would turn the one input that has to be refused into an ordinary exclusion.
+  const relative = assertRepositoryRelative(relativePath);
+  if (!isVersioned(relative)) {
+    throw new WorkingFileRefusedError("excluded", relativePath, "it is not under version control");
+  }
 
-    const root = path.resolve(projectPath);
-    const absolute = resolveInside(root, relative);
+  const root = path.resolve(projectPath);
+  const absolute = resolveInside(root, relative);
 
-    const stats = await fs.stat(absolute);
-    if (stats.size > limit) {
-        throw new WorkingFileRefusedError(
-            "tooLarge",
-            relativePath,
-            `it is ${stats.size} bytes, over the ${limit} byte ceiling`,
-        );
-    }
+  const stats = await fs.stat(absolute);
+  if (stats.size > limit) {
+    throw new WorkingFileRefusedError(
+      "tooLarge",
+      relativePath,
+      `it is ${stats.size} bytes, over the ${limit} byte ceiling`
+    );
+  }
 
-    const bytes = await fs.readFile(absolute);
-    if (bytes.length > limit) {
-        // The file grew between the two calls. Cheap to check and the only way the ceiling can be
-        // passed anyway, and a refusal here still beats handing over what was asked to be refused.
-        throw new WorkingFileRefusedError(
-            "tooLarge",
-            relativePath,
-            `it grew to ${bytes.length} bytes while it was being read`,
-        );
-    }
-    return bytes;
+  const bytes = await fs.readFile(absolute);
+  if (bytes.length > limit) {
+    // The file grew between the two calls. Cheap to check and the only way the ceiling can be
+    // passed anyway, and a refusal here still beats handing over what was asked to be refused.
+    throw new WorkingFileRefusedError(
+      "tooLarge",
+      relativePath,
+      `it grew to ${bytes.length} bytes while it was being read`
+    );
+  }
+  return bytes;
 }
 
 /**
@@ -109,18 +113,18 @@ export async function readWorkingSetFile(
  * containment test.
  */
 function assertRepositoryRelative(candidate: string): string {
-    const normalized = candidate.replace(/\\/g, "/").replace(/^\.\//, "");
-    if (normalized.length === 0) {
-        throw new WorkingFileRefusedError("escapes", candidate, "it names nothing");
-    }
-    // A drive-qualified path, a POSIX absolute path and a UNC share all start one of three ways.
-    if (/^[a-zA-Z]:/.test(normalized) || normalized.startsWith("/")) {
-        throw new WorkingFileRefusedError("escapes", candidate, "it is absolute");
-    }
-    if (normalized.split("/").some((segment) => segment === "..")) {
-        throw new WorkingFileRefusedError("escapes", candidate, "it leaves the project directory");
-    }
-    return normalized;
+  const normalized = candidate.replace(/\\/g, "/").replace(/^\.\//, "");
+  if (normalized.length === 0) {
+    throw new WorkingFileRefusedError("escapes", candidate, "it names nothing");
+  }
+  // A drive-qualified path, a POSIX absolute path and a UNC share all start one of three ways.
+  if (/^[a-zA-Z]:/.test(normalized) || normalized.startsWith("/")) {
+    throw new WorkingFileRefusedError("escapes", candidate, "it is absolute");
+  }
+  if (normalized.split("/").some((segment) => segment === "..")) {
+    throw new WorkingFileRefusedError("escapes", candidate, "it leaves the project directory");
+  }
+  return normalized;
 }
 
 /**
@@ -130,9 +134,13 @@ function assertRepositoryRelative(candidate: string): string {
  * so it does not depend on another function having been called first.
  */
 function resolveInside(root: string, relative: string): string {
-    const resolved = path.resolve(path.join(root, ...relative.split("/")));
-    if (resolved === root || !resolved.startsWith(root + path.sep)) {
-        throw new WorkingFileRefusedError("escapes", relative, "it resolves outside the project directory");
-    }
-    return resolved;
+  const resolved = path.resolve(path.join(root, ...relative.split("/")));
+  if (resolved === root || !resolved.startsWith(root + path.sep)) {
+    throw new WorkingFileRefusedError(
+      "escapes",
+      relative,
+      "it resolves outside the project directory"
+    );
+  }
+  return resolved;
 }

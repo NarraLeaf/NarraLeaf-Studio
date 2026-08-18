@@ -24,16 +24,18 @@
 import { useSurfacePuppetOpener } from "@/lib/ui-editor/runtime/game/surfacePuppetHosts";
 import type { SurfacePuppetSessionState } from "@/lib/ui-editor/runtime/game/surfacePuppetSession";
 import {
-    useSurfacePuppetMount,
-    type UseSurfacePuppetSessionInput,
+  useSurfacePuppetMount,
+  type UseSurfacePuppetSessionInput
 } from "@/lib/ui-editor/runtime/game/useSurfacePuppetMount";
 
 export type { UseSurfacePuppetSessionInput };
 
-export function useSurfacePuppetSession(input: UseSurfacePuppetSessionInput): SurfacePuppetSessionState {
-    // No workspace services in a packaged game, so the first arm declines and the chain falls through to
-    // the pack. The Dev Mode arm is never installed here, which costs one null check.
-    return useSurfacePuppetMount(useSurfacePuppetOpener(null), input);
+export function useSurfacePuppetSession(
+  input: UseSurfacePuppetSessionInput
+): SurfacePuppetSessionState {
+  // No workspace services in a packaged game, so the first arm declines and the chain falls through to
+  // the pack. The Dev Mode arm is never installed here, which costs one null check.
+  return useSurfacePuppetMount(useSurfacePuppetOpener(null), input);
 }
 
 /**
@@ -57,6 +59,6 @@ export function useSurfacePuppetSession(input: UseSurfacePuppetSessionInput): Su
 import type { useSurfacePuppetSession as WorkspaceUseSurfacePuppetSession } from "@/lib/workspace/hooks/useSurfacePuppetSession";
 const _shimSatisfiesWorkspace: typeof WorkspaceUseSurfacePuppetSession = useSurfacePuppetSession;
 const _workspaceSatisfiesShim: typeof useSurfacePuppetSession =
-    null as unknown as typeof WorkspaceUseSurfacePuppetSession;
+  null as unknown as typeof WorkspaceUseSurfacePuppetSession;
 void _shimSatisfiesWorkspace;
 void _workspaceSatisfiesShim;

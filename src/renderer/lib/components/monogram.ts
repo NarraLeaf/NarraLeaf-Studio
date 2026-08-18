@@ -21,22 +21,22 @@
  * guarantee that a monogram can never be the thing that ends the process.
  */
 export function nameInitials(name?: string | null): string {
-    const words = (name ?? "")
-        // Separators of every kind become spaces: "Aumiao-py", "DrinkGame.sWeb", "my_game".
-        .replace(/[^\p{L}\p{N}]+/gu, " ")
-        // Then split camel case, so "CodemaoAutoTop" is three words rather than one.
-        .replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, "$1 $2")
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean);
+  const words = (name ?? "")
+    // Separators of every kind become spaces: "Aumiao-py", "DrinkGame.sWeb", "my_game".
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    // Then split camel case, so "CodemaoAutoTop" is three words rather than one.
+    .replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, "$1 $2")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
 
-    if (words.length === 0) {
-        return "?";
-    }
-    if (words.length === 1) {
-        return words[0].slice(0, 1).toUpperCase();
-    }
-    return (words[0].slice(0, 1) + words[1].slice(0, 1)).toUpperCase();
+  if (words.length === 0) {
+    return "?";
+  }
+  if (words.length === 1) {
+    return words[0].slice(0, 1).toUpperCase();
+  }
+  return (words[0].slice(0, 1) + words[1].slice(0, 1)).toUpperCase();
 }
 
 /**
@@ -57,10 +57,10 @@ const AVATAR_HUES = [210, 260, 300, 340, 10, 30, 150, 175, 195];
  * pinned in the middle so the same white monogram stays legible in either theme.
  */
 export function nameMonogramColor(name?: string | null): string {
-    const source = name ?? "";
-    let hash = 0;
-    for (let index = 0; index < source.length; index++) {
-        hash = (Math.imul(hash, 31) + source.charCodeAt(index)) >>> 0;
-    }
-    return `hsl(${AVATAR_HUES[hash % AVATAR_HUES.length]} 30% 44%)`;
+  const source = name ?? "";
+  let hash = 0;
+  for (let index = 0; index < source.length; index++) {
+    hash = (Math.imul(hash, 31) + source.charCodeAt(index)) >>> 0;
+  }
+  return `hsl(${AVATAR_HUES[hash % AVATAR_HUES.length]} 30% 44%)`;
 }

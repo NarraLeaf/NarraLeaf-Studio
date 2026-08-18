@@ -2,16 +2,16 @@ import { memo, useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 type LivePreviewFrameProps = {
-    /** Identity of the thing being previewed; a change here throws the cached tree away. */
-    previewId: string;
-    /** Counter that moves only when this preview's own content changed. */
-    contentRevision: number;
-    /** Built lazily: not called until the card has been on screen, and not again until the revision moves. */
-    render: () => ReactNode;
-    designWidth: number;
-    designHeight: number;
-    frameHeight: number;
-    className: string;
+  /** Identity of the thing being previewed; a change here throws the cached tree away. */
+  previewId: string;
+  /** Counter that moves only when this preview's own content changed. */
+  contentRevision: number;
+  /** Built lazily: not called until the card has been on screen, and not again until the revision moves. */
+  render: () => ReactNode;
+  designWidth: number;
+  designHeight: number;
+  frameHeight: number;
+  className: string;
 };
 
 /**
@@ -24,86 +24,90 @@ type LivePreviewFrameProps = {
  * each keystroke. Once built, a card stays built - scrolling back to it must not flash.
  */
 export const LivePreviewFrame = memo(
-    function LivePreviewFrame({
-        previewId,
-        contentRevision,
-        render,
-        designWidth,
-        designHeight,
-        frameHeight,
-        className,
-    }: LivePreviewFrameProps) {
-        const frameRef = useRef<HTMLDivElement | null>(null);
-        const [frameWidth, setFrameWidth] = useState(0);
-        const [hasBeenVisible, setHasBeenVisible] = useState(false);
+  function LivePreviewFrame({
+    previewId,
+    contentRevision,
+    render,
+    designWidth,
+    designHeight,
+    frameHeight,
+    className
+  }: LivePreviewFrameProps) {
+    const frameRef = useRef<HTMLDivElement | null>(null);
+    const [frameWidth, setFrameWidth] = useState(0);
+    const [hasBeenVisible, setHasBeenVisible] = useState(false);
 
-        useEffect(() => {
-            const node = frameRef.current;
-            if (!node) {
-                return undefined;
-            }
+    useEffect(() => {
+      const node = frameRef.current;
+      if (!node) {
+        return undefined;
+      }
 
-            setFrameWidth(Math.max(0, node.clientWidth));
-            const resizeObserver = new ResizeObserver(entries => {
-                const entry = entries[0];
-                setFrameWidth(Math.max(0, entry?.contentRect.width ?? node.clientWidth));
-            });
-            resizeObserver.observe(node);
+      setFrameWidth(Math.max(0, node.clientWidth));
+      const resizeObserver = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        setFrameWidth(Math.max(0, entry?.contentRect.width ?? node.clientWidth));
+      });
+      resizeObserver.observe(node);
 
-            if (typeof IntersectionObserver !== "function") {
-                setHasBeenVisible(true);
-                return () => resizeObserver.disconnect();
-            }
-            // A generous margin so a card is already drawn by the time it reaches the edge of the
-            // list, rather than appearing under the scroll.
-            const intersectionObserver = new IntersectionObserver(
-                entries => {
-                    if (entries.some(entry => entry.isIntersecting)) {
-                        setHasBeenVisible(true);
-                        intersectionObserver.disconnect();
-                    }
-                },
-                { rootMargin: "200px" },
-            );
-            intersectionObserver.observe(node);
+      if (typeof IntersectionObserver !== "function") {
+        setHasBeenVisible(true);
+        return () => resizeObserver.disconnect();
+      }
+      // A generous margin so a card is already drawn by the time it reaches the edge of the
+      // list, rather than appearing under the scroll.
+      const intersectionObserver = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) {
+            setHasBeenVisible(true);
+            intersectionObserver.disconnect();
+          }
+        },
+        { rootMargin: "200px" }
+      );
+      intersectionObserver.observe(node);
 
-            return () => {
-                resizeObserver.disconnect();
-                intersectionObserver.disconnect();
-            };
-        }, []);
+      return () => {
+        resizeObserver.disconnect();
+        intersectionObserver.disconnect();
+      };
+    }, []);
 
-        const safeWidth = Math.max(1, designWidth);
-        const safeHeight = Math.max(1, designHeight);
-        const scale = frameWidth > 0 ? Math.min(frameWidth / safeWidth, frameHeight / safeHeight) : 0;
-        const contentStyle: CSSProperties = {
-            left: Math.max(0, (frameWidth - safeWidth * scale) / 2),
-            top: Math.max(0, (frameHeight - safeHeight * scale) / 2),
-            width: safeWidth,
-            height: safeHeight,
-            transform: `scale(${scale})`,
-            transformOrigin: "top left",
-        };
+    const safeWidth = Math.max(1, designWidth);
+    const safeHeight = Math.max(1, designHeight);
+    const scale = frameWidth > 0 ? Math.min(frameWidth / safeWidth, frameHeight / safeHeight) : 0;
+    const contentStyle: CSSProperties = {
+      left: Math.max(0, (frameWidth - safeWidth * scale) / 2),
+      top: Math.max(0, (frameHeight - safeHeight * scale) / 2),
+      width: safeWidth,
+      height: safeHeight,
+      transform: `scale(${scale})`,
+      transformOrigin: "top left"
+    };
 
-        return (
-            <div ref={frameRef} className={className} aria-hidden="true">
-                <div className="relative h-full w-full">
-                    {scale > 0 && hasBeenVisible ? (
-                        <div className="pointer-events-none absolute" style={contentStyle}>
-                            <PreviewContent previewId={previewId} contentRevision={contentRevision} render={render} />
-                        </div>
-                    ) : null}
-                </div>
+    return (
+      <div ref={frameRef} className={className} aria-hidden="true">
+        <div className="relative h-full w-full">
+          {scale > 0 && hasBeenVisible ? (
+            <div className="pointer-events-none absolute" style={contentStyle}>
+              <PreviewContent
+                previewId={previewId}
+                contentRevision={contentRevision}
+                render={render}
+              />
             </div>
-        );
-    },
-    (previous, next) =>
-        previous.previewId === next.previewId &&
-        previous.contentRevision === next.contentRevision &&
-        previous.designWidth === next.designWidth &&
-        previous.designHeight === next.designHeight &&
-        previous.frameHeight === next.frameHeight &&
-        previous.className === next.className,
+          ) : null}
+        </div>
+      </div>
+    );
+  },
+  (previous, next) =>
+    previous.previewId === next.previewId &&
+    previous.contentRevision === next.contentRevision &&
+    previous.designWidth === next.designWidth &&
+    previous.designHeight === next.designHeight &&
+    previous.frameHeight === next.frameHeight &&
+    previous.className === next.className
 );
 
 /**
@@ -115,9 +119,15 @@ export const LivePreviewFrame = memo(
  * the document is what `contentRevision` already tracks.
  */
 const PreviewContent = memo(
-    function PreviewContent({ render }: { previewId: string; contentRevision: number; render: () => ReactNode }) {
-        return <>{render()}</>;
-    },
-    (previous, next) =>
-        previous.previewId === next.previewId && previous.contentRevision === next.contentRevision,
+  function PreviewContent({
+    render
+  }: {
+    previewId: string;
+    contentRevision: number;
+    render: () => ReactNode;
+  }) {
+    return <>{render()}</>;
+  },
+  (previous, next) =>
+    previous.previewId === next.previewId && previous.contentRevision === next.contentRevision
 );

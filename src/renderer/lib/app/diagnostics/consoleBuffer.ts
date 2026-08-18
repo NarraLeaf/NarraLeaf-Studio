@@ -14,9 +14,9 @@
 export type ConsoleBufferLevel = "log" | "info" | "warn" | "error" | "debug";
 
 export interface ConsoleBufferEntry {
-    level: ConsoleBufferLevel;
-    timestamp: number;
-    message: string;
+  level: ConsoleBufferLevel;
+  timestamp: number;
+  message: string;
 }
 
 /** How many lines to keep. Enough to cover a window's whole startup, small enough to paste. */
@@ -29,9 +29,9 @@ const entries: ConsoleBufferEntry[] = [];
 let installed = false;
 
 function truncate(text: string): string {
-    return text.length > MAX_MESSAGE_CHARS
-        ? `${text.slice(0, MAX_MESSAGE_CHARS)}… <${text.length - MAX_MESSAGE_CHARS} more chars>`
-        : text;
+  return text.length > MAX_MESSAGE_CHARS
+    ? `${text.slice(0, MAX_MESSAGE_CHARS)}… <${text.length - MAX_MESSAGE_CHARS} more chars>`
+    : text;
 }
 
 /**
@@ -42,40 +42,42 @@ function truncate(text: string): string {
  * would turn every log call into a second failure.
  */
 function argumentToString(value: unknown): string {
-    if (typeof value === "string") {
-        return value;
-    }
-    if (value instanceof Error) {
-        return value.stack ?? `${value.name}: ${value.message}`;
-    }
-    if (value === null || value === undefined || typeof value !== "object") {
-        return String(value);
-    }
-    try {
-        const seen = new WeakSet<object>();
-        return JSON.stringify(value, (_key, nested) => {
-            if (typeof nested === "object" && nested !== null) {
-                if (seen.has(nested as object)) {
-                    return "<circular>";
-                }
-                seen.add(nested as object);
-            }
-            return nested;
-        }) ?? String(value);
-    } catch {
-        return String(value);
-    }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value instanceof Error) {
+    return value.stack ?? `${value.name}: ${value.message}`;
+  }
+  if (value === null || value === undefined || typeof value !== "object") {
+    return String(value);
+  }
+  try {
+    const seen = new WeakSet<object>();
+    return (
+      JSON.stringify(value, (_key, nested) => {
+        if (typeof nested === "object" && nested !== null) {
+          if (seen.has(nested as object)) {
+            return "<circular>";
+          }
+          seen.add(nested as object);
+        }
+        return nested;
+      }) ?? String(value)
+    );
+  } catch {
+    return String(value);
+  }
 }
 
 export function recordConsoleEntry(level: ConsoleBufferLevel, args: unknown[]): void {
-    entries.push({
-        level,
-        timestamp: Date.now(),
-        message: truncate(args.map(argumentToString).join(" ")),
-    });
-    if (entries.length > MAX_ENTRIES) {
-        entries.splice(0, entries.length - MAX_ENTRIES);
-    }
+  entries.push({
+    level,
+    timestamp: Date.now(),
+    message: truncate(args.map(argumentToString).join(" "))
+  });
+  if (entries.length > MAX_ENTRIES) {
+    entries.splice(0, entries.length - MAX_ENTRIES);
+  }
 }
 
 /**
@@ -85,44 +87,45 @@ export function recordConsoleEntry(level: ConsoleBufferLevel, args: unknown[]): 
  * this only tees the stream, it never swallows a line.
  */
 export function installConsoleBuffer(): void {
-    if (installed || typeof console === "undefined") {
-        return;
-    }
-    installed = true;
+  if (installed || typeof console === "undefined") {
+    return;
+  }
+  installed = true;
 
-    const levels: ConsoleBufferLevel[] = ["log", "info", "warn", "error", "debug"];
-    for (const level of levels) {
-        const original = console[level]?.bind(console);
-        if (!original) {
-            continue;
-        }
-        console[level] = (...args: unknown[]) => {
-            recordConsoleEntry(level, args);
-            original(...args);
-        };
+  const levels: ConsoleBufferLevel[] = ["log", "info", "warn", "error", "debug"];
+  for (const level of levels) {
+    const original = console[level]?.bind(console);
+    if (!original) {
+      continue;
     }
+    console[level] = (...args: unknown[]) => {
+      recordConsoleEntry(level, args);
+      original(...args);
+    };
+  }
 
-    if (typeof window !== "undefined") {
-        // Two failures the console never sees as `console.error`: a script error that reached the
-        // top of the stack, and a promise nobody attached a catch to. Both are exactly what the
-        // buffer exists for.
-        window.addEventListener("error", event => {
-            recordConsoleEntry("error", ["[window.onerror]", event.error ?? event.message]);
-        });
-        window.addEventListener("unhandledrejection", event => {
-            recordConsoleEntry("error", ["[unhandledrejection]", event.reason]);
-        });
-    }
+  if (typeof window !== "undefined") {
+    // Two failures the console never sees as `console.error`: a script error that reached the
+    // top of the stack, and a promise nobody attached a catch to. Both are exactly what the
+    // buffer exists for.
+    window.addEventListener("error", (event) => {
+      recordConsoleEntry("error", ["[window.onerror]", event.error ?? event.message]);
+    });
+    window.addEventListener("unhandledrejection", (event) => {
+      recordConsoleEntry("error", ["[unhandledrejection]", event.reason]);
+    });
+  }
 }
 
 /** Newest last, formatted one line per entry. */
 export function getConsoleBufferLines(): string[] {
-    return entries.map(entry =>
-        `${new Date(entry.timestamp).toISOString()} [${entry.level.toUpperCase()}] ${entry.message}`,
-    );
+  return entries.map(
+    (entry) =>
+      `${new Date(entry.timestamp).toISOString()} [${entry.level.toUpperCase()}] ${entry.message}`
+  );
 }
 
 /** Test seam: forget everything recorded so far. */
 export function clearConsoleBuffer(): void {
-    entries.length = 0;
+  entries.length = 0;
 }

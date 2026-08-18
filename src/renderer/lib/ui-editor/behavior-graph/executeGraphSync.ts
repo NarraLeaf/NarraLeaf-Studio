@@ -14,45 +14,51 @@ import type { PersistentVariableRuntimeTable } from "@shared/types/variables/reg
 import type { UIGraph, UIGraphEntry } from "@shared/types/ui-editor/graph";
 import { registerCoreBlueprintNodes } from "../blueprint-nodes/registerCoreBlueprintNodes";
 import { behaviorNodeRegistry } from "./BehaviorNodeRegistry";
-import type { BehaviorNodeExecuteResult, BehaviorNodeExecutionContext } from "./BehaviorNodeRegistry";
+import type {
+  BehaviorNodeExecuteResult,
+  BehaviorNodeExecutionContext
+} from "./BehaviorNodeRegistry";
 import { BlueprintGraphExecutionError } from "./GraphExecutionError";
 import { writeBlueprintNodeOutputValues } from "../blueprint-nodes/nodeOutputValues";
 import { resolveBehaviorNodeInput } from "./dataPinResolver";
 import type { ExecuteGraphResult } from "./GraphExecutor";
 
 export type ExecuteGraphSyncOptions = {
-    graph: UIGraph;
-    entry: UIGraphEntry;
-    hostAdapter: UIHostAdapter;
-    maxSteps?: number;
-    blueprintLocals?: Record<string, unknown>;
-    eventName?: string;
-    eventPayload?: Record<string, unknown>;
-    executionOwner?: BehaviorNodeExecutionContext["executionOwner"];
-    persistentVariables?: PersistentVariableRuntimeTable;
+  graph: UIGraph;
+  entry: UIGraphEntry;
+  hostAdapter: UIHostAdapter;
+  maxSteps?: number;
+  blueprintLocals?: Record<string, unknown>;
+  eventName?: string;
+  eventPayload?: Record<string, unknown>;
+  executionOwner?: BehaviorNodeExecutionContext["executionOwner"];
+  persistentVariables?: PersistentVariableRuntimeTable;
 };
 
 const DEFAULT_MAX_STEPS = 1024;
 
 /** Thrown when a graph evaluated synchronously reaches a node whose `execute` is asynchronous. */
 export class AsyncNodeInSyncGraphError extends BlueprintGraphExecutionError {
-    constructor(public readonly nodeType: string, nodeId: string) {
-        super(`Async blueprint node "${nodeType}" cannot be evaluated synchronously`, nodeId);
-        this.name = "AsyncNodeInSyncGraphError";
-    }
+  constructor(
+    public readonly nodeType: string,
+    nodeId: string
+  ) {
+    super(`Async blueprint node "${nodeType}" cannot be evaluated synchronously`, nodeId);
+    this.name = "AsyncNodeInSyncGraphError";
+  }
 }
 
 function isThenable(value: unknown): value is Promise<unknown> {
-    return Boolean(value) && typeof (value as { then?: unknown }).then === "function";
+  return Boolean(value) && typeof (value as { then?: unknown }).then === "function";
 }
 
 function resolveNextPorts(result: BehaviorNodeExecuteResult | void): string[] | null {
-    if (result && Object.prototype.hasOwnProperty.call(result, "nextPorts")) {
-        return result.nextPorts ?? [];
-    }
-    const hasNextPort = Boolean(result && Object.prototype.hasOwnProperty.call(result, "nextPort"));
-    const nextPort = hasNextPort ? result?.nextPort : "next";
-    return nextPort == null ? null : [nextPort];
+  if (result && Object.prototype.hasOwnProperty.call(result, "nextPorts")) {
+    return result.nextPorts ?? [];
+  }
+  const hasNextPort = Boolean(result && Object.prototype.hasOwnProperty.call(result, "nextPort"));
+  const nextPort = hasNextPort ? result?.nextPort : "next";
+  return nextPort == null ? null : [nextPort];
 }
 
 /**
@@ -60,86 +66,94 @@ function resolveNextPorts(result: BehaviorNodeExecuteResult | void): string[] | 
  * Throws `AsyncNodeInSyncGraphError` if any traversed node executes asynchronously.
  */
 export function executeGraphSync(options: ExecuteGraphSyncOptions): ExecuteGraphResult {
-    registerCoreBlueprintNodes();
-    const { entry, graph, hostAdapter } = options;
-    const blueprintLocals = options.blueprintLocals ?? {};
-    const valueResult: ExecuteGraphResult = { returnValueSet: false, returnValue: undefined };
-    const valueExecution = {
-        returnValue: (value: unknown) => {
-            valueResult.returnValueSet = true;
-            valueResult.returnValue = value;
-        },
-    };
+  registerCoreBlueprintNodes();
+  const { entry, graph, hostAdapter } = options;
+  const blueprintLocals = options.blueprintLocals ?? {};
+  const valueResult: ExecuteGraphResult = { returnValueSet: false, returnValue: undefined };
+  const valueExecution = {
+    returnValue: (value: unknown) => {
+      valueResult.returnValueSet = true;
+      valueResult.returnValue = value;
+    }
+  };
 
-    let cursor: string | undefined = entry.start.nodeId;
-    const pendingCursors: string[] = [];
-    let steps = 0;
+  let cursor: string | undefined = entry.start.nodeId;
+  const pendingCursors: string[] = [];
+  let steps = 0;
 
-    while (cursor) {
-        const currentCursor: string = cursor;
-        steps += 1;
-        if (steps > (options.maxSteps ?? DEFAULT_MAX_STEPS)) {
-            throw new BlueprintGraphExecutionError(
-                `Behavior graph execution exceeded ${options.maxSteps ?? DEFAULT_MAX_STEPS} steps`,
-                currentCursor,
-            );
-        }
-
-        const node = graph.nodes[currentCursor];
-        if (!node) {
-            throw new BlueprintGraphExecutionError(`Behavior graph node not found: ${currentCursor}`, currentCursor);
-        }
-        const definition = behaviorNodeRegistry.get(node.type);
-        if (!definition) {
-            throw new BlueprintGraphExecutionError(`Behavior node definition missing: ${node.type}`, currentCursor);
-        }
-
-        const context: BehaviorNodeExecutionContext = {
-            graph,
-            entry,
-            node,
-            params: node.params ?? {},
-            hostAdapter,
-            blueprintLocals,
-            eventName: options.eventName,
-            eventPayload: options.eventPayload,
-            executionOwner: options.executionOwner,
-            persistentVariables: options.persistentVariables,
-            valueExecution,
-        };
-        context.resolveInput = pinId => resolveBehaviorNodeInput(context, pinId);
-
-        const raw = definition.execute(context);
-        if (isThenable(raw)) {
-            throw new AsyncNodeInSyncGraphError(node.type, node.id);
-        }
-        const result = raw as BehaviorNodeExecuteResult | void;
-
-        if (result && Object.prototype.hasOwnProperty.call(result, "outputValues")) {
-            writeBlueprintNodeOutputValues(blueprintLocals, node.id, result.outputValues ?? {});
-        }
-
-        const nextPorts = resolveNextPorts(result);
-        if (nextPorts == null) {
-            return valueResult;
-        }
-
-        const nextCursors: string[] = nextPorts
-            .map(port => graph.edges.find(edge => edge.from.nodeId === currentCursor && edge.from.port === port))
-            .filter((edge): edge is NonNullable<typeof edge> => Boolean(edge))
-            .map(edge => edge.to.nodeId);
-
-        if (nextCursors.length === 0) {
-            cursor = pendingCursors.shift();
-            if (!cursor) {
-                return valueResult;
-            }
-            continue;
-        }
-
-        pendingCursors.unshift(...nextCursors.slice(1));
-        cursor = nextCursors[0];
+  while (cursor) {
+    const currentCursor: string = cursor;
+    steps += 1;
+    if (steps > (options.maxSteps ?? DEFAULT_MAX_STEPS)) {
+      throw new BlueprintGraphExecutionError(
+        `Behavior graph execution exceeded ${options.maxSteps ?? DEFAULT_MAX_STEPS} steps`,
+        currentCursor
+      );
     }
 
-    return valueResult;
+    const node = graph.nodes[currentCursor];
+    if (!node) {
+      throw new BlueprintGraphExecutionError(
+        `Behavior graph node not found: ${currentCursor}`,
+        currentCursor
+      );
+    }
+    const definition = behaviorNodeRegistry.get(node.type);
+    if (!definition) {
+      throw new BlueprintGraphExecutionError(
+        `Behavior node definition missing: ${node.type}`,
+        currentCursor
+      );
+    }
+
+    const context: BehaviorNodeExecutionContext = {
+      graph,
+      entry,
+      node,
+      params: node.params ?? {},
+      hostAdapter,
+      blueprintLocals,
+      eventName: options.eventName,
+      eventPayload: options.eventPayload,
+      executionOwner: options.executionOwner,
+      persistentVariables: options.persistentVariables,
+      valueExecution
+    };
+    context.resolveInput = (pinId) => resolveBehaviorNodeInput(context, pinId);
+
+    const raw = definition.execute(context);
+    if (isThenable(raw)) {
+      throw new AsyncNodeInSyncGraphError(node.type, node.id);
+    }
+    const result = raw as BehaviorNodeExecuteResult | void;
+
+    if (result && Object.prototype.hasOwnProperty.call(result, "outputValues")) {
+      writeBlueprintNodeOutputValues(blueprintLocals, node.id, result.outputValues ?? {});
+    }
+
+    const nextPorts = resolveNextPorts(result);
+    if (nextPorts == null) {
+      return valueResult;
+    }
+
+    const nextCursors: string[] = nextPorts
+      .map((port) =>
+        graph.edges.find((edge) => edge.from.nodeId === currentCursor && edge.from.port === port)
+      )
+      .filter((edge): edge is NonNullable<typeof edge> => Boolean(edge))
+      .map((edge) => edge.to.nodeId);
+
+    if (nextCursors.length === 0) {
+      cursor = pendingCursors.shift();
+      if (!cursor) {
+        return valueResult;
+      }
+      continue;
+    }
+
+    pendingCursors.unshift(...nextCursors.slice(1));
+    cursor = nextCursors[0];
+  }
+
+  return valueResult;
 }

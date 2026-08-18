@@ -34,14 +34,14 @@ export type DockAxis = "horizontal" | "vertical";
 export type OverflowPolicy = "clamp" | "clip";
 
 export interface RegionSpec {
-    /** Hard floor for the region itself, in px. */
-    min: number;
-    /** Size used when the region is first shown / has no persisted intent, in px. */
-    default: number;
-    /** Axis the region resizes along. */
-    axis: DockAxis;
-    /** How the region behaves once it would eat into the editor floor. */
-    overflow: OverflowPolicy;
+  /** Hard floor for the region itself, in px. */
+  min: number;
+  /** Size used when the region is first shown / has no persisted intent, in px. */
+  default: number;
+  /** Axis the region resizes along. */
+  axis: DockAxis;
+  /** How the region behaves once it would eat into the editor floor. */
+  overflow: OverflowPolicy;
 }
 
 /**
@@ -78,58 +78,58 @@ export const RAIL_ITEM_INSET = 4;
  * bottom-docked; the version rail is a column of its own and does not adopt them.
  */
 export interface RailColumnOffsets {
-    /** The version rail, when it is a column at all. Always the window's left edge. */
-    versionRail: number;
-    /** The selector column: the left dock's rail AND the bottom dock's, at one x. */
-    sidebarRail: number;
+  /** The version rail, when it is a column at all. Always the window's left edge. */
+  versionRail: number;
+  /** The selector column: the left dock's rail AND the bottom dock's, at one x. */
+  sidebarRail: number;
 }
 
 export function railColumnOffsets(env: Pick<DockEnv, "versionRailWidth">): RailColumnOffsets {
-    return { versionRail: 0, sidebarRail: env.versionRailWidth };
+  return { versionRail: 0, sidebarRail: env.versionRailWidth };
 }
 
 /** Where a rail item's left edge lands, given the x of the column holding it. */
 export function railItemLeft(columnLeft: number): number {
-    return columnLeft + RAIL_ITEM_INSET;
+  return columnLeft + RAIL_ITEM_INSET;
 }
 
 export const DOCK_REGIONS: Record<DockRegion, RegionSpec> = {
-    left: { min: 240, default: 320, axis: "horizontal", overflow: "clamp" },
-    right: { min: 240, default: 320, axis: "horizontal", overflow: "clamp" },
-    bottom: { min: 120, default: 256, axis: "vertical", overflow: "clip" },
+  left: { min: 240, default: 320, axis: "horizontal", overflow: "clamp" },
+  right: { min: 240, default: 320, axis: "horizontal", overflow: "clamp" },
+  bottom: { min: 120, default: 256, axis: "vertical", overflow: "clip" }
 };
 
 export interface DockEnv {
-    /** Full window inner width, in px. */
-    windowWidth: number;
-    /** Full window inner height, in px. */
-    windowHeight: number;
-    leftVisible: boolean;
-    rightVisible: boolean;
-    /**
-     * Width of the version rail, the fixed column left of the left selector rail - 0 when it is not
-     * shown at all, {@link VERSION_RAIL_COLLAPSED_WIDTH} collapsed, {@link VERSION_RAIL_EXPANDED_WIDTH}
-     * expanded (see ./versionRailModel).
-     *
-     * **Required, not optional.** A column the solver does not know about is the exact failure this
-     * field exists to prevent: the sidebars would size themselves as if the space were theirs, push
-     * the editor below {@link EDITOR_FLOOR}, and the editor's CSS floor would then overflow its
-     * container - which produces a scrollbar, which shrinks the container, which re-clamps the
-     * overlay, which loops. Making it optional would let a future
-     * caller reintroduce that silently; making it required means the compiler asks.
-     */
-    versionRailWidth: number;
+  /** Full window inner width, in px. */
+  windowWidth: number;
+  /** Full window inner height, in px. */
+  windowHeight: number;
+  leftVisible: boolean;
+  rightVisible: boolean;
+  /**
+   * Width of the version rail, the fixed column left of the left selector rail - 0 when it is not
+   * shown at all, {@link VERSION_RAIL_COLLAPSED_WIDTH} collapsed, {@link VERSION_RAIL_EXPANDED_WIDTH}
+   * expanded (see ./versionRailModel).
+   *
+   * **Required, not optional.** A column the solver does not know about is the exact failure this
+   * field exists to prevent: the sidebars would size themselves as if the space were theirs, push
+   * the editor below {@link EDITOR_FLOOR}, and the editor's CSS floor would then overflow its
+   * container - which produces a scrollbar, which shrinks the container, which re-clamps the
+   * overlay, which loops. Making it optional would let a future
+   * caller reintroduce that silently; making it required means the compiler asks.
+   */
+  versionRailWidth: number;
 }
 
 export interface DockSizes {
-    left: number;
-    right: number;
-    bottom: number;
+  left: number;
+  right: number;
+  bottom: number;
 }
 
 /** Standard clamp. Callers always pass `hi >= lo` (region maxima are floored at the region min). */
 function clamp(value: number, lo: number, hi: number): number {
-    return Math.min(hi, Math.max(lo, value));
+  return Math.min(hi, Math.max(lo, value));
 }
 
 /**
@@ -137,18 +137,22 @@ function clamp(value: number, lo: number, hi: number): number {
  * place the count lives, so a new fixed column is added once instead of in three ceilings.
  */
 function fixedColumnsWidth(env: DockEnv): number {
-    return 2 * RAIL_SELECTOR_WIDTH + env.versionRailWidth;
+  return 2 * RAIL_SELECTOR_WIDTH + env.versionRailWidth;
 }
 
 /**
  * Largest a sidebar may be while still leaving the editor its floor width (and the other
  * sidebar its space, when visible). Never returns below the region's own `min`.
  */
-export function maxSidebarWidth(side: "left" | "right", env: DockEnv, otherEffective: number): number {
-    const otherVisible = side === "left" ? env.rightVisible : env.leftVisible;
-    const other = otherVisible ? otherEffective : 0;
-    const available = env.windowWidth - fixedColumnsWidth(env) - EDITOR_FLOOR.width - other;
-    return Math.max(DOCK_REGIONS[side].min, available);
+export function maxSidebarWidth(
+  side: "left" | "right",
+  env: DockEnv,
+  otherEffective: number
+): number {
+  const otherVisible = side === "left" ? env.rightVisible : env.leftVisible;
+  const other = otherVisible ? otherEffective : 0;
+  const available = env.windowWidth - fixedColumnsWidth(env) - EDITOR_FLOOR.width - other;
+  return Math.max(DOCK_REGIONS[side].min, available);
 }
 
 /**
@@ -161,9 +165,9 @@ export function maxSidebarWidth(side: "left" | "right", env: DockEnv, otherEffec
  * plan says has to hold before a new leftmost column is allowed to exist.
  */
 export function residualEditorWidth(env: DockEnv, sizes: DockSizes): number {
-    const left = env.leftVisible ? sizes.left : 0;
-    const right = env.rightVisible ? sizes.right : 0;
-    return env.windowWidth - fixedColumnsWidth(env) - left - right;
+  const left = env.leftVisible ? sizes.left : 0;
+  const right = env.rightVisible ? sizes.right : 0;
+  return env.windowWidth - fixedColumnsWidth(env) - left - right;
 }
 
 /**
@@ -171,8 +175,8 @@ export function residualEditorWidth(env: DockEnv, sizes: DockSizes): number {
  * entirely - only the title bar (which lives outside the center column) is reserved.
  */
 export function maxBottomHeight(env: DockEnv): number {
-    const available = env.windowHeight - TITLE_BAR_HEIGHT;
-    return Math.max(DOCK_REGIONS.bottom.min, available);
+  const available = env.windowHeight - TITLE_BAR_HEIGHT;
+  return Math.max(DOCK_REGIONS.bottom.min, available);
 }
 
 /**
@@ -181,30 +185,30 @@ export function maxBottomHeight(env: DockEnv): number {
  * left to break the mutual left/right dependency deterministically.
  */
 export function resolveDock(intent: DockSizes, env: DockEnv): DockSizes {
-    const rightCeiling = Math.max(
-        DOCK_REGIONS.right.min,
-        env.windowWidth - fixedColumnsWidth(env) - EDITOR_FLOOR.width,
-    );
-    const right = clamp(intent.right, DOCK_REGIONS.right.min, rightCeiling);
-    const left = clamp(intent.left, DOCK_REGIONS.left.min, maxSidebarWidth("left", env, right));
-    const bottom = clamp(intent.bottom, DOCK_REGIONS.bottom.min, maxBottomHeight(env));
-    return { left, right, bottom };
+  const rightCeiling = Math.max(
+    DOCK_REGIONS.right.min,
+    env.windowWidth - fixedColumnsWidth(env) - EDITOR_FLOOR.width
+  );
+  const right = clamp(intent.right, DOCK_REGIONS.right.min, rightCeiling);
+  const left = clamp(intent.left, DOCK_REGIONS.left.min, maxSidebarWidth("left", env, right));
+  const bottom = clamp(intent.bottom, DOCK_REGIONS.bottom.min, maxBottomHeight(env));
+  return { left, right, bottom };
 }
 
 /** Left grows as the pointer moves right (+delta); right/bottom grow as it moves left (-delta). */
 function growthSign(region: DockRegion): 1 | -1 {
-    return region === "left" ? 1 : -1;
+  return region === "left" ? 1 : -1;
 }
 
 export interface ResizeResult {
-    /** New intended size for the region, in px. */
-    next: number;
-    /**
-     * Position correction fed back to {@link ResizableHandle}: it advances its tracked start
-     * position by this so the panel edge stays glued to the pointer only while the size is
-     * actually changing (and stalls once clamped at min/max).
-     */
-    correction: number;
+  /** New intended size for the region, in px. */
+  next: number;
+  /**
+   * Position correction fed back to {@link ResizableHandle}: it advances its tracked start
+   * position by this so the panel edge stays glued to the pointer only while the size is
+   * actually changing (and stalls once clamped at min/max).
+   */
+  correction: number;
 }
 
 /**
@@ -217,16 +221,17 @@ export interface ResizeResult {
  * @param otherEffective  the other sidebar's effective width (used only for L/R max; ignored for bottom)
  */
 export function applyResize(
-    region: DockRegion,
-    currentIntended: number,
-    delta: number,
-    env: DockEnv,
-    otherEffective: number,
+  region: DockRegion,
+  currentIntended: number,
+  delta: number,
+  env: DockEnv,
+  otherEffective: number
 ): ResizeResult {
-    const spec = DOCK_REGIONS[region];
-    const sign = growthSign(region);
-    const max = region === "bottom" ? maxBottomHeight(env) : maxSidebarWidth(region, env, otherEffective);
-    const next = clamp(currentIntended + sign * delta, spec.min, max);
-    const actualDelta = next - currentIntended;
-    return { next, correction: sign * actualDelta - delta };
+  const spec = DOCK_REGIONS[region];
+  const sign = growthSign(region);
+  const max =
+    region === "bottom" ? maxBottomHeight(env) : maxSidebarWidth(region, env, otherEffective);
+  const next = clamp(currentIntended + sign * delta, spec.min, max);
+  const actualDelta = next - currentIntended;
+  return { next, correction: sign * actualDelta - delta };
 }

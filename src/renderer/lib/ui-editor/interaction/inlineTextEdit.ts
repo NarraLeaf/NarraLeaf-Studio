@@ -5,12 +5,14 @@ import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UI
 import { debugUIDoubleClick } from "./doubleClickDebug";
 
 export type InlineTextEditHost = {
-    stateService: UIEditorStateService;
-    documentService: UIDocumentService;
+  stateService: UIEditorStateService;
+  documentService: UIDocumentService;
 };
 
-export function isInlineTextEditableElement(element: UIElement | null | undefined): element is UIElement {
-    return element?.type === "nl.text" || element?.type === "nl.button";
+export function isInlineTextEditableElement(
+  element: UIElement | null | undefined
+): element is UIElement {
+  return element?.type === "nl.text" || element?.type === "nl.button";
 }
 
 /**
@@ -35,49 +37,50 @@ export function isInlineTextEditableElement(element: UIElement | null | undefine
  * canvas behave exactly like the previews that have always resolved to null.
  */
 export function resolveInlineTextEditHost(hostAdapter: UIHostAdapter): InlineTextEditHost | null {
-    const { editorStateService, editorDocumentService, blueprintRuntime, editorReadOnly } = hostAdapter;
-    if (blueprintRuntime || editorReadOnly?.active || !editorStateService || !editorDocumentService) {
-        return null;
-    }
-    return { stateService: editorStateService, documentService: editorDocumentService };
+  const { editorStateService, editorDocumentService, blueprintRuntime, editorReadOnly } =
+    hostAdapter;
+  if (blueprintRuntime || editorReadOnly?.active || !editorStateService || !editorDocumentService) {
+    return null;
+  }
+  return { stateService: editorStateService, documentService: editorDocumentService };
 }
 
 export function beginInlineTextEdit(
-    stateService: UIEditorStateService,
-    surfaceId: string,
-    elementId: string,
+  stateService: UIEditorStateService,
+  surfaceId: string,
+  elementId: string
 ): void {
-    const current = stateService.getInteractionOverride();
-    debugUIDoubleClick("beginInlineTextEdit", {
-        surfaceId,
-        elementId,
-        currentOverride: current,
+  const current = stateService.getInteractionOverride();
+  debugUIDoubleClick("beginInlineTextEdit", {
+    surfaceId,
+    elementId,
+    currentOverride: current
+  });
+  if (
+    current?.kind === "textEdit" &&
+    current.surfaceId === surfaceId &&
+    current.elementId === elementId
+  ) {
+    debugUIDoubleClick("clear stale textEdit override", {
+      surfaceId,
+      elementId
     });
-    if (
-        current?.kind === "textEdit" &&
-        current.surfaceId === surfaceId &&
-        current.elementId === elementId
-    ) {
-        debugUIDoubleClick("clear stale textEdit override", {
-            surfaceId,
-            elementId,
-        });
-        stateService.setInteractionOverride(null);
-    }
-    stateService.setUIElementSelection({
-        editor: "ui",
-        surfaceId,
-        elementIds: [elementId],
-        primaryId: elementId,
-    });
-    stateService.setInteractionOverride({
-        kind: "textEdit",
-        surfaceId,
-        elementId,
-    });
-    debugUIDoubleClick("textEdit override set", {
-        surfaceId,
-        elementId,
-        nextOverride: stateService.getInteractionOverride(),
-    });
+    stateService.setInteractionOverride(null);
+  }
+  stateService.setUIElementSelection({
+    editor: "ui",
+    surfaceId,
+    elementIds: [elementId],
+    primaryId: elementId
+  });
+  stateService.setInteractionOverride({
+    kind: "textEdit",
+    surfaceId,
+    elementId
+  });
+  debugUIDoubleClick("textEdit override set", {
+    surfaceId,
+    elementId,
+    nextOverride: stateService.getInteractionOverride()
+  });
 }

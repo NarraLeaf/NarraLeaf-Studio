@@ -10,16 +10,16 @@ import { AboutEditor } from "./AboutEditor";
  * time (see `openAboutTab`).
  */
 export const aboutModule: EditorModule = {
-    metadata: {
-        id: "narraleaf-studio:about",
-        // Resolved lazily on read (module registration runs after i18n init), so the tab title
-        // follows a live language switch instead of freezing in the startup locale.
-        titleKey: "about.title",
-        get title() {
-            return translate("about.title");
-        },
-        icon: <Info className="w-4 h-4" />,
-        closable: true,
+  metadata: {
+    id: "narraleaf-studio:about",
+    // Resolved lazily on read (module registration runs after i18n init), so the tab title
+    // follows a live language switch instead of freezing in the startup locale.
+    titleKey: "about.title",
+    get title() {
+      return translate("about.title");
     },
-    component: AboutEditor,
+    icon: <Info className="w-4 h-4" />,
+    closable: true
+  },
+  component: AboutEditor
 };

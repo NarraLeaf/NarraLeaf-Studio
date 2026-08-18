@@ -1,4 +1,4 @@
-import type {DocumentMergeDecision} from "./diff";
+import type { DocumentMergeDecision } from "./diff";
 
 /**
  * Turning a list of per-change choices back into one document.
@@ -32,7 +32,7 @@ export type DocumentMergeSideName = "mine" | "theirs";
  * the author chose for a DIFFERENT one.
  */
 export function mergeDecisionKey(path: readonly string[]): string {
-    return JSON.stringify(path);
+  return JSON.stringify(path);
 }
 
 /**
@@ -44,18 +44,25 @@ export function mergeDecisionKey(path: readonly string[]): string {
  * refuses the commit and names the path.
  */
 export class MergeChangeUndecidedError extends Error {
-    constructor(readonly documentPath: string, readonly changePath: readonly string[]) {
-        super(`No side was chosen for ${changePath.join(" / ")} in ${documentPath}`);
-        this.name = "MergeChangeUndecidedError";
-    }
+  constructor(
+    readonly documentPath: string,
+    readonly changePath: readonly string[]
+  ) {
+    super(`No side was chosen for ${changePath.join(" / ")} in ${documentPath}`);
+    this.name = "MergeChangeUndecidedError";
+  }
 }
 
 /** A decision that names a place the merged document does not have. */
 export class MergeChangeUnaddressableError extends Error {
-    constructor(readonly documentPath: string, readonly changePath: readonly string[], reason: string) {
-        super(`${changePath.join(" / ")} cannot be settled in ${documentPath}: ${reason}`);
-        this.name = "MergeChangeUnaddressableError";
-    }
+  constructor(
+    readonly documentPath: string,
+    readonly changePath: readonly string[],
+    reason: string
+  ) {
+    super(`${changePath.join(" / ")} cannot be settled in ${documentPath}: ${reason}`);
+    this.name = "MergeChangeUnaddressableError";
+  }
 }
 
 /**
@@ -76,42 +83,46 @@ export class MergeChangeUnaddressableError extends Error {
  * bytes from the same inputs.
  */
 export function applyMergeDecisions<T>(
-    documentPath: string,
-    document: T,
-    decisions: readonly DocumentMergeDecision[],
-    choices: Readonly<Record<string, DocumentMergeSideName>>,
+  documentPath: string,
+  document: T,
+  decisions: readonly DocumentMergeDecision[],
+  choices: Readonly<Record<string, DocumentMergeSideName>>
 ): T {
-    const result = structuredClone(document) as unknown;
+  const result = structuredClone(document) as unknown;
 
-    for (const entry of decisions) {
-        const chosen = choices[mergeDecisionKey(entry.path)] ?? defaultSide(entry);
-        if (!chosen) {
-            throw new MergeChangeUndecidedError(documentPath, entry.path);
-        }
-        const side = chosen === "mine" ? entry.mine : entry.theirs;
-        if (entry.path.length === 0) {
-            // A whole-document decision: the spec said it cannot merge this at all. There is
-            // nothing to walk into, and the answer is the side itself.
-            if (!side.present) {
-                throw new MergeChangeUnaddressableError(documentPath, entry.path, "the chosen side has no document");
-            }
-            return structuredClone(side.value) as T;
-        }
-        if (side.present) {
-            setAt(documentPath, result, entry.path, structuredClone(side.value));
-        } else {
-            removeAt(documentPath, result, entry.path);
-        }
+  for (const entry of decisions) {
+    const chosen = choices[mergeDecisionKey(entry.path)] ?? defaultSide(entry);
+    if (!chosen) {
+      throw new MergeChangeUndecidedError(documentPath, entry.path);
     }
+    const side = chosen === "mine" ? entry.mine : entry.theirs;
+    if (entry.path.length === 0) {
+      // A whole-document decision: the spec said it cannot merge this at all. There is
+      // nothing to walk into, and the answer is the side itself.
+      if (!side.present) {
+        throw new MergeChangeUnaddressableError(
+          documentPath,
+          entry.path,
+          "the chosen side has no document"
+        );
+      }
+      return structuredClone(side.value) as T;
+    }
+    if (side.present) {
+      setAt(documentPath, result, entry.path, structuredClone(side.value));
+    } else {
+      removeAt(documentPath, result, entry.path);
+    }
+  }
 
-    return result as T;
+  return result as T;
 }
 
 /** The side an outcome already settled on, or undefined when it is still the author's. */
 function defaultSide(entry: DocumentMergeDecision): DocumentMergeSideName | undefined {
-    if (entry.outcome === "auto-mine") return "mine";
-    if (entry.outcome === "auto-theirs") return "theirs";
-    return undefined;
+  if (entry.outcome === "auto-mine") return "mine";
+  if (entry.outcome === "auto-theirs") return "theirs";
+  return undefined;
 }
 
 /**
@@ -122,37 +133,49 @@ function defaultSide(entry: DocumentMergeDecision): DocumentMergeSideName | unde
  * objects on the way down would write a decision into a place the document does not have and the
  * spec's own `serialize` would then either drop it or refuse.
  */
-function containerAt(documentPath: string, root: unknown, path: readonly string[]): Record<string, unknown> | unknown[] {
-    let current: unknown = root;
-    for (let index = 0; index < path.length - 1; index += 1) {
-        const segment = path[index];
-        if (Array.isArray(current)) {
-            current = current[elementIndex(documentPath, path, segment, current.length)];
-        } else if (isRecord(current)) {
-            current = current[segment];
-        } else {
-            throw new MergeChangeUnaddressableError(documentPath, path, `"${segment}" is not inside a collection`);
-        }
-        if (current === undefined || current === null) {
-            throw new MergeChangeUnaddressableError(documentPath, path, `"${segment}" does not exist`);
-        }
+function containerAt(
+  documentPath: string,
+  root: unknown,
+  path: readonly string[]
+): Record<string, unknown> | unknown[] {
+  let current: unknown = root;
+  for (let index = 0; index < path.length - 1; index += 1) {
+    const segment = path[index];
+    if (Array.isArray(current)) {
+      current = current[elementIndex(documentPath, path, segment, current.length)];
+    } else if (isRecord(current)) {
+      current = current[segment];
+    } else {
+      throw new MergeChangeUnaddressableError(
+        documentPath,
+        path,
+        `"${segment}" is not inside a collection`
+      );
     }
-    if (!Array.isArray(current) && !isRecord(current)) {
-        throw new MergeChangeUnaddressableError(documentPath, path, "the path does not name a collection");
+    if (current === undefined || current === null) {
+      throw new MergeChangeUnaddressableError(documentPath, path, `"${segment}" does not exist`);
     }
-    return current;
+  }
+  if (!Array.isArray(current) && !isRecord(current)) {
+    throw new MergeChangeUnaddressableError(
+      documentPath,
+      path,
+      "the path does not name a collection"
+    );
+  }
+  return current;
 }
 
 function setAt(documentPath: string, root: unknown, path: readonly string[], value: unknown): void {
-    const container = containerAt(documentPath, root, path);
-    const last = path[path.length - 1];
-    if (Array.isArray(container)) {
-        // Bounded by the current length +1: an index past the end would leave holes, which JSON
-        // writes as `null` and no spec means.
-        container[elementIndex(documentPath, path, last, container.length + 1)] = value;
-        return;
-    }
-    container[last] = value;
+  const container = containerAt(documentPath, root, path);
+  const last = path[path.length - 1];
+  if (Array.isArray(container)) {
+    // Bounded by the current length +1: an index past the end would leave holes, which JSON
+    // writes as `null` and no spec means.
+    container[elementIndex(documentPath, path, last, container.length + 1)] = value;
+    return;
+  }
+  container[last] = value;
 }
 
 /**
@@ -165,25 +188,34 @@ function setAt(documentPath: string, root: unknown, path: readonly string[], val
  * designed answer rather than a silent renumbering.
  */
 function removeAt(documentPath: string, root: unknown, path: readonly string[]): void {
-    const container = containerAt(documentPath, root, path);
-    if (Array.isArray(container)) {
-        throw new MergeChangeUnaddressableError(
-            documentPath,
-            path,
-            "removing one element of a list would renumber the others, so it is not settled one change at a time",
-        );
-    }
-    delete container[path[path.length - 1]];
+  const container = containerAt(documentPath, root, path);
+  if (Array.isArray(container)) {
+    throw new MergeChangeUnaddressableError(
+      documentPath,
+      path,
+      "removing one element of a list would renumber the others, so it is not settled one change at a time"
+    );
+  }
+  delete container[path[path.length - 1]];
 }
 
-function elementIndex(documentPath: string, path: readonly string[], segment: string, limit: number): number {
-    const index = Number(segment);
-    if (!Number.isInteger(index) || index < 0 || index >= limit) {
-        throw new MergeChangeUnaddressableError(documentPath, path, `"${segment}" is not a position in this list`);
-    }
-    return index;
+function elementIndex(
+  documentPath: string,
+  path: readonly string[],
+  segment: string,
+  limit: number
+): number {
+  const index = Number(segment);
+  if (!Number.isInteger(index) || index < 0 || index >= limit) {
+    throw new MergeChangeUnaddressableError(
+      documentPath,
+      path,
+      `"${segment}" is not a position in this list`
+    );
+  }
+  return index;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

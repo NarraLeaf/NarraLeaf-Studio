@@ -21,7 +21,7 @@ const PLUGIN_STORE_DELIMITER = "__";
 
 /** Build the concrete store namespace for a plugin's chosen sub-namespace. */
 export function pluginStoreNamespace(pluginId: string, namespace: string): string {
-    return `${PLUGIN_STORE_PREFIX}${pluginId}${PLUGIN_STORE_DELIMITER}${sanitizeStoreSegment(namespace)}`;
+  return `${PLUGIN_STORE_PREFIX}${pluginId}${PLUGIN_STORE_DELIMITER}${sanitizeStoreSegment(namespace)}`;
 }
 
 /**
@@ -29,22 +29,22 @@ export function pluginStoreNamespace(pluginId: string, namespace: string): strin
  * `.json`), or null when the store is not plugin-owned (e.g. a core store).
  */
 export function parsePluginStoreOwner(storeNamespace: string): string | null {
-    if (!storeNamespace.startsWith(PLUGIN_STORE_PREFIX)) {
-        return null;
-    }
-    const rest = storeNamespace.slice(PLUGIN_STORE_PREFIX.length);
-    const delimiter = rest.indexOf(PLUGIN_STORE_DELIMITER);
-    if (delimiter <= 0) {
-        return null;
-    }
-    return rest.slice(0, delimiter);
+  if (!storeNamespace.startsWith(PLUGIN_STORE_PREFIX)) {
+    return null;
+  }
+  const rest = storeNamespace.slice(PLUGIN_STORE_PREFIX.length);
+  const delimiter = rest.indexOf(PLUGIN_STORE_DELIMITER);
+  if (delimiter <= 0) {
+    return null;
+  }
+  return rest.slice(0, delimiter);
 }
 
 /** Keep the plugin-chosen segment to a safe, single-path-component filename. */
 function sanitizeStoreSegment(value: string): string {
-    const sanitized = value
-        .replace(/[^A-Za-z0-9._-]/g, "-")
-        .replace(/-+/g, "-")
-        .replace(/^-|-$/g, "");
-    return sanitized || "default";
+  const sanitized = value
+    .replace(/[^A-Za-z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return sanitized || "default";
 }

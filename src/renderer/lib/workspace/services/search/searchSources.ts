@@ -19,10 +19,10 @@ import { surfaceSource } from "./sources/surfaceSource";
  * but it does decide which entry wins a score tie, so it stays as it is unless there is a reason.
  */
 export const SEARCH_SOURCES: readonly SearchSource<any>[] = [
-    storySource,
-    blueprintSource,
-    localizationKeySource,
-    assetSource,
-    characterSource,
-    surfaceSource,
+  storySource,
+  blueprintSource,
+  localizationKeySource,
+  assetSource,
+  characterSource,
+  surfaceSource
 ];

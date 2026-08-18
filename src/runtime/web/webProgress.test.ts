@@ -8,30 +8,30 @@ import { WEB_PROGRESS_UNSUPPORTED_REASON, webProgressBridge } from "./webProgres
  * branch down a path that has nothing to do with why this build cannot look.
  */
 describe("the web shell's progress bridge", () => {
-    it("refuses to write, and never reports success", async () => {
-        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-        const result = await webProgressBridge.write({
-            storyId: "story-1",
-            savedVariables: { gold: 12 },
-            persistentVariables: { seenIntro: true },
-            anchor: { sceneId: "scene-3", sceneRuntimeName: "chapter-two" },
-            visitedSceneIds: ["scene-1"],
-        });
-        expect(result.outcome).toBe("failed");
-        expect(result.error).toBe(WEB_PROGRESS_UNSUPPORTED_REASON);
-        warn.mockRestore();
+  it("refuses to write, and never reports success", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const result = await webProgressBridge.write({
+      storyId: "story-1",
+      savedVariables: { gold: 12 },
+      persistentVariables: { seenIntro: true },
+      anchor: { sceneId: "scene-3", sceneRuntimeName: "chapter-two" },
+      visitedSceneIds: ["scene-1"]
     });
+    expect(result.outcome).toBe("failed");
+    expect(result.error).toBe(WEB_PROGRESS_UNSUPPORTED_REASON);
+    warn.mockRestore();
+  });
 
-    it("refuses to read as failed, not as missing", async () => {
-        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-        const result = await webProgressBridge.read();
-        expect(result.outcome).toBe("failed");
-        expect(result.document).toBeNull();
-        expect(result.error).toBe(WEB_PROGRESS_UNSUPPORTED_REASON);
-        warn.mockRestore();
-    });
+  it("refuses to read as failed, not as missing", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const result = await webProgressBridge.read();
+    expect(result.outcome).toBe("failed");
+    expect(result.document).toBeNull();
+    expect(result.error).toBe(WEB_PROGRESS_UNSUPPORTED_REASON);
+    warn.mockRestore();
+  });
 
-    it("says why, so the node's Error pin carries something an author can read", () => {
-        expect(WEB_PROGRESS_UNSUPPORTED_REASON).toMatch(/web build/i);
-    });
+  it("says why, so the node's Error pin carries something an author can read", () => {
+    expect(WEB_PROGRESS_UNSUPPORTED_REASON).toMatch(/web build/i);
+  });
 });

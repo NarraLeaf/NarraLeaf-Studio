@@ -20,51 +20,49 @@ import type { CharacterPose } from "@/lib/workspace/services/character/types";
  * in two places is how the word ended up meaning "is default" on one surface and "make default" on
  * the other.
  */
-function Frame(props: {
-    pose: CharacterPose;
-    active: boolean;
-    onPick: () => void;
-}) {
-    const { url } = useAssetObjectUrl(props.pose.assetId);
-    return (
-        <button
-            className={cn(
-                "flex w-20 shrink-0 flex-col gap-1 rounded-md border p-1 text-2xs transition-colors",
-                props.active ? "border-primary/60 bg-primary/10" : "border-edge hover:bg-fill-subtle",
-            )}
-            onClick={props.onPick}
-            data-tip={props.pose.name}
-        >
-            <span className="grid h-16 w-full place-items-center overflow-hidden rounded-sm bg-fill">
-                {url
-                    ? <img src={url} alt="" draggable={false} className="h-full w-full object-contain" />
-                    : <ImageOff className="h-4 w-4 text-fg-subtle" />}
-            </span>
-            <span className="w-full truncate text-left text-fg-muted">{props.pose.name}</span>
-        </button>
-    );
+function Frame(props: { pose: CharacterPose; active: boolean; onPick: () => void }) {
+  const { url } = useAssetObjectUrl(props.pose.assetId);
+  return (
+    <button
+      className={cn(
+        "flex w-20 shrink-0 flex-col gap-1 rounded-md border p-1 text-2xs transition-colors",
+        props.active ? "border-primary/60 bg-primary/10" : "border-edge hover:bg-fill-subtle"
+      )}
+      onClick={props.onPick}
+      data-tip={props.pose.name}
+    >
+      <span className="grid h-16 w-full place-items-center overflow-hidden rounded-sm bg-fill">
+        {url ? (
+          <img src={url} alt="" draggable={false} className="h-full w-full object-contain" />
+        ) : (
+          <ImageOff className="h-4 w-4 text-fg-subtle" />
+        )}
+      </span>
+      <span className="w-full truncate text-left text-fg-muted">{props.pose.name}</span>
+    </button>
+  );
 }
 
 export function PoseFilmstrip(props: {
-    poses: CharacterPose[];
-    /** The pose the big preview is showing. */
-    activePoseId: string | null;
-    /** Preview only — the default pose is set from the row list, and only there. */
-    onPick: (poseId: string) => void;
+  poses: CharacterPose[];
+  /** The pose the big preview is showing. */
+  activePoseId: string | null;
+  /** Preview only — the default pose is set from the row list, and only there. */
+  onPick: (poseId: string) => void;
 }) {
-    if (props.poses.length === 0) {
-        return null;
-    }
-    return (
-        <div className="flex shrink-0 gap-2 overflow-x-auto border-t border-edge px-3 py-2">
-            {props.poses.map(pose => (
-                <Frame
-                    key={pose.id}
-                    pose={pose}
-                    active={pose.id === props.activePoseId}
-                    onPick={() => props.onPick(pose.id)}
-                />
-            ))}
-        </div>
-    );
+  if (props.poses.length === 0) {
+    return null;
+  }
+  return (
+    <div className="flex shrink-0 gap-2 overflow-x-auto border-t border-edge px-3 py-2">
+      {props.poses.map((pose) => (
+        <Frame
+          key={pose.id}
+          pose={pose}
+          active={pose.id === props.activePoseId}
+          onPick={() => props.onPick(pose.id)}
+        />
+      ))}
+    </div>
+  );
 }

@@ -1,33 +1,33 @@
 import type { UIElementId, UISurfaceId } from "@shared/types/ui-editor/document";
 
 export type BlueprintEntryOwnerKind =
-    | "globalMain"
-    | "surfaceMain"
-    | "widgetMain"
-    | "widgetValue"
-    | "componentWidgetMain"
-    | "storyAction";
+  | "globalMain"
+  | "surfaceMain"
+  | "widgetMain"
+  | "widgetValue"
+  | "componentWidgetMain"
+  | "storyAction";
 
 /** Payload for blueprint entry tab (M4-lite → M4-full); extended with editor focus fields. */
 export type BlueprintEntryTabPayload = {
-    blueprintId: string;
-    ownerKind: BlueprintEntryOwnerKind;
-    /** Absent for surface-less owners (e.g. storyAction). */
-    surfaceId?: UISurfaceId;
-    componentId?: string;
-    elementId?: UIElementId;
-    propPath?: string;
-    focusEventId?: string;
-    focusFunctionId?: string;
-    focusFieldId?: string;
-    focusNodeId?: string;
+  blueprintId: string;
+  ownerKind: BlueprintEntryOwnerKind;
+  /** Absent for surface-less owners (e.g. storyAction). */
+  surfaceId?: UISurfaceId;
+  componentId?: string;
+  elementId?: UIElementId;
+  propPath?: string;
+  focusEventId?: string;
+  focusFunctionId?: string;
+  focusFieldId?: string;
+  focusNodeId?: string;
 };
 
 export function getBlueprintEntryTabId(parts: {
-    blueprintId: string;
-    surfaceId?: UISurfaceId;
-    elementId?: UIElementId;
-    propPath?: string;
+  blueprintId: string;
+  surfaceId?: UISurfaceId;
+  elementId?: UIElementId;
+  propPath?: string;
 }): string {
-    return `blueprint-entry:${parts.blueprintId}:${parts.surfaceId ?? "~"}:${parts.elementId ?? "~"}:${parts.propPath ?? "~"}`;
+  return `blueprint-entry:${parts.blueprintId}:${parts.surfaceId ?? "~"}:${parts.elementId ?? "~"}:${parts.propPath ?? "~"}`;
 }

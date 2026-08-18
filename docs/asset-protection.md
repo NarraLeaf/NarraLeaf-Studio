@@ -21,7 +21,7 @@ audio, script, and so on) are casually extracted from a shipped build and
 redistributed.
 
 It is not meant to be unbreakable. Like any client-side protection, someone who
-fully reverse-engineers a shipped game can still recover its content. 
+fully reverse-engineers a shipped game can still recover its content.
 
 ## Turning it on or off
 

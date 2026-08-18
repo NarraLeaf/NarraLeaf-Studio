@@ -8,9 +8,9 @@ import { AUDIO_TRACK_CHANNELS, resolveAudioTrackChain } from "@shared/types/audi
  * the two have to be said separately or the connection between them is unguessable.
  */
 const SLIDER_KEYS: Record<AudioTrackChannel, TranslationKey> = {
-    bgm: "project.audio.slider.bgm",
-    sound: "project.audio.slider.sound",
-    voice: "project.audio.slider.voice",
+  bgm: "project.audio.slider.bgm",
+  sound: "project.audio.slider.sound",
+  voice: "project.audio.slider.voice"
 };
 
 /**
@@ -36,20 +36,20 @@ const SLIDER_KEYS: Record<AudioTrackChannel, TranslationKey> = {
  * root - is governed by the global volume alone, and says so.
  */
 export function audioBusStatusLine(
-    t: Translator["t"],
-    tracks: readonly ProjectAudioTrack[],
-    trackId: string | null | undefined,
-    fallbackChannel: AudioTrackChannel,
+  t: Translator["t"],
+  tracks: readonly ProjectAudioTrack[],
+  trackId: string | null | undefined,
+  fallbackChannel: AudioTrackChannel
 ): string {
-    const chain = resolveAudioTrackChain(tracks, trackId, fallbackChannel);
-    // Master-most wins: the engine's own slot checks walk up to the top, so a bus beneath `voice`
-    // is governed by Voice Volume however many buses of the author's own sit in between.
-    const seeded = [...chain]
-        .reverse()
-        .find(track => (AUDIO_TRACK_CHANNELS as readonly string[]).includes(track.id));
-    const slider = seeded
-        ? t(SLIDER_KEYS[seeded.id as AudioTrackChannel])
-        : t("project.audio.slider.global");
+  const chain = resolveAudioTrackChain(tracks, trackId, fallbackChannel);
+  // Master-most wins: the engine's own slot checks walk up to the top, so a bus beneath `voice`
+  // is governed by Voice Volume however many buses of the author's own sit in between.
+  const seeded = [...chain]
+    .reverse()
+    .find((track) => (AUDIO_TRACK_CHANNELS as readonly string[]).includes(track.id));
+  const slider = seeded
+    ? t(SLIDER_KEYS[seeded.id as AudioTrackChannel])
+    : t("project.audio.slider.global");
 
-    return [chain.map(track => track.name).join(" → "), slider].join(" · ");
+  return [chain.map((track) => track.name).join(" → "), slider].join(" · ");
 }

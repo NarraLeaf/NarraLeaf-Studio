@@ -19,10 +19,10 @@ export const DASHBOARD_OPEN_DEFAULT_KEY = "dashboard.openOnWorkspaceOpen";
 const DASHBOARD_OPEN_PROJECT_KEY_PREFIX = "dashboard.openOnWorkspaceOpen.project";
 
 export function getDashboardOpenProjectKey(projectRef: {
-    projectPath: string;
-    projectIdentifier?: string | null;
+  projectPath: string;
+  projectIdentifier?: string | null;
 }): string {
-    return `${DASHBOARD_OPEN_PROJECT_KEY_PREFIX}.${stableProjectKeyToken(projectRef)}`;
+  return `${DASHBOARD_OPEN_PROJECT_KEY_PREFIX}.${stableProjectKeyToken(projectRef)}`;
 }
 
 /**
@@ -31,8 +31,8 @@ export function getDashboardOpenProjectKey(projectRef: {
  * never disagree about precedence.
  */
 export function resolveDashboardOpen(projectValue: unknown, defaultValue: unknown): boolean {
-    if (typeof projectValue === "boolean") {
-        return projectValue;
-    }
-    return defaultValue !== false;
+  if (typeof projectValue === "boolean") {
+    return projectValue;
+  }
+  return defaultValue !== false;
 }

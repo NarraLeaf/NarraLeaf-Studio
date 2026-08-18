@@ -18,53 +18,55 @@ import type { PsdWorkerInboundMessage, PsdWorkerOutboundMessage } from "./psdWor
  */
 
 type ParentPort = {
-    on(event: "message", listener: (event: { data: unknown }) => void): void;
-    postMessage(message: unknown): void;
+  on(event: "message", listener: (event: { data: unknown }) => void): void;
+  postMessage(message: unknown): void;
 };
 
 const parentPort = (process as unknown as { parentPort: ParentPort }).parentPort;
 
 function send(message: PsdWorkerOutboundMessage): void {
-    parentPort.postMessage(message);
+  parentPort.postMessage(message);
 }
 
 initializePsdImageData();
 
 const deflate = (bytes: Uint8Array) => new Uint8Array(zlib.deflateSync(bytes));
 
-parentPort.on("message", event => {
-    const message = event.data as PsdWorkerInboundMessage;
-    try {
-        if (message?.type === "read") {
-            // Skip the composite: it is the flattened preview, and every byte of it is wasted here.
-            const psd = readPsd(fs.readFileSync(message.filePath), {
-                skipCompositeImageData: true,
-                skipThumbnail: true,
-                useImageData: true,
-            });
-            send({ type: "read-done", document: describePsd(psd, path.basename(message.filePath)) });
-            return;
-        }
-        if (message?.type === "bake") {
-            const psd = readPsd(fs.readFileSync(message.request.filePath), {
-                skipCompositeImageData: true,
-                skipThumbnail: true,
-                useImageData: true,
-            });
-            fs.mkdirSync(message.request.outputDir, { recursive: true });
-            const write = async (name: string, png: Uint8Array): Promise<string> => {
-                const target = path.join(message.request.outputDir, name);
-                fs.writeFileSync(target, png);
-                return target;
-            };
-            void bakeLayers(psd, message.request.layers, deflate, write)
-                .then(layers => send({ type: "bake-done", layers }))
-                .catch((error: unknown) => send({
-                    type: "error",
-                    message: error instanceof Error ? error.message : String(error),
-                }));
-        }
-    } catch (error: unknown) {
-        send({ type: "error", message: error instanceof Error ? error.message : String(error) });
+parentPort.on("message", (event) => {
+  const message = event.data as PsdWorkerInboundMessage;
+  try {
+    if (message?.type === "read") {
+      // Skip the composite: it is the flattened preview, and every byte of it is wasted here.
+      const psd = readPsd(fs.readFileSync(message.filePath), {
+        skipCompositeImageData: true,
+        skipThumbnail: true,
+        useImageData: true
+      });
+      send({ type: "read-done", document: describePsd(psd, path.basename(message.filePath)) });
+      return;
     }
+    if (message?.type === "bake") {
+      const psd = readPsd(fs.readFileSync(message.request.filePath), {
+        skipCompositeImageData: true,
+        skipThumbnail: true,
+        useImageData: true
+      });
+      fs.mkdirSync(message.request.outputDir, { recursive: true });
+      const write = async (name: string, png: Uint8Array): Promise<string> => {
+        const target = path.join(message.request.outputDir, name);
+        fs.writeFileSync(target, png);
+        return target;
+      };
+      void bakeLayers(psd, message.request.layers, deflate, write)
+        .then((layers) => send({ type: "bake-done", layers }))
+        .catch((error: unknown) =>
+          send({
+            type: "error",
+            message: error instanceof Error ? error.message : String(error)
+          })
+        );
+    }
+  } catch (error: unknown) {
+    send({ type: "error", message: error instanceof Error ? error.message : String(error) });
+  }
 });

@@ -45,7 +45,11 @@ export const AUDIO_TRACK_ID_VOICE = "voice";
  * playing but not which track - a `/bgm` row is music whether or not the track it names still
  * exists.
  */
-export const AUDIO_TRACK_CHANNELS = [AUDIO_TRACK_ID_BGM, AUDIO_TRACK_ID_SOUND, AUDIO_TRACK_ID_VOICE] as const;
+export const AUDIO_TRACK_CHANNELS = [
+  AUDIO_TRACK_ID_BGM,
+  AUDIO_TRACK_ID_SOUND,
+  AUDIO_TRACK_ID_VOICE
+] as const;
 
 export type AudioTrackChannel = (typeof AUDIO_TRACK_CHANNELS)[number];
 
@@ -70,18 +74,18 @@ export const AUDIO_TRACK_VOLUME_MAX = 1;
 export const AUDIO_TRACK_MAX_DEPTH = 8;
 
 export interface ProjectAudioTrack {
-    /** Stable; referenced by story rows, scenes, blueprint nodes and widgets, and the engine bus id. */
-    id: string;
-    /** Author-facing. Renameable even for the seeded three - the id is what references hold. */
-    name: string;
-    /** The bus this one feeds into. `null` means it hangs directly off the master output. */
-    parentId: string | null;
-    /** 0..1. This bus's own gain - live, multiplied with every bus above it, never folded into clips. */
-    volume: number;
-    /** Default loop policy for clips played on this track. */
-    loop: boolean;
-    /** Set on the three seeded tracks. Derived from {@link isBuiltinAudioTrackId}, never authored. */
-    builtin?: true;
+  /** Stable; referenced by story rows, scenes, blueprint nodes and widgets, and the engine bus id. */
+  id: string;
+  /** Author-facing. Renameable even for the seeded three - the id is what references hold. */
+  name: string;
+  /** The bus this one feeds into. `null` means it hangs directly off the master output. */
+  parentId: string | null;
+  /** 0..1. This bus's own gain - live, multiplied with every bus above it, never folded into clips. */
+  volume: number;
+  /** Default loop policy for clips played on this track. */
+  loop: boolean;
+  /** Set on the three seeded tracks. Derived from {@link isBuiltinAudioTrackId}, never authored. */
+  builtin?: true;
 }
 
 /**
@@ -95,30 +99,30 @@ export interface ProjectAudioTrack {
  * and voice fire once.
  */
 export const BUILTIN_AUDIO_TRACKS: readonly ProjectAudioTrack[] = Object.freeze([
-    Object.freeze({
-        id: AUDIO_TRACK_ID_BGM,
-        name: "Music",
-        parentId: null,
-        volume: 1,
-        loop: true,
-        builtin: true as const,
-    }),
-    Object.freeze({
-        id: AUDIO_TRACK_ID_SOUND,
-        name: "SFX",
-        parentId: null,
-        volume: 1,
-        loop: false,
-        builtin: true as const,
-    }),
-    Object.freeze({
-        id: AUDIO_TRACK_ID_VOICE,
-        name: "Voice",
-        parentId: null,
-        volume: 1,
-        loop: false,
-        builtin: true as const,
-    }),
+  Object.freeze({
+    id: AUDIO_TRACK_ID_BGM,
+    name: "Music",
+    parentId: null,
+    volume: 1,
+    loop: true,
+    builtin: true as const
+  }),
+  Object.freeze({
+    id: AUDIO_TRACK_ID_SOUND,
+    name: "SFX",
+    parentId: null,
+    volume: 1,
+    loop: false,
+    builtin: true as const
+  }),
+  Object.freeze({
+    id: AUDIO_TRACK_ID_VOICE,
+    name: "Voice",
+    parentId: null,
+    volume: 1,
+    loop: false,
+    builtin: true as const
+  })
 ]) as readonly ProjectAudioTrack[];
 
 /**
@@ -127,9 +131,9 @@ export const BUILTIN_AUDIO_TRACKS: readonly ProjectAudioTrack[] = Object.freeze(
  * this kind of play", which is a fact about the model rather than about string equality.
  */
 export const DEFAULT_AUDIO_TRACK_ID: Readonly<Record<AudioTrackChannel, string>> = Object.freeze({
-    bgm: AUDIO_TRACK_ID_BGM,
-    sound: AUDIO_TRACK_ID_SOUND,
-    voice: AUDIO_TRACK_ID_VOICE,
+  bgm: AUDIO_TRACK_ID_BGM,
+  sound: AUDIO_TRACK_ID_SOUND,
+  voice: AUDIO_TRACK_ID_VOICE
 });
 
 /**
@@ -142,18 +146,18 @@ export const DEFAULT_AUDIO_TRACK_ID: Readonly<Record<AudioTrackChannel, string>>
  * genuinely called `music` gets their own track, not the alias.
  */
 export const LEGACY_AUDIO_TRACK_ID_ALIASES: Readonly<Record<string, string>> = Object.freeze({
-    music: AUDIO_TRACK_ID_BGM,
-    sfx: AUDIO_TRACK_ID_SOUND,
+  music: AUDIO_TRACK_ID_BGM,
+  sfx: AUDIO_TRACK_ID_SOUND
 });
 
 /** The persisted document. A plain array because author ordering is meaningful and a map loses it. */
 export type ProjectAudioTrackDocument = {
-    schemaVersion: AudioTrackSchemaVersion;
-    tracks: ProjectAudioTrack[];
-    meta?: {
-        createdAt?: string;
-        updatedAt?: string;
-    };
+  schemaVersion: AudioTrackSchemaVersion;
+  tracks: ProjectAudioTrack[];
+  meta?: {
+    createdAt?: string;
+    updatedAt?: string;
+  };
 };
 
 /**
@@ -166,34 +170,34 @@ export type ProjectAudioTrackDocument = {
 export const AUDIO_TRACK_REFERENCE_FIELDS = ["audioTrackId", "trackId"] as const;
 
 export function isBuiltinAudioTrackId(id: string): boolean {
-    return BUILTIN_AUDIO_TRACKS.some(track => track.id === id);
+  return BUILTIN_AUDIO_TRACKS.some((track) => track.id === id);
 }
 
 export function builtinAudioTrack(id: string): ProjectAudioTrack | undefined {
-    return BUILTIN_AUDIO_TRACKS.find(track => track.id === id);
+  return BUILTIN_AUDIO_TRACKS.find((track) => track.id === id);
 }
 
 export function normalizeAudioTrackChannel(value: unknown): AudioTrackChannel {
-    return AUDIO_TRACK_CHANNELS.includes(value as AudioTrackChannel)
-        ? value as AudioTrackChannel
-        : AUDIO_TRACK_ID_SOUND;
+  return AUDIO_TRACK_CHANNELS.includes(value as AudioTrackChannel)
+    ? (value as AudioTrackChannel)
+    : AUDIO_TRACK_ID_SOUND;
 }
 
 function finiteOr(value: unknown, fallback: number): number {
-    return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 function clamp(value: number, min: number, max: number): number {
-    return Math.min(max, Math.max(min, value));
+  return Math.min(max, Math.max(min, value));
 }
 
 export function clamp01(value: number): number {
-    return clamp(value, 0, 1);
+  return clamp(value, 0, 1);
 }
 
 /** 0..1, clamped where the runtime clamps. */
 export function normalizeAudioTrackVolume(value: unknown, fallback = 1): number {
-    return clamp(finiteOr(value, fallback), AUDIO_TRACK_VOLUME_MIN, AUDIO_TRACK_VOLUME_MAX);
+  return clamp(finiteOr(value, fallback), AUDIO_TRACK_VOLUME_MIN, AUDIO_TRACK_VOLUME_MAX);
 }
 
 /**
@@ -205,30 +209,31 @@ export function normalizeAudioTrackVolume(value: unknown, fallback = 1): number 
  * {@link normalizeProjectAudioTracks}.
  */
 export function normalizeProjectAudioTrack(raw: unknown): ProjectAudioTrack | null {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-        return null;
-    }
-    const record = raw as Record<string, unknown>;
-    const id = typeof record.id === "string" ? record.id.trim() : "";
-    if (!id) {
-        return null;
-    }
-    const builtin = builtinAudioTrack(id);
-    const name = typeof record.name === "string" && record.name.trim()
-        ? record.name.trim()
-        : builtin?.name ?? id;
-    const parentRaw = typeof record.parentId === "string" ? record.parentId.trim() : "";
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  const id = typeof record.id === "string" ? record.id.trim() : "";
+  if (!id) {
+    return null;
+  }
+  const builtin = builtinAudioTrack(id);
+  const name =
+    typeof record.name === "string" && record.name.trim()
+      ? record.name.trim()
+      : (builtin?.name ?? id);
+  const parentRaw = typeof record.parentId === "string" ? record.parentId.trim() : "";
 
-    return {
-        id,
-        name,
-        parentId: parentRaw && parentRaw !== id ? parentRaw : null,
-        volume: normalizeAudioTrackVolume(record.volume, builtin?.volume ?? 1),
-        loop: typeof record.loop === "boolean" ? record.loop : builtin?.loop ?? false,
-        // Derived from the id and re-derived on every load, so a hand-written `builtin: true` on a
-        // custom track cannot make it undeletable and a stripped one cannot make Music deletable.
-        ...(builtin ? { builtin: true as const } : {}),
-    };
+  return {
+    id,
+    name,
+    parentId: parentRaw && parentRaw !== id ? parentRaw : null,
+    volume: normalizeAudioTrackVolume(record.volume, builtin?.volume ?? 1),
+    loop: typeof record.loop === "boolean" ? record.loop : (builtin?.loop ?? false),
+    // Derived from the id and re-derived on every load, so a hand-written `builtin: true` on a
+    // custom track cannot make it undeletable and a stripped one cannot make Music deletable.
+    ...(builtin ? { builtin: true as const } : {})
+  };
 }
 
 /**
@@ -246,92 +251,92 @@ export function normalizeProjectAudioTrack(raw: unknown): ProjectAudioTrack | nu
  * order on the surface, and the tree itself is rebuilt from `parentId` rather than from position.
  */
 export function normalizeProjectAudioTracks(raw: unknown): ProjectAudioTrack[] {
-    const source = Array.isArray(raw) ? raw : [];
-    const byId = new Map<string, ProjectAudioTrack>();
-    const order: string[] = [];
+  const source = Array.isArray(raw) ? raw : [];
+  const byId = new Map<string, ProjectAudioTrack>();
+  const order: string[] = [];
 
-    for (const entry of source) {
-        const track = normalizeProjectAudioTrack(entry);
-        if (!track || byId.has(track.id)) {
-            // First wins. A duplicated id is one row on the surface either way, and taking the later
-            // one would silently discard whichever of the two the author had been editing first.
-            continue;
-        }
-        byId.set(track.id, track);
-        order.push(track.id);
+  for (const entry of source) {
+    const track = normalizeProjectAudioTrack(entry);
+    if (!track || byId.has(track.id)) {
+      // First wins. A duplicated id is one row on the surface either way, and taking the later
+      // one would silently discard whichever of the two the author had been editing first.
+      continue;
     }
+    byId.set(track.id, track);
+    order.push(track.id);
+  }
 
-    // Missing seeds go in front, in seed order, so a document that lost one comes back looking like
-    // a fresh project rather than like a project with a stray track appended.
-    const missing = BUILTIN_AUDIO_TRACKS.filter(seed => !byId.has(seed.id));
-    for (const seed of missing) {
-        byId.set(seed.id, { ...seed });
+  // Missing seeds go in front, in seed order, so a document that lost one comes back looking like
+  // a fresh project rather than like a project with a stray track appended.
+  const missing = BUILTIN_AUDIO_TRACKS.filter((seed) => !byId.has(seed.id));
+  for (const seed of missing) {
+    byId.set(seed.id, { ...seed });
+  }
+  const ids = [...missing.map((seed) => seed.id), ...order];
+
+  // Unknown parent -> root. A reference to a track that was deleted (or never existed, in a
+  // hand-written file) must not leave the track unreachable from master.
+  for (const id of ids) {
+    const track = byId.get(id)!;
+    if (track.parentId !== null && !byId.has(track.parentId)) {
+      track.parentId = null;
     }
-    const ids = [...missing.map(seed => seed.id), ...order];
+  }
 
-    // Unknown parent -> root. A reference to a track that was deleted (or never existed, in a
-    // hand-written file) must not leave the track unreachable from master.
-    for (const id of ids) {
-        const track = byId.get(id)!;
-        if (track.parentId !== null && !byId.has(track.parentId)) {
-            track.parentId = null;
-        }
+  // Cycles and depth, in one walk per track. `settled` is the visited set across the whole pass,
+  // so a ring is paid for once rather than once per member.
+  const settled = new Set<string>();
+  for (const id of ids) {
+    if (settled.has(id)) {
+      continue;
     }
-
-    // Cycles and depth, in one walk per track. `settled` is the visited set across the whole pass,
-    // so a ring is paid for once rather than once per member.
-    const settled = new Set<string>();
-    for (const id of ids) {
-        if (settled.has(id)) {
-            continue;
-        }
-        const path: string[] = [];
-        const onPath = new Set<string>();
-        let cursor: string | null = id;
-        while (cursor !== null && !settled.has(cursor)) {
-            if (onPath.has(cursor)) {
-                // The ring closes on a track already in this path, so that track is the one cut
-                // loose. Everything else in the ring keeps the parent the author gave it: a
-                // three-way cycle degrades into a three-deep chain rather than three loose tracks.
-                byId.get(cursor)!.parentId = null;
-                break;
-            }
-            onPath.add(cursor);
-            path.push(cursor);
-            cursor = byId.get(cursor)!.parentId;
-        }
-        for (const member of path) {
-            settled.add(member);
-        }
+    const path: string[] = [];
+    const onPath = new Set<string>();
+    let cursor: string | null = id;
+    while (cursor !== null && !settled.has(cursor)) {
+      if (onPath.has(cursor)) {
+        // The ring closes on a track already in this path, so that track is the one cut
+        // loose. Everything else in the ring keeps the parent the author gave it: a
+        // three-way cycle degrades into a three-deep chain rather than three loose tracks.
+        byId.get(cursor)!.parentId = null;
+        break;
+      }
+      onPath.add(cursor);
+      path.push(cursor);
+      cursor = byId.get(cursor)!.parentId;
     }
-
-    for (const id of ids) {
-        if (audioTrackDepth(byId, id) > AUDIO_TRACK_MAX_DEPTH) {
-            byId.get(id)!.parentId = null;
-        }
+    for (const member of path) {
+      settled.add(member);
     }
+  }
 
-    return ids.map(entry => byId.get(entry)!);
+  for (const id of ids) {
+    if (audioTrackDepth(byId, id) > AUDIO_TRACK_MAX_DEPTH) {
+      byId.get(id)!.parentId = null;
+    }
+  }
+
+  return ids.map((entry) => byId.get(entry)!);
 }
 
 /** Ancestor count. Only called after cycles are broken, but bounded anyway so it cannot hang. */
 function audioTrackDepth(byId: ReadonlyMap<string, ProjectAudioTrack>, id: string): number {
-    let depth = 0;
-    let cursor = byId.get(id)?.parentId ?? null;
-    while (cursor !== null && depth <= AUDIO_TRACK_MAX_DEPTH + 1) {
-        depth += 1;
-        cursor = byId.get(cursor)?.parentId ?? null;
-    }
-    return depth;
+  let depth = 0;
+  let cursor = byId.get(id)?.parentId ?? null;
+  while (cursor !== null && depth <= AUDIO_TRACK_MAX_DEPTH + 1) {
+    depth += 1;
+    cursor = byId.get(cursor)?.parentId ?? null;
+  }
+  return depth;
 }
 
 /** An absent or unreadable document is a project that has never had the Audio surface opened. */
 export function createSeededAudioTrackDocument(now?: string): ProjectAudioTrackDocument {
-    return {
-        schemaVersion: AUDIO_TRACK_SCHEMA_VERSION,
-        tracks: normalizeProjectAudioTracks([]),
-        ...(now ? { meta: { createdAt: now, updatedAt: now } } : {}),
-    };
+  return {
+    schemaVersion: AUDIO_TRACK_SCHEMA_VERSION,
+    tracks: normalizeProjectAudioTracks([]),
+    ...(now ? { meta: { createdAt: now, updatedAt: now } } : {})
+  };
 }
 
 /**
@@ -349,54 +354,56 @@ export function createSeededAudioTrackDocument(now?: string): ProjectAudioTrackD
  *   work that the alias cannot bring back.
  */
 export function migrateProjectAudioTrackDocument(raw: unknown): ProjectAudioTrackDocument {
-    const record = raw && typeof raw === "object" && !Array.isArray(raw)
-        ? raw as Record<string, unknown>
-        : {};
-    const meta = record.meta && typeof record.meta === "object" && !Array.isArray(record.meta)
-        ? record.meta as ProjectAudioTrackDocument["meta"]
-        : undefined;
-    const version = typeof record.schemaVersion === "number" ? record.schemaVersion : 1;
-    const tracks = version < 2 ? migrateV1Tracks(record.tracks) : record.tracks;
+  const record =
+    raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const meta =
+    record.meta && typeof record.meta === "object" && !Array.isArray(record.meta)
+      ? (record.meta as ProjectAudioTrackDocument["meta"])
+      : undefined;
+  const version = typeof record.schemaVersion === "number" ? record.schemaVersion : 1;
+  const tracks = version < 2 ? migrateV1Tracks(record.tracks) : record.tracks;
 
-    return {
-        schemaVersion: AUDIO_TRACK_SCHEMA_VERSION,
-        tracks: normalizeProjectAudioTracks(tracks),
-        ...(meta ? { meta } : {}),
-    };
+  return {
+    schemaVersion: AUDIO_TRACK_SCHEMA_VERSION,
+    tracks: normalizeProjectAudioTracks(tracks),
+    ...(meta ? { meta } : {})
+  };
 }
 
 function migrateV1Tracks(raw: unknown): unknown[] {
-    const source = Array.isArray(raw) ? raw : [];
-    const presentIds = new Set(
-        source
-            .map(entry => (entry && typeof entry === "object" && !Array.isArray(entry)
-                ? (entry as Record<string, unknown>).id
-                : null))
-            .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
-            .map(id => id.trim()),
-    );
+  const source = Array.isArray(raw) ? raw : [];
+  const presentIds = new Set(
+    source
+      .map((entry) =>
+        entry && typeof entry === "object" && !Array.isArray(entry)
+          ? (entry as Record<string, unknown>).id
+          : null
+      )
+      .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+      .map((id) => id.trim())
+  );
 
-    return source.map(entry => {
-        if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-            return entry;
-        }
-        const track = entry as Record<string, unknown>;
-        const id = typeof track.id === "string" ? track.id.trim() : "";
-        const alias = LEGACY_AUDIO_TRACK_ID_ALIASES[id];
-        const renamed = alias && !presentIds.has(alias) ? alias : null;
-        const channel = typeof track.channel === "string" ? track.channel.trim() : "";
-        // A renamed seed IS the bus it used to point at, so it lands at the root rather than
-        // becoming a child of itself.
-        const parentId = renamed ? null : (channel || null);
+  return source.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return entry;
+    }
+    const track = entry as Record<string, unknown>;
+    const id = typeof track.id === "string" ? track.id.trim() : "";
+    const alias = LEGACY_AUDIO_TRACK_ID_ALIASES[id];
+    const renamed = alias && !presentIds.has(alias) ? alias : null;
+    const channel = typeof track.channel === "string" ? track.channel.trim() : "";
+    // A renamed seed IS the bus it used to point at, so it lands at the root rather than
+    // becoming a child of itself.
+    const parentId = renamed ? null : channel || null;
 
-        return {
-            id: renamed ?? id,
-            name: track.name,
-            parentId,
-            volume: normalizeAudioTrackVolume(track.gain, 1),
-            loop: track.loop,
-        };
-    });
+    return {
+      id: renamed ?? id,
+      name: track.name,
+      parentId,
+      volume: normalizeAudioTrackVolume(track.gain, 1),
+      loop: track.loop
+    };
+  });
 }
 
 /**
@@ -408,28 +415,30 @@ function migrateV1Tracks(raw: unknown): unknown[] {
  * which is what an unqualified "play this clip" has always meant.
  */
 export function resolveAudioTrack(
-    tracks: readonly ProjectAudioTrack[],
-    trackId: string | null | undefined,
-    fallbackChannel: AudioTrackChannel = AUDIO_TRACK_ID_SOUND,
+  tracks: readonly ProjectAudioTrack[],
+  trackId: string | null | undefined,
+  fallbackChannel: AudioTrackChannel = AUDIO_TRACK_ID_SOUND
 ): ProjectAudioTrack {
-    const id = typeof trackId === "string" ? trackId.trim() : "";
-    if (id) {
-        const found = tracks.find(track => track.id === id);
-        if (found) {
-            return found;
-        }
-        const alias = LEGACY_AUDIO_TRACK_ID_ALIASES[id];
-        const aliased = alias ? tracks.find(track => track.id === alias) : undefined;
-        if (aliased) {
-            return aliased;
-        }
+  const id = typeof trackId === "string" ? trackId.trim() : "";
+  if (id) {
+    const found = tracks.find((track) => track.id === id);
+    if (found) {
+      return found;
     }
-    const fallbackId = DEFAULT_AUDIO_TRACK_ID[fallbackChannel];
-    return tracks.find(track => track.id === fallbackId)
-        // Reachable only for a caller holding a list that never went through
-        // `normalizeProjectAudioTracks` (a test fixture, a partially-built preview). The seed is the
-        // same value that list would have contained, so the answer is identical either way.
-        ?? builtinAudioTrack(fallbackId)!;
+    const alias = LEGACY_AUDIO_TRACK_ID_ALIASES[id];
+    const aliased = alias ? tracks.find((track) => track.id === alias) : undefined;
+    if (aliased) {
+      return aliased;
+    }
+  }
+  const fallbackId = DEFAULT_AUDIO_TRACK_ID[fallbackChannel];
+  return (
+    tracks.find((track) => track.id === fallbackId) ??
+    // Reachable only for a caller holding a list that never went through
+    // `normalizeProjectAudioTracks` (a test fixture, a partially-built preview). The seed is the
+    // same value that list would have contained, so the answer is identical either way.
+    builtinAudioTrack(fallbackId)!
+  );
 }
 
 /**
@@ -439,60 +448,64 @@ export function resolveAudioTrack(
  * with lists that a caller assembled by hand as well as with normalized ones.
  */
 export function resolveAudioTrackChain(
-    tracks: readonly ProjectAudioTrack[],
-    trackId: string | null | undefined,
-    fallbackChannel: AudioTrackChannel = AUDIO_TRACK_ID_SOUND,
+  tracks: readonly ProjectAudioTrack[],
+  trackId: string | null | undefined,
+  fallbackChannel: AudioTrackChannel = AUDIO_TRACK_ID_SOUND
 ): ProjectAudioTrack[] {
-    const chain: ProjectAudioTrack[] = [];
-    const seen = new Set<string>();
-    let cursor: ProjectAudioTrack | undefined = resolveAudioTrack(tracks, trackId, fallbackChannel);
-    while (cursor && !seen.has(cursor.id) && chain.length <= AUDIO_TRACK_MAX_DEPTH) {
-        seen.add(cursor.id);
-        chain.push(cursor);
-        const parentId: string | null = cursor.parentId;
-        cursor = parentId === null ? undefined : tracks.find(track => track.id === parentId);
-    }
-    return chain;
+  const chain: ProjectAudioTrack[] = [];
+  const seen = new Set<string>();
+  let cursor: ProjectAudioTrack | undefined = resolveAudioTrack(tracks, trackId, fallbackChannel);
+  while (cursor && !seen.has(cursor.id) && chain.length <= AUDIO_TRACK_MAX_DEPTH) {
+    seen.add(cursor.id);
+    chain.push(cursor);
+    const parentId: string | null = cursor.parentId;
+    cursor = parentId === null ? undefined : tracks.find((track) => track.id === parentId);
+  }
+  return chain;
 }
 
 /** The product of every bus gain between a clip and the master output. 0..1. */
 export function resolveAudioTrackBusGain(
-    tracks: readonly ProjectAudioTrack[],
-    trackId: string | null | undefined,
-    fallbackChannel: AudioTrackChannel = AUDIO_TRACK_ID_SOUND,
+  tracks: readonly ProjectAudioTrack[],
+  trackId: string | null | undefined,
+  fallbackChannel: AudioTrackChannel = AUDIO_TRACK_ID_SOUND
 ): number {
-    return clamp01(resolveAudioTrackChain(tracks, trackId, fallbackChannel)
-        .reduce((gain, track) => gain * clamp01(track.volume), 1));
+  return clamp01(
+    resolveAudioTrackChain(tracks, trackId, fallbackChannel).reduce(
+      (gain, track) => gain * clamp01(track.volume),
+      1
+    )
+  );
 }
 
 /** Every track whose chain passes through `id`, `id` itself excluded. */
 export function audioTrackDescendantIds(
-    tracks: readonly ProjectAudioTrack[],
-    id: string,
+  tracks: readonly ProjectAudioTrack[],
+  id: string
 ): Set<string> {
-    const descendants = new Set<string>();
-    let grew = true;
-    while (grew) {
-        grew = false;
-        for (const track of tracks) {
-            if (track.id === id || descendants.has(track.id) || track.parentId === null) {
-                continue;
-            }
-            if (track.parentId === id || descendants.has(track.parentId)) {
-                descendants.add(track.id);
-                grew = true;
-            }
-        }
+  const descendants = new Set<string>();
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const track of tracks) {
+      if (track.id === id || descendants.has(track.id) || track.parentId === null) {
+        continue;
+      }
+      if (track.parentId === id || descendants.has(track.parentId)) {
+        descendants.add(track.id);
+        grew = true;
+      }
     }
-    return descendants;
+  }
+  return descendants;
 }
 
 /** The tracks parented directly to `parentId`, in stored order. */
 export function audioTrackChildren(
-    tracks: readonly ProjectAudioTrack[],
-    parentId: string | null,
+  tracks: readonly ProjectAudioTrack[],
+  parentId: string | null
 ): ProjectAudioTrack[] {
-    return tracks.filter(track => track.parentId === parentId);
+  return tracks.filter((track) => track.parentId === parentId);
 }
 
 /**
@@ -504,32 +517,32 @@ export function audioTrackChildren(
  * silently disappears is worse than a row that appears at the bottom.
  */
 export function flattenAudioTrackTree(
-    tracks: readonly ProjectAudioTrack[],
+  tracks: readonly ProjectAudioTrack[]
 ): { track: ProjectAudioTrack; depth: number }[] {
-    const flat: { track: ProjectAudioTrack; depth: number }[] = [];
-    const emitted = new Set<string>();
+  const flat: { track: ProjectAudioTrack; depth: number }[] = [];
+  const emitted = new Set<string>();
 
-    const walk = (parentId: string | null, depth: number): void => {
-        if (depth > AUDIO_TRACK_MAX_DEPTH) {
-            return;
-        }
-        for (const track of tracks) {
-            if (track.parentId !== parentId || emitted.has(track.id)) {
-                continue;
-            }
-            emitted.add(track.id);
-            flat.push({ track, depth });
-            walk(track.id, depth + 1);
-        }
-    };
-    walk(null, 0);
-
-    for (const track of tracks) {
-        if (!emitted.has(track.id)) {
-            flat.push({ track, depth: 0 });
-        }
+  const walk = (parentId: string | null, depth: number): void => {
+    if (depth > AUDIO_TRACK_MAX_DEPTH) {
+      return;
     }
-    return flat;
+    for (const track of tracks) {
+      if (track.parentId !== parentId || emitted.has(track.id)) {
+        continue;
+      }
+      emitted.add(track.id);
+      flat.push({ track, depth });
+      walk(track.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+
+  for (const track of tracks) {
+    if (!emitted.has(track.id)) {
+      flat.push({ track, depth: 0 });
+    }
+  }
+  return flat;
 }
 
 /**
@@ -550,32 +563,33 @@ export function flattenAudioTrackTree(
  * fade and a resolver that hands it straight back is a place for a default to be invented later.
  */
 export type AudioTrackPlayback = {
-    /** The engine bus this clip plays on - the track's id. */
-    busId: string;
-    /** 0..1 - the clip's authored volume, unmultiplied. */
-    volume: number;
-    loop: boolean;
+  /** The engine bus this clip plays on - the track's id. */
+  busId: string;
+  /** 0..1 - the clip's authored volume, unmultiplied. */
+  volume: number;
+  loop: boolean;
 };
 
 export type AudioTrackPlaybackOverrides = {
-    /** The action's own volume, 0..1 as authored. Absent means unity. */
-    volume?: number | null;
-    loop?: boolean | null;
+  /** The action's own volume, 0..1 as authored. Absent means unity. */
+  volume?: number | null;
+  loop?: boolean | null;
 };
 
 export function resolveAudioTrackPlayback(
-    track: ProjectAudioTrack,
-    overrides: AudioTrackPlaybackOverrides = {},
+  track: ProjectAudioTrack,
+  overrides: AudioTrackPlaybackOverrides = {}
 ): AudioTrackPlayback {
-    const actionVolume = typeof overrides.volume === "number" && Number.isFinite(overrides.volume)
-        ? overrides.volume
-        : 1;
+  const actionVolume =
+    typeof overrides.volume === "number" && Number.isFinite(overrides.volume)
+      ? overrides.volume
+      : 1;
 
-    return {
-        busId: track.id,
-        volume: clamp01(actionVolume),
-        loop: typeof overrides.loop === "boolean" ? overrides.loop : track.loop,
-    };
+  return {
+    busId: track.id,
+    volume: clamp01(actionVolume),
+    loop: typeof overrides.loop === "boolean" ? overrides.loop : track.loop
+  };
 }
 
 /**
@@ -586,23 +600,27 @@ export function resolveAudioTrackPlayback(
  * {@link resolveMixedElementVolume}.
  */
 export type AudioMixPreferences = {
-    globalVolume?: number | null;
-    bgmVolume?: number | null;
-    soundVolume?: number | null;
-    voiceVolume?: number | null;
+  globalVolume?: number | null;
+  bgmVolume?: number | null;
+  soundVolume?: number | null;
+  voiceVolume?: number | null;
 };
 
-const CHANNEL_PREFERENCE_KEY: Readonly<Record<AudioTrackChannel, keyof AudioMixPreferences>> = Object.freeze({
+const CHANNEL_PREFERENCE_KEY: Readonly<Record<AudioTrackChannel, keyof AudioMixPreferences>> =
+  Object.freeze({
     bgm: "bgmVolume",
     sound: "soundVolume",
-    voice: "voiceVolume",
-});
+    voice: "voiceVolume"
+  });
 
-function preferenceVolume(preferences: AudioMixPreferences, key: keyof AudioMixPreferences): number {
-    const value = preferences[key];
-    // An unset preference is unity, not silence: a host that cannot reach the live game yet must
-    // still play at the authored level rather than mute the clip until the game boots.
-    return typeof value === "number" && Number.isFinite(value) ? clamp01(value) : 1;
+function preferenceVolume(
+  preferences: AudioMixPreferences,
+  key: keyof AudioMixPreferences
+): number {
+  const value = preferences[key];
+  // An unset preference is unity, not silence: a host that cannot reach the live game yet must
+  // still play at the authored level rather than mute the clip until the game boots.
+  return typeof value === "number" && Number.isFinite(value) ? clamp01(value) : 1;
 }
 
 /**
@@ -619,21 +637,23 @@ function preferenceVolume(preferences: AudioMixPreferences, key: keyof AudioMixP
  * blaring - which is exactly the defect this exists to close.
  */
 export function resolveMixedElementVolume(
-    playback: Pick<AudioTrackPlayback, "busId" | "volume">,
-    tracks: readonly ProjectAudioTrack[],
-    preferences: AudioMixPreferences = {},
+  playback: Pick<AudioTrackPlayback, "busId" | "volume">,
+  tracks: readonly ProjectAudioTrack[],
+  preferences: AudioMixPreferences = {}
 ): number {
-    const chain = resolveAudioTrackChain(tracks, playback.busId);
-    const busGain = chain.reduce((gain, track) => {
-        const sliderKey = CHANNEL_PREFERENCE_KEY[track.id as AudioTrackChannel];
-        // The player's per-channel sliders are aliases onto the seeded buses, so they apply where
-        // that bus sits in the chain - a `voice/alice` clip is governed by Voice Volume because its
-        // chain runs through `voice`, without anything having to say so.
-        const slider = sliderKey ? preferenceVolume(preferences, sliderKey) : 1;
-        return gain * clamp01(track.volume) * slider;
-    }, 1);
+  const chain = resolveAudioTrackChain(tracks, playback.busId);
+  const busGain = chain.reduce((gain, track) => {
+    const sliderKey = CHANNEL_PREFERENCE_KEY[track.id as AudioTrackChannel];
+    // The player's per-channel sliders are aliases onto the seeded buses, so they apply where
+    // that bus sits in the chain - a `voice/alice` clip is governed by Voice Volume because its
+    // chain runs through `voice`, without anything having to say so.
+    const slider = sliderKey ? preferenceVolume(preferences, sliderKey) : 1;
+    return gain * clamp01(track.volume) * slider;
+  }, 1);
 
-    return clamp01(clamp01(playback.volume) * busGain * preferenceVolume(preferences, "globalVolume"));
+  return clamp01(
+    clamp01(playback.volume) * busGain * preferenceVolume(preferences, "globalVolume")
+  );
 }
 
 /**
@@ -646,47 +666,48 @@ export function resolveMixedElementVolume(
  * against the known set is what keeps those from reporting as audio references.
  */
 export function countAudioTrackReferences(
-    roots: readonly unknown[],
-    trackIds: readonly string[],
+  roots: readonly unknown[],
+  trackIds: readonly string[]
 ): Record<string, number> {
-    const known = new Set(trackIds);
-    const counts: Record<string, number> = {};
-    for (const id of trackIds) {
-        counts[id] = 0;
+  const known = new Set(trackIds);
+  const counts: Record<string, number> = {};
+  for (const id of trackIds) {
+    counts[id] = 0;
+  }
+  const seen = new Set<object>();
+
+  const walk = (value: unknown): void => {
+    if (!value || typeof value !== "object") {
+      return;
     }
-    const seen = new Set<object>();
-
-    const walk = (value: unknown): void => {
-        if (!value || typeof value !== "object") {
-            return;
-        }
-        // Documents are trees, but an in-memory one can hold a shared sub-object; without this a
-        // cycle would hang the surface rather than report a number.
-        if (seen.has(value as object)) {
-            return;
-        }
-        seen.add(value as object);
-
-        if (Array.isArray(value)) {
-            for (const item of value) {
-                walk(item);
-            }
-            return;
-        }
-        for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-            if (typeof child === "string"
-                && (AUDIO_TRACK_REFERENCE_FIELDS as readonly string[]).includes(key)
-                && known.has(child)
-            ) {
-                counts[child] += 1;
-                continue;
-            }
-            walk(child);
-        }
-    };
-
-    for (const root of roots) {
-        walk(root);
+    // Documents are trees, but an in-memory one can hold a shared sub-object; without this a
+    // cycle would hang the surface rather than report a number.
+    if (seen.has(value as object)) {
+      return;
     }
-    return counts;
+    seen.add(value as object);
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        walk(item);
+      }
+      return;
+    }
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      if (
+        typeof child === "string" &&
+        (AUDIO_TRACK_REFERENCE_FIELDS as readonly string[]).includes(key) &&
+        known.has(child)
+      ) {
+        counts[child] += 1;
+        continue;
+      }
+      walk(child);
+    }
+  };
+
+  for (const root of roots) {
+    walk(root);
+  }
+  return counts;
 }

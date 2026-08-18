@@ -1,5 +1,15 @@
-import { paramHintKey, paramTypes, positionalParams, type StoryCommandParam } from "./storyCommandGrammar";
-import { parseCommandLine, tokenizeCommandLine, unfilledParams, type StoryCommandLine } from "./storyCommandParser";
+import {
+  paramHintKey,
+  paramTypes,
+  positionalParams,
+  type StoryCommandParam
+} from "./storyCommandGrammar";
+import {
+  parseCommandLine,
+  tokenizeCommandLine,
+  unfilledParams,
+  type StoryCommandLine
+} from "./storyCommandParser";
 
 /**
  * The inline ghost hint: the grey `<Var Name>` that trails what the author has typed.
@@ -23,10 +33,10 @@ import { parseCommandLine, tokenizeCommandLine, unfilledParams, type StoryComman
  */
 
 export type StoryCommandGhost = {
-    /** Key under `story.paramHint.*`. */
-    hintKey: string;
-    /** The param this describes — callers may want its name for a tooltip or test. */
-    param: StoryCommandParam;
+  /** Key under `story.paramHint.*`. */
+  hintKey: string;
+  /** The param this describes — callers may want its name for a tooltip or test. */
+  param: StoryCommandParam;
 };
 
 /**
@@ -44,24 +54,24 @@ export { paramHintKey };
  * middle of the line would point at the wrong slot.
  */
 export function getCommandGhost(source: string, caret: number): StoryCommandGhost | null {
-    // Anywhere but the end of the line, the ghost would sit after text the author is not currently
-    // extending, so it would describe a slot that is not the one being filled.
-    if (caret !== source.length || !source.startsWith("/")) {
-        return null;
-    }
-    // Mid-word: the author is typing a value, the candidate menu is already answering "what goes
-    // here", and a ghost would render *inside* the token they are still writing.
-    if (source.length > 1 && !source.endsWith(" ")) {
-        return null;
-    }
+  // Anywhere but the end of the line, the ghost would sit after text the author is not currently
+  // extending, so it would describe a slot that is not the one being filled.
+  if (caret !== source.length || !source.startsWith("/")) {
+    return null;
+  }
+  // Mid-word: the author is typing a value, the candidate menu is already answering "what goes
+  // here", and a ghost would render *inside* the token they are still writing.
+  if (source.length > 1 && !source.endsWith(" ")) {
+    return null;
+  }
 
-    const line = parseCommandLine(source);
-    if (line.kind !== "command" || !line.def || line.issues.length > 0) {
-        return null;
-    }
+  const line = parseCommandLine(source);
+  if (line.kind !== "command" || !line.def || line.issues.length > 0) {
+    return null;
+  }
 
-    const next = nextSlot(line, source);
-    return next ? { hintKey: paramHintKey(next), param: next } : null;
+  const next = nextSlot(line, source);
+  return next ? { hintKey: paramHintKey(next), param: next } : null;
 }
 
 /**
@@ -73,26 +83,29 @@ export function getCommandGhost(source: string, caret: number): StoryCommandGhos
  * finished line still advertises its modifiers (`/bg forest ` → `<transition>`) rather than going
  * blank the moment the required part is done.
  */
-function nextSlot(line: Extract<StoryCommandLine, { kind: "command" }>, source: string): StoryCommandParam | null {
-    const unfilled = unfilledParams(line);
-    if (unfilled.length === 0) {
-        return null;
-    }
+function nextSlot(
+  line: Extract<StoryCommandLine, { kind: "command" }>,
+  source: string
+): StoryCommandParam | null {
+  const unfilled = unfilledParams(line);
+  if (unfilled.length === 0) {
+    return null;
+  }
 
-    // A greedy param that already has an arg has swallowed the rest of the line, so nothing follows
-    // it — `/say alice hello ` must not advertise another slot.
-    const filledGreedy = line.args.some(arg => arg.param?.greedy);
-    if (filledGreedy) {
-        return null;
-    }
+  // A greedy param that already has an arg has swallowed the rest of the line, so nothing follows
+  // it — `/say alice hello ` must not advertise another slot.
+  const filledGreedy = line.args.some((arg) => arg.param?.greedy);
+  if (filledGreedy) {
+    return null;
+  }
 
-    const positionalsFilled = countFilledPositionals(line, source);
-    const positionals = positionalParams(line.def!);
-    const nextPositional = positionals[positionalsFilled];
-    if (nextPositional && unfilled.includes(nextPositional)) {
-        return nextPositional;
-    }
-    return unfilled.find(param => !param.positional) ?? null;
+  const positionalsFilled = countFilledPositionals(line, source);
+  const positionals = positionalParams(line.def!);
+  const nextPositional = positionals[positionalsFilled];
+  if (nextPositional && unfilled.includes(nextPositional)) {
+    return nextPositional;
+  }
+  return unfilled.find((param) => !param.positional) ?? null;
 }
 
 /**
@@ -101,28 +114,32 @@ function nextSlot(line: Extract<StoryCommandLine, { kind: "command" }>, source: 
  * Counted off the raw tokens rather than off `line.args`, because a `key=value` token fills a named
  * param without advancing the positional counter, and an empty trailing token must not count at all.
  */
-function countFilledPositionals(line: Extract<StoryCommandLine, { kind: "command" }>, source: string): number {
-    const { tokens } = tokenizeCommandLine(source, 1);
-    return tokens.slice(1).filter(token => token.text !== "" && firstUnquotedEquals(token.raw) <= 0).length;
+function countFilledPositionals(
+  line: Extract<StoryCommandLine, { kind: "command" }>,
+  source: string
+): number {
+  const { tokens } = tokenizeCommandLine(source, 1);
+  return tokens.slice(1).filter((token) => token.text !== "" && firstUnquotedEquals(token.raw) <= 0)
+    .length;
 }
 
 /** Index of the first `=` outside quotes, or -1. Mirrors the parser's own splitting. */
 function firstUnquotedEquals(raw: string): number {
-    let inQuote: "\"" | "'" | null = null;
-    for (let index = 0; index < raw.length; index += 1) {
-        const char = raw[index];
-        if ((char === "\"" || char === "'") && (inQuote === null || inQuote === char)) {
-            inQuote = inQuote === null ? char : null;
-            continue;
-        }
-        if (char === "=" && inQuote === null) {
-            return index;
-        }
+  let inQuote: '"' | "'" | null = null;
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index];
+    if ((char === '"' || char === "'") && (inQuote === null || inQuote === char)) {
+      inQuote = inQuote === null ? char : null;
+      continue;
     }
-    return -1;
+    if (char === "=" && inQuote === null) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 /** Whether a param's slot accepts a computed expression — used to mark the hint as such in the UI. */
 export function paramTakesExpression(param: StoryCommandParam): boolean {
-    return paramTypes(param).some(type => type.kind === "expression");
+  return paramTypes(param).some((type) => type.kind === "expression");
 }

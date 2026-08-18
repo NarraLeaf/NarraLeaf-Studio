@@ -8,9 +8,9 @@
 
 /** One candidate word and where it sat. */
 export type TextWord = {
-    start: number;
-    end: number;
-    word: string;
+  start: number;
+  end: number;
+  word: string;
 };
 
 /**
@@ -47,40 +47,40 @@ const EDGE = /^[-'’]+|[-'’]+$/g;
  * (identifiers, version numbers, filenames), and anything inside a URL, mail address or path.
  */
 export function extractWords(text: string): TextWord[] {
-    const opaque = opaqueSpans(text);
-    const words: TextWord[] = [];
-    let opaqueIndex = 0;
+  const opaque = opaqueSpans(text);
+  const words: TextWord[] = [];
+  let opaqueIndex = 0;
 
-    TOKEN.lastIndex = 0;
-    for (let match = TOKEN.exec(text); match !== null; match = TOKEN.exec(text)) {
-        const raw = match[0];
-        const rawStart = match.index;
+  TOKEN.lastIndex = 0;
+  for (let match = TOKEN.exec(text); match !== null; match = TOKEN.exec(text)) {
+    const raw = match[0];
+    const rawStart = match.index;
 
-        // Both lists run left to right, so the cursor only ever moves forward.
-        while (opaqueIndex < opaque.length && opaque[opaqueIndex].end <= rawStart) {
-            opaqueIndex += 1;
-        }
-        if (opaqueIndex < opaque.length && opaque[opaqueIndex].start < rawStart + raw.length) {
-            continue;
-        }
-
-        const leading = raw.length - raw.replace(/^[-'’]+/, "").length;
-        const word = raw.replace(EDGE, "");
-        if (word.length < 2 || !HAS_LETTER.test(word) || NOT_A_WORD.test(word)) {
-            continue;
-        }
-        const start = rawStart + leading;
-        words.push({ start, end: start + word.length, word });
+    // Both lists run left to right, so the cursor only ever moves forward.
+    while (opaqueIndex < opaque.length && opaque[opaqueIndex].end <= rawStart) {
+      opaqueIndex += 1;
+    }
+    if (opaqueIndex < opaque.length && opaque[opaqueIndex].start < rawStart + raw.length) {
+      continue;
     }
 
-    return words;
+    const leading = raw.length - raw.replace(/^[-'’]+/, "").length;
+    const word = raw.replace(EDGE, "");
+    if (word.length < 2 || !HAS_LETTER.test(word) || NOT_A_WORD.test(word)) {
+      continue;
+    }
+    const start = rawStart + leading;
+    words.push({ start, end: start + word.length, word });
+  }
+
+  return words;
 }
 
 function opaqueSpans(text: string): Array<{ start: number; end: number }> {
-    const spans: Array<{ start: number; end: number }> = [];
-    OPAQUE.lastIndex = 0;
-    for (let match = OPAQUE.exec(text); match !== null; match = OPAQUE.exec(text)) {
-        spans.push({ start: match.index, end: match.index + match[0].length });
-    }
-    return spans;
+  const spans: Array<{ start: number; end: number }> = [];
+  OPAQUE.lastIndex = 0;
+  for (let match = OPAQUE.exec(text); match !== null; match = OPAQUE.exec(text)) {
+    spans.push({ start: match.index, end: match.index + match[0].length });
+  }
+  return spans;
 }

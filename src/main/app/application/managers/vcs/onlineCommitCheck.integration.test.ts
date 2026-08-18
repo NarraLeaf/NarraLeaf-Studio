@@ -4,14 +4,14 @@ import path from "path";
 import { describe, expect, it } from "vitest";
 import { VCS_UNCONFIGURED_REMOTE_URL, isVcsPlatformSupported } from "@shared/types/vcs";
 import {
-    closeStore,
-    commit,
-    createRepository,
-    flushRepository,
-    openStore,
-    releaseRepository,
-    stage,
-    type LoreGlobals,
+  closeStore,
+  commit,
+  createRepository,
+  flushRepository,
+  openStore,
+  releaseRepository,
+  stage,
+  type LoreGlobals
 } from "./lore";
 import { blobAt } from "./revisionReader";
 
@@ -39,129 +39,153 @@ import { blobAt } from "./revisionReader";
 const supported = isVcsPlatformSupported() || Boolean(process.env.LORE_LIB_PATH);
 
 describe.skipIf(!supported)("does an online commit hide its own content", () => {
-    it("commits offline, online, then offline again, and reads all three back", async () => {
-        const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "nl-online-commit-")));
-        const offline: LoreGlobals = { repositoryPath: root, offline: true, identity: "check@narraleaf", cache: true };
-        const online: LoreGlobals = { ...offline, offline: false };
+  it("commits offline, online, then offline again, and reads all three back", async () => {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "nl-online-commit-")));
+    const offline: LoreGlobals = {
+      repositoryPath: root,
+      offline: true,
+      identity: "check@narraleaf",
+      cache: true
+    };
+    const online: LoreGlobals = { ...offline, offline: false };
 
-        const write = (name: string, text: string) => fs.writeFileSync(path.join(root, name), text, "utf-8");
-        const commitWith = async (globals: LoreGlobals, name: string): Promise<string> => {
-            await stage(globals, [root]);
-            const revision = await commit(globals, `commit ${name}`);
-            await flushRepository(globals);
-            return revision.revision;
+    const write = (name: string, text: string) =>
+      fs.writeFileSync(path.join(root, name), text, "utf-8");
+    const commitWith = async (globals: LoreGlobals, name: string): Promise<string> => {
+      await stage(globals, [root]);
+      const revision = await commit(globals, `commit ${name}`);
+      await flushRepository(globals);
+      return revision.revision;
+    };
+
+    const created = await createRepository(offline, {
+      repositoryUrl: VCS_UNCONFIGURED_REMOTE_URL,
+      description: "online commit check"
+    });
+
+    write("a.txt", "first\n");
+    const first = await commitWith(offline, "offline-1");
+    write("b.txt", "second\n");
+    const second = await commitWith(online, "online");
+    write("c.txt", "third\n");
+    const third = await commitWith(offline, "offline-2");
+
+    const store = await openStore(offline, root);
+    const read = async (revision: string, file: string) => {
+      try {
+        return {
+          bytes: (await blobAt(offline, store, created.repository, revision, file)).byteLength
         };
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : String(error) };
+      }
+    };
 
-        const created = await createRepository(offline, {
-            repositoryUrl: VCS_UNCONFIGURED_REMOTE_URL,
-            description: "online commit check",
-        });
+    const observations = {
+      committedOffline1: await read(first, "a.txt"),
+      committedOnline: await read(second, "b.txt"),
+      committedOffline2: await read(third, "c.txt"),
+      // The first file re-read at the LAST revision: if the online commit damaged the
+      // repository rather than just its own content, this goes dark too.
+      firstFileAtLastRevision: await read(third, "a.txt")
+    };
+    console.log(`\n### ONLINE COMMIT CHECK\n${JSON.stringify(observations, null, 2)}`);
 
-        write("a.txt", "first\n");
-        const first = await commitWith(offline, "offline-1");
-        write("b.txt", "second\n");
-        const second = await commitWith(online, "online");
-        write("c.txt", "third\n");
-        const third = await commitWith(offline, "offline-2");
+    await flushRepository(offline).catch(() => undefined);
+    await closeStore(offline, store).catch(() => undefined);
+    await releaseRepository(offline).catch(() => undefined);
+    try {
+      fs.rmSync(root, { recursive: true, force: true });
+    } catch {
+      // A leftover temp directory is not a result.
+    }
 
-        const store = await openStore(offline, root);
-        const read = async (revision: string, file: string) => {
-            try {
-                return { bytes: (await blobAt(offline, store, created.repository, revision, file)).byteLength };
-            } catch (error) {
-                return { error: error instanceof Error ? error.message : String(error) };
-            }
-        };
+    expect(Object.keys(observations).length).toBe(4);
+  }, 180_000);
 
-        const observations = {
-            committedOffline1: await read(first, "a.txt"),
-            committedOnline: await read(second, "b.txt"),
-            committedOffline2: await read(third, "c.txt"),
-            // The first file re-read at the LAST revision: if the online commit damaged the
-            // repository rather than just its own content, this goes dark too.
-            firstFileAtLastRevision: await read(third, "a.txt"),
-        };
-        console.log(`\n### ONLINE COMMIT CHECK\n${JSON.stringify(observations, null, 2)}`);
+  /**
+   * The arm the no-remote case is missing.
+   *
+   * With no remote configured, an online commit reads back perfectly - so `offline:
+   * false` alone is not the trigger. The remaining difference in every failing
+   * observation so far is that the repository had a REGISTERED remote, which is when
+   * `offline: false` actually reaches a server. Two commits, same repository, same
+   * process, differing only in the flag.
+   */
+  it.skipIf(!process.env.LORE_TEST_REMOTE)(
+    "repeats it on a repository that is registered with a server",
+    async () => {
+      const server = (process.env.LORE_TEST_REMOTE ?? "").trim();
+      const root = fs.realpathSync(
+        fs.mkdtempSync(path.join(os.tmpdir(), "nl-online-commit-remote-"))
+      );
+      const offline: LoreGlobals = {
+        repositoryPath: root,
+        offline: true,
+        identity: "check@narraleaf",
+        cache: true
+      };
+      const online: LoreGlobals = { ...offline, offline: false };
+      const url = `${server}/online-commit-${Date.now().toString(36)}`;
 
-        await flushRepository(offline).catch(() => undefined);
-        await closeStore(offline, store).catch(() => undefined);
-        await releaseRepository(offline).catch(() => undefined);
+      const write = (name: string, text: string) =>
+        fs.writeFileSync(path.join(root, name), text, "utf-8");
+      const commitWith = async (globals: LoreGlobals, name: string): Promise<string> => {
+        await stage(globals, [root]);
+        const revision = await commit(globals, `commit ${name}`);
+        await flushRepository(globals);
+        return revision.revision;
+      };
+
+      const created = await createRepository(offline, {
+        repositoryUrl: VCS_UNCONFIGURED_REMOTE_URL,
+        description: "online commit check (registered)"
+      });
+      write("a.txt", "first\n");
+      await commitWith(offline, "offline-1");
+
+      // Both halves of connecting, because only registering makes `offline:false` mean
+      // anything (docs §5.3.1) - the address alone leaves the server unaware of us.
+      const { publishToRemote, writeRemote } = await import("./remote");
+      await writeRemote(root, url);
+      await publishToRemote(online, { url, repositoryId: created.repository });
+      await releaseRepository(online);
+
+      write("b.txt", "offline after registering\n");
+      const offlineAfter = await commitWith(offline, "offline-2");
+      write("c.txt", "online after registering\n");
+      const onlineAfter = await commitWith(online, "online");
+
+      const store = await openStore(offline, root);
+      const read = async (revision: string, file: string) => {
         try {
-            fs.rmSync(root, { recursive: true, force: true });
-        } catch {
-            // A leftover temp directory is not a result.
+          return {
+            bytes: (await blobAt(offline, store, created.repository, revision, file)).byteLength
+          };
+        } catch (error) {
+          return { error: error instanceof Error ? error.message : String(error) };
         }
+      };
+      const observations = {
+        committedOfflineWhileRegistered: await read(offlineAfter, "b.txt"),
+        committedOnlineWhileRegistered: await read(onlineAfter, "c.txt"),
+        earlierFileAtTheOnlineRevision: await read(onlineAfter, "a.txt")
+      };
+      console.log(
+        `\n### ONLINE COMMIT CHECK (REGISTERED)\n${JSON.stringify(observations, null, 2)}`
+      );
 
-        expect(Object.keys(observations).length).toBe(4);
-    }, 180_000);
+      await flushRepository(offline).catch(() => undefined);
+      await closeStore(offline, store).catch(() => undefined);
+      await releaseRepository(offline).catch(() => undefined);
+      try {
+        fs.rmSync(root, { recursive: true, force: true });
+      } catch {
+        // A leftover temp directory is not a result.
+      }
 
-    /**
-     * The arm the no-remote case is missing.
-     *
-     * With no remote configured, an online commit reads back perfectly - so `offline:
-     * false` alone is not the trigger. The remaining difference in every failing
-     * observation so far is that the repository had a REGISTERED remote, which is when
-     * `offline: false` actually reaches a server. Two commits, same repository, same
-     * process, differing only in the flag.
-     */
-    it.skipIf(!process.env.LORE_TEST_REMOTE)("repeats it on a repository that is registered with a server", async () => {
-        const server = (process.env.LORE_TEST_REMOTE ?? "").trim();
-        const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "nl-online-commit-remote-")));
-        const offline: LoreGlobals = { repositoryPath: root, offline: true, identity: "check@narraleaf", cache: true };
-        const online: LoreGlobals = { ...offline, offline: false };
-        const url = `${server}/online-commit-${Date.now().toString(36)}`;
-
-        const write = (name: string, text: string) => fs.writeFileSync(path.join(root, name), text, "utf-8");
-        const commitWith = async (globals: LoreGlobals, name: string): Promise<string> => {
-            await stage(globals, [root]);
-            const revision = await commit(globals, `commit ${name}`);
-            await flushRepository(globals);
-            return revision.revision;
-        };
-
-        const created = await createRepository(offline, {
-            repositoryUrl: VCS_UNCONFIGURED_REMOTE_URL,
-            description: "online commit check (registered)",
-        });
-        write("a.txt", "first\n");
-        await commitWith(offline, "offline-1");
-
-        // Both halves of connecting, because only registering makes `offline:false` mean
-        // anything (docs §5.3.1) - the address alone leaves the server unaware of us.
-        const { publishToRemote, writeRemote } = await import("./remote");
-        await writeRemote(root, url);
-        await publishToRemote(online, { url, repositoryId: created.repository });
-        await releaseRepository(online);
-
-        write("b.txt", "offline after registering\n");
-        const offlineAfter = await commitWith(offline, "offline-2");
-        write("c.txt", "online after registering\n");
-        const onlineAfter = await commitWith(online, "online");
-
-        const store = await openStore(offline, root);
-        const read = async (revision: string, file: string) => {
-            try {
-                return { bytes: (await blobAt(offline, store, created.repository, revision, file)).byteLength };
-            } catch (error) {
-                return { error: error instanceof Error ? error.message : String(error) };
-            }
-        };
-        const observations = {
-            committedOfflineWhileRegistered: await read(offlineAfter, "b.txt"),
-            committedOnlineWhileRegistered: await read(onlineAfter, "c.txt"),
-            earlierFileAtTheOnlineRevision: await read(onlineAfter, "a.txt"),
-        };
-        console.log(`\n### ONLINE COMMIT CHECK (REGISTERED)\n${JSON.stringify(observations, null, 2)}`);
-
-        await flushRepository(offline).catch(() => undefined);
-        await closeStore(offline, store).catch(() => undefined);
-        await releaseRepository(offline).catch(() => undefined);
-        try {
-            fs.rmSync(root, { recursive: true, force: true });
-        } catch {
-            // A leftover temp directory is not a result.
-        }
-
-        expect(Object.keys(observations).length).toBe(3);
-    }, 180_000);
+      expect(Object.keys(observations).length).toBe(3);
+    },
+    180_000
+  );
 });

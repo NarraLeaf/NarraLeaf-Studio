@@ -7,76 +7,77 @@ import { WindowVisibilityStatus, WindowControlAbility } from "@shared/types/wind
  * Encapsulates preloaded interface calls and exposes simple helpers.
  */
 const DEFAULT_WINDOW_CONTROL_ABILITY: WindowControlAbility = {
-    minimizable: true,
-    maximizable: true,
-    closable: true,
-    resizable: true,
-    movable: true,
-    fullscreenable: true,
+  minimizable: true,
+  maximizable: true,
+  closable: true,
+  resizable: true,
+  movable: true,
+  fullscreenable: true
 };
 
-export function useWindowControls(initialAbility: WindowControlAbility = DEFAULT_WINDOW_CONTROL_ABILITY) {
-    const [status, setStatus] = useState<WindowVisibilityStatus>("normal");
-    const [ability, setAbility] = useState<WindowControlAbility>(initialAbility);
+export function useWindowControls(
+  initialAbility: WindowControlAbility = DEFAULT_WINDOW_CONTROL_ABILITY
+) {
+  const [status, setStatus] = useState<WindowVisibilityStatus>("normal");
+  const [ability, setAbility] = useState<WindowControlAbility>(initialAbility);
 
-    const refreshStatus = useCallback(async () => {
-        const res = await getInterface().window.control.status();
-        if (res.success) {
-            setStatus(res.data.status);
-        } else {
-            // Keep last known status on failure
-            console.error("[useWindowControls] Failed to get status", res.error);
-        }
-    }, []);
+  const refreshStatus = useCallback(async () => {
+    const res = await getInterface().window.control.status();
+    if (res.success) {
+      setStatus(res.data.status);
+    } else {
+      // Keep last known status on failure
+      console.error("[useWindowControls] Failed to get status", res.error);
+    }
+  }, []);
 
-    const refreshAbility = useCallback(async () => {
-        const res = await getInterface().window.control.ability();
-        if (res.success) {
-            setAbility(res.data);
-        } else {
-            // Keep last known ability on failure
-            console.error("[useWindowControls] Failed to get ability", res.error);
-        }
-    }, []);
+  const refreshAbility = useCallback(async () => {
+    const res = await getInterface().window.control.ability();
+    if (res.success) {
+      setAbility(res.data);
+    } else {
+      // Keep last known ability on failure
+      console.error("[useWindowControls] Failed to get ability", res.error);
+    }
+  }, []);
 
-    const minimize = useCallback(async () => {
-        await getInterface().window.control.minimize();
-        await refreshStatus();
-    }, [refreshStatus]);
+  const minimize = useCallback(async () => {
+    await getInterface().window.control.minimize();
+    await refreshStatus();
+  }, [refreshStatus]);
 
-    const toggleMaximize = useCallback(async () => {
-        const res = await getInterface().window.control.status();
-        if (!res.success) {
-            console.error("[useWindowControls] Failed to get status", res.error);
-            return;
-        }
-        if (res.data.status === "maximized") {
-            await getInterface().window.control.unmaximize();
-        } else {
-            await getInterface().window.control.maximize();    
-        }
-        await refreshStatus();
-    }, [refreshStatus]);
+  const toggleMaximize = useCallback(async () => {
+    const res = await getInterface().window.control.status();
+    if (!res.success) {
+      console.error("[useWindowControls] Failed to get status", res.error);
+      return;
+    }
+    if (res.data.status === "maximized") {
+      await getInterface().window.control.unmaximize();
+    } else {
+      await getInterface().window.control.maximize();
+    }
+    await refreshStatus();
+  }, [refreshStatus]);
 
-    const close = useCallback(async () => {
-        await getInterface().window.control.close();
-    }, []);
+  const close = useCallback(async () => {
+    await getInterface().window.control.close();
+  }, []);
 
-    useEffect(() => {
-        // Initialize status and ability on mount
-        refreshStatus();
-        refreshAbility();
-    }, [refreshStatus, refreshAbility]);
+  useEffect(() => {
+    // Initialize status and ability on mount
+    refreshStatus();
+    refreshAbility();
+  }, [refreshStatus, refreshAbility]);
 
-    return {
-        isMaximized: status === "maximized",
-        status,
-        ability,
-        refreshStatus,
-        refreshAbility,
-        minimize,
-        toggleMaximize,
-        close,
-    };
+  return {
+    isMaximized: status === "maximized",
+    status,
+    ability,
+    refreshStatus,
+    refreshAbility,
+    minimize,
+    toggleMaximize,
+    close
+  };
 }
-

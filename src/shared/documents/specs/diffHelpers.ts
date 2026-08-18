@@ -1,4 +1,4 @@
-import {DocumentChange, DocumentChangeKind} from "../diff";
+import { DocumentChange, DocumentChangeKind } from "../diff";
 
 /**
  * The parts every semantic diff turns out to need, and nothing a single format could own.
@@ -25,37 +25,40 @@ import {DocumentChange, DocumentChangeKind} from "../diff";
  * and now holds `0` really is two different files.
  */
 export function sameJsonValue(a: unknown, b: unknown): boolean {
-    if (Object.is(a, b)) {
-        return true;
+  if (Object.is(a, b)) {
+    return true;
+  }
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) {
+    return false;
+  }
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+      return false;
     }
-    if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) {
-        return false;
-    }
-    if (Array.isArray(a) || Array.isArray(b)) {
-        if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
-            return false;
-        }
-        return a.every((element, index) => sameJsonValue(element, b[index]));
-    }
+    return a.every((element, index) => sameJsonValue(element, b[index]));
+  }
 
-    const left = a as Record<string, unknown>;
-    const right = b as Record<string, unknown>;
-    const keys = Object.keys(left);
-    if (keys.length !== Object.keys(right).length) {
-        return false;
-    }
-    // `hasOwnProperty` rather than `right[key] !== undefined`: a key present and explicitly
-    // undefined cannot come from JSON, but it can come from an in-memory document, and treating it
-    // as absent would call two different documents equal.
-    return keys.every(key => Object.prototype.hasOwnProperty.call(right, key) && sameJsonValue(left[key], right[key]));
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = Object.keys(left);
+  if (keys.length !== Object.keys(right).length) {
+    return false;
+  }
+  // `hasOwnProperty` rather than `right[key] !== undefined`: a key present and explicitly
+  // undefined cannot come from JSON, but it can come from an in-memory document, and treating it
+  // as absent would call two different documents equal.
+  return keys.every(
+    (key) =>
+      Object.prototype.hasOwnProperty.call(right, key) && sameJsonValue(left[key], right[key])
+  );
 }
 
 /** One key of a keyed collection, and which sides hold it. */
 export interface KeyedEntry<T> {
-    readonly key: string;
-    readonly base: T | undefined;
-    readonly head: T | undefined;
-    readonly kind: DocumentChangeKind;
+  readonly key: string;
+  readonly base: T | undefined;
+  readonly head: T | undefined;
+  readonly kind: DocumentChangeKind;
 }
 
 /**
@@ -72,43 +75,49 @@ export interface KeyedEntry<T> {
  * they build; they must not re-sort after truncating, which is what `buildDocumentDiff` is for.
  */
 export function diffKeyed<T>(
-    base: Readonly<Record<string, T>> | undefined,
-    head: Readonly<Record<string, T>> | undefined,
+  base: Readonly<Record<string, T>> | undefined,
+  head: Readonly<Record<string, T>> | undefined
 ): KeyedEntry<T>[] {
-    const left = base ?? {};
-    const right = head ?? {};
-    const keys = [...new Set([...Object.keys(left), ...Object.keys(right)])].sort();
+  const left = base ?? {};
+  const right = head ?? {};
+  const keys = [...new Set([...Object.keys(left), ...Object.keys(right)])].sort();
 
-    const entries: KeyedEntry<T>[] = [];
-    for (const key of keys) {
-        const inBase = Object.prototype.hasOwnProperty.call(left, key);
-        const inHead = Object.prototype.hasOwnProperty.call(right, key);
-        if (inBase && inHead) {
-            if (!sameJsonValue(left[key], right[key])) {
-                entries.push({key, base: left[key], head: right[key], kind: "changed"});
-            }
-            continue;
-        }
-        entries.push({
-            key,
-            base: inBase ? left[key] : undefined,
-            head: inHead ? right[key] : undefined,
-            kind: inBase ? "removed" : "added",
-        });
+  const entries: KeyedEntry<T>[] = [];
+  for (const key of keys) {
+    const inBase = Object.prototype.hasOwnProperty.call(left, key);
+    const inHead = Object.prototype.hasOwnProperty.call(right, key);
+    if (inBase && inHead) {
+      if (!sameJsonValue(left[key], right[key])) {
+        entries.push({ key, base: left[key], head: right[key], kind: "changed" });
+      }
+      continue;
     }
-    return entries;
+    entries.push({
+      key,
+      base: inBase ? left[key] : undefined,
+      head: inHead ? right[key] : undefined,
+      kind: inBase ? "removed" : "added"
+    });
+  }
+  return entries;
 }
 
 /** The same, for a list whose elements carry their own id. Elements without one are skipped. */
-export function byId<T extends {id?: unknown}>(list: readonly T[] | undefined): Record<string, T> {
-    const record: Record<string, T> = {};
-    for (const element of list ?? []) {
-        const id = element?.id;
-        if (typeof id === "string" && id.length > 0 && !Object.prototype.hasOwnProperty.call(record, id)) {
-            record[id] = element;
-        }
+export function byId<T extends { id?: unknown }>(
+  list: readonly T[] | undefined
+): Record<string, T> {
+  const record: Record<string, T> = {};
+  for (const element of list ?? []) {
+    const id = element?.id;
+    if (
+      typeof id === "string" &&
+      id.length > 0 &&
+      !Object.prototype.hasOwnProperty.call(record, id)
+    ) {
+      record[id] = element;
     }
-    return record;
+  }
+  return record;
 }
 
 /**
@@ -121,25 +130,27 @@ export const DIFF_VALUE_PREVIEW_CHARS = 80;
 
 /** A short, single-line rendering of a scalar. Containers answer `undefined` - see `describe` in the structural tier. */
 export function previewValue(value: unknown): string | undefined {
-    if (value === undefined || (typeof value === "object" && value !== null)) {
-        return undefined;
-    }
-    const text = typeof value === "string" ? value : String(value);
-    const flat = text.replace(/\s+/g, " ").trim();
-    if (flat.length === 0) {
-        return undefined;
-    }
-    return flat.length > DIFF_VALUE_PREVIEW_CHARS ? `${flat.slice(0, DIFF_VALUE_PREVIEW_CHARS)}…` : flat;
+  if (value === undefined || (typeof value === "object" && value !== null)) {
+    return undefined;
+  }
+  const text = typeof value === "string" ? value : String(value);
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (flat.length === 0) {
+    return undefined;
+  }
+  return flat.length > DIFF_VALUE_PREVIEW_CHARS
+    ? `${flat.slice(0, DIFF_VALUE_PREVIEW_CHARS)}…`
+    : flat;
 }
 
 /** `{from, to}` for a label's parameters, leaving out whichever side has nothing quotable. */
 export function fromToParams(base: unknown, head: unknown): Record<string, string | number> {
-    const from = previewValue(base);
-    const to = previewValue(head);
-    return {
-        ...(from === undefined ? {} : {from}),
-        ...(to === undefined ? {} : {to}),
-    };
+  const from = previewValue(base);
+  const to = previewValue(head);
+  return {
+    ...(from === undefined ? {} : { from }),
+    ...(to === undefined ? {} : { to })
+  };
 }
 
 /**
@@ -151,18 +162,18 @@ export function fromToParams(base: unknown, head: unknown): Record<string, strin
  * had written them.
  */
 export function authoredName(value: unknown): string | undefined {
-    if (typeof value !== "string") {
-        return undefined;
-    }
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 /** Order rows by their path, so a list built from a map is the same list on every run. */
 export function comparePaths(a: DocumentChange, b: DocumentChange): number {
-    const left = a.path.join("/");
-    const right = b.path.join("/");
-    return left < right ? -1 : left > right ? 1 : 0;
+  const left = a.path.join("/");
+  const right = b.path.join("/");
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 /**
@@ -173,21 +184,22 @@ export function comparePaths(a: DocumentChange, b: DocumentChange): number {
  * showing the author nothing. A row with nothing under it has to be a leaf.
  */
 export function change(
-    path: readonly string[],
-    kind: DocumentChangeKind,
-    key: string,
-    options: {
-        params?: Record<string, string | number>;
-        subject?: string;
-        children?: readonly DocumentChange[];
-    } = {},
+  path: readonly string[],
+  kind: DocumentChangeKind,
+  key: string,
+  options: {
+    params?: Record<string, string | number>;
+    subject?: string;
+    children?: readonly DocumentChange[];
+  } = {}
 ): DocumentChange {
-    const params = options.params && Object.keys(options.params).length > 0 ? options.params : undefined;
-    return {
-        path,
-        kind,
-        label: {key, ...(params ? {params} : {})},
-        ...(options.subject ? {subject: options.subject} : {}),
-        ...(options.children && options.children.length > 0 ? {children: options.children} : {}),
-    };
+  const params =
+    options.params && Object.keys(options.params).length > 0 ? options.params : undefined;
+  return {
+    path,
+    kind,
+    label: { key, ...(params ? { params } : {}) },
+    ...(options.subject ? { subject: options.subject } : {}),
+    ...(options.children && options.children.length > 0 ? { children: options.children } : {})
+  };
 }

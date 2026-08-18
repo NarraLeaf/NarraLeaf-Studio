@@ -1,15 +1,18 @@
 import type { StoryDocument } from "@shared/types/story";
 import { describeStoryBlock } from "@/lib/story/storyRowProjection";
 import type {
-    StoryScriptImportPlan,
-    StoryScriptLabeller,
-    StoryScriptScenePlan,
-    StoryScriptSpeakerLabeller,
-    StoryScriptSpeakerResolver,
+  StoryScriptImportPlan,
+  StoryScriptLabeller,
+  StoryScriptScenePlan,
+  StoryScriptSpeakerLabeller,
+  StoryScriptSpeakerResolver
 } from "@/lib/story/script/storyScriptTypes";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { Character } from "@/lib/workspace/services/character/Character";
-import { characterRowLookup, projectVariableNameLookup } from "../scene-editor/storySceneBlockUtils";
+import {
+  characterRowLookup,
+  projectVariableNameLookup
+} from "../scene-editor/storySceneBlockUtils";
 
 /**
  * What the Story Script codec needs from the project, and nothing else.
@@ -28,34 +31,34 @@ import { characterRowLookup, projectVariableNameLookup } from "../scene-editor/s
  * *prettier* is free and getting it wrong costs only legibility.
  */
 export function createStoryScriptLabeller(
-    document: StoryDocument,
-    characters: Character[],
-    assetName: (assetId: string) => string | null,
-    motionName: (animationId: string) => string | null,
-    /**
-     * The project registry, both scopes. Not optional in spirit: this label is WRITTEN TO A FILE the
-     * writer edits on another machine, so a saved or persistent variable named "variable" there is a
-     * wrong name that outlives the session that produced it.
-     */
-    variableRegistry: readonly VariableRegistryEntry[] = [],
+  document: StoryDocument,
+  characters: Character[],
+  assetName: (assetId: string) => string | null,
+  motionName: (animationId: string) => string | null,
+  /**
+   * The project registry, both scopes. Not optional in spirit: this label is WRITTEN TO A FILE the
+   * writer edits on another machine, so a saved or persistent variable named "variable" there is a
+   * wrong name that outlives the session that produced it.
+   */
+  variableRegistry: readonly VariableRegistryEntry[] = []
 ): StoryScriptLabeller {
-    const character = characterRowLookup(characters);
-    const projectVariableName = projectVariableNameLookup(variableRegistry);
-    return (scene, blockId) => {
-        const block = scene.blocks[blockId];
-        if (!block) {
-            return "";
-        }
-        return describeStoryBlock(block, {
-            character,
-            assetName,
-            motionName,
-            projectVariableName,
-            scene,
-            scenes: document.scenes,
-            document,
-        });
-    };
+  const character = characterRowLookup(characters);
+  const projectVariableName = projectVariableNameLookup(variableRegistry);
+  return (scene, blockId) => {
+    const block = scene.blocks[blockId];
+    if (!block) {
+      return "";
+    }
+    return describeStoryBlock(block, {
+      character,
+      assetName,
+      motionName,
+      projectVariableName,
+      scene,
+      scenes: document.scenes,
+      document
+    });
+  };
 }
 
 /**
@@ -75,21 +78,23 @@ export function createStoryScriptLabeller(
  * one. Export and import must therefore run the same function over the same character list - a labeller
  * that disagrees with the exporter reports edits the author never made.
  */
-export function createStoryScriptSpeakerLabeller(characters: Character[]): StoryScriptSpeakerLabeller {
-    const character = characterRowLookup(characters);
-    return (scene, blockId) => {
-        const block = scene.blocks[blockId];
-        if (!block || block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
-            return "";
-        }
-        if (block.payload.characterId) {
-            const resolved = character(block.payload.characterId)?.name.trim();
-            if (resolved) {
-                return resolved;
-            }
-        }
-        return block.payload.speakerName?.trim() ?? "";
-    };
+export function createStoryScriptSpeakerLabeller(
+  characters: Character[]
+): StoryScriptSpeakerLabeller {
+  const character = characterRowLookup(characters);
+  return (scene, blockId) => {
+    const block = scene.blocks[blockId];
+    if (!block || block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
+      return "";
+    }
+    if (block.payload.characterId) {
+      const resolved = character(block.payload.characterId)?.name.trim();
+      if (resolved) {
+        return resolved;
+      }
+    }
+    return block.payload.speakerName?.trim() ?? "";
+  };
 }
 
 /**
@@ -105,18 +110,20 @@ export function createStoryScriptSpeakerLabeller(characters: Character[]): Story
  * The fallback is a bare `speakerName`, which is a valid line rather than an error - NarraLeaf's
  * dialogue box displays whatever name it is handed.
  */
-export function createStoryScriptSpeakerResolver(characters: Character[]): StoryScriptSpeakerResolver {
-    const byName = new Map<string, string>();
-    for (const character of characters) {
-        const name = character.profile.getName().trim().toLowerCase();
-        if (name && !byName.has(name)) {
-            byName.set(name, character.profile.getId());
-        }
+export function createStoryScriptSpeakerResolver(
+  characters: Character[]
+): StoryScriptSpeakerResolver {
+  const byName = new Map<string, string>();
+  for (const character of characters) {
+    const name = character.profile.getName().trim().toLowerCase();
+    if (name && !byName.has(name)) {
+      byName.set(name, character.profile.getId());
     }
-    return label => {
-        const characterId = byName.get(label.trim().toLowerCase());
-        return characterId ? { characterId } : { speakerName: label };
-    };
+  }
+  return (label) => {
+    const characterId = byName.get(label.trim().toLowerCase());
+    return characterId ? { characterId } : { speakerName: label };
+  };
 }
 
 /**
@@ -127,7 +134,7 @@ export function createStoryScriptSpeakerResolver(characters: Character[]): Story
  * in the confirm dialog and skipped, never applied.
  */
 export function applicableScenePlans(plan: StoryScriptImportPlan): StoryScriptScenePlan[] {
-    return plan.scenes.filter(scene => !scene.missing);
+  return plan.scenes.filter((scene) => !scene.missing);
 }
 
 /**
@@ -139,19 +146,19 @@ export function applicableScenePlans(plan: StoryScriptImportPlan): StoryScriptSc
  * so the honest answer is to stop and say exactly how far it got.
  */
 export function applyStoryScriptScenes(
-    scenes: StoryScriptScenePlan[],
-    write: (scene: StoryScriptScenePlan) => void,
+  scenes: StoryScriptScenePlan[],
+  write: (scene: StoryScriptScenePlan) => void
 ): { applied: StoryScriptScenePlan[]; failed?: { scene: StoryScriptScenePlan; error: unknown } } {
-    const applied: StoryScriptScenePlan[] = [];
-    for (const scene of scenes) {
-        try {
-            write(scene);
-        } catch (error) {
-            return { applied, failed: { scene, error } };
-        }
-        applied.push(scene);
+  const applied: StoryScriptScenePlan[] = [];
+  for (const scene of scenes) {
+    try {
+      write(scene);
+    } catch (error) {
+      return { applied, failed: { scene, error } };
     }
-    return { applied };
+    applied.push(scene);
+  }
+  return { applied };
 }
 
 /**
@@ -160,9 +167,9 @@ export function applyStoryScriptScenes(
  * number attached.
  */
 export type StoryScriptUndoState = {
-    coverage: "all" | "partial" | "none";
-    /** Scenes with no open editor to take the write back. */
-    unundoable: number;
+  coverage: "all" | "partial" | "none";
+  /** Scenes with no open editor to take the write back. */
+  unundoable: number;
 };
 
 /**
@@ -171,25 +178,30 @@ export type StoryScriptUndoState = {
  * taken back, which is both false and the kind of false that stops them importing at all.
  */
 export function storyScriptUndoCoverage(
-    scenes: StoryScriptScenePlan[],
-    canUndo: (sceneId: string) => boolean,
+  scenes: StoryScriptScenePlan[],
+  canUndo: (sceneId: string) => boolean
 ): StoryScriptUndoState {
-    const unundoable = scenes.filter(scene => !canUndo(scene.sceneId)).length;
-    if (unundoable === 0) {
-        return { coverage: "all", unundoable };
-    }
-    return { coverage: unundoable === scenes.length ? "none" : "partial", unundoable };
+  const unundoable = scenes.filter((scene) => !canUndo(scene.sceneId)).length;
+  if (unundoable === 0) {
+    return { coverage: "all", unundoable };
+  }
+  return { coverage: unundoable === scenes.length ? "none" : "partial", unundoable };
 }
 
 /** Whether anything at all is worth showing the author beyond the counts. */
 export function planHasWarnings(plan: StoryScriptImportPlan): boolean {
-    return !plan.storyMatches
-        || plan.diagnostics.length > 0
-        || plan.scenes.some(scene => scene.stale || scene.missing || scene.diagnostics.length > 0);
+  return (
+    !plan.storyMatches ||
+    plan.diagnostics.length > 0 ||
+    plan.scenes.some((scene) => scene.stale || scene.missing || scene.diagnostics.length > 0)
+  );
 }
 
 /** A file name a native save dialog will accept on every platform we ship to. */
 export function storyScriptFileName(name: string): string {
-    const cleaned = name.replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim();
-    return `${cleaned || "script"}.txt`;
+  const cleaned = name
+    .replace(/[\\/:*?"<>|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${cleaned || "script"}.txt`;
 }

@@ -13,1015 +13,1022 @@ import { ElementAnimationPresence } from "./ElementAnimationLayer";
 import { SurfaceElementTree } from "./SurfaceElementTree";
 
 function flattenNodes(node: ReactNode): ReactNode[] {
-    if (Array.isArray(node)) {
-        return node.flatMap(flattenNodes);
-    }
-    if (isValidElement<{ children?: ReactNode }>(node)) {
-        return [node, ...flattenNodes(node.props.children)];
-    }
-    return [];
+  if (Array.isArray(node)) {
+    return node.flatMap(flattenNodes);
+  }
+  if (isValidElement<{ children?: ReactNode }>(node)) {
+    return [node, ...flattenNodes(node.props.children)];
+  }
+  return [];
 }
 
 describe("SurfaceElementTree", () => {
-    it("mounts widget init lifecycle for linked component elements without editor chrome", () => {
-        const document: UIDocument = {
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-            id: "doc",
-            name: "Doc",
-            surfaces: [
-                {
-                    id: "surface",
-                    name: "Surface",
-                    host: "player",
-                    kind: "stageSurface",
-                    designSize: { width: 320, height: 180 },
-                    rootElementId: "root",
-                    mount: { kind: "slot", slotId: "onStage" },
-                },
-            ],
-            components: [
-                {
-                    id: "component",
-                    name: "Component",
-                    rootElementId: "component-root",
-                    elements: {
-                        "component-root": {
-                            id: "component-root",
-                            type: "nl.container",
-                            parentId: null,
-                            childrenIds: [],
-                            layout: { x: 0, y: 0, width: 160, height: 80 },
-                        },
-                    },
-                },
-            ],
-            elements: {
-                root: {
-                    id: "root",
-                    type: "nl.root",
-                    parentId: null,
-                    childrenIds: ["instance"],
-                    layout: { x: 0, y: 0, width: 320, height: 180 },
-                },
-                instance: {
-                    id: "instance",
-                    type: "nl.container",
-                    parentId: "root",
-                    childrenIds: [],
-                    layout: { x: 8, y: 8, width: 160, height: 80 },
-                    extra: { componentLink: { componentId: "component", linked: true } },
-                },
-            },
-        };
-        const surface = document.surfaces[0]!;
-        const hostAdapter: UIHostAdapter = {
+  it("mounts widget init lifecycle for linked component elements without editor chrome", () => {
+    const document: UIDocument = {
+      schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+      id: "doc",
+      name: "Doc",
+      surfaces: [
+        {
+          id: "surface",
+          name: "Surface",
+          host: "player",
+          kind: "stageSurface",
+          designSize: { width: 320, height: 180 },
+          rootElementId: "root",
+          mount: { kind: "slot", slotId: "onStage" }
+        }
+      ],
+      components: [
+        {
+          id: "component",
+          name: "Component",
+          rootElementId: "component-root",
+          elements: {
+            "component-root": {
+              id: "component-root",
+              type: "nl.container",
+              parentId: null,
+              childrenIds: [],
+              layout: { x: 0, y: 0, width: 160, height: 80 }
+            }
+          }
+        }
+      ],
+      elements: {
+        root: {
+          id: "root",
+          type: "nl.root",
+          parentId: null,
+          childrenIds: ["instance"],
+          layout: { x: 0, y: 0, width: 320, height: 180 }
+        },
+        instance: {
+          id: "instance",
+          type: "nl.container",
+          parentId: "root",
+          childrenIds: [],
+          layout: { x: 8, y: 8, width: 160, height: 80 },
+          extra: { componentLink: { componentId: "component", linked: true } }
+        }
+      }
+    };
+    const surface = document.surfaces[0]!;
+    const hostAdapter: UIHostAdapter = {
+      host: "player",
+      blueprintRuntime: {
+        surfaceId: surface.id,
+        setSurfaceState: () => undefined,
+        getSurfaceState: () => undefined,
+        emitDebug: () => undefined,
+        dispatchElementBlueprintEvent: async () => undefined
+      }
+    };
+    const rendererRegistry = new ElementRendererRegistry([
+      { type: "nl.root", render: (props) => <>{props.children}</> },
+      { type: "nl.container", render: (props) => <>{props.children}</> }
+    ]);
+
+    const tree = SurfaceElementTree({
+      document,
+      surface,
+      rootElement: document.elements.root!,
+      rendererRegistry,
+      hostAdapter
+    });
+
+    const lifecycleNodes = flattenNodes(tree).filter(
+      (
+        node
+      ): node is React.ReactElement<React.ComponentProps<typeof BlueprintWidgetInitLifecycle>> =>
+        isValidElement(node) && node.type === BlueprintWidgetInitLifecycle
+    );
+    const componentRootLifecycle = lifecycleNodes.find(
+      (node) => node.props.elementId === "component-root"
+    );
+
+    expect(componentRootLifecycle?.props.componentId).toBe("component");
+    expect(componentRootLifecycle?.props.instanceKey).toBe("component:instance");
+  });
+
+  /**
+   * Every instance of one definition shares the element ids inside it, so if that content were
+   * addressable there would be no telling six placements apart.
+   */
+  describe("a linked component instance", () => {
+    function renderInstanceMarkup(): string {
+      const document: UIDocument = {
+        schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        id: "doc",
+        name: "Doc",
+        surfaces: [
+          {
+            id: "surface",
+            name: "Surface",
             host: "player",
-            blueprintRuntime: {
-                surfaceId: surface.id,
-                setSurfaceState: () => undefined,
-                getSurfaceState: () => undefined,
-                emitDebug: () => undefined,
-                dispatchElementBlueprintEvent: async () => undefined,
-            },
-        };
-        const rendererRegistry = new ElementRendererRegistry([
-            { type: "nl.root", render: props => <>{props.children}</> },
-            { type: "nl.container", render: props => <>{props.children}</> },
-        ]);
-
-        const tree = SurfaceElementTree({
-            document,
-            surface,
-            rootElement: document.elements.root!,
-            rendererRegistry,
-            hostAdapter,
-        });
-
-        const lifecycleNodes = flattenNodes(tree).filter(
-            (node): node is React.ReactElement<React.ComponentProps<typeof BlueprintWidgetInitLifecycle>> =>
-                isValidElement(node) && node.type === BlueprintWidgetInitLifecycle,
-        );
-        const componentRootLifecycle = lifecycleNodes.find(node => node.props.elementId === "component-root");
-
-        expect(componentRootLifecycle?.props.componentId).toBe("component");
-        expect(componentRootLifecycle?.props.instanceKey).toBe("component:instance");
-    });
-
-    /**
-     * Every instance of one definition shares the element ids inside it, so if that content were
-     * addressable there would be no telling six placements apart.
-     */
-    describe("a linked component instance", () => {
-        function renderInstanceMarkup(): string {
-            const document: UIDocument = {
-                schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-                id: "doc",
-                name: "Doc",
-                surfaces: [
-                    {
-                        id: "surface",
-                        name: "Surface",
-                        host: "player",
-                        kind: "stageSurface",
-                        designSize: { width: 320, height: 180 },
-                        rootElementId: "root",
-                        mount: { kind: "slot", slotId: "onStage" },
-                    },
-                ],
-                components: [
-                    {
-                        id: "component",
-                        name: "Component",
-                        rootElementId: "component-root",
-                        elements: {
-                            "component-root": {
-                                id: "component-root",
-                                type: "nl.container",
-                                parentId: null,
-                                childrenIds: ["component-child"],
-                                layout: { x: 0, y: 0, width: 160, height: 80 },
-                            },
-                            "component-child": {
-                                id: "component-child",
-                                type: "nl.container",
-                                parentId: "component-root",
-                                childrenIds: [],
-                                layout: { x: 4, y: 4, width: 40, height: 20 },
-                            },
-                        },
-                    },
-                ],
-                elements: {
-                    root: {
-                        id: "root",
-                        type: "nl.root",
-                        parentId: null,
-                        childrenIds: ["instance"],
-                        layout: { x: 0, y: 0, width: 320, height: 180 },
-                    },
-                    instance: {
-                        id: "instance",
-                        type: "nl.container",
-                        parentId: "root",
-                        childrenIds: [],
-                        layout: { x: 8, y: 8, width: 160, height: 80 },
-                        extra: { componentLink: { componentId: "component", linked: true } },
-                    },
-                },
-            };
-            const surface = document.surfaces[0]!;
-            const hostAdapter: UIHostAdapter = {
-                host: "player",
-                blueprintRuntime: {
-                    surfaceId: surface.id,
-                    setSurfaceState: () => undefined,
-                    getSurfaceState: () => undefined,
-                    emitDebug: () => undefined,
-                    dispatchElementBlueprintEvent: async () => undefined,
-                },
-            };
-            const rendererRegistry = new ElementRendererRegistry([
-                { type: "nl.root", render: props => <>{props.children}</> },
-                { type: "nl.container", render: props => <>{props.children}</> },
-            ]);
-            return renderToStaticMarkup(
-                <>
-                    {SurfaceElementTree({
-                        document,
-                        surface,
-                        rootElement: document.elements.root!,
-                        rendererRegistry,
-                        hostAdapter,
-                    })}
-                </>,
-            );
-        }
-
-        function tagFor(markup: string, elementId: string): string {
-            return markup.match(new RegExp(`<[^>]*data-ui-element-id="${elementId}"[^>]*>`))?.[0] ?? "";
-        }
-
-        it("leaves its content unaddressable, so the instance is what a click resolves to", () => {
-            const markup = renderInstanceMarkup();
-
-            // Element events find their owner by walking up to the nearest tagged ancestor. Content
-            // carries no tag of its own, so that walk passes straight through it to the placement -
-            // which is why six instances of one definition are six distinct click targets even
-            // though they share every id inside.
-            expect(tagFor(markup, "component-child")).toBe("");
-            expect(tagFor(markup, "component-root")).toBe("");
-            expect(tagFor(markup, "instance")).not.toBe("");
-        });
-    });
-
-    /**
-     * The tree is the only place that holds the instance element and the document at once, so it is
-     * the only place that can answer what a placement supplies. Everything below it runs the shared
-     * definition, so if the answer does not leave here it never exists.
-     */
-    it("hands each linked instance its own resolved params", () => {
-        const component = {
+            kind: "stageSurface",
+            designSize: { width: 320, height: 180 },
+            rootElementId: "root",
+            mount: { kind: "slot", slotId: "onStage" }
+          }
+        ],
+        components: [
+          {
             id: "component",
-            name: "Save Slot",
+            name: "Component",
             rootElementId: "component-root",
-            params: [
-                { id: "saveId", name: "Save id", type: "string" as const, defaultValue: "1" },
-                { id: "label", name: "Label", type: "string" as const, defaultValue: "Empty" },
-            ],
             elements: {
-                "component-root": {
-                    id: "component-root",
-                    type: "nl.container",
-                    parentId: null,
-                    childrenIds: [],
-                    layout: { x: 0, y: 0, width: 160, height: 80 },
-                },
-            },
-        };
-        const document: UIDocument = {
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-            id: "doc",
-            name: "Doc",
-            surfaces: [
-                {
-                    id: "surface",
-                    name: "Surface",
-                    host: "player",
-                    kind: "stageSurface",
-                    designSize: { width: 320, height: 180 },
-                    rootElementId: "root",
-                    mount: { kind: "slot", slotId: "onStage" },
-                },
-            ],
-            components: [component],
-            elements: {
-                root: {
-                    id: "root",
-                    type: "nl.root",
-                    parentId: null,
-                    childrenIds: ["slot-a", "slot-b"],
-                    layout: { x: 0, y: 0, width: 320, height: 180 },
-                },
-                "slot-a": {
-                    id: "slot-a",
-                    type: "nl.container",
-                    parentId: "root",
-                    childrenIds: [],
-                    layout: { x: 0, y: 0, width: 160, height: 80 },
-                    extra: {
-                        componentLink: {
-                            componentId: "component",
-                            linked: true,
-                            // `label` left alone, so it must arrive as the declared default; an empty
-                            // string is a value the author meant and must not fall back.
-                            params: { saveId: "7", label: "" },
-                        },
-                    },
-                },
-                "slot-b": {
-                    id: "slot-b",
-                    type: "nl.container",
-                    parentId: "root",
-                    childrenIds: [],
-                    layout: { x: 0, y: 88, width: 160, height: 80 },
-                    extra: { componentLink: { componentId: "component", linked: true } },
-                },
-            },
-        };
-        const surface = document.surfaces[0]!;
-        const hostAdapter: UIHostAdapter = {
-            host: "player",
-            blueprintRuntime: {
-                surfaceId: surface.id,
-                setSurfaceState: () => undefined,
-                getSurfaceState: () => undefined,
-                emitDebug: () => undefined,
-                dispatchElementBlueprintEvent: async () => undefined,
-            },
-        };
-        const rendererRegistry = new ElementRendererRegistry([
-            { type: "nl.root", render: props => <>{props.children}</> },
-            { type: "nl.container", render: props => <>{props.children}</> },
-        ]);
-
-        const tree = SurfaceElementTree({
+              "component-root": {
+                id: "component-root",
+                type: "nl.container",
+                parentId: null,
+                childrenIds: ["component-child"],
+                layout: { x: 0, y: 0, width: 160, height: 80 }
+              },
+              "component-child": {
+                id: "component-child",
+                type: "nl.container",
+                parentId: "component-root",
+                childrenIds: [],
+                layout: { x: 4, y: 4, width: 40, height: 20 }
+              }
+            }
+          }
+        ],
+        elements: {
+          root: {
+            id: "root",
+            type: "nl.root",
+            parentId: null,
+            childrenIds: ["instance"],
+            layout: { x: 0, y: 0, width: 320, height: 180 }
+          },
+          instance: {
+            id: "instance",
+            type: "nl.container",
+            parentId: "root",
+            childrenIds: [],
+            layout: { x: 8, y: 8, width: 160, height: 80 },
+            extra: { componentLink: { componentId: "component", linked: true } }
+          }
+        }
+      };
+      const surface = document.surfaces[0]!;
+      const hostAdapter: UIHostAdapter = {
+        host: "player",
+        blueprintRuntime: {
+          surfaceId: surface.id,
+          setSurfaceState: () => undefined,
+          getSurfaceState: () => undefined,
+          emitDebug: () => undefined,
+          dispatchElementBlueprintEvent: async () => undefined
+        }
+      };
+      const rendererRegistry = new ElementRendererRegistry([
+        { type: "nl.root", render: (props) => <>{props.children}</> },
+        { type: "nl.container", render: (props) => <>{props.children}</> }
+      ]);
+      return renderToStaticMarkup(
+        <>
+          {SurfaceElementTree({
             document,
             surface,
             rootElement: document.elements.root!,
             rendererRegistry,
-            hostAdapter,
-        });
+            hostAdapter
+          })}
+        </>
+      );
+    }
 
-        const lifecycleNodes = flattenNodes(tree).filter(
-            (node): node is React.ReactElement<React.ComponentProps<typeof BlueprintWidgetInitLifecycle>> =>
-                isValidElement(node) && node.type === BlueprintWidgetInitLifecycle,
-        );
-        const paramsFor = (instanceKey: string) =>
-            lifecycleNodes.find(node => node.props.instanceKey === instanceKey)?.props.componentParams;
+    function tagFor(markup: string, elementId: string): string {
+      return markup.match(new RegExp(`<[^>]*data-ui-element-id="${elementId}"[^>]*>`))?.[0] ?? "";
+    }
 
-        expect(paramsFor("component:slot-a")).toEqual({ saveId: "7", label: "" });
-        expect(paramsFor("component:slot-b")).toEqual({ saveId: "1", label: "Empty" });
-        // The page's own elements are not inside any instance and must stay untouched.
-        expect(lifecycleNodes.find(node => node.props.elementId === "slot-a")?.props.componentParams).toBeNull();
+    it("leaves its content unaddressable, so the instance is what a click resolves to", () => {
+      const markup = renderInstanceMarkup();
+
+      // Element events find their owner by walking up to the nearest tagged ancestor. Content
+      // carries no tag of its own, so that walk passes straight through it to the placement -
+      // which is why six instances of one definition are six distinct click targets even
+      // though they share every id inside.
+      expect(tagFor(markup, "component-child")).toBe("");
+      expect(tagFor(markup, "component-root")).toBe("");
+      expect(tagFor(markup, "instance")).not.toBe("");
     });
+  });
 
-    it("passes the host adapter into element wrappers so Dev Mode widget events can dispatch", () => {
-        const document: UIDocument = {
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-            id: "doc",
-            name: "Doc",
-            surfaces: [
-                {
-                    id: "surface",
-                    name: "Surface",
-                    host: "player",
-                    kind: "stageSurface",
-                    designSize: { width: 320, height: 180 },
-                    rootElementId: "root",
-                    mount: { kind: "slot", slotId: "onStage" },
-                },
-            ],
-            elements: {
-                root: {
-                    id: "root",
-                    type: "test.container",
-                    parentId: null,
-                    childrenIds: ["button"],
-                    layout: { x: 0, y: 0, width: 320, height: 180 },
-                },
-                button: {
-                    id: "button",
-                    type: "test.button",
-                    parentId: "root",
-                    childrenIds: [],
-                    layout: { x: 8, y: 8, width: 96, height: 32 },
-                },
-            },
-        };
-        const surface = document.surfaces[0]!;
-        const hostAdapter: UIHostAdapter = {
-            host: "player",
-            blueprintRuntime: {
-                surfaceId: surface.id,
-                setSurfaceState: () => undefined,
-                getSurfaceState: () => undefined,
-                emitDebug: () => undefined,
-                dispatchElementBlueprintEvent: async () => undefined,
-            },
-        };
-        const rendererRegistry = new ElementRendererRegistry([
-            {
-                type: "test.container",
-                render: props => <>{props.children}</>,
-            },
-            {
-                type: "test.button",
-                render: () => <button type="button">Click</button>,
-            },
-        ]);
-
-        const tree = SurfaceElementTree({
-            document,
-            surface,
-            rootElement: document.elements.root!,
-            rendererRegistry,
-            hostAdapter,
-        });
-
-        const wrappers = flattenNodes(tree).filter(
-            (node): node is React.ReactElement<React.ComponentProps<typeof EditorNodeWrapper>> =>
-                isValidElement(node) && node.type === EditorNodeWrapper,
-        );
-        const buttonWrapper = wrappers.find(node => node.props.element.id === "button");
-
-        expect(buttonWrapper?.props.hostAdapter).toBe(hostAdapter);
-    });
-
-    it("passes pointer and keyboard interactivity separately into element wrappers", () => {
-        const document: UIDocument = {
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-            id: "doc",
-            name: "Doc",
-            surfaces: [
-                {
-                    id: "surface",
-                    name: "Surface",
-                    host: "player",
-                    kind: "stageSurface",
-                    designSize: { width: 320, height: 180 },
-                    rootElementId: "root",
-                    mount: { kind: "slot", slotId: "onStage" },
-                },
-            ],
-            elements: {
-                root: {
-                    id: "root",
-                    type: "test.container",
-                    parentId: null,
-                    childrenIds: ["button"],
-                    layout: { x: 0, y: 0, width: 320, height: 180 },
-                },
-                button: {
-                    id: "button",
-                    type: "test.button",
-                    parentId: "root",
-                    childrenIds: [],
-                    layout: { x: 8, y: 8, width: 96, height: 32 },
-                },
-            },
-        };
-        const surface = document.surfaces[0]!;
-        const hostAdapter: UIHostAdapter = {
-            host: "player",
-            blueprintRuntime: {
-                surfaceId: surface.id,
-                setSurfaceState: () => undefined,
-                getSurfaceState: () => undefined,
-                emitDebug: () => undefined,
-                dispatchElementBlueprintEvent: async () => undefined,
-            },
-        };
-        const rendererRegistry = new ElementRendererRegistry([
-            { type: "test.container", render: props => <>{props.children}</> },
-            { type: "test.button", render: () => <button type="button">Click</button> },
-        ]);
-
-        const tree = SurfaceElementTree({
-            document,
-            surface,
-            rootElement: document.elements.root!,
-            rendererRegistry,
-            hostAdapter,
-            interactive: false,
-            keyboardInteractive: true,
-        });
-
-        const wrappers = flattenNodes(tree).filter(
-            (node): node is React.ReactElement<React.ComponentProps<typeof EditorNodeWrapper>> =>
-                isValidElement(node) && node.type === EditorNodeWrapper,
-        );
-        const buttonWrapper = wrappers.find(node => node.props.element.id === "button");
-
-        expect(buttonWrapper?.props.interactive).toBe(false);
-        expect(buttonWrapper?.props.keyboardInteractive).toBe(true);
-    });
-
-    it("applies runtime button cursor to the authored wrapper bounds", () => {
-        const document: UIDocument = {
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-            id: "doc",
-            name: "Doc",
-            surfaces: [
-                {
-                    id: "surface",
-                    name: "Surface",
-                    host: "player",
-                    kind: "stageSurface",
-                    designSize: { width: 320, height: 180 },
-                    rootElementId: "root",
-                    mount: { kind: "slot", slotId: "onStage" },
-                },
-            ],
-            elements: {
-                root: {
-                    id: "root",
-                    type: "nl.root",
-                    parentId: null,
-                    childrenIds: ["button"],
-                    layout: { x: 0, y: 0, width: 320, height: 180 },
-                },
-                button: {
-                    id: "button",
-                    type: "nl.button",
-                    parentId: "root",
-                    childrenIds: [],
-                    layout: { x: 8, y: 8, width: 120, height: 40 },
-                    props: {
-                        label: "Start",
-                        paddingX: 0,
-                        paddingY: 0,
-                        textAlign: "center",
-                        cursor: "auto",
-                    },
-                },
-            },
-        };
-        const surface = document.surfaces[0]!;
-        const hostAdapter: UIHostAdapter = {
-            host: "player",
-            blueprintRuntime: {
-                surfaceId: surface.id,
-                setSurfaceState: () => undefined,
-                getSurfaceState: () => undefined,
-                emitDebug: () => undefined,
-                dispatchElementBlueprintEvent: async () => undefined,
-            },
-        };
-        const rendererRegistry = new ElementRendererRegistry([
-            { type: "nl.root", render: props => <>{props.children}</> },
-            { type: "nl.button", render: () => <span>Start</span> },
-        ]);
-
-        const markup = renderToStaticMarkup(
-            <>
-                {SurfaceElementTree({
-                    document,
-                    surface,
-                    rootElement: document.elements.root!,
-                    rendererRegistry,
-                    hostAdapter,
-                })}
-            </>,
-        );
-
-        expect(markup).toMatch(
-            /data-ui-element-id="button"[^>]+style="[^"]*width:120px[^"]*height:40px[^"]*cursor:pointer/,
-        );
-    });
-
-    it("keeps runtime display disabled elements mounted with display none", () => {
-        const document: UIDocument = {
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-            id: "doc",
-            name: "Doc",
-            surfaces: [
-                {
-                    id: "surface",
-                    name: "Surface",
-                    host: "player",
-                    kind: "stageSurface",
-                    designSize: { width: 320, height: 180 },
-                    rootElementId: "root",
-                    mount: { kind: "slot", slotId: "onStage" },
-                },
-            ],
-            elements: {
-                root: {
-                    id: "root",
-                    type: "test.container",
-                    parentId: null,
-                    childrenIds: ["button"],
-                    layout: { x: 0, y: 0, width: 320, height: 180 },
-                },
-                button: {
-                    id: "button",
-                    type: "test.button",
-                    parentId: "root",
-                    childrenIds: [],
-                    layout: { x: 8, y: 8, width: 96, height: 32 },
-                },
-            },
-        };
-        const rendererRegistry = new ElementRendererRegistry([
-            { type: "test.container", render: props => <>{props.children}</> },
-            { type: "test.button", render: () => <button type="button">Hidden</button> },
-        ]);
-
-        const tree = SurfaceElementTree({
-            document,
-            surface: document.surfaces[0]!,
-            rootElement: document.elements.root!,
-            rendererRegistry,
-            hostAdapter: { host: "player" },
-            widgetRuntimePatches: {
-                button: { display: false },
-            },
-        });
-
-        const wrappers = flattenNodes(tree).filter(
-            (node): node is React.ReactElement<React.ComponentProps<typeof EditorNodeWrapper>> =>
-                isValidElement(node) && node.type === EditorNodeWrapper,
-        );
-        const buttonWrapper = wrappers.find(node => node.props.element.id === "button");
-        expect(buttonWrapper?.props.styleOverrides).toMatchObject({ display: "none" });
-        expect(renderToStaticMarkup(<>{tree}</>)).toContain("Hidden");
-    });
-
-    it("passes fresh element snapshots to wrappers when the document mutates in place", () => {
-        const document: UIDocument = {
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-            id: "doc",
-            name: "Doc",
-            surfaces: [
-                {
-                    id: "surface",
-                    name: "Surface",
-                    host: "app",
-                    kind: "appSurface",
-                    designSize: { width: 320, height: 180 },
-                    rootElementId: "root",
-                },
-            ],
-            elements: {
-                root: {
-                    id: "root",
-                    type: "test.container",
-                    parentId: null,
-                    childrenIds: ["stack"],
-                    layout: { x: 0, y: 0, width: 320, height: 180 },
-                },
-                stack: {
-                    id: "stack",
-                    type: "nl.container",
-                    parentId: "root",
-                    childrenIds: ["a", "b"],
-                    layout: { x: 0, y: 0, width: 200, height: 100 },
-                    props: { layoutKind: "stack" },
-                },
-                a: {
-                    id: "a",
-                    type: "test.item",
-                    parentId: "stack",
-                    childrenIds: [],
-                    layout: { x: 0, y: 0, width: 40, height: 20 },
-                },
-                b: {
-                    id: "b",
-                    type: "test.item",
-                    parentId: "stack",
-                    childrenIds: [],
-                    layout: { x: 0, y: 0, width: 40, height: 20 },
-                },
-            },
-        };
-        const rendererRegistry = new ElementRendererRegistry([
-            { type: "test.container", render: props => <>{props.children}</> },
-            { type: "nl.container", render: props => <>{props.children}</> },
-            { type: "test.item", render: () => <span /> },
-        ]);
-
-        const firstTree = SurfaceElementTree({
-            document,
-            surface: document.surfaces[0]!,
-            rootElement: document.elements.root!,
-            rendererRegistry,
-            hostAdapter: { host: "app" },
-        });
-        const firstWrappers = flattenNodes(firstTree).filter(
-            (node): node is React.ReactElement<React.ComponentProps<typeof EditorNodeWrapper>> =>
-                isValidElement(node) && node.type === EditorNodeWrapper,
-        );
-        const firstStack = firstWrappers.find(node => node.props.element.id === "stack")!;
-        expect(firstStack.props.element).not.toBe(document.elements.stack);
-        expect(firstStack.props.element.childrenIds).toEqual(["a", "b"]);
-
-        document.elements.stack!.childrenIds = ["b"];
-        delete document.elements.a;
-
-        const secondTree = SurfaceElementTree({
-            document,
-            surface: document.surfaces[0]!,
-            rootElement: document.elements.root!,
-            rendererRegistry,
-            hostAdapter: { host: "app" },
-        });
-        const secondWrappers = flattenNodes(secondTree).filter(
-            (node): node is React.ReactElement<React.ComponentProps<typeof EditorNodeWrapper>> =>
-                isValidElement(node) && node.type === EditorNodeWrapper,
-        );
-        const secondStack = secondWrappers.find(node => node.props.element.id === "stack")!;
-        expect(secondStack.props.element).not.toBe(document.elements.stack);
-        expect(secondStack.props.element.childrenIds).toEqual(["b"]);
-        expect(secondWrappers.some(node => node.props.element.id === "a")).toBe(false);
-    });
-
-    it("lets widget renderers embed a target Page through renderSurface", () => {
-        const document: UIDocument = {
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-            id: "doc",
-            name: "Doc",
-            surfaces: [
-                {
-                    id: "page-a",
-                    name: "Page A",
-                    host: "app",
-                    kind: "appSurface",
-                    designSize: { width: 320, height: 180 },
-                    rootElementId: "root-a",
-                },
-                {
-                    id: "page-b",
-                    name: "Page B",
-                    host: "app",
-                    kind: "appSurface",
-                    designSize: { width: 200, height: 100 },
-                    rootElementId: "root-b",
-                },
-            ],
-            elements: {
-                "root-a": {
-                    id: "root-a",
-                    type: "test.root",
-                    parentId: null,
-                    childrenIds: ["frame-a"],
-                    layout: { x: 0, y: 0, width: 320, height: 180 },
-                },
-                "frame-a": {
-                    id: "frame-a",
-                    type: UI_FRAME_ELEMENT_TYPE,
-                    parentId: "root-a",
-                    childrenIds: [],
-                    layout: { x: 0, y: 0, width: 200, height: 100 },
-                    props: { targetSurfaceId: "page-b", params: {}, navigationMode: "static" },
-                },
-                "root-b": {
-                    id: "root-b",
-                    type: "test.root",
-                    parentId: null,
-                    childrenIds: ["label-b"],
-                    layout: { x: 0, y: 0, width: 200, height: 100 },
-                },
-                "label-b": {
-                    id: "label-b",
-                    type: "test.label",
-                    parentId: "root-b",
-                    childrenIds: [],
-                    layout: { x: 0, y: 0, width: 120, height: 24 },
-                },
-            },
-        };
-        const surface = document.surfaces[0]!;
-        const rendererRegistry = new ElementRendererRegistry([
-            { type: "test.root", render: props => <>{props.children}</> },
-            {
-                type: UI_FRAME_ELEMENT_TYPE,
-                render: props => (
-                    <>
-                        {props.renderSurface?.({
-                            targetSurfaceId: "page-b",
-                            frameElement: props.element,
-                            params: {},
-                        })}
-                    </>
-                ),
-            },
-            { type: "test.label", render: () => <span>Nested Page</span> },
-        ]);
-
-        const markup = renderToStaticMarkup(
-            <>
-                {SurfaceElementTree({
-                    document,
-                    surface,
-                    rootElement: document.elements["root-a"]!,
-                    rendererRegistry,
-                    hostAdapter: { host: "app" },
-                })}
-            </>,
-        );
-
-        expect(markup).toContain("Nested Page");
-        expect(markup).toContain('data-ui-surface-id="page-b"');
-        expect(markup).not.toContain('data-ui-element-id="label-b"');
-    });
-
-    it("renders no nested Page placeholder when a frame target is cleared", () => {
-        const document: UIDocument = {
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-            id: "doc",
-            name: "Doc",
-            surfaces: [
-                {
-                    id: "page-a",
-                    name: "Page A",
-                    host: "app",
-                    kind: "appSurface",
-                    designSize: { width: 320, height: 180 },
-                    rootElementId: "root-a",
-                },
-            ],
-            elements: {
-                "root-a": {
-                    id: "root-a",
-                    type: "test.root",
-                    parentId: null,
-                    childrenIds: ["frame-a"],
-                    layout: { x: 0, y: 0, width: 320, height: 180 },
-                },
-                "frame-a": {
-                    id: "frame-a",
-                    type: UI_FRAME_ELEMENT_TYPE,
-                    parentId: "root-a",
-                    childrenIds: [],
-                    layout: { x: 0, y: 0, width: 200, height: 100 },
-                    props: { targetSurfaceId: null, params: {}, navigationMode: "static" },
-                },
-            },
-        };
-        const rendererRegistry = new ElementRendererRegistry([
-            { type: "test.root", render: props => <>{props.children}</> },
-            {
-                type: UI_FRAME_ELEMENT_TYPE,
-                render: props => (
-                    <>
-                        {props.renderSurface?.({
-                            targetSurfaceId: null,
-                            frameElement: props.element,
-                            params: {},
-                        })}
-                    </>
-                ),
-            },
-        ]);
-
-        const markup = renderToStaticMarkup(
-            <>
-                {SurfaceElementTree({
-                    document,
-                    surface: document.surfaces[0]!,
-                    rootElement: document.elements["root-a"]!,
-                    rendererRegistry,
-                    hostAdapter: { host: "app" },
-                })}
-            </>,
-        );
-
-        expect(markup).not.toContain("Select a Page");
-        expect(markup).not.toContain("Missing Page");
-    });
-
-    it("renders a placeholder instead of recursing when nested Page targets would loop", () => {
-        const document: UIDocument = {
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-            id: "doc",
-            name: "Doc",
-            surfaces: [
-                {
-                    id: "page-a",
-                    name: "Page A",
-                    host: "app",
-                    kind: "appSurface",
-                    designSize: { width: 320, height: 180 },
-                    rootElementId: "root-a",
-                },
-                {
-                    id: "page-b",
-                    name: "Page B",
-                    host: "app",
-                    kind: "appSurface",
-                    designSize: { width: 200, height: 100 },
-                    rootElementId: "root-b",
-                },
-            ],
-            elements: {
-                "root-a": {
-                    id: "root-a",
-                    type: "test.root",
-                    parentId: null,
-                    childrenIds: ["frame-a"],
-                    layout: { x: 0, y: 0, width: 320, height: 180 },
-                },
-                "frame-a": {
-                    id: "frame-a",
-                    type: UI_FRAME_ELEMENT_TYPE,
-                    parentId: "root-a",
-                    childrenIds: [],
-                    layout: { x: 0, y: 0, width: 200, height: 100 },
-                    props: { targetSurfaceId: "page-b", params: {}, navigationMode: "static" },
-                },
-                "root-b": {
-                    id: "root-b",
-                    type: "test.root",
-                    parentId: null,
-                    childrenIds: ["frame-b"],
-                    layout: { x: 0, y: 0, width: 200, height: 100 },
-                },
-                "frame-b": {
-                    id: "frame-b",
-                    type: UI_FRAME_ELEMENT_TYPE,
-                    parentId: "root-b",
-                    childrenIds: [],
-                    layout: { x: 0, y: 0, width: 200, height: 100 },
-                    props: { targetSurfaceId: "page-a", params: {}, navigationMode: "static" },
-                },
-            },
-        };
-        const rendererRegistry = new ElementRendererRegistry([
-            { type: "test.root", render: props => <>{props.children}</> },
-            {
-                type: UI_FRAME_ELEMENT_TYPE,
-                render: props => {
-                    const targetSurfaceId =
-                        props.element.id === "frame-a" ? "page-b" : "page-a";
-                    return (
-                        <>
-                            {props.renderSurface?.({
-                                targetSurfaceId,
-                                frameElement: props.element,
-                                params: {},
-                            })}
-                        </>
-                    );
-                },
-            },
-        ]);
-
-        const markup = renderToStaticMarkup(
-            <>
-                {SurfaceElementTree({
-                    document,
-                    surface: document.surfaces[0]!,
-                    rootElement: document.elements["root-a"]!,
-                    rendererRegistry,
-                    hostAdapter: { host: "app" },
-                })}
-            </>,
-        );
-
-        expect(markup).toContain("Page loop blocked");
-    });
-
-    /**
-     * The tree is what decides which elements can animate at all, and it has to leave the rest
-     * exactly as they were: a presence wrapper around every widget would put an AnimatePresence in
-     * the editing canvas, where nothing animates and everything re-renders.
-     */
-    describe("element animations", () => {
-        function animatedDocument(): UIDocument {
-            return {
-                schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-                id: "doc",
-                name: "Doc",
-                surfaces: [
-                    {
-                        id: "surface",
-                        name: "Surface",
-                        host: "app",
-                        kind: "appSurface",
-                        designSize: { width: 320, height: 180 },
-                        rootElementId: "root",
-                    },
-                ],
-                elements: {
-                    root: {
-                        id: "root",
-                        type: "nl.root",
-                        parentId: null,
-                        childrenIds: ["moving", "still"],
-                        layout: { x: 0, y: 0, width: 320, height: 180 },
-                    },
-                    moving: {
-                        id: "moving",
-                        type: "nl.container",
-                        parentId: "root",
-                        childrenIds: [],
-                        layout: { x: 0, y: 0, width: 40, height: 20 },
-                        animation: {
-                            ...DEFAULT_UI_PAGE_ANIMATION_SETTINGS,
-                            enter: "fade",
-                            exit: "fade",
-                        },
-                    },
-                    still: {
-                        id: "still",
-                        type: "nl.container",
-                        parentId: "root",
-                        childrenIds: [],
-                        layout: { x: 0, y: 40, width: 40, height: 20 },
-                    },
-                },
-            };
+  /**
+   * The tree is the only place that holds the instance element and the document at once, so it is
+   * the only place that can answer what a placement supplies. Everything below it runs the shared
+   * definition, so if the answer does not leave here it never exists.
+   */
+  it("hands each linked instance its own resolved params", () => {
+    const component = {
+      id: "component",
+      name: "Save Slot",
+      rootElementId: "component-root",
+      params: [
+        { id: "saveId", name: "Save id", type: "string" as const, defaultValue: "1" },
+        { id: "label", name: "Label", type: "string" as const, defaultValue: "Empty" }
+      ],
+      elements: {
+        "component-root": {
+          id: "component-root",
+          type: "nl.container",
+          parentId: null,
+          childrenIds: [],
+          layout: { x: 0, y: 0, width: 160, height: 80 }
         }
-
-        const rendererRegistry = new ElementRendererRegistry([
-            { type: "nl.root", render: props => <>{props.children}</> },
-            { type: "nl.container", render: props => <>{props.children}</> },
-        ]);
-
-        function renderTree(withPlan: boolean): ReactNode {
-            const document = animatedDocument();
-            const surface = document.surfaces[0]!;
-            return SurfaceElementTree({
-                document,
-                surface,
-                rootElement: document.elements.root!,
-                rendererRegistry,
-                hostAdapter: { host: "app" },
-                animationPlan: withPlan
-                    ? buildSurfaceAnimationPlan({
-                          elements: document.elements,
-                          rootElementId: "root",
-                          rootSettings: surface.settings?.pageAnimation,
-                      })
-                    : null,
-            });
+      }
+    };
+    const document: UIDocument = {
+      schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+      id: "doc",
+      name: "Doc",
+      surfaces: [
+        {
+          id: "surface",
+          name: "Surface",
+          host: "player",
+          kind: "stageSurface",
+          designSize: { width: 320, height: 180 },
+          rootElementId: "root",
+          mount: { kind: "slot", slotId: "onStage" }
         }
-
-        function wrappedElementIds(node: ReactNode): string[] {
-            return flattenNodes(node)
-                .filter(
-                    (item): item is React.ReactElement<{ children?: ReactNode }> =>
-                        isValidElement(item) && item.type === ElementAnimationPresence,
-                )
-                .map(item => String(item.key));
+      ],
+      components: [component],
+      elements: {
+        root: {
+          id: "root",
+          type: "nl.root",
+          parentId: null,
+          childrenIds: ["slot-a", "slot-b"],
+          layout: { x: 0, y: 0, width: 320, height: 180 }
+        },
+        "slot-a": {
+          id: "slot-a",
+          type: "nl.container",
+          parentId: "root",
+          childrenIds: [],
+          layout: { x: 0, y: 0, width: 160, height: 80 },
+          extra: {
+            componentLink: {
+              componentId: "component",
+              linked: true,
+              // `label` left alone, so it must arrive as the declared default; an empty
+              // string is a value the author meant and must not fall back.
+              params: { saveId: "7", label: "" }
+            }
+          }
+        },
+        "slot-b": {
+          id: "slot-b",
+          type: "nl.container",
+          parentId: "root",
+          childrenIds: [],
+          layout: { x: 0, y: 88, width: 160, height: 80 },
+          extra: { componentLink: { componentId: "component", linked: true } }
         }
+      }
+    };
+    const surface = document.surfaces[0]!;
+    const hostAdapter: UIHostAdapter = {
+      host: "player",
+      blueprintRuntime: {
+        surfaceId: surface.id,
+        setSurfaceState: () => undefined,
+        getSurfaceState: () => undefined,
+        emitDebug: () => undefined,
+        dispatchElementBlueprintEvent: async () => undefined
+      }
+    };
+    const rendererRegistry = new ElementRendererRegistry([
+      { type: "nl.root", render: (props) => <>{props.children}</> },
+      { type: "nl.container", render: (props) => <>{props.children}</> }
+    ]);
 
-        it("wraps only what the plan says can move", () => {
-            expect(wrappedElementIds(renderTree(true))).toEqual(["moving"]);
-        });
-
-        it("adds nothing at all to a host that passes no plan", () => {
-            expect(wrappedElementIds(renderTree(false))).toEqual([]);
-        });
+    const tree = SurfaceElementTree({
+      document,
+      surface,
+      rootElement: document.elements.root!,
+      rendererRegistry,
+      hostAdapter
     });
+
+    const lifecycleNodes = flattenNodes(tree).filter(
+      (
+        node
+      ): node is React.ReactElement<React.ComponentProps<typeof BlueprintWidgetInitLifecycle>> =>
+        isValidElement(node) && node.type === BlueprintWidgetInitLifecycle
+    );
+    const paramsFor = (instanceKey: string) =>
+      lifecycleNodes.find((node) => node.props.instanceKey === instanceKey)?.props.componentParams;
+
+    expect(paramsFor("component:slot-a")).toEqual({ saveId: "7", label: "" });
+    expect(paramsFor("component:slot-b")).toEqual({ saveId: "1", label: "Empty" });
+    // The page's own elements are not inside any instance and must stay untouched.
+    expect(
+      lifecycleNodes.find((node) => node.props.elementId === "slot-a")?.props.componentParams
+    ).toBeNull();
+  });
+
+  it("passes the host adapter into element wrappers so Dev Mode widget events can dispatch", () => {
+    const document: UIDocument = {
+      schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+      id: "doc",
+      name: "Doc",
+      surfaces: [
+        {
+          id: "surface",
+          name: "Surface",
+          host: "player",
+          kind: "stageSurface",
+          designSize: { width: 320, height: 180 },
+          rootElementId: "root",
+          mount: { kind: "slot", slotId: "onStage" }
+        }
+      ],
+      elements: {
+        root: {
+          id: "root",
+          type: "test.container",
+          parentId: null,
+          childrenIds: ["button"],
+          layout: { x: 0, y: 0, width: 320, height: 180 }
+        },
+        button: {
+          id: "button",
+          type: "test.button",
+          parentId: "root",
+          childrenIds: [],
+          layout: { x: 8, y: 8, width: 96, height: 32 }
+        }
+      }
+    };
+    const surface = document.surfaces[0]!;
+    const hostAdapter: UIHostAdapter = {
+      host: "player",
+      blueprintRuntime: {
+        surfaceId: surface.id,
+        setSurfaceState: () => undefined,
+        getSurfaceState: () => undefined,
+        emitDebug: () => undefined,
+        dispatchElementBlueprintEvent: async () => undefined
+      }
+    };
+    const rendererRegistry = new ElementRendererRegistry([
+      {
+        type: "test.container",
+        render: (props) => <>{props.children}</>
+      },
+      {
+        type: "test.button",
+        render: () => <button type="button">Click</button>
+      }
+    ]);
+
+    const tree = SurfaceElementTree({
+      document,
+      surface,
+      rootElement: document.elements.root!,
+      rendererRegistry,
+      hostAdapter
+    });
+
+    const wrappers = flattenNodes(tree).filter(
+      (node): node is React.ReactElement<React.ComponentProps<typeof EditorNodeWrapper>> =>
+        isValidElement(node) && node.type === EditorNodeWrapper
+    );
+    const buttonWrapper = wrappers.find((node) => node.props.element.id === "button");
+
+    expect(buttonWrapper?.props.hostAdapter).toBe(hostAdapter);
+  });
+
+  it("passes pointer and keyboard interactivity separately into element wrappers", () => {
+    const document: UIDocument = {
+      schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+      id: "doc",
+      name: "Doc",
+      surfaces: [
+        {
+          id: "surface",
+          name: "Surface",
+          host: "player",
+          kind: "stageSurface",
+          designSize: { width: 320, height: 180 },
+          rootElementId: "root",
+          mount: { kind: "slot", slotId: "onStage" }
+        }
+      ],
+      elements: {
+        root: {
+          id: "root",
+          type: "test.container",
+          parentId: null,
+          childrenIds: ["button"],
+          layout: { x: 0, y: 0, width: 320, height: 180 }
+        },
+        button: {
+          id: "button",
+          type: "test.button",
+          parentId: "root",
+          childrenIds: [],
+          layout: { x: 8, y: 8, width: 96, height: 32 }
+        }
+      }
+    };
+    const surface = document.surfaces[0]!;
+    const hostAdapter: UIHostAdapter = {
+      host: "player",
+      blueprintRuntime: {
+        surfaceId: surface.id,
+        setSurfaceState: () => undefined,
+        getSurfaceState: () => undefined,
+        emitDebug: () => undefined,
+        dispatchElementBlueprintEvent: async () => undefined
+      }
+    };
+    const rendererRegistry = new ElementRendererRegistry([
+      { type: "test.container", render: (props) => <>{props.children}</> },
+      { type: "test.button", render: () => <button type="button">Click</button> }
+    ]);
+
+    const tree = SurfaceElementTree({
+      document,
+      surface,
+      rootElement: document.elements.root!,
+      rendererRegistry,
+      hostAdapter,
+      interactive: false,
+      keyboardInteractive: true
+    });
+
+    const wrappers = flattenNodes(tree).filter(
+      (node): node is React.ReactElement<React.ComponentProps<typeof EditorNodeWrapper>> =>
+        isValidElement(node) && node.type === EditorNodeWrapper
+    );
+    const buttonWrapper = wrappers.find((node) => node.props.element.id === "button");
+
+    expect(buttonWrapper?.props.interactive).toBe(false);
+    expect(buttonWrapper?.props.keyboardInteractive).toBe(true);
+  });
+
+  it("applies runtime button cursor to the authored wrapper bounds", () => {
+    const document: UIDocument = {
+      schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+      id: "doc",
+      name: "Doc",
+      surfaces: [
+        {
+          id: "surface",
+          name: "Surface",
+          host: "player",
+          kind: "stageSurface",
+          designSize: { width: 320, height: 180 },
+          rootElementId: "root",
+          mount: { kind: "slot", slotId: "onStage" }
+        }
+      ],
+      elements: {
+        root: {
+          id: "root",
+          type: "nl.root",
+          parentId: null,
+          childrenIds: ["button"],
+          layout: { x: 0, y: 0, width: 320, height: 180 }
+        },
+        button: {
+          id: "button",
+          type: "nl.button",
+          parentId: "root",
+          childrenIds: [],
+          layout: { x: 8, y: 8, width: 120, height: 40 },
+          props: {
+            label: "Start",
+            paddingX: 0,
+            paddingY: 0,
+            textAlign: "center",
+            cursor: "auto"
+          }
+        }
+      }
+    };
+    const surface = document.surfaces[0]!;
+    const hostAdapter: UIHostAdapter = {
+      host: "player",
+      blueprintRuntime: {
+        surfaceId: surface.id,
+        setSurfaceState: () => undefined,
+        getSurfaceState: () => undefined,
+        emitDebug: () => undefined,
+        dispatchElementBlueprintEvent: async () => undefined
+      }
+    };
+    const rendererRegistry = new ElementRendererRegistry([
+      { type: "nl.root", render: (props) => <>{props.children}</> },
+      { type: "nl.button", render: () => <span>Start</span> }
+    ]);
+
+    const markup = renderToStaticMarkup(
+      <>
+        {SurfaceElementTree({
+          document,
+          surface,
+          rootElement: document.elements.root!,
+          rendererRegistry,
+          hostAdapter
+        })}
+      </>
+    );
+
+    expect(markup).toMatch(
+      /data-ui-element-id="button"[^>]+style="[^"]*width:120px[^"]*height:40px[^"]*cursor:pointer/
+    );
+  });
+
+  it("keeps runtime display disabled elements mounted with display none", () => {
+    const document: UIDocument = {
+      schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+      id: "doc",
+      name: "Doc",
+      surfaces: [
+        {
+          id: "surface",
+          name: "Surface",
+          host: "player",
+          kind: "stageSurface",
+          designSize: { width: 320, height: 180 },
+          rootElementId: "root",
+          mount: { kind: "slot", slotId: "onStage" }
+        }
+      ],
+      elements: {
+        root: {
+          id: "root",
+          type: "test.container",
+          parentId: null,
+          childrenIds: ["button"],
+          layout: { x: 0, y: 0, width: 320, height: 180 }
+        },
+        button: {
+          id: "button",
+          type: "test.button",
+          parentId: "root",
+          childrenIds: [],
+          layout: { x: 8, y: 8, width: 96, height: 32 }
+        }
+      }
+    };
+    const rendererRegistry = new ElementRendererRegistry([
+      { type: "test.container", render: (props) => <>{props.children}</> },
+      { type: "test.button", render: () => <button type="button">Hidden</button> }
+    ]);
+
+    const tree = SurfaceElementTree({
+      document,
+      surface: document.surfaces[0]!,
+      rootElement: document.elements.root!,
+      rendererRegistry,
+      hostAdapter: { host: "player" },
+      widgetRuntimePatches: {
+        button: { display: false }
+      }
+    });
+
+    const wrappers = flattenNodes(tree).filter(
+      (node): node is React.ReactElement<React.ComponentProps<typeof EditorNodeWrapper>> =>
+        isValidElement(node) && node.type === EditorNodeWrapper
+    );
+    const buttonWrapper = wrappers.find((node) => node.props.element.id === "button");
+    expect(buttonWrapper?.props.styleOverrides).toMatchObject({ display: "none" });
+    expect(renderToStaticMarkup(<>{tree}</>)).toContain("Hidden");
+  });
+
+  it("passes fresh element snapshots to wrappers when the document mutates in place", () => {
+    const document: UIDocument = {
+      schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+      id: "doc",
+      name: "Doc",
+      surfaces: [
+        {
+          id: "surface",
+          name: "Surface",
+          host: "app",
+          kind: "appSurface",
+          designSize: { width: 320, height: 180 },
+          rootElementId: "root"
+        }
+      ],
+      elements: {
+        root: {
+          id: "root",
+          type: "test.container",
+          parentId: null,
+          childrenIds: ["stack"],
+          layout: { x: 0, y: 0, width: 320, height: 180 }
+        },
+        stack: {
+          id: "stack",
+          type: "nl.container",
+          parentId: "root",
+          childrenIds: ["a", "b"],
+          layout: { x: 0, y: 0, width: 200, height: 100 },
+          props: { layoutKind: "stack" }
+        },
+        a: {
+          id: "a",
+          type: "test.item",
+          parentId: "stack",
+          childrenIds: [],
+          layout: { x: 0, y: 0, width: 40, height: 20 }
+        },
+        b: {
+          id: "b",
+          type: "test.item",
+          parentId: "stack",
+          childrenIds: [],
+          layout: { x: 0, y: 0, width: 40, height: 20 }
+        }
+      }
+    };
+    const rendererRegistry = new ElementRendererRegistry([
+      { type: "test.container", render: (props) => <>{props.children}</> },
+      { type: "nl.container", render: (props) => <>{props.children}</> },
+      { type: "test.item", render: () => <span /> }
+    ]);
+
+    const firstTree = SurfaceElementTree({
+      document,
+      surface: document.surfaces[0]!,
+      rootElement: document.elements.root!,
+      rendererRegistry,
+      hostAdapter: { host: "app" }
+    });
+    const firstWrappers = flattenNodes(firstTree).filter(
+      (node): node is React.ReactElement<React.ComponentProps<typeof EditorNodeWrapper>> =>
+        isValidElement(node) && node.type === EditorNodeWrapper
+    );
+    const firstStack = firstWrappers.find((node) => node.props.element.id === "stack")!;
+    expect(firstStack.props.element).not.toBe(document.elements.stack);
+    expect(firstStack.props.element.childrenIds).toEqual(["a", "b"]);
+
+    document.elements.stack!.childrenIds = ["b"];
+    delete document.elements.a;
+
+    const secondTree = SurfaceElementTree({
+      document,
+      surface: document.surfaces[0]!,
+      rootElement: document.elements.root!,
+      rendererRegistry,
+      hostAdapter: { host: "app" }
+    });
+    const secondWrappers = flattenNodes(secondTree).filter(
+      (node): node is React.ReactElement<React.ComponentProps<typeof EditorNodeWrapper>> =>
+        isValidElement(node) && node.type === EditorNodeWrapper
+    );
+    const secondStack = secondWrappers.find((node) => node.props.element.id === "stack")!;
+    expect(secondStack.props.element).not.toBe(document.elements.stack);
+    expect(secondStack.props.element.childrenIds).toEqual(["b"]);
+    expect(secondWrappers.some((node) => node.props.element.id === "a")).toBe(false);
+  });
+
+  it("lets widget renderers embed a target Page through renderSurface", () => {
+    const document: UIDocument = {
+      schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+      id: "doc",
+      name: "Doc",
+      surfaces: [
+        {
+          id: "page-a",
+          name: "Page A",
+          host: "app",
+          kind: "appSurface",
+          designSize: { width: 320, height: 180 },
+          rootElementId: "root-a"
+        },
+        {
+          id: "page-b",
+          name: "Page B",
+          host: "app",
+          kind: "appSurface",
+          designSize: { width: 200, height: 100 },
+          rootElementId: "root-b"
+        }
+      ],
+      elements: {
+        "root-a": {
+          id: "root-a",
+          type: "test.root",
+          parentId: null,
+          childrenIds: ["frame-a"],
+          layout: { x: 0, y: 0, width: 320, height: 180 }
+        },
+        "frame-a": {
+          id: "frame-a",
+          type: UI_FRAME_ELEMENT_TYPE,
+          parentId: "root-a",
+          childrenIds: [],
+          layout: { x: 0, y: 0, width: 200, height: 100 },
+          props: { targetSurfaceId: "page-b", params: {}, navigationMode: "static" }
+        },
+        "root-b": {
+          id: "root-b",
+          type: "test.root",
+          parentId: null,
+          childrenIds: ["label-b"],
+          layout: { x: 0, y: 0, width: 200, height: 100 }
+        },
+        "label-b": {
+          id: "label-b",
+          type: "test.label",
+          parentId: "root-b",
+          childrenIds: [],
+          layout: { x: 0, y: 0, width: 120, height: 24 }
+        }
+      }
+    };
+    const surface = document.surfaces[0]!;
+    const rendererRegistry = new ElementRendererRegistry([
+      { type: "test.root", render: (props) => <>{props.children}</> },
+      {
+        type: UI_FRAME_ELEMENT_TYPE,
+        render: (props) => (
+          <>
+            {props.renderSurface?.({
+              targetSurfaceId: "page-b",
+              frameElement: props.element,
+              params: {}
+            })}
+          </>
+        )
+      },
+      { type: "test.label", render: () => <span>Nested Page</span> }
+    ]);
+
+    const markup = renderToStaticMarkup(
+      <>
+        {SurfaceElementTree({
+          document,
+          surface,
+          rootElement: document.elements["root-a"]!,
+          rendererRegistry,
+          hostAdapter: { host: "app" }
+        })}
+      </>
+    );
+
+    expect(markup).toContain("Nested Page");
+    expect(markup).toContain('data-ui-surface-id="page-b"');
+    expect(markup).not.toContain('data-ui-element-id="label-b"');
+  });
+
+  it("renders no nested Page placeholder when a frame target is cleared", () => {
+    const document: UIDocument = {
+      schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+      id: "doc",
+      name: "Doc",
+      surfaces: [
+        {
+          id: "page-a",
+          name: "Page A",
+          host: "app",
+          kind: "appSurface",
+          designSize: { width: 320, height: 180 },
+          rootElementId: "root-a"
+        }
+      ],
+      elements: {
+        "root-a": {
+          id: "root-a",
+          type: "test.root",
+          parentId: null,
+          childrenIds: ["frame-a"],
+          layout: { x: 0, y: 0, width: 320, height: 180 }
+        },
+        "frame-a": {
+          id: "frame-a",
+          type: UI_FRAME_ELEMENT_TYPE,
+          parentId: "root-a",
+          childrenIds: [],
+          layout: { x: 0, y: 0, width: 200, height: 100 },
+          props: { targetSurfaceId: null, params: {}, navigationMode: "static" }
+        }
+      }
+    };
+    const rendererRegistry = new ElementRendererRegistry([
+      { type: "test.root", render: (props) => <>{props.children}</> },
+      {
+        type: UI_FRAME_ELEMENT_TYPE,
+        render: (props) => (
+          <>
+            {props.renderSurface?.({
+              targetSurfaceId: null,
+              frameElement: props.element,
+              params: {}
+            })}
+          </>
+        )
+      }
+    ]);
+
+    const markup = renderToStaticMarkup(
+      <>
+        {SurfaceElementTree({
+          document,
+          surface: document.surfaces[0]!,
+          rootElement: document.elements["root-a"]!,
+          rendererRegistry,
+          hostAdapter: { host: "app" }
+        })}
+      </>
+    );
+
+    expect(markup).not.toContain("Select a Page");
+    expect(markup).not.toContain("Missing Page");
+  });
+
+  it("renders a placeholder instead of recursing when nested Page targets would loop", () => {
+    const document: UIDocument = {
+      schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+      id: "doc",
+      name: "Doc",
+      surfaces: [
+        {
+          id: "page-a",
+          name: "Page A",
+          host: "app",
+          kind: "appSurface",
+          designSize: { width: 320, height: 180 },
+          rootElementId: "root-a"
+        },
+        {
+          id: "page-b",
+          name: "Page B",
+          host: "app",
+          kind: "appSurface",
+          designSize: { width: 200, height: 100 },
+          rootElementId: "root-b"
+        }
+      ],
+      elements: {
+        "root-a": {
+          id: "root-a",
+          type: "test.root",
+          parentId: null,
+          childrenIds: ["frame-a"],
+          layout: { x: 0, y: 0, width: 320, height: 180 }
+        },
+        "frame-a": {
+          id: "frame-a",
+          type: UI_FRAME_ELEMENT_TYPE,
+          parentId: "root-a",
+          childrenIds: [],
+          layout: { x: 0, y: 0, width: 200, height: 100 },
+          props: { targetSurfaceId: "page-b", params: {}, navigationMode: "static" }
+        },
+        "root-b": {
+          id: "root-b",
+          type: "test.root",
+          parentId: null,
+          childrenIds: ["frame-b"],
+          layout: { x: 0, y: 0, width: 200, height: 100 }
+        },
+        "frame-b": {
+          id: "frame-b",
+          type: UI_FRAME_ELEMENT_TYPE,
+          parentId: "root-b",
+          childrenIds: [],
+          layout: { x: 0, y: 0, width: 200, height: 100 },
+          props: { targetSurfaceId: "page-a", params: {}, navigationMode: "static" }
+        }
+      }
+    };
+    const rendererRegistry = new ElementRendererRegistry([
+      { type: "test.root", render: (props) => <>{props.children}</> },
+      {
+        type: UI_FRAME_ELEMENT_TYPE,
+        render: (props) => {
+          const targetSurfaceId = props.element.id === "frame-a" ? "page-b" : "page-a";
+          return (
+            <>
+              {props.renderSurface?.({
+                targetSurfaceId,
+                frameElement: props.element,
+                params: {}
+              })}
+            </>
+          );
+        }
+      }
+    ]);
+
+    const markup = renderToStaticMarkup(
+      <>
+        {SurfaceElementTree({
+          document,
+          surface: document.surfaces[0]!,
+          rootElement: document.elements["root-a"]!,
+          rendererRegistry,
+          hostAdapter: { host: "app" }
+        })}
+      </>
+    );
+
+    expect(markup).toContain("Page loop blocked");
+  });
+
+  /**
+   * The tree is what decides which elements can animate at all, and it has to leave the rest
+   * exactly as they were: a presence wrapper around every widget would put an AnimatePresence in
+   * the editing canvas, where nothing animates and everything re-renders.
+   */
+  describe("element animations", () => {
+    function animatedDocument(): UIDocument {
+      return {
+        schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        id: "doc",
+        name: "Doc",
+        surfaces: [
+          {
+            id: "surface",
+            name: "Surface",
+            host: "app",
+            kind: "appSurface",
+            designSize: { width: 320, height: 180 },
+            rootElementId: "root"
+          }
+        ],
+        elements: {
+          root: {
+            id: "root",
+            type: "nl.root",
+            parentId: null,
+            childrenIds: ["moving", "still"],
+            layout: { x: 0, y: 0, width: 320, height: 180 }
+          },
+          moving: {
+            id: "moving",
+            type: "nl.container",
+            parentId: "root",
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 40, height: 20 },
+            animation: {
+              ...DEFAULT_UI_PAGE_ANIMATION_SETTINGS,
+              enter: "fade",
+              exit: "fade"
+            }
+          },
+          still: {
+            id: "still",
+            type: "nl.container",
+            parentId: "root",
+            childrenIds: [],
+            layout: { x: 0, y: 40, width: 40, height: 20 }
+          }
+        }
+      };
+    }
+
+    const rendererRegistry = new ElementRendererRegistry([
+      { type: "nl.root", render: (props) => <>{props.children}</> },
+      { type: "nl.container", render: (props) => <>{props.children}</> }
+    ]);
+
+    function renderTree(withPlan: boolean): ReactNode {
+      const document = animatedDocument();
+      const surface = document.surfaces[0]!;
+      return SurfaceElementTree({
+        document,
+        surface,
+        rootElement: document.elements.root!,
+        rendererRegistry,
+        hostAdapter: { host: "app" },
+        animationPlan: withPlan
+          ? buildSurfaceAnimationPlan({
+              elements: document.elements,
+              rootElementId: "root",
+              rootSettings: surface.settings?.pageAnimation
+            })
+          : null
+      });
+    }
+
+    function wrappedElementIds(node: ReactNode): string[] {
+      return flattenNodes(node)
+        .filter(
+          (item): item is React.ReactElement<{ children?: ReactNode }> =>
+            isValidElement(item) && item.type === ElementAnimationPresence
+        )
+        .map((item) => String(item.key));
+    }
+
+    it("wraps only what the plan says can move", () => {
+      expect(wrappedElementIds(renderTree(true))).toEqual(["moving"]);
+    });
+
+    it("adds nothing at all to a host that passes no plan", () => {
+      expect(wrappedElementIds(renderTree(false))).toEqual([]);
+    });
+  });
 });

@@ -54,8 +54,8 @@ milestone; until then these lists are the conservative approximation.
 
 ### Fonts
 
-- Standard: `ttf`, `otf`, `ttc`  
-- Web: `woff`, `woff2`  
+- Standard: `ttf`, `otf`, `ttc`
+- Web: `woff`, `woff2`
 - Other: `eot`, `svg`, `otc`
 
 Some extra media formats may be supported using external libraries or plugins for NarraLeaf-Studio.

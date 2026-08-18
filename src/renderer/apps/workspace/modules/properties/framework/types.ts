@@ -8,126 +8,126 @@ import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
  * Supported field types for property editors
  */
 export type FieldType =
-    | "text"
-    | "textarea"
-    | "number"
-    | "checkbox"
-    | "select"
-    | "tags"
-    | "custom"
-    | "info"
-    | "thumbnail"
-    | "section"
-    | "colorPicker"
-    | "colorPickerGroup"
-    | "iconButtonGroup"
-    | "dropdownGroup"
-    | "menuTrigger"
-    | "inputGroup"
-    | "inlineRow"
-    | "imageFill"
-    | "fontAsset";
+  | "text"
+  | "textarea"
+  | "number"
+  | "checkbox"
+  | "select"
+  | "tags"
+  | "custom"
+  | "info"
+  | "thumbnail"
+  | "section"
+  | "colorPicker"
+  | "colorPickerGroup"
+  | "iconButtonGroup"
+  | "dropdownGroup"
+  | "menuTrigger"
+  | "inputGroup"
+  | "inlineRow"
+  | "imageFill"
+  | "fontAsset";
 
 /**
  * Base field definition shared by all field types
  */
 export interface BaseFieldDefinition<TData = any> {
-    /** Unique identifier for the field */
-    id: string;
-    /** Field type */
-    type: FieldType;
-    /** Display label */
-    label?: string;
-    /** Help text shown below the field */
-    helpText?: string;
-    /** Placeholder text */
-    placeholder?: string;
-    /** Whether the field is read-only */
-    readOnly?: boolean;
-    /** Whether the field is disabled */
-    disabled?: boolean;
-    /** Whether the field is hidden */
-    hidden?: boolean | ((data: TData) => boolean);
-    /** Custom class name */
-    className?: string;
-    /** Field order (lower values appear first) */
-    order?: number;
-    /** When set on UI inspector fields, shows Literal / Bound / Broken and blueprint actions. */
-    binding?: PropertyFieldBindingMeta;
+  /** Unique identifier for the field */
+  id: string;
+  /** Field type */
+  type: FieldType;
+  /** Display label */
+  label?: string;
+  /** Help text shown below the field */
+  helpText?: string;
+  /** Placeholder text */
+  placeholder?: string;
+  /** Whether the field is read-only */
+  readOnly?: boolean;
+  /** Whether the field is disabled */
+  disabled?: boolean;
+  /** Whether the field is hidden */
+  hidden?: boolean | ((data: TData) => boolean);
+  /** Custom class name */
+  className?: string;
+  /** Field order (lower values appear first) */
+  order?: number;
+  /** When set on UI inspector fields, shows Literal / Bound / Broken and blueprint actions. */
+  binding?: PropertyFieldBindingMeta;
 }
 
 /**
  * Text field definition
  */
 export interface TextFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "text";
-    /** Maximum length */
-    maxLength?: number;
-    /** Getter function to extract value from data */
-    getValue: (data: TData) => string;
-    /** Setter function to update data with new value */
-    setValue: (data: TData, value: string) => void | Promise<void>;
+  type: "text";
+  /** Maximum length */
+  maxLength?: number;
+  /** Getter function to extract value from data */
+  getValue: (data: TData) => string;
+  /** Setter function to update data with new value */
+  setValue: (data: TData, value: string) => void | Promise<void>;
 }
 
 /**
  * Textarea field definition
  */
 export interface TextareaFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "textarea";
-    /** Number of rows */
-    rows?: number;
-    /** Maximum length */
-    maxLength?: number;
-    getValue: (data: TData) => string;
-    setValue: (data: TData, value: string) => void | Promise<void>;
+  type: "textarea";
+  /** Number of rows */
+  rows?: number;
+  /** Maximum length */
+  maxLength?: number;
+  getValue: (data: TData) => string;
+  setValue: (data: TData, value: string) => void | Promise<void>;
 }
 
 /**
  * Number field definition
  */
 export interface NumberFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "number";
-    /** Minimum value */
-    min?: number;
-    /** Maximum value */
-    max?: number;
-    /** Step increment */
-    step?: number;
-    /** Number of decimal places to format when displaying */
-    decimalPlaces?: number;
-    getValue: (data: TData) => number;
-    setValue: (data: TData, value: number) => void | Promise<void>;
+  type: "number";
+  /** Minimum value */
+  min?: number;
+  /** Maximum value */
+  max?: number;
+  /** Step increment */
+  step?: number;
+  /** Number of decimal places to format when displaying */
+  decimalPlaces?: number;
+  getValue: (data: TData) => number;
+  setValue: (data: TData, value: number) => void | Promise<void>;
 }
 
 /**
  * Checkbox field definition
  */
 export interface CheckboxFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "checkbox";
-    getValue: (data: TData) => boolean;
-    setValue: (data: TData, value: boolean) => void | Promise<void>;
+  type: "checkbox";
+  getValue: (data: TData) => boolean;
+  setValue: (data: TData, value: boolean) => void | Promise<void>;
 }
 
 /**
  * Select option definition
  */
 export interface SelectOption {
-    value: string | number;
-    label: string;
-    /** Muted secondary text after the label (passed through to the Select element). */
-    secondaryLabel?: string;
-    disabled?: boolean;
+  value: string | number;
+  label: string;
+  /** Muted secondary text after the label (passed through to the Select element). */
+  secondaryLabel?: string;
+  disabled?: boolean;
 }
 
 /**
  * Select field definition
  */
 export interface SelectFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "select";
-    /** Available options */
-    options: SelectOption[] | ((data: TData) => SelectOption[]);
-    getValue: (data: TData) => string | number;
-    setValue: (data: TData, value: string | number) => void | Promise<void>;
+  type: "select";
+  /** Available options */
+  options: SelectOption[] | ((data: TData) => SelectOption[]);
+  getValue: (data: TData) => string | number;
+  setValue: (data: TData, value: string | number) => void | Promise<void>;
 }
 
 export type ColorMode = "hex" | "rgb" | "hsl";
@@ -142,57 +142,57 @@ export type ColorMode = "hex" | "rgb" | "hsl";
 export type ColorDisplayMode = "icon" | "icon-hex" | "swatch";
 
 export interface ColorValue {
-    hex: string;
-    alpha?: number;
-    /**
-     * The brand id this value points at, when it is a reference to the project palette rather than
-     * a colour of its own (see `@shared/brand/brandLink`).
-     *
-     * **`hex` and `alpha` still hold the resolved colour**, so a consumer that only wants to paint
-     * never has to know links exist - it reads the same two fields it always did. This field is for
-     * the two things that do care: the picker, which draws a ring on the swatch the value points at,
-     * and the write side, which stores the link back rather than the resolved literal
-     * (`serializeColorValue`). A value whose link cannot be resolved carries no `link` at all, so
-     * its presence also means "this resolved".
-     */
-    link?: string;
+  hex: string;
+  alpha?: number;
+  /**
+   * The brand id this value points at, when it is a reference to the project palette rather than
+   * a colour of its own (see `@shared/brand/brandLink`).
+   *
+   * **`hex` and `alpha` still hold the resolved colour**, so a consumer that only wants to paint
+   * never has to know links exist - it reads the same two fields it always did. This field is for
+   * the two things that do care: the picker, which draws a ring on the swatch the value points at,
+   * and the write side, which stores the link back rather than the resolved literal
+   * (`serializeColorValue`). A value whose link cannot be resolved carries no `link` at all, so
+   * its presence also means "this resolved".
+   */
+  link?: string;
 }
 
 export interface ColorPickerFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "colorPicker";
-    /** How the trigger displays the selected color */
-    displayMode?: ColorDisplayMode;
-    /** Allowed color modes shown in the picker */
-    colorModes?: ColorMode[];
-    getValue: (data: TData) => ColorValue;
-    setValue: (data: TData, value: ColorValue) => void | Promise<void>;
-    /** Whether opacity is editable inside the picker */
-    allowOpacity?: boolean;
-    /**
-     * Offer the project palette in the picker. Off by default: a field opts in only once its write
-     * side stores what a pick produces, and until then a swatch row would hand the author a link the
-     * field cannot keep.
-     */
-    brandPalette?: boolean;
+  type: "colorPicker";
+  /** How the trigger displays the selected color */
+  displayMode?: ColorDisplayMode;
+  /** Allowed color modes shown in the picker */
+  colorModes?: ColorMode[];
+  getValue: (data: TData) => ColorValue;
+  setValue: (data: TData, value: ColorValue) => void | Promise<void>;
+  /** Whether opacity is editable inside the picker */
+  allowOpacity?: boolean;
+  /**
+   * Offer the project palette in the picker. Off by default: a field opts in only once its write
+   * side stores what a pick produces, and until then a swatch row would hand the author a link the
+   * field cannot keep.
+   */
+  brandPalette?: boolean;
 }
 
 export interface ColorPickerGroupFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "colorPickerGroup";
-    displayMode?: ColorDisplayMode;
-    colorModes?: ColorMode[];
-    getValue: (data: TData) => ColorValue;
-    setValue: (data: TData, value: ColorValue) => void | Promise<void>;
-    /** Offer the project palette in the picker. See {@link ColorPickerFieldDefinition.brandPalette}. */
-    brandPalette?: boolean;
+  type: "colorPickerGroup";
+  displayMode?: ColorDisplayMode;
+  colorModes?: ColorMode[];
+  getValue: (data: TData) => ColorValue;
+  setValue: (data: TData, value: ColorValue) => void | Promise<void>;
+  /** Offer the project palette in the picker. See {@link ColorPickerFieldDefinition.brandPalette}. */
+  brandPalette?: boolean;
 }
 
 export type IconButtonGroupMode = "trigger" | "multiple" | "single" | "multipleExclusivePrimary";
 
 export interface IconButtonGroupOption {
-    id: string;
-    icon: ReactNode;
-    label?: string;
-    disabled?: boolean;
+  id: string;
+  icon: ReactNode;
+  label?: string;
+  disabled?: boolean;
 }
 
 export type IconButtonSelection = string | string[] | null;
@@ -201,238 +201,238 @@ export type IconButtonSelection = string | string[] | null;
 export type IconButtonSegGroupDensity = "default" | "compact";
 
 export interface IconButtonGroupFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "iconButtonGroup";
-    mode?: IconButtonGroupMode;
-    options: IconButtonGroupOption[];
-    getValue: (data: TData) => IconButtonSelection;
-    setValue: (data: TData, value: IconButtonSelection) => void | Promise<void>;
-    /** Whether to show option labels next to icons */
-    showLabels?: boolean;
-    /**
-     * Required when `mode` is `multipleExclusivePrimary`: id mutually exclusive with all other toggles
-     * (e.g. `"all"` vs multi-edge).
-     */
-    exclusivePrimaryId?: string;
-    /** Tighter segmented control (compact inspector rows). */
-    density?: IconButtonSegGroupDensity;
+  type: "iconButtonGroup";
+  mode?: IconButtonGroupMode;
+  options: IconButtonGroupOption[];
+  getValue: (data: TData) => IconButtonSelection;
+  setValue: (data: TData, value: IconButtonSelection) => void | Promise<void>;
+  /** Whether to show option labels next to icons */
+  showLabels?: boolean;
+  /**
+   * Required when `mode` is `multipleExclusivePrimary`: id mutually exclusive with all other toggles
+   * (e.g. `"all"` vs multi-edge).
+   */
+  exclusivePrimaryId?: string;
+  /** Tighter segmented control (compact inspector rows). */
+  density?: IconButtonSegGroupDensity;
 }
 
 export interface DropdownGroupItem<TData = any> {
-    id: string;
-    label?: string;
-    options: SelectOption[];
-    placeholder?: string;
-    disabled?: boolean;
-    getValue: (data: TData) => string | number | null;
-    setValue: (data: TData, value: string | number) => void | Promise<void>;
-    className?: string;
+  id: string;
+  label?: string;
+  options: SelectOption[];
+  placeholder?: string;
+  disabled?: boolean;
+  getValue: (data: TData) => string | number | null;
+  setValue: (data: TData, value: string | number) => void | Promise<void>;
+  className?: string;
 }
 
 export interface DropdownGroupFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "dropdownGroup";
-    dropdowns: DropdownGroupItem<TData>[];
-    gap?: number;
-    wrap?: boolean;
+  type: "dropdownGroup";
+  dropdowns: DropdownGroupItem<TData>[];
+  gap?: number;
+  wrap?: boolean;
 }
 
 export interface MenuTriggerFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "menuTrigger";
-    menu: ContextMenuDef;
-    buttonAriaLabel?: string;
-    icon?: ReactNode;
+  type: "menuTrigger";
+  menu: ContextMenuDef;
+  buttonAriaLabel?: string;
+  icon?: ReactNode;
 }
 
 export interface InputGroupItem<TData = any> {
-    id: string;
-    label?: string;
-    placeholder?: string;
-    unit?: string;
-    icon?: ReactNode;
-    type?: "text" | "number" | "search" | "tel" | "url" | "email";
-    disabled?: boolean;
-    readOnly?: boolean;
-    maxLength?: number;
-    className?: string;
-    selectAllOnFocus?: boolean;
-    /** When set on number inputs, unfocused display uses toFixed(precision); focused shows full numeric string. */
-    precision?: number | null;
-    getValue: (data: TData) => string;
-    setValue: (data: TData, value: string) => void | Promise<void>;
+  id: string;
+  label?: string;
+  placeholder?: string;
+  unit?: string;
+  icon?: ReactNode;
+  type?: "text" | "number" | "search" | "tel" | "url" | "email";
+  disabled?: boolean;
+  readOnly?: boolean;
+  maxLength?: number;
+  className?: string;
+  selectAllOnFocus?: boolean;
+  /** When set on number inputs, unfocused display uses toFixed(precision); focused shows full numeric string. */
+  precision?: number | null;
+  getValue: (data: TData) => string;
+  setValue: (data: TData, value: string) => void | Promise<void>;
 }
 
 export interface InputGroupFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "inputGroup";
-    inputs: InputGroupItem<TData>[];
-    gap?: number;
-    wrap?: boolean;
+  type: "inputGroup";
+  inputs: InputGroupItem<TData>[];
+  gap?: number;
+  wrap?: boolean;
 }
 
 export interface InlineRowItemContext<TData = any> {
-    data: TData;
-    onSaving: (saving: boolean) => void;
+  data: TData;
+  onSaving: (saving: boolean) => void;
 }
 
 export interface InlineRowItem<TData = any> {
-    id: string;
-    className?: string;
-    render: (context: InlineRowItemContext<TData>) => ReactNode;
+  id: string;
+  className?: string;
+  render: (context: InlineRowItemContext<TData>) => ReactNode;
 }
 
 export interface InlineRowFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "inlineRow";
-    items: InlineRowItem<TData>[];
-    gap?: number;
-    wrap?: boolean;
+  type: "inlineRow";
+  items: InlineRowItem<TData>[];
+  gap?: number;
+  wrap?: boolean;
 }
 
 /**
  * Tags field definition
  */
 export interface TagsFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "tags";
-    /** Placeholder for the add tag input */
-    addPlaceholder?: string;
-    getValue: (data: TData) => string[];
-    addTag: (data: TData, tag: string) => void | Promise<void>;
-    removeTag: (data: TData, tag: string) => void | Promise<void>;
+  type: "tags";
+  /** Placeholder for the add tag input */
+  addPlaceholder?: string;
+  getValue: (data: TData) => string[];
+  addTag: (data: TData, tag: string) => void | Promise<void>;
+  removeTag: (data: TData, tag: string) => void | Promise<void>;
 }
 
 /**
  * Info field definition (read-only display)
  */
 export interface InfoFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "info";
-    /** Info items to display */
-    items: InfoItem<TData>[] | ((data: TData) => InfoItem<TData>[]);
+  type: "info";
+  /** Info items to display */
+  items: InfoItem<TData>[] | ((data: TData) => InfoItem<TData>[]);
 }
 
 /**
  * Info item for info field
  */
 export interface InfoItem<TData = any> {
-    label: string;
-    getValue: (data: TData) => ReactNode;
-    hidden?: boolean | ((data: TData) => boolean);
+  label: string;
+  getValue: (data: TData) => ReactNode;
+  hidden?: boolean | ((data: TData) => boolean);
 }
 
 /**
  * Section field definition (grouping)
  */
 export interface SectionFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "section";
-    /** Section title */
-    title: string;
-    /** Nested fields */
-    fields: FieldDefinition<TData>[];
-    /** Whether the section is collapsible */
-    collapsible?: boolean;
-    /** Whether the section is collapsed by default */
-    defaultCollapsed?: boolean;
+  type: "section";
+  /** Section title */
+  title: string;
+  /** Nested fields */
+  fields: FieldDefinition<TData>[];
+  /** Whether the section is collapsible */
+  collapsible?: boolean;
+  /** Whether the section is collapsed by default */
+  defaultCollapsed?: boolean;
 }
 
 /**
  * Custom component props
  */
 export interface CustomFieldProps<TData = any> {
-    data: TData;
-    onChange: (data: TData) => void;
-    disabled?: boolean;
-    readOnly?: boolean;
+  data: TData;
+  onChange: (data: TData) => void;
+  disabled?: boolean;
+  readOnly?: boolean;
 }
 
 /**
  * Custom field definition (for complex custom components)
  */
 export interface CustomFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "custom";
-    /** Custom component to render */
-    component: ComponentType<CustomFieldProps<TData>>;
+  type: "custom";
+  /** Custom component to render */
+  component: ComponentType<CustomFieldProps<TData>>;
 }
 
 /**
  * Thumbnail field definition
  */
 export interface ThumbnailFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "thumbnail";
-    /** Get thumbnail URL or null */
-    getThumbnailUrl: (data: TData) => string | null | Promise<string | null>;
-    /** Get thumbnail ID or null */
-    getThumbnailId: (data: TData) => string | null;
-    /** Set thumbnail (called after cropping) */
-    setThumbnail: (data: TData, id: string | null) => void | Promise<void>;
-    /** Aspect ratio for cropping (default 1 = square) */
-    aspectRatio?: number;
-    /** Anchor ref for selector popup positioning */
-    anchorRef?: RefObject<HTMLElement>;
+  type: "thumbnail";
+  /** Get thumbnail URL or null */
+  getThumbnailUrl: (data: TData) => string | null | Promise<string | null>;
+  /** Get thumbnail ID or null */
+  getThumbnailId: (data: TData) => string | null;
+  /** Set thumbnail (called after cropping) */
+  setThumbnail: (data: TData, id: string | null) => void | Promise<void>;
+  /** Aspect ratio for cropping (default 1 = square) */
+  aspectRatio?: number;
+  /** Anchor ref for selector popup positioning */
+  anchorRef?: RefObject<HTMLElement>;
 }
 
 export interface ImageFillFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "imageFill";
-    getValue: (data: TData) => ImageFill | undefined;
-    setValue: (data: TData, value: ImageFill) => void | Promise<void>;
-    /** When set, mode dropdown and canvas crop are limited to these modes. */
-    allowedFillModes?: ImageFillMode[];
+  type: "imageFill";
+  getValue: (data: TData) => ImageFill | undefined;
+  setValue: (data: TData, value: ImageFill) => void | Promise<void>;
+  /** When set, mode dropdown and canvas crop are limited to these modes. */
+  allowedFillModes?: ImageFillMode[];
 }
 
 export interface FontAssetFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
-    type: "fontAsset";
-    getValue: (data: TData) => string | null;
-    setValue: (data: TData, value: string | null) => void | Promise<void>;
+  type: "fontAsset";
+  getValue: (data: TData) => string | null;
+  setValue: (data: TData, value: string | null) => void | Promise<void>;
 }
 
 /**
  * Union of all field definitions
  */
 export type FieldDefinition<TData = any> =
-    | TextFieldDefinition<TData>
-    | TextareaFieldDefinition<TData>
-    | NumberFieldDefinition<TData>
-    | CheckboxFieldDefinition<TData>
-    | SelectFieldDefinition<TData>
-    | TagsFieldDefinition<TData>
-    | InfoFieldDefinition<TData>
-    | SectionFieldDefinition<TData>
-    | CustomFieldDefinition<TData>
-    | ThumbnailFieldDefinition<TData>
-    | ColorPickerFieldDefinition<TData>
-    | ColorPickerGroupFieldDefinition<TData>
-    | IconButtonGroupFieldDefinition<TData>
-    | DropdownGroupFieldDefinition<TData>
-    | MenuTriggerFieldDefinition<TData>
-    | InputGroupFieldDefinition<TData>
-    | InlineRowFieldDefinition<TData>
-    | ImageFillFieldDefinition<TData>
-    | FontAssetFieldDefinition<TData>;
+  | TextFieldDefinition<TData>
+  | TextareaFieldDefinition<TData>
+  | NumberFieldDefinition<TData>
+  | CheckboxFieldDefinition<TData>
+  | SelectFieldDefinition<TData>
+  | TagsFieldDefinition<TData>
+  | InfoFieldDefinition<TData>
+  | SectionFieldDefinition<TData>
+  | CustomFieldDefinition<TData>
+  | ThumbnailFieldDefinition<TData>
+  | ColorPickerFieldDefinition<TData>
+  | ColorPickerGroupFieldDefinition<TData>
+  | IconButtonGroupFieldDefinition<TData>
+  | DropdownGroupFieldDefinition<TData>
+  | MenuTriggerFieldDefinition<TData>
+  | InputGroupFieldDefinition<TData>
+  | InlineRowFieldDefinition<TData>
+  | ImageFillFieldDefinition<TData>
+  | FontAssetFieldDefinition<TData>;
 
 /**
  * Property editor schema definition
  */
 export interface PropertyEditorTab<TData = any> {
-    /** Unique tab identifier */
-    id: string;
-    /** Tab label */
-    title: string;
-    /** Fields shown inside this tab */
-    fields: FieldDefinition<TData>[];
-    /** Optional ordering weight */
-    order?: number;
+  /** Unique tab identifier */
+  id: string;
+  /** Tab label */
+  title: string;
+  /** Fields shown inside this tab */
+  fields: FieldDefinition<TData>[];
+  /** Optional ordering weight */
+  order?: number;
 }
 
 export interface PropertyEditorSchema<TData = any> {
-    /** Unique identifier for this editor type */
-    id: string;
-    /** Display title */
-    title?: string;
-    /** Field definitions */
-    fields: FieldDefinition<TData>[];
-    /** Optional tab configuration */
-    tabs?: PropertyEditorTab<TData>[];
-    /** Preferred tab to show when schema loads */
-    defaultTabId?: string;
-    /** Called when any field changes */
-    onFieldChange?: (data: TData, fieldId: string, value: any) => void | Promise<void>;
-    /** Whether to show saving indicator */
-    showSavingIndicator?: boolean;
+  /** Unique identifier for this editor type */
+  id: string;
+  /** Display title */
+  title?: string;
+  /** Field definitions */
+  fields: FieldDefinition<TData>[];
+  /** Optional tab configuration */
+  tabs?: PropertyEditorTab<TData>[];
+  /** Preferred tab to show when schema loads */
+  defaultTabId?: string;
+  /** Called when any field changes */
+  onFieldChange?: (data: TData, fieldId: string, value: any) => void | Promise<void>;
+  /** Whether to show saving indicator */
+  showSavingIndicator?: boolean;
 }
 
 /**
@@ -449,27 +449,26 @@ export type SelectionType = SelectionState["type"];
  * Property editor registration
  */
 export interface PropertyEditorRegistration<TData = any> {
-    /** Selection type this editor handles */
-    selectionType: SelectionType;
-    /** Optional predicate to further filter when this editor applies */
-    when?: (data: any) => boolean;
-    /** The schema for this editor */
-    schema: PropertyEditorSchema<TData>;
-    /** Priority (higher values take precedence) */
-    priority?: number;
+  /** Selection type this editor handles */
+  selectionType: SelectionType;
+  /** Optional predicate to further filter when this editor applies */
+  when?: (data: any) => boolean;
+  /** The schema for this editor */
+  schema: PropertyEditorSchema<TData>;
+  /** Priority (higher values take precedence) */
+  priority?: number;
 }
 
 /**
  * Property editor context state
  */
 export interface PropertyEditorState<TData = any> {
-    /** Current data being edited */
-    data: TData | null;
-    /** Selection type */
-    selectionType: SelectionType;
-    /** Whether currently saving */
-    isSaving: boolean;
-    /** Current error message */
-    error: string | null;
+  /** Current data being edited */
+  data: TData | null;
+  /** Selection type */
+  selectionType: SelectionType;
+  /** Whether currently saving */
+  isSaving: boolean;
+  /** Current error message */
+  error: string | null;
 }
-

@@ -17,14 +17,14 @@
 
 import type { ReactElement } from "react";
 import type {
-    BlueprintOpenExternalRequest,
-    BlueprintOpenExternalResult,
+  BlueprintOpenExternalRequest,
+  BlueprintOpenExternalResult
 } from "@shared/types/blueprint/externalLink";
 import type {
-    RuntimePluginEventMap,
-    RuntimePluginSaveMetadata,
-    RuntimePluginStateChange,
-    RuntimePluginStateScope,
+  RuntimePluginEventMap,
+  RuntimePluginSaveMetadata,
+  RuntimePluginStateChange,
+  RuntimePluginStateScope
 } from "./runtimePluginApi";
 
 export type RuntimePluginHostUnsubscribe = () => void;
@@ -35,78 +35,83 @@ export type RuntimePluginHostUnsubscribe = () => void;
  * as flat.
  */
 export type RuntimePluginStoreBackend = {
-    get(key: string): Promise<unknown>;
-    set(key: string, value: unknown): Promise<void>;
-    remove(key: string): Promise<void>;
-    /** Every key currently stored, unprefixed filtering is the loader's job. */
-    keys(): Promise<string[]>;
+  get(key: string): Promise<unknown>;
+  set(key: string, value: unknown): Promise<void>;
+  remove(key: string): Promise<void>;
+  /** Every key currently stored, unprefixed filtering is the loader's job. */
+  keys(): Promise<string[]>;
 };
 
 export type RuntimePluginEventBackend = {
-    /**
-     * Subscribe to one bridged event. Implementations that cannot produce an
-     * event must report it through {@link supports} rather than silently
-     * accepting a listener that never fires.
-     */
-    on<K extends keyof RuntimePluginEventMap>(
-        event: K,
-        listener: (payload: RuntimePluginEventMap[K]) => void,
-    ): RuntimePluginHostUnsubscribe;
-    supports(event: keyof RuntimePluginEventMap): boolean;
+  /**
+   * Subscribe to one bridged event. Implementations that cannot produce an
+   * event must report it through {@link supports} rather than silently
+   * accepting a listener that never fires.
+   */
+  on<K extends keyof RuntimePluginEventMap>(
+    event: K,
+    listener: (payload: RuntimePluginEventMap[K]) => void
+  ): RuntimePluginHostUnsubscribe;
+  supports(event: keyof RuntimePluginEventMap): boolean;
 };
 
 export type RuntimePluginStateBackend = {
-    get(scope: RuntimePluginStateScope, key: string): unknown;
-    set(scope: RuntimePluginStateScope, key: string, value: unknown): void;
-    onChange(listener: (change: RuntimePluginStateChange) => void): RuntimePluginHostUnsubscribe;
+  get(scope: RuntimePluginStateScope, key: string): unknown;
+  set(scope: RuntimePluginStateScope, key: string, value: unknown): void;
+  onChange(listener: (change: RuntimePluginStateChange) => void): RuntimePluginHostUnsubscribe;
 };
 
 export type RuntimePluginSavesBackend = {
-    listIds(): Promise<string[]>;
-    readMetadata(id: string): Promise<RuntimePluginSaveMetadata | null>;
-    /**
-     * Write and load are optional on the backend as well as gated by capability:
-     * an environment may be able to list saves without being able to replace the
-     * running playthrough.
-     */
-    write?: (id: string, metadata?: unknown) => Promise<void>;
-    load?: (id: string) => Promise<void>;
+  listIds(): Promise<string[]>;
+  readMetadata(id: string): Promise<RuntimePluginSaveMetadata | null>;
+  /**
+   * Write and load are optional on the backend as well as gated by capability:
+   * an environment may be able to list saves without being able to replace the
+   * running playthrough.
+   */
+  write?: (id: string, metadata?: unknown) => Promise<void>;
+  load?: (id: string) => Promise<void>;
 };
 
 export type RuntimePluginOverlayBackend = {
-    /**
-     * Mount a plugin-provided element above the game. The host renders it — the
-     * game environment withholds `react-dom/client` on purpose, so plugins
-     * cannot create a competing React root.
-     */
-    mount(ownerPluginId: string, render: () => ReactElement | null): RuntimePluginHostUnsubscribe;
+  /**
+   * Mount a plugin-provided element above the game. The host renders it — the
+   * game environment withholds `react-dom/client` on purpose, so plugins
+   * cannot create a competing React root.
+   */
+  mount(ownerPluginId: string, render: () => ReactElement | null): RuntimePluginHostUnsubscribe;
 };
 
 export type RuntimePluginLocaleBackend = {
-    current(): string;
-    onChange(listener: (locale: string) => void): RuntimePluginHostUnsubscribe;
+  current(): string;
+  onChange(listener: (locale: string) => void): RuntimePluginHostUnsubscribe;
 };
 
 export type RuntimePluginAssetsBackend = {
-    url(assetId: string): string;
+  url(assetId: string): string;
 };
 
 export type RuntimePluginSidecarBackend = {
-    available(ownerPluginId: string, sidecarId: string): boolean;
-    request(ownerPluginId: string, sidecarId: string, method: string, params?: unknown): Promise<unknown>;
-    notify(ownerPluginId: string, sidecarId: string, method: string, params?: unknown): void;
-    start(ownerPluginId: string, sidecarId: string): Promise<void>;
-    stop(ownerPluginId: string, sidecarId: string): Promise<void>;
-    onEvent(
-        ownerPluginId: string,
-        sidecarId: string,
-        listener: (method: string, params: unknown) => void,
-    ): RuntimePluginHostUnsubscribe;
-    onExit(
-        ownerPluginId: string,
-        sidecarId: string,
-        listener: (info: { code: number | null; signal: string | null }) => void,
-    ): RuntimePluginHostUnsubscribe;
+  available(ownerPluginId: string, sidecarId: string): boolean;
+  request(
+    ownerPluginId: string,
+    sidecarId: string,
+    method: string,
+    params?: unknown
+  ): Promise<unknown>;
+  notify(ownerPluginId: string, sidecarId: string, method: string, params?: unknown): void;
+  start(ownerPluginId: string, sidecarId: string): Promise<void>;
+  stop(ownerPluginId: string, sidecarId: string): Promise<void>;
+  onEvent(
+    ownerPluginId: string,
+    sidecarId: string,
+    listener: (method: string, params: unknown) => void
+  ): RuntimePluginHostUnsubscribe;
+  onExit(
+    ownerPluginId: string,
+    sidecarId: string,
+    listener: (info: { code: number | null; signal: string | null }) => void
+  ): RuntimePluginHostUnsubscribe;
 };
 
 /**
@@ -121,10 +126,10 @@ export type RuntimePluginSidecarBackend = {
  * approved. Nothing the renderer says widens that set.
  */
 export type RuntimePluginNavigationBackend = {
-    openExternal(
-        ownerPluginId: string,
-        request: BlueprintOpenExternalRequest,
-    ): Promise<BlueprintOpenExternalResult>;
+  openExternal(
+    ownerPluginId: string,
+    request: BlueprintOpenExternalRequest
+  ): Promise<BlueprintOpenExternalResult>;
 };
 
 /**
@@ -133,13 +138,13 @@ export type RuntimePluginNavigationBackend = {
  * it.
  */
 export type RuntimePluginHost = {
-    store?: RuntimePluginStoreBackend;
-    events?: RuntimePluginEventBackend;
-    state?: RuntimePluginStateBackend;
-    saves?: RuntimePluginSavesBackend;
-    overlay?: RuntimePluginOverlayBackend;
-    locale?: RuntimePluginLocaleBackend;
-    assets?: RuntimePluginAssetsBackend;
-    sidecar?: RuntimePluginSidecarBackend;
-    navigation?: RuntimePluginNavigationBackend;
+  store?: RuntimePluginStoreBackend;
+  events?: RuntimePluginEventBackend;
+  state?: RuntimePluginStateBackend;
+  saves?: RuntimePluginSavesBackend;
+  overlay?: RuntimePluginOverlayBackend;
+  locale?: RuntimePluginLocaleBackend;
+  assets?: RuntimePluginAssetsBackend;
+  sidecar?: RuntimePluginSidecarBackend;
+  navigation?: RuntimePluginNavigationBackend;
 };

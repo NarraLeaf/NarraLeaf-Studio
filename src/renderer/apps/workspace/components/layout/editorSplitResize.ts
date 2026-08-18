@@ -18,32 +18,32 @@ export const EDITOR_DEFAULT_SPLIT_RATIO = 0.5;
  * evenly rather than snapping to one arbitrary side.
  */
 export function resolveSplitRatio(
-    containerSize: number,
-    pointerOffset: number,
-    minPanePx: number = EDITOR_MIN_PANE_PX,
+  containerSize: number,
+  pointerOffset: number,
+  minPanePx: number = EDITOR_MIN_PANE_PX
 ): number {
-    if (!Number.isFinite(containerSize) || containerSize <= 0) {
-        return EDITOR_DEFAULT_SPLIT_RATIO;
-    }
-    if (containerSize < minPanePx * 2) {
-        return EDITOR_DEFAULT_SPLIT_RATIO;
-    }
-    const minRatio = minPanePx / containerSize;
-    const raw = pointerOffset / containerSize;
-    return Math.min(1 - minRatio, Math.max(minRatio, raw));
+  if (!Number.isFinite(containerSize) || containerSize <= 0) {
+    return EDITOR_DEFAULT_SPLIT_RATIO;
+  }
+  if (containerSize < minPanePx * 2) {
+    return EDITOR_DEFAULT_SPLIT_RATIO;
+  }
+  const minRatio = minPanePx / containerSize;
+  const raw = pointerOffset / containerSize;
+  return Math.min(1 - minRatio, Math.max(minRatio, raw));
 }
 
 /** Move a sash by `deltaPx` (keyboard resize), under the same clamp as a drag. */
 export function nudgeSplitRatio(
-    currentRatio: number,
-    containerSize: number,
-    deltaPx: number,
-    minPanePx: number = EDITOR_MIN_PANE_PX,
+  currentRatio: number,
+  containerSize: number,
+  deltaPx: number,
+  minPanePx: number = EDITOR_MIN_PANE_PX
 ): number {
-    if (!Number.isFinite(containerSize) || containerSize <= 0) {
-        return currentRatio;
-    }
-    return resolveSplitRatio(containerSize, currentRatio * containerSize + deltaPx, minPanePx);
+  if (!Number.isFinite(containerSize) || containerSize <= 0) {
+    return currentRatio;
+  }
+  return resolveSplitRatio(containerSize, currentRatio * containerSize + deltaPx, minPanePx);
 }
 
 /**
@@ -51,5 +51,5 @@ export function nudgeSplitRatio(
  * on each side - otherwise the two percentages plus the gutter overflow the container.
  */
 export function leadingPaneBasis(ratio: number, sashSize: number = EDITOR_SASH_SIZE): string {
-    return `calc(${ratio * 100}% - ${sashSize / 2}px)`;
+  return `calc(${ratio * 100}% - ${sashSize / 2}px)`;
 }

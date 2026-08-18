@@ -14,8 +14,8 @@ import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/L
 import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import { useBlueprintDocumentRevision } from "@/apps/workspace/modules/blueprint-lite/hooks/useBlueprintDocumentRevision";
 import {
-    BlueprintLayerPreview,
-    resolveFirstBlueprintLayerPreview,
+  BlueprintLayerPreview,
+  resolveFirstBlueprintLayerPreview
 } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintLayerPreview";
 import { InspectOnlyButton } from "@/lib/components/elements/InspectOnlyButton";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
@@ -23,40 +23,44 @@ import { blueprintEntryContextMenu } from "@/apps/workspace/modules/blueprint-li
 import type { BlueprintOpenOptions } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 
 export function StoryActionBlueprintPreviewCard(props: {
-    /** Owner blueprint id; may be empty (the card stays clickable so `onOpen` can create it). */
-    blueprintId: string;
-    /**
-     * Ensure the blueprint exists (when needed) and open its editor. Called with
-     * `{ inOwnWindow: true }` for the right click, which every blueprint entry answers by opening
-     * a window of its own.
-     */
-    onOpen: (options?: BlueprintOpenOptions) => void;
-    /** Preview height; defaults to the standard entry height. */
-    heightClassName?: string;
-    /**
-     * "mini" (default): compact abstract preview for inline value entries. "detailed": a larger card
-     * that renders real node titles + pins — used by the condition entry so the graph is readable.
-     */
-    variant?: "mini" | "detailed";
-    /** Accessible label; defaults to the story-action wording. */
-    ariaLabel?: string;
+  /** Owner blueprint id; may be empty (the card stays clickable so `onOpen` can create it). */
+  blueprintId: string;
+  /**
+   * Ensure the blueprint exists (when needed) and open its editor. Called with
+   * `{ inOwnWindow: true }` for the right click, which every blueprint entry answers by opening
+   * a window of its own.
+   */
+  onOpen: (options?: BlueprintOpenOptions) => void;
+  /** Preview height; defaults to the standard entry height. */
+  heightClassName?: string;
+  /**
+   * "mini" (default): compact abstract preview for inline value entries. "detailed": a larger card
+   * that renders real node titles + pins — used by the condition entry so the graph is readable.
+   */
+  variant?: "mini" | "detailed";
+  /** Accessible label; defaults to the story-action wording. */
+  ariaLabel?: string;
 }) {
-    const { t } = useTranslation();
-    const { context, isInitialized } = useWorkspace();
-    const { frozen, reason } = useFreezeGuard();
-    const blueprintRevision = useBlueprintDocumentRevision();
-    const localBp =
-        isInitialized && context ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint) : null;
-    const nodeCatalog =
-        isInitialized && context ? context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog) : null;
-    const previewModel = useMemo(
-        () => resolveFirstBlueprintLayerPreview(localBp, nodeCatalog, props.blueprintId || undefined),
-        [localBp, nodeCatalog, props.blueprintId, blueprintRevision],
-    );
+  const { t } = useTranslation();
+  const { context, isInitialized } = useWorkspace();
+  const { frozen, reason } = useFreezeGuard();
+  const blueprintRevision = useBlueprintDocumentRevision();
+  const localBp =
+    isInitialized && context
+      ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint)
+      : null;
+  const nodeCatalog =
+    isInitialized && context
+      ? context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog)
+      : null;
+  const previewModel = useMemo(
+    () => resolveFirstBlueprintLayerPreview(localBp, nodeCatalog, props.blueprintId || undefined),
+    [localBp, nodeCatalog, props.blueprintId, blueprintRevision]
+  );
 
-    return (
-        <div className="space-y-2 rounded-lg border border-edge bg-surface px-3 py-3">
-            {/* An `InspectOnlyButton` because the story action inspector clamps its whole field body
+  return (
+    <div className="space-y-2 rounded-lg border border-edge bg-surface px-3 py-3">
+      {/* An `InspectOnlyButton` because the story action inspector clamps its whole field body
                 in a `disabled` `<fieldset>` while the workspace is frozen, and reaching a blueprint
                 to read it is not a write - the blueprint editor enforces the freeze itself.
 
@@ -64,18 +68,27 @@ export function StoryActionBlueprintPreviewCard(props: {
                 affordance (`ensureStoryActionBlueprint` runs on the way in and the block's payload
                 is patched with the new id), so with no `blueprintId` the click is a write and the
                 card is disabled for exactly as long as the freeze lasts. */}
-            <InspectOnlyButton
-                disabled={frozen && !props.blueprintId}
-                // The freeze reason wins the tooltip while there is one: it says why the card
-                // cannot be used at all, which outranks telling the author about a gesture.
-                data-tip={frozen && !props.blueprintId ? reason : t("blueprint.entry.openInWindow")}
-                className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/70 cursor-default"
-                onClick={() => props.onOpen()}
-                onContextMenu={blueprintEntryContextMenu(props.onOpen)}
-                aria-label={props.ariaLabel ?? (props.blueprintId ? t("story.blueprintCard.openAria") : t("story.blueprintCard.createAria"))}
-            >
-                <BlueprintLayerPreview model={previewModel} heightClassName={props.heightClassName} variant={props.variant ?? "mini"} />
-            </InspectOnlyButton>
-        </div>
-    );
+      <InspectOnlyButton
+        disabled={frozen && !props.blueprintId}
+        // The freeze reason wins the tooltip while there is one: it says why the card
+        // cannot be used at all, which outranks telling the author about a gesture.
+        data-tip={frozen && !props.blueprintId ? reason : t("blueprint.entry.openInWindow")}
+        className="block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/70 cursor-default"
+        onClick={() => props.onOpen()}
+        onContextMenu={blueprintEntryContextMenu(props.onOpen)}
+        aria-label={
+          props.ariaLabel ??
+          (props.blueprintId
+            ? t("story.blueprintCard.openAria")
+            : t("story.blueprintCard.createAria"))
+        }
+      >
+        <BlueprintLayerPreview
+          model={previewModel}
+          heightClassName={props.heightClassName}
+          variant={props.variant ?? "mini"}
+        />
+      </InspectOnlyButton>
+    </div>
+  );
 }

@@ -1,8 +1,5 @@
-import { PERSISTENT_STATE_DB_EXTENSION, PERSISTENT_STATE_DEFAULT_DB_NAME, UserDataNamespace } from "@shared/types/constants";
-import {
-    PersistentStateConfig,
-    StorageNamespaceInfo
-} from "@shared/types/persistentState";
+import { UserDataNamespace } from "@shared/types/constants";
+import { PersistentStateConfig, StorageNamespaceInfo } from "@shared/types/persistentState";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import crypto from "crypto";
 import { app as electronApp } from "electron";
@@ -12,544 +9,586 @@ import { PersistentState } from "../../../../shared/utils/persistentState";
 import { Manager } from "./manager";
 import { BaseApp } from "../baseApp";
 import type { AppWindow } from "./window/appWindow";
-import { FileSystemAccessMode, FileSystemGrant, FileSystemGrantMode, getDeclaredFileSystemGrants } from "./window/permissions";
+import {
+  FileSystemAccessMode,
+  FileSystemGrant,
+  FileSystemGrantMode,
+  getDeclaredFileSystemGrants
+} from "./window/permissions";
 
 export type FileStorageLifetime = "once" | "session";
 
 export interface FileStorageInfo {
-    path: string;
-    raw: boolean;
-    operation: FileSystemAccessMode;
-    /**
-     * The encoding the text at `path` is stored in. Widened past `BufferEncoding` for the text
-     * editor (GBK, Shift_JIS, a UTF-8 that keeps its mark); see `@shared/types/textEncoding`.
-     */
-    encoding?: FsTextEncoding;
-    status: "allocated" | "ready" | "error";
-    error?: string;
-    /**
-     * When set, `path` is a directory root rather than one file, and `app://fs/{hash}/{rel}` serves
-     * the file at `rel` inside it (containment re-checked per request).
-     *
-     * This exists for one reason: a model bundle's manifest names its siblings by *relative path*
-     * (`Hiyori.2048/texture_00.png`), so the URL its entry file is served from has to be one those
-     * relative references resolve against. A flat per-file grant cannot be that URL - every sibling
-     * would resolve to `app://fs/{some-other-hash}` and 404.
-     *
-     * Directory grants are read-only and always session-lived: a bundle is fetched many times (one
-     * request per texture, per motion), so a one-shot grant would die on the first file.
-     */
-    directory?: boolean;
-    /**
-     * "once" (default when absent): destroyed after the first successful use.
-     * "session": stays usable until the owner webContents goes away, so the
-     * same app://fs/{hash} URL can be fetched repeatedly (e.g. the game engine
-     * re-fetching evicted assets on scene changes in Dev Mode).
-     */
-    lifetime?: FileStorageLifetime;
-    /** webContents id whose destruction revokes this grant (session lifetime only). */
-    ownerWebContentsId?: number;
+  path: string;
+  raw: boolean;
+  operation: FileSystemAccessMode;
+  /**
+   * The encoding the text at `path` is stored in. Widened past `BufferEncoding` for the text
+   * editor (GBK, Shift_JIS, a UTF-8 that keeps its mark); see `@shared/types/textEncoding`.
+   */
+  encoding?: FsTextEncoding;
+  status: "allocated" | "ready" | "error";
+  error?: string;
+  /**
+   * When set, `path` is a directory root rather than one file, and `app://fs/{hash}/{rel}` serves
+   * the file at `rel` inside it (containment re-checked per request).
+   *
+   * This exists for one reason: a model bundle's manifest names its siblings by *relative path*
+   * (`Hiyori.2048/texture_00.png`), so the URL its entry file is served from has to be one those
+   * relative references resolve against. A flat per-file grant cannot be that URL - every sibling
+   * would resolve to `app://fs/{some-other-hash}` and 404.
+   *
+   * Directory grants are read-only and always session-lived: a bundle is fetched many times (one
+   * request per texture, per motion), so a one-shot grant would die on the first file.
+   */
+  directory?: boolean;
+  /**
+   * "once" (default when absent): destroyed after the first successful use.
+   * "session": stays usable until the owner webContents goes away, so the
+   * same app://fs/{hash} URL can be fetched repeatedly (e.g. the game engine
+   * re-fetching evicted assets on scene changes in Dev Mode).
+   */
+  lifetime?: FileStorageLifetime;
+  /** webContents id whose destruction revokes this grant (session lifetime only). */
+  ownerWebContentsId?: number;
 }
 
 export type SecurityScopedResourceLifetime = "window" | "session";
 type SecurityScopedBookmarkGrant = {
-    path: string;
-    recursive: boolean;
-    bookmark: string;
+  path: string;
+  recursive: boolean;
+  bookmark: string;
 };
 
 export class StorageManager extends Manager {
-    private storage = new Map<string, FileStorageInfo>();
-    private runtimeFileSystemGrants = new Map<number, FileSystemGrant[]>();
-    /** webContents ids memoized while windows are alive; see revokeWindowFileSystemAccess. */
-    private windowStorageKeys = new WeakMap<AppWindow, number>();
-    private runtimeSecurityScopedResourceStops = new Map<number, Array<() => void>>();
-    private sessionSecurityScopedResourceStops: Array<() => void> = [];
-    private securityScopedBookmarkGrants: SecurityScopedBookmarkGrant[] = [];
-    private namespaces = new Map<string, StorageNamespaceInfo>();
-    
-    constructor(app: BaseApp) {
-        super(app);
+  private storage = new Map<string, FileStorageInfo>();
+  private runtimeFileSystemGrants = new Map<number, FileSystemGrant[]>();
+  /** webContents ids memoized while windows are alive; see revokeWindowFileSystemAccess. */
+  private windowStorageKeys = new WeakMap<AppWindow, number>();
+  private runtimeSecurityScopedResourceStops = new Map<number, Array<() => void>>();
+  private sessionSecurityScopedResourceStops: Array<() => void> = [];
+  private securityScopedBookmarkGrants: SecurityScopedBookmarkGrant[] = [];
+  private namespaces = new Map<string, StorageNamespaceInfo>();
+
+  constructor(app: BaseApp) {
+    super(app);
+  }
+
+  public initialize(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  /**
+   * Allocate a unique hash for file operations
+   */
+  public allocateHash(
+    path: string,
+    raw: boolean,
+    operation: FileSystemAccessMode,
+    encoding?: FsTextEncoding
+  ): string {
+    const hash = crypto.randomBytes(32).toString("base64url");
+    this.storage.set(hash, { path, raw, operation, encoding, status: "allocated" });
+    return hash;
+  }
+
+  /**
+   * Allocate a hash that serves a whole directory tree: `app://fs/{hash}/{relative/path}`.
+   *
+   * Session-lived and owned by the requesting webContents, because the consumer is a renderer that
+   * will fetch many files under the root and is expected to keep doing so for as long as it is
+   * showing the bundle. It dies with that webContents, exactly like a promoted read grant.
+   */
+  public allocateDirectoryHash(dirPath: string, ownerWebContentsId: number): string {
+    const hash = crypto.randomBytes(32).toString("base64url");
+    this.storage.set(hash, {
+      path: path.resolve(dirPath),
+      raw: true,
+      operation: "read",
+      // Ready on allocation, unlike a file grant. The allocate-then-ready dance exists because
+      // `allocateHash` is called *before* its existence check; a directory grant checks first
+      // and re-stats per request anyway, so a separate "not yet usable" state would only be a
+      // way to forget the second call.
+      status: "ready",
+      directory: true,
+      lifetime: "session",
+      ownerWebContentsId
+    });
+    return hash;
+  }
+
+  /**
+   * The absolute path a directory grant's relative request maps to, or null when the request
+   * escapes the granted root.
+   *
+   * Containment is re-checked here rather than trusted from the URL: the relative part of the URL
+   * is attacker-controllable in the same sense every renderer-supplied path is, and `..` segments
+   * survive `new URL()` normalization when they are percent-encoded.
+   */
+  public resolveDirectoryGrantPath(info: FileStorageInfo, relativePath: string): string | null {
+    if (!info.directory) {
+      return null;
+    }
+    const decoded = relativePath.replace(/^\/+/, "");
+    if (!decoded) {
+      return null;
+    }
+    // Reject NUL and Windows drive/UNC prefixes before joining; `path.join` would happily
+    // absorb "C:/..." into a traversal that `isSameOrChild` then has to catch.
+    if (decoded.includes("\0") || path.isAbsolute(decoded) || /^[a-zA-Z]:/.test(decoded)) {
+      return null;
+    }
+    const root = path.resolve(info.path);
+    const target = path.resolve(root, decoded);
+    return this.isSameOrChild(target, root) && target !== root ? target : null;
+  }
+
+  public grantFileSystemAccess(
+    window: AppWindow,
+    fsPath: string,
+    mode: FileSystemGrantMode = "readwrite",
+    recursive: boolean = true,
+    securityScopedBookmark?: string,
+    securityScopedResourceLifetime: SecurityScopedResourceLifetime = "window"
+  ): void {
+    const grants = this.runtimeFileSystemGrants.get(this.getWindowStorageKey(window)) ?? [];
+    this.startSecurityScopedResource(
+      window,
+      fsPath,
+      securityScopedBookmark,
+      securityScopedResourceLifetime
+    );
+    this.rememberSecurityScopedBookmark(fsPath, recursive, securityScopedBookmark);
+    const modes: FileSystemAccessMode[] = mode === "readwrite" ? ["read", "write"] : [mode];
+    for (const grantMode of modes) {
+      grants.push({ path: path.resolve(fsPath), recursive, mode: grantMode });
+    }
+    this.runtimeFileSystemGrants.set(this.getWindowStorageKey(window), grants);
+  }
+
+  /**
+   * Open the macOS security scope for a path the MAIN process is about to touch on the author's
+   * behalf, without handing the renderer any grant over it.
+   *
+   * {@link grantFileSystemAccess} bundles these two, which is right when the renderer is the side
+   * that will do the reading or writing. It is wrong for work main does itself out of a fresh
+   * picker result - exporting library files to a chosen folder - because registering a grant there
+   * widens what the renderer may reach on its own for the rest of the session, well past the
+   * read-only scope `selectDirectory` deliberately hands back.
+   */
+  public startSecurityScopedAccess(
+    window: AppWindow,
+    fsPath: string,
+    securityScopedBookmark?: string,
+    lifetime: SecurityScopedResourceLifetime = "window"
+  ): void {
+    this.startSecurityScopedResource(window, fsPath, securityScopedBookmark, lifetime);
+  }
+
+  public async isPathAllowed(
+    window: AppWindow,
+    fsPath: string,
+    mode: FileSystemAccessMode
+  ): Promise<boolean> {
+    const target = await this.resolvePathForAuthorization(fsPath);
+    if (await this.isProtectedStoragePath(target)) {
+      return false;
     }
 
-    public initialize(): Promise<void> {
-        return Promise.resolve();
-    }
-
-    /**
-     * Allocate a unique hash for file operations
-     */
-    public allocateHash(path: string, raw: boolean, operation: FileSystemAccessMode, encoding?: FsTextEncoding): string {
-        const hash = crypto.randomBytes(32).toString("base64url");
-        this.storage.set(hash, { path, raw, operation, encoding, status: "allocated" });
-        return hash;
-    }
-
-    /**
-     * Allocate a hash that serves a whole directory tree: `app://fs/{hash}/{relative/path}`.
-     *
-     * Session-lived and owned by the requesting webContents, because the consumer is a renderer that
-     * will fetch many files under the root and is expected to keep doing so for as long as it is
-     * showing the bundle. It dies with that webContents, exactly like a promoted read grant.
-     */
-    public allocateDirectoryHash(dirPath: string, ownerWebContentsId: number): string {
-        const hash = crypto.randomBytes(32).toString("base64url");
-        this.storage.set(hash, {
-            path: path.resolve(dirPath),
-            raw: true,
-            operation: "read",
-            // Ready on allocation, unlike a file grant. The allocate-then-ready dance exists because
-            // `allocateHash` is called *before* its existence check; a directory grant checks first
-            // and re-stats per request anyway, so a separate "not yet usable" state would only be a
-            // way to forget the second call.
-            status: "ready",
-            directory: true,
-            lifetime: "session",
-            ownerWebContentsId,
-        });
-        return hash;
-    }
-
-    /**
-     * The absolute path a directory grant's relative request maps to, or null when the request
-     * escapes the granted root.
-     *
-     * Containment is re-checked here rather than trusted from the URL: the relative part of the URL
-     * is attacker-controllable in the same sense every renderer-supplied path is, and `..` segments
-     * survive `new URL()` normalization when they are percent-encoded.
-     */
-    public resolveDirectoryGrantPath(info: FileStorageInfo, relativePath: string): string | null {
-        if (!info.directory) {
-            return null;
-        }
-        const decoded = relativePath.replace(/^\/+/, "");
-        if (!decoded) {
-            return null;
-        }
-        // Reject NUL and Windows drive/UNC prefixes before joining; `path.join` would happily
-        // absorb "C:/..." into a traversal that `isSameOrChild` then has to catch.
-        if (decoded.includes("\0") || path.isAbsolute(decoded) || /^[a-zA-Z]:/.test(decoded)) {
-            return null;
-        }
-        const root = path.resolve(info.path);
-        const target = path.resolve(root, decoded);
-        return this.isSameOrChild(target, root) && target !== root ? target : null;
-    }
-
-    public grantFileSystemAccess(
-        window: AppWindow,
-        fsPath: string,
-        mode: FileSystemGrantMode = "readwrite",
-        recursive: boolean = true,
-        securityScopedBookmark?: string,
-        securityScopedResourceLifetime: SecurityScopedResourceLifetime = "window",
-    ): void {
-        const grants = this.runtimeFileSystemGrants.get(this.getWindowStorageKey(window)) ?? [];
-        this.startSecurityScopedResource(window, fsPath, securityScopedBookmark, securityScopedResourceLifetime);
-        this.rememberSecurityScopedBookmark(fsPath, recursive, securityScopedBookmark);
-        const modes: FileSystemAccessMode[] = mode === "readwrite" ? ["read", "write"] : [mode];
-        for (const grantMode of modes) {
-            grants.push({ path: path.resolve(fsPath), recursive, mode: grantMode });
-        }
-        this.runtimeFileSystemGrants.set(this.getWindowStorageKey(window), grants);
-    }
-
-    /**
-     * Open the macOS security scope for a path the MAIN process is about to touch on the author's
-     * behalf, without handing the renderer any grant over it.
-     *
-     * {@link grantFileSystemAccess} bundles these two, which is right when the renderer is the side
-     * that will do the reading or writing. It is wrong for work main does itself out of a fresh
-     * picker result - exporting library files to a chosen folder - because registering a grant there
-     * widens what the renderer may reach on its own for the rest of the session, well past the
-     * read-only scope `selectDirectory` deliberately hands back.
-     */
-    public startSecurityScopedAccess(
-        window: AppWindow,
-        fsPath: string,
-        securityScopedBookmark?: string,
-        lifetime: SecurityScopedResourceLifetime = "window",
-    ): void {
-        this.startSecurityScopedResource(window, fsPath, securityScopedBookmark, lifetime);
-    }
-
-    public async isPathAllowed(window: AppWindow, fsPath: string, mode: FileSystemAccessMode): Promise<boolean> {
-        const target = await this.resolvePathForAuthorization(fsPath);
-        if (await this.isProtectedStoragePath(target)) {
-            return false;
-        }
-
-        for (const grant of this.getFileSystemGrants(window, mode)) {
-            const root = await this.resolvePathForAuthorization(grant.path);
-            if (grant.recursive ? this.isSameOrChild(target, root) : target === root) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public async isPathProtected(fsPath: string): Promise<boolean> {
-        return this.isProtectedStoragePath(await this.resolvePathForAuthorization(fsPath));
-    }
-
-    public getSecurityScopedBookmarkForPath(fsPath: string): string | undefined {
-        const target = path.resolve(fsPath);
-        return this.securityScopedBookmarkGrants
-            .filter(grant => grant.recursive ? this.isSameOrChild(target, grant.path) : target === grant.path)
-            .sort((a, b) => b.path.length - a.path.length)
-            .at(0)?.bookmark;
-    }
-
-    public revokeWindowFileSystemAccess(window: AppWindow): void {
-        // Revocation runs from unregisterWindow, which can fire after the
-        // BrowserWindow is already destroyed - at that point webContents (and
-        // its id) is gone. Grants are always issued while the window is alive,
-        // so the cached key covers every window that has anything to revoke.
-        let key = this.windowStorageKeys.get(window);
-        if (key === undefined) {
-            try {
-                key = this.getWindowStorageKey(window);
-            } catch {
-                // Destroyed before any grant was issued: nothing to revoke.
-                return;
-            }
-        }
-        this.runtimeFileSystemGrants.delete(key);
-        this.stopSecurityScopedResources(this.runtimeSecurityScopedResourceStops.get(key) ?? []);
-        this.runtimeSecurityScopedResourceStops.delete(key);
-        // Session-lived hash grants die with the window that consumed them, so a
-        // closed Dev Mode session cannot leave repeatable-read tokens behind.
-        for (const [hash, info] of this.storage) {
-            if (info.ownerWebContentsId === key) {
-                this.storage.delete(hash);
-            }
-        }
-    }
-
-    /**
-     * Get storage info by hash
-     */
-    public get(hash: string): FileStorageInfo | undefined {
-        return this.storage.get(hash);
-    }
-
-    /**
-     * Re-key an existing read grant under a token DERIVED from what it points at, and hand that
-     * token back. The caller then serves `app://fs/{stable}` instead of the random one.
-     *
-     * Why this exists: a random per-read token makes the URL a fact about *this run*, and the game
-     * engine writes the URLs it was given into the SavedGame (`Image.state.currentSrc`). Restart
-     * Studio and every one of them 404s, so a loaded save came up with a blank stage - the whole
-     * feature lost, with no error an author could act on. The packaged runtime never had the bug
-     * because it mints `nlr://asset/{assetId}`; this gives Dev Mode the same property without a
-     * second protocol.
-     *
-     * The token covers path AND the bytes' identity (size + mtime), which is what keeps
-     * {@link FileSystemHashHandler}'s `max-age` honest: replacing an asset mints a different token,
-     * so a cached response can never outlive the file it came from. The cost is the other side of
-     * the same coin - a save that references an asset the author has since replaced 404s on that one
-     * image, which is the truth rather than a stale picture of it.
-     *
-     * Deriving a capability token is not a widening here: the only caller is the Dev Mode window,
-     * which already holds a declared recursive read grant over the whole project directory
-     * (`windowPermissionDeclarations`), so nothing becomes reachable that was not already.
-     *
-     * Returns null when the grant is missing, is not a read, or its target cannot be stat'd - the
-     * caller keeps the original token in that case.
-     */
-    public async stabilizeSessionRead(hash: string, ownerWebContentsId: number): Promise<string | null> {
-        const info = this.storage.get(hash);
-        if (!info || info.operation !== "read") {
-            return null;
-        }
-        const target = path.resolve(info.path);
-        let stats: Awaited<ReturnType<typeof fs.stat>>;
-        try {
-            stats = await fs.stat(target);
-        } catch {
-            return null;
-        }
-        const stable = crypto
-            .createHash("sha256")
-            .update(
-                [
-                    "nls.stable-read",
-                    target,
-                    info.directory ? "d" : "f",
-                    String(stats.size),
-                    String(stats.mtimeMs),
-                ].join("\0"),
-            )
-            .digest("base64url");
-        this.storage.set(stable, { ...info, lifetime: "session", ownerWebContentsId });
-        if (stable !== hash) {
-            this.storage.delete(hash);
-        }
-        return stable;
-    }
-
-    /**
-     * Promote an existing one-shot read grant to a session-lived, repeatable-read
-     * grant owned by the given webContents. The same app://fs/{hash} URL then
-     * stays readable until the owner window closes, at which point
-     * {@link revokeWindowFileSystemAccess} destroys the grant. Write grants are
-     * never promoted: a repeatable write token would widen the attack surface far
-     * more than repeated reads of a single pre-authorized file.
-     */
-    public promoteToSessionRead(hash: string, ownerWebContentsId: number): boolean {
-        const item = this.storage.get(hash);
-        if (!item || item.operation !== "read") {
-            return false;
-        }
-        item.lifetime = "session";
-        item.ownerWebContentsId = ownerWebContentsId;
-        this.storage.set(hash, item);
+    for (const grant of this.getFileSystemGrants(window, mode)) {
+      const root = await this.resolvePathForAuthorization(grant.path);
+      if (grant.recursive ? this.isSameOrChild(target, root) : target === root) {
         return true;
+      }
     }
+    return false;
+  }
 
-    /**
-     * Update storage info status
-     */
-    public updateStatus(hash: string, status: "allocated" | "ready" | "error", error?: string): void {
-        const item = this.storage.get(hash);
-        if (item) {
-            item.status = status;
-            if (error) {
-                item.error = error;
-            }
-            this.storage.set(hash, item);
-        }
+  public async isPathProtected(fsPath: string): Promise<boolean> {
+    return this.isProtectedStoragePath(await this.resolvePathForAuthorization(fsPath));
+  }
+
+  public getSecurityScopedBookmarkForPath(fsPath: string): string | undefined {
+    const target = path.resolve(fsPath);
+    return this.securityScopedBookmarkGrants
+      .filter((grant) =>
+        grant.recursive ? this.isSameOrChild(target, grant.path) : target === grant.path
+      )
+      .sort((a, b) => b.path.length - a.path.length)
+      .at(0)?.bookmark;
+  }
+
+  public revokeWindowFileSystemAccess(window: AppWindow): void {
+    // Revocation runs from unregisterWindow, which can fire after the
+    // BrowserWindow is already destroyed - at that point webContents (and
+    // its id) is gone. Grants are always issued while the window is alive,
+    // so the cached key covers every window that has anything to revoke.
+    let key = this.windowStorageKeys.get(window);
+    if (key === undefined) {
+      try {
+        key = this.getWindowStorageKey(window);
+      } catch {
+        // Destroyed before any grant was issued: nothing to revoke.
+        return;
+      }
     }
-
-    /**
-     * Check if hash is ready for operations
-     */
-    public isReady(hash: string): boolean {
-        const item = this.storage.get(hash);
-        return item?.status === "ready";
-    }
-
-    /**
-     * Cleanup storage entry by hash
-     */
-    public cleanup(hash: string): void {
+    this.runtimeFileSystemGrants.delete(key);
+    this.stopSecurityScopedResources(this.runtimeSecurityScopedResourceStops.get(key) ?? []);
+    this.runtimeSecurityScopedResourceStops.delete(key);
+    // Session-lived hash grants die with the window that consumed them, so a
+    // closed Dev Mode session cannot leave repeatable-read tokens behind.
+    for (const [hash, info] of this.storage) {
+      if (info.ownerWebContentsId === key) {
         this.storage.delete(hash);
+      }
+    }
+  }
+
+  /**
+   * Get storage info by hash
+   */
+  public get(hash: string): FileStorageInfo | undefined {
+    return this.storage.get(hash);
+  }
+
+  /**
+   * Re-key an existing read grant under a token DERIVED from what it points at, and hand that
+   * token back. The caller then serves `app://fs/{stable}` instead of the random one.
+   *
+   * Why this exists: a random per-read token makes the URL a fact about *this run*, and the game
+   * engine writes the URLs it was given into the SavedGame (`Image.state.currentSrc`). Restart
+   * Studio and every one of them 404s, so a loaded save came up with a blank stage - the whole
+   * feature lost, with no error an author could act on. The packaged runtime never had the bug
+   * because it mints `nlr://asset/{assetId}`; this gives Dev Mode the same property without a
+   * second protocol.
+   *
+   * The token covers path AND the bytes' identity (size + mtime), which is what keeps
+   * {@link FileSystemHashHandler}'s `max-age` honest: replacing an asset mints a different token,
+   * so a cached response can never outlive the file it came from. The cost is the other side of
+   * the same coin - a save that references an asset the author has since replaced 404s on that one
+   * image, which is the truth rather than a stale picture of it.
+   *
+   * Deriving a capability token is not a widening here: the only caller is the Dev Mode window,
+   * which already holds a declared recursive read grant over the whole project directory
+   * (`windowPermissionDeclarations`), so nothing becomes reachable that was not already.
+   *
+   * Returns null when the grant is missing, is not a read, or its target cannot be stat'd - the
+   * caller keeps the original token in that case.
+   */
+  public async stabilizeSessionRead(
+    hash: string,
+    ownerWebContentsId: number
+  ): Promise<string | null> {
+    const info = this.storage.get(hash);
+    if (!info || info.operation !== "read") {
+      return null;
+    }
+    const target = path.resolve(info.path);
+    let stats: Awaited<ReturnType<typeof fs.stat>>;
+    try {
+      stats = await fs.stat(target);
+    } catch {
+      return null;
+    }
+    const stable = crypto
+      .createHash("sha256")
+      .update(
+        [
+          "nls.stable-read",
+          target,
+          info.directory ? "d" : "f",
+          String(stats.size),
+          String(stats.mtimeMs)
+        ].join("\0")
+      )
+      .digest("base64url");
+    this.storage.set(stable, { ...info, lifetime: "session", ownerWebContentsId });
+    if (stable !== hash) {
+      this.storage.delete(hash);
+    }
+    return stable;
+  }
+
+  /**
+   * Promote an existing one-shot read grant to a session-lived, repeatable-read
+   * grant owned by the given webContents. The same app://fs/{hash} URL then
+   * stays readable until the owner window closes, at which point
+   * {@link revokeWindowFileSystemAccess} destroys the grant. Write grants are
+   * never promoted: a repeatable write token would widen the attack surface far
+   * more than repeated reads of a single pre-authorized file.
+   */
+  public promoteToSessionRead(hash: string, ownerWebContentsId: number): boolean {
+    const item = this.storage.get(hash);
+    if (!item || item.operation !== "read") {
+      return false;
+    }
+    item.lifetime = "session";
+    item.ownerWebContentsId = ownerWebContentsId;
+    this.storage.set(hash, item);
+    return true;
+  }
+
+  /**
+   * Update storage info status
+   */
+  public updateStatus(hash: string, status: "allocated" | "ready" | "error", error?: string): void {
+    const item = this.storage.get(hash);
+    if (item) {
+      item.status = status;
+      if (error) {
+        item.error = error;
+      }
+      this.storage.set(hash, item);
+    }
+  }
+
+  /**
+   * Check if hash is ready for operations
+   */
+  public isReady(hash: string): boolean {
+    const item = this.storage.get(hash);
+    return item?.status === "ready";
+  }
+
+  /**
+   * Cleanup storage entry by hash
+   */
+  public cleanup(hash: string): void {
+    this.storage.delete(hash);
+  }
+
+  /**
+   * Get all active hashes
+   */
+  public getActiveHashes(): string[] {
+    return Array.from(this.storage.keys());
+  }
+
+  /**
+   * Get storage info for all active hashes
+   */
+  public getAllStorage(): Map<string, FileStorageInfo> {
+    return new Map(this.storage);
+  }
+
+  /**
+   * Get or create a namespace path for the given UserDataNamespace enum
+   * This is idempotent - same enum always returns the same path
+   * @param namespace The predefined namespace enum value
+   * @returns Full path to the namespace directory
+   */
+  public getNamespacePath(namespace: UserDataNamespace): string {
+    const namespaceId = `ns_${namespace}`;
+    const namespacePath = path.join(this.app.getUserDataDir(), namespace);
+
+    // Cache namespace info for cleanup purposes
+    if (!this.namespaces.has(namespaceId)) {
+      this.namespaces.set(namespaceId, {
+        id: namespaceId,
+        name: namespace,
+        path: namespacePath
+      });
+
+      // Ensure directory exists
+      fs.mkdir(namespacePath, { recursive: true }).catch((error) => {
+        this.app.logger.error(`Failed to create namespace directory ${namespacePath}:`, error);
+      });
     }
 
-    /**
-     * Get all active hashes
-     */
-    public getActiveHashes(): string[] {
-        return Array.from(this.storage.keys());
+    return namespacePath;
+  }
+
+  /**
+   * List all active namespaces
+   * @returns Array of namespace info
+   */
+  public getNamespaces(): StorageNamespaceInfo[] {
+    return Array.from(this.namespaces.values());
+  }
+
+  /**
+   * Remove a namespace and its directory
+   * @param namespace The namespace enum value
+   * @returns true if removed successfully, false otherwise
+   */
+  public async removeNamespace(namespace: UserDataNamespace): Promise<boolean> {
+    const namespacePath = this.getNamespacePath(namespace);
+    const namespaceId = `ns_${namespace}`;
+
+    try {
+      await fs.rm(namespacePath, { recursive: true, force: true });
+      this.namespaces.delete(namespaceId);
+      return true;
+    } catch (error) {
+      this.app.logger.error(`Failed to remove namespace ${namespace}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Create a new PersistentState instance for the given namespace
+   * @param namespace The namespace enum value
+   * @param name Database name (without extension)
+   * @returns PersistentState instance
+   */
+  public createState<T extends Record<string, any>>(
+    namespace: UserDataNamespace,
+    name: string,
+    defaults: T
+  ): PersistentState<T> {
+    const dbPath = path.join(this.getNamespacePath(namespace), name);
+    const config: PersistentStateConfig<T> = {
+      dbPath,
+      defaults
+    };
+
+    return new PersistentState(config);
+  }
+
+  /**
+   * Cleanup all storage entries and namespaces
+   */
+  public cleanupAll(): void {
+    this.storage.clear();
+    this.runtimeFileSystemGrants.clear();
+    for (const stopAccessingList of this.runtimeSecurityScopedResourceStops.values()) {
+      this.stopSecurityScopedResources(stopAccessingList);
+    }
+    this.runtimeSecurityScopedResourceStops.clear();
+    this.stopSecurityScopedResources(this.sessionSecurityScopedResourceStops);
+    this.sessionSecurityScopedResourceStops = [];
+    this.securityScopedBookmarkGrants = [];
+    this.namespaces.clear();
+  }
+
+  private rememberSecurityScopedBookmark(
+    fsPath: string,
+    recursive: boolean,
+    securityScopedBookmark?: string
+  ): void {
+    if (!securityScopedBookmark) {
+      return;
     }
 
-    /**
-     * Get storage info for all active hashes
-     */
-    public getAllStorage(): Map<string, FileStorageInfo> {
-        return new Map(this.storage);
+    const bookmarkGrant: SecurityScopedBookmarkGrant = {
+      path: path.resolve(fsPath),
+      recursive,
+      bookmark: securityScopedBookmark
+    };
+    this.securityScopedBookmarkGrants = [
+      bookmarkGrant,
+      ...this.securityScopedBookmarkGrants.filter(
+        (grant) => grant.path !== bookmarkGrant.path || grant.bookmark !== bookmarkGrant.bookmark
+      )
+    ];
+  }
+
+  private startSecurityScopedResource(
+    window: AppWindow,
+    fsPath: string,
+    securityScopedBookmark: string | undefined,
+    lifetime: SecurityScopedResourceLifetime
+  ): void {
+    if (!securityScopedBookmark) {
+      return;
     }
 
-    /**
-     * Get or create a namespace path for the given UserDataNamespace enum
-     * This is idempotent - same enum always returns the same path
-     * @param namespace The predefined namespace enum value
-     * @returns Full path to the namespace directory
-     */
-    public getNamespacePath(namespace: UserDataNamespace): string {
-        const namespaceId = `ns_${namespace}`;
-        const namespacePath = path.join(this.app.getUserDataDir(), namespace);
+    try {
+      const stopAccessing =
+        electronApp.startAccessingSecurityScopedResource(securityScopedBookmark);
+      if (lifetime === "session") {
+        this.sessionSecurityScopedResourceStops.push(() => stopAccessing());
+      } else {
+        const key = this.getWindowStorageKey(window);
+        const stops = this.runtimeSecurityScopedResourceStops.get(key) ?? [];
+        stops.push(() => stopAccessing());
+        this.runtimeSecurityScopedResourceStops.set(key, stops);
+      }
+    } catch (error) {
+      this.app.logger.warn(
+        `Failed to start accessing security scoped resource for ${fsPath}:`,
+        error
+      );
+    }
+  }
 
-        // Cache namespace info for cleanup purposes
-        if (!this.namespaces.has(namespaceId)) {
-            this.namespaces.set(namespaceId, {
-                id: namespaceId,
-                name: namespace,
-                path: namespacePath
-            });
+  private stopSecurityScopedResources(stopAccessingList: Array<() => void>): void {
+    for (const stopAccessing of stopAccessingList) {
+      try {
+        stopAccessing();
+      } catch (error) {
+        this.app.logger.warn("Failed to stop accessing security scoped resource:", error);
+      }
+    }
+  }
 
-            // Ensure directory exists
-            fs.mkdir(namespacePath, { recursive: true }).catch(error => {
-                this.app.logger.error(`Failed to create namespace directory ${namespacePath}:`, error);
-            });
+  private getFileSystemGrants(window: AppWindow, mode: FileSystemAccessMode): FileSystemGrant[] {
+    return [
+      ...getDeclaredFileSystemGrants(window, mode),
+      ...(this.runtimeFileSystemGrants.get(this.getWindowStorageKey(window)) ?? []).filter(
+        (grant) => grant.mode === mode
+      )
+    ];
+  }
+
+  private getWindowStorageKey(window: AppWindow): number {
+    const cached = this.windowStorageKeys.get(window);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const key = window.getWebContents().id;
+    this.windowStorageKeys.set(window, key);
+    return key;
+  }
+
+  private async resolvePathForAuthorization(fsPath: string): Promise<string> {
+    const resolvedPath = path.resolve(fsPath);
+    const pendingSegments: string[] = [];
+    let current = resolvedPath;
+
+    while (true) {
+      try {
+        const realCurrent = await fs.realpath(current);
+        return pendingSegments.length > 0
+          ? path.join(realCurrent, ...pendingSegments)
+          : realCurrent;
+      } catch {
+        const parent = path.dirname(current);
+        if (parent === current) {
+          return resolvedPath;
         }
-
-        return namespacePath;
+        pendingSegments.unshift(path.basename(current));
+        current = parent;
+      }
     }
+  }
 
-    /**
-     * List all active namespaces
-     * @returns Array of namespace info
-     */
-    public getNamespaces(): StorageNamespaceInfo[] {
-        return Array.from(this.namespaces.values());
+  private async isProtectedStoragePath(target: string): Promise<boolean> {
+    for (const root of this.getProtectedStorageRoots()) {
+      const resolvedRoot = await this.resolvePathForAuthorization(root);
+      if (this.isSameOrChild(target, resolvedRoot)) {
+        return true;
+      }
     }
+    return false;
+  }
 
-    /**
-     * Remove a namespace and its directory
-     * @param namespace The namespace enum value
-     * @returns true if removed successfully, false otherwise
-     */
-    public async removeNamespace(namespace: UserDataNamespace): Promise<boolean> {
-        const namespacePath = this.getNamespacePath(namespace);
-        const namespaceId = `ns_${namespace}`;
+  private getProtectedStorageRoots(): string[] {
+    return [
+      path.join(this.app.getUserDataDir(), UserDataNamespace.Authorization),
+      path.join(this.app.getUserDataDir(), UserDataNamespace.Plugins),
+      // Signing credentials: sealed passwords and imported private keys.
+      // Reachable only through the signing IPC surface, which never hands
+      // back a secret - the file-system facade must not be a way around it.
+      path.join(this.app.getUserDataDir(), UserDataNamespace.Signing),
+      this.app.getBuiltInPluginsDir()
+    ];
+  }
 
-        try {
-            await fs.rm(namespacePath, { recursive: true, force: true });
-            this.namespaces.delete(namespaceId);
-            return true;
-        } catch (error) {
-            this.app.logger.error(`Failed to remove namespace ${namespace}:`, error);
-            return false;
-        }
-    }
-
-    /**
-     * Create a new PersistentState instance for the given namespace
-     * @param namespace The namespace enum value
-     * @param name Database name (without extension)
-     * @returns PersistentState instance
-     */
-    public createState<T extends Record<string, any>>(namespace: UserDataNamespace, name: string, defaults: T): PersistentState<T> {
-        const dbPath = path.join(this.getNamespacePath(namespace), name);
-        const config: PersistentStateConfig<T> = {
-            dbPath,
-            defaults
-        };
-
-        return new PersistentState(config);
-    }
-
-    /**
-     * Cleanup all storage entries and namespaces
-     */
-    public cleanupAll(): void {
-        this.storage.clear();
-        this.runtimeFileSystemGrants.clear();
-        for (const stopAccessingList of this.runtimeSecurityScopedResourceStops.values()) {
-            this.stopSecurityScopedResources(stopAccessingList);
-        }
-        this.runtimeSecurityScopedResourceStops.clear();
-        this.stopSecurityScopedResources(this.sessionSecurityScopedResourceStops);
-        this.sessionSecurityScopedResourceStops = [];
-        this.securityScopedBookmarkGrants = [];
-        this.namespaces.clear();
-    }
-
-    private rememberSecurityScopedBookmark(fsPath: string, recursive: boolean, securityScopedBookmark?: string): void {
-        if (!securityScopedBookmark) {
-            return;
-        }
-
-        const bookmarkGrant: SecurityScopedBookmarkGrant = {
-            path: path.resolve(fsPath),
-            recursive,
-            bookmark: securityScopedBookmark,
-        };
-        this.securityScopedBookmarkGrants = [
-            bookmarkGrant,
-            ...this.securityScopedBookmarkGrants.filter(grant => grant.path !== bookmarkGrant.path || grant.bookmark !== bookmarkGrant.bookmark),
-        ];
-    }
-
-    private startSecurityScopedResource(
-        window: AppWindow,
-        fsPath: string,
-        securityScopedBookmark: string | undefined,
-        lifetime: SecurityScopedResourceLifetime,
-    ): void {
-        if (!securityScopedBookmark) {
-            return;
-        }
-
-        try {
-            const stopAccessing = electronApp.startAccessingSecurityScopedResource(securityScopedBookmark);
-            if (lifetime === "session") {
-                this.sessionSecurityScopedResourceStops.push(() => stopAccessing());
-            } else {
-                const key = this.getWindowStorageKey(window);
-                const stops = this.runtimeSecurityScopedResourceStops.get(key) ?? [];
-                stops.push(() => stopAccessing());
-                this.runtimeSecurityScopedResourceStops.set(key, stops);
-            }
-        } catch (error) {
-            this.app.logger.warn(`Failed to start accessing security scoped resource for ${fsPath}:`, error);
-        }
-    }
-
-    private stopSecurityScopedResources(stopAccessingList: Array<() => void>): void {
-        for (const stopAccessing of stopAccessingList) {
-            try {
-                stopAccessing();
-            } catch (error) {
-                this.app.logger.warn("Failed to stop accessing security scoped resource:", error);
-            }
-        }
-    }
-
-    private getFileSystemGrants(window: AppWindow, mode: FileSystemAccessMode): FileSystemGrant[] {
-        return [
-            ...getDeclaredFileSystemGrants(window, mode),
-            ...(this.runtimeFileSystemGrants.get(this.getWindowStorageKey(window)) ?? []).filter(grant => grant.mode === mode),
-        ];
-    }
-
-    private getWindowStorageKey(window: AppWindow): number {
-        const cached = this.windowStorageKeys.get(window);
-        if (cached !== undefined) {
-            return cached;
-        }
-        const key = window.getWebContents().id;
-        this.windowStorageKeys.set(window, key);
-        return key;
-    }
-
-    private async resolvePathForAuthorization(fsPath: string): Promise<string> {
-        const resolvedPath = path.resolve(fsPath);
-        const pendingSegments: string[] = [];
-        let current = resolvedPath;
-
-        while (true) {
-            try {
-                const realCurrent = await fs.realpath(current);
-                return pendingSegments.length > 0
-                    ? path.join(realCurrent, ...pendingSegments)
-                    : realCurrent;
-            } catch {
-                const parent = path.dirname(current);
-                if (parent === current) {
-                    return resolvedPath;
-                }
-                pendingSegments.unshift(path.basename(current));
-                current = parent;
-            }
-        }
-    }
-
-    private async isProtectedStoragePath(target: string): Promise<boolean> {
-        for (const root of this.getProtectedStorageRoots()) {
-            const resolvedRoot = await this.resolvePathForAuthorization(root);
-            if (this.isSameOrChild(target, resolvedRoot)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private getProtectedStorageRoots(): string[] {
-        return [
-            path.join(this.app.getUserDataDir(), UserDataNamespace.Authorization),
-            path.join(this.app.getUserDataDir(), UserDataNamespace.Plugins),
-            // Signing credentials: sealed passwords and imported private keys.
-            // Reachable only through the signing IPC surface, which never hands
-            // back a secret - the file-system facade must not be a way around it.
-            path.join(this.app.getUserDataDir(), UserDataNamespace.Signing),
-            this.app.getBuiltInPluginsDir(),
-        ];
-    }
-
-    private isSameOrChild(target: string, root: string): boolean {
-        const relativePath = path.relative(root, target);
-        return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
-    }
+  private isSameOrChild(target: string, root: string): boolean {
+    const relativePath = path.relative(root, target);
+    return (
+      relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+    );
+  }
 }

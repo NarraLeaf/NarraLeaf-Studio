@@ -7,9 +7,10 @@ import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDoc
  * as the mutation (e.g. resolving DOM nodes for the current selection).
  */
 export function useUIDocumentRevision(documentService: UIDocumentService | null): number {
-    return useSyncExternalStore(
-        onStoreChange => documentService?.onDocumentChanged(() => onStoreChange()) ?? (() => undefined),
-        () => documentService?.getRevision() ?? 0,
-        () => 0,
-    );
+  return useSyncExternalStore(
+    (onStoreChange) =>
+      documentService?.onDocumentChanged(() => onStoreChange()) ?? (() => undefined),
+    () => documentService?.getRevision() ?? 0,
+    () => 0
+  );
 }

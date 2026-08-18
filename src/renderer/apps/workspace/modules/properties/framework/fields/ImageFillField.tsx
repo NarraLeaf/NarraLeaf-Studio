@@ -23,410 +23,418 @@ const PANEL_MIN_MARGIN = 12;
 const DEFAULT_FILL_MODE: ImageFillMode = "cover";
 
 interface PanelPosition {
-    top: number;
-    left: number;
+  top: number;
+  left: number;
 }
 
 interface ImageFillFieldProps<TData extends UIInspectorData = UIInspectorData> {
-    field: ImageFillFieldDefinition<TData>;
-    data: TData;
-    onSaving: (saving: boolean) => void;
+  field: ImageFillFieldDefinition<TData>;
+  data: TData;
+  onSaving: (saving: boolean) => void;
 }
 
 export function ImageFillField<TData extends UIInspectorData>({
-    field,
-    data,
-    onSaving,
+  field,
+  data,
+  onSaving
 }: ImageFillFieldProps<TData>) {
-    const { t } = useTranslation();
-    const { context } = useWorkspace();
-    const { frozen } = useFreezeGuard();
-    const MODE_OPTIONS = useMemo<{ value: ImageFillMode; label: string }[]>(
-        () => [
-            { value: "cover", label: t("properties.imageFill.mode.cover") },
-            { value: "contain", label: t("properties.imageFill.mode.contain") },
-            { value: "stretch", label: t("properties.imageFill.mode.stretch") },
-            { value: "crop", label: t("properties.imageFill.mode.crop") },
-            { value: "tile", label: t("properties.imageFill.mode.tile") },
-        ],
-        [t],
-    );
-    const stateService =
-        context?.services.get<UIEditorStateService>(Services.UIEditorState) ?? null;
-    const selection = stateService?.getSelection();
-    const surfaceId = selection?.type === "element" ? selection.data?.surfaceId ?? null : null;
-    const element = data.element;
-    const layout = element.layout;
+  const { t } = useTranslation();
+  const { context } = useWorkspace();
+  const { frozen } = useFreezeGuard();
+  const MODE_OPTIONS = useMemo<{ value: ImageFillMode; label: string }[]>(
+    () => [
+      { value: "cover", label: t("properties.imageFill.mode.cover") },
+      { value: "contain", label: t("properties.imageFill.mode.contain") },
+      { value: "stretch", label: t("properties.imageFill.mode.stretch") },
+      { value: "crop", label: t("properties.imageFill.mode.crop") },
+      { value: "tile", label: t("properties.imageFill.mode.tile") }
+    ],
+    [t]
+  );
+  const stateService = context?.services.get<UIEditorStateService>(Services.UIEditorState) ?? null;
+  const selection = stateService?.getSelection();
+  const surfaceId = selection?.type === "element" ? (selection.data?.surfaceId ?? null) : null;
+  const element = data.element;
+  const layout = element.layout;
 
-    const rawFill = field.getValue(data);
-    const allowedModes = field.allowedFillModes;
-    const normalizedFill: ImageFill = useMemo(() => {
-        const base: ImageFill = {
-            mode: rawFill?.mode ?? DEFAULT_FILL_MODE,
-            assetId: rawFill?.assetId ?? null,
-            cropPlacement: rawFill?.cropPlacement,
-        };
-        if (allowedModes?.length && !allowedModes.includes(base.mode)) {
-            return { ...base, mode: allowedModes[0] };
-        }
-        return base;
-    }, [allowedModes, rawFill]);
+  const rawFill = field.getValue(data);
+  const allowedModes = field.allowedFillModes;
+  const normalizedFill: ImageFill = useMemo(() => {
+    const base: ImageFill = {
+      mode: rawFill?.mode ?? DEFAULT_FILL_MODE,
+      assetId: rawFill?.assetId ?? null,
+      cropPlacement: rawFill?.cropPlacement
+    };
+    if (allowedModes?.length && !allowedModes.includes(base.mode)) {
+      return { ...base, mode: allowedModes[0] };
+    }
+    return base;
+  }, [allowedModes, rawFill]);
 
-    const modeOptionsForUi = useMemo(() => {
-        if (!allowedModes?.length) {
-            return MODE_OPTIONS;
-        }
-        return MODE_OPTIONS.filter(option => allowedModes.includes(option.value));
-    }, [allowedModes, MODE_OPTIONS]);
+  const modeOptionsForUi = useMemo(() => {
+    if (!allowedModes?.length) {
+      return MODE_OPTIONS;
+    }
+    return MODE_OPTIONS.filter((option) => allowedModes.includes(option.value));
+  }, [allowedModes, MODE_OPTIONS]);
 
-    const { url, metadata, loading, error: assetResolveError } = useAssetObjectUrl(normalizedFill.assetId ?? null);
-    const [isOpen, setIsOpen] = useState(false);
-    const [selectorOpen, setSelectorOpen] = useState(false);
-    const triggerRef = useRef<HTMLButtonElement | null>(null);
-    const previewRef = useRef<HTMLButtonElement | null>(null);
-    const panelRef = useRef<HTMLDivElement | null>(null);
-    const [panelPosition, setPanelPosition] = useState<PanelPosition>({ top: 0, left: 0 });
+  const {
+    url,
+    metadata,
+    loading,
+    error: assetResolveError
+  } = useAssetObjectUrl(normalizedFill.assetId ?? null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectorOpen, setSelectorOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const previewRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [panelPosition, setPanelPosition] = useState<PanelPosition>({ top: 0, left: 0 });
 
-    const applyValue = useCallback(
-        async (next: ImageFill) => {
-            onSaving(true);
-            try {
-                await field.setValue(data, next);
-            } finally {
-                onSaving(false);
-            }
-        },
-        [data, field, onSaving],
-    );
+  const applyValue = useCallback(
+    async (next: ImageFill) => {
+      onSaving(true);
+      try {
+        await field.setValue(data, next);
+      } finally {
+        onSaving(false);
+      }
+    },
+    [data, field, onSaving]
+  );
 
-    const handleModeChange = useCallback(
-        (value: string | number | undefined) => {
-            if (!value) {
-                return;
-            }
-            const nextMode = value as ImageFillMode;
-            const override = stateService?.getInteractionOverride();
-            if (
-                nextMode !== "crop" &&
-                override?.kind === "imageCrop" &&
-                override.elementId === element.id &&
-                (!surfaceId || override.surfaceId === surfaceId)
-            ) {
-                stateService?.setInteractionOverride(null);
-            }
-            void applyValue({
-                ...normalizedFill,
-                mode: nextMode,
-            });
-        },
-        [applyValue, element.id, normalizedFill, stateService, surfaceId],
-    );
+  const handleModeChange = useCallback(
+    (value: string | number | undefined) => {
+      if (!value) {
+        return;
+      }
+      const nextMode = value as ImageFillMode;
+      const override = stateService?.getInteractionOverride();
+      if (
+        nextMode !== "crop" &&
+        override?.kind === "imageCrop" &&
+        override.elementId === element.id &&
+        (!surfaceId || override.surfaceId === surfaceId)
+      ) {
+        stateService?.setInteractionOverride(null);
+      }
+      void applyValue({
+        ...normalizedFill,
+        mode: nextMode
+      });
+    },
+    [applyValue, element.id, normalizedFill, stateService, surfaceId]
+  );
 
-    const computeCropPlacement = useCallback(() => {
-        const imageWidth = metadata?.metadata.width ?? 0;
-        const imageHeight = metadata?.metadata.height ?? 0;
-        const elementWidth = Math.max(1, Math.abs(layout.width));
-        const elementHeight = Math.max(1, Math.abs(layout.height));
-        if (elementWidth === 0 || elementHeight === 0 || imageWidth === 0 || imageHeight === 0) {
-            return null;
-        }
-        return computeCoverCropPlacement({
-            imageWidth,
-            imageHeight,
-            containerWidth: elementWidth,
-            containerHeight: elementHeight,
-        });
-    }, [layout.height, layout.width, metadata]);
+  const computeCropPlacement = useCallback(() => {
+    const imageWidth = metadata?.metadata.width ?? 0;
+    const imageHeight = metadata?.metadata.height ?? 0;
+    const elementWidth = Math.max(1, Math.abs(layout.width));
+    const elementHeight = Math.max(1, Math.abs(layout.height));
+    if (elementWidth === 0 || elementHeight === 0 || imageWidth === 0 || imageHeight === 0) {
+      return null;
+    }
+    return computeCoverCropPlacement({
+      imageWidth,
+      imageHeight,
+      containerWidth: elementWidth,
+      containerHeight: elementHeight
+    });
+  }, [layout.height, layout.width, metadata]);
 
-    /**
-     * Bake a starting crop placement for an image that has none, so the crop handles have something
-     * to grab. Nobody asked for this write - it fires because the element was shown in the inspector -
-     * so a freeze DEFERS it rather than refusing it: merely selecting a cropped element on a frozen
-     * project raised the "nothing is being saved" complaint about the freeze's own bookkeeping.
-     *
-     * `frozen` is an input of the effect, so the bake lands the moment the workspace is writable
-     * again; the placement is derived from the image and the element box, so whatever was missing
-     * still is.
-     */
-    useEffect(() => {
-        if (!isDeferredWriteAllowed(frozen)) {
-            return;
-        }
-        if (normalizedFill.mode !== "crop" || !normalizedFill.assetId || normalizedFill.cropPlacement) {
-            return;
-        }
-        const placement = computeCropPlacement();
-        if (!placement) {
-            return;
-        }
-        void applyValue({
-            ...normalizedFill,
-            cropPlacement: placement,
-        });
-    }, [
-        applyValue,
-        computeCropPlacement,
-        frozen,
-        layout.height,
-        layout.width,
-        metadata,
-        normalizedFill.assetId,
-        normalizedFill.cropPlacement,
-        normalizedFill.mode,
-    ]);
+  /**
+   * Bake a starting crop placement for an image that has none, so the crop handles have something
+   * to grab. Nobody asked for this write - it fires because the element was shown in the inspector -
+   * so a freeze DEFERS it rather than refusing it: merely selecting a cropped element on a frozen
+   * project raised the "nothing is being saved" complaint about the freeze's own bookkeeping.
+   *
+   * `frozen` is an input of the effect, so the bake lands the moment the workspace is writable
+   * again; the placement is derived from the image and the element box, so whatever was missing
+   * still is.
+   */
+  useEffect(() => {
+    if (!isDeferredWriteAllowed(frozen)) {
+      return;
+    }
+    if (normalizedFill.mode !== "crop" || !normalizedFill.assetId || normalizedFill.cropPlacement) {
+      return;
+    }
+    const placement = computeCropPlacement();
+    if (!placement) {
+      return;
+    }
+    void applyValue({
+      ...normalizedFill,
+      cropPlacement: placement
+    });
+  }, [
+    applyValue,
+    computeCropPlacement,
+    frozen,
+    layout.height,
+    layout.width,
+    metadata,
+    normalizedFill.assetId,
+    normalizedFill.cropPlacement,
+    normalizedFill.mode
+  ]);
 
-    useEffect(() => {
-        if (!stateService) {
-            return;
-        }
-        const override = stateService.getInteractionOverride();
-        const isElementSelected =
-            selection?.type === "element" && selection.data?.elementIds.includes(element.id);
-        const cropAllowed = !allowedModes?.length || allowedModes.includes("crop");
-        if (
-            normalizedFill.mode !== "crop" &&
-            override?.kind === "imageCrop" &&
-            override.elementId === element.id &&
-            (!surfaceId || override.surfaceId === surfaceId)
-        ) {
-            stateService.setInteractionOverride(null);
-            return;
-        }
-        if (isOpen && normalizedFill.mode === "crop" && cropAllowed && surfaceId && isElementSelected) {
-            stateService.setInteractionOverride({
-                kind: "imageCrop",
-                surfaceId,
-                elementId: element.id,
-                source: "imageFillPopover",
-            });
-            return;
-        }
-        if (override?.kind === "imageCrop" && override.source === "imageFillPopover") {
-            stateService.setInteractionOverride(null);
-        }
-    }, [allowedModes, element.id, normalizedFill.mode, isOpen, selection, surfaceId, stateService]);
+  useEffect(() => {
+    if (!stateService) {
+      return;
+    }
+    const override = stateService.getInteractionOverride();
+    const isElementSelected =
+      selection?.type === "element" && selection.data?.elementIds.includes(element.id);
+    const cropAllowed = !allowedModes?.length || allowedModes.includes("crop");
+    if (
+      normalizedFill.mode !== "crop" &&
+      override?.kind === "imageCrop" &&
+      override.elementId === element.id &&
+      (!surfaceId || override.surfaceId === surfaceId)
+    ) {
+      stateService.setInteractionOverride(null);
+      return;
+    }
+    if (isOpen && normalizedFill.mode === "crop" && cropAllowed && surfaceId && isElementSelected) {
+      stateService.setInteractionOverride({
+        kind: "imageCrop",
+        surfaceId,
+        elementId: element.id,
+        source: "imageFillPopover"
+      });
+      return;
+    }
+    if (override?.kind === "imageCrop" && override.source === "imageFillPopover") {
+      stateService.setInteractionOverride(null);
+    }
+  }, [allowedModes, element.id, normalizedFill.mode, isOpen, selection, surfaceId, stateService]);
 
-    useEffect(() => {
-        return () => {
-            if (!stateService) {
-                return;
-            }
-            const o = stateService.getInteractionOverride();
-            if (o?.kind === "imageCrop" && o.source === "imageFillPopover") {
-                stateService.setInteractionOverride(null);
-            }
-        };
-    }, [stateService]);
+  useEffect(() => {
+    return () => {
+      if (!stateService) {
+        return;
+      }
+      const o = stateService.getInteractionOverride();
+      if (o?.kind === "imageCrop" && o.source === "imageFillPopover") {
+        stateService.setInteractionOverride(null);
+      }
+    };
+  }, [stateService]);
 
-    useEffect(() => {
-        if (!isOpen) {
-            setSelectorOpen(false);
-        }
-    }, [isOpen]);
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectorOpen(false);
+    }
+  }, [isOpen]);
 
-    const handlePanelPosition = useCallback(() => {
-        if (!triggerRef.current) {
-            return;
-        }
-        const rect = triggerRef.current.getBoundingClientRect();
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
-        const panelHeight = panelRef.current?.offsetHeight ?? 360;
+  const handlePanelPosition = useCallback(() => {
+    if (!triggerRef.current) {
+      return;
+    }
+    const rect = triggerRef.current.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const panelHeight = panelRef.current?.offsetHeight ?? 360;
 
-        const left = Math.min(
-            Math.max(rect.left, PANEL_MIN_MARGIN),
-            viewportWidth - PANEL_WIDTH - PANEL_MIN_MARGIN,
-        );
-
-        const topBelow = rect.bottom + PANEL_SPACING;
-        const topAbove = rect.top - PANEL_SPACING - panelHeight;
-        let top = topBelow;
-
-        if (top + panelHeight > viewportHeight - PANEL_MIN_MARGIN && topAbove >= PANEL_MIN_MARGIN) {
-            top = topAbove;
-        } else {
-            top = Math.min(
-                Math.max(top, PANEL_MIN_MARGIN),
-                viewportHeight - panelHeight - PANEL_MIN_MARGIN,
-            );
-        }
-
-        setPanelPosition({ top, left });
-    }, []);
-
-    useLayoutEffect(() => {
-        if (!isOpen) {
-            return;
-        }
-        handlePanelPosition();
-        const reposition = () => handlePanelPosition();
-        window.addEventListener("resize", reposition);
-        window.addEventListener("scroll", reposition, { passive: true });
-        return () => {
-            window.removeEventListener("resize", reposition);
-            window.removeEventListener("scroll", reposition);
-        };
-    }, [handlePanelPosition, isOpen]);
-
-    const panelModeLabel = useMemo(
-        () =>
-            modeOptionsForUi.find(option => option.value === normalizedFill.mode)?.label ??
-            normalizedFill.mode,
-        [modeOptionsForUi, normalizedFill.mode],
-    );
-    const panelTitle = field.label?.trim() ? field.label : t("properties.imageFill.title");
-    const previewLabel = normalizedFill.assetId ? t("properties.imageFill.imageSelected") : t("properties.imageFill.noImage");
-
-    const togglePanel = useCallback(() => {
-        setIsOpen(true);
-    }, []);
-
-    const handleSelectImage = useCallback(
-        (assets: Asset[]) => {
-            const selected = assets[0];
-            if (!selected) {
-                return;
-            }
-            void applyValue({
-                ...normalizedFill,
-                assetId: selected.id,
-            });
-            setSelectorOpen(false);
-        },
-        [applyValue, normalizedFill],
+    const left = Math.min(
+      Math.max(rect.left, PANEL_MIN_MARGIN),
+      viewportWidth - PANEL_WIDTH - PANEL_MIN_MARGIN
     );
 
-    const panelContent =
-        typeof document !== "undefined" && isOpen
-            ? createPortal(
-                  <div
-                      ref={panelRef}
-                      className="fixed z-50 rounded-2xl border border-edge-strong bg-surface-overlay shadow-2xl p-4 text-fg"
-                      style={{
-                          top: panelPosition.top,
-                          left: panelPosition.left,
-                          width: PANEL_WIDTH,
-                      }}
-                  >
-                      <div className="flex items-center justify-between mb-3">
-                          <span className="text-sm font-semibold">{panelTitle}</span>
-                          <button
-                              type="button"
-                              onClick={() => setIsOpen(false)}
-                              className="p-1 rounded-full hover:bg-fill"
-                              aria-label={t("properties.imageFill.close")}
-                          >
-                              <X className="w-4 h-4" />
-                          </button>
-                      </div>
+    const topBelow = rect.bottom + PANEL_SPACING;
+    const topAbove = rect.top - PANEL_SPACING - panelHeight;
+    let top = topBelow;
 
-                      <div className="space-y-3">
-                          <div>
-                              <span className="text-xs text-fg-muted tracking-widest">{t("properties.imageFill.modeLabel")}</span>
-                              <Select
-                                  options={modeOptionsForUi.map(option => ({ value: option.value, label: option.label }))}
-                                  value={normalizedFill.mode}
-                                  onChange={handleModeChange}
-                                  fullWidth
-                                  size="md"
-                                  className="mt-1"
-                                  placeholder={t("properties.imageFill.selectMode")}
-                              />
-                          </div>
+    if (top + panelHeight > viewportHeight - PANEL_MIN_MARGIN && topAbove >= PANEL_MIN_MARGIN) {
+      top = topAbove;
+    } else {
+      top = Math.min(
+        Math.max(top, PANEL_MIN_MARGIN),
+        viewportHeight - panelHeight - PANEL_MIN_MARGIN
+      );
+    }
 
-                          <div>
-                              <span className="text-xs text-fg-muted tracking-widest">{t("properties.preview")}</span>
-                              <button
-                                  ref={previewRef}
-                                  type="button"
-                                  onClick={() => setSelectorOpen(true)}
-                                  className="relative mt-2 w-full aspect-[4/3] rounded-xl border border-edge bg-surface overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary/70"
-                              >
-                                  {url ? (
-                                      <img
-                                          src={url}
-                                          alt={t("properties.imageFill.previewAlt")}
-                                          className="absolute inset-0 h-full w-full object-cover"
-                                          draggable={false}
-                                      />
-                                  ) : (
-                                      <div className="flex h-full w-full flex-col items-center justify-center text-xs text-fg-subtle">
-                                          <span className="font-semibold">{t("properties.imageFill.selectImage")}</span>
-                                          <span>{t("properties.imageFill.selectHint")}</span>
-                                      </div>
-                                  )}
-                                  {loading && (
-                                      <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-xs text-white">
-                                          {t("common.loading")}
-                                      </div>
-                                  )}
-                                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 text-2xs tracking-[0.3em] text-white transition hover:opacity-100">
-                                      {t("properties.imageFill.changeImage")}
-                                  </div>
-                              </button>
-                              <div className="mt-2 flex items-center justify-between text-xs text-fg-muted">
-                                  <span>{previewLabel}</span>
-                                  <span>{panelModeLabel}</span>
-                              </div>
-                          </div>
-                      </div>
-                  </div>,
-                  document.body,
-              )
-            : null;
+    setPanelPosition({ top, left });
+  }, []);
 
-    const previewFallback = (
-        <div className="flex h-28 w-full items-center justify-center rounded-lg border border-edge bg-surface text-xs text-fg-subtle">
-            {previewLabel}
-        </div>
-    );
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    handlePanelPosition();
+    const reposition = () => handlePanelPosition();
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, { passive: true });
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition);
+    };
+  }, [handlePanelPosition, isOpen]);
 
-    return (
-        <>
-            <FieldLayout field={field}>
+  const panelModeLabel = useMemo(
+    () =>
+      modeOptionsForUi.find((option) => option.value === normalizedFill.mode)?.label ??
+      normalizedFill.mode,
+    [modeOptionsForUi, normalizedFill.mode]
+  );
+  const panelTitle = field.label?.trim() ? field.label : t("properties.imageFill.title");
+  const previewLabel = normalizedFill.assetId
+    ? t("properties.imageFill.imageSelected")
+    : t("properties.imageFill.noImage");
+
+  const togglePanel = useCallback(() => {
+    setIsOpen(true);
+  }, []);
+
+  const handleSelectImage = useCallback(
+    (assets: Asset[]) => {
+      const selected = assets[0];
+      if (!selected) {
+        return;
+      }
+      void applyValue({
+        ...normalizedFill,
+        assetId: selected.id
+      });
+      setSelectorOpen(false);
+    },
+    [applyValue, normalizedFill]
+  );
+
+  const panelContent =
+    typeof document !== "undefined" && isOpen
+      ? createPortal(
+          <div
+            ref={panelRef}
+            className="fixed z-50 rounded-2xl border border-edge-strong bg-surface-overlay shadow-2xl p-4 text-fg"
+            style={{
+              top: panelPosition.top,
+              left: panelPosition.left,
+              width: PANEL_WIDTH
+            }}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-semibold">{panelTitle}</span>
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="p-1 rounded-full hover:bg-fill"
+                aria-label={t("properties.imageFill.close")}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <span className="text-xs text-fg-muted tracking-widest">
+                  {t("properties.imageFill.modeLabel")}
+                </span>
+                <Select
+                  options={modeOptionsForUi.map((option) => ({
+                    value: option.value,
+                    label: option.label
+                  }))}
+                  value={normalizedFill.mode}
+                  onChange={handleModeChange}
+                  fullWidth
+                  size="md"
+                  className="mt-1"
+                  placeholder={t("properties.imageFill.selectMode")}
+                />
+              </div>
+
+              <div>
+                <span className="text-xs text-fg-muted tracking-widest">
+                  {t("properties.preview")}
+                </span>
                 <button
-                    type="button"
-                    ref={triggerRef}
-                    onClick={togglePanel}
-                    className="w-full text-left"
+                  ref={previewRef}
+                  type="button"
+                  onClick={() => setSelectorOpen(true)}
+                  className="relative mt-2 w-full aspect-[4/3] rounded-xl border border-edge bg-surface overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary/70"
                 >
-                    <div className="rounded-xl border border-edge bg-surface p-3 space-y-2">
-                        {url ? (
-                            <img
-                                src={url}
-                                alt={t("properties.imageFill.previewAlt")}
-                                className="h-28 w-full rounded-lg object-cover"
-                                draggable={false}
-                            />
-                        ) : (
-                            previewFallback
-                        )}
-                        <div className="flex items-center justify-between text-xs text-fg-muted">
-                            <span>{previewLabel}</span>
-                            <span className="tracking-[0.2em]">{panelModeLabel}</span>
-                        </div>
-                        <div className="text-2xs text-fg-subtle">{t("properties.imageFill.openEditor")}</div>
+                  {url ? (
+                    <img
+                      src={url}
+                      alt={t("properties.imageFill.previewAlt")}
+                      className="absolute inset-0 h-full w-full object-cover"
+                      draggable={false}
+                    />
+                  ) : (
+                    <div className="flex h-full w-full flex-col items-center justify-center text-xs text-fg-subtle">
+                      <span className="font-semibold">{t("properties.imageFill.selectImage")}</span>
+                      <span>{t("properties.imageFill.selectHint")}</span>
                     </div>
+                  )}
+                  {loading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-xs text-white">
+                      {t("common.loading")}
+                    </div>
+                  )}
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 text-2xs tracking-[0.3em] text-white transition hover:opacity-100">
+                    {t("properties.imageFill.changeImage")}
+                  </div>
                 </button>
-            </FieldLayout>
-            {normalizedFill.assetId && assetResolveError ? (
-                <p className="mt-1 text-2xs text-warning leading-snug">
-                    {t("properties.imageFill.resolveError", { error: assetResolveError })}
-                </p>
-            ) : null}
+                <div className="mt-2 flex items-center justify-between text-xs text-fg-muted">
+                  <span>{previewLabel}</span>
+                  <span>{panelModeLabel}</span>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null;
 
-            {panelContent}
+  const previewFallback = (
+    <div className="flex h-28 w-full items-center justify-center rounded-lg border border-edge bg-surface text-xs text-fg-subtle">
+      {previewLabel}
+    </div>
+  );
 
-            <AssetSelector
-                visible={selectorOpen}
-                assetType={AssetType.Image}
-                onClose={() => setSelectorOpen(false)}
-                onConfirm={handleSelectImage}
-                selectedIds={normalizedFill.assetId ? [normalizedFill.assetId] : []}
-                anchorRef={previewRef}
-                title={t("properties.imageFill.selectFillImage")}
-                multiple={false}
-            />
-        </>
-    );
+  return (
+    <>
+      <FieldLayout field={field}>
+        <button type="button" ref={triggerRef} onClick={togglePanel} className="w-full text-left">
+          <div className="rounded-xl border border-edge bg-surface p-3 space-y-2">
+            {url ? (
+              <img
+                src={url}
+                alt={t("properties.imageFill.previewAlt")}
+                className="h-28 w-full rounded-lg object-cover"
+                draggable={false}
+              />
+            ) : (
+              previewFallback
+            )}
+            <div className="flex items-center justify-between text-xs text-fg-muted">
+              <span>{previewLabel}</span>
+              <span className="tracking-[0.2em]">{panelModeLabel}</span>
+            </div>
+            <div className="text-2xs text-fg-subtle">{t("properties.imageFill.openEditor")}</div>
+          </div>
+        </button>
+      </FieldLayout>
+      {normalizedFill.assetId && assetResolveError ? (
+        <p className="mt-1 text-2xs text-warning leading-snug">
+          {t("properties.imageFill.resolveError", { error: assetResolveError })}
+        </p>
+      ) : null}
+
+      {panelContent}
+
+      <AssetSelector
+        visible={selectorOpen}
+        assetType={AssetType.Image}
+        onClose={() => setSelectorOpen(false)}
+        onConfirm={handleSelectImage}
+        selectedIds={normalizedFill.assetId ? [normalizedFill.assetId] : []}
+        anchorRef={previewRef}
+        title={t("properties.imageFill.selectFillImage")}
+        multiple={false}
+      />
+    </>
+  );
 }

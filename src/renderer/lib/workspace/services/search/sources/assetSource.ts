@@ -5,11 +5,11 @@ import type { SearchSource } from "../searchSource";
 
 /** The slice of an asset the index needs; matches `Asset` structurally without importing it. */
 export interface SearchableAsset {
-    id: string;
-    type: string;
-    name: string;
-    tags?: readonly string[];
-    description?: string;
+  id: string;
+  type: string;
+  name: string;
+  tags?: readonly string[];
+  description?: string;
 }
 
 /**
@@ -18,22 +18,22 @@ export interface SearchableAsset {
  * affordance (preview tab vs. panel selection).
  */
 export function extractAssetEntries(assets: readonly SearchableAsset[]): SearchIndexEntry[] {
-    return assets
-        .filter(asset => asset.name)
-        .map(asset => {
-            const detailParts = [...(asset.tags ?? [])];
-            if (asset.description) {
-                detailParts.push(asset.description);
-            }
-            return {
-                id: `asset:${asset.id}`,
-                group: "asset" as const,
-                text: asset.name,
-                detail: detailParts.length > 0 ? detailParts.join(", ") : undefined,
-                fields: { assetType: asset.type },
-                target: { kind: "asset" as const, assetId: asset.id, assetType: asset.type },
-            };
-        });
+  return assets
+    .filter((asset) => asset.name)
+    .map((asset) => {
+      const detailParts = [...(asset.tags ?? [])];
+      if (asset.description) {
+        detailParts.push(asset.description);
+      }
+      return {
+        id: `asset:${asset.id}`,
+        group: "asset" as const,
+        text: asset.name,
+        detail: detailParts.length > 0 ? detailParts.join(", ") : undefined,
+        fields: { assetType: asset.type },
+        target: { kind: "asset" as const, assetId: asset.id, assetType: asset.type }
+      };
+    });
 }
 
 /**
@@ -45,23 +45,25 @@ export function extractAssetEntries(assets: readonly SearchableAsset[]): SearchI
  * where the collapsed rows led to the same place by construction.
  */
 export const assetSource: SearchSource = {
-    id: "asset",
-    groups: ["asset"],
-    dependsOn: [Services.Assets],
-    extract: ctx => {
-        const assetsService = ctx.services.get<AssetsService>(Services.Assets);
-        return extractAssetEntries(Object.values(assetsService.getAssets()).flatMap(byId => Object.values(byId)));
-    },
-    // Asset imports, renames, tag edits ("updated"), deletions, and group moves all funnel through
-    // these three events.
-    watch: (ctx, signal) => {
-        const events = ctx.services.get<AssetsService>(Services.Assets).getEvents();
-        const rebuild = () => signal.invalidate();
-        const unsubs = [
-            events.on("updated", rebuild),
-            events.on("deleted", rebuild),
-            events.on("groupsUpdated", rebuild),
-        ];
-        return () => unsubs.forEach(unsub => unsub());
-    },
+  id: "asset",
+  groups: ["asset"],
+  dependsOn: [Services.Assets],
+  extract: (ctx) => {
+    const assetsService = ctx.services.get<AssetsService>(Services.Assets);
+    return extractAssetEntries(
+      Object.values(assetsService.getAssets()).flatMap((byId) => Object.values(byId))
+    );
+  },
+  // Asset imports, renames, tag edits ("updated"), deletions, and group moves all funnel through
+  // these three events.
+  watch: (ctx, signal) => {
+    const events = ctx.services.get<AssetsService>(Services.Assets).getEvents();
+    const rebuild = () => signal.invalidate();
+    const unsubs = [
+      events.on("updated", rebuild),
+      events.on("deleted", rebuild),
+      events.on("groupsUpdated", rebuild)
+    ];
+    return () => unsubs.forEach((unsub) => unsub());
+  }
 };

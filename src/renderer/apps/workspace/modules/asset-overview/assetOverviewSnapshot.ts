@@ -19,12 +19,15 @@
  * when the reference index changes.
  */
 
-import { ProjectNameConvention, isValidAssetStorageId } from "@/lib/workspace/project/nameConvention";
+import {
+  ProjectNameConvention,
+  isValidAssetStorageId
+} from "@/lib/workspace/project/nameConvention";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { ReferenceService } from "@/lib/workspace/services/references/ReferenceService";
-import { AssetSource, type Asset } from "@/lib/workspace/services/assets/types";
+import { type Asset } from "@/lib/workspace/services/assets/types";
 import type { DirectorySizeResult } from "@shared/utils/fs";
 import { buildAssetOverview, type AssetOverviewSummary } from "./assetOverviewModel";
 
@@ -40,13 +43,13 @@ const TOP_ASSET_COUNT = 12;
  * in the shard splitter, which means "no local bytes" and renders as unknown rather than zero.
  */
 export function assetContentRelativePath(asset: Asset): string | null {
-    if (!isValidAssetStorageId(asset.id)) {
-        return null;
-    }
-    const shard = ProjectNameConvention.AssetsDataShard(asset.id);
-    // `AssetsDataShard` is rooted at the project, and the walk is rooted at `assets/` - drop the
-    // leading segment so the two agree.
-    return shard.slice(1).join("/");
+  if (!isValidAssetStorageId(asset.id)) {
+    return null;
+  }
+  const shard = ProjectNameConvention.AssetsDataShard(asset.id);
+  // `AssetsDataShard` is rooted at the project, and the walk is rooted at `assets/` - drop the
+  // leading segment so the two agree.
+  return shard.slice(1).join("/");
 }
 
 /**
@@ -58,62 +61,64 @@ export function assetContentRelativePath(asset: Asset): string | null {
  * id absent (unknown bytes), never a spurious zero.
  */
 export function assetBytesFromWalk(
-    assets: readonly Asset[],
-    bytesByRelativePath: DirectorySizeResult["bytesByRelativePath"],
+  assets: readonly Asset[],
+  bytesByRelativePath: DirectorySizeResult["bytesByRelativePath"]
 ): Map<string, number> {
-    const bytesByAssetId = new Map<string, number>();
-    for (const asset of assets) {
-        const relative = assetContentRelativePath(asset);
-        if (relative === null) {
-            continue;
-        }
-        const bytes = bytesByRelativePath[relative];
-        if (bytes !== undefined) {
-            bytesByAssetId.set(asset.id, bytes);
-        }
+  const bytesByAssetId = new Map<string, number>();
+  for (const asset of assets) {
+    const relative = assetContentRelativePath(asset);
+    if (relative === null) {
+      continue;
     }
-    return bytesByAssetId;
+    const bytes = bytesByRelativePath[relative];
+    if (bytes !== undefined) {
+      bytesByAssetId.set(asset.id, bytes);
+    }
+  }
+  return bytesByAssetId;
 }
 
-export async function computeAssetOverviewSnapshot(ctx: WorkspaceContext): Promise<AssetOverviewSummary> {
-    const assetsService = ctx.services.get<AssetsService>(Services.Assets);
-    const referenceService = ctx.services.get<ReferenceService>(Services.Reference);
-    const fs = ctx.services.get<FileSystemService>(Services.FileSystem);
+export async function computeAssetOverviewSnapshot(
+  ctx: WorkspaceContext
+): Promise<AssetOverviewSummary> {
+  const assetsService = ctx.services.get<AssetsService>(Services.Assets);
+  const referenceService = ctx.services.get<ReferenceService>(Services.Reference);
+  const fs = ctx.services.get<FileSystemService>(Services.FileSystem);
 
-    const assets: Asset[] = Object.values(assetsService.getAssets()).flatMap(
-        byId => Object.values(byId) as Asset[],
-    );
+  const assets: Asset[] = Object.values(assetsService.getAssets()).flatMap(
+    (byId) => Object.values(byId) as Asset[]
+  );
 
-    // The index must be both built and settled before it is read as an authority on what is
-    // unused: a debounced rebuild left pending would report a just-used asset as an orphan, which
-    // is the one mistake this page must not make.
-    await referenceService.ensureReady();
-    await referenceService.flushPendingRebuilds();
-    const referencesByAssetId = referenceService.getReferencesForAll(assets.map(asset => asset.id));
-    const referenceCountByAssetId = new Map<string, number>();
-    for (const [assetId, references] of referencesByAssetId) {
-        referenceCountByAssetId.set(assetId, references.length);
-    }
+  // The index must be both built and settled before it is read as an authority on what is
+  // unused: a debounced rebuild left pending would report a just-used asset as an orphan, which
+  // is the one mistake this page must not make.
+  await referenceService.ensureReady();
+  await referenceService.flushPendingRebuilds();
+  const referencesByAssetId = referenceService.getReferencesForAll(assets.map((asset) => asset.id));
+  const referenceCountByAssetId = new Map<string, number>();
+  for (const [assetId, references] of referencesByAssetId) {
+    referenceCountByAssetId.set(assetId, references.length);
+  }
 
-    // `ProjectNameConvention.Assets` carries a trailing slash (it names a directory); the walk
-    // joins child names onto this string, so trim it the way the build's own `path.join` would.
-    const assetsRoot = ctx.project.resolve(ProjectNameConvention.Assets).replace(/[\\/]+$/, "");
-    const sizeResult = await fs.directorySize(assetsRoot);
-    // A directory that cannot be measured reads as empty rather than taking the whole page down.
-    const walk: DirectorySizeResult = sizeResult.ok
-        ? sizeResult.data
-        : { totalBytes: 0, fileCount: 0, bytesByRelativePath: {} };
+  // `ProjectNameConvention.Assets` carries a trailing slash (it names a directory); the walk
+  // joins child names onto this string, so trim it the way the build's own `path.join` would.
+  const assetsRoot = ctx.project.resolve(ProjectNameConvention.Assets).replace(/[\\/]+$/, "");
+  const sizeResult = await fs.directorySize(assetsRoot);
+  // A directory that cannot be measured reads as empty rather than taking the whole page down.
+  const walk: DirectorySizeResult = sizeResult.ok
+    ? sizeResult.data
+    : { totalBytes: 0, fileCount: 0, bytesByRelativePath: {} };
 
-    const bytesByAssetId = assetBytesFromWalk(assets, walk.bytesByRelativePath);
+  const bytesByAssetId = assetBytesFromWalk(assets, walk.bytesByRelativePath);
 
-    return buildAssetOverview({
-        assets,
-        // Read after the same flush the counts came from, so coverage and counts describe one pass.
-        indexResult: referenceService.getIndexResult(),
-        bytesByAssetId,
-        referenceCountByAssetId,
-        directoryBytes: walk.totalBytes,
-        directoryFileCount: walk.fileCount,
-        topCount: TOP_ASSET_COUNT,
-    });
+  return buildAssetOverview({
+    assets,
+    // Read after the same flush the counts came from, so coverage and counts describe one pass.
+    indexResult: referenceService.getIndexResult(),
+    bytesByAssetId,
+    referenceCountByAssetId,
+    directoryBytes: walk.totalBytes,
+    directoryFileCount: walk.fileCount,
+    topCount: TOP_ASSET_COUNT
+  });
 }

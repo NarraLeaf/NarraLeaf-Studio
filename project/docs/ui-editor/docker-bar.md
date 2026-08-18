@@ -16,14 +16,14 @@ Insert palette 由 `src/renderer/lib/ui-editor/widget-modules/insertPalette.ts` 
 export type InsertPalettePlacement = "primary" | "overflow";
 
 export type InsertPaletteConfigEntry = {
-    readonly type: string;
-    readonly placement?: InsertPalettePlacement;
-    readonly surfaceKinds?: readonly UISurfaceKind[];
+  readonly type: string;
+  readonly placement?: InsertPalettePlacement;
+  readonly surfaceKinds?: readonly UISurfaceKind[];
 };
 
 export type InsertPaletteEntry = {
-    readonly module: UIWidgetModule;
-    readonly placement: InsertPalettePlacement;
+  readonly module: UIWidgetModule;
+  readonly placement: InsertPalettePlacement;
 };
 ```
 
@@ -31,18 +31,18 @@ export type InsertPaletteEntry = {
 
 ```ts
 export const DEFAULT_INSERT_PALETTE_CONFIG = [
-    { type: "nl.container" },
-    { type: "nl.text" },
-    { type: "nl.dialog.sentence", surfaceKinds: ["stageSurface"], stageSlots: ["dialog"] },
-    { type: "nl.notification.list", surfaceKinds: ["stageSurface"], stageSlots: ["notification"] },
-    { type: "nl.choice.list", surfaceKinds: ["stageSurface"], stageSlots: ["choice"] },
-    { type: "nl.nvl.list", surfaceKinds: ["stageSurface"], stageSlots: ["nvl"] },
-    { type: "nl.nvl.texts", surfaceKinds: ["stageSurface"], stageSlots: ["nvl"] },
-    { type: "nl.image" },
-    { type: "nl.button" },
-    { type: "nl.slider", placement: "overflow" },
-    { type: "nl.list", placement: "overflow" },
-    { type: "nl.frame", placement: "overflow", surfaceKinds: ["appSurface"] },
+  { type: "nl.container" },
+  { type: "nl.text" },
+  { type: "nl.dialog.sentence", surfaceKinds: ["stageSurface"], stageSlots: ["dialog"] },
+  { type: "nl.notification.list", surfaceKinds: ["stageSurface"], stageSlots: ["notification"] },
+  { type: "nl.choice.list", surfaceKinds: ["stageSurface"], stageSlots: ["choice"] },
+  { type: "nl.nvl.list", surfaceKinds: ["stageSurface"], stageSlots: ["nvl"] },
+  { type: "nl.nvl.texts", surfaceKinds: ["stageSurface"], stageSlots: ["nvl"] },
+  { type: "nl.image" },
+  { type: "nl.button" },
+  { type: "nl.slider", placement: "overflow" },
+  { type: "nl.list", placement: "overflow" },
+  { type: "nl.frame", placement: "overflow", surfaceKinds: ["appSurface"] }
 ] as const satisfies readonly InsertPaletteConfigEntry[];
 ```
 
@@ -59,9 +59,9 @@ export const DEFAULT_INSERT_PALETTE_CONFIG = [
 
 ```ts
 export function resolveInsertPaletteEntries(
-    config: readonly InsertPaletteConfigEntry[],
-    resolveModule?: (type: string) => UIWidgetModule | undefined,
-    surfaceKind?: UISurfaceKind,
+  config: readonly InsertPaletteConfigEntry[],
+  resolveModule?: (type: string) => UIWidgetModule | undefined,
+  surfaceKind?: UISurfaceKind
 ): InsertPaletteEntry[];
 
 export function listInsertPaletteEntries(surfaceKind?: UISurfaceKind): InsertPaletteEntry[];
@@ -79,11 +79,11 @@ export function listInsertPaletteModules(surfaceKind?: UISurfaceKind): UIWidgetM
 
 ```ts
 export const DEFAULT_INSERT_PALETTE_CONFIG = [
-    { type: "nl.container" },
-    { type: "nl.text" },
-    { type: "nl.image" },
-    { type: "nl.button", placement: "overflow" },
-    { type: "nl.list", placement: "overflow" },
+  { type: "nl.container" },
+  { type: "nl.text" },
+  { type: "nl.image" },
+  { type: "nl.button", placement: "overflow" },
+  { type: "nl.list", placement: "overflow" }
 ] as const satisfies readonly InsertPaletteConfigEntry[];
 ```
 
@@ -101,24 +101,21 @@ stateService.setTool({ kind: "insert", nodeType: type });
 
 ```ts
 export type DockerBarItem =
-    | DockerBarButton
-    | DockerBarSelect
-    | DockerBarNumberInput
-    | DockerBarSeparator;
+  DockerBarButton | DockerBarSelect | DockerBarNumberInput | DockerBarSeparator;
 ```
 
 ### Button
 
 ```ts
 export type DockerBarButton = {
-    kind: "button";
-    id: string;
-    icon?: LucideIcon;
-    label?: string;
-    tooltip?: string;
-    disabled?: boolean;
-    active?: boolean;
-    onClick: () => void;
+  kind: "button";
+  id: string;
+  icon?: LucideIcon;
+  label?: string;
+  tooltip?: string;
+  disabled?: boolean;
+  active?: boolean;
+  onClick: () => void;
 };
 ```
 
@@ -135,13 +132,13 @@ Behavior:
 
 ```ts
 export type DockerBarSelect = {
-    kind: "select";
-    id: string;
-    label?: string;
-    tooltip?: string;
-    value: string | number;
-    options: { value: string | number; label: string }[];
-    onChange: (value: string | number) => void;
+  kind: "select";
+  id: string;
+  label?: string;
+  tooltip?: string;
+  value: string | number;
+  options: { value: string | number; label: string }[];
+  onChange: (value: string | number) => void;
 };
 ```
 
@@ -156,19 +153,19 @@ Behavior:
 
 ```ts
 export type DockerBarNumberInput = {
-    kind: "number";
-    id: string;
-    label?: string;
-    tooltip?: string;
-    value: number;
-    min?: number;
-    max?: number;
-    step?: number;
-    disabled?: boolean;
-    readOnly?: boolean;
-    onChange: (value: number) => void;
-    placeholder?: string;
-    inputProps?: InputHTMLAttributes<HTMLInputElement>;
+  kind: "number";
+  id: string;
+  label?: string;
+  tooltip?: string;
+  value: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  disabled?: boolean;
+  readOnly?: boolean;
+  onChange: (value: number) => void;
+  placeholder?: string;
+  inputProps?: InputHTMLAttributes<HTMLInputElement>;
 };
 ```
 
@@ -183,8 +180,8 @@ Behavior:
 
 ```ts
 export type DockerBarSeparator = {
-    kind: "separator";
-    id: string;
+  kind: "separator";
+  id: string;
 };
 ```
 
@@ -199,26 +196,28 @@ Widget modules expose Docker Bar, floating toolbar, and selected layout-inspecto
 
 ```ts
 export type DockerBarContext = {
-    element: UIElement;
-    documentService: UIDocumentService;
+  element: UIElement;
+  documentService: UIDocumentService;
 };
 
 export type LayoutSizeFieldContext = {
-    element: UIElement;
-    documentService: UIDocumentService;
-    surfaceId?: string;
-    primaryId: string;
+  element: UIElement;
+  documentService: UIDocumentService;
+  surfaceId?: string;
+  primaryId: string;
 };
 
 export interface UIWidgetModule {
-    readonly type: string;
-    readonly displayName: string;
-    readonly icon: LucideIcon;
+  readonly type: string;
+  readonly displayName: string;
+  readonly icon: LucideIcon;
 
-    createDockerBarItems?(context: DockerBarContext): DockerBarItem[];
-    createMultiSelectDockerBarItems?(context: DockerBarContext): DockerBarItem[];
-    createFloatingToolbarItems?(context: FloatingToolbarContext): FloatingToolbarItem[];
-    createLayoutSizeField?(context: LayoutSizeFieldContext): FieldDefinition<UIInspectorData> | null | undefined;
+  createDockerBarItems?(context: DockerBarContext): DockerBarItem[];
+  createMultiSelectDockerBarItems?(context: DockerBarContext): DockerBarItem[];
+  createFloatingToolbarItems?(context: FloatingToolbarContext): FloatingToolbarItem[];
+  createLayoutSizeField?(
+    context: LayoutSizeFieldContext
+  ): FieldDefinition<UIInspectorData> | null | undefined;
 }
 ```
 
@@ -239,27 +238,27 @@ Example:
 
 ```ts
 export function createButtonDockerBarItems(ctx: DockerBarContext): DockerBarItem[] {
-    const { element, documentService } = ctx;
-    const props = getButtonProps(element);
+  const { element, documentService } = ctx;
+  const props = getButtonProps(element);
 
-    return [
-        {
-            kind: "number",
-            id: "docker-button-pad-x",
-            label: "Pad X",
-            tooltip: "Horizontal padding",
-            value: props.paddingX,
-            min: 0,
-            max: 128,
-            step: 1,
-            onChange: value => {
-                documentService.updateElementProps(element.id, {
-                    ...element.props,
-                    paddingX: Math.max(0, value),
-                });
-            },
-        },
-    ];
+  return [
+    {
+      kind: "number",
+      id: "docker-button-pad-x",
+      label: "Pad X",
+      tooltip: "Horizontal padding",
+      value: props.paddingX,
+      min: 0,
+      max: 128,
+      step: 1,
+      onChange: (value) => {
+        documentService.updateElementProps(element.id, {
+          ...element.props,
+          paddingX: Math.max(0, value)
+        });
+      }
+    }
+  ];
 }
 ```
 
@@ -269,22 +268,22 @@ export function createButtonDockerBarItems(ctx: DockerBarContext): DockerBarItem
 
 ```ts
 export type FloatingToolbarButton = {
-    kind: "button";
-    id: string;
-    icon?: LucideIcon;
-    label?: string;
-    tooltip?: string;
-    disabled?: boolean;
-    onClick: () => void;
+  kind: "button";
+  id: string;
+  icon?: LucideIcon;
+  label?: string;
+  tooltip?: string;
+  disabled?: boolean;
+  onClick: () => void;
 };
 
 export type FloatingToolbarItem = FloatingToolbarButton;
 
 export type FloatingToolbarContext = {
-    element: UIElement;
-    documentService: UIDocumentService;
-    surfaceId: string;
-    openSurfaceEditor?: (surfaceId: string) => void;
+  element: UIElement;
+  documentService: UIDocumentService;
+  surfaceId: string;
+  openSurfaceEditor?: (surfaceId: string) => void;
 };
 ```
 

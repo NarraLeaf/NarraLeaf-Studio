@@ -1,121 +1,121 @@
 import type { LocaleNamespace } from "../types";
 
 export const dashboard = {
-    loading: "正在读取项目…",
-    failed: "无法读取项目统计数据",
-    retry: "重试",
+  loading: "正在读取项目…",
+  failed: "无法读取项目统计数据",
+  retry: "重试",
 
-    header: {
-        lastActive: "最近活跃",
-        trackedSince: "开始统计",
-        never: "暂无",
-    },
+  header: {
+    lastActive: "最近活跃",
+    trackedSince: "开始统计",
+    never: "暂无"
+  },
 
-    greeting: {
-        lateNight: "夜深了",
-        morning: "早上好",
-        noon: "中午好",
-        afternoon: "下午好",
-        evening: "晚上好",
-    },
+  greeting: {
+    lateNight: "夜深了",
+    morning: "早上好",
+    noon: "中午好",
+    afternoon: "下午好",
+    evening: "晚上好"
+  },
 
-    units: {
-        words: {
-            other: "{count} 字",
-        },
-        days: {
-            other: "{count} 天",
-        },
+  units: {
+    words: {
+      other: "{count} 字"
     },
+    days: {
+      other: "{count} 天"
+    }
+  },
 
-    duration: {
-        hoursMinutes: "{hours} 小时 {minutes} 分",
-        minutes: "{minutes} 分",
-        minutesSeconds: "{minutes} 分 {seconds} 秒",
-        seconds: "{seconds} 秒",
-    },
+  duration: {
+    hoursMinutes: "{hours} 小时 {minutes} 分",
+    minutes: "{minutes} 分",
+    minutesSeconds: "{minutes} 分 {seconds} 秒",
+    seconds: "{seconds} 秒"
+  },
 
-    relative: {
-        justNow: "刚刚",
-        minutesAgo: "{count} 分钟前",
-        hoursAgo: "{count} 小时前",
-        daysAgo: "{count} 天前",
-    },
+  relative: {
+    justNow: "刚刚",
+    minutesAgo: "{count} 分钟前",
+    hoursAgo: "{count} 小时前",
+    daysAgo: "{count} 天前"
+  },
 
-    scale: {
-        title: "规模",
-        scenes: "场景",
-        dialogueLines: "对白行",
-        totalWords: "字数",
-        characters: "角色",
-        assets: "资源",
-        blueprintNodes: "蓝图节点",
-        uiSurfaces: "界面",
-        variables: "变量",
-    },
+  scale: {
+    title: "规模",
+    scenes: "场景",
+    dialogueLines: "对白行",
+    totalWords: "字数",
+    characters: "角色",
+    assets: "资源",
+    blueprintNodes: "蓝图节点",
+    uiSurfaces: "界面",
+    variables: "变量"
+  },
 
-    cast: {
-        title: "角色台词",
-        speaker: "角色",
-        lines: "台词",
-        words: "字数",
-        others: {
-            other: "其他 {count} 位角色",
-        },
-        showAll: "显示全部",
-        showFewer: "收起",
+  cast: {
+    title: "角色台词",
+    speaker: "角色",
+    lines: "台词",
+    words: "字数",
+    others: {
+      other: "其他 {count} 位角色"
     },
+    showAll: "显示全部",
+    showFewer: "收起"
+  },
 
-    activity: {
-        title: "写作活动",
-        description: "最近 30 天每天新增的字数",
-        wordsWritten: "写作字数",
-        activeTime: "活跃时长",
-        edits: "编辑次数",
-        streak: "连续写作",
-        streakNone: "暂无连续记录",
-        peak: "峰值 {words}",
-        empty: "尚未记录写作数据；记录到某一天的写作内容后，柱状图即会出现",
-        chartLabel: "最近 30 天每天的写作字数",
-        tooltip: {
-            added: "{date} · 新增 {words}",
-            removed: "{date} · 删减 {words}",
-            unchanged: "{date} · 无变化",
-            start: "{date} · 统计从这天开始，没有可对比的基准",
-            rebased: "{date} · 字数统计口径在这天变更，与前一天不可比",
-            untracked: "{date} · 早于统计开始时间",
-        },
-    },
+  activity: {
+    title: "写作活动",
+    description: "最近 30 天每天新增的字数",
+    wordsWritten: "写作字数",
+    activeTime: "活跃时长",
+    edits: "编辑次数",
+    streak: "连续写作",
+    streakNone: "暂无连续记录",
+    peak: "峰值 {words}",
+    empty: "尚未记录写作数据；记录到某一天的写作内容后，柱状图即会出现",
+    chartLabel: "最近 30 天每天的写作字数",
+    tooltip: {
+      added: "{date} · 新增 {words}",
+      removed: "{date} · 删减 {words}",
+      unchanged: "{date} · 无变化",
+      start: "{date} · 统计从这天开始，没有可对比的基准",
+      rebased: "{date} · 字数统计口径在这天变更，与前一天不可比",
+      untracked: "{date} · 早于统计开始时间"
+    }
+  },
 
-    builds: {
-        title: "构建记录",
-        ok: "成功",
-        failed: "失败",
-        empty: "暂无构建记录",
-        emptyHint: "该项目的构建完成后会显示在这里",
-        logEmpty: "本次构建没有输出记录",
-        logOmitted: "为控制记录体积，已省略开头 {count} 行",
-    },
+  builds: {
+    title: "构建记录",
+    ok: "成功",
+    failed: "失败",
+    empty: "暂无构建记录",
+    emptyHint: "该项目的构建完成后会显示在这里",
+    logEmpty: "本次构建没有输出记录",
+    logOmitted: "为控制记录体积，已省略开头 {count} 行"
+  },
 
-    structure: {
-        title: "结构",
-        chapters: "大纲",
-        branches: "分支",
-    },
+  structure: {
+    title: "结构",
+    chapters: "大纲",
+    branches: "分支"
+  },
 
-    localization: {
-        title: "本地化",
-        translated: "已翻译",
-        reviewed: "已审校",
-        untranslated: "未翻译",
-        summary: "已翻译 {completed} / {total}",
-    },
+  localization: {
+    title: "本地化",
+    translated: "已翻译",
+    reviewed: "已审校",
+    untranslated: "未翻译",
+    summary: "已翻译 {completed} / {total}"
+  },
 
-    footer: {
-        openOnWorkspaceOpen: "每次进入工作区时显示此仪表盘",
-        clear: "清空本项目统计数据",
-        clearConfirm: "确定清空本项目的统计数据？",
-        clearDetail:
-            "清除写作曲线、活跃时长、编辑次数与构建记录；从项目内容统计得出的数字不受影响；此操作无法撤销",
-    },
+  footer: {
+    openOnWorkspaceOpen: "每次进入工作区时显示此仪表盘",
+    clear: "清空本项目统计数据",
+    clearConfirm: "确定清空本项目的统计数据？",
+    clearDetail:
+      "清除写作曲线、活跃时长、编辑次数与构建记录；从项目内容统计得出的数字不受影响；此操作无法撤销"
+  }
 } satisfies LocaleNamespace<"dashboard">;
