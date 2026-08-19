@@ -140,6 +140,20 @@ export const lint = {
             description: "截断点所在的场景没有任何路径可以到达",
             message: "没有任何路径能到达这个场景，这个截断点不会截断任何构建",
         },
+        storyStageObjectMissing: {
+            title: "舞台对象不存在",
+            description: "这一行操作的对象，场景里没有任何一行创建过",
+            message: "没有任何一行创建 {object}，这一行没有可操作的对象",
+            // 角色不是被创建的，是被让它登场的，所以变的只是动词。「登场」是这个词在别处的
+            // 一贯说法（`story.enterExit.enter`、`story.empty.emptyExampleShow`、动效的 `entrance`），
+            // 同一件事换个说法就是命令词汇那轮消灭掉的东西。
+            messageCharacter: "没有任何一行让 {object} 登场，这一行没有可操作的对象",
+        },
+        storyStageObjectDuplicate: {
+            title: "重复创建舞台对象",
+            description: "两行创建了同一个舞台名，第二行沿用第一行的对象",
+            message: "上方已经创建过 {object}，这一行操作的是那一个",
+        },
         blueprintReferenceMissing: {
             title: "指向不存在的对象",
             description: "节点指向了工程里已经没有的东西",

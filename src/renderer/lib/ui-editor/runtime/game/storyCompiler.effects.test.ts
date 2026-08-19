@@ -24,7 +24,9 @@ function imageDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[
                 runtimeName: "Scene 1",
                 rootBlockIds: ["show", ...rootBlockIds],
                 blocks: {
-                    show: { id: "show", kind: "action", parentId: null, childrenIds: [], payload: { action: "image", operation: "show", objectName: "hero" } },
+                    // A `create` row, because only a create row puts an object on stage: an effect row
+                    // addressing a name nothing declares is a dangling reference and reports as one.
+                    show: { id: "show", kind: "action", parentId: null, childrenIds: [], payload: { action: "image", operation: "create", objectName: "hero", assetId: "asset-hero" } },
                     ...blocks,
                 },
             },
@@ -74,7 +76,7 @@ describe("compiles /fx backdrop and blend", () => {
             ["frost"],
         );
 
-        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1", resolveAssetUrl: async assetId => `nlr://${assetId}` });
         expect(compiled.diagnostics).toEqual([]);
 
         const actions = compiled.actionIdBindings
@@ -102,7 +104,7 @@ describe("compiles /fx backdrop and blend", () => {
             ["blend"],
         );
 
-        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1", resolveAssetUrl: async assetId => `nlr://${assetId}` });
         expect(compiled.diagnostics).toEqual([]);
 
         const actions = compiled.actionIdBindings
@@ -126,7 +128,7 @@ describe("compiles /fx backdrop and blend", () => {
             ["dim"],
         );
 
-        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1", resolveAssetUrl: async assetId => `nlr://${assetId}` });
         expect(compiled.diagnostics).toEqual([]);
         const actions = compiled.actionIdBindings
             .filter(binding => binding.blockId === "dim")
@@ -146,7 +148,7 @@ describe("compiles /fx backdrop and blend", () => {
             ["empty"],
         );
 
-        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1", resolveAssetUrl: async assetId => `nlr://${assetId}` });
         expect(compiled.diagnostics).toEqual([]);
         const actions = compiled.actionIdBindings
             .filter(binding => binding.blockId === "empty")
@@ -173,7 +175,7 @@ describe("one row, two statements: the cut lands before the tween", () => {
             ["shot"],
         );
 
-        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1", resolveAssetUrl: async assetId => `nlr://${assetId}` });
         expect(compiled.diagnostics).toEqual([]);
 
         const actions = compiled.actionIdBindings
@@ -202,7 +204,7 @@ describe("one row, two statements: the cut lands before the tween", () => {
             ["dim"],
         );
 
-        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1", resolveAssetUrl: async assetId => `nlr://${assetId}` });
         const actions = compiled.actionIdBindings
             .filter(binding => binding.blockId === "dim")
             .flatMap(binding => collectActionTree(binding.action, compiled.story));
@@ -225,7 +227,7 @@ describe("one row, two statements: the cut lands before the tween", () => {
             ["pulse"],
         );
 
-        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1", resolveAssetUrl: async assetId => `nlr://${assetId}` });
         const actions = compiled.actionIdBindings
             .filter(binding => binding.blockId === "pulse")
             .flatMap(binding => collectActionTree(binding.action, compiled.story));
@@ -268,7 +270,7 @@ describe("compiles a camera grade as a cut", () => {
             },
         }, ["grade"]);
 
-        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1", resolveAssetUrl: async assetId => `nlr://${assetId}` });
         expect(compiled.diagnostics).toEqual([]);
 
         const actions = compiled.actionIdBindings

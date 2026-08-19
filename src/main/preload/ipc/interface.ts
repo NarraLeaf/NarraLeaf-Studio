@@ -20,6 +20,8 @@ import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRu
 import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
 import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "@shared/types/gameBuild";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "@shared/types/mediaConvert";
+import type { StudioTaskOverview } from "@shared/types/studioTask";
+import type { WeatherBakeSpec } from "@shared/weather/model";
 import type {
     MacSigningIdentity,
     SigningCredential,
@@ -219,6 +221,11 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     openPsd: () => ipcClient.invoke(IPCEventType.psdOpen, {}),
     bakePsd: (request) => ipcClient.invoke(IPCEventType.psdBake, { request }),
     probeMedia: (path: string) => ipcClient.invoke(IPCEventType.mediaProbe, { path }),
+    /** What long work Studio is doing. See `@shared/types/studioTask`. */
+    studioTasks: {
+        getOverview: () =>
+            ipcClient.invoke(IPCEventType.studioTasksGetOverview, {}) as Promise<RequestStatus<{ overview: StudioTaskOverview }>>,
+    },
     mediaConvert: {
         start: (request: MediaConvertRequest) =>
             ipcClient.invoke(IPCEventType.mediaConvertStart, { request }) as Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>,
@@ -374,6 +381,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.devModeOpenStoryRowInWorkspace, payload) as Promise<RequestStatus<void>>,
         onStoryRowOpen: (handler: (payload: DevModeStoryRowOpenRequest) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceStoryRowOpen, handler),
+        resolveWeatherClip: (spec: WeatherBakeSpec) =>
+            ipcClient.invoke(IPCEventType.devModeResolveWeatherClip, { spec }) as Promise<RequestStatus<{ url: string }>>,
         resolveAssetUrl: (assetId: string, assetType?: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveAssetUrl, { assetId, assetType }) as Promise<RequestStatus<{ url: string }>>,
         resolveImageAssetUrl: (assetId: string) =>

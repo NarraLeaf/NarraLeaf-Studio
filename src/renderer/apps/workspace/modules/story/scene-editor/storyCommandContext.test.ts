@@ -85,6 +85,63 @@ describe("buildStoryCommandContext - stage objects", () => {
         const context = buildStoryCommandContext({ assets: undefined, characters: [], document: null, sceneId: null, scene: null });
         expect(context.stageObjects).toEqual({ image: [], text: [], layer: [], video: [], audio: [], vfx: [] });
     });
+
+    it("names the row that declares each object, and only a row that declares one", () => {
+        const document = documentWith({
+            b1: { action: "image", operation: "show", objectName: "poster" },
+            b2: { action: "image", operation: "create", objectName: "hero", assetId: "img-1" },
+            b3: { action: "video", operation: "create", objectName: "Clip", assetId: "vid-1" },
+            b4: { action: "audio", operation: "playSound", objectName: "music", assetId: "aud-1" },
+            b5: { action: "audio", operation: "setVolume", objectName: "ambience", volume: 0.5 },
+        });
+
+        const context = buildStoryCommandContext({
+            assets: undefined,
+            characters: [],
+            document,
+            sceneId: "scene-1",
+            scene: document.scenes["scene-1"],
+        });
+
+        // `poster` and `ambience` are addressable - the engine materialises an object on first
+        // mention - but nothing declares them, so there is no row a reference could honestly bind to.
+        expect(context.stageObjectSources).toEqual({
+            image: { hero: "b2" },
+            text: {},
+            layer: {},
+            video: { clip: "b3" },
+            audio: { music: "b4" },
+            vfx: {},
+        });
+        expect(context.stageObjects.image).toEqual(["poster", "hero"]);
+    });
+
+    it("indexes characters by id, and carries the stage key their entrance derives", () => {
+        const document = documentWith({
+            b1: { action: "character", operation: "enter", characterId: "c1", objectName: "Alice" },
+            // No stage name: the portrait is registered under the character id, and nothing but this
+            // table can say so - the cast name a line is matched on cannot be turned back into it.
+            b2: { action: "character", operation: "enter", characterId: "c2" },
+            // Not an entrance, so not a declaration: it addresses a portrait it did not create.
+            b3: { action: "character", operation: "expression", characterId: "c3", pose: "p1" },
+            b4: { action: "character", operation: "enter", characterId: "c1", objectName: "Alice again" },
+        });
+
+        const context = buildStoryCommandContext({
+            assets: undefined,
+            characters: [],
+            document,
+            sceneId: "scene-1",
+            scene: document.scenes["scene-1"],
+        });
+
+        // A separate table from `stageObjectSources`, keyed by an id the project owns rather than by
+        // a stage name - and first entrance wins, the same rule the stage-object scan follows.
+        expect(context.characterSources).toEqual({
+            c1: { blockId: "b1", name: "Alice" },
+            c2: { blockId: "b2", name: "c2" },
+        });
+    });
 });
 
 describe("buildStoryCommandContext - variables", () => {

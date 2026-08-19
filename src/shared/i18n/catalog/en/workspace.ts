@@ -446,6 +446,15 @@ export const workspace = {
                 reloading: "Reloading…",
                 stopping: "Stopping…",
             },
+            /**
+             * What a long task is called while it runs.
+             *
+             * Names the thing being made, never the machinery that makes it: an author asked
+             * for weather, not for an encode.
+             */
+            task: {
+                weatherBake: "Generating weather",
+            },
             openConsole: "Open the console",
             unsavedChanges: "Unsaved changes",
             saveNow: "Save now",
@@ -463,6 +472,7 @@ export const workspace = {
             // the cells themselves are icon-first and label their own state.
             entries: {
                 runStatus: "Run status",
+        studioTasks: "Background work",
                 unsavedChanges: "Unsaved changes",
                 wordCount: "Story stats",
                 shortcuts: "Keyboard shortcuts",
