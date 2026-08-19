@@ -41,6 +41,7 @@ export const project = {
         saving: "存档",
         olderSaves: "旧存档",
         language: "语言",
+        dialogue: "对白",
         playerDefaults: "玩家默认值",
         audioTracks: "音频轨道",
         // 「配色」子页的两块内容：作者自己定的颜色，以及跟随它们的槽位。该页其余文案都在 `brand`
@@ -85,7 +86,7 @@ export const project = {
         copyrightPlaceholder: "© 你的工作室",
         // 长文形式，与上面那一行分开：那一行进二进制的文件属性，这一段进玩家能打开的文件。
         copyrightTextLabel: "版权声明",
-        copyrightTextPlaceholder: "用到的字体、音乐与素材，以及它们各自归谁所有…",
+        copyrightTextPlaceholder: "用到的字体、音乐与资产，以及它们各自归谁所有…",
         copyrightTextHelper: "随游戏一起发布为 COPYRIGHT.txt；留空则不生成该文件",
         descriptionPlaceholder: "描述你的项目…",
         required: "必填",
@@ -196,6 +197,9 @@ export const project = {
         languageResume: "重启应用并回到原处",
         languageRestart: "重启应用，不保留当前进度",
         languageNextLaunch: "下次启动时应用",
+        autoForwardPauseTitle: "自动前进时的停顿时长",
+        autoForwardPauseDescription: "玩家开启自动前进时，等待点击的停顿改为持续这段时间，受游戏速度影响",
+        autoForwardPauseUnit: "毫秒",
     },
     preferences: {
         // 挂在小标题上的一句话，不再是页首的一段话。原先那段里其余的内容，要么行本身就写着，
@@ -354,9 +358,9 @@ export const project = {
             fromPlugins: "已安装插件声明的地址",
             sidecarNote: "插件附带的程序在游戏进程之外运行，不受该白名单约束",
         },
-        encryptAssetsTitle: "加密资源",
-        encryptAssetsDescription: "在打包及预览构建中加密资源、插件代码与剧本数据，不影响开发模式",
-        encryptAssetsWebHint: "Web 构建始终不加密资源",
+        encryptAssetsTitle: "加密资产",
+        encryptAssetsDescription: "在打包及预览构建中加密资产、插件代码与剧本数据，不影响开发模式",
+        encryptAssetsWebHint: "Web 构建始终不加密资产",
         // 「签名」这一块的一行说明。每个可签名平台都有一行，不管本机能不能构建它：证书往往在用到它的
         // 那次构建之前几天就要备好，这份准备工作正是它落在面板里、而不是构建对话框里的原因。
         signingDescription: "为每个平台指定签名凭据；证书与密码只留在本机，工程里存的只有用哪一份",

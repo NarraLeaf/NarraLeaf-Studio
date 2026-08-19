@@ -13,6 +13,22 @@
  *   ever goes up, lives in host persistence rather than in any save file, and is untouched by
  *   loading.
  *
+ * # Why the total is two numbers rather than one
+ *
+ * The stored figure and the seconds accrued since it was last written are kept apart, and the total
+ * is their sum. Holding one combined number forces the arrival of the stored figure to be a choice
+ * between overwriting what has been played and discarding what was stored, and both are wrong: the
+ * read is asynchronous, so a player can easily have banked a minute before it lands. Kept apart,
+ * arrival order stops mattering — the stored figure is installed underneath whatever has accrued.
+ *
+ * The same split is what lets writing be *held*. Nothing is written until a read has actually come
+ * back, because a write before then would carry a total built on a baseline of zero and stand on
+ * top of however many hours the store already held. That is not a hypothetical either: the read was
+ * once issued before the store it reads through existed, always resolved to nothing, and every
+ * relaunch wrote the session's own seconds over the title's history (493.8 stored, 60.9 written
+ * back one launch later). Holding costs nothing — the seconds stay counted either way, they are
+ * merely not yet on disk.
+ *
  * # Why time is accrued per tick and clamped, rather than measured end to end
  *
  * Subtracting two timestamps across a whole session attributes every kind of gap to the player: a
@@ -65,10 +81,17 @@ export class PlaytimeClock {
     private seededSeconds = 0;
     /** Accrued since the last seed. The run's playtime is this plus the seed. */
     private accruedSeconds = 0;
-    /** Title total, seeded from persistence at boot. */
-    private totalSeconds = 0;
-    /** Accrued into the total since it was last written. */
-    private unflushedSeconds = 0;
+    /** The title total as persistence last had it: read back at boot, then advanced by each write. */
+    private storedTotalSeconds = 0;
+    /** Accrued into the total since it was last written. The total is this plus the stored figure. */
+    private unwrittenTotalSeconds = 0;
+    /**
+     * Whether a read of the stored total has come back for the store currently in use.
+     *
+     * False is the starting state and the state after {@link awaitTotalBaseline}, and it holds every
+     * write: a total written before the stored figure is known is a total measured from zero.
+     */
+    private totalBaselineKnown = false;
     /**
      * When the last accrual happened, or null when the clock is not accruing. Null is also how a
      * resume re-anchors: the first tick after it contributes nothing rather than billing the gap.
@@ -92,7 +115,7 @@ export class PlaytimeClock {
 
     /** The title total, including time not yet written to persistence. */
     public getTotalSeconds(): number {
-        return this.totalSeconds;
+        return this.storedTotalSeconds + this.unwrittenTotalSeconds;
     }
 
     /**
@@ -109,17 +132,41 @@ export class PlaytimeClock {
     }
 
     /**
-     * Install the title total read back from persistence.
+     * Declare that a read of the stored total is on its way, and hold writes until it arrives.
      *
-     * Ignores a value lower than what is already counted: the read is asynchronous, so a game that
-     * has been playing while it was in flight would otherwise have its accrued seconds thrown away
-     * by a stale number. The total only ever goes up.
+     * Called once per store rather than once per boot: the runtime core is rebuilt whenever the
+     * bundle or the persistence adapter changes, and a total read through the store that went away
+     * says nothing about the one that replaced it.
+     */
+    public awaitTotalBaseline(): void {
+        this.totalBaselineKnown = false;
+    }
+
+    /**
+     * Install the title total read back from persistence, and let writing resume.
+     *
+     * The figure goes underneath whatever has accrued since boot rather than replacing the total,
+     * so a read that lands late costs nothing; and it only ever moves the stored figure up, so a
+     * read that lands late *and* stale — a second store answering with a number this session has
+     * already written past — cannot walk it backwards either.
      */
     public seedTotal(seconds: number): void {
-        if (!Number.isFinite(seconds) || seconds <= this.totalSeconds) {
-            return;
+        if (Number.isFinite(seconds) && seconds > this.storedTotalSeconds) {
+            this.storedTotalSeconds = seconds;
         }
-        this.totalSeconds = seconds;
+        this.totalBaselineKnown = true;
+    }
+
+    /**
+     * Settle the total with nothing to install: the store holds no total, or could not be read.
+     *
+     * This session then counts from zero, which is worth strictly less than refusing to count at
+     * all and is the whole of the degradation. It is deliberately a separate call from
+     * {@link seedTotal} rather than seeding zero, because the two differ in what they are allowed
+     * to do to the store: this one is only ever reached once the store has been asked and answered.
+     */
+    public startTotalFromZero(): void {
+        this.totalBaselineKnown = true;
     }
 
     /**
@@ -145,9 +192,8 @@ export class PlaytimeClock {
         this.lastTickAt = at;
         const seconds = elapsedMs / 1000;
         this.accruedSeconds += seconds;
-        this.totalSeconds += seconds;
-        this.unflushedSeconds += seconds;
-        if (this.unflushedSeconds >= this.flushThresholdSeconds) {
+        this.unwrittenTotalSeconds += seconds;
+        if (this.unwrittenTotalSeconds >= this.flushThresholdSeconds) {
             this.flush();
         }
     }
@@ -165,7 +211,9 @@ export class PlaytimeClock {
     }
 
     /**
-     * Write the title total if anything is owed. Cheap and idempotent when nothing is.
+     * Write the title total if anything is owed and the stored figure it stands on is known. Cheap
+     * and idempotent when nothing is owed, and cheap and repeatable while the read is outstanding —
+     * the seconds simply stay owed until it lands.
      *
      * There is deliberately no `dispose`. A stopwatch that can be switched off permanently is one
      * an effect cleanup will eventually switch off by accident: `React.StrictMode` - on in every
@@ -176,10 +224,13 @@ export class PlaytimeClock {
      * one-way switch. Every operation on this class is repeatable.
      */
     public flush(): void {
-        if (this.unflushedSeconds <= 0) {
+        if (this.unwrittenTotalSeconds <= 0 || !this.totalBaselineKnown) {
             return;
         }
-        this.unflushedSeconds = 0;
-        this.deps.persistTotal(this.totalSeconds);
+        // Folded in before the write, not after: what is written becomes what the store holds, so a
+        // later read of it must not be added on top of these same seconds a second time.
+        this.storedTotalSeconds += this.unwrittenTotalSeconds;
+        this.unwrittenTotalSeconds = 0;
+        this.deps.persistTotal(this.storedTotalSeconds);
     }
 }

@@ -187,7 +187,7 @@ export const uiEditor = {
             other: "{count} 画面",
         },
         assetsSkipped: {
-            other: "リソース {count} 件を読み込めなかった",
+            other: "アセット {count} 件を読み込めなかった",
         },
         componentsAdded: {
             other: "コンポーネント {count} 個をライブラリに追加した",

@@ -86,7 +86,11 @@ describe("save playtime forwarding", () => {
         const source = await fs.readFile(APP_FILE, "utf-8");
         // There is one setter now and it reaches the store, so this only has to check the clock is
         // wired to the bridge at all - `persistenceDurability` holds the setter itself in shape.
-        const wiring = source.slice(source.indexOf("usePlaytime({"), source.indexOf("usePlaytime({") + 900);
+        // Sliced to the end of the call rather than to a fixed length: the options carry enough
+        // prose that a character budget quietly stops covering the last of them.
+        const callStart = source.indexOf("usePlaytime({");
+        expect(callStart, "GameApp does not call usePlaytime").toBeGreaterThan(-1);
+        const wiring = source.slice(callStart, source.indexOf("});", callStart));
         expect(wiring, "GameApp does not wire usePlaytime at all").toContain("persistenceGetAsync");
         expect(
             wiring.includes("scopeBridge.persistenceSet("),
