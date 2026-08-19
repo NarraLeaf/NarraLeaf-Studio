@@ -189,6 +189,14 @@ import type {
 import { useAutoSave } from "./useAutoSave";
 import { usePlaytime } from "./usePlaytime";
 import { readSavePlaytimeSeconds } from "@shared/utils/runtimeSaveRecord";
+import {
+    weatherBakeSize,
+    WEATHER_FPS,
+    WEATHER_LOOP_SECONDS,
+    type WeatherBakeSpec,
+    type WeatherSeedRef,
+} from "@shared/weather/model";
+import type { UIDocument } from "@shared/types/ui-editor/document";
 
 // Outer safety net: if the environment never comes up at all, start the surface system anyway
 // rather than sit on the loading step forever. Generous on purpose — it has to sit *outside*
@@ -313,6 +321,23 @@ export type GameAppProps = {
  * Studio Dev Mode and the standalone game runtime render this component and
  * differ only in the injected GameAppHost.
  */
+/**
+ * The clip to bake for one seed, at this project's stage size.
+ *
+ * The loop length and frame rate are the seed system's own constants; what varies per project is the
+ * picture's size, and it is capped so a 4K stage does not bake a clip four times the size for content
+ * that is high-frequency noise stretched over the frame anyway.
+ */
+function weatherSpecForStage(ref: WeatherSeedRef, uidoc: UIDocument): WeatherBakeSpec {
+    // The stage surface's own design size, because that is the coordinate system a weather overlay
+    // covers. A document with no stage surface falls back to the first surface it has - the clip is
+    // `cover`-fitted either way, so a size that is merely close costs nothing an eye can find.
+    const stage = uidoc.surfaces.find(surface => surface.kind === "stageSurface") ?? uidoc.surfaces[0];
+    const design = stage?.designSize ?? { width: 1920, height: 1080 };
+    const { width, height } = weatherBakeSize(design.width, design.height);
+    return { ref, width, height, fps: WEATHER_FPS, frames: WEATHER_LOOP_SECONDS * WEATHER_FPS };
+}
+
 export function GameApp(props: GameAppProps): ReactNode {
     const {
         host,
@@ -2565,6 +2590,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             characters: bundle.storyLibrary?.characters,
             animations: bundle.storyLibrary?.animations,
             resolveAssetUrl: host.resolveStoryAssetUrl,
+            // Forwarded, and the size decided here: a weather clip is baked to the project's own
+            // stage, which this component knows and the compiler deliberately does not. A host with
+            // no baker passes nothing and its weather rows compile to a diagnostic.
+            ...(host.resolveWeatherClip
+                ? { resolveWeatherClip: (ref: WeatherSeedRef) => host.resolveWeatherClip!(weatherSpecForStage(ref, bundle.ui.uidoc)) }
+                : {}),
             blueprintDocument: bundle.ui.localBlueprints,
             persistentVariables: bundle.ui.persistentVariables,
             // The saved half of the same registry. This is the call both shipping runtimes go through

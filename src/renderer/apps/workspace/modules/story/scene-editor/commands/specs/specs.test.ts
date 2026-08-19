@@ -407,8 +407,11 @@ describe("media objects", () => {
         expect(build("/front title")).toMatchObject({
             payload: { action: "displayable", operation: "bringToFront", target: { kind: "text", name: "title" } },
         });
+        // The stage key, not the cast name - the compiler registers a portrait under its entering
+        // row's stage name, and a line never gives it one, so the key is the character id. See the
+        // `/transform Alice` case below for the whole rule.
         expect(build("/front Alice")).toMatchObject({
-            payload: { action: "displayable", operation: "bringToFront", target: { kind: "character", name: "Alice" } },
+            payload: { action: "displayable", operation: "bringToFront", target: { kind: "character", name: "c1", label: "Alice" } },
         });
         // No duration, no bag: the raise is one frame, and the payload carries neither.
         expect(Object.keys(build("/front hero").payload).sort()).toEqual(["action", "operation", "target"]);
@@ -967,8 +970,17 @@ describe("logic and effects", () => {
     });
 
     it("/transform writes the prop bag and /reset clears it", () => {
+        // The reference stores the STAGE key and labels itself with the cast name. This context has
+        // no scene, so no entering row states a stage name and the key falls back to the character
+        // id - the same rule the compiler registers a nameless portrait under. `targetRefs.test.ts`
+        // covers the case where a scene DOES declare the entrance.
         expect(build("/transform Alice d=0.4")).toMatchObject({
-            payload: { action: "displayable", operation: "transform", target: { kind: "character", name: "Alice" }, transform: { durationMs: 400 } },
+            payload: {
+                action: "displayable",
+                operation: "transform",
+                target: { kind: "character", name: "c1", label: "Alice" },
+                transform: { durationMs: 400 },
+            },
         });
         // Several filter names compose into the ONE structured record - the ergonomic the whole
         // redesign turns on, and what makes the next filter function a name rather than an operation.
@@ -1017,7 +1029,7 @@ describe("logic and effects", () => {
         expect(build("/transform hero flip=on").payload).not.toHaveProperty("transform.to.scaleY");
         expect(build("/transform hero flip=off")).toMatchObject({ payload: { transform: { to: { scaleX: 1 } } } });
         expect(build("/transform Alice flip=on d=0.3")).toMatchObject({
-            payload: { target: { kind: "character", name: "Alice" }, transform: { to: { scaleX: -1 }, durationMs: 300 } },
+            payload: { target: { kind: "character", name: "c1", label: "Alice" }, transform: { to: { scaleX: -1 }, durationMs: 300 } },
         });
     });
 

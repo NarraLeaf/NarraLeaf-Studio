@@ -270,6 +270,13 @@ type ParseState = {
     readonly blocks: Record<StoryBlockId, StoryBlock>;
     readonly diagnostics: NarralangDiagnostic[];
     readonly stage: Map<string, NarralangStageEntry>;
+    /**
+     * The named sound handles, kept out of {@link stage} on purpose: the compiler's `sounds` and
+     * `images` are separate registries, so a sound and an image may answer to one word and neither
+     * shadows the other. One shared table would make `image show rain` fail because a `rain` sound
+     * was played higher up the script.
+     */
+    readonly sounds: Map<string, StoryBlockId>;
     readonly variables: Map<string, StoryVariableRef>;
     readonly createId: () => string;
     readonly scope: StoryExpressionScope;
@@ -302,6 +309,7 @@ export function parseNarralangSceneWithDialect(
         blocks: {},
         diagnostics,
         stage: new Map(),
+        sounds: new Map(),
         variables: new Map(),
         createId,
         scope: buildScope(),
@@ -433,7 +441,7 @@ const CREATORS: Partial<Record<NarralangVerb, NarralangStageEntry["kind"]>> = {
 /**
  * What the names in this text refer to, read before anything is built.
  *
- * Two tables, and both exist because a reference can point at a row further down the file: a `menu`
+ * Three tables, and they exist because a reference can point at a row further down the file: a `menu`
  * branch may set a variable declared under it, and an `if` body may address an image the scene
  * created outside the branch. It is also what tells the seven `show` verbs apart - see
  * {@link ./narralangBuild}.
@@ -459,6 +467,15 @@ function scanLine(state: ParseState, node: LineNode): void {
     if (!entry) {
         return;
     }
+    if (entry.verb === "audioPlay") {
+        // The one declaration whose name is not the first thing after the keyword: a sound is named
+        // at the tail of the line (`play sound door_close as door`), so it needs its own reading.
+        const handle = audioHandleName(state.dialect, entry.words.length, tokens);
+        if (handle !== null && !state.sounds.has(handle)) {
+            state.sounds.set(handle, node.id);
+        }
+        return;
+    }
     const subject = tokens[entry.words.length];
     if (!subject || subject.text === "") {
         return;
@@ -480,6 +497,42 @@ function scanLine(state: ParseState, node: LineNode): void {
     if (character && character !== "ambiguous" && !state.stage.has(subject.text)) {
         state.stage.set(subject.text, { kind: "character", blockId: node.id });
     }
+}
+
+/**
+ * The handle an `audioPlay` line registers, or null when it registers none.
+ *
+ * Read off the dialect table rather than off the literal word `as`, for the same reason
+ * {@link scopeOf} reads it: the lead is a table entry, and hard-coding it would file every handle
+ * under nothing the moment a dialect spells it differently.
+ *
+ * Only the `sound` channel declares. `play bgm …` opens the reserved music channel, which a scene can
+ * also state on its own record and which every later row addresses as `{ builtin: "bgm" }` whether or
+ * not this script holds the line - so binding it to a row would give one channel two identities. That
+ * is the rule `actionableSourceIdentity` states, and this is the reading of it the parser needs.
+ */
+function audioHandleName(
+    dialect: NarralangDialect,
+    keywordWords: number,
+    tokens: readonly NarralangToken[],
+): string | null {
+    const channel = tokens[keywordWords];
+    if (channel === undefined || channel.quote !== "none" || narralangWordFromSpelling(dialect, channel.text) !== "sound") {
+        return null;
+    }
+    const lead = dialect.verbs.audioPlay.slots.find((slot) => slot.slot === "handle")?.lead;
+    if (lead === undefined) {
+        return null;
+    }
+    const words = lead.split(" ");
+    for (let index = keywordWords + 1; index < tokens.length; index += 1) {
+        if (!words.every((word, offset) => isNarralangBareWord(tokens[index + offset], word))) {
+            continue;
+        }
+        const name = tokens[index + words.length];
+        return name === undefined || name.text === "" ? null : name.text;
+    }
+    return null;
 }
 
 /**
@@ -877,6 +930,7 @@ function draftContext(state: ParseState, blockId: StoryBlockId): NarralangBuildC
         blockId,
         createTextId: state.createId,
         stage: (name) => state.stage.get(name) ?? null,
+        sound: (name) => state.sounds.get(name) ?? null,
         variable: (name) => variableRef(state, name),
         expression: (source) => parseExpression(state, source),
     };

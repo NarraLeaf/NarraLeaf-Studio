@@ -48,6 +48,7 @@ import {
     MediaConvertStartHandler,
     MediaProbeHandler,
 } from "./handlers/mediaAction";
+import { StudioTasksGetOverviewHandler } from "./handlers/studioTaskAction";
 import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceIsProjectOpenHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceSetRecoveryModeHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
 import { WorkspaceReportWriteFreezeHandler } from "./handlers/workspaceFreezeAction";
 import {
@@ -59,6 +60,7 @@ import {
     DevModeReloadHandler,
     DevModeStopHandler,
     DevModeResolveAssetUrlHandler,
+    DevModeResolveWeatherClipHandler,
     DevModeResolveImageAssetUrlHandler,
     DevModeForwardBlueprintDebugEventHandler,
     DevModeForwardStoryRowHandler,
@@ -232,6 +234,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new MediaConvertStartHandler(),
         new MediaConvertCancelHandler(),
         new MediaConvertGetStatusHandler(),
+        new StudioTasksGetOverviewHandler(),
+        new DevModeResolveWeatherClipHandler(),
         new WorkspaceCloseHandler(),
         new WorkspaceExportProjectPackageHandler(),
         new WorkspaceImportProjectPackageHandler(),

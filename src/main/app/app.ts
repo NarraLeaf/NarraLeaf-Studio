@@ -11,6 +11,8 @@ import { devModeNetworkPolicy, readProjectNetworkSettings } from "./application/
 import { GameBuildManager } from "./application/managers/build/GameBuildManager";
 import { GameTestManager } from "./application/managers/gameTest/GameTestManager";
 import { MediaConvertManager } from "./application/managers/media/MediaConvertManager";
+import { StudioTaskScheduler } from "./application/managers/tasks/StudioTaskScheduler";
+import { WeatherBakeManager } from "./application/managers/weather/WeatherBakeManager";
 import { PreviewManager } from "./application/managers/preview/PreviewManager";
 import { VcsManager } from "./application/managers/vcs/VcsManager";
 // Shared with the recently-opened history, which must agree with the "already open?" lookup here.
@@ -73,6 +75,8 @@ export class App extends BaseApp {
         this.previewManager = new PreviewManager(this);
         this.gameTestManager = new GameTestManager(this);
         this.gameBuildManager = new GameBuildManager(this);
+        this.taskScheduler = new StudioTaskScheduler();
+        this.weatherBakeManager = new WeatherBakeManager(this, this.taskScheduler);
         this.mediaConvertManager = new MediaConvertManager(this);
         // The commit pipeline has to settle the renderer's auto-save debt before it
         // stages, and only the window layer can ask a window to do that. Handed in as a
@@ -123,6 +127,8 @@ export class App extends BaseApp {
     private readonly gameTestManager: GameTestManager;
     private readonly gameBuildManager: GameBuildManager;
     private readonly mediaConvertManager: MediaConvertManager;
+    private readonly taskScheduler: StudioTaskScheduler;
+    private readonly weatherBakeManager: WeatherBakeManager;
     private readonly vcsManager: VcsManager;
     private readonly updateManager: UpdateManager;
     private readonly confirmQuitManager: ConfirmQuitManager;
@@ -153,6 +159,22 @@ export class App extends BaseApp {
     /** ffmpeg conversions in flight. Polled by job id, in the same shape as a production build. */
     public getMediaConvertManager(): MediaConvertManager {
         return this.mediaConvertManager;
+    }
+
+    /**
+     * The one queue Studio's long work goes through.
+     *
+     * App-wide rather than per-window: the work belongs to the machine, not to whichever window
+     * happened to ask for it, and two windows onto the same project must not bake the same clip
+     * twice.
+     */
+    public getTaskScheduler(): StudioTaskScheduler {
+        return this.taskScheduler;
+    }
+
+    /** Produces the clips weather seeds describe, and finds the ones already made. */
+    public getWeatherBakeManager(): WeatherBakeManager {
+        return this.weatherBakeManager;
     }
 
     public getVcsManager(): VcsManager {
