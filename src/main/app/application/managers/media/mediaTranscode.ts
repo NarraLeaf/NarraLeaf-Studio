@@ -85,8 +85,12 @@ const GLOBAL_ARGS: readonly string[] = [
  * (HEVC from a phone) or 4:2:2 (ProRes from an editor), and encoding those as VP9 profile 2 or 1
  * produces a file Chromium may decode on the developer's desktop and a player's device may not.
  * Profile 0 is the one every VP9 decoder is required to have.
+ *
+ * Exported because the weather bake encodes with exactly these settings. They are one decision - what
+ * a NarraLeaf project's video looks like on every target it ships to - and a second copy would drift
+ * silently, since both produce a playable file either way.
  */
-const VP9_ARGS: readonly string[] = [
+export const VP9_ARGS: readonly string[] = [
     "-c:v", "libvpx-vp9",
     "-b:v", "0",
     "-crf", "32",
