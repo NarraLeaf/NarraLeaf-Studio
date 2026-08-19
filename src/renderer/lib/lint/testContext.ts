@@ -44,6 +44,7 @@ export function createTestLintContext(overrides: Partial<LintContext> = {}): Lin
             exists: async () => false,
             readBytes: async () => null,
             probeImage: async () => ({ ok: false, reason: "test context has no io" }),
+            probeVideoAlpha: async () => ({ ok: false, reason: "test context has no io" }),
         },
         ...overrides,
     };

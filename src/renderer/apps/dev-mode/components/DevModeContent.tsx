@@ -916,6 +916,22 @@ export function DevModeContent(props: DevModeContentProps) {
     }, []);
 
     /**
+     * The clip a weather seed describes, produced now if it does not exist yet.
+     *
+     * Submitted at `blocking` on the other side, because someone pressed Run: if Studio had already
+     * started the same bake speculatively, this adopts the one in flight rather than queueing behind
+     * it, and the wait is whatever was left of it.
+     *
+     * Returns null rather than throwing when it cannot be made. A missing clip is a scene that plays
+     * without its weather and says so in the diagnostics; the story itself still runs, which is the
+     * difference between a seed that failed and a session that will not start.
+     */
+    const resolveWeatherClip = useCallback<NonNullable<GameAppHost["resolveWeatherClip"]>>(async spec => {
+        const result = await getInterface().devMode.resolveWeatherClip(spec);
+        return result.success && result.data?.url ? result.data.url : null;
+    }, []);
+
+    /**
      * Author-supplied puppet backends, read straight out of the open project.
      *
      * The reading itself lives in `devModePuppetHost.ts` because a Surface `nl.puppet` widget needs the
@@ -1337,6 +1353,7 @@ export function DevModeContent(props: DevModeContentProps) {
             log,
             reportIssue,
             resolveStoryAssetUrl,
+            resolveWeatherClip,
             saveStore,
             listPuppetBackendModules,
             quitApplication,
@@ -1368,6 +1385,7 @@ export function DevModeContent(props: DevModeContentProps) {
         listPuppetBackendModules,
         reportIssue,
         resolveStoryAssetUrl,
+        resolveWeatherClip,
         runtimePlugins.ready,
         saveStore,
         setFullscreen,

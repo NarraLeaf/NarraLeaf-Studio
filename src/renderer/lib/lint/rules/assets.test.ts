@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AssetSet } from "@shared/types/assetSet";
 import { AssetType } from "../../workspace/services/assets/assetTypes";
 import type { AssetReference } from "../../workspace/services/references/referenceModel";
-import type { LintAssetEntry, LintContext, LintImageProbe } from "../context";
+import type { LintAlphaProbe, LintAssetEntry, LintContext, LintImageProbe } from "../context";
 import { createTestLintContext } from "../testContext";
 import type { LintFinding, LintRuleId } from "../types";
 import { ASSETS_LINT_RULES } from "./assets";
@@ -246,6 +246,7 @@ describe("assets/unreadable", () => {
                 exists: async () => false,
                 readBytes: async () => null,
                 probeImage: async (): Promise<LintImageProbe> => ({ ok: true, width: 1, height: 1 }),
+                probeVideoAlpha: async (): Promise<LintAlphaProbe> => ({ ok: false, reason: "not asked" }),
             },
         });
 
@@ -260,7 +261,7 @@ describe("assets/unreadable", () => {
         const probeImage = vi.fn(async (): Promise<LintImageProbe> => ({ ok: false, reason: "not a png" }));
         const ctx = createTestLintContext({
             assets: [asset("corrupt")],
-            io: { exists: async () => true, readBytes: async () => readable, probeImage },
+            io: { exists: async () => true, readBytes: async () => readable, probeImage, probeVideoAlpha: async (): Promise<LintAlphaProbe> => ({ ok: false, reason: "not asked" }) },
         });
 
         const findings = await runRule("assets/unreadable", ctx);
@@ -277,6 +278,7 @@ describe("assets/unreadable", () => {
                 exists: async () => true,
                 readBytes: async () => readable,
                 probeImage: async (): Promise<LintImageProbe> => ({ ok: true, width: 800, height: 600 }),
+                probeVideoAlpha: async (): Promise<LintAlphaProbe> => ({ ok: false, reason: "not asked" }),
             },
         });
 
@@ -297,7 +299,7 @@ describe("assets/unreadable", () => {
                 asset("bgm", { type: AssetType.Audio, name: "bgm.ogg", ext: "ogg" }),
                 asset("font", { type: AssetType.Font, name: "serif.ttf", ext: "ttf" }),
             ],
-            io: { exists, readBytes, probeImage },
+            io: { exists, readBytes, probeImage, probeVideoAlpha: async (): Promise<LintAlphaProbe> => ({ ok: false, reason: "not asked" }) },
         });
 
         expect(await runRule("assets/unreadable", ctx)).toEqual([]);
@@ -314,6 +316,7 @@ describe("assets/unreadable", () => {
                 exists: async () => true,
                 readBytes,
                 probeImage: async (): Promise<LintImageProbe> => ({ ok: true, width: 8, height: 8 }),
+                probeVideoAlpha: async (): Promise<LintAlphaProbe> => ({ ok: false, reason: "not asked" }),
             },
         });
 
@@ -330,6 +333,7 @@ describe("assets/unreadable", () => {
                 exists,
                 readBytes,
                 probeImage: async (): Promise<LintImageProbe> => ({ ok: false, reason: "unreadable" }),
+                probeVideoAlpha: async (): Promise<LintAlphaProbe> => ({ ok: false, reason: "not asked" }),
             },
         });
 
@@ -351,6 +355,7 @@ describe("assets/unreadable", () => {
                 exists: async () => false,
                 readBytes: async () => null,
                 probeImage: async (): Promise<LintImageProbe> => ({ ok: false, reason: "unreadable" }),
+                probeVideoAlpha: async (): Promise<LintAlphaProbe> => ({ ok: false, reason: "not asked" }),
             },
         });
 
@@ -366,6 +371,7 @@ describe("assets/unreadable", () => {
                 exists: async () => true,
                 readBytes: async () => null,
                 probeImage: async (): Promise<LintImageProbe> => ({ ok: true, width: 8, height: 8 }),
+                probeVideoAlpha: async (): Promise<LintAlphaProbe> => ({ ok: false, reason: "not asked" }),
             },
         });
 

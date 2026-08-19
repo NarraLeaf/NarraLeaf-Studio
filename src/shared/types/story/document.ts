@@ -878,6 +878,10 @@ export type StoryActionPayload =
            * honours the very same files). A transparent clip left on `normal` therefore looks
            * correct on every Chromium target and is a full-screen opaque rectangle in the iOS shell
            * and the web build. Transparency is expressed as an opaque clip on black plus `screen`.
+           *
+           * `portability/vfx-alpha` reports a row that has done it the other way, reading the alpha
+           * channel off the clip's own bytes. It is an error, so such a project does not build for
+           * a Safari-engine target until the row is changed.
            */
           blendMode?: StoryVfxBlendMode;
           opacity?: number;

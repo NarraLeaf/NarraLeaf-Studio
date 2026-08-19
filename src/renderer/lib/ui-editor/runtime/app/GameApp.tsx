@@ -176,6 +176,7 @@ import { LayerStackController, mountSurfaceLayer, type SurfaceLayerEntry } from 
 import { useLayerStack } from "./layers/useLayerStack";
 import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView } from "./layers/compositeView";
+import { isPageEntryDrawn, isStageCovered } from "./layers/stageOcclusion";
 import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
 import type {
     GameAppFrameContext,
@@ -189,6 +190,14 @@ import type {
 import { useAutoSave } from "./useAutoSave";
 import { usePlaytime } from "./usePlaytime";
 import { readSavePlaytimeSeconds } from "@shared/utils/runtimeSaveRecord";
+import {
+    weatherBakeSize,
+    WEATHER_FPS,
+    WEATHER_LOOP_SECONDS,
+    type WeatherBakeSpec,
+    type WeatherSeedRef,
+} from "@shared/weather/model";
+import type { UIDocument } from "@shared/types/ui-editor/document";
 
 // Outer safety net: if the environment never comes up at all, start the surface system anyway
 // rather than sit on the loading step forever. Generous on purpose — it has to sit *outside*
@@ -313,6 +322,23 @@ export type GameAppProps = {
  * Studio Dev Mode and the standalone game runtime render this component and
  * differ only in the injected GameAppHost.
  */
+/**
+ * The clip to bake for one seed, at this project's stage size.
+ *
+ * The loop length and frame rate are the seed system's own constants; what varies per project is the
+ * picture's size, and it is capped so a 4K stage does not bake a clip four times the size for content
+ * that is high-frequency noise stretched over the frame anyway.
+ */
+function weatherSpecForStage(ref: WeatherSeedRef, uidoc: UIDocument): WeatherBakeSpec {
+    // The stage surface's own design size, because that is the coordinate system a weather overlay
+    // covers. A document with no stage surface falls back to the first surface it has - the clip is
+    // `cover`-fitted either way, so a size that is merely close costs nothing an eye can find.
+    const stage = uidoc.surfaces.find(surface => surface.kind === "stageSurface") ?? uidoc.surfaces[0];
+    const design = stage?.designSize ?? { width: 1920, height: 1080 };
+    const { width, height } = weatherBakeSize(design.width, design.height);
+    return { ref, width, height, fps: WEATHER_FPS, frames: WEATHER_LOOP_SECONDS * WEATHER_FPS };
+}
+
 export function GameApp(props: GameAppProps): ReactNode {
     const {
         host,
@@ -566,6 +592,32 @@ export function GameApp(props: GameAppProps): ReactNode {
         stageVisible: gameStageVisibleRef,
         gameEntered: gameEnteredRef,
     }), []);
+    /**
+     * Whether the story is the thing the player is looking at, rather than merely the thing behind
+     * what they are looking at.
+     *
+     * `isInGame` answers "is a session mounted with its stage on screen", and stays true under a
+     * settings screen the player opened mid-game - which is correct for it, and is what lets a quick
+     * menu drawn over the stage know it has a game to act on. Anything that drives the story forward
+     * on its own needs the narrower question, because the stage being on screen underneath a menu is
+     * not the player watching it. MEASURED: skipping turned on from the quick menu and then Config
+     * opened ran the story to its end behind the settings screen.
+     *
+     * Both stores are read at call time, never captured: they are external stores exactly so a
+     * reader outside React gets the answer for this instant. See `sessionGate` for why anything a
+     * Game UI slot surface can reach has to be built that way.
+     */
+    const isStoryOnScreen = useCallback((): boolean => {
+        if (!isInGame()) {
+            return false;
+        }
+        return !isStageCovered({
+            pageEntries: navigation.getState().navStack,
+            pagesHiddenForGame: studioPageHiddenForGameRef.current,
+            gameHiddenKeys: gameHiddenNavKeysRef.current,
+            layers: layerStack.getSnapshot().layers,
+        });
+    }, [isInGame, layerStack, navigation]);
     /**
      * The stopwatch behind `Get Playtime`, the reading written onto every save, and the title's
      * running total. Mounted here rather than beside the autosave scheduler because `writeSave`
@@ -2565,6 +2617,12 @@ export function GameApp(props: GameAppProps): ReactNode {
             characters: bundle.storyLibrary?.characters,
             animations: bundle.storyLibrary?.animations,
             resolveAssetUrl: host.resolveStoryAssetUrl,
+            // Forwarded, and the size decided here: a weather clip is baked to the project's own
+            // stage, which this component knows and the compiler deliberately does not. A host with
+            // no baker passes nothing and its weather rows compile to a diagnostic.
+            ...(host.resolveWeatherClip
+                ? { resolveWeatherClip: (ref: WeatherSeedRef) => host.resolveWeatherClip!(weatherSpecForStage(ref, bundle.ui.uidoc)) }
+                : {}),
             blueprintDocument: bundle.ui.localBlueprints,
             persistentVariables: bundle.ui.persistentVariables,
             // The saved half of the same registry. This is the call both shipping runtimes go through
@@ -3289,7 +3347,11 @@ export function GameApp(props: GameAppProps): ReactNode {
     const visibleSurfaceEntries = bundle.ui.uidoc.surfaces.length > 0
         ? visibleEntries
             .filter(entry => entry.sessionKey === host.sessionKey)
-            .filter(entry => !studioPageHiddenForGame || !gameHiddenNavKeys.has(entry.key))
+            .filter(entry => isPageEntryDrawn({
+                entryKey: entry.key,
+                pagesHiddenForGame: studioPageHiddenForGame,
+                gameHiddenKeys: gameHiddenNavKeys,
+            }))
             .map(entry => {
                 const visibleSurface = bundle.ui.uidoc.surfaces.find(surface => surface.id === entry.surfaceId);
                 return visibleSurface ? { entry, surface: visibleSurface } : null;
@@ -3345,7 +3407,11 @@ export function GameApp(props: GameAppProps): ReactNode {
     const activeSurfaceKeyboardReady = Boolean(
         activeEntry &&
         prepaintReadyKeys.has(activeEntry.key) &&
-        (!studioPageHiddenForGame || !gameHiddenNavKeys.has(activeEntry.key)) &&
+        isPageEntryDrawn({
+            entryKey: activeEntry.key,
+            pagesHiddenForGame: studioPageHiddenForGame,
+            gameHiddenKeys: gameHiddenNavKeys,
+        }) &&
         // The app-level keyDown/keyUp dispatch belongs to the page lane, so it stops the moment a
         // layer takes the keyboard - otherwise Escape would reach the page under an open modal.
         compositeInput.keyboardOwnerKey === activeEntry.key,
@@ -3820,9 +3886,10 @@ export function GameApp(props: GameAppProps): ReactNode {
         };
         const controller = createSkipRunController({
             matchesSkipKey: key => game.keyMap.match(STUDIO_SKIP_KEY_BINDING, key),
-            // `skip` is the author's permission to skip at all, and `isInGame` is what keeps a held
-            // key on a title screen from advancing the story behind it.
-            canSkip: () => isInGame() && readPreference("skip") !== false,
+            // `skip` is the author's permission to skip at all, and `isStoryOnScreen` is what keeps
+            // a held key on a title screen - or a mode left on under a settings screen - from
+            // advancing the story behind it.
+            canSkip: () => isStoryOnScreen() && readPreference("skip") !== false,
             isBlocked: () => {
                 // A session that went away mid-hold ends the run rather than ticking into nothing.
                 if (!nlrLiveGameRef.current?.getGameState()) {
@@ -3868,7 +3935,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             window.removeEventListener("keyup", onKeyUp);
             window.removeEventListener("blur", onBlur);
         };
-    }, [isInGame, nlrSession, subscribeGamePreferences]);
+    }, [isStoryOnScreen, nlrSession, subscribeGamePreferences]);
 
     // Route game preference changes through a ref-held closure so the subscription
     // created in onLiveGameReady always dispatches with the current surface context.
