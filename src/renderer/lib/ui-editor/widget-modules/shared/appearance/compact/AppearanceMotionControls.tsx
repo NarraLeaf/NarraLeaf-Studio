@@ -35,6 +35,14 @@ type AppearanceFieldMotionButtonProps = {
     /** Writes transition for this field on every variant in the model. */
     setFieldTransition: (groupKey: AppearancePropertyKey, transition: AppearanceFieldTransition | null) => void;
     groupKey: AppearancePropertyKey;
+    /**
+     * The channels this one control writes, when a single thing the author sees is carried on more
+     * than one - a position is X and Y, and giving each its own timing is a setting nobody wants.
+     * Defaults to `groupKey` alone; the current value is always read from `groupKey`.
+     */
+    groupKeys?: AppearancePropertyKey[];
+    /** Overrides the popover's title, for a control that is not named after its channel. */
+    label?: string;
     draftResetKey: string;
 };
 
@@ -136,6 +144,8 @@ export function AppearanceFieldMotionButton({
     variant,
     setFieldTransition,
     groupKey,
+    groupKeys,
+    label: labelOverride,
     draftResetKey,
 }: AppearanceFieldMotionButtonProps) {
     const { t } = useTranslation();
@@ -144,14 +154,16 @@ export function AppearanceFieldMotionButton({
     const panelRef = useRef<HTMLDivElement | null>(null);
     const [open, setOpen] = useState(false);
     const [position, setPosition] = useState({ left: 0, top: 0 });
-    const label = getAppearanceFieldLabel(groupKey);
+    const label = labelOverride ?? getAppearanceFieldLabel(groupKey);
     const transition = getAppearanceGroupTransition(variant, groupKey) ?? null;
 
     const commitTransition = useCallback(
         (next: AppearanceFieldTransition | null) => {
-            setFieldTransition(groupKey, next);
+            for (const key of groupKeys ?? [groupKey]) {
+                setFieldTransition(key, next);
+            }
         },
-        [groupKey, setFieldTransition]
+        [groupKey, groupKeys, setFieldTransition]
     );
 
     const ensureTransition = useCallback(() => {

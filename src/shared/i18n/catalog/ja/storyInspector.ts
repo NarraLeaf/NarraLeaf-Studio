@@ -336,6 +336,7 @@ export const storyInspector = {
     },
     displayableOperation: {
         transform: "変形",
+        bringToFront: "最前面へ",
         mask: "マスク",
         clearMask: "マスクを外す",
         clip: "クリップパス",

@@ -1,4 +1,5 @@
-import { ALargeSmall, Image, Layers, Play, Replace, Type, Video } from "lucide-react";
+import { ALargeSmall, BringToFront, Image, Layers, Play, Replace, Type, Video } from "lucide-react";
+import type { StoryBlock } from "@shared/types/story";
 import { createBlockForCommand } from "../../storyActionCommands";
 import type { StoryCommandResolutionIssue } from "../../storyCommandValues";
 import {
@@ -13,10 +14,10 @@ import {
     targetParam,
     type StoryCommandValidateContext,
 } from "../spec";
-import { deriveObjectName, withPlacementTransform, withRevealTransform } from "../payloadHelpers";
+import { deriveObjectName, displayableTargetRef, withPlacementTransform, withRevealTransform } from "../payloadHelpers";
 import { transitionOptions } from "../transitions";
 
-/** Media objects: `/image`, `/text`, `/video`, `/layer`, `/swap`, `/play`, `/font`. */
+/** Media objects: `/image`, `/text`, `/video`, `/layer`, `/swap`, `/play`, `/front`, `/font`. */
 
 export const image = defineStoryCommand({
     id: "image",
@@ -212,6 +213,49 @@ export const play = defineStoryCommand({
     },
 });
 
+/**
+ * `/front` - put this in front of everything else in its layer.
+ *
+ * **The only ordering verb, and that is the whole design.** A displayable has no z of its own (only a
+ * `Layer` does), so the stacking order inside a layer is the order the elements were created in - and
+ * three sprites on stage together had no way at all to put the speaker in front. An absolute z would
+ * have answered that with a number an author cannot see the effect of without a stacking editor to
+ * see it in; "bring this to the front" states its whole effect on the line that writes it. It also
+ * loses nothing: any arrangement is reachable by bringing each element forward from back to front, so
+ * there is no `/back` to write.
+ *
+ * One frame, one slot, no duration - there is no intermediate state between behind and in front, so
+ * there is nothing for a `d=` to spread across.
+ */
+export const front = defineStoryCommand({
+    id: "front",
+    token: "front",
+    aliases: ["top", "raise"],
+    // Only the flat surfaces read this; `accepts` files the command under image, text and character.
+    category: "image",
+    icon: BringToFront,
+    examples: ["/front Alice", "/front hero", "/front title"],
+    params: {
+        // A layer, a video and an ambience overlay are refused rather than left out, the same way
+        // `/transform` refuses the last two: each is on stage under a name the author can see, so a
+        // slot that did not resolve them would answer "nothing on stage is named that" about a thing
+        // sitting in plain sight. A layer's own front-to-back is `z=`, which `/layer` already writes.
+        target: targetParam(["image", "text", "character"], { core: true, refuses: ["layer", "video", "vfx"] }),
+    },
+    build(args, ctx): StoryBlock {
+        const target = displayableTargetRef(asTarget(args.target));
+        return {
+            id: ctx.generateId(),
+            parentId: null,
+            childrenIds: [],
+            kind: "action",
+            // The unfilled default matches the other displayable seeds: a row the menu path produces
+            // names the placeholder object, and the target field replaces it once the line says who.
+            payload: { action: "displayable", operation: "bringToFront", target: target ?? { name: "image" } },
+        };
+    },
+});
+
 export const font = defineStoryCommand({
     id: "font",
     token: "font",
@@ -256,4 +300,4 @@ export const font = defineStoryCommand({
     },
 });
 
-export const OBJECT_COMMANDS = [image, text, video, layer, swap, play, font];
+export const OBJECT_COMMANDS = [image, text, video, layer, swap, play, front, font];

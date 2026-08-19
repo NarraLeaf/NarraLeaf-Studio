@@ -17,6 +17,10 @@ import type { StoryCommandEnumOption } from "../storyCommandGrammar";
 
 export type StoryTransitionWord =
     | "fade"
+    // The crossfade, spelled absolutely. `fade` is context-relative and on a portrait swap it means
+    // the OTHER thing (see `CHARACTER_KINDS`), so an author who wants two frames overlapping there
+    // has no relative word for it — this is that word, and it means the same thing everywhere.
+    | "dissolve"
     | "slide"
     | "slide-left"
     | "slide-right"
@@ -58,10 +62,18 @@ export type StoryTransitionWord =
  *  - `reveal` / `conceal`: `/show` / `/hide` of a stage object - maps to a transform preset, since
  *    images and texts animate through their transform, and the direction comes from the verb.
  *  - `nvl`: the NVL panel's enter/exit, a short preset list.
+ *  - `expression`: `/face` - the portrait swap, which is the one place a character row's
+ *    `StoryTransitionRef` is read at all (`char(src, transition)`). Same words as `scene`, since the
+ *    whole frame of one object changes; same mapping as `character`, because `fade` there is a
+ *    fade-in.
  */
-export type StoryTransitionContext = "scene" | "character" | "reveal" | "conceal" | "nvl";
+export type StoryTransitionContext = "scene" | "character" | "reveal" | "conceal" | "nvl" | "expression";
 
 const WORD_ALIASES: Partial<Record<StoryTransitionWord, readonly string[]>> = {
+    // `dissolve` stays an alias here even though it is now a word of its own, because on a scene it
+    // is one: `/bg t=dissolve` has always parsed and still means what it meant. Where the two would
+    // collide - `expression`, which offers both - `transitionOptions` drops the alias, so a spelling
+    // is never claimed twice in one context.
     fade: ["dissolve", "fadein", "fadeout"],
     "slide-left": ["slideleft", "slidel"],
     "slide-right": ["slideright", "slider"],
@@ -79,10 +91,24 @@ const WORD_ALIASES: Partial<Record<StoryTransitionWord, readonly string[]>> = {
     rule: ["ruleimage", "ruleimg", "mask"],
 };
 
+// The Mask-vocabulary additions (barn-door / clock / fan / dots) are whole-screen transitions:
+// offered on `/bg` `/jump` alongside the classics, but not on portrait swaps or stage objects.
+//
+// Named rather than written inline because a second context builds on it - see `expression` below.
+// `dissolve` is deliberately NOT here: a background change has exactly one soft option, so offering
+// the relative word and the absolute one side by side would put two entries that do the same thing
+// in one menu - the duplication this vocabulary exists to remove. It still PARSES, as `fade`'s alias.
+const SCENE_WORDS: readonly StoryTransitionWord[] = ["fade", "slide", "circle", "wipe", "iris", "blinds", "barn-door", "clock", "fan", "dots", "blur", "black", "darkness", "exposure", "none"];
+
+// The swap's list: the whole-screen words, plus the one word that is only worth offering where the
+// two soft looks are genuinely different things (`fade` is a fade-in here, `dissolve` a crossfade).
+const EXPRESSION_WORDS: readonly StoryTransitionWord[] = [...SCENE_WORDS, "dissolve"];
+
 const SUPPORTED: Record<StoryTransitionContext, readonly StoryTransitionWord[]> = {
-    // The Mask-vocabulary additions (barn-door / clock / fan / dots) are whole-screen transitions:
-    // offered on `/bg` `/jump` alongside the classics, but not on portrait swaps or stage objects.
-    scene: ["fade", "slide", "circle", "wipe", "iris", "blinds", "barn-door", "clock", "fan", "dots", "blur", "black", "darkness", "exposure", "rule", "none"],
+    // `rule` is scene-only, and deliberately not in SCENE_WORDS: a rule image is painted for the
+    // whole frame, so on the expression swap - which masks to the portrait's own box - it would
+    // play a full-screen picture through a sprite-sized window.
+    scene: [...SCENE_WORDS, "rule"],
     character: ["fade", "slide", "circle", "wipe", "blur", "exposure", "none"],
     // Every preset the inspector's own dropdown offers, so the two surfaces reach the same set of
     // looks — `left` / `center` / `right` excepted: those are the SAME field written through `at=`,
@@ -90,6 +116,9 @@ const SUPPORTED: Record<StoryTransitionContext, readonly StoryTransitionWord[]> 
     reveal: ["fade", "slide-left", "slide-right", "slide-up", "slide-down", "zoom", "scale", "rotate", "opacity", "darken", "circle", "wipe", "none"],
     conceal: ["fade", "slide-left", "slide-right", "slide-up", "slide-down", "zoom", "scale", "rotate", "opacity", "darken", "circle", "wipe", "none"],
     nvl: ["fade", "none"],
+    // A portrait swap changes the whole frame of one object, so it offers what a background change
+    // offers - read through `CHARACTER_KINDS` - plus the crossfade, which is a distinct look here.
+    expression: EXPRESSION_WORDS,
 };
 
 /**
@@ -106,7 +135,7 @@ function inspectorLabelKey(context: StoryTransitionContext, word: StoryTransitio
     if (word === "none") {
         return "common.none";
     }
-    if (context === "scene" || context === "character") {
+    if (context === "scene" || context === "character" || context === "expression") {
         const kind = transitionKindFor(context, word);
         return kind ? `storyInspector.transition.${kind}` : null;
     }
@@ -127,11 +156,24 @@ function inspectorLabelKey(context: StoryTransitionContext, word: StoryTransitio
     return TRANSFORM_WORD_LABELS[word] ?? null;
 }
 
-/** The enum options a `t=` param offers in a given context - unified words, canonical-first. */
+/**
+ * The enum options a `t=` param offers in a given context - unified words, canonical-first.
+ *
+ * An alias that this context already offers as a word of its own is dropped: `dissolve` is `fade`'s
+ * alias everywhere and `expression`'s own word, and a spelling claimed twice in one option set has
+ * no single answer to what the author typed. The same rule `localizedEnums.ts` applies to a
+ * translated spelling - a label that already spells a canonical value is not registered - for the
+ * same reason, one step earlier in the same pipeline.
+ *
+ * Which contexts this actually bites in is not the point: it is what makes "one spelling, one word"
+ * a property of the table rather than something a reviewer has to spot in a dropdown.
+ */
 export function transitionOptions(context: StoryTransitionContext): readonly StoryCommandEnumOption[] {
+    const canonical = new Set<string>(SUPPORTED[context]);
     return SUPPORTED[context].map(word => {
         const labelKey = inspectorLabelKey(context, word);
-        return { value: word, aliases: WORD_ALIASES[word], ...(labelKey ? { labelKey } : {}) };
+        const aliases = WORD_ALIASES[word]?.filter(alias => !canonical.has(alias));
+        return { value: word, aliases, ...(labelKey ? { labelKey } : {}) };
     });
 }
 
@@ -161,6 +203,7 @@ export function mergedTransitionOptions(...contexts: readonly StoryTransitionCon
 
 const SCENE_KINDS: Partial<Record<StoryTransitionWord, StoryTransitionRef["kind"]>> = {
     fade: "dissolve",
+    dissolve: "dissolve",
     slide: "slide",
     circle: "maskCircle",
     wipe: "softWipe",
@@ -181,6 +224,15 @@ const SCENE_KINDS: Partial<Record<StoryTransitionWord, StoryTransitionRef["kind"
 const CHARACTER_KINDS: Partial<Record<StoryTransitionWord, StoryTransitionRef["kind"]>> = {
     ...SCENE_KINDS,
     // The portrait appears over an unchanged scene - there is no second frame to crossfade with.
+    //
+    // `expression` reads this table too, and for a reason worth stating: a `/face` DOES have two
+    // frames, so `dissolve` would have been the obvious default and is the wrong one. The engine's
+    // `Dissolve` is `asPrev(t => opacity: 1 - t)` beside `asTarget(t => opacity: t)` - both frames
+    // are half transparent for the length of it, and what shows through the middle is the
+    // background. `FadeIn` is `asPrev(() => ({}))`: the outgoing frame is not touched at all and
+    // stays fully opaque while the new one fades in over it, which is what changing a face looks
+    // like. So `fade` on a `/face` is a fade-in, and an author who wants the crossfade asks for it
+    // by name with `t=dissolve`.
     fade: "fadeIn",
 };
 
@@ -262,7 +314,7 @@ const TRANSFORM_WORD_LABELS: Partial<Record<StoryTransitionWord, string>> = {
 const VOCABULARY_KEYS = ["position", "zoom", "scaleX", "scaleY", "rotation", "opacity", "filter"] as const;
 
 /** The `StoryTransitionRef.kind` a unified word means in a whole-screen or character context. */
-export function transitionKindFor(context: "scene" | "character", word: string): StoryTransitionRef["kind"] | undefined {
+export function transitionKindFor(context: "scene" | "character" | "expression", word: string): StoryTransitionRef["kind"] | undefined {
     return (context === "scene" ? SCENE_KINDS : CHARACTER_KINDS)[word as StoryTransitionWord];
 }
 
@@ -350,7 +402,7 @@ function wordFor<T>(context: StoryTransitionContext, stored: T | undefined, of: 
 }
 
 /** The unified word behind a stored `StoryTransitionRef.kind`, or `null` when no word names it. */
-export function transitionWordFor(context: "scene" | "character", kind: StoryTransitionRef["kind"]): StoryTransitionWord | null {
+export function transitionWordFor(context: "scene" | "character" | "expression", kind: StoryTransitionRef["kind"]): StoryTransitionWord | null {
     return wordFor(context, kind, word => transitionKindFor(context, word));
 }
 

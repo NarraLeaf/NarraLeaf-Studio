@@ -12,7 +12,7 @@ import { useEditorEnteredState } from "@/lib/ui-editor/hooks/useEnteredElementSt
 import { removeVariant, renameVariant, setDefaultVariantId } from "./appearancePatch";
 import { addElementState } from "./elementStates";
 import { isUsableAppearanceModel } from "./initialAppearanceModel";
-import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { findStateHost, ownDeclaredStates } from "./stateHost";
 
 const ICON_BUTTON_CLASS =
     "grid h-9 w-9 shrink-0 cursor-default place-items-center rounded-md border border-edge bg-fill-subtle text-fg-muted hover:bg-fill disabled:opacity-40";
@@ -40,30 +40,41 @@ export function ElementStateBar(props: CustomFieldProps<UIInspectorData>) {
     const element = liveElement(props.data);
     const stateService = UIEditorStateService.getInstance();
     const surfaceId = props.data.surfaceId ?? "";
+
+    /** One picker, whatever element the states belong to. */
+    const statePicker = (ownerId: string, states: { id: string | null; name: string }[]) => (
+        <div className="space-y-2 min-w-0">
+            <FieldLabel>{t("widgetAppearance.state.label")}</FieldLabel>
+            <Select
+                value={(entered?.elementId === ownerId ? entered.variantId : null) ?? ""}
+                options={states.map(state => ({ value: state.id ?? "", label: state.name }))}
+                fullWidth
+                inspectOnly
+                onChange={value => {
+                    const next = String(value);
+                    stateService.setEnteredState({
+                        surfaceId,
+                        elementId: ownerId,
+                        variantId: next === "" ? null : next,
+                    });
+                }}
+            />
+        </div>
+    );
+
     // A widget's own states outrank an appearance model's variants: they are what the widget does,
     // and the variants are only how its parts look while it does it.
-    const declared = widgetModuleRegistry.get(element.type)?.listEditorStates?.(element) ?? null;
+    const declared = ownDeclaredStates(element);
     if (declared && declared.length > 1) {
-        const current = entered?.elementId === element.id ? entered.variantId : null;
-        return (
-            <div className="space-y-2 min-w-0">
-                <FieldLabel>{t("widgetAppearance.state.label")}</FieldLabel>
-                <Select
-                    value={current ?? ""}
-                    options={declared.map(state => ({ value: state.id ?? "", label: state.name }))}
-                    fullWidth
-                    inspectOnly
-                    onChange={value => {
-                        const next = String(value);
-                        stateService.setEnteredState({
-                            surfaceId,
-                            elementId: element.id,
-                            variantId: next === "" ? null : next,
-                        });
-                    }}
-                />
-            </div>
-        );
+        return statePicker(element.id, declared);
+    }
+    // A part is shown in its host's states, not in states of its own. Listing the variants here would
+    // offer the author a second, private set of states to keep in step with the widget's - which is
+    // the matrix this model exists to avoid - and picking one would leave the rest of the widget
+    // behind, because only the host knows how to draw itself in it.
+    const host = findStateHost(props.data.documentService.getDocument(), element.id);
+    if (host && host.states.length > 1) {
+        return statePicker(host.element.id, host.states);
     }
     const model = appearanceOf(element);
     const enteredHere = entered?.elementId === element.id;
