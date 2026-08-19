@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
-import { AssetsPanelContext, type AssetsIconViewToolbarCenter } from "../AssetsPanelContext";
+import { AssetsPanelContext, type AssetsIconViewToolbarCenter } from "../AssetsPanelContext";
 import { createEmptyAssetCategoryRecord } from "../state/assetCategoryRecord";
 import type { ResolvedAssetSet } from "../state/useAssetSets";
 import { AssetsIconView } from "./AssetsIconView";
@@ -56,6 +56,7 @@ function Harness({ onRender }: { onRender?: () => void }) {
         expandedGroups: new Set<string>(),
         setExpandedGroups: () => undefined,
         handleItemSelect: () => undefined,
+        publishRowOrder: () => undefined,
         handleAssetClick: () => undefined,
         handleGroupFocus: () => undefined,
         showContextMenu: () => undefined,
