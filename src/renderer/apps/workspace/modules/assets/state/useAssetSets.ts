@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     resolveAssetSetContents,
+    topLevelAssetSets,
     validateAssetSet,
     type AssetSet,
     type AssetSetCandidate,
@@ -76,8 +77,8 @@ export function useAssetSets({
     );
 
     const resolved = useMemo<ResolvedAssetSet[]>(() => sets.map(set => {
-        const problems = validateAssetSet(set);
-        const contents = resolveAssetSetContents(set, candidates);
+        const problems = validateAssetSet(set, sets);
+        const contents = resolveAssetSetContents(set, candidates, sets);
         return {
             set,
             category: categoryOfAssetType(set.type as AssetType),
@@ -87,7 +88,12 @@ export function useAssetSets({
         };
     }), [sets, candidates]);
 
-    /** Filed under the sidebar section each one's type belongs to, so a section can draw its own. */
+    /**
+     * Filed under the sidebar section each one's type belongs to, so a section can draw its own.
+     *
+     * Every set, nested ones included: a section draws its top level from {@link topLevel} and looks
+     * the rest up here as it opens them.
+     */
     const byCategory = useMemo(() => {
         const record = createEmptyAssetCategoryRecord<ResolvedAssetSet>();
         for (const entry of resolved) {
@@ -96,10 +102,22 @@ export function useAssetSets({
         return record;
     }, [resolved]);
 
+    /** The sets a section lists at its root: the ones that hang under nothing. */
+    const topLevelByCategory = useMemo(() => {
+        const record = createEmptyAssetCategoryRecord<ResolvedAssetSet>();
+        const roots = new Set(topLevelAssetSets(sets).map(set => set.id));
+        for (const entry of resolved) {
+            if (roots.has(entry.set.id)) {
+                record[entry.category].push(entry);
+            }
+        }
+        return record;
+    }, [resolved, sets]);
+
     const findSet = useCallback(
         (id: string | null | undefined) => resolved.find(entry => entry.set.id === id) ?? null,
         [resolved],
     );
 
-    return { service, sets, resolved, byCategory, findSet };
+    return { service, sets, resolved, byCategory, topLevelByCategory, findSet };
 }

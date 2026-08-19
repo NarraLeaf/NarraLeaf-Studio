@@ -29,6 +29,8 @@ interface AssetsPanelContextType {
      * the library is how the row they were about to fix stops being findable.
      */
     assetSets: Record<AssetCategory, ResolvedAssetSet[]>;
+    /** Only the sets that hang under nothing: what a section lists at its root. */
+    rootAssetSets: Record<AssetCategory, ResolvedAssetSet[]>;
     filteredAssets: Record<AssetCategory, Asset[]>;
     filteredGroups: Record<AssetCategory, AssetGroup[]>;
     /**

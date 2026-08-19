@@ -1,26 +1,22 @@
 /**
  * Making an asset set out of the files an author selected.
  *
- * The set model names its members by tag, which used to mean an author declared a set in three
- * places: a tagging pass over the file names, a second selection to make the set, and then the
- * inspector to say what each axis ranges over and when it resolves. Two of those steps asked them to
- * type the same words twice, and a typo in the second one showed up as a variant with no file -
- * indistinguishable from a picture nobody has drawn yet.
+ * Two questions, and both are answered from lists the project already has: what this set varies by,
+ * and which file is which. The author never types a tag category, a value, or a resolution time -
+ * every one of those was a second copy of something the project already knew, and getting one of
+ * them wrong showed up much later as a variant with no file.
  *
- * This is those three steps as one. The author reads their own file names back: each position gets
- * a name, and the variant list underneath shows what the project will hold the moment they confirm.
- * The tags are written on the way out, so they remain what membership is made of - nothing about the
- * model changed, only where the author stands while declaring it.
+ * ## Sub-sets rather than a grid
+ *
+ * A set varies by one thing. Art that varies by edition *and* by language is a set of editions with
+ * a set of languages under one of them, made by selecting those files and opening this dialog again
+ * from that value. Nothing here combines two kinds of variation on its own.
  *
  * ## The preview is the same computation as the write
  *
  * Both come from `@shared/types/assetSetPlan`. A preview computed separately from the write is a
  * dialog that can show a set the project does not get, and this dialog exists precisely so that the
  * author sees the holes before committing rather than after.
- *
- * The library is measured whole, not just the selection: a file elsewhere in the project that
- * already carries these tags makes a coordinate ambiguous, and that is worth knowing here rather
- * than as a project check later.
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -30,33 +26,21 @@ import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal"
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../../context";
-import { AssetThumbnail } from "./AssetThumbnail";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
-import { MagicTagManager } from "@/lib/workspace/services/core/MagicTagManager";
+import { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
+import { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import type { AssetType } from "@/lib/workspace/services/assets/assetTypes";
-import {
-    ASSET_AXIS_RESIDENCIES,
-    assetSetCoordinateLabel,
-    resolveAssetSetContents,
-    type AssetSet,
-    type AssetSetCandidate,
-} from "@shared/types/assetSet";
+import { ASSET_SET_AXIS_KINDS, type AssetSet, type AssetSetAxisKind } from "@shared/types/assetSet";
 import {
     planAssetSet,
-    segmentCount,
-    segmentValues,
-    splitAssetName,
-    suggestSegmentRoles,
+    suggestAssetSetMembers,
     type AssetSetPlanFile,
-    type AssetSetSegmentRole,
+    type AssetSetPlanValue,
 } from "@shared/types/assetSetPlan";
-
-/** Delimiters offered when the names carry none, so the author is never left without the control. */
-const FALLBACK_DELIMITERS = ["-", "_", ".", " "];
 
 export interface AssetSetWizardProps {
     /**
@@ -66,125 +50,105 @@ export interface AssetSetWizardProps {
      * than from whatever the last one left behind.
      */
     assets: Asset[];
+    /** The folder the author was in. The set's row is drawn there rather than at the section's top. */
+    groupId?: string;
+    /** The set and value this one hangs under, when the author is making a sub-set. */
+    parent?: { set: AssetSet; value: string };
     onClose: () => void;
 }
 
-export function AssetSetWizard({ assets, onClose }: AssetSetWizardProps) {
+export function AssetSetWizard({ assets, groupId, parent, onClose }: AssetSetWizardProps) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
     const [name, setName] = useState("");
     const [busy, setBusy] = useState(false);
-
     const type = assets[0]?.type;
 
-    /** The languages this project declares, which is what makes a position a locale axis. */
-    const localeCodes = useMemo(() => {
-        if (!context) return [];
+    /**
+     * The two lists a set may vary by, read off the project.
+     *
+     * The editions include the release edition, which is a real answer: art that differs only in a
+     * demo still needs to say which file the full game gets.
+     */
+    const valuesByKind = useMemo<Record<AssetSetAxisKind, AssetSetPlanValue[]>>(() => {
+        const empty = { locale: [] as AssetSetPlanValue[], release: [] as AssetSetPlanValue[] };
+        if (!context) {
+            return empty;
+        }
         try {
-            return context.services.get<LocalizationService>(Services.Localization)
-                .getConfiguration().locales.map(locale => locale.code);
+            const locales = context.services.get<LocalizationService>(Services.Localization)
+                .getConfiguration().locales.map(locale => ({ value: locale.code, label: locale.displayName }));
+            const editions = context.services.get<AppTagService>(Services.AppTags)
+                .listTags().map(tag => ({ value: tag.id, label: tag.name }));
+            return { locale: locales, release: editions };
         } catch {
-            return [];
+            return empty;
         }
     }, [context]);
 
-    /**
-     * The delimiters the names actually use, most frequent first.
-     *
-     * Read off the selection rather than offered as a fixed list: an author who names files
-     * `alice_happy_en` should not have to find the underscore among punctuation their project never
-     * uses. The fallback list is there for names with no delimiter at all, where the whole name is
-     * one position and the control would otherwise be empty.
-     */
-    const delimiterOptions = useMemo(() => {
-        if (assets.length === 0) {
-            return FALLBACK_DELIMITERS;
-        }
-        try {
-            const detected = MagicTagManager.analyzeFilenames(assets.map(asset => asset.name))
-                .delimiters?.map(entry => entry.char) ?? [];
-            return detected.length > 0 ? detected : FALLBACK_DELIMITERS;
-        } catch {
-            return FALLBACK_DELIMITERS;
-        }
-    }, [assets]);
-
-    const [delimiter, setDelimiter] = useState(() => delimiterOptions[0] ?? "");
+    // Opens on whichever kind the project can actually offer more than one of. A project with one
+    // language and two editions is making an edition set; the reverse is the ordinary case.
+    const [kind, setKind] = useState<AssetSetAxisKind>(
+        () => (valuesByKind.locale.length > 1 ? "locale" : "release"),
+    );
+    const values = valuesByKind[kind];
 
     const files = useMemo<AssetSetPlanFile[]>(
-        () => assets.map(asset => ({
-            id: asset.id,
-            segments: splitAssetName(asset.name, delimiter ? [delimiter] : []),
-            tags: asset.tags,
-        })),
-        [assets, delimiter],
+        () => assets.map(asset => ({ id: asset.id, name: asset.name, tags: asset.tags })),
+        [assets],
     );
 
-    const positions = segmentCount(files);
-
     /**
-     * What the author has said, over what the names suggest.
+     * Which file answers which value, guessed from the names and then owned by the author.
      *
-     * Held as an override rather than as the state itself: a different delimiter is a different set
-     * of positions, so anything typed against the old ones was about positions that no longer
-     * exist. Dropping the override reads the names again, which is the only honest thing to show.
+     * Held as an override so that changing the kind reads the names again: an assignment made
+     * against languages says nothing about editions.
      */
-    const [roleOverride, setRoleOverride] = useState<AssetSetSegmentRole[] | null>(null);
-    const suggested = useMemo(() => suggestSegmentRoles(files, localeCodes), [files, localeCodes]);
-    const roles = roleOverride ?? suggested;
+    const [override, setOverride] = useState<Record<string, string> | null>(null);
+    const suggested = useMemo(() => suggestAssetSetMembers(files, values), [files, values]);
+    const members = useMemo<ReadonlyMap<string, string>>(
+        () => (override ? new Map(Object.entries(override).filter(([, id]) => id)) : suggested),
+        [override, suggested],
+    );
+
+    const setId = useMemo(() => {
+        try {
+            return context?.services.get<UuidService>(Services.Uuid).generate() ?? "";
+        } catch {
+            return "";
+        }
+    }, [context]);
 
     const plan = useMemo(
-        () => planAssetSet(files, roles, type ?? ""),
-        [files, roles, type],
+        () => planAssetSet({ setId, kind, values, files, members, ...(parent ? { parent } : {}) }),
+        [files, kind, members, parent, setId, values],
     );
 
-    // The name the set gets if the author does not type one: what these files have in common, which
-    // is what the set is. The first file's name is one corner of the set, not the set.
-    const suggestedName = useMemo(
-        () => plan.filter.map(tag => tag.slice(tag.indexOf(":") + 1)).join(" "),
-        [plan.filter],
-    );
+    const filled = plan.members.size;
+    const assetsById = useMemo(() => new Map(assets.map(asset => [asset.id, asset])), [assets]);
 
-    /**
-     * The set as it will exist, measured against the library as it will be.
-     *
-     * The planned tags are laid over the selection's rows; every other row is read as it stands.
-     */
-    const preview = useMemo(() => {
-        if (!type) {
-            return null;
-        }
-        const candidates: AssetSetCandidate[] = [];
-        const assetsService = context?.services.get<AssetsService>(Services.Assets) ?? null;
-        const byId = new Map<string, Asset>();
-        if (assetsService) {
-            for (const bucket of Object.values(assetsService.getAssets())) {
-                for (const asset of Object.values(bucket ?? {})) {
-                    candidates.push({
-                        id: asset.id,
-                        type: asset.type,
-                        tags: plan.tagsByFile.get(asset.id) ?? asset.tags,
-                    });
-                    byId.set(asset.id, asset);
-                }
-            }
-        }
-        const set: AssetSet = { id: "", name: "", type, filter: plan.filter, axes: plan.axes };
-        return { contents: resolveAssetSetContents(set, candidates), byId, set };
-    }, [context, plan, type]);
-
-    const patchRole = useCallback((index: number, patch: Partial<AssetSetSegmentRole>) => {
-        setRoleOverride(current => (current ?? suggested)
-            .map((role, position) => (position === index ? { ...role, ...patch } : role)));
-    }, [suggested]);
-
-    const chooseDelimiter = useCallback((next: string) => {
-        setDelimiter(next);
-        setRoleOverride(null);
+    const chooseKind = useCallback((next: AssetSetAxisKind) => {
+        setKind(next);
+        setOverride(null);
     }, []);
 
+    const chooseMember = useCallback((value: string, assetId: string) => {
+        setOverride(current => {
+            const next: Record<string, string> = { ...(current ?? Object.fromEntries(suggested)) };
+            // One file answers one value: leaving it in both places would make the set ambiguous at
+            // the value the author just moved it away from.
+            for (const [key, id] of Object.entries(next)) {
+                if (id === assetId && key !== value) {
+                    delete next[key];
+                }
+            }
+            next[value] = assetId;
+            return next;
+        });
+    }, [suggested]);
+
     const create = useCallback(async () => {
-        if (!context || !type || busy) {
+        if (!context || !type || busy || !setId) {
             return;
         }
         setBusy(true);
@@ -201,40 +165,38 @@ export function AssetSetWizard({ assets, onClose }: AssetSetWizardProps) {
                 }
             });
             setService.createSet({
-                name: name.trim() || suggestedName,
+                id: setId,
+                name: name.trim() || defaultName(assets),
                 type: type as AssetType,
                 filter: plan.filter,
-                axes: plan.axes,
+                axis: plan.axis,
+                ...(groupId ? { groupId } : {}),
             });
             onClose();
         } finally {
             setBusy(false);
         }
-    }, [assets, busy, context, name, onClose, plan, suggestedName, type]);
+    }, [assets, busy, context, name, onClose, plan, setId, type]);
 
     if (!type) {
         return null;
     }
 
-    const canCreate = plan.axes.length > 0 && !busy;
-
     return (
         <Modal
             isOpen
             onClose={onClose}
-            title={t("assets.sets.create.title")}
+            title={parent ? t("assets.sets.create.subTitle") : t("assets.sets.create.title")}
             helpTopic="assetSets"
             size="lg"
             closeOnOverlayClick={!busy}
             footer={
                 <div className="flex w-full items-center gap-2">
                     <span className="min-w-0 flex-1 truncate text-2xs text-fg-subtle">
-                        {preview && preview.contents.cells.length > 0
+                        {values.length > 0
                             ? t("assets.sets.variantsResolved", {
-                                resolved: String(preview.contents.cells.length
-                                    - preview.contents.missing.length
-                                    - preview.contents.ambiguous.length),
-                                total: String(preview.contents.cells.length),
+                                resolved: String(filled),
+                                total: String(values.length),
                             })
                             : ""}
                     </span>
@@ -249,9 +211,9 @@ export function AssetSetWizard({ assets, onClose }: AssetSetWizardProps) {
                     <button
                         type="button"
                         data-asset-set-wizard-create
-                        className={dialogFooterButtonClass({ variant: "primary", disabled: !canCreate })}
+                        className={dialogFooterButtonClass({ variant: "primary", disabled: busy || filled === 0 })}
                         onClick={() => { void create(); }}
-                        disabled={!canCreate}
+                        disabled={busy || filled === 0}
                     >
                         {t("common.create")}
                     </button>
@@ -265,104 +227,56 @@ export function AssetSetWizard({ assets, onClose }: AssetSetWizardProps) {
                         size="sm"
                         fullWidth
                         value={name}
-                        placeholder={suggestedName}
+                        placeholder={defaultName(assets)}
                         onChange={event => setName(event.target.value)}
                     />
                 </div>
 
                 <div className="grid gap-1">
-                    <FieldLabel as="div">{t("assets.sets.create.delimiter")}</FieldLabel>
+                    <FieldLabel as="div">{t("assets.sets.create.axis")}</FieldLabel>
                     <Select
                         size="sm"
-                        value={delimiter}
-                        options={delimiterOptions.map(char => ({
-                            value: char,
-                            label: char === " " ? t("assets.sets.create.delimiterSpace") : char,
+                        value={kind}
+                        options={ASSET_SET_AXIS_KINDS.map(entry => ({
+                            value: entry,
+                            label: t(`assets.sets.axisKind.${entry}`),
                         }))}
-                        onChange={value => chooseDelimiter(String(value))}
-                        ariaLabel={t("assets.sets.create.delimiter")}
+                        onChange={value => chooseKind(value as AssetSetAxisKind)}
+                        // The menu leaves the dialog: a select near the bottom of a modal opens into
+                        // the modal's own overflow otherwise, and its options are cut off.
+                        portalMenu
+                        ariaLabel={t("assets.sets.create.axis")}
                     />
-                </div>
-
-                <div className="space-y-2">
-                    <FieldLabel as="div">{t("assets.sets.create.segments")}</FieldLabel>
-                    {Array.from({ length: positions }, (_, index) => {
-                        const values = segmentValues(files, index);
-                        const varies = values.length > 1;
-                        const role = roles[index] ?? { category: "", residency: "build" as const };
-                        return (
-                            <div key={index} className="flex items-center gap-2" data-asset-set-position={index}>
-                                <span className="w-24 shrink-0 truncate text-2xs text-fg-subtle" data-tip={values.join(" · ")}>
-                                    {values.join(" · ")}
-                                </span>
-                                <Input
-                                    size="sm"
-                                    className="min-w-0 flex-1"
-                                    value={role.category}
-                                    placeholder={t("assets.sets.inspector.axisKey")}
-                                    onChange={event => patchRole(index, { category: event.target.value })}
-                                />
-                                <div className="w-36 shrink-0">
-                                    {varies && role.category.trim() ? (
-                                        <Select
-                                            size="sm"
-                                            fullWidth
-                                            value={role.residency}
-                                            options={ASSET_AXIS_RESIDENCIES.map(residency => ({
-                                                value: residency,
-                                                label: t(`assets.sets.inspector.residency.${residency}`),
-                                            }))}
-                                            onChange={value => patchRole(index, {
-                                                residency: value as AssetSetSegmentRole["residency"],
-                                            })}
-                                            ariaLabel={t("assets.sets.inspector.residency.label")}
-                                        />
-                                    ) : null}
-                                </div>
-                            </div>
-                        );
-                    })}
                 </div>
 
                 <div className="space-y-1">
                     <FieldLabel as="div">{t("assets.sets.inspector.variants")}</FieldLabel>
-                    {/* No axis named yet means one coordinate that matches everything, which would
-                        draw a nameless row reporting the whole library as ambiguous. The set does
-                        not promise anything until a position is named, so say that instead. */}
-                    {!preview || plan.axes.length === 0 || preview.contents.cells.length === 0 ? (
-                        <p className="text-2xs text-fg-subtle">{t("assets.sets.inspector.noVariants")}</p>
+                    {values.length === 0 ? (
+                        <p className="text-2xs text-fg-subtle">{t(`assets.sets.create.no.${kind}`)}</p>
                     ) : (
-                        <div className="max-h-48 space-y-1 overflow-y-auto">
-                            {preview.contents.cells.map(cell => {
-                                const missing = cell.assetIds.length === 0;
-                                const ambiguous = cell.assetIds.length > 1;
-                                const resolved = missing || ambiguous ? null : preview.byId.get(cell.assetIds[0]) ?? null;
+                        <div className="max-h-56 space-y-1 overflow-y-auto">
+                            {values.map(entry => {
+                                const chosen = members.get(entry.value);
                                 return (
                                     <div
-                                        key={cell.label}
-                                        className="flex items-center justify-between gap-2"
-                                        data-asset-set-preview-cell={cell.label}
+                                        key={entry.value}
+                                        className="flex items-center gap-2"
+                                        data-asset-set-value={entry.value}
                                     >
-                                        <FieldLabel as="span" className="mb-0 min-w-0 truncate">
-                                            {assetSetCoordinateLabel(preview.set, cell.coordinate)}
+                                        <FieldLabel as="span" className="mb-0 w-28 shrink-0 truncate">
+                                            {entry.label}
                                         </FieldLabel>
-                                        <span
-                                            className={cn(
-                                                "flex shrink-0 items-center gap-1.5 text-2xs",
-                                                missing || ambiguous ? "text-warning" : "text-fg-subtle",
-                                            )}
-                                        >
-                                            {resolved && (
-                                                <AssetThumbnail asset={resolved} className="h-5 w-6 shrink-0 rounded-sm" />
-                                            )}
-                                            <span className="min-w-0 truncate">
-                                                {missing
-                                                    ? t("assets.sets.inspector.variantMissing")
-                                                    : ambiguous
-                                                        ? t("assets.sets.inspector.variantAmbiguous", { count: String(cell.assetIds.length) })
-                                                        : resolved?.name ?? cell.assetIds[0]}
-                                            </span>
-                                        </span>
+                                        <Select
+                                            size="sm"
+                                            fullWidth
+                                            className={cn("min-w-0 flex-1", !chosen && "text-warning")}
+                                            value={chosen ?? ""}
+                                            placeholder={t("assets.sets.inspector.variantMissing")}
+                                            options={assets.map(asset => ({ value: asset.id, label: asset.name }))}
+                                            onChange={value => chooseMember(entry.value, String(value))}
+                                            portalMenu
+                                            ariaLabel={entry.label}
+                                        />
                                     </div>
                                 );
                             })}
@@ -372,6 +286,25 @@ export function AssetSetWizard({ assets, onClose }: AssetSetWizardProps) {
             </div>
         </Modal>
     );
+}
+
+/** What the set is called when the author does not say: the part of the names they have in common. */
+function defaultName(assets: readonly Asset[]): string {
+    const [first, ...rest] = assets.map(asset => asset.name);
+    if (!first) {
+        return "";
+    }
+    let shared = first;
+    for (const name of rest) {
+        let index = 0;
+        while (index < shared.length && index < name.length && shared[index] === name[index]) {
+            index += 1;
+        }
+        shared = shared.slice(0, index);
+    }
+    // Trimmed of the separator the common part ends on, so `title_en` and `title_zh` suggest
+    // `title` rather than `title_`.
+    return shared.replace(/[\s_\-.·・|]+$/u, "") || first;
 }
 
 function sameTags(left: readonly string[], right: readonly string[]): boolean {

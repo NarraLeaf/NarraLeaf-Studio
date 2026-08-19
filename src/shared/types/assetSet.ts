@@ -1,9 +1,10 @@
 /**
- * Asset sets - one asset library entry that stands for a family of files, indexed by axes.
+ * Asset sets - one asset library entry that stands for a family of files varying one way.
  *
  * An author who has `alice-happy-en.png`, `alice-happy-ja.png`, `alice-sad-en.png` and so on does
  * not want to name each of them at every reference site. An asset set is the entry they name
- * instead: it declares the axes those files vary along, and a reference carries only the set's id.
+ * instead: it declares the one axis those files vary along, and a reference carries only the set's
+ * id.
  *
  * # Resolution is a pure evaluation, and that is the line against layered sprites
  *
@@ -40,20 +41,36 @@
  *  - **`runtime`** - every value is in the package and the game picks between them while running.
  *    A locale axis is the example.
  *
- * # Why a build axis may not sit inside a runtime axis
+ * # One axis per set, and sub-sets for the rest
  *
- * Axes are ordered, outermost first, and the order is a nesting: the first axis chooses between
- * sub-families, and the axes after it index within whichever was chosen.
+ * A set has exactly one axis. Two kinds of variation - an edition and a language, say - are two
+ * sets, one hanging under a value of the other, and the author says so by making the second set.
+ * Nothing here combines two axes into a grid on its own.
+ *
+ * That is a decision about what a set *is*, not a limitation. A set the author reads as "Alice"
+ * answers one question about Alice; a grid answers several at once and belongs to nobody, so the
+ * holes in it are combinations no one ever meant to have. It also matches the two ways a set is
+ * used: a folder in the library, and one name at the reference site.
+ *
+ * # Sub-sets are read from the tags, like everything else
+ *
+ * A set hangs under a value of another when it declares that value's tag on top of everything the
+ * parent declares, and exactly one tag more. `{char:alice}` varying by `mood` is the parent of
+ * `{char:alice, mood:sad}` varying by `locale`. Making a sub-set is therefore making an ordinary
+ * set out of the files under one value - there is no parent field to keep in step, and moving a
+ * file between them is retagging it, which is the same thing membership already is.
+ *
+ * # Why a build axis may not sit inside a runtime axis
  *
  * "Runtime" is not a statement about one level. It says every value under this axis is in the
  * package, and that claim propagates down the whole subtree - the game may ask for any of them, so
  * all of them must be there. "Build" says the opposite about its own subtree: one value is in the
  * package and the rest must not be.
  *
- * A build axis nested inside a runtime axis is therefore a subtree required to be wholly present by
- * the axis above it and required to be partly absent by itself, and some variant has to be both in
- * the package and not in it. There is no build that satisfies both, so the editor refuses to
- * arrange the axes that way rather than letting the contradiction reach a build.
+ * A build axis under a runtime axis is therefore a subtree required to be wholly present by the set
+ * above it and required to be partly absent by itself, and some variant has to be both in the
+ * package and not in it. There is no build that satisfies both, so it is reported rather than left
+ * to fail at build time.
  *
  * The reverse nesting has no such problem: a build axis outside drops entire runtime subtrees, and
  * what remains is fully present, which is exactly what the runtime axis asks for.
@@ -79,8 +96,8 @@ export type AssetAxisResidency = "build" | "runtime";
 /**
  * How deeply an axis of each residency may sit, smaller being further out.
  *
- * A number rather than a pair of comparisons so the rule reads the same for a two-axis set and a
- * five-axis one: an axis may not be outside an axis with a smaller number.
+ * A number rather than a pair of comparisons so the rule reads the same however deep the sets are
+ * nested: a set's axis may not sit under a set whose axis has a larger number.
  */
 export const ASSET_AXIS_RESIDENCY_ORDER: Readonly<Record<AssetAxisResidency, number>> = Object.freeze({
     build: 0,
@@ -93,8 +110,50 @@ export function isAssetAxisResidency(value: unknown): value is AssetAxisResidenc
     return value === "build" || value === "runtime";
 }
 
+/**
+ * What a set varies by, chosen from what the project already declares.
+ *
+ * Two kinds, and no others until Studio adds one. An axis used to be any tag category the author
+ * typed, which made a set able to index by anything and made every set's values a second list to
+ * keep in step with the first. Both of these are lists the project already has - its languages, and
+ * its editions - so the values are read rather than declared, and a set cannot promise a variant
+ * that does not correspond to anything the project ships.
+ *
+ *  - `locale` - one file per language, resolved by the running game.
+ *  - `release` - one file per edition, resolved when the edition is built.
+ *
+ * The tag category each kind reads is fixed ({@link assetSetAxisKey}), so the tags on the files stay
+ * what membership is made of and nothing about resolution changes.
+ */
+export type AssetSetAxisKind = "locale" | "release";
+
+export const ASSET_SET_AXIS_KINDS: readonly AssetSetAxisKind[] = Object.freeze(["locale", "release"]);
+
+export function isAssetSetAxisKind(value: unknown): value is AssetSetAxisKind {
+    return value === "locale" || value === "release";
+}
+
+/** The tag category a kind reads. Fixed, so a file's tags say the same thing in every project. */
+export function assetSetAxisKey(kind: AssetSetAxisKind): string {
+    return kind;
+}
+
+/**
+ * When a kind resolves.
+ *
+ * Not stored and not editable: a language axis has to be resolved by the running game, because a
+ * player can change languages without rebuilding, and an edition axis has to be resolved when the
+ * edition is built, because that is what keeps another edition's bytes out of the package. Neither
+ * is a choice, and offering it as one was offering the author a way to be wrong.
+ */
+export function assetSetAxisResidency(kind: AssetSetAxisKind): AssetAxisResidency {
+    return kind === "locale" ? "runtime" : "build";
+}
+
 /** One axis a set's members vary along. */
 export interface AssetSetAxis {
+    /** Which of the two things this set varies by. */
+    kind: AssetSetAxisKind;
     /**
      * The tag category this axis reads, without the value - `locale`, not `locale:ja`.
      *
@@ -102,15 +161,27 @@ export interface AssetSetAxis {
      * already the name the tags on disk are written under, and a second identifier would be a
      * second thing to keep in step with them.
      */
+    /** The tag category, always {@link assetSetAxisKey} of the kind. Stored so readers need no map. */
     key: string;
     residency: AssetAxisResidency;
     /**
-     * The values this axis promises to cover, in author order.
+     * The values this axis promises to cover, in project order.
      *
-     * Declared, not derived from the library - see the module note. An axis with no values covers
-     * nothing and is reported rather than silently treated as "any".
+     * Languages, or edition ids. Still stored rather than read live, for the reason the module note
+     * gives: the promise is what makes a missing variant reportable. What changed is where the
+     * author gets them from - a list in the project, not a line they type.
      */
     values: string[];
+}
+
+/** The axis a kind describes, over the values the project currently declares. */
+export function makeAssetSetAxis(kind: AssetSetAxisKind, values: readonly string[]): AssetSetAxis {
+    return {
+        kind,
+        key: assetSetAxisKey(kind),
+        residency: assetSetAxisResidency(kind),
+        values: [...values],
+    };
 }
 
 /**
@@ -135,11 +206,23 @@ export interface AssetSet {
      * Tags every member carries, verbatim `category:value`.
      *
      * What keeps a set from meaning "every file in the library that happens to be tagged
-     * `mood:happy`". Empty is legal and means the axes alone say who belongs.
+     * `mood:happy`". Empty is legal and means the axis alone says who belongs.
+     *
+     * Also what says where a set hangs: a set carrying everything another set's members carry, plus
+     * one of that set's axis values, is a sub-set of it. See {@link childAssetSets}.
      */
     filter: string[];
-    /** Outermost first. The order is the nesting; see the module note on residency. */
-    axes: AssetSetAxis[];
+    /** The one thing this set's members vary by. See the module note. */
+    axis: AssetSetAxis;
+    /**
+     * The folder it is filed in, or absent for one at the top of its section.
+     *
+     * A set is a folder to whoever is browsing, so it is filed where it was made rather than at the
+     * top of the section: a project with twenty of them would otherwise open on twenty rows before
+     * the first folder. It is only where the row is drawn - a set holds no files, and its members
+     * stay in whatever folder they were imported into.
+     */
+    groupId?: string;
 }
 
 export interface ProjectAssetSetDocument {
@@ -222,27 +305,13 @@ export function collectAssetTagVocabulary(
 export type AssetSetCoordinate = Readonly<Record<string, string>>;
 
 /**
- * Every coordinate a set promises, with the outermost axis varying slowest.
+ * Every coordinate a set promises, in author order.
  *
- * That order is what the matrix in the inspector draws and what a report lists, so it is produced
- * here rather than at each reader - two readers deriving it separately would eventually disagree
- * about which axis is the row and which is the column.
- *
- * An axis with no values makes the product empty, which is correct: the set promises nothing until
- * that axis says what it ranges over. `validateAssetSet` is what tells the author so.
+ * One per axis value, because a set has one axis. An axis with no values promises nothing, which is
+ * correct and is what `validateAssetSet` tells the author about.
  */
 export function assetSetCoordinates(set: AssetSet): AssetSetCoordinate[] {
-    let coordinates: AssetSetCoordinate[] = [{}];
-    for (const axis of set.axes) {
-        const next: AssetSetCoordinate[] = [];
-        for (const prefix of coordinates) {
-            for (const value of axis.values) {
-                next.push({ ...prefix, [axis.key]: value });
-            }
-        }
-        coordinates = next;
-    }
-    return coordinates;
+    return set.axis.values.map(value => ({ [set.axis.key]: value }));
 }
 
 /**
@@ -252,9 +321,7 @@ export function assetSetCoordinates(set: AssetSet): AssetSetCoordinate[] {
  * because the author's way of fixing a hole is to go and write those tags on a file.
  */
 export function assetSetCoordinateLabel(set: AssetSet, coordinate: AssetSetCoordinate): string {
-    return set.axes
-        .map(axis => formatAssetTag(axis.key, coordinate[axis.key] ?? ""))
-        .join(" · ");
+    return formatAssetTag(set.axis.key, coordinate[set.axis.key] ?? "");
 }
 
 /* -------------------------------------------------------------------------- */
@@ -292,16 +359,79 @@ function hasAllTags(candidate: AssetSetCandidate, required: readonly string[]): 
     });
 }
 
-/** The tags a member at this coordinate must carry: the set's fixed ones plus one per axis. */
+/** The tags a member at this coordinate must carry: the set's fixed ones plus its axis value. */
 export function assetSetCoordinateTags(set: AssetSet, coordinate: AssetSetCoordinate): string[] {
-    const tags = [...set.filter];
-    for (const axis of set.axes) {
-        const value = coordinate[axis.key];
-        if (value !== undefined) {
-            tags.push(formatAssetTag(axis.key, value));
-        }
+    const value = coordinate[set.axis.key];
+    return value === undefined ? [...set.filter] : [...set.filter, formatAssetTag(set.axis.key, value)];
+}
+
+/* -------------------------------------------------------------------------- */
+/* Nesting                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/** The `category:value` tags a set declares, normalised, for comparing one set's filter to another's. */
+function filterTags(set: AssetSet): Set<string> {
+    const tags = new Set<string>();
+    for (const tag of set.filter) {
+        const pair = parseAssetTag(tag);
+        tags.add(pair ? formatAssetTag(pair.category, pair.value) : tag.trim());
     }
     return tags;
+}
+
+/**
+ * The sets hanging under one value of this one.
+ *
+ * A sub-set declares everything its parent declares plus that one value, and **exactly one tag
+ * more**. The count is what makes "under" mean the level immediately below: a set declaring both
+ * `mood:sad` and `locale:ja` describes something inside the `locale` set, and listing it under
+ * `mood:sad` as well would draw the same family twice at two depths.
+ */
+export function childAssetSets(
+    parent: AssetSet,
+    value: string,
+    sets: readonly AssetSet[],
+): AssetSet[] {
+    const required = filterTags(parent);
+    required.add(formatAssetTag(parent.axis.key, value));
+    return sets.filter(candidate => {
+        if (candidate.id === parent.id || candidate.type !== parent.type) {
+            return false;
+        }
+        const own = filterTags(candidate);
+        if (own.size !== required.size) {
+            return false;
+        }
+        for (const tag of required) {
+            if (!own.has(tag)) {
+                return false;
+            }
+        }
+        return true;
+    });
+}
+
+/** The set this one hangs under, and the value it hangs at, or null when it stands on its own. */
+export function assetSetParent(
+    set: AssetSet,
+    sets: readonly AssetSet[],
+): { set: AssetSet; value: string } | null {
+    for (const candidate of sets) {
+        if (candidate.id === set.id) {
+            continue;
+        }
+        for (const value of candidate.axis.values) {
+            if (childAssetSets(candidate, value, [set]).length > 0) {
+                return { set: candidate, value };
+            }
+        }
+    }
+    return null;
+}
+
+/** The sets a library lists at its top level: the ones that hang under nothing. */
+export function topLevelAssetSets(sets: readonly AssetSet[]): AssetSet[] {
+    return sets.filter(set => assetSetParent(set, sets) === null);
 }
 
 /**
@@ -342,8 +472,17 @@ export function resolveAssetSetMember(
 export interface AssetSetCell {
     coordinate: AssetSetCoordinate;
     label: string;
+    /** The axis value this cell stands for. */
+    value: string;
     /** Every match. One is resolved; none is a hole; more than one is ambiguous. */
     assetIds: string[];
+    /**
+     * Sets hanging under this value, if any.
+     *
+     * A value answered by a sub-set is not a hole: what it resolves to is decided one level down.
+     * More than one is a fault, in the same way two files are.
+     */
+    childSetIds: string[];
 }
 
 export interface AssetSetContents {
@@ -364,65 +503,37 @@ export interface AssetSetContents {
 export function resolveAssetSetContents(
     set: AssetSet,
     candidates: readonly AssetSetCandidate[],
+    sets: readonly AssetSet[] = [],
 ): AssetSetContents {
-    const cells: AssetSetCell[] = assetSetCoordinates(set).map(coordinate => ({
-        coordinate,
-        label: assetSetCoordinateLabel(set, coordinate),
-        assetIds: matchAssetSetCoordinate(set, coordinate, candidates),
-    }));
+    const cells: AssetSetCell[] = assetSetCoordinates(set).map(coordinate => {
+        const value = coordinate[set.axis.key] ?? "";
+        return {
+            coordinate,
+            label: assetSetCoordinateLabel(set, coordinate),
+            value,
+            assetIds: matchAssetSetCoordinate(set, coordinate, candidates),
+            childSetIds: childAssetSets(set, value, sets).map(child => child.id),
+        };
+    });
     return {
         cells,
-        missing: cells.filter(cell => cell.assetIds.length === 0),
-        ambiguous: cells.filter(cell => cell.assetIds.length > 1),
+        // A sub-set answers its value, and answers it alone. The files it holds carry this set's
+        // coordinate too - that is what makes them its members - so counting them here as well would
+        // report every nested set as ambiguous with its own contents.
+        missing: cells.filter(cell => cell.childSetIds.length === 0 && cell.assetIds.length === 0),
+        ambiguous: cells.filter(cell => (cell.childSetIds.length === 0 && cell.assetIds.length > 1)
+            || cell.childSetIds.length > 1),
     };
 }
 
 /** Whether a set resolves everything it promises. What the panel tints a row on. */
-export function isAssetSetComplete(set: AssetSet, candidates: readonly AssetSetCandidate[]): boolean {
-    const contents = resolveAssetSetContents(set, candidates);
-    return contents.missing.length === 0 && contents.ambiguous.length === 0;
-}
-
-/**
- * The set a group of files already describes, read off their tags.
- *
- * This is the whole of what makes a set "smart", and it is a reading rather than a guess: a tag
- * category every selected file agrees on is a **fixed** part of what they are, and one they disagree
- * on is an **axis** they vary along. `MagicTagManager` derives those tags from file names, so an
- * author who has named their files consistently has already declared the axes and only has to say
- * which of them survive the build.
- *
- * Axes come out in the order their categories were first seen, which for magic tags is the order of
- * the segments in the file name - the order the author wrote. Every axis starts as `build`: that is
- * the residency which keeps bytes out of a package, so a set nobody has finished declaring errs
- * towards shipping too little rather than too much.
- *
- * Values are the ones present, which is right at this moment and only at this moment: the declared
- * values are a promise, and the promise a set starts with is the files it was made from. Extending
- * an axis to a locale nobody has imported yet is an edit in the inspector, and the hole it opens is
- * the point of making the edit.
- */
-export function deriveAssetSetDraft(
+export function isAssetSetComplete(
+    set: AssetSet,
     candidates: readonly AssetSetCandidate[],
-): { filter: string[]; axes: AssetSetAxis[] } {
-    const vocabulary = collectAssetTagVocabulary(candidates);
-    const filter: string[] = [];
-    const axes: AssetSetAxis[] = [];
-    for (const [category, values] of vocabulary) {
-        // A category not every file carries is neither: it does not hold for the whole family, and
-        // as an axis it would promise combinations the untagged files can never answer.
-        const carriedByAll = candidates.every(candidate =>
-            candidate.tags.some(tag => parseAssetTag(tag)?.category === category));
-        if (!carriedByAll) {
-            continue;
-        }
-        if (values.length === 1) {
-            filter.push(formatAssetTag(category, values[0]));
-        } else {
-            axes.push({ key: category, residency: "build", values: [...values] });
-        }
-    }
-    return { filter, axes };
+    sets: readonly AssetSet[] = [],
+): boolean {
+    const contents = resolveAssetSetContents(set, candidates, sets);
+    return contents.missing.length === 0 && contents.ambiguous.length === 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -437,81 +548,46 @@ export function deriveAssetSetDraft(
  * these mean the set does not describe anything coherent and no import can fix it.
  */
 export type AssetSetProblem =
+    /** The set names no tag category to vary by, so it describes one file at most. */
     | { kind: "noAxes" }
-    | { kind: "duplicateAxis"; axisKey: string }
-    | { kind: "emptyAxisKey"; index: number }
     | { kind: "emptyAxisValues"; axisKey: string }
     | { kind: "duplicateAxisValue"; axisKey: string; value: string }
-    /** A build axis sits inside a runtime one. See the module note. */
+    /** A set resolved when built hangs under one resolved while running. See the module note. */
     | { kind: "residencyInversion"; axisKey: string; outerAxisKey: string };
 
-export function validateAssetSet(set: AssetSet): AssetSetProblem[] {
+export function validateAssetSet(set: AssetSet, sets: readonly AssetSet[] = []): AssetSetProblem[] {
     const problems: AssetSetProblem[] = [];
-    if (set.axes.length === 0) {
+    const key = set.axis.key.trim();
+    if (!key) {
         problems.push({ kind: "noAxes" });
     }
-
-    const seenKeys = new Set<string>();
-    for (const [index, axis] of set.axes.entries()) {
-        const key = axis.key.trim();
-        if (!key) {
-            problems.push({ kind: "emptyAxisKey", index });
-        } else if (seenKeys.has(key)) {
-            problems.push({ kind: "duplicateAxis", axisKey: key });
-        } else {
-            seenKeys.add(key);
+    if (set.axis.values.length === 0) {
+        problems.push({ kind: "emptyAxisValues", axisKey: key });
+    }
+    const seenValues = new Set<string>();
+    for (const value of set.axis.values) {
+        const trimmed = value.trim();
+        if (seenValues.has(trimmed)) {
+            problems.push({ kind: "duplicateAxisValue", axisKey: key, value: trimmed });
         }
-
-        if (axis.values.length === 0) {
-            problems.push({ kind: "emptyAxisValues", axisKey: key });
-        }
-        const seenValues = new Set<string>();
-        for (const value of axis.values) {
-            const trimmed = value.trim();
-            if (seenValues.has(trimmed)) {
-                problems.push({ kind: "duplicateAxisValue", axisKey: key, value: trimmed });
-            }
-            seenValues.add(trimmed);
-        }
+        seenValues.add(trimmed);
     }
 
-    problems.push(...residencyInversions(set.axes));
-    return problems;
-}
-
-/**
- * Every axis that sits further in than an axis it may not sit inside.
- *
- * Reported against the **outermost** offending axis rather than the nearest one, so an author who
- * moved one runtime axis to the top is told about that axis once instead of about every build axis
- * below it separately.
- */
-function residencyInversions(axes: readonly AssetSetAxis[]): AssetSetProblem[] {
-    const problems: AssetSetProblem[] = [];
-    let outermostRuntime: AssetSetAxis | null = null;
-    for (const axis of axes) {
-        if (outermostRuntime
-            && ASSET_AXIS_RESIDENCY_ORDER[axis.residency] < ASSET_AXIS_RESIDENCY_ORDER[outermostRuntime.residency]) {
-            problems.push({
-                kind: "residencyInversion",
-                axisKey: axis.key,
-                outerAxisKey: outermostRuntime.key,
-            });
-            continue;
-        }
-        if (axis.residency === "runtime" && !outermostRuntime) {
-            outermostRuntime = axis;
-        }
+    // Reported on the inner set, which is the one whose position can be changed: the outer set is
+    // often shared by several sub-sets and moving it would answer for all of them.
+    const parent = assetSetParent(set, sets);
+    if (parent && !isLegalNesting(parent.set.axis, set.axis)) {
+        problems.push({ kind: "residencyInversion", axisKey: key, outerAxisKey: parent.set.axis.key });
     }
     return problems;
 }
 
 /**
- * Whether an axis list would be a legal nesting - what the editor asks before it accepts a move or
- * a residency change, so the contradiction never reaches the document.
+ * Whether one set may hang under another - what the editor asks before it accepts a residency
+ * change, so the contradiction is reported rather than left to fail at build time.
  */
-export function isLegalAxisOrder(axes: readonly AssetSetAxis[]): boolean {
-    return residencyInversions(axes).length === 0;
+export function isLegalNesting(outer: AssetSetAxis, inner: AssetSetAxis): boolean {
+    return ASSET_AXIS_RESIDENCY_ORDER[inner.residency] >= ASSET_AXIS_RESIDENCY_ORDER[outer.residency];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -544,17 +620,19 @@ function normalizeAxis(raw: unknown): AssetSetAxis | null {
     }
     const record = raw as Record<string, unknown>;
     const key = typeof record.key === "string" ? record.key.trim() : "";
-    if (!key) {
+    // A record written before the kinds existed says only a tag category, and only two categories
+    // still mean anything. A set indexed by `mood` is not read as an edition axis under another
+    // name: its members carry `mood:` tags, so it would resolve to nothing while looking declared.
+    // Refusing it drops the declaration and leaves the files alone, which the author can see.
+    const kind = isAssetSetAxisKind(record.kind)
+        ? record.kind
+        : isAssetSetAxisKind(key) ? key : null;
+    if (!kind) {
         return null;
     }
-    return {
-        key,
-        // An unreadable residency reads as `build`, the conservative answer: a variant wrongly kept
-        // out of a package is a missing file, and a variant wrongly shipped is the failure this
-        // model exists to prevent.
-        residency: isAssetAxisResidency(record.residency) ? record.residency : "build",
-        values: normalizeStringList(record.values),
-    };
+    // Key and residency are derived from the kind rather than read, so a hand-edited file cannot
+    // produce a set that indexes one tag and claims another, or one that ships when it should not.
+    return { ...makeAssetSetAxis(kind, normalizeStringList(record.values)) };
 }
 
 export function normalizeAssetSet(raw: unknown): AssetSet | null {
@@ -567,27 +645,68 @@ export function normalizeAssetSet(raw: unknown): AssetSet | null {
     if (!id || !type) {
         return null;
     }
-    const axes: AssetSetAxis[] = [];
-    const seenKeys = new Set<string>();
-    if (Array.isArray(record.axes)) {
-        for (const entry of record.axes) {
-            const axis = normalizeAxis(entry);
-            // A repeated key is dropped rather than kept as a second axis: two axes over one tag
-            // category index the same tag twice, and every coordinate where they disagree matches
-            // nothing at all. Keeping the first is the reading that preserves the outer nesting.
-            if (axis && !seenKeys.has(axis.key)) {
-                seenKeys.add(axis.key);
-                axes.push(axis);
-            }
-        }
+    // `axes` is the shape sets were stored in while a set could hold several. It is read here so a
+    // project written by that build still opens; `splitLegacyAxes` is what turns the rest of the
+    // list into the sub-sets they are now.
+    const legacy = Array.isArray(record.axes) ? record.axes : [];
+    // No axis it can still express means no set: the record described something the model has no
+    // way to resolve, and keeping it would put a row in the library that answers nothing.
+    const axis = normalizeAxis(record.axis) ?? normalizeAxis(legacy[0]);
+    if (!axis) {
+        return null;
     }
+    const groupId = typeof record.groupId === "string" ? record.groupId.trim() : "";
     return {
         id,
         name: typeof record.name === "string" ? record.name.trim() : "",
         type,
         filter: normalizeStringList(record.filter),
-        axes,
+        axis,
+        // Omitted rather than stored empty, so "at the top of the section" is one state and not two.
+        ...(groupId ? { groupId } : {}),
     };
+}
+
+/**
+ * The sub-sets an old multi-axis record stands for, one per value of every axis but the first.
+ *
+ * A record saying "alice, by mood, then by locale" meant a grid. The same families written the way
+ * this model states them are one set per branch, and the tags they declare are exactly the ones the
+ * grid's coordinates were made of - so nothing about which file answers what changes.
+ *
+ * Ids are derived from the parent's rather than minted, because normalisation runs on every open
+ * and a fresh id each time would be a different set every time the project was opened.
+ */
+function splitLegacyAxes(raw: unknown, set: AssetSet): AssetSet[] {
+    if (typeof raw !== "object" || raw === null) {
+        return [];
+    }
+    const record = raw as Record<string, unknown>;
+    if (!Array.isArray(record.axes) || record.axes.length < 2) {
+        return [];
+    }
+    const axes = record.axes.map(normalizeAxis).filter((axis): axis is AssetSetAxis => axis !== null);
+    const out: AssetSet[] = [];
+    const walk = (parent: AssetSet, depth: number) => {
+        const inner = axes[depth];
+        if (!inner) {
+            return;
+        }
+        for (const value of parent.axis.values) {
+            const child: AssetSet = {
+                id: `${parent.id}:${value}`,
+                name: `${parent.name} ${value}`.trim(),
+                type: parent.type,
+                ...(parent.groupId ? { groupId: parent.groupId } : {}),
+                filter: [...parent.filter, formatAssetTag(parent.axis.key, value)],
+                axis: { ...inner, values: [...inner.values] },
+            };
+            out.push(child);
+            walk(child, depth + 1);
+        }
+    };
+    walk(set, 1);
+    return out;
 }
 
 /**
@@ -607,9 +726,16 @@ export function normalizeProjectAssetSets(raw: unknown): ProjectAssetSetDocument
     if (Array.isArray(record.sets)) {
         for (const entry of record.sets) {
             const set = normalizeAssetSet(entry);
-            if (set && !seenIds.has(set.id)) {
-                seenIds.add(set.id);
-                sets.push(set);
+            if (!set || seenIds.has(set.id)) {
+                continue;
+            }
+            seenIds.add(set.id);
+            sets.push(set);
+            for (const child of splitLegacyAxes(entry, set)) {
+                if (!seenIds.has(child.id)) {
+                    seenIds.add(child.id);
+                    sets.push(child);
+                }
             }
         }
     }

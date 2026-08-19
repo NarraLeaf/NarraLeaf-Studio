@@ -10,6 +10,8 @@ import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import { DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION } from "@shared/types/saveCompatibility";
 import { APP_TAG_ID_RELEASE, appTagMechanismKey } from "@shared/types/appTag";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
+import { UI_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/document";
+import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import type { Blueprint, BlueprintGraphIr, SharedBlueprintAsset } from "@shared/types/blueprint/document";
 import {
     BLUEPRINT_NODE_TYPE_COMPARE_EQUAL,
@@ -29,7 +31,7 @@ import {
     foldSharedBlueprints,
     planSceneDrop,
     resolveStoryDocumentPathForIndexEntry,
-    loadStoryLibrary,
+    assembleDevModeBundleFromProjectPath,
 } from "./bundleAssembler";
 import type { DevModeBundleLoadContext } from "./types";
 
@@ -893,20 +895,21 @@ describe("bundleAssembler save compatibility", () => {
 });
 
 /**
- * The bundle is where a document stops being a file and becomes the story that PLAYS: the story
- * compiler runs inside Dev Mode and inside the shipped game, on whatever this loader hands them. It
- * reads the CURRENT schema and only that, so a document arriving at an older one loses every row
- * whose payload has been reshaped since - and loses it silently, because a payload the compiler
- * cannot recognise is not a payload it can report.
+ * The whole assembly, not one loader inside it - because the seam between them is where the last
+ * attempt at this went wrong.
  *
- * `/transform camera look=` is the row that proved it. Before v19 a camera row spelled its grade as
- * `operation: "look"` with the preset in a field of its own; the v19 compiler reads
- * `payload.transform`, an older row has none, and the row compiled to no statement at all - the
- * scene stepped straight past it and the stage was never graded, with nothing said anywhere.
+ * `DevModeManager` calls {@link assembleDevModeBundleFromProjectPath} and sends what it returns to
+ * the Dev Mode window, which hands the story documents straight to the compiler. So this is the
+ * boundary a story crosses on its way to the stage, and everything the assembly does to a document
+ * on the way - the variant fold, the asset-set materialisation - is inside it. A test that reached
+ * past all that into one loader could go green while the bundle a player's game reads stayed wrong.
  *
- * The editor migrates when it opens a document, but it only writes one back when the author edits
- * it, so "the project has been opened" is not the same as "the bytes on disk are current" and cannot
- * be made the same. The migration therefore belongs here, on the read that feeds the compiler.
+ * What it pins: a story whose bytes on disk predate the current schema arrives at the CURRENT one.
+ * The compiler reads only the current shape and says nothing about a payload it cannot recognise,
+ * so an unmigrated row is not a broken row, it is an absent one - a `/transform camera look=` that
+ * plays and grades nothing. The editor migrates when it opens a document, but it only writes one
+ * back when the author edits it, so "the project has been opened" never implies "the bytes are
+ * current" and the migration has to happen on this read.
  */
 describe("bundleAssembler story schema", () => {
     const tempDirs: string[] = [];
@@ -915,15 +918,33 @@ describe("bundleAssembler story schema", () => {
         await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
     });
 
-    /** A story as an older Studio wrote it: one narration, one camera grade, stamped at that version. */
+    /** A project as an older Studio left it: one camera grade, spelled the way v17 spelled one. */
     async function createLegacyStoryProject(): Promise<string> {
         const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-story-schema-"));
         tempDirs.push(projectPath);
+        await writeFile(
+            path.join(projectPath, "project.nlproj"),
+            encodeProjectConfig({ name: "Test", identifier: "test.project", metadata: {} } as never),
+        );
+        await mkdir(path.join(projectPath, "editor", "ui"), { recursive: true });
+        await writeFile(
+            path.join(projectPath, "editor", "ui", "uidoc.json"),
+            JSON.stringify({ schemaVersion: UI_DOCUMENT_SCHEMA_VERSION, surfaces: [] }),
+            "utf-8",
+        );
+        await writeFile(
+            path.join(projectPath, "editor", "ui", "uigraphs.json"),
+            JSON.stringify({
+                schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+                blueprintDocument: { schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION, blueprints: {} },
+            }),
+            "utf-8",
+        );
         const storyDir = path.join(projectPath, "editor", "story", "stories", STORY_ID);
         await mkdir(storyDir, { recursive: true });
         await writeFile(
             path.join(projectPath, "editor", "story", "index.json"),
-            JSON.stringify({ schemaVersion: 1, stories: [{ id: STORY_ID, name: "Story", documentPath: "" }] }),
+            JSON.stringify({ schemaVersion: 1, stories: [{ id: STORY_ID, name: "Story" }] }),
             "utf-8",
         );
         await writeFile(
@@ -963,16 +984,16 @@ describe("bundleAssembler story schema", () => {
         return projectPath;
     }
 
-    it("carries a migrated document, not the bytes on disk", async () => {
-        const library = await loadStoryLibrary(
-            await createLegacyStoryProject(),
-            { id: APP_TAG_ID_RELEASE, name: "Release" },
-            null,
-        );
-        const document = library?.documents[STORY_ID];
+    it("puts a migrated document in the bundle, not the bytes on disk", async () => {
+        const bundle = await assembleDevModeBundleFromProjectPath({
+            projectPath: await createLegacyStoryProject(),
+            bundleId: "bundle-1",
+            revision: 1,
+        });
+        const document = bundle.storyLibrary?.documents[STORY_ID];
         expect(document?.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
-        // The whole point: the compiler reads this shape. `operation: "look"` reaching it is the bug -
-        // it takes the `transform` branch, finds no ref, and the grade never happens.
+        // The shape `compileCameraAction` reads. `operation: "look"` arriving here is the defect: the
+        // compiler takes the `transform` branch, finds no ref, and the grade never reaches the stage.
         expect(document?.scenes["scene-1"].blocks.grade.payload).toEqual({
             action: "camera",
             operation: "transform",
