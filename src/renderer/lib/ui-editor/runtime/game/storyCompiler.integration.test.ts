@@ -4,7 +4,12 @@ import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { CharacterAppearanceSummary, DevModeCharacterSummary } from "@shared/types/devMode";
 import type { StoryActionPayload, StoryAnimationAsset, StoryBlock, StoryConditionRef, StoryDocument, StoryTransitionRef } from "@shared/types/story";
-import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
+import {
+    isPlayableStoryTransitionKind,
+    STORY_DOCUMENT_SCHEMA_VERSION,
+    STORY_TRANSITION_KINDS,
+    UNPLAYABLE_STORY_TRANSITION_KINDS,
+} from "@shared/types/story";
 import { BUILTIN_AUDIO_TRACKS } from "@shared/types/audioTrack";
 import { compileStudioStoryToNlr, resolveBundleEntry, STORY_WHILE_LOOP_MAX_ITERATIONS } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
@@ -1513,14 +1518,62 @@ describe("compileStudioStoryToNlr", () => {
         });
     });
 
-    it("maps the custom transition kinds onto real NLR transitions without diagnostics", async () => {
-        // Each new kind must be handled by createTransition; an unmapped kind
-        // falls through to a "not supported" diagnostic, which this guards against.
-        const kinds: StoryTransitionRef["kind"][] = ["softWipe", "blinds", "slide", "softIris", "blurDissolve", "throughColor", "darkness", "exposure"];
-        for (const kind of kinds) {
+    it("builds every playable kind in the union, with nothing to report", async () => {
+        // Derived from the shared tuple rather than listed here, and that is the point: this is the
+        // half that keeps `UNPLAYABLE_STORY_TRANSITION_KINDS` honest. `createTransition`'s switch is
+        // exhaustive, so a kind added to the union must get a branch - but a branch that merely
+        // routes it to `reportUnplayableTransition` would satisfy the compiler while leaving the
+        // author with a cut. Then this fails, unless the tuple above it says so out loud.
+        const playable = STORY_TRANSITION_KINDS.filter(kind => kind !== "none" && isPlayableStoryTransitionKind(kind));
+        expect(playable.length).toBe(STORY_TRANSITION_KINDS.length - 1 - UNPLAYABLE_STORY_TRANSITION_KINDS.length);
+
+        for (const kind of playable) {
             const compiled = await compileBackgroundTransition(kind);
             expect(compiled.diagnostics, `kind=${kind}`).toEqual([]);
+            expect(findTransition(compiled), `kind=${kind}`).toBeInstanceOf(Transition);
         }
+    });
+
+    it("plays `none` as a cut and says nothing about it", async () => {
+        // `none` is the author asking for a cut, not a transition that went missing - it returns
+        // before the switch and must never reach the report the other two cases below do.
+        const compiled = await compileBackgroundTransition("none");
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(findTransition(compiled)).toBeUndefined();
+    });
+
+    it("reports a kind outside the union as an error and plays the change as a cut", async () => {
+        // The bug this file's `default` branch used to hide. A stored `kind` is a string on disk, so
+        // a document written by a newer Studio - or one carrying a kind since retired - reaches the
+        // compiler with a word no build here can play. `as never` is how a test writes what only a
+        // document can: the union has no room for it, which is exactly the situation.
+        const compiled = await compileBackgroundTransition("maskFade" as never);
+
+        expect(compiled.diagnostics).toEqual([
+            {
+                level: "error",
+                blockId: "bg",
+                message: "Transition \"maskFade\" is not available; the change was played as a cut. Choose a transition on this row.",
+            },
+        ]);
+        expect(findTransition(compiled)).toBeUndefined();
+    });
+
+    it("reports `custom` the same way, though the union does contain it", async () => {
+        // The escape hatch nothing builds. It is a member of the union, so the exhaustiveness check
+        // cannot speak for it and it is routed by hand - but the author sees what they see either
+        // way, so it is the same verdict and the same sentence.
+        const compiled = await compileBackgroundTransition("custom");
+
+        expect(compiled.diagnostics).toEqual([
+            {
+                level: "error",
+                blockId: "bg",
+                message: "Transition \"custom\" is not available; the change was played as a cut. Choose a transition on this row.",
+            },
+        ]);
+        expect(findTransition(compiled)).toBeUndefined();
     });
 
     it("builds each whole-screen kind out of the engine's own transitions", async () => {
@@ -1675,6 +1728,9 @@ describe("compileStudioStoryToNlr", () => {
                 transition: {
                     kind,
                     durationMs: 400,
+                    // `ruleReveal` is the one kind that reads an asset, and reports the row as
+                    // unfinished without one. Supplied for every kind because only that one looks.
+                    ruleAssetId: "asset-bg",
                     // Superset of every custom transition's params; each kind reads only its own.
                     props: { pattern: "iris", color: "#000000", blur: 12, direction: "right", orientation: "vertical", slats: 6, feather: 20, hold: 40, center: "50% 50%", ...overrides },
                 },
