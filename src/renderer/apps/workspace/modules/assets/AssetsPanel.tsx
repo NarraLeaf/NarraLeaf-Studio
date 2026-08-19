@@ -43,6 +43,7 @@ import { AssetsIconView } from "./views/AssetsIconView";
 import { assetSelectionKey, type AssetActionTarget } from "./state/assetActionTargets";
 import { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { ReferenceService } from "@/lib/workspace/services/references/ReferenceService";
 import { assetSetSubtree, type AssetSet } from "@shared/types/assetSet";
 import { freezeContextMenuRows } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspaceAssetDragOptional } from "@/apps/workspace/dnd/WorkspaceAssetDragProvider";
@@ -51,6 +52,9 @@ import { useTranslation } from "@/lib/i18n";
 import { AssetOverviewView } from "../asset-overview/AssetOverviewView";
 
 export type AssetViewMode = "list" | "icons" | "overview";
+
+/** How many places naming a set are spelled out before the rest are counted. Matches the delete warning. */
+const ASSET_SET_REFERENCE_PREVIEW_LIMIT = 5;
 
 const VIEW_MODE_OPTIONS: { id: AssetViewMode; icon: ComponentType<any> }[] = [
     {
@@ -546,6 +550,52 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         await fileAssetsInGroup(assetSetSubtreeAssets(entry), targetGroupId);
     }, [assetSetSubtreeAssets, context, fileAssetsInGroup, findSet]);
 
+    /** The ids of a set and the sets drawn inside it, which go together whichever way it is removed. */
+    const assetSetSubtreeIds = useCallback((entry: ResolvedAssetSet): string[] => (
+        assetSetSubtree(entry.set, assetSetDeclarations).map(set => set.id)
+    ), [assetSetDeclarations]);
+
+    /**
+     * Ask before a set stops existing, when something still names it.
+     *
+     * The rows a set is used from name the *set*, not the file behind it, so they are broken by both
+     * of the ways it can go - and the library's own delete check cannot see it: that one reads the
+     * index, which records a set reference as a reference to the members it resolves to, and those
+     * members are exactly what dissolve keeps and what a set with no files never had.
+     *
+     * Warn, do not block, the way the library's delete does: sometimes the row is about to be
+     * rewritten anyway. Answers true when there is nothing to say.
+     */
+    const confirmAssetSetRemoval = useCallback(async (
+        entry: ResolvedAssetSet,
+        action: string,
+    ): Promise<boolean> => {
+        if (!context) return false;
+        const referenceService = context.services.get<ReferenceService>(Services.Reference);
+        const found = await referenceService.findAssetSetReferences(assetSetSubtreeIds(entry));
+        const references = [...found.values()].flat();
+        if (references.length === 0) {
+            return true;
+        }
+        const shown = references.slice(0, ASSET_SET_REFERENCE_PREVIEW_LIMIT).map(reference => {
+            // The detail line already ends with the label for a story reference (`Story > Scene` /
+            // `Scene`), so naming both would print the scene twice.
+            const where = reference.detail?.endsWith(reference.label)
+                ? reference.detail
+                : [reference.detail, reference.label].filter(Boolean).join(" › ");
+            return `  ${where}${reference.field ? ` (${reference.field})` : ""}`;
+        });
+        const remaining = references.length - shown.length;
+        if (remaining > 0) {
+            shown.push(`  ${t("assets.delete.moreReferences", { count: remaining })}`);
+        }
+        return context.services.get<UIService>(Services.UI).showDestructiveConfirm(
+            t("assets.sets.inUseTitle", { name: entry.set.name }),
+            `${t("assets.sets.inUseMessage")}\n\n${shown.join("\n")}`,
+            action,
+        );
+    }, [assetSetSubtreeIds, context, t]);
+
     /**
      * Drop the set and keep the files.
      *
@@ -557,9 +607,12 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
      */
     const handleDissolveAssetSet = useCallback(async (entry: ResolvedAssetSet) => {
         if (!context) return;
+        if (!(await confirmAssetSetRemoval(entry, t("assets.sets.menu.dissolve")))) {
+            return;
+        }
         await fileAssetsInGroup(assetSetOwnAssets(entry), entry.set.groupId);
         context.services.get<AssetSetService>(Services.AssetSets).dissolveSet(entry.set.id);
-    }, [assetSetOwnAssets, context, fileAssetsInGroup]);
+    }, [assetSetOwnAssets, confirmAssetSetRemoval, context, fileAssetsInGroup, t]);
 
     /**
      * Delete the set and the files it holds, the way deleting a folder takes its contents.
@@ -570,13 +623,16 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
      */
     const handleDeleteAssetSet = useCallback(async (entry: ResolvedAssetSet) => {
         if (!context) return;
+        if (!(await confirmAssetSetRemoval(entry, t("assets.delete.action")))) {
+            return;
+        }
         const targets: AssetActionTarget[] = assetSetSubtreeAssets(entry)
             .map(asset => ({ isGroup: false, category: entry.category, item: asset }));
         if (targets.length > 0 && !(await handleDelete(targets))) {
             return;
         }
         context.services.get<AssetSetService>(Services.AssetSets).deleteSetSubtree(entry.set.id);
-    }, [assetSetSubtreeAssets, context, handleDelete]);
+    }, [assetSetSubtreeAssets, confirmAssetSetRemoval, context, handleDelete, t]);
 
     /** The sub-set command as the asset menu reaches it: by set id and value, not by record. */
     const handleCreateAssetSetAt = useCallback((setId: string, value: string) => {

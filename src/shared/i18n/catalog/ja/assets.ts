@@ -377,6 +377,8 @@ export const assets = {
         },
         variantsResolved: "バリアント {total} 件中 {resolved} 件",
         unfinished: "バリアント未宣言",
+        inUseTitle: "{name} はまだ使われている",
+        inUseMessage: "次の箇所がこれを指定しており、解決できなくなる：",
         menu: {
             create: "選択したファイルからセットを作成",
             createSub: "選択したファイルからここにセットを作成",
