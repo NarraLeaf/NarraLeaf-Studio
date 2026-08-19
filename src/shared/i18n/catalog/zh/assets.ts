@@ -280,6 +280,8 @@ export const assets = {
         },
         variantsResolved: "{total} 个变体中的 {resolved} 个",
         unfinished: "尚未声明变体",
+        inUseTitle: "{name} 还在被引用",
+        inUseMessage: "以下位置指向它，之后将无法解析：",
         menu: {
             create: "用所选文件新建资产集",
             createSub: "用所选文件在此新建资产集",
