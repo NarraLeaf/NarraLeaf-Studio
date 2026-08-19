@@ -48,6 +48,7 @@ import {
 } from "@shared/types/blueprint/valueTypes";
 import { normalizeAudioClipRegion } from "@shared/types/audio";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
@@ -173,13 +174,15 @@ function useImageAssetDisplayName(assetId: string | null): string | null {
     } catch {
         context = null;
     }
+    // The library mutates its records in place, so a rename moves nothing else this memo keys on.
+    const assetLibraryRevision = useAssetLibraryRevision();
     return useMemo(() => {
         if (!assetId || !context) {
             return null;
         }
         const assetsService = context.services.get<AssetsService>(Services.Assets);
         return assetsService.getAssets()[AssetType.Image]?.[assetId]?.name ?? null;
-    }, [assetId, context]);
+    }, [assetId, assetLibraryRevision, context]);
 }
 
 /**
@@ -206,12 +209,15 @@ function AudioAssetPickerRow({
     } catch {
         context = null;
     }
+    const assetLibraryRevision = useAssetLibraryRevision();
     const asset = useMemo(() => {
         if (!assetId || !context) {
             return null;
         }
         return context.services.get<AssetsService>(Services.Assets).getAssets()[AssetType.Audio]?.[assetId] ?? null;
-    }, [assetId, context]);
+        // `assetLibraryRevision`: this row prints the clip's name and reads its in/out marks, and
+        // both are edited elsewhere on the record this holds.
+    }, [assetId, assetLibraryRevision, context]);
     const assetName = asset?.name ?? null;
     // Whether the author marked in/out points on this clip decides whether Loop loops the body or
     // the whole file - and it is decided somewhere else entirely (the asset manager's audio preview),

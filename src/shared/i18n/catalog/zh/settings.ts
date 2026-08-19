@@ -242,7 +242,7 @@ export const settings = {
         },
         reopenLastProject: {
             label: "启动时打开上次的项目",
-            description: "关闭此项则每次启动都停在启动器",
+            description: "打开上次所在的项目，而不是停在启动器",
         },
         dashboardOnOpen: {
             label: "默认显示项目仪表盘",

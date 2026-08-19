@@ -222,6 +222,21 @@
       "status": "translated",
       "target": "ボイス"
     },
+    "key:load.autoSaves": {
+      "sourceHash": "fnv1a:c13c80d4",
+      "status": "translated",
+      "target": "オートセーブ"
+    },
+    "key:load.title": {
+      "sourceHash": "fnv1a:68afa209",
+      "status": "translated",
+      "target": "ロード"
+    },
+    "key:log.title": {
+      "sourceHash": "fnv1a:a1dd7bf1",
+      "status": "translated",
+      "target": "バックログ"
+    },
     "key:menu.continue": {
       "sourceHash": "fnv1a:ab43d664",
       "status": "translated",
@@ -281,6 +296,36 @@
       "sourceHash": "fnv1a:24d471a9",
       "status": "translated",
       "target": "タイトル"
+    },
+    "key:save.title": {
+      "sourceHash": "fnv1a:4d2d5d68",
+      "status": "translated",
+      "target": "セーブ"
+    },
+    "key:scenes.sceneClubroom": {
+      "sourceHash": "fnv1a:2a32664b",
+      "status": "translated",
+      "target": "部室"
+    },
+    "key:scenes.sceneCorridor": {
+      "sourceHash": "fnv1a:a2523866",
+      "status": "translated",
+      "target": "廊下"
+    },
+    "key:scenes.sceneLastLight": {
+      "sourceHash": "fnv1a:63546e65",
+      "status": "translated",
+      "target": "最後の光"
+    },
+    "key:scenes.title": {
+      "sourceHash": "fnv1a:8c5a5640",
+      "status": "translated",
+      "target": "シーン"
+    },
+    "key:slot.empty": {
+      "sourceHash": "fnv1a:fd6263ee",
+      "status": "translated",
+      "target": "データなし"
     }
   }
 }

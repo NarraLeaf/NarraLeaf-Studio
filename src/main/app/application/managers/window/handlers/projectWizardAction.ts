@@ -25,8 +25,11 @@ export class ProjectWizardLaunchHandler extends IPCHandler<IPCEventType.projectW
             y: undefined,
         });
 
-        // Establish parent-child relationship
-        window.addChild(wizardWindow);
+        // Independent, not dependent: the wizard is work the author is doing, not a question they
+        // are answering, and the window that opened it may well retire while it is up - the
+        // launcher does exactly that the moment a project opens. It is detached instead of
+        // destroyed, and whatever has been typed into it survives.
+        window.addChild(wizardWindow, "independent");
 
         // Wait for the wizard window to close and get the result
         return new Promise<RequestStatus<{created: boolean; projectPath: string} | null>>((resolve) => {
