@@ -270,9 +270,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
 
     const { focusedItemId, setFocusedItemId, handleAssetClick, handleGroupFocus, setFocusToPanel } = useAssetFocus({ context, panelId, focusArea });
     
-    const { selectedItems, isMultiSelectMode, handleItemSelect, handleClearSelection } = useMultiSelection({ 
-        assets, 
-        groups,
+    // No library is handed in: what a shift range covers is the rows the view below is drawing, and
+    // the view publishes those through `publishRowOrder`.
+    const { selectedItems, isMultiSelectMode, handleItemSelect, handleClearSelection, publishRowOrder } = useMultiSelection({
         onSelectionChange: (selection) => {
             if(selection.size === 1) {
                 setFocusedItemId(Array.from(selection)[0]);
@@ -970,7 +970,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         assets, groups, assetSets, filteredAssets, filteredGroups, matchedGroupIds, selectedItems, focusedItemId,
         draggedItem, draggedAssetSet, dropTargetId, clipboard, isMultiSelectMode, expandedGroups,
         expandedAssetSets, setExpandedAssetSets, assetSetNaming, rootAssetSets, memberAssetIds,
-        handleItemSelect, handleAssetClick, handleGroupFocus, showContextMenu,
+        handleItemSelect, publishRowOrder, handleAssetClick, handleGroupFocus, showContextMenu,
         handleAssetSetSelect, showAssetSetContextMenu, showAssetSetValueContextMenu,
         handleDragStart, handleAssetSetDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup,
         setExpandedGroups,

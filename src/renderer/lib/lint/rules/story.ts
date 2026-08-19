@@ -11,6 +11,7 @@ import {
     danglingStageObjectRefs,
     duplicateSceneLabels,
     duplicateStageObjectDeclarations,
+    isPlayableStoryTransitionKind,
     listSceneBlocksInDocumentOrder,
     listSceneLabels,
     listScenesInDocumentOrder,
@@ -774,7 +775,75 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
             return findings;
         },
     },
+    {
+        /**
+         * A row naming a transition this build will not play.
+         *
+         * `error`, and the same arrangement as `story/stage-object-missing`, for the same reason:
+         * the story compiler reaches the same verdict on the same row while building a preview, but
+         * a compile diagnostic reaches the Story console and stops nothing. A change that lands as a
+         * cut instead of the transition the author chose looks deliberate on screen and says nothing
+         * about itself, which is exactly the kind of thing that ships.
+         *
+         * The two halves reach that verdict by different roads and still cannot disagree.
+         * `createTransition` decides by its `switch`, which TypeScript holds exhaustive over the
+         * union; this rule decides by `isPlayableStoryTransitionKind`, which reads the tuple that
+         * union is derived from. A kind added to one is a compile error in the other.
+         *
+         * What reaches it is a stored `kind` this build has no engine for: a document written by a
+         * newer Studio, one carrying a kind that has since been retired, or the `custom` escape
+         * hatch, which the union has always allowed and nothing has ever built. No Studio surface
+         * can produce one - the inspector offers only kinds it knows and the script language cannot
+         * name one at all - so a clean project never sees this rule, and a project that does see it
+         * has a row whose transition is genuinely gone.
+         */
+        id: "story/transition-unavailable",
+        category: "story",
+        defaultSeverity: "error",
+        slug: "storyTransitionUnavailable",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const { entry, scene } of eachScene(ctx)) {
+                for (const block of liveBlocks(scene)) {
+                    const kind = transitionKindNamedByBlock(block);
+                    if (kind === null || isPlayableStoryTransitionKind(kind)) {
+                        continue;
+                    }
+                    findings.push({
+                        ruleId: "story/transition-unavailable",
+                        messageKey: "lint.rule.storyTransitionUnavailable.message",
+                        messageParams: { transition: kind },
+                        location: storyLocation(entry, scene, block.id),
+                        target: blockTarget(entry, scene, block.id),
+                    });
+                }
+            }
+            return findings;
+        },
+    },
 ];
+
+/**
+ * The transition kind a row names, or `null` for a row that names none.
+ *
+ * Read off `payload.transition` by name, unlike {@link appTagNamesNamedByBlock} below, which walks
+ * its payload structurally. `kind` is one of the most reused words in this schema - a layer
+ * reference, a displayable target and the row itself each carry one - so a structural scan for
+ * `kind` would report layers as transitions. Every payload that holds a `StoryTransitionRef` calls
+ * the field `transition` (`setBackground`, `character`, `displayable`, and a jump's), so the field
+ * name is the precise test and the structural one is the loose one.
+ *
+ * The `kind` must be a string, not merely present: the NVL panel's `transition` is a transform ref,
+ * which has no `kind` at all, and is not this rule's business.
+ */
+function transitionKindNamedByBlock(block: StoryBlock): string | null {
+    const transition = (block.payload as { transition?: unknown }).transition;
+    if (!transition || typeof transition !== "object") {
+        return null;
+    }
+    const kind = (transition as { kind?: unknown }).kind;
+    return typeof kind === "string" ? kind : null;
+}
 
 /**
  * Every variant name one row compares `AppTag` against.

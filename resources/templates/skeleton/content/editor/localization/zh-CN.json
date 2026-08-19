@@ -232,6 +232,21 @@
       "status": "translated",
       "target": "语音"
     },
+    "key:load.autoSaves": {
+      "sourceHash": "fnv1a:c13c80d4",
+      "status": "translated",
+      "target": "自动存档"
+    },
+    "key:load.title": {
+      "sourceHash": "fnv1a:68afa209",
+      "status": "translated",
+      "target": "加载"
+    },
+    "key:log.title": {
+      "sourceHash": "fnv1a:a1dd7bf1",
+      "status": "translated",
+      "target": "记录"
+    },
     "key:menu.continue": {
       "sourceHash": "fnv1a:ab43d664",
       "status": "reviewed",
@@ -291,6 +306,36 @@
       "sourceHash": "fnv1a:24d471a9",
       "status": "translated",
       "target": "标题"
+    },
+    "key:save.title": {
+      "sourceHash": "fnv1a:4d2d5d68",
+      "status": "translated",
+      "target": "保存"
+    },
+    "key:scenes.sceneClubroom": {
+      "sourceHash": "fnv1a:2a32664b",
+      "status": "translated",
+      "target": "社团活动室"
+    },
+    "key:scenes.sceneCorridor": {
+      "sourceHash": "fnv1a:a2523866",
+      "status": "translated",
+      "target": "走廊"
+    },
+    "key:scenes.sceneLastLight": {
+      "sourceHash": "fnv1a:63546e65",
+      "status": "translated",
+      "target": "最后的光"
+    },
+    "key:scenes.title": {
+      "sourceHash": "fnv1a:8c5a5640",
+      "status": "translated",
+      "target": "场景"
+    },
+    "key:slot.empty": {
+      "sourceHash": "fnv1a:fd6263ee",
+      "status": "translated",
+      "target": "无存档"
     }
   }
 }
