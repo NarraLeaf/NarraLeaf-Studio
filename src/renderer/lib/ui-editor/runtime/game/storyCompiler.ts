@@ -2872,9 +2872,10 @@ function cameraLensGesture(
         return null;
     }
     const sequences = steps.map(step => ({
-        // `as any` for the same reason the sway's is: these props land on `ImageTransformProps` in
-        // narraleaf-react 0.31.0, and the pin is still on the release before it. An engine that does
-        // not know them ignores them rather than failing - see `storyTransformPropsToNlr`.
+        // `as any` below for the same reason the sway's is, and it is NOT about the engine version:
+        // a step's `easing` is a plain string here while `Sequence` wants `EasingDefinition`, and
+        // `storyTransformPropsToNlr` answers `Record<string, unknown>` because it serves every
+        // subject. Raising the pin does not remove it; narrowing those two types would.
         props: storyTransformPropsToNlr(step.props),
         options: { duration: step.durationMs, ease: step.easing },
     }));
