@@ -35,6 +35,7 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_PAGE_GO,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+    BLUEPRINT_NODE_TYPE_SOUND_PLAY,
 } from "@shared/types/blueprint/graph";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
@@ -73,13 +74,29 @@ function graphFor(elementId: string) {
     expect(graphs).toHaveLength(1);
     const { nodes, edges } = graphs[0]!.graph;
 
-    /** The node an exec output leads to, asserted to be the only one and of the expected type. */
+    /**
+     * The node an exec output leads to, asserted to be the only one and of the expected type.
+     *
+     * A UI sound cue is stepped over rather than asserted on. The cue sits ahead of the logic so it
+     * is heard even when the click navigates away, which puts it between a click head and the branch
+     * that decides whether to ask - and what this file is about is the question, not the click's
+     * sound. That the cues themselves are wired is `starterSoundCues.test.ts`.
+     */
     const step = (fromId: string, port: string, type: string): GraphNode => {
-        const out = edges.filter(edge => edge.from.nodeId === fromId && edge.from.port === port);
-        expect(out, `${fromId}.${port} leads to ${out.length} nodes`).toHaveLength(1);
-        const target = nodes[out[0]!.to.nodeId]!;
-        expect(target?.type, `${fromId}.${port} leads to ${target?.type}`).toBe(type);
-        return target;
+        let currentId = fromId;
+        let currentPort = port;
+        for (;;) {
+            const out = edges.filter(edge => edge.from.nodeId === currentId && edge.from.port === currentPort);
+            expect(out, `${currentId}.${currentPort} leads to ${out.length} nodes`).toHaveLength(1);
+            const target = nodes[out[0]!.to.nodeId]!;
+            if (target?.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY && type !== BLUEPRINT_NODE_TYPE_SOUND_PLAY) {
+                currentId = target.id;
+                currentPort = "next";
+                continue;
+            }
+            expect(target?.type, `${currentId}.${currentPort} leads to ${target?.type}`).toBe(type);
+            return target;
+        }
     };
     /** The node feeding a data input, asserted to be the only one and of the expected type. */
     const source = (toId: string, port: string, type: string): GraphNode => {

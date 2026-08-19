@@ -137,6 +137,91 @@
       "status": "translated",
       "target": "廊下にはまだチョークとワックスの匂いが残っている。背後で、冷えていくロッカーがかすかに鳴った。"
     },
+    "key:config.autoForwardDelay": {
+      "sourceHash": "fnv1a:e727e3f0",
+      "status": "translated",
+      "target": "自動送りの待ち時間"
+    },
+    "key:config.bgm": {
+      "sourceHash": "fnv1a:e26859b1",
+      "status": "translated",
+      "target": "BGM"
+    },
+    "key:config.categorySound": {
+      "sourceHash": "fnv1a:b3ca9a34",
+      "status": "translated",
+      "target": "サウンド"
+    },
+    "key:config.categoryText": {
+      "sourceHash": "fnv1a:3e142d5e",
+      "status": "translated",
+      "target": "テキスト"
+    },
+    "key:config.fullscreen": {
+      "sourceHash": "fnv1a:3d2aca78",
+      "status": "translated",
+      "target": "フルスクリーン"
+    },
+    "key:config.fullscreenOff": {
+      "sourceHash": "fnv1a:0dc6b4aa",
+      "status": "translated",
+      "target": "オフ"
+    },
+    "key:config.fullscreenOn": {
+      "sourceHash": "fnv1a:60e47df0",
+      "status": "translated",
+      "target": "オン"
+    },
+    "key:config.masterVolume": {
+      "sourceHash": "fnv1a:55ee5043",
+      "status": "translated",
+      "target": "全体音量"
+    },
+    "key:config.secondsSuffix": {
+      "sourceHash": "fnv1a:f60c4582",
+      "status": "translated",
+      "target": "秒"
+    },
+    "key:config.skip": {
+      "sourceHash": "fnv1a:c197c7e2",
+      "status": "translated",
+      "target": "スキップ"
+    },
+    "key:config.skipAllText": {
+      "sourceHash": "fnv1a:9805954b",
+      "status": "translated",
+      "target": "すべて"
+    },
+    "key:config.skipDelay": {
+      "sourceHash": "fnv1a:37403aa9",
+      "status": "translated",
+      "target": "スキップ待ち時間"
+    },
+    "key:config.skipReadOnly": {
+      "sourceHash": "fnv1a:60c591e1",
+      "status": "translated",
+      "target": "既読のみ"
+    },
+    "key:config.soundEffects": {
+      "sourceHash": "fnv1a:d40ba662",
+      "status": "translated",
+      "target": "効果音"
+    },
+    "key:config.textSpeed": {
+      "sourceHash": "fnv1a:d6227bfd",
+      "status": "translated",
+      "target": "文字表示速度"
+    },
+    "key:config.title": {
+      "sourceHash": "fnv1a:6a12e0e7",
+      "status": "translated",
+      "target": "設定"
+    },
+    "key:config.voice": {
+      "sourceHash": "fnv1a:27d1a499",
+      "status": "translated",
+      "target": "ボイス"
+    },
     "key:menu.continue": {
       "sourceHash": "fnv1a:ab43d664",
       "status": "translated",
@@ -171,6 +256,31 @@
       "sourceHash": "fnv1a:0ae8097f",
       "status": "translated",
       "target": "はじめから"
+    },
+    "key:nav.back": {
+      "sourceHash": "fnv1a:c2954bc2",
+      "status": "translated",
+      "target": "戻る"
+    },
+    "key:nav.config": {
+      "sourceHash": "fnv1a:6a12e0e7",
+      "status": "translated",
+      "target": "設定"
+    },
+    "key:nav.load": {
+      "sourceHash": "fnv1a:68afa209",
+      "status": "translated",
+      "target": "ロード"
+    },
+    "key:nav.save": {
+      "sourceHash": "fnv1a:4d2d5d68",
+      "status": "translated",
+      "target": "セーブ"
+    },
+    "key:nav.title": {
+      "sourceHash": "fnv1a:24d471a9",
+      "status": "translated",
+      "target": "タイトル"
     }
   }
 }

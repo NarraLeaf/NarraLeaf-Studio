@@ -1,6 +1,7 @@
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
 import type { BrandColor } from "./brand";
+import type { DialogueConfiguration } from "./dialogue";
 import type { PersistentVariableRuntimeTable, SavedVariableRuntimeTable } from "./variables/registry";
 import type { GameLocalizationBundle, LanguageChangeConfiguration } from "./localization";
 import type { PlayerPreferences } from "./preference";
@@ -334,6 +335,11 @@ export type DevModeBundle = {
      * the default - restart and come back - because that is what those builds already did.
      */
     languageChange?: LanguageChangeConfiguration;
+    /**
+     * The author's dialogue settings, baked from `.nlproj` `app.dialogue`. Absent on bundles that
+     * predate the section, which every consumer reads as the engine's own values.
+     */
+    dialogue?: DialogueConfiguration;
     /**
      * The author's own version for this build, copied from `.nlproj` `metadata.version`.
      *

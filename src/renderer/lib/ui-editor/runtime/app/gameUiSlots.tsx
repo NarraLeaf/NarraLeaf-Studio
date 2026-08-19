@@ -99,8 +99,26 @@ export function createNlrGameWithGameUi(input: {
      * read-text record to guard against and nothing there to run a loop of its own.
      */
     hostOwnsSkipKey?: boolean;
+    /**
+     * How long a pause with no duration holds a line while auto-forward is on, in milliseconds.
+     *
+     * The author's, from `.nlproj` `app.dialogue` (see @shared/types/dialogue). Passed at
+     * construction rather than through `Game.configure` because nothing at runtime moves it: it is
+     * part of how the script is written, not a setting the player has. Omitted (the story preview,
+     * a bundle written before the section) leaves the engine's own 1000ms.
+     */
+    autoForwardDefaultPause?: number;
 }): Game {
-    const { width, height, contentContainerId, slots, minStageSize, audioBuses, hostOwnsSkipKey } = input;
+    const {
+        width,
+        height,
+        contentContainerId,
+        slots,
+        minStageSize,
+        audioBuses,
+        hostOwnsSkipKey,
+        autoForwardDefaultPause,
+    } = input;
     const game = new Game({
         app: { debug: false },
         ...(audioBuses && audioBuses.length > 0 ? { audioBuses: [...audioBuses] } : {}),
@@ -109,6 +127,7 @@ export function createNlrGameWithGameUi(input: {
         aspectRatio: width / height,
         ratioUpdateInterval: 0,
         contentContainerId,
+        ...(typeof autoForwardDefaultPause === "number" ? { autoForwardDefaultPause } : {}),
         // NLR paces its preloader (default: 5 at a time, 100ms between batches) for games served
         // over a network. Every asset here comes off the local disk — through `nlgame://` in a
         // packaged game, the dev server in Dev Mode — so the pacing buys nothing and its idle time
