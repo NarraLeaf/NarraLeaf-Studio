@@ -5,6 +5,7 @@ import {
     classifyMediaSupport,
     isRefusedMediaFileName,
     parseProbeOutput,
+    probeCarriesAlpha,
     probeDurationUs,
 } from "@shared/utils/mediaSupport";
 import { resolveFfmpegBinary, type FfmpegResolverApp, type FfmpegResolveOptions } from "./ffmpegTool";
@@ -120,7 +121,12 @@ export async function probeMediaFile(
     // author-supplied .m3u8 would let a file the author did not write make the main process fetch
     // something. Deciding by name means that path never exists.
     if (isRefusedMediaFileName(filePath)) {
-        return { status: "probed", verdict: classifyMediaSupport({}, filePath), durationUs: null };
+        return {
+            status: "probed",
+            verdict: classifyMediaSupport({}, filePath),
+            durationUs: null,
+            carriesAlpha: false,
+        };
     }
 
     const tool = await resolveFfmpegBinary(app, "ffprobe", options);
@@ -177,5 +183,6 @@ export async function probeMediaFile(
         status: "probed",
         verdict: classifyMediaSupport(report, filePath),
         durationUs: probeDurationUs(report),
+        carriesAlpha: probeCarriesAlpha(report),
     };
 }

@@ -62,6 +62,11 @@ export const lint = {
             description: "部分已选构建目标不支持的编码",
             message: "{asset} 在 {platform} 上无法播放",
         },
+        portabilityVfxAlpha: {
+            title: "带透明通道的叠层素材",
+            description: "部分已选构建目标不会保留其透明度的叠层素材",
+            message: "{asset} 在 {platform} 上会盖住舞台",
+        },
         networkFetchNotAllowlisted: {
             title: "地址不在白名单内",
             description: "Fetch 节点指向了本工程不允许的地址",
