@@ -830,6 +830,7 @@ export const workspace = {
             // 设置表与速查表的分类标题（来自静态目录）。
             categories: {
                 general: "通用",
+                run: "运行",
                 story: "故事编辑器",
                 uiEditor: "UI 编辑器",
                 blueprint: "蓝图编辑器",
@@ -844,6 +845,11 @@ export const workspace = {
                 cheatSheet: "显示快捷键速查",
                 contextHelp: "当前位置的帮助",
                 reopenClosedTab: "重新打开关闭的标签",
+                // 一个键位对应开发模式、预览、测试里当前占着运行位的那一个,
+                // 所以停止它们的三条命令共用同一条可重绑的快捷键。
+                run: {
+                    stop: "停止运行",
+                },
                 undo: "撤销",
                 redo: "重做",
                 quickSwitchNext: "切换到下一个编辑器标签",
