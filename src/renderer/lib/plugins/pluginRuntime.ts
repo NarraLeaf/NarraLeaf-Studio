@@ -35,7 +35,6 @@ import { Services, type WorkspaceContext } from "@/lib/workspace/services/servic
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
-import { extractVoiceableRows } from "@/lib/workspace/services/voice/voiceModel";
 import { listSceneIdsInDocumentOrder } from "@shared/types/story/order";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
@@ -821,7 +820,7 @@ export function createPluginApp(
                     const rowsByUnitId = new Map<string, { text: string; character: string | null }>();
                     for (const entry of story.listStories()) {
                         const document = await story.loadStory(entry.id);
-                        for (const row of extractVoiceableRows(document)) {
+                        for (const row of voice.extractRows(document)) {
                             rowsByUnitId.set(row.unitId, {
                                 text: row.sourceText,
                                 character: speakerName(row.characterId),

@@ -935,10 +935,23 @@ export class GameBuildManager {
 
         const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
         const appTag = await this.resolveBuildVariant(session, projectPath, request);
+        // What the patch carries, which is not always the edition it attaches to. The identity below
+        // stays with `appTag` - it is what decides whether the player's build can open the file at
+        // all - while everything about the payload is read from this one.
+        const contentTag = request.contentAppTagId?.trim() && request.contentAppTagId.trim() !== appTag.id
+            ? await this.resolveBuildVariant(session, projectPath, { appTagId: request.contentAppTagId })
+            : appTag;
         const appTagDocument = await readProjectAppTagDocumentFromDir(projectPath).catch(() => null);
-        const declaredScenes = resolveAppTagReachableScenes(appTag, appTagDocument?.reachableScenes);
-        const assetAxes = resolveAppTagAssetAxes(appTag, appTagDocument?.assetAxes);
+        const declaredScenes = resolveAppTagReachableScenes(contentTag, appTagDocument?.reachableScenes);
+        const assetAxes = resolveAppTagAssetAxes(contentTag, appTagDocument?.assetAxes);
         const identity = this.resolveIdentity(session, projectConfig, projectPath, appTag);
+        if (contentTag.id !== appTag.id) {
+            this.emit(session, {
+                level: "info",
+                source: "Build",
+                message: `patch carries the "${contentTag.name}" content for the "${appTag.name}" build`,
+            });
+        }
 
         // Without a key there is nothing to seal a patch with, and nothing in any
         // shipped build that could read one. Said as the thing the author does
@@ -976,7 +989,9 @@ export class GameBuildManager {
             // Matches the build it patches: a patch that turned the marker off would put a pack
             // into a debuggable install that refuses the switch the install was made for.
             ...(debuggable ? { debuggable: true } : {}),
-            appTag: { id: appTag.id, name: appTag.name },
+            // The content's variant, so a scene this edition drops stays dropped and a line reading
+            // the variant folds the way that edition's build folded it.
+            appTag: { id: contentTag.id, name: contentTag.name },
             declaredScenes,
             assetAxes,
             // The payload a player receives, so it plans a scene drop and refuses a

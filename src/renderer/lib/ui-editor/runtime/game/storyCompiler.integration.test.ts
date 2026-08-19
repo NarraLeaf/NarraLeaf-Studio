@@ -2052,6 +2052,58 @@ describe("compileStudioStoryToNlr voice", () => {
         expect(compiled.getVoicePlayback?.("text-say")).toEqual({ src: "nlr://asset-ja-say", busId: "voice" });
     });
 
+    /**
+     * The menu never speaks an option itself, so the id travels as sentence metadata - the one thing
+     * the choice slot surface can read back to hand a row's blueprint something to play.
+     */
+    it("stamps a voiced choice option with its unit id", async () => {
+        const option: StoryBlock = {
+            id: "option",
+            kind: "nodeAction",
+            parentId: "choice",
+            childrenIds: [],
+            payload: { action: "choiceOption", text: { textId: "text-option", value: "Stay", role: "choiceText" } },
+        };
+        const plain: StoryBlock = {
+            id: "plain",
+            kind: "nodeAction",
+            parentId: "choice",
+            childrenIds: [],
+            payload: { action: "choiceOption", text: { textId: "text-plain", value: "Go", role: "choiceText" } },
+        };
+        const choice: StoryBlock = {
+            id: "choice",
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: ["option", "plain"],
+            payload: { action: "choice", prompt: { textId: "text-prompt", value: "Well?", role: "choicePrompt" } },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ choice, option, plain }, ["choice"]),
+            sceneId: "scene-1",
+            voice: {
+                voicedLocales: [{ code: "ja", displayName: "日本語" }],
+                tables: { ja: { "text-option": "asset-ja-option" } },
+                getVoiceLocale: () => "ja",
+            },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        expect(compiled.diagnostics).toEqual([]);
+
+        const menuElement = ((compiled.scene as any).actions as any[])
+            .flat(9)
+            .find(item => item?.choices);
+        const choices = menuElement.choices as any[];
+        expect(choices[0].prompt.getMetadata?.()).toEqual({ voiceId: "text-option" });
+        // The words survive the wrapper: a voiced option is the same shape as an unvoiced one, which
+        // the engine wraps itself, so nothing downstream can tell them apart by anything but the id.
+        expect(choices[0].prompt.text[0].text).toBe("Stay");
+        expect(choices[1].prompt.text[0].text).toBe("Go");
+        // An unvoiced option is left exactly as it was before any of this existed.
+        expect(choices[1].prompt.getMetadata?.() ?? null).toBeNull();
+        expect(compiled.getVoicePlayback?.("text-option")).toEqual({ src: "nlr://asset-ja-option", busId: "voice" });
+    });
+
     it("keeps the legacy per-line voiceAssetId as an inline fallback", async () => {
         const compiled = await compileStudioStoryToNlr({
             document: baseDocument({ say: dialogueBlock("say", "text-legacy", "hi", { voiceAssetId: "asset-voice" }) }, ["say"]),
