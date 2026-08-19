@@ -1,0 +1,176 @@
+{
+  "locale": "en",
+  "schemaVersion": 1,
+  "units": {
+    "0ef2885e-0186-4327-b43f-ee9676c2a33a": {
+      "sourceHash": "fnv1a:e2d39ce1",
+      "status": "translated",
+      "target": "So it is my turn."
+    },
+    "0fa2eb35-3aad-424a-9e40-50a420d4bb3d": {
+      "sourceHash": "fnv1a:df7e296d",
+      "status": "translated",
+      "target": "Something honest. Even if it's small."
+    },
+    "16565a92-8975-4521-8342-985e1bf3909c": {
+      "sourceHash": "fnv1a:e1d687e6",
+      "status": "translated",
+      "target": "Same time tomorrow. Don't be late."
+    },
+    "22c5aa1d-856c-46f5-be7f-3c6341de0e8a": {
+      "sourceHash": "fnv1a:aacaaa13",
+      "status": "translated",
+      "target": "Cold. But not wrong."
+    },
+    "244efc55-d457-4c7e-9c9b-591658c37d5d": {
+      "sourceHash": "fnv1a:dfa3b05e",
+      "status": "translated",
+      "target": "The last bell rang twenty minutes ago."
+    },
+    "2ad31ac5-94dc-4b98-a8e3-1c78549f6edf": {
+      "sourceHash": "fnv1a:13c6c732",
+      "status": "translated",
+      "target": "This is where the demo ends, and where your game starts."
+    },
+    "2b3a87e6-5d6f-47c2-a1be-cd3a84aaa999": {
+      "sourceHash": "fnv1a:ed84897d",
+      "status": "translated",
+      "target": "The festival is in three weeks and we have nothing."
+    },
+    "3bb15660-8cd1-4d06-b8f9-6d3bb2d3b086": {
+      "sourceHash": "fnv1a:01f3bb7c",
+      "status": "translated",
+      "target": "It has two. One of them is just slow."
+    },
+    "504bea55-21b8-4b55-b6b7-ec75ff4f1fe6": {
+      "sourceHash": "fnv1a:0dda3780",
+      "status": "translated",
+      "target": "You're late."
+    },
+    "6cc6b2f7-b60e-4279-a94c-cc8860ba5287": {
+      "sourceHash": "fnv1a:5362ed9d",
+      "status": "translated",
+      "target": "Which means one of us has to decide what we are making."
+    },
+    "7838034c-5481-4b4e-beb6-d5815b817b56": {
+      "sourceHash": "fnv1a:b97064fb",
+      "status": "translated",
+      "target": "Something honest."
+    },
+    "79796785-4322-45dc-b84d-37efa0e8549e": {
+      "sourceHash": "fnv1a:326a5e7b",
+      "status": "translated",
+      "target": "Loud is fine. Loud gets people through the door."
+    },
+    "7b9e8fe3-9570-4df1-9adb-f11fee070023": {
+      "sourceHash": "fnv1a:f419ca78",
+      "status": "translated",
+      "target": "Then we're making something loud."
+    },
+    "8ee513a4-713c-4277-8e8b-2c25be0a29f9": {
+      "sourceHash": "fnv1a:57a295ae",
+      "status": "translated",
+      "target": "Something people will actually come to."
+    },
+    "9bbce5a5-e5de-40d3-a6b4-c7c2b75d6193": {
+      "sourceHash": "fnv1a:e0e7688b",
+      "status": "translated",
+      "target": "What do we make?"
+    },
+    "9e22391e-e548-4ccd-89fb-f7c424e3ce24": {
+      "sourceHash": "fnv1a:d119c2e7",
+      "status": "translated",
+      "target": "For what it is worth - I would have picked that one too."
+    },
+    "a0ed03b2-7717-4aed-aff2-f27a14259b8d": {
+      "sourceHash": "fnv1a:df3ec210",
+      "status": "translated",
+      "target": "That's the first thing you've said this month that wasn't a joke."
+    },
+    "ab801b46-85ba-416f-9df8-48c3a040488a": {
+      "sourceHash": "fnv1a:4f9d7e92",
+      "status": "translated",
+      "target": "She spins a pen once and stops it flat under one finger."
+    },
+    "b86c0033-9139-453a-bba4-664f3d2c812c": {
+      "sourceHash": "fnv1a:54a54649",
+      "status": "translated",
+      "target": "One and a half. You keep leaving before it gets dark."
+    },
+    "be532c25-3947-4340-bea6-a8dbc2462abe": {
+      "sourceHash": "fnv1a:bef70ca9",
+      "status": "translated",
+      "target": "...Huh."
+    },
+    "c727b458-0715-4cc0-a44d-237f176d67c3": {
+      "sourceHash": "fnv1a:9b3492a0",
+      "status": "translated",
+      "target": "We stayed until the windows went orange and the corridor lights came on by themselves."
+    },
+    "d24f89b5-dd27-4fd3-a9e0-9eb42d9eaa4d": {
+      "sourceHash": "fnv1a:5e5bc4f5",
+      "status": "translated",
+      "target": "I decided last year."
+    },
+    "d594ab16-35fa-4777-8237-bd2e7bbab4f7": {
+      "sourceHash": "fnv1a:84abd735",
+      "status": "translated",
+      "target": "Open any part of it. All of it was made in Studio, the same way you would make yours."
+    },
+    "d8394864-327a-4c4f-bcec-8521d44a9b09": {
+      "sourceHash": "fnv1a:3c4dee6d",
+      "status": "translated",
+      "target": "The clubroom is a classroom nobody claimed. Four desks pushed together, one window that will not close."
+    },
+    "e783a4da-946b-4c53-af82-5ba464ea88db": {
+      "sourceHash": "fnv1a:57a295ae",
+      "status": "translated",
+      "target": "Something people will actually come to."
+    },
+    "f01d556e-e725-4702-b254-cc41352e816b": {
+      "sourceHash": "fnv1a:3a92b174",
+      "status": "translated",
+      "target": "Third time this week. I was starting to think the club had one member."
+    },
+    "fe23a3b0-4e38-40fb-a58b-ee1385975d85": {
+      "sourceHash": "fnv1a:315e2ff9",
+      "status": "translated",
+      "target": "The corridor still smells of chalk and floor wax. Behind me a locker ticks as it cools."
+    },
+    "key:menu.continue": {
+      "sourceHash": "fnv1a:70f57871",
+      "status": "translated",
+      "target": "Continue"
+    },
+    "key:menu.load": {
+      "sourceHash": "fnv1a:d02ee8a6",
+      "status": "translated",
+      "target": "Load"
+    },
+    "key:menu.quit": {
+      "sourceHash": "fnv1a:73191c7f",
+      "status": "translated",
+      "target": "Quit"
+    },
+    "key:menu.save": {
+      "sourceHash": "fnv1a:ad5b82b0",
+      "status": "translated",
+      "target": "Save"
+    },
+    "key:menu.scenes": {
+      "sourceHash": "fnv1a:b317ce26",
+      "status": "translated",
+      "target": "Scenes"
+    },
+    "key:menu.settings": {
+      "sourceHash": "fnv1a:f3c259dd",
+      "status": "translated",
+      "target": "Settings"
+    },
+    "key:menu.start": {
+      "sourceHash": "fnv1a:22696cbc",
+      "status": "translated",
+      "target": "Start"
+    }
+  }
+}

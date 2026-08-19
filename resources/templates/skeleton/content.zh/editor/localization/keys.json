@@ -1,0 +1,26 @@
+{
+  "keys": {
+    "menu.continue": {
+      "sourceText": "继续"
+    },
+    "menu.load": {
+      "sourceText": "加载"
+    },
+    "menu.quit": {
+      "sourceText": "退出"
+    },
+    "menu.save": {
+      "sourceText": "保存"
+    },
+    "menu.scenes": {
+      "sourceText": "场景"
+    },
+    "menu.settings": {
+      "sourceText": "设置"
+    },
+    "menu.start": {
+      "sourceText": "开始"
+    }
+  },
+  "schemaVersion": 1
+}
