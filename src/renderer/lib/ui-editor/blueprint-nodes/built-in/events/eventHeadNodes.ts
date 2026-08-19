@@ -234,11 +234,16 @@ const PIN_IS_FULLSCREEN: BlueprintNodePinDef = {
     label: "Is Fullscreen",
 };
 
-// Inspector dropdown for `On Preference Changed`. Values mirror the NarraLeaf
-// GamePreference keys covered by the Game category Getter/Setter nodes.
+// Inspector dropdown for `On Preference Changed`. One entry per Game category
+// Getter/Setter pair, including the ones Studio owns rather than the engine
+// (`skipReadText`, `skipping`, `autoForwardDelay`) - a key with a pair and no
+// entry here is a preference an author can write and cannot react to.
 const GAME_PREFERENCE_HEAD_OPTIONS: { value: string; label: string }[] = [
     { value: "autoForward", label: "Auto Forward" },
+    { value: "autoForwardDelay", label: "Auto Forward Delay" },
     { value: "skip", label: "Skip" },
+    { value: "skipping", label: "Skipping" },
+    { value: "skipReadText", label: "Skip Read Text" },
     { value: "showDialog", label: "Show Dialog" },
     { value: "gameSpeed", label: "Game Speed" },
     { value: "cps", label: "Sentence Speed (CPS)" },

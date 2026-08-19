@@ -519,7 +519,7 @@ export function planSceneDrop(
  * absent from the package rather than merely unreachable in it, and what makes the story after a cut
  * point absent rather than merely unplayed.
  */
-export async function loadStoryLibrary(
+async function loadStoryLibrary(
     projectPath: string,
     variant: { id: string; name: string },
     sceneDrop: SceneDropPlan,
