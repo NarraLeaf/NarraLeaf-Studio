@@ -2117,8 +2117,47 @@
                       },
                       "meta": {
                         "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
                           "x": 280,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 260
                         }
                       }
                     }
@@ -2130,7 +2169,27 @@
                         "port": "then"
                       },
                       "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -2193,8 +2252,47 @@
                       },
                       "meta": {
                         "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
                           "x": 280,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 260
                         }
                       }
                     }
@@ -2206,7 +2304,27 @@
                         "port": "then"
                       },
                       "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -2295,8 +2413,47 @@
                       },
                       "meta": {
                         "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
                           "x": 280,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 260
                         }
                       }
                     }
@@ -2308,7 +2465,27 @@
                         "port": "then"
                       },
                       "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -2369,8 +2546,47 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "2c8f3d76-7a4c-4ba6-853e-253b10175394",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
                           "x": 280,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 260
                         }
                       }
                     }
@@ -2382,7 +2598,27 @@
                         "port": "then"
                       },
                       "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -2445,7 +2681,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 900,
+                          "x": 1180,
                           "y": 0
                         }
                       }
@@ -2456,7 +2692,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 0,
+                          "x": 280,
                           "y": 150
                         }
                       }
@@ -2467,7 +2703,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -2494,8 +2730,47 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 840,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 410
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 410
                         }
                       }
                     }
@@ -2507,7 +2782,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "nConfirmIf",
+                        "nodeId": "sfx.click",
                         "port": "in"
                       }
                     },
@@ -2548,6 +2823,26 @@
                       },
                       "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nConfirmIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -2690,7 +2985,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 150
                         }
                       }
@@ -2703,7 +2998,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 300
                         }
                       }
@@ -2716,7 +3011,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -2731,7 +3026,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 840,
                           "y": 150
                         }
                       }
@@ -2744,7 +3039,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 840,
                           "y": 300
                         }
                       }
@@ -2757,7 +3052,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 840,
                           "y": 0
                         }
                       }
@@ -2772,7 +3067,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 180
                         }
                       }
@@ -2785,7 +3080,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 260
                         }
                       }
@@ -2800,7 +3095,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 180
                         }
                       }
@@ -2813,8 +3108,22 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 260
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
                         }
                       }
                     }
@@ -2846,7 +3155,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n4",
+                        "nodeId": "sfx.click",
                         "port": "in"
                       }
                     },
@@ -2917,6 +3226,16 @@
                       },
                       "to": {
                         "nodeId": "sel.Sound.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n4",
                         "port": "in"
                       }
                     }
@@ -2981,7 +3300,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 150
                         }
                       }
@@ -2994,7 +3313,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 300
                         }
                       }
@@ -3007,7 +3326,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -3022,7 +3341,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 840,
                           "y": 150
                         }
                       }
@@ -3035,7 +3354,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 840,
                           "y": 300
                         }
                       }
@@ -3048,7 +3367,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 840,
                           "y": 0
                         }
                       }
@@ -3063,7 +3382,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 180
                         }
                       }
@@ -3076,7 +3395,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 260
                         }
                       }
@@ -3091,7 +3410,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 180
                         }
                       }
@@ -3104,8 +3423,22 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 260
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
                         }
                       }
                     }
@@ -3137,7 +3470,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n4",
+                        "nodeId": "sfx.click",
                         "port": "in"
                       }
                     },
@@ -3208,6 +3541,16 @@
                       },
                       "to": {
                         "nodeId": "sel.Sound.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n4",
                         "port": "in"
                       }
                     }
@@ -3971,10 +4314,7 @@
                       "id": "n10",
                       "type": "blueprint.string.concat",
                       "params": {
-                        "__inlineLiteralPins": [
-                          "b"
-                        ],
-                        "b": "s"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -4116,15 +4456,38 @@
                       "id": "n21",
                       "type": "blueprint.string.concat",
                       "params": {
-                        "__inlineLiteralPins": [
-                          "b"
-                        ],
-                        "b": "s"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
                           "x": 1680,
                           "y": 900
+                        }
+                      }
+                    },
+                    "i18n.seconds0": {
+                      "id": "i18n.seconds0",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "config.secondsSuffix"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1960,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "i18n.seconds1": {
+                      "id": "i18n.seconds1",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "config.secondsSuffix"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1960,
+                          "y": 750
                         }
                       }
                     }
@@ -4216,7 +4579,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n4",
+                        "nodeId": "i18n.seconds0",
                         "port": "in"
                       }
                     },
@@ -4326,7 +4689,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n15",
+                        "nodeId": "i18n.seconds1",
                         "port": "in"
                       }
                     },
@@ -4348,6 +4711,46 @@
                       "to": {
                         "nodeId": "n15",
                         "port": "text"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.seconds0",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n4",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.seconds0",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n10",
+                        "port": "b"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.seconds1",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n15",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.seconds1",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n21",
+                        "port": "b"
                       }
                     }
                   ],
@@ -4539,7 +4942,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 0,
+                          "x": 280,
                           "y": 150
                         }
                       }
@@ -4550,7 +4953,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -4565,7 +4968,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 180
                         }
                       }
@@ -4578,7 +4981,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 260
                         }
                       }
@@ -4593,7 +4996,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 180
                         }
                       }
@@ -4606,8 +5009,22 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 260
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
                         }
                       }
                     }
@@ -4619,7 +5036,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n3",
+                        "nodeId": "sfx.click",
                         "port": "in"
                       }
                     },
@@ -4670,6 +5087,16 @@
                       },
                       "to": {
                         "nodeId": "sel.Readonly.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n3",
                         "port": "in"
                       }
                     }
@@ -4732,7 +5159,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 0,
+                          "x": 280,
                           "y": 150
                         }
                       }
@@ -4743,7 +5170,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -4758,7 +5185,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 180
                         }
                       }
@@ -4771,7 +5198,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 260
                         }
                       }
@@ -4786,7 +5213,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 180
                         }
                       }
@@ -4799,8 +5226,22 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 260
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
                         }
                       }
                     }
@@ -4812,7 +5253,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n3",
+                        "nodeId": "sfx.click",
                         "port": "in"
                       }
                     },
@@ -4863,6 +5304,16 @@
                       },
                       "to": {
                         "nodeId": "sel.Readonly.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n3",
                         "port": "in"
                       }
                     }
@@ -4977,7 +5428,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -4992,7 +5443,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 180
                         }
                       }
@@ -5005,7 +5456,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 260
                         }
                       }
@@ -5020,7 +5471,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 180
                         }
                       }
@@ -5033,8 +5484,22 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 260
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
                         }
                       }
                     }
@@ -5046,7 +5511,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n2",
+                        "nodeId": "sfx.click",
                         "port": "in"
                       }
                     },
@@ -5087,6 +5552,16 @@
                       },
                       "to": {
                         "nodeId": "sel.Off.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n2",
                         "port": "in"
                       }
                     }
@@ -5149,7 +5624,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -5164,7 +5639,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 180
                         }
                       }
@@ -5177,7 +5652,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 260
                         }
                       }
@@ -5192,7 +5667,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 180
                         }
                       }
@@ -5205,8 +5680,22 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 260
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
                         }
                       }
                     }
@@ -5218,7 +5707,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n2",
+                        "nodeId": "sfx.click",
                         "port": "in"
                       }
                     },
@@ -5259,6 +5748,16 @@
                       },
                       "to": {
                         "nodeId": "sel.Off.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n2",
                         "port": "in"
                       }
                     }
@@ -14532,8 +15031,47 @@
                       },
                       "meta": {
                         "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
                           "x": 280,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 260
                         }
                       }
                     }
@@ -14545,7 +15083,27 @@
                         "port": "then"
                       },
                       "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -14606,7 +15164,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -14617,7 +15175,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 840,
                           "y": 150
                         }
                       }
@@ -14630,7 +15188,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 840,
                           "y": 300
                         }
                       }
@@ -14641,7 +15199,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 840,
+                          "x": 1120,
                           "y": 150
                         }
                       }
@@ -14652,7 +15210,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1120,
+                          "x": 1400,
                           "y": 0
                         }
                       }
@@ -14665,7 +15223,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 840,
+                          "x": 1120,
                           "y": 450
                         }
                       }
@@ -14676,7 +15234,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1120,
+                          "x": 1400,
                           "y": 300
                         }
                       }
@@ -14687,7 +15245,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1400,
+                          "x": 1680,
                           "y": 300
                         }
                       }
@@ -14698,7 +15256,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1680,
+                          "x": 1960,
                           "y": 300
                         }
                       }
@@ -14709,7 +15267,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1680,
+                          "x": 1960,
                           "y": 0
                         }
                       }
@@ -14720,7 +15278,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1260,
+                          "x": 1540,
                           "y": 420
                         }
                       }
@@ -14731,7 +15289,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 500,
+                          "x": 780,
                           "y": 60
                         }
                       }
@@ -14742,7 +15300,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 220,
+                          "x": 500,
                           "y": -260
                         }
                       }
@@ -14753,7 +15311,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 480,
+                          "x": 760,
                           "y": -260
                         }
                       }
@@ -14764,8 +15322,47 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 760,
+                          "x": 1040,
                           "y": -340
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 710
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 710
                         }
                       }
                     }
@@ -14927,7 +15524,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "nAuto",
+                        "nodeId": "sfx.click",
                         "port": "in"
                       }
                     },
@@ -14978,6 +15575,26 @@
                       },
                       "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nAuto",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -15040,8 +15657,47 @@
                       },
                       "meta": {
                         "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
                           "x": 280,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 260
                         }
                       }
                     }
@@ -15053,7 +15709,27 @@
                         "port": "then"
                       },
                       "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -15116,8 +15792,47 @@
                       },
                       "meta": {
                         "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
                           "x": 280,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 260
                         }
                       }
                     }
@@ -15129,7 +15844,27 @@
                         "port": "then"
                       },
                       "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -15190,7 +15925,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 640,
+                          "x": 920,
                           "y": 0
                         }
                       }
@@ -15217,8 +15952,47 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 300,
+                          "x": 580,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 260
                         }
                       }
                     }
@@ -15230,7 +16004,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "nAsk",
+                        "nodeId": "sfx.click",
                         "port": "in"
                       }
                     },
@@ -15241,6 +16015,26 @@
                       },
                       "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nAsk",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -41040,8 +41834,47 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 340,
+                          "x": 620,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 260
                         }
                       }
                     }
@@ -41053,8 +41886,993 @@
                         "port": "then"
                       },
                       "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
                         "nodeId": "n2",
                         "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
+                        "port": "in"
+                      }
+                    }
+                  ],
+                  "meta": {
+                    "graphKind": "event"
+                  }
+                }
+              }
+            },
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "012417e1-acf5-4280-b3a2-028b89e175b4": {
+        "id": "012417e1-acf5-4280-b3a2-028b89e175b4",
+        "name": "Text speed row",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+          "elementId": "2ed3cf1c-009c-4b0f-9dd0-4f13a97e9007"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [],
+            "events": {},
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "049e8f16-c9b9-413c-bedb-590e380f131f": {
+        "id": "049e8f16-c9b9-413c-bedb-590e380f131f",
+        "name": "Auto forward row",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+          "elementId": "7fa25c7f-6998-45a8-9020-af33f4bbd3ec"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [],
+            "events": {},
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "73b751f3-9a5a-45b1-946a-27f16f772953": {
+        "id": "73b751f3-9a5a-45b1-946a-27f16f772953",
+        "name": "Skip delay row",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+          "elementId": "86725358-ed97-4edd-a791-e4c063e25c42"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [],
+            "events": {},
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "2bca26d3-2a12-4971-86f7-9bac75ed8a85": {
+        "id": "2bca26d3-2a12-4971-86f7-9bac75ed8a85",
+        "name": "Skip row",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+          "elementId": "a8cf02c8-14bc-4002-861d-67586abbdcee"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [],
+            "events": {},
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "a0e65546-0e41-4457-98b9-b4b4addaf2a6": {
+        "id": "a0e65546-0e41-4457-98b9-b4b4addaf2a6",
+        "name": "Fullscreen row",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+          "elementId": "9fa0b51b-4141-4c1e-8724-f47a7703b5b1"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [],
+            "events": {},
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "69b3b370-1662-47a4-8ad7-3872407bf722": {
+        "id": "69b3b370-1662-47a4-8ad7-3872407bf722",
+        "name": "Master volume row",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+          "elementId": "e86d48d1-4c15-4bd4-8251-5cd2b9125319"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [],
+            "events": {},
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "6898bd58-6ff2-460b-995a-6a87bf220bb0": {
+        "id": "6898bd58-6ff2-460b-995a-6a87bf220bb0",
+        "name": "BGM row",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+          "elementId": "b15fa747-fe45-4bf2-8562-c343ac387293"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [],
+            "events": {},
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "9e70612f-35ea-4596-bb30-63ee2dd58479": {
+        "id": "9e70612f-35ea-4596-bb30-63ee2dd58479",
+        "name": "Sound effects row",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+          "elementId": "82b912e8-3fc1-4ac4-bfad-d99209b94167"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [],
+            "events": {},
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "4921ecbb-ee7b-4c70-9eda-14f92397cf63": {
+        "id": "4921ecbb-ee7b-4c70-9eda-14f92397cf63",
+        "name": "Voice row",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+          "elementId": "0ebfe184-4b08-4ac7-99e8-10865f14d6b3"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [],
+            "events": {},
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "e4e2eb19-5246-4d42-9e91-5e89e7dbc91c": {
+        "id": "e4e2eb19-5246-4d42-9e91-5e89e7dbc91c",
+        "name": "Auto forward label",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+          "elementId": "97041f28-50e1-42f5-ba3c-299dd13a4356"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [],
+            "events": {},
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "0fc146a2-5bcb-45f2-9704-7c6b3c48313d": {
+        "id": "0fc146a2-5bcb-45f2-9704-7c6b3c48313d",
+        "name": "Track",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+          "elementId": "007e8f12-c77f-4ec3-850e-23e60a23f541"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [],
+            "events": {},
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "576bdecb-7e1e-47cb-90cb-1187b569cde9": {
+        "id": "576bdecb-7e1e-47cb-90cb-1187b569cde9",
+        "name": "Handle",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+          "elementId": "aeba881b-eb08-4feb-a495-77b3380386b5"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [],
+            "events": {},
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "86e2e639-c3a2-421d-ab71-e69a3a855761": {
+        "id": "86e2e639-c3a2-421d-ab71-e69a3a855761",
+        "name": "Auto forward value",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+          "elementId": "04a6dfd5-3534-4e5b-b740-a750da5f819c"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [],
+            "events": {},
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "0716fb81-c764-4751-a349-fe7b6bdffb09": {
+        "id": "0716fb81-c764-4751-a349-fe7b6bdffb09",
+        "name": "Auto forward rule",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+          "elementId": "0d7dc34b-f60e-4ef5-a7e1-8668bd9906a7"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [],
+            "events": {},
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
+      },
+      "26397c54-015e-4ccf-8a28-b1cb4e5cb0da": {
+        "id": "26397c54-015e-4ccf-8a28-b1cb4e5cb0da",
+        "name": "Auto forward slider",
+        "owner": {
+          "kind": "widgetMain",
+          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+          "elementId": "56e43b5b-3ee6-450e-a7d1-1686015a1432"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [
+              "69df5b3e-7764-4004-ad9e-6820bc7a2557"
+            ],
+            "events": {
+              "69df5b3e-7764-4004-ad9e-6820bc7a2557": {
+                "id": "69df5b3e-7764-4004-ad9e-6820bc7a2557",
+                "name": "Layer 1",
+                "graph": {
+                  "nodes": {
+                    "n1": {
+                      "id": "n1",
+                      "type": "blueprint.event.head.sliderValueChanged",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "n2": {
+                      "id": "n2",
+                      "type": "blueprint.math.multiply",
+                      "params": {
+                        "__inlineLiteralPins": [
+                          "b"
+                        ],
+                        "b": 60
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "n3": {
+                      "id": "n3",
+                      "type": "blueprint.game.setAutoForwardDelay",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "n4": {
+                      "id": "n4",
+                      "type": "blueprint.element.text.setText",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 2240,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "n5": {
+                      "id": "n5",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+                        "elementId": "04a6dfd5-3534-4e5b-b740-a750da5f819c",
+                        "elementType": "nl.text"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1960,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "n6": {
+                      "id": "n6",
+                      "type": "blueprint.math.divide",
+                      "params": {
+                        "__inlineLiteralPins": [
+                          "b"
+                        ],
+                        "b": 100
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "n7": {
+                      "id": "n7",
+                      "type": "blueprint.math.round",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "n8": {
+                      "id": "n8",
+                      "type": "blueprint.math.divide",
+                      "params": {
+                        "__inlineLiteralPins": [
+                          "b"
+                        ],
+                        "b": 10
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "n9": {
+                      "id": "n9",
+                      "type": "blueprint.string.toString",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1400,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "n10": {
+                      "id": "n10",
+                      "type": "blueprint.string.concat",
+                      "params": {
+                        "__inlineLiteralPins": []
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1680,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "n11": {
+                      "id": "n11",
+                      "type": "blueprint.event.head.init",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 600
+                        }
+                      }
+                    },
+                    "n12": {
+                      "id": "n12",
+                      "type": "blueprint.game.getAutoForwardDelay",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 750
+                        }
+                      }
+                    },
+                    "n13": {
+                      "id": "n13",
+                      "type": "blueprint.math.divide",
+                      "params": {
+                        "__inlineLiteralPins": [
+                          "b"
+                        ],
+                        "b": 60
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 750
+                        }
+                      }
+                    },
+                    "n14": {
+                      "id": "n14",
+                      "type": "blueprint.slider.setValue",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 600
+                        }
+                      }
+                    },
+                    "n15": {
+                      "id": "n15",
+                      "type": "blueprint.element.text.setText",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 2240,
+                          "y": 600
+                        }
+                      }
+                    },
+                    "n16": {
+                      "id": "n16",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
+                        "elementId": "04a6dfd5-3534-4e5b-b740-a750da5f819c",
+                        "elementType": "nl.text"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1960,
+                          "y": 600
+                        }
+                      }
+                    },
+                    "n17": {
+                      "id": "n17",
+                      "type": "blueprint.math.divide",
+                      "params": {
+                        "__inlineLiteralPins": [
+                          "b"
+                        ],
+                        "b": 100
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 900
+                        }
+                      }
+                    },
+                    "n18": {
+                      "id": "n18",
+                      "type": "blueprint.math.round",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
+                          "y": 900
+                        }
+                      }
+                    },
+                    "n19": {
+                      "id": "n19",
+                      "type": "blueprint.math.divide",
+                      "params": {
+                        "__inlineLiteralPins": [
+                          "b"
+                        ],
+                        "b": 10
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1120,
+                          "y": 900
+                        }
+                      }
+                    },
+                    "n20": {
+                      "id": "n20",
+                      "type": "blueprint.string.toString",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1400,
+                          "y": 900
+                        }
+                      }
+                    },
+                    "n21": {
+                      "id": "n21",
+                      "type": "blueprint.string.concat",
+                      "params": {
+                        "__inlineLiteralPins": []
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1680,
+                          "y": 900
+                        }
+                      }
+                    },
+                    "i18n.seconds0": {
+                      "id": "i18n.seconds0",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "config.secondsSuffix"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1960,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "i18n.seconds1": {
+                      "id": "i18n.seconds1",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "config.secondsSuffix"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1960,
+                          "y": 750
+                        }
+                      }
+                    }
+                  },
+                  "edges": [
+                    {
+                      "from": {
+                        "nodeId": "n1",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "n3",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n1",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n2",
+                        "port": "a"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n2",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "n3",
+                        "port": "autoForwardDelay"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n2",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "n6",
+                        "port": "a"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n6",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "n7",
+                        "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n7",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "n8",
+                        "port": "a"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n8",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "n9",
+                        "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n9",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "n10",
+                        "port": "a"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n3",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.seconds0",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n5",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "n4",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n10",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "n4",
+                        "port": "text"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n11",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "n14",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n12",
+                        "port": "autoForwardDelay"
+                      },
+                      "to": {
+                        "nodeId": "n13",
+                        "port": "a"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n13",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "n14",
+                        "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n12",
+                        "port": "autoForwardDelay"
+                      },
+                      "to": {
+                        "nodeId": "n17",
+                        "port": "a"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n17",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "n18",
+                        "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n18",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "n19",
+                        "port": "a"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n19",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "n20",
+                        "port": "value"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n20",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "n21",
+                        "port": "a"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n14",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.seconds1",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n16",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "n15",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n21",
+                        "port": "result"
+                      },
+                      "to": {
+                        "nodeId": "n15",
+                        "port": "text"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.seconds0",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n4",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.seconds0",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n10",
+                        "port": "b"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.seconds1",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n15",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.seconds1",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n21",
+                        "port": "b"
                       }
                     }
                   ],
@@ -43734,6 +45552,111 @@
         "activeBlueprintId": "d2f5cfbf-d3a7-4447-8ccc-639ad74fe777",
         "privateBlueprintIds": [
           "d2f5cfbf-d3a7-4447-8ccc-639ad74fe777"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:2ed3cf1c-009c-4b0f-9dd0-4f13a97e9007": {
+        "activeBlueprintId": "012417e1-acf5-4280-b3a2-028b89e175b4",
+        "privateBlueprintIds": [
+          "012417e1-acf5-4280-b3a2-028b89e175b4"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:7fa25c7f-6998-45a8-9020-af33f4bbd3ec": {
+        "activeBlueprintId": "049e8f16-c9b9-413c-bedb-590e380f131f",
+        "privateBlueprintIds": [
+          "049e8f16-c9b9-413c-bedb-590e380f131f"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:86725358-ed97-4edd-a791-e4c063e25c42": {
+        "activeBlueprintId": "73b751f3-9a5a-45b1-946a-27f16f772953",
+        "privateBlueprintIds": [
+          "73b751f3-9a5a-45b1-946a-27f16f772953"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:a8cf02c8-14bc-4002-861d-67586abbdcee": {
+        "activeBlueprintId": "2bca26d3-2a12-4971-86f7-9bac75ed8a85",
+        "privateBlueprintIds": [
+          "2bca26d3-2a12-4971-86f7-9bac75ed8a85"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:9fa0b51b-4141-4c1e-8724-f47a7703b5b1": {
+        "activeBlueprintId": "a0e65546-0e41-4457-98b9-b4b4addaf2a6",
+        "privateBlueprintIds": [
+          "a0e65546-0e41-4457-98b9-b4b4addaf2a6"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:e86d48d1-4c15-4bd4-8251-5cd2b9125319": {
+        "activeBlueprintId": "69b3b370-1662-47a4-8ad7-3872407bf722",
+        "privateBlueprintIds": [
+          "69b3b370-1662-47a4-8ad7-3872407bf722"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:b15fa747-fe45-4bf2-8562-c343ac387293": {
+        "activeBlueprintId": "6898bd58-6ff2-460b-995a-6a87bf220bb0",
+        "privateBlueprintIds": [
+          "6898bd58-6ff2-460b-995a-6a87bf220bb0"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:82b912e8-3fc1-4ac4-bfad-d99209b94167": {
+        "activeBlueprintId": "9e70612f-35ea-4596-bb30-63ee2dd58479",
+        "privateBlueprintIds": [
+          "9e70612f-35ea-4596-bb30-63ee2dd58479"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:0ebfe184-4b08-4ac7-99e8-10865f14d6b3": {
+        "activeBlueprintId": "4921ecbb-ee7b-4c70-9eda-14f92397cf63",
+        "privateBlueprintIds": [
+          "4921ecbb-ee7b-4c70-9eda-14f92397cf63"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:97041f28-50e1-42f5-ba3c-299dd13a4356": {
+        "activeBlueprintId": "e4e2eb19-5246-4d42-9e91-5e89e7dbc91c",
+        "privateBlueprintIds": [
+          "e4e2eb19-5246-4d42-9e91-5e89e7dbc91c"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:007e8f12-c77f-4ec3-850e-23e60a23f541": {
+        "activeBlueprintId": "0fc146a2-5bcb-45f2-9704-7c6b3c48313d",
+        "privateBlueprintIds": [
+          "0fc146a2-5bcb-45f2-9704-7c6b3c48313d"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:aeba881b-eb08-4feb-a495-77b3380386b5": {
+        "activeBlueprintId": "576bdecb-7e1e-47cb-90cb-1187b569cde9",
+        "privateBlueprintIds": [
+          "576bdecb-7e1e-47cb-90cb-1187b569cde9"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:04a6dfd5-3534-4e5b-b740-a750da5f819c": {
+        "activeBlueprintId": "86e2e639-c3a2-421d-ab71-e69a3a855761",
+        "privateBlueprintIds": [
+          "86e2e639-c3a2-421d-ab71-e69a3a855761"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:0d7dc34b-f60e-4ef5-a7e1-8668bd9906a7": {
+        "activeBlueprintId": "0716fb81-c764-4751-a349-fe7b6bdffb09",
+        "privateBlueprintIds": [
+          "0716fb81-c764-4751-a349-fe7b6bdffb09"
+        ],
+        "initializedFrontend": "visual"
+      },
+      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:56e43b5b-3ee6-450e-a7d1-1686015a1432": {
+        "activeBlueprintId": "26397c54-015e-4ccf-8a28-b1cb4e5cb0da",
+        "privateBlueprintIds": [
+          "26397c54-015e-4ccf-8a28-b1cb4e5cb0da"
         ],
         "initializedFrontend": "visual"
       }

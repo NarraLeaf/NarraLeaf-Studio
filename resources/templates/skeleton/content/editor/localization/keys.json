@@ -1,5 +1,56 @@
 {
   "keys": {
+    "config.autoForwardDelay": {
+      "sourceText": "Auto forward delay"
+    },
+    "config.bgm": {
+      "sourceText": "BGM"
+    },
+    "config.categorySound": {
+      "sourceText": "Sound"
+    },
+    "config.categoryText": {
+      "sourceText": "Text"
+    },
+    "config.fullscreen": {
+      "sourceText": "Fullscreen"
+    },
+    "config.fullscreenOff": {
+      "sourceText": "Off"
+    },
+    "config.fullscreenOn": {
+      "sourceText": "On"
+    },
+    "config.masterVolume": {
+      "sourceText": "Master volume"
+    },
+    "config.secondsSuffix": {
+      "sourceText": "s"
+    },
+    "config.skip": {
+      "sourceText": "Skip"
+    },
+    "config.skipAllText": {
+      "sourceText": "All text"
+    },
+    "config.skipDelay": {
+      "sourceText": "Skip delay"
+    },
+    "config.skipReadOnly": {
+      "sourceText": "Read only"
+    },
+    "config.soundEffects": {
+      "sourceText": "Sound effects"
+    },
+    "config.textSpeed": {
+      "sourceText": "Text speed"
+    },
+    "config.title": {
+      "sourceText": "Config"
+    },
+    "config.voice": {
+      "sourceText": "Voice"
+    },
     "menu.continue": {
       "sourceText": "Continue"
     },
@@ -20,6 +71,21 @@
     },
     "menu.start": {
       "sourceText": "Start"
+    },
+    "nav.back": {
+      "sourceText": "Back"
+    },
+    "nav.config": {
+      "sourceText": "Config"
+    },
+    "nav.load": {
+      "sourceText": "Load"
+    },
+    "nav.save": {
+      "sourceText": "Save"
+    },
+    "nav.title": {
+      "sourceText": "Title"
     }
   },
   "schemaVersion": 1

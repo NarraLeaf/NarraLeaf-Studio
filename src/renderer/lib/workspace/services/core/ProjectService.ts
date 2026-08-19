@@ -8,6 +8,7 @@ import {
     AutoSaveConfiguration,
     BuildConfiguration,
     CrashConfiguration,
+    DialogueConfiguration,
     LanguageChangeConfig as LanguageChangeConfiguration,
     LintingConfiguration,
     LocalizationConfiguration,
@@ -23,6 +24,7 @@ import {
     normalizeAutoSaveConfiguration,
     normalizeBuildConfiguration,
     normalizeCrashConfiguration,
+    normalizeDialogueConfiguration,
     normalizeLanguageChangeConfiguration,
     normalizeLintingConfiguration,
     normalizeLocalizationConfiguration,
@@ -538,6 +540,36 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 preferences,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read the author's dialogue settings, falling back to the engine's own for projects that
+     * predate `app.dialogue`.
+     */
+    public getDialogueConfiguration(): DialogueConfiguration {
+        return normalizeDialogueConfiguration(this.getProjectConfig().app?.dialogue);
+    }
+
+    /**
+     * Merge a partial patch into the author's dialogue settings. Written by the project Game page
+     * and baked into the bundle the game app configures the engine from at boot.
+     */
+    public async updateDialogueConfiguration(patch: Partial<DialogueConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const dialogue = normalizeDialogueConfiguration({
+                ...normalizeDialogueConfiguration(config.app?.dialogue),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                dialogue,
             };
             return {
                 ...config,

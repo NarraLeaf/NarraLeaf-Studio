@@ -430,11 +430,12 @@ export const workspace = {
             /**
              * What a long task is called while it runs.
              *
-             * Names the thing being made, never the machinery that makes it: an author asked
-             * for weather, not for an encode.
+             * Names the author's own object and the work being done to it, never the machinery
+             * that does it. "Baking" is what the wait is; the encoder and the file format the
+             * clip ends up in are not the author's business and never appear here.
              */
             task: {
-                weatherBake: "生成天气效果",
+                weatherBake: "烘焙屏幕效果",
             },
             openConsole: "打开控制台",
             unsavedChanges: "未保存的更改",
