@@ -1,4 +1,5 @@
 import { AppSettingDefinition, SettingCategory, SettingScope } from "@/lib/settings/models";
+import { MENU_BAR_MODE_DEFAULT, MENU_BAR_MODE_KEY, MENU_BAR_MODES } from "@/lib/settings/menuBarOptions";
 import { SettingValueType } from "@/lib/settings/types";
 import {
     EDITOR_FONT_FAMILY_DEFAULT,
@@ -849,6 +850,38 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "The strip along the bottom of the workspace.",
         descriptionKey: "settings.items.statusBarVisible.description",
         defaultValue: true,
+    },
+    {
+        // Read by WorkspaceLayout, which either hands the groups to the title bar's ActionBar or
+        // hides them there and draws the hamburger that holds them (`MainMenuButton`). The same
+        // choice is on the title bar's own right-click menu, which is where an author who has just
+        // lost their File menu goes looking for it.
+        key: MENU_BAR_MODE_KEY,
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Main menu",
+        labelKey: "settings.items.menuBarMode.label",
+        description: "Where the File, Help and panel menus live in the title bar.",
+        descriptionKey: "settings.items.menuBarMode.description",
+        defaultValue: MENU_BAR_MODE_DEFAULT,
+        options: [...MENU_BAR_MODES],
+        // The mode names belong to the title bar rather than to this window, so both readers take
+        // them from the same keys - a second wording here could only disagree with the menu.
+        optionLabelKeys: {
+            hamburger: "workspace.shell.mainMenu.modes.hamburger",
+            toolbar: "workspace.shell.mainMenu.modes.toolbar",
+        },
+        availability: async () => {
+            // macOS puts these groups on the system menu bar instead (`useNativeMenuSync`), so
+            // neither value would move anything. Shown disabled with the reason rather than hidden,
+            // like the ⌘Q row above: a preference that disappears with the machine gets reported
+            // as missing.
+            const { isMacPlatform } = await import("@/lib/app/platform");
+            return isMacPlatform()
+                ? { enabled: false, reasonKey: "settings.items.menuBarMode.unsupportedPlatform" }
+                : { enabled: true };
+        },
     },
     {
         // Read by WorkspaceLayout: drops the title-bar search pill. The palette keeps working -

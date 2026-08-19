@@ -30,8 +30,9 @@ const ACTIONS_OWNED_BY_RUN_CONTROL: ReadonlySet<string> = new Set<string>([Works
 
 interface ActionBarProps {
     /**
-     * Drop every dropdown menu, keeping only the standalone icon buttons. Used on macOS, where
-     * the menus live on the system menu bar instead (see `useNativeMenuSync`).
+     * Drop every dropdown menu, keeping only the standalone icon buttons. Set by whoever is drawing
+     * the menus instead: the system menu bar on macOS (see `useNativeMenuSync`), or the hamburger
+     * that `ui.menuBar.mode` puts at the far left of the title bar (`MainMenuButton`).
      */
     hideAllGroups?: boolean;
 }

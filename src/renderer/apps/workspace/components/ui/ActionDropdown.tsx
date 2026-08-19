@@ -19,6 +19,20 @@ import { useTranslation } from "@/lib/i18n";
 
 interface ActionDropdownProps {
     group: ActionGroup;
+    /**
+     * Draw the trigger as its icon alone, with no label and no chevron - the hamburger main menu,
+     * whose one button stands for every group rather than naming one.
+     */
+    iconOnly?: boolean;
+    /**
+     * The items already carry whatever a frozen workspace does to them, so leave them alone.
+     *
+     * Set by the hamburger main menu, which holds several groups at once: the freeze is a decision
+     * per group (see `./freezeActionPolicy`), and this dropdown - which knows only its own id -
+     * would otherwise re-apply it to all of them, switching off the File and Help menus that keep a
+     * frozen window escapable.
+     */
+    preFrozen?: boolean;
 }
 
 /**
@@ -29,11 +43,11 @@ interface ActionDropdownProps {
  * disabled, and only for groups the exemption table does not name (see `./freezeActionPolicy`). A
  * menu that refused to open would hide what the freeze is doing, which is the opposite of the point.
  */
-export function ActionDropdown({ group }: ActionDropdownProps) {
+export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: ActionDropdownProps) {
     const { t } = useTranslation();
     const { workspace, context } = useWorkspace();
     const frozen = useWorkspaceFrozen();
-    const frozenOut = frozen && !isFreezeExemptActionGroup(group.id);
+    const frozenOut = frozen && !preFrozen && !isFreezeExemptActionGroup(group.id);
     const groupLabel = group.labelKey ? t(group.labelKey) : group.label;
     const [isOpen, setIsOpen] = useState(false);
     const [openPath, setOpenPath] = useState<number[]>([]); // path of opened submenus
@@ -183,15 +197,19 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
                         e.preventDefault();
                     }
                 }}
-                className="h-8 px-2 rounded-md flex items-center gap-2 text-sm transition-colors cursor-default text-fg-muted hover:bg-fill hover:text-fg"
+                className={`${iconOnly ? "h-8 w-8 justify-center" : "h-8 px-2"} rounded-md flex items-center gap-2 text-sm transition-colors cursor-default text-fg-muted hover:bg-fill hover:text-fg`}
                 data-tip={String(groupLabel)}
                 aria-label={String(groupLabel)}
                 aria-expanded={isOpen}
                 aria-haspopup="true"
             >
                 {group.icon && <span className="w-4 h-4">{group.icon}</span>}
-                <span>{String(groupLabel)}</span>
-                <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                {!iconOnly && (
+                    <>
+                        <span>{String(groupLabel)}</span>
+                        <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                    </>
+                )}
             </button>
 
             {isOpen && (
@@ -306,6 +324,9 @@ interface MenuLevelProps {
      * Hover text for the items this menu has turned off wholesale - the frozen workspace's reason.
      * Set only when the freeze is the cause, so a row disabled by its own registration is not given
      * an explanation that would be wrong.
+     *
+     * A submenu may override it for its own rows (`ActionSubmenu.disabledReason`), which is how the
+     * hamburger main menu holds several groups at once and still answers for each of them.
      */
     disabledTitle?: string;
 }
@@ -426,7 +447,7 @@ function MenuLevel(props: MenuLevelProps) {
                                         hoverOpenTimerRef={hoverOpenTimerRef}
                                         hoverCloseTimerRef={hoverCloseTimerRef}
                                         focusContext={focusContext}
-                                        disabledTitle={disabledTitle}
+                                        disabledTitle={item.disabledReason ?? disabledTitle}
                                     />
                                 </div>
                             )}
