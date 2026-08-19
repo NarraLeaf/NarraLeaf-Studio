@@ -119,8 +119,11 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
         return voiceService.onConfigChanged(setConfig);
     }, [voiceService]);
 
-    // Every spoken line of the project (narration + dialogue across all stories),
-    // in narrative order — the coverage denominator for each voice language.
+    // Every line of the project an actor records, in narrative order — the coverage denominator for
+    // each voice language.
+    //
+    // Re-runs when choice voicing is switched: it decides which rows are script at all, so the
+    // denominator is wrong until the walk happens again.
     //
     // Cached per story and re-extracted one story at a time. A document change used to re-read and
     // re-walk EVERY story in the project, and a document change is what the story editor emits while
@@ -184,7 +187,10 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
             unsubscribeLibrary();
             unsubscribeDocument();
         };
-    }, [storyService, voiceService]);
+        // The flag rather than the whole config: naming pattern and cast edits do not change which
+        // rows are voiceable, and re-walking every story on each of them is what this effect's
+        // per-story cache exists to avoid.
+    }, [storyService, voiceService, config?.voiceChoices]);
 
     // Per-language coverage; recomputed when rows, config, or any assignment changes.
     useEffect(() => {
