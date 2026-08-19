@@ -46,11 +46,25 @@ function PatchDialogContent({
     onCancel,
 }: {
     info: PatchDialogInfo;
-    onExport: (choice: { appTagId: string; baselineAppDir: string; outputFile: string; name: string }) => void;
+    onExport: (choice: {
+        appTagId: string;
+        contentAppTagId: string;
+        baselineAppDir: string;
+        outputFile: string;
+        name: string;
+    }) => void;
     onCancel: () => void;
 }) {
     const { t } = useTranslation();
     const [appTagId, setAppTagId] = useState("");
+    /**
+     * Which variant's content goes in, when it is not the one the patch attaches to.
+     *
+     * Blank means the same one, which is the ordinary patch. The other case is an edition shipped
+     * without content the author now wants to deliver: the file has to open on the build the player
+     * owns, and carry the other edition's scenes and art.
+     */
+    const [contentAppTagId, setContentAppTagId] = useState("");
     const [baselineAppDir, setBaselineAppDir] = useState("");
     const [outputFile, setOutputFile] = useState(info.defaultOutputFile);
     const [name, setName] = useState("");
@@ -95,6 +109,23 @@ function PatchDialogContent({
                         nothing says so until a player tries it. */}
                     <span className="text-2xs text-fg-subtle">{t("build.patch.variantHint")}</span>
                 </div>
+
+                {info.appTags.length > 1 && (
+                    <div className="grid gap-1">
+                        <FieldLabel as="div">{t("build.patch.contentLabel")}</FieldLabel>
+                        <Select
+                            options={variantOptions}
+                            value={contentAppTagId || appTagId || RELEASE_APP_TAG.id}
+                            onChange={value => setContentAppTagId(
+                                String(value) === (appTagId || RELEASE_APP_TAG.id) ? "" : String(value),
+                            )}
+                            fullWidth
+                            portalMenu
+                            ariaLabel={t("build.patch.contentLabel")}
+                        />
+                        <span className="text-2xs text-fg-subtle">{t("build.patch.contentHint")}</span>
+                    </div>
+                )}
 
                 <div className="grid gap-1">
                     <FieldLabel as="div">{t("build.patch.baselineLabel")}</FieldLabel>
@@ -143,7 +174,13 @@ function PatchDialogContent({
                 <Button
                     variant="primary"
                     disabled={!outputFile.trim()}
-                    onClick={() => onExport({ appTagId, baselineAppDir: baselineAppDir.trim(), outputFile: outputFile.trim(), name })}
+                    onClick={() => onExport({
+                        appTagId,
+                        contentAppTagId,
+                        baselineAppDir: baselineAppDir.trim(),
+                        outputFile: outputFile.trim(),
+                        name,
+                    })}
                 >
                     {t("build.patch.exportAction")}
                 </Button>
@@ -209,6 +246,7 @@ export async function openPatchDialog(workspace: Workspace): Promise<void> {
                     uiService.dialogs.close(dialogId);
                     void buildService.exportPatch({
                         ...(choice.appTagId ? { appTagId: choice.appTagId } : {}),
+                        ...(choice.contentAppTagId ? { contentAppTagId: choice.contentAppTagId } : {}),
                         ...(choice.baselineAppDir ? { baselineAppDir: choice.baselineAppDir } : {}),
                         outputFile: choice.outputFile,
                         ...(choice.name.trim() ? { name: choice.name.trim() } : {}),

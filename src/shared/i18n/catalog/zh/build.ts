@@ -131,6 +131,8 @@ export const build = {
             title: "导出补丁",
             variantLabel: "变体",
             variantHint: "补丁只能在所针对变体的构建中打开",
+            contentLabel: "内容取自",
+            contentHint: "该变体的场景、条件分支与美术会进入补丁",
             baselineLabel: "本补丁更新的构建",
             baselinePlaceholder: "留空则包含整份游戏",
             baselineHint: "此前构建产出的桌面构建目录。补丁只包含与该目录不同的文件",

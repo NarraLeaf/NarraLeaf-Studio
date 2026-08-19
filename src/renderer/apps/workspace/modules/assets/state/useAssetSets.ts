@@ -102,6 +102,26 @@ export function useAssetSets({
         return record;
     }, [resolved]);
 
+    /**
+     * Every file some set answers with.
+     *
+     * The library lists these inside their set and nowhere else. A set is a folder to whoever is
+     * browsing, and a file that appeared both in its set and in the folder it was imported into read
+     * as two copies of itself - which is the one thing a set must not look like, since what it holds
+     * is exactly one file per variant.
+     */
+    const memberAssetIds = useMemo(() => {
+        const ids = new Set<string>();
+        for (const entry of resolved) {
+            for (const cell of entry.contents.cells) {
+                for (const id of cell.assetIds) {
+                    ids.add(id);
+                }
+            }
+        }
+        return ids as ReadonlySet<string>;
+    }, [resolved]);
+
     /** The sets a section lists at its root: the ones that hang under nothing. */
     const topLevelByCategory = useMemo(() => {
         const record = createEmptyAssetCategoryRecord<ResolvedAssetSet>();
@@ -119,5 +139,5 @@ export function useAssetSets({
         [resolved],
     );
 
-    return { service, sets, resolved, byCategory, topLevelByCategory, findSet };
+    return { service, sets, resolved, byCategory, topLevelByCategory, memberAssetIds, findSet };
 }

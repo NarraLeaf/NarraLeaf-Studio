@@ -88,6 +88,8 @@ export function AssetsIconView({
         isNarrowed,
         matchedGroupIds,
         assetSets,
+        rootAssetSets,
+        memberAssetIds,
         handleAssetSetSelect,
         showAssetSetContextMenu,
     } = useAssetsPanelContext();
@@ -196,7 +198,10 @@ export function AssetsIconView({
                     const categoryGroups = isNarrowed
                         ? filteredGroups[category].filter((group) => matchedGroupIds.has(group.id))
                         : filteredGroups[category].filter((group) => parentPredicate(group.parentGroupId));
-                    const categoryAssets = filteredAssets[category].filter((asset) => parentPredicate(asset.groupId));
+                    // A file a set answers with is drawn inside that set and not again beside it,
+                    // the same rule the tree follows: two tiles for one file read as two files.
+                    const categoryAssets = filteredAssets[category]
+                        .filter((asset) => parentPredicate(asset.groupId) && !memberAssetIds.has(asset.id));
                     // What this section stands for, not what happens to be loose in it.
                     const scopedAssets = isNarrowed
                         ? categoryAssets
@@ -204,7 +209,10 @@ export function AssetsIconView({
                     // Only at the top of a section, never inside a folder: a set is filed under the
                     // section its type belongs to and is not in any folder, so walking into one must
                     // not keep drawing it as if it were part of that folder's contents.
-                    const categorySets = activeGroup && !isNarrowed ? [] : assetSets[category];
+                    // Filed where it was made, so walking into a folder shows the sets made in it.
+                    const categorySets = isNarrowed
+                        ? rootAssetSets[category]
+                        : rootAssetSets[category].filter(entry => (entry.set.groupId ?? "") === (activeGroup?.group.id ?? ""));
                     const hasItems = categoryGroups.length > 0 || categoryAssets.length > 0 || categorySets.length > 0;
 
                     return (
