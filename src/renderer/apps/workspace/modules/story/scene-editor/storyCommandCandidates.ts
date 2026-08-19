@@ -1,7 +1,7 @@
 import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import { STORY_EXPR_FUNCTIONS, STORY_VISITED_CALLS, type StoryVariableValueType, type StoryVisitedCall } from "@shared/types/story";
 import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
-import { freeTargetKind, paramHintKey, paramTypes, type StoryCommandParam, type StoryCommandParamType } from "./storyCommandGrammar";
+import { enumFreeformValue, freeTargetKind, paramHintKey, paramTypes, type StoryCommandParam, type StoryCommandParamType } from "./storyCommandGrammar";
 import { listCommandDefs } from "./commands/registry";
 import { localizedParamKey, paramMatchesQuery } from "./commands/localizedParams";
 import { localizedEnumValue, matchEnumOptionLocalized } from "./commands/localizedEnums";
@@ -322,7 +322,14 @@ function candidatesForType(
             return targetCandidates(type, query, context);
         case "content":
             return contentCandidates(type, query, context, resolved);
-        case "enum":
+        case "enum": {
+            // A shape the word list cannot hold (a drawn easing curve) is offered back exactly as the
+            // speaker picker offers a typed name back: the menu must never say "no matches" about a
+            // value the line is about to take.
+            const drawn = enumFreeformValue(type, query);
+            const freeform = drawn === null
+                ? []
+                : [{ value: drawn, label: drawn, mark: { kind: "word" as const, value: drawn } }];
             // Completion inserts the word it is SHOWING — this locale's spelling when it has one that
             // parses, the canonical value otherwise. Storage is unaffected: resolution
             // normalizes either spelling to the canonical value, so what is banked never moves.
@@ -330,13 +337,17 @@ function candidatesForType(
             // The filter has to see the translated spelling too, or the list empties the moment the
             // author types the word they were just shown. `matchEnumOptionLocalized` covers the exact
             // hit; `containsFold` over the same spelling covers the partial one.
-            return type.options
-                .filter(option => !query || matchEnumOptionLocalized(type, query) === option || containsFold(option.value, query)
-                    || containsFold(localizedEnumValue(type, option), query)
-                    || (option.aliases ?? []).some(alias => containsFold(alias, query)))
-                // The mark is keyed on the CANONICAL value while the row shows this locale's word, so
-                // 向左滑动 and `slide-left` draw the same arrow.
-                .map(option => ({ value: localizedEnumValue(type, option), label: localizedEnumValue(type, option), detail: option.aliases?.[0], mark: { kind: "word" as const, value: option.value } }));
+            return [
+                ...freeform,
+                ...type.options
+                    .filter(option => !query || matchEnumOptionLocalized(type, query) === option || containsFold(option.value, query)
+                        || containsFold(localizedEnumValue(type, option), query)
+                        || (option.aliases ?? []).some(alias => containsFold(alias, query)))
+                    // The mark is keyed on the CANONICAL value while the row shows this locale's word, so
+                    // 向左滑动 and `slide-left` draw the same arrow.
+                    .map(option => ({ value: localizedEnumValue(type, option), label: localizedEnumValue(type, option), detail: option.aliases?.[0], mark: { kind: "word" as const, value: option.value } })),
+            ];
+        }
         case "keyword":
             return !query || startsWithFold(type.value, query) ? [{ value: type.value, label: type.value, mark: { kind: "word", value: type.value } }] : [];
         case "boolean":
