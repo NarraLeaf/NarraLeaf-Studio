@@ -17,20 +17,20 @@ import type { LocaleNamespace } from "../types";
 export const lint = {
     rule: {
         assetsUnused: {
-            title: "未使用的资源",
-            description: "工程中没有任何引用指向该资源",
+            title: "未使用的资产",
+            description: "工程中没有任何引用指向该资产",
             message: "{asset} 未被任何位置引用",
-            messageIndexUnresolved: "未能列出未使用的资源：{location} 指向的资源无法识别",
-            messageIndexUnreadable: "未能列出未使用的资源：{location} 无法读取",
-            messageIndexNotBuilt: "未能列出未使用的资源：本工程无法扫描",
+            messageIndexUnresolved: "未能列出未使用的资产：{location} 指向的资产无法识别",
+            messageIndexUnreadable: "未能列出未使用的资产：{location} 无法读取",
+            messageIndexNotBuilt: "未能列出未使用的资产：本工程无法扫描",
         },
         assetsMissing: {
-            title: "资源缺失",
-            description: "引用指向资源库中已不存在的资源",
-            message: "{location} 引用了不存在的资源",
+            title: "资产缺失",
+            description: "引用指向资产库中已不存在的资产",
+            message: "{location} 引用了不存在的资产",
         },
         assetsUnreadable: {
-            title: "无法读取的资源",
+            title: "无法读取的资产",
             description: "文件无法读取或解码",
             message: "{asset} 无法解码",
             messageMissingBytes: "{asset} 的文件无法从磁盘读取",
@@ -113,9 +113,9 @@ export const lint = {
             messageEmptyOption: "该选项没有文本",
         },
         storyDeadEnd: {
-            title: "缺少出口的路径",
-            description: "场景中部分路径跳转离开，仍有路径执行至末尾",
-            message: "该路径执行至场景末尾后没有后续",
+            title: "无子节点",
+            description: "场景中部分路径跳转离开，仍有路径的末尾没有子节点",
+            message: "该行没有子节点，执行到此处即越过场景末尾",
         },
         storyUnreachableScene: {
             title: "无法到达的场景",
@@ -277,7 +277,7 @@ export const lint = {
         storyLoadFailed: "{story} 无法打开",
     },
     category: {
-        assets: "资源",
+        assets: "资产",
         portability: "可移植性",
         network: "网络",
         story: "故事",

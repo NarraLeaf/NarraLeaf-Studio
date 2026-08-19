@@ -101,7 +101,7 @@ export const properties = {
         fallbackName: "字体",
         none: "无字体",
         choose: "选择字体",
-        loadError: "字体无法加载（{error}）；在素材有效之前，预览使用回退字体",
+        loadError: "字体无法加载（{error}）；在资产有效之前，预览使用回退字体",
         select: "选择字体",
     },
     imageFill: {
@@ -113,10 +113,10 @@ export const properties = {
         selectMode: "选择模式",
         previewAlt: "填充预览",
         selectImage: "选择一张图片",
-        selectHint: "点击打开素材浏览器",
+        selectHint: "点击打开资产浏览器",
         changeImage: "更换图片",
         openEditor: "点击打开编辑器",
-        resolveError: "图片素材无法解析（{error}）；在该素材存在之前，预览不准确",
+        resolveError: "图片资产无法解析（{error}）；在该资产存在之前，预览不准确",
         selectFillImage: "选择填充图片",
         mode: {
             cover: "覆盖",
@@ -146,7 +146,7 @@ export const properties = {
             other: "{count} 处引用",
         },
         dormant: "未生效",
-        dormantHint: "已保存在控件上，但当前不显示，因为填充方式设为纯色；删除该素材会清空该字段",
+        dormantHint: "已保存在控件上，但当前不显示，因为填充方式设为纯色；删除该资产会清空该字段",
         kind: {
             story: "剧情",
             blueprint: "蓝图",
@@ -168,15 +168,15 @@ export const properties = {
         cropTitle: "裁剪缩略图",
         error: {
             workspaceNotReady: "工作区尚未就绪",
-            selectImage: "请选择一个图片素材",
-            loadAsset: "加载素材失败",
+            selectImage: "请选择一个图片资产",
+            loadAsset: "加载资产失败",
             deleteFailed: "删除缩略图失败",
             saveFailed: "保存缩略图失败",
             unknown: "未知错误",
         },
     },
     asset: {
-        namePlaceholder: "素材名称",
+        namePlaceholder: "资产名称",
         descriptionPlaceholder: "输入描述…",
         info: {
             dimensions: "尺寸",
