@@ -338,6 +338,38 @@ describe("media objects", () => {
         expect(build("/font title color=#ff0000")).toMatchObject({ payload: { operation: "setFontColor", fontColor: "#ff0000" } });
         expect(issuesOf("/font title 48 color=#ff0000")).toEqual(["conflictingParams"]);
     });
+
+    it("/front raises one displayable, and states nothing else", () => {
+        expect(build("/front hero")).toMatchObject({
+            kind: "action",
+            payload: { action: "displayable", operation: "bringToFront", target: { kind: "image", name: "hero" } },
+        });
+        expect(build("/front title")).toMatchObject({
+            payload: { action: "displayable", operation: "bringToFront", target: { kind: "text", name: "title" } },
+        });
+        expect(build("/front Alice")).toMatchObject({
+            payload: { action: "displayable", operation: "bringToFront", target: { kind: "character", name: "Alice" } },
+        });
+        // No duration, no bag: the raise is one frame, and the payload carries neither.
+        expect(Object.keys(build("/front hero").payload).sort()).toEqual(["action", "operation", "target"]);
+        expect(Object.keys(getCommandSpec("front")?.params ?? {})).toEqual(["target"]);
+    });
+
+    it("/front names what it found when the target is a kind it cannot raise", () => {
+        // The `refuses` half, exactly as `/transform` does it: a layer, a video and an ambience
+        // overlay are on stage under names the author can see, so the slot resolves them in order to
+        // report them - answering "nothing on stage is named overlay" would be a lie.
+        for (const line of ["/front overlay", "/front clip", "/front petals"]) {
+            expect(issuesOf(line)).toEqual(["unsupportedTarget"]);
+        }
+        // ...and a name nothing answers to is still the other message: check the spelling.
+        expect(issuesOf("/front nobody")).toEqual(["unknownTarget"]);
+        // The refused kinds are refused, never quietly accepted into a payload that cannot hold them.
+        const target = getCommandSpec("front")?.params.target.type;
+        const accepts = (Array.isArray(target) ? target : [target]).flatMap(type =>
+            type && type.kind === "target" ? [...type.accepts] : []);
+        expect(accepts).toEqual(["image", "text", "character"]);
+    });
 });
 
 describe("sound (target defaults to bgm)", () => {

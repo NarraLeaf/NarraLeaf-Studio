@@ -396,6 +396,9 @@ const displayableOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "transform", label: t("storyInspector.displayableOperation.transform") },
     { value: "show", label: t("common.show") },
     { value: "hide", label: t("common.hide") },
+    // Listed so a `/front` row reads its own verb back here rather than showing an empty select. It
+    // is the one entry with nothing to configure - see the transform editor's guard below.
+    { value: "bringToFront", label: t("storyInspector.displayableOperation.bringToFront") },
 ];
 
 const displayableEffectHints = (t: TFunc): Record<string, string> => ({
@@ -973,16 +976,20 @@ function ActionPayloadFields(props: {
                         onChange={target => props.onChange({ ...payload, target })}
                     />
                 </FieldGrid>
-                <TransformPresetEditor
-                    value={payload.transform}
-                    motionTargetKind={resolvedTarget.kind ?? "image"}
-                    motionLabel={`${resolvedTarget.label || t("storyInspector.motionTarget.displayable")} ${payload.operation}`}
-                    storyId={props.document.id}
-                    sceneId={props.sceneId}
-                    blockId={props.block.id}
-                    storyName={props.document.name}
-                    onChange={transform => props.onChange({ ...payload, transform })}
-                />
+                {/* A raise carries no pose and no duration, so the bag editor is not shown for it -
+                    a transform authored here would be stored and then never reach the stage. */}
+                {payload.operation === "bringToFront" ? null : (
+                    <TransformPresetEditor
+                        value={payload.transform}
+                        motionTargetKind={resolvedTarget.kind ?? "image"}
+                        motionLabel={`${resolvedTarget.label || t("storyInspector.motionTarget.displayable")} ${payload.operation}`}
+                        storyId={props.document.id}
+                        sceneId={props.sceneId}
+                        blockId={props.block.id}
+                        storyName={props.document.name}
+                        onChange={transform => props.onChange({ ...payload, transform })}
+                    />
+                )}
             </div>
         );
     }

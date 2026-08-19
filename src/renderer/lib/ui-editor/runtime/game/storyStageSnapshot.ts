@@ -698,6 +698,14 @@ class SnapshotWalker {
             return;
         }
         const operation = payload.operation;
+        // A raise is not a pose: it states no props and no visibility, only where the element sits in
+        // the creation order this snapshot hands out. `order` is what both consumers build elements
+        // from - the editor's scene preview and "play from this row" - so moving the key to the end
+        // here is the whole of what makes either of them show the stacking the row describes.
+        if (operation === "bringToFront") {
+            this.bringToFront(bucket.key);
+            return;
+        }
         const visibility: VisibilityTransformMode = operation === "transform" ? "none" : operation;
         const props = this.finalProps(payload.transform, visibility, block.id);
         if (bucket.record) {
@@ -720,8 +728,30 @@ class SnapshotWalker {
         }
     }
 
+    /**
+     * Move one displayable to the end of the creation order - the top of its layer.
+     *
+     * The background and the two built-in layers are not in `order` at all (they are not elements this
+     * walk creates), so a raise addressed at one of them has no key and nothing to move. The command
+     * line cannot write that row - its target slot takes an image, a text or a character - so this is
+     * a payload the inspector or an import could produce, and doing nothing is the honest answer.
+     */
+    private bringToFront(key: string | undefined): void {
+        if (key === undefined) {
+            return;
+        }
+        const at = this.order.indexOf(key);
+        if (at === -1 || at === this.order.length - 1) {
+            return;
+        }
+        this.order.splice(at, 1);
+        this.order.push(key);
+    }
+
     private resolveDisplayableBucket(payload: Extract<StoryActionPayload, { action: "displayable" }>, blockId: string): {
         record?: StageSnapshotDisplayable;
+        /** The `order` entry behind `record`, so a raise can move it. Absent for the built-in buckets. */
+        key?: string;
         background?: boolean;
         builtinLayer?: "backgroundLayer" | "displayableLayer";
     } | null {
@@ -737,14 +767,15 @@ class SnapshotWalker {
         }
         const resolved = resolveDisplayableTargetRef(this.scene, target);
         const kind = resolved.kind === "character" || !resolved.kind ? "image" : resolved.kind;
-        const record = this.displayables.get(this.key(kind === "text" ? "text" : kind === "layer" ? "layer" : "image", resolved.name));
+        const key = this.key(kind === "text" ? "text" : kind === "layer" ? "layer" : "image", resolved.name);
+        const record = this.displayables.get(key);
         if (!record) {
             this.diagnostic(blockId, translate("story.preview.diagnostics.displayableNotFound", {
                 target: resolved.label || resolved.name || translate("story.preview.diagnostics.displayableUnnamed"),
             }));
             return null;
         }
-        return { record };
+        return { record, key };
     }
 
     private applySetVariable(block: StoryBlock, payload: Extract<StoryActionPayload, { action: "setVariable" }>): void {
