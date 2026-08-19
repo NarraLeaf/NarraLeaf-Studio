@@ -465,6 +465,18 @@ export type NlrActionIdBinding = {
     staticId: string;
     blockId: string;
     textId?: string;
+    /**
+     * The audio asset this action starts, for the actions that start one.
+     *
+     * Only a `/bgm` that names an asset and a `/sound` play carry it: stopping, seeking or
+     * re-levelling a clip is not the player hearing it for the first time. A host that watches the
+     * play head can therefore say which clip began without decoding the engine action.
+     *
+     * Deliberately absent from {@link stableActionId}: the static id is what a save anchors on, so
+     * folding an asset id into it would invalidate every existing save the moment an author
+     * re-pointed a row at a different file.
+     */
+    audioAssetId?: string;
 };
 
 type NlrAction = Parameters<typeof DevTools.setActionId>[0];
@@ -591,6 +603,15 @@ export type CompiledNlrStory = {
      * it can never turn an arbitrary stage image back into an id.
      */
     avatarAssetIdByUrl: Map<string, string>;
+    /**
+     * The audio asset each scene's configured background music was built from, keyed by Studio
+     * scene id. Only scenes that both declare music and resolved it are present.
+     *
+     * A scene's music is scene *config*, not a row, so it starts on mount with no action of its
+     * own - which means the play head never reports it. A host that follows what the player is
+     * hearing has to read it here and pair it with the scene mount instead.
+     */
+    sceneBackgroundMusicAssetIds?: Record<string, string>;
     /** Per-scene element registries, keyed by scene id (normalized object name → element). */
     sceneElements?: Record<string, CompiledSceneElements>;
     /** Continuous stage previews only: why the compiled playback tail ends. */
@@ -719,6 +740,14 @@ type SceneCompileContext = {
      * *different* track be reported rather than silently ignored (see {@link getSound}).
      */
     soundTrackIds: Map<string, string>;
+    /**
+     * The audio asset each named sound handle was created from, keyed the same way `sounds` is.
+     *
+     * Same reason `soundTrackIds` exists: `/sound piano` after `/sound piano asset=x` addresses the
+     * handle without naming a file, so the row that starts the clip again has no asset id of its
+     * own. This is what lets the play head still report which file began.
+     */
+    soundAssetIds: Map<string, string>;
     /** Fn declarations shared across all story-action blueprints in this scene. */
     sceneFnCatalog: StoryActionFnCatalog;
     images: Map<string, Image>;
@@ -900,7 +929,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         : undefined;
     const voicedUnitIds = voiceUrlsByLocale ? collectVoicedUnitIds(voiceUrlsByLocale) : undefined;
     const audioTracks = input.audioTracks ?? BUILTIN_AUDIO_TRACKS;
-    const sceneBackgroundMusic = new Map<string, { sound: Sound; trackId: string }>();
+    const sceneBackgroundMusic = new Map<string, { sound: Sound; trackId: string; assetId: string }>();
     /**
      * Ambience overlays, keyed by name, for the WHOLE compile rather than per scene.
      *
@@ -994,6 +1023,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             // defaults to, so `/vol 0.5` on a scene with music means what it looks like.
             sounds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic.sound]]) : new Map(),
             soundTrackIds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic.trackId]]) : new Map(),
+            soundAssetIds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic.assetId]]) : new Map(),
             audioClips: input.audioClips,
             audioTracks,
             animations,
@@ -1096,6 +1126,9 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         diagnostics,
         characters,
         avatarAssetIdByUrl,
+        sceneBackgroundMusicAssetIds: Object.fromEntries(
+            Array.from(sceneBackgroundMusic, ([sceneId, music]) => [sceneId, music.assetId] as const),
+        ),
         sceneElements,
         setVoiceLocale: scenesBuild.setVoiceLocale,
         getVoicePlayback: scenesBuild.getVoicePlayback,
@@ -1212,6 +1245,7 @@ async function buildLaunchEntryScene(params: {
         vfxAssetIds: params.vfxAssetIds,
         sounds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.sound]]) : new Map(),
         soundTrackIds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.trackId]]) : new Map(),
+        soundAssetIds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.assetId]]) : new Map(),
         audioClips: input.audioClips,
         audioTracks,
         animations: params.animations,
@@ -1441,6 +1475,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         vfxAssetIds: new Map(),
         sounds: new Map(),
         soundTrackIds: new Map(),
+        soundAssetIds: new Map(),
         audioClips: input.audioClips,
         audioTracks: input.audioTracks ?? BUILTIN_AUDIO_TRACKS,
         animations,
@@ -1726,7 +1761,7 @@ async function createNlrScenes(input: {
      * audio track rides along for the same reason: a later `/vol` on that handle has to reach the
      * gain the scene's music was built with, not the built-in fallback's.
      */
-    backgroundMusic?: Map<string, { sound: Sound; trackId: string }>;
+    backgroundMusic?: Map<string, { sound: Sound; trackId: string; assetId: string }>;
 }): Promise<{
     scenes: Record<string, Scene>;
     setVoiceLocale: (locale: string) => boolean;
@@ -1840,7 +1875,7 @@ async function createNlrScenes(input: {
         if (music) {
             config.backgroundMusic = music.sound;
             config.backgroundMusicFade = music.fadeMs;
-            input.backgroundMusic?.set(scene.id, { sound: music.sound, trackId: music.trackId });
+            input.backgroundMusic?.set(scene.id, { sound: music.sound, trackId: music.trackId, assetId: music.assetId });
         }
         const built = new Scene(
             runtimeName,
@@ -1896,7 +1931,7 @@ async function resolveSceneBackgroundMusic(input: {
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
-}): Promise<{ sound: Sound; fadeMs: number; trackId: string } | null> {
+}): Promise<{ sound: Sound; fadeMs: number; trackId: string; assetId: string } | null> {
     const bgm = input.scene.bgm;
     const assetId = bgm?.assetId?.trim();
     if (!bgm || !assetId) {
@@ -1927,6 +1962,7 @@ async function resolveSceneBackgroundMusic(input: {
         }),
         fadeMs: bgm.fadeMs ?? 0,
         trackId: track.id,
+        assetId,
     };
 }
 
@@ -3280,6 +3316,7 @@ async function compileAudioAction(
             // track to resolve: nothing is being routed, only stopped, over this row's own fade.
             ctx.sounds.delete(BGM_SOUND_NAME);
             ctx.soundTrackIds.delete(BGM_SOUND_NAME);
+            ctx.soundAssetIds.delete(BGM_SOUND_NAME);
             return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(null, rowFadeMs(payload)), block)];
         }
         // A `/bgm` with an asset builds a NEW handle and replaces whatever was under `bgm`, so it
@@ -3301,7 +3338,14 @@ async function compileAudioAction(
         // channel by registering the BGM handle under "bgm" (see BGM_OBJECT_NAME in the editor).
         ctx.sounds.set(BGM_SOUND_NAME, sound);
         ctx.soundTrackIds.set(BGM_SOUND_NAME, track.id);
-        return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(sound, rowFadeMs(payload)), block)];
+        ctx.soundAssetIds.set(BGM_SOUND_NAME, payload.assetId);
+        return [recordStatement(
+            ctx,
+            ctx.nlrScene.setBackgroundMusic(sound, rowFadeMs(payload)),
+            block,
+            undefined,
+            payload.assetId,
+        )];
     }
 
     const name = normalizeObjectName(payload.objectName || payload.assetId || "sound");
@@ -3317,7 +3361,16 @@ async function compileAudioAction(
 
     switch (payload.operation) {
         case "playSound":
-            return [recordStatement(ctx, sound.play(fadeMs), block)];
+            // The only operation here that STARTS a clip, so the only one that binds an asset id.
+            // Read back off the handle when the row named no file, which is the `/sound piano`
+            // replay case.
+            return [recordStatement(
+                ctx,
+                sound.play(fadeMs),
+                block,
+                undefined,
+                payload.assetId?.trim() || ctx.soundAssetIds.get(name),
+            )];
         case "stopSound":
             return [recordStatement(ctx, sound.stop(fadeMs), block)];
         case "pauseSound":
@@ -4036,6 +4089,7 @@ async function getSound(
     });
     ctx.sounds.set(name, sound);
     ctx.soundTrackIds.set(name, track.id);
+    ctx.soundAssetIds.set(name, assetId);
     return sound;
 }
 
@@ -5242,7 +5296,13 @@ async function resolveAssetUrlCached(input: {
     }
 }
 
-function recordStatement(ctx: SceneCompileContext, statement: NlrStatement, block: StoryBlock, textId?: string): NlrStatement {
+function recordStatement(
+    ctx: SceneCompileContext,
+    statement: NlrStatement,
+    block: StoryBlock,
+    textId?: string,
+    audioAssetId?: string,
+): NlrStatement {
     for (const action of statementToActions(statement)) {
         const staticId = stableActionId(ctx.document.id, ctx.scene.id, block.id, textId, ctx.nextActionIndex(block.id));
         setStableActionId(action, staticId);
@@ -5251,6 +5311,7 @@ function recordStatement(ctx: SceneCompileContext, statement: NlrStatement, bloc
             staticId,
             blockId: block.id,
             textId,
+            ...(audioAssetId ? { audioAssetId } : {}),
         });
     }
     return statement;
