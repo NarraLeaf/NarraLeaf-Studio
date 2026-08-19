@@ -332,6 +332,25 @@ describe("compiles a camera grade as a cut", () => {
         }
     });
 
+    it("reports a camera row carrying no transform, rather than compiling to nothing", async () => {
+        // How the grade went missing: a document that reached the compiler at a pre-v19 schema spells
+        // its camera rows as an operation plus that operation's own fields, so `payload.transform` is
+        // absent - and the row used to fall through to an empty statement list. Nothing plays, nothing
+        // is said, and the scene steps past it exactly as if the row had graded the stage. Every
+        // authoring path writes a ref, so this shape only arrives from a document that skipped its
+        // migration, and the compiler is the last place that can still say so.
+        const document = cameraDocument({
+            grade: {
+                id: "grade", kind: "action", parentId: null, childrenIds: [],
+                payload: { action: "camera", operation: "transform" },
+            },
+        }, ["grade"]);
+
+        const compiled = await compileStudioStoryToNlr({ document, sceneId: "scene-1" });
+        expect(compiled.diagnostics.map(diagnostic => diagnostic.level)).toEqual(["warning"]);
+        expect(compiled.actionIdBindings.filter(binding => binding.blockId === "grade")).toHaveLength(0);
+    });
+
     it("reports a lens gesture the library does not know, rather than playing a different one", async () => {
         const document = cameraDocument({
             wink: {
