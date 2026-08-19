@@ -147,6 +147,11 @@
       "status": "translated",
       "target": "走廊里还留着粉笔和地板蜡的味道。身后有个储物柜正在降温，咔、咔地响。"
     },
+    "key:config.autoForwardDelay": {
+      "sourceHash": "fnv1a:e727e3f0",
+      "status": "translated",
+      "target": "自动前进等待时间"
+    },
     "key:menu.continue": {
       "sourceHash": "fnv1a:ab43d664",
       "status": "reviewed",
