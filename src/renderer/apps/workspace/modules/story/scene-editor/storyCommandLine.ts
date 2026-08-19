@@ -1046,6 +1046,11 @@ function displayableSentence(
     // several of them onto this arm (`/move` became `/transform <who> pos=`) - a face that vanished
     // on the way would have made the change look like a different kind of row.
     const who = displayableFace(lookups, payload.target, label);
+    // `/front hero`, whole. The subject is the only thing this row states: there is no bag to print
+    // and no `d=` to offer, so anything else here would be a token the line cannot carry back.
+    if (payload.operation === "bringToFront") {
+        return { commandId, args: [positional("target", label, who)] };
+    }
     if (payload.operation === "transform") {
         // A Story Motion states its shot in a binding rather than in props, so the line says which
         // mode the row is in and the motion's name rides the inspector - the same shape the retired

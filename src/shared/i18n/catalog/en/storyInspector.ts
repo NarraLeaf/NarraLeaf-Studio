@@ -341,6 +341,7 @@ export const storyInspector = {
     },
     displayableOperation: {
         transform: "Transform",
+        bringToFront: "Bring to front",
         mask: "Mask",
         clearMask: "Clear mask",
         clip: "Clip path",

@@ -514,6 +514,10 @@ describe("projectStoryCommandLine", () => {
             "/reset hero d=0.5",
             "/hide petals d=0.5",
             "/show title in=fade d=0.2",
+            // The raise: the subject is the whole line, so the round trip is what catches a projection
+            // that quietly grew a `d=` the payload has nowhere to store.
+            "/front hero",
+            "/front Alice",
             // The declarations: every type, with and without a default, and the shapes that have to
             // survive the tokenizer — a spaced description, a bracketed json default, a string default
             // that reads as something else.

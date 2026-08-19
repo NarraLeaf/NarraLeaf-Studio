@@ -970,6 +970,7 @@ export const story = {
         layer: { label: "レイヤー", detail: "描画のレイヤーを作る" },
         swap: { label: "差し替え", detail: "オブジェクトの画像やテキストを入れ替える" },
         play: { label: "再生", detail: "動画を再生する" },
+        front: { label: "最前面へ", detail: "キャラクターや舞台オブジェクトを同じレイヤーの最前面に描く" },
         font: { label: "書式", detail: "テキストの大きさや色を変える" },
         bgm: { label: "BGM", detail: "背景音楽を決める" },
         sound: { label: "効果音", detail: "効果音を鳴らす" },
