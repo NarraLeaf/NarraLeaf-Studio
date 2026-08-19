@@ -8,16 +8,20 @@ import {
 import { isBuiltinAppTagId } from "@shared/types/appTag";
 import {
     collectAppTagComparisonNames,
+    danglingStageObjectRefs,
     duplicateSceneLabels,
+    duplicateStageObjectDeclarations,
     listSceneBlocksInDocumentOrder,
     listSceneLabels,
     listScenesInDocumentOrder,
     sceneLabelNames,
+    type StageObjectReference,
     type StoryBlock,
     type StoryBlockId,
     type StoryExpr,
     type StoryScene,
 } from "@shared/types/story";
+import type { TranslationKey } from "@shared/i18n/catalog";
 import { collectInvalidBlocks } from "../../workspace/services/story/storyModel";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import type { LintContext, LintStoryEntry } from "../context";
@@ -114,6 +118,42 @@ function blockTarget(entry: LintStoryEntry, scene: StoryScene, blockId: StoryBlo
         storyName: entry.name,
         sceneName: scene.name,
     };
+}
+
+/**
+ * The word to print for a stage object the scene never creates.
+ *
+ * The reference's LABEL, never its key: an unnamed sound keys on its asset id, and a UUID in a
+ * report is a word nobody can search a project for.
+ *
+ * A character is the one kind whose label is not in the document either. It has no stage name until
+ * an author types one, so it keys on its `characterId` and its label falls back to a placeholder -
+ * while the name an author would recognise sits in the project's character list. Resolving it is the
+ * only reason this rule reads anything outside the story, and it matters here more than anywhere:
+ * a character is the most common subject in a script, and this rule stops a build.
+ */
+function stageObjectLabel(ctx: LintContext, reference: StageObjectReference): string {
+    if (reference.subject === "character") {
+        const name = ctx.characters.find(character => character.id === reference.name)?.name.trim();
+        if (name) {
+            return name;
+        }
+    }
+    return reference.label;
+}
+
+/**
+ * The sentence for a missing stage object, picked by what the row acts on.
+ *
+ * One shape, one varying clause, the way `blueprint/reference-missing` already names each kind it
+ * can resolve. Half of what a report is for is the remedy, and a character has a different one:
+ * nothing creates a character, an author brings it on stage. The story compiler states the same two
+ * remedies on `reportMissingStageObject`, so a preview and a build give one answer.
+ */
+function stageObjectMessageKey(reference: StageObjectReference): TranslationKey {
+    return reference.subject === "character"
+        ? "lint.rule.storyStageObjectMissing.messageCharacter"
+        : "lint.rule.storyStageObjectMissing.message";
 }
 
 /**
@@ -652,6 +692,76 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                         messageKey: "lint.rule.storyCutPointUnreachable.message",
                         location: storyLocation(entry, scene, cut.blockId),
                         target: blockTarget(entry, scene, cut.blockId),
+                    });
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * A row acting on a stage object no row in its scene creates.
+         *
+         * `error`, and the only lint rule whose verdict is computed somewhere else on purpose. The
+         * story compiler asks the same question of the same row while building a preview and reports
+         * the same miss - but a compile diagnostic reaches the Story console and stops nothing, and
+         * an image that never appears is exactly the kind of thing that ships. So the judgement lives
+         * in `@shared/types/story/stageObjects` and both callers read it: this rule is the half that
+         * refuses a build, `reportMissingStageObject` is the half an author sees while writing.
+         *
+         * Anything that reading can settle differently is settled the quiet way. The scene is read
+         * whole, so a `/show` written above its `create` row is not a finding here even though the
+         * compiler's in-order walk reports it; the reserved music channel is exempt, because a
+         * `/bgm` in an earlier scene is still playing in this one and no single scene can see that.
+         */
+        id: "story/stage-object-missing",
+        category: "story",
+        defaultSeverity: "error",
+        slug: "storyStageObjectMissing",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const { entry, scene } of eachScene(ctx)) {
+                for (const reference of danglingStageObjectRefs(scene)) {
+                    findings.push({
+                        ruleId: "story/stage-object-missing",
+                        messageKey: stageObjectMessageKey(reference),
+                        messageParams: { object: stageObjectLabel(ctx, reference) },
+                        location: storyLocation(entry, scene, reference.blockId),
+                        target: blockTarget(entry, scene, reference.blockId),
+                    });
+                }
+            }
+            return findings;
+        },
+    },
+    {
+        /**
+         * Two rows creating one stage name.
+         *
+         * `warning`, and deliberately not an error. The object exists and the engine's behaviour is
+         * settled - the constructors are get-or-create, so the second row hands back the first row's
+         * object and its own asset or text goes nowhere. What cannot be settled is the intent: an
+         * author writing two rows may have meant two objects and misspelled the second name, or may
+         * have meant to re-dress the first. `diagnostic()` in the story compiler states the rule this
+         * follows - error is for what a reading can PROVE the document does not contain, warning for
+         * what it cannot settle by itself - and which of two intents was meant is not provable.
+         */
+        id: "story/stage-object-duplicate",
+        category: "story",
+        defaultSeverity: "warning",
+        slug: "storyStageObjectDuplicate",
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const { entry, scene } of eachScene(ctx)) {
+                // The first declaration stands, so the scan anchors the later rows - the same
+                // anchoring `story/label-duplicate` uses, and for the same reason.
+                for (const duplicate of duplicateStageObjectDeclarations(scene)) {
+                    findings.push({
+                        ruleId: "story/stage-object-duplicate",
+                        messageKey: "lint.rule.storyStageObjectDuplicate.message",
+                        messageParams: { object: duplicate.label },
+                        location: storyLocation(entry, scene, duplicate.blockId),
+                        target: blockTarget(entry, scene, duplicate.blockId),
                     });
                 }
             }

@@ -189,6 +189,63 @@ describe("storyRowSentence — the sentence the editor shows", () => {
     });
 });
 
+describe("a row that addresses a renamed stage object", () => {
+    /**
+     * The gap an author reported: renaming `poster` to `bg` moved the object and the compiler followed
+     * the reference, while every row addressing it went on saying `poster`. The rows read the reference
+     * now, so what they say is what they act on.
+     */
+    function sceneWith(blocks: StoryBlock[]): StoryScene {
+        return {
+            id: "s1", name: "Scene", runtimeName: "scene",
+            rootBlockIds: blocks.map(block => block.id),
+            blocks: Object.fromEntries(blocks.map(block => [block.id, block])),
+        } as StoryScene;
+    }
+
+    const declarations = [
+        action({ action: "image", operation: "create", objectName: "bg" }, "d_img"),
+        action({ action: "text", operation: "create", objectName: "chapter" }, "d_txt"),
+        action({ action: "video", operation: "create", objectName: "opening" }, "d_vid"),
+        action({ action: "vfx", operation: "create", objectName: "rain" }, "d_vfx"),
+        action({ action: "audio", operation: "playSound", objectName: "keys" }, "d_snd"),
+    ];
+    const scene = sceneWith(declarations);
+    const lookups: StoryRowLookups = { ...bare, scene };
+
+    it("says the name the declaring row carries now, on every kind", () => {
+        // Each row still stores the name it was written with; only the reference knows better.
+        expect(storyRowSentence(action({ action: "image", operation: "show", objectName: "poster", target: { kind: "image", name: "poster", label: "poster", sourceBlockId: "d_img" } }), lookups))
+            .toBe("Show image bg");
+        expect(storyRowSentence(action({ action: "text", operation: "setText", objectName: "title", text: "Hi", target: { kind: "text", name: "title", label: "title", sourceBlockId: "d_txt" } }), lookups))
+            .toBe("Swap text chapter");
+        expect(storyRowSentence(action({ action: "video", operation: "play", objectName: "intro", target: { name: "intro", label: "intro", sourceBlockId: "d_vid" } }), lookups))
+            .toBe("Play video opening");
+        expect(storyRowSentence(action({ action: "vfx", operation: "pause", objectName: "petals", target: { name: "petals", label: "petals", sourceBlockId: "d_vfx" } }), lookups))
+            .toBe("Pause ambience rain");
+        expect(storyRowSentence(action({ action: "audio", operation: "stopSound", objectName: "piano", target: { name: "piano", label: "piano", sourceBlockId: "d_snd" } }), lookups))
+            .toBe("Stop keys");
+    });
+
+    it("leaves a document written before references reading exactly as it did", () => {
+        expect(storyRowSentence(action({ action: "image", operation: "show", objectName: "poster" }), lookups))
+            .toBe("Show image poster");
+        expect(storyRowSentence(action({ action: "audio", operation: "stopSound", objectName: "piano" }), lookups))
+            .toBe("Stop piano");
+    });
+
+    it("shows the last name an author saw when the declaring row is gone, never a key", () => {
+        // The reference outlives its row. `label` is what stands, and for an unnamed sound `name`
+        // would be the asset id - which is the whole reason the two halves are stored apart.
+        const empty: StoryRowLookups = { ...bare, scene: sceneWith([]) };
+        expect(storyRowSentence(action({ action: "image", operation: "show", objectName: "poster", target: { kind: "image", name: "poster", label: "poster", sourceBlockId: "gone" } }), empty))
+            .toBe("Show image poster");
+        const sentence = storyRowSentence(action({ action: "audio", operation: "stopSound", objectName: "piano", target: { name: "asset-7", label: "piano", sourceBlockId: "gone" } }), empty);
+        expect(sentence).toBe("Stop piano");
+        expect(sentence).not.toContain("asset-7");
+    });
+});
+
 describe("speaker", () => {
     const dialogue = (payload: Record<string, unknown>): StoryBlock => ({
         id: "d", kind: "nodeAction", parentId: null, childrenIds: [],
