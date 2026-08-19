@@ -53,6 +53,18 @@ export type WindowProps = {
         recoveryReason?: string;
     },
     [WindowAppType.ProjectWizard]: {
+        /**
+         * A `.nlspkg` the wizard should open on, already chosen.
+         *
+         * Set when Studio was asked to open a package file directly - a double-click in the file
+         * manager, or a second launch handing one to the running instance. The wizard starts on
+         * the import flow with this package selected instead of on the origin page, because the
+         * author has already answered the question that page asks.
+         *
+         * The path is granted to this window by the main process before the window loads; the
+         * renderer never resolves it and never picks it up from anywhere else.
+         */
+        packagePath?: string;
     },
     [WindowAppType.DevMode]: {
         projectPath: string;
@@ -63,6 +75,25 @@ export type WindowProps = {
     [WindowAppType.Raw]: {
     },
 }
+
+/**
+ * What happens to a window that was opened *from* another one when that other one goes away.
+ *
+ * `"dependent"` is the answer for a prompt: it asks a question on behalf of the window that raised
+ * it, so once that window is gone there is nobody left for the answer to reach. It goes with its
+ * parent, reporting "no answer" to whoever was waiting.
+ *
+ * `"independent"` is the answer for everything the author is *doing* rather than answering. The
+ * project wizard is the case that named this: it is opened from the launcher, and the launcher
+ * retires itself the moment a project opens - so a wizard half filled in used to be destroyed by a
+ * window that had nothing to do with it. An independent child is detached from its parent instead
+ * and stays on screen.
+ *
+ * This is Studio's own bookkeeping *and* Electron's: a `parent` in the constructor options makes
+ * Chromium destroy the child with the parent regardless of what we think, so an independent child
+ * has to be handed `setParentWindow(null)` while both windows still exist.
+ */
+export type ChildWindowLifetime = "dependent" | "independent";
 
 export type WindowVisibilityStatus = "minimized" | "maximized" | "normal";
 
