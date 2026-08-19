@@ -40,6 +40,7 @@ import type { WeatherSeedRef } from "@shared/weather/model";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import type { DialogAvatarResolverContext } from "narraleaf-react";
 import { resolvePoseAssetId, resolveTagSelection } from "@shared/utils/characterVariant";
+import { parseStoryEasing } from "@shared/utils/storyEasing";
 import {
     characterAvatarKeyFromTags,
     resolveCharacterAvatarAssetId,
@@ -2195,7 +2196,7 @@ function runStoryCompilePasses(ctx: SceneCompileContext): void {
                 darken: (darkness, durationMs, easing) => image.darken(
                     Math.min(1, Math.max(0, darkness)),
                     Math.max(0, durationMs),
-                    easing as never,
+                    parseStoryEasing(easing) as never,
                 ) as unknown as EngineAction,
                 bringToFront: () => image.bringToFront() as unknown as EngineAction,
             };
@@ -2897,7 +2898,7 @@ async function compileCameraAction(
         // It is also why `reset` survived the fold into the prop bag: "put the camera back" is this
         // call, and a bag of neutral values would put the filter and the pose in one transform again.
         const duration = Math.max(0, finiteOr(payload.durationMs, 0));
-        return [recordStatement(ctx, camera.resetCamera(duration, payload.easing as any), block)];
+        return [recordStatement(ctx, camera.resetCamera(duration, parseStoryEasing(payload.easing) as any), block)];
     }
     const transform = payload.transform;
     if (!transform) {
@@ -3501,10 +3502,10 @@ async function compileTextAction(
         statements.push(recordStatement(ctx, text.setText(payload.text), block));
     }
     if (payload.operation === "setFontSize" || (payload.operation === "create" && payload.fontSize !== undefined)) {
-        statements.push(recordStatement(ctx, text.setFontSize(payload.fontSize ?? 16, payload.transform?.durationMs ?? 0, payload.transform?.easing as any), block));
+        statements.push(recordStatement(ctx, text.setFontSize(payload.fontSize ?? 16, payload.transform?.durationMs ?? 0, parseStoryEasing(payload.transform?.easing) as any), block));
     }
     if (payload.operation === "setFontColor" || (payload.operation === "create" && payload.fontColor)) {
-        statements.push(recordStatement(ctx, text.setFontColor((payload.fontColor ?? "#ffffff") as any, payload.transform?.durationMs ?? 0, payload.transform?.easing as any), block));
+        statements.push(recordStatement(ctx, text.setFontColor((payload.fontColor ?? "#ffffff") as any, payload.transform?.durationMs ?? 0, parseStoryEasing(payload.transform?.easing) as any), block));
     }
     if (payload.operation === "show" || payload.operation === "hide" || payload.operation === "create") {
         const chain = await compileDisplayableOperation(text, payload.operation === "hide" ? "hide" : "show", payload.transform, ctx, block.id);
@@ -3588,7 +3589,7 @@ async function compileVfxAction(
     }
     // A create shows the overlay: the row an author writes to "put petals on screen" must put them on
     // screen, exactly as `/image` and `/video` do.
-    const fade = { duration: Math.max(0, finiteOr(payload.durationMs, 0)), ease: payload.easing as any };
+    const fade = { duration: Math.max(0, finiteOr(payload.durationMs, 0)), ease: parseStoryEasing(payload.easing) as any };
     switch (payload.operation) {
         case "create":
         case "show":
@@ -4242,7 +4243,7 @@ function timingOf(ref: StoryTransformRef | undefined): TransformTiming {
 function transformOptions(timing: TransformTiming | undefined): Record<string, unknown> {
     const options: Record<string, unknown> = { duration: Math.max(0, timing?.durationMs ?? 0) };
     if (timing?.easing) {
-        options.ease = timing.easing;
+        options.ease = parseStoryEasing(timing.easing);
     }
     if (timing?.delayMs !== undefined) {
         options.delay = Math.max(0, timing.delayMs);
@@ -4515,7 +4516,7 @@ async function compileDisplayableOperation(
         if (isOpacityOnly(transform, 1)) {
             return target.show(transformOptions(timing));
         }
-        const visible = target.show({ duration: 0, ...(transform?.easing ? { ease: transform.easing } : {}) });
+        const visible = target.show({ duration: 0, ...(transform?.easing ? { ease: parseStoryEasing(transform.easing) } : {}) });
         return await emitTransformProps(visible, transform, ctx, blockId);
     }
     if (operation === "hide") {
@@ -4523,7 +4524,7 @@ async function compileDisplayableOperation(
             return target.hide(transformOptions(timing));
         }
         const posed = await emitTransformProps(target, transform, ctx, blockId);
-        return (posed ?? target).hide({ duration: 0, ...(transform?.easing ? { ease: transform.easing } : {}) });
+        return (posed ?? target).hide({ duration: 0, ...(transform?.easing ? { ease: parseStoryEasing(transform.easing) } : {}) });
     }
     const chain = await emitTransformProps(target, transform, ctx, blockId);
     return chain === target ? null : chain;
@@ -4606,7 +4607,7 @@ async function createTransition(transition: StoryTransitionRef | undefined, ctx:
         return undefined;
     }
     const duration = Math.max(0, transition.durationMs ?? 300);
-    const easing = transition.easing as any;
+    const easing = parseStoryEasing(transition.easing) as any;
     const props = transition.props ?? {};
 
     switch (transition.kind) {
