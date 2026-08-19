@@ -363,6 +363,10 @@ export const assets = {
      */
     sets: {
         itemType: "セット",
+        axisWord: {
+            language: "言語",
+            variant: "バリアント",
+        },
         variantCount: {
             one: "バリアント {count} 件",
             other: "バリアント {count} 件",
