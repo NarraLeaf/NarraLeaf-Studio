@@ -259,6 +259,34 @@ describe("storyModel", () => {
         ]);
     });
 
+    it("drops the axes a position keyframe never wrote instead of writing them as undefined", () => {
+        // An unwritten axis has to be ABSENT, not present-and-undefined. Every preset moves offsets
+        // and leaves alignment alone, and a `{xalign: undefined}` key wins the `{...neutral,
+        // ...keyframe}` merge the stage preview does - which produced `calc(NaN% + 0px)`, a
+        // declaration the browser discards, dropping the preview frame into the stage's corner.
+        // `toEqual` cannot see the difference (it ignores undefined-valued keys), hence `Object.keys`.
+        const normalized = normalizeStoryAnimationAsset({
+            schemaVersion: 1,
+            id: STORY_ID_2,
+            name: "Camera shake",
+            targetKind: "camera",
+            sequences: [],
+            timeline: {
+                tracks: [
+                    {
+                        id: "track-position",
+                        property: "position",
+                        keyframes: [{ id: "kf-0", timeMs: 70, value: { xoffset: -12, yoffset: 7 }, easing: "easeOut" }],
+                    },
+                ],
+            },
+        } as any, "2026-08-18T00:00:00.000Z");
+
+        const value = normalized.timeline?.tracks[0].keyframes[0].value as Record<string, number>;
+        expect(Object.keys(value).sort()).toEqual(["xoffset", "yoffset"]);
+        expect(value).toStrictEqual({ xoffset: -12, yoffset: 7 });
+    });
+
     it("keeps keyframe timelines as the canonical story animation editor model", () => {
         const now = "2026-06-08T00:00:00.000Z";
         const normalized = normalizeStoryAnimationAsset({
