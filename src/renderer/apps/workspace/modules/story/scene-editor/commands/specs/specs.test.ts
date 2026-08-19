@@ -830,36 +830,38 @@ describe("logic and effects", () => {
     it("/transform camera reads the camera as a reserved target word", () => {
         expect(build("/transform camera zoom=1.5 d=0.8")).toMatchObject({
             kind: "action",
-            payload: { action: "camera", operation: "zoom", zoom: 1.5, durationMs: 800 },
+            payload: { action: "camera", operation: "transform", transform: { to: { zoom: 1.5 }, durationMs: 800 } },
         });
         expect(build("/transform camera pos=left d=0.6")).toMatchObject({
-            payload: { action: "camera", operation: "pan", position: { xalign: 0.25, yalign: 0.5 }, durationMs: 600 },
+            payload: { action: "camera", operation: "transform", transform: { to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 600 } },
         });
         // `pan=` is the same slot: the camera's own reading of the position channel.
-        expect(build("/transform camera pan=right")).toMatchObject({ payload: { operation: "pan" } });
-        expect(build("/transform camera rot=-15")).toMatchObject({ payload: { operation: "rotate", rotation: -15 } });
+        expect(build("/transform camera pan=right")).toMatchObject({ payload: { transform: { to: { position: { xalign: 0.75 } } } } });
+        expect(build("/transform camera rot=-15")).toMatchObject({ payload: { transform: { to: { rotation: -15 } } } });
         expect(build("/reset camera d=0.6")).toMatchObject({ payload: { operation: "reset", durationMs: 600 } });
         // The retired `/camera darken 0.4` is `bright=0.6`: the engine's `darken(d)` IS
         // `brightness(1 - d)`, one CSS channel, so the prop vocabulary spells the channel.
         expect(build("/transform camera bright=0.6")).toMatchObject({
-            payload: { operation: "look", filter: "brightness(0.6)" },
+            payload: { transform: { to: { filter: { brightness: 0.6 } } } },
         });
         // The look library stays reachable by NAME, so the inspector can re-open on the grade.
         expect(build("/transform camera look=moonlight")).toMatchObject({
-            payload: { operation: "look", lookPreset: "moonlight" },
+            payload: { transform: { to: { look: { preset: "moonlight" } } } },
         });
     });
 
-    it("refuses the props the camera payload arm cannot carry, rather than dropping them", () => {
-        // The one place the axiom is not yet true: the engine's Camera takes the whole bag, Studio's
-        // `camera` payload spells one operation plus its own field. Reported, never silently lost.
-        expect(issuesOf("/transform camera opacity=0.5")).toEqual(["unsupportedParam"]);
-        expect(issuesOf("/transform camera mask=none")).toEqual(["unsupportedParam"]);
-        expect(issuesOf("/transform camera zoom=2 rot=10")).toEqual(["conflictingParams"]);
-        // A displayable takes all of them at once, which is the whole point of the bag.
-        expect(build("/transform hero zoom=2 rot=10 opacity=0.5")).toMatchObject({
+    it("gives the camera every channel of the bag, in as many at once as the line states", () => {
+        // The camera used to be the one subject that could state a SINGLE channel, because its payload
+        // spelled one operation plus that operation's own field. v19 gave it the bag, so a row that
+        // pans and zooms is one row rather than a reported conflict.
+        expect(issuesOf("/transform camera zoom=2 rot=10")).toEqual([]);
+        expect(build("/transform camera zoom=2 rot=10 opacity=0.5")).toMatchObject({
             payload: { transform: { to: { zoom: 2, rotation: 10, opacity: 0.5 } } },
         });
+        // `color=` is still the exception, on every subject: it is `fontColor`, and only a text has one.
+        expect(issuesOf("/transform camera color=#fff")).toEqual(["unsupportedParam"]);
+        // Two writers of the one CSS filter channel is still refused, camera or not.
+        expect(issuesOf("/transform camera look=moonlight blur=4")).toEqual(["conflictingParams"]);
     });
 
     it("/transform camera motion commits an unbound Story Motion ref and routes only that line to the inspector", () => {
@@ -869,7 +871,7 @@ describe("logic and effects", () => {
         const shot = build("/transform camera motion");
         expect(shot).toMatchObject({
             kind: "action",
-            payload: { action: "camera", operation: "motion", motion: { mode: "animation" } },
+            payload: { action: "camera", operation: "transform", transform: { mode: "animation" } },
         });
         const spec = getCommandSpec("transform");
         expect(opensInspectorAfterCommit(spec, shot)).toBe(true);

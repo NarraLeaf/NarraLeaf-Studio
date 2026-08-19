@@ -341,11 +341,10 @@ function formatAction(
         return "/blueprint";
     }
     if (payload.action === "camera") {
-        const amount = payload.operation === "zoom" ? payload.zoom
-            : payload.operation === "rotate" ? payload.rotation
-                : payload.operation === "darken" ? payload.darkness
-                    : undefined;
-        return `/camera ${payload.operation}${amount === undefined ? "" : ` ${amount}`}`;
+        // The camera is a reserved TARGET, so the line is the verb every other subject's is. The bag
+        // itself is not spelled here: this projection is a one-line summary, and the command line is
+        // where a row prints the channels it states.
+        return payload.operation === "reset" ? "/reset camera" : "/transform camera";
     }
     if (payload.action === "plugin") {
         // The action id, not the plugin's label: this projection is the exported script, which has to

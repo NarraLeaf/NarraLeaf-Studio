@@ -863,7 +863,10 @@ describe("story document migration ladder", () => {
                 shot: { action: "camera", operation: "motion", motion: { mode: "animation", animationId: "anim-1" } },
             }));
             expect(payloadOf(migrated, "nvl").transition).toEqual({ mode: "props", to: { opacity: 1 }, durationMs: 250 });
-            expect(payloadOf(migrated, "shot").motion).toEqual({ mode: "animation", animationId: "anim-1" });
+            // The camera's shot moved onto `transform` in v19, so this ref is reached by both steps
+            // in turn: v18 rewrites what is inside it, v19 moves it onto the field every other
+            // subject's shot uses.
+            expect(payloadOf(migrated, "shot").transform).toEqual({ mode: "animation", animationId: "anim-1" });
         });
 
         it("is idempotent: a document already at the new shape is returned unchanged", () => {
@@ -871,6 +874,133 @@ describe("story document migration ladder", () => {
                 move: { action: "image", operation: "show", objectName: "hero", transform: { to: { zoom: 1.4 }, durationMs: 200 } },
             });
             expect(payloadOf(migrateStoryDocumentToLatest(already), "move").transform).toEqual({ to: { zoom: 1.4 }, durationMs: 200 });
+        });
+    });
+
+    /**
+     * v18→v19: the camera's six operations, and the screen effects, become the one prop bag.
+     *
+     * One case per OPERATION here, because unlike v18's presets there is no second table pinning the
+     * arithmetic elsewhere: this step IS the expansion, and a wrong one produces a row that still
+     * plays and plays something else.
+     */
+    describe("v18→v19 camera props", () => {
+        function v18With(blocks: Record<string, unknown>): StoryDocument {
+            const document = docAtVersion(17);
+            const sceneId = document.entrySceneId!;
+            const scene = document.scenes[sceneId];
+            return {
+                ...document,
+                schemaVersion: 18,
+                scenes: {
+                    [sceneId]: {
+                        ...scene,
+                        rootBlockIds: Object.keys(blocks),
+                        blocks: Object.fromEntries(Object.entries(blocks).map(([id, payload]) => [id, {
+                            id,
+                            kind: "action",
+                            parentId: null,
+                            childrenIds: [],
+                            payload,
+                        }])),
+                    },
+                },
+            } as StoryDocument;
+        }
+
+        const payloadOf = (document: StoryDocument, blockId: string) =>
+            Object.values(document.scenes)[0].blocks[blockId].payload as Record<string, any>;
+
+        const migrate = (blocks: Record<string, unknown>) => migrateStoryDocumentToLatest(v18With(blocks));
+
+        it("expands `pan` into the position channel, filling both axes", () => {
+            const migrated = migrate({
+                full: { action: "camera", operation: "pan", position: { xalign: 0.25, yalign: 0.5, xoffset: 12 }, durationMs: 600, easing: "easeOut" },
+                bare: { action: "camera", operation: "pan" },
+            });
+            expect(payloadOf(migrated, "full")).toEqual({
+                action: "camera",
+                operation: "transform",
+                transform: { mode: "props", to: { position: { xalign: 0.25, yalign: 0.5, xoffset: 12 } }, durationMs: 600, easing: "easeOut" },
+            });
+            // A row that named no position panned to centre, because the compile filled both axes.
+            expect(payloadOf(migrated, "bare").transform.to).toEqual({ position: { xalign: 0.5, yalign: 0.5 } });
+        });
+
+        it("expands `zoom` and floors a degenerate one", () => {
+            const migrated = migrate({
+                shot: { action: "camera", operation: "zoom", zoom: 1.6, durationMs: 800 },
+                broken: { action: "camera", operation: "zoom", zoom: 0 },
+            });
+            expect(payloadOf(migrated, "shot").transform).toEqual({ mode: "props", to: { zoom: 1.6 }, durationMs: 800 });
+            expect(payloadOf(migrated, "broken").transform.to).toEqual({ zoom: 0.05 });
+        });
+
+        it("expands `rotate`", () => {
+            expect(payloadOf(migrate({ turn: { action: "camera", operation: "rotate", rotation: -15 } }), "turn").transform.to)
+                .toEqual({ rotation: -15 });
+        });
+
+        it("expands `darken` into the brightness the compile already emitted for it", () => {
+            const migrated = migrate({
+                dim: { action: "camera", operation: "darken", darkness: 0.4, durationMs: 500 },
+                over: { action: "camera", operation: "darken", darkness: 2 },
+            });
+            expect(payloadOf(migrated, "dim").transform.to).toEqual({ filter: { brightness: 0.6 } });
+            // The engine never clamped this, which is the 0.16.1 defect: `darkness: 2` compiled to
+            // `brightness(-1)` and produced no visible change at all.
+            expect(payloadOf(migrated, "over").transform.to).toEqual({ filter: { brightness: 0 } });
+        });
+
+        it("keeps a `look` by name, and keeps a hand-written chain beside it", () => {
+            const migrated = migrate({
+                grade: { action: "camera", operation: "look", lookPreset: "moonlight", lookIntensity: 0.8, durationMs: 700 },
+                custom: { action: "camera", operation: "look", filter: "sepia(1) blur(2px)" },
+                both: { action: "camera", operation: "look", lookPreset: "memory", filter: "invert(1)" },
+            });
+            expect(payloadOf(migrated, "grade").transform).toEqual({
+                mode: "props",
+                to: { look: { preset: "moonlight", intensity: 0.8 } },
+                durationMs: 700,
+            });
+            expect(payloadOf(migrated, "custom").transform.to).toEqual({ filterRaw: "sepia(1) blur(2px)" });
+            // The chain overrode the preset at compile time and both are kept, so the row still says
+            // which grade the author picked AND still plays what they typed.
+            expect(payloadOf(migrated, "both").transform.to).toEqual({ look: { preset: "memory" }, filterRaw: "invert(1)" });
+        });
+
+        it("moves `motion`'s shot onto the field every other subject's shot uses", () => {
+            const migrated = migrate({
+                shot: { action: "camera", operation: "motion", motion: { mode: "animation", animationId: "anim-1" } },
+                unbound: { action: "camera", operation: "motion" },
+            });
+            expect(payloadOf(migrated, "shot")).toEqual({
+                action: "camera",
+                operation: "transform",
+                transform: { mode: "animation", animationId: "anim-1" },
+            });
+            expect(payloadOf(migrated, "unbound").transform).toEqual({ mode: "animation" });
+        });
+
+        it("leaves `reset` alone, because it is a different engine call and not a bag", () => {
+            const migrated = migrate({ back: { action: "camera", operation: "reset", durationMs: 300, easing: "easeInOut" } });
+            expect(payloadOf(migrated, "back")).toEqual({ action: "camera", operation: "reset", durationMs: 300, easing: "easeInOut" });
+        });
+
+        it("turns a screen effect into the camera lens gesture it was, keeping every number it stated", () => {
+            const migrated = migrate({
+                blink: { action: "screenEffect", effect: "blink", durationMs: 200, holdMs: 100, color: "#ffffff", easing: "linear" },
+                split: { action: "screenEffect", effect: "blink", inMs: 80, holdMs: 400, outMs: 900 },
+                vig: { action: "screenEffect", effect: "vignette", durationMs: 400, opacity: 0.6, inner: 30, outer: 70 },
+            });
+            // `durationMs` was the WHOLE move, so an unset half falls back to it - which is what the
+            // compile did.
+            expect(payloadOf(migrated, "blink").transform.to.lens)
+                .toEqual({ preset: "blink", inMs: 200, outMs: 200, holdMs: 100, easing: "linear", color: "#ffffff" });
+            expect(payloadOf(migrated, "split").transform.to.lens)
+                .toEqual({ preset: "blink", inMs: 80, outMs: 900, holdMs: 400 });
+            expect(payloadOf(migrated, "vig").transform.to.lens)
+                .toEqual({ preset: "vignettePulse", inMs: 400, outMs: 400, amount: 0.6, inner: 30, outer: 70 });
         });
     });
 

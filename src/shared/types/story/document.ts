@@ -773,59 +773,42 @@ export type StoryActionPayload =
            * its own action kind here because an author does not file "move the camera" next to "move a
            * sprite".
            *
+           * **One prop bag, like every other subject.** v19 replaced the six operations with the same
+           * {@link StoryTransformRef} `/transform` writes, so a camera row states as many channels as it
+           * likes: pan and zoom in one move, a grade and a defocus together. `pan` was a position, `zoom`
+           * a zoom, `rotate` a rotation, `darken` the `brightness` the compiler already emitted for it,
+           * `look` the {@link StoryTransformProps.look} field, and `motion` was already a ref.
+           *
            * Two facts this payload cannot state but every consumer must respect: the camera is a
            * **story-level singleton** whose pose survives a scene change (and rides the save file), and
-           * `darken` drives the same CSS `filter` channel `Displayable.filter` does — it is stage
-           * brightness, not the scene's `screenEffect` vignette layer.
-           *
-           * Additive: no document written before this carries it, so no schema bump.
+           * its CSS `filter` channel grades the WHOLE stage — backgrounds, sprites and videos together,
+           * never the dialogue box.
            */
           action: "camera";
-          operation: "pan" | "zoom" | "rotate" | "darken" | "look" | "reset" | "motion";
-          /** `pan` — where the view centres. The command line fills the three placements; the inspector, any align. */
-          position?: StoryAlignPositionValue;
-          /** `zoom` — 1 is neutral. Clamped away from 0/negative at compile time. */
-          zoom?: number;
-          /** `rotate` — degrees. */
-          rotation?: number;
-          /** `darken` — 0 (normal) to 1 (black). Clamped at compile time; the engine does not clamp. */
-          darkness?: number;
           /**
-           * `look` — a colour grade over the whole stage, from the library in `lib/ui-editor/runtime/game/cameraLookPresets.ts`.
+           * `transform` writes the bag; `reset` puts the camera back.
            *
-           * **The same single channel `darken` writes.** `Camera.darken(d)` IS `filter("brightness(1 - d)")`
-           * in the engine, so a look and a darken never compose: whichever row runs last wins outright
-           * and the earlier one leaves no trace. That is why every preset folds its own brightness in
-           * and why the two operations are alternatives rather than layers — a scene that sets both is
-           * not "graded and dimmed", it is whichever came second. `reset` clears the channel, so this
-           * arm needs no clear operation of its own.
-           *
-           * Three fields rather than one resolved string, because the string is the *output*: keeping
-           * the preset and the dial is what lets the inspector re-open the row on the grade the author
-           * chose instead of on a wall of CSS it would have to parse back.
-           *
-           * Additive, exactly as `motion` and the `vfx` arm were: a document written before this
-           * carries none of them, so no schema bump.
+           * **`reset` is not "a bag of neutral values", and that is why it survived the fold.** It
+           * compiles to the engine's own `camera.resetCamera()`, a separate primitive whose 0.29.0
+           * release fixed the sweep through the colour wheel on the way out of a grade: it drops the
+           * filter in a zero-duration sequence and eases only the pose. Writing neutral values into a
+           * ref instead would put the filter back in the same transform as the pose and walk the picture
+           * blue → cyan → green → olive again, which is the defect that fix exists for.
            */
-          lookPreset?: string;
-          /** `look` — 0 is no grade, 1 the preset's nominal strength. Clamped to 0–2 at compile time. */
-          lookIntensity?: number;
+          operation: "transform" | "reset";
           /**
-           * `look` — the CSS filter actually applied. Written by hand it OVERRIDES `lookPreset`
-           * entirely, which is the escape hatch for a grade the library does not name; left empty the
-           * compile resolves the preset and the intensity instead.
-           */
-          filter?: string;
-          /**
-           * `motion` — a Story Motion driving the camera, i.e. a whole keyframed shot (a handheld
-           * shake, a slow push-in) instead of one settled pose. The engine's `Camera` is a
-           * `Displayable`, so it takes a `Transform` exactly like a sprite does; this is the same
-           * {@link StoryTransformRef} `/transform` carries, and it is read only in `animation` mode —
-           * the other five operations already *are* the presets a `preset` mode would offer.
+           * `transform` — where the camera ends up, in the same shape `/transform` hands a sprite.
            *
-           * `durationMs`/`easing` are dead for this operation: the timing lives in the keyframes.
+           * Read in both of the ref's modes: `props` for a settled pose, `animation` for a whole
+           * keyframed shot (what the `motion` operation was), whose timing lives in its own keyframes.
            */
-          motion?: StoryTransformRef;
+          transform?: StoryTransformRef;
+          /**
+           * `reset` — how long the camera takes to get back, and on what curve.
+           *
+           * Only `reset` reads these: a `transform` row carries its timing inside the ref, and a second
+           * copy out here would be a number the compile does not read.
+           */
           durationMs?: number;
           easing?: string;
       }
@@ -1328,6 +1311,66 @@ export type StoryTransformProps = {
      * from `@shared`, so the resolution is injected: see `foldStoryTransformLook`.
      */
     look?: StoryCameraLookRef | null;
+
+    // --- Lens: the camera's own glass. Camera only. ---
+    /**
+     * The shutter, 0 (open) to 1 (shut): two eyelids closing symmetrically over the whole stage.
+     *
+     * Rendered by the camera's own lens overlay, which is a SIBLING of the camera's transform node -
+     * so the shutter does not zoom or rotate with the shot. That is what makes it a camera prop rather
+     * than a full-screen object: an overlay standing on the stage would be graded, panned and scaled
+     * with everything else on it, and would cover the dialogue box.
+     *
+     * These six are refused on every other subject, because no other subject has a lens.
+     */
+    shutter?: number;
+    shutterColor?: string;
+    /** The vignette's strength, 0 (none) to 1: the frame darkening at its edges. */
+    vignette?: number;
+    vignetteColor?: string;
+    /**
+     * Where the vignette's mask starts and finishes fading, as CSS lengths (`"44%"`).
+     *
+     * Percentages, so the falloff means the same thing at every stage size. `inner` is the clear
+     * centre and `outer` the fully-dark edge, so an inner above the outer is not a wide vignette - it
+     * is a `radial-gradient` whose stops run backwards, which the browser drops whole, taking the mask
+     * and the effect with it. Ordered at compile time.
+     */
+    vignetteInner?: string;
+    vignetteOuter?: string;
+    /**
+     * A named lens gesture: the eyes blinking, the frame pulsing dark at its edges.
+     *
+     * A gesture is not a settled value, which is why it is a preset and not a number an author dials.
+     * A blink is in, hold, out - three timings and a colour - and asking an author to keyframe that by
+     * hand every time they want a character to blink is the shape this field exists to refuse. The
+     * library is `lib/ui-editor/runtime/game/cameraLensPresets.ts`; the fields beside `preset` override
+     * one number each and absent means "the preset's own".
+     */
+    lens?: StoryCameraLensRef | null;
+};
+
+/**
+ * A gesture from the camera lens library, with the numbers an author may take over.
+ *
+ * Every override is optional and absent means the preset's own value, which is what keeps a row that
+ * only names a gesture readable as the gesture: `lens=blink` is a blink, and the numbers only appear
+ * on a row where somebody changed one.
+ */
+export type StoryCameraLensRef = {
+    preset: string;
+    /** The move in, the pause at full, and the move out. Milliseconds. */
+    inMs?: number;
+    holdMs?: number;
+    outMs?: number;
+    easing?: string;
+    /** What the shutter or the vignette is drawn in. */
+    color?: string;
+    /** How far the gesture goes: 1 is fully shut, or the preset's nominal vignette strength. */
+    amount?: number;
+    /** The vignette's gradient stops, as percentages of the frame. */
+    inner?: number;
+    outer?: number;
 };
 
 /**

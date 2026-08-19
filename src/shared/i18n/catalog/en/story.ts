@@ -1176,17 +1176,15 @@ export const story = {
         // and an id is not a name.
         pluginAction: "Plugin action",
         effect: "{effect} screen effect",
+        // Four readings of one row, not one per channel: the channels the bag states are printed
+        // on the line beside this, and a grade or a shot names the BINDING because that is the
+        // content of the row.
         cameraOp: {
-            pan: "Pan",
-            zoom: "Zoom",
-            rotate: "Rotate",
-            darken: "Darken stage",
+            transform: "Camera",
             look: "Grade",
             motion: "Motion",
             reset: "Reset camera",
         },
-        // A hand-written filter has no name to print, and its CSS is not a thing to show in a row.
-        cameraLookCustom: "custom",
         condition: "Condition",
         branch: "{branch} branch",
         label: "Label {name}",
