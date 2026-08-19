@@ -256,6 +256,10 @@ export const project = {
             title: "Auto forward",
             description: "Advances once a line has finished displaying.",
         },
+        autoForwardDelay: {
+            title: "Auto forward wait",
+            description: "How long auto forward waits at the end of a line. Scaled by game speed.",
+        },
         showDialog: {
             title: "Show the dialogue box",
             description: "When off, the game starts with the dialogue box hidden.",
