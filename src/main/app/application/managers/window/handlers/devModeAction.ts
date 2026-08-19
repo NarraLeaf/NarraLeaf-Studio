@@ -1,4 +1,5 @@
 import { AppHost, AppProtocol } from "@shared/types/constants";
+import { weatherBakeKey } from "@shared/weather/bakeKey";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { AppWindow } from "../appWindow";
@@ -199,6 +200,45 @@ async function promoteDevModeAssetGrant(window: AppWindow<WindowAppType.DevMode>
     // so it is carried across verbatim - this is the sibling arithmetic a model's manifest relies on.
     const remainder = separator === -1 ? "" : pathname.slice(separator);
     return `${AppProtocol}://${AppHost.Fs}/${stable}${remainder}`;
+}
+
+/**
+ * The clip a weather seed describes, produced on demand and granted to this window.
+ *
+ * Two things happen here that could not happen anywhere else. The bake needs main - it spawns an
+ * encoder - and the grant needs this window, because `app://fs` tokens are capabilities held by a
+ * webContents rather than addresses anyone can use.
+ *
+ * The token is STABILIZED rather than freshly allocated, for the same reason every other Dev Mode
+ * asset is: the engine writes resolved URLs into a save, and a one-shot token in a save is a stage
+ * that comes back empty. A clip's token is derived from the file, so the same weather yields the
+ * same URL in every run.
+ */
+export class DevModeResolveWeatherClipHandler extends IPCHandler<IPCEventType.devModeResolveWeatherClip> {
+    readonly name = IPCEventType.devModeResolveWeatherClip;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow<WindowAppType.DevMode>,
+        { spec }: IPCEvents[IPCEventType.devModeResolveWeatherClip]["data"],
+    ): Promise<RequestStatus<{ url: string }>> {
+        const projectPath = window.getProps().projectPath;
+        if (!projectPath) {
+            return { success: false, error: "No project is open" };
+        }
+        const manager = window.getApp().getWeatherBakeManager();
+        const outcome = await manager.ensure({ projectRoot: projectPath, specs: [spec], priority: "blocking" });
+        const key = weatherBakeKey(spec);
+        const clipPath = outcome.paths.get(key);
+        if (!clipPath) {
+            // The failure is the encoder's or the tool's, and it is already in the log; what travels
+            // back is the one sentence a compile diagnostic can carry.
+            return { success: false, error: outcome.failures.get(key) ?? "The weather could not be produced" };
+        }
+        const hash = window.app.storageManager.allocateHash(clipPath, true, "read");
+        const granted = await promoteDevModeAssetGrant(window, `${AppProtocol}://${AppHost.Fs}/${hash}`);
+        return { success: true, data: { url: granted } };
+    }
 }
 
 export class DevModeOpenBlueprintInWorkspaceHandler extends IPCHandler<IPCEventType.devModeOpenBlueprintInWorkspace> {

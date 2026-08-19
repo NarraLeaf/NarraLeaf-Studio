@@ -43,6 +43,24 @@ container that demuxes could hold a codec that plays.
 `m4p` is DRM-wrapped and can never be decoded; `av1` is a codec, not a container extension. Neither
 can be imported.
 
+### Transparency in video
+
+A WebM can carry an alpha channel, and two of the six build targets do not composite it. WebKit —
+the engine behind the iOS shell and behind Safari on the web build — decodes such a file and paints
+its colour plane opaquely, discarding the transparency; VP8 and VP9 behave the same way. The four
+Chromium targets (Windows, macOS, Linux, Android) honour it. Measured 2026-08-18 on iOS 18.7 and
+Safari 26.3 against a Chrome 151 control.
+
+The consequence is confined to ambience overlays, which are the only thing that composites a video
+over the stage. An overlay whose clip carries alpha and which is set to blend **Normal** covers the
+stage with an opaque rectangle on those two targets, and looks correct everywhere the author can
+test. Transparency is expressed instead as an opaque clip rendered on black, blended with
+**Screen** (or on white, with **Multiply**). The `portability/vfx-alpha` lint rule reports a row
+that has not done this, whenever the iOS or web target is selected.
+
+This is not a playability limit: the file itself plays on every target, and `webm` stays a fully
+supported container.
+
 Everything above is keyed by **extension, which is not the real criterion** — what plays is the codec
 inside the container. The same `.mp4` plays when it carries H.264 and comes out as a black rectangle
 with sound when it carries HEVC. Judging by codec means reading the container, which is a later

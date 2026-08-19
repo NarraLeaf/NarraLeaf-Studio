@@ -1,4 +1,5 @@
 import type { SaveCompatibilityStamp } from "@shared/types/saveCompatibility";
+import type { WeatherBakeSpec } from "@shared/weather/model";
 import type { ReactNode } from "react";
 import type { LiveGame } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
@@ -187,6 +188,19 @@ export type GameAppHost = {
     resolveStoryAssetUrl: (
         assetId: string,
         assetType?: StoryAssetKind,
+    ) => Promise<string | null | undefined> | string | null | undefined;
+    /**
+     * The clip a weather seed describes, produced if it does not exist yet.
+     *
+     * Optional, and its absence is a real state rather than an oversight: a host that cannot produce
+     * one (nothing to spawn an encoder with) compiles a story whose weather rows are left out with a
+     * diagnostic, which is a scene that plays without weather rather than one that will not start.
+     *
+     * Takes a whole spec rather than a seed, because the SIZE is the host's question - it follows the
+     * project's stage, which the compiler has no business knowing.
+     */
+    resolveWeatherClip?: (
+        spec: WeatherBakeSpec,
     ) => Promise<string | null | undefined> | string | null | undefined;
     saveStore: GameAppSaveStore;
     /**
