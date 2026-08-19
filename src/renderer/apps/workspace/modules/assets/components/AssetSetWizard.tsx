@@ -30,6 +30,7 @@ import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal"
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../../context";
+import { AssetThumbnail } from "./AssetThumbnail";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { MagicTagManager } from "@/lib/workspace/services/core/MagicTagManager";
@@ -155,7 +156,7 @@ export function AssetSetWizard({ assets, onClose }: AssetSetWizardProps) {
         }
         const candidates: AssetSetCandidate[] = [];
         const assetsService = context?.services.get<AssetsService>(Services.Assets) ?? null;
-        const names = new Map<string, string>();
+        const byId = new Map<string, Asset>();
         if (assetsService) {
             for (const bucket of Object.values(assetsService.getAssets())) {
                 for (const asset of Object.values(bucket ?? {})) {
@@ -164,12 +165,12 @@ export function AssetSetWizard({ assets, onClose }: AssetSetWizardProps) {
                         type: asset.type,
                         tags: plan.tagsByFile.get(asset.id) ?? asset.tags,
                     });
-                    names.set(asset.id, asset.name);
+                    byId.set(asset.id, asset);
                 }
             }
         }
         const set: AssetSet = { id: "", name: "", type, filter: plan.filter, axes: plan.axes };
-        return { contents: resolveAssetSetContents(set, candidates), names, set };
+        return { contents: resolveAssetSetContents(set, candidates), byId, set };
     }, [context, plan, type]);
 
     const patchRole = useCallback((index: number, patch: Partial<AssetSetSegmentRole>) => {
@@ -222,6 +223,7 @@ export function AssetSetWizard({ assets, onClose }: AssetSetWizardProps) {
             isOpen
             onClose={onClose}
             title={t("assets.sets.create.title")}
+            helpTopic="assetSets"
             size="lg"
             closeOnOverlayClick={!busy}
             footer={
@@ -334,10 +336,11 @@ export function AssetSetWizard({ assets, onClose }: AssetSetWizardProps) {
                             {preview.contents.cells.map(cell => {
                                 const missing = cell.assetIds.length === 0;
                                 const ambiguous = cell.assetIds.length > 1;
+                                const resolved = missing || ambiguous ? null : preview.byId.get(cell.assetIds[0]) ?? null;
                                 return (
                                     <div
                                         key={cell.label}
-                                        className="flex items-baseline justify-between gap-2"
+                                        className="flex items-center justify-between gap-2"
                                         data-asset-set-preview-cell={cell.label}
                                     >
                                         <FieldLabel as="span" className="mb-0 min-w-0 truncate">
@@ -345,15 +348,20 @@ export function AssetSetWizard({ assets, onClose }: AssetSetWizardProps) {
                                         </FieldLabel>
                                         <span
                                             className={cn(
-                                                "shrink-0 truncate text-2xs",
+                                                "flex shrink-0 items-center gap-1.5 text-2xs",
                                                 missing || ambiguous ? "text-warning" : "text-fg-subtle",
                                             )}
                                         >
-                                            {missing
-                                                ? t("assets.sets.inspector.variantMissing")
-                                                : ambiguous
-                                                    ? t("assets.sets.inspector.variantAmbiguous", { count: String(cell.assetIds.length) })
-                                                    : preview.names.get(cell.assetIds[0]) ?? cell.assetIds[0]}
+                                            {resolved && (
+                                                <AssetThumbnail asset={resolved} className="h-5 w-6 shrink-0 rounded-sm" />
+                                            )}
+                                            <span className="min-w-0 truncate">
+                                                {missing
+                                                    ? t("assets.sets.inspector.variantMissing")
+                                                    : ambiguous
+                                                        ? t("assets.sets.inspector.variantAmbiguous", { count: String(cell.assetIds.length) })
+                                                        : resolved?.name ?? cell.assetIds[0]}
+                                            </span>
                                         </span>
                                     </div>
                                 );

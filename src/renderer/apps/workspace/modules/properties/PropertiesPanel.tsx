@@ -838,20 +838,20 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
      * import or a retag is exactly what makes a hole fill in, and a cached list would leave the
      * inspector showing the hole.
      */
-    const { setCandidates, setAssetNames } = useMemo(() => {
+    const { setCandidates, setAssetsById } = useMemo(() => {
         const candidates: AssetSetCandidate[] = [];
-        const names = new Map<string, string>();
+        const byId = new Map<string, Asset>();
         if (!assetsService || !activeSet) {
-            return { setCandidates: candidates, setAssetNames: names as ReadonlyMap<string, string> };
+            return { setCandidates: candidates, setAssetsById: byId as ReadonlyMap<string, Asset> };
         }
         const map = assetsService.getAssets();
         for (const bucket of Object.values(map)) {
             for (const asset of Object.values(bucket ?? {})) {
                 candidates.push({ id: asset.id, type: asset.type, tags: asset.tags });
-                names.set(asset.id, asset.name);
+                byId.set(asset.id, asset);
             }
         }
-        return { setCandidates: candidates, setAssetNames: names as ReadonlyMap<string, string> };
+        return { setCandidates: candidates, setAssetsById: byId as ReadonlyMap<string, Asset> };
     }, [assetsService, activeSet, assetLibraryRevision]);
 
     const panelTitle = storyMotionSelection
@@ -1353,7 +1353,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                 <AssetSetInspector
                     set={activeSet}
                     candidates={setCandidates}
-                    assetNames={setAssetNames}
+                    assetsById={setAssetsById}
                     service={assetSetService}
                     assetsService={assetsService}
                 />

@@ -236,6 +236,47 @@ export const help = {
                 + "- Replacing an asset's file keeps every reference to it.\n"
                 + "- Deleting an asset that is still in use lists its usages first.",
         },
+        assetSets: {
+            title: "Asset sets",
+            body:
+                "An asset set is one entry in the library that stands for a family of files differing by "
+                + "language, edition or any other property. A reference carries the set, and the game "
+                + "receives the file that matches.\n"
+                + "\n"
+                + "Select two or more files of the same kind and choose New Set from Selection. The dialog "
+                + "splits the file names at a separator and asks what each part is:\n"
+                + "\n"
+                + "- A part every file shares becomes a tag every member carries, such as char:alice.\n"
+                + "- A part the files differ on becomes an axis, such as mood or locale.\n"
+                + "- A part left unnamed is not used.\n"
+                + "\n"
+                + "The variant list shows every combination the set promises and the file that answers it. "
+                + "A combination with no file is marked, and the set can still be created.\n"
+                + "\n"
+                + "Creating the set writes those tags onto the files. A file imported later joins the set "
+                + "once it carries the same tags.\n"
+                + "\n"
+                + "In the properties panel, choosing a file for a combination writes that combination's "
+                + "tags onto it.",
+        },
+        assetSetAxes: {
+            title: "Axes and when they resolve",
+            body:
+                "An axis is one tag category the members differ on. Each axis states when it is resolved:\n"
+                + "\n"
+                + "- When built: the build picks one value, and the other variants are left out of the "
+                + "package.\n"
+                + "- While running: every value is in the package and the game picks between them. A "
+                + "language axis is resolved this way.\n"
+                + "\n"
+                + "An axis whose values are all languages this project declares opens as While running.\n"
+                + "\n"
+                + "Axes are ordered, outermost first. An axis resolved when built cannot sit inside one "
+                + "resolved while running, and that arrangement is refused.\n"
+                + "\n"
+                + "A combination with no file is reported by the project check. A build stops when a "
+                + "combination it needs has no file.",
+        },
         mediaConversion: {
             title: "Converting unplayable files",
             body:

@@ -53,6 +53,7 @@ import type { AssetsService } from "@/lib/workspace/services/core/AssetsService"
 import type { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { AssetThumbnail } from "@/apps/workspace/modules/assets/components/AssetThumbnail";
 
 /**
  * A text field that keeps what is typed and commits it when focus leaves.
@@ -116,15 +117,21 @@ function parseValues(text: string): string[] {
 export function AssetSetInspector({
     set,
     candidates,
-    assetNames,
+    assetsById,
     service,
     assetsService,
 }: {
     set: AssetSet;
     /** The library, as resolution sees it. */
     candidates: readonly AssetSetCandidate[];
-    /** Asset id to the name the library shows, so a resolved cell names a file rather than a uuid. */
-    assetNames: ReadonlyMap<string, string>;
+    /**
+     * The library by id, so a resolved variant shows the picture and the name rather than a uuid.
+     *
+     * The picture is what an author recognises a variant by. A column of file names answers "is this
+     * set complete" and nothing else; a column of thumbnails answers "is this the right art", which
+     * is the question a set is usually opened to settle.
+     */
+    assetsById: ReadonlyMap<string, Asset>;
     service: AssetSetService;
     /** Where a chosen file's tags are written. Null while the library has not loaded. */
     assetsService: AssetsService | null;
@@ -196,7 +203,7 @@ export function AssetSetInspector({
     }, [set.axes, writeAxes]);
 
     return (
-        <div className="p-3 space-y-3">
+        <div className="p-3 space-y-3" data-help-topic="assetSetAxes">
             <SectionCard
                 title={t("assets.sets.inspector.axes")}
                 actions={
@@ -288,10 +295,11 @@ export function AssetSetInspector({
                     contents.cells.map(cell => {
                         const missing = cell.assetIds.length === 0;
                         const ambiguous = cell.assetIds.length > 1;
+                        const resolved = missing || ambiguous ? null : assetsById.get(cell.assetIds[0]) ?? null;
                         return (
                             <div
                                 key={cell.label}
-                                className="flex items-baseline justify-between gap-2"
+                                className="flex items-center justify-between gap-2"
                                 data-asset-set-variant={cell.label}
                             >
                                 <FieldLabel as="span" className="mb-0 min-w-0 truncate">{cell.label}</FieldLabel>
@@ -299,7 +307,7 @@ export function AssetSetInspector({
                                     type="button"
                                     aria-label={cell.label}
                                     className={cn(
-                                        "min-w-0 shrink truncate rounded-md px-1.5 py-0.5 text-2xs transition-colors",
+                                        "flex min-w-0 shrink items-center gap-1.5 rounded-md px-1.5 py-0.5 text-2xs transition-colors",
                                         "hover:bg-edge-subtle disabled:cursor-not-allowed disabled:opacity-50",
                                         missing || ambiguous ? "text-warning" : "text-fg-subtle",
                                     )}
@@ -309,11 +317,16 @@ export function AssetSetInspector({
                                         setPicking(cell);
                                     }}
                                 >
-                                    {missing
-                                        ? t("assets.sets.inspector.variantMissing")
-                                        : ambiguous
-                                            ? t("assets.sets.inspector.variantAmbiguous", { count: String(cell.assetIds.length) })
-                                            : assetNames.get(cell.assetIds[0]) ?? cell.assetIds[0]}
+                                    {resolved && (
+                                        <AssetThumbnail asset={resolved} className="h-5 w-6 shrink-0 rounded-sm" />
+                                    )}
+                                    <span className="min-w-0 truncate">
+                                        {missing
+                                            ? t("assets.sets.inspector.variantMissing")
+                                            : ambiguous
+                                                ? t("assets.sets.inspector.variantAmbiguous", { count: String(cell.assetIds.length) })
+                                                : resolved?.name ?? cell.assetIds[0]}
+                                    </span>
                                 </button>
                             </div>
                         );
