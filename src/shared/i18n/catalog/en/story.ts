@@ -495,6 +495,7 @@ export const story = {
         skin: "Skin",
         puppetParam: "Parameter",
         puppetParamValue: "Value",
+        ruleImage: "Rule image",
         imageAsset: "Image",
         imageOrColor: "Image or Color",
         videoAsset: "Video",
@@ -602,6 +603,7 @@ export const story = {
         black: "black",
         darkness: "darkness",
         exposure: "exposure",
+        rule: "rule",
         none: "none",
         // The transform presets `t=` reaches on a show/hide that the transition words did not name.
         scale: "scale",

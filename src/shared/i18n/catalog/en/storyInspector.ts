@@ -55,6 +55,8 @@ export const storyInspector = {
         fromAngle: "From angle °",
         rows: "Rows",
         cols: "Columns",
+        rule: "Rule image",
+        inverted: "From the bright end",
         stagger: "Stagger",
         shape: "Shape",
         pattern: "Pattern",
@@ -140,6 +142,7 @@ export const storyInspector = {
         throughColor: "Through color",
         darkness: "Darkness",
         exposure: "Exposure",
+        ruleReveal: "Rule image",
         exposureEv: "Exposure (EV)",
         exposureLift: "Shadow lift 0-1",
         startX: "Start X",
@@ -167,6 +170,7 @@ export const storyInspector = {
         darkness: "Swaps images at the starting darkness, then animates to the ending one. 1 → 0 emerges out of black, 0 → 1 dims into it.",
         throughColor: "Covers the frame with a color, holds, then uncovers on the new image. Use it for fade to black or white, iris to black, and flash (hold 0).",
         exposure: "Burns the frame out to white, highlights first and shadows last, then settles back down onto the new one; at lift 0 black never whitens.",
+        ruleReveal: "Changes the frame over in the order a greyscale picture dictates: dark areas first, bright areas last.",
     },
 
     wipeDirection: {

@@ -421,6 +421,7 @@ export const story = {
         skin: "皮肤",
         puppetParam: "参数",
         puppetParamValue: "数值",
+        ruleImage: "规则图",
         imageAsset: "图片",
         imageOrColor: "图片或颜色",
         videoAsset: "视频",
@@ -518,6 +519,7 @@ export const story = {
         black: "黑场",
         darkness: "压暗",
         exposure: "曝光",
+        rule: "规则图",
         none: "无",
         // `t=` 在显隐动画里能落到的另外几个变换预设——和右侧检查器"预设"下拉是同一个字段，
         // 用同一批词，作者在哪边选都读作同一件事。

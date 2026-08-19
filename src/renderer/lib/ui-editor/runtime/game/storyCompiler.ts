@@ -19,6 +19,7 @@ import {
     Puppet,
     Push,
     Reveal,
+    RuleReveal,
     Scene,
     Script,
     Sound,
@@ -2246,7 +2247,7 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
             diagnostic(ctx, "error", block.id, `Jump target scene not found: ${block.payload.targetSceneId || "(empty)"}`);
             return [];
         }
-        const chain = ctx.nlrScene.jumpTo(target, createTransition(block.payload.transition, ctx, block.id) as any);
+        const chain = ctx.nlrScene.jumpTo(target, await createTransition(block.payload.transition, ctx, block.id) as any);
         return [recordStatement(ctx, chain, block)];
     }
 
@@ -2683,7 +2684,7 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
             diagnostic(ctx, "warning", block.id, "Background has no image or color.");
             return [];
         }
-        return [recordStatement(ctx, ctx.nlrScene.setBackground(src as any, createTransition(payload.transition, ctx, block.id) as any), block)];
+        return [recordStatement(ctx, ctx.nlrScene.setBackground(src as any, await createTransition(payload.transition, ctx, block.id) as any), block)];
     }
 
     if (payload.action === "character") {
@@ -3059,7 +3060,7 @@ async function compileCharacterStageAction(
             diagnostic(ctx, "warning", block.id, `Expression for ${characterDiagnosticName(ctx, payload)} selects no tag; nothing changes.`);
             return statements;
         }
-        const chain = image.char(tags as never, createTransition(payload.transition, ctx, block.id) as any);
+        const chain = image.char(tags as never, await createTransition(payload.transition, ctx, block.id) as any);
         statements.push(recordStatement(ctx, chain, block));
         return statements;
     }
@@ -3084,7 +3085,7 @@ async function compileCharacterStageAction(
     }
 
     // expression: swap a visible character's appearance, optionally with an image transition.
-    const sourceChain = image.char(src as any, createTransition(payload.transition, ctx, block.id) as any);
+    const sourceChain = image.char(src as any, await createTransition(payload.transition, ctx, block.id) as any);
     statements.push(recordStatement(ctx, sourceChain, block));
     return statements;
 }
@@ -3476,7 +3477,7 @@ async function compileImageAction(
         : payload.color;
 
     if ((payload.operation === "create" || payload.operation === "setSource") && src) {
-        statements.push(recordStatement(ctx, image.char(src as any, createTransition(payload.transition, ctx, block.id) as any), block));
+        statements.push(recordStatement(ctx, image.char(src as any, await createTransition(payload.transition, ctx, block.id) as any), block));
     } else if ((payload.operation === "create" || payload.operation === "setSource") && !src) {
         diagnostic(ctx, "warning", block.id, `Image "${payload.objectName}" has no asset or color source.`);
     }
@@ -4455,7 +4456,7 @@ function createAnimationTransform(
     } as any);
 }
 
-function createTransition(transition: StoryTransitionRef | undefined, ctx: SceneCompileContext, blockId: string): unknown | undefined {
+async function createTransition(transition: StoryTransitionRef | undefined, ctx: SceneCompileContext, blockId: string): Promise<unknown | undefined> {
     if (!transition || transition.kind === "none") {
         return undefined;
     }
@@ -4517,6 +4518,28 @@ function createTransition(transition: StoryTransitionRef | undefined, ctx: Scene
                 lift: Math.min(1, Math.max(0, numberProp(props, "lift", 0.04))),
                 hold: Math.min(1, Math.max(0, numberProp(props, "hold", 0) / 100)),
             });
+        case "ruleReveal": {
+            // The only transition that reads an asset, which is why this factory is async. A rule
+            // with no picture is a row the author has not finished: reported, and played as a cut,
+            // rather than guessed at with some other engine that would look deliberate.
+            if (!transition.ruleAssetId) {
+                diagnostic(ctx, "warning", blockId, "Rule transition names no rule image; the change was played as a cut.");
+                return undefined;
+            }
+            const rule = await resolveAsset(ctx, transition.ruleAssetId, "image", blockId);
+            if (!rule) {
+                return undefined;
+            }
+            return new RuleReveal({
+                duration,
+                easing,
+                rule,
+                // Percent on the way in, like every other feather this file writes, and a fraction
+                // on the way out because that is what the engine's tonal range is measured in.
+                feather: numberProp(props, "feather", 12) / 100,
+                inverted: props.inverted === true,
+            });
+        }
         case "darkness":
             // The incoming image is swapped in at `from` darkness and lifted to `to` - so the default
             // pair (1 → 0) reads as "the new frame emerges out of black". Clamped here because
