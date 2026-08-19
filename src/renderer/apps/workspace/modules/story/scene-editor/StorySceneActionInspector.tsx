@@ -1102,6 +1102,7 @@ function ActionPayloadFields(props: {
                     assetType={AssetType.Video}
                     assetId={payload.assetId}
                     onChange={assetId => props.onChange({ ...payload, assetId })}
+                    allowAssetSets
                 />
                 <CheckboxField label={t("storyInspector.field.muted")} checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
                 {payload.operation === "seek" ? (
@@ -1313,6 +1314,7 @@ function AudioActionEditor(props: {
                         label={payload.operation === "setBgm" ? t("storyInspector.audio.bgmAsset") : t("storyInspector.audio.soundAsset")}
                         assetType={AssetType.Audio}
                         assetId={payload.assetId}
+                        allowAssetSets
                         onChange={assetId => props.onChange({ ...payload, assetId })}
                     />
                 ) : null}
@@ -1452,6 +1454,7 @@ function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload:
                                 assetType={AssetType.Video}
                                 assetId={payload.assetId}
                                 onChange={assetId => props.onChange({ ...payload, assetId })}
+                                allowAssetSets
                             />
                         )}
                         {payload.seed ? null : (
