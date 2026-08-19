@@ -55,18 +55,14 @@ export const storyInspector = {
         fromAngle: "From angle °",
         rows: "Rows",
         cols: "Columns",
+        rule: "Rule image",
+        inverted: "From the bright end",
         stagger: "Stagger",
         shape: "Shape",
         pattern: "Pattern",
         kind: "Kind",
         effect: "Effect",
         character: "Character",
-        // A blink's two halves, named for what each one does. Empty means "follow the whole move".
-        // Only a blink has them: the engine drives a vignette's fade in and out from one duration.
-        closeIn: "Close (s)",
-        openOut: "Open (s)",
-        vignetteInner: "Clear center %",
-        vignetteOuter: "Dark edge %",
         layer: "Layer",
         muted: "Muted",
     },
@@ -121,6 +117,7 @@ export const storyInspector = {
         backOut: "Back out",
         backInOut: "Back in/out",
         anticipate: "Anticipate",
+        custom: "Custom curve",
     },
 
     transition: {
@@ -140,6 +137,7 @@ export const storyInspector = {
         throughColor: "Through color",
         darkness: "Darkness",
         exposure: "Exposure",
+        ruleReveal: "Rule image",
         exposureEv: "Exposure (EV)",
         exposureLift: "Shadow lift 0-1",
         startX: "Start X",
@@ -167,6 +165,7 @@ export const storyInspector = {
         darkness: "Swaps images at the starting darkness, then animates to the ending one. 1 → 0 emerges out of black, 0 → 1 dims into it.",
         throughColor: "Covers the frame with a color, holds, then uncovers on the new image. Use it for fade to black or white, iris to black, and flash (hold 0).",
         exposure: "Burns the frame out to white, highlights first and shadows last, then settles back down onto the new one; at lift 0 black never whitens.",
+        ruleReveal: "Changes the frame over in the order a greyscale picture dictates: dark areas first, bright areas last.",
     },
 
     wipeDirection: {
@@ -212,7 +211,7 @@ export const storyInspector = {
     // Named by the material each mode is FOR, not by the CSS keyword: the choice is a production fact
     // about the clip, and the keyword alone only helps someone who already knows the answer.
     vfxBlend: {
-        normal: "Normal (transparent alpha WebM)",
+        normal: "Normal (opaque clip)",
         screen: "Screen (glow on black)",
         multiply: "Multiply (shadow on white)",
         lighten: "Lighten",
@@ -228,6 +227,8 @@ export const storyInspector = {
 
     vfx: {
         name: "Effect name",
+        source: "Source",
+        sourceClip: "Clip",
         clip: "Looping clip",
         blendMode: "Blend",
         opacity: "Opacity (0-1)",
@@ -238,41 +239,23 @@ export const storyInspector = {
         fade: "Fade (s)",
     },
 
+    weather: {
+        density: "Amount",
+        sizeNear: "Near size",
+        sizeFar: "Far size",
+        sway: "Drift",
+        streak: "Streak",
+        wind: "Wind (deg)",
+        depthSpread: "Depth spread",
+    },
+
     cameraOperation: {
-        zoom: "Zoom",
-        pan: "Pan",
-        rotate: "Rotate",
-        // "stage", not "screen": this is the camera's brightness, not `/vignette`'s in-scene mask.
-        darken: "Darken stage",
-        // "Grade", the word the craft uses, so the picker teaches the vocabulary rather than only the token.
-        look: "Color grade",
-        motion: "Camera motion",
         reset: "Reset camera",
     },
 
-    // The picker labels: short enough that they fit side by side. The full names above stay as each
-    // button's tooltip, so `Darken stage` still gets to say *stage* where it matters.
-    cameraOperationShort: {
-        zoom: "Zoom",
-        pan: "Pan",
-        rotate: "Rotate",
-        darken: "Darken",
-        look: "Grade",
-        motion: "Motion",
-        reset: "Reset",
-    },
-
-    camera: {
-        zoom: "Zoom (1 = neutral)",
-        rotation: "Rotation °",
-        darkness: "Stage darkness (0-1)",
-        xalign: "X align (0-1)",
-        yalign: "Y align (0-1)",
-        look: "Look",
-        lookSnaps: "A look lands in a single frame. Fading one would walk the picture through colours nobody chose, so there is no duration to set — cut into it behind a blink or a transition.",
-        lookIntensity: "Intensity (1 = nominal)",
-        lookFilter: "Custom CSS filter",
-    },
+    // Said where the mode is chosen, because it is the one camera row whose effect the viewfinder
+    // cannot draw: it puts the whole instrument back, pose and grade and lens together.
+    cameraResetHint: "Restores pose, grade and lens.",
 
     // The looks themselves. Named for the moment they are for, not for what they do to the pixels:
     // an author reaches for these while writing a flashback, not while thinking about saturation.
@@ -285,8 +268,15 @@ export const storyInspector = {
         hangover: "Hangover",
     },
 
+    // The lens gestures. Named for the moment, like the grades above.
+    cameraLens: {
+        blink: "Blink",
+        slowBlink: "Slow blink",
+        vignettePulse: "Vignette pulse",
+    },
+
     cameraLookHint: {
-        channel: "A look replaces stage darkness rather than adding to it — the engine gives both the same filter, so the later row wins. Each look carries its own brightness. Reset camera clears it.",
+        channel: "A look added later overrides stage darkness. Reset camera clears it.",
         monologue: "Desaturates and dims the whole stage. For darkened edges, add a vignette.",
         hangover: "The stage sways twice before the look settles. The row waits for the sway, and the duration sets its tempo.",
     },
@@ -335,12 +325,14 @@ export const storyInspector = {
         geometry: "Position and scale",
         filter: "Filter",
         look: "Look",
+        lens: "Lens",
         composite: "Compositing",
         text: "Text",
         timing: "Timing",
     },
     displayableOperation: {
         transform: "Transform",
+        bringToFront: "Bring to front",
         mask: "Mask",
         clearMask: "Clear mask",
         clip: "Clip path",
@@ -400,11 +392,6 @@ export const storyInspector = {
         setRate: "Set rate",
         muteSound: "Mute / unmute",
         seekSound: "Seek",
-    },
-
-    screenEffectOption: {
-        blink: "Blink",
-        vignette: "Vignette",
     },
 
     waitMode: {

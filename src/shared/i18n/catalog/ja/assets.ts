@@ -363,6 +363,14 @@ export const assets = {
      */
     sets: {
         itemType: "セット",
+        axisWord: {
+            language: "言語",
+            variant: "バリアント",
+        },
+        axisKind: {
+            locale: "言語",
+            release: "バリアント",
+        },
         variantCount: {
             one: "バリアント {count} 件",
             other: "バリアント {count} 件",
@@ -371,11 +379,19 @@ export const assets = {
         unfinished: "バリアント未宣言",
         menu: {
             create: "選択したファイルからセットを作成",
+            createSub: "選択したファイルからここにセットを作成",
         },
         create: {
             title: "アセットセットの新規作成",
-            nameRequired: "名前を入力",
-            failed: "1 つのセットが持つのは 1 種類のアセット。同じ種類のファイルを選択。",
+            subTitle: "このバリアントの下にセットを作成",
+            no: {
+                locale: "このプロジェクトの言語は 1 つ。",
+                release: "このプロジェクトにバリアントはない。",
+            },
+            delimiter: "区切り文字",
+            delimiterSpace: "空白",
+            segments: "ファイル名の構成",
+            axis: "変化の軸",
         },
         inspector: {
             axes: "軸",

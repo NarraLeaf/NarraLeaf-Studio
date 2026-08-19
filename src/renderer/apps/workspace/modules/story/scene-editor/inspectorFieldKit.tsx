@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
+import { isStoryBezierEasing, STORY_DEFAULT_BEZIER_EASING } from "@shared/utils/storyEasing";
 import type { Translator } from "@shared/i18n";
 import { Select, type SelectOption } from "@/lib/components/elements";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
+import { EasingCurveEditor } from "../../../components/ui/EasingCurveEditor";
 
 /**
  * The action inspector's shared field primitives.
@@ -18,7 +20,13 @@ export const FIELD_LABEL_CLASS = "block text-xs font-medium text-fg-muted mb-1";
 
 export type TFunc = Translator["t"];
 
-export const easingOptions = (t: TFunc): SelectOption[] => [
+/**
+ * The easing word list, plus the option that stands for a drawn curve.
+ *
+ * Not exported: {@link EasingField} is the only thing that renders it, so a new action cannot pair
+ * this list with a plain select and end up offering the custom option with no card to draw it in.
+ */
+const easingOptions = (t: TFunc): SelectOption[] => [
     { value: "", label: t("storyInspector.easing.default") },
     { value: "linear", label: t("storyInspector.easing.linear") },
     { value: "easeIn", label: t("storyInspector.easing.easeIn") },
@@ -31,7 +39,56 @@ export const easingOptions = (t: TFunc): SelectOption[] => [
     { value: "backOut", label: t("storyInspector.easing.backOut") },
     { value: "backInOut", label: t("storyInspector.easing.backInOut") },
     { value: "anticipate", label: t("storyInspector.easing.anticipate") },
+    { value: CUSTOM_EASING_OPTION, label: t("storyInspector.easing.custom") },
 ];
+
+/**
+ * The option that stands for a curve rather than a word.
+ *
+ * Not a stored value: picking it writes a `cubic-bezier(…)` into the same field the named easings
+ * use, and a stored curve reads back as this option. The field carries one string either way, which
+ * is why nothing downstream - the compiler, the command line, the document - grew a second shape.
+ */
+export const CUSTOM_EASING_OPTION = "__custom";
+
+/**
+ * The `Easing` field, whole: the pick, plus the curve card when the pick is a drawn one.
+ *
+ * Every action that eases anything shows this one field, so it owns the whole choice rather than
+ * leaving each caller to pair a select with a card. The card sits under the select inside the same
+ * grid cell, which is what makes it read as belonging to this field rather than as a new section.
+ */
+export function EasingField(props: { t: TFunc; value: string | undefined; onChange: (easing: string | undefined) => void }) {
+    const custom = isStoryBezierEasing(props.value);
+    return (
+        <div>
+            <label className={FIELD_LABEL_CLASS}>{props.t("storyInspector.field.easing")}</label>
+            <Select
+                fullWidth
+                portalMenu
+                options={easingOptions(props.t)}
+                value={custom ? CUSTOM_EASING_OPTION : (props.value ?? "")}
+                onChange={next => props.onChange(nextEasingValue(String(next), props.value))}
+            />
+            {custom ? (
+                <div className="mt-1.5">
+                    <EasingCurveEditor easing={props.value ?? STORY_DEFAULT_BEZIER_EASING} onChange={props.onChange} />
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
+/**
+ * What the picked option stores. Asking for a custom curve keeps the curve already there, so
+ * switching to a named easing and back does not throw away the shape the author drew.
+ */
+export function nextEasingValue(picked: string, current: string | undefined): string | undefined {
+    if (picked !== CUSTOM_EASING_OPTION) {
+        return picked || undefined;
+    }
+    return isStoryBezierEasing(current) ? current : STORY_DEFAULT_BEZIER_EASING;
+}
 
 /**
  * A titled, boxed group used to organise the compact action editor into scannable

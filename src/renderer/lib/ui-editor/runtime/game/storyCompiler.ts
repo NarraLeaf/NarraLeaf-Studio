@@ -19,8 +19,10 @@ import {
     Puppet,
     Push,
     Reveal,
+    RuleReveal,
     Scene,
     Script,
+    Sentence,
     Sound,
     Story,
     Text,
@@ -32,11 +34,13 @@ import {
     Word,
 } from "narraleaf-react";
 import type { MaskPattern } from "narraleaf-react";
-import { blink, vignette } from "narraleaf-react/built-in";
 import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
+import { weatherRefIdentity } from "@shared/weather/bakeKey";
+import type { WeatherSeedRef } from "@shared/weather/model";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import type { DialogAvatarResolverContext } from "narraleaf-react";
 import { resolvePoseAssetId, resolveTagSelection } from "@shared/utils/characterVariant";
+import { parseStoryEasing } from "@shared/utils/storyEasing";
 import {
     characterAvatarKeyFromTags,
     resolveCharacterAvatarAssetId,
@@ -126,6 +130,7 @@ import {
     composeStoryFilter,
     isEmptyStoryTransformProps,
     splitStoryTransformChange,
+    foldStoryTransformLook,
     storyTransformPropsConflicts,
     storyTransformPropsToNlr,
 } from "@shared/story/transformProps";
@@ -146,6 +151,7 @@ import {
 // its third reader rather than its owner, which is the same relation `storyReplace` already has with
 // the scene editor's find/replace model.
 import { resolveStoryCameraLook, resolveStoryCameraLookOscillation, storyCameraLookTweens } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
+import { neutralStoryCameraLensProps, resolveStoryCameraLensSteps } from "@/lib/ui-editor/runtime/game/cameraLensPresets";
 import type { StageSnapshotDisplayable, StageSnapshotEffects, StoryStageSnapshot } from "./storyStageSnapshot";
 import { collectSavedVariableView, savedVariableDefsFromView } from "./storyStageSnapshot";
 import {
@@ -470,6 +476,18 @@ export type NlrActionIdBinding = {
     staticId: string;
     blockId: string;
     textId?: string;
+    /**
+     * The audio asset this action starts, for the actions that start one.
+     *
+     * Only a `/bgm` that names an asset and a `/sound` play carry it: stopping, seeking or
+     * re-levelling a clip is not the player hearing it for the first time. A host that watches the
+     * play head can therefore say which clip began without decoding the engine action.
+     *
+     * Deliberately absent from {@link stableActionId}: the static id is what a save anchors on, so
+     * folding an asset id into it would invalidate every existing save the moment an author
+     * re-pointed a row at a different file.
+     */
+    audioAssetId?: string;
 };
 
 type NlrAction = Parameters<typeof DevTools.setActionId>[0];
@@ -596,6 +614,15 @@ export type CompiledNlrStory = {
      * it can never turn an arbitrary stage image back into an id.
      */
     avatarAssetIdByUrl: Map<string, string>;
+    /**
+     * The audio asset each scene's configured background music was built from, keyed by Studio
+     * scene id. Only scenes that both declare music and resolved it are present.
+     *
+     * A scene's music is scene *config*, not a row, so it starts on mount with no action of its
+     * own - which means the play head never reports it. A host that follows what the player is
+     * hearing has to read it here and pair it with the scene mount instead.
+     */
+    sceneBackgroundMusicAssetIds?: Record<string, string>;
     /** Per-scene element registries, keyed by scene id (normalized object name → element). */
     sceneElements?: Record<string, CompiledSceneElements>;
     /** Continuous stage previews only: why the compiled playback tail ends. */
@@ -616,6 +643,14 @@ export type StagePreviewCompileInput = {
     characters?: readonly DevModeCharacterSummary[];
     animations?: Record<string, StoryAnimationAsset>;
     resolveAssetUrl?: CompileInput["resolveAssetUrl"];
+    /**
+     * Optional here for the same reason it is optional on {@link CompileInput}, and usually absent.
+     *
+     * A stage preview is a still of a settled stage; an ambience overlay is a moving thing that has
+     * to be produced first. A host that has a baker may pass one and get the overlay; one that does
+     * not gets a preview without it, and a diagnostic saying so rather than a silent omission.
+     */
+    resolveWeatherClip?: CompileInput["resolveWeatherClip"];
     blueprintDocument?: BlueprintDocument;
     /** M-VAR: persistent variable registry table, baked into the bundle; replaces the old blueprint-doc field. */
     persistentVariables?: PersistentVariableRuntimeTable;
@@ -724,6 +759,14 @@ type SceneCompileContext = {
      * *different* track be reported rather than silently ignored (see {@link getSound}).
      */
     soundTrackIds: Map<string, string>;
+    /**
+     * The audio asset each named sound handle was created from, keyed the same way `sounds` is.
+     *
+     * Same reason `soundTrackIds` exists: `/sound piano` after `/sound piano asset=x` addresses the
+     * handle without naming a file, so the row that starts the clip again has no asset id of its
+     * own. This is what lets the play head still report which file began.
+     */
+    soundAssetIds: Map<string, string>;
     /** Fn declarations shared across all story-action blueprints in this scene. */
     sceneFnCatalog: StoryActionFnCatalog;
     images: Map<string, Image>;
@@ -733,9 +776,20 @@ type SceneCompileContext = {
     layers: Map<string, Layer>;
     videos: Map<string, Video>;
     vfx: Map<string, Vfx>;
+    /**
+     * The clip each named overlay was built from, keyed the same way {@link SceneCompileContext.vfx}
+     * is, and compile-wide with it.
+     *
+     * Exists for the reason `soundTrackIds` does: two rows may name one overlay and only the first
+     * creates it, so a later row naming a DIFFERENT clip has to be reported rather than silently
+     * ignored.
+     */
+    vfxAssetIds: Map<string, string | undefined>;
     sounds: Map<string, Sound>;
     animations: Map<string, StoryAnimationAsset>;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
+    /** Absent when the host compiles for something other than playback; see {@link CompileInput}. */
+    resolveWeatherClip: CompileInput["resolveWeatherClip"];
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
     actionIdBindings: NlrActionIdBinding[];
@@ -758,6 +812,16 @@ type CompileInput = {
     characters?: readonly DevModeCharacterSummary[];
     animations?: Record<string, StoryAnimationAsset>;
     resolveAssetUrl?: (assetId: string, assetType?: StoryAssetKind) => Promise<string | null | undefined> | string | null | undefined;
+    /**
+     * The clip a weather seed describes, as a URL this host's engine can fetch.
+     *
+     * A seed is not an asset - there is no id to look up, and the file it names may not exist yet -
+     * so producing one is the HOST's business: Dev Mode bakes and hands back a granted URL, a build
+     * bakes and packages, and the hosts that only want the graph (save anchors, the shipped-content
+     * audit) pass nothing and get a diagnostic instead of a clip. The compiler deliberately does not
+     * know the size to bake at either; that follows the project's stage, which the host owns.
+     */
+    resolveWeatherClip?: (ref: WeatherSeedRef) => Promise<string | null | undefined> | string | null | undefined;
     /** Blueprint document; enables Story Action Blueprints and shared Persistent resolution. */
     blueprintDocument?: BlueprintDocument;
     /** M-VAR: persistent variable registry table, baked into the bundle; replaces the old blueprint-doc field. */
@@ -900,7 +964,18 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         : undefined;
     const voicedUnitIds = voiceUrlsByLocale ? collectVoicedUnitIds(voiceUrlsByLocale) : undefined;
     const audioTracks = input.audioTracks ?? BUILTIN_AUDIO_TRACKS;
-    const sceneBackgroundMusic = new Map<string, { sound: Sound; trackId: string }>();
+    const sceneBackgroundMusic = new Map<string, { sound: Sound; trackId: string; assetId: string }>();
+    /**
+     * Ambience overlays, keyed by name, for the WHOLE compile rather than per scene.
+     *
+     * A `Vfx` is the one stage object the engine does not scope to a scene: `GameState` holds it,
+     * scene exit does not remove it, and only its own `hide` does. So rain started in one scene is
+     * still falling in the next, and a per-scene map made that unreachable - the next scene's
+     * `/hide rain` resolved no handle and compiled to nothing, while a second `/vfx rain` built a
+     * SECOND overlay on top of the first. One map means one name is one overlay, everywhere.
+     */
+    const vfxByName = new Map<string, Vfx>();
+    const vfxAssetIds = new Map<string, string | undefined>();
     const scenesBuild = await createNlrScenes({
         elementIdBindings,
         document: input.document,
@@ -977,11 +1052,14 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             puppets: new Map(),
             layers: new Map(),
             videos: new Map(),
-            vfx: new Map(),
+            vfx: vfxByName,
+            vfxAssetIds,
+            resolveWeatherClip: input.resolveWeatherClip,
             // Seeded with the scene's configured track under the name the sound-control family
             // defaults to, so `/vol 0.5` on a scene with music means what it looks like.
             sounds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic.sound]]) : new Map(),
             soundTrackIds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic.trackId]]) : new Map(),
+            soundAssetIds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic.assetId]]) : new Map(),
             audioClips: input.audioClips,
             audioTracks,
             animations,
@@ -1029,6 +1107,8 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             launch: input.launch,
             nlrStory,
             allScenes,
+            vfx: vfxByName,
+            vfxAssetIds,
             actionIdBindings,
             elementIdBindings,
             diagnostics,
@@ -1044,7 +1124,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             persistentVariables,
             animations,
             resolveAssetUrl,
-            assetUrlCache,
+                assetUrlCache,
             localization,
             voicedUnitIds,
             nextActionIndex,
@@ -1082,6 +1162,9 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         diagnostics,
         characters,
         avatarAssetIdByUrl,
+        sceneBackgroundMusicAssetIds: Object.fromEntries(
+            Array.from(sceneBackgroundMusic, ([sceneId, music]) => [sceneId, music.assetId] as const),
+        ),
         sceneElements,
         setVoiceLocale: scenesBuild.setVoiceLocale,
         getVoicePlayback: scenesBuild.getVoicePlayback,
@@ -1100,6 +1183,10 @@ async function buildLaunchEntryScene(params: {
     launch: NonNullable<CompileInput["launch"]>;
     nlrStory: Story;
     allScenes: Record<string, Scene>;
+    /** The compile's ambience overlays - shared, so the entry scene and the story it hands over to
+     *  address one overlay per name rather than two objects wearing one id. */
+    vfx: Map<string, Vfx>;
+    vfxAssetIds: Map<string, string | undefined>;
     actionIdBindings: NlrActionIdBinding[];
     elementIdBindings: string[];
     diagnostics: NlrStoryCompileDiagnostic[];
@@ -1134,7 +1221,7 @@ async function buildLaunchEntryScene(params: {
             assetType: "image",
             blockId: SCENE_INITIAL_BACKGROUND_BLOCK_ID,
             resolveAssetUrl,
-            assetUrlCache,
+                assetUrlCache,
             diagnostics,
         })
         : snapshot.background?.color
@@ -1190,9 +1277,12 @@ async function buildLaunchEntryScene(params: {
         puppets: new Map(),
         layers: new Map(),
         videos: new Map(),
-        vfx: new Map(),
+        vfx: params.vfx,
+        vfxAssetIds: params.vfxAssetIds,
+        resolveWeatherClip: params.input.resolveWeatherClip,
         sounds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.sound]]) : new Map(),
         soundTrackIds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.trackId]]) : new Map(),
+        soundAssetIds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.assetId]]) : new Map(),
         audioClips: input.audioClips,
         audioTracks,
         animations: params.animations,
@@ -1376,7 +1466,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
             assetType: "image",
             blockId: SCENE_INITIAL_BACKGROUND_BLOCK_ID,
             resolveAssetUrl,
-            assetUrlCache,
+                assetUrlCache,
             diagnostics,
         })
         : snapshot.background?.color
@@ -1419,12 +1509,15 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         layers: new Map(),
         videos: new Map(),
         vfx: new Map(),
+        vfxAssetIds: new Map(),
         sounds: new Map(),
         soundTrackIds: new Map(),
+        soundAssetIds: new Map(),
         audioClips: input.audioClips,
         audioTracks: input.audioTracks ?? BUILTIN_AUDIO_TRACKS,
         animations,
         resolveAssetUrl,
+        resolveWeatherClip: input.resolveWeatherClip,
         assetUrlCache,
         diagnostics,
         actionIdBindings,
@@ -1706,7 +1799,7 @@ async function createNlrScenes(input: {
      * audio track rides along for the same reason: a later `/vol` on that handle has to reach the
      * gain the scene's music was built with, not the built-in fallback's.
      */
-    backgroundMusic?: Map<string, { sound: Sound; trackId: string }>;
+    backgroundMusic?: Map<string, { sound: Sound; trackId: string; assetId: string }>;
 }): Promise<{
     scenes: Record<string, Scene>;
     setVoiceLocale: (locale: string) => boolean;
@@ -1820,7 +1913,7 @@ async function createNlrScenes(input: {
         if (music) {
             config.backgroundMusic = music.sound;
             config.backgroundMusicFade = music.fadeMs;
-            input.backgroundMusic?.set(scene.id, { sound: music.sound, trackId: music.trackId });
+            input.backgroundMusic?.set(scene.id, { sound: music.sound, trackId: music.trackId, assetId: music.assetId });
         }
         const built = new Scene(
             runtimeName,
@@ -1876,7 +1969,7 @@ async function resolveSceneBackgroundMusic(input: {
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
-}): Promise<{ sound: Sound; fadeMs: number; trackId: string } | null> {
+}): Promise<{ sound: Sound; fadeMs: number; trackId: string; assetId: string } | null> {
     const bgm = input.scene.bgm;
     const assetId = bgm?.assetId?.trim();
     if (!bgm || !assetId) {
@@ -1907,6 +2000,7 @@ async function resolveSceneBackgroundMusic(input: {
         }),
         fadeMs: bgm.fadeMs ?? 0,
         trackId: track.id,
+        assetId,
     };
 }
 
@@ -2113,8 +2207,9 @@ function runStoryCompilePasses(ctx: SceneCompileContext): void {
                 darken: (darkness, durationMs, easing) => image.darken(
                     Math.min(1, Math.max(0, darkness)),
                     Math.max(0, durationMs),
-                    easing as never,
+                    parseStoryEasing(easing) as never,
                 ) as unknown as EngineAction,
+                bringToFront: () => image.bringToFront() as unknown as EngineAction,
             };
         },
         // `allAsync`, never `doAsync` - see the note in storyCompilePass.ts. This is the single place
@@ -2257,7 +2352,7 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
             diagnostic(ctx, "error", block.id, `Jump target scene not found: ${block.payload.targetSceneId || "(empty)"}`);
             return [];
         }
-        const chain = ctx.nlrScene.jumpTo(target, createTransition(block.payload.transition, ctx, block.id) as any);
+        const chain = ctx.nlrScene.jumpTo(target, await createTransition(block.payload.transition, ctx, block.id) as any);
         return [recordStatement(ctx, chain, block)];
     }
 
@@ -2694,7 +2789,7 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
             diagnostic(ctx, "warning", block.id, "Background has no image or color.");
             return [];
         }
-        return [recordStatement(ctx, ctx.nlrScene.setBackground(src as any, createTransition(payload.transition, ctx, block.id) as any), block)];
+        return [recordStatement(ctx, ctx.nlrScene.setBackground(src as any, await createTransition(payload.transition, ctx, block.id) as any), block)];
     }
 
     if (payload.action === "character") {
@@ -2748,6 +2843,9 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
             diagnostic(ctx, "error", block.id, `Displayable target not found: ${label}`);
             return [];
         }
+        if (payload.operation === "bringToFront") {
+            return [recordStatement(ctx, target.bringToFront(), block)];
+        }
         const chain = await compileDisplayableOperation(target, payload.operation, payload.transform, ctx, block.id);
         return chain ? [recordStatement(ctx, chain, block)] : [];
     }
@@ -2768,10 +2866,6 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
         return compileVfxAction(ctx, block, payload);
     }
 
-    if (payload.action === "screenEffect") {
-        return compileScreenEffectAction(ctx, block, payload);
-    }
-
     if (payload.action === "camera") {
         return await compileCameraAction(ctx, block, payload);
     }
@@ -2782,70 +2876,6 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
 /** Lower bound on camera zoom: 0 or a negative scale is not a shot, it is a broken transform. */
 const MIN_CAMERA_ZOOM = 0.05;
 
-/**
- * The engine's own `VignetteOptions` defaults, restated so a row that sets only one radius still
- * orders the pair against the value the other half will actually take.
- */
-const DEFAULT_VIGNETTE_INNER = 44;
-const DEFAULT_VIGNETTE_OUTER = 78;
-
-/**
- * `/blink` and `/vignette` - the two screen-wide gestures, sharing one parameter grammar.
- *
- * `durationMs` is the whole in-and-out move; `inMs` / `outMs` override one half each and fall back to
- * it. `blink` honours the split outright, because the engine splits it too (`closeDuration` /
- * `openDuration`) - which Studio used to collapse by filling both from the one number, making "slam
- * the eyes shut, open them slowly" inexpressible rather than unsupported.
- *
- * `vignette` has no halves to split, and does not offer them: the engine's helper drives its fade in
- * AND its fade out from a single `duration`, so `/vignette` names no `in` / `out` and there is
- * nothing here to report. Rebuilding the effect from `effectLayer` plus a hand-written mask WOULD
- * express it, and is deliberately not done: the gradient geometry, the layer's identity and the mask
- * teardown are the engine's business, and a copy living in this file would go stale the first time
- * the engine tunes its vignette - invisibly, since the effect would keep rendering, just no longer
- * like every other build's. The split has to arrive in `VignetteOptions` first.
- */
-function compileScreenEffectAction(
-    ctx: SceneCompileContext,
-    block: StoryBlock,
-    payload: Extract<StoryActionPayload, { action: "screenEffect" }>,
-): NlrStatement[] {
-    // A negative duration is not a fast move, it is a value the engine hands to a tween that never
-    // finishes - and the row is awaited, so the scene would stop there. `undefined` is passed through
-    // rather than floored to 0, so an unset field still lands on the engine's own default.
-    const seconds = (value: number | undefined): number | undefined =>
-        value === undefined ? undefined : Math.max(0, finiteOr(value, 0));
-    /** A blink half: its own override, or the whole move it was never split off from. */
-    const half = (value: number | undefined): number | undefined => seconds(value ?? payload.durationMs);
-    const hold = seconds(payload.holdMs);
-
-    if (payload.effect === "blink") {
-        const chain = blink(ctx.nlrScene, {
-            closeDuration: half(payload.inMs),
-            openDuration: half(payload.outMs),
-            hold,
-            color: payload.color,
-            easing: payload.easing,
-        } as any);
-        return [recordStatement(ctx, chain, block)];
-    }
-
-    // `inner` above `outer` is not a wider vignette - it is a `radial-gradient` whose stops run
-    // backwards, which the browser drops whole, taking the mask and therefore the entire effect with
-    // it. Ordering them here is the same discipline the camera's clamps follow.
-    const inner = Math.min(100, Math.max(0, finiteOr(payload.inner, DEFAULT_VIGNETTE_INNER)));
-    const outer = Math.min(100, Math.max(inner, finiteOr(payload.outer, DEFAULT_VIGNETTE_OUTER)));
-    const chain = vignette(ctx.nlrScene, {
-        duration: seconds(payload.durationMs),
-        hold,
-        color: payload.color,
-        opacity: payload.opacity,
-        easing: payload.easing,
-        ...(payload.inner === undefined && payload.outer === undefined ? {} : { inner: `${inner}%`, outer: `${outer}%` }),
-    } as any);
-    return [recordStatement(ctx, chain, block)];
-}
-
 /** A finite number, or the neutral fallback - a NaN reaching a Transform prop silently kills the whole animation. */
 function finiteOr(value: number | undefined, fallback: number): number {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -2854,10 +2884,10 @@ function finiteOr(value: number | undefined, fallback: number): number {
 /**
  * `story.camera` - the one stage camera, addressed straight off the compile context's story.
  *
- * Every numeric input is clamped here rather than trusted from the payload: the engine's `Darkness`
- * does not clamp, so a `darkness` of 2 compiles to `brightness(-1)` and silently produces no visible
- * change at all (the 0.16.1 defect that made this rule). The same reasoning covers zoom, where 0 or a
- * negative value is not a shot the author meant.
+ * Since v19 there is almost nothing here, and that is the point: the camera is a `Displayable`, its
+ * row states the same prop bag every other subject's does, and the ONE emitter decides per prop what
+ * may be eased. What is left is the zoom clamp - the engine does not floor it, and a zoom of 0 is not
+ * a shot but a broken transform - and `reset`, which is a different engine call rather than a bag.
  */
 async function compileCameraAction(
     ctx: SceneCompileContext,
@@ -2865,139 +2895,87 @@ async function compileCameraAction(
     payload: Extract<StoryActionPayload, { action: "camera" }>,
 ): Promise<NlrStatement[]> {
     const camera = ctx.nlrStory.camera;
-    const duration = Math.max(0, finiteOr(payload.durationMs, 0));
-    const easing = payload.easing;
-    // The camera's six poses are the same bag a sprite's are - `Camera` is a `Displayable` - so they
-    // are built as props and handed to the ONE emitter, which decides per prop what may be eased.
-    const ref = (to: StoryTransformProps): StoryTransformRef => ({ mode: "props", to, durationMs: duration, easing });
-    const emit = async (to: StoryTransformProps): Promise<NlrStatement[]> => {
-        const chain = await emitTransformProps(camera, ref(to), ctx, block.id);
-        return chain === camera ? [] : [recordStatement(ctx, chain, block)];
-    };
-    switch (payload.operation) {
-        case "pan":
-            return emit({
-                position: {
-                    xalign: payload.position?.xalign ?? 0.5,
-                    yalign: payload.position?.yalign ?? 0.5,
-                    ...(payload.position?.xoffset !== undefined ? { xoffset: payload.position.xoffset } : {}),
-                    ...(payload.position?.yoffset !== undefined ? { yoffset: payload.position.yoffset } : {}),
-                },
-            });
-        case "zoom":
-            return emit({ zoom: Math.max(MIN_CAMERA_ZOOM, finiteOr(payload.zoom, 1)) });
-        case "rotate":
-            return emit({ rotation: finiteOr(payload.rotation, 0) });
-        case "darken":
-            // `Camera.darken(d)` IS `filter("brightness(1 - d)")` in the engine, so the bag says so
-            // directly. It carries no `hue-rotate`, so the emitter eases it - dimming the stage over
-            // the row's duration is exactly what an author asks a darken for.
-            return emit({ filter: { brightness: 1 - Math.min(1, Math.max(0, finiteOr(payload.darkness, 0))) } });
-        case "look": {
-            // A colour grade over the whole stage, through `Displayable.filter` - the SAME channel
-            // `darken` writes above. The two never compose: this row replaces whatever the last one put
-            // there, which is why every preset folds its own brightness in rather than expecting a
-            // `/camera darken` beside it.
-            //
-            // A hand-written filter wins over the preset - it is the escape hatch, and a resolved
-            // preset quietly overriding what the author typed would make the field a decoration.
-            const handWritten = payload.filter?.trim();
-            const resolved = handWritten || resolveStoryCameraLook(payload.lookPreset, payload.lookIntensity);
-            if (!resolved) {
-                diagnostic(ctx, "warning", block.id, payload.lookPreset
-                    ? `Camera look "${payload.lookPreset}" is not a known grade.`
-                    : "Camera look has no grade chosen.");
-                return [];
-            }
-            // **Getting to a grade is a separate problem from being on one, and only one grade has
-            // an unsafe route.**
-            //
-            // A filter animation eases every term of the chain at once, so the default route into a
-            // grade is the straight line between two parameter sets. For `moonlight` that line is
-            // the bare-hue-rotate trap reached from the other side: `grayscale` ramps up WHILE the
-            // angle sweeps 185 degrees, so the midpoint keeps most of the source's own hues and drags
-            // them half a turn. Measured frame by frame on that grade - blue at full, cyan by 0.8,
-            // green through 0.6-0.4, olive at 0.2. A green face.
-            //
-            // The answer is to stop letting the straight line BE the route. A preset that needs it
-            // authors its legs (`path`), and they are walked as keyframes: `moonlight` flattens first
-            // with the angle pinned at 0, then rotates a source that is already one known colour.
-            // Every other recipe has no angle to protect, so its straight line is safe and it tweens.
-            //
-            // Calling `camera.filter` with a duration deliberately steps around the transform emitter,
-            // which treats a raw chain as discrete. That is the right default for a chain it knows
-            // nothing about - and this library is the one caller that DOES know, because it wrote the
-            // recipe and can say whether its own route is safe. A hand-written filter gets no such
-            // claim and still cuts.
-            if (handWritten) {
-                return emit({ filterRaw: resolved });
-            }
-
-            // A SWAY is exempt by construction rather than by judgement: every keyframe names the
-            // same filter functions in the same order as the grade it settles onto, holds the flatten
-            // terms fixed, and moves the hue only a few degrees either side of neutral. Nothing
-            // crosses the wheel, so there is no midpoint to land wrong on.
-            const oscillation = resolveStoryCameraLookOscillation(payload.lookPreset, payload.lookIntensity, duration);
-            if (oscillation && oscillation.steps.length > 0) {
-                const sequences = oscillation.steps.map(step => ({
-                    props: { filter: step },
-                    options: { duration: oscillation.stepMs, ease: easing ?? "easeInOut" },
-                }));
-                // `repeat` covers the whole sequence list, so the sway ends on its last step rather
-                // than at neutral - the settle onto the resting grade is a second statement, and it
-                // is what leaves the stage in the state a still grade would have left it in.
-                const sway = new Transform(sequences as any, { repeat: oscillation.cycles } as any);
-                return [
-                    recordStatement(ctx, camera.transform(sway), block),
-                    recordStatement(ctx, camera.filter(resolved, { duration: oscillation.settleMs, ease: "easeOut" }), block),
-                ];
-            }
-
-            // Otherwise the recipe itself decides. A chain that turns no hue eases cleanly, because
-            // every term of it moves monotonically toward the target - that is `faint`'s slow slide,
-            // and it is the effect rather than decoration. A chain that DOES turn a hue cuts, because
-            // the wheel between where it starts and where it lands is full of colours nobody chose
-            // and no ordering of the terms avoids them: an authored route that flattened first and
-            // rotated second was measured in Dev Mode and is green at the midpoint too.
-            if (duration > 0 && storyCameraLookTweens(payload.lookPreset, payload.lookIntensity)) {
-                return [recordStatement(ctx, camera.filter(resolved, easing ? { duration, ease: easing as any } : { duration }), block)];
-            }
-            return emit({ filterRaw: resolved });
-        }
-        case "reset":
-            // Ending a grade used to walk the picture through the colour wheel — blue, cyan, green,
-            // olive on the way out of the moonlight look — because `resetCamera` packed
-            // `filter: "none"` into the same transform as the pose and eased the two together.
-            //
-            // **That is fixed in the engine, not here** (narraleaf-react 0.29.0: `resetCamera` now
-            // drops the filter in a zero-duration sequence and eases only the pose). Studio tried to
-            // paper over it from this side twice — a zero-duration `clearFilter` emitted first, and a
-            // hand-built pose transform carrying no `filter` prop — and neither worked, because both
-            // statements land in one tick and the renderer sees a single style diff either way. The
-            // attempts are gone; this note is what is left of them, so nobody re-tries either.
-            //
-            // ⚠ `package.json` pins `^0.28.0`, and for a `0.x` version that caret means
-            // `>=0.28.0 <0.29.0` — so it will NEVER resolve to the release carrying this fix. The
-            // pin has to be raised to `^0.29.0` when the engine goes out, or a fresh install quietly
-            // gets the sweep back. Not something to work around here; the fix is the pin.
-            return [recordStatement(ctx, camera.resetCamera(duration, easing as any), block)];
-        case "motion": {
-            // A whole keyframed shot rather than one settled pose. `Camera` is a `Displayable`, so it
-            // takes the same `Transform` a sprite does, built by the same function `/transform` uses -
-            // which also owns the missing-id / unknown-asset diagnostics. `durationMs` and `easing` are
-            // deliberately ignored: the timing is in the keyframes, and honouring the row's `d=` too
-            // would silently compete with them.
-            const motion = payload.motion;
-            if (!motion || motion.mode !== "animation") {
-                diagnostic(ctx, "warning", block.id, "Camera motion is missing a Story Motion binding.");
-                return [];
-            }
-            const transform = createAnimationTransform(motion, ctx, block.id, "none");
-            return transform ? [recordStatement(ctx, camera.transform(transform), block)] : [];
-        }
-        default:
-            return [];
+    if (payload.operation === "reset") {
+        // Ending a grade used to walk the picture through the colour wheel - blue, cyan, green, olive
+        // on the way out of the moonlight look - because `resetCamera` packed `filter: "none"` into the
+        // same transform as the pose and eased the two together.
+        //
+        // **That is fixed in the engine, not here** (narraleaf-react 0.29.0: `resetCamera` now drops
+        // the filter in a zero-duration sequence and eases only the pose). Studio tried to paper over
+        // it from this side twice - a zero-duration `clearFilter` emitted first, and a hand-built pose
+        // transform carrying no `filter` prop - and neither worked, because both statements land in one
+        // tick and the renderer sees a single style diff either way.
+        //
+        // It is also why `reset` survived the fold into the prop bag: "put the camera back" is this
+        // call, and a bag of neutral values would put the filter and the pose in one transform again.
+        const duration = Math.max(0, finiteOr(payload.durationMs, 0));
+        return [recordStatement(ctx, camera.resetCamera(duration, parseStoryEasing(payload.easing) as any), block)];
     }
+    const transform = payload.transform;
+    if (!transform) {
+        // Every authoring path writes a ref, even an empty one, so a row without one states nothing
+        // this Studio can read - and a camera row that compiles to no statement is invisible on
+        // stage: the scene plays straight past it and the shot the author asked for never happens.
+        diagnostic(ctx, "warning", block.id, "Camera row is missing its transform.");
+        return [];
+    }
+    if (transform.mode === "animation") {
+        // A whole keyframed shot rather than one settled pose, built by the same function `/transform`
+        // uses - which also owns the missing-id / unknown-asset diagnostics. The ref's `durationMs` is
+        // deliberately not read: the timing is in the keyframes, and honouring a `d=` beside them would
+        // silently compete.
+        const shot = createAnimationTransform(transform, ctx, block.id, "none");
+        return shot ? [recordStatement(ctx, camera.transform(shot), block)] : [];
+    }
+    const chain = await emitTransformProps(camera, clampCameraTransform(transform), ctx, block.id);
+    return chain === camera ? [] : [recordStatement(ctx, chain, block)];
+}
+
+/**
+ * A named lens gesture, as the keyframes it plays.
+ *
+ * In, hold, out - and the last leg returns the channel to zero, so a gesture leaves no residue. A row
+ * that wants the eyes to STAY shut writes `shutter=1`, which is a different instruction and reads
+ * like one.
+ *
+ * The legs are handed to a `Transform` rather than chained as three calls because a browser
+ * interpolates a keyframe list as one animation: three separate awaited statements would each settle
+ * and restart, which is visible as a hitch at every joint.
+ */
+function cameraLensGesture(
+    lens: NonNullable<StoryTransformProps["lens"]>,
+    ctx: SceneCompileContext,
+    blockId: string,
+): Transform | null {
+    const steps = resolveStoryCameraLensSteps(lens);
+    if (!steps) {
+        diagnostic(ctx, "warning", blockId, `Camera lens "${lens.preset}" is not a known effect.`);
+        return null;
+    }
+    const sequences = steps.map(step => ({
+        // `as any` below for the same reason the sway's is, and it is NOT about the engine version:
+        // a step's `easing` is a plain string here while `Sequence` wants `EasingDefinition`, and
+        // `storyTransformPropsToNlr` answers `Record<string, unknown>` because it serves every
+        // subject. Raising the pin does not remove it; narrowing those two types would.
+        props: storyTransformPropsToNlr(step.props),
+        options: { duration: step.durationMs, ease: step.easing },
+    }));
+    return new Transform(sequences as any);
+}
+
+/**
+ * The camera's one clamp, applied here rather than trusted from the payload.
+ *
+ * The engine floors nothing: `zoom: 0` compiles to `scale(0)` and the stage disappears, and a negative
+ * one flips it inside out. Every other channel of the bag is already safe on any subject, so this is
+ * the whole of what the camera adds - the 0.16.1 `darkness` defect that made this rule now lives in
+ * the `filter` record's own clamps.
+ */
+function clampCameraTransform(transform: StoryTransformRef | undefined): StoryTransformRef | undefined {
+    if (!transform?.to || transform.to.zoom === undefined) {
+        return transform;
+    }
+    return { ...transform, to: { ...transform.to, zoom: Math.max(MIN_CAMERA_ZOOM, finiteOr(transform.to.zoom, 1)) } };
 }
 
 async function compileCharacterStageAction(
@@ -3082,7 +3060,7 @@ async function compileCharacterStageAction(
             diagnostic(ctx, "warning", block.id, `Expression for ${characterDiagnosticName(ctx, payload)} selects no tag; nothing changes.`);
             return statements;
         }
-        const chain = image.char(tags as never, createTransition(payload.transition, ctx, block.id) as any);
+        const chain = image.char(tags as never, await createTransition(payload.transition, ctx, block.id) as any);
         statements.push(recordStatement(ctx, chain, block));
         return statements;
     }
@@ -3107,7 +3085,7 @@ async function compileCharacterStageAction(
     }
 
     // expression: swap a visible character's appearance, optionally with an image transition.
-    const sourceChain = image.char(src as any, createTransition(payload.transition, ctx, block.id) as any);
+    const sourceChain = image.char(src as any, await createTransition(payload.transition, ctx, block.id) as any);
     statements.push(recordStatement(ctx, sourceChain, block));
     return statements;
 }
@@ -3407,6 +3385,7 @@ async function compileAudioAction(
             // track to resolve: nothing is being routed, only stopped, over this row's own fade.
             ctx.sounds.delete(BGM_SOUND_NAME);
             ctx.soundTrackIds.delete(BGM_SOUND_NAME);
+            ctx.soundAssetIds.delete(BGM_SOUND_NAME);
             return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(null, rowFadeMs(payload)), block)];
         }
         // A `/bgm` with an asset builds a NEW handle and replaces whatever was under `bgm`, so it
@@ -3428,7 +3407,14 @@ async function compileAudioAction(
         // channel by registering the BGM handle under "bgm" (see BGM_OBJECT_NAME in the editor).
         ctx.sounds.set(BGM_SOUND_NAME, sound);
         ctx.soundTrackIds.set(BGM_SOUND_NAME, track.id);
-        return [recordStatement(ctx, ctx.nlrScene.setBackgroundMusic(sound, rowFadeMs(payload)), block)];
+        ctx.soundAssetIds.set(BGM_SOUND_NAME, payload.assetId);
+        return [recordStatement(
+            ctx,
+            ctx.nlrScene.setBackgroundMusic(sound, rowFadeMs(payload)),
+            block,
+            undefined,
+            payload.assetId,
+        )];
     }
 
     // `playSound` is the row that starts the handle and names it; the control family addresses one an
@@ -3456,7 +3442,16 @@ async function compileAudioAction(
 
     switch (payload.operation) {
         case "playSound":
-            return [recordStatement(ctx, sound.play(fadeMs), block)];
+            // The only operation here that STARTS a clip, so the only one that binds an asset id.
+            // Read back off the handle when the row named no file, which is the `/sound piano`
+            // replay case.
+            return [recordStatement(
+                ctx,
+                sound.play(fadeMs),
+                block,
+                undefined,
+                payload.assetId?.trim() || ctx.soundAssetIds.get(name),
+            )];
         case "stopSound":
             return [recordStatement(ctx, sound.stop(fadeMs), block)];
         case "pauseSound":
@@ -3535,7 +3530,7 @@ async function compileImageAction(
         : payload.color;
 
     if ((payload.operation === "create" || payload.operation === "setSource") && src) {
-        statements.push(recordStatement(ctx, image.char(src as any, createTransition(payload.transition, ctx, block.id) as any), block));
+        statements.push(recordStatement(ctx, image.char(src as any, await createTransition(payload.transition, ctx, block.id) as any), block));
     } else if ((payload.operation === "create" || payload.operation === "setSource") && !src) {
         diagnostic(ctx, "warning", block.id, `Image "${payload.objectName}" has no asset or color source.`);
     }
@@ -3573,10 +3568,10 @@ async function compileTextAction(
         statements.push(recordStatement(ctx, text.setText(payload.text), block));
     }
     if (payload.operation === "setFontSize" || (payload.operation === "create" && payload.fontSize !== undefined)) {
-        statements.push(recordStatement(ctx, text.setFontSize(payload.fontSize ?? 16, payload.transform?.durationMs ?? 0, payload.transform?.easing as any), block));
+        statements.push(recordStatement(ctx, text.setFontSize(payload.fontSize ?? 16, payload.transform?.durationMs ?? 0, parseStoryEasing(payload.transform?.easing) as any), block));
     }
     if (payload.operation === "setFontColor" || (payload.operation === "create" && payload.fontColor)) {
-        statements.push(recordStatement(ctx, text.setFontColor((payload.fontColor ?? "#ffffff") as any, payload.transform?.durationMs ?? 0, payload.transform?.easing as any), block));
+        statements.push(recordStatement(ctx, text.setFontColor((payload.fontColor ?? "#ffffff") as any, payload.transform?.durationMs ?? 0, parseStoryEasing(payload.transform?.easing) as any), block));
     }
     if (payload.operation === "show" || payload.operation === "hide" || payload.operation === "create") {
         const chain = await compileDisplayableOperation(text, payload.operation === "hide" ? "hide" : "show", payload.transform, ctx, block.id);
@@ -3668,7 +3663,7 @@ async function compileVfxAction(
     }
     // A create shows the overlay: the row an author writes to "put petals on screen" must put them on
     // screen, exactly as `/image` and `/video` do.
-    const fade = { duration: Math.max(0, finiteOr(payload.durationMs, 0)), ease: payload.easing as any };
+    const fade = { duration: Math.max(0, finiteOr(payload.durationMs, 0)), ease: parseStoryEasing(payload.easing) as any };
     switch (payload.operation) {
         case "create":
         case "show":
@@ -3695,14 +3690,27 @@ async function getVfx(
 ): Promise<Vfx | null> {
     const name = normalizeObjectName(payload.objectName);
     const existing = ctx.vfx.get(name);
+    // What this row asks to play, whichever kind of source it names. Both arms answer the same
+    // question - "is this the same ambience as the row that made the overlay?" - so they share one
+    // identity rather than two parallel checks that could disagree.
+    const source = payload.seed ? `seed:${weatherRefIdentity(payload.seed)}` : payload.assetId;
     if (existing) {
+        // A create row for a name that already has an overlay is the author setting the same
+        // ambience up twice - fine, and it addresses the one overlay. Naming a DIFFERENT clip is
+        // two answers to one question, and it is reported rather than resolved: silently keeping
+        // the first would leave a row whose clip never plays and nothing to say why.
+        if (payload.operation === "create" && source && ctx.vfxAssetIds.get(name) !== source) {
+            diagnostic(ctx, "warning", blockId, `Ambience effect "${name}" already plays a different clip; this row reuses the first one.`);
+        }
         return existing;
     }
-    if (!payload.assetId) {
+    if (!source) {
         diagnostic(ctx, "warning", blockId, `Ambience effect "${name}" has no clip.`);
         return null;
     }
-    const url = await resolveAsset(ctx, payload.assetId, "video", blockId);
+    const url = payload.seed
+        ? await resolveWeatherClip(ctx, payload.seed, name, blockId)
+        : await resolveAsset(ctx, payload.assetId!, "video", blockId);
     if (!url) {
         return null;
     }
@@ -3717,9 +3725,63 @@ async function getVfx(
         // since the engine does not persist a runtime `setPlaybackRate`.
         ...(payload.rate !== undefined ? { playbackRate: Math.max(0, finiteOr(payload.rate, 1)) } : {}),
     });
-    setStableElementId(ctx.elementIdBindings, vfx, `nl:vfx:${ctx.scene.id}:${name}`);
+    // No scene in the id, unlike every other element: this overlay does not belong to one. Naming
+    // it after the scene that happened to create it first would also make the anchor depend on
+    // scene ORDER, so reordering scenes would move it under a save that referenced it.
+    setStableElementId(ctx.elementIdBindings, vfx, `nl:vfx:${name}`);
     ctx.vfx.set(name, vfx);
+    ctx.vfxAssetIds.set(name, source);
     return vfx;
+}
+
+/**
+ * One choice option's prompt, carrying its voice unit id when a take exists for it.
+ *
+ * The engine's menu never speaks an option, so the id travels as sentence metadata rather than as
+ * `voiceId`: `Sentence.getMetadata()` is the one published read of it, and the choice slot surface
+ * is what turns it into audible playback (`Play Choice Voice`). Metadata is runtime-only and is not
+ * written to a save, which is the right lifetime - the id is recomputed by every compile.
+ *
+ * An unvoiced option stays a bare prompt, exactly as every option was before this existed, so the
+ * `Sentence` wrapper only appears where it carries something.
+ */
+function choiceOptionPrompt(ctx: SceneCompileContext, segment: StoryTextSegment, blockId: string): unknown {
+    if (!segment.value && !segmentHasInterpolation(segment)) {
+        return "Option";
+    }
+    const prompt = buildLocalizedSentencePrompt(ctx, segment, blockId);
+    const voiceConfig = voiceConfigForLine(ctx, segment.textId);
+    return voiceConfig
+        ? new Sentence(prompt as any, { metadata: { voiceId: voiceConfig.voiceId } })
+        : prompt;
+}
+
+/**
+ * The URL for a weather seed's clip, or null with a diagnostic saying why there is none.
+ *
+ * Refused rather than guessed at. A `Vfx` REQUIRES a source - the engine throws on one without -
+ * so a compile that could not produce the clip has to leave the overlay out and say so, which is a
+ * scene that plays without weather rather than a runtime that will not start.
+ */
+async function resolveWeatherClip(
+    ctx: SceneCompileContext,
+    ref: WeatherSeedRef,
+    name: string,
+    blockId: string,
+): Promise<string | null> {
+    if (!ctx.resolveWeatherClip) {
+        // The host asked for a graph rather than something playable (save anchors, the content
+        // audit). Said out loud so a compile that quietly lost an overlay is never mistaken for one
+        // that never had it.
+        diagnostic(ctx, "warning", blockId, `Ambience effect "${name}" needs its weather produced, which this compile cannot do.`);
+        return null;
+    }
+    const url = await ctx.resolveWeatherClip(ref);
+    if (!url) {
+        diagnostic(ctx, "warning", blockId, `Weather for ambience effect "${name}" could not be produced.`);
+        return null;
+    }
+    return url;
 }
 
 async function compileChoice(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "nodeAction" }>): Promise<NlrStatement[]> {
@@ -3746,9 +3808,7 @@ async function compileChoice(ctx: SceneCompileContext, block: Extract<StoryBlock
         }
         const optionSegment = option.payload.text;
         chain = chain.choose({
-            prompt: optionSegment.value || segmentHasInterpolation(optionSegment)
-                ? (buildLocalizedSentencePrompt(ctx, optionSegment, option.id) as any)
-                : "Option",
+            prompt: choiceOptionPrompt(ctx, optionSegment, option.id),
             // The pick is recorded at the head of the option's OWN branch, which is the one place
             // that runs if and only if the player chose this option. Recording anywhere else (with
             // the menu, or via the engine's text-read record) would count an option the player only
@@ -4200,6 +4260,7 @@ async function getSound(
     });
     ctx.sounds.set(name, sound);
     ctx.soundTrackIds.set(name, track.id);
+    ctx.soundAssetIds.set(name, assetId);
     return sound;
 }
 
@@ -4534,7 +4595,7 @@ function timingOf(ref: StoryTransformRef | undefined): TransformTiming {
 function transformOptions(timing: TransformTiming | undefined): Record<string, unknown> {
     const options: Record<string, unknown> = { duration: Math.max(0, timing?.durationMs ?? 0) };
     if (timing?.easing) {
-        options.ease = timing.easing;
+        options.ease = parseStoryEasing(timing.easing);
     }
     if (timing?.delayMs !== undefined) {
         options.delay = Math.max(0, timing.delayMs);
@@ -4578,11 +4639,33 @@ async function emitTransformProps(
     }
     for (const conflict of storyTransformPropsConflicts(ref.to)) {
         if (conflict === "filterBoth") {
-            diagnostic(ctx, "warning", blockId, "A transform sets both a structured filter and a raw one; only one can reach the stage.");
+            diagnostic(ctx, "warning", blockId, "A transform names more than one writer of the CSS filter channel; only one can reach the stage.");
         }
     }
     const timing = timingOf(ref);
-    const { cut, tween } = splitStoryTransformChange(ref.from, ref.to);
+    const grade = ref.to?.look ? cameraLookEmission(ref.to.look, ref) : null;
+    // A SWAY never settles onto its grade until its last step, so the recipe's resting chain is the
+    // sway statement's own business and must not also be written into the pose - a bag carrying both
+    // would put the grade on at frame zero and then swing away from it.
+    let bag = grade?.sway ? { ...ref.to, look: undefined } : ref.to;
+    // A lens GESTURE is three keyframes rather than a destination, so it plays as its own statement
+    // too. `lens: null` is the opposite instruction and IS a destination: put the glass back.
+    const gesture = ref.to?.lens ? cameraLensGesture(ref.to.lens, ctx, blockId) : null;
+    if (ref.to?.lens !== undefined) {
+        bag = { ...bag, lens: undefined, ...(ref.to.lens === null ? neutralStoryCameraLensProps() : {}) };
+    }
+    const to = foldStoryTransformLook(bag, resolveStoryCameraLook, preset =>
+        diagnostic(ctx, "warning", blockId, `Camera look "${preset}" is not a known grade.`));
+    const { cut, tween } = splitStoryTransformChange(ref.from, to);
+    // **Getting to a grade is a separate problem from being on one, and only the library can say
+    // which of its own routes is safe.** `filterRaw` is discrete to everyone else - a chain nothing
+    // can read cannot be interpolated responsibly - but a recipe that turns no hue moves every term
+    // monotonically toward its target, and easing it is the effect rather than decoration. So the one
+    // caller that DID write the chain moves it into the eased half.
+    if (grade?.tweens && cut.filterRaw !== undefined) {
+        tween.filterRaw = cut.filterRaw;
+        delete cut.filterRaw;
+    }
     let next = chain;
     if (!isEmptyStoryTransformProps(cut)) {
         next = await emitCutProps(next, cut, ctx, blockId);
@@ -4590,10 +4673,63 @@ async function emitTransformProps(
     if (!isEmptyStoryTransformProps(tween)) {
         next = next.transform(buildTransform(storyTransformPropsToNlr(tween), timing));
     }
+    if (grade?.sway) {
+        // The sway, then the settle onto the resting grade. `repeat` covers the whole sequence list,
+        // so the swing ends on its last step rather than at neutral, and the settle is what leaves
+        // the stage in the state a still grade would have left it in.
+        next = next.transform(grade.sway).filter(grade.css, { duration: grade.settleMs, ease: "easeOut" });
+    }
+    if (gesture) {
+        next = next.transform(gesture);
+    }
     if (ref.clipReveal) {
         next = emitClipReveal(next, ref.clipReveal, timing, ctx, blockId);
     }
     return next;
+}
+
+/**
+ * What a named grade asks the emitter for: whether its route may be eased, and the sway it plays
+ * first when it has one.
+ *
+ * **A filter animation eases every term of the chain at once**, so the default route into a grade is
+ * the straight line between two parameter sets. For `moonlight` that line is the bare-hue-rotate trap
+ * reached from the other side: `grayscale` ramps up WHILE the angle sweeps 185 degrees, so the
+ * midpoint keeps most of the source's own hues and drags them half a turn. Measured frame by frame on
+ * that grade - blue at full, cyan by 0.8, green through 0.6-0.4, olive at 0.2. A green face. So a
+ * chain that turns a hue cuts, and `storyCameraLookTweens` asks the recipe rather than a hard-coded
+ * list: a new grade that grows an angle stops tweening without anyone remembering to say so.
+ *
+ * **A sway is exempt by construction rather than by judgement.** Every keyframe names the same filter
+ * functions in the same order as the grade it settles onto, holds the flatten terms fixed, and moves
+ * the hue only a few degrees either side of neutral. Nothing crosses the wheel, so there is no
+ * midpoint to land wrong on - which is also why the step list and the resting recipe must stay
+ * function-for-function identical: a browser interpolates two filter lists only when they match, and
+ * a mismatched pair snaps instead of animating.
+ */
+function cameraLookEmission(
+    look: NonNullable<StoryTransformProps["look"]>,
+    ref: StoryTransformRef,
+): { css: string; tweens: boolean; sway: Transform | null; settleMs: number } | null {
+    const css = resolveStoryCameraLook(look.preset, look.intensity);
+    if (!css) {
+        return null;
+    }
+    const duration = Math.max(0, ref.durationMs ?? 0);
+    const oscillation = resolveStoryCameraLookOscillation(look.preset, look.intensity, duration);
+    if (oscillation && oscillation.steps.length > 0) {
+        const sequences = oscillation.steps.map(step => ({
+            props: { filter: step },
+            options: { duration: oscillation.stepMs, ease: ref.easing ?? "easeInOut" },
+        }));
+        return {
+            css,
+            tweens: false,
+            sway: new Transform(sequences as any, { repeat: oscillation.cycles } as any),
+            settleMs: oscillation.settleMs,
+        };
+    }
+    return { css, tweens: duration > 0 && storyCameraLookTweens(look.preset, look.intensity), sway: null, settleMs: 0 };
 }
 
 /** The half that lands in one frame, through the engine's own effect entries where it has them. */
@@ -4641,7 +4777,14 @@ async function emitCutProps(
         next = next.blend(cut.mixBlendMode ?? "normal", instant);
     }
     // What is left has no dedicated entry - the three mask settings when no mask image came with them,
-    // and a text colour - so it goes through a Transform that simply does not animate.
+    // a text colour, and the camera lens's dressing - so it goes through a Transform that simply does
+    // not animate.
+    //
+    // The four lens keys have to be listed here for the same reason the mask settings are: this bag is
+    // a LITERAL, so a discrete channel missing from it is not emitted and nothing says so. That is
+    // exactly what happened to them - `/transform camera vignetteInner=30 vignetteOuter=70` compiled
+    // to no statement at all, and a row carrying a strength beside them (`vignette=0.6 vignetteInner=30`)
+    // kept the strength, which tweens, and lost the geometry, which cuts.
     const rest = storyTransformPropsToNlr({
         ...(cut.maskAssetId === undefined ? {
             maskSize: cut.maskSize,
@@ -4650,6 +4793,10 @@ async function emitCutProps(
             maskMode: cut.maskMode,
         } : {}),
         fontColor: cut.fontColor,
+        shutterColor: cut.shutterColor,
+        vignetteColor: cut.vignetteColor,
+        vignetteInner: cut.vignetteInner,
+        vignetteOuter: cut.vignetteOuter,
     });
     if (Object.keys(rest).length > 0) {
         next = next.transform(buildTransform(rest, undefined));
@@ -4721,7 +4868,7 @@ async function compileDisplayableOperation(
         if (isOpacityOnly(transform, 1)) {
             return target.show(transformOptions(timing));
         }
-        const visible = target.show({ duration: 0, ...(transform?.easing ? { ease: transform.easing } : {}) });
+        const visible = target.show({ duration: 0, ...(transform?.easing ? { ease: parseStoryEasing(transform.easing) } : {}) });
         return await emitTransformProps(visible, transform, ctx, blockId);
     }
     if (operation === "hide") {
@@ -4729,7 +4876,7 @@ async function compileDisplayableOperation(
             return target.hide(transformOptions(timing));
         }
         const posed = await emitTransformProps(target, transform, ctx, blockId);
-        return (posed ?? target).hide({ duration: 0, ...(transform?.easing ? { ease: transform.easing } : {}) });
+        return (posed ?? target).hide({ duration: 0, ...(transform?.easing ? { ease: parseStoryEasing(transform.easing) } : {}) });
     }
     const chain = await emitTransformProps(target, transform, ctx, blockId);
     return chain === target ? null : chain;
@@ -4807,12 +4954,12 @@ function createAnimationTransform(
     } as any);
 }
 
-function createTransition(transition: StoryTransitionRef | undefined, ctx: SceneCompileContext, blockId: string): unknown | undefined {
+async function createTransition(transition: StoryTransitionRef | undefined, ctx: SceneCompileContext, blockId: string): Promise<unknown | undefined> {
     if (!transition || transition.kind === "none") {
         return undefined;
     }
     const duration = Math.max(0, transition.durationMs ?? 300);
-    const easing = transition.easing as any;
+    const easing = parseStoryEasing(transition.easing) as any;
     const props = transition.props ?? {};
 
     switch (transition.kind) {
@@ -4869,6 +5016,28 @@ function createTransition(transition: StoryTransitionRef | undefined, ctx: Scene
                 lift: Math.min(1, Math.max(0, numberProp(props, "lift", 0.04))),
                 hold: Math.min(1, Math.max(0, numberProp(props, "hold", 0) / 100)),
             });
+        case "ruleReveal": {
+            // The only transition that reads an asset, which is why this factory is async. A rule
+            // with no picture is a row the author has not finished: reported, and played as a cut,
+            // rather than guessed at with some other engine that would look deliberate.
+            if (!transition.ruleAssetId) {
+                diagnostic(ctx, "warning", blockId, "Rule transition names no rule image; the change was played as a cut.");
+                return undefined;
+            }
+            const rule = await resolveAsset(ctx, transition.ruleAssetId, "image", blockId);
+            if (!rule) {
+                return undefined;
+            }
+            return new RuleReveal({
+                duration,
+                easing,
+                rule,
+                // Percent on the way in, like every other feather this file writes, and a fraction
+                // on the way out because that is what the engine's tonal range is measured in.
+                feather: numberProp(props, "feather", 12) / 100,
+                inverted: props.inverted === true,
+            });
+        }
         case "darkness":
             // The incoming image is swapped in at `from` darkness and lifted to `to` - so the default
             // pair (1 → 0) reads as "the new frame emerges out of black". Clamped here because
@@ -5571,7 +5740,13 @@ async function resolveAssetUrlCached(input: {
     }
 }
 
-function recordStatement(ctx: SceneCompileContext, statement: NlrStatement, block: StoryBlock, textId?: string): NlrStatement {
+function recordStatement(
+    ctx: SceneCompileContext,
+    statement: NlrStatement,
+    block: StoryBlock,
+    textId?: string,
+    audioAssetId?: string,
+): NlrStatement {
     for (const action of statementToActions(statement)) {
         const staticId = stableActionId(ctx.document.id, ctx.scene.id, block.id, textId, ctx.nextActionIndex(block.id));
         setStableActionId(action, staticId);
@@ -5580,6 +5755,7 @@ function recordStatement(ctx: SceneCompileContext, statement: NlrStatement, bloc
             staticId,
             blockId: block.id,
             textId,
+            ...(audioAssetId ? { audioAssetId } : {}),
         });
     }
     return statement;

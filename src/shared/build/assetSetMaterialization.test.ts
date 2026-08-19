@@ -26,7 +26,7 @@ function localeSet(overrides: Partial<AssetSet> = {}): AssetSet {
         name: "Title art",
         type: "image",
         filter: ["cg:title"],
-        axes: [{ key: "locale", residency: "runtime", values: ["en", "ja"] }],
+        axis: { kind: "locale" as const, key: "locale", residency: "runtime" as const, values: ["en", "ja"] },
         ...overrides,
     };
 }
@@ -136,7 +136,7 @@ describe("materializeStoryAssetSets", () => {
     describe("filling", () => {
         it("walks the project's declared fallback before the source locale", () => {
             const result = run({
-                sets: [localeSet({ axes: [{ key: "locale", residency: "runtime", values: ["en", "ja", "zh-CN"] }] })],
+                sets: [localeSet({ axis: { kind: "locale" as const, key: "locale", residency: "runtime" as const, values: ["en", "ja", "zh-CN"] } })],
                 candidates: library([
                     [EN, ["cg:title", "locale:en"]],
                     [JA, ["cg:title", "locale:ja"]],
@@ -204,14 +204,15 @@ describe("materializeStoryAssetSets", () => {
     });
 
     describe("what this build refuses to guess at", () => {
-        it("refuses a second axis, which needs a derived key rather than an inline map", () => {
+        it("refuses a set with a sub-set under it, which needs a derived key rather than an inline map", () => {
+            const parent = localeSet();
             const result = run({
-                sets: [localeSet({
-                    axes: [
-                        { key: "locale", residency: "runtime", values: ["en"] },
-                        { key: "mood", residency: "runtime", values: ["happy"] },
-                    ],
-                })],
+                sets: [parent, {
+                    ...parent,
+                    id: "child",
+                    filter: [...parent.filter, "locale:en"],
+                    axis: { kind: "release" as const, key: "mood", residency: "build" as const, values: ["happy"] },
+                }],
             });
 
             expect(result.problems).toMatchObject([{ kind: "unsupported", reason: "multipleAxes" }]);
@@ -289,7 +290,7 @@ describe("build axes", () => {
             name: "Bath scene",
             type: "image",
             filter: ["cg:bath"],
-            axes: [{ key: "rating", residency: "build", values: ["all-ages", "adult"] }],
+            axis: { kind: "release" as const, key: "rating", residency: "build" as const, values: ["all-ages", "adult"] },
         };
     }
 

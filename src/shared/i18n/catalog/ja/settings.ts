@@ -12,6 +12,14 @@ export const settings = {
     persistFailed: "設定を保存できなかった",
     resetToDefault: "既定に戻す",
     customColor: "カスタムカラー…",
+    // ダウンロード元の選択（SettingValueType.Source）。住所が分かっている配布元を並べ、
+    // 最後に自分で指定するための欄を出す。
+    source: {
+        official: "公式の配布元",
+        noMirror: "ミラーを使わない",
+        chinaMirror: "中国のミラー",
+        customPlaceholder: "自分で指定するアドレス",
+    },
     // フォントの選択（SettingFontPicker）。プリセットと、この端末に入っているフォント。
     fontPicker: {
         searchPlaceholder: "フォントを検索…",
@@ -206,23 +214,23 @@ export const settings = {
         },
         electronMirror: {
             label: "Electron のダウンロードミラー",
-            description: "Electron を取ってくるミラー。空のままなら公式の配布元を使う",
+            description: "Electron を取ってくるミラー",
         },
         electronBuilderBinariesMirror: {
             label: "ビルド用の道具のミラー",
             description:
-                "ビルドがダウンロードするインストーラ関連の道具（NSIS、AppImage、コード署名の補助）のミラー。空のままなら公式の配布元を使う",
+                "ビルドがダウンロードするインストーラ関連の道具（NSIS、AppImage、コード署名の補助）のミラー",
         },
         downloadRewrites: {
             label: "ダウンロード先の書き換え",
         },
         pluginRegistryUrl: {
             label: "プラグインレジストリの URL",
-            description: "プラグインストアの参照先。空のままなら NarraLeaf の公式レジストリを使う",
+            description: "プラグインストアが索引を取ってくる先",
         },
         uiTemplateRegistryUrl: {
             label: "UI テンプレートレジストリの URL",
-            description: "テンプレートストアの参照先。空のままなら NarraLeaf の公式レジストリを使う",
+            description: "テンプレートストアが索引を取ってくる先",
         },
         checkpointInterval: {
             label: "自動チェックポイントの間隔",

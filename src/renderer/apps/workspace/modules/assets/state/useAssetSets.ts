@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-    deriveAssetSetDraft,
-    parseAssetTag,
     resolveAssetSetContents,
+    topLevelAssetSets,
     validateAssetSet,
     type AssetSet,
     type AssetSetCandidate,
@@ -78,8 +77,8 @@ export function useAssetSets({
     );
 
     const resolved = useMemo<ResolvedAssetSet[]>(() => sets.map(set => {
-        const problems = validateAssetSet(set);
-        const contents = resolveAssetSetContents(set, candidates);
+        const problems = validateAssetSet(set, sets);
+        const contents = resolveAssetSetContents(set, candidates, sets);
         return {
             set,
             category: categoryOfAssetType(set.type as AssetType),
@@ -89,7 +88,12 @@ export function useAssetSets({
         };
     }), [sets, candidates]);
 
-    /** Filed under the sidebar section each one's type belongs to, so a section can draw its own. */
+    /**
+     * Filed under the sidebar section each one's type belongs to, so a section can draw its own.
+     *
+     * Every set, nested ones included: a section draws its top level from {@link topLevel} and looks
+     * the rest up here as it opens them.
+     */
     const byCategory = useMemo(() => {
         const record = createEmptyAssetCategoryRecord<ResolvedAssetSet>();
         for (const entry of resolved) {
@@ -98,56 +102,42 @@ export function useAssetSets({
         return record;
     }, [resolved]);
 
+    /**
+     * Every file some set answers with.
+     *
+     * The library lists these inside their set and nowhere else. A set is a folder to whoever is
+     * browsing, and a file that appeared both in its set and in the folder it was imported into read
+     * as two copies of itself - which is the one thing a set must not look like, since what it holds
+     * is exactly one file per variant.
+     */
+    const memberAssetIds = useMemo(() => {
+        const ids = new Set<string>();
+        for (const entry of resolved) {
+            for (const cell of entry.contents.cells) {
+                for (const id of cell.assetIds) {
+                    ids.add(id);
+                }
+            }
+        }
+        return ids as ReadonlySet<string>;
+    }, [resolved]);
+
+    /** The sets a section lists at its root: the ones that hang under nothing. */
+    const topLevelByCategory = useMemo(() => {
+        const record = createEmptyAssetCategoryRecord<ResolvedAssetSet>();
+        const roots = new Set(topLevelAssetSets(sets).map(set => set.id));
+        for (const entry of resolved) {
+            if (roots.has(entry.set.id)) {
+                record[entry.category].push(entry);
+            }
+        }
+        return record;
+    }, [resolved, sets]);
+
     const findSet = useCallback(
         (id: string | null | undefined) => resolved.find(entry => entry.set.id === id) ?? null,
         [resolved],
     );
 
-    /**
-     * Make a set out of the rows the author has marked.
-     *
-     * The tags on those rows are the declaration - see `deriveAssetSetDraft`. Refused for a
-     * selection spanning two asset types: a set resolves within one type, and picking one of them
-     * would silently leave the other half out of everything the set is about.
-     */
-    /**
-     * The name to offer for a set made of these rows.
-     *
-     * The values of the tags they all agree on - `char:alice` and `outfit:school` suggest
-     * "alice school" - because those are what the set *is*, whereas the first file's name is one
-     * corner of it (`alice-happy-en` for a set that also holds sad and Japanese). Empty when the
-     * rows agree on nothing, which is the honest answer: there is no name to guess.
-     */
-    const suggestNameFor = useCallback((selected: readonly Asset[]): string => {
-        if (selected.length === 0) {
-            return "";
-        }
-        const draft = deriveAssetSetDraft(selected.map(asset => ({
-            id: asset.id,
-            type: asset.type,
-            tags: asset.tags,
-        })));
-        return draft.filter
-            .map(tag => parseAssetTag(tag)?.value)
-            .filter((value): value is string => Boolean(value))
-            .join(" ");
-    }, []);
-
-    const createFromAssets = useCallback((selected: readonly Asset[], name: string): AssetSet | null => {
-        if (!service || selected.length === 0) {
-            return null;
-        }
-        const type = selected[0].type;
-        if (selected.some(asset => asset.type !== type)) {
-            return null;
-        }
-        const draft = deriveAssetSetDraft(selected.map(asset => ({
-            id: asset.id,
-            type: asset.type,
-            tags: asset.tags,
-        })));
-        return service.createSet({ name, type, filter: draft.filter, axes: draft.axes });
-    }, [service]);
-
-    return { service, sets, resolved, byCategory, findSet, createFromAssets, suggestNameFor };
+    return { service, sets, resolved, byCategory, topLevelByCategory, memberAssetIds, findSet };
 }

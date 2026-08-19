@@ -61,12 +61,12 @@ describe("getCommandCursor", () => {
     it("offers param names once every positional is given", () => {
         const cursor = at("/bg forest_day |");
         expect(cursor.kind).toBe("paramName");
-        expect((cursor as Extract<StoryCommandCursor, { kind: "paramName" }>).params.map(p => p.name)).toEqual(["t", "d"]);
+        expect((cursor as Extract<StoryCommandCursor, { kind: "paramName" }>).params.map(p => p.name)).toEqual(["t", "rule", "d"]);
     });
 
     it("drops a param name that the line already carries", () => {
         const cursor = at("/bg forest_day t=fade |");
-        expect((cursor as Extract<StoryCommandCursor, { kind: "paramName" }>).params.map(p => p.name)).toEqual(["d"]);
+        expect((cursor as Extract<StoryCommandCursor, { kind: "paramName" }>).params.map(p => p.name)).toEqual(["rule", "d"]);
     });
 
     it("switches to the value once the caret is past the equals", () => {
@@ -257,8 +257,8 @@ describe("getCommandCandidates", () => {
     });
 
     it("offers the remaining param names", () => {
-        expect(values("/bg forest_day |")).toEqual(["t", "d"]);
-        expect(values("/bg forest_day t=fade |")).toEqual(["d"]);
+        expect(values("/bg forest_day |")).toEqual(["t", "rule", "d"]);
+        expect(values("/bg forest_day t=fade |")).toEqual(["rule", "d"]);
     });
 
     it("offers a speaker's forms only once the speaker resolves", () => {
@@ -480,7 +480,11 @@ describe("candidate marks", () => {
         // `t` `d` is two letters to decode; a word list and a stopwatch is a glance. The unit is what
         // separates "how long" from "how many", which is the same thing the ghost hint prints, and the
         // leading option is what stops every word list from wearing one interchangeable glyph.
-        expect(marks("/bg forest_day |")).toEqual([{ kind: "options", lead: "fade" }, { kind: "number", duration: true }]);
+        expect(marks("/bg forest_day |")).toEqual([
+            { kind: "options", lead: "fade" },
+            { kind: "asset", assetType: "image" },
+            { kind: "number", duration: true },
+        ]);
         expect(marks("/show Alice smile |")).toEqual([
             { kind: "options", lead: "left" },
             { kind: "options", lead: "fade" },

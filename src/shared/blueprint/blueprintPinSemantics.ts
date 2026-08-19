@@ -163,6 +163,7 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.game.getCps", "blueprint.game.getGameSpeed", "blueprint.game.getGlobalVolume",
     "blueprint.game.getNametag", "blueprint.game.getNotifications",
     "blueprint.game.getPlaytime", "blueprint.game.getSkip",
+    "blueprint.game.getAutoForwardDelay", "blueprint.game.getSkipping",
     "blueprint.game.getSkipDelay", "blueprint.game.getSkipInterval", "blueprint.game.getSkipReadText",
     "blueprint.game.getSoundVolume", "blueprint.game.getSpeakerAvatar", "blueprint.game.getSpeakerColor",
     "blueprint.game.getTrackVolume", "blueprint.game.getVoiceEndMode",
@@ -269,6 +270,7 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.game.save.getTime", "blueprint.game.save.listIds",
     "blueprint.game.save.write", "blueprint.game.setAutoForward", "blueprint.game.setBgmVolume",
     "blueprint.game.setGameSpeed", "blueprint.game.setGlobalVolume", "blueprint.game.setSentenceSpeed",
+    "blueprint.game.setAutoForwardDelay", "blueprint.game.setSkipping",
     "blueprint.game.setSkip", "blueprint.game.setSkipDelay", "blueprint.game.setSkipInterval",
     "blueprint.game.setSkipReadText", "blueprint.game.setSoundVolume", "blueprint.game.setTrackVolume",
     "blueprint.game.setVoiceEndMode", "blueprint.game.setVoiceFadeDuration",
@@ -299,7 +301,8 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.text.setText", "blueprint.text.setTextAlign", "blueprint.text.setTextColor",
     "blueprint.text.setTextVerticalAlign", "blueprint.text.setVisible", "blueprint.text.setWrapMode",
     "blueprint.textInput.clear", "blueprint.textInput.setValue", "blueprint.voice.getAvailableLanguages",
-    "blueprint.voice.getLanguage", "blueprint.voice.play", "blueprint.voice.setLanguage",
+    "blueprint.voice.getLanguage", "blueprint.voice.play", "blueprint.voice.playChoice",
+    "blueprint.voice.setLanguage",
 ];
 
 /**

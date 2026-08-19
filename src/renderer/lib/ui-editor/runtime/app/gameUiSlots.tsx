@@ -1,6 +1,7 @@
 import type { MutableRefObject, ReactNode } from "react";
 import { Game, KeyBindingType, type AudioBusDeclaration, type LiveGame } from "narraleaf-react";
 import type { DevModeBundle } from "@shared/types/devMode";
+import { RUNTIME_PREFERENCE_DEFAULTS } from "@shared/types/preference";
 import type {
     BlueprintGameHistoryEntry,
     BlueprintGameNotification,
@@ -133,6 +134,12 @@ export function createNlrGameWithGameUi(input: {
         );
         game.keyMap.setKeyBinding(KeyBindingType.skipAction, null);
     }
+    // Runtime-only preferences, seeded here rather than alongside the player's own: `Get Skipping`
+    // is a boolean pin and an absent value is not a boolean, so a graph reading it before anything
+    // has written one would fail rather than answer "no". Every host that builds a game comes
+    // through here, including the story preview, which restores no preferences at all.
+    (game as { preference?: { importPreferences?: (values: Record<string, unknown>) => void } })
+        .preference?.importPreferences?.({ ...RUNTIME_PREFERENCE_DEFAULTS });
     return game;
 }
 

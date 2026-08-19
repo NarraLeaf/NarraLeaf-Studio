@@ -40,6 +40,14 @@ import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTi
 import type { AudioTrackChannel, ProjectAudioTrack } from "@shared/types/audioTrack";
 import { resolveAudioTrack } from "@shared/types/audioTrack";
 import { isBuiltinAppTagId, RELEASE_APP_TAG } from "@shared/types/appTag";
+import {
+    resolveWeatherParams,
+    WEATHER_PARAMS,
+    WEATHER_SEED_IDS,
+    weatherParamsOf,
+    type WeatherParamKey,
+    type WeatherSeedId,
+} from "@shared/weather/model";
 import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
@@ -54,7 +62,7 @@ import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
-import { Select, Slider, type SelectOption } from "@/lib/components/elements";
+import { Select, Slider, useSliderDraft, type SelectOption } from "@/lib/components/elements";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
@@ -73,7 +81,8 @@ import { describeBlockSubject, getBlockBadgeInfo } from "./storySceneBlockUtils"
 import { useStoryMotionNames } from "./useStoryMotionNames";
 import { useStoryVoiceState } from "./useStoryVoiceState";
 import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
-import { DisplayableTargetField } from "./DisplayableTargetField";
+import { DisplayableTargetField, matchesTarget } from "./DisplayableTargetField";
+import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPreviewTarget";
 import { StoryLayerField } from "./StoryLayerField";
 import { MotionField } from "../../story-motion";
 import { PuppetPreview } from "@/apps/workspace/modules/characters/editors/components/PuppetPreview";
@@ -89,6 +98,7 @@ import { AssetField } from "./AssetField";
 import { TransformChannelEditor } from "./TransformChannelEditor";
 import {
     Disclosure,
+    EasingField,
     FIELD_LABEL_CLASS,
     FieldGrid,
     NumberField,
@@ -97,7 +107,6 @@ import {
     SelectField,
     Section,
     TextField,
-    easingOptions,
     type TFunc,
 } from "./inspectorFieldKit";
 
@@ -325,6 +334,7 @@ const transitionOptions = (t: TFunc): SelectOption[] => [
     { value: "throughColor", label: t("storyInspector.transition.throughColor") },
     { value: "darkness", label: t("storyInspector.transition.darkness") },
     { value: "exposure", label: t("storyInspector.transition.exposure") },
+    { value: "ruleReveal", label: t("storyInspector.transition.ruleReveal") },
 ];
 
 const wipeDirectionOptions = (t: TFunc): SelectOption[] => [
@@ -373,6 +383,7 @@ const transitionHints = (t: TFunc): Record<string, string> => ({
     throughColor: t("storyInspector.transitionHint.throughColor"),
     darkness: t("storyInspector.transitionHint.darkness"),
     exposure: t("storyInspector.transitionHint.exposure"),
+    ruleReveal: t("storyInspector.transitionHint.ruleReveal"),
 });
 
 const imageOperationOptions = (t: TFunc): SelectOption[] => [
@@ -396,6 +407,9 @@ const displayableOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "transform", label: t("storyInspector.displayableOperation.transform") },
     { value: "show", label: t("common.show") },
     { value: "hide", label: t("common.hide") },
+    // Listed so a `/front` row reads its own verb back here rather than showing an empty select. It
+    // is the one entry with nothing to configure - see the transform editor's guard below.
+    { value: "bringToFront", label: t("storyInspector.displayableOperation.bringToFront") },
 ];
 
 const displayableEffectHints = (t: TFunc): Record<string, string> => ({
@@ -456,11 +470,6 @@ const audioOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "setRate", label: t("storyInspector.audioOperation.setRate") },
     { value: "muteSound", label: t("storyInspector.audioOperation.muteSound") },
     { value: "seekSound", label: t("storyInspector.audioOperation.seekSound") },
-];
-
-const screenEffectOptions = (t: TFunc): SelectOption[] => [
-    { value: "blink", label: t("storyInspector.screenEffectOption.blink") },
-    { value: "vignette", label: t("storyInspector.screenEffectOption.vignette") },
 ];
 
 const waitModeOptions = (t: TFunc): SelectOption[] => [
@@ -691,6 +700,9 @@ function InspectorFields(props: {
                             <div className="text-2xs text-fg-subtle">{t("storyInspector.choiceOption.hint")}</div>
                         </div>
                     </Section>
+                    {/* Present only where the project voices its choices - the section reads the same
+                        switch the voice table does, and answers null when the option is not script. */}
+                    <VoiceInspectorSection block={block} />
                 </div>
             );
         }
@@ -940,6 +952,7 @@ function ActionPayloadFields(props: {
                 <TransformPresetEditor
                     value={payload.transform}
                     motionTargetKind="image"
+                    previewAssetId={transformPreviewAssetId({ document: props.document, sceneId: props.sceneId, blockId: props.block.id }, props.characters, payload)}
                     motionLabel={`${payload.objectName || t("storyInspector.motionTarget.image")} ${payload.operation}`}
                     storyId={props.document.id}
                     sceneId={props.sceneId}
@@ -973,16 +986,21 @@ function ActionPayloadFields(props: {
                         onChange={target => props.onChange({ ...payload, target })}
                     />
                 </FieldGrid>
-                <TransformPresetEditor
-                    value={payload.transform}
-                    motionTargetKind={resolvedTarget.kind ?? "image"}
-                    motionLabel={`${resolvedTarget.label || t("storyInspector.motionTarget.displayable")} ${payload.operation}`}
-                    storyId={props.document.id}
-                    sceneId={props.sceneId}
-                    blockId={props.block.id}
-                    storyName={props.document.name}
-                    onChange={transform => props.onChange({ ...payload, transform })}
-                />
+                {/* A raise carries no pose and no duration, so the bag editor is not shown for it -
+                    a transform authored here would be stored and then never reach the stage. */}
+                {payload.operation === "bringToFront" ? null : (
+                    <TransformPresetEditor
+                        value={payload.transform}
+                        motionTargetKind={resolvedTarget.kind ?? "image"}
+                        previewAssetId={transformPreviewAssetId({ document: props.document, sceneId: props.sceneId, blockId: props.block.id }, props.characters, payload)}
+                        motionLabel={`${resolvedTarget.label || t("storyInspector.motionTarget.displayable")} ${payload.operation}`}
+                        storyId={props.document.id}
+                        sceneId={props.sceneId}
+                        blockId={props.block.id}
+                        storyName={props.document.name}
+                        onChange={transform => props.onChange({ ...payload, transform })}
+                    />
+                )}
             </div>
         );
     }
@@ -1132,60 +1150,6 @@ function ActionPayloadFields(props: {
                 storyName={props.document.name}
                 onChange={props.onChange}
             />
-        );
-    }
-    if (payload.action === "screenEffect") {
-        // The two effects agree on what `duration` and `hold` mean and differ in what else they own,
-        // so a field belonging to only one of them is drawn only for it. The engine's `BlinkOptions`
-        // has no opacity, so that row on a blink read as an edit and changed nothing; the radii are
-        // the vignette's gradient and mean nothing to a pair of shutters; and `VignetteOptions` has
-        // one duration for both its halves, so only a blink can be told to shut fast and open slow.
-        const isVignette = payload.effect === "vignette";
-        return (
-            <div className="nl-field-grid">
-                <SelectField
-                    label={t("storyInspector.field.effect")}
-                    options={screenEffectOptions(t)}
-                    value={payload.effect}
-                    onChange={effect => props.onChange({ ...payload, effect: effect as Extract<StoryActionPayload, { action: "screenEffect" }>["effect"] })}
-                />
-                <SecondsField label={t("storyInspector.field.duration")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
-                {/* Blink only, because only a blink has two halves the engine will drive separately.
-                    Empty means "follow the whole move", which is why neither is seeded from
-                    `duration` when the author opens the row - a filled box would claim an override
-                    nobody asked for, and there would be no way back to following it. */}
-                {isVignette ? null : (
-                    <SecondsField
-                        label={t("storyInspector.field.closeIn")}
-                        value={payload.inMs}
-                        onChange={inMs => props.onChange({ ...payload, inMs })}
-                    />
-                )}
-                {isVignette ? null : (
-                    <SecondsField
-                        label={t("storyInspector.field.openOut")}
-                        value={payload.outMs}
-                        onChange={outMs => props.onChange({ ...payload, outMs })}
-                    />
-                )}
-                <SecondsField label={t("storyInspector.field.hold")} value={payload.holdMs} onChange={holdMs => props.onChange({ ...payload, holdMs })} />
-                <ColorTextField label={t("storyInspector.field.color")} value={payload.color ?? "#000000"} onChange={color => props.onChange({ ...payload, color })} />
-                {isVignette ? (
-                    <NumberField label={t("storyInspector.field.opacity")} value={payload.opacity} onChange={opacity => props.onChange({ ...payload, opacity })} />
-                ) : null}
-                {isVignette ? (
-                    <NumberField label={t("storyInspector.field.vignetteInner")} value={payload.inner} onChange={inner => props.onChange({ ...payload, inner })} />
-                ) : null}
-                {isVignette ? (
-                    <NumberField label={t("storyInspector.field.vignetteOuter")} value={payload.outer} onChange={outer => props.onChange({ ...payload, outer })} />
-                ) : null}
-                <SelectField
-                    label={t("storyInspector.field.easing")}
-                    options={easingOptions(t)}
-                    value={payload.easing ?? ""}
-                    onChange={easing => props.onChange({ ...payload, easing: String(easing) || undefined })}
-                />
-            </div>
         );
     }
     return null;
@@ -1425,10 +1389,16 @@ const vfxOperationOptions = (t: TFunc): SelectOption[] => [
 /**
  * Blend mode, named by the MATERIAL it belongs to rather than by the CSS keyword.
  *
- * An author picking here is not expressing a preference, they are declaring which of two production
- * routes their clip came down: a true-alpha WebM composites plainly, glow rendered on black has to be
- * added. Naming the routes is what makes the choice answerable without a paragraph of explanation -
- * the keyword alone tells someone who already knows the answer.
+ * An author picking here is not expressing a preference, they are declaring which production route
+ * their clip came down: glow rendered on black has to be added, shadow rendered on white has to be
+ * subtracted, and a clip that is simply opaque covers. Naming the routes is what makes the choice
+ * answerable without a paragraph of explanation - the keyword alone tells someone who already knows
+ * the answer.
+ *
+ * None of the options carries an alpha channel through, which is why `normal` names an opaque clip
+ * rather than a transparent one: WebKit discards a WebM's alpha and composites the RGB plane
+ * opaquely on iOS and macOS Safari, while every Chromium target honours it. See the `blendMode`
+ * field on the `vfx` payload in `@shared/types/story/document.ts` for the measurement.
  */
 const vfxBlendOptions = (t: TFunc): SelectOption[] => [
     { value: "normal", label: t("storyInspector.vfxBlend.normal") },
@@ -1473,12 +1443,20 @@ function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload:
                 />
                 {isCreate ? (
                     <>
-                        <AssetField
-                            label={t("storyInspector.vfx.clip")}
-                            assetType={AssetType.Video}
-                            assetId={payload.assetId}
-                            onChange={assetId => props.onChange({ ...payload, assetId })}
+                        <SelectField
+                            label={t("storyInspector.vfx.source")}
+                            options={vfxSourceOptions(t)}
+                            value={payload.seed?.seed ?? VFX_CLIP_SOURCE}
+                            onChange={source => props.onChange(withVfxSource(payload, String(source)))}
                         />
+                        {payload.seed ? null : (
+                            <AssetField
+                                label={t("storyInspector.vfx.clip")}
+                                assetType={AssetType.Video}
+                                assetId={payload.assetId}
+                                onChange={assetId => props.onChange({ ...payload, assetId })}
+                            />
+                        )}
                         <SelectField
                             label={t("storyInspector.vfx.blendMode")}
                             options={vfxBlendOptions(t)}
@@ -1523,15 +1501,89 @@ function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload:
                     />
                 ) : null}
                 {fades ? (
-                    <SelectField
-                        label={t("storyInspector.field.easing")}
-                        options={easingOptions(t)}
-                        value={payload.easing ?? ""}
-                        onChange={easing => props.onChange({ ...payload, easing: String(easing) || undefined })}
+                    <EasingField
+                        t={t}
+                        value={payload.easing}
+                        onChange={easing => props.onChange({ ...payload, easing })}
                     />
                 ) : null}
             </FieldGrid>
+            {isCreate && payload.seed ? (
+                <WeatherSeedFields
+                    seed={payload.seed.seed}
+                    params={payload.seed.params}
+                    onChange={params => props.onChange({ ...payload, seed: { seed: payload.seed!.seed, ...(params ? { params } : {}) } })}
+                />
+            ) : null}
         </Section>
+    );
+}
+
+/** The value the source select carries when the overlay plays a clip the author imported. */
+const VFX_CLIP_SOURCE = "clip";
+
+function vfxSourceOptions(t: TFunc): SelectOption[] {
+    return [
+        { value: VFX_CLIP_SOURCE, label: t("storyInspector.vfx.sourceClip") },
+        ...WEATHER_SEED_IDS.map(id => ({ value: id, label: t(`story.enumValue.${id}` as TranslationKey) })),
+    ];
+}
+
+/**
+ * Switch an overlay between a clip and a weather seed.
+ *
+ * The other source is CLEARED rather than left behind: the payload documents the two as mutually
+ * exclusive, and a stale `assetId` sitting under a seed would be a source no control shows and the
+ * compiler might still read. Switching between two seeds keeps no parameters either - they mean
+ * different things per seed, and carrying a rain streak into snow would produce a look the panel
+ * cannot explain.
+ */
+function withVfxSource(payload: VfxActionPayload, source: string): VfxActionPayload {
+    const next = { ...payload };
+    delete next.seed;
+    delete next.assetId;
+    if (source === VFX_CLIP_SOURCE) {
+        return next;
+    }
+    return { ...next, seed: { seed: source as WeatherSeedId } };
+}
+
+/**
+ * The tunable numbers of one weather seed.
+ *
+ * Derived from the seed table rather than listed here, so a parameter added there appears without
+ * this file changing - the same rule the transform channel list follows. A value equal to the seed's
+ * own default is not stored: the row then reads as "snow", and an author who never touched a slider
+ * has no numbers in their document to migrate later.
+ */
+function WeatherSeedFields(props: {
+    seed: WeatherSeedId;
+    params: Partial<Record<WeatherParamKey, number>> | undefined;
+    onChange: (params: Partial<Record<WeatherParamKey, number>> | undefined) => void;
+}) {
+    const { t } = useTranslation();
+    const resolved = resolveWeatherParams({ seed: props.seed, ...(props.params ? { params: props.params } : {}) });
+    const set = (key: WeatherParamKey, value: number | undefined) => {
+        const next = { ...(props.params ?? {}) };
+        const spec = WEATHER_PARAMS[key];
+        if (value === undefined) {
+            delete next[key];
+        } else {
+            next[key] = Math.min(spec.max, Math.max(spec.min, value));
+        }
+        props.onChange(Object.keys(next).length > 0 ? next : undefined);
+    };
+    return (
+        <FieldGrid cols={2}>
+            {weatherParamsOf(props.seed).map(key => (
+                <NumberField
+                    key={key}
+                    label={t(`storyInspector.weather.${key}` as TranslationKey)}
+                    value={resolved[key]}
+                    onChange={value => set(key, value)}
+                />
+            ))}
+        </FieldGrid>
     );
 }
 
@@ -1645,6 +1697,60 @@ function PuppetChannelControl(props: {
 }
 
 /**
+ * One parameter's value: a slider for feel, a box for a number you can name, and the range beside
+ * them.
+ *
+ * Its own component only so the drag can hold a draft ({@link useSliderDraft}). Both controls read
+ * that draft, or the box would print the committed number while the slider showed the one under the
+ * pointer. The write lands once, when the drag ends - before this, every pointer move wrote the
+ * document and a single drag left dozens of undo entries behind it.
+ */
+function PuppetParamValue(props: {
+    spec: { min: number; max: number } | undefined;
+    value: number;
+    onCommit: (next: number) => void;
+}) {
+    const spec = props.spec;
+    const draft = useSliderDraft(props.value, props.onCommit);
+    return (
+        <div className="mt-1.5 flex items-center gap-2">
+            {spec ? (
+                <Slider
+                    className="min-w-0 flex-1"
+                    min={spec.min}
+                    max={spec.max}
+                    // A rig parameter is continuous and its range may be a fraction of one unit, so
+                    // the step is derived from the range, not left at 1.
+                    step={Math.max((spec.max - spec.min) / 200, 0.001)}
+                    value={draft.value}
+                    onValueChange={draft.onValueChange}
+                    onValueCommit={draft.onValueCommit}
+                />
+            ) : null}
+            <NumericDraftEnhancedInput
+                committedDisplay={String(draft.value)}
+                onFiniteNumber={props.onCommit}
+                onEmpty={() => props.onCommit(0)}
+                type="text"
+                inputMode="decimal"
+                popoverWhenNarrow={false}
+                // The box belongs to the field, not to the `<input>` inside it: the field already
+                // draws a border, a radius and a background, so repeating them on the input drew a
+                // second box inside the first. Only the height (`sm`, this row is dense) and the
+                // text alignment are this call site's to say.
+                className={`h-7 min-h-7 text-xs ${spec ? "w-14 shrink-0" : "min-w-0 flex-1"}`}
+                inputClassName="px-1.5 text-right"
+            />
+            {spec ? (
+                // The range the model gave. Without it the slider is a knob with no scale -
+                // `-30…30` says what dragging it all the way will do.
+                <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">{spec.min}…{spec.max}</span>
+            ) : null}
+        </div>
+    );
+}
+
+/**
  * The numeric-parameter rows of a `setParams` block.
  *
  * A parameter is the one free channel a model describes with a *shape* — an id, a range and a default
@@ -1730,40 +1836,11 @@ function PuppetParamRows(props: {
                                 <Trash2 className="h-3.5 w-3.5" />
                             </button>
                         </div>
-                        <div className="mt-1.5 flex items-center gap-2">
-                            {spec ? (
-                                <Slider
-                                    className="min-w-0 flex-1"
-                                    min={spec.min}
-                                    max={spec.max}
-                                    // A rig parameter is continuous and its range may be a fraction of
-                                    // one unit, so the step is derived from the range, not left at 1.
-                                    step={Math.max((spec.max - spec.min) / 200, 0.001)}
-                                    value={value}
-                                    onValueChange={next => props.onChange({ ...props.params, [id]: next })}
-                                />
-                            ) : null}
-                            <NumericDraftEnhancedInput
-                                committedDisplay={String(value)}
-                                onFiniteNumber={next => props.onChange({ ...props.params, [id]: next })}
-                                onEmpty={() => props.onChange({ ...props.params, [id]: 0 })}
-                                type="text"
-                                inputMode="decimal"
-                                popoverWhenNarrow={false}
-                                // The box belongs to the field, not to the `<input>` inside it: the
-                                // field already draws a border, a radius and a background, so
-                                // repeating them on the input drew a second box inside the first.
-                                // Only the height (`sm`, this row is dense) and the text alignment
-                                // are this call site's to say.
-                                className={`h-7 min-h-7 text-xs ${spec ? "w-14 shrink-0" : "min-w-0 flex-1"}`}
-                                inputClassName="px-1.5 text-right"
-                            />
-                            {spec ? (
-                                // The range the model gave. Without it the slider is a knob with no
-                                // scale - `-30…30` says what dragging it all the way will do.
-                                <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">{spec.min}…{spec.max}</span>
-                            ) : null}
-                        </div>
+                        <PuppetParamValue
+                            spec={spec}
+                            value={value}
+                            onCommit={next => props.onChange({ ...props.params, [id]: next })}
+                        />
                     </div>
                 );
             })}
@@ -1982,6 +2059,7 @@ function CharacterActionEditor(props: {
             <TransformPresetEditor
                 value={payload.transform}
                 motionTargetKind="character"
+                previewAssetId={transformPreviewAssetId(null, props.characters, payload)}
                 motionLabel={`${selectedCharacter?.profile.getName() ?? payload.objectName ?? t("storyInspector.motionTarget.character")} ${payload.operation}`}
                 storyId={props.storyId}
                 sceneId={props.sceneId}
@@ -2093,10 +2171,66 @@ function withTransformPreset(ref: StoryTransformRef | undefined, preset: string)
     return next;
 }
 
+/**
+ * The image a transform row is acting on, when there is one.
+ *
+ * Used only to draw the channel previews, so being absent is fine - but being right is what makes
+ * the picker say "this is what blur does to YOUR sprite" instead of "this is what blur does".
+ *
+ * The stage is read through {@link listSceneDisplayableTargets}, the same collector the target
+ * picker and the command context use, scoped to the blocks BEFORE this row. So a `/transform hero`
+ * written above the `/show` that puts `hero` on stage resolves to nothing, exactly as the target
+ * field's "not on stage" badge already says - the preview and the badge cannot disagree.
+ *
+ * A character is the one stage object whose picture is not on its block: the block carries a
+ * `characterId` and the appearance lives on the character, so that arm asks the entity. A puppet or
+ * a layered character still answers null on purpose - their look is assembled at runtime from
+ * several files and no single one of them is "the character", so picking one would be showing the
+ * author a part of their art and calling it the whole.
+ */
+function transformPreviewAssetId(
+    /** Where in the scene this row sits. `null` from the character editor, which needs no stage. */
+    scope: { document: StoryDocument; sceneId: StorySceneId; blockId: StoryBlockId } | null,
+    characters: Character[],
+    payload: StoryActionPayload,
+): string | undefined {
+    const fromCharacter = (characterId: string | undefined): string | undefined => {
+        const appearance = getCharacterById(characters, characterId)?.profile.appearance;
+        if (!appearance || appearance.getKind() !== "preset") {
+            return undefined;
+        }
+        return appearance.resolvePoseAssetId(undefined) ?? undefined;
+    };
+
+    if (payload.action === "image") {
+        return payload.assetId;
+    }
+    if (payload.action === "character") {
+        return fromCharacter(payload.characterId);
+    }
+    if (payload.action !== "displayable" || payload.target.builtin || !scope) {
+        return undefined;
+    }
+    const onStage = listSceneDisplayableTargets(scope.document, scope.sceneId, scope.blockId)
+        .find(option => matchesTarget(option, payload.target));
+    if (!onStage) {
+        return undefined;
+    }
+    if (onStage.assetId) {
+        return onStage.assetId;
+    }
+    const source = scope.document.scenes[scope.sceneId]?.blocks[onStage.sourceBlockId];
+    return source?.kind === "action" && source.payload.action === "character"
+        ? fromCharacter(source.payload.characterId)
+        : undefined;
+}
+
 function TransformPresetEditor(props: {
     value: StoryTransformRef | undefined;
     motionTargetKind: StoryDisplayableTargetKind;
     motionLabel: string;
+    /** The picture the channel previews are drawn on - see `transformPreviewAssetId`. */
+    previewAssetId?: string;
     storyId: string;
     sceneId: StorySceneId;
     blockId: string;
@@ -2156,16 +2290,16 @@ function TransformPresetEditor(props: {
                             value={value.durationMs}
                             onChange={durationMs => props.onChange({ ...value, durationMs })}
                         />
-                        <SelectField
-                            label={t("storyInspector.field.easing")}
-                            options={easingOptions(t)}
-                            value={value.easing ?? ""}
-                            onChange={easing => props.onChange({ ...value, easing: String(easing) || undefined })}
+                        <EasingField
+                            t={t}
+                            value={value.easing}
+                            onChange={easing => props.onChange({ ...value, easing })}
                         />
                     </FieldGrid>
                     <TransformChannelEditor
                         value={props.value}
                         targetKind={props.motionTargetKind}
+                        previewAssetId={props.previewAssetId}
                         onChange={props.onChange}
                     />
                 </div>
@@ -2199,11 +2333,10 @@ function TransitionEditor(props: {
                 {kind === "none" ? null : (
                     <>
                         <SecondsField label={t("storyInspector.field.duration")} value={value.durationMs} onChange={durationMs => setBase({ durationMs })} />
-                        <SelectField
-                            label={t("storyInspector.field.easing")}
-                            options={easingOptions(t)}
-                            value={value.easing ?? ""}
-                            onChange={easing => setBase({ easing: String(easing) || undefined })}
+                        <EasingField
+                            t={t}
+                            value={value.easing}
+                            onChange={easing => setBase({ easing })}
                         />
                     </>
                 )}
@@ -2310,6 +2443,24 @@ function TransitionEditor(props: {
                 ) : null}
                 {kind === "blurDissolve" ? (
                     <NumberField label={t("storyInspector.transition.blurPx")} value={paramNumber(value.props, "blur")} onChange={blur => setParam({ blur })} />
+                ) : null}
+                {kind === "ruleReveal" ? (
+                    <>
+                        {/* The picture is not a `props` entry — it is an asset id, and it is set
+                            through the ref itself so the reference index can find it. */}
+                        <AssetField
+                            label={t("storyInspector.field.rule")}
+                            assetType={AssetType.Image}
+                            assetId={value.ruleAssetId}
+                            onChange={ruleAssetId => props.onChange({ ...value, kind: realKind, ruleAssetId })}
+                        />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                        <CheckboxField
+                            label={t("storyInspector.field.inverted")}
+                            checked={value.props?.inverted === true}
+                            onChange={inverted => setParam({ inverted })}
+                        />
+                    </>
                 ) : null}
                 {kind === "throughColor" ? (
                     <>

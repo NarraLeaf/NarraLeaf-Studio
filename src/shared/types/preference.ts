@@ -8,7 +8,7 @@
  *
  * Until now the only way to set one was a blueprint: `Set BGM Volume` wired behind `App Boot`, one
  * node per preference, and an author who never built that page shipped whatever the engine happened
- * to default to. So the defaults are project data now - authored once in Project -> Preferences,
+ * to default to. So the defaults are project data now - authored once in Project -> Game,
  * baked into the bundle, applied to the game at boot, and still fully writable at runtime by the
  * same nodes as before.
  *
@@ -32,16 +32,21 @@ export const VOICE_END_MODES = ["stop", "fade", "none"] as const;
 export type VoiceEndMode = typeof VOICE_END_MODES[number];
 
 /**
- * Every preference key, in the order Project -> Preferences shows them.
+ * Every preference key, in the order Project -> Game shows them.
  *
  * Twelve of these are the engine's own `GamePreference` keys and are passed through to it verbatim.
- * `skipReadText` is Studio's (see {@link PLAYER_PREFERENCE_SPECS}); it rides in the same preference
- * store so that one screen, one persistence key and one set of blueprint nodes cover all of them.
+ * `skipReadText` and `autoForwardDelay` are Studio's (see {@link PLAYER_PREFERENCE_SPECS}); they
+ * ride in the same preference store so that one screen, one persistence key and one set of
+ * blueprint nodes cover all of them.
+ *
+ * Not every preference an author can reach is here - see {@link RUNTIME_PREFERENCE_KEYS} for the
+ * ones that exist only while the game runs.
  */
 export const PLAYER_PREFERENCE_KEYS = [
     "cps",
     "gameSpeed",
     "autoForward",
+    "autoForwardDelay",
     "showDialog",
     "skip",
     "skipReadText",
@@ -66,6 +71,8 @@ export type PlayerPreferences = {
     gameSpeed: number;
     /** Advance on its own once a line has finished displaying. */
     autoForward: boolean;
+    /** Milliseconds auto-forward waits at the end of a line before advancing. */
+    autoForwardDelay: number;
     /** Whether the dialogue box is shown at all. */
     showDialog: boolean;
     /** Whether the player may skip. False disables the skip key outright. */
@@ -150,6 +157,24 @@ export const PLAYER_PREFERENCE_SPECS: Readonly<Record<PlayerPreferenceKey, Playe
         display: { unit: "percent", control: "field" },
     },
     autoForward: { key: "autoForward", kind: "boolean", defaultValue: false },
+    /**
+     * The engine holds this as game *config* rather than as a preference, and Studio never passed
+     * it, so every project shipped with the engine's 3000ms however the writing was paced. It is a
+     * preference here because it is the player's to change - the row a settings screen offers next
+     * to auto-forward itself - and the host copies it into `game.config` at boot and on every
+     * change (see `preferenceRuntime`).
+     *
+     * `gameSpeed` is not this control: the engine divides the typing speed by it as well, so a
+     * player who wanted a longer pause between lines would get slower text with it.
+     */
+    autoForwardDelay: {
+        key: "autoForwardDelay",
+        kind: "number",
+        defaultValue: 3000,
+        min: 0,
+        max: 30000,
+        display: { unit: "ms", control: "field" },
+    },
     showDialog: { key: "showDialog", kind: "boolean", defaultValue: true },
     skip: { key: "skip", kind: "boolean", defaultValue: true },
     /**
@@ -229,6 +254,7 @@ export const DEFAULT_PLAYER_PREFERENCES: PlayerPreferences = {
     cps: 10,
     gameSpeed: 1,
     autoForward: false,
+    autoForwardDelay: 3000,
     showDialog: true,
     skip: true,
     skipReadText: false,
@@ -245,7 +271,7 @@ export const DEFAULT_PLAYER_PREFERENCES: PlayerPreferences = {
 /**
  * The preferences grouped the way the settings page reads them.
  *
- * Fourteen switches in one flat column is a list nobody scans; grouped, an author looking for "why
+ * Fifteen switches in one flat column is a list nobody scans; grouped, an author looking for "why
  * does skipping run off the end of what I have read" finds it under Skipping rather than three
  * rows below a volume slider.
  */
@@ -253,7 +279,7 @@ export const PLAYER_PREFERENCE_GROUPS: readonly {
     id: "dialogue" | "skipping" | "audio";
     keys: readonly PlayerPreferenceKey[];
 }[] = [
-    { id: "dialogue", keys: ["cps", "gameSpeed", "autoForward", "showDialog"] },
+    { id: "dialogue", keys: ["cps", "gameSpeed", "autoForward", "autoForwardDelay", "showDialog"] },
     { id: "skipping", keys: ["skip", "skipReadText", "skipDelay", "skipInterval"] },
     {
         id: "audio",
@@ -318,4 +344,37 @@ export function isPlayerPreferenceKey(key: unknown): key is PlayerPreferenceKey 
  * that acts on it, so anything reasoning about *engine* behaviour wants this list rather than the
  * full one.
  */
-export const STUDIO_OWNED_PREFERENCE_KEYS: readonly PlayerPreferenceKey[] = ["skipReadText"];
+export const STUDIO_OWNED_PREFERENCE_KEYS: readonly PlayerPreferenceKey[] = [
+    "skipReadText",
+    // The engine reads this one from `game.config`, not from its preference store. It rides here
+    // for the author-facing half - a default, a settings row, a blueprint pair - and the host
+    // copies it into the config; see `preferenceRuntime`.
+    "autoForwardDelay",
+];
+
+/**
+ * Preferences that exist only while the game is running.
+ *
+ * `skipping` is "the skip run is going", the state a held skip key puts the game into. It is a
+ * preference because that is the only surface an author can reach from a graph - the same `Get` /
+ * `Set` pair, the same `On Preference Changed` head, the same host API as the fifteen above - and
+ * a quick menu's Skip button, or a touch screen with no keyboard at all, has nothing else to bind.
+ *
+ * It is **deliberately outside** {@link PLAYER_PREFERENCE_KEYS}, and that placement is the whole
+ * safety argument rather than a detail of it. Both halves of the preference plumbing enumerate that
+ * list: the project file writes every key in it as an authored default, and the player's own store
+ * saves and restores every key in it. A transient key listed there would be a row asking an author
+ * to choose whether the game starts out skipping, and a player who quit while skipping would come
+ * back to a game skipping itself. Neither is reachable from here.
+ *
+ * Seeded at construction so a graph reading it before anything has written one gets `false` rather
+ * than nothing - `Get Skipping` is typed boolean and an absent value is not one.
+ */
+export const RUNTIME_PREFERENCE_KEYS = ["skipping"] as const;
+
+export type RuntimePreferenceKey = typeof RUNTIME_PREFERENCE_KEYS[number];
+
+/** What every session starts at. Applied when the game is constructed, and never written back. */
+export const RUNTIME_PREFERENCE_DEFAULTS: Readonly<Record<RuntimePreferenceKey, boolean>> = {
+    skipping: false,
+};

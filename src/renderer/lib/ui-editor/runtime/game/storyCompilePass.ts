@@ -45,13 +45,24 @@
  */
 export type EngineAction = { readonly __nlsEngineAction: unique symbol };
 
-/** A character's stage image, narrowed to the one thing a pass can ask of it. */
+/** A character's stage image, narrowed to what a pass can ask of it. */
 export interface StageImage {
     /**
      * Drive the image's darkness: 0 is untouched, 1 is black. `easing` is a NarraLeaf-React easing
      * name; an unknown one falls back to the engine's default rather than failing the compile.
      */
     darken(darkness: number, durationMs: number, easing: string): EngineAction;
+    /**
+     * Raise the image to the front within its own layer. Instant, and takes no duration.
+     *
+     * The second method here, and it arrives under this file's own rule: what survives is what a pass
+     * actually calls. Auto-Highlight is the caller - it dims the rest of the cast and brings the
+     * speaker forward, and without this it could only do the first half.
+     *
+     * The raise is scoped to the layer the image is already in: it reorders that layer's own list and
+     * never moves the image between layers, so a pass cannot use it to climb out of one.
+     */
+    bringToFront(): EngineAction;
 }
 
 /**

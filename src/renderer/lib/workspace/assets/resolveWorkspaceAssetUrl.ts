@@ -114,7 +114,7 @@ function resolveEditorAssetSet(context: WorkspaceContext, assetId: string): stri
     } catch {
         return null;
     }
-    if (!set || set.axes.length !== 1) {
+    if (!set || !set.axis.key) {
         return null;
     }
     const assetsService = context.services.get<AssetsService>(Services.Assets);
@@ -130,7 +130,7 @@ function resolveEditorAssetSet(context: WorkspaceContext, assetId: string): stri
     } catch {
         sourceLocale = undefined;
     }
-    const axis = set.axes[0];
+    const axis = set.axis;
     const chain = [sourceLocale, ...axis.values].filter((value): value is string => Boolean(value));
     for (const value of chain) {
         const member = resolveAssetSetMember(set, { [axis.key]: value }, candidates);

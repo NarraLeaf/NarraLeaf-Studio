@@ -160,14 +160,13 @@ function readBuildAxes(context: WorkspaceContext): BuildAxis[] {
     }
     const byKey = new Map<string, Set<string>>();
     for (const set of sets) {
-        for (const axis of set.axes) {
-            if (axis.residency !== "build") {
-                continue;
-            }
-            const values = byKey.get(axis.key) ?? new Set<string>();
-            axis.values.forEach((value: string) => values.add(value));
-            byKey.set(axis.key, values);
+        const axis = set.axis;
+        if (axis.residency !== "build" || !axis.key) {
+            continue;
         }
+        const values = byKey.get(axis.key) ?? new Set<string>();
+        axis.values.forEach((value: string) => values.add(value));
+        byKey.set(axis.key, values);
     }
     return [...byKey.entries()].map(([key, values]) => ({ key, values: [...values] }));
 }

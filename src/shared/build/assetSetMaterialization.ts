@@ -1,4 +1,5 @@
 import {
+    childAssetSets,
     matchAssetSetCoordinate,
     type AssetSet,
     type AssetSetCandidate,
@@ -145,24 +146,27 @@ function assetIdsInBlock(block: StoryBlock): string[] {
 }
 
 /**
- * The one axis a runtime set resolves on, or why it has none this build can use.
+ * The axis a set resolves on, or why this build cannot use it.
  *
- * Deliberately narrow. This round supports a single `runtime` axis, which is the locale case, and
- * refuses everything else by name instead of guessing: a build axis has to be collapsed rather than
- * carried, and a second axis means the package needs a derived key rather than an inline map. Both
- * are real work, and a build that quietly picked one variant would ship the wrong language with no
- * sign of it.
+ * Deliberately narrow. This round supports a set that answers with files, which is the locale case,
+ * and refuses a set with sub-sets by name instead of guessing: a value answered one level down
+ * needs a derived storage key rather than an inline map, which is real work, and a build that
+ * quietly picked one branch would ship the wrong language with no sign of it.
  */
-function soleAxis(set: AssetSet): { axis: AssetSet["axes"][number] } | { reason: "noAxes" | "multipleAxes" } {
-    if (set.axes.length === 0) {
+function soleAxis(
+    set: AssetSet,
+    sets: readonly AssetSet[],
+): { axis: AssetSet["axis"] } | { reason: "noAxes" | "multipleAxes" } {
+    if (!set.axis.key || set.axis.values.length === 0) {
         return { reason: "noAxes" };
     }
-    if (set.axes.length > 1) {
-        // Two axes need a derived storage key rather than an inline map - an inline one is the
-        // product of both, at every reference point - so this build refuses rather than picking.
+    const nested = set.axis.values.some(value => childAssetSets(set, value, sets).length > 0);
+    if (nested) {
+        // A sub-set under a value is a second axis by another name, and an inline map would be the
+        // product of both at every reference point. Refused rather than flattened.
         return { reason: "multipleAxes" };
     }
-    return { axis: set.axes[0] };
+    return { axis: set.axis };
 }
 
 /**
@@ -288,6 +292,7 @@ export function materializeStoryAssetSets(input: {
                 const resolved = resolveBlockSets({
                     block,
                     setsById,
+                    sets: input.sets,
                     candidates: input.candidates,
                     localization,
                     assetAxes: input.assetAxes,
@@ -343,6 +348,8 @@ function rewriteBlockAssetIds(block: StoryBlock, collapsed: ReadonlyMap<string, 
 function resolveBlockSets(input: {
     block: StoryBlock;
     setsById: ReadonlyMap<string, AssetSet>;
+    /** The whole document, so a set can be asked whether anything hangs under it. */
+    sets: readonly AssetSet[];
     candidates: readonly AssetSetCandidate[];
     localization: Pick<GameLocalizationBundle, "sourceLocale" | "locales"> | undefined;
     assetAxes: Readonly<Record<string, string>> | undefined;
@@ -360,7 +367,7 @@ function resolveBlockSets(input: {
             continue;
         }
         const where = { storyId: input.storyId, sceneId: input.sceneId, blockId: input.blockId };
-        const axis = soleAxis(set);
+        const axis = soleAxis(set, input.sets);
         if ("reason" in axis) {
             input.problems.push({ kind: "unsupported", setId: set.id, setName: set.name, reason: axis.reason, ...where });
             continue;

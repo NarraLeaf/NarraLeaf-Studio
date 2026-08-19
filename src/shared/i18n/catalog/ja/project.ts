@@ -233,6 +233,10 @@ export const project = {
             title: "自動送り",
             description: "行の表示が終わると次へ進む",
         },
+        autoForwardDelay: {
+            title: "自動送りの待ち時間",
+            description: "行の表示が終わってから次へ進むまでの時間。ゲームの速さが掛かる",
+        },
         showDialog: {
             title: "ダイアログボックスを表示",
             description: "オフにすると、ダイアログボックスを隠した状態でゲームが始まる",

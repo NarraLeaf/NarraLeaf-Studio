@@ -15,7 +15,7 @@ import { declarationFromArgs } from "./variables";
  */
 
 const CONTEXT: StoryCommandContext = {
-    images: [{ id: "i1", name: "forest_day" }, { id: "i2", name: "night" }],
+    images: [{ id: "i1", name: "forest_day" }, { id: "i2", name: "night" }, { id: "i3", name: "spiral" }],
     audio: [{ id: "a1", name: "theme" }, { id: "a2", name: "hit" }],
     videos: [{ id: "v1", name: "intro" }],
     // Alice is drawn by Studio; Doll is drawn by a runtime the author supplied, so she has no
@@ -93,6 +93,29 @@ describe("scene commands", () => {
             payload: { action: "setBackground", assetId: "i1", color: undefined, transition: { kind: "dissolve", durationMs: 500 } },
         });
         expect(build("/bg #1a1a1a")).toMatchObject({ payload: { color: "#1a1a1a", assetId: undefined } });
+    });
+
+    it("/bg takes a rule image, and naming one is what says which engine plays it", () => {
+        // No `t=rule` on the line: the picture implies the engine, which is the whole reason
+        // `rule=` is a slot of its own rather than a spelling of `t=`.
+        expect(build("/bg forest_day rule=spiral d=1.2")).toMatchObject({
+            payload: {
+                action: "setBackground",
+                assetId: "i1",
+                transition: { kind: "ruleReveal", ruleAssetId: "i3", durationMs: 1200 },
+            },
+        });
+        // The word still parses on its own, for a row that picks its picture on the right.
+        expect(build("/bg forest_day t=rule")).toMatchObject({
+            payload: { transition: { kind: "ruleReveal" } },
+        });
+    });
+
+    it("/jump takes a rule image too", () => {
+        expect(build("/jump \"Chapter 2\" rule=spiral")).toMatchObject({
+            kind: "jump",
+            payload: { transition: { kind: "ruleReveal", ruleAssetId: "i3" } },
+        });
     });
 
     it("/bg rejects a word its context does not support", () => {
@@ -253,6 +276,43 @@ describe("puppet state channels", () => {
         expect(issuesOf("/face Nobody smile")).toEqual(["unknownCharacter"]);
     });
 
+    it("/face takes a transition, and writes it on the ref the swap actually plays", () => {
+        // `expression` is the one character operation the engine plays a `StoryTransitionRef` on -
+        // it compiles to `char(src, transition)`. So `d=` is THAT ref's duration; the transform's
+        // duration is the entrance/exit timing, and a swap that wrote it would edit a live-looking
+        // field nothing on stage reads.
+        expect(build("/face Alice smile t=wipe d=0.4")).toMatchObject({
+            payload: {
+                action: "character",
+                operation: "expression",
+                characterId: "c1",
+                pose: "t1",
+                transition: { kind: "softWipe", durationMs: 400 },
+            },
+        });
+        expect(build("/face Alice smile t=wipe d=0.4").payload).not.toHaveProperty("transform");
+        // `fade` on a swap is a fade-in, not the crossfade it is on a `/bg`: `Dissolve` half-fades
+        // both frames at once and shows the background through the middle, while `FadeIn` leaves the
+        // outgoing frame fully opaque and brings the new one up over it. The crossfade is still
+        // reachable - by name.
+        expect(build("/face Alice smile t=fade")).toMatchObject({ payload: { transition: { kind: "fadeIn" } } });
+        expect(build("/face Alice smile t=dissolve")).toMatchObject({ payload: { transition: { kind: "dissolve" } } });
+        // No `t=`, no ref: a row that says nothing about the swap must not gain a field.
+        expect(build("/face Alice smile").payload).not.toHaveProperty("transition");
+    });
+
+    it("refuses a transition on a puppet, whose expression has no second frame", () => {
+        // A puppet's expression compiles to `puppet.setExpression(name)` - the backend owns the inside
+        // of the box, and nothing in that call takes a transition. The key is the mistake, not the
+        // character, so the report names the key.
+        expect(issuesOf("/face Doll smile t=wipe")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/face Doll smile d=0.4")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/face Doll smile t=wipe d=0.4")).toEqual(["unsupportedParam", "unsupportedParam"]);
+        // The verb itself is untouched on both kinds of character.
+        expect(issuesOf("/face Doll smile")).toEqual([]);
+        expect(issuesOf("/face Alice smile t=wipe d=0.4")).toEqual([]);
+    });
+
     it("/motion and /skin write their own operation and nothing else", () => {
         expect(build("/motion Doll run")).toMatchObject({
             kind: "action",
@@ -337,6 +397,41 @@ describe("media objects", () => {
         expect(build("/font title 48")).toMatchObject({ payload: { operation: "setFontSize", fontSize: 48, objectName: "title" } });
         expect(build("/font title color=#ff0000")).toMatchObject({ payload: { operation: "setFontColor", fontColor: "#ff0000" } });
         expect(issuesOf("/font title 48 color=#ff0000")).toEqual(["conflictingParams"]);
+    });
+
+    it("/front raises one displayable, and states nothing else", () => {
+        expect(build("/front hero")).toMatchObject({
+            kind: "action",
+            payload: { action: "displayable", operation: "bringToFront", target: { kind: "image", name: "hero" } },
+        });
+        expect(build("/front title")).toMatchObject({
+            payload: { action: "displayable", operation: "bringToFront", target: { kind: "text", name: "title" } },
+        });
+        // The stage key, not the cast name - the compiler registers a portrait under its entering
+        // row's stage name, and a line never gives it one, so the key is the character id. See the
+        // `/transform Alice` case below for the whole rule.
+        expect(build("/front Alice")).toMatchObject({
+            payload: { action: "displayable", operation: "bringToFront", target: { kind: "character", name: "c1", label: "Alice" } },
+        });
+        // No duration, no bag: the raise is one frame, and the payload carries neither.
+        expect(Object.keys(build("/front hero").payload).sort()).toEqual(["action", "operation", "target"]);
+        expect(Object.keys(getCommandSpec("front")?.params ?? {})).toEqual(["target"]);
+    });
+
+    it("/front names what it found when the target is a kind it cannot raise", () => {
+        // The `refuses` half, exactly as `/transform` does it: a layer, a video and an ambience
+        // overlay are on stage under names the author can see, so the slot resolves them in order to
+        // report them - answering "nothing on stage is named overlay" would be a lie.
+        for (const line of ["/front overlay", "/front clip", "/front petals"]) {
+            expect(issuesOf(line)).toEqual(["unsupportedTarget"]);
+        }
+        // ...and a name nothing answers to is still the other message: check the spelling.
+        expect(issuesOf("/front nobody")).toEqual(["unknownTarget"]);
+        // The refused kinds are refused, never quietly accepted into a payload that cannot hold them.
+        const target = getCommandSpec("front")?.params.target.type;
+        const accepts = (Array.isArray(target) ? target : [target]).flatMap(type =>
+            type && type.kind === "target" ? [...type.accepts] : []);
+        expect(accepts).toEqual(["image", "text", "character"]);
     });
 });
 
@@ -722,52 +817,76 @@ describe("logic and effects", () => {
         expect(issuesOf("/goto nowhere")).toEqual(["unknownLabel"]);
     });
 
-    it("/screen reads both gestures off one token, effect first", () => {
-        expect(build("/screen blink d=0.2 hold=0.1 color=#ffffff")).toMatchObject({
-            payload: { action: "screenEffect", effect: "blink", durationMs: 200, holdMs: 100, color: "#ffffff" },
+    it("gives the camera the lens, by name for a gesture and by number for a state", () => {
+        // `/screen` is gone: the eyelids and the vignette are the camera's own glass, so they compose
+        // with a grade and a pan instead of being a one-shot the scene played on a layer of its own.
+        expect(getCommandSpec("screen")).toBeNull();
+        expect(build("/transform camera lens=blink")).toMatchObject({
+            payload: { action: "camera", operation: "transform", transform: { to: { lens: { preset: "blink" } } } },
         });
-        expect(build("/screen vignette opacity=0.5")).toMatchObject({ payload: { effect: "vignette", opacity: 0.5 } });
-        // The price of the merge, paid out loud: the union parses and the spec reports the half this
-        // effect cannot honour, rather than writing a field nothing reads.
-        expect(issuesOf("/screen vignette in=0.2")).toEqual(["unsupportedParam"]);
-        expect(issuesOf("/screen blink inner=20")).toEqual(["unsupportedParam"]);
-        // The effect is the required core: a bare `/screen` names no gesture and has nothing to commit.
-        expect(getCommandSpec("screen")?.params.effect.core).toBe(true);
+        // A state, not a gesture: this holds the eyes shut until something opens them.
+        expect(build("/transform camera shutter=1")).toMatchObject({
+            payload: { transform: { to: { shutter: 1 } } },
+        });
+        expect(build("/transform camera vignette=0.6 vignetteInner=30")).toMatchObject({
+            payload: { transform: { to: { vignette: 0.6, vignetteInner: "30%" } } },
+        });
+        // Camera only, and structurally so: the engine renders the lens from the camera's own overlay
+        // and no other Displayable has one.
+        expect(issuesOf("/transform hero lens=blink")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/transform hero shutter=1")).toEqual(["unsupportedParam"]);
+    });
+
+    it("/transform takes a drawn easing curve where it takes an easing word", () => {
+        // The inspector can state a curve no word names, so the line has to be able to say it too -
+        // otherwise a row carrying one printed a value that retyping the row would drop.
+        expect(build("/transform hero zoom=1.2 ease=cubic-bezier(0.4,0,0.2,1)")).toMatchObject({
+            payload: { transform: { easing: "cubic-bezier(0.4,0,0.2,1)" } },
+        });
+        // Canonicalized the way an alias is: pasted from a browser's own spelling, banked as the card writes it.
+        expect(build("/transform hero zoom=1.2 ease='cubic-bezier(0.4, 0, 0.2, 1)'")).toMatchObject({
+            payload: { transform: { easing: "cubic-bezier(0.4,0,0.2,1)" } },
+        });
+        // Still an enum: a word off the list is an error, not free text quietly stored.
+        expect(parseCommandLine("/transform hero zoom=1.2 ease=swoosh")).toMatchObject({ issues: [{ code: "badValue" }] });
+        expect(parseCommandLine("/transform hero zoom=1.2 ease=cubic-bezier(0.4,0,0.2)")).toMatchObject({ issues: [{ code: "badValue" }] });
     });
 
     it("/transform camera reads the camera as a reserved target word", () => {
         expect(build("/transform camera zoom=1.5 d=0.8")).toMatchObject({
             kind: "action",
-            payload: { action: "camera", operation: "zoom", zoom: 1.5, durationMs: 800 },
+            payload: { action: "camera", operation: "transform", transform: { to: { zoom: 1.5 }, durationMs: 800 } },
         });
         expect(build("/transform camera pos=left d=0.6")).toMatchObject({
-            payload: { action: "camera", operation: "pan", position: { xalign: 0.25, yalign: 0.5 }, durationMs: 600 },
+            payload: { action: "camera", operation: "transform", transform: { to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 600 } },
         });
         // `pan=` is the same slot: the camera's own reading of the position channel.
-        expect(build("/transform camera pan=right")).toMatchObject({ payload: { operation: "pan" } });
-        expect(build("/transform camera rot=-15")).toMatchObject({ payload: { operation: "rotate", rotation: -15 } });
+        expect(build("/transform camera pan=right")).toMatchObject({ payload: { transform: { to: { position: { xalign: 0.75 } } } } });
+        expect(build("/transform camera rot=-15")).toMatchObject({ payload: { transform: { to: { rotation: -15 } } } });
         expect(build("/reset camera d=0.6")).toMatchObject({ payload: { operation: "reset", durationMs: 600 } });
         // The retired `/camera darken 0.4` is `bright=0.6`: the engine's `darken(d)` IS
         // `brightness(1 - d)`, one CSS channel, so the prop vocabulary spells the channel.
         expect(build("/transform camera bright=0.6")).toMatchObject({
-            payload: { operation: "look", filter: "brightness(0.6)" },
+            payload: { transform: { to: { filter: { brightness: 0.6 } } } },
         });
         // The look library stays reachable by NAME, so the inspector can re-open on the grade.
         expect(build("/transform camera look=moonlight")).toMatchObject({
-            payload: { operation: "look", lookPreset: "moonlight" },
+            payload: { transform: { to: { look: { preset: "moonlight" } } } },
         });
     });
 
-    it("refuses the props the camera payload arm cannot carry, rather than dropping them", () => {
-        // The one place the axiom is not yet true: the engine's Camera takes the whole bag, Studio's
-        // `camera` payload spells one operation plus its own field. Reported, never silently lost.
-        expect(issuesOf("/transform camera opacity=0.5")).toEqual(["unsupportedParam"]);
-        expect(issuesOf("/transform camera mask=none")).toEqual(["unsupportedParam"]);
-        expect(issuesOf("/transform camera zoom=2 rot=10")).toEqual(["conflictingParams"]);
-        // A displayable takes all of them at once, which is the whole point of the bag.
-        expect(build("/transform hero zoom=2 rot=10 opacity=0.5")).toMatchObject({
+    it("gives the camera every channel of the bag, in as many at once as the line states", () => {
+        // The camera used to be the one subject that could state a SINGLE channel, because its payload
+        // spelled one operation plus that operation's own field. v19 gave it the bag, so a row that
+        // pans and zooms is one row rather than a reported conflict.
+        expect(issuesOf("/transform camera zoom=2 rot=10")).toEqual([]);
+        expect(build("/transform camera zoom=2 rot=10 opacity=0.5")).toMatchObject({
             payload: { transform: { to: { zoom: 2, rotation: 10, opacity: 0.5 } } },
         });
+        // `color=` is still the exception, on every subject: it is `fontColor`, and only a text has one.
+        expect(issuesOf("/transform camera color=#fff")).toEqual(["unsupportedParam"]);
+        // Two writers of the one CSS filter channel is still refused, camera or not.
+        expect(issuesOf("/transform camera look=moonlight blur=4")).toEqual(["conflictingParams"]);
     });
 
     it("/transform camera motion commits an unbound Story Motion ref and routes only that line to the inspector", () => {
@@ -777,7 +896,7 @@ describe("logic and effects", () => {
         const shot = build("/transform camera motion");
         expect(shot).toMatchObject({
             kind: "action",
-            payload: { action: "camera", operation: "motion", motion: { mode: "animation" } },
+            payload: { action: "camera", operation: "transform", transform: { mode: "animation" } },
         });
         const spec = getCommandSpec("transform");
         expect(opensInspectorAfterCommit(spec, shot)).toBe(true);
@@ -799,6 +918,24 @@ describe("logic and effects", () => {
         });
         // Blend mode decides whether the material reads at all, so the create row opens the inspector.
         expect(getCommandSpec("vfx")?.inspectorAfterCommit).toBe(true);
+    });
+
+    it("/vfx takes a weather word as its source, and the word names the row", () => {
+        // The seed branch is tried before the asset branch, so the three weather words are reserved
+        // in this slot. The overlay is named after the word for the same reason a clip names it after
+        // the file: the author typed it, so it is what they will address later.
+        expect(build("/vfx snow")).toMatchObject({
+            payload: { action: "vfx", operation: "create", objectName: "snow", seed: { seed: "snow" }, loop: true },
+        });
+        // One source or the other - a seeded row must carry no assetId to be read instead.
+        const seeded = build("/vfx rain");
+        expect(seeded.kind === "action" && seeded.payload.action === "vfx" ? seeded.payload.assetId : "unset").toBeUndefined();
+        // And a clip still resolves exactly as before.
+        expect(build("/vfx intro")).toMatchObject({
+            payload: { action: "vfx", assetId: "v1", objectName: "intro" },
+        });
+        const clip = build("/vfx intro");
+        expect(clip.kind === "action" && clip.payload.action === "vfx" ? clip.payload.seed : "unset").toBeUndefined();
     });
 
     it("the generic verbs reach a vfx with its own payload", () => {

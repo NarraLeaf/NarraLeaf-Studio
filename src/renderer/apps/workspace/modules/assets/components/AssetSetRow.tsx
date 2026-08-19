@@ -4,11 +4,11 @@ import { cn } from "@/lib/utils/cn";
 import type { ResolvedAssetSet } from "../state/useAssetSets";
 
 /**
- * How a set reads in the library, in both views.
+ * What a set says about itself, in both views.
  *
- * One component pair rather than a row and a tile written separately, because what a set says is the
- * same in both: its name, how much of what it promises the library answers, and whether that is all
- * of it. Only the geometry differs.
+ * The list draws a set through the same tree row a folder is drawn with (`AssetsListView`), because
+ * a set is a folder to the author browsing the library - it opens, it holds rows, it nests. Only
+ * this summary and the tile below are its own.
  *
  * ## The warning colour
  *
@@ -19,7 +19,7 @@ import type { ResolvedAssetSet } from "../state/useAssetSets";
  */
 
 /** The count sentence: how much of what the set promises the library currently answers. */
-function useSetSummary(entry: ResolvedAssetSet): string {
+export function useSetSummary(entry: ResolvedAssetSet): string {
     const { t, tn } = useTranslation();
     if (entry.problems.length > 0) {
         // A set whose declaration is incoherent has no coordinates, so a count would read "0 of 0" -
@@ -31,43 +31,6 @@ function useSetSummary(entry: ResolvedAssetSet): string {
     return resolved === total
         ? tn("assets.sets.variantCount", total)
         : t("assets.sets.variantsResolved", { resolved: String(resolved), total: String(total) });
-}
-
-export function AssetSetListRow({
-    entry,
-    level,
-    selected,
-    focused,
-    onSelect,
-    onContextMenu,
-}: {
-    entry: ResolvedAssetSet;
-    level: number;
-    selected: boolean;
-    focused: boolean;
-    onSelect: (event: React.MouseEvent) => void;
-    onContextMenu: (event: React.MouseEvent) => void;
-}) {
-    const summary = useSetSummary(entry);
-    return (
-        <div
-            data-asset-set-id={entry.set.id}
-            className={cn(
-                "flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-fill",
-                selected && "bg-primary/20 border-l-2 border-primary",
-                focused && !selected && "bg-fill-subtle",
-            )}
-            style={{ paddingLeft: `${20 + level * 12}px` }}
-            onClick={onSelect}
-            onContextMenu={onContextMenu}
-        >
-            <Layers className={cn("w-4 h-4 shrink-0", entry.incomplete ? "text-warning" : "text-primary")} />
-            <span className="text-sm truncate">{entry.set.name}</span>
-            <span className={cn("text-xs shrink-0", entry.incomplete ? "text-warning" : "text-fg-subtle")}>
-                {summary}
-            </span>
-        </div>
-    );
 }
 
 export function AssetSetIconTile({

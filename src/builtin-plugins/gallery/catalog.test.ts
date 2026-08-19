@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
     DEFAULT_LOCKED_NAME_MASK,
+    collectAudioAssetVariantIds,
+    collectSceneVariantIds,
+    collectVoiceUnitVariantIds,
     computeGalleryStats,
     createVariantId,
     isArtworkUnlocked,
@@ -583,5 +586,67 @@ describe("v4 kinds", () => {
         }] });
 
         expect("durationSec" in store.items[0]!.variants[0]!).toBe(false);
+    });
+});
+
+describe("what an automatic signal collects", () => {
+    const items = normalizeGalleryStore({
+        items: [
+            artwork({
+                id: "cg",
+                kind: "cg",
+                variants: [{ id: "cg.v", name: "One", imageAssetId: "asset-shared" }],
+            }),
+            artwork({
+                id: "recall",
+                kind: "scene",
+                scene: { storyId: "story-1", sceneId: "scene-7" },
+                variants: [
+                    { id: "recall.v.1", name: "One", imageAssetId: null },
+                    { id: "recall.v.2", name: "Two", imageAssetId: null },
+                ],
+            }),
+            artwork({
+                id: "album",
+                kind: "music",
+                variants: [
+                    { id: "album.v.1", name: "Opening", imageAssetId: null, audioAssetId: "asset-op" },
+                    { id: "album.v.2", name: "Ending", imageAssetId: null, audioAssetId: "asset-ed" },
+                ],
+            }),
+            artwork({
+                id: "vo",
+                kind: "voice",
+                variants: [
+                    { id: "vo.v.1", name: "Greeting", imageAssetId: null, voiceUnitId: "text-1" },
+                    { id: "vo.v.2", name: "Loose", imageAssetId: null, audioAssetId: "asset-loose" },
+                ],
+            }),
+        ],
+    }).items;
+
+    it("takes a recollection whole and a track one at a time", () => {
+        // A scene is the finest thing a recollection has; a track is not, and an album that jumped
+        // from 0 to 12 collected on its first track would be reporting progress nobody made.
+        expect(collectSceneVariantIds(items, "scene-7")).toEqual(["recall.v.1", "recall.v.2"]);
+        expect(collectAudioAssetVariantIds(items, "asset-op")).toEqual(["album.v.1"]);
+    });
+
+    it("reaches a voice line authored as a loose clip", () => {
+        expect(collectAudioAssetVariantIds(items, "asset-loose")).toEqual(["vo.v.2"]);
+        expect(collectVoiceUnitVariantIds(items, "text-1")).toEqual(["vo.v.1"]);
+    });
+
+    it("never collects a CG", () => {
+        // CG is the one column with no moment of its own, so it stays on Unlock Gallery. An audio
+        // matcher that walked every kind would collect it from a sound effect sharing the id.
+        expect(collectAudioAssetVariantIds(items, "asset-shared")).toEqual([]);
+        expect(collectSceneVariantIds(items, "cg")).toEqual([]);
+    });
+
+    it("collects nothing for an empty or unknown key", () => {
+        expect(collectSceneVariantIds(items, "   ")).toEqual([]);
+        expect(collectAudioAssetVariantIds(items, "")).toEqual([]);
+        expect(collectVoiceUnitVariantIds(items, "text-missing")).toEqual([]);
     });
 });

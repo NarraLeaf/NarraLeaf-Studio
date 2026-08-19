@@ -444,7 +444,7 @@ export class LintService extends Service<LintService> implements ILintService {
                 console.warn(`[LintService] voice document ${locale} failed to load`, error);
             }
         }
-        return { voicedLocales, documents };
+        return { voicedLocales, documents, voiceChoices: config.voiceChoices };
     }
 
     /**

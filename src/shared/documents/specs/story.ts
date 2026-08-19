@@ -14,10 +14,11 @@ import {merge3Story} from "./storyMerge3";
  *
  * Two things follow, and both are stated in code rather than left to be discovered:
  *
- *  - **`parse` does not migrate.** `migrateStoryDocumentToLatest` and `normalizeStoryDocument` live
- *    in the renderer's `services/story/storyModel.ts`, which shared code cannot import, and moving
- *    them is a milestone of its own - the same file holds a dozen `undefined` assignments that the
- *    canonical encoder rejects. So an older document is returned as it
+ *  - **`parse` does not migrate**, and that is now a choice rather than a constraint.
+ *    `migrateStoryDocumentToLatest` is reachable from here (`@shared/story/migrateStoryDocument`);
+ *    `normalizeStoryDocument` is not, and it is the half that would have to run before a document
+ *    could be written back, because it is where the renderer's `undefined` assignments meet the
+ *    canonical encoder that rejects them. So an older document is returned as it
  *    was read. That is a real departure from {@link import("../types").DocumentSpec.parse}'s
  *    contract, and the whole reason `serialize` below refuses: a document that was not migrated must
  *    never be written back, because writing it is what would turn "read as v11" into "saved as v12

@@ -456,9 +456,11 @@ export const story = {
         skin: "スキン",
         puppetParam: "パラメータ",
         puppetParamValue: "数値",
+        ruleImage: "ルール画像",
         imageAsset: "画像",
         imageOrColor: "画像または色",
         videoAsset: "動画",
+        vfxSource: "クリップまたは天候",
         audioAsset: "音声",
         objectName: "名前",
         content: "内容",
@@ -472,10 +474,7 @@ export const story = {
         seekTime: "秒",
         // カメラ
         cameraLookStrength: "ルックの強さ",
-        effectIn: "イン秒数",
-        effectOut: "アウト秒数",
-        vignetteInner: "透明な中心 %",
-        vignetteOuter: "暗い縁 %",
+
         // 修飾
         duration: "秒",
         transition: "トランジション",
@@ -512,6 +511,13 @@ export const story = {
         filterInvert: "反転",
         filterCss: "CSS フィルター",
         cameraLook: "ルック",
+        cameraLens: "レンズ効果",
+        shutter: "シャッター",
+        shutterColor: "シャッターの色",
+        vignette: "ビネット",
+        vignetteColor: "ビネットの色",
+        vignetteInner: "透明な中心 %",
+        vignetteOuter: "暗い縁 %",
         maskImage: "マスク画像",
         clipPath: "クリップパス",
         backdropFilter: "背景フィルター",
@@ -523,7 +529,6 @@ export const story = {
         repeatDelay: "繰り返し間隔",
         fromProps: "開始プロパティ",
         conceal: "退場",
-        screenEffect: "フラッシュ / ビネット",
     },
 
     /**
@@ -534,8 +539,14 @@ export const story = {
      * 綴りを落とすので、訳していない項目は必ずパーサが受け付ける語に落ちる。
      */
     enumValue: {
+        // 天候シード。`/vfx` のソース欄では予約語。
+        snow: "雪",
+        rain: "雨",
+        sakura: "桜",
         // トランジションの語（`t=`）
         fade: "フェード",
+        // 「フェード」は文脈で意味が変わる語。こちらは常にクロスフェードそのものを指す。
+        dissolve: "ディゾルブ",
         slide: "スライド",
         "slide-left": "左スライド",
         "slide-right": "右スライド",
@@ -553,6 +564,7 @@ export const story = {
         black: "暗転",
         darkness: "暗さ",
         exposure: "露出",
+        rule: "ルール画像",
         none: "なし",
         // 表示と非表示で `t=` が届く、トランジションの語では名指しできない変形のプリセット。
         scale: "拡大縮小",
@@ -616,8 +628,9 @@ export const story = {
         backInOut: "バックインアウト",
         anticipate: "アンティシペート",
         // The two screen-wide gestures, as `/screen`'s first positional.
-        blink: "フラッシュ",
-        vignette: "ビネット",
+        blink: "まばたき",
+        slowBlink: "ゆっくりまばたき",
+        vignettePulse: "ビネットの脈動",
     },
 
     /**
@@ -968,6 +981,7 @@ export const story = {
         layer: { label: "レイヤー", detail: "描画のレイヤーを作る" },
         swap: { label: "差し替え", detail: "オブジェクトの画像やテキストを入れ替える" },
         play: { label: "再生", detail: "動画を再生する" },
+        front: { label: "最前面へ", detail: "キャラクターや舞台オブジェクトを同じレイヤーの最前面に描く" },
         font: { label: "書式", detail: "テキストの大きさや色を変える" },
         bgm: { label: "BGM", detail: "背景音楽を決める" },
         sound: { label: "効果音", detail: "効果音を鳴らす" },
@@ -1006,7 +1020,6 @@ export const story = {
         // 「シーンをまたいで残る」は詳細の行に置く。どのコマンドにも詳細はあり、スラッシュメニューと
         // コマンドの手引きで、作者がカメラについて最初に読む場所がそこだから。
         transform: { label: "変形", detail: "舞台上のものを移動・拡大縮小・回転・マスク・フィルター・フェードする。カメラも含む" },
-        screen: { label: "画面演出", detail: "画面全体の演出：フラッシュまたはビネット" },
         note: { label: "メモ", detail: "Studio にだけ見えるメモ" },
     },
     containerHeader: {
@@ -1101,17 +1114,12 @@ export const story = {
         nvl: "NVL ブロック",
         blueprint: "ブループリント",
         pluginAction: "プラグインアクション",
-        effect: "{effect} の画面演出",
         cameraOp: {
-            pan: "パン",
-            zoom: "ズーム",
-            rotate: "回転",
-            darken: "ステージを暗く",
+            transform: "カメラ",
             look: "グレード",
             motion: "モーション",
             reset: "カメラをリセット",
         },
-        cameraLookCustom: "カスタム",
         condition: "条件",
         branch: "{branch} の枝",
         label: "ラベル {name}",

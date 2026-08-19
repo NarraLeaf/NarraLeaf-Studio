@@ -16,18 +16,34 @@
  * The refusal is shown as a sentence under the axis list and the control stays where it was. It is
  * not a disabled button: which moves are legal depends on the other axes, so a permanently greyed
  * arrow would be greyed on rows where the move is fine.
+ *
+ * ## The variant list is where a hole gets filled
+ *
+ * Each row picks a file, and choosing one writes that coordinate's tags onto it. Membership is still
+ * the tag - nothing here stores an id - but the author no longer has to leave the panel that told
+ * them a variant was missing in order to go and say which file it is.
+ *
+ * Writing replaces the value that file carried for each of the coordinate's categories, because two
+ * values of one category make a file answer to two coordinates at once. Nothing is taken off any
+ * *other* file: a file that answered to this coordinate before still carries its own tags, and the
+ * row will say so by reporting two matches rather than by quietly picking one.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Layers } from "lucide-react";
 import {
-    ASSET_AXIS_RESIDENCIES,
+    ASSET_SET_AXIS_KINDS,
+    assetSetCoordinateTags,
+    makeAssetSetAxis,
+    assetSetParent,
     collectAssetTagVocabulary,
-    isLegalAxisOrder,
+    isLegalNesting,
+    parseAssetTag,
     resolveAssetSetContents,
     type AssetSet,
-    type AssetSetAxis,
+    type AssetSetAxisKind,
     type AssetSetCandidate,
+    type AssetSetCell,
 } from "@shared/types/assetSet";
 import { FieldLabel, IconButton, Input, Select } from "@/lib/components/elements";
 import { SectionCard } from "@/lib/components/elements/SectionCard";
@@ -35,6 +51,15 @@ import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import type { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
+import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import type { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import type { Asset } from "@/lib/workspace/services/assets/types";
+import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { useWorkspace } from "@/apps/workspace/context";
+import { Services } from "@/lib/workspace/services/services";
+import { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
+import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
+import { AssetThumbnail } from "@/apps/workspace/modules/assets/components/AssetThumbnail";
 
 /**
  * A text field that keeps what is typed and commits it when focus leaves.
@@ -98,19 +123,56 @@ function parseValues(text: string): string[] {
 export function AssetSetInspector({
     set,
     candidates,
-    assetNames,
+    assetsById,
     service,
+    assetsService,
 }: {
     set: AssetSet;
     /** The library, as resolution sees it. */
     candidates: readonly AssetSetCandidate[];
-    /** Asset id to the name the library shows, so a resolved cell names a file rather than a uuid. */
-    assetNames: ReadonlyMap<string, string>;
+    /**
+     * The library by id, so a resolved variant shows the picture and the name rather than a uuid.
+     *
+     * The picture is what an author recognises a variant by. A column of file names answers "is this
+     * set complete" and nothing else; a column of thumbnails answers "is this the right art", which
+     * is the question a set is usually opened to settle.
+     */
+    assetsById: ReadonlyMap<string, Asset>;
     service: AssetSetService;
+    /** Where a chosen file's tags are written. Null while the library has not loaded. */
+    assetsService: AssetsService | null;
 }) {
     const { t } = useTranslation();
+    const { context } = useWorkspace();
     const freeze = useFreezeGuard();
     const [blocked, setBlocked] = useState(false);
+    // The document changes under this panel whenever a sub-set is made or renamed, and what a value
+    // resolves to depends on it.
+    const [revision, setRevision] = useState(0);
+    /**
+     * What each kind ranges over in this project.
+     *
+     * Read here rather than stored on the set, because switching kinds has to re-state the promise:
+     * a set that was language-shaped and is now edition-shaped promises editions.
+     */
+    const localeValues = useMemo(() => {
+        try {
+            return context!.services.get<LocalizationService>(Services.Localization)
+                .getConfiguration().locales.map(locale => locale.code);
+        } catch {
+            return [];
+        }
+    }, [context]);
+    const editionValues = useMemo(() => {
+        try {
+            return context!.services.get<AppTagService>(Services.AppTags).listTags().map(tag => tag.id);
+        } catch {
+            return [];
+        }
+    }, [context]);
+    useEffect(() => service.onSetsChanged(() => setRevision(current => current + 1)), [service]);
+    const [picking, setPicking] = useState<AssetSetCell | null>(null);
+    const pickerAnchor = useRef<HTMLElement | null>(null);
 
     // Only the categories files of this set's own type carry. A picture set offered `voice:alice`
     // would be offering an axis that can never resolve.
@@ -119,7 +181,10 @@ export function AssetSetInspector({
         [candidates, set.type],
     );
 
-    const contents = useMemo(() => resolveAssetSetContents(set, candidates), [set, candidates]);
+    // Every set in the project, because what a value resolves to may be one level down and because
+    // the nesting rule is a statement about this set and the one it hangs under.
+    const sets = useMemo(() => service.listSets(), [service, revision]);
+    const contents = useMemo(() => resolveAssetSetContents(set, candidates, sets), [set, candidates, sets]);
 
     /**
      * Write a new axis list, refusing an arrangement that has no build.
@@ -127,104 +192,64 @@ export function AssetSetInspector({
      * The flag is cleared by every accepted write, so the sentence goes away as soon as the author
      * does something the model allows - rather than staying until they select something else.
      */
-    const writeAxes = useCallback((next: AssetSetAxis[]) => {
-        if (!isLegalAxisOrder(next)) {
+    /**
+     * Change what this set varies by.
+     *
+     * The values come with the kind, read off the project - so switching a set from languages to
+     * editions re-states what it promises rather than leaving it promising language codes under an
+     * edition axis.
+     */
+    const patchAxis = useCallback((kind: AssetSetAxisKind) => {
+        const next = makeAssetSetAxis(kind, kind === "locale" ? localeValues : editionValues);
+        const parent = assetSetParent(set, sets);
+        if (parent && !isLegalNesting(parent.set.axis, next)) {
             setBlocked(true);
             return;
         }
         setBlocked(false);
-        service.setAxes(set.id, next);
-    }, [service, set.id]);
+        service.setAxis(set.id, next);
+    }, [service, set, sets]);
 
-    const patchAxis = useCallback((index: number, patch: Partial<AssetSetAxis>) => {
-        writeAxes(set.axes.map((axis, position) => (position === index ? { ...axis, ...patch } : axis)));
-    }, [set.axes, writeAxes]);
-
-    const moveAxis = useCallback((index: number, delta: number) => {
-        const target = index + delta;
-        if (target < 0 || target >= set.axes.length) {
+    /**
+     * Make one file the answer to one coordinate, by writing that coordinate onto it.
+     *
+     * The set's fixed tags go on too, not just the axis values: a file that carries `mood:sad` but
+     * not `char:alice` is not a member of this set, and an author who picked it from the list plainly
+     * meant it to be one.
+     */
+    const assign = useCallback(async (cell: AssetSetCell, asset: Asset) => {
+        if (!assetsService) {
             return;
         }
-        const next = [...set.axes];
-        [next[index], next[target]] = [next[target], next[index]];
-        writeAxes(next);
-    }, [set.axes, writeAxes]);
+        const written = assetSetCoordinateTags(set, cell.coordinate);
+        const claimed = new Set(
+            written.map(tag => parseAssetTag(tag)?.category).filter((category): category is string => Boolean(category)),
+        );
+        const kept = asset.tags.filter(tag => {
+            const pair = parseAssetTag(tag);
+            return !pair || !claimed.has(pair.category);
+        });
+        await assetsService.updateAssetTags(asset, [...kept, ...written]);
+    }, [assetsService, set]);
 
     return (
-        <div className="p-3 space-y-3">
-            <SectionCard
-                title={t("assets.sets.inspector.axes")}
-                actions={
-                    <IconButton
-                        size="sm"
-                        aria-label={t("assets.sets.inspector.addAxis")}
-                        {...freeze.writes(false, t("assets.sets.inspector.addAxis"))}
-                        onClick={() => writeAxes([...set.axes, { key: "", residency: "build", values: [] }])}
-                    >
-                        <Plus className="h-4 w-4" />
-                    </IconButton>
-                }
-                bodyClassName="space-y-3"
-            >
-                {set.axes.map((axis, index) => (
-                    <div key={`${axis.key}-${index}`} className="space-y-1.5">
-                        <div className="flex items-center gap-2">
-                            <DraftInput
-                                value={axis.key}
-                                placeholder={t("assets.sets.inspector.axisKey")}
-                                {...freeze.writes()}
-                                onCommit={next => patchAxis(index, { key: next })}
-                                className="flex-1"
-                            />
-                            <Select
-                                size="sm"
-                                value={axis.residency}
-                                options={ASSET_AXIS_RESIDENCIES.map(residency => ({
-                                    value: residency,
-                                    label: t(`assets.sets.inspector.residency.${residency}`),
-                                }))}
-                                onChange={value => patchAxis(index, { residency: value as AssetSetAxis["residency"] })}
-                                {...freeze.writes()}
-                            />
-                            <IconButton
-                                size="sm"
-                                className="shrink-0"
-                                aria-label={t("assets.sets.inspector.moveOut")}
-                                {...freeze.writes(index === 0, t("assets.sets.inspector.moveOut"))}
-                                onClick={() => moveAxis(index, -1)}
-                            >
-                                <ChevronUp className="h-4 w-4" />
-                            </IconButton>
-                            <IconButton
-                                size="sm"
-                                className="shrink-0"
-                                aria-label={t("assets.sets.inspector.moveIn")}
-                                {...freeze.writes(index === set.axes.length - 1, t("assets.sets.inspector.moveIn"))}
-                                onClick={() => moveAxis(index, 1)}
-                            >
-                                <ChevronDown className="h-4 w-4" />
-                            </IconButton>
-                            <IconButton
-                                size="sm"
-                                className="shrink-0"
-                                aria-label={t("assets.sets.inspector.removeAxis")}
-                                {...freeze.writes(false, t("assets.sets.inspector.removeAxis"))}
-                                onClick={() => writeAxes(set.axes.filter((_, position) => position !== index))}
-                            >
-                                <Trash2 className="h-4 w-4" />
-                            </IconButton>
-                        </div>
-                        <DraftInput
-                            value={axis.values.join(", ")}
-                            // Seeded with what the library carries under this category, so an author
-                            // who has tagged their files can read the values off the placeholder
-                            // instead of remembering them.
-                            placeholder={vocabulary.get(axis.key)?.join(", ") || t("assets.sets.inspector.axisValues")}
-                            {...freeze.writes()}
-                            onCommit={next => patchAxis(index, { values: parseValues(next) })}
-                        />
-                    </div>
-                ))}
+        <div className="p-3 space-y-3" data-help-topic="assetSetAxes">
+            <SectionCard title={t("assets.sets.inspector.axes")} bodyClassName="space-y-3">
+                {/* The kind, and nothing else. What tag it reads, when it resolves and what it
+                    ranges over all follow from it, and each of them offered as a field was a way for
+                    an author to say something the project would then refuse. */}
+                <Select
+                    size="sm"
+                    fullWidth
+                    value={set.axis.kind}
+                    options={ASSET_SET_AXIS_KINDS.map(entry => ({
+                        value: entry,
+                        label: t(`assets.sets.axisKind.${entry}`),
+                    }))}
+                    onChange={value => patchAxis(value as AssetSetAxisKind)}
+                    ariaLabel={t("assets.sets.inspector.axes")}
+                    {...freeze.writes()}
+                />
                 {blocked && (
                     <p className="text-2xs text-warning">{t("assets.sets.inspector.residencyBlocked")}</p>
                 )}
@@ -243,26 +268,62 @@ export function AssetSetInspector({
                     contents.cells.map(cell => {
                         const missing = cell.assetIds.length === 0;
                         const ambiguous = cell.assetIds.length > 1;
+                        const resolved = missing || ambiguous ? null : assetsById.get(cell.assetIds[0]) ?? null;
                         return (
-                            <div key={cell.label} className="flex items-baseline justify-between gap-2">
+                            <div
+                                key={cell.label}
+                                className="flex items-center justify-between gap-2"
+                                data-asset-set-variant={cell.label}
+                            >
                                 <FieldLabel as="span" className="mb-0 min-w-0 truncate">{cell.label}</FieldLabel>
-                                <span
+                                <button
+                                    type="button"
+                                    aria-label={cell.label}
                                     className={cn(
-                                        "text-2xs shrink-0 truncate",
+                                        "flex min-w-0 shrink items-center gap-1.5 rounded-md px-1.5 py-0.5 text-2xs transition-colors",
+                                        "hover:bg-edge-subtle disabled:cursor-not-allowed disabled:opacity-50",
                                         missing || ambiguous ? "text-warning" : "text-fg-subtle",
                                     )}
+                                    {...freeze.writes(!assetsService)}
+                                    onClick={event => {
+                                        pickerAnchor.current = event.currentTarget;
+                                        setPicking(cell);
+                                    }}
                                 >
-                                    {missing
-                                        ? t("assets.sets.inspector.variantMissing")
-                                        : ambiguous
-                                            ? t("assets.sets.inspector.variantAmbiguous", { count: String(cell.assetIds.length) })
-                                            : assetNames.get(cell.assetIds[0]) ?? cell.assetIds[0]}
-                                </span>
+                                    {resolved && (
+                                        <AssetThumbnail asset={resolved} className="h-5 w-6 shrink-0 rounded-sm" />
+                                    )}
+                                    <span className="min-w-0 truncate">
+                                        {missing
+                                            ? t("assets.sets.inspector.variantMissing")
+                                            : ambiguous
+                                                ? t("assets.sets.inspector.variantAmbiguous", { count: String(cell.assetIds.length) })
+                                                : resolved?.name ?? cell.assetIds[0]}
+                                    </span>
+                                </button>
                             </div>
                         );
                     })
                 )}
             </SectionCard>
+
+            {picking && (
+                <AssetSelector
+                    visible
+                    assetType={set.type as AssetType}
+                    selectedIds={picking.assetIds.slice(0, 1)}
+                    anchorRef={pickerAnchor}
+                    title={picking.label}
+                    onClose={() => setPicking(null)}
+                    onConfirm={assets => {
+                        const chosen = assets[0];
+                        setPicking(null);
+                        if (chosen) {
+                            void assign(picking, chosen);
+                        }
+                    }}
+                />
+            )}
         </div>
     );
 }

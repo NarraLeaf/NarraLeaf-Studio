@@ -10,6 +10,7 @@ import {
     storyBlockTarget,
     storyLocation,
     SPOKEN_TEXT_SEGMENT_KINDS,
+    type LintTextSegmentKind,
     type LintTextSegmentRef,
 } from "./text/textSegments";
 
@@ -19,14 +20,16 @@ import {
  * Silent (`[]`) when `ctx.voice` is null - see the note on the localization rules; the same R5
  * reasoning applies to a project that has not set up `voicedLocales`.
  *
- * **Scope of `voice/missing`: spoken lines only - narration and dialogue.** A choice button and a
- * choice prompt are read by the player, not by an actor; the voice module has never listed them
- * (`extractVoiceableRows` filters to the same two roles), so flagging them would invent a coverage
- * gap the recording script never contained and would roughly double the finding count on any
- * choice-heavy VN - drowning the real gaps. `voice/stale` and `voice/orphan` deliberately do NOT
- * narrow that way: they act on units that exist, and a project that did record a choice line (by
- * importing a take against its unit id) must still be told when that recording goes out of date or
- * loses its line.
+ * **Scope of `voice/missing`: what the project counts as script.** Narration and dialogue always;
+ * choice options only where `app.voice` says an actor records them. Reporting them unconditionally
+ * would invent a coverage gap the recording script never contained and would roughly double the
+ * finding count on any choice-heavy VN - drowning the real gaps - so it follows the same switch
+ * `extractVoiceableRows` does and the two can never disagree. A choice *prompt* is never in scope:
+ * the menu surface speaks options and nothing else, so a take against a prompt has nowhere to play.
+ *
+ * `voice/stale` and `voice/orphan` deliberately do NOT narrow that way: they act on units that
+ * exist, and a project that did record a choice line (by importing a take against its unit id) must
+ * still be told when that recording goes out of date or loses its line.
  */
 
 /** A unit only counts once it actually points at an imported clip. */
@@ -54,9 +57,12 @@ function runMissing(ctx: LintContext): LintFinding[] {
     if (!voice || voice.voicedLocales.length === 0) {
         return [];
     }
+    const recorded: readonly LintTextSegmentKind[] = voice.voiceChoices
+        ? [...SPOKEN_TEXT_SEGMENT_KINDS, "choiceOption"]
+        : SPOKEN_TEXT_SEGMENT_KINDS;
     const findings: LintFinding[] = [];
     for (const ref of voicedSegments(ctx)) {
-        if (!SPOKEN_TEXT_SEGMENT_KINDS.includes(ref.kind)) {
+        if (!recorded.includes(ref.kind)) {
             continue;
         }
         if (legacyVoiceAssetId(ref.block)) {

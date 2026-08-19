@@ -27,20 +27,28 @@ import { applyPlacementToTransform, applyTransitionWordToTransform, transitionKi
  */
 export function withTransitionRef(
     current: StoryTransitionRef | undefined,
-    context: "scene" | "character",
+    context: "scene" | "character" | "expression",
     t: StoryCommandValue | undefined,
     d: StoryCommandValue | undefined,
+    rule?: StoryCommandValue | undefined,
 ): StoryTransitionRef | undefined {
     const word = asEnum(t);
-    const kind = word === undefined ? undefined : transitionKindFor(context, word);
+    // Naming a picture says which engine plays it, so `t=` is not also required. `/bg forest
+    // rule=spiral` is the whole line, and the word remains typeable for a row that wants the
+    // engine before it has picked a picture.
+    const ruleAssetId = rule?.kind === "asset" ? rule.assetId : undefined;
+    const kind = ruleAssetId !== undefined
+        ? "ruleReveal" as const
+        : word === undefined ? undefined : transitionKindFor(context, word);
     const durationMs = asDurationMs(d);
-    if (kind === undefined && durationMs === undefined) {
+    if (kind === undefined && durationMs === undefined && ruleAssetId === undefined) {
         return current;
     }
     return {
         ...(current ?? { kind: transitionKindFor(context, "fade") ?? "fadeIn" }),
         ...(kind !== undefined ? { kind } : {}),
         ...(durationMs !== undefined ? { durationMs } : {}),
+        ...(ruleAssetId !== undefined ? { ruleAssetId } : {}),
     };
 }
 
@@ -96,9 +104,16 @@ export function deriveObjectName(stageKind: StoryCommandStageObjectKind, assetPa
         if (args.name) {
             return {};
         }
-        const asset = assetParam ? args[assetParam] : undefined;
-        const seed = asset?.kind === "asset" ? assetBaseName(context, stageKind, asset.assetId) ?? base : base;
-        return { name: { kind: "text", value: dedupeObjectName(seed, context.stageObjects[stageKind] ?? []) } };
+        const source = assetParam ? args[assetParam] : undefined;
+        // A slot may name something other than an asset - `/vfx snow` names a generated source by a
+        // word - and the row should still be called after what the author typed rather than after the
+        // command. The word IS the name in that case; there is no file to strip an extension from.
+        const stem = source?.kind === "asset"
+            ? assetBaseName(context, stageKind, source.assetId) ?? base
+            : source?.kind === "enum"
+                ? source.value
+                : base;
+        return { name: { kind: "text", value: dedupeObjectName(stem, context.stageObjects[stageKind] ?? []) } };
     };
 }
 
@@ -156,10 +171,6 @@ export function withRevealTransform(
  *
  * Shared because more than one command builds that payload from a target param, and the mapping is a
  * rule rather than a formality: which kinds are Displayables at all is stated here once.
- *
- * (`specs/effects.ts` still carries a private twin of this, from before there was a second caller.
- * Collapsing it onto this one is a one-line follow-up, left out here only to keep this change off a
- * file another branch is editing.)
  */
 export function displayableTargetRef(target: ReturnType<typeof asTarget>): StoryDisplayableTargetRef | undefined {
     if (!target) {
