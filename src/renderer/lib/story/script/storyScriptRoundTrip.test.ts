@@ -197,7 +197,7 @@ function randomOpaqueBlock(rng: Rng, id: string, newId: () => string): StoryBloc
         case 10:
             return block(id, "action", { action: "vfx", operation: "create", objectName: "rain", assetId: "v-1", blendMode: "screen" });
         default:
-            return block(id, "action", { action: "screenEffect", effect: "vignette", durationMs: 400, color: "#000" });
+            return block(id, "action", { action: "camera", operation: "transform", transform: { mode: "props", to: { lens: { preset: "vignettePulse", color: "#000" } } } });
     }
 }
 

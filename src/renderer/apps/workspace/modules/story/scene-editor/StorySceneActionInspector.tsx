@@ -464,11 +464,6 @@ const audioOperationOptions = (t: TFunc): SelectOption[] => [
     { value: "seekSound", label: t("storyInspector.audioOperation.seekSound") },
 ];
 
-const screenEffectOptions = (t: TFunc): SelectOption[] => [
-    { value: "blink", label: t("storyInspector.screenEffectOption.blink") },
-    { value: "vignette", label: t("storyInspector.screenEffectOption.vignette") },
-];
-
 const waitModeOptions = (t: TFunc): SelectOption[] => [
     { value: "duration", label: t("storyInspector.waitMode.duration") },
     { value: "click", label: t("storyInspector.waitMode.click") },
@@ -1144,60 +1139,6 @@ function ActionPayloadFields(props: {
                 storyName={props.document.name}
                 onChange={props.onChange}
             />
-        );
-    }
-    if (payload.action === "screenEffect") {
-        // The two effects agree on what `duration` and `hold` mean and differ in what else they own,
-        // so a field belonging to only one of them is drawn only for it. The engine's `BlinkOptions`
-        // has no opacity, so that row on a blink read as an edit and changed nothing; the radii are
-        // the vignette's gradient and mean nothing to a pair of shutters; and `VignetteOptions` has
-        // one duration for both its halves, so only a blink can be told to shut fast and open slow.
-        const isVignette = payload.effect === "vignette";
-        return (
-            <div className="nl-field-grid">
-                <SelectField
-                    label={t("storyInspector.field.effect")}
-                    options={screenEffectOptions(t)}
-                    value={payload.effect}
-                    onChange={effect => props.onChange({ ...payload, effect: effect as Extract<StoryActionPayload, { action: "screenEffect" }>["effect"] })}
-                />
-                <SecondsField label={t("storyInspector.field.duration")} value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
-                {/* Blink only, because only a blink has two halves the engine will drive separately.
-                    Empty means "follow the whole move", which is why neither is seeded from
-                    `duration` when the author opens the row - a filled box would claim an override
-                    nobody asked for, and there would be no way back to following it. */}
-                {isVignette ? null : (
-                    <SecondsField
-                        label={t("storyInspector.field.closeIn")}
-                        value={payload.inMs}
-                        onChange={inMs => props.onChange({ ...payload, inMs })}
-                    />
-                )}
-                {isVignette ? null : (
-                    <SecondsField
-                        label={t("storyInspector.field.openOut")}
-                        value={payload.outMs}
-                        onChange={outMs => props.onChange({ ...payload, outMs })}
-                    />
-                )}
-                <SecondsField label={t("storyInspector.field.hold")} value={payload.holdMs} onChange={holdMs => props.onChange({ ...payload, holdMs })} />
-                <ColorTextField label={t("storyInspector.field.color")} value={payload.color ?? "#000000"} onChange={color => props.onChange({ ...payload, color })} />
-                {isVignette ? (
-                    <NumberField label={t("storyInspector.field.opacity")} value={payload.opacity} onChange={opacity => props.onChange({ ...payload, opacity })} />
-                ) : null}
-                {isVignette ? (
-                    <NumberField label={t("storyInspector.field.vignetteInner")} value={payload.inner} onChange={inner => props.onChange({ ...payload, inner })} />
-                ) : null}
-                {isVignette ? (
-                    <NumberField label={t("storyInspector.field.vignetteOuter")} value={payload.outer} onChange={outer => props.onChange({ ...payload, outer })} />
-                ) : null}
-                <SelectField
-                    label={t("storyInspector.field.easing")}
-                    options={easingOptions(t)}
-                    value={payload.easing ?? ""}
-                    onChange={easing => props.onChange({ ...payload, easing: String(easing) || undefined })}
-                />
-            </div>
         );
     }
     return null;

@@ -59,10 +59,6 @@ export const storyInspector = {
         character: "角色",
         layer: "图层",
         muted: "静音",
-        closeIn: "闭眼（秒）",
-        openOut: "睁眼（秒）",
-        vignetteInner: "透明中心 %",
-        vignetteOuter: "全暗边缘 %",
     },
     motionTarget: {
         image: "图片",
@@ -217,36 +213,10 @@ export const storyInspector = {
     },
 
     cameraOperation: {
-        zoom: "推拉",
-        pan: "平移",
-        rotate: "旋转",
-        darken: "压暗舞台",
-        look: "色调",
-        motion: "运镜动作",
         reset: "复位镜头",
     },
 
-    cameraOperationShort: {
-        zoom: "推拉",
-        pan: "平移",
-        rotate: "旋转",
-        darken: "压暗",
-        look: "色调",
-        motion: "运镜",
-        reset: "复位",
-    },
-
-    camera: {
-        zoom: "缩放（1 为原始）",
-        rotation: "旋转角度 °",
-        darkness: "舞台压暗（0-1）",
-        xalign: "X 对齐（0-1）",
-        yalign: "Y 对齐（0-1）",
-        look: "色调",
-        lookSnaps: "影调一帧到位。补间会让画面走过一串没人挑过的颜色，所以没有时长可设——想要过渡就在前面放一次眨眼或转场。",
-        lookIntensity: "强度（1 为标准）",
-        lookFilter: "自定义 CSS 滤镜",
-    },
+    cameraResetHint: "把镜头整个复位：机位、色调、镜头效果一起。",
 
     cameraLook: {
         memory: "回忆",
@@ -255,6 +225,12 @@ export const storyInspector = {
         moonlight: "月光",
         faint: "意识模糊",
         hangover: "宿醉",
+    },
+
+    cameraLens: {
+        blink: "眨眼",
+        slowBlink: "慢眨眼",
+        vignettePulse: "暗角脉冲",
     },
 
     cameraLookHint: {
@@ -301,6 +277,7 @@ export const storyInspector = {
         geometry: "位置与缩放",
         filter: "滤镜",
         look: "色调",
+        lens: "镜头",
         composite: "合成",
         text: "文字",
         timing: "时序",
@@ -362,11 +339,6 @@ export const storyInspector = {
         muteSound: "静音／取消静音",
         seekSound: "跳转位置",
     },
-    screenEffectOption: {
-        blink: "闪烁",
-        vignette: "暗角",
-    },
-
     waitMode: {
         duration: "时长",
         click: "点击",

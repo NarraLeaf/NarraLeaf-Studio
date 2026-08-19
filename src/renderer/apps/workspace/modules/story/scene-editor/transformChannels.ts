@@ -6,7 +6,8 @@ import type {
     StoryTransformRef,
 } from "@shared/types/story";
 import type { TranslationKey, Translator } from "@shared/i18n";
-import { STORY_CAMERA_LOOK_DEFAULT_PRESET_ID, STORY_CAMERA_LOOK_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
+import { STORY_CAMERA_LOOK_DEFAULT_PRESET_ID } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
+import { STORY_CAMERA_LENS_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLensPresets";
 
 /**
  * The transform bag, as a list of channels an author adds and removes one at a time.
@@ -26,10 +27,10 @@ import { STORY_CAMERA_LOOK_DEFAULT_PRESET_ID, STORY_CAMERA_LOOK_PRESETS } from "
  * can also find on the right.
  */
 
-export type TransformChannelGroupId = "geometry" | "filter" | "look" | "composite" | "text" | "timing";
+export type TransformChannelGroupId = "geometry" | "filter" | "look" | "lens" | "composite" | "text" | "timing";
 
 export const TRANSFORM_CHANNEL_GROUPS: readonly TransformChannelGroupId[] = [
-    "geometry", "filter", "look", "composite", "text", "timing",
+    "geometry", "filter", "look", "lens", "composite", "text", "timing",
 ];
 
 /**
@@ -95,6 +96,12 @@ export type TransformChannelSpec = {
     shares?: boolean;
     /** Only offered when the row's target is a text object; `fontColor` is the one such channel. */
     textOnly?: boolean;
+    /**
+     * Only offered on the camera. The lens channels are the camera's own glass - the engine renders
+     * them from the camera's overlay, and no other Displayable has one - so offering them on a sprite
+     * would put a control on the row that writes a prop the stage never reads.
+     */
+    cameraOnly?: boolean;
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -139,6 +146,7 @@ export function withFilterFunction(ref: StoryTransformRef, fn: StoryFilterFuncti
     return withTransformProps(ref, {
         filter: { ...(filterRecordOf(ref) ?? {}), [fn]: value },
         filterRaw: undefined,
+        look: undefined,
     });
 }
 
@@ -158,61 +166,18 @@ const MASK_KEYS = ["maskAssetId", "maskSize", "maskPosition", "maskRepeat", "mas
 // ---------------------------------------------------------------------------------------------
 
 /**
- * The intensity grid a look control may land on, and therefore the one this module can read back.
+ * The range the intensity control offers, which is the library's own.
  *
- * A displayable has nowhere to keep a grade's NAME - `lookPreset` is a field of the camera payload,
- * and `look=` on any other subject resolves to CSS while the line is parsed. So the name is
- * recovered by rebuilding every grade the library can produce and matching the string. That is exact
- * rather than approximate because the control emits only these values: the slider steps by
- * {@link LOOK_INTENSITY_STEP} and rounds, so every string it can write is in the index.
- *
- * Zero is left out on purpose. Every preset builds `"none"` at zero, so indexing it would make one
- * arbitrary grade the answer for a row that states no grade at all.
+ * There used to be an INDEX here: every preset built at every step of this grid, so a grade stored as
+ * expanded CSS could be matched back to the name that produced it. It existed because a displayable
+ * had nowhere to keep the name - and the bag holds one now (`StoryTransformProps.look`), so the whole
+ * reverse lookup is gone rather than merely unused.
  */
 export const LOOK_INTENSITY_STEP = 0.05;
 export const LOOK_INTENSITY_MAX = 2;
 
-export type StoryCameraLookReading = { preset: string; intensity: number };
-
-let lookIndex: Map<string, StoryCameraLookReading> | null = null;
-
-function lookIndexOf(): Map<string, StoryCameraLookReading> {
-    if (lookIndex) {
-        return lookIndex;
-    }
-    const index = new Map<string, StoryCameraLookReading>();
-    const steps = Math.round(LOOK_INTENSITY_MAX / LOOK_INTENSITY_STEP);
-    for (const preset of STORY_CAMERA_LOOK_PRESETS) {
-        for (let step = 1; step <= steps; step++) {
-            const intensity = roundLookIntensity(step * LOOK_INTENSITY_STEP);
-            const css = preset.build(intensity);
-            if (!index.has(css)) {
-                index.set(css, { preset: preset.id, intensity });
-            }
-        }
-    }
-    lookIndex = index;
-    return index;
-}
-
 export function roundLookIntensity(intensity: number): number {
     return Number(intensity.toFixed(2));
-}
-
-/** The grade a raw filter string spells, or `null` when it is a chain the library did not write. */
-export function readCameraLookCss(css: string | null | undefined): StoryCameraLookReading | null {
-    return typeof css === "string" ? lookIndexOf().get(css) ?? null : null;
-}
-
-export function cameraLookCss(preset: string, intensity: number): string {
-    const entry = STORY_CAMERA_LOOK_PRESETS.find(candidate => candidate.id === preset);
-    return entry ? entry.build(roundLookIntensity(intensity)) : "";
-}
-
-function defaultLookCss(): string {
-    const preset = STORY_CAMERA_LOOK_PRESETS.find(candidate => candidate.id === STORY_CAMERA_LOOK_DEFAULT_PRESET_ID)
-        ?? STORY_CAMERA_LOOK_PRESETS[0];
-    return preset ? preset.build(preset.defaultIntensity) : "";
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -313,6 +278,48 @@ function timingChannel(key: "delayMs" | "repeat" | "repeatDelayMs", seed: number
     };
 }
 
+/**
+ * The lens's own channels: settled values, as opposed to the gesture above.
+ *
+ * `shutter=1` holds the eyes shut until something opens them; `lens=blink` closes and opens them
+ * again. Two different instructions, and the panel says so by offering both.
+ */
+function lensNumberChannel(key: "shutter" | "vignette", seed: number): TransformChannelSpec {
+    return {
+        id: key,
+        group: "lens",
+        label: t => t(`story.paramHint.${key}` as TranslationKey),
+        cameraOnly: true,
+        stated: ref => propsOf(ref)[key] !== undefined,
+        add: ref => withTransformProps(ref, { [key]: seed }),
+        remove: ref => withoutTransformProps(ref, [key]),
+    };
+}
+
+function lensColorChannel(key: "shutterColor" | "vignetteColor", seed: string): TransformChannelSpec {
+    return {
+        id: key,
+        group: "lens",
+        label: t => t(`story.paramHint.${key}` as TranslationKey),
+        cameraOnly: true,
+        stated: ref => propsOf(ref)[key] !== undefined,
+        add: ref => withTransformProps(ref, { [key]: seed }),
+        remove: ref => withoutTransformProps(ref, [key]),
+    };
+}
+
+function lensPercentChannel(key: "vignetteInner" | "vignetteOuter", seed: string): TransformChannelSpec {
+    return {
+        id: key,
+        group: "lens",
+        label: t => t(`story.paramHint.${key}` as TranslationKey),
+        cameraOnly: true,
+        stated: ref => propsOf(ref)[key] !== undefined,
+        add: ref => withTransformProps(ref, { [key]: seed }),
+        remove: ref => withoutTransformProps(ref, [key]),
+    };
+}
+
 export const TRANSFORM_CHANNELS: readonly TransformChannelSpec[] = [
     {
         id: "position",
@@ -334,13 +341,11 @@ export const TRANSFORM_CHANNELS: readonly TransformChannelSpec[] = [
         group: "filter",
         label: t => t("story.paramHint.filterCss"),
         slot: "cssFilter",
-        // A chain the library DID write reads as its grade, not as raw text: the author picked a
-        // look, and showing the CSS it expanded to would answer a question they did not ask.
         stated: ref => {
             const raw = propsOf(ref).filterRaw;
-            return raw !== undefined && raw !== null && readCameraLookCss(raw) === null;
+            return raw !== undefined && raw !== null;
         },
-        add: ref => withTransformProps(ref, { filterRaw: "", filter: undefined }),
+        add: ref => withTransformProps(ref, { filterRaw: "", filter: undefined, look: undefined }),
         remove: ref => withoutTransformProps(ref, ["filterRaw"]),
     },
     {
@@ -348,9 +353,9 @@ export const TRANSFORM_CHANNELS: readonly TransformChannelSpec[] = [
         group: "filter",
         label: t => t("storyInspector.transformChannel.restore", { channel: t("storyInspector.displayableOperation.filter") }),
         slot: "cssFilter",
-        stated: ref => propsOf(ref).filter === null || propsOf(ref).filterRaw === null,
-        add: ref => withTransformProps(ref, { filter: null, filterRaw: undefined }),
-        remove: ref => withoutTransformProps(ref, ["filter", "filterRaw"]),
+        stated: ref => propsOf(ref).filter === null || propsOf(ref).filterRaw === null || propsOf(ref).look === null,
+        add: ref => withTransformProps(ref, { filter: null, filterRaw: undefined, look: undefined }),
+        remove: ref => withoutTransformProps(ref, ["filter", "filterRaw", "look"]),
     },
     {
         // The grade library. It writes the same CSS channel as the eight functions and as a
@@ -359,9 +364,13 @@ export const TRANSFORM_CHANNELS: readonly TransformChannelSpec[] = [
         group: "look",
         label: t => t("story.paramHint.cameraLook"),
         slot: "cssFilter",
-        stated: ref => readCameraLookCss(propsOf(ref).filterRaw) !== null,
-        add: ref => withTransformProps(ref, { filterRaw: defaultLookCss(), filter: undefined }),
-        remove: ref => withoutTransformProps(ref, ["filterRaw"]),
+        stated: ref => Boolean(propsOf(ref).look),
+        add: ref => withTransformProps(ref, {
+            look: { preset: STORY_CAMERA_LOOK_DEFAULT_PRESET_ID, intensity: 1 },
+            filter: undefined,
+            filterRaw: undefined,
+        }),
+        remove: ref => withoutTransformProps(ref, ["look"]),
     },
 
     ...discreteChannels("mask", "maskAssetId", "story.paramHint.maskImage", "", MASK_KEYS),
@@ -392,6 +401,24 @@ export const TRANSFORM_CHANNELS: readonly TransformChannelSpec[] = [
         remove: ref => withoutTransformProps(ref, ["fontColor"]),
     },
 
+    {
+        // The lens gesture. A NAME, because a blink is in-hold-out and not a value an author dials -
+        // see `cameraLensPresets.ts` for why the gesture is a preset while the channels below are not.
+        id: "lens",
+        group: "lens",
+        label: t => t("story.paramHint.cameraLens"),
+        cameraOnly: true,
+        stated: ref => Boolean(propsOf(ref).lens),
+        add: ref => withTransformProps(ref, { lens: { preset: STORY_CAMERA_LENS_PRESETS[0]?.id ?? "blink" } }),
+        remove: ref => withoutTransformProps(ref, ["lens"]),
+    },
+    lensNumberChannel("shutter", 1),
+    lensColorChannel("shutterColor", "#000000"),
+    lensNumberChannel("vignette", 0.72),
+    lensColorChannel("vignetteColor", "#000000"),
+    lensPercentChannel("vignetteInner", "44%"),
+    lensPercentChannel("vignetteOuter", "78%"),
+
     timingChannel("delayMs", 0),
     timingChannel("repeat", 1),
     timingChannel("repeatDelayMs", 0),
@@ -417,7 +444,7 @@ export function statedTransformChannels(ref: StoryTransformRef | undefined): rea
  */
 export function addableTransformChannels(
     ref: StoryTransformRef | undefined,
-    options: { isText: boolean },
+    options: { isText: boolean; isCamera?: boolean },
 ): readonly TransformChannelSpec[] {
     const current = ref ?? {};
     const occupied = new Map<ChannelSlot, boolean>();
@@ -430,6 +457,9 @@ export function addableTransformChannels(
     }
     return TRANSFORM_CHANNELS.filter(channel => {
         if (channel.textOnly && !options.isText) {
+            return false;
+        }
+        if (channel.cameraOnly && !options.isCamera) {
             return false;
         }
         if (channel.stated(current)) {
@@ -454,8 +484,8 @@ export function addableTransformChannels(
  * shape is what lets the control be a shape: a row written by hand, or by a version of Studio that
  * had only the text box, still opens on whichever branch its string turns out to be.
  *
- * Percentages throughout, so a clip does not change meaning when the stage is resized - which is the
- * same reason `/screen vignette` takes its radii as percentages of the frame.
+ * Percentages throughout, so a clip does not change meaning when the stage is resized - the same
+ * reason the camera's vignette radii are percentages of the frame.
  */
 export type StoryClipShape =
     | { kind: "inset"; top: number; right: number; bottom: number; left: number }

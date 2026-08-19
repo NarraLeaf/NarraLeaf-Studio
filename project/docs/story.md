@@ -11,7 +11,7 @@
 - 已有 Story asset lock：背景、角色 asset、音频、dialogue voice asset 等引用会注册资产锁。
 - 已有 plugin action registry API，但 scene action chooser 尚未把 plugin actions 合并进 UI。
 - `canImportStoryPackage()` 和 `canExportStoryPackage()` 存在，但当前固定返回 `false`。
-- Story Action 快速编辑器（双击 action 行展开的紧凑 inline card）已覆盖绝大多数 action：dialogue（含 pauseAfter）、narration、choice/menu（choiceOption 支持 hiddenWhen/disabledWhen 条件）、setBackground（含 transition）、character、audio、image、text、layer、video、displayable（含 mask/clip/filter/darken/circleReveal/circleClose/wipe 视觉特效）、nvl、screenEffect、setVariable、wait、control、jump、code、note。
+- Story Action 快速编辑器（双击 action 行展开的紧凑 inline card）已覆盖绝大多数 action：dialogue（含 pauseAfter）、narration、choice/menu（choiceOption 支持 hiddenWhen/disabledWhen 条件）、setBackground（含 transition）、character、audio、image、text、layer、video、displayable（含 mask/clip/filter/darken/circleReveal/circleClose/wipe 视觉特效）、camera（含镜头效果）、nvl、setVariable、wait、control、jump、code、note。
 - Transform 编辑支持 Preset ↔ Motion 双模式；Motion 模式使用 `MotionSelector`（仿项目资产选择器 + 鼠标 hover 实时动画预览），绑定 Story Motion 动画资产。
 - Transition 编辑是预设驱动的类型化字段：dissolve / fadeIn(startPos) / maskCircle(center/from/to) / maskWipe(direction/reverse)，与编译器 `createTransition` 消费的 `props` 对齐。
 - Dialogue/narration/choice/note 支持富文本：`StoryTextSegment.rich`（bold/italic/color/ruby/cps/fontSize 标记 + 内联 Pause），编辑行上方有一个会话级共享（不落盘）的浮动富文本工具条。`value` 始终是纯文本投影，向后兼容。

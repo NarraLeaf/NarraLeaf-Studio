@@ -347,6 +347,9 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     if (version < 18) {
         migrated = migrateStoryDocumentV17toV18(migrated);
     }
+    if (version < 19) {
+        migrated = migrateStoryDocumentV18toV19(migrated);
+    }
     // v4 (the `invalid` block kind and dialogue's `speakerName`), v7 (the block-level `disabled`
     // flag), v8 (the `event` rich-text run), v11 (a withdrawn marker block - see the version
     // history in document.ts), v14 (the expression language's `array`/`index` nodes), v15 (its
@@ -358,8 +361,10 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     // is where it first appeared, and it carries the identical shape - so the stamp is a complete
     // migration for that case too. v9 (M-VAR, the persistent `StoryVariableRef` rename),
     // v10 (the character appearance rework - `formName`/`variants` become `pose`/`tags`), v12
-    // (the explicit order of chapter-less scenes), v13 (the `code` block kind's removal) and v18 (the
-    // two closed transform enums becoming one prop bag) are NOT additive, so each has a real step.
+    // (the explicit order of chapter-less scenes), v13 (the `code` block kind's removal), v18 (the
+    // two closed transform enums becoming one prop bag) and v19 (the camera's six operations becoming
+    // that same bag, and the screen effects becoming lens props on it) are NOT additive, so each has
+    // a real step.
     //
     // The stamp is unconditional, and has to be. Each migrator above ends by writing
     // STORY_DOCUMENT_SCHEMA_VERSION rather than the version it actually produces, so the ladder only
@@ -368,6 +373,138 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     // v2 tests kept passing because V2toV3 stamps whatever the constant currently says. Landing the
     // stamp here means the next additive bump cannot reopen that hole.
     return { ...migrated, schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION };
+}
+
+/**
+ * v18→v19: the camera takes the whole prop bag, and the screen effects become part of it.
+ *
+ * Every one of the camera's six operations has a determinate expansion - the same expansion the
+ * compiler was already computing on the fly, which is why none of them needs judgement here. `darken`
+ * is the clearest case: `Camera.darken(d)` IS `filter("brightness(1 - d)")` in the engine, so the bag
+ * writes the brightness the compile emitted for it anyway.
+ *
+ * `reset` is copied through unchanged rather than expanded into a bag of neutral values, and that is a
+ * decision rather than laziness. It compiles to `camera.resetCamera()`, a separate engine primitive
+ * whose 0.29.0 release drops the filter in a zero-duration sequence and eases only the pose; a
+ * hand-built neutral bag would put the two back in one transform and walk the picture through the
+ * colour wheel on the way out of a grade.
+ *
+ * A `screenEffect` row becomes a camera row carrying the lens gesture it was, with every number it
+ * stated kept as an override - the row said "blink for 0.4s in black" and the migrated row says the
+ * same thing to a different instrument. Dropping them instead would be silent data loss on a save the
+ * author did not ask for, and converting them to notes (the v13 answer for `code`) would be wrong
+ * here because these rows DID play: there is a thing on the other side to become.
+ */
+function migrateStoryDocumentV18toV19(document: StoryDocument): StoryDocument {
+    const scenes: Record<StorySceneId, StoryScene> = {};
+    for (const [sceneId, scene] of Object.entries(document.scenes ?? {})) {
+        const blocks: Record<StoryBlockId, StoryBlock> = {};
+        for (const [blockId, block] of Object.entries(scene.blocks ?? {})) {
+            blocks[blockId] = migrateCameraBlock(block);
+        }
+        scenes[sceneId] = { ...scene, blocks };
+    }
+    return { ...document, scenes };
+}
+
+/** Lower bound on camera zoom, restated from the compiler: 0 or negative is not a shot. */
+const LEGACY_MIN_CAMERA_ZOOM = 0.05;
+
+function clamp01(value: unknown): number {
+    const amount = typeof value === "number" && Number.isFinite(value) ? value : 0;
+    return Math.min(1, Math.max(0, amount));
+}
+
+function numberOr(value: unknown, fallback: number): number {
+    return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function migrateCameraBlock(block: StoryBlock): StoryBlock {
+    if (block.kind !== "action") {
+        return block;
+    }
+    const payload = block.payload as Record<string, unknown>;
+    if (payload.action === "screenEffect") {
+        return { ...block, payload: expandLegacyScreenEffect(payload) } as StoryBlock;
+    }
+    if (payload.action !== "camera") {
+        return block;
+    }
+    const operation = String(payload.operation);
+    if (operation === "reset") {
+        return block;
+    }
+    if (operation === "motion") {
+        // Already a ref, and already in animation mode - the shot moves from its own field onto the
+        // one every other subject's shot has always used.
+        const transform = payload.motion && typeof payload.motion === "object" ? payload.motion : { mode: "animation" };
+        return { ...block, payload: { action: "camera", operation: "transform", transform } } as StoryBlock;
+    }
+    const to = expandLegacyCameraOperation(operation, payload);
+    const transform: Record<string, unknown> = {
+        mode: "props",
+        ...(Object.keys(to).length > 0 ? { to } : {}),
+        ...(typeof payload.durationMs === "number" ? { durationMs: payload.durationMs } : {}),
+        ...(typeof payload.easing === "string" ? { easing: payload.easing } : {}),
+    };
+    return { ...block, payload: { action: "camera", operation: "transform", transform } } as StoryBlock;
+}
+
+/** The five settled camera operations, as the props each one always stood for. */
+function expandLegacyCameraOperation(operation: string, payload: Record<string, unknown>): Record<string, unknown> {
+    const position = (payload.position ?? {}) as Record<string, unknown>;
+    switch (operation) {
+        case "pan":
+            return {
+                position: {
+                    xalign: numberOr(position.xalign, 0.5),
+                    yalign: numberOr(position.yalign, 0.5),
+                    ...(position.xoffset !== undefined ? { xoffset: position.xoffset } : {}),
+                    ...(position.yoffset !== undefined ? { yoffset: position.yoffset } : {}),
+                },
+            };
+        case "zoom":
+            return { zoom: Math.max(LEGACY_MIN_CAMERA_ZOOM, numberOr(payload.zoom, 1)) };
+        case "rotate":
+            return { rotation: numberOr(payload.rotation, 0) };
+        case "darken":
+            return { filter: { brightness: 1 - clamp01(payload.darkness) } };
+        case "look": {
+            const filter = typeof payload.filter === "string" ? payload.filter.trim() : "";
+            const preset = typeof payload.lookPreset === "string" ? payload.lookPreset : undefined;
+            return {
+                // A hand-written chain OVERRODE the preset at compile time, and both are kept for the
+                // same reason: the escape hatch stays the escape hatch, and the name stays readable.
+                ...(preset ? { look: { preset, ...(payload.lookIntensity !== undefined ? { intensity: payload.lookIntensity } : {}) } } : {}),
+                ...(filter ? { filterRaw: filter } : {}),
+            };
+        }
+        default:
+            return {};
+    }
+}
+
+/**
+ * A `screenEffect` row as the camera lens gesture it was.
+ *
+ * `durationMs` was the WHOLE move, with `inMs` / `outMs` overriding one half each - so an absent half
+ * falls back to it, which is exactly what the compile did.
+ */
+function expandLegacyScreenEffect(payload: Record<string, unknown>): Record<string, unknown> {
+    const whole = typeof payload.durationMs === "number" ? payload.durationMs : undefined;
+    const half = (value: unknown): number | undefined => (typeof value === "number" ? value : whole);
+    const lens: Record<string, unknown> = {
+        preset: payload.effect === "vignette" ? "vignettePulse" : "blink",
+        ...(half(payload.inMs) !== undefined ? { inMs: half(payload.inMs) } : {}),
+        ...(half(payload.outMs) !== undefined ? { outMs: half(payload.outMs) } : {}),
+        ...(typeof payload.holdMs === "number" ? { holdMs: payload.holdMs } : {}),
+        ...(typeof payload.easing === "string" ? { easing: payload.easing } : {}),
+        ...(typeof payload.color === "string" ? { color: payload.color } : {}),
+        ...(typeof payload.opacity === "number" ? { amount: payload.opacity } : {}),
+        ...(typeof payload.inner === "number" ? { inner: payload.inner } : {}),
+        ...(typeof payload.outer === "number" ? { outer: payload.outer } : {}),
+    };
+    return { action: "camera", operation: "transform", transform: { mode: "props", to: { lens } } };
 }
 
 /**

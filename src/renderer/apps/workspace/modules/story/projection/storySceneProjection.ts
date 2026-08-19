@@ -341,11 +341,10 @@ function formatAction(
         return "/blueprint";
     }
     if (payload.action === "camera") {
-        const amount = payload.operation === "zoom" ? payload.zoom
-            : payload.operation === "rotate" ? payload.rotation
-                : payload.operation === "darken" ? payload.darkness
-                    : undefined;
-        return `/camera ${payload.operation}${amount === undefined ? "" : ` ${amount}`}`;
+        // The camera is a reserved TARGET, so the line is the verb every other subject's is. The bag
+        // itself is not spelled here: this projection is a one-line summary, and the command line is
+        // where a row prints the channels it states.
+        return payload.operation === "reset" ? "/reset camera" : "/transform camera";
     }
     if (payload.action === "plugin") {
         // The action id, not the plugin's label: this projection is the exported script, which has to
@@ -353,7 +352,10 @@ function formatAction(
         // is the only half of the pair the document actually holds.
         return `/${payload.actionId}`;
     }
-    return `/effect ${payload.effect}`;
+    // Defensive rather than reachable: every arm above is exhaustive over the union. A document from
+    // a newer schema can still carry an action this build has no word for, and a row that prints
+    // nothing at all would read as an empty line in an exported script.
+    return "/action";
 }
 
 /**

@@ -437,10 +437,7 @@ export const story = {
         displayName: "显示名",
         seekTime: "秒数",
         cameraLookStrength: "色调强度",
-        effectIn: "渐入秒数",
-        effectOut: "渐出秒数",
-        vignetteInner: "透明中心 %",
-        vignetteOuter: "全暗边缘 %",
+
         // 这个词会同时出现在三处：候选菜单的左栏、行内提示 `<持续时间>`、以及作者可以直接敲的键
         // （`持续时间=1` 与 `d=1` 等价）。所以它必须是一个不含空格、在同一条指令里不重名的词。
         duration: "持续时间",
@@ -477,6 +474,13 @@ export const story = {
         filterInvert: "反色",
         filterCss: "滤镜代码",
         cameraLook: "色调",
+        cameraLens: "镜头效果",
+        shutter: "眼皮",
+        shutterColor: "眼皮颜色",
+        vignette: "暗角",
+        vignetteColor: "暗角颜色",
+        vignetteInner: "透明中心 %",
+        vignetteOuter: "全暗边缘 %",
         maskImage: "遮罩图",
         clipPath: "裁剪路径",
         backdropFilter: "背景滤镜",
@@ -488,7 +492,6 @@ export const story = {
         repeatDelay: "重复间隔",
         fromProps: "起始属性",
         conceal: "退场",
-        screenEffect: "闪屏 / 暗角",
     },
 
     /**
@@ -585,8 +588,9 @@ export const story = {
         backInOut: "回弹入出",
         anticipate: "预备",
         // The two screen-wide gestures, as `/screen`'s first positional.
-        blink: "闪屏",
-        vignette: "暗角",
+        blink: "眨眼",
+        slowBlink: "慢眨眼",
+        vignettePulse: "暗角脉冲",
     },
 
     /**
@@ -954,7 +958,6 @@ export const story = {
         cut: { label: "截断", detail: "让某个变体的剧情在此行结束，其他变体中没有这一行" },
         blueprint: { label: "蓝图", detail: "运行故事动作蓝图" },
         transform: { label: "变换", detail: "移动、缩放、旋转、遮罩、滤镜或淡入淡出舞台上的任何东西，镜头也在内" },
-        screen: { label: "全屏", detail: "全屏演出：闪屏或暗角" },
         note: { label: "备注", detail: "仅 Studio 可见的备注" },
     },
     containerHeader: {
@@ -1046,19 +1049,14 @@ export const story = {
         nvl: "NVL 块",
         blueprint: "蓝图",
         pluginAction: "插件动作",
-        effect: "{effect} 屏幕特效",
         // 镜头行的措辞就是作者敲进去的那个词（`story.enumValue.*`）——行里读到的和手册里教的
         // 必须是同一个词，否则又回到"打的是缩放、显示的是推拉"那种割裂。
         cameraOp: {
-            pan: "平移",
-            zoom: "缩放",
-            rotate: "旋转",
-            darken: "压暗",
+            transform: "镜头",
             look: "色调",
             motion: "运镜",
             reset: "复位",
         },
-        cameraLookCustom: "自定义",
         condition: "条件",
         branch: "{branch} 分支",
         label: "标签 {name}",

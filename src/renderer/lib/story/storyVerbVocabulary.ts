@@ -120,20 +120,6 @@ const DISPLAYABLE: Record<OperationOf<"displayable">, CommandId> = {
     bringToFront: "front",
 };
 
-/**
- * One token for both, with the effect as its first positional (`/screen blink`).
- *
- * They were two tokens, on the reasoning that a blink and a vignette are different gestures with
- * different knobs. They are - but so are `pan` and `zoom`, which the camera always kept in one token,
- * and the knobs differing is what a param subset is for. What the two share is everything a TOKEN
- * answers for: one payload arm, one effect layer, one in-and-out-with-a-hold shape, and no subject of
- * their own anywhere else in the language.
- */
-const SCREEN_EFFECT: Record<Extract<StoryActionPayload, { action: "screenEffect" }>["effect"], CommandId> = {
-    blink: "screen",
-    vignette: "screen",
-};
-
 /** The command id whose label names this payload's verb, or `null` when no command owns it. */
 export function storyVerbCommandId(payload: StoryActionPayload): CommandId | null {
     switch (payload.action) {
@@ -153,7 +139,6 @@ export function storyVerbCommandId(payload: StoryActionPayload): CommandId | nul
             return payload.operation === "muteSound"
                 ? (payload.muted === false ? "unmute" : "mute")
                 : AUDIO[payload.operation] ?? null;
-        case "screenEffect": return SCREEN_EFFECT[payload.effect] ?? null;
         case "setBackground": return "background";
         case "wait": return "wait";
         case "nvl": return "nvl";
