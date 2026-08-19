@@ -266,6 +266,10 @@ export const assets = {
      */
     sets: {
         itemType: "资产集",
+        axisWord: {
+            language: "语言",
+            variant: "变体",
+        },
         variantCount: {
             one: "{count} 个变体",
             other: "{count} 个变体",

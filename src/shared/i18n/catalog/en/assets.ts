@@ -376,6 +376,14 @@ export const assets = {
     sets: {
         /** What a set's row calls itself in a rename dialog. */
         itemType: "set",
+        /**
+         * The two axes a project can name for itself, used on a variant row in place of the tag
+         * category. Everything else prints the category the author wrote.
+         */
+        axisWord: {
+            language: "Language",
+            variant: "Variant",
+        },
         /** Every variant resolves. The only sentence a finished set shows. */
         variantCount: {
             one: "{count} variant",

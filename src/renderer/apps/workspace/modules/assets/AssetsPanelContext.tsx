@@ -2,6 +2,7 @@ import { AssetCategory } from '@/lib/workspace/services/assets/assetTypes';
 import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
 import type { MediaAssetSupportRecord } from '@/lib/workspace/services/media/mediaAssetSupport';
 import { createContext, useContext } from 'react';
+import type { AssetSetAxisNaming } from '@shared/types/assetSetLabels';
 import type { ResolvedAssetSet } from './state/useAssetSets';
 import { ClipboardState } from './state/useClipboard';
 import { DraggedItemState } from './state/useDragAndDrop';
@@ -45,6 +46,11 @@ interface AssetsPanelContextType {
     isMultiSelectMode: boolean;
     expandedGroups: Set<string>;
     setExpandedGroups: React.Dispatch<React.SetStateAction<Set<string>>>;
+    /** Sets drawn open, listing one row per variant. Kept apart from folders: different ids, different rows. */
+    expandedAssetSets: Set<string>;
+    setExpandedAssetSets: React.Dispatch<React.SetStateAction<Set<string>>>;
+    /** What lets a variant row name its axis in the project's words instead of in tags. */
+    assetSetNaming: AssetSetAxisNaming;
 
     // Handlers
     handleItemSelect: (itemId: string, isGroup: boolean, event: React.MouseEvent) => void;
