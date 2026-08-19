@@ -178,6 +178,20 @@ export type AppTagDeclaredScene = {
  * undeclared and the build stops, empty means declared to start nothing and it does not.
  */
 export type AppTagReachableScenes = Record<string, AppTagDeclaredScene[]>;
+
+/**
+ * Where this edition sits on each build-time asset axis: axis key to the value it takes.
+ *
+ * An asset set with a `build` axis resolves once, while the package is compiled, and the variants it
+ * did not take **do not ship** - see `@shared/types/assetSet`, where that is stated as a safety
+ * property and not a size one. This record is what makes the choice: an axis names a dimension the
+ * project's art varies along (`rating`, `region`), and each edition states its position on it.
+ *
+ * On the variant rather than on the axis, because the axis is a fact about the art and the position
+ * is a fact about the edition. An edition that says nothing inherits, which is what lets a project
+ * add a third edition without touching the two that already build.
+ */
+export type AppTagAssetAxes = Record<string, string>;
 /**
  * The page a build shows when its story falls off the end.
  *
@@ -208,6 +222,8 @@ export interface ProjectAppTag {
      * configures nothing is byte-identical to one written before plugins could ask for anything.
      */
     pluginConfig?: AppTagPluginConfig;
+    /** Only the axis positions this variant states itself. See {@link AppTagAssetAxes}. */
+    assetAxes?: AppTagAssetAxes;
     /** Only the scene declarations this variant states itself. See {@link AppTagReachableScenes}. */
     reachableScenes?: AppTagReachableScenes;
     /**
@@ -280,6 +296,15 @@ export type ProjectAppTagDocument = {
      */
     pluginConfig?: AppTagPluginConfig;
     /**
+     * The project's own axis positions - what every variant inherits, and what the release tag reads.
+     * At the root for the reason {@link pluginConfig} is.
+     *
+     * The release edition is where an axis's default position belongs: it is the full product, so
+     * the value it takes is the one an author thinks of as "the art", and every narrower edition
+     * states only where it differs.
+     */
+    assetAxes?: AppTagAssetAxes;
+    /**
      * The project's own scene declarations - what every variant inherits, and what the release tag
      * reads. At the root for the reason {@link pluginConfig} is: the release tag is synthesized and
      * stores nothing, so there is no record on it for a value to live in.
@@ -328,6 +353,7 @@ export function normalizeProjectAppTag(raw: unknown): ProjectAppTag | null {
     const name = typeof record.name === "string" && record.name.trim() ? record.name.trim() : id;
     const pluginConfig = normalizeAppTagPluginConfig(record.pluginConfig);
     const reachableScenes = normalizeAppTagReachableScenes(record.reachableScenes);
+    const assetAxes = normalizeAppTagAssetAxes(record.assetAxes);
 
     return {
         id,
@@ -337,6 +363,7 @@ export function normalizeProjectAppTag(raw: unknown): ProjectAppTag | null {
         // every tag in every project the author merely opened.
         ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
         ...(hasAppTagReachableScenes(reachableScenes) ? { reachableScenes } : {}),
+        ...(hasAppTagAssetAxes(assetAxes) ? { assetAxes } : {}),
         // Kept whenever the key is present, blank included, for the reason the list above is: on a
         // variant "" is the statement "this edition shows nothing when its story ends", and dropping
         // it would silently hand the variant the project's page instead.
@@ -408,6 +435,47 @@ export function hasAppTagPluginConfig(config: AppTagPluginConfig | undefined): b
  * A mechanism key mapped to an empty list survives, because that is how "this one starts nothing
  * under this variant" is written. Only a key that is not a list at all is dropped.
  */
+/**
+ * An axis record as the rest of Studio may assume it: axis keys and values trimmed and non-blank.
+ *
+ * A blank value is dropped rather than kept, because on this record "absent" already means "take the
+ * inherited position" - a blank would be a second spelling of it that only some readers would honour.
+ */
+export function normalizeAppTagAssetAxes(raw: unknown): AppTagAssetAxes {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return {};
+    }
+    const axes: AppTagAssetAxes = {};
+    for (const [rawKey, rawValue] of Object.entries(raw as Record<string, unknown>)) {
+        const key = rawKey.trim();
+        const value = typeof rawValue === "string" ? rawValue.trim() : "";
+        if (key && value) {
+            axes[key] = value;
+        }
+    }
+    return axes;
+}
+
+export function hasAppTagAssetAxes(axes: AppTagAssetAxes | undefined): boolean {
+    return Boolean(axes && Object.keys(axes).length > 0);
+}
+
+/**
+ * Where this tag sits on every axis: the project's own positions, with the tag's replacing them key
+ * by key.
+ *
+ * Merged rather than replaced, unlike `reachableScenes` - and the difference is in what the two
+ * records mean. A scene list is one statement about the whole edition, so a narrower one has to win
+ * outright; an axis record is several independent statements, and an edition that states only its
+ * rating has said nothing at all about its region.
+ */
+export function resolveAppTagAssetAxes(
+    tag: ProjectAppTag,
+    base: AppTagAssetAxes | undefined,
+): AppTagAssetAxes {
+    return { ...(base ?? {}), ...(tag.assetAxes ?? {}) };
+}
+
 export function normalizeAppTagReachableScenes(raw: unknown): AppTagReachableScenes {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
         return {};
@@ -557,6 +625,7 @@ export function migrateProjectAppTagDocument(raw: unknown): ProjectAppTagDocumen
         : undefined;
     const pluginConfig = normalizeAppTagPluginConfig(record.pluginConfig);
     const reachableScenes = normalizeAppTagReachableScenes(record.reachableScenes);
+    const assetAxes = normalizeAppTagAssetAxes(record.assetAxes);
     const endingSurfaceId = normalizeAppTagEndingSurfaceId(record.endingSurfaceId);
 
     return {
@@ -564,6 +633,7 @@ export function migrateProjectAppTagDocument(raw: unknown): ProjectAppTagDocumen
         tags: normalizeProjectAppTags(record.tags),
         ...(hasAppTagPluginConfig(pluginConfig) ? { pluginConfig } : {}),
         ...(hasAppTagReachableScenes(reachableScenes) ? { reachableScenes } : {}),
+        ...(hasAppTagAssetAxes(assetAxes) ? { assetAxes } : {}),
         // Omitted when blank, unlike a variant's own key and for the same reason the list above is:
         // this is the record a variant that states nothing reads, so there is nothing for a blank to
         // mean that absence does not already say.

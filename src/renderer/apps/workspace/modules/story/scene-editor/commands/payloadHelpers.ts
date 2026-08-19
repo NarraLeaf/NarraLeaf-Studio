@@ -20,20 +20,28 @@ import { applyPlacementToTransform, applyTransitionWordToTransform, transitionKi
  */
 export function withTransitionRef(
     current: StoryTransitionRef | undefined,
-    context: "scene" | "character",
+    context: "scene" | "character" | "expression",
     t: StoryCommandValue | undefined,
     d: StoryCommandValue | undefined,
+    rule?: StoryCommandValue | undefined,
 ): StoryTransitionRef | undefined {
     const word = asEnum(t);
-    const kind = word === undefined ? undefined : transitionKindFor(context, word);
+    // Naming a picture says which engine plays it, so `t=` is not also required. `/bg forest
+    // rule=spiral` is the whole line, and the word remains typeable for a row that wants the
+    // engine before it has picked a picture.
+    const ruleAssetId = rule?.kind === "asset" ? rule.assetId : undefined;
+    const kind = ruleAssetId !== undefined
+        ? "ruleReveal" as const
+        : word === undefined ? undefined : transitionKindFor(context, word);
     const durationMs = asDurationMs(d);
-    if (kind === undefined && durationMs === undefined) {
+    if (kind === undefined && durationMs === undefined && ruleAssetId === undefined) {
         return current;
     }
     return {
         ...(current ?? { kind: transitionKindFor(context, "fade") ?? "fadeIn" }),
         ...(kind !== undefined ? { kind } : {}),
         ...(durationMs !== undefined ? { durationMs } : {}),
+        ...(ruleAssetId !== undefined ? { ruleAssetId } : {}),
     };
 }
 

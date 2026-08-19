@@ -456,6 +456,7 @@ export const story = {
         skin: "スキン",
         puppetParam: "パラメータ",
         puppetParamValue: "数値",
+        ruleImage: "ルール画像",
         imageAsset: "画像",
         imageOrColor: "画像または色",
         videoAsset: "動画",
@@ -536,6 +537,8 @@ export const story = {
     enumValue: {
         // トランジションの語（`t=`）
         fade: "フェード",
+        // 「フェード」は文脈で意味が変わる語。こちらは常にクロスフェードそのものを指す。
+        dissolve: "ディゾルブ",
         slide: "スライド",
         "slide-left": "左スライド",
         "slide-right": "右スライド",
@@ -553,6 +556,7 @@ export const story = {
         black: "暗転",
         darkness: "暗さ",
         exposure: "露出",
+        rule: "ルール画像",
         none: "なし",
         // 表示と非表示で `t=` が届く、トランジションの語では名指しできない変形のプリセット。
         scale: "拡大縮小",
@@ -968,6 +972,7 @@ export const story = {
         layer: { label: "レイヤー", detail: "描画のレイヤーを作る" },
         swap: { label: "差し替え", detail: "オブジェクトの画像やテキストを入れ替える" },
         play: { label: "再生", detail: "動画を再生する" },
+        front: { label: "最前面へ", detail: "キャラクターや舞台オブジェクトを同じレイヤーの最前面に描く" },
         font: { label: "書式", detail: "テキストの大きさや色を変える" },
         bgm: { label: "BGM", detail: "背景音楽を決める" },
         sound: { label: "効果音", detail: "効果音を鳴らす" },

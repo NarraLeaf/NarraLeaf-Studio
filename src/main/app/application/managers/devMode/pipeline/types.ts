@@ -74,6 +74,23 @@ export type DevModeBundleLoadContext = {
      * and Preview want: neither drops a scene, so neither has anything to report.
      */
     onNotice?: (message: string) => void;
+    /**
+     * Where the edition being built sits on each build-time asset axis, already folded for it.
+     *
+     * Absent means the project's own positions and nothing else, which is what Dev Mode and the
+     * preview mean - neither packages anything, so neither has an edition to take a position as.
+     */
+    assetAxes?: Readonly<Record<string, string>>;
+    /**
+     * Called when a build axis collapsed, i.e. this package deliberately leaves some of the library
+     * out.
+     *
+     * The caller must narrow the library when it fires, **including for the release edition**: the
+     * usual reason for skipping that (a release removes nothing, so it carries nothing unreachable)
+     * stops being true the moment an axis drops a variant, and not narrowing ships exactly the bytes
+     * the axis exists to withhold.
+     */
+    onAssetSetCollapse?: () => void;
     compiled?: Record<string, unknown>;
     blueprintCompiledScripts?: Record<string, string>;
     blueprintScriptsCompileOk?: boolean;

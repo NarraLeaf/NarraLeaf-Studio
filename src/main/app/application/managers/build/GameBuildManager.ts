@@ -110,6 +110,7 @@ import {
     isBuiltinAppTagId,
     resolveAppTag,
     resolveAppTagPluginConfigValue,
+    resolveAppTagAssetAxes,
     resolveAppTagReachableScenes,
     type AppTagPluginConfig,
     type ProjectAppTag,
@@ -934,10 +935,9 @@ export class GameBuildManager {
 
         const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
         const appTag = await this.resolveBuildVariant(session, projectPath, request);
-        const declaredScenes = resolveAppTagReachableScenes(
-            appTag,
-            (await readProjectAppTagDocumentFromDir(projectPath).catch(() => null))?.reachableScenes,
-        );
+        const appTagDocument = await readProjectAppTagDocumentFromDir(projectPath).catch(() => null);
+        const declaredScenes = resolveAppTagReachableScenes(appTag, appTagDocument?.reachableScenes);
+        const assetAxes = resolveAppTagAssetAxes(appTag, appTagDocument?.assetAxes);
         const identity = this.resolveIdentity(session, projectConfig, projectPath, appTag);
 
         // Without a key there is nothing to seal a patch with, and nothing in any
@@ -978,6 +978,7 @@ export class GameBuildManager {
             ...(debuggable ? { debuggable: true } : {}),
             appTag: { id: appTag.id, name: appTag.name },
             declaredScenes,
+            assetAxes,
             // The payload a player receives, so it plans a scene drop and refuses a
             // graph it cannot fold - exactly as the build it patches did.
             packaging: true,
@@ -1289,10 +1290,12 @@ export class GameBuildManager {
         // What the author says each mechanism the build cannot read can start. Read here rather than
         // inside the compile because both compiles below are the same game under one variant, and two
         // reads of the same file could straddle a write.
-        const declaredScenes = resolveAppTagReachableScenes(
-            appTag,
-            (await readProjectAppTagDocumentFromDir(projectPath).catch(() => null))?.reachableScenes,
-        );
+        const appTagDocument = await readProjectAppTagDocumentFromDir(projectPath).catch(() => null);
+        const declaredScenes = resolveAppTagReachableScenes(appTag, appTagDocument?.reachableScenes);
+        // Where this edition sits on each build-time asset axis, off the same read for the reason
+        // above: two reads could straddle a write and produce a package whose art and whose story
+        // came from different versions of the same decision.
+        const assetAxes = resolveAppTagAssetAxes(appTag, appTagDocument?.assetAxes);
         const identity = this.resolveIdentity(session, projectConfig, projectPath, appTag);
         // Everything the credentials this build needs unseals to. Resolved here,
         // before the compile: a credential this machine cannot use fails the
@@ -1385,6 +1388,7 @@ export class GameBuildManager {
                 // it: the desktop pack and the web/mobile one are the same game under one variant.
                 appTag: { id: appTag.id, name: appTag.name },
                 declaredScenes,
+                assetAxes,
                 // The one compile that produces something a player receives, so the one that plans a
                 // scene drop and refuses a graph it cannot fold.
                 packaging: true,
@@ -1435,6 +1439,7 @@ export class GameBuildManager {
                 mode: "production",
                 appTag: { id: appTag.id, name: appTag.name },
                 declaredScenes,
+                assetAxes,
                 packaging: true,
                 locale: getMainLocale(this.app),
                 // The browser export and both mobile repacks read this one compile, so all three are

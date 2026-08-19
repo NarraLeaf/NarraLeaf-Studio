@@ -699,7 +699,18 @@ export type StoryActionPayload =
            * command line had to comment on because `/fx blur d=` and `/show d=` wrote different fields.
            */
           action: "displayable";
-          operation: "show" | "hide" | "transform";
+          /**
+           * `bringToFront` is the fourth, and it is not a transform: it moves the element to the top
+           * of the stacking order WITHIN its own layer, in one frame, with no state in between to
+           * interpolate - so it carries no `transform` and no duration. It is the only ordering
+           * control there is, deliberately: an absolute z on a displayable needs an editor to be
+           * usable, while "put this in front" says what it does on the line that writes it, and any
+           * arrangement is reachable by bringing each element forward back-to-front in turn.
+           *
+           * Additive: no document written before it carries the value, so no schema bump - the same
+           * rule `camera` and `vfx` came in under.
+           */
+          operation: "show" | "hide" | "transform" | "bringToFront";
           target: StoryDisplayableTargetRef;
           transform?: StoryTransformRef;
       }
@@ -1361,11 +1372,23 @@ export type StoryTransitionRef = {
         // 0.28.0: engine `Exposure` — the frame burns out per channel instead of
         // being covered. Additive, like the mask additions above.
         | "exposure"
+        // 0.30.0: engine `RuleReveal` — a greyscale picture decides the order the frame changes
+        // over. Additive as well; the picture it needs is {@link StoryTransitionRef.ruleAssetId}.
+        | "ruleReveal"
         | "throughColor"
         | "darkness"
         | "custom";
     durationMs?: number;
     easing?: string;
+    /**
+     * `ruleReveal` — the greyscale picture that decides the order.
+     *
+     * A first-class field rather than an entry in {@link props} because it is an asset id, and the
+     * reference index only walks named asset fields: parked in `props` it would be invisible to
+     * "what uses this image", and the unreferenced-asset lint would tell the author to delete a
+     * picture their scene changes depend on.
+     */
+    ruleAssetId?: string;
     props?: Record<string, StoryLiteralValue>;
 };
 

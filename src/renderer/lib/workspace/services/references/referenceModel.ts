@@ -342,10 +342,24 @@ export function extractStoryAssetReferences(
                 pushBlockReference(block.id, "dialogue.voiceAssetId", block.payload.voiceAssetId);
                 continue;
             }
+            // A jump is its own block kind, not an action, so the switch below never sees it -
+            // and it carries a transition, which since 0.30.0 can name a rule image.
+            if (block.kind === "jump") {
+                pushBlockReference(block.id, "transition.ruleAssetId", block.payload.transition?.ruleAssetId);
+                continue;
+            }
             if (block.kind !== "action") {
                 continue;
             }
             const payload = block.payload;
+            // Every transition-carrying payload can name a rule image, and it is the one asset a
+            // row uses without the id sitting on the payload itself. Walked before the switch so a
+            // new transition-carrying action cannot forget it.
+            // `nvl` is excluded because its `transition` is a StoryTransformRef and not a
+            // transition at all - the panel animates through its own transform, and it has no kind.
+            if ("transition" in payload && payload.action !== "nvl") {
+                pushBlockReference(block.id, "transition.ruleAssetId", payload.transition?.ruleAssetId);
+            }
             switch (payload.action) {
                 case "setBackground":
                     pushBlockReference(block.id, "background.assetId", payload.assetId);

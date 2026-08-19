@@ -15,7 +15,7 @@ import { declarationFromArgs } from "./variables";
  */
 
 const CONTEXT: StoryCommandContext = {
-    images: [{ id: "i1", name: "forest_day" }, { id: "i2", name: "night" }],
+    images: [{ id: "i1", name: "forest_day" }, { id: "i2", name: "night" }, { id: "i3", name: "spiral" }],
     audio: [{ id: "a1", name: "theme" }, { id: "a2", name: "hit" }],
     videos: [{ id: "v1", name: "intro" }],
     // Alice is drawn by Studio; Doll is drawn by a runtime the author supplied, so she has no
@@ -93,6 +93,29 @@ describe("scene commands", () => {
             payload: { action: "setBackground", assetId: "i1", color: undefined, transition: { kind: "dissolve", durationMs: 500 } },
         });
         expect(build("/bg #1a1a1a")).toMatchObject({ payload: { color: "#1a1a1a", assetId: undefined } });
+    });
+
+    it("/bg takes a rule image, and naming one is what says which engine plays it", () => {
+        // No `t=rule` on the line: the picture implies the engine, which is the whole reason
+        // `rule=` is a slot of its own rather than a spelling of `t=`.
+        expect(build("/bg forest_day rule=spiral d=1.2")).toMatchObject({
+            payload: {
+                action: "setBackground",
+                assetId: "i1",
+                transition: { kind: "ruleReveal", ruleAssetId: "i3", durationMs: 1200 },
+            },
+        });
+        // The word still parses on its own, for a row that picks its picture on the right.
+        expect(build("/bg forest_day t=rule")).toMatchObject({
+            payload: { transition: { kind: "ruleReveal" } },
+        });
+    });
+
+    it("/jump takes a rule image too", () => {
+        expect(build("/jump \"Chapter 2\" rule=spiral")).toMatchObject({
+            kind: "jump",
+            payload: { transition: { kind: "ruleReveal", ruleAssetId: "i3" } },
+        });
     });
 
     it("/bg rejects a word its context does not support", () => {
@@ -253,6 +276,43 @@ describe("puppet state channels", () => {
         expect(issuesOf("/face Nobody smile")).toEqual(["unknownCharacter"]);
     });
 
+    it("/face takes a transition, and writes it on the ref the swap actually plays", () => {
+        // `expression` is the one character operation the engine plays a `StoryTransitionRef` on -
+        // it compiles to `char(src, transition)`. So `d=` is THAT ref's duration; the transform's
+        // duration is the entrance/exit timing, and a swap that wrote it would edit a live-looking
+        // field nothing on stage reads.
+        expect(build("/face Alice smile t=wipe d=0.4")).toMatchObject({
+            payload: {
+                action: "character",
+                operation: "expression",
+                characterId: "c1",
+                pose: "t1",
+                transition: { kind: "softWipe", durationMs: 400 },
+            },
+        });
+        expect(build("/face Alice smile t=wipe d=0.4").payload).not.toHaveProperty("transform");
+        // `fade` on a swap is a fade-in, not the crossfade it is on a `/bg`: `Dissolve` half-fades
+        // both frames at once and shows the background through the middle, while `FadeIn` leaves the
+        // outgoing frame fully opaque and brings the new one up over it. The crossfade is still
+        // reachable - by name.
+        expect(build("/face Alice smile t=fade")).toMatchObject({ payload: { transition: { kind: "fadeIn" } } });
+        expect(build("/face Alice smile t=dissolve")).toMatchObject({ payload: { transition: { kind: "dissolve" } } });
+        // No `t=`, no ref: a row that says nothing about the swap must not gain a field.
+        expect(build("/face Alice smile").payload).not.toHaveProperty("transition");
+    });
+
+    it("refuses a transition on a puppet, whose expression has no second frame", () => {
+        // A puppet's expression compiles to `puppet.setExpression(name)` - the backend owns the inside
+        // of the box, and nothing in that call takes a transition. The key is the mistake, not the
+        // character, so the report names the key.
+        expect(issuesOf("/face Doll smile t=wipe")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/face Doll smile d=0.4")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/face Doll smile t=wipe d=0.4")).toEqual(["unsupportedParam", "unsupportedParam"]);
+        // The verb itself is untouched on both kinds of character.
+        expect(issuesOf("/face Doll smile")).toEqual([]);
+        expect(issuesOf("/face Alice smile t=wipe d=0.4")).toEqual([]);
+    });
+
     it("/motion and /skin write their own operation and nothing else", () => {
         expect(build("/motion Doll run")).toMatchObject({
             kind: "action",
@@ -337,6 +397,38 @@ describe("media objects", () => {
         expect(build("/font title 48")).toMatchObject({ payload: { operation: "setFontSize", fontSize: 48, objectName: "title" } });
         expect(build("/font title color=#ff0000")).toMatchObject({ payload: { operation: "setFontColor", fontColor: "#ff0000" } });
         expect(issuesOf("/font title 48 color=#ff0000")).toEqual(["conflictingParams"]);
+    });
+
+    it("/front raises one displayable, and states nothing else", () => {
+        expect(build("/front hero")).toMatchObject({
+            kind: "action",
+            payload: { action: "displayable", operation: "bringToFront", target: { kind: "image", name: "hero" } },
+        });
+        expect(build("/front title")).toMatchObject({
+            payload: { action: "displayable", operation: "bringToFront", target: { kind: "text", name: "title" } },
+        });
+        expect(build("/front Alice")).toMatchObject({
+            payload: { action: "displayable", operation: "bringToFront", target: { kind: "character", name: "Alice" } },
+        });
+        // No duration, no bag: the raise is one frame, and the payload carries neither.
+        expect(Object.keys(build("/front hero").payload).sort()).toEqual(["action", "operation", "target"]);
+        expect(Object.keys(getCommandSpec("front")?.params ?? {})).toEqual(["target"]);
+    });
+
+    it("/front names what it found when the target is a kind it cannot raise", () => {
+        // The `refuses` half, exactly as `/transform` does it: a layer, a video and an ambience
+        // overlay are on stage under names the author can see, so the slot resolves them in order to
+        // report them - answering "nothing on stage is named overlay" would be a lie.
+        for (const line of ["/front overlay", "/front clip", "/front petals"]) {
+            expect(issuesOf(line)).toEqual(["unsupportedTarget"]);
+        }
+        // ...and a name nothing answers to is still the other message: check the spelling.
+        expect(issuesOf("/front nobody")).toEqual(["unknownTarget"]);
+        // The refused kinds are refused, never quietly accepted into a payload that cannot hold them.
+        const target = getCommandSpec("front")?.params.target.type;
+        const accepts = (Array.isArray(target) ? target : [target]).flatMap(type =>
+            type && type.kind === "target" ? [...type.accepts] : []);
+        expect(accepts).toEqual(["image", "text", "character"]);
     });
 });
 

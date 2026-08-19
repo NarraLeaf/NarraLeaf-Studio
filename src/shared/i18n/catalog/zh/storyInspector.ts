@@ -49,6 +49,8 @@ export const storyInspector = {
         fromAngle: "起始角度 °",
         rows: "行数",
         cols: "列数",
+        rule: "规则图",
+        inverted: "从亮部开始",
         stagger: "错位",
         shape: "形状",
         pattern: "样式",
@@ -127,6 +129,7 @@ export const storyInspector = {
         throughColor: "过色",
         darkness: "压暗",
         exposure: "曝光",
+        ruleReveal: "规则图",
         exposureEv: "曝光量（EV）",
         exposureLift: "暗部提亮 0-1",
         startX: "起始 X",
@@ -153,6 +156,7 @@ export const storyInspector = {
         darkness: "在起始暗度上换图，再把亮度动到结束暗度；1 → 0 是从黑场中浮现，0 → 1 是渐暗至黑",
         throughColor: "用纯色盖住画面，停留片刻再显露新图片；淡入黑／白、光圈至黑场、闪白（停留 0）都用它",
         exposure: "画面按曝光烧到白，高光先到、暗部最后，再从白里落回新画面；暗部提亮为 0 时黑色不会变白",
+        ruleReveal: "按一张灰度图指定的顺序换画面：暗的地方先换，亮的地方最后换",
     },
     wipeDirection: {
         left: "左",
@@ -303,6 +307,7 @@ export const storyInspector = {
     },
     displayableOperation: {
         transform: "变换",
+        bringToFront: "置顶",
         mask: "遮罩",
         clearMask: "清除遮罩",
         clip: "裁剪路径",

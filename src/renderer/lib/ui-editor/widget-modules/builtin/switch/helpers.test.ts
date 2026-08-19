@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
 import { UI_SWITCH_ON_VARIANT_ID, type UISwitchChildSlot } from "@shared/types/ui-editor/switch";
-import { getStateMotions, resolveStateMotionOffset } from "@shared/types/ui-editor/stateMotion";
+import { getStateMotions } from "@shared/types/ui-editor/stateMotion";
 import { resolveContainerAppearanceTransitions } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
 import { SwitchWidgetModule } from "../switch";
 import { createSwitchPartProps } from "./helpers";
 
-function appearanceOf(kind: UISwitchChildSlot): AppearanceModel {
-    return createSwitchPartProps(kind).appearance as AppearanceModel;
+function appearanceOf(kind: UISwitchChildSlot, travel = 0): AppearanceModel {
+    return createSwitchPartProps(kind, travel).appearance as AppearanceModel;
 }
 
 function groupIn(model: AppearanceModel, variantId: string, key: string) {
@@ -39,14 +39,17 @@ describe("switch part appearance", () => {
         expect(resolve(null)).toBeDefined();
     });
 
-    it("leaves the thumb's position out of its states entirely", () => {
-        const model = appearanceOf("thumb");
+    it("puts the thumb's travel in its on state, with the trip animated both ways", () => {
+        const model = appearanceOf("thumb", 24);
 
-        // Where the thumb sits is the thumb's own geometry, dragged like anything else. A state that
-        // carried a position would be a second owner of it.
-        for (const variant of model.variants) {
-            expect(groupIn(model, variant.id, "transformOffsetX")?.rows[0]?.value).toBe(0);
-        }
+        // Where a part sits in a state belongs to that state, the same way the track's colour does:
+        // it is what an author edits by dragging the thumb while looking at the on state.
+        expect(groupIn(model, model.defaultVariantId, "transformOffsetX")?.rows[0]?.value).toBe(0);
+        expect(groupIn(model, UI_SWITCH_ON_VARIANT_ID, "transformOffsetX")?.rows[0]?.value).toBe(24);
+        expect(groupIn(model, model.defaultVariantId, "transformOffsetX")?.transition).toEqual(
+            groupIn(model, UI_SWITCH_ON_VARIANT_ID, "transformOffsetX")?.transition,
+        );
+        expect(groupIn(model, UI_SWITCH_ON_VARIANT_ID, "transformOffsetX")?.transition).toBeDefined();
     });
 });
 
@@ -61,19 +64,21 @@ describe("switch default children", () => {
         props: {},
     } as const;
 
-    it("puts the travel on the switch as the motion it applies while on", () => {
+    it("gives the thumb its travel and leaves the switch holding no motion of its own", () => {
         let next = 0;
         const result = SwitchWidgetModule.createDefaultChildElements?.({
             element: element as never,
             generateId: () => `id-${++next}`,
         });
-        const motions = getStateMotions(result?.elementPatch?.props as Record<string, unknown>);
         const thumb = result?.children.find(child => child.extra?.switchSlot === "thumb");
+        const thumbModel = (thumb?.props as { appearance?: AppearanceModel } | undefined)?.appearance;
 
         expect(thumb).toBeDefined();
-        expect(motions).toHaveLength(1);
-        expect(resolveStateMotionOffset(motions, UI_SWITCH_ON_VARIANT_ID, thumb!.id)).toMatchObject({ x: 24, y: 0 });
-        // Off is the same motion with nowhere to go, which is what makes the way back move too.
-        expect(resolveStateMotionOffset(motions, null, thumb!.id)).toMatchObject({ x: 0, y: 0 });
+        expect(thumbModel).toBeDefined();
+        // The travel is the thumb's position in the on state, not something the switch layers over
+        // it: one owner, editable by dragging, animated by the field's own transition.
+        expect(groupIn(thumbModel!, UI_SWITCH_ON_VARIANT_ID, "transformOffsetX")?.rows[0]?.value).toBe(24);
+        expect(groupIn(thumbModel!, thumbModel!.defaultVariantId, "transformOffsetX")?.rows[0]?.value).toBe(0);
+        expect(getStateMotions(result?.elementPatch?.props as Record<string, unknown>)).toHaveLength(0);
     });
 });
