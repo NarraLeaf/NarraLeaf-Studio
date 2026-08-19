@@ -270,6 +270,10 @@ export const assets = {
             language: "语言",
             variant: "变体",
         },
+        axisKind: {
+            locale: "语言",
+            release: "变体",
+        },
         variantCount: {
             one: "{count} 个变体",
             other: "{count} 个变体",
@@ -281,9 +285,15 @@ export const assets = {
         },
         create: {
             title: "新建资产集",
+            subTitle: "在该变体下新建资产集",
+            no: {
+                locale: "本工程只声明了一种语言。",
+                release: "本工程没有变体。",
+            },
             delimiter: "分隔符",
             delimiterSpace: "空格",
             segments: "文件名分段",
+            axis: "按什么变化",
         },
         inspector: {
             axes: "轴",
