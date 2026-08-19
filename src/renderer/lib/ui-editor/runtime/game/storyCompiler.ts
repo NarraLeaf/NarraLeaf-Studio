@@ -5055,10 +5055,48 @@ async function createTransition(transition: StoryTransitionRef | undefined, ctx:
                 from: Math.min(1, Math.max(0, numberProp(props, "from", 1))),
                 to: Math.min(1, Math.max(0, numberProp(props, "to", 0))),
             });
-        default:
-            diagnostic(ctx, "warning", blockId, `Transition "${transition.kind}" is not supported by public NLR imports.`);
-            return undefined;
+        case "custom":
+            // The union's escape hatch: a transition that is nothing but its `props`, with no engine
+            // behind it to build. Nothing in Studio writes one and no script can name one, but a
+            // document is free to carry one, so it is routed here by hand rather than left to the
+            // `default` below. It has to be: it is a member of the union, so leaving it to `default`
+            // would narrow `kind` to `"custom"` there instead of `never`, and the exhaustiveness
+            // check below could not be written at all.
+            return reportUnplayableTransition(ctx, blockId, "custom");
+        default: {
+            // Exhaustiveness gate, and the reason this `default` is not just a runtime fallback.
+            // Every member of `StoryTransitionRef["kind"]` is either built above or routed by the
+            // `custom` case, so `kind` is `never` by the time it reaches here and this assignment
+            // fails to compile the moment a kind is added to the union without a branch. Adding a
+            // transition kind touches eleven places across the engine and Studio and this one had
+            // no compile-time guard at all; a forgotten branch used to reach an author as a console
+            // line nobody reads.
+            //
+            // The runtime path is still live, and is the only thing that reaches it: a `kind` the
+            // union does not contain - a document written by a newer Studio, or one carrying a kind
+            // that has since been retired. `unknownKind` holds that stored string.
+            const unknownKind: never = transition.kind;
+            return reportUnplayableTransition(ctx, blockId, unknownKind);
+        }
     }
+}
+
+/**
+ * Report a transition this build cannot play, and play the change as a cut.
+ *
+ * `error`, by the rule {@link diagnostic} states: the row names a transition, this compile can prove
+ * it holds none by that name, and the part of the row that name governs does not happen - the change
+ * still lands, but instantly, with nothing on stage saying why. That is the same shape as a Story
+ * Motion the project no longer holds, which is already an error. It is not a row left unfinished
+ * (the author picked something) and not state from outside this compile (the kind is right there in
+ * the document), so neither warning clause fits.
+ *
+ * `story/transition-unavailable` is the half of this that refuses a build; this half is what an author
+ * sees while writing.
+ */
+function reportUnplayableTransition(ctx: SceneCompileContext, blockId: string, kind: string): undefined {
+    diagnostic(ctx, "error", blockId, `Transition "${kind}" is not available; the change was played as a cut. Choose a transition on this row.`);
+    return undefined;
 }
 
 /** Map a stored `throughColor` pattern prop to the native `ThroughColor` `pattern`/`inverted` pair. */
