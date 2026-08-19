@@ -175,7 +175,8 @@ describe("materializeStoryAssetSets", () => {
                 kind: "unfilled",
                 setId: SET_ID,
                 setName: "Title art",
-                locale: "en",
+                axisKey: "locale",
+                value: "en",
                 storyId: "s1",
                 sceneId: "sc1",
                 blockId: "b1",
@@ -197,20 +198,12 @@ describe("materializeStoryAssetSets", () => {
                 ]),
             });
 
-            expect(result.problems).toMatchObject([{ kind: "ambiguous", locale: "ja" }]);
+            expect(result.problems).toMatchObject([{ kind: "ambiguous", axisKey: "locale", value: "ja" }]);
             expect(variantsOf(result)).toBeUndefined();
         });
     });
 
     describe("what this build refuses to guess at", () => {
-        it("refuses a build-time axis rather than collapsing it", () => {
-            const result = run({
-                sets: [localeSet({ axes: [{ key: "locale", residency: "build", values: ["en", "ja"] }] })],
-            });
-
-            expect(result.problems).toMatchObject([{ kind: "unsupported", reason: "buildAxis" }]);
-        });
-
         it("refuses a second axis, which needs a derived key rather than an inline map", () => {
             const result = run({
                 sets: [localeSet({
@@ -227,7 +220,7 @@ describe("materializeStoryAssetSets", () => {
         it("refuses a set reference in a project that has no languages", () => {
             const result = run({ localization: undefined });
 
-            expect(result.problems).toMatchObject([{ kind: "unfilled", locale: "" }]);
+            expect(result.problems).toMatchObject([{ kind: "unfilled", value: "" }]);
         });
     });
 
@@ -275,5 +268,115 @@ describe("resolveStoryAssetVariant", () => {
     it("falls back to the source locale rather than leaving the stage empty", () => {
         expect(resolveStoryAssetVariant(variants, SET_ID, "de", "en")).toBe(EN);
         expect(resolveStoryAssetVariant(variants, SET_ID, "de", "de")).toBeNull();
+    });
+});
+
+/**
+ * A build axis, which is the opposite bargain from a locale one.
+ *
+ * A locale axis ships every variant and writes a map for the runtime to read. A build axis picks
+ * one, rewrites the row to name it, and writes nothing - so the variants this edition did not take
+ * stop occurring in the payload at all. That is stated as a safety property rather than a size one,
+ * and the tests below are about the withheld variant being genuinely absent.
+ */
+describe("build axes", () => {
+    const ALL_AGES = "dddddddd-1111-4111-8111-111111111111";
+    const ADULT = "eeeeeeee-1111-4111-8111-111111111111";
+
+    function ratingSet(): AssetSet {
+        return {
+            id: SET_ID,
+            name: "Bath scene",
+            type: "image",
+            filter: ["cg:bath"],
+            axes: [{ key: "rating", residency: "build", values: ["all-ages", "adult"] }],
+        };
+    }
+
+    const RATED_LIBRARY = library([
+        [ALL_AGES, ["cg:bath", "rating:all-ages"]],
+        [ADULT, ["cg:bath", "rating:adult"]],
+    ]);
+
+    function build(assetAxes: Record<string, string> | undefined) {
+        return materializeStoryAssetSets({
+            documents: storyNaming(SET_ID),
+            sets: [ratingSet()],
+            candidates: RATED_LIBRARY,
+            localization: localization(),
+            assetAxes,
+        });
+    }
+
+    function payloadOf(result: ReturnType<typeof build>) {
+        return result.documents.s1.scenes.sc1.blocks.b1.payload as { assetId?: string };
+    }
+
+    it("rewrites the row to name the member this edition takes", () => {
+        const result = build({ rating: "all-ages" });
+
+        expect(payloadOf(result).assetId).toBe(ALL_AGES);
+        expect(result.problems).toEqual([]);
+    });
+
+    it("writes no map, because there is no choice left to make at runtime", () => {
+        expect(variantsOf(build({ rating: "all-ages" }))).toBeUndefined();
+    });
+
+    /**
+     * The property the whole residency exists for. The trimmer copies what it finds in the
+     * serialized bundle, so the withheld variant not occurring there is what keeps it out of the
+     * package - and it is also why a build axis must never write the map a locale axis writes.
+     */
+    it("leaves the withheld variant nowhere in the payload the trimmer scans", () => {
+        const result = build({ rating: "all-ages" });
+        const carried = collectReferencedIds(result.documents, new Set([ALL_AGES, ADULT]));
+
+        expect(carried).toEqual(new Set([ALL_AGES]));
+        expect(JSON.stringify(result.documents)).not.toContain(ADULT);
+        expect(JSON.stringify(result.documents)).not.toContain(SET_ID);
+    });
+
+    it("takes the other side when the other edition is built", () => {
+        const result = build({ rating: "adult" });
+        const carried = collectReferencedIds(result.documents, new Set([ALL_AGES, ADULT]));
+
+        expect(payloadOf(result).assetId).toBe(ADULT);
+        expect(carried).toEqual(new Set([ADULT]));
+    });
+
+    it("tells the caller to narrow the library, whichever edition this is", () => {
+        expect(build({ rating: "all-ages" }).collapsedBuildAxis).toBe(true);
+        expect(run({}).collapsedBuildAxis).toBe(false);
+    });
+
+    /**
+     * No fallback of any kind, unlike a locale axis. There the worst case is a player seeing another
+     * language's art; here the fallback would decide which bytes ship.
+     */
+    it("refuses an edition that never said which side it is on", () => {
+        const result = build(undefined);
+
+        expect(result.problems).toMatchObject([{ kind: "axisUnset", axisKey: "rating" }]);
+        expect(payloadOf(result).assetId).toBe(SET_ID);
+        expect(result.collapsedBuildAxis).toBe(false);
+    });
+
+    it("refuses a declared position the library has no file for", () => {
+        const result = build({ rating: "teen" });
+
+        expect(result.problems).toMatchObject([{ kind: "unfilled", axisKey: "rating", value: "teen" }]);
+    });
+
+    it("refuses a position two files answer to", () => {
+        const result = materializeStoryAssetSets({
+            documents: storyNaming(SET_ID),
+            sets: [ratingSet()],
+            candidates: [...RATED_LIBRARY, ...library([[ZH, ["cg:bath", "rating:adult"]]])],
+            localization: localization(),
+            assetAxes: { rating: "adult" },
+        });
+
+        expect(result.problems).toMatchObject([{ kind: "ambiguous", axisKey: "rating", value: "adult" }]);
     });
 });
