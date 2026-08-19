@@ -10,6 +10,9 @@ import { RightSidebar } from "./RightSidebar";
 import { BottomPanel } from "./BottomPanel";
 import { MainEditorArea } from "./MainEditorArea";
 import { ActionBar } from "./ActionBar";
+import { MainMenuButton } from "./MainMenuButton";
+import { useMenuBarModeContextMenu } from "./useMenuBarModeContextMenu";
+import { MENU_BAR_MODE_DEFAULT, MENU_BAR_MODE_KEY, MenuBarMode, resolveMenuBarMode } from "@/lib/settings/menuBarOptions";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { ControlBar } from "./ControlBar";
 import { NotificationContainer } from "../ui/NotificationContainer";
@@ -161,6 +164,8 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const [statusBarVisible, setStatusBarVisible] = useState(true);
     // The title-bar search box is optional too; hiding it moves the palette's input into its own card.
     const [titleBarSearchVisible, setTitleBarSearchVisible] = useState(true);
+    // Where the registered menus are drawn: named along the bar, or collapsed into one hamburger.
+    const [menuBarMode, setMenuBarMode] = useState<MenuBarMode>(MENU_BAR_MODE_DEFAULT);
     useEffect(() => {
         if (!context) {
             return;
@@ -168,12 +173,16 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
         setStatusBarVisible(settings.getSync("ui.statusBar.visible") !== false);
         setTitleBarSearchVisible(settings.getSync("ui.titleBarSearch.visible") !== false);
+        setMenuBarMode(resolveMenuBarMode(settings.getSync(MENU_BAR_MODE_KEY)));
         const token = getInterface().app.state.onGlobalStateChanged?.(change => {
             if (change.key === "ui.statusBar.visible") {
                 setStatusBarVisible(change.value !== false);
             }
             if (change.key === "ui.titleBarSearch.visible") {
                 setTitleBarSearchVisible(change.value !== false);
+            }
+            if (change.key === MENU_BAR_MODE_KEY) {
+                setMenuBarMode(resolveMenuBarMode(change.value));
             }
         });
         return () => token?.cancel();
@@ -737,6 +746,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     }, [context]);
 
     const isMac = isMacPlatform();
+    // macOS keeps these menus on the system menu bar (`useNativeMenuSync`), so there is nothing in
+    // the title bar for the mode to move and nothing to offer on its right-click menu.
+    const menusInHamburger = !isMac && menuBarMode === "hamburger";
+    const menuBarModeMenu = useMenuBarModeContextMenu(menuBarMode);
 
     // Custom workspace background. Rendered as ONE pre-composited backdrop behind all chrome: the
     // surface colour with the wallpaper already blended in at its configured strength (the 2–40%
@@ -768,13 +781,24 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 iconSrc={iconSrc}
                 center={titleBarSearchVisible ? <TitleBarSearchBox /> : undefined}
                 actionBar={
-                    <div className="flex items-center gap-0.5">
+                    /* Right-clicking this cluster offers where the main menu goes — the gesture is
+                       on the strip the setting moves, which is the only way back for an author who
+                       has just collapsed their File menu into the hamburger. */
+                    <div
+                        className="flex items-center gap-0.5"
+                        onContextMenu={isMac ? undefined : menuBarModeMenu.openMenu}
+                    >
+                        {/* Every registered menu, collapsed into one button at the far left, where a
+                            window's own menu belongs. The bar's dropdowns are dropped in that mode
+                            rather than doubled (`hideAllGroups`). */}
+                        {menusInHamburger && <MainMenuButton />}
                         {/* The window's identity, and the version control menu inside it — one reader
                             for both, handed down. The rail below gets the SAME object: a second
                             `useVersionSurface()` would be a second answer to "which version is this",
                             and that has already been on screen once (rail `#3`, status cell `#2`). */}
                         <ProjectSwitcher versionSurface={versionSurface} />
-                        <ActionBar hideAllGroups={isMac} />
+                        <ActionBar hideAllGroups={isMac || menusInHamburger} />
+                        {!isMac && menuBarModeMenu.menu}
                     </div>
                 }
                 controlBar={

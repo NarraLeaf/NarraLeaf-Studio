@@ -273,6 +273,11 @@ export const settings = {
             label: "ステータスバーを表示",
             description: "ワークスペースの下端に並ぶ帯",
         },
+        menuBarMode: {
+            label: "メインメニュー",
+            description: "タイトルバーでファイル・ヘルプ・各パネルのメニューを置く場所",
+            unsupportedPlatform: "macOS ではこれらのメニューはシステムメニューバーにあります",
+        },
         titleBarSearchVisible: {
             label: "タイトルバーの検索欄を表示",
             description: "タイトルバー中央の検索欄",

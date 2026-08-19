@@ -84,6 +84,17 @@ export interface GlobalStateType extends Record<string, any> {
      * it here without wanting it everywhere. Game content is exempt in both layers.
      */
     "ui.reduceMotion": boolean;
+    /**
+     * How the workspace's menus (File, Help, and whatever a panel or a plugin registers) are
+     * presented in the title bar: `toolbar` leaves them beside the run controls as named
+     * dropdowns, `hamburger` collapses all of them into a single button whose menu lists them as
+     * submenus.
+     *
+     * Off macOS only. There the same groups are the system menu bar (`useNativeMenuSync`), the
+     * title bar never draws them, and neither value would change anything - which is why the
+     * settings row says so rather than pretending to work.
+     */
+    "ui.menuBar.mode": "toolbar" | "hamburger" | string;
     /** The slim strip along the bottom of the workspace; the dock reclaims its row when off. */
     "ui.statusBar.visible": boolean;
     /**
@@ -352,6 +363,9 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,
     "ui.accentColor": ACCENT_COLOR_DEFAULT,
     "ui.reduceMotion": false,
+    // Named dropdowns, which is how the title bar has always drawn them; collapsing them is a
+    // choice the author makes, not one an update makes for them.
+    "ui.menuBar.mode": "toolbar",
     "ui.statusBar.visible": true,
     "ui.statusBar.hiddenItems": [],
     "ui.titleBarSearch.visible": true,

@@ -52,6 +52,13 @@ export interface ActionSubmenu {
     icon?: ReactNode;
     items: ActionMenuItem[];
     order?: number;
+    /**
+     * Hover text for the disabled rows inside this submenu, overriding whatever the menu around it
+     * would have said. Set by the hamburger main menu (`MainMenuButton`), where one menu holds
+     * several groups and only some of them are switched off by a frozen workspace: without this the
+     * whole menu would have to claim one reason, and it would be wrong for every exempt group in it.
+     */
+    disabledReason?: string;
 }
 
 export interface ActionSeparator {

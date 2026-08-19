@@ -281,6 +281,11 @@ export const settings = {
             label: "Show status bar",
             description: "The strip along the bottom of the workspace.",
         },
+        menuBarMode: {
+            label: "Main menu",
+            description: "Where the File, Help and panel menus live in the title bar.",
+            unsupportedPlatform: "On macOS these menus are on the system menu bar.",
+        },
         titleBarSearchVisible: {
             label: "Show title bar search box",
             description: "The search box in the middle of the title bar.",

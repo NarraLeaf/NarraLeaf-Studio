@@ -338,6 +338,15 @@ export const workspace = {
         toggleLeftSidebar: "Toggle left sidebar",
         toggleRightSidebar: "Toggle right sidebar",
         toggleBottomPanel: "Toggle bottom panel",
+        // The title bar's menus (File, Help, whatever a panel registers) and where they are drawn.
+        // The mode names are shared with the settings row that stores the same preference.
+        mainMenu: {
+            label: "Main menu",
+            modes: {
+                hamburger: "In the hamburger button",
+                toolbar: "Each menu in the title bar",
+            },
+        },
         // Right-click menu on a sidebar rail: a checklist toggling each panel icon's visibility,
         // plus shortcuts acting on the specific panel that was right-clicked.
         panelMenu: {
