@@ -135,7 +135,9 @@ export function AssetsListView({
                                 <div className="py-1">
                                     {/* Above the folders: a set is what a reference points at, and the
                                         files it resolves to are filed below in the ordinary way. */}
-                                    {categorySets.map(entry => <AssetSetItem key={entry.set.id} entry={entry} />)}
+                                    {categorySets
+                                        .filter(entry => !entry.set.groupId)
+                                        .map(entry => <AssetSetItem key={entry.set.id} entry={entry} />)}
                                     {categoryGroups.filter(g => !g.parentGroupId).map(group => <GroupItem key={group.id} group={group} category={category} level={0} />)}
                                     {categoryAssets.filter(a => !a.groupId).map(asset => <AssetItem key={asset.id} asset={asset} category={category} level={0} />)}
                                 </div>
@@ -359,6 +361,7 @@ function GroupItem({ group, category, level }: { group: AssetGroup; category: As
         clipboard,
         expandedGroups,
         setExpandedGroups,
+        rootAssetSets,
         handleItemSelect,
         handleGroupFocus,
         showContextMenu,
@@ -448,6 +451,12 @@ function GroupItem({ group, category, level }: { group: AssetGroup; category: As
 
             {isOpen && (
                 <div>
+                    {/* Above the sub-folders, the way a set sits above the folders at a section's
+                        root: it is the entry a reference points at, and the files it resolves to are
+                        filed below it in the ordinary way. */}
+                    {rootAssetSets[category]
+                        .filter(entry => entry.set.groupId === group.id)
+                        .map(entry => <AssetSetItem key={entry.set.id} entry={entry} level={level + 1} />)}
                     {childGroups.map(child => <GroupItem key={child.id} group={child} category={category} level={level + 1} />)}
                     {groupAssets.map(asset => <AssetItem key={asset.id} asset={asset} category={category} level={level + 1} />)}
                 </div>
