@@ -262,6 +262,11 @@ export interface RendererPreloadedInterface {
          */
         isProjectOpen(projectPath: string): Promise<RequestStatus<{ open: boolean }>>;
         close(): Promise<RequestStatus<void>>;
+        /**
+         * Leave the project and go back to the home screen. Unlike {@link close}, the launcher is
+         * always what comes next - this window is not being closed so much as stepped out of.
+         */
+        returnToLauncher(): Promise<RequestStatus<void>>;
         getDefaultProjectDirectory(): Promise<RequestStatus<{ dir: string }>>;
         exportProjectPackage(projectPath: string): Promise<RequestStatus<{
             canceled: boolean;

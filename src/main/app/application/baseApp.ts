@@ -644,6 +644,18 @@ export class BaseApp {
         return this.isDevMode() ? this.commandLine.project.error : null;
     }
 
+    /**
+     * Whether this launch asked to start on the home screen rather than back in the last project -
+     * `--launcher`.
+     *
+     * Not dev-gated, unlike everything else on this list. See {@link MainCommandLineOptions.launcher}:
+     * it is the way out of a project that will not open, and a packaged build is where that is
+     * least recoverable.
+     */
+    public wantsLauncherOnStartup(): boolean {
+        return this.commandLine.launcher;
+    }
+
     public getAppEntry(type: WindowAppType): string {
         return path.resolve(this.getDistDir(), "windows", type, "index.html");
     }

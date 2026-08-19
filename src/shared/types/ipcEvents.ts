@@ -195,6 +195,7 @@ export enum IPCEventType {
     workspaceIsProjectOpen = "workspace.isProjectOpen",
     workspaceSelectFolder = "workspace.selectFolder",
     workspaceClose = "workspace.close",
+    workspaceReturnToLauncher = "workspace.returnToLauncher",
     psdOpen = "psd.open",
     psdBake = "psd.bake",
     mediaProbe = "media.probe",
@@ -1857,6 +1858,20 @@ export type IPCWorkspaceEvents = {
         };
     };
     [IPCEventType.workspaceClose]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: void;
+    };
+    /**
+     * Leave this project and go back to the home screen, rather than closing the window.
+     *
+     * A separate channel from {@link IPCEventType.workspaceClose} because the two are different
+     * intents that happen to share their shutdown work: closing is "I am done with Studio for
+     * now", returning is "I want to be somewhere else in Studio". Deciding between them from one
+     * channel plus a preference is what used to make them mutually exclusive.
+     */
+    [IPCEventType.workspaceReturnToLauncher]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {},

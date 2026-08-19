@@ -243,6 +243,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         isProjectOpen: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.workspaceIsProjectOpen, { projectPath }),
         close: () => ipcClient.invoke(IPCEventType.workspaceClose, {}),
+        returnToLauncher: () => ipcClient.invoke(IPCEventType.workspaceReturnToLauncher, {}),
         exportProjectPackage: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.workspaceExportProjectPackage, { projectPath }),
         importProjectPackage: (packagePath: string, targetDir: string) =>

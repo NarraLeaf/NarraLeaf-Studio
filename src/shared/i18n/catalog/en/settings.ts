@@ -262,9 +262,9 @@ export const settings = {
             label: "Confirm before closing a workspace",
             description: "Ask for confirmation when a workspace window is closed.",
         },
-        returnToLauncherOnClose: {
-            label: "Return to the home screen when closing a workspace",
-            description: "Turn this off to quit NarraLeaf Studio instead when no other window is open.",
+        reopenLastProject: {
+            label: "Reopen the last project on startup",
+            description: "Turn this off to start on the launcher instead.",
         },
         dashboardOnOpen: {
             label: "Show the project dashboard by default",
