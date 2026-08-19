@@ -102,6 +102,12 @@ function specForSetting(setting: AppSettingDefinition): SettingsValueSpec {
             // families beside them are whatever the EXPORTING machine had installed. Membership
             // would reject every one of them, which is most of what this setting can hold.
             return { ...base, kind: "string" };
+        case SettingValueType.Source:
+            // Same reason again: the options are the addresses Studio offers, and the whole point of
+            // the type is that an author may store one it does not. `string` is the check that fits -
+            // dropping to the `json` default below would let an import write a number where a URL
+            // belongs, which is looser than these keys were before they became a `Source`.
+            return { ...base, kind: "string" };
         case SettingValueType.String:
             return { ...base, kind: "string" };
         default:
