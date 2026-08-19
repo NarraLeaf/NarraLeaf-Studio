@@ -514,7 +514,7 @@ function revealWord(transform: StoryTransformRef | undefined, direction: "reveal
 }
 
 /** A whole-screen or character `t=` — the stored kind, named by the word an author would type. */
-function transitionWord(kind: StoryTransitionRef["kind"] | undefined, context: "scene" | "character"): string | undefined {
+function transitionWord(kind: StoryTransitionRef["kind"] | undefined, context: "scene" | "character" | "expression"): string | undefined {
     if (kind === undefined) {
         return undefined;
     }
@@ -635,6 +635,18 @@ function characterSentence(
         enum: true,
         apply: next => patchTransformRef(payload, applyTransitionWordToTransform(payload.transform, direction, next)),
     });
+    // `/face` is the one character row the engine plays a `StoryTransitionRef` on - it swaps the
+    // image source, and `char(src, transition)` is what the compiler emits. So BOTH of these read and
+    // write `payload.transition`, never the transform: `duration` above is the transform's, the field
+    // an entrance and an exit animate through, and binding a swap's `d=` there would give the author
+    // a number that edits cleanly and changes nothing on stage.
+    const swapTransition = arg("t", transitionWord(payload.transition?.kind, "expression"), {
+        enum: true,
+        apply: next => patchTransition(payload, { kind: transitionKindFor("expression", next) ?? "fadeIn" }),
+    });
+    const swapDuration = arg("d", seconds(payload.transition?.durationMs), {
+        apply: next => patchTransition(payload, { durationMs: msOf(next) }),
+    });
     switch (payload.operation) {
         case "enter":
             return {
@@ -648,7 +660,7 @@ function characterSentence(
             // reads back as the row that writes one. `/transform` names its subject `target`.
             return { commandId, args: [positional("target", name, who), placement, duration] };
         case "expression":
-            return { commandId, args: [positional("character", name, who), form] };
+            return { commandId, args: [positional("character", name, who), form, swapTransition, swapDuration] };
         case "setMotion":
         case "setSkin":
             // The two puppet-only channels: their value is the model's own string, never a project ref.
