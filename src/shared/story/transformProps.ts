@@ -185,15 +185,59 @@ function stripTerms(source: string): string {
 export type StoryTransformPropsConflict = "filterBoth";
 
 /**
- * `filter` and `filterRaw` both write the CSS `filter` channel, so a bag carrying both has no single
- * answer and the emitter would silently take whichever it reads last. Reported rather than resolved,
- * following `/font`, which refuses a size and a colour in one row for the same reason.
+ * `filter`, `filterRaw` and `look` all write the CSS `filter` channel, so a bag carrying more than
+ * one has no single answer and the emitter would silently take whichever it reads last. Reported
+ * rather than resolved, following `/font`, which refuses a size and a colour in one row for the same
+ * reason.
  */
 export function storyTransformPropsConflicts(props: StoryTransformProps | undefined): StoryTransformPropsConflict[] {
     if (!props) {
         return [];
     }
-    return props.filter !== undefined && props.filterRaw !== undefined ? ["filterBoth"] : [];
+    const writers = [props.filter, props.filterRaw, props.look].filter(value => value !== undefined);
+    return writers.length > 1 ? ["filterBoth"] : [];
+}
+
+// ---------------------------------------------------------------------------------------------
+// The grade, folded
+// ---------------------------------------------------------------------------------------------
+
+/** Resolve a library grade to the CSS chain it expands to, or `null` for a name the library lost. */
+export type StoryLookResolver = (preset: string, intensity: number | undefined) => string | null;
+
+/**
+ * The bag with its named grade replaced by the chain it stands for.
+ *
+ * The library is a renderer module (`lib/ui-editor/runtime/game/cameraLookPresets.ts`) and this file
+ * is `@shared`, which the main process imports too - so the resolution is passed in rather than
+ * reached for. Every surface that has to turn a bag into something the browser can render calls this
+ * first: the compiler's emitter, the editor's stage snapshot and the snapshot's residual-effects
+ * pass. The result carries no `look`, so nothing downstream has to know the channel exists.
+ *
+ * A name the library no longer holds resolves to `null` and the channel is dropped rather than
+ * guessed at - `onMissing` is how the caller turns that into the diagnostic the author sees.
+ */
+export function foldStoryTransformLook(
+    props: StoryTransformProps | undefined,
+    resolve: StoryLookResolver,
+    onMissing?: (preset: string) => void,
+): StoryTransformProps | undefined {
+    if (!props || props.look === undefined) {
+        return props;
+    }
+    const next: StoryTransformProps = { ...props };
+    delete next.look;
+    if (props.look === null) {
+        next.filter = null;
+        return next;
+    }
+    const css = resolve(props.look.preset, props.look.intensity);
+    if (css === null) {
+        onMissing?.(props.look.preset);
+        return next;
+    }
+    next.filterRaw = css;
+    return next;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -289,6 +333,13 @@ export function splitStoryTransformChange(
             cut.filter = to.filter;
         }
     }
+    // A named grade never reaches here in practice - every emitter folds it to `filterRaw` first,
+    // because only the library knows whether ITS OWN route is safe to ease (see
+    // `storyCameraLookTweens`). Cutting an unfolded one is the conservative answer for a channel this
+    // module cannot resolve, and not a decision about the grade.
+    if (to.look !== undefined) {
+        cut.look = to.look;
+    }
     return { cut, tween };
 }
 
@@ -376,6 +427,9 @@ export function storyTransformPropsToNlr(
     } else if (props.filter !== undefined) {
         next.filter = composeStoryFilter(props.filter);
     }
+    // `look` has no arm, and that is the contract rather than an omission: this module cannot resolve
+    // a grade name (the library is a renderer module), so every caller folds one away with
+    // `foldStoryTransformLook` before getting here. A bag still carrying one has skipped that step.
     if (maskImage !== undefined) {
         next.maskImage = maskImage;
     }

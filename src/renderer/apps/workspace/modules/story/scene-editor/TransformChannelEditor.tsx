@@ -34,7 +34,6 @@ import { TransformChannelPreview } from "./TransformChannelPreview";
 import { Disclosure, type TFunc } from "./inspectorFieldKit";
 import {
     addableTransformChannels,
-    cameraLookCss,
     filterRecordOf,
     formatBackdropBlur,
     formatStoryClipShape,
@@ -42,7 +41,6 @@ import {
     LOOK_INTENSITY_STEP,
     parseBackdropBlur,
     parseStoryClipShape,
-    readCameraLookCss,
     roundLookIntensity,
     seedStoryClipShape,
     statedTransformChannels,
@@ -326,11 +324,7 @@ function PositionControl(props: { value: StoryTransformProps["position"]; onChan
     );
 }
 
-function LookIntensity(props: { css: string; onChange: (css: string) => void; t: TFunc }) {
-    const reading = readCameraLookCss(props.css);
-    if (!reading) {
-        return null;
-    }
+function LookIntensity(props: { value: number; onChange: (intensity: number) => void; t: TFunc }) {
     return (
         <div className="flex items-center gap-2">
             <span className="shrink-0 text-2xs text-fg-subtle">{props.t("story.paramHint.cameraLookStrength")}</span>
@@ -339,10 +333,10 @@ function LookIntensity(props: { css: string; onChange: (css: string) => void; t:
                 min={LOOK_INTENSITY_STEP}
                 max={LOOK_INTENSITY_MAX}
                 step={LOOK_INTENSITY_STEP}
-                value={reading.intensity}
-                onValueChange={next => props.onChange(cameraLookCss(reading.preset, roundLookIntensity(next)))}
+                value={props.value}
+                onValueChange={next => props.onChange(roundLookIntensity(next))}
             />
-            <span className="w-8 shrink-0 text-right text-2xs tabular-nums text-fg-subtle">{reading.intensity.toFixed(2)}</span>
+            <span className="w-8 shrink-0 text-right text-2xs tabular-nums text-fg-subtle">{props.value.toFixed(2)}</span>
         </div>
     );
 }
@@ -429,9 +423,10 @@ function channelBody(
         };
     }
     if (channel.id === "look") {
-        const css = to.filterRaw ?? "";
-        const reading = readCameraLookCss(css);
-        const onChange = (next: string) => setProps({ filterRaw: next });
+        // The NAME, not the chain it expands to. The row stores the author's choice, so the picker
+        // opens on it directly instead of matching an expanded filter string back to a preset.
+        const look = to.look ?? null;
+        const intensity = look?.intensity ?? 1;
         return {
             control: (
                 <ChannelSelect
@@ -440,11 +435,29 @@ function channelBody(
                         value: entry.id,
                         label: t(`storyInspector.cameraLook.${entry.id}` as TranslationKey),
                     }))}
-                    value={reading?.preset ?? STORY_CAMERA_LOOK_PRESETS[0]?.id ?? ""}
-                    onChange={next => onChange(cameraLookCss(next, reading?.intensity ?? 1))}
+                    value={look?.preset ?? STORY_CAMERA_LOOK_PRESETS[0]?.id ?? ""}
+                    onChange={next => setProps({ look: { preset: next, intensity } })}
                 />
             ),
-            below: <LookIntensity css={css} t={t} onChange={onChange} />,
+            below: (
+                <>
+                    <LookIntensity
+                        value={intensity}
+                        t={t}
+                        onChange={next => setProps({ look: { preset: look?.preset ?? STORY_CAMERA_LOOK_PRESETS[0]?.id ?? "", intensity: next } })}
+                    />
+                    {/* The two facts an author cannot find out from a list of names: a grade REPLACES
+                        whatever the last one put on this channel rather than layering onto it, and one
+                        of them keeps moving instead of settling. */}
+                    <p className="mt-1 text-2xs text-fg-subtle">{t("storyInspector.cameraLookHint.channel")}</p>
+                    {look?.preset === "monologue" ? (
+                        <p className="mt-1 text-2xs text-fg-subtle">{t("storyInspector.cameraLookHint.monologue")}</p>
+                    ) : null}
+                    {look?.preset === "hangover" ? (
+                        <p className="mt-1 text-2xs text-fg-subtle">{t("storyInspector.cameraLookHint.hangover")}</p>
+                    ) : null}
+                </>
+            ),
         };
     }
     if (channel.id === "filterRaw") {

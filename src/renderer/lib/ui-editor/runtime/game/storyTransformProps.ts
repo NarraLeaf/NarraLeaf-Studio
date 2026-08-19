@@ -12,7 +12,8 @@ import type {
     StoryTransformRef,
 } from "@shared/types/story";
 import { parseStoryEasing } from "@shared/utils/storyEasing";
-import { storyTransformPropsToNlr } from "@shared/story/transformProps";
+import { foldStoryTransformLook, storyTransformPropsToNlr } from "@shared/story/transformProps";
+import { resolveStoryCameraLook } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
 import { legacyPresetPosition } from "@shared/story/transformLegacy";
 import { translate } from "@/lib/i18n";
 
@@ -68,7 +69,11 @@ export function getInlineTransformProps(
         // to nothing, but the answer it gets is the same one.
         onDiagnostic?.(translate("story.preview.diagnostics.presetNotFoldable", { preset: transform.clipReveal.kind }));
     }
-    const props = { ...(transform.to ?? {}) };
+    // A named grade is folded to the chain it stands for: `@shared` cannot reach the library, and a
+    // settled preview has to show the CSS the row will actually put on stage. A name the library lost
+    // drops the channel silently here and is reported by the compile, which is the one pass that sees
+    // every row rather than only the ones on the path to a launch.
+    const props = { ...(foldStoryTransformLook(transform.to, resolveStoryCameraLook) ?? {}) };
     delete props.maskAssetId;
     return storyTransformPropsToNlr(props);
 }
