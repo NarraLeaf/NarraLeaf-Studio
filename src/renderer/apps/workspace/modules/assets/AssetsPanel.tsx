@@ -34,6 +34,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { MagicTagDialog } from "./components/MagicTagDialog";
+import { AssetSetWizard } from "./components/AssetSetWizard";
 import { MagicTagTemplate } from "@/lib/workspace/services/core/MagicTagManager";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { AssetsListView } from "./views/AssetsListView";
@@ -162,6 +163,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     
     // Magic Tags state
     const [magicTagDialogVisible, setMagicTagDialogVisible] = useState(false);
+    /** The selection the set wizard is open on, or null when it is closed. */
+    const [assetSetWizardAssets, setAssetSetWizardAssets] = useState<Asset[] | null>(null);
     const [magicTagTemplate, setMagicTagTemplate] = useState<MagicTagTemplate | null>(null);
     const [magicTagAssets, setMagicTagAssets] = useState<Asset[]>([]);
     const [isSearchActive, setIsSearchActive] = useState(false);
@@ -338,7 +341,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     // Sets are read here rather than in `useAssetData` because they are not library rows: they are a
     // declaration measured against the library, and the measurement wants the library this panel is
     // already holding.
-    const { byCategory: assetSets, findSet, createFromAssets, suggestNameFor } = useAssetSets({ context, isInitialized, assets });
+    const { byCategory: assetSets, findSet } = useAssetSets({ context, isInitialized, assets });
     const {
         menuState: setMenuState,
         showMenu: showSetMenu,
@@ -387,20 +390,17 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const canCreateAssetSet = selectedAssetsForSet.length >= 2
         && selectedAssetsForSet.every(asset => asset.type === selectedAssetsForSet[0].type);
 
+    /**
+     * Open the wizard on the marked rows.
+     *
+     * The rows are handed over as a snapshot rather than read live: the wizard measures the library
+     * against the tags it is about to write, and a selection that moved under it would be measuring
+     * one set of files while naming another.
+     */
     const handleCreateAssetSet = useCallback(async () => {
-        if (!inputDialog || !canCreateAssetSet) return;
-        const name = await inputDialog.show({
-            title: t("assets.sets.create.title"),
-            initialValue: suggestNameFor(selectedAssetsForSet),
-            validation: value => (value.trim() ? null : t("assets.sets.create.nameRequired")),
-        });
-        if (!name) return;
-        const created = createFromAssets(selectedAssetsForSet, name);
-        if (!created) {
-            context?.services.get<UIService>(Services.UI)
-                .showNotification(t("assets.sets.create.failed"), "error");
-        }
-    }, [inputDialog, canCreateAssetSet, selectedAssetsForSet, suggestNameFor, createFromAssets, context, t]);
+        if (!canCreateAssetSet) return;
+        setAssetSetWizardAssets([...selectedAssetsForSet]);
+    }, [canCreateAssetSet, selectedAssetsForSet]);
 
     const assetSetContextMenu: ContextMenuDef = useMemo(() => {
         if (!setMenuTarget) {
@@ -910,6 +910,12 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     onClose={handleMagicTagsClose}
                     onApply={handleMagicTagsApply}
                 />
+                {assetSetWizardAssets && (
+                    <AssetSetWizard
+                        assets={assetSetWizardAssets}
+                        onClose={() => setAssetSetWizardAssets(null)}
+                    />
+                )}
             </div>
         </AssetsPanelContext.Provider>
     );

@@ -16,18 +16,32 @@
  * The refusal is shown as a sentence under the axis list and the control stays where it was. It is
  * not a disabled button: which moves are legal depends on the other axes, so a permanently greyed
  * arrow would be greyed on rows where the move is fine.
+ *
+ * ## The variant list is where a hole gets filled
+ *
+ * Each row picks a file, and choosing one writes that coordinate's tags onto it. Membership is still
+ * the tag - nothing here stores an id - but the author no longer has to leave the panel that told
+ * them a variant was missing in order to go and say which file it is.
+ *
+ * Writing replaces the value that file carried for each of the coordinate's categories, because two
+ * values of one category make a file answer to two coordinates at once. Nothing is taken off any
+ * *other* file: a file that answered to this coordinate before still carries its own tags, and the
+ * row will say so by reporting two matches rather than by quietly picking one.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import {
     ASSET_AXIS_RESIDENCIES,
+    assetSetCoordinateTags,
     collectAssetTagVocabulary,
     isLegalAxisOrder,
+    parseAssetTag,
     resolveAssetSetContents,
     type AssetSet,
     type AssetSetAxis,
     type AssetSetCandidate,
+    type AssetSetCell,
 } from "@shared/types/assetSet";
 import { FieldLabel, IconButton, Input, Select } from "@/lib/components/elements";
 import { SectionCard } from "@/lib/components/elements/SectionCard";
@@ -35,6 +49,10 @@ import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import type { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
+import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import type { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import type { Asset } from "@/lib/workspace/services/assets/types";
+import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 
 /**
  * A text field that keeps what is typed and commits it when focus leaves.
@@ -100,6 +118,7 @@ export function AssetSetInspector({
     candidates,
     assetNames,
     service,
+    assetsService,
 }: {
     set: AssetSet;
     /** The library, as resolution sees it. */
@@ -107,10 +126,14 @@ export function AssetSetInspector({
     /** Asset id to the name the library shows, so a resolved cell names a file rather than a uuid. */
     assetNames: ReadonlyMap<string, string>;
     service: AssetSetService;
+    /** Where a chosen file's tags are written. Null while the library has not loaded. */
+    assetsService: AssetsService | null;
 }) {
     const { t } = useTranslation();
     const freeze = useFreezeGuard();
     const [blocked, setBlocked] = useState(false);
+    const [picking, setPicking] = useState<AssetSetCell | null>(null);
+    const pickerAnchor = useRef<HTMLElement | null>(null);
 
     // Only the categories files of this set's own type carry. A picture set offered `voice:alice`
     // would be offering an axis that can never resolve.
@@ -139,6 +162,28 @@ export function AssetSetInspector({
     const patchAxis = useCallback((index: number, patch: Partial<AssetSetAxis>) => {
         writeAxes(set.axes.map((axis, position) => (position === index ? { ...axis, ...patch } : axis)));
     }, [set.axes, writeAxes]);
+
+    /**
+     * Make one file the answer to one coordinate, by writing that coordinate onto it.
+     *
+     * The set's fixed tags go on too, not just the axis values: a file that carries `mood:sad` but
+     * not `char:alice` is not a member of this set, and an author who picked it from the list plainly
+     * meant it to be one.
+     */
+    const assign = useCallback(async (cell: AssetSetCell, asset: Asset) => {
+        if (!assetsService) {
+            return;
+        }
+        const written = assetSetCoordinateTags(set, cell.coordinate);
+        const claimed = new Set(
+            written.map(tag => parseAssetTag(tag)?.category).filter((category): category is string => Boolean(category)),
+        );
+        const kept = asset.tags.filter(tag => {
+            const pair = parseAssetTag(tag);
+            return !pair || !claimed.has(pair.category);
+        });
+        await assetsService.updateAssetTags(asset, [...kept, ...written]);
+    }, [assetsService, set]);
 
     const moveAxis = useCallback((index: number, delta: number) => {
         const target = index + delta;
@@ -244,25 +289,55 @@ export function AssetSetInspector({
                         const missing = cell.assetIds.length === 0;
                         const ambiguous = cell.assetIds.length > 1;
                         return (
-                            <div key={cell.label} className="flex items-baseline justify-between gap-2">
+                            <div
+                                key={cell.label}
+                                className="flex items-baseline justify-between gap-2"
+                                data-asset-set-variant={cell.label}
+                            >
                                 <FieldLabel as="span" className="mb-0 min-w-0 truncate">{cell.label}</FieldLabel>
-                                <span
+                                <button
+                                    type="button"
+                                    aria-label={cell.label}
                                     className={cn(
-                                        "text-2xs shrink-0 truncate",
+                                        "min-w-0 shrink truncate rounded-md px-1.5 py-0.5 text-2xs transition-colors",
+                                        "hover:bg-edge-subtle disabled:cursor-not-allowed disabled:opacity-50",
                                         missing || ambiguous ? "text-warning" : "text-fg-subtle",
                                     )}
+                                    {...freeze.writes(!assetsService)}
+                                    onClick={event => {
+                                        pickerAnchor.current = event.currentTarget;
+                                        setPicking(cell);
+                                    }}
                                 >
                                     {missing
                                         ? t("assets.sets.inspector.variantMissing")
                                         : ambiguous
                                             ? t("assets.sets.inspector.variantAmbiguous", { count: String(cell.assetIds.length) })
                                             : assetNames.get(cell.assetIds[0]) ?? cell.assetIds[0]}
-                                </span>
+                                </button>
                             </div>
                         );
                     })
                 )}
             </SectionCard>
+
+            {picking && (
+                <AssetSelector
+                    visible
+                    assetType={set.type as AssetType}
+                    selectedIds={picking.assetIds.slice(0, 1)}
+                    anchorRef={pickerAnchor}
+                    title={picking.label}
+                    onClose={() => setPicking(null)}
+                    onConfirm={assets => {
+                        const chosen = assets[0];
+                        setPicking(null);
+                        if (chosen) {
+                            void assign(picking, chosen);
+                        }
+                    }}
+                />
+            )}
         </div>
     );
 }

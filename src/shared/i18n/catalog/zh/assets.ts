@@ -277,8 +277,9 @@ export const assets = {
         },
         create: {
             title: "新建资产集",
-            nameRequired: "请输入名称",
-            failed: "一个资产集只装一种资产。请选择同一种类的文件。",
+            delimiter: "分隔符",
+            delimiterSpace: "空格",
+            segments: "文件名分段",
         },
         inspector: {
             axes: "轴",
