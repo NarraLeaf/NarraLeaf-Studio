@@ -162,3 +162,19 @@ describe("StudioTaskScheduler", () => {
         expect(stopped).toBe(true);
     });
 });
+
+describe("the words a task is shown by", () => {
+    // The status bar reaches these through a cast, so the compiler cannot see them and the i18n
+    // parity test cannot either - parity compares the three languages against each other, and a key
+    // all three are missing is perfectly aligned. A missing one would put a raw key path in front of
+    // an author waiting on their project.
+    it("has a label for every kind of task", async () => {
+        const { STUDIO_TASK_KINDS } = await import("@shared/types/studioTask");
+        const { createTranslator } = await import("@shared/i18n");
+        const translator = createTranslator("en");
+        // Negative control: without it this would pass against a translator that answered true to
+        // everything, which is the shape of a test that cannot fail.
+        expect(translator.has("workspace.shell.statusBar.task.notATask" as never)).toBe(false);
+        expect(STUDIO_TASK_KINDS.filter(kind => !translator.has(`workspace.shell.statusBar.task.${kind}` as never))).toEqual([]);
+    });
+});

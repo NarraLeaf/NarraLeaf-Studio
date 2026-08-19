@@ -11,6 +11,7 @@ import type {
     GameProgressImportResult,
 } from "./gameProgress";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConvert";
+import type { StudioTaskOverview } from "./studioTask";
 import type { MediaProbeOutcome } from "./mediaProbe";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
@@ -231,6 +232,15 @@ export interface RendererPreloadedInterface {
      * id that means nothing here answers `idle`, which is also what a job answers once it has aged
      * out of the main process's memory.
      */
+    /**
+     * What long work Studio is doing right now, in one value.
+     *
+     * Polled, like every other long task: the work outlives any single render, and a window that was
+     * reloading while something ran has to be able to find out what it is.
+     */
+    studioTasks: {
+        getOverview(): Promise<RequestStatus<{ overview: StudioTaskOverview }>>;
+    };
     mediaConvert: {
         start(request: MediaConvertRequest): Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>;
         cancel(jobId: string): Promise<RequestStatus<{ state: MediaConvertStateSnapshot }>>;

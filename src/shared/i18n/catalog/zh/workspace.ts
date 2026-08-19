@@ -427,6 +427,15 @@ export const workspace = {
                 reloading: "重载中…",
                 stopping: "停止中…",
             },
+            /**
+             * What a long task is called while it runs.
+             *
+             * Names the thing being made, never the machinery that makes it: an author asked
+             * for weather, not for an encode.
+             */
+            task: {
+                weatherBake: "生成天气效果",
+            },
             openConsole: "打开控制台",
             unsavedChanges: "未保存的更改",
             saveNow: "立即保存",
@@ -443,6 +452,7 @@ export const workspace = {
             // 已注册状态栏项目的名称，仅在状态栏右键开关菜单中显示。
             entries: {
                 runStatus: "运行状态",
+        studioTasks: "后台工作",
                 unsavedChanges: "未保存的更改",
                 wordCount: "故事统计",
                 shortcuts: "快捷键速查",
