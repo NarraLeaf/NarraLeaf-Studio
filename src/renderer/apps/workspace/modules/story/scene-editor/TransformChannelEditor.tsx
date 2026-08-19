@@ -27,6 +27,7 @@ import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftE
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { placementWordFor } from "./commands/transitions";
 import { AssetField } from "./AssetField";
 import { TransformChannelPreview } from "./TransformChannelPreview";
@@ -555,6 +556,7 @@ function channelMatches(channel: TransformChannelSpec, query: string, t: TFunc):
 function AddChannelPicker(props: {
     channels: readonly TransformChannelSpec[];
     onAdd: (channel: TransformChannelSpec) => void;
+    previewUrl: string | null;
     t: TFunc;
 }) {
     const [open, setOpen] = useState(false);
@@ -673,7 +675,7 @@ function AddChannelPicker(props: {
                                             close();
                                         }}
                                     >
-                                        <TransformChannelPreview channelId={channel.id} />
+                                        <TransformChannelPreview channelId={channel.id} imageUrl={props.previewUrl} />
                                         <span className="min-w-0 flex-1 truncate">{channel.label(props.t)}</span>
                                     </button>
                                 ))}
@@ -691,9 +693,18 @@ function AddChannelPicker(props: {
 export function TransformChannelEditor(props: {
     value: StoryTransformRef | undefined;
     targetKind: StoryDisplayableTargetKind;
+    /**
+     * The image this row transforms, when the row transforms something that has one.
+     *
+     * Absent is the normal case, not a failure: a text object, a layer and a puppet character have
+     * no single picture to grade, and the preview falls back to the bundled portrait rather than
+     * showing an empty frame.
+     */
+    previewAssetId?: string;
     onChange: (value: StoryTransformRef) => void;
 }) {
     const { t } = useTranslation();
+    const preview = useAssetObjectUrl(props.previewAssetId, AssetType.Image);
     const ref: StoryTransformRef = props.value ?? { mode: "props" };
     const stated = statedTransformChannels(ref);
     const addable = addableTransformChannels(ref, { isText: props.targetKind === "text" });
@@ -715,7 +726,12 @@ export function TransformChannelEditor(props: {
                     </ChannelRow>
                 );
             })}
-            <AddChannelPicker channels={addable} t={t} onAdd={channel => props.onChange(channel.add(ref))} />
+            <AddChannelPicker
+                channels={addable}
+                previewUrl={preview.url}
+                t={t}
+                onAdd={channel => props.onChange(channel.add(ref))}
+            />
         </div>
     );
 }
