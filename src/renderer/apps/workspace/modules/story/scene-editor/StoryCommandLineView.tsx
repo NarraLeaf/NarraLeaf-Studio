@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo, type CSSProperties, type ReactNode 
 import type { StoryBlock, StoryScene, StorySceneId } from "@shared/types/story";
 import { storyVariableRefKey } from "@shared/types/story";
 import { useWorkspace } from "@/apps/workspace/context";
+import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import { useHideParamNames } from "@/apps/workspace/hooks/useHideParamNames";
 import { useCommandTranslation } from "@/lib/i18n";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
@@ -129,7 +130,8 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
         projectVariableName: (scope, variableId) => projectVariableNames.get(storyVariableRefKey({ scope, variableId })) ?? null,
         audioTrackName: trackId => tracks.find(track => track.id === trackId)?.name ?? null,
         // Read through the service on every call rather than off a snapshot: an asset rename does not
-        // touch the story document, so nothing here would be told to rebuild a captured table.
+        // touch the story document, so nothing here would be told to rebuild a captured table. Asset
+        // sets are asked second, because a row may name one and it reads as the set's own name.
         assetName: assetId => {
             const table = assets?.getAssets();
             for (const type of ASSET_NAME_TYPES) {
@@ -138,7 +140,7 @@ export function StoryCommandLineProvider({ slashAtAlias, commandContext, childre
                     return found.name;
                 }
             }
-            return null;
+            return resolveAssetDisplayName(context?.services, assetId);
         },
         // A pose or a tag is stored by id, so without this a `/face` row could only say whose face it
         // is. The refs come from the same context a typed line resolves against, which is the point:

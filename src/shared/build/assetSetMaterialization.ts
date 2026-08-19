@@ -1,6 +1,7 @@
 import {
     childAssetSets,
     matchAssetSetCoordinate,
+    resolveAssetSetFallbackAsset,
     type AssetSet,
     type AssetSetCandidate,
 } from "../types/assetSet";
@@ -191,11 +192,16 @@ function collapseBuildAxis(
     if (matches.length > 1) {
         return { ambiguous: position };
     }
-    // No fallback of any kind. A runtime axis falls back because every variant is in the package
-    // anyway, so the worst case is a player seeing another language's art; here the fallback would
-    // decide which bytes ship, and an edition quietly taking a position it never declared is how an
-    // adult variant reaches an all-ages package.
-    return matches.length === 1 ? { id: matches[0] } : { unfilled: position };
+    if (matches.length === 1) {
+        return { id: matches[0] };
+    }
+    // The set's declared fallback, and only that. An edition that never said where it stands is
+    // still refused above (`unset`): that is the property this file protects, because an edition
+    // quietly taking a position it never declared is how an adult variant reaches an all-ages
+    // package. Taking the file the author named as the one everything else falls back to is not a
+    // guess, it is the declaration being carried out.
+    const fallback = resolveAssetSetFallbackAsset(set, candidates);
+    return fallback ? { id: fallback } : { unfilled: position };
 }
 
 /**
@@ -208,6 +214,8 @@ function collapseBuildAxis(
 function fillVariantMap(
     resolveForValue: LocaleResolver,
     localization: Pick<GameLocalizationBundle, "sourceLocale" | "locales">,
+    /** The set's declared fallback file, tried after the project's own chain has run out. */
+    fallbackAssetId: string | null = null,
 ): { map: Record<string, string> } | { unfilled: LocaleCode } | { ambiguous: LocaleCode } {
     const map: Record<string, string> = {};
     for (const entry of localization.locales) {
@@ -228,6 +236,10 @@ function fillVariantMap(
                 break;
             }
         }
+        // The project's chain first, the set's fallback last: a language that inherits from another
+        // through the project's own fallback chain reads that language's art, which is the same
+        // order its text follows.
+        resolved = resolved ?? fallbackAssetId;
         if (!resolved) {
             return { unfilled: entry.code };
         }
@@ -240,10 +252,11 @@ function fillVariantMap(
         if (match && "ambiguous" in match) {
             return { ambiguous: localization.sourceLocale };
         }
-        if (!match) {
+        const resolved = match?.id ?? fallbackAssetId;
+        if (!resolved) {
             return { unfilled: localization.sourceLocale };
         }
-        map[localization.sourceLocale] = match.id;
+        map[localization.sourceLocale] = resolved;
     }
     return { map };
 }
@@ -402,6 +415,7 @@ function resolveBlockSets(input: {
                 return matches.length === 1 ? { id: matches[0] } : null;
             },
             input.localization,
+            resolveAssetSetFallbackAsset(set, input.candidates),
         );
         if ("ambiguous" in filled) {
             input.problems.push({ kind: "ambiguous", setId: set.id, setName: set.name, axisKey, value: filled.ambiguous, ...where });

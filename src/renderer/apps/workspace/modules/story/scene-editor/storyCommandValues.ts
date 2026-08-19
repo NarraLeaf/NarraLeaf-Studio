@@ -128,6 +128,15 @@ export type StoryCommandContext = {
     images: readonly StoryCommandNamedRef[];
     audio: readonly StoryCommandNamedRef[];
     videos: readonly StoryCommandNamedRef[];
+    /**
+     * The project's asset sets, which a row may name where it would name a file.
+     *
+     * Held apart from the three lists above rather than folded into them: those are what the command
+     * line offers to complete, and a set is only resolvable where assembly reads one - so this list
+     * answers "does this id still name something" without offering a set in fields that cannot use
+     * one.
+     */
+    assetSets: readonly StoryCommandNamedRef[];
     characters: readonly StoryCommandNamedRef[];
     /**
      * Bare speaker names already used somewhere in this story. They back no character record, so they
@@ -242,7 +251,7 @@ export type StoryPuppetParamSpec = {
 };
 
 export const EMPTY_STORY_COMMAND_CONTEXT: StoryCommandContext = {
-    images: [], audio: [], videos: [], characters: [], tempSpeakers: [], scenes: [], choiceOptions: [], valueBlueprints: [],
+    images: [], audio: [], videos: [], assetSets: [], characters: [], tempSpeakers: [], scenes: [], choiceOptions: [], valueBlueprints: [],
     audioTracks: [], labels: [], appTags: [], variables: [], appearanceByCharacterId: {},
     puppetCharacterIds: [],
     puppetByCharacterId: {},

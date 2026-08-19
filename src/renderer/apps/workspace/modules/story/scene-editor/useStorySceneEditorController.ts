@@ -30,6 +30,7 @@ import type { StorySceneEditorDraftJump, StorySceneEditorTabPayload } from "./st
 import { writeStoryJumpLine } from "./storyJumpLine";
 import { createBlockForCommand, type ActionCommandId } from "./storyActionCommands";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import type { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import { buildStoryCommandContext } from "./storyCommandContext";
 import { canCommit, parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandResolvedArgs } from "./storyCommandResolution";
@@ -111,6 +112,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const uuidService = useMemo(() => (context && isInitialized ? context.services.get<UuidService>(Services.Uuid) : null), [context, isInitialized]);
     const characterService = useMemo(() => (context && isInitialized ? context.services.get<CharacterService>(Services.Character) : null), [context, isInitialized]);
     const assetsService = useMemo(() => (context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null), [context, isInitialized]);
+    // Only for the ids: a row may name a set, and without this list every such row reads as one
+    // pointing at something the project no longer has.
+    const assetSetService = useMemo(() => (context && isInitialized ? context.services.get<AssetSetService>(Services.AssetSets) : null), [context, isInitialized]);
     // Per-project persistent store for the editor's view state (focus/selection/scroll). Available on
     // the first render - the workspace only mounts editors once services (incl. this one) are ready.
     const panelStateService = useMemo(() => (context && isInitialized ? context.services.get<PanelStateService>(Services.PanelState) : null), [context, isInitialized]);
@@ -469,6 +473,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const commandContext = useMemo(
         () => buildStoryCommandContext({
             assets: assetsService?.getAssets(),
+            assetSets: assetSetService?.listSets() ?? [],
             characters,
             document,
             sceneId,

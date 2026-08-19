@@ -379,6 +379,9 @@ export const assets = {
         unfinished: "バリアント未宣言",
         inUseTitle: "{name} はまだ使われている",
         inUseMessage: "次の箇所がこれを指定しており、解決できなくなる：",
+        picker: {
+            section: "アセットセット",
+        },
         menu: {
             create: "選択したファイルからセットを作成",
             createSub: "選択したファイルからここにセットを作成",
@@ -413,7 +416,10 @@ export const assets = {
                 runtime: "実行時",
             },
             residencyBlocked: "ビルド時に解決する軸は、実行時に解決する軸の内側に置けない。",
+            fallback: "既定のバリアント",
+            fallbackMissing: "このバリアントにファイルがないため、セット全体が解決できない。",
             variants: "バリアント",
+            variantInherited: "既定",
             variantMissing: "ファイルなし",
             variantAmbiguous: "ファイル {count} 件",
             noVariants: "軸を宣言するとバリアントが解決される。",

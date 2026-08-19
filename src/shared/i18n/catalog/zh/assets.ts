@@ -282,6 +282,9 @@ export const assets = {
         unfinished: "尚未声明变体",
         inUseTitle: "{name} 还在被引用",
         inUseMessage: "以下位置指向它，之后将无法解析：",
+        picker: {
+            section: "资产集",
+        },
         menu: {
             create: "用所选文件新建资产集",
             createSub: "用所选文件在此新建资产集",
@@ -316,7 +319,10 @@ export const assets = {
                 runtime: "运行时",
             },
             residencyBlocked: "构建时解析的轴不能嵌在运行时解析的轴里面。",
+            fallback: "兜底变体",
+            fallbackMissing: "该变体没有文件，整个资产集都无法解析。",
             variants: "变体",
+            variantInherited: "兜底",
             variantMissing: "无文件",
             variantAmbiguous: "{count} 个文件",
             noVariants: "声明一条轴后才会有变体。",

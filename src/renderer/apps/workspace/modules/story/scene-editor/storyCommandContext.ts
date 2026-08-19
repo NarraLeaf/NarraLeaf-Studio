@@ -274,6 +274,8 @@ export function valueBlueprintRefs(document: BlueprintDocument | null | undefine
 
 export function buildStoryCommandContext(input: {
     assets: AssetsMap | undefined;
+    /** The project's asset sets. Omitted where no project is open, which names none. */
+    assetSets?: readonly { id: string; name: string }[];
     characters: readonly Character[];
     document: StoryDocument | null;
     sceneId: StorySceneId | null | undefined;
@@ -345,6 +347,7 @@ export function buildStoryCommandContext(input: {
         images: assetRefs(input.assets, AssetType.Image),
         audio: assetRefs(input.assets, AssetType.Audio),
         videos: assetRefs(input.assets, AssetType.Video),
+        assetSets: (input.assetSets ?? []).map(set => ({ id: set.id, name: set.name })),
         characters,
         // Derived from the document, exactly as the speaker picker derives them, so a temp speaker
         // retires from the command line's candidates precisely when its last line does.
