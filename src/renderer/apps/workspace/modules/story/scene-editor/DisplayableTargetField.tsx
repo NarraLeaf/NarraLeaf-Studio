@@ -30,7 +30,13 @@ function sameName(left: string, right: string): boolean {
     return left.trim().toLowerCase() === right.trim().toLowerCase();
 }
 
-function matchesTarget(option: SceneDisplayableRef, target: { name: string; kind?: string; sourceBlockId?: string }): boolean {
+/**
+ * Whether a listed stage object is the one a target ref names.
+ *
+ * Exported because the channel previews resolve the same question - which picture is this row
+ * acting on - and two answers to "is this the object" would eventually disagree about a rename.
+ */
+export function matchesTarget(option: SceneDisplayableRef, target: { name: string; kind?: string; sourceBlockId?: string }): boolean {
     if (target.sourceBlockId) {
         return option.sourceBlockId === target.sourceBlockId;
     }
