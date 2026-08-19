@@ -45,6 +45,16 @@ export const appTagsSpec = defineDocumentSpec<ProjectAppTagDocument>({
         ) {
             context.corrupt(`"pluginConfig" must be an object, got ${typeof record.pluginConfig}`);
         }
+        // Same hazard again, and this one decides which art ships: a build axis whose position is
+        // unreadable would fall back to "nothing declared", and the build would refuse rather than
+        // quietly pick - but the first edit would still write the empty record over what was there.
+        if (record.assetAxes !== undefined
+            && (typeof record.assetAxes !== "object"
+                || record.assetAxes === null
+                || Array.isArray(record.assetAxes))
+        ) {
+            context.corrupt(`"assetAxes" must be an object, got ${typeof record.assetAxes}`);
+        }
         return migrateProjectAppTagDocument(record);
     },
     // No authored name: there is one of these per project and the history UI labels it by kind.

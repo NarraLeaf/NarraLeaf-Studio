@@ -138,6 +138,12 @@ export const project = {
         // Heading for the scene lists, shown only where the project holds something that can start a
         // scene the build cannot read. Each list below it is labelled with that thing's own name.
         reachableTitle: "Scenes these can start",
+        /**
+         * Where this edition sits on each build-time asset axis. Only shown once the project's art
+         * varies by edition; the values are the axis's own, so there is nothing to type.
+         */
+        assetAxesTitle: "Art this edition uses",
+        assetAxisUnset: "Same as the main build",
         // The addresses a build of this variant may hand to the player's browser. Named for what the
         // list decides rather than for the mechanism, and stated as a group: a variant has its own
         // list or reads the project's.

@@ -133,7 +133,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     // After `localization`, because filling a set is a question about the project's languages and
     // their declared fallbacks; before everything else, because what it rewrites is the story the
     // rest of this bundle describes.
-    const resolvedStoryLibrary = await materializeAssetSets(context, storyLibrary, localization);
+    const resolvedStoryLibrary = await materializeAssetSets(context, storyLibrary, localization, variant.name);
     const voice = restrictVoice(await loadGameVoice(context.projectPath), shippedTextIds, context.onNotice);
     const audio = await loadGameAudio(context.projectPath);
     const autoSave = await loadAutoSaveConfiguration(context.projectPath);
@@ -594,6 +594,7 @@ async function materializeAssetSets(
     context: DevModeBundleLoadContext,
     storyLibrary: DevModeStoryLibrary | undefined,
     localization: GameLocalizationBundle | undefined,
+    variantName: string,
 ): Promise<DevModeStoryLibrary | undefined> {
     if (!storyLibrary || Object.keys(storyLibrary.documents ?? {}).length === 0) {
         return storyLibrary;
@@ -607,13 +608,19 @@ async function materializeAssetSets(
         sets,
         candidates: await loadAssetSetCandidates(context.projectPath),
         localization,
+        assetAxes: context.assetAxes,
     });
     for (const problem of result.problems) {
-        const sentence = describeAssetSetProblem(problem, storyLibrary);
+        const sentence = describeAssetSetProblem(problem, storyLibrary, variantName);
         if (context.packaging) {
             throw new Error(sentence);
         }
         context.onNotice?.(sentence);
+    }
+    if (result.collapsedBuildAxis) {
+        // The caller has to narrow the library now, whichever edition this is. See
+        // `AssetSetMaterializationResult.collapsedBuildAxis`.
+        context.onAssetSetCollapse?.();
     }
     return { ...storyLibrary, documents: result.documents };
 }
@@ -621,29 +628,33 @@ async function materializeAssetSets(
 /**
  * What the author is told, naming the scene rather than the block id.
  *
- * A build failure has to be actionable from the sentence alone: which set, which language, and
+ * A build failure has to be actionable from the sentence alone: which set, which coordinate, and
  * where it is used. The set's *members* are never named - a set is resolved by tag, so the file to
- * import does not exist yet and there is no name to print.
+ * import does not exist yet and there is no name to print. For a build axis there is a second
+ * reason: the variants an edition did not take must not be named anywhere a log can reach.
  */
 function describeAssetSetProblem(
     problem: AssetSetMaterializationProblem,
     storyLibrary: DevModeStoryLibrary,
+    variantName: string,
 ): string {
     const scene = storyLibrary.documents[problem.storyId]?.scenes?.[problem.sceneId];
     const where = scene?.name ? `"${scene.name}"` : problem.sceneId;
+    const set = `Asset set "${problem.setName}", used in ${where}`;
     if (problem.kind === "ambiguous") {
-        return `Asset set "${problem.setName}", used in ${where}, has more than one asset for ${problem.locale}.`;
+        return `${set}, has more than one asset for ${problem.axisKey} ${problem.value}.`;
     }
     if (problem.kind === "unsupported") {
-        const reason = problem.reason === "buildAxis"
-            ? "resolves its axis when the game is built, which this build cannot collapse yet"
-            : problem.reason === "multipleAxes"
-                ? "has more than one axis, which this build cannot resolve yet"
-                : "declares no axis to resolve";
-        return `Asset set "${problem.setName}", used in ${where}, ${reason}.`;
+        const reason = problem.reason === "multipleAxes"
+            ? "has more than one axis, which this build cannot resolve yet"
+            : "declares no axis to resolve";
+        return `${set}, ${reason}.`;
     }
-    const language = problem.locale || "the project's language";
-    return `Asset set "${problem.setName}", used in ${where}, has no asset for ${language}.`;
+    if (problem.kind === "axisUnset") {
+        return `${set}, resolves ${problem.axisKey} when the game is built, and "${variantName}" does not say which ${problem.axisKey} it is.`;
+    }
+    const coordinate = problem.value ? `${problem.axisKey} ${problem.value}` : "the project's language";
+    return `${set}, has no asset for ${coordinate}.`;
 }
 
 /** The sets the project declares. Absent or unreadable is "no sets", which changes nothing. */
