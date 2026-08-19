@@ -1,4 +1,5 @@
 import { resolveLocalizedText } from "./localizedText";
+import { matchSystemLocale } from "./localization";
 import { isStageSizeUsable, type StageSize } from "./stageSize";
 
 /**
@@ -34,7 +35,33 @@ export type ProjectTemplateDescriptor = {
      * exactly what is listed here and nothing else.
      */
     designSizes?: StageSize[];
+    /**
+     * The languages this template's content is itself written in, besides the base tree's.
+     *
+     * Not the languages it ships translations for: a code here means there is a whole second
+     * copy of the story, the screens and the names, authored in that language, and an author
+     * writing in it receives that copy instead. Absent means the template says the same thing
+     * to everybody.
+     */
+    contentLocales?: string[];
 };
+
+/**
+ * The copy of a template's content an author writing in `requested` receives, if any.
+ *
+ * The same matching the shipped game uses to pick a player's language
+ * ({@link matchSystemLocale}): exact first, then either code being the other's prefix, so an
+ * author writing in `zh-CN` receives a `zh` variant. One rule rather than a second spelling of
+ * it — a template that answered differently from the game running out of it would be a
+ * difference with no visible reason.
+ */
+export function pickTemplateContentLocale(requested: string, available: readonly string[]): string | null {
+    const locale = requested.trim();
+    if (!locale || available.length === 0) {
+        return null;
+    }
+    return matchSystemLocale(available.map(code => ({ code, displayName: code })), [locale]);
+}
 
 /**
  * The stage sizes a template may be created at, in offer order.
