@@ -62,6 +62,7 @@ import {
     updateTextPayload,
 } from "./storySceneBlockUtils";
 import { isInteractiveTarget, isTextInputActive } from "./storySceneDom";
+import { clickSelectsRow, isPlainRowPress, nextRowSelection, pressSelectsRow } from "./storyRowSelectionGesture";
 import { getStoryEditorViewPrefs, getStoryEditorViewState, patchStoryEditorViewPrefs, patchStoryEditorViewState, type StoryEditorDensity } from "./storyEditorSessionStore";
 import {
     EMPTY_STORY_ROW_FILTER,
@@ -2103,38 +2104,38 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // the rail since the last time this row was picked — without a revision, re-clicking it would
         // change no state at all and the rail would stay on the asset.
         setSelectionRevision(revision => revision + 1);
-        setActiveBlockId(blockId);
-        if (event?.shiftKey && activeBlockId) {
-            setSelectedBlockIds(selectRange(visibleRows, activeBlockId, blockId));
-            return;
-        }
-        if (event?.ctrlKey || event?.metaKey) {
+        // `activeBlockId` is this render's — the row that was active BEFORE this press, which is where
+        // a Shift range starts. Shift leaves the anchor where it is; every other press re-anchors on
+        // the row it landed on.
+        if (!(event?.shiftKey && activeBlockId)) {
             selectionAnchorRef.current = blockId;
-            setSelectedBlockIds(previous => {
-                const next = new Set(previous);
-                next.has(blockId) ? next.delete(blockId) : next.add(blockId);
-                return next.size > 0 ? next : new Set([blockId]);
-            });
-            return;
         }
-        selectionAnchorRef.current = blockId;
-        setSelectedBlockIds(new Set([blockId]));
+        setActiveBlockId(blockId);
+        setSelectedBlockIds(previous => nextRowSelection({ previous, rows: visibleRows, activeBlockId, blockId, event }));
     }, [activeBlockId, visibleRows]);
 
+    /**
+     * The `mousedown` half of a row's press. See {@link pressSelectsRow} for why the row needs two
+     * handlers and why only one of them may select.
+     */
     const beginDragSelection = useCallback((blockId: StoryBlockId, event: MouseEvent) => {
-        if (event.button !== 0 || isInteractiveTarget(event.target)) {
+        if (!pressSelectsRow(event)) {
             return;
         }
         // Pointing at a column states it: whatever vertical run was in flight is over.
         goalColumnRef.current = null;
         selectRow(blockId, event);
+        // A modified press has already said everything it means - toggle this row, extend the range to
+        // it - so it stops here rather than also arming a row-range drag, which would replace that
+        // answer with a range on the press's first stray mousemove. See {@link isPlainRowPress}.
+        if (!isPlainRowPress(event)) {
+            return;
+        }
         // Pressing on a row's own text starts a *text* selection, not a row-range drag: let the
         // browser select natively and read the author's intent off the mouseup (a plain click leaves
         // the row selected; a real selection opens the row for editing with that selection intact).
-        // A modified click is unambiguously a row-selection intent, so it skips this.
-        const plainPress = !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
-        const textEl = plainPress
-            ? (event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[data-story-row-text]") : null)
+        const textEl = event.target instanceof HTMLElement
+            ? event.target.closest<HTMLElement>("[data-story-row-text]")
             : null;
         if (textEl) {
             textSelectRef.current = { blockId, textEl };
@@ -2145,6 +2146,20 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setDragSelectActive(true);
         startDragSelectAutoScroll();
     }, [selectRow, startDragSelectAutoScroll]);
+
+    /**
+     * The `click` half of the same press, and the only one that runs when {@link beginDragSelection}
+     * declined - a press that landed on a field or a button inside the row, which still has to leave
+     * the row selected. Asking the event rather than remembering what the mousedown did is deliberate:
+     * a press that ends outside the row produces no click at all, so a "handled" flag set on the way
+     * down would still be set on the way into the *next* gesture and would swallow it.
+     */
+    const selectRowFromClick = useCallback((blockId: StoryBlockId, event: MouseEvent) => {
+        if (!clickSelectsRow(event)) {
+            return;
+        }
+        selectRow(blockId, event);
+    }, [selectRow]);
 
     /** Editing the text moves the caret by intent, which ends any vertical run. See {@link goalColumnRef}. */
     const resetGoalColumn = useCallback(() => {
@@ -2704,7 +2719,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
         handleRowTextPaste,
         pasteWizard, pasteMemory, cancelPasteWizard, confirmPasteWizard, savePasteSeparator, forgetPasteSeparator,
-        deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, startJumpDraft, selectRow, beginDragSelection,
+        deleteRows, deleteSelection, replaceRowWithBlankLine, startInsertAfter, startInsertBefore, startJumpDraft, selectRow, beginDragSelection, selectRowFromClick,
         selectionRootIds, toggleDisableSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata,
         setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange, updateTextDraft,
