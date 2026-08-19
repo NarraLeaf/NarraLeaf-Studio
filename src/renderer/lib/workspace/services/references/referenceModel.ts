@@ -271,12 +271,35 @@ function expandReferencedAsset(assetId: string, expand?: AssetSetExpander): read
     return members ? members : [assetId];
 }
 
+/** One story read: what the index answers with, and the sites that named an asset set. */
+export interface StoryAssetReferenceScan {
+    references: AssetReference[];
+    /**
+     * Sites naming a set, carrying the set's own id.
+     *
+     * Deliberately not in `references`: that index answers "what uses this asset", and a set is not
+     * an asset - a set id in there would be a dangling id to every rule that reads it. This list
+     * answers the question asked just before a set is removed, which the index cannot: a row names
+     * the set, not the file, so it goes on naming it after the file is gone.
+     */
+    setReferences: AssetReference[];
+}
+
 export function extractStoryAssetReferences(
     document: StoryDocument,
     storyName: string,
     expandAssetSet?: AssetSetExpander,
 ): AssetReference[] {
+    return scanStoryAssetReferences(document, storyName, expandAssetSet).references;
+}
+
+export function scanStoryAssetReferences(
+    document: StoryDocument,
+    storyName: string,
+    expandAssetSet?: AssetSetExpander,
+): StoryAssetReferenceScan {
     const references: AssetReference[] = [];
+    const setReferences: AssetReference[] = [];
 
     for (const scene of listScenesInDocumentOrder(document)) {
         const sceneName = scene.name;
@@ -287,6 +310,27 @@ export function extractStoryAssetReferences(
                 return;
             }
             const trimmed = assetId.trim();
+            const members = expandAssetSet?.(trimmed);
+            if (members) {
+                // Recorded whether or not it resolves to anything. A set with no files is exactly
+                // the one whose removal leaves a row naming an id nothing in the project has.
+                setReferences.push({
+                    id: `assetSet:${document.id}:${scene.id}:${blockId}:${field}`,
+                    assetId: trimmed,
+                    kind: "story",
+                    label: sceneName,
+                    detail,
+                    field,
+                    target: {
+                        kind: "storyBlock",
+                        storyId: document.id,
+                        sceneId: scene.id,
+                        blockId,
+                        storyName,
+                        sceneName,
+                    },
+                });
+            }
             for (const memberId of expandReferencedAsset(trimmed, expandAssetSet)) {
                 references.push({
                     // The member is in the key: one row naming a set uses several assets, and a
@@ -385,7 +429,7 @@ export function extractStoryAssetReferences(
         }
     }
 
-    return references;
+    return { references, setReferences };
 }
 
 /**

@@ -1419,6 +1419,9 @@ const vfxFitOptions = (t: TFunc): SelectOption[] => [
  * An ambience overlay's knobs. Two things the layout carries rather than explains:
  *  - the placement knobs (clip, blend, opacity, fit, z, loop) only appear on the row that CREATES the
  *    overlay - a later `/hide petals` row cannot change how it composites;
+ *  - blend is absent on a seed, which is not a knob withheld but a question with one answer: a baked
+ *    clip is lit particles on black and has to be screened. Offering the choice would let an author
+ *    pick the one setting that turns their weather into a black rectangle;
  *  - there is no transform section at all, because a `Vfx` is not a Displayable and has no transform
  *    pipeline to offer.
  */
@@ -1457,12 +1460,14 @@ function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload:
                                 onChange={assetId => props.onChange({ ...payload, assetId })}
                             />
                         )}
-                        <SelectField
-                            label={t("storyInspector.vfx.blendMode")}
-                            options={vfxBlendOptions(t)}
-                            value={payload.blendMode ?? "normal"}
-                            onChange={blendMode => props.onChange({ ...payload, blendMode: blendMode as VfxActionPayload["blendMode"] })}
-                        />
+                        {payload.seed ? null : (
+                            <SelectField
+                                label={t("storyInspector.vfx.blendMode")}
+                                options={vfxBlendOptions(t)}
+                                value={payload.blendMode ?? "normal"}
+                                onChange={blendMode => props.onChange({ ...payload, blendMode: blendMode as VfxActionPayload["blendMode"] })}
+                            />
+                        )}
                         <NumberField
                             label={t("storyInspector.vfx.opacity")}
                             value={payload.opacity}
