@@ -1,8 +1,9 @@
 import type { AppearanceModel, AppearanceVariant } from "@shared/types/ui-editor/appearance";
-import type { UIElement } from "@shared/types/ui-editor/document";
+import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { addVariant, newVariantId } from "./appearancePatch";
 import { isUsableAppearanceModel } from "./initialAppearanceModel";
+import { findStateHost } from "./stateHost";
 
 type StateWriter = {
     getDocument(): { elements: Record<string, UIElement> };
@@ -55,7 +56,15 @@ export function addElementState(
     return id;
 }
 
-/** Whether this element has a state to add one to; a widget declaring its own states does not. */
-export function canAddElementState(element: UIElement | undefined): boolean {
-    return Boolean(element && elementAppearanceModel(element));
+/**
+ * Whether this element has a state to add one to.
+ *
+ * A widget declaring its own states does not, and neither does anything inside one: a part is shown
+ * in its host's states, and a private state added here would be a state the widget cannot enter.
+ */
+export function canAddElementState(document: UIDocument, element: UIElement | undefined): boolean {
+    if (!element || !elementAppearanceModel(element)) {
+        return false;
+    }
+    return findStateHost(document, element.id) === null;
 }

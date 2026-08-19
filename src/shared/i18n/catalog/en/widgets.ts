@@ -143,7 +143,6 @@ export const widgets = {
         track: "Track",
         thumb: "Thumb",
         repairParts: "Repair parts",
-        motionTitle: "While on",
     },
     textInput: {
         title: "Text Input",

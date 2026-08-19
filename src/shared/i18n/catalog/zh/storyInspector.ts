@@ -307,6 +307,7 @@ export const storyInspector = {
     },
     displayableOperation: {
         transform: "变换",
+        bringToFront: "置顶",
         mask: "遮罩",
         clearMask: "清除遮罩",
         clip: "裁剪路径",
