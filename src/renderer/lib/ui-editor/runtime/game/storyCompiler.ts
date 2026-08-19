@@ -2105,10 +2105,7 @@ function runStoryCompilePasses(ctx: SceneCompileContext): void {
                     Math.max(0, durationMs),
                     easing as never,
                 ) as unknown as EngineAction,
-                // A pass must always get an action back, so an engine without the call gets an empty
-                // `Control.do` - it runs, changes nothing, and the reason is reported once against
-                // the scene. Returning null instead would push the version question into every pass.
-                bringToFront: () => (bringToFrontStatement(ctx, image, undefined) ?? Control.do([])) as unknown as EngineAction,
+                bringToFront: () => image.bringToFront() as unknown as EngineAction,
             };
         },
         // `allAsync`, never `doAsync` - see the note in storyCompilePass.ts. This is the single place
@@ -2743,8 +2740,7 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
             return [];
         }
         if (payload.operation === "bringToFront") {
-            const raise = bringToFrontStatement(ctx, target, block.id);
-            return raise ? [recordStatement(ctx, raise, block)] : [];
+            return [recordStatement(ctx, target.bringToFront(), block)];
         }
         const chain = await compileDisplayableOperation(target, payload.operation, payload.transform, ctx, block.id);
         return chain ? [recordStatement(ctx, chain, block)] : [];
@@ -4390,41 +4386,6 @@ async function compileDisplayableOperation(
     }
     const chain = await emitTransformProps(target, transform, ctx, blockId);
     return chain === target ? null : chain;
-}
-
-/**
- * What an author reads when the installed engine has no `bringToFront`. One constant, because both
- * callers below report it and a row skipped for this reason should read the same either way.
- */
-const BRING_TO_FRONT_UNSUPPORTED =
-    "This version of NarraLeaf-React cannot raise an element to the front, so the row does nothing. Update to 0.30.0 or later.";
-
-/**
- * Whether the installed engine's `Displayable` carries `bringToFront()`.
- *
- * **This check is temporary and belongs to this change alone.** `Displayable.bringToFront()` lands in
- * NarraLeaf-React 0.30.0, and Studio still pins `^0.28.0` - so on the installed engine the method is
- * simply absent, and calling it would throw while the game plays rather than fail the compile: a Dev
- * Mode crash on a row that looks like every other row. Reporting it here turns that into a row that
- * says why it did nothing.
- *
- * When the pin is raised past 0.30.0, this function, {@link BRING_TO_FRONT_UNSUPPORTED} and the two
- * `as any` casts that go with them all come out, and both call sites become the one-liners the rest
- * of this file's verbs are. The `as any` on an engine element is this file's ordinary register
- * (`image.char(src as any)`, `camera.transform(sway)`); the version test is not, which is why it is
- * spelled out here rather than left inline.
- */
-function supportsBringToFront(element: unknown): boolean {
-    return typeof (element as { bringToFront?: unknown } | null | undefined)?.bringToFront === "function";
-}
-
-/** The raise as one statement, or null (with the reason reported) on an engine that cannot do it. */
-function bringToFrontStatement(ctx: SceneCompileContext, target: any, blockId: string | undefined): NlrStatement | null {
-    if (!supportsBringToFront(target)) {
-        diagnostic(ctx, "warning", blockId, BRING_TO_FRONT_UNSUPPORTED);
-        return null;
-    }
-    return (target as any).bringToFront();
 }
 
 /**
