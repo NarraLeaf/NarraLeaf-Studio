@@ -18,7 +18,7 @@ import type { SavedVariableRuntimeTable } from "@shared/types/variables/registry
 import { buildMergedVariableView, type MergedPersistentView } from "@shared/variables/mergedPersistentView";
 import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
 import { evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
-import { composeStoryFilter } from "@shared/story/transformProps";
+import { composeStoryFilter, foldStoryTransformLook } from "@shared/story/transformProps";
 import { translate } from "@/lib/i18n";
 import {
     getCharacterStageObjectName,
@@ -925,7 +925,9 @@ class SnapshotWalker {
  * radius zero.
  */
 function applyEffectProps(effects: StageSnapshotEffects, transform: StoryTransformRef | undefined): void {
-    const to = transform?.to;
+    // Folded first, so a grade re-applies through the same `filter` channel a hand-written chain does
+    // - the preview has one CSS filter to give back, exactly as the stage has one.
+    const to = foldStoryTransformLook(transform?.to, resolveStoryCameraLook);
     if (to) {
         if (to.maskAssetId !== undefined) {
             effects.mask = to.maskAssetId === null ? "clear" : { assetId: to.maskAssetId };

@@ -17,7 +17,6 @@ import {
 import { displayableTargetRef } from "../payloadHelpers";
 import { resetVariableBlock } from "./variables";
 import {
-    cameraLookOf,
     filterWritersOf,
     parseFromProps,
     parsePositionValue,
@@ -143,7 +142,7 @@ function cameraChannelsOf(args: TransformArgs): readonly string[] {
 const CAMERA_DEFAULT_DURATION_MS = 600;
 
 function cameraBlock(args: TransformArgs, generateId: () => string): StoryBlock {
-    const props = transformPropsFromArgs(args, resolveStoryCameraLook);
+    const props = transformPropsFromArgs(args);
     const easing = args.ease?.kind === "enum" ? args.ease.value : undefined;
     const timing = {
         durationMs: asDurationMs(args.d) ?? CAMERA_DEFAULT_DURATION_MS,
@@ -170,7 +169,7 @@ function cameraBlock(args: TransformArgs, generateId: () => string): StoryBlock 
     if (props.rotation !== undefined) {
         return payload({ operation: "rotate", rotation: props.rotation });
     }
-    const look = cameraLookOf(args);
+    const look = props.look ? { lookPreset: props.look.preset, ...(props.look.intensity !== undefined ? { lookIntensity: props.look.intensity } : {}) } : null;
     if (look) {
         // The grade keeps its NAME here, not just its CSS: `lookPreset` is what lets the inspector
         // re-open the row on the grade the author chose instead of on a wall of resolved filter terms.
@@ -195,10 +194,10 @@ function cameraBlock(args: TransformArgs, generateId: () => string): StoryBlock 
             } as Extract<StoryActionPayload, { action: "camera" }>,
         };
     }
-    if (props.filterRaw !== undefined || props.filter !== undefined) {
+    if (props.look === null || props.filterRaw !== undefined || props.filter !== undefined) {
         return payload({
             operation: "look",
-            filter: props.filterRaw ?? composeStoryFilter(props.filter),
+            filter: props.look === null ? "none" : props.filterRaw ?? composeStoryFilter(props.filter),
         });
     }
     // A row that states nothing yet. `zoom` at its neutral is the coherent empty camera row and the
@@ -341,7 +340,7 @@ export const transform = defineStoryCommand({
         if (asBoolean(args.motion)) {
             return displayableBlock(asTarget(args.target), { mode: "animation" }, ctx.generateId);
         }
-        const props = pruneStoryTransformProps(transformPropsFromArgs(args, resolveStoryCameraLook));
+        const props = pruneStoryTransformProps(transformPropsFromArgs(args));
         const transformRef: StoryTransformRef = {
             ...transformTimingFromArgs(args),
             ...(props ? { to: props } : {}),

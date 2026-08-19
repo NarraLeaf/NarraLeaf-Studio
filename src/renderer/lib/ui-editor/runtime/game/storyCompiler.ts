@@ -120,6 +120,7 @@ import {
     composeStoryFilter,
     isEmptyStoryTransformProps,
     splitStoryTransformChange,
+    foldStoryTransformLook,
     storyTransformPropsConflicts,
     storyTransformPropsToNlr,
 } from "@shared/story/transformProps";
@@ -4271,11 +4272,27 @@ async function emitTransformProps(
     }
     for (const conflict of storyTransformPropsConflicts(ref.to)) {
         if (conflict === "filterBoth") {
-            diagnostic(ctx, "warning", blockId, "A transform sets both a structured filter and a raw one; only one can reach the stage.");
+            diagnostic(ctx, "warning", blockId, "A transform names more than one writer of the CSS filter channel; only one can reach the stage.");
         }
     }
     const timing = timingOf(ref);
-    const { cut, tween } = splitStoryTransformChange(ref.from, ref.to);
+    const grade = ref.to?.look ? cameraLookEmission(ref.to.look, ref) : null;
+    // A SWAY never settles onto its grade until its last step, so the recipe's resting chain is the
+    // sway statement's own business and must not also be written into the pose - a bag carrying both
+    // would put the grade on at frame zero and then swing away from it.
+    const bag = grade?.sway ? { ...ref.to, look: undefined } : ref.to;
+    const to = foldStoryTransformLook(bag, resolveStoryCameraLook, preset =>
+        diagnostic(ctx, "warning", blockId, `Camera look "${preset}" is not a known grade.`));
+    const { cut, tween } = splitStoryTransformChange(ref.from, to);
+    // **Getting to a grade is a separate problem from being on one, and only the library can say
+    // which of its own routes is safe.** `filterRaw` is discrete to everyone else - a chain nothing
+    // can read cannot be interpolated responsibly - but a recipe that turns no hue moves every term
+    // monotonically toward its target, and easing it is the effect rather than decoration. So the one
+    // caller that DID write the chain moves it into the eased half.
+    if (grade?.tweens && cut.filterRaw !== undefined) {
+        tween.filterRaw = cut.filterRaw;
+        delete cut.filterRaw;
+    }
     let next = chain;
     if (!isEmptyStoryTransformProps(cut)) {
         next = await emitCutProps(next, cut, ctx, blockId);
@@ -4283,10 +4300,60 @@ async function emitTransformProps(
     if (!isEmptyStoryTransformProps(tween)) {
         next = next.transform(buildTransform(storyTransformPropsToNlr(tween), timing));
     }
+    if (grade?.sway) {
+        // The sway, then the settle onto the resting grade. `repeat` covers the whole sequence list,
+        // so the swing ends on its last step rather than at neutral, and the settle is what leaves
+        // the stage in the state a still grade would have left it in.
+        next = next.transform(grade.sway).filter(grade.css, { duration: grade.settleMs, ease: "easeOut" });
+    }
     if (ref.clipReveal) {
         next = emitClipReveal(next, ref.clipReveal, timing, ctx, blockId);
     }
     return next;
+}
+
+/**
+ * What a named grade asks the emitter for: whether its route may be eased, and the sway it plays
+ * first when it has one.
+ *
+ * **A filter animation eases every term of the chain at once**, so the default route into a grade is
+ * the straight line between two parameter sets. For `moonlight` that line is the bare-hue-rotate trap
+ * reached from the other side: `grayscale` ramps up WHILE the angle sweeps 185 degrees, so the
+ * midpoint keeps most of the source's own hues and drags them half a turn. Measured frame by frame on
+ * that grade - blue at full, cyan by 0.8, green through 0.6-0.4, olive at 0.2. A green face. So a
+ * chain that turns a hue cuts, and `storyCameraLookTweens` asks the recipe rather than a hard-coded
+ * list: a new grade that grows an angle stops tweening without anyone remembering to say so.
+ *
+ * **A sway is exempt by construction rather than by judgement.** Every keyframe names the same filter
+ * functions in the same order as the grade it settles onto, holds the flatten terms fixed, and moves
+ * the hue only a few degrees either side of neutral. Nothing crosses the wheel, so there is no
+ * midpoint to land wrong on - which is also why the step list and the resting recipe must stay
+ * function-for-function identical: a browser interpolates two filter lists only when they match, and
+ * a mismatched pair snaps instead of animating.
+ */
+function cameraLookEmission(
+    look: NonNullable<StoryTransformProps["look"]>,
+    ref: StoryTransformRef,
+): { css: string; tweens: boolean; sway: Transform | null; settleMs: number } | null {
+    const css = resolveStoryCameraLook(look.preset, look.intensity);
+    if (!css) {
+        return null;
+    }
+    const duration = Math.max(0, ref.durationMs ?? 0);
+    const oscillation = resolveStoryCameraLookOscillation(look.preset, look.intensity, duration);
+    if (oscillation && oscillation.steps.length > 0) {
+        const sequences = oscillation.steps.map(step => ({
+            props: { filter: step },
+            options: { duration: oscillation.stepMs, ease: ref.easing ?? "easeInOut" },
+        }));
+        return {
+            css,
+            tweens: false,
+            sway: new Transform(sequences as any, { repeat: oscillation.cycles } as any),
+            settleMs: oscillation.settleMs,
+        };
+    }
+    return { css, tweens: duration > 0 && storyCameraLookTweens(look.preset, look.intensity), sway: null, settleMs: 0 };
 }
 
 /** The half that lands in one frame, through the engine's own effect entries where it has them. */

@@ -136,7 +136,22 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // EITHER direction. A v17 Studio meeting `operation: "transform"` with a `to.filter` record would
 // compile a transform with a prop it cannot read and drop the grade; a v18 Studio meeting
 // `operation: "mask"` has no branch for it at all. Refusing the document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 18 as const;
+// v19 folds the stage camera into the same prop bag every other subject already writes, and removes
+// the scene's `screenEffect` layer. The camera's arm spelled its state as one operation plus that
+// operation's own field (`pan` + `position`, `zoom` + `zoom`, ...), so a camera row could state one
+// channel where a sprite states a bag: no row could pan and zoom together, and the eight filter
+// functions v18 opened up were reachable on every subject except the one whose whole job is grading
+// the stage. The arm is now `transform` + a {@link StoryTransformRef}, and the six operations have a
+// determinate expansion apiece (`darken` is the `brightness` the compiler already emitted for it,
+// `look` is the two fields it always carried, `motion` IS a ref). `reset` stays, because it is a
+// separate engine primitive rather than a bag of neutral values - see the arm's own note.
+// `screenEffect` goes with it: the eyelids and the vignette are now lens props on the camera's bag
+// (`shutter`, `vignette`, and the four that dress them), so they compose with a grade and a pan
+// instead of being a one-shot the scene played on a layer of its own.
+// The bump is not optional in either direction. A v18 Studio meeting `operation: "transform"` on the
+// camera arm has no branch for it and drops the row; a v19 Studio meeting `operation: "pan"` has
+// none for that. Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 19 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -1288,9 +1303,44 @@ export type StoryTransformProps = {
     // --- Text only: `TextTransformProps`. ---
     fontColor?: string;
 
-    // --- Filter: structured, or raw. Never both. ---
+    // --- Filter: structured, raw, or a named grade. Never more than one. ---
     filter?: StoryFilterProps | null;
     filterRaw?: string | null;
+    /**
+     * A colour grade from the camera look library, kept by NAME rather than as the chain it expands
+     * to.
+     *
+     * The third writer of the CSS `filter` channel, and mutually exclusive with the other two for the
+     * reason they are exclusive with each other: two writers of one channel means whichever the
+     * emitter reads last wins with no diagnostic anywhere.
+     *
+     * It is the name and not the CSS because the string is the *output*. A row storing
+     * `grayscale(1) sepia(1) hue-rotate(185deg) saturate(4) brightness(0.55)` cannot say which grade
+     * an author picked, so every surface that wants to re-open on the choice had to rebuild every
+     * recipe the library can produce and match the string back. Keeping the name deletes that index
+     * outright, and it is what lets a row read `Look memory` instead of a wall of filter terms.
+     *
+     * `null` clears the channel, exactly as `filter: null` does - the spelling `/reset` and
+     * `look=none` write is `filter: null`, so nothing produces this one, but the channel is nullable
+     * like every other appearance channel rather than being the one exception.
+     *
+     * The library lives in `lib/ui-editor/runtime/game/cameraLookPresets.ts` and cannot be imported
+     * from `@shared`, so the resolution is injected: see `foldStoryTransformLook`.
+     */
+    look?: StoryCameraLookRef | null;
+};
+
+/**
+ * A grade from the camera look library: which recipe, and how far up.
+ *
+ * `preset` is a `StoryCameraLookPresetId`, spelled as a plain string here because the library is a
+ * renderer module and this type is read by the main process too. A preset id no longer in the library
+ * is a diagnostic at compile time, never a silent substitution - a row asked for a specific look.
+ */
+export type StoryCameraLookRef = {
+    preset: string;
+    /** 0 is no grade, 1 the preset's nominal strength. Clamped to the library's range at compile time. */
+    intensity?: number;
 };
 
 /**

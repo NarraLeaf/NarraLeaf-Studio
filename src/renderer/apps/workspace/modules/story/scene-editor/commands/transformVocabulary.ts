@@ -284,15 +284,12 @@ export function filterWritersOf(args: TransformArgs): readonly FilterWriter[] {
  * "leave this as it stands", and that is what lets two rows compose instead of the second one
  * silently resetting whatever the first did.
  *
- * `look=` is resolved to its CSS here rather than kept as a name, because a displayable has nowhere
- * to keep the name - `lookPreset` is a field of the CAMERA payload. A camera row reads the same arg
- * again through {@link cameraLookOf} and keeps the preset, so the inspector can re-open on the grade
- * the author chose instead of on a wall of CSS.
+ * `look=` keeps its NAME. It used to resolve to CSS here, because a displayable had nowhere to store
+ * one - the grade's preset was a field of the camera payload alone - and the cost was that every
+ * surface wanting to re-open on the author's choice had to rebuild the whole library and match the
+ * string back. The bag holds the name now, so there is nothing to recover.
  */
-export function transformPropsFromArgs(
-    args: TransformArgs,
-    resolveLook: (presetId: string, intensity: number | undefined) => string | null,
-): StoryTransformProps {
+export function transformPropsFromArgs(args: TransformArgs): StoryTransformProps {
     const props: StoryTransformProps = {};
     const position = positionOf(args.pos);
     if (position) {
@@ -366,21 +363,15 @@ export function transformPropsFromArgs(
     }
     const look = asEnum(args.look);
     if (look === "none") {
-        props.filter = null;
+        // `null` on this channel is what `none` means on every other one: put it back. It is not the
+        // same instruction as `filter=none` only in which word the author typed - both clear the one
+        // CSS channel - and the row prints back the word that produced it.
+        props.look = null;
     } else if (look !== undefined) {
-        props.filterRaw = resolveLook(look, asNumber(args.strength));
+        const intensity = asNumber(args.strength);
+        props.look = { preset: look, ...(intensity !== undefined ? { intensity } : {}) };
     }
     return props;
-}
-
-/** The grade a camera row keeps by NAME, so the inspector can re-open on it. `null` when the row names none. */
-export function cameraLookOf(args: TransformArgs): { lookPreset?: string; lookIntensity?: number } | null {
-    const look = asEnum(args.look);
-    if (look === undefined || look === "none") {
-        return null;
-    }
-    const intensity = asNumber(args.strength);
-    return { lookPreset: look, ...(intensity !== undefined ? { lookIntensity: intensity } : {}) };
 }
 
 /**
@@ -598,6 +589,10 @@ export function transformPropArgs(
     if (props.filterRaw !== undefined) {
         push("filter", props.filterRaw === null ? "none" : props.filterRaw, props.filterRaw === null);
     }
+    if (props.look !== undefined) {
+        push("look", props.look === null ? "none" : props.look.preset, true);
+        push("strength", props.look === null ? undefined : numberWord(props.look.intensity));
+    }
     if (props.maskAssetId !== undefined) {
         push("mask", props.maskAssetId === null ? "none" : assetName(props.maskAssetId), props.maskAssetId === null);
     }
@@ -677,7 +672,13 @@ export function patchTransformProp(props: StoryTransformProps | undefined, key: 
         // Absolute, never a toggle - the same reason the retired `/mirror` never took one: a compiled
         // transform cannot read the scale it would have to invert.
         case "flip": return { ...bag, scaleX: next === "on" ? -1 : 1 };
-        case "filter": return next === "none" ? { ...bag, filter: null, filterRaw: undefined } : { ...bag, filterRaw: next, filter: undefined };
+        case "filter": return next === "none" ? { ...bag, filter: null, filterRaw: undefined, look: undefined } : { ...bag, filterRaw: next, filter: undefined, look: undefined };
+        // Swapping the grade keeps the dial the author set: `strength` means the same thing in every
+        // preset, so re-seeding it would throw away a real choice.
+        case "look": return next === "none"
+            ? { ...bag, look: null, filter: undefined, filterRaw: undefined }
+            : { ...bag, look: { preset: next, ...(bag.look?.intensity !== undefined ? { intensity: bag.look.intensity } : {}) }, filter: undefined, filterRaw: undefined };
+        case "strength": return bag.look ? { ...bag, look: { ...bag.look, intensity: amount } } : bag;
         case "clip": return { ...bag, clipPath: next === "none" ? null : next };
         case "backdrop": return { ...bag, backdropFilter: next === "none" ? null : next };
         case "blend": return { ...bag, mixBlendMode: next === "none" ? null : next };
