@@ -54,7 +54,7 @@ export type {
     StoryCommandTargetValue,
     StoryCommandValue,
 } from "./storyCommandValues";
-export type { StoryCommandVariableEntry, StoryCommandStageObjects, StoryCommandStageObjectSources, StoryCommandResolvedArgs } from "./storyCommandValues";
+export type { StoryCommandVariableEntry, StoryCommandStageObjects, StoryCommandStageObjectSources, StoryCommandCharacterSources, StoryCommandResolvedArgs } from "./storyCommandValues";
 export { EMPTY_STORY_COMMAND_CONTEXT, EMPTY_STORY_COMMAND_STAGE_OBJECTS, EMPTY_STORY_COMMAND_STAGE_OBJECT_SOURCES } from "./storyCommandValues";
 
 /**
@@ -156,7 +156,16 @@ function resolveTarget(
             return { issue: { code: "ambiguousName", span, value } };
         }
         if (found.length === 1) {
-            matches.push({ type: "character", characterId: found[0].id, name: found[0].name });
+            // The entering row, when this scene holds one. It carries the stage key as well as its
+            // id: a character's key is the row's own stage name (or the character id when it has
+            // none), which the cast name this matched on cannot be turned back into.
+            const declaration = context.characterSources?.[found[0].id];
+            matches.push({
+                type: "character",
+                characterId: found[0].id,
+                name: found[0].name,
+                ...(declaration ? { stageName: declaration.name, sourceBlockId: declaration.blockId } : {}),
+            });
         }
     }
 

@@ -14,7 +14,7 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { AssetsMap } from "@/lib/workspace/services/assets/types";
 import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPreviewTarget";
 import { segmentPlainText } from "./storyFindReplace";
-import type { StoryCommandAppearanceRef, StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjectKind, StoryCommandStageObjects, StoryCommandStageObjectSources, StoryCommandVariableEntry } from "./storyCommandResolution";
+import type { StoryCommandAppearanceRef, StoryCommandCharacterSources, StoryCommandContext, StoryCommandNamedRef, StoryCommandStageObjectKind, StoryCommandStageObjects, StoryCommandStageObjectSources, StoryCommandVariableEntry } from "./storyCommandResolution";
 import { EMPTY_STORY_COMMAND_STAGE_OBJECT_SOURCES } from "./storyCommandResolution";
 import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
@@ -171,8 +171,9 @@ function collectStageObjectSources(scene: StoryScene | null): StoryCommandStageO
     };
     for (const block of listSceneBlocksInDocumentOrder(scene)) {
         const identity = displayableCreatorIdentity(block) ?? actionableSourceIdentity(block);
-        // `character` is the one declaring kind with no stage-object arm: a character target already
-        // carries its `characterId`, an identity no rename can reach.
+        // `character` is the one declaring kind with no stage-object arm. It is not skipped - see
+        // `collectCharacterSources`, which indexes it by `characterId` because this table's key (the
+        // object's stage name) is not what a character target is matched on.
         if (!identity || identity.kind === "character") {
             continue;
         }
@@ -181,6 +182,35 @@ function collectStageObjectSources(scene: StoryScene | null): StoryCommandStageO
         // name already on stage addresses that object rather than replacing it.
         if (key && !(key in sources[identity.kind])) {
             sources[identity.kind][key] = block.id;
+        }
+    }
+    return sources;
+}
+
+/**
+ * Which row brings each character on stage, keyed by `characterId`.
+ *
+ * A walk of its own rather than an arm of {@link collectStageObjectSources}, because a character is
+ * not a stage object in the sense that scan means: it is addressed by a name the PROJECT owns, and
+ * the key it is registered under is derived from the entering row rather than typed on it. Both
+ * halves are recorded - the block id anchors the reference, the stage key is what a reference has to
+ * store as its fallback, and nothing downstream can recompute the second from the cast name.
+ */
+function collectCharacterSources(scene: StoryScene | null): StoryCommandCharacterSources {
+    if (!scene) {
+        return {};
+    }
+    const sources: Record<string, { blockId: string; name: string }> = {};
+    for (const block of listSceneBlocksInDocumentOrder(scene)) {
+        const identity = displayableCreatorIdentity(block);
+        if (!identity || identity.kind !== "character" || block.kind !== "action" || block.payload.action !== "character") {
+            continue;
+        }
+        const characterId = block.payload.characterId;
+        // First entrance wins, the rule `collectStageObjectSources` follows: a second `/show` of a
+        // character already on stage addresses that portrait rather than replacing it.
+        if (characterId && !(characterId in sources)) {
+            sources[characterId] = { blockId: block.id, name: identity.name };
         }
     }
     return sources;
@@ -336,5 +366,6 @@ export function buildStoryCommandContext(input: {
         ),
         stageObjects: collectStageObjects(input.document, input.sceneId, input.scene),
         stageObjectSources: collectStageObjectSources(input.scene),
+        characterSources: collectCharacterSources(input.scene),
     };
 }

@@ -3,7 +3,7 @@ import type { StoryActionPayload, StoryBlock } from "@shared/types/story";
 import { createBlockForCommand, type ActionCommandId } from "../../storyActionCommands";
 import { BGM_OBJECT_NAME, type StoryCommandValue } from "../../storyCommandValues";
 import { asAudioTrackId, asBoolean, asDurationMs, asNumber, asTarget, asText, audioTrackParam, defineStoryCommand, SECONDS_TYPE, targetParam } from "../spec";
-import { deriveObjectName, vfxOperationBlock } from "../payloadHelpers";
+import { actionableTargetRef, audioTargetRef, deriveObjectName, vfxOperationBlock } from "../payloadHelpers";
 
 /**
  * Sound: `/bgm`, `/sound`, and the control family `/vol` `/rate` `/stop` `/pause` `/resume`
@@ -25,7 +25,10 @@ function audioControlBlock(
     if (block.kind !== "action" || block.payload.action !== "audio") {
         return block;
     }
-    const payload = { ...block.payload, objectName: asTarget(args.target)?.name ?? BGM_OBJECT_NAME };
+    const target = asTarget(args.target);
+    // The name stays authoritative; the reference beside it is what follows a rename of the
+    // `playSound` row that created the handle - or names the music channel, which has no such row.
+    const payload = { ...block.payload, objectName: target?.name ?? BGM_OBJECT_NAME, target: audioTargetRef(target) };
     const fadeMs = asDurationMs(args.fade);
     if (fadeMs !== undefined) {
         payload.fadeMs = fadeMs;
@@ -64,11 +67,11 @@ function mediaControlBlock(
             parentId: null,
             childrenIds: [],
             kind: "action",
-            payload: { action: "video", operation: ops.video, objectName: target.name },
+            payload: { action: "video", operation: ops.video, objectName: target.name, target: actionableTargetRef(target) },
         };
     }
     if (target?.type === "stageObject" && target.objectKind === "vfx" && ops.vfx) {
-        const block = vfxOperationBlock(ops.vfx, target.name, ctx.generateId);
+        const block = vfxOperationBlock(ops.vfx, target.name, ctx.generateId, { target: actionableTargetRef(target) });
         if (block.kind === "action" && block.payload.action === "vfx") {
             const payload = { ...block.payload };
             writeVfx?.(payload);
@@ -300,6 +303,7 @@ export const seek = defineStoryCommand({
                     action: "video",
                     operation: "seek",
                     objectName: target.name,
+                    target: actionableTargetRef(target),
                     timeMs,
                 },
             };

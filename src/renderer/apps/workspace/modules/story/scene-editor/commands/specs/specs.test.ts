@@ -833,8 +833,17 @@ describe("logic and effects", () => {
     });
 
     it("/transform writes the prop bag and /reset clears it", () => {
+        // The reference stores the STAGE key and labels itself with the cast name. This context has
+        // no scene, so no entering row states a stage name and the key falls back to the character
+        // id - the same rule the compiler registers a nameless portrait under. `targetRefs.test.ts`
+        // covers the case where a scene DOES declare the entrance.
         expect(build("/transform Alice d=0.4")).toMatchObject({
-            payload: { action: "displayable", operation: "transform", target: { kind: "character", name: "Alice" }, transform: { durationMs: 400 } },
+            payload: {
+                action: "displayable",
+                operation: "transform",
+                target: { kind: "character", name: "c1", label: "Alice" },
+                transform: { durationMs: 400 },
+            },
         });
         // Several filter names compose into the ONE structured record - the ergonomic the whole
         // redesign turns on, and what makes the next filter function a name rather than an operation.
@@ -883,7 +892,7 @@ describe("logic and effects", () => {
         expect(build("/transform hero flip=on").payload).not.toHaveProperty("transform.to.scaleY");
         expect(build("/transform hero flip=off")).toMatchObject({ payload: { transform: { to: { scaleX: 1 } } } });
         expect(build("/transform Alice flip=on d=0.3")).toMatchObject({
-            payload: { target: { kind: "character", name: "Alice" }, transform: { to: { scaleX: -1 }, durationMs: 300 } },
+            payload: { target: { kind: "character", name: "c1", label: "Alice" }, transform: { to: { scaleX: -1 }, durationMs: 300 } },
         });
     });
 

@@ -119,13 +119,16 @@ export function DisplayableTargetField(props: {
     }, [query]);
 
     const choose = (option: SceneDisplayableRef) => {
-        props.onChange({ name: option.name, kind: option.kind, sourceBlockId: option.sourceBlockId });
+        // All three, always. `name` is the stage key the lookup needs and `label` the only half safe
+        // to render - an unnamed character keys on its id, so a ref that stored the key alone put a
+        // UUID on screen the moment its source row was deleted.
+        props.onChange({ name: option.name, label: option.label, kind: option.kind, sourceBlockId: option.sourceBlockId });
         setOpen(false);
     };
 
     const chooseBuiltin = (builtin: StoryDisplayableBuiltin) => {
         const meta = DISPLAYABLE_BUILTIN_META[builtin];
-        props.onChange({ builtin, kind: meta.kind, name: meta.label });
+        props.onChange({ builtin, kind: meta.kind, name: meta.label, label: meta.label });
         setOpen(false);
     };
 

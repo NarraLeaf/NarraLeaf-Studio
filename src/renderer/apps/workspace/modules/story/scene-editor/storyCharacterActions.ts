@@ -127,10 +127,11 @@ export function characterScopeLead(def: StoryCommandDef, name: string): string {
  *
  * Two payload shapes reach it, because two spellings of the same idea do:
  *  - a character payload names the character by id, which is exact;
- *  - `/fx` and `/transform` address a *displayable* by name, which is all those rows ever store (see
- *    `displayableTargetRef`), so the match is by name against the cast. That is the same lookup the
- *    row itself resolves through, so it is not a new way to be wrong — a rename that breaks one
- *    breaks both, and visibly.
+ *  - `/fx` and `/transform` address a *displayable* through a reference, and that reference carries
+ *    the STAGE key rather than the cast name (see `displayableTargetRef`): a character with no stage
+ *    name of its own keys on its id. So the id is tried first and the cast name second - the second
+ *    is what a row written before stage keys were stored holds, and what a row whose entering line
+ *    named the portrait after the character holds too.
  *
  * Staging is excluded on both paths: see {@link STAGING_OPERATIONS}.
  */
@@ -144,7 +145,9 @@ export function paragraphActionCharacterId(block: StoryBlock, characters: readon
     }
     if (payload.action === "displayable" && payload.target.kind === "character" && !STAGING_OPERATIONS.has(payload.operation)) {
         const name = payload.target.name;
-        return characters.find(character => character.profile.getName() === name)?.profile.getId() ?? null;
+        return characters.find(character => character.profile.getId() === name)?.profile.getId()
+            ?? characters.find(character => character.profile.getName() === name)?.profile.getId()
+            ?? null;
     }
     return null;
 }

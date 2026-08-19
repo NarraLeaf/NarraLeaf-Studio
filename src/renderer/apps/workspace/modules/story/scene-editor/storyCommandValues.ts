@@ -99,6 +99,25 @@ export const EMPTY_STORY_COMMAND_STAGE_OBJECT_SOURCES: StoryCommandStageObjectSo
 };
 
 /**
+ * The row that brings a character on stage, by `characterId`.
+ *
+ * The character half of {@link StoryCommandStageObjectSources}, and a table of its own rather than a
+ * seventh bucket of that one - widening its key to {@link StoryCommandTargetKind} would type-check
+ * and still be wrong twice over:
+ *
+ *  - **The key would be the wrong string.** That table is keyed by the object's stage name, because
+ *    that is what a target arg is matched on. A character is matched on the CAST name, which the
+ *    scene never states - only the project does - so a character bucket keyed like its siblings
+ *    could not be looked up from the name the author typed.
+ *  - **The value would be too small.** A stage object's key is the name itself, so the id alone is
+ *    enough there. A character's key is DERIVED - `characterStageObjectName`: the entering row's
+ *    stage name, falling back to the character id - so it has to be carried, since no caller can
+ *    recompute it from the cast name.
+ */
+export type StoryCommandCharacterSources =
+    Readonly<Record<string, { blockId: string; name: string }>>;
+
+/**
  * The reserved audio-object name addressing the background-music channel. The sound
  * control family defaults its omitted target to this, and the compiler routes it to the BGM handle
  * rather than a named `Sound`.
@@ -195,6 +214,8 @@ export type StoryCommandContext = {
      * consumer must degrade to resolving by name alone, which is what all of them did before.
      */
     stageObjectSources?: StoryCommandStageObjectSources;
+    /** Which row brings each character on stage. Optional on the same terms as `stageObjectSources`. */
+    characterSources?: StoryCommandCharacterSources;
 };
 
 /**
@@ -250,7 +271,26 @@ export function puppetChannelNames(
 
 /** The resolved subject of a generic verb - what `/show poster` dispatches its block type on. */
 export type StoryCommandTargetValue =
-    | { type: "character"; characterId: string; name: string }
+    | {
+          type: "character";
+          characterId: string;
+          /**
+           * The CAST name - what the author typed and what every surface prints. Not the stage key:
+           * a character has no name field of its own on stage, so the key its portrait is registered
+           * under is the entering row's stage name, or the character id when that row named none.
+           */
+          name: string;
+          /**
+           * The stage key the entering row registers this character under, when the scene holds one.
+           *
+           * Carried beside `name` rather than replacing it because the two answer different
+           * questions and both are needed at once: a payload's reference must store the key or the
+           * lookup misses, and a diagnostic must print the cast name or it prints a UUID.
+           */
+          stageName?: string;
+          /** Id of the row that brings the character on stage - the anchor a reference binds to. */
+          sourceBlockId?: string;
+      }
     /**
      * A stage singleton named by its reserved word. Carries no `known` flag: a reserved word either
      * IS one of the four or was never resolved as one, so there is no free-name case to record.
