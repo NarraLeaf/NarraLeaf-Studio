@@ -727,6 +727,15 @@ type SceneCompileContext = {
     layers: Map<string, Layer>;
     videos: Map<string, Video>;
     vfx: Map<string, Vfx>;
+    /**
+     * The clip each named overlay was built from, keyed the same way {@link SceneCompileContext.vfx}
+     * is, and compile-wide with it.
+     *
+     * Exists for the reason `soundTrackIds` does: two rows may name one overlay and only the first
+     * creates it, so a later row naming a DIFFERENT clip has to be reported rather than silently
+     * ignored.
+     */
+    vfxAssetIds: Map<string, string | undefined>;
     sounds: Map<string, Sound>;
     animations: Map<string, StoryAnimationAsset>;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
@@ -891,6 +900,17 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const voicedUnitIds = voiceUrlsByLocale ? collectVoicedUnitIds(voiceUrlsByLocale) : undefined;
     const audioTracks = input.audioTracks ?? BUILTIN_AUDIO_TRACKS;
     const sceneBackgroundMusic = new Map<string, { sound: Sound; trackId: string }>();
+    /**
+     * Ambience overlays, keyed by name, for the WHOLE compile rather than per scene.
+     *
+     * A `Vfx` is the one stage object the engine does not scope to a scene: `GameState` holds it,
+     * scene exit does not remove it, and only its own `hide` does. So rain started in one scene is
+     * still falling in the next, and a per-scene map made that unreachable - the next scene's
+     * `/hide rain` resolved no handle and compiled to nothing, while a second `/vfx rain` built a
+     * SECOND overlay on top of the first. One map means one name is one overlay, everywhere.
+     */
+    const vfxByName = new Map<string, Vfx>();
+    const vfxAssetIds = new Map<string, string | undefined>();
     const scenesBuild = await createNlrScenes({
         elementIdBindings,
         document: input.document,
@@ -967,7 +987,8 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             puppets: new Map(),
             layers: new Map(),
             videos: new Map(),
-            vfx: new Map(),
+            vfx: vfxByName,
+            vfxAssetIds,
             // Seeded with the scene's configured track under the name the sound-control family
             // defaults to, so `/vol 0.5` on a scene with music means what it looks like.
             sounds: sceneMusic ? new Map([[BGM_SOUND_NAME, sceneMusic.sound]]) : new Map(),
@@ -1019,6 +1040,8 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             launch: input.launch,
             nlrStory,
             allScenes,
+            vfx: vfxByName,
+            vfxAssetIds,
             actionIdBindings,
             elementIdBindings,
             diagnostics,
@@ -1090,6 +1113,10 @@ async function buildLaunchEntryScene(params: {
     launch: NonNullable<CompileInput["launch"]>;
     nlrStory: Story;
     allScenes: Record<string, Scene>;
+    /** The compile's ambience overlays - shared, so the entry scene and the story it hands over to
+     *  address one overlay per name rather than two objects wearing one id. */
+    vfx: Map<string, Vfx>;
+    vfxAssetIds: Map<string, string | undefined>;
     actionIdBindings: NlrActionIdBinding[];
     elementIdBindings: string[];
     diagnostics: NlrStoryCompileDiagnostic[];
@@ -1180,7 +1207,8 @@ async function buildLaunchEntryScene(params: {
         puppets: new Map(),
         layers: new Map(),
         videos: new Map(),
-        vfx: new Map(),
+        vfx: params.vfx,
+        vfxAssetIds: params.vfxAssetIds,
         sounds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.sound]]) : new Map(),
         soundTrackIds: launchMusic ? new Map([[BGM_SOUND_NAME, launchMusic.trackId]]) : new Map(),
         audioClips: input.audioClips,
@@ -1409,6 +1437,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         layers: new Map(),
         videos: new Map(),
         vfx: new Map(),
+        vfxAssetIds: new Map(),
         sounds: new Map(),
         soundTrackIds: new Map(),
         audioClips: input.audioClips,
@@ -3626,6 +3655,13 @@ async function getVfx(
     const name = normalizeObjectName(payload.objectName);
     const existing = ctx.vfx.get(name);
     if (existing) {
+        // A create row for a name that already has an overlay is the author setting the same
+        // ambience up twice - fine, and it addresses the one overlay. Naming a DIFFERENT clip is
+        // two answers to one question, and it is reported rather than resolved: silently keeping
+        // the first would leave a row whose clip never plays and nothing to say why.
+        if (payload.operation === "create" && payload.assetId && ctx.vfxAssetIds.get(name) !== payload.assetId) {
+            diagnostic(ctx, "warning", blockId, `Ambience effect "${name}" already plays a different clip; this row reuses the first one.`);
+        }
         return existing;
     }
     if (!payload.assetId) {
@@ -3647,8 +3683,12 @@ async function getVfx(
         // since the engine does not persist a runtime `setPlaybackRate`.
         ...(payload.rate !== undefined ? { playbackRate: Math.max(0, finiteOr(payload.rate, 1)) } : {}),
     });
-    setStableElementId(ctx.elementIdBindings, vfx, `nl:vfx:${ctx.scene.id}:${name}`);
+    // No scene in the id, unlike every other element: this overlay does not belong to one. Naming
+    // it after the scene that happened to create it first would also make the anchor depend on
+    // scene ORDER, so reordering scenes would move it under a save that referenced it.
+    setStableElementId(ctx.elementIdBindings, vfx, `nl:vfx:${name}`);
     ctx.vfx.set(name, vfx);
+    ctx.vfxAssetIds.set(name, payload.assetId);
     return vfx;
 }
 

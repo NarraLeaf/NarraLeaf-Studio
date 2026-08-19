@@ -142,8 +142,19 @@ function collectStageObjects(document: StoryDocument | null, sceneId: StoryScene
             video.add(block.payload.objectName);
         } else if (block.payload.action === "audio" && block.payload.objectName) {
             audio.add(block.payload.objectName);
-        } else if (block.payload.action === "vfx" && block.payload.objectName) {
-            vfx.add(block.payload.objectName);
+        }
+    }
+
+    // Ambience overlays are the one stage object that is NOT scoped to a scene: the engine holds a
+    // `Vfx` at game level and scene exit does not take it away, so rain started three scenes ago is
+    // still falling here and this is the scene that has to be able to say `/hide rain`. Scanning
+    // only this scene's rows is what made that unsayable - the name resolved to nothing, so the
+    // author was told there was no such thing while it was visibly on screen.
+    for (const documentScene of Object.values(document?.scenes ?? {})) {
+        for (const block of Object.values(documentScene?.blocks ?? {})) {
+            if (block.kind === "action" && block.payload.action === "vfx" && block.payload.objectName) {
+                vfx.add(block.payload.objectName);
+            }
         }
     }
     return { image: [...image], text: [...text], layer: [...layer], video: [...video], audio: [...audio], vfx: [...vfx] };
