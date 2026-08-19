@@ -129,6 +129,7 @@ export const workspace = {
             namingTitle: "录音文件名规则",
             namingHint: "可用占位符：{tokens}；导入的音频按此名称与台词匹配",
             namingReset: "恢复默认",
+            choicesTitle: "为选项配音",
         },
         table: {
             storyLabel: "故事",
@@ -146,6 +147,8 @@ export const workspace = {
             auditionFilterPending: "待审听",
             narrationSpeaker: "旁白",
             narrationGroup: "旁白",
+            choiceSpeaker: "选项",
+            choiceGroup: "选项",
             castPlaceholder: "配音演员…",
             assign: "指派音频",
             replace: "替换音频",
