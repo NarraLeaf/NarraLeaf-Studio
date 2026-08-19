@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { StudioTaskOverview } from "@shared/types/studioTask";
+import { createTranslator } from "@shared/i18n";
+import { STUDIO_TASK_KINDS, type StudioTaskOverview } from "@shared/types/studioTask";
 import { StudioTaskScheduler, type StudioTaskRequest } from "./StudioTaskScheduler";
 
 /** A task that finishes when the test says so, so ordering can be asserted rather than raced. */
@@ -168,9 +169,10 @@ describe("the words a task is shown by", () => {
     // parity test cannot either - parity compares the three languages against each other, and a key
     // all three are missing is perfectly aligned. A missing one would put a raw key path in front of
     // an author waiting on their project.
-    it("has a label for every kind of task", async () => {
-        const { STUDIO_TASK_KINDS } = await import("@shared/types/studioTask");
-        const { createTranslator } = await import("@shared/i18n");
+    // Imported at the top rather than awaited inside the test: pulling the whole catalogue takes
+    // seconds under a loaded run, and a test that times out under parallelism is a test that fails
+    // for a reason unrelated to what it checks.
+    it("has a label for every kind of task", () => {
         const translator = createTranslator("en");
         // Negative control: without it this would pass against a translator that answered true to
         // everything, which is the shape of a test that cannot fail.

@@ -34,6 +34,7 @@ import type { CacheClearResult, CacheInventoryReport } from "./cacheInventory";
 import type { UpdateState } from "@shared/constants/update";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConvert";
 import type { StudioTaskOverview } from "./studioTask";
+import type { WeatherBakeSpec } from "../weather/model";
 import type { MediaProbeOutcome } from "./mediaProbe";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
@@ -201,6 +202,7 @@ export enum IPCEventType {
     mediaConvertCancel = "media.convert.cancel",
     mediaConvertGetStatus = "media.convert.getStatus",
     studioTasksGetOverview = "studioTasks.getOverview",
+    devModeResolveWeatherClip = "devMode.resolveWeatherClip",
     workspaceExportProjectPackage = "workspace.projectPackage.export",
     workspaceImportProjectPackage = "workspace.projectPackage.import",
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
@@ -1812,6 +1814,22 @@ export type IPCWorkspaceEvents = {
      * render, a reloading window has to be able to find out what is going on, and a renderer that
      * stopped listening must not leave main pushing into nothing.
      */
+    /**
+     * Produce the clip a weather seed describes, and grant this window a URL for it.
+     *
+     * Submitted at `blocking`, because someone pressed Run: if Studio already had the same bake in
+     * flight speculatively, this adopts it rather than queueing behind it.
+     */
+    [IPCEventType.devModeResolveWeatherClip]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            spec: WeatherBakeSpec;
+        };
+        response: {
+            url: string;
+        };
+    };
     [IPCEventType.studioTasksGetOverview]: {
         type: IPCMessageType.request;
         consumer: IPCType.Host;
