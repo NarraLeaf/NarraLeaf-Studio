@@ -226,6 +226,8 @@ export const storyInspector = {
 
     vfx: {
         name: "Effect name",
+        source: "Source",
+        sourceClip: "Clip",
         clip: "Looping clip",
         blendMode: "Blend",
         opacity: "Opacity (0-1)",
@@ -234,6 +236,16 @@ export const storyInspector = {
         loop: "Loop",
         rate: "Speed (1 = normal)",
         fade: "Fade (s)",
+    },
+
+    weather: {
+        density: "Amount",
+        sizeNear: "Near size",
+        sizeFar: "Far size",
+        sway: "Drift",
+        streak: "Streak",
+        wind: "Wind (deg)",
+        depthSpread: "Depth spread",
     },
 
     cameraOperation: {
