@@ -1736,4 +1736,42 @@ describe("createDevModeBlueprintHostApi language", () => {
         await expect(hostApi.localization.setLocale("ja")).resolves.toBeUndefined();
         expect(await hostApi.localization.getLocale()).toBe("ja");
     });
+
+    /**
+     * The language matched from the player's system at boot is written session-only, so it lives in
+     * the scope's map and in no store. A read that went to the store would answer with the source
+     * language while the game is visibly being read in another one - and, because a store read
+     * writes its answer back, would evict the seeded value on the way past.
+     */
+    it("answers with a session-only language rather than going to the store", async () => {
+        const { hostApi, scope } = createLanguageHostApi();
+        const adapter = {
+            getAll: async () => ({}),
+            getValue: vi.fn(async () => undefined),
+            setValue: async () => undefined,
+        };
+        scope.setPersistenceAdapter(adapter);
+        // The adapter hydrates the map asynchronously and replaces it wholesale; seed after that
+        // has landed, which is also the order a boot runs in.
+        await scope.reloadPersistenceSnapshot();
+        scope.persistenceSetSessionOnly(LOCALE_STORAGE_KEY, "ja");
+
+        expect(await hostApi.localization.getLocale()).toBe("ja");
+        expect(adapter.getValue).not.toHaveBeenCalled();
+        expect(scope.persistenceGet(LOCALE_STORAGE_KEY)).toBe("ja");
+    });
+
+    it("falls back to the store, then to the source language", async () => {
+        const { hostApi, scope } = createLanguageHostApi();
+        scope.setPersistenceAdapter({ getAll: async () => ({}), getValue: async () => "ja", setValue: async () => undefined });
+        expect(await hostApi.localization.getLocale()).toBe("ja");
+
+        const bare = createLanguageHostApi();
+        bare.scope.setPersistenceAdapter({
+            getAll: async () => ({}),
+            getValue: async () => undefined,
+            setValue: async () => undefined,
+        });
+        expect(await bare.hostApi.localization.getLocale()).toBe("en");
+    });
 });
