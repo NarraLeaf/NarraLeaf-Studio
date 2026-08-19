@@ -59,8 +59,8 @@ export interface StageImage {
      * actually calls. Auto-Highlight is the caller - it dims the rest of the cast and brings the
      * speaker forward, and without this it could only do the first half.
      *
-     * An engine that predates the call returns an action that does nothing and reports a diagnostic
-     * against the row, so a pass never has to ask which engine it is compiling against.
+     * The raise is scoped to the layer the image is already in: it reorders that layer's own list and
+     * never moves the image between layers, so a pass cannot use it to climb out of one.
      */
     bringToFront(): EngineAction;
 }
