@@ -11,6 +11,7 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { MotionField } from "../../story-motion";
 import { resolveStoryMotionStageSize } from "../../story-motion/StoryMotionEditorTab";
 import { TransformChannelEditor } from "./TransformChannelEditor";
+import { SampleStage } from "@/lib/story/previewSubject";
 import { FieldGrid, SecondsField, SegToggle, SelectField, Section, easingOptions } from "./inspectorFieldKit";
 
 type CameraActionPayload = Extract<StoryActionPayload, { action: "camera" }>;
@@ -255,7 +256,7 @@ function CameraViewfinder(props: {
             }}
         >
             <div
-                className="pointer-events-none absolute h-full w-full border border-primary/40 bg-[linear-gradient(180deg,#2b3550_0%,#3d4a63_58%,#4b4136_58%,#3a3229_100%)]"
+                className="pointer-events-none absolute h-full w-full border border-primary/40"
                 style={{
                     left: `${xalign * 100}%`,
                     bottom: `${yalign * 100}%`,
@@ -263,7 +264,7 @@ function CameraViewfinder(props: {
                     filter,
                 }}
             >
-                <div className="absolute bottom-[8%] left-1/2 h-[38%] w-[12%] -translate-x-1/2 rounded-t-full bg-white/25" />
+                <SampleStage />
             </div>
             {vignette > 0 ? (
                 <div
