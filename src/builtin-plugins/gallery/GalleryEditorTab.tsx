@@ -41,6 +41,7 @@ import {
     type PluginApp,
     type PluginSceneEntry,
     type PluginStoryEntry,
+    type PluginTranslator,
     type PluginVoiceUnitEntry,
 } from "narraleaf-studio/plugin";
 import {
@@ -54,6 +55,7 @@ import {
     type GalleryVariant,
 } from "./catalog";
 import { GalleryThumb, InlineNameInput, formatDuration, useAudioAudition } from "./components";
+import { useGalleryTranslator } from "./messages";
 import type { GalleryStore } from "./store";
 
 /** Sentinel group filters that are not real group ids. */
@@ -76,6 +78,13 @@ type KindMeta = {
     layout: "grid" | "list";
     /** What the idle inspector says a row of this kind carries. */
     rowFields: string;
+    /**
+     * Message key naming what collects a row of this kind.
+     *
+     * Three of the four columns collect themselves while the player plays, and only CG needs the
+     * story to say so. Without this line on the card that difference reads as a broken column.
+     */
+    unlockKey: string;
 };
 
 const KIND_META: Record<GalleryEntryKind, KindMeta> = {
@@ -86,6 +95,7 @@ const KIND_META: Record<GalleryEntryKind, KindMeta> = {
         icon: Images,
         layout: "grid",
         rowFields: "name, image, unlocked, variantCount",
+        unlockKey: "unlockCg",
     },
     scene: {
         label: "Recollection",
@@ -94,6 +104,7 @@ const KIND_META: Record<GalleryEntryKind, KindMeta> = {
         icon: Clapperboard,
         layout: "grid",
         rowFields: "name, image, unlocked, storyId, sceneId",
+        unlockKey: "unlockScene",
     },
     music: {
         label: "Music",
@@ -102,6 +113,7 @@ const KIND_META: Record<GalleryEntryKind, KindMeta> = {
         icon: Music,
         layout: "list",
         rowFields: "name, audioAssetId, durationSec, unlocked",
+        unlockKey: "unlockMusic",
     },
     voice: {
         label: "Voice",
@@ -110,6 +122,7 @@ const KIND_META: Record<GalleryEntryKind, KindMeta> = {
         icon: MessageSquareQuote,
         layout: "list",
         rowFields: "name, voiceUnitId, lineText, unlocked",
+        unlockKey: "unlockVoice",
     },
 };
 
@@ -137,6 +150,7 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
     const [voicePickerFor, setVoicePickerFor] = useState<string | null>(null);
     const anchorRef = useRef<HTMLDivElement | null>(null);
     const audition = useAudioAudition(app);
+    const tr = useGalleryTranslator(app);
     const freeze = ui.useFreezeGuard();
 
     useEffect(() => store.subscribe(() => setData({ ...store.getData() })), [store]);
@@ -414,7 +428,7 @@ export function GalleryEditorTab({ app, store }: { app: PluginApp; store: Galler
                             onClear={() => setSelectedIds([])}
                         />
                     ) : (
-                        <IdleInspector meta={meta} />
+                        <IdleInspector meta={meta} tr={tr} />
                     )}
                 </aside>
             </div>
@@ -877,12 +891,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
  * would otherwise be blank, and it is gone the moment anything is selected, so
  * it never becomes chrome over the content.
  */
-function IdleInspector({ meta }: { meta: KindMeta }) {
+function IdleInspector({ meta, tr }: { meta: KindMeta; tr: PluginTranslator }) {
     return (
         <div className="flex flex-col gap-3 p-3">
-            <span className="text-2xs text-fg-subtle">Nothing selected</span>
+            <span className="text-2xs text-fg-subtle">{tr.t("idleEmpty")}</span>
             <div className="space-y-2 rounded border border-edge bg-fill-subtle p-2">
-                <div className="text-2xs text-fg-muted">To put this on a Page</div>
+                <div className="text-2xs text-fg-muted">{tr.t("idleHeading")}</div>
                 <ol className="space-y-1 text-2xs text-fg-subtle">
                     <li>
                         1. <span className="text-fg-muted">Get Gallery</span>, Kind =
@@ -893,13 +907,21 @@ function IdleInspector({ meta }: { meta: KindMeta }) {
                         2. Entries → <span className="text-fg-muted">Set List Content</span>
                     </li>
                     <li>
-                        3. In the item template, <span className="text-fg-muted">Get List Item Props</span>
+                        3. <span className="mr-1">{tr.t("idleItemTemplate")}</span>
+                        <span className="text-fg-muted">Get List Item Props</span>
                         {" → "}
                         <span className="text-fg-muted">Get JSON Field</span>
                     </li>
                 </ol>
                 <div className="text-2xs text-fg-subtle">
-                    Row fields: <span className="text-fg-muted">{meta.rowFields}</span>
+                    <span className="mr-1">{tr.t("idleRowFields")}</span>
+                    <span className="text-fg-muted">{meta.rowFields}</span>
+                </div>
+                {/* The three self-collecting columns and the one that is not. An author who does
+                    not know which is which reads the difference as a broken column. */}
+                <div className="text-2xs text-fg-subtle">
+                    <span className="mr-1">{tr.t("idleUnlockedBy")}</span>
+                    <span className="text-fg-muted">{tr.t(meta.unlockKey)}</span>
                 </div>
             </div>
         </div>

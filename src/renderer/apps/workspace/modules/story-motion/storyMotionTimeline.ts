@@ -260,10 +260,7 @@ export function sampleStoryMotionPreview(timeline: StoryAnimationTimeline | unde
             continue;
         }
         if (track.property === "position" && typeof value === "object") {
-            state.position = {
-                ...state.position,
-                ...value,
-            };
+            state.position = mergePosition(state.position, value);
         } else if (track.property === "opacity" && typeof value === "number") {
             state.opacity = value;
         } else if (track.property === "zoom" && typeof value === "number") {
@@ -280,6 +277,32 @@ export function sampleStoryMotionPreview(timeline: StoryAnimationTimeline | unde
     }
     return state;
 }
+
+/**
+ * Fold one keyframe's position over the running state, axis by axis.
+ *
+ * A motion keyframe is allowed to write only the axes it moves — that is what makes a shake a
+ * relative nudge instead of a teleport — so an unwritten axis has to keep the neutral value.
+ * A plain spread cannot express that: a key that is present but `undefined` (which the asset
+ * normalizer used to produce for every unwritten axis) overwrites the neutral value with nothing,
+ * and the stage preview then computed `calc(NaN% + 0px)` — a declaration the browser discards,
+ * dropping the frame into the stage's corner while the motion path drew in the right place.
+ */
+function mergePosition(
+    state: Required<StoryAlignPositionValue>,
+    value: StoryAlignPositionValue,
+): Required<StoryAlignPositionValue> {
+    const next = { ...state };
+    for (const axis of POSITION_AXES) {
+        const axisValue = value[axis];
+        if (typeof axisValue === "number" && Number.isFinite(axisValue)) {
+            next[axis] = axisValue;
+        }
+    }
+    return next;
+}
+
+const POSITION_AXES = ["xalign", "yalign", "xoffset", "yoffset"] as const;
 
 export function upsertStoryMotionKeyframe(
     timeline: StoryAnimationTimeline,

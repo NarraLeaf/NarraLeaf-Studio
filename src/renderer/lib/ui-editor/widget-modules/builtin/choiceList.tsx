@@ -8,9 +8,10 @@ import { ListWidgetModule } from "./list";
 const CHOICE_LIST_TYPE = "nl.choice.list";
 
 /**
- * Choice (NarraLeaf menu) slot wrapper. Runtime items ({ text, index, disabled }) are injected by
- * the choice slot bridge; hidden choices are filtered before injection. Item clicks feed the
- * `Select Choice` blueprint node through the seeded Choice widget blueprint.
+ * Choice (NarraLeaf menu) slot wrapper. Runtime items ({ text, index, disabled, voiceId }) are
+ * injected by the choice slot bridge; hidden choices are filtered before injection. Item clicks feed
+ * the `Select Choice` blueprint node through the seeded Choice widget blueprint, and `voiceId` is
+ * what `Play Choice Voice` speaks.
  */
 export const ChoiceListWidgetModule: UIWidgetModule = extendWidgetModule(ListWidgetModule, {
     type: CHOICE_LIST_TYPE,
@@ -23,9 +24,9 @@ export const ChoiceListWidgetModule: UIWidgetModule = extendWidgetModule(ListWid
                 itemKeyPath: "index",
                 itemGap: 16,
                 previewItems: [
-                    { text: translate("widgets.defaults.choiceList.choiceA"), index: 0, disabled: false },
-                    { text: translate("widgets.defaults.choiceList.choiceB"), index: 1, disabled: false },
-                    { text: translate("widgets.defaults.choiceList.choiceC"), index: 2, disabled: true },
+                    { text: translate("widgets.defaults.choiceList.choiceA"), index: 0, disabled: false, voiceId: "" },
+                    { text: translate("widgets.defaults.choiceList.choiceB"), index: 1, disabled: false, voiceId: "" },
+                    { text: translate("widgets.defaults.choiceList.choiceC"), index: 2, disabled: true, voiceId: "" },
                 ],
                 scrollbar: { enabled: false, visibility: "hidden" },
             },

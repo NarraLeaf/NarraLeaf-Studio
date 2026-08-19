@@ -125,6 +125,7 @@ const ENGINE_EVENTS: readonly EventKey[] = [
     "dialogueEnd",
     "choiceMade",
     "characterPrompt",
+    "audioPlayed",
     "gameEnd",
     "beforeRestore",
     "afterRestore",
@@ -219,6 +220,21 @@ export class RuntimePluginHostController {
     private session: RuntimePluginStorySession | null = null;
     private sceneIdByScene = new Map<Scene, string>();
     private unsubscribePersistence: (() => void) | null = null;
+    /**
+     * What this compile's play head can report about the action now running: the clip it starts,
+     * and the line it speaks. Rebuilt per session because a recompile mints new static ids.
+     */
+    private audioAssetByActionId = new Map<string, string>();
+    private textIdByActionId = new Map<string, string>();
+    private sceneMusicAssetIdBySceneId: Record<string, string> = {};
+    /**
+     * The text id of the last line the play head reached, held so `dialogueEnd` can name it.
+     *
+     * Read from the action stream rather than from the dialog on screen: only a line-bearing action
+     * writes here, so an async branch stepping the play head in between cannot replace the answer
+     * with an unrelated action's.
+     */
+    private pendingDialogueTextId: string | null = null;
 
     private engineSnapshot: { scene: RuntimePluginStateSnapshot; saved: RuntimePluginStateSnapshot } = {
         scene: new Map(),
@@ -284,6 +300,18 @@ export class RuntimePluginHostController {
         this.sceneIdByScene = new Map(
             Object.entries(compiled.scenes).map(([sceneId, scene]) => [scene, sceneId] as const),
         );
+        this.audioAssetByActionId = new Map();
+        this.textIdByActionId = new Map();
+        for (const binding of compiled.actionIdBindings) {
+            if (binding.audioAssetId) {
+                this.audioAssetByActionId.set(binding.staticId, binding.audioAssetId);
+            }
+            if (binding.textId) {
+                this.textIdByActionId.set(binding.staticId, binding.textId);
+            }
+        }
+        this.sceneMusicAssetIdBySceneId = compiled.sceneBackgroundMusicAssetIds ?? {};
+        this.pendingDialogueTextId = null;
         this.bindEngineEvents(liveGame);
         this.engineSnapshot = snapshotEngineScopes(this.session);
         this.persistentSnapshot = snapshotPersistentScope(this.session, this.attachment?.scope ?? null);
@@ -299,6 +327,10 @@ export class RuntimePluginHostController {
         }
         this.session = null;
         this.sceneIdByScene = new Map();
+        this.audioAssetByActionId = new Map();
+        this.textIdByActionId = new Map();
+        this.sceneMusicAssetIdBySceneId = {};
+        this.pendingDialogueTextId = null;
         this.engineSnapshot = { scene: new Map(), saved: new Map() };
     }
 
@@ -366,7 +398,10 @@ export class RuntimePluginHostController {
                 text: readText(payload),
             });
         }));
-        push(liveGame.onCurrentActionChange(() => this.pumpEngineState()));
+        push(liveGame.onCurrentActionChange(({ actionId }) => {
+            this.readPlayHead(actionId);
+            this.pumpEngineState();
+        }));
 
         push(game.hooks.hook("beforeRestore", () => {
             this.hub.emit("beforeRestore", undefined);
@@ -391,6 +426,12 @@ export class RuntimePluginHostController {
                 this.engineSnapshot = snapshotEngineScopes(this.session);
             }
             this.hub.emit("sceneEnter", { sceneId });
+            // A scene's configured music starts with the mount and never reaches the play head, so
+            // this pairing is the only place it can be reported from.
+            const musicAssetId = sceneId ? this.sceneMusicAssetIdBySceneId[sceneId] : undefined;
+            if (musicAssetId) {
+                this.hub.emit("audioPlayed", { assetId: musicAssetId });
+            }
         }));
         push(gameState.events.on("event:state.scene.unmount", (scene: Scene) => {
             const sceneId = this.sceneIdByScene.get(scene) ?? null;
@@ -401,10 +442,34 @@ export class RuntimePluginHostController {
             }
         }));
         push(gameState.events.on("event:state.player.lineEnd", () => {
-            this.hub.emit("dialogueEnd", undefined);
+            const textId = this.pendingDialogueTextId;
+            // Consumed, not kept: a line the compile never named must report null rather than
+            // inherit the id of whichever line ran before it.
+            this.pendingDialogueTextId = null;
+            this.hub.emit("dialogueEnd", { textId });
             this.pumpEngineState();
         }));
         push(gameState.events.on("event:state.end", () => this.hub.emit("gameEnd", undefined)));
+    }
+
+    /**
+     * Read what the action now executing is doing, for the two streams that follow the play head.
+     *
+     * A clip is reported as it starts. A line is only remembered: `dialogueEnd` is the moment the
+     * player has actually had it, and the id has to survive whatever actions run in between.
+     */
+    private readPlayHead(actionId: string | null): void {
+        if (!actionId) {
+            return;
+        }
+        const assetId = this.audioAssetByActionId.get(actionId);
+        if (assetId) {
+            this.hub.emit("audioPlayed", { assetId });
+        }
+        const textId = this.textIdByActionId.get(actionId);
+        if (textId) {
+            this.pendingDialogueTextId = textId;
+        }
     }
 
     // ------------------------------------------------------------------- state

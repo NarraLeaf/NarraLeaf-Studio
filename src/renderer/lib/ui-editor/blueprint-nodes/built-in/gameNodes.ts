@@ -4,6 +4,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_AUTO_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_GAME_CHOOSE,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
+    BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT,
@@ -20,6 +21,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_READ_TEXT,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SKIPPING,
     BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
     BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR,
@@ -43,6 +45,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD,
+    BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_SET_BGM_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_SET_GAME_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_SET_GLOBAL_VOLUME,
@@ -51,6 +54,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_ENABLED,
     BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL,
     BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_READ_TEXT,
+    BLUEPRINT_NODE_TYPE_GAME_SET_SKIPPING,
     BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_END_MODE,
     BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_FADE_DURATION,
@@ -174,6 +178,21 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         keywords: ["game", "preference", "auto", "forward", "dialog", "nlr"],
     },
     {
+        // Milliseconds, like the two skip pacing values. The engine reads it from `game.config`;
+        // the host keeps the config in step with this preference (see `preferenceRuntime`).
+        key: "autoForwardDelay",
+        getterType: BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD_DELAY,
+        setterType: BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD_DELAY,
+        getterDisplayName: "Get Auto Forward Delay",
+        setterDisplayName: "Set Auto Forward Delay",
+        pinId: "autoForwardDelay",
+        pinLabel: "Auto Forward Delay",
+        valueType: "float",
+        defaultValue: 3000,
+        min: 0,
+        keywords: ["game", "preference", "auto", "forward", "delay", "wait", "pause", "dialog"],
+    },
+    {
         key: "skip",
         getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
         setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_ENABLED,
@@ -199,6 +218,22 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         valueType: "boolean",
         defaultValue: false,
         keywords: ["game", "preference", "skip", "read", "text", "unread", "dialog"],
+    },
+    {
+        // The run, not the step. `Skip` advances one line; this holds the key down, and clearing it
+        // lets go. Studio owns both the value and the loop behind it (`skipRunController`), and the
+        // loop writes `false` back here whenever it stops on its own, so a button bound to this
+        // stays in step with what the game is actually doing.
+        key: "skipping",
+        getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SKIPPING,
+        setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SKIPPING,
+        getterDisplayName: "Get Skipping",
+        setterDisplayName: "Set Skipping",
+        pinId: "skipping",
+        pinLabel: "Skipping",
+        valueType: "boolean",
+        defaultValue: false,
+        keywords: ["game", "preference", "skip", "skipping", "mode", "hold", "fast", "forward"],
     },
     {
         key: "gameSpeed",

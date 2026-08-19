@@ -133,6 +133,8 @@ export const build = {
             title: "パッチを書き出す",
             variantLabel: "バリアント",
             variantHint: "パッチは、書き出した対象のバリアントのビルドでのみ開く",
+            contentLabel: "内容の取得元",
+            contentHint: "このバリアントのシーン、条件分岐、アートがパッチに入る",
             baselineLabel: "本パッチが更新するビルド",
             baselinePlaceholder: "空のままにするとゲーム全体を含める",
             baselineHint: "以前のビルドが出力したデスクトップビルドのフォルダー。そのフォルダーと異なるファイルだけを含める",

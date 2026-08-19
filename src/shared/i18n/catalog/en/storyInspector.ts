@@ -254,7 +254,7 @@ export const storyInspector = {
 
     // Said where the mode is chosen, because it is the one camera row whose effect the viewfinder
     // cannot draw: it puts the whole instrument back, pose and grade and lens together.
-    cameraResetHint: "Puts the camera back: pose, grade and lens at once.",
+    cameraResetHint: "Restores pose, grade and lens.",
 
     // The looks themselves. Named for the moment they are for, not for what they do to the pixels:
     // an author reaches for these while writing a flashback, not while thinking about saturation.
@@ -275,7 +275,7 @@ export const storyInspector = {
     },
 
     cameraLookHint: {
-        channel: "A look replaces stage darkness rather than adding to it — the engine gives both the same filter, so the later row wins. Each look carries its own brightness. Reset camera clears it.",
+        channel: "A look added later overrides stage darkness. Reset camera clears it.",
         monologue: "Desaturates and dims the whole stage. For darkened edges, add a vignette.",
         hangover: "The stage sways twice before the look settles. The row waits for the sway, and the duration sets its tempo.",
     },

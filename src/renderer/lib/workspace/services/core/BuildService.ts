@@ -483,7 +483,10 @@ export class BuildService extends Service<BuildService> {
     public async exportPatch(request: GamePatchExportRequest): Promise<GameBuildStateSnapshot> {
         const startedAt = Date.now();
         const platforms = this.storedDesktopPlatforms();
-        const refusal = await this.runPreBuildGates(startedAt, platforms, request.appTagId);
+        // Gated on the content's variant, not the one the patch attaches to: what a gate refuses is
+        // a payload, and the payload is that variant's. A patch must not carry what a build of the
+        // same content would have been stopped from shipping.
+        const refusal = await this.runPreBuildGates(startedAt, platforms, request.contentAppTagId ?? request.appTagId);
         if (refusal) {
             return refusal;
         }
