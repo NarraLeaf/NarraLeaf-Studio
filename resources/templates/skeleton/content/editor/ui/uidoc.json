@@ -6195,7 +6195,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.save"
       }
     },
     "814a0061-ce85-4e29-982d-2a8c92026995": {
@@ -6233,7 +6234,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.load"
       }
     },
     "3fe6d95c-c054-4aee-821d-01a978f62dbf": {
@@ -6642,7 +6644,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.config"
       }
     },
     "698c5179-f91a-4c4a-9802-15bdf43fff72": {
@@ -6680,7 +6683,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.back"
       }
     },
     "0f7bed84-816e-4cfd-b840-72ffe92356af": {
@@ -6718,7 +6722,8 @@
         "paddingX": 0,
         "paddingY": 8,
         "clipContent": true,
-        "cursor": "pointer"
+        "cursor": "pointer",
+        "localizationKey": "nav.title"
       }
     },
     "a732f704-cd5a-4b98-9120-5638e83ffccb": {
@@ -6906,7 +6911,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "config.title"
       }
     },
     "b1c6fa3b-01df-483b-9bd4-ac8d525f7295": {
@@ -7874,7 +7880,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "config.categoryText"
       }
     },
     "ac813115-7fe4-49c4-b79d-eae36a78b1a9": {
@@ -8097,7 +8104,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "config.categorySound"
       }
     },
     "c0e7fcc4-c697-4602-a063-34feed5f08a6": {
@@ -9038,7 +9046,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "config.textSpeed"
       }
     },
     "31bd8a02-b50c-4ee6-abf6-1ad6ffe8c260": {
@@ -11730,7 +11739,7 @@
         "opacity": 1
       },
       "props": {
-        "text": "3s",
+        "text": "3",
         "fontSize": 22,
         "color": "nlbrand:text.subtle",
         "fontWeight": "normal",
@@ -12835,7 +12844,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "config.skipDelay"
       }
     },
     "33310086-5199-493a-8aec-ffc5b78d614c": {
@@ -13628,7 +13638,7 @@
         "opacity": 1
       },
       "props": {
-        "text": "1.4s",
+        "text": "1.3",
         "fontSize": 22,
         "color": "nlbrand:text.subtle",
         "fontWeight": "normal",
@@ -14733,7 +14743,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "config.skip"
       }
     },
     "206e08a1-e804-498d-bbd6-2571c0de8f37": {
@@ -14956,7 +14967,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "config.skipAllText"
       }
     },
     "75999dbf-e611-49ac-b05b-6a4252df398c": {
@@ -15179,7 +15191,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "config.skipReadOnly"
       }
     },
     "ca49e210-4b68-4b8b-9747-5ca9cad3a9ab": {
@@ -16114,7 +16127,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "config.fullscreen"
       }
     },
     "b8010806-a718-4cbb-9186-bb7253e0a1b9": {
@@ -16337,7 +16351,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "config.fullscreenOn"
       }
     },
     "d8a0e517-f3a4-40fb-a9ba-e5d39fbdc68b": {
@@ -16560,7 +16575,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "config.fullscreenOff"
       }
     },
     "adb85e04-5eb8-4364-b51c-d570d2d023a5": {
@@ -17871,7 +17887,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "config.masterVolume"
       }
     },
     "c91eb37e-b2db-4211-b6ff-a112f6f6a339": {
@@ -19769,7 +19786,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "config.bgm"
       }
     },
     "56214743-2e7a-4359-9f5e-266560e17acd": {
@@ -21667,7 +21685,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "config.soundEffects"
       }
     },
     "c618d328-a3b4-4dcb-9d2d-0913f15bb89e": {
@@ -23565,7 +23584,8 @@
               ]
             }
           ]
-        }
+        },
+        "localizationKey": "config.voice"
       }
     },
     "70c868f6-ac40-4cc6-b04d-60b1c85ea043": {
