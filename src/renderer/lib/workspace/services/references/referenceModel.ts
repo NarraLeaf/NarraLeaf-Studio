@@ -355,29 +355,58 @@ export function scanStoryAssetReferences(
             }
         };
 
-        if (isLibraryAssetId(scene.defaultBackgroundAssetId)) {
-            references.push({
-                id: `story:${document.id}:${scene.id}:__scene__:defaultBackgroundAssetId`,
-                assetId: scene.defaultBackgroundAssetId.trim(),
-                kind: "story",
-                label: sceneName,
-                detail,
-                field: "scene.defaultBackgroundAssetId",
-                target: { kind: "storyScene", storyId: document.id, sceneId: scene.id, storyName, sceneName },
-            });
-        }
+        /**
+         * One of the scene's own two asset fields, read the way a row's is.
+         *
+         * Sets are expanded here too, for the reason `expandReferencedAsset` gives: a scene naming a
+         * set uses every file it can resolve to, and recording the set id itself would report a
+         * dangling reference for a scene whose background resolves perfectly well.
+         */
+        const pushSceneReference = (field: string, assetId: unknown, suffix: string) => {
+            if (!isLibraryAssetId(assetId)) {
+                return;
+            }
+            const trimmed = assetId.trim();
+            const target = {
+                kind: "storyScene" as const,
+                storyId: document.id,
+                sceneId: scene.id,
+                storyName,
+                sceneName,
+            };
+            if (expandAssetSet?.(trimmed)) {
+                setReferences.push({
+                    id: `assetSet:${document.id}:${scene.id}:__scene__:${suffix}`,
+                    assetId: trimmed,
+                    kind: "story",
+                    label: sceneName,
+                    detail,
+                    field,
+                    target,
+                });
+            }
+            for (const memberId of expandReferencedAsset(trimmed, expandAssetSet)) {
+                references.push({
+                    id: memberId === trimmed
+                        ? `story:${document.id}:${scene.id}:__scene__:${suffix}`
+                        : `story:${document.id}:${scene.id}:__scene__:${suffix}:${memberId}`,
+                    assetId: memberId,
+                    kind: "story",
+                    label: sceneName,
+                    detail,
+                    field,
+                    target,
+                });
+            }
+        };
 
-        if (isLibraryAssetId(scene.bgm?.assetId)) {
-            references.push({
-                id: `story:${document.id}:${scene.id}:__scene__:bgm`,
-                assetId: scene.bgm!.assetId.trim(),
-                kind: "story",
-                label: sceneName,
-                detail,
-                field: "scene.bgm.assetId",
-                target: { kind: "storyScene", storyId: document.id, sceneId: scene.id, storyName, sceneName },
-            });
-        }
+        pushSceneReference(
+            "scene.defaultBackgroundAssetId",
+            scene.defaultBackgroundAssetId,
+            "defaultBackgroundAssetId",
+        );
+
+        pushSceneReference("scene.bgm.assetId", scene.bgm?.assetId, "bgm");
 
         // Depth first, so the "used by" list under an asset reads down the scene the way the author
         // wrote it. The record's key order would be UUID order once it has been rewritten once.
