@@ -51,6 +51,7 @@ import { getElementInspector } from "../ui-editor/inspector/registry";
 import type { UIInspectorData } from "../ui-editor/inspector/registry";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
+import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { pairLayoutDimensionsForLock } from "@/lib/ui-editor/layout/aspectRatioLock";
 import { getElementSurfaceTopLeft } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
@@ -690,7 +691,16 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
      * already own.
      */
     const [assetSetRevision, setAssetSetRevision] = useState(0);
-    const [assetLibraryRevision, setAssetLibraryRevision] = useState(0);
+    /**
+     * The asset library's own counter, subscribed unconditionally.
+     *
+     * It used to be wired only while a set was the subject, on the reasoning that "a panel showing a
+     * picture has no reason to re-run" for an import or a rename. That was wrong about this panel:
+     * the story action inspector, the scene's default background and its BGM all print an asset's
+     * NAME, and those records are mutated in place - so a rename left every one of them showing the
+     * old word until some unrelated interaction re-rendered the rail.
+     */
+    const assetLibraryRevision = useAssetLibraryRevision();
     const [assetMetadata, setAssetMetadata] = useState<AssetData<any> | null>(null);
     const [characterVersion, setCharacterVersion] = useState(0);
     const [uiSelection, setUISelection] = useState<UIElementSelection | null>(null);
@@ -893,14 +903,6 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         if (!activeSetId || !assetSetService) return;
         return assetSetService.onSetsChanged(() => setAssetSetRevision(revision => revision + 1));
     }, [activeSetId, assetSetService]);
-
-    useEffect(() => {
-        if (!activeSetId || !assetsService) return;
-        const bump = () => setAssetLibraryRevision(revision => revision + 1);
-        const events = assetsService.getEvents();
-        const unsubs = [events.on("updated", bump), events.on("deleted", bump)];
-        return () => unsubs.forEach(unsub => unsub());
-    }, [activeSetId, assetsService]);
 
     // Listen to selection changes
     useEffect(() => {

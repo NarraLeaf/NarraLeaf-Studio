@@ -5,6 +5,7 @@ import type { ColorValue, CustomFieldProps } from "@/apps/workspace/modules/prop
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { useWorkspace } from "@/apps/workspace/context";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
@@ -78,12 +79,15 @@ function AssetRow({
     const [selectorOpen, setSelectorOpen] = useState(false);
     const triggerRef = useRef<HTMLButtonElement | null>(null);
 
+    // The library edits its records in place, so a rename or a delete moves nothing else this memo
+    // keys on - without the revision the field keeps the name the file had when it was picked.
+    const assetLibraryRevision = useAssetLibraryRevision();
     const assetName = useMemo(() => {
         if (!assetId || !assetsService) {
             return null;
         }
         return assetsService.getAssets()[assetType]?.[assetId]?.name ?? null;
-    }, [assetId, assetsService, assetType]);
+    }, [assetId, assetLibraryRevision, assetsService, assetType]);
 
     /**
      * An id with no library record is a broken reference, not an empty slot - saying "None" there
