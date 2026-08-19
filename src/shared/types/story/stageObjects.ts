@@ -37,12 +37,19 @@ import { listSceneBlocksInDocumentOrder } from "./order";
  * the LOOKUP, and it has to: the compiler holds live engine objects in maps it fills as it walks the
  * scene, while lint holds nothing but the document.
  *
- * That difference has one visible consequence, and it is deliberate. The compiler asks "is this
- * object on stage *by this row*", so a `/show poster` written above its `/image create poster`
- * misses; {@link sceneStageObjectNames} asks "does any row in this scene declare it", so it does not.
- * Lint is therefore the strictly quieter half - it reports only what no ordering could rescue, which
- * is the right side to err on for a check that stops a release. It never reports a row the compiler
- * would let through.
+ * That difference has two visible consequences, and both are deliberate:
+ *
+ *  - The compiler asks "is this object on stage *by this row*", so a `/show poster` written above its
+ *    `/image create poster` misses; {@link sceneStageObjectNames} asks "does any row in this scene
+ *    declare it", so it does not.
+ *  - A character's `setMotion` / `setSkin` / `setParams` is a lookup on a puppet character and a
+ *    diagnostic of its own on a character Studio draws itself. Which one depends on the character's
+ *    profile, which is not in the document, so this side stays silent on all three - see
+ *    `characterRowAddressesPortrait`.
+ *
+ * Lint is therefore the strictly quieter half in both directions - it reports only what neither an
+ * ordering nor a profile could rescue, which is the right side to err on for a check that stops a
+ * release. It never reports a row the compiler would let through.
  */
 
 /** Every kind of object a row can put on stage and later address by name. */
@@ -70,6 +77,17 @@ export type StageObjectReference = {
      * displayable tables in turn.
      */
     kinds: readonly StageObjectKind[];
+    /**
+     * What the ROW itself is about, where {@link kinds} is only where its lookup may be satisfied.
+     *
+     * The two part company on a character: the portrait is filed in the image table too, so `kinds`
+     * spans both, while the row is unambiguously about a character. Only the row's own subject can
+     * pick the words a report uses, and a character is the one kind whose remedy is a different verb.
+     *
+     * A `/transform` whose reference records no kind names no subject, and reads as the generic
+     * displayable it is searched as first.
+     */
+    subject: StageObjectKind;
     name: string;
     label: string;
     /**
@@ -169,21 +187,37 @@ export function stageObjectReference(
         return null;
     }
     const reference = (
+        subject: StageObjectKind,
         kinds: readonly StageObjectKind[],
         resolved: { name: string; label: string },
     ): StageObjectReference => ({
         blockId: block.id,
         kinds,
+        subject,
         name: resolved.name,
         label: resolved.label,
         reservedMusicChannel: false,
     });
 
+    if (payload.action === "character") {
+        // Only the rows that address the PORTRAIT, which is {@link characterRowAddressesPortrait} and
+        // narrower than "not an `enter`". A character has no reference to resolve through: it keys on
+        // its `characterId`, which is already an identity the project owns, so the stage-name rule is
+        // the whole answer.
+        if (!characterRowAddressesPortrait(payload)) {
+            return null;
+        }
+        const name = normalizeStageObjectName(characterStageObjectName(payload));
+        // A portrait is an `Image`, and a puppet character is a `Puppet` filed under the same key.
+        // The compiler searches both tables for a character row, and `IMAGE_KINDS` is that search:
+        // an `enter` registers under both keys (see {@link sceneStageObjectNames}).
+        return reference("character", IMAGE_KINDS, { name, label: payload.objectName?.trim() || "Character" });
+    }
     if (payload.action === "image") {
-        return reference(IMAGE_KINDS, displayableStageRefName(scene, payload.target, payload.objectName));
+        return reference("image", IMAGE_KINDS, displayableStageRefName(scene, payload.target, payload.objectName));
     }
     if (payload.action === "text") {
-        return reference(["text"], displayableStageRefName(scene, payload.target, payload.objectName));
+        return reference("text", ["text"], displayableStageRefName(scene, payload.target, payload.objectName));
     }
     if (payload.action === "layer") {
         // The two built-in layers are in every scene, and a row naming no target at all means the
@@ -194,13 +228,13 @@ export function stageObjectReference(
             return null;
         }
         const name = normalizeStageObjectName(resolved.name);
-        return reference(["layer"], { name, label: resolved.name || name });
+        return reference("layer", ["layer"], { name, label: resolved.name || name });
     }
     if (payload.action === "video") {
-        return reference(["video"], actionableStageRefName(scene, payload.target, "video", payload.objectName));
+        return reference("video", ["video"], actionableStageRefName(scene, payload.target, "video", payload.objectName));
     }
     if (payload.action === "vfx") {
-        return reference(["vfx"], actionableStageRefName(scene, payload.target, "vfx", payload.objectName));
+        return reference("vfx", ["vfx"], actionableStageRefName(scene, payload.target, "vfx", payload.objectName));
     }
     if (payload.action === "audio") {
         // `setBgm` points the reserved channel at a new clip rather than addressing a handle, so it is
@@ -212,7 +246,7 @@ export function stageObjectReference(
         }
         const resolved = actionableStageRefName(scene, payload.target, "audio", soundStageObjectName(payload));
         return {
-            ...reference(["audio"], resolved),
+            ...reference("audio", ["audio"], resolved),
             reservedMusicChannel: resolved.name === BGM_STAGE_OBJECT_NAME,
         };
     }
@@ -229,23 +263,31 @@ export function stageObjectReference(
             : resolved.kind === "image" || resolved.kind === "character"
                 ? IMAGE_KINDS
                 : [resolved.kind];
-        return reference(kinds, { name, label: resolved.label || resolved.name || name });
+        return reference(resolved.kind ?? "image", kinds, { name, label: resolved.label || resolved.name || name });
     }
     return null;
 }
 
 /**
- * Whether a character row puts the portrait on stage.
+ * Whether a character row addresses the portrait - the half of "not an `enter`" that is a stage
+ * lookup, rather than every row that is not a declaration.
  *
- * `setName` renames the speaker and touches no portrait; `setMotion` / `setSkin` / `setParams` are
- * runtime-renderer verbs the compiler reports and drops. Everything else poses the character, and
- * posing it is what materialises it.
+ * `setName` renames the speaker on the `Character` record and touches no stage object at all.
+ *
+ * The three runtime-state verbs are left out for a subtler reason, and leaving them out is what
+ * keeps this reading inside the compiler's. On a **puppet** character they do address the element,
+ * and the compiler reports a miss on them like any other row. On a character Studio draws itself
+ * they never reach a lookup: the compiler answers them with a diagnostic of their own ("no runtime
+ * to set a motion on") and stops. Which of the two a row is depends on the character's profile,
+ * which lives outside the story document - so a reading that has only the document cannot tell them
+ * apart, and has to stay silent about all three rather than refuse a build the compiler allowed.
  */
-function characterRowPosesPortrait(payload: Extract<StoryActionPayload, { action: "character" }>): boolean {
+function characterRowAddressesPortrait(payload: Extract<StoryActionPayload, { action: "character" }>): boolean {
     return payload.operation !== "setName"
         && payload.operation !== "setMotion"
         && payload.operation !== "setSkin"
-        && payload.operation !== "setParams";
+        && payload.operation !== "setParams"
+        && !declaresStageObject(payload);
 }
 
 /** The rows the runtime will see: a disabled row takes its whole subtree with it. */
@@ -259,12 +301,17 @@ function liveSceneBlocks(scene: StoryScene | null | undefined): StoryBlock[] {
  * Wider than {@link declaredStageObject} on two counts, and both are the compiler's doing rather than
  * a looseness here:
  *
- *  - **A character portrait lands on stage on any row that poses it**, not only on `enter`. The
- *    compiler builds the portrait through get-or-create for `exit`, `move` and `expression` too, so a
- *    scene whose only Alice row is a `/move` really does have Alice on stage.
+ *  - **A character `enter` registers its portrait under two keys.** The portrait is an `Image` in the
+ *    engine's image table, so a later `/show alice` resolving as an image finds it - which is what
+ *    makes {@link IMAGE_KINDS} answer for both.
  *  - **Naming a layer on an image or text row creates it.** Placement resolves through the same
  *    get-or-create the `/layer create` row uses, because a row may sit above the row that declares
  *    its layer and dropping it on the default layer instead would silently restack the scene.
+ *
+ * It used to be wider still: `exit`, `move` and `expression` counted as putting a character on stage,
+ * because the compiler built the portrait through get-or-create on those rows too. The compiler no
+ * longer does - they address a portrait an `enter` put there - so counting them here would leave lint
+ * quietly believing in a character no compile produces.
  */
 export function sceneStageObjectNames(
     scene: StoryScene | null | undefined,
@@ -289,12 +336,11 @@ export function sceneStageObjectNames(
             continue;
         }
         const payload = block.payload;
-        if (payload.action === "character" && characterRowPosesPortrait(payload)) {
-            const portrait = normalizeStageObjectName(characterStageObjectName(payload));
-            add("character", portrait);
-            // The portrait is an `Image` in the engine's image table, so a later `/show alice`
-            // resolving as an image finds it. Registering both keys is what makes `IMAGE_KINDS` true.
-            add("image", portrait);
+        if (payload.action === "character" && declaresStageObject(payload)) {
+            // The `character` key is already in from `declaredStageObject` above. This is the second
+            // one: the portrait is an `Image` in the engine's image table, so a later `/show alice`
+            // resolving as an image finds it. Registering both is what makes `IMAGE_KINDS` true.
+            add("image", normalizeStageObjectName(characterStageObjectName(payload)));
         }
         if (payload.action === "image" || payload.action === "text") {
             const placed = resolveStoryLayerRef(scene, payload.layer);

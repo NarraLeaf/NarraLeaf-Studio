@@ -149,6 +149,8 @@ export const lint = {
             title: "Missing stage object",
             description: "A row acting on an object no row in the scene creates",
             message: "Nothing creates {object}, so this row has nothing to act on",
+            // A character is not created, it walks on - so the remedy is the one word that changes.
+            messageCharacter: "Nothing brings {object} on stage, so this row has nothing to act on",
         },
         storyStageObjectDuplicate: {
             title: "Duplicate stage object",

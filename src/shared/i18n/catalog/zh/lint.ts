@@ -139,6 +139,10 @@ export const lint = {
             title: "舞台对象不存在",
             description: "这一行操作的对象，场景里没有任何一行创建过",
             message: "没有任何一行创建 {object}，这一行没有可操作的对象",
+            // 角色不是被创建的，是被让它登场的，所以变的只是动词。「登场」是这个词在别处的
+            // 一贯说法（`story.enterExit.enter`、`story.empty.emptyExampleShow`、动效的 `entrance`），
+            // 同一件事换个说法就是命令词汇那轮消灭掉的东西。
+            messageCharacter: "没有任何一行让 {object} 登场，这一行没有可操作的对象",
         },
         storyStageObjectDuplicate: {
             title: "重复创建舞台对象",
