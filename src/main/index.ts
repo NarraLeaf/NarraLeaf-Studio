@@ -64,7 +64,20 @@ process.on('uncaughtException', (error) => {
     app.crash(error instanceof Error ? error : new Error(String(error)));
 });
 
-// Another Studio already owns this profile. It has been told to show itself (see the
+// macOS hands a double-clicked document over here and nowhere else - the path never appears in
+// argv - and it does so BEFORE `ready`, which is why this is registered at module scope rather
+// than beside the other listeners below. `openLaunchRequest` holds anything that arrives this
+// early until there is a window to put it in; see `App.openStartupWindow`.
+//
+// preventDefault() because the default is to do nothing useful and log that the app has no handler.
+app.electronApp.on('open-file', (event, filePath) => {
+    event.preventDefault();
+    void app.openLaunchPaths([filePath]).catch((error) => {
+        app.logger.error('Failed to open the file macOS handed over:', error);
+    });
+});
+
+// Another Studio already owns this profile. It has been told what this launch was for (see the
 // 'second-instance' handler below); this process has nothing left to do. exit() rather than
 // quit() so none of the shutdown work runs - the saves it would try to flush belong to the other
 // process, not to this one.
@@ -79,8 +92,23 @@ app.whenReady().then(async () => {
     // A second launch (Start menu, a shortcut, a file association) reaches the running instance
     // here instead of starting a rival one. Studio may well have no window at all at this point,
     // which is exactly the case this exists for.
-    app.electronApp.on('second-instance', () => {
-        void app.revealLauncher();
+    //
+    // **What the second launch was FOR travels with it.** A double-clicked project arrives as a
+    // path in that process's argv, resolved against that process's working directory - both of
+    // which Electron reports here and neither of which this process can work out for itself. Only
+    // a launch that named nothing Studio can open falls back to the home screen; answering a
+    // double-clicked project with the launcher would look exactly like the association being
+    // broken.
+    app.electronApp.on('second-instance', (_event, argv, workingDirectory) => {
+        void app.openLaunchPaths(argv, workingDirectory)
+            .then((opened) => {
+                if (!opened) {
+                    return app.revealLauncher();
+                }
+            })
+            .catch((error) => {
+                app.logger.error('Failed to act on a second launch:', error);
+            });
     });
 
     // macOS: clicking the Dock icon of an app with no windows. The Dock is what stands in for the

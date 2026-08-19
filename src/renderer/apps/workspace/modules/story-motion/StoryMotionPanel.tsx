@@ -23,6 +23,7 @@ import type { ProjectService } from "@/lib/workspace/services/core/ProjectServic
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { AssetSelector } from "../assets/components/AssetSelector";
+import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import type { PanelComponentProps } from "../types";
 import type { EditorLayout } from "../../registry/types";
 import {
@@ -95,6 +96,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
         () => context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null,
         [context, isInitialized],
     );
+    const assetLibraryRevision = useAssetLibraryRevision();
     const stageSize = useMemo(() => resolveStoryMotionStageSize(projectService), [projectService]);
 
     useEffect(() => {
@@ -353,7 +355,9 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
             return null;
         }
         return assetsService?.getAssets()[AssetType.Image]?.[assetId]?.name ?? assetId;
-    }, [assetsService]);
+        // `assetLibraryRevision`: the lookup itself is live, but nothing would re-run it - asset
+        // records are mutated in place, so a rename changes no other input this panel holds.
+    }, [assetLibraryRevision, assetsService]);
 
     const openFullEditor = useCallback(() => {
         if (!selectedAsset) {
