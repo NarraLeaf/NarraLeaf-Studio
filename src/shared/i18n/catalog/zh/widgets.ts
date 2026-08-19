@@ -144,7 +144,6 @@ export const widgets = {
         track: "轨道",
         thumb: "滑钮",
         repairParts: "修复部件",
-        motionTitle: "开启时",
     },
     textInput: {
         title: "文本输入框",

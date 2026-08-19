@@ -145,7 +145,6 @@ export const widgets = {
         track: "溝",
         thumb: "つまみ",
         repairParts: "部品を修復",
-        motionTitle: "オンのとき",
     },
     textInput: {
         title: "テキスト入力",

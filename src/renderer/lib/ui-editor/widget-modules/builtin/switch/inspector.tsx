@@ -1,15 +1,4 @@
-import { UI_SWITCH_ON_VARIANT_ID, type UISwitchWidgetProps } from "@shared/types/ui-editor/switch";
-import {
-    DEFAULT_STATE_MOTION_DURATION_MS,
-    DEFAULT_STATE_MOTION_EASING,
-    getStateMotions,
-    MAX_STATE_MOTION_DURATION_MS,
-    upsertStateMotion,
-} from "@shared/types/ui-editor/stateMotion";
-import { formatStorySecondsValue, storySecondsToMs } from "@shared/utils/storyTime";
-import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
-import { Select } from "@/lib/components/elements/Select";
-import { APPEARANCE_TWEEN_EASING_OPTIONS } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
+import type { UISwitchWidgetProps } from "@shared/types/ui-editor/switch";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
 import { useWorkspace } from "@/apps/workspace/context";
@@ -129,94 +118,6 @@ function SwitchStateField(props: CustomFieldProps<UIInspectorData>) {
     );
 }
 
-/**
- * How far the switch slides its thumb while it is on, and how long that takes.
- *
- * Lives on the switch because it is the switch doing it: the thumb keeps one position, the one an
- * author drags it to, and this is the offset laid over it for the length of the on state. Four
- * numbers, no gesture - anything richer is a control the author builds from containers.
- */
-function SwitchMotionField(props: CustomFieldProps<UIInspectorData>) {
-    const { t } = useTranslation();
-    const { documentService, element } = props.data;
-    const live = documentService.getDocument().elements[element.id] ?? element;
-    const thumbId = getSwitchProps(live).thumbElementId;
-    if (!thumbId) {
-        return null;
-    }
-    const motions = getStateMotions(live.props);
-    const current = motions.find(
-        motion => motion.state === UI_SWITCH_ON_VARIANT_ID && motion.target === thumbId,
-    ) ?? {
-        state: UI_SWITCH_ON_VARIANT_ID,
-        target: thumbId,
-        offsetX: 0,
-        offsetY: 0,
-        durationMs: DEFAULT_STATE_MOTION_DURATION_MS,
-        easing: DEFAULT_STATE_MOTION_EASING,
-    };
-    const write = (patch: Partial<typeof current>) => {
-        documentService.updateElementProps(live.id, {
-            ...(live.props ?? {}),
-            stateMotions: upsertStateMotion(motions, { ...current, ...patch }),
-        });
-    };
-    const draftKey = `${live.id}:${thumbId}`;
-
-    return (
-        <CompactModuleCard title={t("widgets.switch.motionTitle")}>
-            <div className="grid grid-cols-2 gap-2">
-                <NumericDraftEnhancedInput
-                    committedDisplay={String(current.offsetX)}
-                    draftResetKey={`${draftKey}-x`}
-                    onFiniteNumber={value => write({ offsetX: value })}
-                    inputMode="decimal"
-                    type="number"
-                    unit="X"
-                    className="w-full min-w-0"
-                />
-                <NumericDraftEnhancedInput
-                    committedDisplay={String(current.offsetY)}
-                    draftResetKey={`${draftKey}-y`}
-                    onFiniteNumber={value => write({ offsetY: value })}
-                    inputMode="decimal"
-                    type="number"
-                    unit="Y"
-                    className="w-full min-w-0"
-                />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-                <NumericDraftEnhancedInput
-                    committedDisplay={formatStorySecondsValue(current.durationMs)}
-                    draftResetKey={`${draftKey}-duration`}
-                    onFiniteNumber={seconds =>
-                        write({
-                            durationMs: Math.max(
-                                0,
-                                Math.min(MAX_STATE_MOTION_DURATION_MS, storySecondsToMs(seconds)),
-                            ),
-                        })
-                    }
-                    inputMode="decimal"
-                    type="number"
-                    min={0}
-                    unit="s"
-                    className="w-full min-w-0"
-                />
-                <Select
-                    value={current.easing}
-                    options={APPEARANCE_TWEEN_EASING_OPTIONS.map(option => ({
-                        value: option.value,
-                        labelKey: option.labelKey,
-                    }))}
-                    fullWidth
-                    onChange={value => write({ easing: String(value) as typeof current.easing })}
-                />
-            </div>
-        </CompactModuleCard>
-    );
-}
-
 function SwitchPartsField(props: CustomFieldProps<UIInspectorData>) {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
@@ -277,7 +178,7 @@ function SwitchPartsField(props: CustomFieldProps<UIInspectorData>) {
                     height: thumbSize,
                 });
                 documentService.updateElementExtra(thumb.id, { switchSlot: "thumb" });
-                documentService.updateElementProps(thumb.id, createSwitchPartProps("thumb"));
+                documentService.updateElementProps(thumb.id, createSwitchPartProps("thumb", travel));
                 thumbId = thumb.id;
             }
             const refreshed = documentService.getDocument().elements[element.id] ?? latest;
@@ -350,11 +251,6 @@ export function createSwitchInspector(ctx: InspectorContext) {
                         id: "switch.parts",
                         type: "custom",
                         component: SwitchPartsField,
-                    }),
-                    defineField<D, any>({
-                        id: "switch.motion",
-                        type: "custom",
-                        component: SwitchMotionField,
                     }),
                 ],
             },
