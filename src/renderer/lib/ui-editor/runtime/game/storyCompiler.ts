@@ -40,11 +40,14 @@ import type { WeatherSeedRef } from "@shared/weather/model";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import type { DialogAvatarResolverContext } from "narraleaf-react";
 import { resolvePoseAssetId, resolveTagSelection } from "@shared/utils/characterVariant";
+import { parseStoryEasing } from "@shared/utils/storyEasing";
 import {
     characterAvatarKeyFromTags,
     resolveCharacterAvatarAssetId,
 } from "@shared/utils/characterAvatar";
 import type {
+    StoryActionableKind,
+    StoryActionableTargetRef,
     StoryActionPayload,
     StoryAnimationAsset,
     StoryAnimationKeyframe,
@@ -79,8 +82,12 @@ import type {
     StoryVariableRef,
 } from "@shared/types/story";
 import {
+    BGM_STAGE_OBJECT_NAME,
+    actionableStageRefName,
     collectStoryExpressionInvocations,
     collectStoryExpressionVariables,
+    declaresStageObject,
+    displayableStageRefName,
     duplicateSceneLabels,
     isStoryExpressionEvaluable,
     storyVisitedRefId,
@@ -90,6 +97,7 @@ import {
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
     sceneVariableDefs,
+    soundStageObjectName,
     storyPersistentDefs,
     storyVariableRefKey,
 } from "@shared/types/story";
@@ -865,9 +873,13 @@ const SCENE_INITIAL_BACKGROUND_BLOCK_ID = "__scene_initial_background";
 const SCENE_BACKGROUND_MUSIC_BLOCK_ID = "__scene_background_music";
 /**
  * The reserved registry name the sound-control family addresses when no target is given
- * (`/vol 0.5` is the music channel). Mirrors `BGM_OBJECT_NAME` in the editor.
+ * (`/vol 0.5` is the music channel).
+ *
+ * Bound to the shared constant rather than spelled again. It was a second literal `"bgm"` until the
+ * project lint grew a third reader: whether this name is exempt from "that sound is not playing" is
+ * a rule of the document, and a rule with three spellings is a rule waiting to be changed in two.
  */
-const BGM_SOUND_NAME = "bgm";
+const BGM_SOUND_NAME = BGM_STAGE_OBJECT_NAME;
 const EMPTY_STORY_ID = "__nlr_empty_story__";
 const EMPTY_SCENE_ID = "__nlr_empty_scene__";
 const UNKNOWN_CHARACTER_ID = "__unknown_character__";
@@ -2195,7 +2207,7 @@ function runStoryCompilePasses(ctx: SceneCompileContext): void {
                 darken: (darkness, durationMs, easing) => image.darken(
                     Math.min(1, Math.max(0, darkness)),
                     Math.max(0, durationMs),
-                    easing as never,
+                    parseStoryEasing(easing) as never,
                 ) as unknown as EngineAction,
                 bringToFront: () => image.bringToFront() as unknown as EngineAction,
             };
@@ -2720,7 +2732,7 @@ function buildInterpolationWord(
     if (target.scope === "scene") {
         const def = ctx.sceneVariables[target.variableId];
         if (!def) {
-            diagnostic(ctx, "warning", blockId, "Scene variable not found; interpolation skipped.");
+            diagnostic(ctx, "error", blockId, "Scene variable not found; interpolation skipped.");
             return null;
         }
         return applyInterpolationWordMarks(ctx.nlrScene.local.toWord(def.storageKey as any), marks);
@@ -2728,7 +2740,7 @@ function buildInterpolationWord(
     if (target.scope === "saved") {
         const def = ctx.savedVariables[target.variableId];
         if (!def) {
-            diagnostic(ctx, "warning", blockId, "Saved variable not found; interpolation skipped.");
+            diagnostic(ctx, "error", blockId, "Saved variable not found; interpolation skipped.");
             return null;
         }
         return applyInterpolationWordMarks(ctx.savedPersistent.toWord(def.storageKey as any), marks);
@@ -2736,7 +2748,7 @@ function buildInterpolationWord(
     // Persistent (app-level): a dynamic word reading the shared host snapshot synchronously,
     // falling back to the story-declared default while the host has never stored a value.
     if (!ctx.persistentKeys.has(target.variableId)) {
-        diagnostic(ctx, "warning", blockId, "Persistent variable not found; interpolation skipped.");
+        diagnostic(ctx, "error", blockId, "Persistent variable not found; interpolation skipped.");
         return null;
     }
     const persistence = ctx.persistence;
@@ -2828,7 +2840,7 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
         const target = resolveDisplayableActionTarget(ctx, payload.target);
         if (!target) {
             const label = resolveDisplayableTargetRef(ctx.scene, payload.target).label || "(empty)";
-            diagnostic(ctx, "warning", block.id, `Displayable target not found: ${label}`);
+            diagnostic(ctx, "error", block.id, `Displayable target not found: ${label}`);
             return [];
         }
         if (payload.operation === "bringToFront") {
@@ -2897,7 +2909,7 @@ async function compileCameraAction(
         // It is also why `reset` survived the fold into the prop bag: "put the camera back" is this
         // call, and a bag of neutral values would put the filter and the pose in one transform again.
         const duration = Math.max(0, finiteOr(payload.durationMs, 0));
-        return [recordStatement(ctx, camera.resetCamera(duration, payload.easing as any), block)];
+        return [recordStatement(ctx, camera.resetCamera(duration, parseStoryEasing(payload.easing) as any), block)];
     }
     const transform = payload.transform;
     if (!transform) {
@@ -2998,18 +3010,30 @@ async function compileCharacterStageAction(
         return statements;
     }
 
-    if (payload.operation === "exit") {
-        const image = getImage(ctx, name, { autoFit: true });
-        await bindCharacterPortrait(ctx, payload.characterId, image);
-        const chain = await compileDisplayableOperation(image, "hide", payload.transform ?? { to: { opacity: 0 }, durationMs: 250 }, ctx, block.id);
+    // `enter` is the one character row that DECLARES the portrait; exit / move / expression address
+    // the one an earlier row put on stage. Which is which is `declaresStageObject` - the single
+    // table, read by project lint too, so a preview and a build cannot disagree about which rows may
+    // build. Addressing a portrait nothing entered used to conjure a blank Image and then hide, move
+    // or re-dress it, with nothing anywhere saying so; the character was the last kind still doing it.
+    //
+    // The lookup runs here, ahead of any appearance resolution, so a row with nothing to act on
+    // reports that one fact rather than first complaining about a source it was never going to apply.
+    const declares = declaresStageObject(payload);
+    const staged = declares ? null : findStageCharacterImage(ctx, block.id, payload, name);
+    if (!declares && !staged) {
+        return statements;
+    }
+
+    if (payload.operation === "exit" && staged) {
+        await bindCharacterPortrait(ctx, payload.characterId, staged);
+        const chain = await compileDisplayableOperation(staged, "hide", payload.transform ?? { to: { opacity: 0 }, durationMs: 250 }, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
         return statements;
     }
 
-    if (payload.operation === "move") {
-        const image = getImage(ctx, name, { autoFit: true });
-        await bindCharacterPortrait(ctx, payload.characterId, image);
-        const chain = await compileDisplayableOperation(image, "transform", payload.transform, ctx, block.id);
+    if (payload.operation === "move" && staged) {
+        await bindCharacterPortrait(ctx, payload.characterId, staged);
+        const chain = await compileDisplayableOperation(staged, "transform", payload.transform, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
         return statements;
     }
@@ -3021,7 +3045,7 @@ async function compileCharacterStageAction(
     const layeredSrc = payload.assetId ? null : await resolveCharacterLayeredSrc(ctx, payload.characterId, block.id);
     if (layeredSrc) {
         const appearance = ctx.characterSummaries.get(payload.characterId!)?.appearance;
-        const image = getImage(ctx, name, { autoFit: true, src: layeredSrc as never });
+        const image = staged ?? getImage(ctx, name, { autoFit: true, src: layeredSrc as never });
         await bindCharacterPortrait(ctx, payload.characterId, image);
         const selection = payload.operation === "enter"
             ? resolveTagSelection(appearance, payload.tags)
@@ -3049,7 +3073,7 @@ async function compileCharacterStageAction(
         return statements;
     }
 
-    const image = getImage(ctx, name, { autoFit: true, src });
+    const image = staged ?? getImage(ctx, name, { autoFit: true, src });
     await bindCharacterPortrait(ctx, payload.characterId, image);
     if (payload.operation === "enter") {
         // An entering character has no prior image to transition from, so `enter` never uses a
@@ -3092,7 +3116,22 @@ async function compileCharacterPuppetAction(
     name: string,
     appearance: Extract<DevModeCharacterSummary["appearance"], { kind: "puppet" }>,
 ): Promise<NlrStatement[]> {
-    const puppet = await getPuppetElement(ctx, name, appearance, block.id);
+    // The same split every other stage kind now makes, and here it is `enter` against everything
+    // else: the box's own verbs (exit, move) and the four that reach INSIDE it alike address a box
+    // an earlier row put on stage. Reaching inside one nothing entered built a puppet on the spot,
+    // loaded its model and set a motion on an element that is never shown - a row that costs the
+    // whole backend and produces no scene, reported by nothing.
+    //
+    // A row-precise launch is the one place a puppet arrives without an `enter` row of its own, and
+    // it arrives wearing the wrong class: the stage snapshot has no notion of a puppet and files
+    // every character as an image record, so the replay pre-poses this character as an `Image` and
+    // the box is never restored. An `Image` under a puppet character's key can have come from
+    // nowhere else - a compile of the rows sends a puppet character here on every operation and
+    // never builds one - so it reads as "on stage, box not restorable" and the box is built.
+    const preposed = stagedCharacterElement(ctx, name) instanceof Image;
+    const puppet = declaresStageObject(payload) || preposed
+        ? await getPuppetElement(ctx, name, appearance, block.id)
+        : findStageCharacterPuppet(ctx, block.id, payload, name);
     if (!puppet) {
         return [];
     }
@@ -3129,7 +3168,11 @@ async function compileCharacterPuppetAction(
 }
 
 /**
- * The scene's `Puppet` for a stage name, created on first use.
+ * The scene's `Puppet` for a stage name, built by the row that declares it.
+ *
+ * Get-or-create on the same terms as {@link getImage}, and reached only from the path entitled to
+ * create: a character `enter`. A row that merely addresses the puppet goes through
+ * {@link findStageCharacterPuppet} and reports a miss instead.
  *
  * Created once and never re-sourced, because a puppet **cannot** change its `src`: the backend's
  * instance lives as long as the element is on stage, and swapping the model underneath it would
@@ -3374,8 +3417,20 @@ async function compileAudioAction(
         )];
     }
 
-    const name = normalizeObjectName(payload.objectName || payload.assetId || "sound");
-    const sound = await getSound(ctx, name, payload.assetId, block.id, payload);
+    // `playSound` is the row that starts the handle and names it; the control family addresses one an
+    // earlier row started, through the reference when the row carries one. The reserved music channel
+    // resolves the same way - `{ builtin: "bgm" }` routes to the reserved key without a block to bind.
+    //
+    // `declaredName` is the key a `playSound` row registers under, and the binding a control row with
+    // no reference falls back to. One shared rule, so no surface can key a sound differently.
+    const declaredName = soundStageObjectName(payload);
+    const declares = declaresStageObject(payload);
+    const { name, label } = declares
+        ? { name: declaredName, label: payload.objectName?.trim() || declaredName }
+        : actionableActionTargetName(ctx, payload.target, "audio", declaredName);
+    const sound = declares
+        ? await getSound(ctx, name, payload.assetId, block.id, payload)
+        : findPlayingSound(ctx, block.id, payload, name, label);
     if (!sound) {
         return [];
     }
@@ -3460,10 +3515,15 @@ async function compileImageAction(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "image" }>,
 ): Promise<NlrStatement[]> {
-    const image = getImage(ctx, payload.objectName, {
-        autoFit: payload.autoFit,
-        layer: resolveLayerForRef(ctx, payload.layer),
-    });
+    // `create` declares the image; every other op addresses one an earlier row declared, and a miss
+    // is reported rather than filled in with a blank Image nothing on stage would show.
+    const layer = resolveLayerForRef(ctx, payload.layer);
+    const image = declaresStageObject(payload)
+        ? getImage(ctx, payload.objectName, { autoFit: payload.autoFit, layer })
+        : findStageImage(ctx, block.id, payload, layer);
+    if (!image) {
+        return [];
+    }
     const statements: NlrStatement[] = [];
     const src = payload.assetId
         ? await resolveAsset(ctx, payload.assetId, "image", block.id)
@@ -3489,22 +3549,29 @@ async function compileTextAction(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "text" }>,
 ): Promise<NlrStatement[]> {
-    const text = getText(ctx, payload.objectName, {
-        text: payload.text,
-        fontSize: payload.fontSize,
-        fontColor: payload.fontColor,
-        layer: resolveLayerForRef(ctx, payload.layer),
-    });
+    // Same split as `/image`: `create` declares the text, the rest address one already on stage.
+    const layer = resolveLayerForRef(ctx, payload.layer);
+    const text = declaresStageObject(payload)
+        ? getText(ctx, payload.objectName, {
+            text: payload.text,
+            fontSize: payload.fontSize,
+            fontColor: payload.fontColor,
+            layer,
+        })
+        : findStageText(ctx, block.id, payload, layer);
+    if (!text) {
+        return [];
+    }
     const statements: NlrStatement[] = [];
 
     if ((payload.operation === "create" || payload.operation === "setText") && payload.text !== undefined) {
         statements.push(recordStatement(ctx, text.setText(payload.text), block));
     }
     if (payload.operation === "setFontSize" || (payload.operation === "create" && payload.fontSize !== undefined)) {
-        statements.push(recordStatement(ctx, text.setFontSize(payload.fontSize ?? 16, payload.transform?.durationMs ?? 0, payload.transform?.easing as any), block));
+        statements.push(recordStatement(ctx, text.setFontSize(payload.fontSize ?? 16, payload.transform?.durationMs ?? 0, parseStoryEasing(payload.transform?.easing) as any), block));
     }
     if (payload.operation === "setFontColor" || (payload.operation === "create" && payload.fontColor)) {
-        statements.push(recordStatement(ctx, text.setFontColor((payload.fontColor ?? "#ffffff") as any, payload.transform?.durationMs ?? 0, payload.transform?.easing as any), block));
+        statements.push(recordStatement(ctx, text.setFontColor((payload.fontColor ?? "#ffffff") as any, payload.transform?.durationMs ?? 0, parseStoryEasing(payload.transform?.easing) as any), block));
     }
     if (payload.operation === "show" || payload.operation === "hide" || payload.operation === "create") {
         const chain = await compileDisplayableOperation(text, payload.operation === "hide" ? "hide" : "show", payload.transform, ctx, block.id);
@@ -3522,9 +3589,12 @@ async function compileLayerAction(
     // `create` names a new custom layer; every other op resolves an existing layer - a built-in
     // (background / displayable) or a custom one - via the target ref (falling back to the default
     // displayable layer), so a transform can now target the background instead of only named layers.
-    const layer = payload.operation === "create"
+    const layer = declaresStageObject(payload)
         ? getLayer(ctx, payload.objectName, payload.zIndex)
-        : resolveLayerForRef(ctx, layerActionTargetRef(payload.target, payload.objectName)) ?? ctx.nlrScene.displayableLayer;
+        : findStageLayer(ctx, block.id, payload);
+    if (!layer) {
+        return [];
+    }
     const statements: NlrStatement[] = [];
     if (payload.operation === "setZIndex" || (payload.operation === "create" && payload.zIndex !== undefined)) {
         statements.push(recordStatement(ctx, layer.setZIndex(payload.zIndex ?? 0), block));
@@ -3542,7 +3612,10 @@ async function compileVideoAction(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "video" }>,
 ): Promise<NlrStatement[]> {
-    const video = await getVideo(ctx, payload.objectName, payload.assetId, payload.muted, block.id);
+    // `create` builds the clip; the transport verbs address one an earlier row built.
+    const video = declaresStageObject(payload)
+        ? await getVideo(ctx, payload.objectName, payload.assetId, payload.muted, block.id)
+        : findStageVideo(ctx, block.id, payload);
     if (!video) {
         return [];
     }
@@ -3582,13 +3655,15 @@ async function compileVfxAction(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "vfx" }>,
 ): Promise<NlrStatement[]> {
-    const vfx = await getVfx(ctx, payload, block.id);
+    const vfx = declaresStageObject(payload)
+        ? await getVfx(ctx, payload, block.id)
+        : findStageVfx(ctx, block.id, payload);
     if (!vfx) {
         return [];
     }
     // A create shows the overlay: the row an author writes to "put petals on screen" must put them on
     // screen, exactly as `/image` and `/video` do.
-    const fade = { duration: Math.max(0, finiteOr(payload.durationMs, 0)), ease: payload.easing as any };
+    const fade = { duration: Math.max(0, finiteOr(payload.durationMs, 0)), ease: parseStoryEasing(payload.easing) as any };
     switch (payload.operation) {
         case "create":
         case "show":
@@ -3607,6 +3682,7 @@ async function compileVfxAction(
     }
 }
 
+/** Builds the overlay a `/vfx create` row declares; every other verb looks up instead. */
 async function getVfx(
     ctx: SceneCompileContext,
     payload: Extract<StoryActionPayload, { action: "vfx" }>,
@@ -4028,6 +4104,11 @@ function characterNametagConfig(summary: DevModeCharacterSummary | undefined): {
  * `src` is either a url/colour or a layered definition — the engine takes both, and a layered
  * character's stack has to reach the constructor because an Image's src shape is fixed there. What
  * a later row changes is the tags, never the src.
+ *
+ * Get-or-create, and reached only by the paths that are entitled to create: an `/image create` row,
+ * a character `enter` row, and the snapshot replay that seeds a mid-scene launch with the stage as
+ * it already stood. A row that merely ADDRESSES an image goes through {@link findStageImage} - or
+ * {@link findStageCharacterImage} for a portrait - and reports a miss instead.
  */
 function getImage(ctx: SceneCompileContext, objectName: string, options?: { layer?: Layer; autoFit?: boolean; src?: string | { layers: unknown[]; defaults: string[] }; initialProps?: Record<string, unknown> }): Image {
     const name = normalizeObjectName(objectName);
@@ -4051,6 +4132,7 @@ function getImage(ctx: SceneCompileContext, objectName: string, options?: { laye
     return image;
 }
 
+/** Get-or-create, on the same terms as {@link getImage}: `/text create` rows and snapshot replay. */
 function getText(ctx: SceneCompileContext, objectName: string, options: { text?: string; fontSize?: number; fontColor?: string; layer?: Layer; initialProps?: Record<string, unknown> }): Text {
     const name = normalizeObjectName(objectName);
     const existing = ctx.texts.get(name);
@@ -4071,6 +4153,12 @@ function getText(ctx: SceneCompileContext, objectName: string, options: { text?:
     return text;
 }
 
+/**
+ * Get-or-create, on the same terms as {@link getImage}: `/layer create` rows, snapshot replay, and
+ * PLACEMENT - an image or text can name the layer it sits on before the row declaring that layer has
+ * compiled, and dropping it on the default layer instead would silently restack the scene. A `/layer`
+ * row that addresses an existing layer goes through {@link findStageLayer}.
+ */
 function getLayer(ctx: SceneCompileContext, objectName: string, zIndex = 0, initialProps?: Record<string, unknown>): Layer {
     const name = normalizeObjectName(objectName);
     const existing = ctx.layers.get(name);
@@ -4108,6 +4196,7 @@ function resolveLayerForRef(ctx: SceneCompileContext, ref: StoryLayerRef | undef
     return getLayer(ctx, name, zIndex);
 }
 
+/** Builds the clip a `/video create` row declares; the transport verbs look up instead. */
 async function getVideo(ctx: SceneCompileContext, objectName: string, assetId: string | undefined, muted: boolean | undefined, blockId: string): Promise<Video | null> {
     const name = normalizeObjectName(objectName);
     const existing = ctx.videos.get(name);
@@ -4129,7 +4218,9 @@ async function getVideo(ctx: SceneCompileContext, objectName: string, assetId: s
 }
 
 /**
- * The named sound handle, created on first mention and reused after.
+ * The named sound handle a `playSound` row starts, reused when an earlier row already started one
+ * under the same name. Only that operation reaches here - the control family looks up instead, see
+ * {@link findPlayingSound} - so this is where a handle comes into existence and nowhere else.
  *
  * **The cache is keyed by NAME, and the bus rides on the handle.** A row that names an existing
  * sound and also names a different track cannot get its track - the handle it addresses was routed
@@ -4150,9 +4241,9 @@ async function getSound(
         return existing;
     }
     if (!assetId) {
-        diagnostic(ctx, "warning", blockId, name === "bgm"
-            ? "No background music is set before this row; /bgm has to run first."
-            : `Sound "${name}" has no asset.`);
+        // The music channel's own "nothing to address yet" reading lives on the control path now,
+        // where the rows that ask for it are; a `/sound` row with no clip is just a row with no clip.
+        diagnostic(ctx, "warning", blockId, `Sound "${name}" has no asset.`);
         return null;
     }
     const url = await resolveAsset(ctx, assetId, "audio", blockId);
@@ -4208,8 +4299,270 @@ function getDisplayable(ctx: SceneCompileContext, name: string, kind?: string): 
     if (kind === "image" || !kind) return ctx.images.get(normalized) ?? (!kind ? ctx.texts.get(normalized) ?? ctx.layers.get(normalized) ?? null : null);
     if (kind === "text") return ctx.texts.get(normalized) ?? null;
     if (kind === "layer") return ctx.layers.get(normalized) ?? null;
-    // A character is one element or the other, never both, so the lookup can simply try each.
-    if (kind === "character") return ctx.images.get(normalized) ?? ctx.puppets.get(normalized) ?? null;
+    // A character is one element or the other, never both, so the lookup simply tries each - the same
+    // one a character row makes, so `/show alice` and `/face alice` cannot find different answers.
+    if (kind === "character") return stagedCharacterElement(ctx, normalized);
+    return null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Addressing an object that is already on stage
+// ---------------------------------------------------------------------------------------------
+//
+// A row either DECLARES a stage object or ADDRESSES one. The declaring ops (`create`, `playSound`,
+// a character `enter`) build through the `get*` constructors above; every other op resolves through
+// this section, which only ever looks up. The two were one thing until now - `getImage`/`getText`/
+// `getLayer` are get-or-create - so a `/show poster` with no `poster` anywhere in the scene built a
+// blank Image, showed nothing, and reported nothing. It is the reference identity landing that makes
+// the split possible: a row can now say WHICH row declared the object it means, so failing to find
+// that object is a fact about the document rather than an artefact of how it was spelled.
+//
+// Which op falls on which side is `declaresStageObject`, and how a reference resolves to a key is
+// `displayableStageRefName` / `actionableStageRefName` - all three in
+// `@shared/types/story/stageObjects`, because project lint asks the same questions of the same rows
+// and refuses a build on its answer. The dispatch below reads that table rather than restating it.
+
+/**
+ * The stage key + author-facing label a non-`create` displayable row addresses. `name` is the key to
+ * look up and `label` the only half safe to print - a character's stage key is its `characterId`,
+ * which is a UUID.
+ *
+ * The rule itself is `displayableStageRefName` in `@shared/types/story/stageObjects`, and this is a
+ * caller rather than the owner. Project lint asks the same question of the same rows and its answer
+ * stops a build, so a second copy of "what does this row address" is a copy that will one day let a
+ * preview error through a release, or refuse a release a preview was happy with.
+ */
+function displayableActionTargetName(
+    ctx: SceneCompileContext,
+    target: StoryDisplayableTargetRef | undefined,
+    objectName: string,
+): { name: string; label: string } {
+    return displayableStageRefName(ctx.scene, target, objectName);
+}
+
+/**
+ * The `Actionable` counterpart of {@link displayableActionTargetName} - a clip, an ambience overlay,
+ * a sound handle. Same rule, same shared home, and same reason for it; the `kind` is passed because
+ * the reference does not carry one (the row's own `action` states it) and resolution checks it
+ * rather than assuming.
+ */
+function actionableActionTargetName(
+    ctx: SceneCompileContext,
+    target: StoryActionableTargetRef | undefined,
+    kind: StoryActionableKind,
+    objectName: string,
+): { name: string; label: string } {
+    return actionableStageRefName(ctx.scene, target, kind, objectName);
+}
+
+/**
+ * The one diagnostic for a row that acts on a stage object no earlier row put there.
+ *
+ * `error`, not `warning`: the row compiles to nothing at all and the stage is missing the thing the
+ * author wrote the row to move, swap or hide, which is as far from the expected scene as a row can
+ * land. The alternative was what stood here before - a blank object conjured on the spot, a scene
+ * that plays through with an empty stage, and nothing anywhere saying why.
+ *
+ * The LABEL is printed, never the stage key: a character keys on its `characterId` and an unnamed
+ * sound on its `assetId`, and neither is a word an author would recognise.
+ *
+ * A diagnostic does not stop a build - it reaches the Story console during a preview. The same miss
+ * is reported again by the project lint's `story/stage-object-missing`, which does, and both read
+ * the one judgement in `@shared/types/story/stageObjects`.
+ *
+ * Half the value of the sentence is the remedy, so the closing clause follows what the row acts on.
+ * Nothing in Studio CREATES a character: an author brings one on stage, and a message telling them
+ * to create it names a step they will not find. One shape with one varying clause, so the two
+ * remedies cannot grow into two messages.
+ */
+function reportMissingStageObject(
+    ctx: SceneCompileContext,
+    blockId: string,
+    noun: string,
+    label: string,
+    remedy: "create" | "enter" = "create",
+): void {
+    const clause = remedy === "enter"
+        ? "an earlier row has to bring it on stage"
+        : "an earlier row has to create it";
+    diagnostic(ctx, "error", blockId, `${noun} "${label}" is not on stage; ${clause}.`);
+}
+
+/**
+ * The image a non-`create` `/image` row acts on, or null with the miss already reported.
+ *
+ * A `layer` on such a row moves the object onto it, which is what passing the layer through
+ * `getImage` did for an object it found rather than built.
+ */
+function findStageImage(
+    ctx: SceneCompileContext,
+    blockId: string,
+    payload: Extract<StoryActionPayload, { action: "image" }>,
+    layer: Layer | undefined,
+): Image | null {
+    const { name, label } = displayableActionTargetName(ctx, payload.target, payload.objectName);
+    const existing = ctx.images.get(name);
+    if (existing) {
+        if (layer) {
+            existing.useLayer(layer);
+        }
+        return existing;
+    }
+    reportMissingStageObject(ctx, blockId, "Image", label);
+    return null;
+}
+
+/**
+ * Whatever already answers to a character's stage name, in either table.
+ *
+ * **Both**, because a character is an `Image` or a `Puppet` and never both, and which one it is
+ * follows from the character's profile rather than from the row - exactly the reason
+ * {@link getDisplayable} searches both on its `character` arm. A lookup that read only the image
+ * table would report every row on an entered puppet character as addressing nothing.
+ */
+function stagedCharacterElement(ctx: SceneCompileContext, objectName: string): Image | Puppet | null {
+    const name = normalizeObjectName(objectName);
+    return ctx.images.get(name) ?? ctx.puppets.get(name) ?? null;
+}
+
+/**
+ * The portrait a non-`enter` character row acts on, or null with the miss already reported.
+ *
+ * The LABEL is printed and never the stage key: a character with no stage name of its own keys on
+ * its `characterId`, which is a UUID. {@link characterDiagnosticName} is the same ladder every other
+ * character diagnostic climbs - the author's name for the character, then a stage name they typed.
+ */
+function findStageCharacterImage(
+    ctx: SceneCompileContext,
+    blockId: string,
+    payload: Extract<StoryActionPayload, { action: "character" }>,
+    objectName: string,
+): Image | null {
+    const existing = stagedCharacterElement(ctx, objectName);
+    if (existing instanceof Image) {
+        return existing;
+    }
+    reportMissingStageObject(ctx, blockId, "Character", characterDiagnosticName(ctx, payload), "enter");
+    return null;
+}
+
+/** The puppet a non-`enter` row on a puppet character acts on. Same rule as {@link findStageCharacterImage}. */
+function findStageCharacterPuppet(
+    ctx: SceneCompileContext,
+    blockId: string,
+    payload: Extract<StoryActionPayload, { action: "character" }>,
+    objectName: string,
+): Puppet | null {
+    const existing = stagedCharacterElement(ctx, objectName);
+    if (existing instanceof Puppet) {
+        return existing;
+    }
+    reportMissingStageObject(ctx, blockId, "Character", characterDiagnosticName(ctx, payload), "enter");
+    return null;
+}
+
+/** The text a non-`create` `/text` row acts on. Same rule as {@link findStageImage}. */
+function findStageText(
+    ctx: SceneCompileContext,
+    blockId: string,
+    payload: Extract<StoryActionPayload, { action: "text" }>,
+    layer: Layer | undefined,
+): Text | null {
+    const { name, label } = displayableActionTargetName(ctx, payload.target, payload.objectName);
+    const existing = ctx.texts.get(name);
+    if (existing) {
+        if (layer) {
+            existing.useLayer(layer);
+        }
+        return existing;
+    }
+    reportMissingStageObject(ctx, blockId, "Text", label);
+    return null;
+}
+
+/**
+ * The layer a non-`create` `/layer` row acts on.
+ *
+ * The two built-in layers are in every scene, so a row addressing one - or a row naming no target at
+ * all, which means the scene's default - always resolves. Only a custom layer can be missing, and it
+ * is the one displayable kind the engine will not conjure from a mention, so a row that addresses
+ * one no `create` row declared has never had anything to act on.
+ */
+function findStageLayer(
+    ctx: SceneCompileContext,
+    blockId: string,
+    payload: Extract<StoryActionPayload, { action: "layer" }>,
+): Layer | null {
+    const resolved = resolveStoryLayerRef(ctx.scene, layerActionTargetRef(payload.target, payload.objectName));
+    if (resolved.kind === "default") {
+        return resolved.layer === "background" ? ctx.nlrScene.backgroundLayer : ctx.nlrScene.displayableLayer;
+    }
+    const name = normalizeObjectName(resolved.name);
+    const existing = ctx.layers.get(name);
+    if (existing) {
+        return existing;
+    }
+    reportMissingStageObject(ctx, blockId, "Layer", resolved.name || name);
+    return null;
+}
+
+/** The clip a non-`create` `/video` row addresses. */
+function findStageVideo(
+    ctx: SceneCompileContext,
+    blockId: string,
+    payload: Extract<StoryActionPayload, { action: "video" }>,
+): Video | null {
+    const { name, label } = actionableActionTargetName(ctx, payload.target, "video", payload.objectName);
+    const existing = ctx.videos.get(name);
+    if (existing) {
+        return existing;
+    }
+    reportMissingStageObject(ctx, blockId, "Video", label);
+    return null;
+}
+
+/** The ambience overlay a non-`create` `/vfx` row addresses. */
+function findStageVfx(
+    ctx: SceneCompileContext,
+    blockId: string,
+    payload: Extract<StoryActionPayload, { action: "vfx" }>,
+): Vfx | null {
+    const { name, label } = actionableActionTargetName(ctx, payload.target, "vfx", payload.objectName);
+    const existing = ctx.vfx.get(name);
+    if (existing) {
+        return existing;
+    }
+    reportMissingStageObject(ctx, blockId, "Ambience effect", label);
+    return null;
+}
+
+/**
+ * The sound handle a control row addresses (`/vol`, `/stop`, `/seek` and the rest of the family).
+ *
+ * The reserved music channel is deliberately NOT an error. It is the one handle that outlives the
+ * scene that starts it - a `/bgm` in scene 1 is still playing in scene 2, and the launch compile
+ * seeds it into this table for exactly that reason - so this compile genuinely cannot tell an
+ * unreachable row from music set somewhere it cannot see. That is the long-standing warning, kept
+ * word for word; every other name belongs to a `playSound` row in THIS scene, and its absence is a
+ * fact rather than a guess.
+ */
+function findPlayingSound(
+    ctx: SceneCompileContext,
+    blockId: string,
+    payload: Extract<StoryActionPayload, { action: "audio" }>,
+    name: string,
+    label: string,
+): Sound | null {
+    const existing = ctx.sounds.get(name);
+    if (existing) {
+        reportTrackConflict(ctx, blockId, payload, name);
+        return existing;
+    }
+    if (name === BGM_SOUND_NAME) {
+        diagnostic(ctx, "warning", blockId, "No background music is set before this row; /bgm has to run first.");
+        return null;
+    }
+    diagnostic(ctx, "error", blockId, `Sound "${label}" is not playing; an earlier /sound row has to start it.`);
     return null;
 }
 
@@ -4242,7 +4595,7 @@ function timingOf(ref: StoryTransformRef | undefined): TransformTiming {
 function transformOptions(timing: TransformTiming | undefined): Record<string, unknown> {
     const options: Record<string, unknown> = { duration: Math.max(0, timing?.durationMs ?? 0) };
     if (timing?.easing) {
-        options.ease = timing.easing;
+        options.ease = parseStoryEasing(timing.easing);
     }
     if (timing?.delayMs !== undefined) {
         options.delay = Math.max(0, timing.delayMs);
@@ -4515,7 +4868,7 @@ async function compileDisplayableOperation(
         if (isOpacityOnly(transform, 1)) {
             return target.show(transformOptions(timing));
         }
-        const visible = target.show({ duration: 0, ...(transform?.easing ? { ease: transform.easing } : {}) });
+        const visible = target.show({ duration: 0, ...(transform?.easing ? { ease: parseStoryEasing(transform.easing) } : {}) });
         return await emitTransformProps(visible, transform, ctx, blockId);
     }
     if (operation === "hide") {
@@ -4523,7 +4876,7 @@ async function compileDisplayableOperation(
             return target.hide(transformOptions(timing));
         }
         const posed = await emitTransformProps(target, transform, ctx, blockId);
-        return (posed ?? target).hide({ duration: 0, ...(transform?.easing ? { ease: transform.easing } : {}) });
+        return (posed ?? target).hide({ duration: 0, ...(transform?.easing ? { ease: parseStoryEasing(transform.easing) } : {}) });
     }
     const chain = await emitTransformProps(target, transform, ctx, blockId);
     return chain === target ? null : chain;
@@ -4585,7 +4938,7 @@ function createAnimationTransform(
     }
     const asset = ctx.animations.get(animationId);
     if (!asset) {
-        diagnostic(ctx, "warning", blockId, `Story animation not found: ${animationId}`);
+        diagnostic(ctx, "error", blockId, `Story animation not found: ${animationId}`);
         return null;
     }
 
@@ -4606,7 +4959,7 @@ async function createTransition(transition: StoryTransitionRef | undefined, ctx:
         return undefined;
     }
     const duration = Math.max(0, transition.durationMs ?? 300);
-    const easing = transition.easing as any;
+    const easing = parseStoryEasing(transition.easing) as any;
     const props = transition.props ?? {};
 
     switch (transition.kind) {
@@ -4744,7 +5097,7 @@ function resolveVariableSlot(ctx: SceneCompileContext, ref: StoryVariableRef, bl
     if (ref.scope === "scene") {
         const def = ctx.sceneVariables[ref.variableId];
         if (!def) {
-            diagnostic(ctx, "warning", blockId, "Scene variable not found; the assignment was skipped.");
+            diagnostic(ctx, "error", blockId, "Scene variable not found; the assignment was skipped.");
             return null;
         }
         return { kind: "storable", namespace: DevTools.getNamespaceName(ctx.nlrScene.local), key: def.storageKey };
@@ -4752,7 +5105,7 @@ function resolveVariableSlot(ctx: SceneCompileContext, ref: StoryVariableRef, bl
     if (ref.scope === "saved") {
         const def = ctx.savedVariables[ref.variableId];
         if (!def) {
-            diagnostic(ctx, "warning", blockId, "Saved variable not found; the assignment was skipped.");
+            diagnostic(ctx, "error", blockId, "Saved variable not found; the assignment was skipped.");
             return null;
         }
         return { kind: "storable", namespace: DevTools.getNamespaceName(ctx.savedPersistent), key: def.storageKey };
@@ -4761,7 +5114,7 @@ function resolveVariableSlot(ctx: SceneCompileContext, ref: StoryVariableRef, bl
     // author must fix regardless of whether Dev Mode host persistence is up (same diagnostic
     // as a missing scene/saved variable).
     if (!ctx.persistentKeys.has(ref.variableId)) {
-        diagnostic(ctx, "warning", blockId, "Persistent variable not found; the assignment was skipped.");
+        diagnostic(ctx, "error", blockId, "Persistent variable not found; the assignment was skipped.");
         return null;
     }
     if (!ctx.persistence) {
@@ -4863,7 +5216,7 @@ function setVariable(
     if (target.scope === "scene") {
         const def = ctx.sceneVariables[target.variableId];
         if (!def) {
-            diagnostic(ctx, "warning", blockId, "Scene variable not found; the assignment was skipped.");
+            diagnostic(ctx, "error", blockId, "Scene variable not found; the assignment was skipped.");
             return null;
         }
         return ctx.nlrScene.local.set(def.storageKey, value as any);
@@ -4871,7 +5224,7 @@ function setVariable(
     if (target.scope === "saved") {
         const def = ctx.savedVariables[target.variableId];
         if (!def) {
-            diagnostic(ctx, "warning", blockId, "Saved variable not found; the assignment was skipped.");
+            diagnostic(ctx, "error", blockId, "Saved variable not found; the assignment was skipped.");
             return null;
         }
         return ctx.savedPersistent.set(def.storageKey, value as any);
@@ -4879,7 +5232,7 @@ function setVariable(
     // Persistent (app-level, host-managed, shared with UI blueprints). Existence is checked first, so
     // an undeclared persistent target faults regardless of host availability.
     if (!ctx.persistentKeys.has(target.variableId)) {
-        diagnostic(ctx, "warning", blockId, "Persistent variable not found; the assignment was skipped.");
+        diagnostic(ctx, "error", blockId, "Persistent variable not found; the assignment was skipped.");
         return null;
     }
     const persistence = ctx.persistence;
@@ -4967,7 +5320,7 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
     const target = condition.target;
     if (target.scope === "persistent") {
         if (!ctx.persistentKeys.has(target.variableId)) {
-            diagnostic(ctx, "warning", blockId, "Persistent variable not found; condition evaluates false.");
+            diagnostic(ctx, "error", blockId, "Persistent variable not found; condition evaluates false.");
             return falseCondition;
         }
         return persistentCondition(ctx, target.variableId, condition.operator, condition.value);
@@ -4977,7 +5330,7 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
     if (target.scope === "scene") {
         const def = ctx.sceneVariables[target.variableId];
         if (!def) {
-            diagnostic(ctx, "warning", blockId, "Scene variable not found; condition evaluates false.");
+            diagnostic(ctx, "error", blockId, "Scene variable not found; condition evaluates false.");
             return falseCondition;
         }
         persistent = ctx.nlrScene.local as Persistent<any>;
@@ -4985,7 +5338,7 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
     } else {
         const def = ctx.savedVariables[target.variableId];
         if (!def) {
-            diagnostic(ctx, "warning", blockId, "Saved variable not found; condition evaluates false.");
+            diagnostic(ctx, "error", blockId, "Saved variable not found; condition evaluates false.");
             return falseCondition;
         }
         persistent = ctx.savedPersistent as Persistent<any>;
@@ -5472,6 +5825,29 @@ function setStableActionId(action: NlrAction, staticId: string): void {
     DevTools.setActionId(action, staticId);
 }
 
+/**
+ * Report something about a row. **The level is not a matter of taste** - it answers one question:
+ * does what the author will see differ badly from what the row says?
+ *
+ * `error` - a reference names something the document is supposed to contain and does not, and this
+ * compile can prove it: a stage object no row declares, a variable no row declares, a Story Motion
+ * the project no longer holds, a scene or label that is gone. The row - or the part of it the
+ * reference governs - does not happen, and nothing on stage says why. Whether a reference resolves
+ * is a fact about the document, so it is stated as one.
+ *
+ * `warning` - everything this compile cannot settle by itself, and everything that is merely
+ * unfinished:
+ *  - state from outside this compile (music set in an earlier scene, Dev Mode host persistence, a
+ *    character possibly on stage under a name an inline token cannot address),
+ *  - a row the author has not finished (no clip picked yet, no `animationId` chosen yet) - dropping a
+ *    row and then filling it in is ordinary authoring, not a fault,
+ *  - an asset the host's resolver would not hand over, which is the project lint's `reference-missing`
+ *    to gate rather than a second verdict from here,
+ *  - a legal outcome the author can see, where two instructions met and one had to give.
+ *
+ * Neither level blocks a build. These reach the Story console during a preview; `BuildService`'s lint
+ * gate is what stops a release.
+ */
 function diagnostic(ctx: SceneCompileContext, level: NlrStoryCompileDiagnostic["level"], blockId: string | undefined, message: string): void {
     pushDiagnostic(ctx.diagnostics, level, blockId, message);
 }

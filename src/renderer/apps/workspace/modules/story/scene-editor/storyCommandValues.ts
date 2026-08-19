@@ -5,6 +5,7 @@ import type {
     StoryVariableRef,
     StoryVariableValueType,
 } from "@shared/types/story";
+import { BGM_STAGE_OBJECT_NAME } from "@shared/types/story";
 import type { StoryExpressionIssue } from "@shared/utils/storyExpressionParser";
 
 /**
@@ -76,16 +77,52 @@ export const STORY_RESERVED_TARGETS: readonly StoryReservedTargetName[] = [
 /** The object names on stage, per kind - the candidate source for target params. */
 export type StoryCommandStageObjects = Readonly<Record<StoryCommandStageObjectKind, readonly string[]>>;
 
+/**
+ * Declaring block per stage object: kind, then the object's name lower-cased and trimmed - the same
+ * key a target arg is matched on - to the id of the row that brought it into existence.
+ *
+ * An index over the same scan {@link StoryCommandStageObjects} comes from, not a second source of
+ * truth: it never adds a name to what the command line offers, it only says which row defines one.
+ * An entry appears only for a genuine declaration (`create` / `playSound` / character `enter`), so a
+ * name that exists purely because some row mentions it stays id-less rather than anchoring to a row
+ * that does not define it.
+ */
+export type StoryCommandStageObjectSources =
+    Readonly<Record<StoryCommandStageObjectKind, Readonly<Record<string, string>>>>;
+
 export const EMPTY_STORY_COMMAND_STAGE_OBJECTS: StoryCommandStageObjects = {
     image: [], text: [], layer: [], video: [], audio: [], vfx: [],
 };
+
+export const EMPTY_STORY_COMMAND_STAGE_OBJECT_SOURCES: StoryCommandStageObjectSources = {
+    image: {}, text: {}, layer: {}, video: {}, audio: {}, vfx: {},
+};
+
+/**
+ * The row that brings a character on stage, by `characterId`.
+ *
+ * The character half of {@link StoryCommandStageObjectSources}, and a table of its own rather than a
+ * seventh bucket of that one - widening its key to {@link StoryCommandTargetKind} would type-check
+ * and still be wrong twice over:
+ *
+ *  - **The key would be the wrong string.** That table is keyed by the object's stage name, because
+ *    that is what a target arg is matched on. A character is matched on the CAST name, which the
+ *    scene never states - only the project does - so a character bucket keyed like its siblings
+ *    could not be looked up from the name the author typed.
+ *  - **The value would be too small.** A stage object's key is the name itself, so the id alone is
+ *    enough there. A character's key is DERIVED - `characterStageObjectName`: the entering row's
+ *    stage name, falling back to the character id - so it has to be carried, since no caller can
+ *    recompute it from the cast name.
+ */
+export type StoryCommandCharacterSources =
+    Readonly<Record<string, { blockId: string; name: string }>>;
 
 /**
  * The reserved audio-object name addressing the background-music channel. The sound
  * control family defaults its omitted target to this, and the compiler routes it to the BGM handle
  * rather than a named `Sound`.
  */
-export const BGM_OBJECT_NAME = "bgm";
+export const BGM_OBJECT_NAME = BGM_STAGE_OBJECT_NAME;
 
 export type StoryCommandContext = {
     images: readonly StoryCommandNamedRef[];
@@ -169,6 +206,16 @@ export type StoryCommandContext = {
     puppetByCharacterId: Readonly<Record<string, StoryPuppetVocabulary>>;
     /** Named objects on stage in the current scene, per kind. */
     stageObjects: StoryCommandStageObjects;
+    /**
+     * Which row declares each of those objects, when one does.
+     *
+     * Optional because a context can legitimately be built without a scene to scan - a test, or a
+     * surface mounted before the project finished opening. Absent means "no ids known", and every
+     * consumer must degrade to resolving by name alone, which is what all of them did before.
+     */
+    stageObjectSources?: StoryCommandStageObjectSources;
+    /** Which row brings each character on stage. Optional on the same terms as `stageObjectSources`. */
+    characterSources?: StoryCommandCharacterSources;
 };
 
 /**
@@ -224,7 +271,26 @@ export function puppetChannelNames(
 
 /** The resolved subject of a generic verb - what `/show poster` dispatches its block type on. */
 export type StoryCommandTargetValue =
-    | { type: "character"; characterId: string; name: string }
+    | {
+          type: "character";
+          characterId: string;
+          /**
+           * The CAST name - what the author typed and what every surface prints. Not the stage key:
+           * a character has no name field of its own on stage, so the key its portrait is registered
+           * under is the entering row's stage name, or the character id when that row named none.
+           */
+          name: string;
+          /**
+           * The stage key the entering row registers this character under, when the scene holds one.
+           *
+           * Carried beside `name` rather than replacing it because the two answer different
+           * questions and both are needed at once: a payload's reference must store the key or the
+           * lookup misses, and a diagnostic must print the cast name or it prints a UUID.
+           */
+          stageName?: string;
+          /** Id of the row that brings the character on stage - the anchor a reference binds to. */
+          sourceBlockId?: string;
+      }
     /**
      * A stage singleton named by its reserved word. Carries no `known` flag: a reserved word either
      * IS one of the four or was never resolved as one, so there is no free-name case to record.
@@ -236,6 +302,16 @@ export type StoryCommandTargetValue =
           name: string;
           /** False for a free-typed name matching nothing on stage - legal only where one kind is possible. */
           known: boolean;
+          /**
+           * The row that declares this object, when the scene holds one - the stable identity a
+           * payload's target ref binds to, so the row survives a rename of the object.
+           *
+           * Absent whenever there is nothing honest to point at: a free-typed name (`known: false`),
+           * an object that exists only because some row mentions it, the reserved `bgm` channel
+           * (which has no declaring row at all - it is referenced as a built-in), and any context
+           * built without a scene to scan.
+           */
+          sourceBlockId?: string;
       };
 
 export type StoryCommandValue =

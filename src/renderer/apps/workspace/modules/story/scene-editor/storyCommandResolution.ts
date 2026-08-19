@@ -10,6 +10,7 @@ import {
 } from "@shared/utils/storyExpressionParser";
 import {
     allowsFreeValue,
+    enumFreeformValue,
     freeTargetKind,
     paramTypes,
     type StoryCommandParam,
@@ -54,8 +55,8 @@ export type {
     StoryCommandTargetValue,
     StoryCommandValue,
 } from "./storyCommandValues";
-export type { StoryCommandVariableEntry, StoryCommandStageObjects, StoryCommandResolvedArgs } from "./storyCommandValues";
-export { EMPTY_STORY_COMMAND_CONTEXT, EMPTY_STORY_COMMAND_STAGE_OBJECTS } from "./storyCommandValues";
+export type { StoryCommandVariableEntry, StoryCommandStageObjects, StoryCommandStageObjectSources, StoryCommandCharacterSources, StoryCommandResolvedArgs } from "./storyCommandValues";
+export { EMPTY_STORY_COMMAND_CONTEXT, EMPTY_STORY_COMMAND_STAGE_OBJECTS, EMPTY_STORY_COMMAND_STAGE_OBJECT_SOURCES } from "./storyCommandValues";
 
 /**
  * Exact, case-insensitive match by name.
@@ -156,7 +157,16 @@ function resolveTarget(
             return { issue: { code: "ambiguousName", span, value } };
         }
         if (found.length === 1) {
-            matches.push({ type: "character", characterId: found[0].id, name: found[0].name });
+            // The entering row, when this scene holds one. It carries the stage key as well as its
+            // id: a character's key is the row's own stage name (or the character id when it has
+            // none), which the cast name this matched on cannot be turned back into.
+            const declaration = context.characterSources?.[found[0].id];
+            matches.push({
+                type: "character",
+                characterId: found[0].id,
+                name: found[0].name,
+                ...(declaration ? { stageName: declaration.name, sourceBlockId: declaration.blockId } : {}),
+            });
         }
     }
 
@@ -164,7 +174,9 @@ function resolveTarget(
         if (kind === "character") {
             continue;
         }
-        // The background-music channel answers to the reserved name; it is always "on stage".
+        // The background-music channel answers to the reserved name; it is always "on stage". It
+        // carries no `sourceBlockId` because there is no row to carry: a scene declares its music on
+        // its own record, so the channel is referenced as a built-in rather than bound to a block.
         if (kind === "audio" && needle === BGM_OBJECT_NAME) {
             matches.push({ type: "stageObject", objectKind: "audio", name: BGM_OBJECT_NAME, known: true });
             continue;
@@ -172,7 +184,11 @@ function resolveTarget(
         const names = context.stageObjects[kind] ?? [];
         const found = names.find(name => name.trim().toLowerCase() === needle);
         if (found !== undefined) {
-            matches.push({ type: "stageObject", objectKind: kind, name: found, known: true });
+            // The declaring row, when the scene holds one - a name that exists only because some row
+            // mentions it resolves without an id rather than anchoring to a row that does not
+            // declare it. Keyed on `needle`, which is already trimmed and lower-cased.
+            const sourceBlockId = context.stageObjectSources?.[kind]?.[needle];
+            matches.push({ type: "stageObject", objectKind: kind, name: found, known: true, ...(sourceBlockId ? { sourceBlockId } : {}) });
         }
     }
 
@@ -363,7 +379,13 @@ function resolveAgainstType(
             // stays faithful to what was typed, the payload gets what it can store. A translated
             // spelling normalizes on exactly the same step, so `t=淡变` banks `fade` and the
             // project file never carries a locale.
-            return option ? { value: { kind: "enum", value: option.value } } : null;
+            if (option) {
+                return { value: { kind: "enum", value: option.value } };
+            }
+            // A shape the word list cannot hold - a drawn easing curve - banked in the spelling the
+            // slot canonicalizes it to, for the same reason an alias is.
+            const freeform = enumFreeformValue(type, value);
+            return freeform === null ? null : { value: { kind: "enum", value: freeform } };
         }
         case "keyword":
             return value.trim().toLowerCase() === type.value.toLowerCase()

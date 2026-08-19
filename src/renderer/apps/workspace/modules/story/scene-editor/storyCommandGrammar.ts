@@ -51,6 +51,24 @@ export type StoryCommandEnumOption = {
     labelKey?: string;
 };
 
+/**
+ * A shape an enum slot takes BESIDES its words — one value an author can state that no word list
+ * could hold.
+ *
+ * There is exactly one today: the `cubic-bezier(…)` an easing curve editor draws. An easing is a
+ * word ninety-nine times out of a hundred, so the slot stays an enum — the menu still offers the
+ * eleven curves by name, and a misspelt word is still an error rather than free text — and this
+ * declares the one further thing it will take.
+ *
+ * `normalize` is what keeps the row and the line agreeing on spelling: the value banked is the one
+ * this returns, so `ease=cubic-bezier(.42, 0, .58, 1)` is stored the way the editor writes it and
+ * prints back as a single token.
+ */
+export type StoryCommandEnumFreeform = {
+    accepts: (raw: string) => boolean;
+    normalize?: (raw: string) => string;
+};
+
 export type StoryCommandParamType =
     | { kind: "asset"; assetType: "image" | "audio" | "video" }
     /**
@@ -178,7 +196,7 @@ export type StoryCommandParamType =
      * target param, exactly as {@link characterForm} does.
      */
     | { kind: "content"; dependsOn: string }
-    | { kind: "enum"; options: readonly StoryCommandEnumOption[] }
+    | { kind: "enum"; options: readonly StoryCommandEnumOption[]; freeform?: StoryCommandEnumFreeform }
     /** A bare word that means itself, e.g. the `click` in `/wait click`. Used inside unions. */
     | { kind: "keyword"; value: string }
     | {
@@ -334,6 +352,22 @@ export function numberValueOf(type: Extract<StoryCommandParamType, { kind: "numb
         : trimmed;
     const parsed = Number(body);
     return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * The value a {@link StoryCommandEnumFreeform} slot banks for this text, or `null` when the text is
+ * not that shape (which includes every slot that declares none).
+ *
+ * Sits beside {@link matchEnumOption} because the two are the same question asked of one slot: the
+ * parser, the resolver and the candidate list each ask both, in that order, and a slot with no
+ * freeform behaves exactly as it did.
+ */
+export function enumFreeformValue(type: Extract<StoryCommandParamType, { kind: "enum" }>, raw: string): string | null {
+    const trimmed = raw.trim();
+    if (!trimmed || !type.freeform?.accepts(trimmed)) {
+        return null;
+    }
+    return type.freeform.normalize ? type.freeform.normalize(trimmed) : trimmed;
 }
 
 /** Resolve an author-typed enum value (canonical or alias) to its option. Case-insensitive. */
