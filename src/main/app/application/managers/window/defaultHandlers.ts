@@ -49,7 +49,7 @@ import {
     MediaProbeHandler,
 } from "./handlers/mediaAction";
 import { StudioTasksGetOverviewHandler } from "./handlers/studioTaskAction";
-import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceIsProjectOpenHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceSetRecoveryModeHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
+import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceIsProjectOpenHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceReturnToLauncherHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceSetRecoveryModeHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
 import { WorkspaceReportWriteFreezeHandler } from "./handlers/workspaceFreezeAction";
 import {
     DevModeFullscreenGetHandler,
@@ -60,6 +60,7 @@ import {
     DevModeReloadHandler,
     DevModeStopHandler,
     DevModeResolveAssetUrlHandler,
+    DevModeResolveWeatherClipHandler,
     DevModeResolveImageAssetUrlHandler,
     DevModeForwardBlueprintDebugEventHandler,
     DevModeForwardStoryRowHandler,
@@ -234,7 +235,9 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new MediaConvertCancelHandler(),
         new MediaConvertGetStatusHandler(),
         new StudioTasksGetOverviewHandler(),
+        new DevModeResolveWeatherClipHandler(),
         new WorkspaceCloseHandler(),
+        new WorkspaceReturnToLauncherHandler(),
         new WorkspaceExportProjectPackageHandler(),
         new WorkspaceImportProjectPackageHandler(),
         new WorkspaceExportConsoleLogsHandler(),

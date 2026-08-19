@@ -12,6 +12,7 @@ import type {
 } from "./gameProgress";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConvert";
 import type { StudioTaskOverview } from "./studioTask";
+import type { WeatherBakeSpec } from "../weather/model";
 import type { MediaProbeOutcome } from "./mediaProbe";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
@@ -261,6 +262,11 @@ export interface RendererPreloadedInterface {
          */
         isProjectOpen(projectPath: string): Promise<RequestStatus<{ open: boolean }>>;
         close(): Promise<RequestStatus<void>>;
+        /**
+         * Leave the project and go back to the home screen. Unlike {@link close}, the launcher is
+         * always what comes next - this window is not being closed so much as stepped out of.
+         */
+        returnToLauncher(): Promise<RequestStatus<void>>;
         getDefaultProjectDirectory(): Promise<RequestStatus<{ dir: string }>>;
         exportProjectPackage(projectPath: string): Promise<RequestStatus<{
             canceled: boolean;
@@ -506,6 +512,8 @@ export interface RendererPreloadedInterface {
         /** Workspace side of {@link openStoryRowInWorkspace}. */
         onStoryRowOpen(handler: (payload: DevModeStoryRowOpenRequest) => void): AppEventToken;
         resolveAssetUrl(assetId: string, assetType?: string): Promise<RequestStatus<{ url: string }>>;
+        /** Produce the clip a weather seed describes, and grant this window a URL for it. */
+        resolveWeatherClip(spec: WeatherBakeSpec): Promise<RequestStatus<{ url: string }>>;
         resolveImageAssetUrl(assetId: string): Promise<RequestStatus<{ url: string }>>;
         openBlueprintInWorkspace(
             payload: PreviewStudioBlueprintOpenPayload & { projectPath: string },

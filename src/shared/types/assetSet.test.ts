@@ -7,6 +7,7 @@ import {
     isAssetSetComplete,
     childAssetSets,
     isLegalNesting,
+    assetSetSubtree,
     topLevelAssetSets,
     normalizeProjectAssetSets,
     parseAssetTag,
@@ -186,6 +187,19 @@ describe("nesting", () => {
 
     it("answers which sets stand on their own", () => {
         expect(topLevelAssetSets([outer, inner]).map(entry => entry.id)).toEqual(["outer"]);
+    });
+
+    it("collects a set and everything drawn inside it, outermost first", () => {
+        const deeper = set({
+            id: "deeper",
+            filter: ["char:alice", "mood:sad", "locale:ja"],
+            axis: axis("outfit", "build", ["school"]),
+        });
+        const unrelated = set({ id: "other", filter: ["char:bob"] });
+        expect(assetSetSubtree(outer, [outer, inner, deeper, unrelated]).map(entry => entry.id))
+            .toEqual(["outer", "inner", "deeper"]);
+        expect(assetSetSubtree(inner, [outer, inner, deeper, unrelated]).map(entry => entry.id))
+            .toEqual(["inner", "deeper"]);
     });
 
     it("refuses a build axis under a runtime one, and allows the reverse", () => {

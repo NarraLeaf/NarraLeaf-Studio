@@ -37,26 +37,37 @@ export function AssetSetIconTile({
     entry,
     selected,
     caption,
+    dragging,
     onSelect,
     onNavigate,
     onContextMenu,
+    onDragStart,
+    onDragEnd,
 }: {
     entry: ResolvedAssetSet;
     selected: boolean;
     /** What this set is the variant for, when it is being drawn inside another one. */
     caption?: string;
+    /** This tile is the one being dragged. */
+    dragging?: boolean;
     onSelect: (event: React.MouseEvent) => void;
     /** Walk into it. The same gesture a folder tile answers to, for the same reason. */
     onNavigate?: () => void;
     onContextMenu: (event: React.MouseEvent) => void;
+    /** Drag it to another folder. Absent for a set drawn inside another one, which moves with it. */
+    onDragStart?: (event: React.DragEvent) => void;
+    onDragEnd?: () => void;
 }) {
     const summary = useSetSummary(entry);
     return (
         <div
             data-asset-set-id={entry.set.id}
+            draggable={!!onDragStart}
             className={cn(
                 "group relative flex flex-col rounded-md border p-2 cursor-pointer hover:bg-fill",
+                onDragStart && "nl-drag-source",
                 selected ? "border-primary bg-primary/10" : entry.incomplete ? "border-warning/40" : "border-edge",
+                dragging && "opacity-50",
             )}
             onClick={event => {
                 onSelect(event);
@@ -65,6 +76,8 @@ export function AssetSetIconTile({
                 }
             }}
             onContextMenu={onContextMenu}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
         >
             <div className="flex-1 flex items-center justify-center">
                 <Layers className={cn("w-8 h-8", entry.incomplete ? "text-warning" : "text-primary")} />

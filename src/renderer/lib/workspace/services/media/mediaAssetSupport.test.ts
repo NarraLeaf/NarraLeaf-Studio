@@ -40,7 +40,7 @@ function verdict(patch: Partial<MediaSupportVerdict>): MediaSupportVerdict {
 }
 
 function probed(patch: Partial<MediaSupportVerdict>, durationUs: number | null = 1_000): MediaProbeOutcome {
-    return { status: "probed", verdict: verdict(patch), durationUs };
+    return { status: "probed", verdict: verdict(patch), durationUs, carriesAlpha: false };
 }
 
 describe("mediaSupportCheckKind", () => {

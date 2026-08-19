@@ -72,6 +72,11 @@ export const lint = {
             description: "A codec some selected build targets cannot play",
             message: "{asset} does not play on {platform}",
         },
+        portabilityVfxAlpha: {
+            title: "Transparent overlay clip",
+            description: "An overlay clip whose transparency some selected build targets ignore",
+            message: "{asset} covers the stage on {platform}",
+        },
         networkFetchNotAllowlisted: {
             title: "Address not on the allowlist",
             description: "A Fetch node aimed at an address this project does not allow",

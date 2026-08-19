@@ -213,11 +213,11 @@ export class WorkspaceOpenProjectFolderHandler extends IPCHandler<IPCEventType.w
 }
 
 /**
- * Handler for closing workspace window.
+ * Handler for closing a workspace window.
  *
- * Returning to the launcher is the workspace window's own close behaviour (see the close guard
- * installed in App.launchWorkspace), so this only has to request the close - the native close
- * box takes the exact same path.
+ * Goes through `window.close()` so the close guard installed in App.launchWorkspace runs - the
+ * native close box takes the exact same path, and both mean the window ends here. Going back to
+ * the home screen instead is {@link WorkspaceReturnToLauncherHandler}.
  */
 export class WorkspaceCloseHandler extends IPCHandler<IPCEventType.workspaceClose> {
     readonly name = IPCEventType.workspaceClose;
@@ -225,6 +225,28 @@ export class WorkspaceCloseHandler extends IPCHandler<IPCEventType.workspaceClos
 
     public async handle(window: AppWindow): Promise<RequestStatus<void>> {
         window.close();
+
+        return this.success(void 0);
+    }
+}
+
+/**
+ * Handler for leaving a project for the home screen.
+ *
+ * Deliberately NOT `window.close()`: the close guard would run this as a close, and a close is
+ * the one thing this is not. The exit work (confirm, flush, checkpoint) is the same either way,
+ * so both intents meet inside `App.requestWorkspaceExit` - which is also where a second request
+ * arriving mid-exit is folded into the first, whichever gesture sent it.
+ */
+export class WorkspaceReturnToLauncherHandler extends IPCHandler<IPCEventType.workspaceReturnToLauncher> {
+    readonly name = IPCEventType.workspaceReturnToLauncher;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<void>> {
+        if (window.getWindowType() !== WindowAppType.Workspace) {
+            return this.failed("Only a workspace window can return to the launcher");
+        }
+        window.app.requestWorkspaceExit(window as AppWindow<WindowAppType.Workspace>, "launcher");
 
         return this.success(void 0);
     }

@@ -28,6 +28,7 @@ export const menu = {
         noRecent: "无最近工作区",
         export: "导出项目",
         close: "关闭工作区",
+        returnToLauncher: "返回启动器",
     },
     edit: {
         title: "编辑",
@@ -52,6 +53,7 @@ export const menu = {
     },
     window: {
         title: "窗口",
+        close: "关闭窗口",
         minimize: "最小化",
         zoom: "缩放",
         front: "全部置于顶层",

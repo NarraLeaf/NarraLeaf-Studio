@@ -30,6 +30,10 @@ import { deriveObjectName } from "../payloadHelpers";
  * `multiply`. `normal` stays legal - a clip meant to cover what is under it uses it - but it is not
  * how transparency is achieved. The transcode target, VP9 video plus Vorbis audio in WebM, plays
  * correctly on every target and is not what is at fault here.
+ *
+ * A row that does it the other way is caught rather than left to the author's own machine to hide:
+ * `portability/vfx-alpha` reads the alpha channel off the clip's bytes and reports the row as an
+ * error while a Safari-engine target is selected.
  */
 
 const VFX_DEFAULT_FADE_MS = 600;

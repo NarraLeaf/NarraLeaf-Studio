@@ -47,6 +47,7 @@ export function AssetsListView({
         rootAssetSets,
         memberAssetIds,
         draggedItem,
+        draggedAssetSet,
         showContextMenu,
     } = useAssetsPanelContext();
 
@@ -126,7 +127,9 @@ export function AssetsListView({
                             onDragOver={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                if (draggedItem?.category === category || e.dataTransfer.types.includes('Files')) {
+                                if (draggedItem?.category === category
+                                    || draggedAssetSet?.category === category
+                                    || e.dataTransfer.types.includes('Files')) {
                                     setDropTargetId(`root:${category}`);
                                 }
                             }}
@@ -235,11 +238,19 @@ function TreeRow({
  * way that matters here - its members stay filed in whatever folder they were imported into and are
  * listed there too - so the band is what says these rows are one thing being shown twice.
  */
-function AssetSetItem({ entry, level = 0, trailing }: {
+function AssetSetItem({ entry, level = 0, trailing, nested = false }: {
     entry: ResolvedAssetSet;
     level?: number;
     /** What the parent set's row prints on the right for this one: the value it hangs at. */
     trailing?: string;
+    /**
+     * This set is drawn inside another one.
+     *
+     * Not the same question as the indent: a set made in a folder is indented under it and still
+     * stands on its own. A nested set does not move on its own - where it is drawn follows the set
+     * it hangs under, so dragging it somewhere would change nothing the author can see.
+     */
+    nested?: boolean;
 }) {
     const {
         assets,
@@ -247,11 +258,12 @@ function AssetSetItem({ entry, level = 0, trailing }: {
         assetSetNaming,
         expandedAssetSets,
         setExpandedAssetSets,
+        draggedAssetSet,
         handleAssetSetSelect,
-        handleAssetClick,
+        handleAssetSetDragStart,
+        handleDragEnd,
         showAssetSetContextMenu,
         showAssetSetValueContextMenu,
-        isMultiSelectMode,
     } = useAssetsPanelContext();
     const summary = useSetSummary(entry);
 
@@ -281,14 +293,16 @@ function AssetSetItem({ entry, level = 0, trailing }: {
     }, [entry.set.id, setExpandedAssetSets]);
 
     return (
-        <div className={cn(level === 0 && "bg-fill-subtle/50", level === 0 && open && "border-y border-edge-subtle")}>
+        <div className={cn(!nested && "bg-fill-subtle/50", !nested && open && "border-y border-edge-subtle")}>
             <TreeRow
                 level={level}
+                draggable={!nested}
                 icon={<Layers className={cn("w-4 h-4 shrink-0", entry.incomplete ? "text-warning" : "text-primary")} />}
                 label={entry.set.name}
                 meta={<span className={entry.incomplete ? "text-warning" : "text-fg-subtle"}>{summary}</span>}
                 trailing={trailing}
                 dataAttributes={{ "data-asset-set-id": entry.set.id }}
+                className={cn(draggedAssetSet?.setId === entry.set.id && "opacity-50")}
                 onClick={() => {
                     // A set is not part of the library's multi-selection: nothing that acts on marked
                     // rows (copy, export, delete bytes) means anything for a set.
@@ -296,6 +310,10 @@ function AssetSetItem({ entry, level = 0, trailing }: {
                     toggle();
                 }}
                 onContextMenu={event => showAssetSetContextMenu(event, entry)}
+                onDragStart={nested
+                    ? undefined
+                    : event => handleAssetSetDragStart?.(event, entry.category, entry.set.id)}
+                onDragEnd={nested ? undefined : () => handleDragEnd?.()}
             />
             {open && entry.contents.cells.map(cell => {
                 const coordinate = formatAssetSetCoordinateReading(
@@ -303,17 +321,39 @@ function AssetSetItem({ entry, level = 0, trailing }: {
                 );
                 const child = cell.childSetIds.length === 1 ? setsById.get(cell.childSetIds[0]) : undefined;
                 if (child) {
-                    return <AssetSetItem key={cell.label} entry={child} level={level + 1} trailing={coordinate} />;
+                    return (
+                        <AssetSetItem
+                            key={cell.label}
+                            entry={child}
+                            level={level + 1}
+                            trailing={coordinate}
+                            nested
+                        />
+                    );
                 }
                 const asset = cell.assetIds.length === 1 ? assetsById.get(cell.assetIds[0]) : undefined;
+                if (asset) {
+                    // The file's ordinary row, marks and menu included: it is an ordinary file, and
+                    // the only thing being inside a set changes is that it cannot be dragged out of
+                    // one - a member is named by its tags, and dropping it in a folder would move a
+                    // row the set would go on drawing where it was.
+                    return (
+                        <AssetItem
+                            key={cell.label}
+                            asset={asset}
+                            category={entry.category}
+                            level={level + 1}
+                            trailing={coordinate}
+                            assetSetValue={{ setId: entry.set.id, value: cell.value }}
+                        />
+                    );
+                }
                 return (
                     <AssetSetMemberRow
                         key={cell.label}
                         cell={cell}
                         level={level + 1}
                         coordinate={coordinate}
-                        asset={asset ?? null}
-                        onOpen={() => { if (asset) handleAssetClick(asset, isMultiSelectMode); }}
                         onContextMenu={event => showAssetSetValueContextMenu(event, entry, cell.value)}
                     />
                 );
@@ -322,43 +362,30 @@ function AssetSetItem({ entry, level = 0, trailing }: {
     );
 }
 
-function MemberIcon({ asset }: { asset: Asset }) {
-    const Icon = ASSET_TYPE_ICONS[asset.type];
-    return <Icon className="w-4 h-4 shrink-0 text-fg-muted" />;
-}
-
 /**
- * One value of a set, answered by a file.
+ * One value of a set the library has no single file for.
  *
- * A value with no file keeps its row: the value is the reason the row exists, and dropping it would
- * leave a set that is missing something looking complete.
+ * Drawn rather than skipped: the value is the reason the row exists, and dropping it would leave a
+ * set that is missing something looking complete. A value a file does answer is drawn as that file's
+ * own row instead.
  */
-function AssetSetMemberRow({ cell, level, coordinate, asset, onOpen, onContextMenu }: {
+function AssetSetMemberRow({ cell, level, coordinate, onContextMenu }: {
     cell: AssetSetCell;
     level: number;
     coordinate: string;
-    asset: Asset | null;
-    onOpen: () => void;
     onContextMenu: (event: React.MouseEvent) => void;
 }) {
     const { t } = useTranslation();
     return (
         <TreeRow
             level={level}
-            // The ordinary file mark, because a member is an ordinary file: it is filed in a folder
-            // as well, and a mark of its own here would make the same file look like two things.
-            icon={asset
-                ? <MemberIcon asset={asset} />
-                : <span className="h-4 w-4 shrink-0" />}
-            label={asset
-                ? asset.name
-                : cell.assetIds.length > 1
-                    ? t("assets.sets.inspector.variantAmbiguous", { count: String(cell.assetIds.length) })
-                    : t("assets.sets.inspector.variantMissing")}
-            labelClassName={asset ? undefined : "text-warning"}
+            icon={<span className="h-4 w-4 shrink-0" />}
+            label={cell.assetIds.length > 1
+                ? t("assets.sets.inspector.variantAmbiguous", { count: String(cell.assetIds.length) })
+                : t("assets.sets.inspector.variantMissing")}
+            labelClassName="text-warning"
             trailing={coordinate}
             dataAttributes={{ "data-asset-set-member": cell.label }}
-            onClick={onOpen}
             onContextMenu={onContextMenu}
         />
     );
@@ -376,6 +403,7 @@ function GroupItem({ group, category, level }: { group: AssetGroup; category: As
         setExpandedGroups,
         rootAssetSets,
         memberAssetIds,
+        draggedAssetSet,
         handleItemSelect,
         handleGroupFocus,
         showContextMenu,
@@ -406,6 +434,10 @@ function GroupItem({ group, category, level }: { group: AssetGroup; category: As
     const childGroups = filteredGroups[category].filter(g => g.parentGroupId === group.id);
     const groupAssets = filteredAssets[category]
         .filter(a => a.groupId === group.id && !memberAssetIds.has(a.id));
+    // Sets made in this folder are rows in it, so they are part of what it holds. The files they
+    // answer with are not counted twice: those are drawn inside the set and dropped from the list
+    // above by the same rule.
+    const groupSets = rootAssetSets[category].filter(entry => entry.set.groupId === group.id);
     const isDragging = !!draggedItem && draggedItem.isGroup && draggedItem.item.id === group.id;
     const isSelected = selectedItems.has(`group:${group.id}`);
     const isCut = clipboard?.type === 'cut' && clipboard.groups.some(g => g.id === group.id);
@@ -417,7 +449,8 @@ function GroupItem({ group, category, level }: { group: AssetGroup; category: As
                 e.preventDefault();
                 e.stopPropagation();
                 const files = e.dataTransfer.types.includes("Files");
-                const internal = draggedItem && draggedItem.category === category;
+                const internal = (draggedItem && draggedItem.category === category)
+                    || (draggedAssetSet && draggedAssetSet.category === category);
                 // A frozen library never lights up as a drop target: the move and the import are both
                 // refused, and a folder that glows and then keeps its old contents reads as a bug.
                 if (freeze.frozen || (!internal && !files)) {
@@ -434,7 +467,7 @@ function GroupItem({ group, category, level }: { group: AssetGroup; category: As
                 e.preventDefault();
                 e.stopPropagation();
                 setDragOverLocal(false);
-                if (draggedItem && handleDropOnItem) {
+                if ((draggedItem || draggedAssetSet) && handleDropOnItem) {
                     handleDropOnItem(e, category, group);
                 } else {
                     handleImportToGroup(category, group.id, e.dataTransfer.files, e.dataTransfer);
@@ -453,7 +486,7 @@ function GroupItem({ group, category, level }: { group: AssetGroup; category: As
                 )}
                 icon={<FolderPlus className="w-4 h-4 shrink-0 text-primary" />}
                 label={group.name}
-                meta={<span className="text-fg-subtle">({groupAssets.length + childGroups.length})</span>}
+                meta={<span className="text-fg-subtle">({groupAssets.length + childGroups.length + groupSets.length})</span>}
                 onClick={(e) => {
                     handleItemSelect(group.id, true, e);
                     handleGroupFocus(group.id);
@@ -469,9 +502,7 @@ function GroupItem({ group, category, level }: { group: AssetGroup; category: As
                     {/* Above the sub-folders, the way a set sits above the folders at a section's
                         root: it is the entry a reference points at, and the files it resolves to are
                         filed below it in the ordinary way. */}
-                    {rootAssetSets[category]
-                        .filter(entry => entry.set.groupId === group.id)
-                        .map(entry => <AssetSetItem key={entry.set.id} entry={entry} level={level + 1} />)}
+                    {groupSets.map(entry => <AssetSetItem key={entry.set.id} entry={entry} level={level + 1} />)}
                     {childGroups.map(child => <GroupItem key={child.id} group={child} category={category} level={level + 1} />)}
                     {groupAssets.map(asset => <AssetItem key={asset.id} asset={asset} category={category} level={level + 1} />)}
                 </div>
@@ -480,25 +511,51 @@ function GroupItem({ group, category, level }: { group: AssetGroup; category: As
     );
 }
 
-function AssetItem({ asset, category, level }: { asset: Asset; category: AssetCategory; level: number }) {
+/**
+ * One file in the tree.
+ *
+ * The same row wherever the file is drawn, a folder or a set: clicking it marks it, opens it, and
+ * puts it in the properties panel, and the marks it carries are the library's own. `assetSetValue`
+ * is the one difference a set makes - the file is named by its tags there, so it stays where the set
+ * draws it and only the sub-set command is added to its menu.
+ */
+function AssetItem({ asset, category, level, trailing, assetSetValue }: {
+    asset: Asset;
+    category: AssetCategory;
+    level: number;
+    /** What this file is the variant for, when it is drawn inside a set. */
+    trailing?: string;
+    /** The set value this row answers, when it is drawn inside a set. */
+    assetSetValue?: { setId: string; value: string };
+}) {
     const { selectedItems, clipboard, draggedItem, handleItemSelect, handleAssetClick, showContextMenu, handleDragStart, handleDragEnd, isFocused, isMultiSelectMode, mediaSupport, handleConvertMedia } = useAssetsPanelContext();
     const Icon = ASSET_TYPE_ICONS[asset.type];
     const isSelected = selectedItems.has(`asset:${asset.id}`);
     const isDragging = !!draggedItem && !draggedItem.isGroup && draggedItem.item.id === asset.id;
     const support = mediaSupport.get(asset.id);
+    // Inside a set, the row does not leave: which set a file belongs to is written in its tags, so a
+    // drop somewhere else would move a row the set goes on drawing exactly where it was.
+    const movable = !assetSetValue;
 
     return (
         <div
-            draggable
-            className={`nl-drag-source flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-fill ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`asset:${asset.id}`) ? 'bg-fill-subtle' : ''} ${clipboard?.type === 'cut' && clipboard.assets.some(a => a.id === asset.id) ? 'opacity-40' : ''} ${isDragging ? 'opacity-50' : ''}`}
+            draggable={movable}
+            className={cn(
+                "flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-fill",
+                movable && "nl-drag-source",
+                isSelected && "bg-primary/20 border-l-2 border-primary",
+                isFocused(`asset:${asset.id}`) && "bg-fill-subtle",
+                clipboard?.type === "cut" && clipboard.assets.some(a => a.id === asset.id) && "opacity-40",
+                isDragging && "opacity-50",
+            )}
             style={{ paddingLeft: `${20 + level * 12}px` }}
             onClick={(e) => {
                 handleItemSelect(asset.id, false, e);
                 handleAssetClick(asset, isMultiSelectMode);
             }}
-            onContextMenu={(e) => showContextMenu(e, category, asset, false)}
-            onDragStart={(e) => handleDragStart?.(e, category, asset, false)}
-            onDragEnd={() => handleDragEnd?.()}
+            onContextMenu={(e) => showContextMenu(e, category, asset, false, assetSetValue)}
+            onDragStart={movable ? (e) => handleDragStart?.(e, category, asset, false) : undefined}
+            onDragEnd={movable ? () => handleDragEnd?.() : undefined}
         >
             <Icon className="w-4 h-4 text-fg-muted" />
             <span className="text-sm flex-1 truncate">{asset.name}</span>
@@ -508,7 +565,9 @@ function AssetItem({ asset, category, level }: { asset: Asset; category: AssetCa
                     onConvert={asset.source === AssetSource.Local ? () => handleConvertMedia(asset) : undefined}
                 />
             )}
-            {asset.tags.length > 0 && <span className="text-xs text-fg-subtle">+{asset.tags.length}</span>}
+            {trailing
+                ? <span className="shrink-0 truncate text-2xs text-fg-subtle">{trailing}</span>
+                : asset.tags.length > 0 && <span className="text-xs text-fg-subtle">+{asset.tags.length}</span>}
         </div>
     );
 }

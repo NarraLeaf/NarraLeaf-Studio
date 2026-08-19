@@ -401,6 +401,10 @@ export const assets = {
         menu: {
             create: "New Set from Selection",
             createSub: "New Set from Selection, Here",
+            /** Beside New Folder: a set is made in a place, and its files are chosen in the dialog. */
+            createHere: "New Asset Set",
+            /** The row is dropped and the files stay in the library, filed where the set was. */
+            dissolve: "Dissolve Set",
         },
         create: {
             title: "New asset set",
@@ -411,6 +415,8 @@ export const assets = {
                 release: "This project has no variants.",
             },
             /** The character the file names are read apart at. */
+            /** Which kind of file the members are, where the section stands for more than one. */
+            type: "File type",
             delimiter: "Separator",
             delimiterSpace: "Space",
             /**
@@ -451,6 +457,8 @@ export const assets = {
             add: "Add set {name}",
             rename: "Rename set {name}",
             delete: "Delete set {name}",
+            dissolve: "Dissolve set {name}",
+            move: "Move set {name}",
         },
     },
     menu: {

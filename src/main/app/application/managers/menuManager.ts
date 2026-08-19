@@ -351,10 +351,10 @@ export class MenuManager {
                     },
                     { type: "separator" },
                     {
-                        label: t("menu.file.close"),
+                        label: t("menu.file.returnToLauncher"),
                         accelerator: "Cmd+Shift+W",
                         click: () => {
-                            this.sendActionToFocusedWindow(WorkspaceMenuAction.CloseWorkspace);
+                            this.sendActionToFocusedWindow(WorkspaceMenuAction.ReturnToLauncher);
                         },
                     },
                 ],
@@ -368,6 +368,11 @@ export class MenuManager {
                 role: "windowMenu",
                 label: t("menu.window.title"),
                 submenu: [
+                    // Closing the window lives here rather than in File, where it used to sit next
+                    // to a Back to Launcher that reads almost the same. This is the standard macOS
+                    // home for it, and the split makes each one say what it does: File leaves the
+                    // project, Window closes the window.
+                    { role: "close", label: t("menu.window.close"), accelerator: "Cmd+W" },
                     { role: "minimize", label: t("menu.window.minimize") },
                     { role: "zoom", label: t("menu.window.zoom") },
                     ...this.buildSlottedItems(windowGroups.flatMap(group => group.items)),

@@ -83,6 +83,19 @@ export interface MainCommandLineOptions {
      * not resolve.
      */
     project: StartupProjectCommandLineOptions;
+    /**
+     * Start on the home screen, whatever `workspace.reopenLastProject` says.
+     *
+     * The escape hatch for the reopen, and the one startup flag here that is NOT dev-gated: a
+     * project that hangs or crashes the workspace as it loads would otherwise be reopened by every
+     * launch, leaving no way to reach the home screen and open a different one. A packaged build is
+     * exactly where that happens, and this flag opens nothing and reads no path - it only declines
+     * to restore - so argv arriving from a shortcut has nothing to abuse here.
+     *
+     * `--project` still wins: naming a project is a more specific request than declining to
+     * restore one.
+     */
+    launcher: boolean;
     cdp: CdpCommandLineOptions;
     devReload: DevReloadCommandLineOptions;
     /**
@@ -140,7 +153,8 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
     for (let i = 0; i < argv.length; i += 1) {
         const arg = argv[i];
 
-        if (arg === "--dev" || arg === "--onboarding" || arg === "--skip-onboarding") {
+        if (arg === "--dev" || arg === "--onboarding" || arg === "--skip-onboarding"
+            || arg === "--launcher") {
             continue;
         }
 
@@ -258,6 +272,7 @@ export function parseMainCommandLine(argv: readonly string[]): MainCommandLineOp
             selector: projectSelector,
             error: projectError,
         },
+        launcher: argv.includes("--launcher"),
         cdp: {
             enabled: cdpEnabled,
             port: cdpPort,

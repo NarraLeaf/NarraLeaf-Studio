@@ -47,10 +47,16 @@ import type { LintFinding, LintLocation, LintRule } from "../types";
  *    click-to-jump is the existing `jumpToSearchTarget()` and not new navigation code.
  */
 
-type SceneCursor = { entry: LintStoryEntry; scene: StoryScene };
+export type SceneCursor = { entry: LintStoryEntry; scene: StoryScene };
 
-/** Every scene of every story, in authoring order. */
-function* eachScene(ctx: LintContext): Generator<SceneCursor> {
+/**
+ * Every scene of every story, in authoring order.
+ *
+ * Exported because `portability/vfx-alpha` walks rows too, and the three traversal facts above are
+ * the sort of thing a second copy gets subtly wrong - a rule that forgot `skipSubtree` would report
+ * rows the runtime never reaches.
+ */
+export function* eachScene(ctx: LintContext): Generator<SceneCursor> {
     for (const entry of ctx.stories) {
         for (const scene of listScenesInDocumentOrder(entry.document)) {
             if (scene) {
@@ -61,7 +67,7 @@ function* eachScene(ctx: LintContext): Generator<SceneCursor> {
 }
 
 /** The blocks the runtime will actually see: a disabled row takes its whole subtree with it. */
-function liveBlocks(scene: StoryScene): StoryBlock[] {
+export function liveBlocks(scene: StoryScene): StoryBlock[] {
     return listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => Boolean(block.disabled) });
 }
 
@@ -94,7 +100,7 @@ function gotoTarget(block: StoryBlock): string | null {
     return block.kind === "control" && block.payload.control === "goto" ? block.payload.targetLabel.trim() : null;
 }
 
-function storyLocation(entry: LintStoryEntry, scene: StoryScene, blockId?: StoryBlockId): LintLocation {
+export function storyLocation(entry: LintStoryEntry, scene: StoryScene, blockId?: StoryBlockId): LintLocation {
     return {
         kind: "story",
         storyId: entry.id,
@@ -109,7 +115,7 @@ function sceneTarget(entry: LintStoryEntry, scene: StoryScene): SearchJumpTarget
     return { kind: "storyScene", storyId: entry.id, sceneId: scene.id, storyName: entry.name, sceneName: scene.name };
 }
 
-function blockTarget(entry: LintStoryEntry, scene: StoryScene, blockId: StoryBlockId): SearchJumpTarget {
+export function blockTarget(entry: LintStoryEntry, scene: StoryScene, blockId: StoryBlockId): SearchJumpTarget {
     return {
         kind: "storyBlock",
         storyId: entry.id,

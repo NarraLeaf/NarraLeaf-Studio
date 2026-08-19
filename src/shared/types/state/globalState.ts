@@ -200,8 +200,14 @@ export interface GlobalStateType extends Record<string, any> {
      * defaulting *this* feature to off was only possible under a key nobody has on disk.
      */
     "workspace.confirmBeforeClose": boolean;
-    /** Closing the last workspace reopens the launcher; when false, the app quits instead. */
-    "workspace.returnToLauncherOnClose": boolean;
+    /**
+     * Reopen the project the last session was in, instead of starting on the home screen.
+     *
+     * Read once per launch by `App.resolveSessionStartupProject`. `--project` and `--launcher`
+     * both override it; a project that no longer opens falls back to the home screen on its own,
+     * so this needs no "unless it is broken" clause.
+     */
+    "workspace.reopenLastProject": boolean;
     /** How many projects the home screen and the native Open Recent submenu keep. */
     "workspace.recentProjectsLimit": number;
     /**
@@ -366,7 +372,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "editor.spellcheckLanguage": SPELLCHECK_LANGUAGE_DEFAULT,
     "editor.detachedEditorOnClose": "restoreTab",
     "workspace.confirmBeforeClose": false,
-    "workspace.returnToLauncherOnClose": true,
+    "workspace.reopenLastProject": true,
     "workspace.recentProjectsLimit": 10,
     "dashboard.openOnWorkspaceOpen": true,
     "build.electronMirror": "",
