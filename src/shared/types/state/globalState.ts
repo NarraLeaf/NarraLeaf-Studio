@@ -206,6 +206,11 @@ export interface GlobalStateType extends Record<string, any> {
      * Read once per launch by `App.resolveSessionStartupProject`. `--project` and `--launcher`
      * both override it; a project that no longer opens falls back to the home screen on its own,
      * so this needs no "unless it is broken" clause.
+     *
+     * Off by default. A launch that puts the author straight back into a project is a launch that
+     * has decided for them which of their projects this session is about, and Studio opens one
+     * window per project - so the reopen can only ever restore one of however many were open. The
+     * home screen is where that choice is made, and it is one click from the project they left.
      */
     "workspace.reopenLastProject": boolean;
     /** How many projects the home screen and the native Open Recent submenu keep. */
@@ -372,7 +377,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "editor.spellcheckLanguage": SPELLCHECK_LANGUAGE_DEFAULT,
     "editor.detachedEditorOnClose": "restoreTab",
     "workspace.confirmBeforeClose": false,
-    "workspace.reopenLastProject": true,
+    "workspace.reopenLastProject": false,
     "workspace.recentProjectsLimit": 10,
     "dashboard.openOnWorkspaceOpen": true,
     "build.electronMirror": "",
@@ -400,6 +405,11 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
  * `workspace.confirmOnClose` is the legacy spelling of `workspace.confirmBeforeClose`
  * and is on every profile that predates the rename.
  *
+ * `workspace.returnToLauncherOnClose` is the switch that used to make closing a workspace and
+ * returning to the home screen the same exit. Both are now available at once - the close box and
+ * File ▸ Back to Launcher - so nothing reads it, and every profile that predates the split is
+ * carrying it.
+ *
  * Swept off disk once, at startup, by `GlobalStateManager.sweepRetiredKeys`.
  */
 export const RETIRED_GLOBAL_STATE_KEYS: readonly string[] = [
@@ -409,6 +419,7 @@ export const RETIRED_GLOBAL_STATE_KEYS: readonly string[] = [
     "workspace.restoreLastWorkspace",
     "workspace.autoSave",
     "workspace.confirmOnClose",
+    "workspace.returnToLauncherOnClose",
     "sync.autoBackup",
     "sync.backupIntervalMinutes",
     "sync.backupPath",
