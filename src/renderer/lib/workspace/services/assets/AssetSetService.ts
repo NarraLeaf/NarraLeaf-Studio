@@ -4,8 +4,10 @@ import type { DocumentCorruptError } from "@shared/documents/types";
 import type { TranslationKey } from "@shared/i18n";
 import { RendererError } from "@shared/utils/error";
 import {
+    makeAssetSetAxis,
     createEmptyAssetSetDocument,
-    isLegalAxisOrder,
+    assetSetParent,
+    isLegalNesting,
     normalizeProjectAssetSets,
     uniqueAssetSetName,
     type AssetSet,
@@ -207,16 +209,23 @@ export class AssetSetService extends Service<AssetSetService> {
      * that reading happens at the call site, because it is a question about the library and this
      * service owns only the declaration.
      */
-    public createSet(input: { name?: string; type: AssetType; filter?: string[]; axes?: AssetSetAxis[] }): AssetSet {
+    public createSet(input: {
+        /** Minted by the caller when the members were tagged with it before the set existed. */
+        id?: string;
+        name?: string;
+        type: AssetType;
+        filter?: string[];
+        axis?: AssetSetAxis;
+    }): AssetSet {
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const set: AssetSet = {
-            id: uuidService.generate(),
+            id: input.id?.trim() || uuidService.generate(),
             // Numbered rather than taken as given, for the reason `AppTagService.createTag` gives:
             // pressing Add twice must produce two names, not two rows nothing can tell apart.
             name: uniqueAssetSetName(input.name ?? "", this.takenNames(null)),
             type: input.type,
             filter: input.filter ? [...input.filter] : [],
-            axes: input.axes ? structuredClone(input.axes) : [],
+            axis: input.axis ? structuredClone(input.axis) : makeAssetSetAxis("release", []),
         };
         this.applySetMutation(sets => [...sets, set], assetSetLabel("add", set.name));
         return this.getSet(set.id) ?? set;
@@ -265,11 +274,19 @@ export class AssetSetService extends Service<AssetSetService> {
      *
      * See `@shared/types/assetSet` for why a build axis may not sit inside a runtime one.
      */
-    public setAxes(id: string, axes: AssetSetAxis[], label?: HistoryLabel): boolean {
-        if (!this.getSet(id) || !isLegalAxisOrder(axes)) {
+    public setAxis(id: string, axis: AssetSetAxis, label?: HistoryLabel): boolean {
+        const set = this.getSet(id);
+        if (!set) {
             return false;
         }
-        this.updateSet(id, set => ({ ...set, axes: structuredClone(axes) }), label);
+        // The nesting rule is checked against whatever this set hangs under, which is a reading of
+        // the other sets rather than of this one - so the guard has to happen here, where the
+        // document is, and not inside the record being written.
+        const parent = assetSetParent({ ...set, axis }, this.listSets().filter(other => other.id !== id));
+        if (parent && !isLegalNesting(parent.set.axis, axis)) {
+            return false;
+        }
+        this.updateSet(id, current => ({ ...current, axis: structuredClone(axis) }), label);
         return true;
     }
 

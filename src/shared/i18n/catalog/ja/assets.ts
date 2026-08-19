@@ -367,6 +367,10 @@ export const assets = {
             language: "言語",
             variant: "バリアント",
         },
+        axisKind: {
+            locale: "言語",
+            release: "バリアント",
+        },
         variantCount: {
             one: "バリアント {count} 件",
             other: "バリアント {count} 件",
@@ -378,9 +382,15 @@ export const assets = {
         },
         create: {
             title: "アセットセットの新規作成",
+            subTitle: "このバリアントの下にセットを作成",
+            no: {
+                locale: "このプロジェクトの言語は 1 つ。",
+                release: "このプロジェクトにバリアントはない。",
+            },
             delimiter: "区切り文字",
             delimiterSpace: "空白",
             segments: "ファイル名の構成",
+            axis: "変化の軸",
         },
         inspector: {
             axes: "軸",

@@ -425,6 +425,7 @@ export const story = {
         imageAsset: "图片",
         imageOrColor: "图片或颜色",
         videoAsset: "视频",
+        vfxSource: "片段或天气",
         audioAsset: "音频",
         objectName: "名称",
         content: "内容",
@@ -503,6 +504,10 @@ export const story = {
      * 未翻译的词（代码语言这类专有名词）直接留空，回落到英文原词——那一定是解析器认得的写法。
      */
     enumValue: {
+        // 天气种子——`/vfx` 来源槽里的保留词。
+        snow: "雪",
+        rain: "雨",
+        sakura: "樱花",
         // 转场词表（`t=`）
         fade: "淡变",
         // "淡变"是相对词，换到差分上指的是另一种做法；这个词只指交叉溶解，在哪儿写都一样。

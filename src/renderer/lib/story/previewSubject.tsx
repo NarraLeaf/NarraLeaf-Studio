@@ -30,28 +30,36 @@ import { cn } from "@/lib/utils/cn";
 export const SAMPLE_SUBJECT_URL = "/img/narraleaf-studio/narra-avatar.png";
 
 /**
- * Sky over ground, for a stage with no background bound.
+ * The stage a camera frames, with no background bound.
  *
- * Deliberately not a surface token: this is standing in for *artwork*, and a preview painted in the
- * chrome's own colours reads as part of the panel rather than as the picture the camera is framing.
- */
-const STAND_IN_SKY = "bg-[linear-gradient(180deg,#2b3550_0%,#3d4a63_58%,#4b4136_58%,#3a3229_100%)]";
-
-/**
- * A stage as a camera sees it: a background, and someone standing on it.
+ * One flat tone off the theme ladder, not a painted sky. The two-tone gradient this replaces was
+ * trying to be a horizon and a ground plane, and at the size these previews actually get - a 32px
+ * tile - it read as a coloured block with something small at the bottom of it rather than as a
+ * stage. `surface-canvas` is the darkest step the theme has, so the picture stays one step below
+ * the tile it sits in and follows the theme instead of fighting it.
  *
- * The figure is what makes a camera move readable. A pan across an empty gradient is a gradient; the
- * same pan with someone in frame is a pan. It sits low and small on purpose - a subject that filled
- * the frame would leave a zoom nothing to zoom past.
+ * The floor is a hairline, which is all a horizon has to be: it gives a pan and a zoom something to
+ * be measured against without painting a second colour into the frame.
  */
 export function SampleStage(props: { backgroundUrl?: string | null; className?: string; children?: ReactNode }) {
     return (
         <div
-            className={cn("relative h-full w-full overflow-hidden", props.backgroundUrl ? "bg-cover bg-center" : STAND_IN_SKY, props.className)}
+            className={cn(
+                "relative h-full w-full overflow-hidden",
+                props.backgroundUrl ? "bg-cover bg-center" : "bg-surface-canvas",
+                props.className,
+            )}
             style={props.backgroundUrl ? { backgroundImage: `url("${props.backgroundUrl}")` } : undefined}
         >
+            {props.backgroundUrl ? null : <span className="absolute inset-x-0 bottom-[14%] h-px bg-edge-strong" />}
+            {/*
+              * Standing ON the floor line and filling most of the frame. The first version placed a
+              * `h-[42%]` figure at `bottom-[8%]`, which put a head-and-shoulders portrait in the
+              * lower third of a tile: the sample is a portrait, not a full body, so treating it as a
+              * figure standing in a landscape left it reading as a speck low in a coloured box.
+              */}
             <div
-                className="absolute bottom-[8%] left-1/2 aspect-square h-[42%] -translate-x-1/2 bg-contain bg-bottom bg-no-repeat"
+                className="absolute bottom-[14%] left-1/2 aspect-square h-[72%] -translate-x-1/2 bg-contain bg-bottom bg-no-repeat"
                 style={{ backgroundImage: `url("${SAMPLE_SUBJECT_URL}")` }}
             />
             {props.children}

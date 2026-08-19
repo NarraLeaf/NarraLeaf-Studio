@@ -66,25 +66,9 @@ export function useAssetSetNaming({
         });
     }, [services]);
 
-    return useMemo(() => {
-        const editionsByAxis = new Map<string, Map<string, string[]>>();
-        if (services) {
-            for (const tag of tags) {
-                const axes = services.appTags.resolveAssetAxes(tag.id);
-                for (const [key, value] of Object.entries(axes)) {
-                    if (!value) {
-                        continue;
-                    }
-                    const byValue = editionsByAxis.get(key) ?? new Map<string, string[]>();
-                    byValue.set(value, [...(byValue.get(value) ?? []), tag.name]);
-                    editionsByAxis.set(key, byValue);
-                }
-            }
-        }
-        return {
-            locales,
-            editionsByAxis,
-            words: { language: t("assets.sets.axisWord.language"), edition: t("assets.sets.axisWord.variant") },
-        };
-    }, [locales, revision, services, t, tags]);
+    return useMemo(() => ({
+        locales,
+        editions: new Map(tags.map(tag => [tag.id, tag.name])),
+        words: { language: t("assets.sets.axisWord.language"), edition: t("assets.sets.axisWord.variant") },
+    }), [locales, t, tags]);
 }
