@@ -62,7 +62,7 @@ import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
-import { Select, Slider, type SelectOption } from "@/lib/components/elements";
+import { Select, Slider, useSliderDraft, type SelectOption } from "@/lib/components/elements";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
@@ -1695,6 +1695,60 @@ function PuppetChannelControl(props: {
 }
 
 /**
+ * One parameter's value: a slider for feel, a box for a number you can name, and the range beside
+ * them.
+ *
+ * Its own component only so the drag can hold a draft ({@link useSliderDraft}). Both controls read
+ * that draft, or the box would print the committed number while the slider showed the one under the
+ * pointer. The write lands once, when the drag ends - before this, every pointer move wrote the
+ * document and a single drag left dozens of undo entries behind it.
+ */
+function PuppetParamValue(props: {
+    spec: { min: number; max: number } | undefined;
+    value: number;
+    onCommit: (next: number) => void;
+}) {
+    const spec = props.spec;
+    const draft = useSliderDraft(props.value, props.onCommit);
+    return (
+        <div className="mt-1.5 flex items-center gap-2">
+            {spec ? (
+                <Slider
+                    className="min-w-0 flex-1"
+                    min={spec.min}
+                    max={spec.max}
+                    // A rig parameter is continuous and its range may be a fraction of one unit, so
+                    // the step is derived from the range, not left at 1.
+                    step={Math.max((spec.max - spec.min) / 200, 0.001)}
+                    value={draft.value}
+                    onValueChange={draft.onValueChange}
+                    onValueCommit={draft.onValueCommit}
+                />
+            ) : null}
+            <NumericDraftEnhancedInput
+                committedDisplay={String(draft.value)}
+                onFiniteNumber={props.onCommit}
+                onEmpty={() => props.onCommit(0)}
+                type="text"
+                inputMode="decimal"
+                popoverWhenNarrow={false}
+                // The box belongs to the field, not to the `<input>` inside it: the field already
+                // draws a border, a radius and a background, so repeating them on the input drew a
+                // second box inside the first. Only the height (`sm`, this row is dense) and the
+                // text alignment are this call site's to say.
+                className={`h-7 min-h-7 text-xs ${spec ? "w-14 shrink-0" : "min-w-0 flex-1"}`}
+                inputClassName="px-1.5 text-right"
+            />
+            {spec ? (
+                // The range the model gave. Without it the slider is a knob with no scale -
+                // `-30…30` says what dragging it all the way will do.
+                <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">{spec.min}…{spec.max}</span>
+            ) : null}
+        </div>
+    );
+}
+
+/**
  * The numeric-parameter rows of a `setParams` block.
  *
  * A parameter is the one free channel a model describes with a *shape* — an id, a range and a default
@@ -1780,40 +1834,11 @@ function PuppetParamRows(props: {
                                 <Trash2 className="h-3.5 w-3.5" />
                             </button>
                         </div>
-                        <div className="mt-1.5 flex items-center gap-2">
-                            {spec ? (
-                                <Slider
-                                    className="min-w-0 flex-1"
-                                    min={spec.min}
-                                    max={spec.max}
-                                    // A rig parameter is continuous and its range may be a fraction of
-                                    // one unit, so the step is derived from the range, not left at 1.
-                                    step={Math.max((spec.max - spec.min) / 200, 0.001)}
-                                    value={value}
-                                    onValueChange={next => props.onChange({ ...props.params, [id]: next })}
-                                />
-                            ) : null}
-                            <NumericDraftEnhancedInput
-                                committedDisplay={String(value)}
-                                onFiniteNumber={next => props.onChange({ ...props.params, [id]: next })}
-                                onEmpty={() => props.onChange({ ...props.params, [id]: 0 })}
-                                type="text"
-                                inputMode="decimal"
-                                popoverWhenNarrow={false}
-                                // The box belongs to the field, not to the `<input>` inside it: the
-                                // field already draws a border, a radius and a background, so
-                                // repeating them on the input drew a second box inside the first.
-                                // Only the height (`sm`, this row is dense) and the text alignment
-                                // are this call site's to say.
-                                className={`h-7 min-h-7 text-xs ${spec ? "w-14 shrink-0" : "min-w-0 flex-1"}`}
-                                inputClassName="px-1.5 text-right"
-                            />
-                            {spec ? (
-                                // The range the model gave. Without it the slider is a knob with no
-                                // scale - `-30…30` says what dragging it all the way will do.
-                                <span className="shrink-0 text-2xs tabular-nums text-fg-subtle">{spec.min}…{spec.max}</span>
-                            ) : null}
-                        </div>
+                        <PuppetParamValue
+                            spec={spec}
+                            value={value}
+                            onCommit={next => props.onChange({ ...props.params, [id]: next })}
+                        />
                     </div>
                 );
             })}
