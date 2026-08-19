@@ -142,6 +142,16 @@ export const lint = {
             description: "どこからもたどり着けないシーンにあるカットポイント",
             message: "このシーンにはどこからも到達しないので、このカットポイントはどのビルドも終わらせない",
         },
+        storyStageObjectMissing: {
+            title: "存在しないステージオブジェクト",
+            description: "シーン内のどの行も作成していないオブジェクトを操作する行",
+            message: "{object} を作成する行が無いので、この行には操作する対象が無い",
+        },
+        storyStageObjectDuplicate: {
+            title: "ステージオブジェクトの重複",
+            description: "同じステージ名を作成する行が二つあり、後の行は先の行のものを使う",
+            message: "{object} は上で既に作成されているので、この行はそちらを操作する",
+        },
         blueprintReferenceMissing: {
             title: "行き先が無い",
             description: "プロジェクトにもう無いものを名指すノード",

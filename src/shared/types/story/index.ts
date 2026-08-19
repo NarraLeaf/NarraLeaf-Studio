@@ -3,6 +3,7 @@ export * from "./expression";
 export * from "./displayableTarget";
 export * from "./actionableTarget";
 export * from "./layerRef";
+export * from "./stageObjects";
 export * from "./declarations";
 export * from "./labels";
 export * from "./order";

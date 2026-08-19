@@ -145,6 +145,16 @@ export const lint = {
             description: "A cut point in a scene nothing can get to",
             message: "Nothing can reach this scene, so this cut point never ends a build",
         },
+        storyStageObjectMissing: {
+            title: "Missing stage object",
+            description: "A row acting on an object no row in the scene creates",
+            message: "Nothing creates {object}, so this row has nothing to act on",
+        },
+        storyStageObjectDuplicate: {
+            title: "Duplicate stage object",
+            description: "Two rows creating one stage name; the second reuses the first",
+            message: "{object} is already created above, so this row acts on that one",
+        },
         blueprintReferenceMissing: {
             title: "Missing target",
             description: "A node naming something the project no longer has",

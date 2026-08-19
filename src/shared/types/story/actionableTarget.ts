@@ -6,7 +6,7 @@ import type {
     StoryBlock,
     StoryScene,
 } from "./document";
-import { normalizeStageObjectName } from "./displayableTarget";
+import { declaresStageObject, normalizeStageObjectName } from "./displayableTarget";
 
 /**
  * The reserved registry name of the background-music channel. `/vol 0.5` with no target addresses
@@ -55,20 +55,19 @@ export function actionableSourceIdentity(
         return null;
     }
     const payload = block.payload;
+    // Which operation declares is the one table in `declaresStageObject`, which the story compiler
+    // dispatches on as well; what is left here is only what the declared handle is called.
+    if (!declaresStageObject(payload)) {
+        return null;
+    }
     if (payload.action === "video") {
-        return payload.operation === "create"
-            ? { kind: "video", name: normalizeStageObjectName(payload.objectName), label: payload.objectName?.trim() || "Video" }
-            : null;
+        return { kind: "video", name: normalizeStageObjectName(payload.objectName), label: payload.objectName?.trim() || "Video" };
     }
     if (payload.action === "vfx") {
-        return payload.operation === "create"
-            ? { kind: "vfx", name: normalizeStageObjectName(payload.objectName), label: payload.objectName?.trim() || "Vfx" }
-            : null;
+        return { kind: "vfx", name: normalizeStageObjectName(payload.objectName), label: payload.objectName?.trim() || "Vfx" };
     }
     if (payload.action === "audio") {
-        return payload.operation === "playSound"
-            ? { kind: "audio", name: soundStageObjectName(payload), label: payload.objectName?.trim() || "Sound" }
-            : null;
+        return { kind: "audio", name: soundStageObjectName(payload), label: payload.objectName?.trim() || "Sound" };
     }
     return null;
 }

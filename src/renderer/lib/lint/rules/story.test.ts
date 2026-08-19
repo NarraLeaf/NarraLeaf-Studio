@@ -11,7 +11,10 @@ import type { LintFinding, LintRuleId } from "../types";
 import { STORY_LINT_RULES } from "./story";
 
 /**
- * The ten `story` rules.
+ * The `story` rules that read the shape of the script - can it be compiled, and does every route it
+ * names still lead somewhere. The two that read the STAGE (`story/stage-object-missing` and
+ * `story/stage-object-duplicate`) are covered in `story.stageObjects.test.ts` instead, because their
+ * verdict is shared with the story compiler and the test that holds the two together needs both.
  *
  * Every rule is checked both ways - a fixture that must produce a finding and one that must produce
  * nothing - because a rule that never fires and a rule that always fires are equally useless and

@@ -78,15 +78,18 @@ import type {
     StoryVariableRef,
 } from "@shared/types/story";
 import {
+    BGM_STAGE_OBJECT_NAME,
+    actionableStageRefName,
     collectStoryExpressionInvocations,
     collectStoryExpressionVariables,
+    declaresStageObject,
+    displayableStageRefName,
     duplicateSceneLabels,
     isStoryExpressionEvaluable,
     storyVisitedRefId,
     layerActionTargetRef,
     listScenesInDocumentOrder,
     sceneLabelNames,
-    resolveActionableTargetRef,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
     sceneVariableDefs,
@@ -806,9 +809,13 @@ const SCENE_INITIAL_BACKGROUND_BLOCK_ID = "__scene_initial_background";
 const SCENE_BACKGROUND_MUSIC_BLOCK_ID = "__scene_background_music";
 /**
  * The reserved registry name the sound-control family addresses when no target is given
- * (`/vol 0.5` is the music channel). Mirrors `BGM_OBJECT_NAME` in the editor.
+ * (`/vol 0.5` is the music channel).
+ *
+ * Bound to the shared constant rather than spelled again. It was a second literal `"bgm"` until the
+ * project lint grew a third reader: whether this name is exempt from "that sound is not playing" is
+ * a rule of the document, and a rule with three spellings is a rule waiting to be changed in two.
  */
-const BGM_SOUND_NAME = "bgm";
+const BGM_SOUND_NAME = BGM_STAGE_OBJECT_NAME;
 const EMPTY_STORY_ID = "__nlr_empty_story__";
 const EMPTY_SCENE_ID = "__nlr_empty_scene__";
 const UNKNOWN_CHARACTER_ID = "__unknown_character__";
@@ -3400,10 +3407,11 @@ async function compileAudioAction(
     // `declaredName` is the key a `playSound` row registers under, and the binding a control row with
     // no reference falls back to. One shared rule, so no surface can key a sound differently.
     const declaredName = soundStageObjectName(payload);
-    const { name, label } = payload.operation === "playSound"
+    const declares = declaresStageObject(payload);
+    const { name, label } = declares
         ? { name: declaredName, label: payload.objectName?.trim() || declaredName }
         : actionableActionTargetName(ctx, payload.target, "audio", declaredName);
-    const sound = payload.operation === "playSound"
+    const sound = declares
         ? await getSound(ctx, name, payload.assetId, block.id, payload)
         : findPlayingSound(ctx, block.id, payload, name, label);
     if (!sound) {
@@ -3484,7 +3492,7 @@ async function compileImageAction(
     // `create` declares the image; every other op addresses one an earlier row declared, and a miss
     // is reported rather than filled in with a blank Image nothing on stage would show.
     const layer = resolveLayerForRef(ctx, payload.layer);
-    const image = payload.operation === "create"
+    const image = declaresStageObject(payload)
         ? getImage(ctx, payload.objectName, { autoFit: payload.autoFit, layer })
         : findStageImage(ctx, block.id, payload, layer);
     if (!image) {
@@ -3517,7 +3525,7 @@ async function compileTextAction(
 ): Promise<NlrStatement[]> {
     // Same split as `/image`: `create` declares the text, the rest address one already on stage.
     const layer = resolveLayerForRef(ctx, payload.layer);
-    const text = payload.operation === "create"
+    const text = declaresStageObject(payload)
         ? getText(ctx, payload.objectName, {
             text: payload.text,
             fontSize: payload.fontSize,
@@ -3555,7 +3563,7 @@ async function compileLayerAction(
     // `create` names a new custom layer; every other op resolves an existing layer - a built-in
     // (background / displayable) or a custom one - via the target ref (falling back to the default
     // displayable layer), so a transform can now target the background instead of only named layers.
-    const layer = payload.operation === "create"
+    const layer = declaresStageObject(payload)
         ? getLayer(ctx, payload.objectName, payload.zIndex)
         : findStageLayer(ctx, block.id, payload);
     if (!layer) {
@@ -3579,7 +3587,7 @@ async function compileVideoAction(
     payload: Extract<StoryActionPayload, { action: "video" }>,
 ): Promise<NlrStatement[]> {
     // `create` builds the clip; the transport verbs address one an earlier row built.
-    const video = payload.operation === "create"
+    const video = declaresStageObject(payload)
         ? await getVideo(ctx, payload.objectName, payload.assetId, payload.muted, block.id)
         : findStageVideo(ctx, block.id, payload);
     if (!video) {
@@ -3621,7 +3629,7 @@ async function compileVfxAction(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "vfx" }>,
 ): Promise<NlrStatement[]> {
-    const vfx = payload.operation === "create"
+    const vfx = declaresStageObject(payload)
         ? await getVfx(ctx, payload, block.id)
         : findStageVfx(ctx, block.id, payload);
     if (!vfx) {
@@ -4215,37 +4223,35 @@ function getDisplayable(ctx: SceneCompileContext, name: string, kind?: string): 
 // blank Image, showed nothing, and reported nothing. It is the reference identity landing that makes
 // the split possible: a row can now say WHICH row declared the object it means, so failing to find
 // that object is a fact about the document rather than an artefact of how it was spelled.
+//
+// Which op falls on which side is `declaresStageObject`, and how a reference resolves to a key is
+// `displayableStageRefName` / `actionableStageRefName` - all three in
+// `@shared/types/story/stageObjects`, because project lint asks the same questions of the same rows
+// and refuses a build on its answer. The dispatch below reads that table rather than restating it.
 
 /**
- * The stage key + author-facing label a non-`create` displayable row addresses.
+ * The stage key + author-facing label a non-`create` displayable row addresses. `name` is the key to
+ * look up and `label` the only half safe to print - a character's stage key is its `characterId`,
+ * which is a UUID.
  *
- * The stable `target` reference wins whenever the row carries one: it resolves through the row that
- * DECLARED the object, so it follows a rename of that row - the whole point of it. `objectName` is
- * the binding every document written before references carries, and it keeps working exactly as it
- * always did. Falling back to it is the ordinary path for an older row, not a fault, so it reports
- * nothing on its own; what gets reported is the LOOKUP coming up empty, either way in.
- *
- * `name` is the key to look up and `label` the only half safe to print - a character's stage key is
- * its `characterId`, which is a UUID.
+ * The rule itself is `displayableStageRefName` in `@shared/types/story/stageObjects`, and this is a
+ * caller rather than the owner. Project lint asks the same question of the same rows and its answer
+ * stops a build, so a second copy of "what does this row address" is a copy that will one day let a
+ * preview error through a release, or refuse a release a preview was happy with.
  */
 function displayableActionTargetName(
     ctx: SceneCompileContext,
     target: StoryDisplayableTargetRef | undefined,
     objectName: string,
 ): { name: string; label: string } {
-    if (target) {
-        const resolved = resolveDisplayableTargetRef(ctx.scene, target);
-        const name = normalizeObjectName(resolved.name);
-        return { name, label: resolved.label || resolved.name || name };
-    }
-    const name = normalizeObjectName(objectName);
-    return { name, label: objectName.trim() || name };
+    return displayableStageRefName(ctx.scene, target, objectName);
 }
 
 /**
  * The `Actionable` counterpart of {@link displayableActionTargetName} - a clip, an ambience overlay,
- * a sound handle. Same rule and same reason; the `kind` is passed because the reference does not
- * carry one (the row's own `action` states it) and resolution checks it rather than assuming.
+ * a sound handle. Same rule, same shared home, and same reason for it; the `kind` is passed because
+ * the reference does not carry one (the row's own `action` states it) and resolution checks it
+ * rather than assuming.
  */
 function actionableActionTargetName(
     ctx: SceneCompileContext,
@@ -4253,13 +4259,7 @@ function actionableActionTargetName(
     kind: StoryActionableKind,
     objectName: string,
 ): { name: string; label: string } {
-    if (target) {
-        const resolved = resolveActionableTargetRef(ctx.scene, target, kind);
-        const name = normalizeObjectName(resolved.name);
-        return { name, label: resolved.label || resolved.name || name };
-    }
-    const name = normalizeObjectName(objectName);
-    return { name, label: objectName.trim() || name };
+    return actionableStageRefName(ctx.scene, target, kind, objectName);
 }
 
 /**
@@ -4272,6 +4272,10 @@ function actionableActionTargetName(
  *
  * The LABEL is printed, never the stage key: a character keys on its `characterId` and an unnamed
  * sound on its `assetId`, and neither is a word an author would recognise.
+ *
+ * A diagnostic does not stop a build - it reaches the Story console during a preview. The same miss
+ * is reported again by the project lint's `story/stage-object-missing`, which does, and both read
+ * the one judgement in `@shared/types/story/stageObjects`.
  */
 function reportMissingStageObject(ctx: SceneCompileContext, blockId: string, noun: string, label: string): void {
     diagnostic(ctx, "error", blockId, `${noun} "${label}" is not on stage; an earlier row has to create it.`);
