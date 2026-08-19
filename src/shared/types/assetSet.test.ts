@@ -282,6 +282,18 @@ describe("normalizeProjectAssetSets", () => {
         expect(document.sets[0].axis.residency).toBe("runtime");
     });
 
+    it("keeps the folder a set was made in, and omits it when there is none", () => {
+        const locale = { key: "locale", residency: "runtime", values: ["en"] };
+        const document = normalizeProjectAssetSets({
+            sets: [
+                { id: "a", type: "image", axis: locale, groupId: " g1 " },
+                { id: "b", type: "image", axis: locale, groupId: "  " },
+            ],
+        });
+        expect(document.sets[0].groupId).toBe("g1");
+        expect(document.sets[1]).not.toHaveProperty("groupId");
+    });
+
     it("drops a record that names no axis at all", () => {
         expect(normalizeProjectAssetSets({ sets: [{ id: "a", type: "image" }] }).sets).toEqual([]);
     });

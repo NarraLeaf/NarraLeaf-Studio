@@ -1105,6 +1105,28 @@ export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_READ_TEXT = "blueprint.game.getSk
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_READ_TEXT = "blueprint.game.setSkipReadText" as const;
 
 /**
+ * "Skipping is running." The held skip key, as a value a graph can read and write.
+ *
+ * `Skip` next door advances one line and returns; this is the run itself, and setting it is the
+ * exact equivalent of holding the key down - the same guard, the same interval, the same stop at a
+ * line the player has not read (see `skipRunController`). It is what a quick menu's Skip button and
+ * a touch screen bind to, neither of which has a key to hold.
+ *
+ * Transient: it is not saved with the player's other settings, so no game ever starts skipping.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIPPING = "blueprint.game.getSkipping" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIPPING = "blueprint.game.setSkipping" as const;
+
+/**
+ * How long auto-forward waits at the end of a line.
+ *
+ * A preference in Studio, `game.config` in the engine, and not the same control as `Game Speed` -
+ * that one scales the typing as well.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD_DELAY = "blueprint.game.getAutoForwardDelay" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD_DELAY = "blueprint.game.setAutoForwardDelay" as const;
+
+/**
  * Per-track (per-bus) volume: the general form of the four fixed volume preferences above.
  *
  * Those four can only reach the three buses the engine seeds, so a project that adds `voice/alice`
