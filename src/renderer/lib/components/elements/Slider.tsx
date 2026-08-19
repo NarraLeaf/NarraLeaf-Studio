@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { cn } from "../../utils/cn";
 
 export interface SliderProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange" | "value" | "type"> {
@@ -52,4 +52,37 @@ export function Slider({
             {...props}
         />
     );
+}
+
+/**
+ * The value a slider shows while it is being dragged, and the one write that follows.
+ *
+ * {@link Slider} deliberately has two callbacks - `onValueChange` on every pointer move, and
+ * `onValueCommit` once the gesture ends - and wiring a document write to the first is the mistake
+ * this hook exists to stop making. It has been made twice: the transform channel sliders and the
+ * puppet parameter rows both put one history entry on the stack per pixel dragged, so a single
+ * gesture buried the undo stack and `mod+z` afterwards walked back a few pixels at a time.
+ *
+ * So the shown value is local for the length of the drag and the write happens once, on release.
+ * The draft clears at that moment rather than being kept, because a control that held its own number
+ * after the gesture would stop tracking the value it is supposed to be editing - an edit from
+ * anywhere else would leave it showing a stale figure.
+ *
+ * Return it spread across whichever controls display the value; a slider paired with a number box
+ * must read `value` too, or the two disagree for the length of every drag.
+ */
+export function useSliderDraft(value: number, onCommit: (next: number) => void): {
+    value: number;
+    onValueChange: (next: number) => void;
+    onValueCommit: (next: number) => void;
+} {
+    const [draft, setDraft] = useState<number | null>(null);
+    return {
+        value: draft ?? value,
+        onValueChange: setDraft,
+        onValueCommit: (next: number) => {
+            setDraft(null);
+            onCommit(next);
+        },
+    };
 }
