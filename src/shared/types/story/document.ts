@@ -828,8 +828,16 @@ export type StoryActionPayload =
           /** The looping clip — a video asset, the same pipeline `/video` uses. */
           assetId?: string;
           /**
-           * How the overlay composites. The choice IS the material route: `normal` for a true-alpha
-           * WebM, `screen` for glow rendered on black, `multiply` for shadow rendered on white.
+           * How the overlay composites. The choice IS the material route: `screen` for glow
+           * rendered on black, `multiply` for shadow rendered on white, `normal` for a clip that is
+           * opaque and meant to cover what is under it.
+           *
+           * **No option carries an alpha channel through.** WebKit decodes a WebM carrying alpha and
+           * composites its RGB plane opaquely, discarding the transparency - VP9 and VP8 alike, on
+           * iOS and on macOS Safari (measured 2026-08-18 against iOS 18.7 and Safari 26.3; Chromium
+           * honours the very same files). A transparent clip left on `normal` therefore looks
+           * correct on every Chromium target and is a full-screen opaque rectangle in the iOS shell
+           * and the web build. Transparency is expressed as an opaque clip on black plus `screen`.
            */
           blendMode?: StoryVfxBlendMode;
           opacity?: number;

@@ -1378,10 +1378,16 @@ const vfxOperationOptions = (t: TFunc): SelectOption[] => [
 /**
  * Blend mode, named by the MATERIAL it belongs to rather than by the CSS keyword.
  *
- * An author picking here is not expressing a preference, they are declaring which of two production
- * routes their clip came down: a true-alpha WebM composites plainly, glow rendered on black has to be
- * added. Naming the routes is what makes the choice answerable without a paragraph of explanation -
- * the keyword alone tells someone who already knows the answer.
+ * An author picking here is not expressing a preference, they are declaring which production route
+ * their clip came down: glow rendered on black has to be added, shadow rendered on white has to be
+ * subtracted, and a clip that is simply opaque covers. Naming the routes is what makes the choice
+ * answerable without a paragraph of explanation - the keyword alone tells someone who already knows
+ * the answer.
+ *
+ * None of the options carries an alpha channel through, which is why `normal` names an opaque clip
+ * rather than a transparent one: WebKit discards a WebM's alpha and composites the RGB plane
+ * opaquely on iOS and macOS Safari, while every Chromium target honours it. See the `blendMode`
+ * field on the `vfx` payload in `@shared/types/story/document.ts` for the measurement.
  */
 const vfxBlendOptions = (t: TFunc): SelectOption[] => [
     { value: "normal", label: t("storyInspector.vfxBlend.normal") },

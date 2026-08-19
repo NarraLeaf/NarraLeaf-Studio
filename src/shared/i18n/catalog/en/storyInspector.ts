@@ -210,7 +210,7 @@ export const storyInspector = {
     // Named by the material each mode is FOR, not by the CSS keyword: the choice is a production fact
     // about the clip, and the keyword alone only helps someone who already knows the answer.
     vfxBlend: {
-        normal: "Normal (transparent alpha WebM)",
+        normal: "Normal (opaque clip)",
         screen: "Screen (glow on black)",
         multiply: "Multiply (shadow on white)",
         lighten: "Lighten",

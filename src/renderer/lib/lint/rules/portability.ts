@@ -117,6 +117,14 @@ const EVERY_BUILD_PLATFORM = Object.keys(GAME_BUILD_FORMATS_BY_PLATFORM) as read
  * iPadOS 17.4 and visionOS 1.1. At a 17.4 floor no selectable target is left that cannot play them.
  * <https://webkit.org/blog/15063/webkit-features-in-safari-17-4/>
  *
+ * Re-confirmed on hardware 2026-08-18: an opaque VP9/Vorbis WebM - this project's own transcode
+ * target - plays on iOS 18.7 and macOS Safari 26.3, and `canPlayType` answers `"probably"` there.
+ * The one thing WebKit does *not* carry is a WebM's **alpha channel**: it decodes such a file and
+ * composites the RGB plane opaquely, VP9 and VP8 alike, where Chromium honours the transparency.
+ * That is deliberately not a row here and must not become one - this rule reports files that will
+ * not play, and those files play. It is a compositing question, and it is answered where the choice
+ * is made, on the `blendMode` field of the `vfx` payload in `@shared/types/story/document.ts`.
+ *
  * This table is keyed by **extension, and the extension is not the real criterion**: what plays is
  * the codec inside the container. The same `.mp4` plays when it carries H.264 and comes out as a
  * black rectangle with sound when it carries HEVC - measured, not assumed - and this rule cannot
