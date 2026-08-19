@@ -1,249 +1,156 @@
 /**
- * Planning an asset set from the names of the files it is made of.
+ * Planning an asset set from the files an author selected.
  *
- * `assetSet.ts` is the model: a set names its members by tag, and an author who has already tagged
- * their files can be handed a set derived from those tags. This module is the step before that -
- * turning `alice-happy-en.png` into the tags in the first place, so that declaring a set is one
- * action rather than three.
+ * `assetSet.ts` is the model: a set names its members by tag, and the tags are what the build and
+ * the running game resolve against. This module is the step before that - deciding which file is
+ * which variant, and what tags that means writing.
  *
- * # Why the plan is computed, not applied, first
+ * # The author picks from lists the project already has
  *
- * Everything here answers what a set *would* be, given a way of reading the file names. The wizard
- * draws that answer - which coordinates resolve, which have no file, which have two - before
- * anything is written. The alternative, writing the tags and then showing the result, makes the
- * author undo a tagging pass to change their mind about a category name.
+ * A set varies by one of two things, and both are lists the project declares elsewhere: its
+ * languages, or its editions. So the wizard asks two questions - which of the two, and which file is
+ * which - and never asks for a tag category, a value, or a residency. Everything a set used to make
+ * the author type was a second copy of something the project already knew.
  *
- * The preview and the write therefore have to come from the same function, which is the reason this
- * is a module of pure functions rather than logic inside the dialog: a preview computed one way and
- * a write performed another is a dialog that shows a set the project does not get.
+ * # The set's own tag is what keeps it a set
  *
- * # The plan is derived, never a second derivation rule
+ * Members carry `set:<id>` for the set they belong to, plus one tag per level of nesting. Without it
+ * a set of `locale` files would mean "every file in the project with a language", which is not a set
+ * an author ever means. The id rather than the name, because a name is a thing an author changes.
  *
- * {@link planAssetSet} produces the tags each file will carry and then hands them to
- * `deriveAssetSetDraft` - the same reading of a library the panel already used. So a set made
- * through the wizard is exactly the set the model would derive from those files afterwards, and
- * there is no second definition of "what these files have in common" to keep in step.
+ * # The preview and the write come from here, both
  *
- * # Order is not cosmetic
- *
- * Axis order is the nesting, and a build axis may not sit inside a runtime one (see `assetSet.ts`).
- * A wizard that emitted axes in the order the author happened to name them could therefore produce a
- * set that is invalid the moment it exists, which the author would then have to repair in the
- * inspector without having done anything wrong. {@link planAssetSet} sorts by residency for that
- * reason, and keeps the author's order within each residency.
+ * The wizard draws what the project will hold before anything is written, and a preview computed
+ * separately from the write is a dialog that can show a set the project does not get.
  */
 
 import {
-    deriveAssetSetDraft,
     formatAssetTag,
+    makeAssetSetAxis,
     parseAssetTag,
-    ASSET_AXIS_RESIDENCY_ORDER,
-    type AssetAxisResidency,
+    type AssetSet,
     type AssetSetAxis,
+    type AssetSetAxisKind,
 } from "./assetSet";
+
+/** The tag category a set's own identity is written under. */
+export const ASSET_SET_TAG_CATEGORY = "set";
+
+/** The tag every member of a set carries. */
+export function assetSetIdentityTag(setId: string): string {
+    return formatAssetTag(ASSET_SET_TAG_CATEGORY, setId);
+}
 
 /** One file a set is being planned from. */
 export interface AssetSetPlanFile {
     id: string;
-    /** The file's name, split at the delimiter the author chose. Extension already removed. */
-    segments: readonly string[];
-    /** Tags the row carries today. Kept unless a named position overwrites that category. */
+    /** The file's name as the library shows it, without its extension. */
+    name: string;
+    /** Tags the row carries today. Kept unless this plan claims that category. */
     tags: readonly string[];
 }
 
-/**
- * What one position in the file names is read as.
- *
- * An empty category means the position says nothing and is left out of the plan entirely - not
- * every segment of a file name is about what the file is (`v2`, `final`, an artist's initials), and
- * a position nobody named should not become a tag nobody meant.
- */
-export interface AssetSetSegmentRole {
-    category: string;
-    residency: AssetAxisResidency;
+/** One value of the axis, and what the project calls it. */
+export interface AssetSetPlanValue {
+    /** What goes in the tag: a language code, or an edition id. */
+    value: string;
+    /** What the author reads: a language's name, or an edition's name. */
+    label: string;
 }
 
 export interface AssetSetPlan {
-    /** What each file will be tagged with, by file id. Only files whose tags actually change. */
+    /** The axis the set will declare. */
+    axis: AssetSetAxis;
+    /** Value to the file answering it, in the order the values were given. Absent values are holes. */
+    members: Map<string, string>;
+    /** What each file will be tagged with, by file id. */
     tagsByFile: Map<string, string[]>;
+    /** The tags every member carries: the set's own, plus the coordinate it hangs at. */
     filter: string[];
-    axes: AssetSetAxis[];
 }
 
 /**
- * Split a file name into the positions an author names.
+ * Which file answers which value, guessed from the file names.
  *
- * Splits on every chosen delimiter at once, because a name like `alice-happy_en` mixes them and an
- * author reading it sees three parts rather than a choice between two readings. Empty parts are
- * dropped: `alice--happy` is two positions, not three, and a blank position could never be a tag.
- */
-export function splitAssetName(name: string, delimiters: readonly string[]): string[] {
-    const trimmed = name.trim();
-    if (!trimmed) {
-        return [];
-    }
-    const active = delimiters.filter(delimiter => delimiter.length > 0);
-    if (active.length === 0) {
-        return [trimmed];
-    }
-    let parts = [trimmed];
-    for (const delimiter of active) {
-        parts = parts.flatMap(part => part.split(delimiter));
-    }
-    return parts.map(part => part.trim()).filter(Boolean);
-}
-
-/** The distinct values a position takes across the files, in the order they are first seen. */
-export function segmentValues(files: readonly AssetSetPlanFile[], index: number): string[] {
-    const values: string[] = [];
-    for (const file of files) {
-        const value = file.segments[index]?.trim();
-        if (value && !values.includes(value)) {
-            values.push(value);
-        }
-    }
-    return values;
-}
-
-/** How many positions the names have, counted on the longest of them. */
-export function segmentCount(files: readonly AssetSetPlanFile[]): number {
-    return files.reduce((count, file) => Math.max(count, file.segments.length), 0);
-}
-
-/**
- * The tags one file will carry under a plan.
+ * A file whose name contains a value's own word - `title_zh-CN`, `alice_demo` - is that value's
+ * file. Matched on the longest value first, so `zh-CN` wins over a hypothetical `zh`, and each file
+ * is used once: two files claiming one value would otherwise both be dropped into it and the second
+ * would silently replace the first.
  *
- * A named category replaces whatever the file already had under it rather than joining it: two
- * values of one category on one file make that file answer to two coordinates at once, which the
- * set then reports as ambiguous everywhere. Every other tag is left alone - a file may well be in
- * more than one set, and carry labels that are nobody's axis.
+ * A guess, and shown as one: the wizard draws it into controls the author can change before
+ * anything is written.
  */
-export function planFileTags(file: AssetSetPlanFile, roles: readonly AssetSetSegmentRole[]): string[] {
-    const written = new Map<string, string>();
-    roles.forEach((role, index) => {
-        const category = role.category.trim();
-        const value = file.segments[index]?.trim();
-        if (category && value) {
-            written.set(category, value);
-        }
-    });
-    if (written.size === 0) {
-        return [...file.tags];
-    }
-
-    const kept = file.tags.filter(tag => {
-        const pair = parseAssetTag(tag);
-        return !pair || !written.has(pair.category);
-    });
-    return [...kept, ...[...written].map(([category, value]) => formatAssetTag(category, value))];
-}
-
-/**
- * The set these files describe once the plan is written to them.
- *
- * Residency comes from the roles because it is the one thing the file names cannot say: whether a
- * variant survives the build is a decision about the edition being shipped, not a fact about the
- * artwork. Categories the author did not name keep whatever `deriveAssetSetDraft` gives them, which
- * is `build` - the residency that keeps bytes out of a package.
- */
-export function planAssetSet(
+export function suggestAssetSetMembers(
     files: readonly AssetSetPlanFile[],
-    roles: readonly AssetSetSegmentRole[],
-    type: string,
-): AssetSetPlan {
+    values: readonly AssetSetPlanValue[],
+): Map<string, string> {
+    const members = new Map<string, string>();
+    const taken = new Set<string>();
+    const ordered = [...values].sort((left, right) => right.value.length - left.value.length);
+    for (const entry of ordered) {
+        const needle = entry.value.toLowerCase();
+        const match = files.find(file => !taken.has(file.id) && file.name.toLowerCase().includes(needle));
+        if (match) {
+            members.set(entry.value, match.id);
+            taken.add(match.id);
+        }
+    }
+    return members;
+}
+
+/**
+ * What the project will hold once the author confirms.
+ *
+ * `parent` is the set this one hangs under, when the author is making a sub-set: its members carry
+ * everything the parent's members carry plus the value it hangs at, which is what the model reads
+ * nesting from.
+ */
+export function planAssetSet(input: {
+    setId: string;
+    kind: AssetSetAxisKind;
+    values: readonly AssetSetPlanValue[];
+    files: readonly AssetSetPlanFile[];
+    members: ReadonlyMap<string, string>;
+    parent?: { set: AssetSet; value: string };
+}): AssetSetPlan {
+    const filter = input.parent
+        ? [...input.parent.set.filter, formatAssetTag(input.parent.set.axis.key, input.parent.value)]
+        : [assetSetIdentityTag(input.setId)];
+    const axis = makeAssetSetAxis(input.kind, input.values.map(entry => entry.value));
+
     const tagsByFile = new Map<string, string[]>();
-    const candidates = files.map(file => {
-        const tags = planFileTags(file, roles);
-        tagsByFile.set(file.id, tags);
-        return { id: file.id, type, tags };
-    });
-
-    const draft = deriveAssetSetDraft(candidates);
-    const residencyOf = new Map<string, AssetAxisResidency>();
-    const namedOrder: string[] = [];
-    for (const role of roles) {
-        const category = role.category.trim();
-        if (category && !residencyOf.has(category)) {
-            residencyOf.set(category, role.residency);
-            namedOrder.push(category);
-        }
-    }
-
-    const axes = draft.axes.map(axis => ({
-        ...axis,
-        residency: residencyOf.get(axis.key) ?? axis.residency,
-    }));
-
-    // The author's naming order first, anything derived from tags they did not touch after it, and
-    // the whole thing then arranged by residency because that arrangement is the one the model
-    // refuses to be without.
-    const rank = (axis: AssetSetAxis) => {
-        const named = namedOrder.indexOf(axis.key);
-        return named >= 0 ? named : namedOrder.length + draft.axes.findIndex(other => other.key === axis.key);
-    };
-    axes.sort((left, right) => {
-        const residency = ASSET_AXIS_RESIDENCY_ORDER[left.residency] - ASSET_AXIS_RESIDENCY_ORDER[right.residency];
-        return residency !== 0 ? residency : rank(left) - rank(right);
-    });
-
-    return { tagsByFile, filter: draft.filter, axes };
-}
-
-/**
- * A first reading of the file names, for the wizard to open with.
- *
- * Two things are suggested, and only where there is evidence for them:
- *
- *  - **A category**, when every file already carries one whose value is that file's segment. That is
- *    the case an author reaches after running the magic tag pass, and re-typing the same category
- *    names would be asking them to declare what the project already knows.
- *  - **`runtime` residency**, when the position's values are all languages this project declares.
- *    A locale axis has to be resolved by the running game - every language's file ships - and the
- *    model's own default is the opposite, so an author who did not know to change it would ship a
- *    game with one language's artwork. The evidence is the project's declared locale list, not the
- *    shape of the strings: `en` is a language here because this project says it has one.
- */
-export function suggestSegmentRoles(
-    files: readonly AssetSetPlanFile[],
-    localeCodes: readonly string[],
-): AssetSetSegmentRole[] {
-    const locales = new Set(localeCodes.map(code => code.trim()).filter(Boolean));
-    const roles: AssetSetSegmentRole[] = [];
-    for (let index = 0; index < segmentCount(files); index++) {
-        const values = segmentValues(files, index);
-        roles.push({
-            category: suggestCategory(files, index),
-            residency: values.length > 1 && values.every(value => locales.has(value)) ? "runtime" : "build",
-        });
-    }
-    return roles;
-}
-
-/** The category every file already reads this position as, or empty when they do not agree on one. */
-function suggestCategory(files: readonly AssetSetPlanFile[], index: number): string {
-    const first = files[0];
-    if (!first) {
-        return "";
-    }
-    const value = first.segments[index]?.trim();
-    if (!value) {
-        return "";
-    }
-    for (const tag of first.tags) {
-        const pair = parseAssetTag(tag);
-        if (!pair || pair.value !== value) {
+    const members = new Map<string, string>();
+    for (const entry of input.values) {
+        const fileId = input.members.get(entry.value);
+        const file = fileId ? input.files.find(candidate => candidate.id === fileId) : undefined;
+        if (!file) {
             continue;
         }
-        const agreed = files.every(file => {
-            const own = file.segments[index]?.trim();
-            return own ? file.tags.some(other => {
-                const otherPair = parseAssetTag(other);
-                return otherPair?.category === pair.category && otherPair.value === own;
-            }) : false;
-        });
-        if (agreed) {
-            return pair.category;
+        members.set(entry.value, file.id);
+        tagsByFile.set(file.id, writeTags(file, [...filter, formatAssetTag(axis.key, entry.value)]));
+    }
+    return { axis, members, tagsByFile, filter };
+}
+
+/**
+ * A file's tags once this set claims it.
+ *
+ * A claimed category replaces whatever the file carried under it: two values of one category make
+ * one file answer to two variants at once, which every set it belongs to then reports as ambiguous.
+ * Everything else is left alone - a file carries the author's own labels, and may be a member of a
+ * set that varies by something else.
+ */
+function writeTags(file: AssetSetPlanFile, written: readonly string[]): string[] {
+    const claimed = new Set<string>();
+    for (const tag of written) {
+        const pair = parseAssetTag(tag);
+        if (pair) {
+            claimed.add(pair.category);
         }
     }
-    return "";
+    const kept = file.tags.filter(tag => {
+        const pair = parseAssetTag(tag);
+        return !pair || !claimed.has(pair.category);
+    });
+    return [...kept, ...written];
 }

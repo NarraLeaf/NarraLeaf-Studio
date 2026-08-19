@@ -348,7 +348,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     // Sets are read here rather than in `useAssetData` because they are not library rows: they are a
     // declaration measured against the library, and the measurement wants the library this panel is
     // already holding.
-    const { byCategory: assetSets, findSet } = useAssetSets({ context, isInitialized, assets });
+    const { byCategory: assetSets, topLevelByCategory: rootAssetSets, findSet } = useAssetSets({ context, isInitialized, assets });
     const assetSetNaming = useAssetSetNaming({ context, isInitialized });
     const {
         menuState: setMenuState,
@@ -701,7 +701,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const contextValue = {
         assets, groups, assetSets, filteredAssets, filteredGroups, matchedGroupIds, selectedItems, focusedItemId,
         draggedItem, dropTargetId, clipboard, isMultiSelectMode, expandedGroups,
-        expandedAssetSets, setExpandedAssetSets, assetSetNaming,
+        expandedAssetSets, setExpandedAssetSets, assetSetNaming, rootAssetSets,
         handleItemSelect, handleAssetClick, handleGroupFocus, showContextMenu,
         handleAssetSetSelect, showAssetSetContextMenu,
         handleDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup,
