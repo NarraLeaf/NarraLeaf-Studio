@@ -435,6 +435,33 @@ export function topLevelAssetSets(sets: readonly AssetSet[]): AssetSet[] {
 }
 
 /**
+ * A set and everything drawn inside it, outermost first.
+ *
+ * What a command aimed at one row has to act on, because a sub-set is drawn inside its parent and
+ * nowhere else: moving the parent to another folder and leaving the children behind would file them
+ * somewhere the author cannot see until the parent stops holding them.
+ *
+ * Read from the tags like every other reading of nesting, so a set that stops being a sub-set by
+ * being retagged leaves this subtree without anything having to be kept in step.
+ */
+export function assetSetSubtree(root: AssetSet, sets: readonly AssetSet[]): AssetSet[] {
+    const collected: AssetSet[] = [root];
+    const seen = new Set<string>([root.id]);
+    for (let index = 0; index < collected.length; index++) {
+        const current = collected[index];
+        for (const value of current.axis.values) {
+            for (const child of childAssetSets(current, value, sets)) {
+                if (!seen.has(child.id)) {
+                    seen.add(child.id);
+                    collected.push(child);
+                }
+            }
+        }
+    }
+    return collected;
+}
+
+/**
  * Every library row that carries a coordinate's tags.
  *
  * Answers a list, not a row, because "no file" and "two files" are both real states of a library
