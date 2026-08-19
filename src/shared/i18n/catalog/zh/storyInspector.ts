@@ -202,6 +202,8 @@ export const storyInspector = {
     },
     vfx: {
         name: "特效名称",
+        source: "来源",
+        sourceClip: "素材",
         clip: "循环素材",
         blendMode: "混合模式",
         opacity: "不透明度（0-1）",
@@ -210,6 +212,16 @@ export const storyInspector = {
         loop: "循环",
         rate: "速度（1 = 正常）",
         fade: "淡入淡出（秒）",
+    },
+
+    weather: {
+        density: "数量",
+        sizeNear: "近景大小",
+        sizeFar: "远景大小",
+        sway: "飘摆",
+        streak: "拖影",
+        wind: "风向（度）",
+        depthSpread: "景深差",
     },
 
     cameraOperation: {
