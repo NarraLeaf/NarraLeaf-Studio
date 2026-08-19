@@ -299,7 +299,8 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.text.setText", "blueprint.text.setTextAlign", "blueprint.text.setTextColor",
     "blueprint.text.setTextVerticalAlign", "blueprint.text.setVisible", "blueprint.text.setWrapMode",
     "blueprint.textInput.clear", "blueprint.textInput.setValue", "blueprint.voice.getAvailableLanguages",
-    "blueprint.voice.getLanguage", "blueprint.voice.play", "blueprint.voice.setLanguage",
+    "blueprint.voice.getLanguage", "blueprint.voice.play", "blueprint.voice.playChoice",
+    "blueprint.voice.setLanguage",
 ];
 
 /**

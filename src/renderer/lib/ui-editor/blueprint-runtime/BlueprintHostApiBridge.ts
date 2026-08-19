@@ -410,6 +410,16 @@ export type BlueprintHostApiRuntime = {
          * false when the line has no take in the current language.
          */
         play: (unitId: string) => Promise<boolean>;
+        /**
+         * Play one choice option's take, at most one instance of that option at a time.
+         *
+         * Same clip and same bus as {@link play}; what differs is the bookkeeping a menu needs. A
+         * hover fires as often as the pointer crosses a row, so a line already speaking is left
+         * alone rather than restarted, and it answers false. `interruptOthers` stops the takes of
+         * the *other* options - the author's call, because a menu that reads each option over the
+         * last is as deliberate a design as one that speaks a single line at a time.
+         */
+        playChoice: (unitId: string, options?: { interruptOthers?: boolean }) => Promise<boolean>;
     };
     frame: {
         getParam: (key: string) => unknown;
@@ -844,6 +854,11 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     voiceConfig?: { voicedLocales: VoiceLocaleEntry[] } | null;
     /** Plays one voice unit in the current dub language; absent outside a game runtime. */
     onPlayVoice?: (unitId: string) => Promise<boolean>;
+    /**
+     * Plays one choice option's take, holding the "is this option already speaking" bookkeeping the
+     * menu needs; absent outside a game runtime.
+     */
+    onPlayChoiceVoice?: (unitId: string, options: { interruptOthers: boolean }) => Promise<boolean>;
     /**
      * Issues one Fetch node request, in a main process.
      *
@@ -3333,6 +3348,20 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         return false;
                     }
                     return await options.onPlayVoice(String(unitId ?? "").trim());
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            playChoice: async (unitId: string, playOptions?: { interruptOthers?: boolean }) => {
+                const cap = "voice.playChoice";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!options.onPlayChoiceVoice) {
+                        return false;
+                    }
+                    return await options.onPlayChoiceVoice(String(unitId ?? "").trim(), {
+                        interruptOthers: playOptions?.interruptOthers === true,
+                    });
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

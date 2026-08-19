@@ -45,6 +45,8 @@ type RowFilter = "all" | "missing" | "outdated" | "voiced" | "approved";
 type AuditionFilter = "all" | "approved" | "pending";
 
 const NARRATION_GROUP_KEY = "__narration__";
+/** Every choice option shares one bucket on the character axis: an option has no speaker. */
+const CHOICE_GROUP_KEY = "__choice__";
 
 /** Starting estimates for the windowed list; every item re-measures itself once it mounts. */
 const GROUP_ROW_HEIGHT_PX = 26;
@@ -110,6 +112,11 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
     const speakerNameFor = useCallback((row: StoryTranslationRow): string => {
         if (row.role === "narration") {
             return t("workspace.voice.table.narrationSpeaker");
+        }
+        // A choice option is read by whoever the game decides at that moment, so it carries no
+        // speaker of its own. Naming it after narration would file it under a voice it is not.
+        if (row.role === "choiceText") {
+            return t("workspace.voice.table.choiceSpeaker");
         }
         if (row.characterId) {
             const character = characterService?.getCharacter(row.characterId);
@@ -443,12 +450,20 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
         const order: Group[] = [];
         const byKey = new Map<string, Group>();
         for (const row of visibleRows) {
-            const key = row.role === "narration" ? NARRATION_GROUP_KEY : (row.characterId ?? `name:${row.speaker}`);
+            const key = row.role === "narration"
+                ? NARRATION_GROUP_KEY
+                : row.role === "choiceText"
+                    ? CHOICE_GROUP_KEY
+                    : (row.characterId ?? `name:${row.speaker}`);
             let group = byKey.get(key);
             if (!group) {
                 group = {
                     key,
-                    name: row.role === "narration" ? t("workspace.voice.table.narrationGroup") : row.speaker,
+                    name: row.role === "narration"
+                        ? t("workspace.voice.table.narrationGroup")
+                        : row.role === "choiceText"
+                            ? t("workspace.voice.table.choiceGroup")
+                            : row.speaker,
                     ...(row.role === "dialogue" && row.characterId ? { characterId: row.characterId } : {}),
                     rows: [],
                 };

@@ -8,6 +8,7 @@ import {
 } from "react";
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
 import { Sound, type LiveGame, type SavedGame, type Scene } from "narraleaf-react";
+import { createChoiceVoicePlayer, type ChoiceVoicePlayer } from "./choiceVoicePlayback";
 import {
     readWrappedStorableNamespace,
     readWrappedStorableValue,
@@ -686,6 +687,13 @@ export function GameApp(props: GameAppProps): ReactNode {
     const currentDialogNametagRef = useRef<string | null>(null);
     const choiceRuntimeRef = useRef<ChoiceSlotRuntime | null>(null);
     const prefersReducedMotion = useReducedMotion();
+
+    // The choice voice player is built once and outlives any one render, so the host it logs through
+    // is read here rather than captured.
+    const hostRef = useRef(host);
+    useEffect(() => {
+        hostRef.current = host;
+    }, [host]);
 
     useEffect(() => {
         widgetPatchesByScopeRef.current = widgetPatchesByScope;
@@ -1548,6 +1556,41 @@ export function GameApp(props: GameAppProps): ReactNode {
             return false;
         }
     }, [host]);
+
+    /**
+     * Speak one choice option, at most one instance of that option at a time.
+     *
+     * The bookkeeping - which option is already speaking, and what `Interrupt Others` stops - lives
+     * in {@link createChoiceVoicePlayer}. This supplies only the start: a fresh `Sound` per play,
+     * for the reason `playVoiceUnit` gives, on the bus the compile assigned, so a per-character
+     * voice bus and the player's fader for it apply here exactly as they do to a spoken line.
+     *
+     * Built once per mount and held in a ref: the map of speaking options must survive a render, and
+     * every read it needs is through a ref already.
+     */
+    const choiceVoicePlayerRef = useRef<ChoiceVoicePlayer | null>(null);
+    if (!choiceVoicePlayerRef.current) {
+        choiceVoicePlayerRef.current = createChoiceVoicePlayer({
+            start: async unitId => {
+                const liveGame = nlrLiveGameRef.current;
+                const playback = nlrCompiledRef.current?.getVoicePlayback?.(unitId);
+                if (!liveGame || !playback) {
+                    return null;
+                }
+                return await liveGame.playSound(new Sound({ src: playback.src, type: playback.busId }));
+            },
+            onError: error => hostRef.current?.log(
+                "warning",
+                `Play Choice Voice: ${error instanceof Error ? error.message : String(error)}`,
+            ),
+        });
+    }
+
+    const playChoiceVoiceUnit = useCallback(
+        (unitId: string, options: { interruptOthers: boolean }): Promise<boolean> =>
+            choiceVoicePlayerRef.current?.play(unitId, options) ?? Promise.resolve(false),
+        [],
+    );
 
     // Mount-scoped, not session-scoped: each mount replaces the previous subscription itself, and
     // this is only the last one, on the way out.
@@ -3026,6 +3069,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             localizationConfig: bundle.localization ?? null,
             voiceConfig: bundle.voice ?? null,
             onPlayVoice: playVoiceUnit,
+            onPlayChoiceVoice: playChoiceVoiceUnit,
         });
         hostAdapter = createDevModeBlueprintHostAdapter({
             bundle,
@@ -3423,6 +3467,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     localizationConfig: bundle.localization ?? null,
                     voiceConfig: bundle.voice ?? null,
                     onPlayVoice: playVoiceUnit,
+                    onPlayChoiceVoice: playChoiceVoiceUnit,
                 });
                 nestedHostAdapter = createDevModeBlueprintHostAdapter({
                     bundle,

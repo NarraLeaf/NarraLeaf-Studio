@@ -38,12 +38,17 @@ function documentOf(locale: string, units: Record<string, VoiceUnit>): VoiceDocu
     return { schemaVersion: VOICE_DOCUMENT_SCHEMA_VERSION, locale, units };
 }
 
-function contextOf(blocks: StoryBlock[], units: Record<string, VoiceUnit>): LintContext {
+function contextOf(
+    blocks: StoryBlock[],
+    units: Record<string, VoiceUnit>,
+    options: { voiceChoices?: boolean } = {},
+): LintContext {
     return createTestLintContext({
         stories: singleSceneStories(blocks),
         voice: {
             voicedLocales: ["ja"],
             documents: new Map([["ja", documentOf("ja", units)]]),
+            voiceChoices: options.voiceChoices === true,
         },
     });
 }
@@ -99,6 +104,39 @@ describe("voice/missing", () => {
         expect(findings).toEqual([]);
     });
 
+    /**
+     * The scope follows the project's own answer to "is an option script", so the rule and the voice
+     * table can never disagree about what is missing.
+     */
+    it("asks for the option once the project voices its choices", async () => {
+        const findings = await run(
+            "voice/missing",
+            contextOf(
+                [
+                    choiceBlock("c1", textSegment("t-c", "Stay or go?", "choicePrompt"), ["o1"]),
+                    choiceOptionBlock("o1", textSegment("t-o", "Stay", "choiceText"), "c1"),
+                ],
+                {},
+                { voiceChoices: true },
+            ),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ blockId: "o1" });
+    });
+
+    /** The prompt has nowhere to play even then, so it is never a gap. */
+    it("still never asks for the choice prompt", async () => {
+        const findings = await run(
+            "voice/missing",
+            contextOf(
+                [choiceBlock("c1", textSegment("t-c", "Stay or go?", "choicePrompt"), [])],
+                {},
+                { voiceChoices: true },
+            ),
+        );
+        expect(findings).toEqual([]);
+    });
+
     it("ignores a blank line and a disabled row", async () => {
         const findings = await run(
             "voice/missing",
@@ -148,6 +186,7 @@ describe("voice/stale", () => {
             stories: singleSceneStories([dialogueBlock("b1", textSegment("t-1", LINE, "dialogue"))]),
             voice: {
                 voicedLocales: ["ja"],
+                voiceChoices: false,
                 documents: new Map([["ja", documentOf("ja", { "t-1": unit("asset-1", JA_TAKE) })]]),
             },
             localization: {
@@ -174,6 +213,7 @@ describe("voice/stale", () => {
             stories: singleSceneStories([dialogueBlock("b1", textSegment("t-1", LINE, "dialogue"))]),
             voice: {
                 voicedLocales: ["ja"],
+                voiceChoices: false,
                 documents: new Map([["ja", documentOf("ja", { "t-1": unit("asset-1", "家に帰ろう。") })]]),
             },
             localization: {
