@@ -625,9 +625,11 @@ export function GameApp(props: GameAppProps): ReactNode {
      */
     const playtime = usePlaytime({
         isPlaying: isPlaythroughRunning,
-        // Optional-chained because the runtime core is null until the bundle mounts. A read that
-        // lands before it resolves to nothing, and the total simply starts this session from zero;
-        // a write that early has nothing to write, because nothing has been played yet.
+        // The store the two functions below reach, so the hook can wait for it and read again when
+        // it is replaced. Without it the stored total is read on the hook's first commit, when the
+        // core is still null, and never again.
+        persistenceSource: core?.scopeBridge ?? null,
+        // Optional-chained because the runtime core is null until the bundle mounts.
         persistenceGetAsync: async key => core?.scopeBridge.persistenceGetAsync(key),
         // Not awaited: the value is readable the moment this returns, the clock has already
         // counted the seconds, and a failed disk write only means the next flush carries them.
