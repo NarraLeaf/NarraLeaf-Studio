@@ -14,10 +14,21 @@ import { deriveObjectName } from "../payloadHelpers";
  * placing it - fade it in or out, freeze it, change how fast it drifts - is an existing generic verb
  * (`/show` `/hide` `/pause` `/resume` `/rate`) that dispatches on the resolved target.
  *
- * The line places the clip and names it; blend mode, opacity, fit and z-index are the inspector's
- * (B10). Blend mode in particular is not a preference but a property of the MATERIAL - a true-alpha
- * WebM wants `normal`, glow rendered on black wants `screen` - which is why the inspector's options
- * name the material rather than the CSS keyword.
+ * The line places the clip and names it; blend mode, opacity, fit and z-index are the inspector's.
+ * Blend mode in particular is not a preference but a property of the MATERIAL, which is why the
+ * inspector's options name the material rather than the CSS keyword.
+ *
+ * **There is no alpha-channel route.** WebKit decodes a WebM carrying alpha and then composites its
+ * RGB plane opaquely, discarding the transparency - VP9 and VP8 alike, on iOS and on macOS Safari.
+ * Measured 2026-08-18 against iOS 18.7 and Safari 26.3, with Chromium honouring the very same files.
+ * So a transparent clip left on `normal` looks correct on Windows, macOS, Linux and Android, and
+ * arrives as a full-screen opaque rectangle in the iOS shell and for every Safari player of the web
+ * build. It cannot be reproduced on the machine the clip was authored on.
+ *
+ * The material route is therefore an OPAQUE clip rendered on black with `screen`, or on white with
+ * `multiply`. `normal` stays legal - a clip meant to cover what is under it uses it - but it is not
+ * how transparency is achieved. The transcode target, VP9 video plus Vorbis audio in WebM, plays
+ * correctly on every target and is not what is at fault here.
  */
 
 const VFX_DEFAULT_FADE_MS = 600;
