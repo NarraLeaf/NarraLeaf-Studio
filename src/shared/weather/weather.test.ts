@@ -8,7 +8,7 @@ import {
     type WeatherParamKey,
     type WeatherSeedId,
 } from "./model";
-import { buildWeatherField, createWeatherFrameBuffer, renderWeatherFrame } from "./field";
+import { buildWeatherField, createWeatherRenderer } from "./field";
 import { weatherBakeDescriptor, weatherBakeKey } from "./bakeKey";
 
 /**
@@ -20,11 +20,16 @@ import { weatherBakeDescriptor, weatherBakeKey } from "./bakeKey";
 const W = 480;
 const H = 270;
 
-function frameAt(seed: WeatherSeedId, phase: number, params = resolveWeatherParams({ seed })) {
+/** Few frames and few sub-steps: the tests are about geometry and identity, not about the blur. */
+const FRAMES = 60;
+
+function frameAt(seed: WeatherSeedId, phase: number, params = resolveWeatherParams({ seed }), subSteps = 2) {
     const field = buildWeatherField(seed, params, W, H);
-    const buf = createWeatherFrameBuffer(W, H);
-    renderWeatherFrame(buf, field, W, H, phase);
-    return buf;
+    const renderer = createWeatherRenderer(field, W, H, { frames: FRAMES, subSteps });
+    renderer.render(phase);
+    // Copied: the renderer reuses its buffer, so two frames compared without this would be one frame
+    // compared with itself - a seam test that can never fail.
+    return new Uint8ClampedArray(renderer.frame);
 }
 
 function litPixels(buf: Uint8ClampedArray): number {
@@ -119,6 +124,14 @@ describe("the field", () => {
         const tilted = litPixels(frameAt("snow", 0.2, resolveWeatherParams({ seed: "snow", params: { wind: 45 } })));
         expect(tilted).toBeGreaterThan(upright * 0.6);
         expect(tilted).toBeLessThan(upright * 1.6);
+    });
+
+    it("integrates several instants into one frame", () => {
+        // A blurred frame lights more pixels than a single instant of the same field: that difference
+        // IS the shutter. Rain is the seed it matters most for, so it is the one asserted.
+        const instant = litPixels(frameAt("rain", 0.3, undefined, 1));
+        const blurred = litPixels(frameAt("rain", 0.3, undefined, 8));
+        expect(blurred).toBeGreaterThan(instant);
     });
 
     it("leaves the alpha channel opaque", () => {
