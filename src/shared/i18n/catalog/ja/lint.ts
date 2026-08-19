@@ -120,9 +120,9 @@ export const lint = {
             messageEmptyOption: "この選択肢にテキストがない",
         },
         storyDeadEnd: {
-            title: "出口のない経路",
-            description: "一部の経路はシーンから出ていくが、末尾まで到達する経路が残っているシーン",
-            message: "この経路はシーンの末尾に到達したあと続きがない",
+            title: "子ノードなし",
+            description: "一部の経路はシーンから出ていくが、末尾の行に子ノードがない経路が残っているシーン",
+            message: "この行に子ノードがなく、ここでシーンの末尾を越える",
         },
         storyUnreachableScene: {
             title: "到達できないシーン",

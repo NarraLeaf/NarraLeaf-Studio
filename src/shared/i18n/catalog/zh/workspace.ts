@@ -400,13 +400,13 @@ export const workspace = {
         // 快速打开（mod+p）：可打开实体的模糊选择器。
         quickOpen: {
             title: "快速打开",
-            placeholder: "跳转到场景、角色、界面、素材、蓝图…",
+            placeholder: "跳转到场景、角色、界面、资产、蓝图…",
             empty: "没有匹配项",
             kinds: {
                 scene: "场景",
                 character: "角色",
                 uiSurface: "界面",
-                asset: "素材",
+                asset: "资产",
                 blueprint: "蓝图",
             },
         },
@@ -430,11 +430,12 @@ export const workspace = {
             /**
              * What a long task is called while it runs.
              *
-             * Names the thing being made, never the machinery that makes it: an author asked
-             * for weather, not for an encode.
+             * Names the author's own object and the work being done to it, never the machinery
+             * that does it. "Baking" is what the wait is; the encoder and the file format the
+             * clip ends up in are not the author's business and never appear here.
              */
             task: {
-                weatherBake: "生成天气效果",
+                weatherBake: "烘焙屏幕效果",
             },
             openConsole: "打开控制台",
             unsavedChanges: "未保存的更改",
@@ -833,7 +834,7 @@ export const workspace = {
                 uiEditor: "UI 编辑器",
                 blueprint: "蓝图编辑器",
                 storyMotion: "故事动效",
-                assets: "素材",
+                assets: "资产",
                 other: "其他",
             },
             // 此前没有自带 i18n key 的目录条目标签。
@@ -895,7 +896,7 @@ export const workspace = {
             // 顶栏搜索 pill 上的文案（点击后打开搜索模式的命令面板）。`{name}` 为当前项目名。
             titleBarPlaceholder: "在 {name} 中搜索",
             building: "正在建立搜索索引…",
-            idle: "可搜索场景、角色、剧情文本、资源与蓝图",
+            idle: "可搜索场景、角色、剧情文本、资产与蓝图",
             empty: "没有匹配结果",
             more: "还有 {count} 条",
             // 与场景查找栏共用的三个匹配开关，同一条查询在两处含义一致。
@@ -918,7 +919,7 @@ export const workspace = {
                 character: "角色",
                 uiSurface: "UI 界面",
                 blueprint: "蓝图",
-                asset: "素材",
+                asset: "资产",
                 storyText: "剧情文本",
                 variable: "变量",
                 uiTextKey: "UI 文本 Key",

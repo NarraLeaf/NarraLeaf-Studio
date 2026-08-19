@@ -2,7 +2,7 @@ import type { LocaleNamespace } from "../types";
 
 export const widgetAppearance = {
     panel: {
-        invalidModel: "此元素没有有效的外观数据，请从素材面板新建一个",
+        invalidModel: "此元素没有有效的外观数据，请从资产面板新建一个",
     },
     state: {
         label: "状态",
@@ -148,8 +148,8 @@ export const widgetAppearance = {
     fields: {
         imageFill: "图片填充",
         imageFillNeedsContext: "图片填充需要检视器上下文",
-        imageUrlPlaceholder: "URL 或资源引用",
-        imageUrlPlaceholderLegacy: "URL 或资源引用（旧版）",
+        imageUrlPlaceholder: "URL 或资产引用",
+        imageUrlPlaceholderLegacy: "URL 或资产引用（旧版）",
     },
     fills: {
         cover: "覆盖",
