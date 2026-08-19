@@ -16,9 +16,10 @@ import { isActionMenuAction, isActionMenuSeparator } from "./actionMenuModel";
  * back in; an `exemptWhileFrozen?: boolean` on the definition would be exactly that way in.
  *
  * Two of the three are project-level NAVIGATION, neither of which edits this project's content:
- * File is New Workspace / Open Workspace / Export Project / Close, Help is the help entries. Leaving
- * them live is also what keeps a frozen window escapable - a workspace you cannot close or leave
- * would be a trap.
+ * File is New Workspace / Open Workspace / Export Project / Back to Launcher / Close Window, Help is
+ * the help entries. Leaving them live is also what keeps a frozen window escapable - a workspace you
+ * cannot close or leave would be a trap, and Back to Launcher is the one that leaves without ending
+ * the session.
  *
  * The third is the image preview's Zoom in / Zoom out / Reset view, which move a viewport and write
  * nothing whatsoever. Measured on a frozen project: opening a past revision of an image and being

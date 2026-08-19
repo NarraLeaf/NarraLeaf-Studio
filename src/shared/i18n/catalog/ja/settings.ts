@@ -254,9 +254,9 @@ export const settings = {
             label: "ワークスペースを閉じる前に確認",
             description: "ワークスペースのウィンドウを閉じるときに確認する",
         },
-        returnToLauncherOnClose: {
-            label: "ワークスペースを閉じたらホーム画面に戻る",
-            description: "オフにすると、ほかにウィンドウが無いとき NarraLeaf Studio を終了する",
+        reopenLastProject: {
+            label: "起動時に前回のプロジェクトを開く",
+            description: "オフにすると、起動するたびにランチャーで止まる",
         },
         dashboardOnOpen: {
             label: "既定でプロジェクトのダッシュボードを表示",

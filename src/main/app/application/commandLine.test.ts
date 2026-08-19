@@ -25,6 +25,7 @@ describe("parseMainCommandLine", () => {
             onboarding: false,
             skipOnboarding: false,
             project: NO_STARTUP_PROJECT,
+            launcher: false,
             cdp: {
                 enabled: false,
                 port: DEFAULT_CDP_PORT,
@@ -42,6 +43,7 @@ describe("parseMainCommandLine", () => {
             onboarding: false,
             skipOnboarding: false,
             project: NO_STARTUP_PROJECT,
+            launcher: false,
             cdp: {
                 enabled: true,
                 port: DEFAULT_CDP_PORT,
@@ -151,6 +153,28 @@ describe("parseMainCommandLine", () => {
         expect(
             parseMainCommandLine(["electron", "dist/main/index.js", "--dev", "--skip-onboarding"]).skipOnboarding,
         ).toBe(true);
+    });
+
+    it("parses --launcher, and lets it stand alongside --project", () => {
+        expect(parseMainCommandLine(["electron", "dist/main/index.js"]).launcher).toBe(false);
+        expect(parseMainCommandLine(["electron", "dist/main/index.js", "--launcher"]).launcher).toBe(true);
+
+        // Both together is not a contradiction the parse has to settle: --project names a project
+        // and wins, which `App.resolveSessionStartupProject` decides. The parse only records what
+        // was typed - a flag silently dropped here would be invisible to the one place that can
+        // explain the precedence.
+        const both = parseMainCommandLine(["electron", "dist/main/index.js", "--dev", "--launcher", "--project=demo3"]);
+        expect(both.launcher).toBe(true);
+        expect(both.project.selector).toBe("demo3");
+    });
+
+    it("does not read --launcher as a --project value", () => {
+        // The same trap `--project --cdp` used to fall into: swallowing the next flag would take
+        // the escape hatch out of the parse in the one launch that typed it by mistake.
+        const options = parseMainCommandLine(["electron", "dist/main/index.js", "--dev", "--project", "--launcher"]);
+
+        expect(options.project.selector).toBeNull();
+        expect(options.launcher).toBe(true);
     });
 
     it("parses inline and split --project values", () => {
