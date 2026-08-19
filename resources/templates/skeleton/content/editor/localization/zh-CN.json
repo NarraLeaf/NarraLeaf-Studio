@@ -152,6 +152,86 @@
       "status": "translated",
       "target": "自动前进等待时间"
     },
+    "key:config.bgm": {
+      "sourceHash": "fnv1a:e26859b1",
+      "status": "translated",
+      "target": "背景音乐"
+    },
+    "key:config.categorySound": {
+      "sourceHash": "fnv1a:b3ca9a34",
+      "status": "translated",
+      "target": "声音"
+    },
+    "key:config.categoryText": {
+      "sourceHash": "fnv1a:3e142d5e",
+      "status": "translated",
+      "target": "文本"
+    },
+    "key:config.fullscreen": {
+      "sourceHash": "fnv1a:3d2aca78",
+      "status": "translated",
+      "target": "全屏"
+    },
+    "key:config.fullscreenOff": {
+      "sourceHash": "fnv1a:0dc6b4aa",
+      "status": "translated",
+      "target": "关闭"
+    },
+    "key:config.fullscreenOn": {
+      "sourceHash": "fnv1a:60e47df0",
+      "status": "translated",
+      "target": "开启"
+    },
+    "key:config.masterVolume": {
+      "sourceHash": "fnv1a:55ee5043",
+      "status": "translated",
+      "target": "主音量"
+    },
+    "key:config.secondsSuffix": {
+      "sourceHash": "fnv1a:f60c4582",
+      "status": "translated",
+      "target": "秒"
+    },
+    "key:config.skip": {
+      "sourceHash": "fnv1a:c197c7e2",
+      "status": "translated",
+      "target": "跳过"
+    },
+    "key:config.skipAllText": {
+      "sourceHash": "fnv1a:9805954b",
+      "status": "translated",
+      "target": "全部"
+    },
+    "key:config.skipDelay": {
+      "sourceHash": "fnv1a:37403aa9",
+      "status": "translated",
+      "target": "跳过等待时间"
+    },
+    "key:config.skipReadOnly": {
+      "sourceHash": "fnv1a:60c591e1",
+      "status": "translated",
+      "target": "仅已读"
+    },
+    "key:config.soundEffects": {
+      "sourceHash": "fnv1a:d40ba662",
+      "status": "translated",
+      "target": "音效"
+    },
+    "key:config.textSpeed": {
+      "sourceHash": "fnv1a:d6227bfd",
+      "status": "translated",
+      "target": "文字速度"
+    },
+    "key:config.title": {
+      "sourceHash": "fnv1a:6a12e0e7",
+      "status": "translated",
+      "target": "设置"
+    },
+    "key:config.voice": {
+      "sourceHash": "fnv1a:27d1a499",
+      "status": "translated",
+      "target": "语音"
+    },
     "key:menu.continue": {
       "sourceHash": "fnv1a:ab43d664",
       "status": "reviewed",
@@ -186,6 +266,31 @@
       "sourceHash": "fnv1a:0ae8097f",
       "status": "reviewed",
       "target": "开始"
+    },
+    "key:nav.back": {
+      "sourceHash": "fnv1a:c2954bc2",
+      "status": "translated",
+      "target": "返回"
+    },
+    "key:nav.config": {
+      "sourceHash": "fnv1a:6a12e0e7",
+      "status": "translated",
+      "target": "设置"
+    },
+    "key:nav.load": {
+      "sourceHash": "fnv1a:68afa209",
+      "status": "translated",
+      "target": "加载"
+    },
+    "key:nav.save": {
+      "sourceHash": "fnv1a:4d2d5d68",
+      "status": "translated",
+      "target": "保存"
+    },
+    "key:nav.title": {
+      "sourceHash": "fnv1a:24d471a9",
+      "status": "translated",
+      "target": "标题"
     }
   }
 }

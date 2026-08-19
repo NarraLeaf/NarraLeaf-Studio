@@ -2117,8 +2117,47 @@
                       },
                       "meta": {
                         "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
                           "x": 280,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 260
                         }
                       }
                     }
@@ -2130,7 +2169,27 @@
                         "port": "then"
                       },
                       "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -2193,8 +2252,47 @@
                       },
                       "meta": {
                         "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
                           "x": 280,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 260
                         }
                       }
                     }
@@ -2206,7 +2304,27 @@
                         "port": "then"
                       },
                       "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -2295,8 +2413,47 @@
                       },
                       "meta": {
                         "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
                           "x": 280,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 260
                         }
                       }
                     }
@@ -2308,7 +2465,27 @@
                         "port": "then"
                       },
                       "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -2369,8 +2546,47 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "2c8f3d76-7a4c-4ba6-853e-253b10175394",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
                           "x": 280,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 260
                         }
                       }
                     }
@@ -2382,7 +2598,27 @@
                         "port": "then"
                       },
                       "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -2445,7 +2681,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 900,
+                          "x": 1180,
                           "y": 0
                         }
                       }
@@ -2456,7 +2692,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 0,
+                          "x": 280,
                           "y": 150
                         }
                       }
@@ -2467,7 +2703,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -2494,8 +2730,47 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 840,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 410
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 410
                         }
                       }
                     }
@@ -2507,7 +2782,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "nConfirmIf",
+                        "nodeId": "sfx.click",
                         "port": "in"
                       }
                     },
@@ -2548,6 +2823,26 @@
                       },
                       "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nConfirmIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -2690,7 +2985,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 150
                         }
                       }
@@ -2703,7 +2998,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 300
                         }
                       }
@@ -2716,7 +3011,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -2731,7 +3026,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 840,
                           "y": 150
                         }
                       }
@@ -2744,7 +3039,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 840,
                           "y": 300
                         }
                       }
@@ -2757,7 +3052,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 840,
                           "y": 0
                         }
                       }
@@ -2772,7 +3067,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 180
                         }
                       }
@@ -2785,7 +3080,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 260
                         }
                       }
@@ -2800,7 +3095,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 180
                         }
                       }
@@ -2813,8 +3108,22 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 260
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
                         }
                       }
                     }
@@ -2846,7 +3155,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n4",
+                        "nodeId": "sfx.click",
                         "port": "in"
                       }
                     },
@@ -2917,6 +3226,16 @@
                       },
                       "to": {
                         "nodeId": "sel.Sound.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n4",
                         "port": "in"
                       }
                     }
@@ -2981,7 +3300,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 150
                         }
                       }
@@ -2994,7 +3313,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 300
                         }
                       }
@@ -3007,7 +3326,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -3022,7 +3341,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 840,
                           "y": 150
                         }
                       }
@@ -3035,7 +3354,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 840,
                           "y": 300
                         }
                       }
@@ -3048,7 +3367,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 840,
                           "y": 0
                         }
                       }
@@ -3063,7 +3382,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 180
                         }
                       }
@@ -3076,7 +3395,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 260
                         }
                       }
@@ -3091,7 +3410,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 180
                         }
                       }
@@ -3104,8 +3423,22 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 260
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
                         }
                       }
                     }
@@ -3137,7 +3470,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n4",
+                        "nodeId": "sfx.click",
                         "port": "in"
                       }
                     },
@@ -3208,6 +3541,16 @@
                       },
                       "to": {
                         "nodeId": "sel.Sound.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n4",
                         "port": "in"
                       }
                     }
@@ -3971,10 +4314,7 @@
                       "id": "n10",
                       "type": "blueprint.string.concat",
                       "params": {
-                        "__inlineLiteralPins": [
-                          "b"
-                        ],
-                        "b": "s"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -4116,15 +4456,38 @@
                       "id": "n21",
                       "type": "blueprint.string.concat",
                       "params": {
-                        "__inlineLiteralPins": [
-                          "b"
-                        ],
-                        "b": "s"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
                           "x": 1680,
                           "y": 900
+                        }
+                      }
+                    },
+                    "i18n.seconds0": {
+                      "id": "i18n.seconds0",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "config.secondsSuffix"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1960,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "i18n.seconds1": {
+                      "id": "i18n.seconds1",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "config.secondsSuffix"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1960,
+                          "y": 750
                         }
                       }
                     }
@@ -4216,7 +4579,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n4",
+                        "nodeId": "i18n.seconds0",
                         "port": "in"
                       }
                     },
@@ -4326,7 +4689,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n15",
+                        "nodeId": "i18n.seconds1",
                         "port": "in"
                       }
                     },
@@ -4348,6 +4711,46 @@
                       "to": {
                         "nodeId": "n15",
                         "port": "text"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.seconds0",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n4",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.seconds0",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n10",
+                        "port": "b"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.seconds1",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n15",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.seconds1",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n21",
+                        "port": "b"
                       }
                     }
                   ],
@@ -4539,7 +4942,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 0,
+                          "x": 280,
                           "y": 150
                         }
                       }
@@ -4550,7 +4953,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -4565,7 +4968,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 180
                         }
                       }
@@ -4578,7 +4981,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 260
                         }
                       }
@@ -4593,7 +4996,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 180
                         }
                       }
@@ -4606,8 +5009,22 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 260
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
                         }
                       }
                     }
@@ -4619,7 +5036,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n3",
+                        "nodeId": "sfx.click",
                         "port": "in"
                       }
                     },
@@ -4670,6 +5087,16 @@
                       },
                       "to": {
                         "nodeId": "sel.Readonly.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n3",
                         "port": "in"
                       }
                     }
@@ -4732,7 +5159,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 0,
+                          "x": 280,
                           "y": 150
                         }
                       }
@@ -4743,7 +5170,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -4758,7 +5185,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 180
                         }
                       }
@@ -4771,7 +5198,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 260
                         }
                       }
@@ -4786,7 +5213,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 180
                         }
                       }
@@ -4799,8 +5226,22 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 260
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
                         }
                       }
                     }
@@ -4812,7 +5253,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n3",
+                        "nodeId": "sfx.click",
                         "port": "in"
                       }
                     },
@@ -4863,6 +5304,16 @@
                       },
                       "to": {
                         "nodeId": "sel.Readonly.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n3",
                         "port": "in"
                       }
                     }
@@ -4977,7 +5428,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -4992,7 +5443,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 180
                         }
                       }
@@ -5005,7 +5456,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 260
                         }
                       }
@@ -5020,7 +5471,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 180
                         }
                       }
@@ -5033,8 +5484,22 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 260
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
                         }
                       }
                     }
@@ -5046,7 +5511,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n2",
+                        "nodeId": "sfx.click",
                         "port": "in"
                       }
                     },
@@ -5087,6 +5552,16 @@
                       },
                       "to": {
                         "nodeId": "sel.Off.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n2",
                         "port": "in"
                       }
                     }
@@ -5149,7 +5624,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -5164,7 +5639,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 180
                         }
                       }
@@ -5177,7 +5652,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 820,
+                          "x": 1100,
                           "y": 260
                         }
                       }
@@ -5192,7 +5667,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 180
                         }
                       }
@@ -5205,8 +5680,22 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 1080,
+                          "x": 1360,
                           "y": 260
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
                         }
                       }
                     }
@@ -5218,7 +5707,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n2",
+                        "nodeId": "sfx.click",
                         "port": "in"
                       }
                     },
@@ -5259,6 +5748,16 @@
                       },
                       "to": {
                         "nodeId": "sel.Off.set",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n2",
                         "port": "in"
                       }
                     }
@@ -14532,8 +15031,47 @@
                       },
                       "meta": {
                         "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
                           "x": 280,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 260
                         }
                       }
                     }
@@ -14545,7 +15083,27 @@
                         "port": "then"
                       },
                       "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -14606,7 +15164,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -14617,7 +15175,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 840,
                           "y": 150
                         }
                       }
@@ -14630,7 +15188,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 840,
                           "y": 300
                         }
                       }
@@ -14641,7 +15199,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 840,
+                          "x": 1120,
                           "y": 150
                         }
                       }
@@ -14652,7 +15210,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1120,
+                          "x": 1400,
                           "y": 0
                         }
                       }
@@ -14665,7 +15223,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 840,
+                          "x": 1120,
                           "y": 450
                         }
                       }
@@ -14676,7 +15234,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1120,
+                          "x": 1400,
                           "y": 300
                         }
                       }
@@ -14687,7 +15245,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1400,
+                          "x": 1680,
                           "y": 300
                         }
                       }
@@ -14698,7 +15256,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1680,
+                          "x": 1960,
                           "y": 300
                         }
                       }
@@ -14709,7 +15267,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1680,
+                          "x": 1960,
                           "y": 0
                         }
                       }
@@ -14720,7 +15278,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1260,
+                          "x": 1540,
                           "y": 420
                         }
                       }
@@ -14731,7 +15289,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 500,
+                          "x": 780,
                           "y": 60
                         }
                       }
@@ -14742,7 +15300,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 220,
+                          "x": 500,
                           "y": -260
                         }
                       }
@@ -14753,7 +15311,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 480,
+                          "x": 760,
                           "y": -260
                         }
                       }
@@ -14764,8 +15322,47 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 760,
+                          "x": 1040,
                           "y": -340
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 710
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 710
                         }
                       }
                     }
@@ -14927,7 +15524,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "nAuto",
+                        "nodeId": "sfx.click",
                         "port": "in"
                       }
                     },
@@ -14978,6 +15575,26 @@
                       },
                       "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nAuto",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -15040,8 +15657,47 @@
                       },
                       "meta": {
                         "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
                           "x": 280,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 260
                         }
                       }
                     }
@@ -15053,7 +15709,27 @@
                         "port": "then"
                       },
                       "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -15116,8 +15792,47 @@
                       },
                       "meta": {
                         "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
                           "x": 280,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 260
                         }
                       }
                     }
@@ -15129,7 +15844,27 @@
                         "port": "then"
                       },
                       "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -15190,7 +15925,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 640,
+                          "x": 920,
                           "y": 0
                         }
                       }
@@ -15217,8 +15952,47 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 300,
+                          "x": 580,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 260
                         }
                       }
                     }
@@ -15230,7 +16004,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "nAsk",
+                        "nodeId": "sfx.click",
                         "port": "in"
                       }
                     },
@@ -15241,6 +16015,26 @@
                       },
                       "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nAsk",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -41040,8 +41834,47 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 340,
+                          "x": 620,
                           "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 260
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 260
                         }
                       }
                     }
@@ -41053,7 +41886,27 @@
                         "port": "then"
                       },
                       "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
                         "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
                         "port": "in"
                       }
                     }
@@ -41583,10 +42436,7 @@
                       "id": "n10",
                       "type": "blueprint.string.concat",
                       "params": {
-                        "__inlineLiteralPins": [
-                          "b"
-                        ],
-                        "b": "s"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
@@ -41728,15 +42578,38 @@
                       "id": "n21",
                       "type": "blueprint.string.concat",
                       "params": {
-                        "__inlineLiteralPins": [
-                          "b"
-                        ],
-                        "b": "s"
+                        "__inlineLiteralPins": []
                       },
                       "meta": {
                         "editorLayout": {
                           "x": 1680,
                           "y": 900
+                        }
+                      }
+                    },
+                    "i18n.seconds0": {
+                      "id": "i18n.seconds0",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "config.secondsSuffix"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1960,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "i18n.seconds1": {
+                      "id": "i18n.seconds1",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "config.secondsSuffix"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1960,
+                          "y": 750
                         }
                       }
                     }
@@ -41828,7 +42701,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n4",
+                        "nodeId": "i18n.seconds0",
                         "port": "in"
                       }
                     },
@@ -41938,7 +42811,7 @@
                         "port": "next"
                       },
                       "to": {
-                        "nodeId": "n15",
+                        "nodeId": "i18n.seconds1",
                         "port": "in"
                       }
                     },
@@ -41960,6 +42833,46 @@
                       "to": {
                         "nodeId": "n15",
                         "port": "text"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.seconds0",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n4",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.seconds0",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n10",
+                        "port": "b"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.seconds1",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n15",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.seconds1",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n21",
+                        "port": "b"
                       }
                     }
                   ],
