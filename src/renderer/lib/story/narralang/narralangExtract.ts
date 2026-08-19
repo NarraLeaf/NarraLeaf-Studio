@@ -42,7 +42,12 @@ import type {
     StoryTransitionRef,
     StoryVariableRef,
 } from "@shared/types/story";
-import { resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
+import {
+    actionableSubjectWord,
+    displayableSubjectWord,
+    resolveDisplayableTargetRef,
+    resolveStoryLayerRef,
+} from "@shared/types/story";
 import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
 
 import {
@@ -652,7 +657,13 @@ function audioShape(
 ): NarralangShape {
     // A row that names no handle addresses the music bus, which is a target the language spells with a
     // word rather than a name - the bus has no author-facing name to resolve.
-    const handle = payload.objectName ? asName(payload.objectName) : undefined;
+    //
+    // The name itself comes from the reference: a control row bound to a `play sound … as piano` line
+    // has to print whatever that line calls the handle NOW, or the script it prints declares one name
+    // and addresses another - and a subject no declaration answers to takes the whole scene out of
+    // text editing (`unknownName`), which is what a rename in the inspector used to do.
+    const handleName = actionableSubjectWord(ctx.scene, payload.target, "audio", payload.objectName);
+    const handle = handleName ? asName(handleName) : undefined;
     const subject = handle ?? asWord("bgm");
 
     switch (payload.operation) {
@@ -704,7 +715,9 @@ function imageShape(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "image" }>,
 ): NarralangShape {
-    const subject = asName(payload.objectName);
+    // Through the reference, for the reason `audioShape` above states in full: the printed subject has
+    // to be the name the printed DECLARATION carries, and after a rename only the reference knows it.
+    const subject = asName(displayableSubjectWord(ctx.scene, payload.target, payload.objectName));
     const source = payload.color ? asColor(payload.color) : assetName(ctx, block.id, payload.assetId);
     switch (payload.operation) {
         case "create":
@@ -752,7 +765,7 @@ function textObjectShape(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "text" }>,
 ): NarralangShape {
-    const subject = asName(payload.objectName);
+    const subject = asName(displayableSubjectWord(ctx.scene, payload.target, payload.objectName));
     switch (payload.operation) {
         case "create":
             return {
@@ -841,7 +854,7 @@ function videoShape(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "video" }>,
 ): NarralangShape {
-    const subject = asName(payload.objectName);
+    const subject = asName(actionableSubjectWord(ctx.scene, payload.target, "video", payload.objectName));
     switch (payload.operation) {
         case "create":
             return {
@@ -872,7 +885,7 @@ function vfxShape(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "vfx" }>,
 ): NarralangShape {
-    const subject = asName(payload.objectName);
+    const subject = asName(actionableSubjectWord(ctx.scene, payload.target, "vfx", payload.objectName));
     switch (payload.operation) {
         case "create":
             return {

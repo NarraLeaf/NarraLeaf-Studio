@@ -14,7 +14,9 @@ import type {
     StoryVariableRef,
 } from "@shared/types/story";
 import {
+    actionableSubjectWord,
     describeDeclaration,
+    displayableSubjectWord,
     layerActionTargetRef,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
@@ -783,21 +785,28 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
                 ? lookups.assetName(payload.assetId) ?? translate("story.describe.missingAsset")
                 : null;
             // `{operation}` used to interpolate the raw enum, so a Chinese author read "setBgm piano".
-            return `${verbWord(payload, payload.operation)} ${payload.objectName || named || payload.assetId || translate("story.describe.unassigned")}`;
+            // The handle comes from the reference, so a control row follows a rename of the
+            // `playSound` row that created it; a `setBgm` / `playSound` row carries none and names
+            // itself, which is the same fallback the asset name and the id behind it continue.
+            const handle = actionableSubjectWord(scene, payload.target, "audio", payload.objectName);
+            return `${verbWord(payload, payload.operation)} ${handle || named || payload.assetId || translate("story.describe.unassigned")}`;
         }
         if (payload.action === "setVariable") return describeAssignment(payload, variableRefShortLabel(payload.target, lookups));
         if (payload.action === "wait") return payload.mode === "duration" ? translate("story.describe.waitDuration", { seconds: storyMsToSeconds(payload.durationMs ?? 0) }) : translate("story.describe.waitClick");
-        if (payload.action === "image") return translate("story.describe.image", { operation: verbWord(payload, payload.operation), name: payload.objectName || translate("story.describe.unnamed") });
+        // The stage-object rows all read their subject off the reference rather than off their own
+        // `objectName` - see `displayableSubjectWord` for why, and for what a row with no reference
+        // (a `create` row, an older document) falls back to.
+        if (payload.action === "image") return translate("story.describe.image", { operation: verbWord(payload, payload.operation), name: displayableSubjectWord(scene, payload.target, payload.objectName) || translate("story.describe.unnamed") });
         if (payload.action === "displayable") return `${verbWord(payload, payload.operation)} ${resolveDisplayableTargetRef(scene, payload.target).label || translate("story.describe.targetFallback")}`;
-        if (payload.action === "text") return translate("story.describe.text", { operation: verbWord(payload, payload.operation), name: payload.objectName || translate("story.describe.unnamed") });
+        if (payload.action === "text") return translate("story.describe.text", { operation: verbWord(payload, payload.operation), name: displayableSubjectWord(scene, payload.target, payload.objectName) || translate("story.describe.unnamed") });
         if (payload.action === "layer") {
             const layerName = payload.operation === "create"
                 ? (payload.objectName || translate("story.describe.unnamed"))
                 : (resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)).name || translate("story.describe.unnamed"));
             return translate("story.describe.layer", { operation: verbWord(payload, payload.operation), name: layerName });
         }
-        if (payload.action === "video") return translate("story.describe.video", { operation: verbWord(payload, payload.operation), name: payload.objectName || translate("story.describe.unnamed") });
-        if (payload.action === "vfx") return translate("story.describe.vfx", { operation: verbWord(payload, payload.operation), name: payload.objectName || translate("story.describe.unnamed") });
+        if (payload.action === "video") return translate("story.describe.video", { operation: verbWord(payload, payload.operation), name: actionableSubjectWord(scene, payload.target, "video", payload.objectName) || translate("story.describe.unnamed") });
+        if (payload.action === "vfx") return translate("story.describe.vfx", { operation: verbWord(payload, payload.operation), name: actionableSubjectWord(scene, payload.target, "vfx", payload.objectName) || translate("story.describe.unnamed") });
         if (payload.action === "nvl") return translate("story.describe.nvl");
         if (payload.action === "blueprint") return translate("story.describe.blueprint");
         if (payload.action === "camera") return describeCamera(payload, lookups.motionName);

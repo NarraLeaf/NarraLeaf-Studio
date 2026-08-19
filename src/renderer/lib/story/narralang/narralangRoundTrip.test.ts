@@ -606,3 +606,51 @@ describe("a scene written before stable references", () => {
             .toEqual({ action: "image", operation: "setSource", objectName: "poster", color: "#101018" });
     });
 });
+
+describe("a scene renamed from the inspector", () => {
+    /**
+     * What a rename leaves behind. Only the DECLARING row's name is edited; every row that addresses
+     * the object keeps the name it was written with, beside the reference that follows.
+     *
+     * The script view is where that gap used to be fatal rather than merely confusing: printing the
+     * stored name declared `crow` and addressed `bird`, the parser found no declaration for `bird`,
+     * and one `unknownName` refuses the WHOLE scene for text editing.
+     */
+    const renamed = scene([
+        { id: "r1", kind: "action", payload: { action: "image", operation: "create", objectName: "crow", assetId: "asset-mask" } },
+        {
+            id: "r2",
+            kind: "action",
+            payload: { action: "image", operation: "show", objectName: "bird", target: { kind: "image", name: "bird", label: "bird", sourceBlockId: "r1" } },
+        },
+        { id: "r3", kind: "action", payload: { action: "audio", operation: "playSound", assetId: "asset-door", objectName: "gate" } },
+        {
+            id: "r4",
+            kind: "action",
+            payload: { action: "audio", operation: "stopSound", objectName: "door", target: { name: "door", label: "door", sourceBlockId: "r3" } },
+        },
+    ] as never);
+
+    it("addresses the object by the name its declaring row carries now", () => {
+        const printed = printNarralangSceneWithDialect(
+            renamed,
+            { ...lookups, scenes: { ...SCENE_TABLE, "scene-1": renamed } },
+            NARRALANG_DEFAULT_DIALECT,
+        );
+        expect(printed.issues).toEqual([]);
+        // Twice each: the row that declares the name and the row that addresses it agree.
+        expect(printed.text.match(/crow/g)).toHaveLength(2);
+        expect(printed.text.match(/gate/g)).toHaveLength(2);
+        expect(printed.text).not.toContain("bird");
+        expect(printed.text).not.toContain("door_close as door");
+
+        // And so the scene is editable as text at all, which is the part a rename used to cost.
+        const parsed = parseNarralangSceneWithDialect(printed.text, parseLookups, NARRALANG_DEFAULT_DIALECT);
+        expect(parsed.diagnostics).toEqual([]);
+        const ids = parsed.rootBlockIds;
+        expect(parsed.blocks[ids[1]].payload)
+            .toMatchObject({ action: "image", operation: "show", objectName: "crow", target: { sourceBlockId: ids[0] } });
+        expect(parsed.blocks[ids[3]].payload)
+            .toMatchObject({ action: "audio", operation: "stopSound", objectName: "gate", target: { sourceBlockId: ids[2] } });
+    });
+});

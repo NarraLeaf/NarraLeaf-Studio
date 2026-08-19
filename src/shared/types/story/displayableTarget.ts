@@ -147,3 +147,42 @@ export function resolveDisplayableTargetRef(
     // A reference written before `label` existed has none, and falls back to `name` as it always did.
     return { name: target.name ?? "", kind: target.kind, label: target.label ?? target.name ?? "" };
 }
+
+/**
+ * The word a row that ADDRESSES a displayable is written with - on its command line, in its one-line
+ * description, and as the subject of its script line.
+ *
+ * The reference is read, never the row's own `objectName`: a rename edits the row that DECLARES the
+ * object, and a row showing its own stored copy of the name goes on naming something that no longer
+ * answers to it. That is exactly what an author renaming `poster` to `bg` saw - the compiler followed
+ * the reference and every surface kept printing `poster`. `objectName` remains the answer for a
+ * document written before references existed, which is the fallback here and not a fault.
+ *
+ * ## Why `label`, and why only when it is also the key
+ *
+ * `label` is the author-facing half and the only one safe to render: `name` is a lookup key and is
+ * not always a word - a character keys on its `characterId`, an unnamed sound on its `assetId`.
+ *
+ * But a printed subject also has to READ BACK. The command line re-parses what it prints and the
+ * script view resolves every subject against the declarations in the same text, and both spell an
+ * object by its stage key. So the label is usable exactly when it *is* the key - which is exactly
+ * when the declaring row typed a name. When it did not, the key falls back to an id and the label to
+ * a placeholder ("Image", "Sound") no reader would accept, and the row keeps the spelling it stored:
+ * the last word an author actually saw.
+ *
+ * A built-in is addressed by its reserved word rather than by its label ("Background music" is two
+ * tokens and a subject slot takes one), and that reserved word is what the row already stores - so a
+ * built-in target simply keeps the stored spelling too.
+ */
+export function displayableSubjectWord(
+    scene: StoryScene | null | undefined,
+    target: StoryDisplayableTargetRef | undefined,
+    objectName: string | undefined,
+): string {
+    const stored = objectName?.trim() ?? "";
+    if (!target || target.builtin) {
+        return stored;
+    }
+    const resolved = resolveDisplayableTargetRef(scene, target);
+    return resolved.label && resolved.label === resolved.name ? resolved.label : stored || resolved.label;
+}
