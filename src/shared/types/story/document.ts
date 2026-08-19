@@ -259,6 +259,18 @@ export type StoryScene = {
      * Per-scene and additive (no schema bump); the scene-variable rows shown re-bind per scene.
      */
     sceneSnapshots?: StorySceneSnapshot[];
+    /**
+     * What each asset set the SCENE itself names resolves to, per locale.
+     *
+     * The same thing `StoryBlock.assetVariants` is, one level up, and for the same two fields a scene
+     * owns rather than a row: its opening background and its music. **Never authored and never on
+     * disk under `editor/`** - written while a package is assembled and present only in the bundle a
+     * game runs from.
+     *
+     * A separate map rather than a row's, because these two fields belong to no row: the compiler
+     * resolves them while it is building the scene, before any block has run.
+     */
+    assetVariants?: StoryAssetVariants;
     meta?: StoryMeta;
 };
 
