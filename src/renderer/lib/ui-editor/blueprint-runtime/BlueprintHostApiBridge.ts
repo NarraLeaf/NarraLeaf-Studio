@@ -258,6 +258,17 @@ export type BlueprintGamePreferenceKey =
      * defaults through exactly the same plumbing as the twelve the engine defines.
      */
     | "skipReadText"
+    /**
+     * Studio's own, and transient: the skip run is going. Writing it is the equivalent of holding
+     * the skip key, and the host clears it whenever the run ends - a guard stopping it, the game
+     * leaving the stage, the window losing focus. Never persisted (see `@shared/types/preference`).
+     */
+    | "skipping"
+    /**
+     * Studio's own: the engine keeps this in `game.config`, not in its preference store, so the
+     * host copies it across on every change (see `preferenceRuntime`).
+     */
+    | "autoForwardDelay"
     | "showDialog"
     | "gameSpeed"
     | "cps"
@@ -410,6 +421,16 @@ export type BlueprintHostApiRuntime = {
          * false when the line has no take in the current language.
          */
         play: (unitId: string) => Promise<boolean>;
+        /**
+         * Play one choice option's take, at most one instance of that option at a time.
+         *
+         * Same clip and same bus as {@link play}; what differs is the bookkeeping a menu needs. A
+         * hover fires as often as the pointer crosses a row, so a line already speaking is left
+         * alone rather than restarted, and it answers false. `interruptOthers` stops the takes of
+         * the *other* options - the author's call, because a menu that reads each option over the
+         * last is as deliberate a design as one that speaks a single line at a time.
+         */
+        playChoice: (unitId: string, options?: { interruptOthers?: boolean }) => Promise<boolean>;
     };
     frame: {
         getParam: (key: string) => unknown;
@@ -844,6 +865,11 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     voiceConfig?: { voicedLocales: VoiceLocaleEntry[] } | null;
     /** Plays one voice unit in the current dub language; absent outside a game runtime. */
     onPlayVoice?: (unitId: string) => Promise<boolean>;
+    /**
+     * Plays one choice option's take, holding the "is this option already speaking" bookkeeping the
+     * menu needs; absent outside a game runtime.
+     */
+    onPlayChoiceVoice?: (unitId: string, options: { interruptOthers: boolean }) => Promise<boolean>;
     /**
      * Issues one Fetch node request, in a main process.
      *
@@ -1911,8 +1937,10 @@ function normalizeSentenceCps(cps: unknown): number {
 
 const GAME_PREFERENCE_KEYS = new Set<BlueprintGamePreferenceKey>([
     "autoForward",
+    "autoForwardDelay",
     "skip",
     "skipReadText",
+    "skipping",
     "showDialog",
     "gameSpeed",
     "cps",
@@ -1953,6 +1981,7 @@ function normalizeGamePreferenceNumber(operation: string, key: BlueprintGamePref
         case "soundVolume":
         case "globalVolume":
         case "skipDelay":
+        case "autoForwardDelay":
             if (safeValue < 0) {
                 throw new Error(`${operation}: ${key} must be zero or greater`);
             }
@@ -1972,6 +2001,7 @@ function normalizeGamePreferenceValue(
         case "autoForward":
         case "skip":
         case "skipReadText":
+        case "skipping":
         case "showDialog":
             if (typeof value !== "boolean") {
                 throw new Error(`${operation}: ${key} must be a boolean`);
@@ -1993,6 +2023,7 @@ function normalizeGamePreferenceValue(
         case "globalVolume":
         case "skipDelay":
         case "skipInterval":
+        case "autoForwardDelay":
             return normalizeGamePreferenceNumber(operation, key, value);
         default:
             throw new Error(`${operation}: ${key} is not supported`);
@@ -3333,6 +3364,20 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         return false;
                     }
                     return await options.onPlayVoice(String(unitId ?? "").trim());
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            playChoice: async (unitId: string, playOptions?: { interruptOthers?: boolean }) => {
+                const cap = "voice.playChoice";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!options.onPlayChoiceVoice) {
+                        return false;
+                    }
+                    return await options.onPlayChoiceVoice(String(unitId ?? "").trim(), {
+                        interruptOthers: playOptions?.interruptOthers === true,
+                    });
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

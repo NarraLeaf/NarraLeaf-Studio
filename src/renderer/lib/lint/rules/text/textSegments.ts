@@ -31,7 +31,10 @@ import type { LintLocation } from "../../types";
 
 export type LintTextSegmentKind = "narration" | "dialogue" | "choicePrompt" | "choiceOption";
 
-/** Kinds a voice actor records: the spoken line. See `voice/missing` for why choices are excluded. */
+/**
+ * Kinds a voice actor always records: the spoken line. A project that voices its choices adds
+ * `choiceOption` on top of these - see `voice/missing`, which is the only rule that asks.
+ */
 export const SPOKEN_TEXT_SEGMENT_KINDS: readonly LintTextSegmentKind[] = ["narration", "dialogue"];
 
 export type LintTextSegmentRef = {

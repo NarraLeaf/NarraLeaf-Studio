@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, Ellipsis, Plus, RotateCcw } from "lucide-react";
 import type { PanelComponentProps } from "../types";
-import { ContextMenu, Progress, type ContextMenuDef } from "@/lib/components/elements";
+import { ContextMenu, Progress, Switch, type ContextMenuDef } from "@/lib/components/elements";
 import { useWorkspace } from "../../context";
 import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freezeGuard";
 
@@ -119,8 +119,11 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
         return voiceService.onConfigChanged(setConfig);
     }, [voiceService]);
 
-    // Every spoken line of the project (narration + dialogue across all stories),
-    // in narrative order — the coverage denominator for each voice language.
+    // Every line of the project an actor records, in narrative order — the coverage denominator for
+    // each voice language.
+    //
+    // Re-runs when choice voicing is switched: it decides which rows are script at all, so the
+    // denominator is wrong until the walk happens again.
     //
     // Cached per story and re-extracted one story at a time. A document change used to re-read and
     // re-walk EVERY story in the project, and a document change is what the story editor emits while
@@ -184,7 +187,10 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
             unsubscribeLibrary();
             unsubscribeDocument();
         };
-    }, [storyService, voiceService]);
+        // The flag rather than the whole config: naming pattern and cast edits do not change which
+        // rows are voiceable, and re-walking every story on each of them is what this effect's
+        // per-story cache exists to avoid.
+    }, [storyService, voiceService, config?.voiceChoices]);
 
     // Per-language coverage; recomputed when rows, config, or any assignment changes.
     useEffect(() => {
@@ -279,6 +285,14 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
             .catch(error => uiService?.showError(error instanceof Error ? error : String(error)));
     }, [voiceService, config, uiService]);
 
+    const commitVoiceChoices = useCallback((next: boolean) => {
+        if (!voiceService) {
+            return;
+        }
+        void voiceService.updateConfiguration(current => ({ ...current, voiceChoices: next }))
+            .catch(error => uiService?.showError(error instanceof Error ? error : String(error)));
+    }, [voiceService, uiService]);
+
     const handleOpenTable = useCallback((code: string, displayName: string) => {
         openEditorTab(createVoiceEditorTab(code, displayName));
     }, [openEditorTab]);
@@ -289,6 +303,12 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
             if (character) {
                 return character.profile.getName();
             }
+        }
+        // This feeds `{character}` in the recording filename as well as the script's speaker column,
+        // so a choice option has to read as one: filed under narration it would collide with the
+        // narrator's own lines in the same scene and land in the booth as the wrong instruction.
+        if (row.role === "choiceText") {
+            return t("workspace.voice.table.choiceSpeaker");
         }
         return t("workspace.voice.table.narrationSpeaker");
     }, [characterService, t]);
@@ -666,6 +686,23 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
                     It lived only in the project file before, so a project whose names the default
                     pattern did not suit had to be hand-edited on disk to change it. Shown only once
                     a language exists, because it is meaningless before there is a script to export. */}
+                {/* Whether an option a player reads is also a line an actor records. Off by default:
+                    turning it on grows the script, and with it the coverage denominator, in a project
+                    that may have deliberately voiced only its spoken lines. */}
+                {locales.length > 0 ? (
+                    <div className="mt-4 flex items-center gap-2">
+                        <Switch
+                            size="sm"
+                            checked={config?.voiceChoices === true}
+                            disabled={freeze.frozen}
+                            onCheckedChange={commitVoiceChoices}
+                            aria-label={t("workspace.voice.panel.choicesTitle")}
+                        />
+                        <span className="truncate text-xs font-medium text-fg">
+                            {t("workspace.voice.panel.choicesTitle")}
+                        </span>
+                    </div>
+                ) : null}
                 {locales.length > 0 ? (
                     <div className="mt-4 flex flex-col gap-1.5">
                         <div className="truncate text-xs font-medium text-fg">

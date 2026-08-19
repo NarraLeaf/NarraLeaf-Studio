@@ -359,8 +359,15 @@ export class VoiceService extends Service<VoiceService> implements IVoiceService
 
     // --- Row extraction + coverage (reuse localization's narrative-order rows) ---
 
+    /**
+     * The lines of one story an actor records, in narrative order.
+     *
+     * Reads the project switch itself so every caller - coverage, the voice table, the recording
+     * script, batch import - asks the same question one way. A caller that resolved the roles for
+     * itself would be a second answer to "what is voiced here", and the two would drift.
+     */
     public extractRows(document: StoryDocument): StoryTranslationRow[] {
-        return extractVoiceableRows(document);
+        return extractVoiceableRows(document, { includeChoices: this.getConfiguration().voiceChoices });
     }
 
     public computeProgress(rows: readonly TranslatableUnitRef[], locale: string): VoiceProgress {

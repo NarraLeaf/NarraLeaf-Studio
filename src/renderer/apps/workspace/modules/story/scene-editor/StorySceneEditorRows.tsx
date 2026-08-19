@@ -557,6 +557,15 @@ export const StoryBlockRow = memo(function StoryBlockRow(props: {
                         row: their centre line sits at 12px while the words centre at half the row box,
                         so the icons ride high by 2px in compact and 7px in comfortable — the looser the
                         density an author picks, the more crooked the row's own controls look. */}
+                    {/* A choice option is a container row, and it is also a line an actor records once
+                        the project voices its choices - so it gets the one control the cluster holds
+                        that is about the words rather than about the container: hearing this line
+                        while reading it. The mark itself is absent until a take exists. */}
+                    {containerInfo?.role === "option" ? (
+                        <div className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
+                            <StoryVoiceIndicator block={block} />
+                        </div>
+                    ) : null}
                     {containerInfo ? null : (
                         <div className="ml-auto flex min-h-[var(--nl-story-row-box)] shrink-0 items-center gap-1">
                             {/* Mounted only on the rows that are cut points, unlike the two beside it:
