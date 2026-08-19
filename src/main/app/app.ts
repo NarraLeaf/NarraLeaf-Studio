@@ -517,9 +517,14 @@ export class App extends BaseApp {
      * the workspace reports a working project. Every way this can fail therefore lands on the home
      * screen with a line in the log, rather than on a windowless app or a dead end.
      *
-     * That last part is what makes reopening the last project safe as a default: a project deleted,
+     * That last part is what keeps the reopen from being a way to lose the app: a project deleted,
      * moved or corrupted since is not a failed launch, it is a home screen with a message - and the
      * author is one click from opening something else.
+     *
+     * Restores one project, never a set. Studio opens one window per project, so a session that
+     * ended with three of them open comes back as the one at the head of the history; nothing
+     * records which windows were up when the last one went. That is the shape of the preference,
+     * not a gap in this method - see `workspace.reopenLastProject`, which is off by default.
      */
     public async openStartupWindow(): Promise<void> {
         await this.ensureLauncher();
