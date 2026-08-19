@@ -41,7 +41,14 @@ export function AssetsListView({
 }: AssetsListViewProps) {
     const { t, tn } = useTranslation();
     const freeze = useFreezeGuard();
-    const { filteredAssets, filteredGroups, rootAssetSets, draggedItem, showContextMenu } = useAssetsPanelContext();
+    const {
+        filteredAssets,
+        filteredGroups,
+        rootAssetSets,
+        memberAssetIds,
+        draggedItem,
+        showContextMenu,
+    } = useAssetsPanelContext();
 
     const hasAnyItems = useMemo(() => Object.values(filteredAssets).some(list => list.length > 0) || Object.values(filteredGroups).some(list => list.length > 0), [filteredAssets, filteredGroups]);
 
@@ -139,7 +146,9 @@ export function AssetsListView({
                                         .filter(entry => !entry.set.groupId)
                                         .map(entry => <AssetSetItem key={entry.set.id} entry={entry} />)}
                                     {categoryGroups.filter(g => !g.parentGroupId).map(group => <GroupItem key={group.id} group={group} category={category} level={0} />)}
-                                    {categoryAssets.filter(a => !a.groupId).map(asset => <AssetItem key={asset.id} asset={asset} category={category} level={0} />)}
+                                    {categoryAssets
+                                        .filter(a => !a.groupId && !memberAssetIds.has(a.id))
+                                        .map(asset => <AssetItem key={asset.id} asset={asset} category={category} level={0} />)}
                                 </div>
                             )}
                         </div>
@@ -241,6 +250,7 @@ function AssetSetItem({ entry, level = 0, trailing }: {
         handleAssetSetSelect,
         handleAssetClick,
         showAssetSetContextMenu,
+        showAssetSetValueContextMenu,
         isMultiSelectMode,
     } = useAssetsPanelContext();
     const summary = useSetSummary(entry);
@@ -304,6 +314,7 @@ function AssetSetItem({ entry, level = 0, trailing }: {
                         coordinate={coordinate}
                         asset={asset ?? null}
                         onOpen={() => { if (asset) handleAssetClick(asset, isMultiSelectMode); }}
+                        onContextMenu={event => showAssetSetValueContextMenu(event, entry, cell.value)}
                     />
                 );
             })}
@@ -322,12 +333,13 @@ function MemberIcon({ asset }: { asset: Asset }) {
  * A value with no file keeps its row: the value is the reason the row exists, and dropping it would
  * leave a set that is missing something looking complete.
  */
-function AssetSetMemberRow({ cell, level, coordinate, asset, onOpen }: {
+function AssetSetMemberRow({ cell, level, coordinate, asset, onOpen, onContextMenu }: {
     cell: AssetSetCell;
     level: number;
     coordinate: string;
     asset: Asset | null;
     onOpen: () => void;
+    onContextMenu: (event: React.MouseEvent) => void;
 }) {
     const { t } = useTranslation();
     return (
@@ -347,6 +359,7 @@ function AssetSetMemberRow({ cell, level, coordinate, asset, onOpen }: {
             trailing={coordinate}
             dataAttributes={{ "data-asset-set-member": cell.label }}
             onClick={onOpen}
+            onContextMenu={onContextMenu}
         />
     );
 }
@@ -362,6 +375,7 @@ function GroupItem({ group, category, level }: { group: AssetGroup; category: As
         expandedGroups,
         setExpandedGroups,
         rootAssetSets,
+        memberAssetIds,
         handleItemSelect,
         handleGroupFocus,
         showContextMenu,
@@ -390,7 +404,8 @@ function GroupItem({ group, category, level }: { group: AssetGroup; category: As
     }, [group.id, setExpandedGroups]);
 
     const childGroups = filteredGroups[category].filter(g => g.parentGroupId === group.id);
-    const groupAssets = filteredAssets[category].filter(a => a.groupId === group.id);
+    const groupAssets = filteredAssets[category]
+        .filter(a => a.groupId === group.id && !memberAssetIds.has(a.id));
     const isDragging = !!draggedItem && draggedItem.isGroup && draggedItem.item.id === group.id;
     const isSelected = selectedItems.has(`group:${group.id}`);
     const isCut = clipboard?.type === 'cut' && clipboard.groups.some(g => g.id === group.id);

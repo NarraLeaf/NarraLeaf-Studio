@@ -82,3 +82,19 @@ the author see the grid behind the placeholder they are choosing.
 the segment: Import CGs / Add Recollection / Import Tracks / Add Voice Lines.
 The empty state offers the same verb, so an empty tab teaches what it is for
 instead of dead-ending.
+
+## P8 — The idle inspector says what collects a row
+
+Three of the four columns collect themselves as the player plays: a recollection
+on reaching its scene, a track on being played, a voice line on being spoken. CG
+has no such moment and stays on an explicit `Unlock Gallery` in the story.
+
+Left unsaid, that difference reads as a broken column: an author who watches
+music fill itself and CG stay empty concludes the CG tab is faulty. So each
+column's idle inspector carries one line naming what collects it, beside the row
+fields, in the same place the blueprint contract is taught (P5) and under the
+same restraint: it is a line, not a banner, and it disappears the moment anything
+is selected.
+
+Not on the cards, and not on a selected entry. The fact is per *column*, so
+repeating it per row would put the same sentence on screen fifty times.

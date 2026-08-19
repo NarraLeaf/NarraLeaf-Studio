@@ -64,7 +64,7 @@ export { HintPopover, AnchoredPanel } from "./HintPopover";
 export type { HintPopoverProps, AnchoredPanelProps, PanelAnchor } from "./HintPopover";
 
 // Slider components
-export { Slider } from "./Slider";
+export { Slider, useSliderDraft } from "./Slider";
 export type { SliderProps } from "./Slider";
 
 // Badge component

@@ -400,6 +400,7 @@ export const assets = {
         unfinished: "No variants declared",
         menu: {
             create: "New Set from Selection",
+            createSub: "New Set from Selection, Here",
         },
         create: {
             title: "New asset set",

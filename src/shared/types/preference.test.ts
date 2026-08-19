@@ -4,6 +4,8 @@ import {
     PLAYER_PREFERENCE_GROUPS,
     PLAYER_PREFERENCE_KEYS,
     PLAYER_PREFERENCE_SPECS,
+    RUNTIME_PREFERENCE_DEFAULTS,
+    RUNTIME_PREFERENCE_KEYS,
     normalizePlayerPreference,
     normalizePlayerPreferences,
 } from "./preference";
@@ -51,6 +53,30 @@ describe("player preference specs", () => {
             expect(spec.kind).toBe("number");
             expect(spec.kind === "number" && spec.min).toBeGreaterThan(0);
         }
+    });
+});
+
+describe("runtime preferences", () => {
+    /**
+     * The one thing that must never become true.
+     *
+     * Both halves of the preference plumbing enumerate `PLAYER_PREFERENCE_KEYS`: the project file
+     * writes each of them as an authored default, and the player's own store saves and restores
+     * each of them. A transient key on that list is therefore a game that starts skipping by
+     * itself for anyone who quit while it was, and an author asked to choose whether it does.
+     */
+    it("shares no key with the player's saved preferences", () => {
+        const saved = new Set<string>(PLAYER_PREFERENCE_KEYS);
+        expect(RUNTIME_PREFERENCE_KEYS.filter(key => saved.has(key))).toEqual([]);
+    });
+
+    it("has a starting value for every key", () => {
+        expect(Object.keys(RUNTIME_PREFERENCE_DEFAULTS).sort()).toEqual([...RUNTIME_PREFERENCE_KEYS].sort());
+    });
+
+    // A run has to be started, never resumed.
+    it("starts every session with skipping off", () => {
+        expect(RUNTIME_PREFERENCE_DEFAULTS.skipping).toBe(false);
     });
 });
 

@@ -126,12 +126,32 @@ export type RuntimePluginEventMap = {
      */
     sceneEnter: { sceneId: string | null };
     sceneExit: { sceneId: string | null };
-    /** One line of dialogue finished displaying. */
-    dialogueEnd: void;
+    /**
+     * One line of dialogue finished displaying.
+     *
+     * `textId` is the line's stable text id - the same key the translation table and the engine's
+     * `voiceId` use - or null for a line the host cannot name (a story compiled outside Studio, or
+     * a line the compile did not bind). It is the id to record against when a plugin keeps its own
+     * account of what the player has heard.
+     */
+    dialogueEnd: { textId: string | null };
     /** The player picked a choice. */
     choiceMade: { text: string };
     /** A character line was shown. */
     characterPrompt: { character: string | null; text: string };
+    /**
+     * The story started playing an audio asset: a `/bgm` or `/sound` row, or a scene whose
+     * configured background music begins as it mounts.
+     *
+     * Reports the clip the *story* began, not every sound the game makes: a clip a Page starts
+     * through `Play Sound` belongs to the interface rather than to the playthrough, and does not
+     * appear here.
+     *
+     * Like `sceneEnter` this follows execution rather than a first visit, so a replay, a rollback
+     * or a re-entered scene fires it again. Treat it as "this is playing now" and make what you do
+     * with it idempotent.
+     */
+    audioPlayed: { assetId: string };
     /** The action stack drained with a save context present. */
     gameEnd: void;
     beforeRestore: void;

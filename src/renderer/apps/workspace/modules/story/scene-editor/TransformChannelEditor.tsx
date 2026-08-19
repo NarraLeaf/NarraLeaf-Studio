@@ -19,6 +19,7 @@ import {
     SearchInput,
     Select,
     Slider,
+    useSliderDraft,
     type PanelAnchor,
     type SelectOption,
 } from "@/lib/components/elements";
@@ -197,14 +198,9 @@ function AxisNumber(props: { label: string; value: number | undefined; fallback:
 /**
  * A slider that writes the document once, when the drag settles.
  *
- * `Slider.onValueChange` fires on every pointer move - it exists to drive a live readout cheaply -
- * and wiring the document write to it put one history entry on the stack per pixel dragged, so a
- * single gesture buried the undo stack and `mod+z` walked back a few pixels at a time. The value
- * shown while dragging is local; the write happens on `onValueCommit`, which is what every other
- * slider in the app already does.
- *
- * The draft clears on commit so an edit from anywhere else flows back in - a slider that kept its
- * own number after the gesture would stop tracking the row it is editing.
+ * The draft lives in {@link useSliderDraft}, beside the component whose two-callback contract it
+ * exists to honour - the same hook the puppet parameter rows use, so the two cannot drift on the
+ * question of when a drag becomes an edit.
  */
 function DraftSlider(props: {
     value: number;
@@ -217,8 +213,7 @@ function DraftSlider(props: {
     format: (value: number) => string;
     onCommit: (value: number) => void;
 }) {
-    const [draft, setDraft] = useState<number | null>(null);
-    const shown = draft ?? props.value;
+    const draft = useSliderDraft(props.value, props.onCommit);
     return (
         <div className="flex items-center gap-2">
             {props.caption ? <span className="shrink-0 text-2xs text-fg-subtle">{props.label}</span> : null}
@@ -227,15 +222,12 @@ function DraftSlider(props: {
                 min={props.min}
                 max={props.max}
                 step={props.step}
-                value={shown}
+                value={draft.value}
                 aria-label={props.label}
-                onValueChange={setDraft}
-                onValueCommit={next => {
-                    setDraft(null);
-                    props.onCommit(next);
-                }}
+                onValueChange={draft.onValueChange}
+                onValueCommit={draft.onValueCommit}
             />
-            <span className="w-8 shrink-0 text-right text-2xs tabular-nums text-fg-subtle">{props.format(shown)}</span>
+            <span className="w-8 shrink-0 text-right text-2xs tabular-nums text-fg-subtle">{props.format(draft.value)}</span>
         </div>
     );
 }

@@ -16,6 +16,7 @@ import {
     StoryAnimationTimeline,
     StoryAnimationTrack,
     StoryAnimationTrackProperty,
+    StoryAlignPositionValue,
     StoryBlock,
     StoryBlockId,
     StoryChapter,
@@ -808,13 +809,18 @@ function normalizeTransformSequenceProps(props: StoryTransformSequenceProps | un
     }
     const next: StoryTransformSequenceProps = {};
     if (props.position && typeof props.position === "object") {
-        const position = {
-            xalign: normalizeOptionalNumber(props.position.xalign),
-            yalign: normalizeOptionalNumber(props.position.yalign),
-            xoffset: normalizeOptionalNumber(props.position.xoffset),
-            yoffset: normalizeOptionalNumber(props.position.yoffset),
-        };
-        if (Object.values(position).some(value => value !== undefined)) {
+        // Only the axes actually written survive, as *absent* keys. An `xalign: undefined` key is
+        // not the same thing as no key at all: it overwrites the default in any `{...defaults,
+        // ...value}` merge downstream, and an unwritten axis is exactly the one that has to keep
+        // whatever the target already had. The motion preview merged a normalized offset-only
+        // keyframe that way and got `xalign: undefined`, which rendered as `calc(NaN% + 0px)` —
+        // an invalid declaration the browser drops, parking the frame in the stage's corner.
+        const position: StoryAlignPositionValue = {};
+        assignPositionAxis(position, "xalign", props.position.xalign);
+        assignPositionAxis(position, "yalign", props.position.yalign);
+        assignPositionAxis(position, "xoffset", props.position.xoffset);
+        assignPositionAxis(position, "yoffset", props.position.yoffset);
+        if (Object.keys(position).length > 0) {
             next.position = position;
         }
     }
@@ -834,6 +840,13 @@ function normalizeTransformSequenceProps(props: StoryTransformSequenceProps | un
     assignOptionalString(next, "backdropFilter", props.backdropFilter);
     assignOptionalString(next, "mixBlendMode", props.mixBlendMode);
     return next;
+}
+
+function assignPositionAxis(target: StoryAlignPositionValue, axis: keyof StoryAlignPositionValue, value: unknown): void {
+    const normalized = normalizeOptionalNumber(value);
+    if (normalized !== undefined) {
+        target[axis] = normalized;
+    }
 }
 
 function normalizeOptionalNumber(value: unknown): number | undefined {
