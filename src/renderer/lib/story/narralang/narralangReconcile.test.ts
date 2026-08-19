@@ -518,3 +518,99 @@ describe("reconcileNarralangScene", () => {
         expect(result.touchedBlockIds).toEqual(["n16"]);
     });
 });
+
+// --- References ---------------------------------------------------------------------------------------
+
+/**
+ * What a row addressing a stage object survives.
+ *
+ * A reference binds a row to the row that DECLARED the object it means, which is what makes the row
+ * follow a rename. A script carries names and nothing else, so a row the author edited used to come
+ * back from the re-parse with its name alone - the reference silently gone, and with it the rename
+ * following, over a typo. These are the four readings that has to have instead.
+ */
+const REF_BIRD = { kind: "image" as const, name: "bird", label: "bird", sourceBlockId: "r1" };
+
+const referring: StoryScene = scene([
+    { id: "r1", kind: "action", payload: { action: "image", operation: "create", objectName: "bird", assetId: "asset-bird" } },
+    { id: "r2", kind: "action", payload: { action: "image", operation: "create", objectName: "crow", assetId: "asset-op" } },
+    { id: "r3", kind: "action", payload: { action: "image", operation: "show", objectName: "bird", target: REF_BIRD } },
+    // The same row as `r3`, minus the reference: the shape every document written before references
+    // carries, sitting in the same scene so one edit can be watched upgrading it.
+    { id: "r4", kind: "action", payload: { action: "image", operation: "hide", objectName: "bird" } },
+    // A subject no row declares. The language does not require one to exist, so this is not a fault.
+    { id: "r5", kind: "action", payload: { action: "image", operation: "setSource", objectName: "poster", color: "#101018" } },
+] as never);
+
+const SHOW_BIRD = "  show bird";
+const HIDE_BIRD = "  hide bird";
+const CREATE_BIRD = "  image create bird bird";
+
+describe("a row that addresses a stage object", () => {
+    it("keeps its reference when the author edits the line", () => {
+        // The whole point of the card: editing a line must not cost the row its binding. Nothing about
+        // `at left` says anything about WHICH bird, so the reference has to come back intact.
+        const result = reconciled(referring, editLine(script(referring), SHOW_BIRD, "  show bird at left"));
+
+        expect(result.touchedBlockIds).toEqual(["r3"]);
+        expect(result.blocks.r3.payload).toMatchObject({ action: "image", operation: "show", objectName: "bird" });
+        expect((result.blocks.r3.payload as { target?: unknown }).target).toEqual(REF_BIRD);
+    });
+
+    it("follows the line to the row it now names, not the one it used to", () => {
+        // Re-pointed, not renamed: `crow` was already there. A reference resolved against the scene as
+        // it stood BEFORE the edit would still say `r1` here, which is the reading this rules out.
+        const result = reconciled(referring, editLine(script(referring), SHOW_BIRD, "  show crow"));
+
+        expect((result.blocks.r3.payload as { target?: unknown }).target)
+            .toEqual({ kind: "image", name: "crow", label: "crow", sourceBlockId: "r2" });
+    });
+
+    it("resolves against the declarations this edit wrote, not the ones it replaced", () => {
+        // The creator row and the row pointing at it, renamed in one edit. The name `raven` exists
+        // nowhere in the scene the text was printed from, so an index built on that scene could not
+        // resolve it at all - and the reconcile would be refused over an edit that reads perfectly.
+        // Built on the new text, it resolves; and the id it resolves to is the one the creator row
+        // already had, because the edited line kept its row.
+        let next = editLine(script(referring), CREATE_BIRD, "  image create raven bird");
+        next = editLine(next, SHOW_BIRD, "  show raven");
+        next = editLine(next, HIDE_BIRD, "  hide raven");
+        const result = reconciled(referring, next);
+
+        expect(result.blocks.r1.payload).toMatchObject({ operation: "create", objectName: "raven" });
+        const raven = { kind: "image", name: "raven", label: "raven", sourceBlockId: "r1" };
+        expect((result.blocks.r3.payload as { target?: unknown }).target).toEqual(raven);
+        expect((result.blocks.r4.payload as { target?: unknown }).target).toEqual(raven);
+    });
+
+    it("upgrades a row that carried only a name", () => {
+        // A document written before references, edited through the text view. The parse resolves the
+        // name it reads, so the round trip hands the row a binding it never had rather than leaving it
+        // on the legacy path forever.
+        expect((referring.blocks.r4.payload as { target?: unknown }).target).toBeUndefined();
+        const result = reconciled(referring, editLine(script(referring), HIDE_BIRD, "  hide bird at left"));
+
+        expect(result.touchedBlockIds).toEqual(["r4"]);
+        expect((result.blocks.r4.payload as { target?: unknown }).target).toEqual(REF_BIRD);
+    });
+
+    it("leaves a name nothing declares as a name, and reports nothing", () => {
+        // The other half of the upgrade: a subject no row in the script declares keeps its
+        // `objectName` and gains no reference. Saying anything about it here would refuse the whole
+        // scene - one diagnostic does - over a row that is the compiler's business, not the parser's.
+        const result = reconciled(referring, editLine(script(referring), "image source poster #101018", "image source poster #202030"));
+
+        expect(result.touchedBlockIds).toEqual(["r5"]);
+        expect(result.blocks.r5.payload)
+            .toEqual({ action: "image", operation: "setSource", objectName: "poster", color: "#202030" });
+    });
+
+    it("writes no reference on the row that declares the object", () => {
+        // A creator row is the thing pointed AT. Giving it a reference to itself would be a second
+        // answer to the question its own `objectName` already answers.
+        const result = reconciled(referring, editLine(script(referring), CREATE_BIRD, "  image create bird opening"));
+
+        expect(result.touchedBlockIds).toEqual(["r1"]);
+        expect(result.blocks.r1.payload).toEqual({ action: "image", operation: "create", objectName: "bird", assetId: "asset-op" });
+    });
+});

@@ -259,6 +259,25 @@ const SCENE_TABLE: Record<string, StoryScene> = {
 const TRUST: StoryVariableRef = { scope: "scene", variableId: "b-var" };
 const VARIABLES = [{ name: "trust", ref: TRUST }];
 
+/**
+ * The stable references the rows below address their stage objects by.
+ *
+ * Named here rather than spelled out on twenty rows, because the point they make is one point: a row
+ * that addresses an object says WHICH row declared it, and the parser resolves that from the script
+ * rather than being handed it. The script carries only the name, so a round trip that came back
+ * without these would be the reference silently downgrading to a name every time a line was read.
+ *
+ * `name` and `label` coincide because a stage object in NarraLang names itself - the stage key IS
+ * what the author typed. The music channel is the one target with no declaring row, so it is
+ * referenced by its built-in rather than bound to one.
+ */
+const BIRD = { kind: "image" as const, name: "bird", label: "bird", sourceBlockId: "s2" };
+const TITLE = { kind: "text" as const, name: "title", label: "title", sourceBlockId: "s6" };
+const OP = { name: "op", label: "op", sourceBlockId: "s14" };
+const PETALS = { name: "petals", label: "petals", sourceBlockId: "s20" };
+const DOOR = { name: "door", label: "door", sourceBlockId: "a2" };
+const BGM = { builtin: "bgm" as const, name: "bgm", label: "Background music" };
+
 const corpus: Record<string, StoryScene> = {
     "prose, characters and a menu": scene([
         { id: "b1", kind: "action", payload: { action: "setBackground", assetId: "asset-bg", transition: { kind: "dissolve", durationMs: 500 } } },
@@ -300,43 +319,45 @@ const corpus: Record<string, StoryScene> = {
     "audio, every verb": scene([
         { id: "a1", kind: "action", payload: { action: "audio", operation: "setBgm", assetId: "asset-bgm", volume: 0.7, fadeMs: 1500, loop: true, rate: 1.2 } },
         { id: "a2", kind: "action", payload: { action: "audio", operation: "playSound", assetId: "asset-door", objectName: "door" } },
-        { id: "a3", kind: "action", payload: { action: "audio", operation: "setVolume", objectName: "door", volume: 0.3, fadeMs: 1000 } },
-        { id: "a4", kind: "action", payload: { action: "audio", operation: "setRate", objectName: "door", rate: 1.5 } },
-        { id: "a5", kind: "action", payload: { action: "audio", operation: "pauseSound", objectName: "door", fadeMs: 500 } },
-        { id: "a6", kind: "action", payload: { action: "audio", operation: "resumeSound", objectName: "door", fadeMs: 500 } },
-        { id: "a7", kind: "action", payload: { action: "audio", operation: "muteSound", objectName: "door", muted: true } },
-        { id: "a8", kind: "action", payload: { action: "audio", operation: "muteSound", objectName: "door", muted: false } },
-        { id: "a9", kind: "action", payload: { action: "audio", operation: "seekSound", objectName: "door", timeMs: 12000 } },
-        { id: "a10", kind: "action", payload: { action: "audio", operation: "stopSound", objectName: "door", fadeMs: 500 } },
-        { id: "a11", kind: "action", payload: { action: "audio", operation: "stopSound", fadeMs: 500 } },
+        { id: "a3", kind: "action", payload: { action: "audio", operation: "setVolume", objectName: "door", target: DOOR, volume: 0.3, fadeMs: 1000 } },
+        { id: "a4", kind: "action", payload: { action: "audio", operation: "setRate", objectName: "door", target: DOOR, rate: 1.5 } },
+        { id: "a5", kind: "action", payload: { action: "audio", operation: "pauseSound", objectName: "door", target: DOOR, fadeMs: 500 } },
+        { id: "a6", kind: "action", payload: { action: "audio", operation: "resumeSound", objectName: "door", target: DOOR, fadeMs: 500 } },
+        { id: "a7", kind: "action", payload: { action: "audio", operation: "muteSound", objectName: "door", target: DOOR, muted: true } },
+        { id: "a8", kind: "action", payload: { action: "audio", operation: "muteSound", objectName: "door", target: DOOR, muted: false } },
+        { id: "a9", kind: "action", payload: { action: "audio", operation: "seekSound", objectName: "door", target: DOOR, timeMs: 12000 } },
+        { id: "a10", kind: "action", payload: { action: "audio", operation: "stopSound", objectName: "door", target: DOOR, fadeMs: 500 } },
+        // The music channel: a row that names no handle addresses it, and it is the one target bound
+        // to a built-in rather than to a row.
+        { id: "a11", kind: "action", payload: { action: "audio", operation: "stopSound", target: BGM, fadeMs: 500 } },
     ] as never),
 
     "stage objects": scene([
         { id: "s1", kind: "action", payload: { action: "layer", operation: "create", objectName: "sky", zIndex: 5 } },
         { id: "s2", kind: "action", payload: { action: "image", operation: "create", objectName: "bird", assetId: "asset-bird", layer: { kind: "custom", sourceBlockId: "s1", name: "sky" }, autoFit: true, transform: { to: { position: { xalign: 0.75, yalign: 0.5 } } } } },
-        { id: "s3", kind: "action", payload: { action: "image", operation: "setSource", objectName: "bird", color: "#101018" } },
-        { id: "s4", kind: "action", payload: { action: "image", operation: "show", objectName: "bird", transform: { to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 500 }, transition: { kind: "fadeIn", durationMs: 300 } } },
-        { id: "s5", kind: "action", payload: { action: "image", operation: "hide", objectName: "bird", transform: { to: { opacity: 0 }, durationMs: 300 } } },
+        { id: "s3", kind: "action", payload: { action: "image", operation: "setSource", objectName: "bird", target: BIRD, color: "#101018" } },
+        { id: "s4", kind: "action", payload: { action: "image", operation: "show", objectName: "bird", target: BIRD, transform: { to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 500 }, transition: { kind: "fadeIn", durationMs: 300 } } },
+        { id: "s5", kind: "action", payload: { action: "image", operation: "hide", objectName: "bird", target: BIRD, transform: { to: { opacity: 0 }, durationMs: 300 } } },
         { id: "s6", kind: "action", payload: { action: "text", operation: "create", objectName: "title", text: "第一章", layer: { kind: "default", layer: "background" }, transform: { to: { position: { xalign: 0.5, yalign: 0.5 } } } } },
-        { id: "s7", kind: "action", payload: { action: "text", operation: "setText", objectName: "title", text: "第二章" } },
-        { id: "s8", kind: "action", payload: { action: "text", operation: "setFontSize", objectName: "title", fontSize: 32 } },
-        { id: "s9", kind: "action", payload: { action: "text", operation: "setFontColor", objectName: "title", fontColor: "#ffffff" } },
-        { id: "s10", kind: "action", payload: { action: "text", operation: "show", objectName: "title", transform: { to: { opacity: 1 }, durationMs: 200 } } },
-        { id: "s11", kind: "action", payload: { action: "text", operation: "hide", objectName: "title" } },
+        { id: "s7", kind: "action", payload: { action: "text", operation: "setText", objectName: "title", target: TITLE, text: "第二章" } },
+        { id: "s8", kind: "action", payload: { action: "text", operation: "setFontSize", objectName: "title", target: TITLE, fontSize: 32 } },
+        { id: "s9", kind: "action", payload: { action: "text", operation: "setFontColor", objectName: "title", target: TITLE, fontColor: "#ffffff" } },
+        { id: "s10", kind: "action", payload: { action: "text", operation: "show", objectName: "title", target: TITLE, transform: { to: { opacity: 1 }, durationMs: 200 } } },
+        { id: "s11", kind: "action", payload: { action: "text", operation: "hide", objectName: "title", target: TITLE } },
         { id: "s12", kind: "action", payload: { action: "layer", operation: "setZIndex", objectName: "sky", target: { kind: "custom", sourceBlockId: "s1", name: "sky" }, zIndex: 7 } },
         { id: "s13", kind: "action", payload: { action: "layer", operation: "transform", objectName: "sky", target: { kind: "custom", sourceBlockId: "s1", name: "sky" }, transform: { to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 400 } } },
         { id: "s14", kind: "action", payload: { action: "video", operation: "create", objectName: "op", assetId: "asset-op", muted: true } },
-        { id: "s15", kind: "action", payload: { action: "video", operation: "seek", objectName: "op", timeMs: 3000 } },
-        { id: "s16", kind: "action", payload: { action: "video", operation: "play", objectName: "op" } },
-        { id: "s17", kind: "action", payload: { action: "video", operation: "pause", objectName: "op" } },
-        { id: "s18", kind: "action", payload: { action: "video", operation: "resume", objectName: "op" } },
-        { id: "s19", kind: "action", payload: { action: "video", operation: "stop", objectName: "op" } },
+        { id: "s15", kind: "action", payload: { action: "video", operation: "seek", objectName: "op", target: OP, timeMs: 3000 } },
+        { id: "s16", kind: "action", payload: { action: "video", operation: "play", objectName: "op", target: OP } },
+        { id: "s17", kind: "action", payload: { action: "video", operation: "pause", objectName: "op", target: OP } },
+        { id: "s18", kind: "action", payload: { action: "video", operation: "resume", objectName: "op", target: OP } },
+        { id: "s19", kind: "action", payload: { action: "video", operation: "stop", objectName: "op", target: OP } },
         { id: "s20", kind: "action", payload: { action: "vfx", operation: "create", objectName: "petals", assetId: "asset-petals", blendMode: "screen", opacity: 0.6, fit: "cover", zIndex: 3, rate: 0.5, loop: false } },
-        { id: "s21", kind: "action", payload: { action: "vfx", operation: "setRate", objectName: "petals", rate: 2 } },
-        { id: "s22", kind: "action", payload: { action: "vfx", operation: "show", objectName: "petals", durationMs: 500 } },
-        { id: "s23", kind: "action", payload: { action: "vfx", operation: "hide", objectName: "petals", durationMs: 500 } },
-        { id: "s24", kind: "action", payload: { action: "vfx", operation: "pause", objectName: "petals" } },
-        { id: "s25", kind: "action", payload: { action: "vfx", operation: "resume", objectName: "petals" } },
+        { id: "s21", kind: "action", payload: { action: "vfx", operation: "setRate", objectName: "petals", target: PETALS, rate: 2 } },
+        { id: "s22", kind: "action", payload: { action: "vfx", operation: "show", objectName: "petals", target: PETALS, durationMs: 500 } },
+        { id: "s23", kind: "action", payload: { action: "vfx", operation: "hide", objectName: "petals", target: PETALS, durationMs: 500 } },
+        { id: "s24", kind: "action", payload: { action: "vfx", operation: "pause", objectName: "petals", target: PETALS } },
+        { id: "s25", kind: "action", payload: { action: "vfx", operation: "resume", objectName: "petals", target: PETALS } },
     ] as never),
 
     "the raw effect channel": scene([
@@ -524,4 +545,64 @@ describe("print, parse, print", () => {
             expect(again.issues).toEqual([]);
         });
     }
+});
+
+describe("a scene written before stable references", () => {
+    /**
+     * The same rows the corpus carries, with every `target` taken off - which is exactly the shape of
+     * every document authored before references existed.
+     */
+    const legacy = scene([
+        { id: "l1", kind: "action", payload: { action: "image", operation: "create", objectName: "bird", assetId: "asset-bird" } },
+        { id: "l2", kind: "action", payload: { action: "image", operation: "show", objectName: "bird" } },
+        { id: "l3", kind: "action", payload: { action: "text", operation: "create", objectName: "title", text: "第一章" } },
+        { id: "l4", kind: "action", payload: { action: "text", operation: "setText", objectName: "title", text: "第二章" } },
+        { id: "l5", kind: "action", payload: { action: "video", operation: "create", objectName: "op", assetId: "asset-op" } },
+        { id: "l6", kind: "action", payload: { action: "video", operation: "play", objectName: "op" } },
+        { id: "l7", kind: "action", payload: { action: "audio", operation: "playSound", assetId: "asset-door", objectName: "door" } },
+        { id: "l8", kind: "action", payload: { action: "audio", operation: "stopSound", objectName: "door" } },
+    ] as never);
+
+    it("comes back from a script round trip with them", () => {
+        // The dividend of resolving a reference from the script rather than carrying one across: the
+        // parse binds each addressing row to the row that really declares its object, so reading a
+        // scene through the text view UPGRADES it instead of leaving it where it was.
+        for (const block of Object.values(legacy.blocks)) {
+            expect((block.payload as { target?: unknown }).target).toBeUndefined();
+        }
+
+        const printed = printNarralangSceneWithDialect(
+            legacy,
+            { ...lookups, scenes: { ...SCENE_TABLE, "scene-1": legacy } },
+            NARRALANG_DEFAULT_DIALECT,
+        );
+        expect(printed.issues).toEqual([]);
+        const parsed = parseNarralangSceneWithDialect(printed.text, parseLookups, NARRALANG_DEFAULT_DIALECT);
+        expect(parsed.diagnostics).toEqual([]);
+
+        const ids = parsed.rootBlockIds;
+        const target = (index: number): unknown => (parsed.blocks[ids[index]].payload as { target?: unknown }).target;
+
+        // A row that DECLARES an object is the one being pointed at, so it points at nothing itself.
+        expect(target(0)).toBeUndefined();
+        expect(target(2)).toBeUndefined();
+        expect(target(4)).toBeUndefined();
+        expect(target(6)).toBeUndefined();
+
+        expect(target(1)).toEqual({ kind: "image", name: "bird", label: "bird", sourceBlockId: ids[0] });
+        expect(target(3)).toEqual({ kind: "text", name: "title", label: "title", sourceBlockId: ids[2] });
+        expect(target(5)).toEqual({ name: "op", label: "op", sourceBlockId: ids[4] });
+        expect(target(7)).toEqual({ name: "door", label: "door", sourceBlockId: ids[6] });
+    });
+
+    it("keeps a name no row in the script declares as a name, and says nothing about it", () => {
+        // A subject the language does not require to exist. Refusing it here would be the parser
+        // deciding what the compiler decides - and one diagnostic refuses a whole reconcile, so an
+        // author would lose an edit over a row that reads perfectly well.
+        const parsed = parseNarralangSceneWithDialect("image source poster #101018", parseLookups, NARRALANG_DEFAULT_DIALECT);
+
+        expect(parsed.diagnostics).toEqual([]);
+        expect(parsed.blocks[parsed.rootBlockIds[0]].payload)
+            .toEqual({ action: "image", operation: "setSource", objectName: "poster", color: "#101018" });
+    });
 });
