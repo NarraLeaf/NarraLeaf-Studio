@@ -133,6 +133,7 @@ export const workspace = {
             namingTitle: "収録ファイル名のパターン",
             namingHint: "使える語：{tokens}。読み込んだ音声はこの名前で行と対応づける",
             namingReset: "既定に戻す",
+            choicesTitle: "選択肢にボイスを付ける",
         },
         table: {
             storyLabel: "ストーリー",
@@ -150,6 +151,8 @@ export const workspace = {
             auditionFilterPending: "未処理",
             narrationSpeaker: "地の文",
             narrationGroup: "地の文",
+            choiceSpeaker: "選択肢",
+            choiceGroup: "選択肢",
             castPlaceholder: "声の担当…",
             assign: "音声を割り当てる",
             replace: "音声を差し替える",

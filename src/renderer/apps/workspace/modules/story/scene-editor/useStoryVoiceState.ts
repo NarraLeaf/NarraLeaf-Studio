@@ -13,13 +13,24 @@ import type { VoiceDocument, VoiceLocaleEntry } from "@shared/types/voice";
 import { createVoiceEditorTab } from "../../voice/openVoiceEditorTab";
 import { toggleVoiceAudition, useVoiceAuditionKey } from "./voiceAudition";
 
-/** The voiceable segment of a block (spoken narration/dialogue), or null. */
-export function voiceableSegment(block: StoryBlock): { textId: string; sourceText: string } | null {
+/**
+ * The voiceable segment of a block, or null when the row carries no take.
+ *
+ * Spoken narration and dialogue always; a choice option only where the project voices its choices,
+ * so a row grows an audition control exactly when the voice table grows a line for it.
+ */
+export function voiceableSegment(
+    block: StoryBlock,
+    options: { includeChoices?: boolean } = {},
+): { textId: string; sourceText: string } | null {
     if (block.kind !== "nodeAction") {
         return null;
     }
     const payload = block.payload;
     if (payload.action === "narration" || payload.action === "dialogue") {
+        return { textId: payload.text.textId, sourceText: serializeSegmentSourceText(payload.text) };
+    }
+    if (payload.action === "choiceOption" && options.includeChoices) {
         return { textId: payload.text.textId, sourceText: serializeSegmentSourceText(payload.text) };
     }
     return null;
@@ -69,15 +80,21 @@ export function useStoryVoiceState(block: StoryBlock): StoryVoiceState {
     );
 
     const [primary, setPrimary] = useState<VoiceLocaleEntry | null>(null);
+    const [voiceChoices, setVoiceChoices] = useState(false);
     const [doc, setDoc] = useState<VoiceDocument | null>(null);
     const [textsTick, setTextsTick] = useState(0);
 
     useEffect(() => {
         if (!voiceService) {
             setPrimary(null);
+            setVoiceChoices(false);
             return;
         }
-        const read = () => setPrimary(voiceService.getConfiguration().voicedLocales[0] ?? null);
+        const read = () => {
+            const config = voiceService.getConfiguration();
+            setPrimary(config.voicedLocales[0] ?? null);
+            setVoiceChoices(config.voiceChoices);
+        };
         read();
         return voiceService.onConfigChanged(read);
     }, [voiceService]);
@@ -119,7 +136,7 @@ export function useStoryVoiceState(block: StoryBlock): StoryVoiceState {
         };
     }, [voiceService, localizationService, primary]);
 
-    const segment = voiceableSegment(block);
+    const segment = voiceableSegment(block, { includeChoices: voiceChoices });
     const unit = segment ? doc?.units[segment.textId] : undefined;
     // textsTick participates so a translation arriving after first paint re-derives the state.
     void textsTick;

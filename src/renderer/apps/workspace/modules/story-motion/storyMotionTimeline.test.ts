@@ -77,6 +77,34 @@ describe("storyMotionTimeline", () => {
         expect(preview.position.xalign).toBeCloseTo(0.5);
     });
 
+    it("keeps the neutral alignment under a keyframe that only moves offsets", () => {
+        // Every preset moves offsets and leaves alignment alone (a shake is relative, not a
+        // teleport), and the asset normalizer used to hand those keyframes back with the unwritten
+        // axes present as `undefined`. Spread over the neutral state that erased it, and the stage
+        // preview rendered `calc(NaN% + 0px)` - a declaration the browser drops, which left the
+        // frame in the stage's bottom-left corner while the motion path drew at the centre.
+        const timeline: StoryAnimationTimeline = {
+            tracks: [
+                {
+                    id: "track-position",
+                    property: "position",
+                    keyframes: [
+                        { id: "kf-0", timeMs: 0, value: { xalign: undefined, yalign: undefined, xoffset: -12, yoffset: 7 } },
+                        { id: "kf-200", timeMs: 200, value: { xoffset: 0, yoffset: 0 } },
+                    ],
+                },
+            ],
+        };
+
+        for (const timeMs of [0, 100, 200, 400]) {
+            const preview = sampleStoryMotionPreview(timeline, timeMs);
+            expect(Number.isFinite(preview.position.xalign)).toBe(true);
+            expect(Number.isFinite(preview.position.yalign)).toBe(true);
+            expect(preview.position.xalign).toBeCloseTo(0.5);
+        }
+        expect(sampleStoryMotionPreview(timeline, 0).position.xoffset).toBeCloseTo(-12);
+    });
+
     it("applies the arriving keyframe's easing when sampling", () => {
         const timeline = createStoryMotionPresetTimeline("fadeInSlide");
         const preview = sampleStoryMotionPreview(timeline, 210);

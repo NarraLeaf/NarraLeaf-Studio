@@ -3,8 +3,9 @@
  * story documents (in narrative order), derived unit state, and per-locale
  * coverage. Kept side-effect free for unit testing.
  *
- * Voiceable lines are the spoken ones - narration and dialogue. Choice text is
- * not voiced in P0. Extraction reuses the localization row extractor so text,
+ * Voiceable lines are the spoken ones - narration and dialogue - plus choice
+ * options in a project that has switched choice voicing on (`app.voice`).
+ * Extraction reuses the localization row extractor so text,
  * translation, and voice stay keyed by the exact same unit ids (story `textId`).
  * Comments in English per project convention.
  */
@@ -35,11 +36,29 @@ export function deriveVoiceUnitState(unit: VoiceUnit | undefined, sourceText: st
 const VOICEABLE_ROLES = new Set<StoryTranslationRow["role"]>(["narration", "dialogue"]);
 
 /**
+ * Roles that carry a voiceable line once the project voices its choices.
+ *
+ * `choiceText` only: an option is a thing the menu can speak, and the choice *prompt* is not - the
+ * menu surface renders the options and nothing else, so a take recorded against a prompt would have
+ * nowhere to play. Listing it would be coverage a game can never satisfy.
+ */
+const VOICEABLE_CHOICE_ROLES = new Set<StoryTranslationRow["role"]>(["narration", "dialogue", "choiceText"]);
+
+export type VoiceableRowOptions = {
+    /** Project setting: whether choice options are lines an actor records. Off by default. */
+    includeChoices?: boolean;
+};
+
+/**
  * Every voiceable line of a story document in narrative order. Reuses the
  * localization extractor (same unit ids) and keeps only spoken roles.
  */
-export function extractVoiceableRows(document: StoryDocument): StoryTranslationRow[] {
-    return extractStoryTranslationRows(document).filter(row => VOICEABLE_ROLES.has(row.role));
+export function extractVoiceableRows(
+    document: StoryDocument,
+    options: VoiceableRowOptions = {},
+): StoryTranslationRow[] {
+    const roles = options.includeChoices ? VOICEABLE_CHOICE_ROLES : VOICEABLE_ROLES;
+    return extractStoryTranslationRows(document).filter(row => roles.has(row.role));
 }
 
 export type VoiceProgress = {
