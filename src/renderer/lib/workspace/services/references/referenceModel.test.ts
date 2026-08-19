@@ -107,6 +107,16 @@ describe("scanStoryAssetReferences: rows naming an asset set", () => {
     it("says nothing about sets when the project has none", () => {
         expect(scanStoryAssetReferences(document, "Main Story").setReferences).toEqual([]);
     });
+
+    it("reads a scene's own background the same way, since assembly resolves that field too", () => {
+        const sceneDocument = storyDoc({}, "set-1");
+        const scan = scanStoryAssetReferences(sceneDocument, "Main Story", expand);
+
+        expect([...buildReferenceIndex(scan.references).keys()].sort()).toEqual(["img-en", "img-ja"]);
+        expect(scan.setReferences.map(reference => [reference.assetId, reference.field]))
+            .toEqual([["set-1", "scene.defaultBackgroundAssetId"]]);
+        expect(scan.setReferences[0].target).toMatchObject({ kind: "storyScene", sceneId: "scene-1" });
+    });
 });
 
 describe("extractStoryAssetReferences", () => {

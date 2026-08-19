@@ -15,6 +15,7 @@ import { ControlBar } from "./ControlBar";
 import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
 import { ResizableHandle } from "../ui/ResizableHandle";
+import { TitleBarMenus } from "../ui/titleBarMenus";
 import { EditorClosedTabsKeybinding } from "./EditorClosedTabsKeybinding";
 import { WorkspaceUndoKeybindings } from "./WorkspaceUndoKeybindings";
 import { WorkspaceHistoryMenu } from "./WorkspaceHistoryMenu";
@@ -768,14 +769,16 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 iconSrc={iconSrc}
                 center={titleBarSearchVisible ? <TitleBarSearchBox /> : undefined}
                 actionBar={
-                    <div className="flex items-center gap-0.5">
+                    /* One bar, so only one of its menus is ever on screen and the pointer walks
+                       between the action groups without a second click. */
+                    <TitleBarMenus className="flex items-center gap-0.5">
                         {/* The window's identity, and the version control menu inside it — one reader
                             for both, handed down. The rail below gets the SAME object: a second
                             `useVersionSurface()` would be a second answer to "which version is this",
                             and that has already been on screen once (rail `#3`, status cell `#2`). */}
                         <ProjectSwitcher versionSurface={versionSurface} />
                         <ActionBar hideAllGroups={isMac} />
-                    </div>
+                    </TitleBarMenus>
                 }
                 controlBar={
                     <ControlBar

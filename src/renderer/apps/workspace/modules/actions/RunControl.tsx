@@ -37,6 +37,7 @@ import type { GameBuildStatus } from "@shared/types/gameBuild";
 import type { PreviewStatus } from "@shared/types/gameRuntime";
 import { getProjectWriteFreeze } from "@/lib/app/writeFreeze";
 import { ProjectDependencyService } from "@/lib/workspace/services/core/ProjectDependencyService";
+import { useTitleBarMenu } from "../../components/ui/titleBarMenus";
 import { WorkspaceRunCommand } from "@shared/types/menu";
 import type { TranslationKey } from "@shared/i18n";
 
@@ -110,10 +111,29 @@ export function RunControl() {
     const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
     const [buildStatus, setBuildStatus] = useState<GameBuildStatus>("idle");
     const [activeRun, setActiveRun] = useState<TestRunRecord | null>(null);
-    const [menuOpen, setMenuOpen] = useState(false);
+    // Held in the title bar's bar of menus, so opening this one puts away whatever was open. It is
+    // NOT part of the chain the pointer walks (`hotTrack`): this is a button that runs the project
+    // and happens to carry a menu, and crossing it on the way elsewhere is not a request to see the
+    // run modes. See `../../components/ui/titleBarMenus`.
+    const {
+        ref: menuRef,
+        open: menuOpen,
+        setOpen: setMenuOpen,
+        toggle: toggleMenu,
+    } = useTitleBarMenu("narraleaf-studio:run");
     const [variantOpen, setVariantOpen] = useState(false);
     const [variants, setVariants] = useState<ProjectAppTag[]>([]);
     const [variantId, setVariantId] = useState<string | null>(null);
+
+    // The variant list folds away with the menu that holds it. It has to be tied to the menu closing
+    // rather than to the gestures that close it: the bar puts this menu away too - when a sibling
+    // opens, or when a pointer lands elsewhere - and reopening onto a list left expanded would show
+    // a submenu nobody asked for.
+    useEffect(() => {
+        if (!menuOpen) {
+            setVariantOpen(false);
+        }
+    }, [menuOpen]);
 
     // The selected mode is a global UI habit; follow live changes so a second window stays in sync.
     useEffect(() => {
@@ -513,7 +533,7 @@ export function RunControl() {
             : t(meta.labelKey);
 
     return (
-        <div className="relative flex items-center">
+        <div className="relative flex items-center" ref={menuRef}>
             <div className={cn("flex h-8 items-stretch overflow-hidden rounded-md", running && "bg-danger text-white")}>
                 <button
                     type="button"
@@ -541,7 +561,7 @@ export function RunControl() {
                     inert instead, which is where the "no switching mid-run" rule actually belongs. */}
                 <button
                     type="button"
-                    onClick={() => setMenuOpen(open => !open)}
+                    onClick={toggleMenu}
                     data-tip={t("actions.run.menu")}
                     aria-label={t("actions.run.menu")}
                     aria-haspopup="menu"
@@ -557,12 +577,12 @@ export function RunControl() {
 
             {menuOpen && (
                 <>
+                    {/* Backdrop. The bar is what notices a pointer landing outside this menu; what
+                        this adds is that a click meant to put the menu away does not also press
+                        whatever it landed on. It reaches only the content below the title bar. */}
                     <div
                         className="nl-window-content-layer z-10"
-                        onClick={() => {
-                            setMenuOpen(false);
-                            setVariantOpen(false);
-                        }}
+                        onClick={() => setMenuOpen(false)}
                     />
                     <div
                         role="menu"

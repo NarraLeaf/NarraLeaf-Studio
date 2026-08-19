@@ -259,6 +259,18 @@ export type StoryScene = {
      * Per-scene and additive (no schema bump); the scene-variable rows shown re-bind per scene.
      */
     sceneSnapshots?: StorySceneSnapshot[];
+    /**
+     * What each asset set the SCENE itself names resolves to, per locale.
+     *
+     * The same thing `StoryBlock.assetVariants` is, one level up, and for the same two fields a scene
+     * owns rather than a row: its opening background and its music. **Never authored and never on
+     * disk under `editor/`** - written while a package is assembled and present only in the bundle a
+     * game runs from.
+     *
+     * A separate map rather than a row's, because these two fields belong to no row: the compiler
+     * resolves them while it is building the scene, before any block has run.
+     */
+    assetVariants?: StoryAssetVariants;
     meta?: StoryMeta;
 };
 
@@ -1511,33 +1523,71 @@ export type StoryTransformRef = {
     animationId?: StoryAnimationAssetId;
 };
 
+/**
+ * Every transition kind a document may name, as a value rather than only a type.
+ *
+ * {@link StoryTransitionRef} derives its `kind` from this tuple, so the two cannot drift. The
+ * runtime copy exists because a stored `kind` is just a string on disk: a document written by a
+ * newer Studio, or one carrying a kind that has since been retired, holds a word no build here can
+ * play, and only a value can be asked whether it contains that word.
+ * {@link isPlayableStoryTransitionKind} is what asks, on behalf of `story/transition-unavailable`.
+ */
+export const STORY_TRANSITION_KINDS = [
+    "none",
+    "dissolve",
+    "fadeIn",
+    "maskCircle",
+    "maskWipe",
+    "softWipe",
+    "blinds",
+    "slide",
+    "softIris",
+    // 0.16.0 Mask-vocabulary additions (engine `Reveal` + `Mask.*`). Additive: existing documents
+    // never carry these, so no schema bump is needed.
+    "barnDoor",
+    "clock",
+    "fan",
+    "dots",
+    "blurDissolve",
+    // 0.28.0: engine `Exposure` — the frame burns out per channel instead of
+    // being covered. Additive, like the mask additions above.
+    "exposure",
+    // 0.30.0: engine `RuleReveal` — a greyscale picture decides the order the frame changes
+    // over. Additive as well; the picture it needs is {@link StoryTransitionRef.ruleAssetId}.
+    "ruleReveal",
+    "throughColor",
+    "darkness",
+    "custom",
+] as const;
+
+export type StoryTransitionKind = (typeof STORY_TRANSITION_KINDS)[number];
+
+/**
+ * Members of the union above that no build can actually play.
+ *
+ * Exactly one, and it stays one by construction: the story compiler's `createTransition` switch is
+ * exhaustive over {@link StoryTransitionKind}, so a kind added to the tuple without an engine behind
+ * it fails to compile there rather than reaching an author. `custom` is the standing exception - a
+ * transition that is nothing but its `props`. Nothing writes one, but the union has always allowed
+ * it, so documents may carry it and it is handled rather than removed.
+ */
+export const UNPLAYABLE_STORY_TRANSITION_KINDS = ["custom"] as const satisfies readonly StoryTransitionKind[];
+
+/**
+ * Whether a stored `kind` names a transition this build will actually play.
+ *
+ * `false` covers both ways a row can name one it will not get: a word outside the union entirely -
+ * a document written by a newer Studio, or one carrying a kind that has since been retired - and a
+ * member of the union with nothing behind it. The author sees the same thing either way, so the two
+ * are one question. `none` is playable: it is the author saying "cut", and it gets a cut.
+ */
+export function isPlayableStoryTransitionKind(kind: string): boolean {
+    return (STORY_TRANSITION_KINDS as readonly string[]).includes(kind)
+        && !(UNPLAYABLE_STORY_TRANSITION_KINDS as readonly string[]).includes(kind);
+}
+
 export type StoryTransitionRef = {
-    kind:
-        | "none"
-        | "dissolve"
-        | "fadeIn"
-        | "maskCircle"
-        | "maskWipe"
-        | "softWipe"
-        | "blinds"
-        | "slide"
-        | "softIris"
-        // 0.16.0 Mask-vocabulary additions (engine `Reveal` + `Mask.*`). Additive: existing documents
-        // never carry these, so no schema bump is needed.
-        | "barnDoor"
-        | "clock"
-        | "fan"
-        | "dots"
-        | "blurDissolve"
-        // 0.28.0: engine `Exposure` — the frame burns out per channel instead of
-        // being covered. Additive, like the mask additions above.
-        | "exposure"
-        // 0.30.0: engine `RuleReveal` — a greyscale picture decides the order the frame changes
-        // over. Additive as well; the picture it needs is {@link StoryTransitionRef.ruleAssetId}.
-        | "ruleReveal"
-        | "throughColor"
-        | "darkness"
-        | "custom";
+    kind: StoryTransitionKind;
     durationMs?: number;
     easing?: string;
     /**

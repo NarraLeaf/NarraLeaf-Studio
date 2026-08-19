@@ -7,6 +7,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusContext } from "@/lib/workspace/services/ui";
 import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
 import { isMacPlatform } from "@/lib/app/platform";
+import { cn } from "@/lib/utils/cn";
 import {
     getActionGroupItems,
     getVisibleActionMenuItems,
@@ -14,6 +15,7 @@ import {
     isActionMenuSeparator,
 } from "./actionMenuModel";
 import { applyFreezeToActionMenuItems, isFreezeExemptActionGroup } from "./freezeActionPolicy";
+import { useTitleBarMenu } from "./titleBarMenus";
 import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
 import { useTranslation } from "@/lib/i18n";
 
@@ -28,6 +30,10 @@ interface ActionDropdownProps {
  * While the workspace is frozen the menu still OPENS and still lists everything - only its items are
  * disabled, and only for groups the exemption table does not name (see `./freezeActionPolicy`). A
  * menu that refused to open would hide what the freeze is doing, which is the opposite of the point.
+ *
+ * These are the menus of the title bar's menu bar, so they hold their open state in the bar rather
+ * than each on its own (`./titleBarMenus`): one at a time, and the pointer walks between them once
+ * one is open.
  */
 export function ActionDropdown({ group }: ActionDropdownProps) {
     const { t } = useTranslation();
@@ -35,11 +41,16 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
     const frozen = useWorkspaceFrozen();
     const frozenOut = frozen && !isFreezeExemptActionGroup(group.id);
     const groupLabel = group.labelKey ? t(group.labelKey) : group.label;
-    const [isOpen, setIsOpen] = useState(false);
+    const {
+        ref: dropdownRef,
+        open: isOpen,
+        setOpen: setIsOpen,
+        toggle: toggleDropdown,
+        triggerProps,
+    } = useTitleBarMenu(group.id, { hotTrack: true });
     const [openPath, setOpenPath] = useState<number[]>([]); // path of opened submenus
     const [focusPath, setFocusPath] = useState<number[]>([]); // path of focused item
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
-    const dropdownRef = useRef<HTMLDivElement>(null);
     const rootMenuRef = useRef<HTMLDivElement>(null);
     const hoverOpenTimerRef = useRef<number | null>(null);
     const hoverCloseTimerRef = useRef<number | null>(null);
@@ -88,10 +99,6 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
             if (hoverCloseTimerRef.current) window.clearTimeout(hoverCloseTimerRef.current);
         };
     }, []);
-
-    const toggleDropdown = () => {
-        setIsOpen((v) => !v);
-    };
 
     const handleActionClick = (action: ActionDefinition) => {
         if (!workspace) {
@@ -177,13 +184,20 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
         <div className="relative" ref={dropdownRef}>
             <button
                 onClick={toggleDropdown}
+                {...triggerProps}
                 onKeyDown={(e) => {
                     if ((e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") && !isOpen) {
                         setIsOpen(true);
                         e.preventDefault();
                     }
                 }}
-                className="h-8 px-2 rounded-md flex items-center gap-2 text-sm transition-colors cursor-default text-fg-muted hover:bg-fill hover:text-fg"
+                className={cn(
+                    "h-8 px-2 rounded-md flex items-center gap-2 text-sm transition-colors cursor-default",
+                    // The open menu keeps the pressed fill after the pointer has left the button for
+                    // the panel below it - and while the pointer is walking the bar, it is the only
+                    // thing naming which menu the panel belongs to.
+                    isOpen ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
+                )}
                 data-tip={String(groupLabel)}
                 aria-label={String(groupLabel)}
                 aria-expanded={isOpen}
@@ -196,7 +210,11 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
 
             {isOpen && (
                 <>
-                    {/* Backdrop */}
+                    {/* Backdrop. Dismissal itself belongs to the bar, which watches for a pointer
+                        landing outside this menu; what this adds is that a click meant to put the
+                        menu away does not also press whatever it landed on. It reaches only the
+                        content below the title bar, which is why the bar's own watch is what closes
+                        the menu when the click lands on a sibling or on the title bar itself. */}
                     <div
                         className="nl-window-content-layer z-10"
                         onClick={() => setIsOpen(false)}

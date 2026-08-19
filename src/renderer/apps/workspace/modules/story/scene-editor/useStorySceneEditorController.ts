@@ -84,6 +84,8 @@ import { forgetStoryPasteSeparator, getStoryPasteMemory, rememberStoryPasteSpeak
 import { useSlashAtAlias } from "@/apps/workspace/hooks/useSlashAtAlias";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
+import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
+import { syncEditorTabTitle } from "@/lib/workspace/services/ui/editorTabTitle";
 import { ACTION_TRIGGER, ALT_ACTION_TRIGGER, isActionCommandLine, toCanonicalCommandLine, toDisplayedCommandLine } from "./commandTrigger";
 import { projectStoryCommandLine } from "./storyCommandLine";
 import { noStoryRowCharacters } from "@/lib/story/storyRowProjection";
@@ -264,6 +266,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     /** The project's audio tracks, so `/bgm theme track=Ambience` completes and resolves by name. */
     const audioTracks = useProjectAudioTracks();
     const appTags = useProjectAppTags();
+    /**
+     * Bumped when a file or an asset set is renamed, imported or deleted.
+     *
+     * The command context below reads the library through the service, and the library mutates its
+     * records in place - so without this the tables a row is spelled from are the ones that existed
+     * when the tab opened. The visible failure was a rename that only appeared when the row was
+     * hovered: the hover re-rendered the row, and the row's name lookup is live even though the
+     * table behind the candidate menu was not.
+     */
+    const assetLibraryRevision = useAssetLibraryRevision();
 
     /**
      * Re-seed the row draft whenever the open row changes, so it always describes the row that is
@@ -492,7 +504,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             audioTracks,
             appTags,
         }),
-        [appTags, assetsService, audioTracks, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
+        [appTags, assetLibraryRevision, assetSetService, assetsService, audioTracks, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
     );
     // Each dialogue speaker's accumulated appearance, so a dialogue row's avatar can follow the
     // most recent enter/expression. Keyed on the scene's content, not on collapse.
@@ -844,7 +856,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         storyService.replaceScene(storyId, sceneId, state.scene);
-        uiService?.editor.update(tabId, { title: state.scene.name });
+        syncEditorTabTitle(uiService, tabId, state.scene.name);
         setActiveBlockId(state.activeBlockId);
         setSelectedBlockIds(new Set(state.selectedBlockIds));
         setCollapsedBlockIds(new Set(state.collapsedBlockIds));
@@ -944,7 +956,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         });
         if (changed) {
             if (hasNameChange) {
-                uiService?.editor.update(tabId, { title: nextName });
+                syncEditorTabTitle(uiService, tabId, nextName);
             }
         }
         return changed;
