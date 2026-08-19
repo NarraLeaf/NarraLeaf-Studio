@@ -88,7 +88,29 @@ function onlyGraph(blueprint: Blueprint) {
                 edge.to.nodeId === to.nodeId &&
                 edge.to.port === to.port,
         );
-    return { nodes, edges, byType, wired };
+    /**
+     * Whether an exec output eventually runs a node, following every branch it opens.
+     *
+     * Weaker than {@link wired} on purpose, and only where the route is allowed to grow: a cue or a
+     * branch inserted between two nodes does not change which node ends up running.
+     */
+    const reaches = (from: { nodeId: string; port: string }, targetId: string): boolean => {
+        const seen = new Set<string>();
+        const queue = edges.filter(edge => edge.from.nodeId === from.nodeId && edge.from.port === from.port);
+        while (queue.length > 0) {
+            const edge = queue.shift()!;
+            if (edge.to.nodeId === targetId) {
+                return true;
+            }
+            if (seen.has(edge.to.nodeId)) {
+                continue;
+            }
+            seen.add(edge.to.nodeId);
+            queue.push(...edges.filter(candidate => candidate.from.nodeId === edge.to.nodeId));
+        }
+        return false;
+    };
+    return { nodes, edges, byType, wired, reaches };
 }
 
 /** Pin ids the shipping catalogue declares for a node type. */
@@ -130,12 +152,15 @@ describe("the Confirm page in the starter template", () => {
         const blueprint = blueprints.find(
             candidate => candidate.owner.kind === "widgetMain" && candidate.owner.elementId === list.id,
         )!;
-        const { byType, wired } = onlyGraph(blueprint);
+        const { byType, wired, reaches } = onlyGraph(blueprint);
         const click = byType(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)!;
         const close = byType(BLUEPRINT_NODE_TYPE_LAYER_CLOSE_SELF)!;
         expect(pinIds(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)).toEqual(expect.arrayContaining(["then", "index"]));
         expect(pinIds(BLUEPRINT_NODE_TYPE_LAYER_CLOSE_SELF)).toEqual(expect.arrayContaining(["in", "result"]));
-        expect(wired({ nodeId: click.id, port: "then" }, { nodeId: close.id, port: "in" })).toBe(true);
+        // Reached rather than wired straight through: the page sounds its own answer, and the two
+        // answers do not sound alike, so a branch and a cue sit between the press and the close.
+        // Every route still ends there - an answer that closed nothing would be a dead dialog.
+        expect(reaches({ nodeId: click.id, port: "then" }, close.id)).toBe(true);
         expect(wired({ nodeId: click.id, port: "index" }, { nodeId: close.id, port: "result" })).toBe(true);
     });
 
