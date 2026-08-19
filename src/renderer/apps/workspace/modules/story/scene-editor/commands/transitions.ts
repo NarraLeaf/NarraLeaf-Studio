@@ -67,9 +67,11 @@ export type StoryTransitionWord =
 export type StoryTransitionContext = "scene" | "character" | "reveal" | "conceal" | "nvl" | "expression";
 
 const WORD_ALIASES: Partial<Record<StoryTransitionWord, readonly string[]>> = {
-    // `dissolve` is NOT listed here any more: it is a word of its own, and a spelling that is both an
-    // alias of one word and the name of another has no single answer to what an author typed.
-    fade: ["fadein", "fadeout"],
+    // `dissolve` stays an alias here even though it is now a word of its own, because on a scene it
+    // is one: `/bg t=dissolve` has always parsed and still means what it meant. Where the two would
+    // collide - `expression`, which offers both - `transitionOptions` drops the alias, so a spelling
+    // is never claimed twice in one context.
+    fade: ["dissolve", "fadein", "fadeout"],
     "slide-left": ["slideleft", "slidel"],
     "slide-right": ["slideright", "slider"],
     "slide-up": ["slideup"],
@@ -88,11 +90,15 @@ const WORD_ALIASES: Partial<Record<StoryTransitionWord, readonly string[]>> = {
 // The Mask-vocabulary additions (barn-door / clock / fan / dots) are whole-screen transitions:
 // offered on `/bg` `/jump` alongside the classics, but not on portrait swaps or stage objects.
 //
-// Named rather than written inline because two contexts take it verbatim - see `expression` below.
-// `fade` and `dissolve` both appear, and on a scene they land on the same kind: a background change
-// has exactly one soft option, so the relative word and the absolute one coincide there. `fade`
-// leads, so a stored `dissolve` still reads back as the word an author types for it.
-const SCENE_WORDS: readonly StoryTransitionWord[] = ["fade", "slide", "circle", "wipe", "iris", "blinds", "barn-door", "clock", "fan", "dots", "blur", "black", "darkness", "exposure", "none", "dissolve"];
+// Named rather than written inline because a second context builds on it - see `expression` below.
+// `dissolve` is deliberately NOT here: a background change has exactly one soft option, so offering
+// the relative word and the absolute one side by side would put two entries that do the same thing
+// in one menu - the duplication this vocabulary exists to remove. It still PARSES, as `fade`'s alias.
+const SCENE_WORDS: readonly StoryTransitionWord[] = ["fade", "slide", "circle", "wipe", "iris", "blinds", "barn-door", "clock", "fan", "dots", "blur", "black", "darkness", "exposure", "none"];
+
+// The swap's list: the whole-screen words, plus the one word that is only worth offering where the
+// two soft looks are genuinely different things (`fade` is a fade-in here, `dissolve` a crossfade).
+const EXPRESSION_WORDS: readonly StoryTransitionWord[] = [...SCENE_WORDS, "dissolve"];
 
 const SUPPORTED: Record<StoryTransitionContext, readonly StoryTransitionWord[]> = {
     scene: SCENE_WORDS,
@@ -104,8 +110,8 @@ const SUPPORTED: Record<StoryTransitionContext, readonly StoryTransitionWord[]> 
     conceal: ["fade", "slide-left", "slide-right", "slide-up", "slide-down", "zoom", "scale", "rotate", "opacity", "darken", "circle", "wipe", "none"],
     nvl: ["fade", "none"],
     // A portrait swap changes the whole frame of one object, so it offers what a background change
-    // offers - the same list, read through `CHARACTER_KINDS`.
-    expression: SCENE_WORDS,
+    // offers - read through `CHARACTER_KINDS` - plus the crossfade, which is a distinct look here.
+    expression: EXPRESSION_WORDS,
 };
 
 /**
@@ -143,11 +149,24 @@ function inspectorLabelKey(context: StoryTransitionContext, word: StoryTransitio
     return TRANSFORM_WORD_LABELS[word] ?? null;
 }
 
-/** The enum options a `t=` param offers in a given context - unified words, canonical-first. */
+/**
+ * The enum options a `t=` param offers in a given context - unified words, canonical-first.
+ *
+ * An alias that this context already offers as a word of its own is dropped: `dissolve` is `fade`'s
+ * alias everywhere and `expression`'s own word, and a spelling claimed twice in one option set has
+ * no single answer to what the author typed. The same rule `localizedEnums.ts` applies to a
+ * translated spelling - a label that already spells a canonical value is not registered - for the
+ * same reason, one step earlier in the same pipeline.
+ *
+ * Which contexts this actually bites in is not the point: it is what makes "one spelling, one word"
+ * a property of the table rather than something a reviewer has to spot in a dropdown.
+ */
 export function transitionOptions(context: StoryTransitionContext): readonly StoryCommandEnumOption[] {
+    const canonical = new Set<string>(SUPPORTED[context]);
     return SUPPORTED[context].map(word => {
         const labelKey = inspectorLabelKey(context, word);
-        return { value: word, aliases: WORD_ALIASES[word], ...(labelKey ? { labelKey } : {}) };
+        const aliases = WORD_ALIASES[word]?.filter(alias => !canonical.has(alias));
+        return { value: word, aliases, ...(labelKey ? { labelKey } : {}) };
     });
 }
 
