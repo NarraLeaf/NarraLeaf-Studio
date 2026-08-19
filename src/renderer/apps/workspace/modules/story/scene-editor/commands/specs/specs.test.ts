@@ -814,17 +814,24 @@ describe("logic and effects", () => {
         expect(issuesOf("/goto nowhere")).toEqual(["unknownLabel"]);
     });
 
-    it("/screen reads both gestures off one token, effect first", () => {
-        expect(build("/screen blink d=0.2 hold=0.1 color=#ffffff")).toMatchObject({
-            payload: { action: "screenEffect", effect: "blink", durationMs: 200, holdMs: 100, color: "#ffffff" },
+    it("gives the camera the lens, by name for a gesture and by number for a state", () => {
+        // `/screen` is gone: the eyelids and the vignette are the camera's own glass, so they compose
+        // with a grade and a pan instead of being a one-shot the scene played on a layer of its own.
+        expect(getCommandSpec("screen")).toBeNull();
+        expect(build("/transform camera lens=blink")).toMatchObject({
+            payload: { action: "camera", operation: "transform", transform: { to: { lens: { preset: "blink" } } } },
         });
-        expect(build("/screen vignette opacity=0.5")).toMatchObject({ payload: { effect: "vignette", opacity: 0.5 } });
-        // The price of the merge, paid out loud: the union parses and the spec reports the half this
-        // effect cannot honour, rather than writing a field nothing reads.
-        expect(issuesOf("/screen vignette in=0.2")).toEqual(["unsupportedParam"]);
-        expect(issuesOf("/screen blink inner=20")).toEqual(["unsupportedParam"]);
-        // The effect is the required core: a bare `/screen` names no gesture and has nothing to commit.
-        expect(getCommandSpec("screen")?.params.effect.core).toBe(true);
+        // A state, not a gesture: this holds the eyes shut until something opens them.
+        expect(build("/transform camera shutter=1")).toMatchObject({
+            payload: { transform: { to: { shutter: 1 } } },
+        });
+        expect(build("/transform camera vignette=0.6 vignetteInner=30")).toMatchObject({
+            payload: { transform: { to: { vignette: 0.6, vignetteInner: "30%" } } },
+        });
+        // Camera only, and structurally so: the engine renders the lens from the camera's own overlay
+        // and no other Displayable has one.
+        expect(issuesOf("/transform hero lens=blink")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/transform hero shutter=1")).toEqual(["unsupportedParam"]);
     });
 
     it("/transform camera reads the camera as a reserved target word", () => {

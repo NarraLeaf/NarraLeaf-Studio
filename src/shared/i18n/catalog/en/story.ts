@@ -512,11 +512,7 @@ export const story = {
         seekTime: "Seconds",
         // Camera
         cameraLookStrength: "Look Strength",
-        // The two halves a blink can override; absent, each follows the whole move.
-        effectIn: "In Seconds",
-        effectOut: "Out Seconds",
-        vignetteInner: "Clear Center %",
-        vignetteOuter: "Dark Edge %",
+
         // Modifiers
         duration: "Seconds",
         transition: "Transition",
@@ -557,6 +553,15 @@ export const story = {
         filterInvert: "Invert",
         filterCss: "CSS Filter",
         cameraLook: "Look",
+        // The camera's lens. Named for what the player sees, not for the CSS: an author reaches for
+        // these while writing somebody closing their eyes.
+        cameraLens: "Lens Effect",
+        shutter: "Shutter",
+        shutterColor: "Shutter Color",
+        vignette: "Vignette",
+        vignetteColor: "Vignette Color",
+        vignetteInner: "Clear Center %",
+        vignetteOuter: "Dark Edge %",
         maskImage: "Mask Image",
         clipPath: "Clip Path",
         backdropFilter: "Backdrop Filter",
@@ -570,7 +575,6 @@ export const story = {
         fromProps: "Start Props",
         // Direction, which is what `/show` and `/hide` each say instead of the old "transition".
         conceal: "Conceal",
-        screenEffect: "Blink / Vignette",
     },
 
     /**
@@ -669,9 +673,11 @@ export const story = {
         backOut: "backOut",
         backInOut: "backInOut",
         anticipate: "anticipate",
-        // The two screen-wide gestures, as `/screen`'s first positional.
+        // The camera lens gestures `lens=` names. Registered here for the reason the grades are:
+        // this namespace is what the command LINE prints and accepts.
         blink: "blink",
-        vignette: "vignette",
+        slowBlink: "slowBlink",
+        vignettePulse: "vignettePulse",
     },
 
     /**
@@ -1073,7 +1079,6 @@ export const story = {
         // The one writing verb: every channel of the prop bag, on every subject, including the
         // camera (which is a reserved target name, not a command of its own).
         transform: { label: "Transform", detail: "Move, scale, rotate, mask, filter or fade anything on stage \u2014 or the camera" },
-        screen: { label: "Screen", detail: "A screen-wide gesture: blink or vignette" },
         // The detail says "mirror", not "flip", because the word the command is named after is the
         // one thing it cannot explain: an author who is unsure what /flip does needs the other word.
         // The token is `mirror` because `flip` is a live alias of `/toggle`; the label follows the
@@ -1175,7 +1180,6 @@ export const story = {
         // label out of. Deliberately generic: the only other thing the row holds is the plugin id,
         // and an id is not a name.
         pluginAction: "Plugin action",
-        effect: "{effect} screen effect",
         // Four readings of one row, not one per channel: the channels the bag states are printed
         // on the line beside this, and a grade or a shot names the BINDING because that is the
         // content of the row.

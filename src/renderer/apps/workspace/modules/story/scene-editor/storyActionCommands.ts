@@ -72,8 +72,7 @@ export type ActionCommandId =
     | "videoHide"
     | "videoPlay"
     | "nvl"
-    | "screenBlink"
-    | "screenVignette"
+    | "cameraBlink"
     | "jump"
     | "waitDuration"
     | "waitClick"
@@ -225,10 +224,10 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
             return { ...base, kind: "action", payload: { action: "video", operation: "play", objectName: "video" } };
         case "nvl":
             return { ...base, kind: "action", payload: { action: "nvl", transition: { to: { opacity: 1 }, durationMs: 250 } } };
-        case "screenBlink":
-            return { ...base, kind: "action", payload: { action: "screenEffect", effect: "blink", durationMs: 180, holdMs: 100, easing: "easeInOut", color: "#000000" } };
-        case "screenVignette":
-            return { ...base, kind: "action", payload: { action: "screenEffect", effect: "vignette", durationMs: 300, holdMs: 600, easing: "easeInOut", color: "#000000", opacity: 0.72 } };
+        case "cameraBlink":
+            // The gesture seeds by NAME and carries no numbers: the library holds the timings, and a
+            // seed that restated them would be a second answer going stale the first time they moved.
+            return { ...base, kind: "action", payload: { action: "camera", operation: "transform", transform: { mode: "props", to: { lens: { preset: "blink" } } } } };
         case "jump":
             return { ...base, kind: "jump", payload: { targetSceneId: "" } };
         case "waitDuration":

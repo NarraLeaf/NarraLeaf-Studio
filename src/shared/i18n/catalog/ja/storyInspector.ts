@@ -67,10 +67,6 @@ export const storyInspector = {
         character: "キャラクター",
         layer: "レイヤー",
         muted: "消音",
-        closeIn: "閉じる（秒）",
-        openOut: "開く（秒）",
-        vignetteInner: "透明な中心 %",
-        vignetteOuter: "暗い縁 %",
     },
 
     motionTarget: {
@@ -257,6 +253,12 @@ export const storyInspector = {
         hangover: "二日酔い",
     },
 
+    cameraLens: {
+        blink: "まばたき",
+        slowBlink: "ゆっくりまばたき",
+        vignettePulse: "ビネットの脈動",
+    },
+
     cameraLookHint: {
         channel: "ルックはステージの暗さに重ねるのではなく置き換える。エンジンでは同じフィルターなので、後の行が勝つ。各ルックは自前の明るさを含む。カメラをリセットすると消える。",
         monologue: "ステージ全体の彩度と明るさを下げるだけ。周辺を暗くするにはビネットを別の行で足す。",
@@ -301,6 +303,7 @@ export const storyInspector = {
         geometry: "位置とスケール",
         filter: "フィルター",
         look: "ルック",
+        lens: "レンズ",
         composite: "合成",
         text: "テキスト",
         timing: "タイミング",
@@ -367,11 +370,6 @@ export const storyInspector = {
         setRate: "再生速度を決める",
         muteSound: "消音を切り替え",
         seekSound: "この位置へ",
-    },
-
-    screenEffectOption: {
-        blink: "まばたき",
-        vignette: "ビネット",
     },
 
     waitMode: {

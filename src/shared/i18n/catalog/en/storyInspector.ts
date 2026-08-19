@@ -63,12 +63,6 @@ export const storyInspector = {
         kind: "Kind",
         effect: "Effect",
         character: "Character",
-        // A blink's two halves, named for what each one does. Empty means "follow the whole move".
-        // Only a blink has them: the engine drives a vignette's fade in and out from one duration.
-        closeIn: "Close (s)",
-        openOut: "Open (s)",
-        vignetteInner: "Clear center %",
-        vignetteOuter: "Dark edge %",
         layer: "Layer",
         muted: "Muted",
     },
@@ -261,6 +255,13 @@ export const storyInspector = {
         hangover: "Hangover",
     },
 
+    // The lens gestures. Named for the moment, like the grades above.
+    cameraLens: {
+        blink: "Blink",
+        slowBlink: "Slow blink",
+        vignettePulse: "Vignette pulse",
+    },
+
     cameraLookHint: {
         channel: "A look replaces stage darkness rather than adding to it — the engine gives both the same filter, so the later row wins. Each look carries its own brightness. Reset camera clears it.",
         monologue: "Desaturates and dims the whole stage. For darkened edges, add a vignette.",
@@ -311,6 +312,7 @@ export const storyInspector = {
         geometry: "Position and scale",
         filter: "Filter",
         look: "Look",
+        lens: "Lens",
         composite: "Compositing",
         text: "Text",
         timing: "Timing",
@@ -377,11 +379,6 @@ export const storyInspector = {
         setRate: "Set rate",
         muteSound: "Mute / unmute",
         seekSound: "Seek",
-    },
-
-    screenEffectOption: {
-        blink: "Blink",
-        vignette: "Vignette",
     },
 
     waitMode: {

@@ -1171,32 +1171,6 @@ function actionSentence(
                     })
                     : positional("seconds", "click")],
             };
-        case "screenEffect":
-            // A committed row may only show a line the author could have typed, so the halves ride
-            // only on the effect whose spec names them. They also print only when a half was actually
-            // overridden - `arg` drops an empty value - so the common symmetric line stays
-            // `/blink d=0.2 hold=0.1` rather than growing two tokens `d` already said.
-            return {
-                commandId,
-                args: [
-                    // The effect leads, as `/screen blink` is typed. The OPERATION itself is fixed
-                    // here: swapping blink for vignette changes which fields the row carries and what
-                    // they mean, which is a rebuild rather than a tweak.
-                    positional("effect", payload.effect, { enum: true }),
-                    arg("d", seconds(payload.durationMs), { apply: next => ({ ...payload, durationMs: msOf(next) }) }),
-                    ...(payload.effect === "blink" ? [
-                        arg("in", seconds(payload.inMs), { apply: next => ({ ...payload, inMs: msOf(next) }) }),
-                        arg("out", seconds(payload.outMs), { apply: next => ({ ...payload, outMs: msOf(next) }) }),
-                    ] : []),
-                    arg("hold", seconds(payload.holdMs), { apply: next => ({ ...payload, holdMs: msOf(next) }) }),
-                    arg("color", payload.color, { apply: next => ({ ...payload, color: next }) }),
-                    ...(payload.effect === "vignette" ? [
-                        arg("opacity", numberValue(payload.opacity), { apply: next => ({ ...payload, opacity: Number(next) }) }),
-                        arg("inner", numberValue(payload.inner), { apply: next => ({ ...payload, inner: Number(next) }) }),
-                        arg("outer", numberValue(payload.outer), { apply: next => ({ ...payload, outer: Number(next) }) }),
-                    ] : []),
-                ],
-            };
         case "nvl":
             // NVL's `transition` is a transform ref (preset-based), not a `StoryTransitionRef` — the
             // one place the two shapes swap names, which is why it writes its own patch.

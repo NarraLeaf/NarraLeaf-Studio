@@ -1034,6 +1034,23 @@ function cameraShape(
     if (stated.length > 1) {
         ctx.report(block.id, "customTransform", "camera");
     }
+    if (to?.lens) {
+        return {
+            form: "statement",
+            verb: "cameraLens",
+            slots: {
+                lens: asName(to.lens.preset),
+                fadeIn: optSeconds(to.lens.inMs),
+                hold: optSeconds(to.lens.holdMs),
+                fadeOut: optSeconds(to.lens.outMs),
+                color: to.lens.color === undefined ? undefined : asColor(to.lens.color),
+                opacity: optNumber(to.lens.amount),
+                inner: optNumber(to.lens.inner),
+                outer: optNumber(to.lens.outer),
+                easing: to.lens.easing === undefined ? undefined : asName(to.lens.easing),
+            },
+        };
+    }
     if (to?.look) {
         return {
             form: "statement",
@@ -1129,28 +1146,6 @@ function actionShape(ctx: NarralangExtractContext, block: StoryBlock, payload: S
                 form: "statement",
                 verb: "nvl",
                 slots: transformSlots(ctx, block.id, payload.transition, "nvl"),
-            };
-        case "screenEffect":
-            // Each effect's grammar names a different subset, so each is extracted against its own -
-            // printing a slot the verb does not have produces a line the matcher then refuses.
-            return {
-                form: "statement",
-                verb: payload.effect === "blink" ? "screenBlink" : "screenVignette",
-                slots: {
-                    duration: optSeconds(payload.durationMs),
-                    ...(payload.effect === "blink" ? {
-                        fadeIn: optSeconds(payload.inMs),
-                        fadeOut: optSeconds(payload.outMs),
-                    } : {}),
-                    hold: optSeconds(payload.holdMs),
-                    color: payload.color === undefined ? undefined : asColor(payload.color),
-                    opacity: optNumber(payload.opacity),
-                    ...(payload.effect === "vignette" ? {
-                        inner: optNumber(payload.inner),
-                        outer: optNumber(payload.outer),
-                    } : {}),
-                    easing: payload.easing === undefined ? undefined : asName(payload.easing),
-                },
             };
         case "blueprint":
             ctx.report(block.id, "blueprintAction");

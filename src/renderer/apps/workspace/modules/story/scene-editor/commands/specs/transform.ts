@@ -20,6 +20,7 @@ import {
     filterWritersOf,
     parseFromProps,
     parsePositionValue,
+    CAMERA_ONLY_PROP_KEYS,
     RESET_CHANNEL_KEYS,
     RESET_PROP_PARAMS,
     resetPropsFromArgs,
@@ -52,8 +53,10 @@ import {
  * renamed to `in=` / `out=` rather than folded in here: an entrance is a transform *with a
  * direction*, and the direction is what the verb already says.
  *
- * The **screen effects** are not here either. `/screen blink` is two eyelid overlays each running
- * their own timeline, which one-object-at-a-time cannot express (see `specs/effects.ts`).
+ * The **screen effects** used to be a command of their own, on the reasoning that a blink is two
+ * eyelid overlays running their own timelines and one-object-at-a-time cannot express that. They are
+ * here now, and the reasoning was the answer rather than the objection: the eyelids belong to the
+ * CAMERA's lens, so `lens=` is a prop of the one bag like every other channel.
  */
 
 /** Every kind that has a transform pipeline, and the reserved words that name the stage singletons. */
@@ -219,14 +222,24 @@ function validateProps(
         });
     }
 
+    // The lens is the CAMERA's own glass: the engine renders `shutter` and `vignette` from an overlay
+    // that belongs to the camera, and no other Displayable has one. On a sprite these would write
+    // props the stage never reads, which is the silent failure this layer exists to refuse.
+    if (subject.kind !== "camera") {
+        for (const key of CAMERA_ONLY_PROP_KEYS) {
+            const span = args[key] === undefined ? undefined : ctx.spanOf(key);
+            if (span) {
+                issues.push({ code: "unsupportedParam", span, key, kind });
+            }
+        }
+    }
+
     // `color=` IS `fontColor`, the one channel of the bag that belongs to a single kind of
     // displayable. Everything else in the vocabulary reaches every subject - including the camera,
-    // which since v19 is simply another one.
+    // which since v19 is simply another one, and which has no text to colour either.
     const colorSpan = ctx.spanOf("color");
-    if (!options.reset && subject.kind !== "camera" && colorSpan && args.color !== undefined && target && !(target.type === "stageObject" && target.objectKind === "text")) {
-        issues.push({ code: "unsupportedParam", span: colorSpan, key: "color", kind });
-    }
-    if (subject.kind === "camera" && colorSpan && args.color !== undefined) {
+    const colorless = subject.kind === "camera" || (target !== undefined && !(target.type === "stageObject" && target.objectKind === "text"));
+    if (!options.reset && colorSpan && args.color !== undefined && colorless) {
         issues.push({ code: "unsupportedParam", span: colorSpan, key: "color", kind });
     }
     return issues;

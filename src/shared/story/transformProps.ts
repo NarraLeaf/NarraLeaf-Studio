@@ -263,9 +263,15 @@ const DISCRETE_KEYS = [
     // A colour is a string here, and the keyframe layer already holds one until the next keyframe
     // rather than mixing two - so a colour behaves the same way on this path.
     "fontColor",
+    // The lens's dressing. The two channels it dresses (`shutter`, `vignette`) are continuous and
+    // tween; a colour and a gradient stop are strings with no midpoint, exactly like the mask's.
+    "shutterColor",
+    "vignetteColor",
+    "vignetteInner",
+    "vignetteOuter",
 ] as const;
 
-const NUMERIC_KEYS = ["zoom", "scaleX", "scaleY", "rotation", "opacity"] as const;
+const NUMERIC_KEYS = ["zoom", "scaleX", "scaleY", "rotation", "opacity", "shutter", "vignette"] as const;
 
 /**
  * Split a change into the half that cuts and the half that tweens.
@@ -339,6 +345,11 @@ export function splitStoryTransformChange(
     // module cannot resolve, and not a decision about the grade.
     if (to.look !== undefined) {
         cut.look = to.look;
+    }
+    // A named lens gesture never reaches here either: it is three keyframes, not a destination, so the
+    // emitter plays it as its own statement. Cutting an unfolded one is the conservative answer.
+    if (to.lens !== undefined) {
+        cut.lens = to.lens;
     }
     return { cut, tween };
 }
@@ -422,6 +433,18 @@ export function storyTransformPropsToNlr(
     assign(next, "clipPath", cssOrNone(props.clipPath));
     assign(next, "backdropFilter", cssOrNone(props.backdropFilter));
     assign(next, "mixBlendMode", props.mixBlendMode === null ? "normal" : props.mixBlendMode);
+    // The camera's lens, passed straight through under the engine's own spellings. An engine that does
+    // not know them ignores them: `constructStyle` builds its style object from a literal list of
+    // keys, so an unrecognised prop is inert rather than a crash - which is what makes a project
+    // written against a newer Studio still play on an older engine, quietly missing the effect.
+    // TODO(narraleaf-react 0.31.0): the props are typed on `ImageTransformProps` from that release on,
+    // and the `as any` at the emitter's call sites can go with the pin.
+    assign(next, "shutter", props.shutter);
+    assign(next, "shutterColor", props.shutterColor);
+    assign(next, "vignette", props.vignette);
+    assign(next, "vignetteColor", props.vignetteColor);
+    assign(next, "vignetteInner", cssOrNone(props.vignetteInner));
+    assign(next, "vignetteOuter", cssOrNone(props.vignetteOuter));
     if (props.filterRaw !== undefined) {
         next.filter = props.filterRaw === null ? "none" : props.filterRaw;
     } else if (props.filter !== undefined) {

@@ -7,6 +7,7 @@ import type {
 } from "@shared/types/story";
 import type { TranslationKey, Translator } from "@shared/i18n";
 import { STORY_CAMERA_LOOK_DEFAULT_PRESET_ID } from "@/lib/ui-editor/runtime/game/cameraLookPresets";
+import { STORY_CAMERA_LENS_PRESETS } from "@/lib/ui-editor/runtime/game/cameraLensPresets";
 
 /**
  * The transform bag, as a list of channels an author adds and removes one at a time.
@@ -26,10 +27,10 @@ import { STORY_CAMERA_LOOK_DEFAULT_PRESET_ID } from "@/lib/ui-editor/runtime/gam
  * can also find on the right.
  */
 
-export type TransformChannelGroupId = "geometry" | "filter" | "look" | "composite" | "text" | "timing";
+export type TransformChannelGroupId = "geometry" | "filter" | "look" | "lens" | "composite" | "text" | "timing";
 
 export const TRANSFORM_CHANNEL_GROUPS: readonly TransformChannelGroupId[] = [
-    "geometry", "filter", "look", "composite", "text", "timing",
+    "geometry", "filter", "look", "lens", "composite", "text", "timing",
 ];
 
 /**
@@ -277,6 +278,48 @@ function timingChannel(key: "delayMs" | "repeat" | "repeatDelayMs", seed: number
     };
 }
 
+/**
+ * The lens's own channels: settled values, as opposed to the gesture above.
+ *
+ * `shutter=1` holds the eyes shut until something opens them; `lens=blink` closes and opens them
+ * again. Two different instructions, and the panel says so by offering both.
+ */
+function lensNumberChannel(key: "shutter" | "vignette", seed: number): TransformChannelSpec {
+    return {
+        id: key,
+        group: "lens",
+        label: t => t(`story.paramHint.${key}` as TranslationKey),
+        cameraOnly: true,
+        stated: ref => propsOf(ref)[key] !== undefined,
+        add: ref => withTransformProps(ref, { [key]: seed }),
+        remove: ref => withoutTransformProps(ref, [key]),
+    };
+}
+
+function lensColorChannel(key: "shutterColor" | "vignetteColor", seed: string): TransformChannelSpec {
+    return {
+        id: key,
+        group: "lens",
+        label: t => t(`story.paramHint.${key}` as TranslationKey),
+        cameraOnly: true,
+        stated: ref => propsOf(ref)[key] !== undefined,
+        add: ref => withTransformProps(ref, { [key]: seed }),
+        remove: ref => withoutTransformProps(ref, [key]),
+    };
+}
+
+function lensPercentChannel(key: "vignetteInner" | "vignetteOuter", seed: string): TransformChannelSpec {
+    return {
+        id: key,
+        group: "lens",
+        label: t => t(`story.paramHint.${key}` as TranslationKey),
+        cameraOnly: true,
+        stated: ref => propsOf(ref)[key] !== undefined,
+        add: ref => withTransformProps(ref, { [key]: seed }),
+        remove: ref => withoutTransformProps(ref, [key]),
+    };
+}
+
 export const TRANSFORM_CHANNELS: readonly TransformChannelSpec[] = [
     {
         id: "position",
@@ -357,6 +400,24 @@ export const TRANSFORM_CHANNELS: readonly TransformChannelSpec[] = [
         add: ref => withTransformProps(ref, { fontColor: "#ffffff" }),
         remove: ref => withoutTransformProps(ref, ["fontColor"]),
     },
+
+    {
+        // The lens gesture. A NAME, because a blink is in-hold-out and not a value an author dials -
+        // see `cameraLensPresets.ts` for why the gesture is a preset while the channels below are not.
+        id: "lens",
+        group: "lens",
+        label: t => t("story.paramHint.cameraLens"),
+        cameraOnly: true,
+        stated: ref => Boolean(propsOf(ref).lens),
+        add: ref => withTransformProps(ref, { lens: { preset: STORY_CAMERA_LENS_PRESETS[0]?.id ?? "blink" } }),
+        remove: ref => withoutTransformProps(ref, ["lens"]),
+    },
+    lensNumberChannel("shutter", 1),
+    lensColorChannel("shutterColor", "#000000"),
+    lensNumberChannel("vignette", 0.72),
+    lensColorChannel("vignetteColor", "#000000"),
+    lensPercentChannel("vignetteInner", "44%"),
+    lensPercentChannel("vignetteOuter", "78%"),
 
     timingChannel("delayMs", 0),
     timingChannel("repeat", 1),

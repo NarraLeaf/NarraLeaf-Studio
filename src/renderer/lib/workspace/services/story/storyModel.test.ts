@@ -891,7 +891,7 @@ describe("story document migration ladder", () => {
             const scene = document.scenes[sceneId];
             return {
                 ...document,
-                schemaVersion: 18,
+                schemaVersion: 18 as unknown as StoryDocument["schemaVersion"],
                 scenes: {
                     [sceneId]: {
                         ...scene,

@@ -481,7 +481,7 @@ class SnapshotWalker {
             case "blueprint":
                 this.diagnostic(block.id, translate("story.preview.diagnostics.storyActionSkipped"));
                 return;
-            // audio / wait / screenEffect / nvl: no settled visual state.
+            // audio / wait / nvl: no settled visual state.
             default:
                 return;
         }
