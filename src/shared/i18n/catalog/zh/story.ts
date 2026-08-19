@@ -641,7 +641,7 @@ export const story = {
         },
     },
     diagnostics: {
-        missingAsset: "这一行指向的资源已经不在项目里了",
+        missingAsset: "这一行指向的资产已经不在项目里了",
         unknownPuppetName: "这个角色的模型里没有这个名字",
     },
     find: {
@@ -683,9 +683,9 @@ export const story = {
         star: "收藏",
         unstar: "取消收藏",
         type: {
-            image: "图片资源",
-            audio: "音频资源",
-            video: "视频资源",
+            image: "图片资产",
+            audio: "音频资产",
+            video: "视频资产",
             character: "角色",
             characterOrName: "角色，或任意名字",
             characterForm: "该角色的某个表情",
@@ -789,7 +789,7 @@ export const story = {
         sceneMusicIntroLoop: "从 {from}s 播放，循环 {loop}s 至 {to}s",
         sceneMusicFromIn: "从 {from}s 开始",
         sceneMusicWholeClip: "整曲",
-        backgroundResolveError: "无法解析图片资源：{error}",
+        backgroundResolveError: "无法解析图片资产：{error}",
         selectDefaultBackground: "选择默认背景",
         tabInvalid: "故事场景编辑器标签无效",
         loadingScene: "正在加载故事场景…",
@@ -1028,7 +1028,7 @@ export const story = {
         choice: "选择",
         option: "选项",
         setBackground: "设置背景 {value}",
-        missingAsset: "资源缺失",
+        missingAsset: "资产缺失",
         unassigned: "未指定",
         characterFallback: "角色",
         charOp: {

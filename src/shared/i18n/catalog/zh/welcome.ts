@@ -16,7 +16,7 @@ export const welcome = {
             description: "新增场景并开始编写",
         },
         openAssets: {
-            label: "打开资源",
+            label: "打开资产",
             description: "导入图片、音频与视频",
         },
         help: {

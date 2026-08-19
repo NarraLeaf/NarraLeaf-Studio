@@ -85,7 +85,7 @@ export const project = {
         copyrightPlaceholder: "© 你的工作室",
         // 长文形式，与上面那一行分开：那一行进二进制的文件属性，这一段进玩家能打开的文件。
         copyrightTextLabel: "版权声明",
-        copyrightTextPlaceholder: "用到的字体、音乐与素材，以及它们各自归谁所有…",
+        copyrightTextPlaceholder: "用到的字体、音乐与资产，以及它们各自归谁所有…",
         copyrightTextHelper: "随游戏一起发布为 COPYRIGHT.txt；留空则不生成该文件",
         descriptionPlaceholder: "描述你的项目…",
         required: "必填",
@@ -354,9 +354,9 @@ export const project = {
             fromPlugins: "已安装插件声明的地址",
             sidecarNote: "插件附带的程序在游戏进程之外运行，不受该白名单约束",
         },
-        encryptAssetsTitle: "加密资源",
-        encryptAssetsDescription: "在打包及预览构建中加密资源、插件代码与剧本数据，不影响开发模式",
-        encryptAssetsWebHint: "Web 构建始终不加密资源",
+        encryptAssetsTitle: "加密资产",
+        encryptAssetsDescription: "在打包及预览构建中加密资产、插件代码与剧本数据，不影响开发模式",
+        encryptAssetsWebHint: "Web 构建始终不加密资产",
         // 「签名」这一块的一行说明。每个可签名平台都有一行，不管本机能不能构建它：证书往往在用到它的
         // 那次构建之前几天就要备好，这份准备工作正是它落在面板里、而不是构建对话框里的原因。
         signingDescription: "为每个平台指定签名凭据；证书与密码只留在本机，工程里存的只有用哪一份",

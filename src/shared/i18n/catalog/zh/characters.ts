@@ -2,7 +2,7 @@ import type { LocaleNamespace } from "../types";
 
 export const characters = {
     errors: {
-        assetLoad: "加载素材失败",
+        assetLoad: "加载资产失败",
     },
     panel: {
         searchPlaceholder: "搜索角色…",
@@ -243,7 +243,7 @@ export const characters = {
         addTag: "添加标签",
         error: {
             workspaceNotReady: "工作区尚未就绪",
-            selectImageAsset: "请选择一个图片素材",
+            selectImageAsset: "请选择一个图片资产",
             deleteThumbnailFailed: "删除缩略图失败",
             saveThumbnailFailed: "保存缩略图失败",
             unknown: "未知错误",
