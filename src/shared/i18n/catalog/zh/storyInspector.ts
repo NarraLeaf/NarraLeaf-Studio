@@ -217,36 +217,10 @@ export const storyInspector = {
     },
 
     cameraOperation: {
-        zoom: "推拉",
-        pan: "平移",
-        rotate: "旋转",
-        darken: "压暗舞台",
-        look: "色调",
-        motion: "运镜动作",
         reset: "复位镜头",
     },
 
-    cameraOperationShort: {
-        zoom: "推拉",
-        pan: "平移",
-        rotate: "旋转",
-        darken: "压暗",
-        look: "色调",
-        motion: "运镜",
-        reset: "复位",
-    },
-
-    camera: {
-        zoom: "缩放（1 为原始）",
-        rotation: "旋转角度 °",
-        darkness: "舞台压暗（0-1）",
-        xalign: "X 对齐（0-1）",
-        yalign: "Y 对齐（0-1）",
-        look: "色调",
-        lookSnaps: "影调一帧到位。补间会让画面走过一串没人挑过的颜色，所以没有时长可设——想要过渡就在前面放一次眨眼或转场。",
-        lookIntensity: "强度（1 为标准）",
-        lookFilter: "自定义 CSS 滤镜",
-    },
+    cameraResetHint: "把镜头整个复位：机位、色调、镜头效果一起。",
 
     cameraLook: {
         memory: "回忆",

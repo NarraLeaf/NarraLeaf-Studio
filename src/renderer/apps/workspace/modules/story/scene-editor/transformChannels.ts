@@ -95,6 +95,12 @@ export type TransformChannelSpec = {
     shares?: boolean;
     /** Only offered when the row's target is a text object; `fontColor` is the one such channel. */
     textOnly?: boolean;
+    /**
+     * Only offered on the camera. The lens channels are the camera's own glass - the engine renders
+     * them from the camera's overlay, and no other Displayable has one - so offering them on a sprite
+     * would put a control on the row that writes a prop the stage never reads.
+     */
+    cameraOnly?: boolean;
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -377,7 +383,7 @@ export function statedTransformChannels(ref: StoryTransformRef | undefined): rea
  */
 export function addableTransformChannels(
     ref: StoryTransformRef | undefined,
-    options: { isText: boolean },
+    options: { isText: boolean; isCamera?: boolean },
 ): readonly TransformChannelSpec[] {
     const current = ref ?? {};
     const occupied = new Map<ChannelSlot, boolean>();
@@ -390,6 +396,9 @@ export function addableTransformChannels(
     }
     return TRANSFORM_CHANNELS.filter(channel => {
         if (channel.textOnly && !options.isText) {
+            return false;
+        }
+        if (channel.cameraOnly && !options.isCamera) {
             return false;
         }
         if (channel.stated(current)) {

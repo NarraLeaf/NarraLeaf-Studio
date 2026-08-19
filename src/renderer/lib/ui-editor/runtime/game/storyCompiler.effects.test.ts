@@ -259,7 +259,11 @@ describe("compiles a camera grade as a cut", () => {
             grade: {
                 id: "grade", kind: "action", parentId: null, childrenIds: [],
                 // A duration an author might reasonably have typed. It must not reach the filter.
-                payload: { action: "camera", operation: "look", lookPreset: "moonlight", lookIntensity: 1, durationMs: 900 },
+                payload: {
+                    action: "camera",
+                    operation: "transform",
+                    transform: { mode: "props", to: { look: { preset: "moonlight", intensity: 1 } }, durationMs: 900 },
+                },
             },
         }, ["grade"]);
 

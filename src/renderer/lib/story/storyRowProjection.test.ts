@@ -98,15 +98,15 @@ describe("storyRowSentence — the sentence the editor shows", () => {
         // than printing a uuid.
         const block = action({
             action: "camera",
-            operation: "motion",
-            motion: { mode: "animation", animationId: "anim-1" },
+            operation: "transform",
+            transform: { mode: "animation", animationId: "anim-1" },
         });
         expect(storyRowSentence(block, { ...bare, motionName: id => (id === "anim-1" ? "Camera Shake" : null) }))
             .toBe("Motion Camera Shake");
         expect(storyRowSentence(block, bare)).toBe("Motion");
         expect(storyRowSentence(block, { ...bare, motionName: () => null })).toBe("Motion");
         // An unbound motion row has nothing to name, table or not.
-        expect(storyRowSentence(action({ action: "camera", operation: "motion" }), { ...bare, motionName: () => "x" }))
+        expect(storyRowSentence(action({ action: "camera", operation: "transform", transform: { mode: "animation" } }), { ...bare, motionName: () => "x" }))
             .toBe("Motion");
     });
 

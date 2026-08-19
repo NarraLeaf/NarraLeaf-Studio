@@ -243,39 +243,10 @@ export const storyInspector = {
     },
 
     cameraOperation: {
-        zoom: "ズーム",
-        pan: "パン",
-        rotate: "回転",
-        // 「画面」ではなく「ステージ」。これはカメラの明るさで、`/vignette` のシーン内マスクではない。
-        darken: "ステージを暗くする",
-        look: "カラーグレード",
-        motion: "カメラのモーション",
         reset: "カメラをリセット",
     },
 
-    // 選択ボタンのラベル。横に並ぶ短さにしてある。上の正式名はそれぞれのツールチップに残るので、
-    // 「ステージを暗くする」は必要な場所で *ステージ* と言える。
-    cameraOperationShort: {
-        zoom: "ズーム",
-        pan: "パン",
-        rotate: "回転",
-        darken: "暗く",
-        look: "グレード",
-        motion: "モーション",
-        reset: "リセット",
-    },
-
-    camera: {
-        zoom: "ズーム（1 が基準）",
-        rotation: "回転 °",
-        darkness: "ステージの暗さ（0-1）",
-        xalign: "X の基準（0-1）",
-        yalign: "Y の基準（0-1）",
-        look: "ルック",
-        lookSnaps: "ルックは一フレームで切り替わります。補間すると誰も選んでいない色を経由するため、時間の設定はありません。まばたきやトランジションの裏で切り替えてください。",
-        lookIntensity: "強さ（1 が標準）",
-        lookFilter: "カスタム CSS フィルター",
-    },
+    cameraResetHint: "カメラを一括で戻します。位置もグレードもレンズ効果も。",
 
     cameraLook: {
         memory: "回想",

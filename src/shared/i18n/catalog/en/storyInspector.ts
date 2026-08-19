@@ -243,40 +243,12 @@ export const storyInspector = {
     },
 
     cameraOperation: {
-        zoom: "Zoom",
-        pan: "Pan",
-        rotate: "Rotate",
-        // "stage", not "screen": this is the camera's brightness, not `/vignette`'s in-scene mask.
-        darken: "Darken stage",
-        // "Grade", the word the craft uses, so the picker teaches the vocabulary rather than only the token.
-        look: "Color grade",
-        motion: "Camera motion",
         reset: "Reset camera",
     },
 
-    // The picker labels: short enough that they fit side by side. The full names above stay as each
-    // button's tooltip, so `Darken stage` still gets to say *stage* where it matters.
-    cameraOperationShort: {
-        zoom: "Zoom",
-        pan: "Pan",
-        rotate: "Rotate",
-        darken: "Darken",
-        look: "Grade",
-        motion: "Motion",
-        reset: "Reset",
-    },
-
-    camera: {
-        zoom: "Zoom (1 = neutral)",
-        rotation: "Rotation °",
-        darkness: "Stage darkness (0-1)",
-        xalign: "X align (0-1)",
-        yalign: "Y align (0-1)",
-        look: "Look",
-        lookSnaps: "A look lands in a single frame. Fading one would walk the picture through colours nobody chose, so there is no duration to set — cut into it behind a blink or a transition.",
-        lookIntensity: "Intensity (1 = nominal)",
-        lookFilter: "Custom CSS filter",
-    },
+    // Said where the mode is chosen, because it is the one camera row whose effect the viewfinder
+    // cannot draw: it puts the whole instrument back, pose and grade and lens together.
+    cameraResetHint: "Puts the camera back: pose, grade and lens at once.",
 
     // The looks themselves. Named for the moment they are for, not for what they do to the pixels:
     // an author reaches for these while writing a flashback, not while thinking about saturation.

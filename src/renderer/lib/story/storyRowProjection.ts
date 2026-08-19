@@ -2,6 +2,7 @@ import type { TranslationKey } from "@shared/i18n";
 import { isBuiltinAppTagId } from "@shared/types/appTag";
 import type {
     StoryActionPayload,
+    StoryAlignPositionValue,
     StoryBlock,
     StoryBlockId,
     StoryConditionRef,
@@ -649,11 +650,11 @@ const CAMERA_PAN_PLACEMENTS: Record<number, StagePlacement> = (["left", "center"
 /**
  * The `at=` word a stored camera position lands on, or `null` when it sits somewhere no word names.
  *
- * Exported because two readings of the same row need it — this module's prose summary and the
- * command-line projection that reads the row back as `/camera pan left`. A second copy of the table
- * would be a second answer to "which side is this".
+ * Exported because several readings of the same row need it — this module's prose summary, the
+ * command-line projection and the script export. A second copy of the table would be a second answer
+ * to "which side is this".
  */
-export function storyCameraPanPlacement(position: Extract<StoryActionPayload, { action: "camera" }>["position"]): StagePlacement | null {
+export function storyCameraPanPlacement(position: StoryAlignPositionValue | undefined): StagePlacement | null {
     const xalign = position?.xalign ?? 0.5;
     const yalign = position?.yalign ?? 0.5;
     if (yalign !== 0.5 || position?.xoffset || position?.yoffset) {
@@ -663,52 +664,39 @@ export function storyCameraPanPlacement(position: Extract<StoryActionPayload, { 
 }
 
 /**
- * How a camera row reads: the operation plus the one value it carries. The verb is NOT repeated from
- * the badge, but the knob is named ("Zoom ×1.5", not "×1.5"), because five operations share one badge.
+ * How a camera row reads.
+ *
+ * Three answers, because a camera row is three things: a reset, a whole keyframed shot, or a pose.
+ * The shot and the grade name themselves, because the BINDING is the content of the row - several
+ * `motion` rows in a scene would otherwise all read "Motion", and several grades all read "Color
+ * grade". A plain pose does not, because the channels it states are already printed on the line
+ * beside it.
  */
 function describeCamera(
     payload: Extract<StoryActionPayload, { action: "camera" }>,
     motionName?: StoryRowLookups["motionName"],
 ): string {
-    const operation = translate(`story.describe.cameraOp.${payload.operation}` as TranslationKey);
-    if (payload.operation === "motion") {
-        // The bound motion IS the content of this row; several `/camera motion` rows in a scene are
-        // otherwise all just "Motion".
-        const animationId = payload.motion?.animationId;
+    if (payload.operation === "reset") {
+        return translate("story.describe.cameraOp.reset");
+    }
+    if (payload.transform?.mode === "animation") {
+        const operation = translate("story.describe.cameraOp.motion");
+        const animationId = payload.transform.animationId;
         const name = animationId ? motionName?.(animationId) : undefined;
         return name ? `${operation} ${name}` : operation;
     }
-    if (payload.operation === "zoom") {
-        return `${operation} ×${payload.zoom ?? 1}`;
+    const look = payload.transform?.to?.look;
+    if (look) {
+        const preset = getStoryCameraLookPreset(look.preset);
+        return preset
+            ? `${translate("story.describe.cameraOp.look")} ${translate(`storyInspector.cameraLook.${preset.id}` as TranslationKey)}`
+            : translate("story.describe.cameraOp.look");
     }
-    if (payload.operation === "rotate") {
-        return `${operation} ${payload.rotation ?? 0}°`;
-    }
-    if (payload.operation === "darken") {
-        return `${operation} ${Math.round(Math.min(1, Math.max(0, payload.darkness ?? 0)) * 100)}%`;
-    }
-    if (payload.operation === "look") {
-        // The GRADE is the content of this row, so it is named rather than the operation repeated -
-        // several looks in one scene would otherwise all read "Colour grade". A hand-written filter
-        // has no name to print and no id worth showing an author, so it says only that it is custom.
-        const preset = getStoryCameraLookPreset(payload.lookPreset);
-        if (!preset) {
-            return payload.filter?.trim()
-                ? `${operation} ${translate("story.describe.cameraLookCustom")}`
-                : operation;
-        }
-        return `${operation} ${translate(`storyInspector.cameraLook.${preset.id}` as TranslationKey)}`;
-    }
-    if (payload.operation === "pan") {
-        const xalign = payload.position?.xalign ?? 0.5;
-        const yalign = payload.position?.yalign ?? 0.5;
-        const placement = storyCameraPanPlacement(payload.position);
-        return `${operation} ${placement ? translate(`story.position.${placement}`) : `${Math.round(xalign * 100)}% · ${Math.round(yalign * 100)}%`}`;
-    }
-    return operation;
+    return translate("story.describe.cameraOp.transform");
 }
 
 /**
+ * The base sentence of a block — the verb's object and modifiers, without the quick-param tokens./**
  * The base sentence of a block — the verb's object and modifiers, without the quick-param tokens.
  *
  * Asset ids resolve to names when {@link StoryRowLookups.assetName} is supplied. Without it a row can

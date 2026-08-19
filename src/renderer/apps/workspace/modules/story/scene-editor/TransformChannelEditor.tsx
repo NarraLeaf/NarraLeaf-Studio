@@ -705,7 +705,12 @@ function AddChannelPicker(props: {
 
 export function TransformChannelEditor(props: {
     value: StoryTransformRef | undefined;
-    targetKind: StoryDisplayableTargetKind;
+    /**
+     * What this row transforms. `camera` is a subject like any other since v19 - the stage camera IS
+     * a Displayable and takes the same bag - and it is spelled here rather than in
+     * `StoryDisplayableTargetKind` because that union is about objects a scene creates.
+     */
+    targetKind: StoryDisplayableTargetKind | "camera";
     /**
      * The image this row transforms, when the row transforms something that has one.
      *
@@ -720,7 +725,7 @@ export function TransformChannelEditor(props: {
     const preview = useAssetObjectUrl(props.previewAssetId, AssetType.Image);
     const ref: StoryTransformRef = props.value ?? { mode: "props" };
     const stated = statedTransformChannels(ref);
-    const addable = addableTransformChannels(ref, { isText: props.targetKind === "text" });
+    const addable = addableTransformChannels(ref, { isText: props.targetKind === "text", isCamera: props.targetKind === "camera" });
     const removeLabel = t("storyInspector.transformChannel.remove");
 
     return (

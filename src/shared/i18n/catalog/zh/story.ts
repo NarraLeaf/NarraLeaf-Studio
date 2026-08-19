@@ -1050,15 +1050,11 @@ export const story = {
         // 镜头行的措辞就是作者敲进去的那个词（`story.enumValue.*`）——行里读到的和手册里教的
         // 必须是同一个词，否则又回到"打的是缩放、显示的是推拉"那种割裂。
         cameraOp: {
-            pan: "平移",
-            zoom: "缩放",
-            rotate: "旋转",
-            darken: "压暗",
+            transform: "镜头",
             look: "色调",
             motion: "运镜",
             reset: "复位",
         },
-        cameraLookCustom: "自定义",
         condition: "条件",
         branch: "{branch} 分支",
         label: "标签 {name}",

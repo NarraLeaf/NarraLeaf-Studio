@@ -83,7 +83,7 @@ describe("printNarralangScene", () => {
                 payload: { control: "conditionBranch", branch: "if", condition: { kind: "expression", expression: { source: "trust > 0", ast: { kind: "literal", value: true } } } },
                 children: ["b13", "b14"],
             },
-            { id: "b13", kind: "action", payload: { action: "camera", operation: "zoom", zoom: 1.4, durationMs: 1200 } },
+            { id: "b13", kind: "action", payload: { action: "camera", operation: "transform", transform: { mode: "props", to: { zoom: 1.4 }, durationMs: 1200 } } },
             { id: "b14", kind: "jump", payload: { targetSceneId: "scene-2" } },
             { id: "b15", kind: "note", payload: { text: text("这里以后要补一段回忆闪回", "note") } },
             { id: "b16", kind: "action", payload: { action: "character", operation: "exit", characterId: "char-alice", transform: { to: { opacity: 0 }, durationMs: 300 } } },
