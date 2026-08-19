@@ -164,6 +164,12 @@ export const lint = {
             description: "同じステージ名を作成する行が 2 つあり、後の行は先の行のものを使う",
             message: "{object} は上で既に作成されているため、この行はそちらを操作する",
         },
+        storyTransitionUnavailable: {
+            title: "利用できないトランジション",
+            description: "このバージョンでは再生できないトランジションを指定した行",
+            // 保存された語をそのまま出す。どのメニューにも残っていない以上、作者に残る手がかりはこれだけ。
+            message: "トランジション {transition} は利用できないため、この変化は切り替えで再生される",
+        },
         blueprintReferenceMissing: {
             title: "参照先の欠落",
             description: "プロジェクトに存在しない対象を指すノード",

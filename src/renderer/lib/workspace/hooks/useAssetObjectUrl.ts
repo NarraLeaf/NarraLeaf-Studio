@@ -44,10 +44,17 @@ export function useAssetObjectUrl(assetId?: string | null, assetType: AssetObjec
     });
     const urlRef = useRef<string | null>(null);
     /**
-     * Bumped when this asset's bytes are replaced. Everything downstream of this hook — story rows,
-     * character variants, widget fills — addresses the asset by id, and the id survives a
-     * replacement, so without a second key the effect below would never re-run and every one of them
-     * would keep the pre-replacement picture until the tab was remounted.
+     * Bumped when this asset's bytes are replaced — or when the asset is deleted.
+     *
+     * Everything downstream of this hook — story rows, character variants, widget fills — addresses
+     * the asset by id, and the id survives a replacement, so without a second key the effect below
+     * would never re-run and every one of them would keep the pre-replacement picture until the tab
+     * was remounted.
+     *
+     * `deleted` is on the same key for the same reason read the other way: nothing about the id
+     * changes when the record goes, so the picture of a file that is no longer in the project stayed
+     * on screen — the effect below turns the missing record into the "not found" state every caller
+     * already draws.
      */
     const [contentGeneration, setContentGeneration] = useState(0);
 
@@ -55,11 +62,14 @@ export function useAssetObjectUrl(assetId?: string | null, assetType: AssetObjec
         if (!assetsService || !assetId) {
             return;
         }
-        return assetsService.getEvents().on("updated", asset => {
+        const bump = (asset: { id: string }) => {
             if (asset.id === assetId) {
                 setContentGeneration(generation => generation + 1);
             }
-        });
+        };
+        const events = assetsService.getEvents();
+        const unsubs = [events.on("updated", bump), events.on("deleted", bump)];
+        return () => unsubs.forEach(unsub => unsub());
     }, [assetsService, assetId]);
 
     useEffect(() => {
@@ -193,6 +203,13 @@ export function useAssetObjectUrl(assetId?: string | null, assetType: AssetObjec
 
         const asset = assetsService.getAssets()[assetType]?.[assetId];
         if (!asset) {
+            // Released here as well as in the branches above: reaching this after a delete means the
+            // blob is unreachable for good, and leaving it alive would hold the file's bytes in
+            // memory for the life of the window.
+            if (urlRef.current) {
+                URL.revokeObjectURL(urlRef.current);
+                urlRef.current = null;
+            }
             setState({
                 url: null,
                 metadata: null,

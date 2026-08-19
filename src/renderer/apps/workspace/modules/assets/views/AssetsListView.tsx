@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useState, Dispatch, SetStateAction, DragEvent } from "react";
+import { useMemo, useCallback, useLayoutEffect, useState, Dispatch, SetStateAction, DragEvent } from "react";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
 import { Upload, Link, FolderPlus, Layers, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -9,6 +9,7 @@ import { useSetSummary } from "../components/AssetSetRow";
 import { formatAssetSetCoordinateReading, readAssetSetCoordinate } from "@shared/types/assetSetLabels";
 import type { AssetSetCell } from "@shared/types/assetSet";
 import type { ResolvedAssetSet } from "../state/useAssetSets";
+import { assetSetsFiledIn, assetsFiledIn, groupsFiledIn, listViewRowOrder } from "../state/assetRowOrder";
 import { AssetSupportBadge } from "../components/AssetSupportBadge";
 import { ASSET_CATEGORY_ICONS, ASSET_TYPE_ICONS } from "../constants";
 import { useTranslation } from "@/lib/i18n";
@@ -44,14 +45,44 @@ export function AssetsListView({
     const {
         filteredAssets,
         filteredGroups,
+        assetSets,
         rootAssetSets,
         memberAssetIds,
+        expandedGroups,
+        expandedAssetSets,
+        isNarrowed,
         draggedItem,
         draggedAssetSet,
         showContextMenu,
+        publishRowOrder,
     } = useAssetsPanelContext();
 
     const hasAnyItems = useMemo(() => Object.values(filteredAssets).some(list => list.length > 0) || Object.values(filteredGroups).some(list => list.length > 0), [filteredAssets, filteredGroups]);
+
+    // What a shift range covers. Recomputed rather than collected while rendering, because the tree
+    // draws itself through nested components and there is no one place a row passes through; the
+    // rules it walks are the ones the rows below follow, and the three that say what a level holds
+    // are the same functions.
+    const rowOrder = useMemo(() => listViewRowOrder({
+        openCategories: openItems,
+        assets: filteredAssets,
+        groups: filteredGroups,
+        rootAssetSets,
+        assetSets,
+        memberAssetIds,
+        expandedGroups,
+        expandedAssetSets,
+        isNarrowed,
+    }), [
+        openItems, filteredAssets, filteredGroups, rootAssetSets, assetSets,
+        memberAssetIds, expandedGroups, expandedAssetSets, isNarrowed,
+    ]);
+    useLayoutEffect(() => {
+        publishRowOrder(rowOrder);
+        // Cleared on the way out: the grid and the overview draw something else entirely, and a
+        // range must never be sliced out of a list of rows that are no longer on screen.
+        return () => publishRowOrder([]);
+    }, [publishRowOrder, rowOrder]);
 
     return (
         <Accordion openItems={openItems} onOpenChange={onOpenChange} multiple disableAnimation={disableAnimation}>
@@ -145,12 +176,10 @@ export function AssetsListView({
                                 <div className="py-1">
                                     {/* Above the folders: a set is what a reference points at, and the
                                         files it resolves to are filed below in the ordinary way. */}
-                                    {categorySets
-                                        .filter(entry => !entry.set.groupId)
+                                    {assetSetsFiledIn(categorySets, null)
                                         .map(entry => <AssetSetItem key={entry.set.id} entry={entry} />)}
-                                    {categoryGroups.filter(g => !g.parentGroupId).map(group => <GroupItem key={group.id} group={group} category={category} level={0} />)}
-                                    {categoryAssets
-                                        .filter(a => !a.groupId && !memberAssetIds.has(a.id))
+                                    {groupsFiledIn(categoryGroups, null).map(group => <GroupItem key={group.id} group={group} category={category} level={0} />)}
+                                    {assetsFiledIn(categoryAssets, null, memberAssetIds)
                                         .map(asset => <AssetItem key={asset.id} asset={asset} category={category} level={0} />)}
                                 </div>
                             )}
@@ -431,13 +460,12 @@ function GroupItem({ group, category, level }: { group: AssetGroup; category: As
         });
     }, [group.id, setExpandedGroups]);
 
-    const childGroups = filteredGroups[category].filter(g => g.parentGroupId === group.id);
-    const groupAssets = filteredAssets[category]
-        .filter(a => a.groupId === group.id && !memberAssetIds.has(a.id));
+    const childGroups = groupsFiledIn(filteredGroups[category], group.id);
+    const groupAssets = assetsFiledIn(filteredAssets[category], group.id, memberAssetIds);
     // Sets made in this folder are rows in it, so they are part of what it holds. The files they
     // answer with are not counted twice: those are drawn inside the set and dropped from the list
     // above by the same rule.
-    const groupSets = rootAssetSets[category].filter(entry => entry.set.groupId === group.id);
+    const groupSets = assetSetsFiledIn(rootAssetSets[category], group.id);
     const isDragging = !!draggedItem && draggedItem.isGroup && draggedItem.item.id === group.id;
     const isSelected = selectedItems.has(`group:${group.id}`);
     const isCut = clipboard?.type === 'cut' && clipboard.groups.some(g => g.id === group.id);

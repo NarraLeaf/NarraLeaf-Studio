@@ -703,9 +703,9 @@ export const AppSettings: AppSettingDefinition[] = [
         type: SettingValueType.Boolean,
         label: "Reopen the last project on startup",
         labelKey: "settings.items.reopenLastProject.label",
-        description: "Turn this off to start on the home screen instead.",
+        description: "Open the project the last session was in, instead of starting on the launcher.",
         descriptionKey: "settings.items.reopenLastProject.description",
-        defaultValue: true,
+        defaultValue: false,
     },
     {
         // Read by the main process (`RecentlyOpened.limit`) every time the history is written, so

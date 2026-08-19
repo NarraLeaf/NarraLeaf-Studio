@@ -81,13 +81,19 @@ export function useCompositedSprite(
             compositorFor(assetsService).invalidate(`${character.profile.getId()}|`);
             setGeneration(current => current + 1);
         });
-        const off = assetsService.getEvents().on("updated", asset => {
+        // Deletion invalidates for the same reason a content replacement does: the composite is a
+        // picture of layers addressed by id, and the id does not move when the file behind it goes -
+        // so without this arm a deleted layer went on being drawn into every sprite that used it.
+        const onLayerChanged = (asset: { id: string }) => {
             if (layers.includes(asset.id)) {
                 compositorFor(assetsService).invalidate(`${character.profile.getId()}|`);
                 setGeneration(current => current + 1);
             }
-        });
-        return () => { stop?.(); off?.(); };
+        };
+        const events = assetsService.getEvents();
+        const offUpdated = events.on("updated", onLayerChanged);
+        const offDeleted = events.on("deleted", onLayerChanged);
+        return () => { stop?.(); offUpdated(); offDeleted(); };
     }, [character, assetsService, layers.join(",")]);
 
     useEffect(() => {

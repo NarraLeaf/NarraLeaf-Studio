@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { ChevronDown, FolderOpen, History, Loader2, Plus, X } from "lucide-react";
 import { getInterface } from "@/lib/app/bridge";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements";
@@ -10,6 +10,7 @@ import type { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { useWorkspace } from "../../context";
 import { useOpenRecentProject, useRecentProjects } from "../../hooks/useRecentProjects";
+import { useTitleBarMenu } from "../ui/titleBarMenus";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 import { focusedRevision, isVersionSurfaceVisible, shortRevision, versionFace } from "./versionRailModel";
 import { openVersionRail } from "./versionRailController";
@@ -45,10 +46,13 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
     const recentProjects = useRecentProjects();
     const openRecentProject = useOpenRecentProject();
 
-    const [open, setOpen] = useState(false);
+    // Held in the title bar's bar of menus, so opening this one puts away whatever was open. It is
+    // NOT part of the chain the pointer walks (`hotTrack`): this is the window's identity that
+    // happens to carry a menu, and crossing it on the way to the File menu is not a request to see
+    // the project list. See `../ui/titleBarMenus`.
+    const { ref: containerRef, open, toggle, close } = useTitleBarMenu("narraleaf-studio:project-switcher");
     // The project the author picked, held while the dialog asks which window it should open in.
     const [pending, setPending] = useState<PendingOpen | null>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
 
     const currentPath = context?.project.getConfig().projectPath ?? "";
     const currentName = context
@@ -64,28 +68,18 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
     const currentIdentity = normalizeProjectPath(currentPath);
     const others = recentProjects.filter(project => normalizeProjectPath(project.path) !== currentIdentity);
 
+    // Only Escape: a pointer landing outside is the bar's to notice, for every menu it holds.
     useEffect(() => {
         if (!open) return;
 
-        const onPointerDown = (event: PointerEvent) => {
-            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-                setOpen(false);
-            }
-        };
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.key === "Escape") {
-                setOpen(false);
+                close();
             }
         };
-        window.addEventListener("pointerdown", onPointerDown, true);
         window.addEventListener("keydown", onKeyDown);
-        return () => {
-            window.removeEventListener("pointerdown", onPointerDown, true);
-            window.removeEventListener("keydown", onKeyDown);
-        };
-    }, [open]);
-
-    const close = useCallback(() => setOpen(false), []);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [open, close]);
 
     /**
      * Carry out the choice the dialog collected, or the one there was no choice to make.
@@ -125,12 +119,12 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
     }, [openTarget]);
 
     const handleOpen = useCallback((project: RecentlyOpenedProject) => {
-        setOpen(false);
+        close();
         void requestOpen({ source: "recent", projectPath: project.path, name: project.name });
-    }, [requestOpen]);
+    }, [close, requestOpen]);
 
     const handleOpenFolder = useCallback(() => {
-        setOpen(false);
+        close();
         void (async () => {
             const result = await getInterface().selectFolder();
             if (result.success && result.data?.path) {
@@ -146,17 +140,17 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
                 });
             }
         })();
-    }, [requestOpen]);
+    }, [close, requestOpen]);
 
     const handleNewProject = useCallback(() => {
-        setOpen(false);
+        close();
         void (async () => {
             const result = await getInterface().app.launchProjectWizard({});
             if (result.success && result.data?.created) {
                 await getInterface().workspace.launch({ projectPath: result.data.projectPath });
             }
         })();
-    }, []);
+    }, [close]);
 
     return (
         <div className="relative" ref={containerRef}>
@@ -166,7 +160,7 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
                 the window from saying the same thing in two places. */}
             <button
                 type="button"
-                onClick={() => setOpen(value => !value)}
+                onClick={toggle}
                 className={cn(
                     "h-8 max-w-56 px-2 rounded-md flex items-center gap-1.5 text-sm cursor-default transition-colors",
                     open ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
