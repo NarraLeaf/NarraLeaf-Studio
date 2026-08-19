@@ -181,7 +181,7 @@ export const lint = {
             message: "Nothing reaches this node, so it never runs",
         },
         blueprintEmptyEvent: {
-            title: "Event that does nothing",
+            title: "Empty event",
             description: "An event layer with nothing wired to run",
             message: "This event runs nothing",
         },
