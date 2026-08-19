@@ -12,6 +12,17 @@
 export const DEFAULT_UI_TEMPLATE_REGISTRY_URL =
     "https://raw.githubusercontent.com/NarraLeaf/UI-Templates/master/index.json";
 
+/**
+ * A community mirror of the official index, for networks that reach github.com slowly or not
+ * at all. Offered as a named choice in the registry setting rather than left for the author to
+ * type, because the address is not something a NarraLeaf author can be expected to know.
+ *
+ * Unlike the plugin mirror this one carries the whole store: template documents and resources
+ * resolve against the index's own directory (`registryBaseDir`), so they follow it to the mirror.
+ */
+export const MIRROR_UI_TEMPLATE_REGISTRY_URL =
+    "https://gh-mirror.mewbaka.cn/narraleaf/UI-Templates/blob/master/index.json";
+
 /** The only `formatVersion` this client knows how to read; a newer index is refused. */
 export const UI_TEMPLATE_REGISTRY_FORMAT_VERSION = 1;
 

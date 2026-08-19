@@ -834,6 +834,21 @@ describe("logic and effects", () => {
         expect(issuesOf("/transform hero shutter=1")).toEqual(["unsupportedParam"]);
     });
 
+    it("/transform takes a drawn easing curve where it takes an easing word", () => {
+        // The inspector can state a curve no word names, so the line has to be able to say it too -
+        // otherwise a row carrying one printed a value that retyping the row would drop.
+        expect(build("/transform hero zoom=1.2 ease=cubic-bezier(0.4,0,0.2,1)")).toMatchObject({
+            payload: { transform: { easing: "cubic-bezier(0.4,0,0.2,1)" } },
+        });
+        // Canonicalized the way an alias is: pasted from a browser's own spelling, banked as the card writes it.
+        expect(build("/transform hero zoom=1.2 ease='cubic-bezier(0.4, 0, 0.2, 1)'")).toMatchObject({
+            payload: { transform: { easing: "cubic-bezier(0.4,0,0.2,1)" } },
+        });
+        // Still an enum: a word off the list is an error, not free text quietly stored.
+        expect(parseCommandLine("/transform hero zoom=1.2 ease=swoosh")).toMatchObject({ issues: [{ code: "badValue" }] });
+        expect(parseCommandLine("/transform hero zoom=1.2 ease=cubic-bezier(0.4,0,0.2)")).toMatchObject({ issues: [{ code: "badValue" }] });
+    });
+
     it("/transform camera reads the camera as a reserved target word", () => {
         expect(build("/transform camera zoom=1.5 d=0.8")).toMatchObject({
             kind: "action",

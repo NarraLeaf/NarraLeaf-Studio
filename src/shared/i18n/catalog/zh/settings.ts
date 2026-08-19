@@ -11,6 +11,12 @@ export const settings = {
     persistFailed: "保存设置失败",
     resetToDefault: "恢复默认值",
     customColor: "自定义颜色…",
+    source: {
+        official: "官方源",
+        noMirror: "不使用镜像",
+        chinaMirror: "国内加速镜像",
+        customPlaceholder: "自定义地址",
+    },
     fontPicker: {
         searchPlaceholder: "搜索字体…",
         presets: "预设",
@@ -196,22 +202,22 @@ export const settings = {
         },
         electronMirror: {
             label: "Electron 下载镜像",
-            description: "下载 Electron 所用的镜像地址，留空则使用官方源",
+            description: "下载 Electron 所用的镜像地址",
         },
         electronBuilderBinariesMirror: {
             label: "构建工具下载镜像",
-            description: "构建时下载安装器工具（NSIS、AppImage、代码签名辅助程序）所用的镜像地址，留空则使用官方源",
+            description: "构建时下载安装器工具（NSIS、AppImage、代码签名辅助程序）所用的镜像地址",
         },
         downloadRewrites: {
             label: "下载地址替换",
         },
         pluginRegistryUrl: {
             label: "插件注册表地址",
-            description: "插件商店从哪里取索引，留空则使用 NarraLeaf 官方注册表",
+            description: "插件商店从哪里取索引",
         },
         uiTemplateRegistryUrl: {
             label: "界面模板注册表地址",
-            description: "模板商店从哪里取索引，留空则使用 NarraLeaf 官方注册表",
+            description: "模板商店从哪里取索引",
         },
         checkpointInterval: {
             label: "自动检查点间隔",

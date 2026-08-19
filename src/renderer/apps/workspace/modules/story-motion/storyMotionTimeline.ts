@@ -99,10 +99,6 @@ export function resolveStoryMotionEasing(easing?: string | number[]): (t: number
     return STORY_MOTION_NAMED_EASINGS[parsed] ?? STORY_MOTION_NAMED_EASINGS.linear;
 }
 
-export function isStoryMotionBezierEasing(easing: string | undefined): boolean {
-    return typeof easing === "string" && Array.isArray(parseStoryEasing(easing));
-}
-
 export type StoryMotionPreviewEffectProperty =
     | "fontColor"
     | "maskImage"

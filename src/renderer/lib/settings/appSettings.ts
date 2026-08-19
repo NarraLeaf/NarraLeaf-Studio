@@ -57,6 +57,9 @@ import { SERVERS_PANEL_SETTING_KEY } from "@shared/constants/servers";
 import { UPDATE_AUTO_CHECK_KEY, UPDATE_PANEL_SETTING_KEY } from "@shared/constants/update";
 import { KEYBINDING_OVERRIDES_SETTINGS_KEY } from "@/lib/workspace/services/ui/KeybindingService";
 import { DOWNLOAD_REWRITES_KEY } from "@shared/types/downloadSource";
+import { OFFICIAL_SOURCE_VALUE } from "@/lib/settings/sourceSelection";
+import { MIRROR_PLUGIN_REGISTRY_URL } from "@shared/constants/pluginRegistry";
+import { MIRROR_UI_TEMPLATE_REGISTRY_URL } from "@shared/constants/uiTemplateRegistry";
 import {
     EDITOR_LINE_NUMBERS_DEFAULT,
     EDITOR_LINE_NUMBERS_KEY,
@@ -922,12 +925,19 @@ export const AppSettings: AppSettingDefinition[] = [
         key: "plugins.registryUrl",
         category: "network",
         scope: SettingScope.Global,
-        type: SettingValueType.String,
+        type: SettingValueType.Source,
         label: "Plugin registry URL",
         labelKey: "settings.items.pluginRegistryUrl.label",
-        description: "Where the plugin store looks. Leave empty to use the official NarraLeaf registry.",
+        description: "Where the plugin store looks for its index.",
         descriptionKey: "settings.items.pluginRegistryUrl.description",
         defaultValue: "",
+        // The official entry stores "", which is what makes it the default without this list
+        // having to name the official address; see `OFFICIAL_SOURCE_VALUE`.
+        options: [OFFICIAL_SOURCE_VALUE, MIRROR_PLUGIN_REGISTRY_URL],
+        optionLabelKeys: {
+            [OFFICIAL_SOURCE_VALUE]: "settings.source.official",
+            [MIRROR_PLUGIN_REGISTRY_URL]: "settings.source.chinaMirror",
+        },
     },
     {
         // Read by the main process (uiTemplateRegistryClient.resolveTemplateRegistryUrl)
@@ -938,12 +948,17 @@ export const AppSettings: AppSettingDefinition[] = [
         key: "uiTemplates.registryUrl",
         category: "network",
         scope: SettingScope.Global,
-        type: SettingValueType.String,
+        type: SettingValueType.Source,
         label: "UI template registry URL",
         labelKey: "settings.items.uiTemplateRegistryUrl.label",
-        description: "Where the template store looks. Leave empty to use the official NarraLeaf registry.",
+        description: "Where the template store looks for its index.",
         descriptionKey: "settings.items.uiTemplateRegistryUrl.description",
         defaultValue: "",
+        options: [OFFICIAL_SOURCE_VALUE, MIRROR_UI_TEMPLATE_REGISTRY_URL],
+        optionLabelKeys: {
+            [OFFICIAL_SOURCE_VALUE]: "settings.source.official",
+            [MIRROR_UI_TEMPLATE_REGISTRY_URL]: "settings.source.chinaMirror",
+        },
     },
     {
         // Read by the main-process GameBuildManager (readElectronMirror) and
@@ -952,12 +967,19 @@ export const AppSettings: AppSettingDefinition[] = [
         key: "build.electronMirror",
         category: "network",
         scope: SettingScope.Global,
-        type: SettingValueType.String,
+        type: SettingValueType.Source,
         label: "Electron download mirror",
         labelKey: "settings.items.electronMirror.label",
-        description: "Mirror for downloading Electron. Leave empty to use the official source.",
+        description: "Mirror for downloading Electron.",
         descriptionKey: "settings.items.electronMirror.description",
         defaultValue: "",
+        // Official or typed, with no mirror in between: the two registries above have one
+        // community mirror each that we can name, and there is no equivalent for these binaries
+        // that Studio can vouch for. An address offered by name reads as endorsed.
+        options: [OFFICIAL_SOURCE_VALUE],
+        optionLabelKeys: {
+            [OFFICIAL_SOURCE_VALUE]: "settings.source.noMirror",
+        },
     },
     {
         // Read by the build worker (winCodeSignCache.binariesMirror), ahead of the two
@@ -968,12 +990,16 @@ export const AppSettings: AppSettingDefinition[] = [
         key: "build.electronBuilderBinariesMirror",
         category: "network",
         scope: SettingScope.Global,
-        type: SettingValueType.String,
+        type: SettingValueType.Source,
         label: "Build tooling mirror",
         labelKey: "settings.items.electronBuilderBinariesMirror.label",
-        description: "Mirror for the installer tooling a build downloads (NSIS, AppImage, code-signing helpers). Leave empty to use the official source.",
+        description: "Mirror for the installer tooling a build downloads (NSIS, AppImage, code-signing helpers).",
         descriptionKey: "settings.items.electronBuilderBinariesMirror.description",
         defaultValue: "",
+        options: [OFFICIAL_SOURCE_VALUE],
+        optionLabelKeys: {
+            [OFFICIAL_SOURCE_VALUE]: "settings.source.noMirror",
+        },
     },
     {
         // The rewrite table (see @shared/utils/downloadSource). Rendered by its own panel:
