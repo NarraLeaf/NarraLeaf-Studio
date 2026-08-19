@@ -31,6 +31,8 @@ interface AssetsPanelContextType {
     assetSets: Record<AssetCategory, ResolvedAssetSet[]>;
     /** Only the sets that hang under nothing: what a section lists at its root. */
     rootAssetSets: Record<AssetCategory, ResolvedAssetSet[]>;
+    /** Files some set answers with. Listed inside their set, and not again beside it. */
+    memberAssetIds: ReadonlySet<string>;
     filteredAssets: Record<AssetCategory, Asset[]>;
     filteredGroups: Record<AssetCategory, AssetGroup[]>;
     /**
@@ -61,6 +63,13 @@ interface AssetsPanelContextType {
     /** Puts a set in the properties panel, which is where its axes are edited. */
     handleAssetSetSelect: (entry: ResolvedAssetSet) => void;
     showAssetSetContextMenu: (event: React.MouseEvent, entry: ResolvedAssetSet) => void;
+    /**
+     * The menu on one value of a set, which is where a sub-set is made.
+     *
+     * A value is the only place the gesture makes sense: a sub-set hangs at a value, and a set has
+     * several of them.
+     */
+    showAssetSetValueContextMenu: (event: React.MouseEvent, entry: ResolvedAssetSet, value: string) => void;
     showContextMenu: (e: React.MouseEvent, category: AssetCategory, item: Asset | AssetGroup | null, isGroup: boolean) => void;
     handleDragStart?: (e: React.DragEvent, category: AssetCategory, item: Asset | AssetGroup, isGroup: boolean) => void;
     handleDragEnd?: () => void;

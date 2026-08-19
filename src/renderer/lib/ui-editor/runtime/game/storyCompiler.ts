@@ -22,6 +22,7 @@ import {
     RuleReveal,
     Scene,
     Script,
+    Sentence,
     Sound,
     Story,
     Text,
@@ -3658,6 +3659,28 @@ async function getVfx(
 }
 
 /**
+ * One choice option's prompt, carrying its voice unit id when a take exists for it.
+ *
+ * The engine's menu never speaks an option, so the id travels as sentence metadata rather than as
+ * `voiceId`: `Sentence.getMetadata()` is the one published read of it, and the choice slot surface
+ * is what turns it into audible playback (`Play Choice Voice`). Metadata is runtime-only and is not
+ * written to a save, which is the right lifetime - the id is recomputed by every compile.
+ *
+ * An unvoiced option stays a bare prompt, exactly as every option was before this existed, so the
+ * `Sentence` wrapper only appears where it carries something.
+ */
+function choiceOptionPrompt(ctx: SceneCompileContext, segment: StoryTextSegment, blockId: string): unknown {
+    if (!segment.value && !segmentHasInterpolation(segment)) {
+        return "Option";
+    }
+    const prompt = buildLocalizedSentencePrompt(ctx, segment, blockId);
+    const voiceConfig = voiceConfigForLine(ctx, segment.textId);
+    return voiceConfig
+        ? new Sentence(prompt as any, { metadata: { voiceId: voiceConfig.voiceId } })
+        : prompt;
+}
+
+/**
  * The URL for a weather seed's clip, or null with a diagnostic saying why there is none.
  *
  * Refused rather than guessed at. A `Vfx` REQUIRES a source - the engine throws on one without -
@@ -3709,9 +3732,7 @@ async function compileChoice(ctx: SceneCompileContext, block: Extract<StoryBlock
         }
         const optionSegment = option.payload.text;
         chain = chain.choose({
-            prompt: optionSegment.value || segmentHasInterpolation(optionSegment)
-                ? (buildLocalizedSentencePrompt(ctx, optionSegment, option.id) as any)
-                : "Option",
+            prompt: choiceOptionPrompt(ctx, optionSegment, option.id),
             // The pick is recorded at the head of the option's OWN branch, which is the one place
             // that runs if and only if the player chose this option. Recording anywhere else (with
             // the menu, or via the engine's text-read record) would count an option the player only
